@@ -18,10 +18,13 @@ import {
 import { ReportHeader } from './_shared/ReportHeader';
 import { DateRangeBar, makeInitialRange, type DateRangeValue } from './_shared/DateRangeBar';
 import { ReportShell, ReportCard, ReportSectionTitle } from './_shared/ReportShell';
-import { formatAmount, dateRangeLabel } from './_shared/format';
+import { formatAmount, dateRangeLabel, formatDate } from './_shared/format';
 import { PdfPreviewModal } from '../../shared/PdfPreviewModal';
-import { LedgerPreviewPdf } from '../../shared/LedgerPreviewPdf';
+import { MobileLedgerStatementPdf } from '../../shared/MobileLedgerStatementPdf';
 import { usePdfPreview } from '../../shared/usePdfPreview';
+import { useFormatCurrencyFromBundle } from '../../../hooks/useFormatCurrency';
+import { buildLedgerStatementShareMessage } from '../../../lib/buildLedgerStatementShareMessage';
+import { ledgerLinesToStatementRows } from '../../../lib/ledgerLineToStatementRow';
 import { sortLedgerLinesAndRebuildRunningBalance } from '../../../lib/ledgerChronology';
 import { useAttachmentPreview } from '../../../hooks/useAttachmentPreview';
 import { LedgerActivityListRow } from './_shared/LedgerActivityListRow';
@@ -60,7 +63,7 @@ const displayEntryNo = (value: string, fallbackType?: string) => {
   return v;
 };
 
-export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, reportRefreshEpoch = 0 }: PartyLedgerReportProps) {
+export function PartyLedgerReport({ onBack, kind, companyId, branchId, user: _user, reportRefreshEpoch = 0 }: PartyLedgerReportProps) {
   const cfg = KIND_LABELS[kind];
   const [parties, setParties] = useState<LocalParty[]>([]);
   const [loading, setLoading] = useState(!!companyId);
@@ -301,6 +304,47 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
     return { debit, credit, closing };
   }, [lines, opening]);
 
+  const currencyBundle = preview.currency ?? {
+    currency: 'PKR',
+    currencySymbol: null,
+    showCurrencySymbol: true,
+    decimalPrecision: 2,
+  };
+  const { formatCurrency: formatLedgerCurrency } = useFormatCurrencyFromBundle(currencyBundle);
+  const generatedAt = useMemo(() => new Date().toLocaleString('en-PK'), [preview.open]);
+  const branchScopeLabel = branchId ? 'Selected branch (GL scope)' : 'All branches (GL scope)';
+  const ledgerShareText = useMemo(() => {
+    if (!preview.brand || !selected) return '';
+    return buildLedgerStatementShareMessage({
+      businessName: preview.brand.name,
+      reportTitle: cfg.title,
+      partyLabel: selected.name,
+      periodLabel: dateRangeLabel(range.from, range.to),
+      branchScopeLabel,
+      openingBalance: opening,
+      totalDebit: totals.debit,
+      totalCredit: totals.credit,
+      closingBalance: totals.closing,
+      formatCurrency: formatLedgerCurrency,
+      generatedAt,
+    });
+  }, [
+    preview.brand,
+    selected,
+    cfg.title,
+    range.from,
+    range.to,
+    branchScopeLabel,
+    opening,
+    totals,
+    formatLedgerCurrency,
+    generatedAt,
+  ]);
+  const statementRows = useMemo(
+    () => ledgerLinesToStatementRows(lines, (entryNo, refType) => displayEntryNo(entryNo, refType)),
+    [lines],
+  );
+
   const filteredParties = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return parties;
@@ -454,35 +498,32 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
         </ReportCard>
       </ReportShell>
 
-      {preview.brand && (
+      {preview.brand && selected && (
         <PdfPreviewModal
           open={preview.open}
           title={cfg.title}
           filename={`${cfg.title.replace(/\s+/g, '_')}_${selected.name.replace(/\s+/g, '_')}_${range.from || 'all'}_${range.to || 'now'}.pdf`}
           onClose={preview.close}
+          preparing={preview.loading}
+          orientation={preview.ledgerOrientation}
           sharePhone={selected.sharePhone}
-          whatsAppFallbackText={`${cfg.title} — ${selected.name} · ${dateRangeLabel(range.from, range.to)}`}
+          whatsAppFallbackText={ledgerShareText}
         >
-          <LedgerPreviewPdf
+          <MobileLedgerStatementPdf
             brand={preview.brand}
+            printingSettings={preview.printingSettings}
             title={cfg.title}
-            subtitle={dateRangeLabel(range.from, range.to)}
             partyName={selected.name}
-            partyMeta={selected.meta}
+            periodLabel={dateRangeLabel(range.from, range.to)}
+            branchScopeLabel={branchScopeLabel}
             openingBalance={opening}
             closingBalance={totals.closing}
-            totals={{ debit: totals.debit, credit: totals.credit }}
-            rows={lines.map((l) => ({
-              date: l.date,
-              reference: displayEntryNo(l.entryNo, l.referenceType),
-              description: l.description,
-              debit: l.debit,
-              credit: l.credit,
-              balance: l.runningBalance,
-              hasAttachment: l.hasAttachments,
-            }))}
-            generatedBy={user.name || user.email || 'User'}
-            generatedAt={new Date().toLocaleString('en-PK')}
+            totalDebit={totals.debit}
+            totalCredit={totals.credit}
+            rows={statementRows}
+            formatCurrency={formatLedgerCurrency}
+            formatDate={formatDate}
+            generatedAt={generatedAt}
           />
         </PdfPreviewModal>
       )}

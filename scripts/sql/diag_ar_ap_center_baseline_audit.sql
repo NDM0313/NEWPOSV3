@@ -1,8 +1,10 @@
 -- AR/AP Reconciliation Center — Phase 1 baseline audit (read-only).
 -- Targets: SL-0005, SL-0012, SL-0006, RCV-0017, RCV-0018, RCV-0019
--- Run: Get-Content scripts/sql/diag_ar_ap_center_baseline_audit.sql -Raw | ssh dincouture-vps "docker exec -i supabase-db psql -U postgres -d postgres -v ON_ERROR_STOP=1"
+--
+-- Supabase SQL editor: run entire file (plain SQL — no psql \echo).
+-- VPS psql: Get-Content scripts/sql/diag_ar_ap_center_baseline_audit.sql -Raw | ssh dincouture-vps "docker exec -i supabase-db psql -U postgres -d postgres -v ON_ERROR_STOP=1"
 
-\echo '=== A. Integrity lab snapshot (all branches, today) ==='
+SELECT '=== A. Integrity lab snapshot (all branches, today) ===' AS audit_section;
 SELECT *
 FROM ar_ap_integrity_lab_snapshot(
   (SELECT company_id FROM sales WHERE invoice_no IN ('SL-0005','SL-0012','SL-0006') LIMIT 1),
@@ -10,7 +12,7 @@ FROM ar_ap_integrity_lab_snapshot(
   CURRENT_DATE
 );
 
-\echo '=== B. Queue counts (company scope from sample sales) ==='
+SELECT '=== B. Queue counts (company scope from sample sales) ===' AS audit_section;
 WITH co AS (
   SELECT company_id FROM sales WHERE invoice_no IN ('SL-0005','SL-0012','SL-0006') LIMIT 1
 )
@@ -24,13 +26,13 @@ SELECT
   (SELECT COUNT(*) FROM v_ar_ap_manual_adjustments m, co WHERE m.company_id = co.company_id) AS manual_je_count,
   (SELECT COUNT(*) FROM ar_ap_reconciliation_review_items r, co WHERE r.company_id = co.company_id) AS review_items_count;
 
-\echo '=== C. Unposted queue — SL-0005, SL-0012, SL-0006 ==='
+SELECT '=== C. Unposted queue — SL-0005, SL-0012, SL-0006 ===' AS audit_section;
 SELECT *
 FROM v_ar_ap_unposted_documents
 WHERE document_no IN ('SL-0005', 'SL-0012', 'SL-0006')
 ORDER BY document_no;
 
-\echo '=== D. Sales detail — SL-0005, SL-0012, SL-0006 ==='
+SELECT '=== D. Sales detail — SL-0005, SL-0012, SL-0006 ===' AS audit_section;
 SELECT
   s.id,
   s.invoice_no,
@@ -56,7 +58,7 @@ LEFT JOIN branches b ON b.id = s.branch_id
 WHERE s.invoice_no IN ('SL-0005', 'SL-0012', 'SL-0006')
 ORDER BY s.invoice_no;
 
-\echo '=== E. Sale-linked JEs for SL-0005, SL-0012, SL-0006 ==='
+SELECT '=== E. Sale-linked JEs for SL-0005, SL-0012, SL-0006 ===' AS audit_section;
 SELECT
   s.invoice_no,
   je.id AS journal_entry_id,
@@ -74,7 +76,7 @@ JOIN journal_entries je ON je.reference_id = s.id
 WHERE s.invoice_no IN ('SL-0005', 'SL-0012', 'SL-0006')
 ORDER BY s.invoice_no, je.entry_date;
 
-\echo '=== F. Unmapped queue lines — RCV-0017, RCV-0018, RCV-0019 (via payment ref) ==='
+SELECT '=== F. Unmapped queue lines — RCV-0017, RCV-0018, RCV-0019 (via payment ref) ===' AS audit_section;
 SELECT
   v.*,
   p.id AS payment_id,
@@ -97,7 +99,7 @@ WHERE p.reference_number IN ('RCV-0017', 'RCV-0018', 'RCV-0019')
    )
 ORDER BY v.entry_no, v.journal_line_id;
 
-\echo '=== G. Payments RCV-0017/18/19 + linked JEs ==='
+SELECT '=== G. Payments RCV-0017/18/19 + linked JEs ===' AS audit_section;
 SELECT
   p.id,
   p.reference_number,
@@ -125,7 +127,7 @@ LEFT JOIN journal_entries je ON je.payment_id = p.id
 WHERE p.reference_number IN ('RCV-0017', 'RCV-0018', 'RCV-0019')
 ORDER BY p.reference_number, je.entry_no;
 
-\echo '=== H. JE lines on RCV-linked entries (AR side) ==='
+SELECT '=== H. JE lines on RCV-linked entries (AR side) ===' AS audit_section;
 SELECT
   p.reference_number,
   je.entry_no,
@@ -146,7 +148,7 @@ WHERE p.reference_number IN ('RCV-0017', 'RCV-0018', 'RCV-0019')
   AND COALESCE(je.is_void, FALSE) = FALSE
 ORDER BY p.reference_number, je.entry_no, jel.debit DESC;
 
-\echo '=== I. Unmapped view rows matching RCV JEs (by entry_no) ==='
+SELECT '=== I. Unmapped view rows matching RCV JEs (by entry_no) ===' AS audit_section;
 SELECT v.*
 FROM v_ar_ap_unmapped_journals v
 WHERE v.journal_entry_id IN (
@@ -156,7 +158,7 @@ WHERE v.journal_entry_id IN (
   WHERE p.reference_number IN ('RCV-0017', 'RCV-0018', 'RCV-0019')
 );
 
-\echo '=== J. Review item status for sample keys ==='
+SELECT '=== J. Review item status for sample keys ===' AS audit_section;
 SELECT r.*
 FROM ar_ap_reconciliation_review_items r
 WHERE r.item_key LIKE '%SL-0005%'
@@ -168,7 +170,7 @@ WHERE r.item_key LIKE '%SL-0005%'
 ORDER BY r.updated_at DESC
 LIMIT 50;
 
-\echo '=== K. journal_party_contact_mapping for RCV JEs ==='
+SELECT '=== K. journal_party_contact_mapping for RCV JEs ===' AS audit_section;
 SELECT m.*
 FROM journal_party_contact_mapping m
 WHERE m.journal_entry_id IN (

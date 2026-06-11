@@ -321,9 +321,18 @@ export function LedgerStatementCenterV2Page({ embedded = false }: { embedded?: b
     [formatDate],
   );
 
+  const exportColumnDefs = useMemo(
+    () =>
+      ledgerPrint.columns.map((c) => {
+        const full = LEDGER_EXPORT_COLUMNS.find((col) => col.key === c.key);
+        return full ?? { key: c.key, label: c.label, align: c.align };
+      }),
+    [ledgerPrint.columns],
+  );
+
   const buildExportData = useCallback((): ExportData => {
     const snap = buildTabularPrintSnapshot({
-      allColumns: LEDGER_EXPORT_COLUMNS,
+      allColumns: exportColumnDefs,
       visibleColumns: {},
       rows,
       cellValue,
@@ -342,7 +351,7 @@ export function LedgerStatementCenterV2Page({ embedded = false }: { embedded?: b
       headers: snap.columns.map((c) => c.label),
       rows: [...summaryLines, ...snap.rows],
     };
-  }, [rows, cellValue, summary, reportPdfTitle, entityLabel]);
+  }, [rows, cellValue, summary, reportPdfTitle, entityLabel, exportColumnDefs]);
 
   const pdfPreviewNode = useMemo(() => {
     if (!reportExport.brand || !summary) return null;
@@ -379,6 +388,7 @@ export function LedgerStatementCenterV2Page({ embedded = false }: { embedded?: b
         fontSize={ledgerPrint.fontSize}
         fontFamily={ledgerPrint.fontFamily}
         margins={ledgerPrint.margins}
+        columns={ledgerPrint.columns}
       />
     );
   }, [
@@ -442,6 +452,7 @@ export function LedgerStatementCenterV2Page({ embedded = false }: { embedded?: b
     >
       <LedgerRowLoadingOverlay open={rowActionBusy} />
 
+      <div className="no-print space-y-5">
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-start gap-3">
           {!embedded && (
@@ -555,10 +566,6 @@ export function LedgerStatementCenterV2Page({ embedded = false }: { embedded?: b
             />
           </div>
 
-          <div ref={mergedPrintRef} className="sr-only">
-            {pdfPreviewNode}
-          </div>
-
           {reportExport.previewOpen && pdfPreviewNode ? (
             <PdfPreviewModal
               open={reportExport.previewOpen}
@@ -597,6 +604,11 @@ export function LedgerStatementCenterV2Page({ embedded = false }: { embedded?: b
         isOpen={attachmentOpen}
         onClose={() => setAttachmentOpen(false)}
       />
+      </div>
+
+      <div ref={mergedPrintRef} className="sr-only">
+        <div className="pdf-print-root">{pdfPreviewNode}</div>
+      </div>
     </div>
   );
 }

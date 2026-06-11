@@ -108,6 +108,10 @@ export interface CompanySettings {
   taxId: string;
   currency: string;
   decimalPrecision?: number;
+  /** Custom display symbol override; null/empty uses default for currency code. */
+  currencySymbol?: string | null;
+  /** When false, amounts show without symbol prefix. */
+  showCurrencySymbol?: boolean;
   logoUrl?: string;
   /** Date display format: DD/MM/YYYY, MM/DD/YYYY, YYYY-MM-DD */
   dateFormat?: string;
@@ -210,7 +214,7 @@ interface SettingsContextType {
   
   // Company Info
   company: CompanySettings;
-  updateCompanySettings: (settings: Partial<CompanySettings>) => Promise<void>;
+  updateCompanySettings: (settings: Partial<CompanySettings>, opts?: { silent?: boolean }) => Promise<void>;
   
   // Branch Management
   branches: BranchSettings[];
@@ -589,6 +593,8 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
           taxId: companyData.tax_number || '',
           currency: companyData.currency || 'PKR',
           decimalPrecision: c.decimal_precision ?? 2,
+          currencySymbol: c.currency_symbol ?? null,
+          showCurrencySymbol: c.show_currency_symbol !== false,
           logoUrl: companyData.logo_url || undefined,
           dateFormat: c.date_format || 'DD/MM/YYYY',
           timeFormat: (c.time_format === '24h' ? '24h' : '12h') as '12h' | '24h',
@@ -889,31 +895,33 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
   // 🎯 UPDATE FUNCTIONS (SAVE TO DATABASE)
   // ============================================
 
-  const updateCompanySettings = async (settings: Partial<CompanySettings>) => {
+  const updateCompanySettings = async (settings: Partial<CompanySettings>, opts?: { silent?: boolean }) => {
     if (!companyId) return;
     
     setCompany(prev => ({ ...prev, ...settings }));
     
     try {
-      // Update companies table
-      const updatePayload: Record<string, unknown> = {
-        name: settings.businessName,
-        address: settings.businessAddress,
-        phone: settings.businessPhone,
-        email: settings.businessEmail,
-        tax_number: settings.taxId,
-        currency: settings.currency,
-        logo_url: settings.logoUrl,
-      };
+      const updatePayload: Record<string, unknown> = {};
+      if (settings.businessName !== undefined) updatePayload.name = settings.businessName;
+      if (settings.businessAddress !== undefined) updatePayload.address = settings.businessAddress;
+      if (settings.businessPhone !== undefined) updatePayload.phone = settings.businessPhone;
+      if (settings.businessEmail !== undefined) updatePayload.email = settings.businessEmail;
+      if (settings.taxId !== undefined) updatePayload.tax_number = settings.taxId;
+      if (settings.currency !== undefined) updatePayload.currency = settings.currency;
+      if (settings.logoUrl !== undefined) updatePayload.logo_url = settings.logoUrl;
       if (settings.timezone !== undefined) updatePayload.timezone = settings.timezone;
       if (settings.dateFormat !== undefined) updatePayload.date_format = settings.dateFormat;
       if (settings.timeFormat !== undefined) updatePayload.time_format = settings.timeFormat;
+      if (settings.decimalPrecision !== undefined) updatePayload.decimal_precision = settings.decimalPrecision;
+      if (settings.currencySymbol !== undefined) updatePayload.currency_symbol = settings.currencySymbol || null;
+      if (settings.showCurrencySymbol !== undefined) updatePayload.show_currency_symbol = settings.showCurrencySymbol;
+      if (Object.keys(updatePayload).length === 0) return;
       await supabase
         .from('companies')
         .update(updatePayload)
         .eq('id', companyId);
       
-      toast.success('Company settings saved');
+      if (!opts?.silent) toast.success('Company settings saved');
     } catch (error) {
       console.error('[SETTINGS] Error saving company settings:', error);
       toast.error('Failed to save company settings');

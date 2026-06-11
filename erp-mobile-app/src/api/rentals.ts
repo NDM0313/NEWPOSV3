@@ -1,6 +1,6 @@
 import { getContactWhatsAppPhone } from './contacts';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { formatLocalDateYYYYMMDD, localNowDateString } from '../utils/localDate';
+import { formatLocalDateYYYYMMDD, localNowDateString, inputHasTime, normalizeDateRangeInput } from '../utils/localDate';
 import {
   linkRentalPaymentJournalEntry,
   postRentalAdvanceJournalMobile,
@@ -9,7 +9,7 @@ import {
 } from './rentalBookingAccounting';
 import { isRealBranchUuid, resolveBranchUuidForWrite } from '../utils/branchId';
 import { fetchProductStockByKey } from '../utils/productStockFetch';
-import { formatRentalPaymentRef } from '../utils/rentalPaymentRef';
+import { formatRentalPaymentRef, resolveRentalPaymentDisplay } from '../utils/rentalPaymentRef';
 import { enrichRowsWithCreatorNames } from '../lib/resolveCreatorName';
 
 const BLOCKING_RENTAL_STATUSES = ['booked', 'picked_up', 'active', 'overdue'] as const;
@@ -743,8 +743,16 @@ export async function getRentals(
   if (opts?.scopeToOwn?.authUserId) {
     q = applyRentalOwnScope(q, opts.scopeToOwn.authUserId, opts.scopeToOwn.profileId);
   }
-  if (opts?.dateFrom) q = q.gte('booking_date', opts.dateFrom);
-  if (opts?.dateTo) q = q.lte('booking_date', opts.dateTo);
+  if (opts?.dateFrom || opts?.dateTo) {
+    const bounds = normalizeDateRangeInput(opts.dateFrom, opts.dateTo);
+    const narrow = Boolean(
+      (opts.dateFrom && inputHasTime(opts.dateFrom)) || (opts.dateTo && inputHasTime(opts.dateTo)),
+    );
+    if (bounds.dateFrom) q = q.gte('booking_date', bounds.dateFrom);
+    if (bounds.dateTo) q = q.lte('booking_date', bounds.dateTo);
+    if (narrow && bounds.timestampFrom) q = q.gte('created_at', bounds.timestampFrom);
+    if (narrow && bounds.timestampTo) q = q.lte('created_at', bounds.timestampTo);
+  }
   const { data, error } = await q;
   if (error) return { data: [], error: error.message };
   const list: RentalListItem[] = (data || []).map((r: Record<string, unknown>) => {
@@ -950,6 +958,99 @@ export async function getRentalById(rentalId: string): Promise<{ data: RentalDet
   };
   await enrichRentalStaffNames([detail]);
   return { data: detail, error: null };
+}
+
+export type RentalPaymentHistoryItem = {
+  id: string;
+  date: string;
+  amount: number;
+  method: string;
+  referenceNo: string;
+  notes?: string;
+  attachments?: { url: string; name: string }[];
+};
+
+function mapPaymentAttachments(raw: unknown): { url: string; name: string }[] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined;
+  const attachments = raw
+    .map((a: unknown) => {
+      const o = a as Record<string, unknown>;
+      return { url: String(o?.url ?? ''), name: String(o?.name ?? 'Attachment') };
+    })
+    .filter((a) => a.url);
+  return attachments.length ? attachments : undefined;
+}
+
+/** Payment history for rental detail — mirrors getSalePayments (RCV refs from payments table). */
+export async function getRentalPayments(
+  rentalId: string,
+  bookingNo?: string | null,
+): Promise<{ data: RentalPaymentHistoryItem[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+
+  const { data, error } = await supabase
+    .from('payments')
+    .select('id, payment_date, reference_number, amount, payment_method, notes, attachments, voided_at, created_at')
+    .eq('reference_type', 'rental')
+    .eq('reference_id', rentalId)
+    .is('voided_at', null)
+    .order('payment_date', { ascending: false })
+    .order('created_at', { ascending: false });
+
+  if (error) return { data: [], error: error.message };
+
+  const fromPayments = (data || []).map((p: Record<string, unknown>) => {
+    const rawDate = String(p.payment_date ?? p.created_at ?? '');
+    return {
+      id: String(p.id ?? ''),
+      date: rawDate ? new Date(rawDate).toLocaleDateString('en-PK') : '—',
+      amount: Number(p.amount ?? 0),
+      method: String(p.payment_method ?? '—'),
+      referenceNo: String(p.reference_number ?? '—'),
+      notes: p.notes != null && String(p.notes).trim() !== '' ? String(p.notes) : undefined,
+      attachments: mapPaymentAttachments(p.attachments),
+    };
+  });
+
+  if (fromPayments.length > 0) {
+    return { data: fromPayments, error: null };
+  }
+
+  const { data: legacyRows, error: legacyErr } = await supabase
+    .from('rental_payments')
+    .select('id, amount, method, reference, payment_date, created_at, voided_at')
+    .eq('rental_id', rentalId)
+    .is('voided_at', null)
+    .order('created_at', { ascending: false });
+
+  if (legacyErr) return { data: [], error: legacyErr.message };
+
+  const activeLegacy = (legacyRows || []).filter((p: Record<string, unknown>) => !p.voided_at);
+
+  const legacy = activeLegacy.map((p: Record<string, unknown>) => {
+    const rawDate = p.payment_date ?? p.created_at;
+    const paymentDate =
+      typeof rawDate === 'string'
+        ? rawDate.slice(0, 10)
+        : rawDate instanceof Date
+          ? rawDate.toISOString().slice(0, 10)
+          : '';
+    const storedRef = (p.reference as string) ?? null;
+    const { referenceNo, subtitle } = resolveRentalPaymentDisplay({
+      bookingNo,
+      storedReference: storedRef,
+    });
+    return {
+      id: String(p.id),
+      date: paymentDate ? new Date(paymentDate).toLocaleDateString('en-PK') : '—',
+      amount: Number(p.amount) ?? 0,
+      method: String(p.method ?? '—'),
+      referenceNo: referenceNo || '—',
+      notes: subtitle,
+    };
+  });
+
+  return { data: legacy, error: null };
 }
 
 export async function receiveReturn(

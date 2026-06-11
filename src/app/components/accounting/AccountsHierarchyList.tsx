@@ -119,6 +119,7 @@ export function AccountsHierarchyList({
             coaSuppressProminentAccountCode,
             coaRowDetailTooltip,
             coaLinkedPartyCount,
+            isCoaGroupHeader,
           } = row;
           const controlKind = getControlAccountKind({ name: account.name, code: account.code });
           const visual = accountRowVisual(account);
@@ -139,7 +140,14 @@ export function AccountsHierarchyList({
           return (
             <div key={account.id}>
               {sectionHeader ? (
-                <div className="px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-gray-500 bg-gray-950/60 border-b border-gray-800/80">
+                <div
+                  className={cn(
+                    'px-4 py-2 text-[10px] font-semibold uppercase tracking-wider border-b border-gray-800/80',
+                    isCoaGroupHeader
+                      ? 'text-gray-300 bg-gray-950/80'
+                      : 'text-gray-500 bg-gray-950/60'
+                  )}
+                >
                   {sectionHeader}
                 </div>
               ) : null}
@@ -147,6 +155,7 @@ export function AccountsHierarchyList({
                 className={cn(
                   'group px-3 py-3 sm:px-4 hover:bg-gray-800/25 transition-colors',
                   'flex flex-col gap-3 sm:grid sm:items-center sm:gap-3',
+                  isCoaGroupHeader && 'py-2 bg-gray-950/30',
                   accountsViewMode === 'professional'
                     ? 'sm:grid-cols-[minmax(0,1fr)_minmax(0,64px)_minmax(0,88px)_minmax(0,72px)_minmax(0,200px)]'
                     : 'sm:grid-cols-[minmax(0,1fr)_minmax(0,88px)_minmax(0,72px)_minmax(0,200px)]'
@@ -185,13 +194,15 @@ export function AccountsHierarchyList({
                     className="flex flex-wrap items-center gap-2"
                     title={coaRowDetailTooltip || undefined}
                   >
-                    <span className="font-semibold text-white text-sm sm:text-[15px] leading-tight">{coaPrimaryLabel}</span>
+                    {!isCoaGroupHeader ? (
+                      <span className="font-semibold text-white text-sm sm:text-[15px] leading-tight">{coaPrimaryLabel}</span>
+                    ) : null}
                     {coaPartyRoleLabel ? (
                       <Badge className="border-violet-500/35 bg-violet-500/15 text-[10px] uppercase tracking-wide text-violet-200">
                         {coaPartyRoleLabel}
                       </Badge>
                     ) : null}
-                    {accountsViewMode !== 'professional' && account.code && !coaSuppressProminentAccountCode ? (
+                    {accountsViewMode !== 'professional' && account.code && !coaSuppressProminentAccountCode && !isCoaGroupHeader ? (
                       <Badge variant="outline" className="border-gray-600 bg-gray-800/80 text-[10px] font-mono text-gray-300 px-1.5 py-0">
                         {account.code}
                       </Badge>

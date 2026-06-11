@@ -1,4 +1,5 @@
 import { dispatchDataInvalidated } from '@/app/lib/dataInvalidationBus';
+import { markLocalMutation } from '@/app/lib/localMutationSuppression';
 
 /** Accounting invalidation via bus only — AccountingContext coalesces DATA_INVALIDATED (no duplicate legacy reload). */
 export function notifyAccountingEntriesChanged(args?: {
@@ -8,6 +9,7 @@ export function notifyAccountingEntriesChanged(args?: {
   reason?: string;
 }): void {
   if (typeof window === 'undefined') return;
+  markLocalMutation();
   dispatchDataInvalidated({
     domain: 'accounting',
     companyId: args?.companyId ?? null,

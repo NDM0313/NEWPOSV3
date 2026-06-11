@@ -18,7 +18,8 @@ import { createPortal } from 'react-dom';
 import { useSettings } from '../../context/SettingsContext';
 import { useSingleFlightAction } from '../../hooks/useSingleFlightAction';
 import { useSubmitLock } from '../../contexts/LoadingContext';
-import { localNowDateString, getCurrentLocalTimestamp } from '../../utils/localDate';
+import { localNowDateString, getCurrentLocalTimestamp, toLocalDateString } from '../../utils/localDate';
+import { DateInputField } from '../shared/DateTimePicker';
 import { formatStockLabel, getTotalProductStock, stockLabelClassName } from '../../utils/productStockGate';
 import { prepareAttachmentFilesForUpload } from '../../utils/imageCompression';
 import { MediaSourcePicker } from '../shared/MediaSourcePicker';
@@ -653,13 +654,11 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
           </div>
 
           <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
-            <label className="text-sm font-medium text-[#9CA3AF] mb-2 block">PO date</label>
-            <input
-              type="date"
-              max={localNowDateString()}
+            <DateInputField
+              label="PO date"
               value={poDate}
-              onChange={(e) => setPoDate(e.target.value)}
-              className="w-full max-w-xs h-10 bg-[#111827] border border-[#374151] rounded-lg px-3 text-sm text-white"
+              onChange={(v) => setPoDate(toLocalDateString(v))}
+              max={localNowDateString()}
             />
           </div>
 

@@ -1,6 +1,6 @@
 /**
  * Add Entry V2 – Rebuild of Add Entry. Theme-matched, typed, accounting-safe.
- * Entry types: Pure Journal, Customer Receipt, Supplier Payment, Worker Payment, Expense Payment, Internal Transfer, Courier Payment.
+ * Entry types: General Entry, Customer Receipt, Supplier Payment, Worker Payment, Expense Payment, Account Transfer, Courier Payment.
  */
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -62,6 +62,21 @@ import {
   MAX_FILE_SIZE_BYTES as ATTACHMENT_MAX_BYTES,
 } from '@/app/utils/uploadTransactionAttachments';
 import { prepareAttachmentFilesForUpload } from '@/app/utils/imageCompression';
+import { AccountSideLabelRow, MoneyFlowSummaryBar } from '@/app/components/accounting/DebitCreditInOutHint';
+import {
+  creditAccountTitle,
+  debitAccountTitle,
+  getPaymentAccountSide,
+  getPaymentFlowSummary,
+  paymentAccountFieldTitle,
+  transferFromTitle,
+  transferToTitle,
+} from '@/app/lib/debitCreditInOutLabels';
+import {
+  buildGeneralJournalAutoDescription,
+  buildTransferAutoDescription,
+  composeJournalEntryDescription,
+} from '@/app/utils/journalEntryDescription';
 
 export type AddEntryV2Type =
   | 'pure_journal'
@@ -73,12 +88,12 @@ export type AddEntryV2Type =
   | 'courier_payment';
 
 const ENTRY_TYPES: { key: AddEntryV2Type; label: string; description: string; icon: React.ReactNode }[] = [
-  { key: 'pure_journal', label: 'Pure Journal', description: 'Record a non-cash accounting adjustment', icon: <FileText size={20} /> },
+  { key: 'pure_journal', label: 'General Entry', description: 'Record a debit/credit between any two accounts', icon: <FileText size={20} /> },
   { key: 'customer_receipt', label: 'Customer Receipt', description: 'Record payment received from customer', icon: <Receipt size={20} /> },
   { key: 'supplier_payment', label: 'Supplier Payment', description: 'Record payment made to supplier', icon: <CreditCard size={20} /> },
   { key: 'worker_payment', label: 'Worker Payment', description: 'Record payment made to worker', icon: <UserCog size={20} /> },
   { key: 'expense_payment', label: 'Expense Payment', description: 'Record an operating expense payment', icon: <Wallet size={20} /> },
-  { key: 'internal_transfer', label: 'Internal Transfer', description: 'Move money between your own accounts', icon: <ArrowLeftRight size={20} /> },
+  { key: 'internal_transfer', label: 'Account Transfer', description: 'Move money between your own accounts', icon: <ArrowLeftRight size={20} /> },
   { key: 'courier_payment', label: 'Courier Payment', description: 'Record payment made to courier company', icon: <Truck size={20} /> },
 ];
 
@@ -88,6 +103,18 @@ function entryDateFromDateTime(value: string): string {
   const v = String(value || '').trim();
   if (!v) return today();
   return v.includes('T') ? v.split('T')[0] : v.slice(0, 10);
+}
+
+function accountPartsFromRow(row: { name: string; code?: string }): { name: string; code: string | null } {
+  const code = String(row.code ?? '').trim();
+  let name = String(row.name || '').trim();
+  if (code && name.startsWith(`${code} –`)) {
+    name = name.slice(code.length).replace(/^\s*–\s*/, '').trim();
+  } else if (name.includes(' – ')) {
+    const [c, ...rest] = name.split(' – ');
+    return { code: c.trim() || code || null, name: rest.join(' – ').trim() || name };
+  }
+  return { name: name || 'Account', code: code || null };
 }
 
 export interface AddEntryV2Props {
@@ -502,6 +529,65 @@ export function AddEntryV2({
     }
   }, [entryType, amount, debitAccountId, creditAccountId, customerId, customerName, supplierContactId, supplierName, workerId, workerName, paymentAccountId, expenseCategorySlug, isExpenseSalary, expenseSalaryUserId, branchId, fromAccountId, toAccountId, courierId, courierName]);
 
+  const addedByName = useMemo(() => {
+    const meta = user?.user_metadata as { full_name?: string } | undefined;
+    return meta?.full_name?.trim() || user?.email?.split('@')[0] || null;
+  }, [user]);
+
+  const usesJournalAutoDescription =
+    entryType === 'pure_journal' || entryType === 'internal_transfer';
+
+  const journalAutoDescription = useMemo(() => {
+    if (entryType === 'pure_journal') {
+      if (!debitAccountId || !creditAccountId || amount <= 0) {
+        return 'Complete amount and accounts to generate description.';
+      }
+      const debit = accounts.find((a) => a.id === debitAccountId);
+      const credit = accounts.find((a) => a.id === creditAccountId);
+      if (!debit || !credit) return 'Complete amount and accounts to generate description.';
+      const d = accountPartsFromRow(debit);
+      const c = accountPartsFromRow(credit);
+      return buildGeneralJournalAutoDescription({
+        debitName: d.name,
+        debitCode: d.code,
+        creditName: c.name,
+        creditCode: c.code,
+        addedByName,
+      });
+    }
+    if (entryType === 'internal_transfer') {
+      if (!fromAccountId || !toAccountId || amount <= 0) {
+        return 'Complete amount and accounts to generate description.';
+      }
+      const from = transferAccountsList.find((a) => a.id === fromAccountId);
+      const to = transferAccountsList.find((a) => a.id === toAccountId);
+      if (!from || !to) return 'Complete amount and accounts to generate description.';
+      const f = accountPartsFromRow(from);
+      const t = accountPartsFromRow(to);
+      return buildTransferAutoDescription({
+        amount,
+        fromName: f.name,
+        fromCode: f.code,
+        toName: t.name,
+        toCode: t.code,
+        date: entryDate,
+        addedByName,
+      });
+    }
+    return '';
+  }, [
+    entryType,
+    debitAccountId,
+    creditAccountId,
+    fromAccountId,
+    toAccountId,
+    amount,
+    accounts,
+    transferAccountsList,
+    entryDate,
+    addedByName,
+  ]);
+
   const handleSubmit = async () => {
     if (!companyId) return;
     const branch = branchId && branchId !== 'all' ? branchId : null;
@@ -538,6 +624,10 @@ export function AddEntryV2({
             toast.error('Select both accounts and enter amount');
             return;
           }
+          const composedDesc = composeJournalEntryDescription({
+            auto: journalAutoDescription,
+            userNotes: description,
+          });
           await createPureJournalEntry({
             companyId,
             branchId: branch,
@@ -545,11 +635,11 @@ export function AddEntryV2({
             debitAccountId,
             creditAccountId,
             amount,
-            description: description || undefined,
+            description: composedDesc,
             createdBy: uid,
             attachments: uploadedAttachments,
           });
-          toast.success('Journal entry saved');
+          toast.success('General entry saved');
           break;
         }
         case 'customer_receipt': {
@@ -666,6 +756,10 @@ export function AddEntryV2({
             toast.error('From and To accounts must be different');
             return;
           }
+          const composedDesc = composeJournalEntryDescription({
+            auto: journalAutoDescription,
+            userNotes: description,
+          });
           await createInternalTransferEntry({
             companyId,
             branchId: branch,
@@ -673,11 +767,11 @@ export function AddEntryV2({
             toAccountId,
             amount,
             entryDate,
-            description: description || undefined,
+            description: composedDesc,
             createdBy: uid,
             attachments: uploadedAttachments,
           });
-          toast.success('Transfer saved');
+          toast.success('Account transfer saved');
           break;
         }
         case 'courier_payment': {
@@ -1179,7 +1273,7 @@ export function AddEntryV2({
 
                         {entryType === 'pure_journal' && (
                           <div className={cardInnerClass}>
-                            <Label className={labelClass}>Debit account</Label>
+                            <AccountSideLabelRow title={debitAccountTitle()} side="debit" />
                             <div className="relative mb-4">
                               <select value={debitAccountId} onChange={(e) => setDebitAccountId(e.target.value)} className={`${inputClass} appearance-none pr-10`}>
                                 <option value="">Select</option>
@@ -1194,7 +1288,7 @@ export function AddEntryV2({
                               </select>
                               <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
                             </div>
-                            <Label className={labelClass}>Credit account</Label>
+                            <AccountSideLabelRow title={creditAccountTitle()} side="credit" />
                             <div className="relative">
                               <select value={creditAccountId} onChange={(e) => setCreditAccountId(e.target.value)} className={`${inputClass} appearance-none pr-10`}>
                                 <option value="">Select</option>
@@ -1234,7 +1328,8 @@ export function AddEntryV2({
 
                         {entryType === 'internal_transfer' && (
                           <div className={cardInnerClass}>
-                            <Label className={labelClass}>From account (Cr)</Label>
+                            <MoneyFlowSummaryBar inLabel="Destination account" outLabel="Source account" />
+                            <AccountSideLabelRow title={transferFromTitle()} side="credit" hint="Money leaving this account" />
                             <div className="relative mb-4">
                               <select value={fromAccountId} onChange={(e) => setFromAccountId(e.target.value)} className={`${inputClass} appearance-none pr-10`}>
                                 {transferEligibleAccounts.map((a) => {
@@ -1248,7 +1343,7 @@ export function AddEntryV2({
                               </select>
                               <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
                             </div>
-                            <Label className={labelClass}>To account (Dr)</Label>
+                            <AccountSideLabelRow title={transferToTitle()} side="debit" hint="Money arriving in this account" />
                             <div className="relative">
                               <select value={toAccountId} onChange={(e) => setToAccountId(e.target.value)} className={`${inputClass} appearance-none pr-10`}>
                                 {transferEligibleAccounts.map((a) => {
@@ -1408,9 +1503,15 @@ export function AddEntryV2({
                           entryType === 'expense_payment' ||
                           entryType === 'courier_payment') && (
                           <div className={cardInnerClass}>
-                            <Label className={labelClass}>
-                              Payment account (Cr) <span className="text-red-400">*</span>
-                            </Label>
+                            {(() => {
+                              const flow = getPaymentFlowSummary(entryType);
+                              return flow ? <MoneyFlowSummaryBar inLabel={flow.inLabel} outLabel={flow.outLabel} /> : null;
+                            })()}
+                            <AccountSideLabelRow
+                              title={paymentAccountFieldTitle(getPaymentAccountSide(entryType))}
+                              side={getPaymentAccountSide(entryType)}
+                              required
+                            />
                             <div className="relative">
                               <select value={paymentAccountId} onChange={(e) => setPaymentAccountId(e.target.value)} className={`${inputClass} appearance-none pr-10`}>
                                 {paymentAccounts.map((a) => {
@@ -1537,13 +1638,27 @@ export function AddEntryV2({
                         )}
 
                         <div className={cardInnerClass}>
-                          <Label className={labelClass}>Description / Notes</Label>
+                          {usesJournalAutoDescription && (
+                            <div className="mb-4 rounded-lg border border-gray-800 bg-gray-900/60 px-3 py-2.5">
+                              <Label className="text-xs font-semibold text-gray-400 mb-1 block">Auto description</Label>
+                              <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap break-words">
+                                {journalAutoDescription}
+                              </p>
+                            </div>
+                          )}
+                          <Label className={labelClass}>
+                            {usesJournalAutoDescription ? 'Extra description (optional)' : 'Description / Notes'}
+                          </Label>
                           <Textarea
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
-                            placeholder="Optional remarks…"
-                            rows={5}
-                            className="w-full bg-gray-900 border-2 border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors resize-none min-h-[120px]"
+                            placeholder={
+                              usesJournalAutoDescription
+                                ? 'Add extra notes (auto description is added by the system)…'
+                                : 'Optional remarks…'
+                            }
+                            rows={usesJournalAutoDescription ? 3 : 5}
+                            className="w-full bg-gray-900 border-2 border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors resize-none min-h-[80px]"
                           />
                         </div>
 

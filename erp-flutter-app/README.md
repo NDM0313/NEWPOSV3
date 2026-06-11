@@ -69,7 +69,7 @@ iPhone par **Trust This Computer** / Developer app trust confirm karo. App name:
 - Auth, branch picker, permission-gated home
 - Contacts, products, sales, purchases, expenses (CRUD slices)
 - POS with barcode scan
-- Offline queue for draft sale, POS, expense, draft purchase
+- Offline queue for draft sale, POS, expense, draft purchase, sale/purchase payment, journal entry, purchase cancel
 - Share sale as text or PDF
 - Rental booking create, rentals/studio/ledger read views
 

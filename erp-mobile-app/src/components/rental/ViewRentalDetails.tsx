@@ -3,7 +3,7 @@
  * Mirrors web ViewRentalDetailsDrawer behavior for mobile.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   ArrowLeft,
   Package,
@@ -28,6 +28,7 @@ import { RentalWorkflowBadges } from './RentalWorkflowBadges';
 import { rentalPrimaryStaffName, rentalShowCreatedBySecondary } from '../../lib/rentalWorkflowDisplay';
 import { formatDate } from '../accounts/reports/_shared/format';
 import { useEffectiveWorkerId } from '../../context/CounterWorkerContext';
+import { PaymentHistoryList, type PaymentHistoryItem } from '../shared/PaymentHistoryList';
 
 export type RentalDetailInitialAction = 'pickup' | 'return' | 'payment';
 
@@ -83,6 +84,12 @@ export function ViewRentalDetails({
   const [billRefEdit, setBillRefEdit] = useState(false);
   const [billRefDraft, setBillRefDraft] = useState('');
   const [metaSaving, setMetaSaving] = useState(false);
+  const [paymentHistory, setPaymentHistory] = useState<PaymentHistoryItem[]>([]);
+
+  const loadPayments = useCallback(async (id: string, bookingNo?: string) => {
+    const { data } = await rentalsApi.getRentalPayments(id, bookingNo);
+    setPaymentHistory(data || []);
+  }, []);
 
   const load = () => {
     if (!rentalId) return;
@@ -91,7 +98,10 @@ export function ViewRentalDetails({
     rentalsApi.getRentalById(rentalId).then(({ data, error: err }) => {
       setLoading(false);
       if (err) setError(err);
-      else setRental(data ?? null);
+      else {
+        setRental(data ?? null);
+        if (data?.id) void loadPayments(data.id, data.bookingNo);
+      }
     });
   };
 
@@ -378,20 +388,8 @@ export function ViewRentalDetails({
           </div>
         )}
 
-        {rental.payments.length > 0 && (
-          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
-            <h3 className="text-sm font-medium text-[#9CA3AF] mb-2 flex items-center gap-2">
-              <CreditCard className="w-4 h-4" /> Payments
-            </h3>
-            <ul className="space-y-2">
-              {rental.payments.map((p) => (
-                <li key={p.id} className="flex justify-between text-sm">
-                  <span className="text-[#9CA3AF]">{p.paymentDate} · {p.method}</span>
-                  <span className="text-white">Rs. {p.amount.toLocaleString()}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
+        {paymentHistory.length > 0 && (
+          <PaymentHistoryList items={paymentHistory} title="Payments" />
         )}
 
         {/* Actions */}

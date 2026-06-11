@@ -54,6 +54,7 @@ import { ManualEntryDialog } from './ManualEntryDialog';
 import { AccountLedgerView } from './AccountLedgerView';
 import { AccountLedgerPage } from './AccountLedgerPage';
 import { TransactionDetailModal } from './TransactionDetailModal';
+import { useTransactionMutationConfirm } from '@/app/hooks/useTransactionMutationConfirm';
 import { AddAccountDrawer } from './AddAccountDrawer';
 import { LedgerHub } from './LedgerHub';
 import { PayCourierModal } from './PayCourierModal';
@@ -476,6 +477,7 @@ export const AccountingDashboard = () => {
   const { setCurrentModule, startDate: globalStartDate, endDate: globalEndDate } = useGlobalFilter();
   const { formatCurrency } = useFormatCurrency();
   const { run, busy } = useSubmitLock();
+  const { requestConfirm, ConfirmDialog } = useTransactionMutationConfirm();
 
   useEffect(() => {
     void accounting.ensureEntriesLoaded();
@@ -1623,15 +1625,13 @@ export const AccountingDashboard = () => {
                                                         'Undo last edit — voids the latest adjustment JE and restores previous payment state'
                                                       }
                                                       onClick={() =>
-                                                        runJournalMutation('Undoing edit...', async () => {
-                                                          if (
-                                                            !window.confirm(
-                                                              'Undo the last edit on this payment? This voids the latest adjustment and restores the previous state.',
-                                                            )
-                                                          ) {
-                                                            return;
-                                                          }
-                                                          await accounting.undoLastPaymentMutation(chainPaymentId);
+                                                        requestConfirm({
+                                                          action: 'undo_payment_edit',
+                                                          referenceNo: entry.referenceNo || entry.metadata?.journalEntryNo || entry.id,
+                                                          onConfirm: () =>
+                                                            runJournalMutation('Undoing edit...', async () => {
+                                                              await accounting.undoLastPaymentMutation(chainPaymentId);
+                                                            }),
                                                         })
                                                       }
                                                     >
@@ -1648,15 +1648,13 @@ export const AccountingDashboard = () => {
                                                         'Cancel full payment — voids entire chain (all edits + original)'
                                                       }
                                                       onClick={() =>
-                                                        runJournalMutation('Cancelling payment...', async () => {
-                                                          if (
-                                                            !window.confirm(
-                                                              'Cancel this payment entirely? This voids the original posting plus every edit in the chain. Cannot be undone.',
-                                                            )
-                                                          ) {
-                                                            return;
-                                                          }
-                                                          await accounting.createReversalEntry(entry.id);
+                                                        requestConfirm({
+                                                          action: 'cancel_payment_chain',
+                                                          referenceNo: entry.referenceNo || entry.metadata?.journalEntryNo || entry.id,
+                                                          onConfirm: () =>
+                                                            runJournalMutation('Cancelling payment...', async () => {
+                                                              await accounting.createReversalEntry(entry.id);
+                                                            }),
                                                         })
                                                       }
                                                     >
@@ -1677,15 +1675,13 @@ export const AccountingDashboard = () => {
                                                         : 'Create reversal (manual correction)')
                                                     }
                                                     onClick={() =>
-                                                      runJournalMutation('Reversing...', async () => {
-                                                        if (
-                                                          !window.confirm(
-                                                            'Create a reversal entry for this journal entry? This will post a new entry that offsets the original.',
-                                                          )
-                                                        ) {
-                                                          return;
-                                                        }
-                                                        await accounting.createReversalEntry(entry.id);
+                                                      requestConfirm({
+                                                        action: 'reverse',
+                                                        referenceNo: entry.referenceNo || entry.metadata?.journalEntryNo || entry.id,
+                                                        onConfirm: () =>
+                                                          runJournalMutation('Reversing...', async () => {
+                                                            await accounting.createReversalEntry(entry.id);
+                                                          }),
                                                       })
                                                     }
                                                   >
@@ -1898,15 +1894,13 @@ export const AccountingDashboard = () => {
                                                     'Undo last edit — voids the latest adjustment JE and restores previous payment state'
                                                   }
                                                   onClick={() =>
-                                                    runJournalMutation('Undoing edit...', async () => {
-                                                      if (
-                                                        !window.confirm(
-                                                          'Undo the last edit on this payment? This voids the latest adjustment and restores the previous state.',
-                                                        )
-                                                      ) {
-                                                        return;
-                                                      }
-                                                      await accounting.undoLastPaymentMutation(flatChainPaymentId);
+                                                    requestConfirm({
+                                                      action: 'undo_payment_edit',
+                                                      referenceNo: entry.referenceNo || entry.metadata?.journalEntryNo || entry.id,
+                                                      onConfirm: () =>
+                                                        runJournalMutation('Undoing edit...', async () => {
+                                                          await accounting.undoLastPaymentMutation(flatChainPaymentId);
+                                                        }),
                                                     })
                                                   }
                                                 >
@@ -1923,15 +1917,13 @@ export const AccountingDashboard = () => {
                                                     'Cancel full payment — voids entire chain (all edits + original)'
                                                   }
                                                   onClick={() =>
-                                                    runJournalMutation('Cancelling payment...', async () => {
-                                                      if (
-                                                        !window.confirm(
-                                                          'Cancel this payment entirely? This voids the original posting plus every edit in the chain. Cannot be undone.',
-                                                        )
-                                                      ) {
-                                                        return;
-                                                      }
-                                                      await accounting.createReversalEntry(entry.id);
+                                                    requestConfirm({
+                                                      action: 'cancel_payment_chain',
+                                                      referenceNo: entry.referenceNo || entry.metadata?.journalEntryNo || entry.id,
+                                                      onConfirm: () =>
+                                                        runJournalMutation('Cancelling payment...', async () => {
+                                                          await accounting.createReversalEntry(entry.id);
+                                                        }),
                                                     })
                                                   }
                                                 >
@@ -1952,15 +1944,13 @@ export const AccountingDashboard = () => {
                                                     : 'Create reversal (manual correction)')
                                                 }
                                                 onClick={() =>
-                                                  runJournalMutation('Reversing...', async () => {
-                                                    if (
-                                                      !window.confirm(
-                                                        'Create a reversal entry for this journal entry? This will post a new entry that offsets the original.',
-                                                      )
-                                                    ) {
-                                                      return;
-                                                    }
-                                                    await accounting.createReversalEntry(entry.id);
+                                                  requestConfirm({
+                                                    action: 'reverse',
+                                                    referenceNo: entry.referenceNo || entry.metadata?.journalEntryNo || entry.id,
+                                                    onConfirm: () =>
+                                                      runJournalMutation('Reversing...', async () => {
+                                                        await accounting.createReversalEntry(entry.id);
+                                                      }),
                                                   })
                                                 }
                                               >
@@ -2687,6 +2677,7 @@ export const AccountingDashboard = () => {
           }}
         />
       )}
+      <ConfirmDialog />
     </div>
   );
 };

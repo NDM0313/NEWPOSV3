@@ -11,11 +11,13 @@ class ModuleScaffold extends StatelessWidget {
     required this.title,
     required this.body,
     this.actions,
+    this.floatingActionButton,
   });
 
   final String title;
   final Widget body;
   final List<Widget>? actions;
+  final Widget? floatingActionButton;
 
   @override
   Widget build(BuildContext context) {
@@ -41,6 +43,7 @@ class ModuleScaffold extends StatelessWidget {
           Expanded(child: body),
         ],
       ),
+      floatingActionButton: floatingActionButton,
     );
   }
 }

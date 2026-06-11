@@ -1,5 +1,6 @@
 import '../local/offline_pending_store.dart';
 import '../repositories/expenses_write_repository.dart';
+import '../repositories/journal_write_repository.dart';
 import '../repositories/purchases_write_repository.dart';
 import '../repositories/sales_write_repository.dart';
 
@@ -8,18 +9,22 @@ class OfflineSyncService {
     required SalesWriteRepository salesWrite,
     required ExpensesWriteRepository expensesWrite,
     required PurchasesWriteRepository purchasesWrite,
+    required JournalWriteRepository journalWrite,
     OfflinePendingStore? store,
   })  : _salesWrite = salesWrite,
         _expensesWrite = expensesWrite,
         _purchasesWrite = purchasesWrite,
+        _journalWrite = journalWrite,
         _store = store ?? OfflinePendingStore();
 
   final SalesWriteRepository _salesWrite;
   final ExpensesWriteRepository _expensesWrite;
   final PurchasesWriteRepository _purchasesWrite;
+  final JournalWriteRepository _journalWrite;
   final OfflinePendingStore _store;
 
   Future<({int synced, int failed, String? lastError})> runSync() async {
+    await _store.ensureReady();
     final all = await _store.getAll();
     int synced = 0;
     int failed = 0;
@@ -69,7 +74,57 @@ class OfflineSyncService {
         return _syncSalePayment(record, p);
       case PendingType.purchasePayment:
         return _syncPurchasePayment(record, p);
+      case PendingType.journalEntry:
+        return _syncJournalEntry(record, p);
+      case PendingType.purchaseCancel:
+        return _syncPurchaseCancel(record, p);
     }
+  }
+
+  Future<bool> _syncJournalEntry(PendingRecord record, Map<String, dynamic> p) async {
+    final linesRaw = p['lines'] as List? ?? [];
+    final lines = linesRaw.map((row) {
+      final m = Map<String, dynamic>.from(row as Map);
+      return JournalLineInput(
+        accountId: m['account_id'] as String,
+        debit: (m['debit'] as num).toDouble(),
+        credit: (m['credit'] as num).toDouble(),
+        description: m['description'] as String?,
+      );
+    }).toList();
+
+    final result = await _journalWrite.createJournalEntry(
+      companyId: p['company_id'] as String,
+      branchId: p['branch_id'] as String,
+      entryDate: p['entry_date'] as String,
+      description: p['description'] as String,
+      referenceType: p['reference_type'] as String? ?? 'manual',
+      referenceId: p['reference_id'] as String?,
+      userId: p['created_by'] as String?,
+      lines: lines,
+    );
+
+    if (result.error != null) {
+      await _store.update(
+        record.copyWith(status: SyncQueueStatus.error, syncError: result.error),
+      );
+      return false;
+    }
+    return true;
+  }
+
+  Future<bool> _syncPurchaseCancel(PendingRecord record, Map<String, dynamic> p) async {
+    final result = await _purchasesWrite.cancelPurchase(
+      purchaseId: p['purchase_id'] as String,
+      userId: p['created_by'] as String?,
+    );
+    if (!result.success) {
+      await _store.update(
+        record.copyWith(status: SyncQueueStatus.error, syncError: result.error),
+      );
+      return false;
+    }
+    return true;
   }
 
   Future<bool> _syncSalePayment(PendingRecord record, Map<String, dynamic> p) async {

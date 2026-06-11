@@ -244,13 +244,13 @@ export function AccountsDashboard({
   const [stats, setStats] = useState({ todayEntries: 0, totalAmount: 0, cashBalance: 0, bankBalance: 0 });
   const [loading, setLoading] = useState(true);
 
-  const loadDashboardData = async () => {
+  const loadDashboardData = async (opts?: { background?: boolean }) => {
     if (isPartyMode) {
       setLoading(false);
       return;
     }
     if (!companyId) return;
-    setLoading(true);
+    if (!opts?.background) setLoading(true);
     const [jeRes, accRes] = await Promise.all([
       getJournalEntries(companyId, branchId, 30),
       getAccounts(companyId),
@@ -284,7 +284,11 @@ export function AccountsDashboard({
           entryNumber:
             String(e.reference_type || '').toLowerCase().replace(/\s+/g, '_') === 'expense' && expenseDocNo
               ? expenseDocNo
-              : paymentRef || e.entry_no,
+              : ['general', 'transfer', 'journal', 'manual', 'manual_journal'].includes(
+                    String(e.reference_type || '').toLowerCase().replace(/\s+/g, '_'),
+                  )
+                ? e.entry_no
+                : paymentRef || e.entry_no,
           type: mapReferenceTypeToEntryType(e.reference_type),
           date: e.entry_date,
           description: e.description,
@@ -345,7 +349,7 @@ export function AccountsDashboard({
       const detail = (event as CustomEvent<MobileInvalidationDetail>).detail;
       if (
         !shouldAcceptMobileInvalidation(detail, {
-          domain: ['accounting', 'sales', 'purchases', 'contacts'],
+          domain: 'accounting',
           companyId,
           branchId: branchId ?? null,
         })
@@ -355,7 +359,7 @@ export function AccountsDashboard({
       if (timer) return;
       timer = setTimeout(() => {
         timer = null;
-        void loadDashboardData();
+        void loadDashboardData({ background: true });
       }, 240);
     };
     window.addEventListener(MOBILE_DATA_INVALIDATED_EVENT, onInvalidated as EventListener);

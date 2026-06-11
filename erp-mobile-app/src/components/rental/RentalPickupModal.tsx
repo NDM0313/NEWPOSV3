@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { X } from 'lucide-react';
 import { CustomSelect } from '../common';
 import type { RentalDetail } from '../../api/rentals';
-import { localNowDateString } from '../../utils/localDate';
+import { localNowDateString, toLocalDateString } from '../../utils/localDate';
+import { DateInputField } from '../shared/DateTimePicker';
 
 interface RentalPickupModalProps {
   rental: RentalDetail;
@@ -60,15 +61,12 @@ export function RentalPickupModal({ rental, onClose, onConfirm, loading }: Renta
         </div>
         <div className="p-4 space-y-4">
           <p className="text-sm text-[#9CA3AF]">Rental: {rental.bookingNo} · Due: Rs. {rental.dueAmount.toLocaleString()}</p>
-          <div>
-            <label className="block text-sm text-[#9CA3AF] mb-1">Actual pickup date</label>
-            <input
-              type="date"
-              value={actualPickupDate}
-              onChange={(e) => setActualPickupDate(e.target.value)}
-              className="w-full max-w-full min-w-0 h-10 bg-[#111827] border border-[#374151] rounded-lg px-3 text-white box-border"
-            />
-          </div>
+          <DateInputField
+            label="Actual pickup date"
+            value={actualPickupDate}
+            onChange={(v) => setActualPickupDate(toLocalDateString(v))}
+            accent="rental"
+          />
           <p className="text-sm font-medium text-[#E5E7EB]">Security Document Collected?</p>
           <div>
             <CustomSelect

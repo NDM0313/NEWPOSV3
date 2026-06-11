@@ -1,8 +1,8 @@
 # Flutter ERP migration — completion summary
 
 **App:** `erp-flutter-app/`  
-**Version:** `1.0.4+5`  
-**Status:** All planned phases **implemented** for pilot / staged rollout.
+**Version:** `1.0.5+6`  
+**Status:** Phases 0–7 + Phase 8B/8C **code complete**; Phase 8A device QA + signed APK pending sign-off.
 
 ## Phase completion
 
@@ -14,32 +14,38 @@
 | 2.5 Sales/purchases read | Done | Lists + detail |
 | 3 Core writes | Done | Sales, POS, purchases, expenses |
 | 4 Accounting adjacency | Done | Party ledger, journal list, void/return/cancel |
-| 5 Offline | Done* | Queue: draft sale, POS, expense, purchase, sale/purchase payment; list cache products + contacts |
-| 6 Device features | Done* | Barcode, share text/PDF, print preview, studio workflow, rental lifecycle |
-| 7 Release prep | Done* | Build scripts, signing template, version bumps |
-
-\*See **Explicit exclusions** below — not full Drift DB or native thermal Sunmi.
+| 5 Offline | Done | Drift queue (8 types) + list cache |
+| 6 Device features | Done | Sunmi/BT print, barcode wedge, share/PDF |
+| 7 Release prep | Done | Build scripts (sh + ps1), signing template |
+| 8B Thermal print | Done | `ErpPrinterChannel` + settings + POS auto-print |
+| 8C Deep offline + PIN | Done | Drift, journal offline, counter PIN, studio GL |
 
 ## Module write coverage
 
 - Sales: create, edit, finalize, pay, void, return, share, print preview
-- POS: checkout + barcode
-- Purchases: draft, finalize, pay, cancel
+- POS: checkout + barcode camera + keyboard wedge + auto-print
+- Purchases: draft, finalize, pay, cancel (incl. offline cancel queue)
 - Expenses: create
 - Rentals: create booking, pay, pickup, return
-- Studio: assign, send, receive, confirm cost, complete stage
+- Studio: assign, send, receive, confirm cost, complete, invoice line, GL finalize
+- Ledger: manual journal create (online + offline)
 - Contacts / products: create + edit
+- Settings: printer + counter PIN enroll
 
-## Explicit exclusions (documented, not bugs)
+## Remaining for production (Phase 8A gate)
 
-| Item | Reason |
+| Item | Status |
 |------|--------|
-| Full Drift offline schema | SharedPreferences queue + list cache used (Capacitor parity path) |
-| Thermal Sunmi / Bluetooth ESC/POS | Requires native channel / device QA |
-| WhatsApp-specific PDF intent | `share_plus` covers share sheet (user picks WhatsApp) |
-| Counter/PIN enroll on device | Use Capacitor APK on shared tablets for now |
-| Manual journal entry create | Web ERP |
-| Studio stage worker ledger backfill | Web/mobile Capacitor parity for edge GL — Flutter uses `finalizeSale` after invoice line |
+| Device QA on test company | Pending — see `QA_SESSION_LOG.md` |
+| Signed APK + install on Sunmi/phone | Pending — configure `key.properties` |
+| Capacitor parity sign-off | Pending |
+
+## Documented non-goals
+
+| Item | Notes |
+|------|-------|
+| WhatsApp-specific PDF intent | `share_plus` share sheet |
+| iOS native thermal print | Android-only Sunmi/BT channel |
 
 ## Before production distribution
 

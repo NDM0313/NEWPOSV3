@@ -7,11 +7,24 @@ import {
 
 export type MobileRealtimeDomain = 'sales' | 'purchases' | 'accounting' | 'contacts';
 
-const DOMAIN_TABLES: Record<MobileRealtimeDomain, string[]> = {
-  sales: ['sales', 'payments'],
-  purchases: ['purchases', 'payments'],
-  accounting: ['journal_entries', 'journal_entry_lines', 'payments', 'accounts', 'expenses'],
-  contacts: ['contacts', 'payments'],
+/** Tables per domain — aligned with web realtimeSubscriptions (branchScoped like web). */
+const DOMAIN_TABLE_CONFIG: Record<MobileRealtimeDomain, { table: string; branchScoped: boolean }[]> = {
+  sales: [
+    { table: 'sales', branchScoped: true },
+    { table: 'payments', branchScoped: true },
+  ],
+  purchases: [
+    { table: 'purchases', branchScoped: true },
+    { table: 'payments', branchScoped: true },
+  ],
+  accounting: [
+    { table: 'journal_entries', branchScoped: true },
+    { table: 'payments', branchScoped: true },
+  ],
+  contacts: [
+    { table: 'contacts', branchScoped: false },
+    { table: 'payments', branchScoped: true },
+  ],
 };
 
 const isDev =
@@ -95,10 +108,10 @@ async function subscribeMobileRealtimeNow(entry: ManagedEntry): Promise<() => vo
   const domains = new Set(args.domains);
 
   for (const domain of domains) {
-    const tables = DOMAIN_TABLES[domain] || [];
-    for (const table of tables) {
+    const configs = DOMAIN_TABLE_CONFIG[domain] || [];
+    for (const { table, branchScoped } of configs) {
       const filters = [`company_id=eq.${args.companyId}`];
-      if (branchFilter) filters.push(`branch_id=eq.${branchFilter}`);
+      if (branchFilter && branchScoped) filters.push(`branch_id=eq.${branchFilter}`);
       channel.on(
         'postgres_changes',
         { event: '*', schema: 'public', table, filter: filters.join(',') },

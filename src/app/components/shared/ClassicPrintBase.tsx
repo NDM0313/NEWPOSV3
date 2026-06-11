@@ -66,8 +66,8 @@ export const ClassicPrintBase: React.FC<ClassicPrintBaseProps> = ({
   const printableRef = contentRef ?? fallbackRef;
   const thermalWidth = paperSize === '58mm' ? '58mm' : '80mm';
   const handlePrint = () => {
-    window.print();
     if (onPrint) onPrint();
+    else window.print();
   };
 
   return (
@@ -81,30 +81,6 @@ export const ClassicPrintBase: React.FC<ClassicPrintBaseProps> = ({
            CLASSIC PRINT BASE - GLOBAL STYLES
            Single source of truth for ALL prints
            ============================================ */
-        
-        @media print {
-          body * {
-            visibility: hidden;
-          }
-          .classic-print-base, .classic-print-base * {
-            visibility: visible;
-          }
-          .classic-print-base {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100%;
-            background: white;
-            color: black;
-          }
-          .classic-print-actions {
-            display: none;
-          }
-          .classic-print-base.classic-print-thermal {
-            max-width: var(--thermal-width, 80mm);
-            width: var(--thermal-width, 80mm);
-          }
-        }
         
         @media screen {
           .classic-print-base {
@@ -323,15 +299,9 @@ export const ClassicPrintBase: React.FC<ClassicPrintBaseProps> = ({
           gap: 8px;
           justify-content: flex-end;
         }
-        
-        @media print {
-          .classic-print-actions {
-            display: none;
-          }
-        }
       `}</style>
 
-      <div className="classic-print-base">
+      <div className="classic-print-sheet">
         {/* Actions - Hidden when printing */}
         {showActions && (
           <div className="classic-print-actions">

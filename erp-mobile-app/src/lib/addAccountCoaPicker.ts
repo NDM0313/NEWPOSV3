@@ -4,7 +4,28 @@ export type CoaPickerAccount = {
   id: string;
   parent_id?: string | null;
   code?: string | null;
+  name?: string | null;
+  linked_contact_id?: string | null;
 };
+
+const PARTY_PREFIX = /^(AR|AP|WP)-[A-F0-9-]{8,}/i;
+
+/** Linked contact pseudo accounts and obvious party rows — not valid parents for manual GL accounts. */
+export function isPartyOrLinkedLeafAccount(a: CoaPickerAccount): boolean {
+  if (String(a.linked_contact_id ?? '').trim()) return true;
+  const name = String(a.name ?? '').trim();
+  if (PARTY_PREFIX.test(name)) return true;
+  if (/\s[—–-]\s+(Receivable|Payable)\s[—–-]\s/i.test(name)) return true;
+  return false;
+}
+
+/** Parents shown in Professional → parent account (category already filtered elsewhere). */
+export function filterManualCoaParentCandidates(
+  accounts: CoaPickerAccount[],
+  categoryFilter: (a: CoaPickerAccount) => boolean,
+): CoaPickerAccount[] {
+  return accounts.filter((a) => categoryFilter(a) && !isPartyOrLinkedLeafAccount(a));
+}
 
 export function getNextChildAccountCode(parent: CoaPickerAccount, allAccounts: CoaPickerAccount[]): string {
   const siblings = allAccounts.filter((x) => x.parent_id === parent.id);

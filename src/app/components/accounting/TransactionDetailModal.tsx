@@ -48,6 +48,7 @@ import {
 import { activityLogService } from '@/app/services/activityLogService';
 import { stripJournalEditAuditSuffix, journalDescriptionForDisplay } from '@/app/utils/journalDescriptionDisplay';
 import { resolveRentalPaymentDisplay } from '@/app/lib/rentalPaymentRef';
+import { useTransactionMutationConfirm } from '@/app/hooks/useTransactionMutationConfirm';
 
 function rowMethodToPaymentMethod(m: unknown): PaymentMethod {
   const x = String(m || '').toLowerCase();
@@ -222,6 +223,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
   const { openDrawer, setCurrentView } = useNavigation();
   const accounting = useAccounting();
   const { run, busy } = useSubmitLock();
+  const { requestConfirm, ConfirmDialog } = useTransactionMutationConfirm();
   const [transaction, setTransaction] = useState<any>(null);
   /** Active PF-07 reversal child exists for loaded header — locks edit/reverse like Journal list. */
   const [txnHasActiveCorrectionReversal, setTxnHasActiveCorrectionReversal] = useState(false);
@@ -636,11 +638,24 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     if (!autoLaunchUnifiedEdit || !isOpen || loading || !transaction) return;
     if (autoLaunchConsumedRef.current) return;
     autoLaunchConsumedRef.current = true;
-    void (async () => {
-      await runUnifiedEdit();
-      onAutoLaunchUnifiedEditConsumed?.();
-    })();
-  }, [autoLaunchUnifiedEdit, isOpen, loading, transaction, runUnifiedEdit, onAutoLaunchUnifiedEditConsumed]);
+    requestConfirm({
+      action: 'start_edit',
+      referenceNo: String(transaction.entry_no || referenceNumber),
+      onConfirm: async () => {
+        await runUnifiedEdit();
+        onAutoLaunchUnifiedEditConsumed?.();
+      },
+    });
+  }, [
+    autoLaunchUnifiedEdit,
+    isOpen,
+    loading,
+    transaction,
+    runUnifiedEdit,
+    onAutoLaunchUnifiedEditConsumed,
+    requestConfirm,
+    referenceNumber,
+  ]);
 
   const journalLines = useMemo(() => {
     if (!transaction?.lines) return [];
@@ -771,18 +786,8 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     }
   };
 
-  const handleReverseJournal = async () => {
-    if (!transaction?.id || !companyId) return;
-    if (journalSourceReverseBlockReason) {
-      toast.error(journalSourceReverseBlockReason);
-      return;
-    }
-    const blockReason = await getPaymentChainMutationBlockReason(companyId, String(transaction.id));
-    if (blockReason) {
-      toast.error(blockReason);
-      return;
-    }
-    if (!window.confirm('Create a reversal entry for this journal? This posts an offsetting entry.')) return;
+  const executeReverseJournal = async () => {
+    if (!transaction?.id) return;
     const ok = await accounting.createReversalEntry(transaction.id);
     if (ok) {
       toast.success('Reversal posted');
@@ -794,36 +799,70 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     }
   };
 
-  // Void/Cancel: payment-linked JEs also void payments.voided_at (Roznamcha / statements / ledger).
-  const handleVoidJournal = async () => {
+  const promptReverseJournal = async () => {
     if (!transaction?.id || !companyId) return;
+    if (journalSourceReverseBlockReason) {
+      toast.error(journalSourceReverseBlockReason);
+      return;
+    }
+    const blockReason = await getPaymentChainMutationBlockReason(companyId, String(transaction.id));
+    if (blockReason) {
+      toast.error(blockReason);
+      return;
+    }
+    requestConfirm({
+      action: 'reverse',
+      referenceNo: String(transaction.entry_no || referenceNumber),
+      onConfirm: () => run('Reversing...', () => executeReverseJournal()),
+    });
+  };
+
+  // Void/Cancel: payment-linked JEs also void payments.voided_at (Roznamcha / statements / ledger).
+  const executeVoidJournal = async () => {
+    if (!transaction?.id || !companyId) return;
+    const rt = String(transaction.reference_type || '').toLowerCase();
+    const isCorrectionReversal = rt === 'correction_reversal';
     const paymentId =
       transaction.payment_id ??
       (Array.isArray(transaction.payment) ? transaction.payment[0]?.id : transaction.payment?.id);
-    const confirmMsg = paymentId
-      ? 'Kya aap is receipt/payment ko VOID/CANCEL karna chahte hain? Ye Roznamcha, Statement, Ledger aur GL se hat jayegi. Undo nahi ho sakta.'
-      : 'Kya aap is entry ko VOID/CANCEL karna chahte hain? Ye GL, reports aur balances se hat jayegi. Is action ko undo nahi kiya ja sakta.';
-    if (!window.confirm(confirmMsg)) return;
     try {
-      if (paymentId) {
-        const { voidPaymentAfterJournalReversal } = await import('@/app/services/paymentLifecycleService');
+      const { voidJournalEntryById, voidPaymentAfterJournalReversal } = await import(
+        '@/app/services/paymentLifecycleService'
+      );
+      if (isCorrectionReversal) {
+        await voidJournalEntryById({
+          companyId,
+          journalEntryId: String(transaction.id),
+          reason: 'manual_void_correction_reversal',
+        });
+      } else if (paymentId) {
         await voidPaymentAfterJournalReversal({ companyId, paymentId: String(paymentId) });
       } else {
-        const { supabase } = await import('@/lib/supabase');
-        const { error } = await supabase
-          .from('journal_entries')
-          .update({ is_void: true, void_reason: 'manual_void', voided_at: new Date().toISOString() })
-          .eq('id', transaction.id);
-        if (error) throw error;
+        await voidJournalEntryById({
+          companyId,
+          journalEntryId: String(transaction.id),
+          reason: 'manual_void',
+        });
       }
       toast.success('Entry void/cancel ho gayi hai — reports se remove ho gayi');
-      await loadTransaction();
       dispatchAccountingEditCommitted();
       accounting.refreshEntries?.();
       if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('rentalPaymentsChanged'));
+      onClose();
     } catch (e: any) {
       toast.error('Void failed: ' + (e?.message || 'Unknown error'));
+      throw e;
     }
+  };
+
+  const promptVoidJournal = () => {
+    if (!transaction?.id || !companyId) return;
+    const rt = String(transaction.reference_type || '').toLowerCase();
+    requestConfirm({
+      action: rt === 'correction_reversal' ? 'void_reversal' : 'void',
+      referenceNo: String(transaction.entry_no || referenceNumber),
+      onConfirm: () => run('Voiding...', () => executeVoidJournal()),
+    });
   };
 
   const handleLoadAccountsForEdit = async () => {
@@ -1086,7 +1125,13 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                         variant="secondary"
                         className="gap-1"
                         disabled={actionLocked}
-                        onClick={() => run('Opening editor...', () => runUnifiedEdit())}
+                        onClick={() =>
+                          requestConfirm({
+                            action: 'start_edit',
+                            referenceNo: String(transaction.entry_no || referenceNumber),
+                            onConfirm: () => run('Opening editor...', () => runUnifiedEdit()),
+                          })
+                        }
                       >
                         <Pencil size={14} />
                         {unifiedEditButtonLabel(r)}
@@ -1117,7 +1162,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                         className="gap-1 border-amber-500/40 text-amber-300"
                         disabled={actionLocked || !!paymentChainBlockReason}
                         title={paymentChainBlockReason || 'Create offsetting correction_reversal JE'}
-                        onClick={() => run('Reversing...', () => handleReverseJournal())}
+                        onClick={() => void promptReverseJournal()}
                       >
                         <RotateCcw size={14} />
                         Reverse
@@ -1131,7 +1176,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                       variant="outline"
                       className="gap-1 border-red-500/40 text-red-300"
                       disabled={actionLocked}
-                      onClick={() => run('Voiding...', () => handleVoidJournal())}
+                      onClick={() => promptVoidJournal()}
                     >
                       <Trash2 size={14} />
                       Void / Cancel
@@ -1149,7 +1194,13 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                         variant="outline"
                         className="gap-1 border-blue-500/40 text-blue-300"
                         disabled={actionLocked}
-                        onClick={() => void handleLoadAccountsForEdit()}
+                        onClick={() =>
+                          requestConfirm({
+                            action: 'start_edit',
+                            referenceNo: String(transaction.entry_no || referenceNumber),
+                            onConfirm: () => void handleLoadAccountsForEdit(),
+                          })
+                        }
                       >
                         <ArrowLeftRight size={14} />
                         Edit Accounts
@@ -1161,7 +1212,13 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                       <Button
                         size="sm"
                         className="gap-1 bg-blue-600"
-                        onClick={() => run('Saving changes...', () => handleSaveAccountEdits())}
+                        onClick={() =>
+                          requestConfirm({
+                            action: 'save_edit',
+                            referenceNo: String(transaction.entry_no || referenceNumber),
+                            onConfirm: () => run('Saving changes...', () => handleSaveAccountEdits()),
+                          })
+                        }
                         disabled={
                           actionLocked ||
                           (Object.keys(editLineChanges).length === 0 && Object.keys(editAmountChanges).length === 0)
@@ -1743,7 +1800,17 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                 <Button type="button" variant="ghost" onClick={() => setJournalQuickEditOpen(false)}>
                   Cancel
                 </Button>
-                <Button type="button" onClick={() => void saveJournalQuickEdit()} disabled={savingJournalEdit}>
+                <Button
+                  type="button"
+                  onClick={() =>
+                    requestConfirm({
+                      action: 'save_edit',
+                      referenceNo: String(transaction?.entry_no || referenceNumber),
+                      onConfirm: () => void saveJournalQuickEdit(),
+                    })
+                  }
+                  disabled={savingJournalEdit}
+                >
                   {savingJournalEdit ? 'Saving…' : 'Save'}
                 </Button>
               </div>
@@ -1997,6 +2064,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
         }}
       />
     )}
+    <ConfirmDialog />
     </>
   );
 };

@@ -17,7 +17,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
-  Scissors
+  Scissors,
+  RefreshCw,
 } from 'lucide-react';
 import { useNavigation } from '../../context/NavigationContext';
 import { useSettings } from '../../context/SettingsContext';
@@ -41,6 +42,7 @@ import { UserProfilePage } from '../users/UserProfilePage';
 import { ChangePasswordDialog } from '../auth/ChangePasswordDialog';
 import { useCheckPermission } from '../../hooks/useCheckPermission';
 import { NotificationsDropdown } from './NotificationsDropdown';
+import { dispatchGlobalRefresh } from '../../lib/dataInvalidationBus';
 
 export const TopHeader = () => {
   const { toggleSidebar, openDrawer, setCurrentView, setMobileNavOpen } = useNavigation();
@@ -109,6 +111,19 @@ export const TopHeader = () => {
 
   const [showProfile, setShowProfile] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
+  const [globalRefreshing, setGlobalRefreshing] = useState(false);
+
+  const handleGlobalRefresh = useCallback(() => {
+    if (!companyId || globalRefreshing) return;
+    setGlobalRefreshing(true);
+    dispatchGlobalRefresh({
+      companyId,
+      branchId: branchId ?? null,
+      reason: 'user-refresh',
+    });
+    toast.success('Refreshing data from server…');
+    window.setTimeout(() => setGlobalRefreshing(false), 1200);
+  }, [companyId, branchId, globalRefreshing]);
 
   const handleViewProfile = () => {
     setShowProfile(true);
@@ -388,6 +403,24 @@ export const TopHeader = () => {
             >
               This Year
             </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => setDateRangeType('currentFinancialYear')}
+              className={cn(
+                "px-3 py-2 rounded-lg cursor-pointer",
+                dateRangeType === 'currentFinancialYear' ? "bg-primary/10 text-primary" : "text-foreground hover:bg-accent"
+              )}
+            >
+              Current financial year
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => setDateRangeType('lastFinancialYear')}
+              className={cn(
+                "px-3 py-2 rounded-lg cursor-pointer",
+                dateRangeType === 'lastFinancialYear' ? "bg-primary/10 text-primary" : "text-foreground hover:bg-accent"
+              )}
+            >
+              Last financial year
+            </DropdownMenuItem>
             <DropdownMenuSeparator className="bg-border my-2" />
             <DropdownMenuItem
               onClick={() => {
@@ -405,6 +438,18 @@ export const TopHeader = () => {
         </DropdownMenu>
 
         <NotificationsDropdown />
+
+        <Button
+          type="button"
+          variant="ghost"
+          title="Refresh data from server"
+          aria-label="Refresh data from server"
+          disabled={!companyId || globalRefreshing}
+          onClick={handleGlobalRefresh}
+          className="h-9 w-9 p-0 bg-accent hover:bg-muted border border-border text-foreground rounded-lg"
+        >
+          <RefreshCw className={cn('h-4 w-4', globalRefreshing && 'animate-spin')} />
+        </Button>
 
         {/* User Profile Dropdown */}
         <DropdownMenu>

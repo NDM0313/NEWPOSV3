@@ -16,6 +16,7 @@ import '../../features/expenses/screens/expense_create_screen.dart';
 import '../../features/expenses/screens/expense_detail_screen.dart';
 import '../../features/expenses/screens/expenses_list_screen.dart';
 import '../../features/ledger/screens/journal_list_screen.dart';
+import '../../features/ledger/screens/journal_create_screen.dart';
 import '../../features/home/home_screen.dart';
 import '../../features/products/screens/product_create_screen.dart';
 import '../../features/products/screens/product_edit_screen.dart';
@@ -253,6 +254,12 @@ GoRouter createAppRouter(AuthSessionState session) {
       GoRoute(
         path: '/ledger',
         builder: (context, state) => const JournalListScreen(),
+        routes: [
+          GoRoute(
+            path: 'new',
+            builder: (context, state) => const JournalCreateScreen(),
+          ),
+        ],
       ),
       GoRoute(
         path: '/pos',

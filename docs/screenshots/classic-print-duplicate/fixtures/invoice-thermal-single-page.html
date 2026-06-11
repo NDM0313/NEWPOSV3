@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Thermal Receipt — Single Page Print Fixture</title>
+  <link rel="stylesheet" href="../../../../src/styles/index.css" />
+  <style>
+    body { margin: 0; background: #fff; font-family: 'Courier New', monospace; font-size: 11px; }
+    .thermal-receipt-root { padding: 8px; box-sizing: border-box; }
+    .thermal-receipt-root--58mm { width: 58mm; max-width: 58mm; }
+    h1 { font-size: 14px; text-align: center; margin: 0 0 4px; }
+    .meta { text-align: center; font-size: 9px; margin-bottom: 8px; }
+    table { width: 100%; border-collapse: collapse; font-size: 10px; }
+    td { padding: 2px 0; vertical-align: top; }
+    .r { text-align: right; }
+    .divider { border-top: 1px dashed #333; margin: 6px 0; }
+    .total { font-weight: 700; font-size: 12px; }
+    .footer { text-align: center; font-size: 9px; margin-top: 8px; }
+  </style>
+</head>
+<body class="print-thermal-receipt">
+  <div class="thermal-print-overlay">
+    <div class="thermal-print-modal-shell">
+      <div class="pdf-print-root">
+        <div class="thermal-receipt-root thermal-receipt-root--58mm">
+          <h1>DIN COUTURE</h1>
+          <div class="meta">INV-1042 · 10 Jun 2026</div>
+          <div class="divider"></div>
+          <table>
+            <tr><td>Silk bridal set</td><td class="r">x1</td><td class="r">45,000</td></tr>
+            <tr><td>Embroidery</td><td class="r">x1</td><td class="r">8,500</td></tr>
+          </table>
+          <div class="divider"></div>
+          <table><tr class="total"><td>TOTAL</td><td></td><td class="r">53,500</td></tr></table>
+          <div class="footer">Thank you!</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

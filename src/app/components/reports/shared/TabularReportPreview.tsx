@@ -78,6 +78,7 @@ export const TabularReportPreview: React.FC<TabularReportPreviewProps> = ({
   const landscapeClass = orientation === 'landscape' ? 'pdf-document-landscape' : '';
   const rootClass = [
     compact ? 'pdf-document pdf-document-compact' : 'pdf-document',
+    'ledger-report-print',
     landscapeClass,
     'bg-white text-black',
   ]
@@ -96,54 +97,57 @@ export const TabularReportPreview: React.FC<TabularReportPreviewProps> = ({
         ...marginStyle,
       }}
     >
-      {showHeader ? (
-        <ReportBrandHeader
-          brand={brand}
-          title={title}
-          subtitle={subtitle}
-          metaRows={metaRows.length ? metaRows : undefined}
-          fieldVisibility={fieldVisibility}
-          compact={compact}
-        />
-      ) : (
-        <div style={{ marginBottom: compact ? 8 : 14 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, textTransform: 'uppercase', color: '#111' }}>{title}</div>
-          {subtitle ? (
-            <div style={{ fontSize: 11, color: '#333', marginTop: 4, fontWeight: 600 }}>{subtitle}</div>
-          ) : null}
-        </div>
-      )}
+      <div className="report-first-page-block">
+        {showHeader ? (
+          <ReportBrandHeader
+            brand={brand}
+            title={title}
+            subtitle={subtitle}
+            metaRows={metaRows.length ? metaRows : undefined}
+            fieldVisibility={fieldVisibility}
+            compact={compact}
+          />
+        ) : (
+          <div className="report-title-block" style={{ marginBottom: compact ? 8 : 14 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, textTransform: 'uppercase', color: '#111' }}>{title}</div>
+            {subtitle ? (
+              <div style={{ fontSize: 11, color: '#333', marginTop: 4, fontWeight: 600 }}>{subtitle}</div>
+            ) : null}
+          </div>
+        )}
 
-      {stats && stats.length > 0 ? (
-        <table
-          role="presentation"
-          cellPadding={0}
-          cellSpacing={0}
-          style={{ width: '100%', borderCollapse: 'collapse', marginBottom: compact ? 8 : 12 }}
-        >
-          <tbody>
-            <tr>
-              {stats.map((s) => (
-                <td
-                  key={s.label}
-                  style={{
-                    border: '1px solid #ccc',
-                    padding: compact ? '4px 6px' : '6px 8px',
-                    textAlign: 'center',
-                    fontSize: compact ? 8 : 10,
-                    width: `${100 / stats.length}%`,
-                  }}
-                >
-                  <div style={{ color: '#666', fontSize: compact ? 7 : 9, marginBottom: 2 }}>{s.label}</div>
-                  <div style={{ fontWeight: 700 }}>{s.value}</div>
-                </td>
-              ))}
-            </tr>
-          </tbody>
-        </table>
-      ) : null}
+        {stats && stats.length > 0 ? (
+          <table
+            role="presentation"
+            className="report-summary"
+            cellPadding={0}
+            cellSpacing={0}
+            style={{ width: '100%', borderCollapse: 'collapse', marginBottom: compact ? 8 : 12 }}
+          >
+            <tbody>
+              <tr>
+                {stats.map((s) => (
+                  <td
+                    key={s.label}
+                    style={{
+                      border: '1px solid #ccc',
+                      padding: compact ? '4px 6px' : '6px 8px',
+                      textAlign: 'center',
+                      fontSize: compact ? 8 : 10,
+                      width: `${100 / stats.length}%`,
+                    }}
+                  >
+                    <div style={{ color: '#666', fontSize: compact ? 7 : 9, marginBottom: 2 }}>{s.label}</div>
+                    <div style={{ fontWeight: 700 }}>{s.value}</div>
+                  </td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
+        ) : null}
+      </div>
 
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: tableFontSize }}>
+      <table className="report-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: tableFontSize }}>
         <thead>
           <tr>
             {columns.map((col) => (

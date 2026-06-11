@@ -40,6 +40,8 @@ import {
   resolveExpenseCategoryIdFromLevels,
 } from "@/app/lib/expenseCategoryTreeUtils";
 import { userService } from "@/app/services/userService";
+import { useSettings } from "@/app/context/SettingsContext";
+import { resolveDefaultExpensePaymentAccountId } from "@/app/lib/resolveDefaultPaymentAccount";
 import { toast } from "sonner";
 import type { ExpenseCategory } from "@/app/context/ExpenseContext";
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
@@ -82,6 +84,7 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
   const { formatCurrency } = useFormatCurrency();
   const { canManageSettings } = useCheckPermission();
   const { companyId, branchId: contextBranchId, requiresBranchSelection } = useSupabase();
+  const { defaultAccounts } = useSettings();
   const { createExpense, updateExpense, refreshExpenses } = useExpenses();
   const { accounts: coaAccounts } = useAccounting();
 
@@ -100,8 +103,8 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
   const [selectedBranchId, setSelectedBranchId] = useState("");
   const [isNumpadOpen, setIsNumpadOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [branches, setBranches] = useState<Array<{ id: string; name: string; address?: string }>>([]);
-  const [paymentAccounts, setPaymentAccounts] = useState<Array<{ id: string; name: string; balance?: number; icon: typeof Wallet }>>([]);
+  const [branches, setBranches] = useState<Array<{ id: string; name: string; address?: string; default_cash_account_id?: string | null; default_bank_account_id?: string | null }>>([]);
+  const [paymentAccounts, setPaymentAccounts] = useState<Array<{ id: string; name: string; balance?: number; icon: typeof Wallet; code?: string; type?: string; isDefaultCash?: boolean; isDefaultBank?: boolean }>>([]);
 
   const userRole = "Admin";
 
@@ -131,6 +134,10 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
           name: a.name || a.code || '',
           balance: gl ? Number(gl.balance) || 0 : 0,
           icon: Wallet,
+          code: String(a.code ?? ''),
+          type: String(a.type ?? a.account_role ?? ''),
+          isDefaultCash: a.is_default_cash === true,
+          isDefaultBank: a.is_default_bank === true,
         };
       }));
     }).catch(() => setPaymentAccounts([]));
@@ -196,6 +203,28 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
       setSalaryUserSearch('');
     }
   }, [isOpen, companyId, isSalaryCategory]);
+
+  useEffect(() => {
+    if (!isOpen || expenseToEdit || paidFromAccountId || paymentAccounts.length === 0) return;
+    const branch = branches.find((b) => b.id === selectedBranchId);
+    const branchDefaults = branch
+      ? {
+          cashId: branch.default_cash_account_id ?? null,
+          bankId: branch.default_bank_account_id ?? null,
+        }
+      : null;
+    const picks = paymentAccounts.map((a) => ({
+      id: a.id,
+      name: a.name,
+      type: a.type ?? 'cash',
+      balance: a.balance ?? 0,
+      code: a.code ?? '',
+      isDefaultCash: a.isDefaultCash,
+      isDefaultBank: a.isDefaultBank,
+    }));
+    const resolved = resolveDefaultExpensePaymentAccountId(picks, defaultAccounts, branchDefaults);
+    if (resolved) setPaidFromAccountId(resolved);
+  }, [isOpen, expenseToEdit, paidFromAccountId, paymentAccounts, defaultAccounts, branches, selectedBranchId]);
 
   const accounts = paymentAccounts.length > 0 ? paymentAccounts : [{ id: 'cash', name: 'Cash in Hand', balance: 0, icon: Wallet }];
 

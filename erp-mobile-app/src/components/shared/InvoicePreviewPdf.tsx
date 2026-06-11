@@ -1,5 +1,8 @@
 import { ReportBrandHeader } from './ReportBrandHeader';
 import type { CompanyBrand } from '../../api/reports';
+import type { FieldsConfig } from '../../types/printingSettings';
+import { pickReportHeaderFieldVisibility } from '../../lib/reportPrintConfig';
+import { formatCurrency as defaultFormatCurrency } from '../../lib/formatCurrency';
 
 export interface InvoicePreviewItem {
   productName: string;
@@ -26,14 +29,13 @@ export interface InvoicePreviewProps {
   due?: number;
   notes?: string | null;
   generatedBy?: string | null;
+  /** companies.printing_settings.fields — logo/address/SKU/discount/tax/notes toggles. */
+  fields?: Partial<FieldsConfig>;
+  formatCurrency?: (n: number) => string;
 }
 
-const fmt = (n: number): string =>
-  (Math.abs(n) < 0.005 ? 0 : n).toLocaleString('en-PK', { maximumFractionDigits: 2, minimumFractionDigits: 0 });
-
 /**
- * WYSIWYG invoice/PO body for PdfPreviewModal. Matches ReportBrandHeader +
- * printable A4 body. Used for both sales invoices and purchase orders.
+ * WYSIWYG invoice/PO body for PdfPreviewModal. Respects web printing_settings field toggles.
  */
 export function InvoicePreviewPdf(props: InvoicePreviewProps) {
   const {
@@ -53,7 +55,17 @@ export function InvoicePreviewPdf(props: InvoicePreviewProps) {
     due,
     notes,
     generatedBy,
+    fields,
+    formatCurrency: formatMoney = (n) => defaultFormatCurrency(n),
   } = props;
+
+  const f = {
+    showSku: fields?.showSku !== false,
+    showDiscount: fields?.showDiscount !== false,
+    showTax: fields?.showTax !== false,
+    showNotes: fields?.showNotes !== false,
+  };
+  const fieldVisibility = pickReportHeaderFieldVisibility(fields);
 
   const heading = docType === 'sale' ? 'Sales Invoice' : 'Purchase Order';
   const partyLabel = docType === 'sale' ? 'Customer' : 'Supplier';
@@ -64,6 +76,7 @@ export function InvoicePreviewPdf(props: InvoicePreviewProps) {
         brand={brand}
         title={heading}
         subtitle={docNumber}
+        fieldVisibility={fieldVisibility}
         metaRows={[
           { label: 'Date', value: docDate },
           ...(branchName ? [{ label: 'Branch', value: branchName }] : []),
@@ -121,12 +134,18 @@ export function InvoicePreviewPdf(props: InvoicePreviewProps) {
                   <td style={{ padding: '8px 10px', borderBottom: '1px solid #F3F4F6' }}>{idx + 1}</td>
                   <td style={{ padding: '8px 10px', borderBottom: '1px solid #F3F4F6' }}>
                     <div style={{ fontWeight: 500, color: '#111827' }}>{it.productName}</div>
-                    {it.sku && <div style={{ fontSize: 10, color: '#6B7280' }}>{it.sku}</div>}
+                    {f.showSku && it.sku ? (
+                      <div style={{ fontSize: 10, color: '#6B7280' }}>{it.sku}</div>
+                    ) : null}
                   </td>
-                  <td style={{ padding: '8px 10px', borderBottom: '1px solid #F3F4F6', textAlign: 'right' }}>{fmt(it.quantity)}</td>
-                  <td style={{ padding: '8px 10px', borderBottom: '1px solid #F3F4F6', textAlign: 'right' }}>Rs. {fmt(it.unitPrice)}</td>
+                  <td style={{ padding: '8px 10px', borderBottom: '1px solid #F3F4F6', textAlign: 'right' }}>
+                    {it.quantity}
+                  </td>
+                  <td style={{ padding: '8px 10px', borderBottom: '1px solid #F3F4F6', textAlign: 'right' }}>
+                    {formatMoney(it.unitPrice)}
+                  </td>
                   <td style={{ padding: '8px 10px', borderBottom: '1px solid #F3F4F6', textAlign: 'right', fontWeight: 500 }}>
-                    Rs. {fmt(it.total)}
+                    {formatMoney(it.total)}
                   </td>
                 </tr>
               ))
@@ -140,35 +159,37 @@ export function InvoicePreviewPdf(props: InvoicePreviewProps) {
           <tbody>
             <tr>
               <td style={{ padding: '4px 8px', color: '#6B7280' }}>Subtotal</td>
-              <td style={{ padding: '4px 8px', textAlign: 'right' }}>Rs. {fmt(subtotal)}</td>
+              <td style={{ padding: '4px 8px', textAlign: 'right' }}>{formatMoney(subtotal)}</td>
             </tr>
-            {discount > 0 && (
+            {f.showDiscount && discount > 0 && (
               <tr>
                 <td style={{ padding: '4px 8px', color: '#6B7280' }}>Discount</td>
-                <td style={{ padding: '4px 8px', textAlign: 'right' }}>- Rs. {fmt(discount)}</td>
+                <td style={{ padding: '4px 8px', textAlign: 'right' }}>- {formatMoney(discount)}</td>
               </tr>
             )}
-            {tax > 0 && (
+            {f.showTax && tax > 0 && (
               <tr>
                 <td style={{ padding: '4px 8px', color: '#6B7280' }}>Tax</td>
-                <td style={{ padding: '4px 8px', textAlign: 'right' }}>Rs. {fmt(tax)}</td>
+                <td style={{ padding: '4px 8px', textAlign: 'right' }}>{formatMoney(tax)}</td>
               </tr>
             )}
             <tr style={{ borderTop: '1px solid #E5E7EB' }}>
               <td style={{ padding: '6px 8px', color: '#111827', fontWeight: 700 }}>Total</td>
-              <td style={{ padding: '6px 8px', textAlign: 'right', color: '#111827', fontWeight: 700 }}>Rs. {fmt(total)}</td>
+              <td style={{ padding: '6px 8px', textAlign: 'right', color: '#111827', fontWeight: 700 }}>
+                {formatMoney(total)}
+              </td>
             </tr>
             {typeof paid === 'number' && (
               <tr>
                 <td style={{ padding: '4px 8px', color: '#6B7280' }}>Paid</td>
-                <td style={{ padding: '4px 8px', textAlign: 'right', color: '#059669' }}>Rs. {fmt(paid)}</td>
+                <td style={{ padding: '4px 8px', textAlign: 'right', color: '#059669' }}>{formatMoney(paid)}</td>
               </tr>
             )}
             {typeof due === 'number' && due > 0 && (
               <tr>
                 <td style={{ padding: '4px 8px', color: '#6B7280' }}>Balance Due</td>
                 <td style={{ padding: '4px 8px', textAlign: 'right', color: '#DC2626', fontWeight: 600 }}>
-                  Rs. {fmt(due)}
+                  {formatMoney(due)}
                 </td>
               </tr>
             )}
@@ -176,12 +197,12 @@ export function InvoicePreviewPdf(props: InvoicePreviewProps) {
         </table>
       </div>
 
-      {notes && (
+      {f.showNotes && notes ? (
         <div style={{ padding: '0 18px 16px 18px', fontSize: 11, color: '#374151' }}>
           <div style={{ color: '#6B7280', marginBottom: 4 }}>Notes</div>
           <div style={{ whiteSpace: 'pre-wrap' }}>{notes}</div>
         </div>
-      )}
+      ) : null}
 
       <div
         style={{

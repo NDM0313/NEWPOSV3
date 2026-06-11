@@ -18,10 +18,14 @@ import { canPostAccountingForSaleStatus } from '@/app/lib/postingStatusGate';
 import { warnIfUsingStoredBalanceAsTruth } from '@/app/services/accountingCanonicalGuard';
 import {
   DATA_INVALIDATED_EVENT,
+  GLOBAL_REFRESH_EVENT,
   dispatchDataInvalidated,
+  isGlobalRefreshReason,
   type DataInvalidationDetail,
+  type GlobalRefreshDetail,
   shouldAcceptInvalidation,
 } from '@/app/lib/dataInvalidationBus';
+import { shouldSuppressRealtimeInvalidation } from '@/app/lib/localMutationSuppression';
 import { isBulkImportActive } from '@/app/lib/bulkImportSession';
 import { formatLocalDateYYYYMMDD } from '@/app/utils/localDate';
 import {
@@ -510,6 +514,7 @@ const ENTRIES_FETCH_LIMIT = 500;
 function invalidationShouldReloadAccounts(reason?: string): boolean {
   if (!reason) return false;
   const r = reason.toLowerCase();
+  if (isGlobalRefreshReason(r)) return true;
   if (
     /realtime-change|fallback-poll|contact-balance|sale-payment|saledocumentjournalcreated|accounting-entries-changed|manualreceipt|manualsupplier|sale:|rental:|payment-added|sales-context-payment/.test(
       r
@@ -972,7 +977,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
             .map((j) => String(j.id || '').trim())
             .filter(Boolean);
           const reversedOriginalIds = new Set<string>();
-          const CHUNK = 25;
+          const CHUNK = 10;
           for (let i = 0; i < jeIds.length; i += CHUNK) {
             const chunk = jeIds.slice(i, i + CHUNK);
             const { data: revParents, error: revErr } = await supabase
@@ -1034,7 +1039,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
   }, [companyId, loadEntries, runPaymentAccountSyncOnce]);
 
   const scheduleCoalescedRefresh = useCallback(
-    (opts?: { entries?: boolean; accounts?: boolean; blocking?: boolean }) => {
+    (opts?: { entries?: boolean; accounts?: boolean; blocking?: boolean; immediate?: boolean }) => {
       if (isBulkImportActive()) {
         if (opts?.entries) pendingEntriesReloadRef.current = true;
         if (opts?.accounts) {
@@ -1046,6 +1051,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       if (opts?.entries !== undefined) acc.entries = opts.entries;
       if (opts?.accounts !== undefined) acc.accounts = opts.accounts;
       if (opts?.blocking) acc.blocking = true;
+      const delayMs = opts?.immediate ? 0 : COALESCED_REFRESH_MS;
       if (coalescedRefreshTimerRef.current) clearTimeout(coalescedRefreshTimerRef.current);
       coalescedRefreshTimerRef.current = setTimeout(() => {
         coalescedRefreshTimerRef.current = null;
@@ -1055,7 +1061,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
         if (o.entries) {
           void ensureEntriesLoaded().then(() => loadEntries({ showBlockingLoading: o.blocking }));
         }
-      }, COALESCED_REFRESH_MS);
+      }, delayMs);
     },
     [loadAccounts, loadEntries, ensureEntriesLoaded]
   );
@@ -1157,7 +1163,12 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       if (
         reason.includes('saledocumentjournalcreated') ||
         reason.includes('sale-payment') ||
-        reason.includes('sales-context-payment')
+        reason.includes('sales-context-payment') ||
+        reason.includes('payment-recorded') ||
+        reason.includes('sale:sales-context-create') ||
+        reason.includes('sale:sales-context-update') ||
+        reason.includes('sales-context-create') ||
+        reason.includes('sales-context-update')
       ) {
         const rows = await accountingService.fetchJournalEntriesForSale(
           companyId,
@@ -1167,7 +1178,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
         if (rows.length > 0) return mergeIncrementalJournalRows(rows as JournalEntryWithLines[]);
       }
 
-      if (reason.includes('accounting-entries-changed')) {
+      if (reason.includes('accounting-entries-changed') || reason.includes('expense-updated')) {
         const row = await accountingService.getEntryById(entityId, companyId);
         if (row) return mergeIncrementalJournalRows([row as JournalEntryWithLines]);
       }
@@ -1257,6 +1268,12 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     const onDataInvalidated = (ev: Event) => {
       const detail = (ev as CustomEvent<DataInvalidationDetail>).detail;
       if (
+        shouldSuppressRealtimeInvalidation() &&
+        String(detail?.reason ?? '').toLowerCase().includes('realtime-change')
+      ) {
+        return;
+      }
+      if (
         !shouldAcceptInvalidation(detail, {
           domain: ['accounting'],
           companyId,
@@ -1278,18 +1295,32 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
           : false;
         if (handled) return;
         const reloadAccounts = invalidationShouldReloadAccounts(detail?.reason);
+        const manualRefresh = isGlobalRefreshReason(detail?.reason);
         scheduleCoalescedRefreshRef.current({
-          entries: reloadEntries,
-          accounts: reloadAccounts,
+          entries: reloadEntries || manualRefresh,
+          accounts: reloadAccounts || manualRefresh,
+          immediate: manualRefresh,
         });
       })();
     };
 
+    const onGlobalRefresh = (ev: Event) => {
+      const detail = (ev as CustomEvent<GlobalRefreshDetail>).detail;
+      if (detail?.companyId && detail.companyId !== companyId) return;
+      scheduleCoalescedRefreshRef.current({
+        entries: true,
+        accounts: true,
+        immediate: true,
+      });
+    };
+
     window.addEventListener('accountingEntriesChanged', bumpEntriesOnly);
     window.addEventListener(DATA_INVALIDATED_EVENT, onDataInvalidated as EventListener);
+    window.addEventListener(GLOBAL_REFRESH_EVENT, onGlobalRefresh as EventListener);
     return () => {
       window.removeEventListener('accountingEntriesChanged', bumpEntriesOnly);
       window.removeEventListener(DATA_INVALIDATED_EVENT, onDataInvalidated as EventListener);
+      window.removeEventListener(GLOBAL_REFRESH_EVENT, onGlobalRefresh as EventListener);
     };
   }, [branchId, companyId]);
 

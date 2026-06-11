@@ -14,6 +14,7 @@ import '../../../data/repositories/sales_write_repository.dart';
 import '../../../data/sync/enqueue_or_run.dart';
 import '../../barcode/barcode_scan_sheet.dart';
 import '../../auth/providers/auth_session_provider.dart';
+import '../../../device/printing/print_service.dart';
 import '../../auth/providers/repository_providers.dart';
 import '../../products/providers/products_providers.dart';
 
@@ -35,6 +36,7 @@ class _CartLine {
 
 class _PosScreenState extends ConsumerState<PosScreen> {
   final _customerController = TextEditingController(text: 'Walk-in');
+  final _barcodeWedgeController = TextEditingController();
   final List<_CartLine> _lines = [];
   bool _saving = false;
   String? _error;
@@ -43,7 +45,49 @@ class _PosScreenState extends ConsumerState<PosScreen> {
   @override
   void dispose() {
     _customerController.dispose();
+    _barcodeWedgeController.dispose();
     super.dispose();
+  }
+
+  Future<void> _handleBarcodeWedge(String code) async {
+    if (code.trim().isEmpty) return;
+    final products = await ref.read(productsListProvider.future);
+    final repo = ref.read(productsRepositoryProvider);
+    final product = repo.findByBarcodeOrSku(products, code.trim());
+    if (!mounted) return;
+    if (product == null) {
+      setState(() => _error = 'No product for barcode/SKU: $code');
+      return;
+    }
+    setState(() {
+      _error = null;
+      _barcodeWedgeController.clear();
+      final idx = _lines.indexWhere((l) => l.product.id == product.id);
+      if (idx >= 0) {
+        _lines[idx] = _CartLine(product: product, quantity: _lines[idx].quantity + 1);
+      } else {
+        _lines.add(_CartLine(product: product, quantity: 1));
+      }
+    });
+  }
+
+  Future<void> _maybeAutoPrintPos({
+    required String companyId,
+    required String? invoiceNo,
+    required double total,
+    required String branchName,
+  }) async {
+    final settingsRepo = ref.read(settingsRepositoryProvider);
+    final printer = await settingsRepo.getMobilePrinterSettings(companyId);
+    await PrintAfterTransaction.maybeAutoPrint(
+      settings: printer.settings,
+      title: 'POS RECEIPT',
+      transactionNo: invoiceNo,
+      partyName: _customerController.text,
+      amount: total,
+      date: DateTime.now().toIso8601String(),
+      branch: branchName,
+    );
   }
 
   double get _total => _lines.fold(0, (sum, l) => sum + l.total);
@@ -208,13 +252,22 @@ class _PosScreenState extends ConsumerState<PosScreen> {
           return;
         }
 
+        final checkoutTotal = _total;
         setState(() {
           _saving = false;
           _lines.clear();
           _success = 'POS sale ${result.invoiceNo ?? ''} completed.';
         });
 
-        if (result.saleId != null) {
+        final branchName = ref.read(authSessionProvider).selectedBranch?.name;
+        await _maybeAutoPrintPos(
+          companyId: scope.companyId,
+          invoiceNo: result.invoiceNo,
+          total: checkoutTotal,
+          branchName: branchName ?? '',
+        );
+
+        if (result.saleId != null && mounted) {
           context.push('/sales/${result.saleId}');
         }
     }
@@ -234,6 +287,18 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                 labelText: 'Customer',
                 border: OutlineInputBorder(),
               ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: TextField(
+              controller: _barcodeWedgeController,
+              decoration: const InputDecoration(
+                labelText: 'Barcode scanner (keyboard wedge)',
+                border: OutlineInputBorder(),
+                hintText: 'Scan and press Enter',
+              ),
+              onSubmitted: _handleBarcodeWedge,
             ),
           ),
           if (_error != null)

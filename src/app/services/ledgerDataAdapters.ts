@@ -248,8 +248,7 @@ export async function getSupplierOperationalLedgerData(
 }
 
 /**
- * User (staff/salesman) operational statement: paid expenses with paid_to_user_id + posted sale commission.
- * Debits increase company obligation to the user; credits would come from dedicated payment flows (not yet linked by user id on payments).
+ * User (staff/salesman) operational statement: paid expenses with paid_to_user_id + posted sale commission + commission payments.
  */
 export async function getUserLedgerData(
   companyId: string,
@@ -285,6 +284,13 @@ export async function getUserLedgerData(
     commRentals = rData || [];
   } catch { /* columns may not exist */ }
 
+  const { data: commPayPayments } = await supabase
+    .from('payments')
+    .select('id, reference_number, payment_date, amount, notes, created_at')
+    .eq('company_id', companyId)
+    .eq('reference_type', 'commission_payment')
+    .eq('reference_id', userId);
+
   type Ev = {
     ts: number;
     date: string;
@@ -295,6 +301,7 @@ export async function getUserLedgerData(
     desc: string;
     docType: Transaction['documentType'];
     id: string;
+    kind: 'salary' | 'commission_earned' | 'commission_paid';
   };
   const events: Ev[] = [];
 
@@ -310,7 +317,7 @@ export async function getUserLedgerData(
       (row.description && String(row.description).trim()) ||
       (row.vendor_name && String(row.vendor_name).trim()) ||
       row.notes ||
-      'Expense (paid to user)';
+      'Salary / expense paid to user';
     events.push({
       ts: new Date(d + 'T12:00:00').getTime(),
       date: d,
@@ -321,6 +328,7 @@ export async function getUserLedgerData(
       desc,
       docType: 'Expense',
       id: row.id,
+      kind: 'salary',
     });
   });
 
@@ -343,6 +351,7 @@ export async function getUserLedgerData(
       desc: `Commission earned — ${ref}`,
       docType: 'Expense',
       id: s.id,
+      kind: 'commission_earned',
     });
   });
 
@@ -363,6 +372,31 @@ export async function getUserLedgerData(
       desc: `Commission earned — ${ref}`,
       docType: 'Expense',
       id: r.id,
+      kind: 'commission_earned',
+    });
+  });
+
+  const commPaySeen = new Set<string>();
+  (commPayPayments || []).forEach((p: any) => {
+    const id = String(p.id);
+    if (commPaySeen.has(id)) return;
+    commPaySeen.add(id);
+    const amt = Number(p.amount) || 0;
+    if (amt <= 0) return;
+    const d = (p.payment_date || p.created_at || '').toString().slice(0, 10);
+    if (!d) return;
+    const ref = p.reference_number || `PAY-${id.slice(0, 8)}`;
+    events.push({
+      ts: new Date(d + 'T12:00:00').getTime(),
+      date: d,
+      ord: 2,
+      debit: amt,
+      credit: 0,
+      ref,
+      desc: (p.notes && String(p.notes).trim()) || `Commission payment — ${ref}`,
+      docType: 'Payment',
+      id,
+      kind: 'commission_paid',
     });
   });
 
@@ -421,6 +455,16 @@ export async function getUserLedgerData(
   const totalPaymentReceived = totalCredit;
   const pendingAmount = invoices.reduce((s, i) => s + i.pendingAmount, 0);
 
+  let salaryPaid = 0;
+  let commissionEarned = 0;
+  let commissionPaid = 0;
+  for (const e of events) {
+    if (e.ts < fromTs || e.ts > toTs) continue;
+    if (e.kind === 'salary') salaryPaid += e.debit;
+    else if (e.kind === 'commission_earned') commissionEarned += e.credit;
+    else if (e.kind === 'commission_paid') commissionPaid += e.debit;
+  }
+
   if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
     console.debug('[UserOperationalLedger]', { userId, userName, openingAtFrom, rows: transactions.length });
   }
@@ -441,6 +485,12 @@ export async function getUserLedgerData(
       fullyPaid: 0,
       partiallyPaid: 0,
       unpaid: invoices.length,
+    },
+    userStatementSummary: {
+      salaryPaid,
+      commissionEarned,
+      commissionPaid,
+      netOwedToUser: Math.round((commissionEarned - salaryPaid - commissionPaid) * 100) / 100,
     },
   };
 }

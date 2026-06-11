@@ -16,6 +16,16 @@ import { createWorkerPayment } from '@/app/services/workerPaymentService';
 import { createCourierPayment } from '@/app/services/courierPaymentService';
 import { logPaymentCreated } from '@/app/services/auditLogService';
 import { ensurePaymentsForLiquidityJournal } from '@/app/services/journalLiquidityPaymentService';
+import { notifyAccountingEntriesChanged } from '@/app/lib/accountingInvalidate';
+
+function notifyAddEntryAccountingRefresh(
+  companyId: string,
+  branchId: string | null | undefined,
+  entityId: string,
+  reason = 'accounting-entries-changed'
+): void {
+  notifyAccountingEntriesChanged({ companyId, branchId: branchId ?? null, entityId, reason });
+}
 
 const PAYMENT_METHOD_MAP: Record<string, string> = {
   cash: 'cash', Cash: 'cash', bank: 'bank', Bank: 'bank', 'mobile wallet': 'other', 'Mobile Wallet': 'other',
@@ -76,7 +86,7 @@ export async function createPureJournalEntry(params: CreatePureJournalParams): P
     document_no: entryNo,
     entry_date: entryDate,
     description: description || 'Journal entry',
-    reference_type: 'journal',
+    reference_type: 'general',
     reference_id: undefined,
     created_by: createdBy ?? undefined,
     ...(attachments && attachments.length > 0 ? { attachments } : {}),
@@ -186,7 +196,7 @@ export async function createCustomerReceiptEntry(params: CreateCustomerReceiptPa
 
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'customer', entityId: customerId } }));
-    window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+    notifyAddEntryAccountingRefresh(companyId, branch, (saved as { id: string }).id);
   }
   if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
     console.log('[AddEntryV2] createCustomerReceiptEntry:', {
@@ -229,8 +239,8 @@ export async function createSupplierPaymentEntry(params: CreateSupplierPaymentPa
     notes: desc,
     attachments,
   });
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+  if (typeof window !== 'undefined' && result.journalEntryId) {
+    notifyAddEntryAccountingRefresh(companyId, branchId, result.journalEntryId);
   }
   return result;
 }
@@ -275,7 +285,9 @@ export async function createWorkerPaymentEntry(params: CreateWorkerPaymentParams
   }
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'worker', entityId: workerId } }));
-    window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+    if (result.journalEntryId) {
+      notifyAddEntryAccountingRefresh(companyId, branchId, result.journalEntryId);
+    }
   }
   return result;
 }
@@ -361,7 +373,7 @@ export async function createInternalTransferEntry(params: CreateInternalTransfer
   const { companyId, branchId, fromAccountId, toAccountId, amount, entryDate, description, createdBy, attachments } = params;
   if (!companyId || !fromAccountId || !toAccountId || amount <= 0) throw new Error('Invalid transfer params');
   const branch = validBranchId(branchId);
-  const desc = description || 'Internal transfer';
+  const desc = description || 'Account transfer';
   let entryNo: string;
   try {
     entryNo = await documentNumberService.getNextDocumentNumber(companyId, branch, 'fund_transfer');
@@ -438,8 +450,8 @@ export async function createCourierPaymentEntry(params: CreateCourierPaymentPara
     notes: desc,
     attachments,
   });
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+  if (typeof window !== 'undefined' && result.journalEntryId) {
+    notifyAddEntryAccountingRefresh(companyId, branchId, result.journalEntryId);
   }
   return result;
 }

@@ -1,6 +1,7 @@
 /**
  * Barcode product labels: A4 browser print (web) + optional thermal text block.
  */
+import { formatCurrency as formatCurrencyUtil } from '@/app/utils/formatCurrency';
 import type { BarcodeLabelSettings } from '@/app/services/barcodeLabelSettingsService';
 
 export interface LabelPrintJob {
@@ -34,6 +35,10 @@ export interface LabelPrintLine {
 export interface LabelPrintContext {
   companyName?: string;
   branchName?: string;
+  currency?: string;
+  decimalPrecision?: number;
+  showCurrencySymbol?: boolean;
+  currencySymbol?: string | null;
 }
 
 function escapeHtml(s: string): string {
@@ -54,7 +59,7 @@ function barcodeSvg(code: string): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="40" viewBox="0 0 ${width} 40">${bars.join('')}</svg>`;
 }
 
-function buildLabelHtml(job: LabelPrintJob, settings: BarcodeLabelSettings): string {
+function buildLabelHtml(job: LabelPrintJob, settings: BarcodeLabelSettings, ctx?: LabelPrintContext): string {
   const parts: string[] = [];
   const company = job.companyName ?? job.businessName;
   if (settings.showCompanyName && company) {
@@ -75,16 +80,24 @@ function buildLabelHtml(job: LabelPrintJob, settings: BarcodeLabelSettings): str
     parts.push(`<div class="pack">${escapeHtml(job.packingSummary)}</div>`);
   }
   if (settings.showPrice && job.price != null) {
-    parts.push(`<div class="price">Rs. ${Number(job.price).toLocaleString('en-PK')}</div>`);
+    const priceText = formatCurrencyUtil(job.price, ctx?.currency ?? 'PKR', ctx?.decimalPrecision ?? 2, {
+      showSymbol: ctx?.showCurrencySymbol,
+      symbolOverride: ctx?.currencySymbol,
+    });
+    parts.push(`<div class="price">${escapeHtml(priceText)}</div>`);
   }
   return `<div class="label">${parts.join('')}</div>`;
 }
 
-export function buildA4SheetHtml(jobs: LabelPrintJob[], settings: BarcodeLabelSettings): string {
+export function buildA4SheetHtml(
+  jobs: LabelPrintJob[],
+  settings: BarcodeLabelSettings,
+  ctx?: LabelPrintContext,
+): string {
   const cols = Math.max(2, Math.min(4, settings.a4Columns || 3));
   const maxPerSheet = Math.max(6, settings.maxLabelsPerSheet || 30);
   const capped = jobs.slice(0, maxPerSheet);
-  const cells = capped.map((j) => buildLabelHtml(j, settings)).join('');
+  const cells = capped.map((j) => buildLabelHtml(j, settings, ctx)).join('');
   return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Barcode labels</title><style>
     @page { size: A4; margin: 10mm; }
     body { font-family: Arial, sans-serif; margin: 0; }
@@ -161,7 +174,7 @@ export function printProductLabelsBatch(
     return { ok: false, hint: 'No printable labels (check barcode/SKU and selection).', printedCount: 0 };
   }
   try {
-    const html = buildA4SheetHtml(jobs, settings);
+    const html = buildA4SheetHtml(jobs, settings, ctx);
     printLabelsInBrowser(html);
     return { ok: true, printedCount: jobs.length };
   } catch (e) {

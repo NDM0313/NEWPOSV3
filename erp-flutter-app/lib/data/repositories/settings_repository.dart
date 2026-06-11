@@ -1,5 +1,6 @@
 import '../../core/supabase/supabase_bootstrap.dart';
 import '../models/module_toggles.dart';
+import '../models/mobile_printer_settings.dart';
 
 const _moduleConfigNames = [
   'rentals',
@@ -44,6 +45,52 @@ class SettingsRepository {
       );
     } catch (e) {
       return (toggles: ModuleToggles.failClosed, error: e.toString());
+    }
+  }
+
+  static const _mobilePrinterKey = 'mobile_printer';
+
+  Future<({MobilePrinterSettings settings, String? error})> getMobilePrinterSettings(
+    String? companyId,
+  ) async {
+    if (companyId == null) {
+      return (settings: MobilePrinterSettings.defaults, error: null);
+    }
+    try {
+      final row = await _client
+          .from('settings')
+          .select('value')
+          .eq('company_id', companyId)
+          .eq('key', _mobilePrinterKey)
+          .maybeSingle();
+      if (row == null) {
+        return (settings: MobilePrinterSettings.defaults, error: null);
+      }
+      final raw = Map<String, dynamic>.from(row['value'] as Map? ?? {});
+      return (settings: MobilePrinterSettings.fromJson(raw), error: null);
+    } catch (e) {
+      return (settings: MobilePrinterSettings.defaults, error: e.toString());
+    }
+  }
+
+  Future<String?> setMobilePrinterSettings(
+    String companyId,
+    MobilePrinterSettings settings,
+  ) async {
+    try {
+      await _client.from('settings').upsert(
+        {
+          'company_id': companyId,
+          'key': _mobilePrinterKey,
+          'value': settings.toJson(),
+          'category': 'mobile',
+          'description': 'Printer: thermal receipt or A4 (normal)',
+        },
+        onConflict: 'company_id,key',
+      );
+      return null;
+    } catch (e) {
+      return e.toString();
     }
   }
 }

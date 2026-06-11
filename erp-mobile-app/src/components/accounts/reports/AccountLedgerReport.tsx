@@ -12,8 +12,11 @@ import { DateRangeBar, makeInitialRange, type DateRangeValue } from './_shared/D
 import { ReportShell, ReportCard, ReportSectionTitle } from './_shared/ReportShell';
 import { formatAmount, formatDate, dateRangeLabel, displayReferenceNumber } from './_shared/format';
 import { PdfPreviewModal } from '../../shared/PdfPreviewModal';
-import { LedgerPreviewPdf } from '../../shared/LedgerPreviewPdf';
+import { MobileLedgerStatementPdf } from '../../shared/MobileLedgerStatementPdf';
 import { usePdfPreview } from '../../shared/usePdfPreview';
+import { useFormatCurrencyFromBundle } from '../../../hooks/useFormatCurrency';
+import { buildLedgerStatementShareMessage } from '../../../lib/buildLedgerStatementShareMessage';
+import { ledgerLinesToStatementRows } from '../../../lib/ledgerLineToStatementRow';
 import { TransactionDetailSheet } from './_shared/TransactionDetailSheet';
 import type { TransactionReferenceType } from '../../../api/transactionDetail';
 import { sortLedgerLinesAndRebuildRunningBalance } from '../../../lib/ledgerChronology';
@@ -38,7 +41,7 @@ export function AccountLedgerReport({
   onBack,
   companyId,
   initialAccountId,
-  user,
+  user: _user,
   branchId,
   filterTypes,
   titleOverride,
@@ -227,6 +230,47 @@ export function AccountLedgerReport({
     const closing = lines.length ? lines[lines.length - 1].runningBalance : opening;
     return { debit, credit, closing };
   }, [lines, opening]);
+
+  const currencyBundle = preview.currency ?? {
+    currency: 'PKR',
+    currencySymbol: null,
+    showCurrencySymbol: true,
+    decimalPrecision: 2,
+  };
+  const { formatCurrency: formatLedgerCurrency } = useFormatCurrencyFromBundle(currencyBundle);
+  const generatedAt = useMemo(() => new Date().toLocaleString('en-PK'), [preview.open]);
+  const branchScopeLabel = branchId ? 'Selected branch (GL scope)' : 'All branches (GL scope)';
+  const ledgerShareText = useMemo(() => {
+    if (!preview.brand || !selected) return '';
+    return buildLedgerStatementShareMessage({
+      businessName: preview.brand.name,
+      reportTitle: titleOverride ?? 'Account Ledger',
+      partyLabel: `${selected.code} — ${selected.name}`,
+      periodLabel: dateRangeLabel(range.from, range.to),
+      branchScopeLabel,
+      openingBalance: opening,
+      totalDebit: totals.debit,
+      totalCredit: totals.credit,
+      closingBalance: totals.closing,
+      formatCurrency: formatLedgerCurrency,
+      generatedAt,
+    });
+  }, [
+    preview.brand,
+    selected,
+    titleOverride,
+    range.from,
+    range.to,
+    branchScopeLabel,
+    opening,
+    totals,
+    formatLedgerCurrency,
+    generatedAt,
+  ]);
+  const statementRows = useMemo(
+    () => ledgerLinesToStatementRows(lines, (entryNo, refType) => displayReferenceNumber(entryNo, refType)),
+    [lines],
+  );
 
   type Granularity = 'none' | 'week' | 'month';
   const granularity: Granularity = useMemo(() => {
@@ -510,34 +554,31 @@ export function AccountLedgerReport({
         </ReportCard>
       </ReportShell>
 
-      {preview.brand && (
+      {preview.brand && selected && (
         <PdfPreviewModal
           open={preview.open}
           title={titleOverride ?? 'Account Ledger'}
           filename={`Account_Ledger_${selected.code}_${range.from || 'all'}_${range.to || 'now'}.pdf`}
           onClose={preview.close}
-          whatsAppFallbackText={`${selected.code} — ${selected.name} · ${dateRangeLabel(range.from, range.to)}`}
+          preparing={preview.loading}
+          orientation={preview.ledgerOrientation}
+          whatsAppFallbackText={ledgerShareText}
         >
-          <LedgerPreviewPdf
+          <MobileLedgerStatementPdf
             brand={preview.brand}
+            printingSettings={preview.printingSettings}
             title={titleOverride ?? 'Account Ledger'}
-            subtitle={dateRangeLabel(range.from, range.to)}
             partyName={`${selected.code} — ${selected.name}`}
-            partyMeta={selected.type}
+            periodLabel={dateRangeLabel(range.from, range.to)}
+            branchScopeLabel={branchScopeLabel}
             openingBalance={opening}
             closingBalance={totals.closing}
-            totals={{ debit: totals.debit, credit: totals.credit }}
-            rows={lines.map((l) => ({
-              date: l.date,
-              reference: displayReferenceNumber(l.entryNo, l.referenceType),
-              description: l.description,
-              debit: l.debit,
-              credit: l.credit,
-              balance: l.runningBalance,
-              hasAttachment: l.hasAttachments,
-            }))}
-            generatedBy={user.name || user.email || 'User'}
-            generatedAt={new Date().toLocaleString('en-PK')}
+            totalDebit={totals.debit}
+            totalCredit={totals.credit}
+            rows={statementRows}
+            formatCurrency={formatLedgerCurrency}
+            formatDate={formatDate}
+            generatedAt={generatedAt}
           />
         </PdfPreviewModal>
       )}

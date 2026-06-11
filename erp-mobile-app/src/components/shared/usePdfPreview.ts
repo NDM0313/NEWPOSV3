@@ -1,31 +1,59 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { getCompanyBrand, type CompanyBrand } from '../../api/reports';
+import {
+  getMobilePrintingSettings,
+  type MobilePrintingSettingsBundle,
+} from '../../api/mobilePrintingSettings';
+import type { ReportPrintOrientation } from '../../lib/reportPrintConfig';
+import { resolveLedgerPrintOptions } from '../../lib/resolveLedgerPrintOptions';
 
 /**
- * Hook that encapsulates the "load brand + open preview modal" flow used by
- * every report component.  Returns stable handlers/state suitable for passing
- * into `ReportHeader.onShare` and `PdfPreviewModal`.
+ * Load brand + printing settings before opening PdfPreviewModal.
+ * Settings are refreshed on every open (forceRefresh) so PDF matches web.
  */
 export function usePdfPreview(companyId: string | null) {
   const [brand, setBrand] = useState<CompanyBrand | null>(null);
+  const [settingsBundle, setSettingsBundle] = useState<MobilePrintingSettingsBundle | null>(null);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const openLockRef = useRef(false);
+
+  const ledgerOrientation: ReportPrintOrientation = settingsBundle
+    ? resolveLedgerPrintOptions(settingsBundle.printingSettings).orientation
+    : 'portrait';
 
   const openPreview = useCallback(async () => {
-    if (!companyId) return;
-    if (!brand) {
-      setLoading(true);
-      try {
-        const b = await getCompanyBrand(companyId);
-        setBrand(b);
-      } finally {
-        setLoading(false);
-      }
+    if (!companyId || openLockRef.current) return;
+    openLockRef.current = true;
+    setLoading(true);
+    try {
+      const [b, settingsRes] = await Promise.all([
+        brand ? Promise.resolve(brand) : getCompanyBrand(companyId),
+        getMobilePrintingSettings(companyId, { forceRefresh: true }),
+      ]);
+      setBrand(b);
+      setSettingsBundle(settingsRes.data);
+      setOpen(true);
+    } finally {
+      setLoading(false);
+      setTimeout(() => {
+        openLockRef.current = false;
+      }, 300);
     }
-    setOpen(true);
   }, [companyId, brand]);
 
   const close = useCallback(() => setOpen(false), []);
 
-  return { brand, open, loading, openPreview, close };
+  return {
+    brand,
+    settingsBundle,
+    printingSettings: settingsBundle?.printingSettings ?? null,
+    currency: settingsBundle?.currency ?? null,
+    receiptFields: settingsBundle?.receiptFields ?? null,
+    ledgerOrientation,
+    open,
+    loading,
+    openPreview,
+    close,
+  };
 }

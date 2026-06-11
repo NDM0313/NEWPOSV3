@@ -19,9 +19,16 @@ import { rowInListBranchScope } from '../../lib/listBranchScope';
 import * as expensesApi from '../../api/expenses';
 import * as authApi from '../../api/auth';
 import * as accountsApi from '../../api/accounts';
+import { getDefaultAccounts, type DefaultAccountsSettings } from '../../api/settings';
+import { getBranchPaymentDefaults } from '../../api/branches';
 import { getUsersForSalary, type SalaryUserRow } from '../../api/users';
+import {
+  resolveDefaultExpensePaymentAccountId,
+  type BranchPaymentDefaults,
+} from '../../utils/resolveDefaultPaymentAccount';
 import { addPending } from '../../lib/offlineStore';
-import { getCurrentLocalTimestamp, localNowDateString } from '../../utils/localDate';
+import { getCurrentLocalTimestamp, localNowDateString, toLocalDateString } from '../../utils/localDate';
+import { DateInputField } from '../shared/DateTimePicker';
 import { sortByDocumentDateTimeDesc } from '../../utils/chronologicalSort';
 import { usePermissions } from '../../context/PermissionContext';
 import { formatAccountPickerSubtitle } from '../../utils/balancePrivacy';
@@ -184,6 +191,8 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
   const [searchQuery, setSearchQuery] = useState('');
   // Add form: account (Cash/Bank), category tree, attachment
   const [paymentAccounts, setPaymentAccounts] = useState<accountsApi.AccountRow[]>([]);
+  const [defaultAccounts, setDefaultAccounts] = useState<DefaultAccountsSettings | null>(null);
+  const [branchPaymentDefaults, setBranchPaymentDefaults] = useState<BranchPaymentDefaults | null>(null);
   const [categoryTree, setCategoryTree] = useState<expensesApi.ExpenseCategoryTreeItem[]>([]);
   const [addAccountId, setAddAccountId] = useState('');
   const [mainCategoryId, setMainCategoryId] = useState('');
@@ -413,8 +422,32 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
   useEffect(() => {
     if (!showAdd || !companyId) return;
     accountsApi.getPaymentAccounts(companyId).then(({ data }) => setPaymentAccounts(data || []));
+    getDefaultAccounts(companyId).then(({ data }) => setDefaultAccounts(data));
     reloadCategoryTree();
   }, [showAdd, companyId, reloadCategoryTree]);
+
+  useEffect(() => {
+    if (!showAdd || !writeBranchId) {
+      setBranchPaymentDefaults(null);
+      return;
+    }
+    getBranchPaymentDefaults(writeBranchId).then(setBranchPaymentDefaults);
+  }, [showAdd, writeBranchId]);
+
+  useEffect(() => {
+    if (!showAdd || paymentAccounts.length === 0 || addAccountId) return;
+    const picks = paymentAccounts.map((a) => ({
+      id: a.id,
+      name: a.name,
+      type: a.type,
+      balance: a.balance ?? 0,
+      code: a.code,
+      isDefaultCash: a.isDefaultCash,
+      isDefaultBank: a.isDefaultBank,
+    }));
+    const resolved = resolveDefaultExpensePaymentAccountId(picks, defaultAccounts, branchPaymentDefaults);
+    if (resolved) setAddAccountId(resolved);
+  }, [showAdd, paymentAccounts, defaultAccounts, branchPaymentDefaults, addAccountId]);
 
   const selectedMain = categoryTree.find((m) => m.id === mainCategoryId);
   const subOptions = selectedMain?.children ?? [];
@@ -907,7 +940,40 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
                     placeholder="Main category"
                     zIndexClass="z-[90]"
                   />
-                  {subOptions.length > 0 && (
+                  {isSalaryCategory && (
+                    <div>
+                      {salaryUsersLoading ? (
+                        <p className="text-sm text-[#9CA3AF] flex items-center gap-2">
+                          <Loader2 className="w-4 h-4 animate-spin shrink-0" /> Loading staff…
+                        </p>
+                      ) : (
+                        <>
+                          <CustomSearchableSheet
+                            label="Pay to (staff user) *"
+                            sheetTitle="Select payee"
+                            value={paidToUserId}
+                            onChange={setPaidToUserId}
+                            options={salaryUsers.map((u) => ({
+                              value: u.id,
+                              label: u.full_name,
+                              description: [u.role, u.email].filter(Boolean).join(' · ') || undefined,
+                            }))}
+                            placeholder="Search by name, role, or email…"
+                            searchPlaceholder="Search staff…"
+                            required
+                            hint="Salary is for users only (Admin, Staff, Salesman, Operator). Workers are paid via Production → Worker Ledger."
+                            zIndexClass="z-[90]"
+                          />
+                          {!salaryUsersLoading && salaryUsers.length === 0 && (
+                            <p className="text-xs text-[#F59E0B] mt-2">
+                              No staff users found for this company. Add users in Settings → Users and mark salesmen there.
+                            </p>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
+                  {!isSalaryCategory && subOptions.length > 0 && (
                     <CustomSelect
                       value={subCategoryId}
                       onChange={(v) => {
@@ -922,7 +988,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
                       zIndexClass="z-[90]"
                     />
                   )}
-                  {leafOptions.length > 0 && (
+                  {!isSalaryCategory && leafOptions.length > 0 && (
                     <CustomSelect
                       value={leafCategoryId}
                       onChange={setLeafCategoryId}
@@ -995,46 +1061,15 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
             )}
 
             <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
-              <label htmlFor="expense-date-input" className="block text-sm font-medium text-[#D1D5DB] mb-2">
-                Expense date *
-              </label>
-              <input
-                id="expense-date-input"
-                type="date"
+              <DateInputField
+                label="Expense date"
                 value={addExpenseDate}
+                onChange={(v) => setAddExpenseDate(toLocalDateString(v))}
                 max={localNowDateString()}
-                onChange={(e) => setAddExpenseDate(e.target.value)}
-                className="w-full h-11 bg-[#111827] border border-[#374151] rounded-lg px-3 text-sm text-white focus:outline-none focus:border-[#EF4444]"
+                required
+                helperText="Uses your device calendar date (not UTC midnight)."
               />
-              <p className="text-xs text-[#9CA3AF] mt-2">Uses your device calendar date (not UTC midnight).</p>
             </div>
-
-            {isSalaryCategory && (
-              <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
-                {salaryUsersLoading ? (
-                  <p className="text-sm text-[#9CA3AF] flex items-center gap-2">
-                    <Loader2 className="w-4 h-4 animate-spin shrink-0" /> Loading staff…
-                  </p>
-                ) : (
-                  <CustomSearchableSheet
-                    label="Pay to (staff user) *"
-                    sheetTitle="Select payee"
-                    value={paidToUserId}
-                    onChange={setPaidToUserId}
-                    options={salaryUsers.map((u) => ({
-                      value: u.id,
-                      label: u.full_name,
-                      description: [u.role, u.email].filter(Boolean).join(' · ') || undefined,
-                    }))}
-                    placeholder="Search by name, role, or email…"
-                    searchPlaceholder="Search staff…"
-                    required
-                    hint="Salary is for users only (Admin, Staff, Salesman, Operator). Workers are paid via Production → Worker Ledger."
-                    zIndexClass="z-[90]"
-                  />
-                )}
-              </div>
-            )}
 
             <TextInput
               label={isSalaryCategory ? 'Description (optional for salary)' : 'Description *'}

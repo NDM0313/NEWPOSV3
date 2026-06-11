@@ -7,6 +7,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { safeRpcBranchId } from './contactBalancesRpc';
 import type { LedgerLine } from './reports';
 import { enrichLedgerLinesWithHasAttachments } from '../lib/loadMergedAttachments';
+import { formatReferenceTypeLabel } from '../lib/formatReferenceTypeLabel';
 
 type RpcPayload = { period_opening_balance?: number; rows?: Record<string, unknown>[] };
 
@@ -23,6 +24,8 @@ function mapRpcRowToLedgerLine(r: Record<string, unknown>, index: number): Ledge
     entryNo !== ''
       ? entryNo
       : (String(jeId ?? '').length >= 8 ? String(jeId).slice(0, 8) : '—');
+  const refType = String(r.reference_type ?? r.ref_type ?? '');
+  const branchName = r.branch_name != null ? String(r.branch_name) : undefined;
   return {
     id,
     journalEntryId: String(jeId ?? ''),
@@ -32,10 +35,20 @@ function mapRpcRowToLedgerLine(r: Record<string, unknown>, index: number): Ledge
     entryNo,
     description: String(r.description ?? '—'),
     reference,
-    referenceType: String(r.reference_type ?? r.ref_type ?? ''),
+    referenceType: refType,
+    transactionType: formatReferenceTypeLabel(refType),
+    branch: branchName && branchName.trim() ? branchName : undefined,
     debit: Number(r.debit ?? 0),
     credit: Number(r.credit ?? 0),
     runningBalance: Number(r.running_balance ?? 0),
+    paymentMethod:
+      r.payment_method != null && String(r.payment_method).trim()
+        ? String(r.payment_method)
+        : undefined,
+    createdBy:
+      r.created_by_name != null && String(r.created_by_name).trim()
+        ? String(r.created_by_name)
+        : undefined,
   };
 }
 

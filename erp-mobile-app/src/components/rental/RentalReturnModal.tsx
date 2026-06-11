@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { CustomSelect } from '../common';
 import type { RentalDetail } from '../../api/rentals';
-import { localNowDateString } from '../../utils/localDate';
+import { localNowDateString, toLocalDateString } from '../../utils/localDate';
+import { DateInputField } from '../shared/DateTimePicker';
 import * as accountsApi from '../../api/accounts';
 
 interface RentalReturnModalProps {
@@ -105,15 +106,12 @@ export function RentalReturnModal({ rental, companyId, onClose, onConfirm, loadi
             <p className="text-xs text-[#9CA3AF] mt-2">Final payable (rent + penalty)</p>
             <p className="font-bold text-[#F59E0B]">Rs. {finalPayable.toLocaleString()}</p>
           </div>
-          <div>
-            <label className="block text-sm text-[#9CA3AF] mb-1">Actual return date</label>
-            <input
-              type="date"
-              value={actualReturnDate}
-              onChange={(e) => setActualReturnDate(e.target.value)}
-              className="w-full max-w-full min-w-0 h-10 bg-[#111827] border border-[#374151] rounded-lg px-3 text-white box-border"
-            />
-          </div>
+          <DateInputField
+            label="Actual return date"
+            value={actualReturnDate}
+            onChange={(v) => setActualReturnDate(toLocalDateString(v))}
+            accent="rental"
+          />
           <div>
             <CustomSelect
               label="Condition"

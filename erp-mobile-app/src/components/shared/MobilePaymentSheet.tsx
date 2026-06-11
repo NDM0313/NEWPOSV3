@@ -44,6 +44,12 @@ import {
   type PaymentAccountPick,
   type BranchPaymentDefaults,
 } from '../../utils/resolveDefaultPaymentAccount';
+import { AccountSideLabelRow, MoneyFlowSummaryBar } from './DebitCreditInOutHint';
+import {
+  getPaymentAccountSide,
+  getPaymentFlowSummary,
+  paymentAccountFieldTitle,
+} from '../../utils/debitCreditInOutLabels';
 
 function blurActiveInput(): void {
   const el = document.activeElement as HTMLElement | null;
@@ -687,7 +693,15 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-[#9CA3AF] mb-2">Select Account *</label>
+          {(() => {
+            const flow = getPaymentFlowSummary(mode);
+            return flow ? <MoneyFlowSummaryBar inLabel={flow.inLabel} outLabel={flow.outLabel} /> : null;
+          })()}
+          <AccountSideLabelRow
+            title={paymentAccountFieldTitle(getPaymentAccountSide(mode))}
+            side={getPaymentAccountSide(mode)}
+            required
+          />
           <button
             type="button"
             onClick={() => setAccountPickerOpen(true)}
@@ -721,7 +735,9 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="flex items-center justify-between px-4 py-3 border-b border-[#374151] shrink-0">
-                  <span className="text-sm font-semibold text-white">Payment account</span>
+                  <span className="text-sm font-semibold text-white">
+                    {paymentAccountFieldTitle(getPaymentAccountSide(mode))}
+                  </span>
                   <button
                     type="button"
                     onClick={() => setAccountPickerOpen(false)}

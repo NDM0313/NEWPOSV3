@@ -2,8 +2,12 @@
  * Central date-range presets for mobile ERP (reports, dashboard, rentals, etc.).
  * Aligned with web TopHeader / GlobalFilterContext business-week rules.
  */
-import { formatLocalDateYYYYMMDD, localNowDateString } from '../utils/localDate';
+import { formatLocalDateYYYYMMDD, localNowDateString, inputHasTime, toLocalDateString, normalizeDateRangeInput } from '../utils/localDate';
 import { getLastBusinessWeekRange, getThisBusinessWeekRange } from '../utils/businessWeek';
+import {
+  getFinancialYearRangeToToday,
+  getLastFinancialYearRange,
+} from '../utils/financialYear';
 
 export type DateRangePreset =
   | 'today'
@@ -14,6 +18,9 @@ export type DateRangePreset =
   | 'week'
   | 'lastWeek'
   | 'month'
+  | 'currentFy'
+  | 'lastFy'
+  | 'fromStart'
   | 'quarter'
   | 'year'
   | 'all'
@@ -34,6 +41,9 @@ export const DATE_RANGE_PRESET_CHIPS: { id: DateRangePreset; label: string }[] =
   { id: 'week', label: 'This week' },
   { id: 'lastWeek', label: 'Last week' },
   { id: 'month', label: 'This month' },
+  { id: 'currentFy', label: 'Current financial year' },
+  { id: 'lastFy', label: 'Last financial year' },
+  { id: 'fromStart', label: 'From start' },
   { id: 'quarter', label: 'Quarter' },
   { id: 'year', label: 'This year' },
   { id: 'all', label: 'All time' },
@@ -49,7 +59,11 @@ function todayIso(anchor: Date = new Date()): string {
 }
 
 /** Resolve preset → { from, to } YMD (inclusive). */
-export function buildDateRange(preset: DateRangePreset, anchorDate: Date = new Date()): DateRangeValue {
+export function buildDateRange(
+  preset: DateRangePreset,
+  anchorDate: Date = new Date(),
+  fiscalYearStart?: string | null
+): DateRangeValue {
   const today = new Date(anchorDate);
   today.setHours(0, 0, 0, 0);
   const to = todayIso(today);
@@ -83,6 +97,18 @@ export function buildDateRange(preset: DateRangePreset, anchorDate: Date = new D
     case 'month':
       from.setDate(1);
       return { from: toIso(from), to, preset };
+    case 'currentFy': {
+      const { start, end } = getFinancialYearRangeToToday(fiscalYearStart ?? undefined, today);
+      return { from: toIso(start), to: toIso(end), preset };
+    }
+    case 'lastFy': {
+      const { start, end } = getLastFinancialYearRange(fiscalYearStart ?? undefined, today);
+      return { from: toIso(start), to: toIso(end), preset };
+    }
+    case 'fromStart': {
+      const start = new Date(today.getFullYear() - 10, 0, 1);
+      return { from: toIso(start), to, preset };
+    }
     case 'quarter': {
       const m = from.getMonth();
       from.setMonth(m - (m % 3), 1);
@@ -108,8 +134,22 @@ export function dateRangePresetLabel(value: DateRangeValue): string {
   const chip = DATE_RANGE_PRESET_CHIPS.find((c) => c.id === value.preset);
   if (value.preset !== 'custom' && chip) return chip.label;
   if (!value.from && !value.to) return 'All time';
-  if (value.from === value.to) return value.from;
-  return `${value.from} → ${value.to}`;
+  const fmt = (v: string) => {
+    if (inputHasTime(v)) {
+      const d = new Date(v);
+      if (!Number.isNaN(d.getTime())) {
+        return d.toLocaleString('en-PK', { dateStyle: 'short', timeStyle: 'short' });
+      }
+    }
+    return toLocalDateString(v);
+  };
+  if (value.from === value.to) return fmt(value.from);
+  return `${fmt(value.from)} → ${fmt(value.to)}`;
+}
+
+/** Query bounds for API filters from a DateRangeValue. */
+export function queryBoundsFromRange(value: DateRangeValue) {
+  return normalizeDateRangeInput(value.from, value.to);
 }
 
 /** Default "now" string for custom range init. */

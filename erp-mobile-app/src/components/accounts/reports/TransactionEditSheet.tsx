@@ -4,6 +4,8 @@ import { CustomSelect } from '../../common';
 import type { TransactionDetail } from '../../../api/transactions';
 import { supabase } from '../../../lib/supabase';
 import { updateTransaction } from '../../../api/transactionEdit';
+import { DateInputField } from '../../shared/DateTimePicker';
+import { toLocalDateString } from '../../../utils/localDate';
 
 interface Props {
   detail: TransactionDetail;
@@ -102,16 +104,11 @@ export function TransactionEditSheet({ detail, companyId, onClose, onSuccess }: 
             </div>
           )}
 
-          <div>
-            <label className="block text-xs font-medium text-[#9CA3AF] mb-1">Date</label>
-            <input
-              type="date"
-              value={paymentDate}
-              onChange={(e) => setPaymentDate(e.target.value)}
-              className="w-full bg-[#1F2937] border border-[#374151] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#6366F1]"
-              disabled={loading}
-            />
-          </div>
+          <DateInputField
+            label="Date"
+            value={paymentDate}
+            onChange={(v) => setPaymentDate(toLocalDateString(v))}
+          />
 
           {!isManualJournal && (
             <div>

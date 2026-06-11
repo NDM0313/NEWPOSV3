@@ -131,4 +131,11 @@ export interface LedgerData {
     partiallyPaid: number;
     unpaid: number;
   };
+  /** User (staff/salesman) operational statement breakdown. */
+  userStatementSummary?: {
+    salaryPaid: number;
+    commissionEarned: number;
+    commissionPaid: number;
+    netOwedToUser: number;
+  };
 }

@@ -7,6 +7,9 @@ import '../../../app/theme/app_colors.dart';
 import '../../../core/widgets/detail_section.dart';
 import '../../../core/widgets/module_scaffold.dart';
 import '../../auth/providers/auth_session_provider.dart';
+import '../../auth/providers/counter_worker_provider.dart';
+import '../widgets/counter_pin_enroll_dialog.dart';
+import '../widgets/settings_printer_section.dart';
 
 final packageInfoProvider = FutureProvider<PackageInfo>((ref) async {
   return PackageInfo.fromPlatform();
@@ -21,6 +24,8 @@ class SettingsScreen extends ConsumerWidget {
     final profile = session.profile;
     final branch = session.selectedBranch;
     final packageInfo = ref.watch(packageInfoProvider);
+    final sharedCounter = ref.watch(sharedCounterModeProvider);
+    final activeWorker = ref.watch(counterWorkerProvider);
 
     final versionLabel = packageInfo.when(
       data: (info) => '${info.version} (${info.buildNumber})',
@@ -42,10 +47,35 @@ class SettingsScreen extends ConsumerWidget {
               DetailRow(label: 'App version', value: versionLabel),
             ],
           ),
-          const SizedBox(height: 12),
-          const Text(
-            'Counter/PIN tablet mode is not in this Flutter build — use the Capacitor APK on shared counter devices until a future release.',
-            style: TextStyle(color: AppColors.muted, fontSize: 12),
+          if (profile?.companyId != null) ...[
+            const SizedBox(height: 16),
+            SettingsPrinterSection(companyId: profile!.companyId!),
+          ],
+          const SizedBox(height: 16),
+          Text('Counter / PIN', style: Theme.of(context).textTheme.titleMedium),
+          SwitchListTile(
+            title: const Text('Shared counter mode'),
+            subtitle: const Text('Require worker PIN on POS and home.'),
+            value: sharedCounter,
+            onChanged: (v) => ref.read(sharedCounterModeProvider.notifier).setEnabled(v),
+          ),
+          if (activeWorker != null)
+            ListTile(
+              title: Text('Active worker: ${activeWorker.displayName}'),
+              trailing: TextButton(
+                onPressed: () => ref.read(counterWorkerProvider.notifier).lock(),
+                child: const Text('Lock'),
+              ),
+            ),
+          OutlinedButton.icon(
+            onPressed: () async {
+              await showDialog<bool>(
+                context: context,
+                builder: (_) => const CounterPinEnrollDialog(),
+              );
+            },
+            icon: const Icon(Icons.pin),
+            label: const Text('Enroll my counter PIN'),
           ),
           const SizedBox(height: 16),
           ElevatedButton(

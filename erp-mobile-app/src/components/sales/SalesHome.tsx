@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { ArrowLeft, Plus, Loader2, MoreVertical, Printer, RotateCcw, Ban, History, Search, ShoppingCart, Calendar, Paperclip, Briefcase, Share2, Download, FileText, AlertTriangle, SquarePen, X, Trash2, Zap, Store } from 'lucide-react';
+import { ArrowLeft, Plus, Loader2, MoreVertical, Printer, RotateCcw, Ban, History, Search, ShoppingCart, Calendar, Briefcase, Share2, Download, FileText, AlertTriangle, SquarePen, X, Trash2, Zap, Store, Shirt } from 'lucide-react';
 import * as salesApi from '../../api/sales';
+import * as rentalsApi from '../../api/rentals';
+import type { RentalListItem } from '../../api/rentals';
 import * as saleChargesApi from '../../api/saleCharges';
 import { useBespokeEnabled } from '../../hooks/useBespokeEnabled';
 import { SaleBespokeWorkOrders } from './SaleBespokeWorkOrders';
@@ -22,6 +24,8 @@ import {
   type SaleLedgerSyncSkipReason,
 } from '../../api/saleEditAccounting';
 import { CustomSearchableSheet, PullToRefresh, OfflineBanner, SwipeBackShell } from '../common';
+import { DateInputField } from '../shared/DateTimePicker';
+import { PaymentHistoryList } from '../shared/PaymentHistoryList';
 import { useOfflineListMeta } from '../../hooks/useOfflineListMeta';
 import { useMainScrollRef } from '../../contexts/MainScrollContext';
 import {
@@ -64,6 +68,7 @@ import { AttachmentPreviewModal } from './AttachmentPreviewModal';
 import { SaleReturnModal } from './SaleReturnModal';
 import { PdfPreviewModal } from '../shared/PdfPreviewModal';
 import { usePdfPreview } from '../shared/usePdfPreview';
+import { useFormatCurrencyFromBundle } from '../../hooks/useFormatCurrency';
 import { NumericInput } from '../common';
 import { InvoicePreviewPdf, type InvoicePreviewItem } from '../shared/InvoicePreviewPdf';
 import { SaleActivitySheet } from './SaleActivitySheet';
@@ -73,12 +78,16 @@ import { getEffectivePrinterSettings } from '../../api/settings';
 import { AttachmentsSection } from '../shared/AttachmentsSection';
 import { normalizeAttachments } from '../../lib/normalizeAttachments';
 import { usePermissions } from '../../context/PermissionContext';
+import { shouldScopeRentalsToOwnOnly } from '../../api/permissions';
+import { RentalWorkflowBadges } from '../rental/RentalWorkflowBadges';
+import { formatDate } from '../accounts/reports/_shared/format';
 import { canViewSaleBalances, maskMoney } from '../../utils/balancePrivacy';
 import {
   isLikelyPosSaleRow,
   isStudioSaleRow,
   matchesSaleListTypeFilter,
   saleListTypeLabel,
+  saleTypeFilterGridColsClass,
   type SaleListTypeFilter,
 } from '../../lib/saleTypeClassification';
 import { formatDocumentListDateTime, getCurrentLocalTimestamp } from '../../utils/localDate';
@@ -92,6 +101,7 @@ import {
 } from '../../context/CounterWorkerContext';
 import {
   rowBelongsToCounterWorker,
+  rowBelongsToRentalWorker,
   resolveCounterListBranchScope,
   shouldIsolateCounterWorkerData,
 } from '../../lib/counterDataIsolation';
@@ -102,6 +112,10 @@ import {
 
 const SALE_LIST_FETCH_CAP = 100;
 const SALE_LIST_DISPLAY_CAP = 50;
+
+type SalesHomeListEntry =
+  | { kind: 'sale'; sale: SaleRecord }
+  | { kind: 'rental'; rental: RentalListItem };
 
 type SaleRecord = {
   raw: Record<string, unknown>;
@@ -157,6 +171,7 @@ function mapEnrichedRowToSaleRecord(s: Record<string, unknown>): SaleRecord {
 interface SalesHomeProps {
   onBack: () => void;
   onNewSale: () => void;
+  onOpenRental?: (rentalId: string) => void;
   companyId: string | null;
   branchId: string | null;
   userId?: string | null;
@@ -169,6 +184,7 @@ interface SalesHomeProps {
 export function SalesHome({
   onBack,
   onNewSale,
+  onOpenRental,
   companyId,
   branchId,
   userId,
@@ -181,14 +197,23 @@ export function SalesHome({
   const effectiveProfileId = useEffectiveWorkerProfileId() ?? userProfileId ?? null;
   const effectiveRole = useEffectiveWorkerRole(sessionRole ?? 'admin');
   const isolateWorkerData = shouldIsolateCounterWorkerData(effectiveRole);
-  const { canViewBalances, branchIds, isAdminOrOwner, isModuleEnabled } = usePermissions();
+  const { canViewBalances, branchIds, isAdminOrOwner, isModuleEnabled, permissions, isPermissionLoaded } = usePermissions();
   const studioModuleOn = isModuleEnabled('studio');
+  const rentalModuleOn = isModuleEnabled('rental');
+  const scopeRentalsToOwn = useMemo(
+    () =>
+      isPermissionLoaded
+        ? shouldScopeRentalsToOwnOnly(permissions, isAdminOrOwner)
+        : false,
+    [isPermissionLoaded, permissions, isAdminOrOwner],
+  );
   const saleTypeFilterTabs = useMemo((): SaleListTypeFilter[] => {
     const tabs: SaleListTypeFilter[] = ['all'];
     if (studioModuleOn) tabs.push('studio');
     tabs.push('pos', 'regular');
+    if (rentalModuleOn) tabs.push('rental');
     return tabs;
-  }, [studioModuleOn]);
+  }, [studioModuleOn, rentalModuleOn]);
 
   const listBranchScope = useMemo(
     (): ListBranchScope =>
@@ -199,6 +224,7 @@ export function SalesHome({
   const useScopedStats =
     isolateWorkerData || listBranchScope.mode === 'accessible';
   const [recentSales, setRecentSales] = useState<SaleRecord[]>([]);
+  const [recentRentals, setRecentRentals] = useState<RentalListItem[]>([]);
   const [stats, setStats] = useState<{ today: number; week: number; month: number }>({ today: 0, week: 0, month: 0 });
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -208,7 +234,10 @@ export function SalesHome({
     if (!studioModuleOn && saleTypeFilter === 'studio') {
       setSaleTypeFilter('all');
     }
-  }, [studioModuleOn, saleTypeFilter]);
+    if (!rentalModuleOn && saleTypeFilter === 'rental') {
+      setSaleTypeFilter('all');
+    }
+  }, [studioModuleOn, rentalModuleOn, saleTypeFilter]);
 
   const [selectedSale, setSelectedSale] = useState<SaleRecord | null>(null);
   const [menuSale, setMenuSale] = useState<SaleRecord | null>(null);
@@ -288,19 +317,80 @@ export function SalesHome({
     [companyId, listBranchScope, online, useScopedStats],
   );
 
+  const rentalFetchOpts = useMemo(() => {
+    const scopeToOwn =
+      scopeRentalsToOwn || isolateWorkerData
+        ? { authUserId: effectiveUserId, profileId: effectiveProfileId }
+        : undefined;
+    const base = { scopeToOwn };
+    if (listBranchScope.mode === 'accessible') {
+      return { ...base, accessibleBranchIds: listBranchScope.branchIds };
+    }
+    return base;
+  }, [
+    scopeRentalsToOwn,
+    isolateWorkerData,
+    effectiveUserId,
+    effectiveProfileId,
+    listBranchScope,
+  ]);
+
+  const apiBranchId =
+    listBranchScope.mode === 'single' ? listBranchScope.branchId : branchId;
+
+  const refetchRentals = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!companyId || !rentalModuleOn) return [];
+      if (!opts?.silent) setLoading(true);
+      const { data, error } = await rentalsApi.getRentals(companyId, apiBranchId, rentalFetchOpts);
+      if (!opts?.silent) setLoading(false);
+      if (!error && data) {
+        setRecentRentals(data);
+        return data;
+      }
+      setRecentRentals([]);
+      return [];
+    },
+    [companyId, rentalModuleOn, apiBranchId, rentalFetchOpts],
+  );
+
+  const isRentalListView = saleTypeFilter === 'rental';
+  const isAllListWithRentals = saleTypeFilter === 'all' && rentalModuleOn;
+
+  const refetchAllListData = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!opts?.silent) setLoading(true);
+      await Promise.all([refetchSales({ silent: true }), refetchRentals({ silent: true })]);
+      if (!opts?.silent) setLoading(false);
+    },
+    [refetchSales, refetchRentals],
+  );
+
   useEffect(() => {
     if (!companyId) {
       setLoading(false);
       return;
     }
+    if (isRentalListView) {
+      void refetchRentals();
+      return;
+    }
+    if (isAllListWithRentals) {
+      void refetchAllListData();
+      return;
+    }
     void refetchSales();
-  }, [companyId, branchId, refetchSales]);
+  }, [companyId, branchId, refetchSales, refetchRentals, refetchAllListData, isRentalListView, isAllListWithRentals, saleTypeFilter]);
 
   useEffect(() => {
-    const onSync = () => void refetchSales({ silent: true });
+    const onSync = () => {
+      if (isRentalListView) void refetchRentals({ silent: true });
+      else if (isAllListWithRentals) void refetchAllListData({ silent: true });
+      else void refetchSales({ silent: true });
+    };
     window.addEventListener('erp-mobile:autosync-complete', onSync);
     return () => window.removeEventListener('erp-mobile:autosync-complete', onSync);
-  }, [refetchSales]);
+  }, [refetchSales, refetchRentals, refetchAllListData, isRentalListView, isAllListWithRentals]);
 
   const openAttachmentPreview = (list: Array<{ url: string; name: string }>, startIndex = 0) => {
     setAttachmentPreviewList(list);
@@ -347,7 +437,7 @@ export function SalesHome({
     return { today, week, month };
   }, [stats, scopedRecentSales, useScopedStats]);
 
-  const filteredSales = useMemo(() => {
+  const filteredSalesBase = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     const byType = scopedRecentSales.filter((sale) => matchesSaleListTypeFilter(sale.raw, saleTypeFilter));
     const searched = q
@@ -360,12 +450,81 @@ export function SalesHome({
           );
         })
       : byType;
-    const sorted = sortByDocumentDateTimeDesc(searched, (sale) => ({
+    return sortByDocumentDateTimeDesc(searched, (sale) => ({
       documentDate: (sale.raw.invoice_date as string) || null,
       eventTimestamp: (sale.raw.created_at as string) || null,
     }));
-    return sorted.slice(0, SALE_LIST_DISPLAY_CAP);
   }, [scopedRecentSales, saleTypeFilter, searchQuery]);
+
+  const filteredSales = useMemo(
+    () => filteredSalesBase.slice(0, SALE_LIST_DISPLAY_CAP),
+    [filteredSalesBase],
+  );
+
+  const scopedFilteredRentals = useMemo(() => {
+    let rows = recentRentals.filter((r) =>
+      rowInListBranchScope({ branch_id: r.branchId }, listBranchScope),
+    );
+    if (scopeRentalsToOwn || isolateWorkerData) {
+      rows = rows.filter((r) =>
+        rowBelongsToRentalWorker(
+          { created_by: r.createdBy, salesman_id: r.salesmanId },
+          effectiveUserId,
+          effectiveProfileId,
+        ),
+      );
+    }
+    const q = searchQuery.trim().toLowerCase();
+    const searched = q
+      ? rows.filter(
+          (r) =>
+            r.bookingNo.toLowerCase().includes(q) ||
+            r.customer.toLowerCase().includes(q) ||
+            (r.documentNumber || '').toLowerCase().includes(q),
+        )
+      : rows;
+    return searched.sort((a, b) =>
+      String(b.bookingDate || b.pickup).localeCompare(String(a.bookingDate || a.pickup)),
+    );
+  }, [
+    recentRentals,
+    listBranchScope,
+    scopeRentalsToOwn,
+    isolateWorkerData,
+    effectiveUserId,
+    effectiveProfileId,
+    searchQuery,
+  ]);
+
+  const filteredRentals = useMemo(() => {
+    if (!isRentalListView) return [];
+    return scopedFilteredRentals.slice(0, SALE_LIST_DISPLAY_CAP);
+  }, [isRentalListView, scopedFilteredRentals]);
+
+  const mergedAllListEntries = useMemo((): SalesHomeListEntry[] => {
+    if (!isAllListWithRentals) return [];
+    const entries: SalesHomeListEntry[] = [
+      ...filteredSalesBase.map((sale) => ({ kind: 'sale' as const, sale })),
+      ...scopedFilteredRentals.map((rental) => ({ kind: 'rental' as const, rental })),
+    ];
+    return sortByDocumentDateTimeDesc(entries, (entry) =>
+      entry.kind === 'sale'
+        ? {
+            documentDate: (entry.sale.raw.invoice_date as string) || null,
+            eventTimestamp: (entry.sale.raw.created_at as string) || null,
+          }
+        : {
+            documentDate: entry.rental.bookingDate || entry.rental.pickup || null,
+            eventTimestamp: null,
+          },
+    ).slice(0, SALE_LIST_DISPLAY_CAP);
+  }, [isAllListWithRentals, filteredSalesBase, scopedFilteredRentals]);
+
+  const listCount = isAllListWithRentals
+    ? mergedAllListEntries.length
+    : isRentalListView
+      ? filteredRentals.length
+      : filteredSales.length;
 
   const saleTypeBadge = (sale: SaleRecord) => {
     if (isStudioSaleRow(sale.raw)) {
@@ -393,9 +552,15 @@ export function SalesHome({
   };
 
   const emptyListMessage = () => {
-    if (searchQuery.trim()) return 'No sales match your search';
-    if (saleTypeFilter === 'all') return 'No sales found';
-    return `No ${saleListTypeLabel(saleTypeFilter).toLowerCase()} sales found`;
+    if (searchQuery.trim()) {
+      if (isRentalListView) return 'No rentals match your search';
+      if (isAllListWithRentals) return 'No sales or rentals match your search';
+      return 'No sales match your search';
+    }
+    if (saleTypeFilter === 'all') {
+      return isAllListWithRentals ? 'No sales or rentals found' : 'No sales found';
+    }
+    return `No ${saleListTypeLabel(saleTypeFilter).toLowerCase()} ${isRentalListView ? 'rentals' : 'sales'} found`;
   };
 
   const loadPaymentHistory = useCallback(async (saleId: string) => {
@@ -512,6 +677,13 @@ export function SalesHome({
   // In-app invoice preview (replaces VITE_APP_URL-dependent print/pdf navigation)
   const [previewSale, setPreviewSale] = useState<SaleRecord | null>(null);
   const pdfPreview = usePdfPreview(companyId);
+  const invoiceCurrency = pdfPreview.currency ?? {
+    currency: 'PKR',
+    currencySymbol: null,
+    showCurrencySymbol: true,
+    decimalPrecision: 2,
+  };
+  const { formatCurrency: formatInvoiceCurrency } = useFormatCurrencyFromBundle(invoiceCurrency);
   /** Line rows for edit modal (loaded from DB; save via update_sale_with_items RPC). */
   type EditSaleLine = {
     lineKey: string;
@@ -1477,31 +1649,10 @@ export function SalesHome({
           )}
 
           {paymentHistory.length > 0 && (
-            <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
-              <h3 className="text-sm font-medium text-[#9CA3AF] mb-3">Payment History</h3>
-              <div className="space-y-2">
-                {paymentHistory.map((p) => (
-                  <div key={p.id} className="flex justify-between items-center text-sm py-2 border-b border-[#374151] last:border-0 gap-2">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-white font-medium">Rs. {p.amount.toLocaleString()}</p>
-                      <p className="text-xs text-[#9CA3AF]">{p.method} • {p.date}</p>
-                      {p.referenceNo !== '—' && <p className="text-xs text-[#6B7280]">Ref: {p.referenceNo}</p>}
-                      {p.notes && <p className="text-xs text-[#9CA3AF] mt-1 break-words">{p.notes}</p>}
-                    </div>
-                    {p.attachments && p.attachments.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => openAttachmentPreview(p.attachments!, 0)}
-                        className="p-2 rounded-lg text-[#3B82F6] hover:bg-[#374151] shrink-0"
-                        aria-label="View attachments"
-                      >
-                        <Paperclip className="w-5 h-5" />
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
+            <PaymentHistoryList
+              items={paymentHistory}
+              onOpenAttachments={openAttachmentPreview}
+            />
           )}
 
           {attachmentPreviewList && attachmentPreviewList.length > 0 && (
@@ -1531,11 +1682,16 @@ export function SalesHome({
           <div className="flex-1">
             <h1 className="font-semibold text-white text-lg">Sales</h1>
             <p className="text-xs text-white/80">
-              {saleTypeFilter === 'all'
-                ? `${filteredSales.length} invoice${filteredSales.length === 1 ? '' : 's'}`
-                : `${filteredSales.length} ${saleListTypeLabel(saleTypeFilter).toLowerCase()} invoice${filteredSales.length === 1 ? '' : 's'}`}
+              {isRentalListView
+                ? `${listCount} rental booking${listCount === 1 ? '' : 's'}`
+                : isAllListWithRentals
+                  ? `${listCount} record${listCount === 1 ? '' : 's'}`
+                  : saleTypeFilter === 'all'
+                    ? `${listCount} invoice${listCount === 1 ? '' : 's'}`
+                    : `${listCount} ${saleListTypeLabel(saleTypeFilter).toLowerCase()} invoice${listCount === 1 ? '' : 's'}`}
             </p>
           </div>
+          {!isRentalListView && (
           <button
             onClick={onNewSale}
             className="flex items-center gap-1.5 px-3 py-2 bg-white text-[#2563EB] rounded-lg font-semibold text-sm shadow-md hover:bg-white/90 transition-colors"
@@ -1543,6 +1699,7 @@ export function SalesHome({
             <Plus className="w-4 h-4" />
             New
           </button>
+          )}
         </div>
 
         <div className="grid grid-cols-3 gap-2 mb-4">
@@ -1560,11 +1717,7 @@ export function SalesHome({
           </div>
         </div>
 
-        <div
-          className={`grid gap-1.5 mb-3 ${
-            saleTypeFilterTabs.length === 3 ? 'grid-cols-3' : 'grid-cols-4'
-          }`}
-        >
+        <div className={`grid gap-1.5 mb-3 ${saleTypeFilterGridColsClass(saleTypeFilterTabs)}`}>
           {saleTypeFilterTabs.map((tab) => {
             const active = saleTypeFilter === tab;
             const label = tab === 'all' ? 'All' : saleListTypeLabel(tab);
@@ -1584,8 +1737,11 @@ export function SalesHome({
             );
           })}
         </div>
-        {saleTypeFilter !== 'all' && (
+        {saleTypeFilter !== 'all' && !isRentalListView && (
           <p className="text-[10px] text-white/60 mb-2 -mt-1">Totals include all sale types.</p>
+        )}
+        {isRentalListView && (
+          <p className="text-[10px] text-white/60 mb-2 -mt-1">Read-only — open Rental module to manage bookings.</p>
         )}
 
         <div className="relative">
@@ -1594,7 +1750,13 @@ export function SalesHome({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search invoice # or customer..."
+            placeholder={
+              isRentalListView
+                ? 'Search booking # or customer...'
+                : isAllListWithRentals
+                  ? 'Search invoice, booking # or customer...'
+                  : 'Search invoice # or customer...'
+            }
             className="w-full h-10 bg-white/15 border border-white/20 rounded-xl pl-10 pr-4 text-sm text-white placeholder:text-white/60 focus:outline-none focus:bg-white/20 focus:border-white/40"
           />
         </div>
@@ -1602,7 +1764,9 @@ export function SalesHome({
 
       <PullToRefresh
         onRefresh={async () => {
-          await refetchSales({ silent: true });
+          if (isRentalListView) await refetchRentals({ silent: true });
+          else if (isAllListWithRentals) await refetchAllListData({ silent: true });
+          else await refetchSales({ silent: true });
         }}
         disabled={!companyId}
         scrollElementRef={mainScrollRef}
@@ -1615,7 +1779,246 @@ export function SalesHome({
       ) : (
         <>
           <div className="p-4 pt-4 space-y-3">
-            {filteredSales.map((sale) => {
+            {isAllListWithRentals
+              ? mergedAllListEntries.map((entry) =>
+                  entry.kind === 'rental' ? (
+                    <div
+                      key={`rental-${entry.rental.id}`}
+                      className="relative bg-[#1F2937] border border-[#374151] rounded-xl overflow-hidden hover:border-[#8B5CF6]/50 transition-all min-w-0"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => onOpenRental?.(entry.rental.id)}
+                        className="w-full p-4 text-left active:scale-[0.98] min-w-0"
+                      >
+                        <div className="flex items-start justify-between gap-2 mb-1">
+                          <h3 className="font-medium truncate text-white">{entry.rental.bookingNo}</h3>
+                          <span className="text-sm font-semibold shrink-0 text-[#8B5CF6]">
+                            Rs. {entry.rental.total.toLocaleString()}
+                          </span>
+                        </div>
+                        <p className="text-sm text-[#D1D5DB] truncate">{entry.rental.customer}</p>
+                        {entry.rental.documentNumber ? (
+                          <p className="text-xs text-[#8B5CF6]/90 mt-0.5">Bill: {entry.rental.documentNumber}</p>
+                        ) : null}
+                        <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-medium bg-purple-500/20 text-purple-300 border border-purple-500/40 mt-1">
+                          <Shirt className="w-3 h-3" />
+                          Rental
+                        </span>
+                        <div className="flex items-center gap-2 mt-1 text-xs text-[#9CA3AF]">
+                          <Calendar className="w-3.5 h-3.5 shrink-0" />
+                          <span>{formatDate(entry.rental.bookingDate || entry.rental.pickup)}</span>
+                        </div>
+                        <div className="border-t border-[#374151] my-3" aria-hidden="true" />
+                        <div className="space-y-1 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-[#9CA3AF]">Total:</span>
+                            <span className="font-medium text-white">Rs. {entry.rental.total.toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-[#9CA3AF]">Received:</span>
+                            <span className="text-[#10B981]">Rs. {entry.rental.paid.toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between items-center gap-2">
+                            <span className="text-[#9CA3AF]">Balance:</span>
+                            <span className="font-medium text-white shrink-0">
+                              Rs. {entry.rental.due.toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
+                        <RentalWorkflowBadges status={entry.rental.status} due={entry.rental.due} compact className="mt-2" />
+                      </button>
+                    </div>
+                  ) : (
+                    (() => {
+                      const sale = entry.sale;
+                      const showSaleBalances = canViewSaleBalances(
+                        canViewBalances,
+                        sale.raw,
+                        effectiveUserId,
+                        effectiveProfileId,
+                      );
+                      const isCancelled = sale.raw.status === 'cancelled';
+                      const overpaid = sale.credit_balance > 0;
+                      const paid = !overpaid && sale.balance_due <= 0;
+                      const partial = !overpaid && sale.balance_due > 0 && sale.total_received > 0;
+                      const unpaid = !overpaid && sale.balance_due > 0 && sale.total_received === 0;
+                      const showAddPayment = !isCancelled && !overpaid && sale.balance_due > 0;
+                      return (
+                        <div key={`sale-${sale.id}`} className="relative bg-[#1F2937] border border-[#374151] rounded-xl overflow-hidden hover:border-[#3B82F6]/50 transition-all min-w-0">
+                          <button
+                            onClick={() => setSelectedSale(sale)}
+                            className="w-full p-4 text-left active:scale-[0.98] min-w-0 pr-12"
+                          >
+                            <div className="flex items-start justify-between gap-2 mb-1">
+                              <h3 className={`font-medium truncate ${isCancelled ? 'text-[#9CA3AF] line-through' : 'text-white'}`}>{sale.id}</h3>
+                              <span className={`text-sm font-semibold shrink-0 ${isCancelled ? 'text-[#9CA3AF] line-through' : 'text-[#10B981]'}`}>
+                                Rs. {(sale.grand_total ?? sale.amount).toLocaleString()}
+                              </span>
+                            </div>
+                            <p className="text-sm text-[#D1D5DB] truncate">{sale.customer}</p>
+                            {sale.billRef ? (
+                              <p className="text-xs text-[#8B5CF6]/90 mt-0.5">Bill: {sale.billRef}</p>
+                            ) : null}
+                            <div className="mt-1">{saleTypeBadge(sale)}</div>
+                            {sale.shipment_status && (
+                              <span className="inline-block mt-1 text-xs font-medium px-2 py-0.5 rounded bg-[#3B82F6]/20 text-[#93C5FD] border border-[#3B82F6]/30">
+                                {sale.shipment_status === 'Delivered' || sale.shipment_status === 'delivered' ? '✅ Delivered' :
+                                  sale.shipment_status === 'In Transit' || sale.shipment_status === 'Out for Delivery' ? '🚚 In Transit' :
+                                  sale.shipment_status === 'Cancelled' || sale.shipment_status === 'cancelled' ? '❌ Cancelled' :
+                                  `📦 ${sale.shipment_status}`}
+                              </span>
+                            )}
+                            {sale.created_by_name && (
+                              <p className="text-xs text-[#9CA3AF] mt-0.5">Created by: {sale.created_by_name}</p>
+                            )}
+                            <div className="flex items-center gap-2 mt-1 text-xs text-[#9CA3AF]">
+                              <Calendar className="w-3.5 h-3.5 shrink-0" />
+                              <span>{sale.date}</span>
+                            </div>
+                            <div className="border-t border-[#374151] my-3" aria-hidden="true" />
+                            <div className="space-y-1 text-sm">
+                              <div className="flex justify-between">
+                                <span className="text-[#9CA3AF]">Total:</span>
+                                <span className="font-medium text-white">Rs. {sale.amount.toLocaleString()}</span>
+                              </div>
+                              {(sale.studio_charges ?? 0) > 0 && (
+                                <div className="flex justify-between">
+                                  <span className="text-[#9CA3AF]">Studio Cost:</span>
+                                  <span className="font-medium text-[#F59E0B]">Rs. {(sale.studio_charges ?? 0).toLocaleString()}</span>
+                                </div>
+                              )}
+                              <div className="flex justify-between">
+                                <span className="text-[#9CA3AF]">Received:</span>
+                                <span className="text-[#10B981]">{maskMoney(sale.total_received, showSaleBalances)}</span>
+                              </div>
+                              <div className="flex justify-between items-center gap-2">
+                                <span className="text-[#9CA3AF]">
+                                  {overpaid ? 'Credit Balance:' : 'Balance:'}
+                                </span>
+                                <span className={`font-medium shrink-0 ${overpaid ? 'text-[#10B981]' : 'text-white'}`}>
+                                  {maskMoney(overpaid ? sale.credit_balance : sale.balance_due, showSaleBalances)}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="mt-2 flex items-center gap-2 flex-wrap">
+                              {isCancelled && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#EF4444]/20 text-[#EF4444]">
+                                  Cancelled
+                                </span>
+                              )}
+                              {!isCancelled && paid && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#10B981]/20 text-[#10B981]">
+                                  ✔ Paid
+                                </span>
+                              )}
+                              {!isCancelled && partial && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#F59E0B]/20 text-[#F59E0B]">
+                                  Partially Paid
+                                </span>
+                              )}
+                              {!isCancelled && unpaid && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#6B7280]/20 text-[#9CA3AF]">
+                                  Unpaid
+                                </span>
+                              )}
+                              {!isCancelled && overpaid && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#10B981]/20 text-[#10B981]">
+                                  Credit Balance
+                                </span>
+                              )}
+                            </div>
+                          </button>
+                          {showAddPayment && (
+                            <div className="px-4 pb-3 pt-0 flex justify-end">
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); openAddPayment(sale); }}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#3B82F6]/90 hover:bg-[#2563EB] text-white text-sm font-medium transition-colors"
+                              >
+                                + Add
+                              </button>
+                            </div>
+                          )}
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setMenuSale(menuSale?.id === sale.id ? null : sale); }}
+                            className="absolute top-3 right-3 p-2 hover:bg-[#374151] rounded-lg text-[#9CA3AF] transition-colors"
+                            aria-label="More options"
+                          >
+                            <MoreVertical className="w-5 h-5" />
+                          </button>
+                          {menuSale?.id === sale.id && (
+                            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={() => setMenuSale(null)}>
+                              <div className="bg-[#1F2937] border border-[#374151] rounded-2xl shadow-xl overflow-hidden w-full max-w-[280px]" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Sale options">
+                                <div className="px-4 py-3 border-b border-[#374151]">
+                                  <p className="text-sm font-medium text-[#9CA3AF]">{sale.id}</p>
+                                  <p className="text-lg font-semibold text-white">Rs. {sale.amount.toLocaleString()}</p>
+                                </div>
+                                <div className="py-2">
+                                  {renderSaleMenuActions(sale)}
+                                </div>
+                                <button onClick={() => setMenuSale(null)} className="w-full py-3 text-sm text-[#9CA3AF] border-t border-[#374151] hover:bg-[#374151]">
+                                  Close
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()
+                  ),
+                )
+              : isRentalListView
+              ? filteredRentals.map((rental) => (
+                  <div
+                    key={rental.id}
+                    className="relative bg-[#1F2937] border border-[#374151] rounded-xl overflow-hidden hover:border-[#8B5CF6]/50 transition-all min-w-0"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => onOpenRental?.(rental.id)}
+                      className="w-full p-4 text-left active:scale-[0.98] min-w-0"
+                    >
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <h3 className="font-medium truncate text-white">{rental.bookingNo}</h3>
+                        <span className="text-sm font-semibold shrink-0 text-[#8B5CF6]">
+                          Rs. {rental.total.toLocaleString()}
+                        </span>
+                      </div>
+                      <p className="text-sm text-[#D1D5DB] truncate">{rental.customer}</p>
+                      {rental.documentNumber ? (
+                        <p className="text-xs text-[#8B5CF6]/90 mt-0.5">Bill: {rental.documentNumber}</p>
+                      ) : null}
+                      <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-medium bg-purple-500/20 text-purple-300 border border-purple-500/40 mt-1">
+                        <Shirt className="w-3 h-3" />
+                        Rental
+                      </span>
+                      <div className="flex items-center gap-2 mt-1 text-xs text-[#9CA3AF]">
+                        <Calendar className="w-3.5 h-3.5 shrink-0" />
+                        <span>{formatDate(rental.bookingDate || rental.pickup)}</span>
+                      </div>
+                      <div className="border-t border-[#374151] my-3" aria-hidden="true" />
+                      <div className="space-y-1 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-[#9CA3AF]">Total:</span>
+                          <span className="font-medium text-white">Rs. {rental.total.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-[#9CA3AF]">Received:</span>
+                          <span className="text-[#10B981]">Rs. {rental.paid.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between items-center gap-2">
+                          <span className="text-[#9CA3AF]">Balance:</span>
+                          <span className="font-medium text-white shrink-0">
+                            Rs. {rental.due.toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+                      <RentalWorkflowBadges status={rental.status} due={rental.due} compact className="mt-2" />
+                    </button>
+                  </div>
+                ))
+              : filteredSales.map((sale) => {
               const showSaleBalances = canViewSaleBalances(
                 canViewBalances,
                 sale.raw,
@@ -1759,7 +2162,7 @@ export function SalesHome({
               );
             })}
 
-            {filteredSales.length === 0 && (
+            {listCount === 0 && (
               <div className="text-center py-12">
                 <ShoppingCart className="w-16 h-16 mx-auto mb-4 text-[#374151]" />
                 <p className="text-[#9CA3AF]">{emptyListMessage()}</p>
@@ -1855,7 +2258,9 @@ export function SalesHome({
           title={`Invoice ${previewSale.id}`}
           filename={`invoice-${previewSale.id}.pdf`}
           sharePhone={saleWhatsAppPhone(previewSale) || null}
-          whatsAppFallbackText={`Invoice: ${previewSale.id}\nCustomer: ${previewSale.customer}\nTotal: Rs. ${(previewSale.grand_total ?? previewSale.amount).toLocaleString()}`}
+          compact
+          preparing={pdfPreview.loading}
+          whatsAppFallbackText={`Invoice: ${previewSale.id}\nCustomer: ${previewSale.customer}\nTotal: ${formatInvoiceCurrency(previewSale.grand_total ?? previewSale.amount)}`}
         >
           <InvoicePreviewPdf
             brand={pdfPreview.brand}
@@ -1880,6 +2285,8 @@ export function SalesHome({
             due={previewSale.balance_due}
             notes={(previewSale.raw.notes as string) || null}
             generatedBy={previewSale.created_by_name || null}
+            fields={pdfPreview.printingSettings?.fields}
+            formatCurrency={formatInvoiceCurrency}
           />
         </PdfPreviewModal>
       )}
@@ -1939,15 +2346,11 @@ export function SalesHome({
                 />
                 {editCustomersLoading && <p className="text-[10px] text-[#9CA3AF] mt-1">Loading customers…</p>}
               </div>
-              <div>
-                <label className="block text-xs text-[#9CA3AF] mb-1">Invoice Date</label>
-                <input
-                  type="date"
-                  value={editDate}
-                  onChange={(e) => setEditDate(e.target.value)}
-                  className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm"
-                />
-              </div>
+              <DateInputField
+                label="Invoice Date"
+                value={editDate}
+                onChange={setEditDate}
+              />
 
               {(showDiscountField || Number(editSale.raw.discount_amount ?? 0) > 0) && (
                 <div>

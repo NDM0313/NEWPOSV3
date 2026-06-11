@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Ledger Print Pagination — Acceptance Fixture</title>
+  <link rel="stylesheet" href="../../../../src/styles/index.css" />
+  <style>
+    body { margin: 0; background: #fff; font-family: Arial, Helvetica, sans-serif; }
+    .pdf-document { padding: 0; max-width: none; }
+    .brand-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+    .brand-table td { vertical-align: top; padding: 0; border: none; }
+    .brand-name { font-size: 18px; font-weight: 700; text-transform: uppercase; margin: 0; }
+    .report-title { font-size: 13px; font-weight: 700; margin-top: 4px; }
+    .report-meta { font-size: 10px; color: #444; margin-top: 4px; }
+    .summary-table { width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 10px; }
+    .summary-table td { border: 1px solid #ccc; padding: 6px 8px; text-align: center; width: 25%; }
+    .summary-label { font-size: 8px; color: #666; }
+    .summary-value { font-weight: 700; }
+    .report-table { width: 100%; border-collapse: collapse; font-size: 9px; }
+    .report-table th { padding: 5px 4px; text-align: left; font-weight: 700; background: #f0f0f0; border: 1px solid #333; }
+    .report-table th.r, .report-table td.r { text-align: right; }
+    .report-table td { padding: 3px 4px; border-bottom: 1px solid #ddd; }
+    .report-table tr.open td { background: #f3f4f6; font-weight: 600; }
+    .report-table tfoot td { background: #f3f4f6; font-weight: 700; border: 1px solid #333; padding: 5px 4px; }
+    .footer-note { margin-top: 12px; font-size: 9px; color: #666; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="no-print" aria-hidden="true">Screen chrome hidden when printing</div>
+  <div class="pdf-print-root">
+    <div class="pdf-document ledger-report-print">
+      <div class="report-first-page-block">
+        <div class="report-brand-header pdf-report-header-block">
+          <table class="brand-table report-brand-header">
+            <tr>
+              <td>
+                <h1 class="brand-name">DIN COUTURE</h1>
+                <div class="report-title">Customer Ledger — Saqib Ahmed</div>
+                <div class="report-meta">Period: 01 Apr 2026 → 10 Jun 2026 · All branches · Generated: 10 Jun 2026</div>
+              </td>
+            </tr>
+          </table>
+        </div>
+        <div class="report-summary">
+          <table class="summary-table">
+            <tr>
+              <td><div class="summary-label">Opening</div><div class="summary-value">Rs 12,000</div></td>
+              <td><div class="summary-label">Closing</div><div class="summary-value">Rs 85,000</div></td>
+              <td><div class="summary-label">Total debit</div><div class="summary-value">Rs 120,000</div></td>
+              <td><div class="summary-label">Total credit</div><div class="summary-value">Rs 47,000</div></td>
+            </tr>
+          </table>
+        </div>
+      </div>
+      <table class="report-table pdf-ledger-table">
+        <thead>
+          <tr>
+            <th>Date</th><th>Ref</th><th>Type</th><th>Description</th><th>Branch</th>
+            <th class="r">Debit</th><th class="r">Credit</th><th class="r">Balance</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+        <tfoot>
+          <tr>
+            <td colspan="5" class="r">Totals / Closing balance</td>
+            <td class="r">Rs 120,000</td><td class="r">Rs 47,000</td><td class="r">Rs 85,000</td>
+          </tr>
+        </tfoot>
+      </table>
+      <div class="footer-note">End of report</div>
+    </div>
+  </div>
+  <script>
+    const tbody = document.getElementById('rows');
+    let balance = 12000;
+    const types = ['Sale Invoice', 'Payment', 'Journal', 'Purchase', 'Receipt'];
+    for (let i = 1; i <= 48; i++) {
+      const debit = i % 3 === 0 ? 0 : 2500 + (i * 100);
+      const credit = i % 3 === 0 ? 1800 + (i * 50) : 0;
+      balance += debit - credit;
+      const tr = document.createElement('tr');
+      if (i === 1) tr.className = 'open';
+      tr.innerHTML = i === 1
+        ? `<td colspan="7">Opening balance</td><td class="r">Rs 12,000</td>`
+        : `<td>${String(i).padStart(2, '0')} Apr 2026</td><td>INV-${1000 + i}</td><td>${types[i % types.length]}</td><td>Transaction line ${i} — sample ledger entry</td><td>Main Branch</td><td class="r">${debit ? 'Rs ' + debit.toLocaleString() : '—'}</td><td class="r">${credit ? 'Rs ' + credit.toLocaleString() : '—'}</td><td class="r">Rs ${balance.toLocaleString()}</td>`;
+      tbody.appendChild(tr);
+    }
+  </script>
+</body>
+</html>

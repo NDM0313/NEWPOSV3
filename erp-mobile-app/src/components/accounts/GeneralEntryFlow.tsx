@@ -17,6 +17,8 @@ import {
   buildGeneralJournalAutoDescription,
   composeJournalEntryDescription,
 } from '../../utils/journalEntryDescription';
+import { DebitCreditInOutBadge, FlowStepHeader } from '../shared/DebitCreditInOutHint';
+import { IN_OUT } from '../../utils/debitCreditInOutLabels';
 
 interface GeneralEntryFlowProps {
   onBack: () => void;
@@ -230,10 +232,7 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
       <div className="p-4">
         {step === 1 && (
           <div className="space-y-4">
-            <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 mb-4">
-              <h2 className="text-sm font-semibold text-white mb-2">Select Debit Account</h2>
-              <p className="text-xs text-[#9CA3AF]">Which account should be debited?</p>
-            </div>
+            <FlowStepHeader title={`Debit account (${IN_OUT.debit.drCr})`} side="debit" />
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9CA3AF]" size={18} />
               <input
@@ -251,7 +250,7 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
                     key={account.id}
                     onClick={() => setEntryData({ ...entryData, debitAccountId: account.id, debitAccountName: account.name })}
                     className={`w-full p-4 rounded-xl border-2 text-left transition-all ${
-                      entryData.debitAccountId === account.id ? 'bg-[#EF4444]/20 border-[#EF4444]' : 'bg-[#1F2937] border-[#374151] hover:border-[#EF4444]/50'
+                      entryData.debitAccountId === account.id ? 'bg-[#10B981]/20 border-[#10B981]' : 'bg-[#1F2937] border-[#374151] hover:border-[#10B981]/50'
                     }`}
                   >
                     <div className="flex items-center justify-between">
@@ -264,7 +263,7 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
                           <p className="text-xs text-[#6B7280] mt-1">{formatAccountBalanceInline(account.balance, canViewBalances)}</p>
                         )}
                       </div>
-                      {entryData.debitAccountId === account.id && <Check className="text-[#EF4444]" size={20} />}
+                      {entryData.debitAccountId === account.id && <Check className="text-[#10B981]" size={20} />}
                     </div>
                   </button>
                 ))
@@ -279,16 +278,16 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
 
         {step === 2 && (
           <div className="space-y-4">
-            <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 mb-4">
-              <h2 className="text-sm font-semibold text-white mb-2">Select Credit Account</h2>
-              <p className="text-xs text-[#9CA3AF]">Which account should be credited?</p>
-              {entryData.debitAccountName && (
-                <div className="mt-3 p-2 bg-[#EF4444]/10 border border-[#EF4444]/30 rounded-lg">
-                  <p className="text-xs text-[#9CA3AF]">Debit Account:</p>
-                  <p className="text-sm text-white font-medium">{entryData.debitAccountName}</p>
+            <FlowStepHeader title={`Credit account (${IN_OUT.credit.drCr})`} side="credit" />
+            {entryData.debitAccountName && (
+              <div className="mb-4 p-3 bg-[#10B981]/10 border border-[#10B981]/30 rounded-lg">
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <p className="text-xs text-[#9CA3AF]">Debit account (IN)</p>
+                  <DebitCreditInOutBadge side="debit" />
                 </div>
-              )}
-            </div>
+                <p className="text-sm text-white font-medium">{entryData.debitAccountName}</p>
+              </div>
+            )}
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9CA3AF]" size={18} />
               <input
@@ -308,7 +307,7 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
                       key={account.id}
                       onClick={() => setEntryData({ ...entryData, creditAccountId: account.id, creditAccountName: account.name })}
                       className={`w-full p-4 rounded-xl border-2 text-left transition-all ${
-                        entryData.creditAccountId === account.id ? 'bg-[#10B981]/20 border-[#10B981]' : 'bg-[#1F2937] border-[#374151] hover:border-[#10B981]/50'
+                        entryData.creditAccountId === account.id ? 'bg-[#EF4444]/20 border-[#EF4444]' : 'bg-[#1F2937] border-[#374151] hover:border-[#EF4444]/50'
                       }`}
                     >
                       <div className="flex items-center justify-between">
@@ -321,7 +320,7 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
                             <p className="text-xs text-[#6B7280] mt-1">{formatAccountBalanceInline(account.balance, canViewBalances)}</p>
                           )}
                         </div>
-                        {entryData.creditAccountId === account.id && <Check className="text-[#10B981]" size={20} />}
+                        {entryData.creditAccountId === account.id && <Check className="text-[#EF4444]" size={20} />}
                       </div>
                     </button>
                   ))
@@ -340,12 +339,18 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
             <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
               <h2 className="text-sm font-semibold text-white mb-3">Selected Accounts</h2>
               <div className="space-y-2">
-                <div className="p-3 bg-[#EF4444]/10 border border-[#EF4444]/30 rounded-lg">
-                  <p className="text-xs text-[#9CA3AF] mb-1">Debit Account</p>
+                <div className="p-3 bg-[#10B981]/10 border border-[#10B981]/30 rounded-lg">
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <p className="text-xs text-[#9CA3AF]">Debit account (IN)</p>
+                    <DebitCreditInOutBadge side="debit" />
+                  </div>
                   <p className="text-sm text-white font-semibold">{entryData.debitAccountName}</p>
                 </div>
-                <div className="p-3 bg-[#10B981]/10 border border-[#10B981]/30 rounded-lg">
-                  <p className="text-xs text-[#9CA3AF] mb-1">Credit Account</p>
+                <div className="p-3 bg-[#EF4444]/10 border border-[#EF4444]/30 rounded-lg">
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <p className="text-xs text-[#9CA3AF]">Credit account (OUT)</p>
+                    <DebitCreditInOutBadge side="credit" />
+                  </div>
                   <p className="text-sm text-white font-semibold">{entryData.creditAccountName}</p>
                 </div>
               </div>

@@ -6,6 +6,34 @@ import { getCurrentLocalTimestamp, localNowDateString } from '@/app/utils/localD
 import { supabase } from '@/lib/supabase';
 
 /**
+ * Void a single journal entry by id. Verifies a row was updated (RLS-safe).
+ */
+export async function voidJournalEntryById(params: {
+  companyId: string;
+  journalEntryId: string;
+  reason?: string;
+}): Promise<void> {
+  const { companyId, journalEntryId, reason = 'manual_void' } = params;
+  if (!companyId || !journalEntryId) {
+    throw new Error('Missing company or journal entry id');
+  }
+
+  const nowIso = getCurrentLocalTimestamp();
+  const { data, error } = await supabase
+    .from('journal_entries')
+    .update({ is_void: true, void_reason: reason, voided_at: nowIso })
+    .eq('id', journalEntryId)
+    .eq('company_id', companyId)
+    .eq('is_void', false)
+    .select('id');
+
+  if (error) throw new Error(error.message);
+  if (!data?.length) {
+    throw new Error('Journal entry not found, already voided, or not permitted');
+  }
+}
+
+/**
  * Clears invoice allocations and marks payment voided. Triggers recalc_sale_payment_totals via allocation deletes.
  */
 export async function voidPaymentAfterJournalReversal(params: {

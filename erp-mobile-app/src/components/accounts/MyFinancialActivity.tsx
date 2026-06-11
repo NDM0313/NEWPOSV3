@@ -1,5 +1,5 @@
 import type { User } from '../../types';
-import { TransactionsTimeline } from './reports/TransactionsTimeline';
+import { StaffStatementReport } from './reports/StaffStatementReport';
 
 interface MyFinancialActivityProps {
   onBack: () => void;
@@ -9,6 +9,7 @@ interface MyFinancialActivityProps {
   reportRefreshEpoch?: number;
 }
 
+/** Salary + commission statement for the signed-in user (read-only). */
 export function MyFinancialActivity({
   onBack,
   user,
@@ -17,19 +18,14 @@ export function MyFinancialActivity({
   reportRefreshEpoch = 0,
 }: MyFinancialActivityProps) {
   return (
-    <TransactionsTimeline
-      title="My Activity"
-      subtitle="Payments and expenses you recorded"
-      scopeUser={{ authId: user.id, profileId: user.profileId }}
-      includeOwnExpenses
-      readOnly
-      hideDatePresets={['week', 'quarter', 'year', 'custom']}
-      defaultDatePreset="month"
+    <StaffStatementReport
+      onBack={onBack}
       companyId={companyId}
       branchId={branchId}
-      onBack={onBack}
+      user={user}
       reportRefreshEpoch={reportRefreshEpoch}
-      userName={user.name}
+      initialUserId={user.profileId || user.id}
+      readOnlySelf
     />
   );
 }

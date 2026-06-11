@@ -17,6 +17,8 @@ import {
   buildTransferAutoDescription,
   composeJournalEntryDescription,
 } from '../../utils/journalEntryDescription';
+import { DebitCreditInOutBadge, FlowStepHeader, MoneyFlowSummaryBar } from '../shared/DebitCreditInOutHint';
+import { IN_OUT } from '../../utils/debitCreditInOutLabels';
 
 interface AccountTransferFlowProps {
   onBack: () => void;
@@ -226,10 +228,12 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
       <div className="p-4">
         {step === 1 && (
           <div className="space-y-4">
-            <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 mb-4">
-              <h2 className="text-sm font-semibold text-white mb-2">Transfer From</h2>
-              <p className="text-xs text-[#9CA3AF]">Select source account</p>
-            </div>
+            <MoneyFlowSummaryBar inLabel="Destination account" outLabel="Source account" />
+            <FlowStepHeader
+              title={`Transfer from (${IN_OUT.credit.drCr})`}
+              side="credit"
+              hint="Money leaving this account"
+            />
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9CA3AF]" size={18} />
               <input
@@ -275,19 +279,23 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
 
         {step === 2 && (
           <div className="space-y-4">
-            <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 mb-4">
-              <h2 className="text-sm font-semibold text-white mb-2">Transfer To</h2>
-              <p className="text-xs text-[#9CA3AF]">Select destination account</p>
-              {transferData.fromAccountName && (
-                <div className="mt-3 p-2 bg-[#EF4444]/10 border border-[#EF4444]/30 rounded-lg flex items-center gap-2">
-                  <span className="text-xl">{getAccountIcon(getAccount(transferData.fromAccountId)?.type ?? '')}</span>
-                  <div>
-                    <p className="text-xs text-[#9CA3AF]">From:</p>
-                    <p className="text-sm text-white font-medium">{transferData.fromAccountName}</p>
+            <FlowStepHeader
+              title={`Transfer to (${IN_OUT.debit.drCr})`}
+              side="debit"
+              hint="Money arriving in this account"
+            />
+            {transferData.fromAccountName && (
+              <div className="mb-4 p-3 bg-[#EF4444]/10 border border-[#EF4444]/30 rounded-lg flex items-center gap-2">
+                <span className="text-xl">{getAccountIcon(getAccount(transferData.fromAccountId)?.type ?? '')}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs text-[#9CA3AF]">From (OUT)</p>
+                    <DebitCreditInOutBadge side="credit" />
                   </div>
+                  <p className="text-sm text-white font-medium truncate">{transferData.fromAccountName}</p>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9CA3AF]" size={18} />
               <input
@@ -341,7 +349,10 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
                 <div className="flex items-center gap-2">
                   <span className="text-2xl">{getAccountIcon(getAccount(transferData.fromAccountId)?.type ?? '')}</span>
                   <div>
-                    <p className="text-xs text-[#9CA3AF]">From</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs text-[#9CA3AF]">From (OUT)</p>
+                      <DebitCreditInOutBadge side="credit" />
+                    </div>
                     <p className="text-sm text-white font-medium">{transferData.fromAccountName}</p>
                   </div>
                 </div>
@@ -349,7 +360,10 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
                 <div className="flex items-center gap-2">
                   <span className="text-2xl">{getAccountIcon(getAccount(transferData.toAccountId)?.type ?? '')}</span>
                   <div>
-                    <p className="text-xs text-[#9CA3AF]">To</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs text-[#9CA3AF]">To (IN)</p>
+                      <DebitCreditInOutBadge side="debit" />
+                    </div>
                     <p className="text-sm text-white font-medium">{transferData.toAccountName}</p>
                   </div>
                 </div>

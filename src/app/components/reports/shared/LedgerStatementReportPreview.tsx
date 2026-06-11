@@ -12,9 +12,11 @@ import { ReportBrandHeader } from './ReportBrandHeader';
 import { ReportBrandFooter } from './ReportBrandFooter';
 
 import {
-  LEDGER_PRINT_HEADER_LABELS,
-  LEDGER_PRINT_HEADER_LABELS_WITH_OPTIONAL,
-} from './ledgerExportColumns';
+  DEFAULT_LEDGER_PRINT_COLUMN_KEYS,
+  resolveLedgerColumnLayout,
+  type LedgerColumnKey,
+  type ResolvedLedgerColumn,
+} from './ledgerColumnLayout';
 
 export interface LedgerStatementReportRow {
   date: string;
@@ -50,8 +52,8 @@ export interface LedgerStatementReportPreviewProps {
   fontSize?: number;
   fontFamily?: string;
   margins?: PageMargins;
-  /** Show payment method + created-by columns (default: landscape). */
-  showOptionalColumns?: boolean;
+  /** Resolved print columns (order + width). Defaults to standard 8-column layout. */
+  columns?: ResolvedLedgerColumn[];
 }
 
 const TH_STYLE: React.CSSProperties = {
@@ -64,8 +66,40 @@ const TH_STYLE: React.CSSProperties = {
   border: '1px solid #333',
 };
 
+function cellValueForKey(
+  row: LedgerStatementReportRow,
+  key: LedgerColumnKey,
+  formatCurrency: (n: number) => string,
+  formatDate: (iso: string) => string,
+): React.ReactNode {
+  switch (key) {
+    case 'date':
+      return row.date ? formatDate(row.date) : '—';
+    case 'reference':
+      return row.referenceNo;
+    case 'type':
+      return row.transactionType;
+    case 'description':
+      return row.description || '—';
+    case 'branch':
+      return row.branch || '—';
+    case 'debit':
+      return row.debit ? formatCurrency(row.debit) : '—';
+    case 'credit':
+      return row.credit ? formatCurrency(row.credit) : '—';
+    case 'balance':
+      return formatCurrency(row.runningBalance);
+    case 'payment':
+      return row.paymentMethod || '—';
+    case 'createdBy':
+      return row.createdBy || '—';
+    default:
+      return '—';
+  }
+}
+
 /**
- * A4 ledger statement PDF — 8-column print layout (Branch included).
+ * A4 ledger statement PDF — configurable column layout (Tier A).
  */
 export function LedgerStatementReportPreview({
   brand,
@@ -88,15 +122,27 @@ export function LedgerStatementReportPreview({
   fontSize = REPORT_DEFAULT_FONT_SIZE,
   fontFamily = 'Arial, Helvetica, sans-serif',
   margins,
-  showOptionalColumns,
+  columns: columnsProp,
 }: LedgerStatementReportPreviewProps) {
-  const includeOptional = showOptionalColumns ?? orientation === 'landscape';
-  const headerLabels = includeOptional ? LEDGER_PRINT_HEADER_LABELS_WITH_OPTIONAL : LEDGER_PRINT_HEADER_LABELS;
-  const colCount = headerLabels.length;
+  const columns = useMemo(
+    () =>
+      columnsProp ??
+      resolveLedgerColumnLayout(null, { useShortLabels: true }).filter((c) =>
+        (DEFAULT_LEDGER_PRINT_COLUMN_KEYS as string[]).includes(c.key),
+      ),
+    [columnsProp],
+  );
+
+  const colKeys = useMemo(() => columns.map((c) => c.key), [columns]);
+  const colCount = columns.length;
+  const isDenseLayout = colCount >= 9;
+  const balanceIdx = colKeys.indexOf('balance');
+  const firstAmountIdx = colKeys.findIndex((k) => k === 'debit' || k === 'credit' || k === 'balance');
 
   const landscapeClass = orientation === 'landscape' ? 'pdf-document-landscape' : '';
-  const rootClass = ['pdf-document', landscapeClass, 'bg-white text-black'].filter(Boolean).join(' ');
-  const tableFont = Math.max(9, fontSize - 1);
+  const compactClass = isDenseLayout ? 'pdf-document-compact' : '';
+  const rootClass = ['pdf-document', 'ledger-report-print', landscapeClass, compactClass, 'bg-white text-black'].filter(Boolean).join(' ');
+  const tableFont = Math.max(8, fontSize - 1 - (isDenseLayout ? 1 : 0));
   const metaSubtitle = `${periodLabel} · ${branchScopeLabel}`;
 
   const marginStyle: React.CSSProperties | undefined = margins
@@ -108,50 +154,16 @@ export function LedgerStatementReportPreview({
       }
     : undefined;
 
-  const thAlign = (label: string): React.CSSProperties['textAlign'] =>
-    label === 'Debit' || label === 'Credit' || label === 'Balance' ? 'right' : 'left';
-
-  const renderRowCells = (row: LedgerStatementReportRow) => {
-    const cells: React.ReactNode[] = [
-      <td key="date" style={{ padding: '3px 4px', whiteSpace: 'nowrap' }}>
-        {row.date ? formatDate(row.date) : '—'}
-      </td>,
-      <td key="ref" style={{ padding: '3px 4px', fontFamily: 'monospace', fontSize: 9 }}>
-        {row.referenceNo}
-      </td>,
-      <td key="type" style={{ padding: '3px 4px', fontSize: 9 }}>
-        {row.transactionType}
-      </td>,
-      <td key="desc" style={{ padding: '3px 4px' }}>
-        {row.description || '—'}
-      </td>,
-      <td key="branch" style={{ padding: '3px 4px', fontSize: 9 }}>
-        {row.branch || '—'}
-      </td>,
-      <td key="debit" style={{ padding: '3px 4px', textAlign: 'right' }}>
-        {row.debit ? formatCurrency(row.debit) : '—'}
-      </td>,
-      <td key="credit" style={{ padding: '3px 4px', textAlign: 'right' }}>
-        {row.credit ? formatCurrency(row.credit) : '—'}
-      </td>,
-      <td key="bal" style={{ padding: '3px 4px', textAlign: 'right', fontWeight: 600 }}>
-        {formatCurrency(row.runningBalance)}
-      </td>,
-    ];
-    if (includeOptional) {
-      cells.push(
-        <td key="pay" style={{ padding: '3px 4px', fontSize: 9 }}>
-          {row.paymentMethod || '—'}
-        </td>,
-        <td key="by" style={{ padding: '3px 4px', fontSize: 9 }}>
-          {row.createdBy || '—'}
-        </td>,
-      );
-    }
-    return cells;
+  const tdStyle = (col: ResolvedLedgerColumn, extra?: React.CSSProperties): React.CSSProperties => {
+    const wrapKeys: LedgerColumnKey[] = ['description', 'type', 'branch', 'payment', 'createdBy'];
+    return {
+      padding: '3px 4px',
+      textAlign: col.align,
+      width: `${col.widthPct}%`,
+      ...(isDenseLayout && wrapKeys.includes(col.key) ? { overflowWrap: 'break-word', wordBreak: 'break-word' } : {}),
+      ...extra,
+    };
   };
-
-  const footerLabelSpan = useMemo(() => colCount - 3, [colCount]);
 
   return (
     <div
@@ -165,94 +177,184 @@ export function LedgerStatementReportPreview({
       }}
     >
       {showHeader ? (
-        <ReportBrandHeader
-          brand={brand}
-          title={title}
-          subtitle={partyName}
-          metaRows={[
-            { label: 'Period', value: metaSubtitle },
-            { label: 'Generated', value: generatedAt },
-          ]}
-          fieldVisibility={fieldVisibility}
-        />
+        <div className="report-first-page-block">
+          <ReportBrandHeader
+            brand={brand}
+            title={title}
+            subtitle={partyName}
+            metaRows={[
+              { label: 'Period', value: metaSubtitle },
+              { label: 'Generated', value: generatedAt },
+            ]}
+            fieldVisibility={fieldVisibility}
+          />
+
+          <table
+            role="presentation"
+            className="report-summary"
+            cellPadding={0}
+            cellSpacing={0}
+            style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 10 }}
+          >
+            <tbody>
+              <tr>
+                {[
+                  { label: 'Opening', value: formatCurrency(openingBalance) },
+                  { label: 'Closing', value: formatCurrency(closingBalance) },
+                  { label: 'Total debit', value: formatCurrency(totalDebit) },
+                  { label: 'Total credit', value: formatCurrency(totalCredit) },
+                ].map((s) => (
+                  <td
+                    key={s.label}
+                    style={{
+                      border: '1px solid #ccc',
+                      padding: '5px 6px',
+                      textAlign: 'center',
+                      fontSize: 9,
+                      width: '25%',
+                      color: '#111',
+                      background: '#fff',
+                    }}
+                  >
+                    <div style={{ color: '#666', fontSize: 8, marginBottom: 2 }}>{s.label}</div>
+                    <div style={{ fontWeight: 700, color: '#111' }}>{s.value}</div>
+                  </td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
+        </div>
       ) : (
-        <div style={{ marginBottom: 14, borderBottom: '2px solid #111', paddingBottom: 10 }}>
-          <div style={{ fontSize: 16, fontWeight: 700, textTransform: 'uppercase', color: '#111' }}>{title}</div>
-          <div style={{ fontSize: 12, fontWeight: 600, marginTop: 4, color: '#111' }}>{partyName}</div>
-          <div style={{ fontSize: 10, marginTop: 4, color: '#444' }}>
-            {metaSubtitle} · Generated: {generatedAt}
+        <div className="report-first-page-block">
+          <div className="report-title-block" style={{ marginBottom: 14, borderBottom: '2px solid #111', paddingBottom: 10 }}>
+            <div style={{ fontSize: 16, fontWeight: 700, textTransform: 'uppercase', color: '#111' }}>{title}</div>
+            <div style={{ fontSize: 12, fontWeight: 600, marginTop: 4, color: '#111' }}>{partyName}</div>
+            <div style={{ fontSize: 10, marginTop: 4, color: '#444' }}>
+              {metaSubtitle} · Generated: {generatedAt}
+            </div>
           </div>
+
+          <table
+            role="presentation"
+            className="report-summary"
+            cellPadding={0}
+            cellSpacing={0}
+            style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 10 }}
+          >
+            <tbody>
+              <tr>
+                {[
+                  { label: 'Opening', value: formatCurrency(openingBalance) },
+                  { label: 'Closing', value: formatCurrency(closingBalance) },
+                  { label: 'Total debit', value: formatCurrency(totalDebit) },
+                  { label: 'Total credit', value: formatCurrency(totalCredit) },
+                ].map((s) => (
+                  <td
+                    key={s.label}
+                    style={{
+                      border: '1px solid #ccc',
+                      padding: '5px 6px',
+                      textAlign: 'center',
+                      fontSize: 9,
+                      width: '25%',
+                      color: '#111',
+                      background: '#fff',
+                    }}
+                  >
+                    <div style={{ color: '#666', fontSize: 8, marginBottom: 2 }}>{s.label}</div>
+                    <div style={{ fontWeight: 700, color: '#111' }}>{s.value}</div>
+                  </td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
         </div>
       )}
 
-      <table
-        role="presentation"
-        cellPadding={0}
-        cellSpacing={0}
-        style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 10 }}
-      >
-        <tbody>
-          <tr>
-            {[
-              { label: 'Opening', value: formatCurrency(openingBalance) },
-              { label: 'Closing', value: formatCurrency(closingBalance) },
-              { label: 'Total debit', value: formatCurrency(totalDebit) },
-              { label: 'Total credit', value: formatCurrency(totalCredit) },
-            ].map((s) => (
-              <td
-                key={s.label}
-                style={{
-                  border: '1px solid #ccc',
-                  padding: '5px 6px',
-                  textAlign: 'center',
-                  fontSize: 9,
-                  width: '25%',
-                  color: '#111',
-                  background: '#fff',
-                }}
-              >
-                <div style={{ color: '#666', fontSize: 8, marginBottom: 2 }}>{s.label}</div>
-                <div style={{ fontWeight: 700, color: '#111' }}>{s.value}</div>
-              </td>
-            ))}
-          </tr>
-        </tbody>
-      </table>
-
-      <table className="pdf-ledger-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: tableFont }}>
+      <table className="report-table pdf-ledger-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: tableFont, tableLayout: 'fixed' }}>
         <thead>
           <tr>
-            {headerLabels.map((h) => (
-              <th key={h} style={{ ...TH_STYLE, textAlign: thAlign(h) }}>
-                {h}
+            {columns.map((col) => (
+              <th
+                key={col.key}
+                style={{
+                  ...TH_STYLE,
+                  textAlign: col.align,
+                  width: `${col.widthPct}%`,
+                }}
+              >
+                {col.shortLabel}
               </th>
             ))}
           </tr>
         </thead>
         <tbody>
           <tr style={{ background: '#f3f4f6', fontWeight: 600 }}>
-            <td colSpan={colCount - 1} style={{ padding: '4px 5px', color: '#111' }}>
-              Opening balance
-            </td>
-            <td style={{ padding: '4px 5px', textAlign: 'right', color: '#111' }}>
-              {formatCurrency(openingBalance)}
-            </td>
+            {balanceIdx >= 0 ? (
+              <>
+                <td colSpan={balanceIdx} style={{ padding: '4px 5px', color: '#111' }}>
+                  Opening balance
+                </td>
+                <td style={{ padding: '4px 5px', textAlign: 'right', color: '#111' }}>
+                  {formatCurrency(openingBalance)}
+                </td>
+                {balanceIdx < colCount - 1 ? (
+                  <td colSpan={colCount - balanceIdx - 1} style={{ padding: '4px 5px' }} />
+                ) : null}
+              </>
+            ) : (
+              <>
+                <td colSpan={colCount - 1} style={{ padding: '4px 5px', color: '#111' }}>
+                  Opening balance
+                </td>
+                <td style={{ padding: '4px 5px', textAlign: 'right', color: '#111' }}>
+                  {formatCurrency(openingBalance)}
+                </td>
+              </>
+            )}
           </tr>
           {rows.map((row, i) => (
             <tr key={`${row.referenceNo}-${i}`} style={{ borderBottom: '1px solid #ddd' }}>
-              {renderRowCells(row)}
+              {columns.map((col) => (
+                <td
+                  key={col.key}
+                  style={tdStyle(col, {
+                    fontFamily: col.key === 'reference' ? 'monospace' : undefined,
+                    fontSize: col.key === 'reference' || col.key === 'type' || col.key === 'branch' ? 9 : undefined,
+                    fontWeight: col.key === 'balance' ? 600 : undefined,
+                    whiteSpace: col.key === 'date' ? 'nowrap' : undefined,
+                  })}
+                >
+                  {cellValueForKey(row, col.key, formatCurrency, formatDate)}
+                </td>
+              ))}
             </tr>
           ))}
         </tbody>
         <tfoot>
           <tr style={{ background: '#f3f4f6', fontWeight: 700 }}>
-            <td colSpan={footerLabelSpan} style={{ padding: '5px 4px', textAlign: 'right', color: '#111' }}>
-              Totals / Closing balance
-            </td>
-            <td style={{ padding: '5px 4px', textAlign: 'right', color: '#111' }}>{formatCurrency(totalDebit)}</td>
-            <td style={{ padding: '5px 4px', textAlign: 'right', color: '#111' }}>{formatCurrency(totalCredit)}</td>
-            <td style={{ padding: '5px 4px', textAlign: 'right', color: '#111' }}>{formatCurrency(closingBalance)}</td>
-            {includeOptional ? <td colSpan={2} /> : null}
+            {firstAmountIdx >= 0 ? (
+              <>
+                <td colSpan={firstAmountIdx} style={{ padding: '5px 4px', textAlign: 'right', color: '#111' }}>
+                  Totals / Closing balance
+                </td>
+                {columns.slice(firstAmountIdx).map((col) => (
+                  <td key={col.key} style={{ ...tdStyle(col), fontWeight: 700 }}>
+                    {col.key === 'debit'
+                      ? formatCurrency(totalDebit)
+                      : col.key === 'credit'
+                        ? formatCurrency(totalCredit)
+                        : col.key === 'balance'
+                          ? formatCurrency(closingBalance)
+                          : ''}
+                  </td>
+                ))}
+              </>
+            ) : (
+              <td colSpan={colCount} style={{ padding: '5px 4px', textAlign: 'right', color: '#111' }}>
+                Closing: {formatCurrency(closingBalance)}
+              </td>
+            )}
           </tr>
         </tfoot>
       </table>

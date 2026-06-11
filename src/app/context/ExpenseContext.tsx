@@ -24,13 +24,14 @@ import {
   pushExpenseEditTrace,
 } from '@/app/lib/expenseEditTrace';
 import { supabase } from '@/lib/supabase';
+import { notifyAccountingEntriesChanged } from '@/app/lib/accountingInvalidate';
 import { formatPaymentAccountLabel } from '@/app/lib/paymentAccountDisplay';
 import {
   isLiquidityPaymentAccount,
   postedPaymentAccountIdFromRow,
   postedPaymentDisplayFromRow,
 } from '@/app/lib/resolveExpensePaymentAccount';
-import { toast } from 'sonner';
+import { GLOBAL_REFRESH_EVENT } from '@/app/lib/dataInvalidationBus';
 
 // ============================================
 // TYPES
@@ -263,6 +264,15 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     if (companyId && activated) loadExpenses();
     else if (!companyId) setLoading(false);
+  }, [companyId, activated, loadExpenses]);
+
+  useEffect(() => {
+    if (!companyId || !activated) return;
+    const onGlobalRefresh = () => {
+      void loadExpenses();
+    };
+    window.addEventListener(GLOBAL_REFRESH_EVENT, onGlobalRefresh);
+    return () => window.removeEventListener(GLOBAL_REFRESH_EVENT, onGlobalRefresh);
   }, [companyId, activated, loadExpenses]);
 
   // Get expense by ID
@@ -660,9 +670,12 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
           });
 
           // Refresh
-          if (typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
-          }
+          notifyAccountingEntriesChanged({
+            companyId: companyId ?? null,
+            branchId: branchId ?? null,
+            entityId: jeId,
+            reason: 'expense-updated',
+          });
 
         }
         await persistExpenseRow();
@@ -699,7 +712,12 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
       );
 
       if (!options?.silent) toast.success('Expense updated successfully!');
-      void accounting?.refreshEntries();
+      notifyAccountingEntriesChanged({
+        companyId: companyId ?? null,
+        branchId: branchId ?? null,
+        entityId: id,
+        reason: 'expense-updated',
+      });
       pushExpenseEditTrace({
         traceId,
         ts: getCurrentLocalTimestamp(),
@@ -809,7 +827,12 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
       } else {
         toast.success(`${expense.expenseNo} marked as paid and posted to accounting!`);
       }
-      void accounting?.refreshEntries();
+      notifyAccountingEntriesChanged({
+        companyId: companyId ?? null,
+        branchId: branchId ?? null,
+        entityId: id,
+        reason: 'expense-updated',
+      });
     } catch (error) {
       throw error;
     }

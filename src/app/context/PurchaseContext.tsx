@@ -1299,7 +1299,13 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
               await sbPur.from('journal_entries').update({ description: `${baseDesc} ${editLog}`.slice(0, 500) }).eq('id', jeId);
 
               console.log('[PURCHASE CONTEXT] In-place updated purchase JE', jeId, 'for', poNo);
-              if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+              const { notifyAccountingEntriesChanged } = await import('@/app/lib/accountingInvalidate');
+              notifyAccountingEntriesChanged({
+                companyId,
+                branchId: effectiveBranchId ?? null,
+                entityId: jeId,
+                reason: 'accounting-entries-changed',
+              });
             } else {
               // Fallback: use old adjustment approach
               const newSnapshotFb = pac.getPurchaseAccountingSnapshot(updated);
@@ -1324,11 +1330,14 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
 
           try {
             const { notifyAccountingEntriesChanged } = await import('@/app/lib/accountingInvalidate');
-            notifyAccountingEntriesChanged();
+            notifyAccountingEntriesChanged({
+              companyId,
+              branchId: effectiveBranchId ?? null,
+              entityId: id,
+              reason: 'accounting-entries-changed',
+            });
           } catch {
-            if (typeof window !== 'undefined') {
-              window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
-            }
+            /* bus notify failed — coalesced refresh may lag one cycle */
           }
         } catch (repostErr: any) {
           console.error('[PURCHASE CONTEXT] PF-COMPONENT: Purchase edit accounting failed:', repostErr);

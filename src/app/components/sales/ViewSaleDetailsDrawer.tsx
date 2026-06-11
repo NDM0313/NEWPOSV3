@@ -1894,24 +1894,27 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
 
       {/* Print / PDF / Share – single document engine (Phase A) */}
       {showPrintLayout && sale && companyId && (
-        <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4 thermal-print-overlay">
-          <div
-            className={`bg-white rounded-lg w-full max-h-[90vh] overflow-auto ${
-              printLayoutType === 'Thermal' ? 'thermal-print-modal-shell' : 'max-w-4xl'
-            }`}
-            style={
-              printLayoutType === 'Thermal'
-                ? { maxWidth: getThermalDimensions(printerConfig.paperSize).modalMaxPx }
-                : undefined
-            }
-          >
-            <UnifiedSalesInvoiceView
-              saleId={sale.id}
-              companyId={companyId}
-              templateType={printLayoutType}
-              onClose={() => setShowPrintLayout(false)}
-              showPrintAction={true}
-            />
+        <div className="fixed inset-0 z-[100] thermal-print-overlay">
+          <div className="no-print fixed inset-0 bg-black/80" aria-hidden="true" />
+          <div className="fixed inset-0 flex items-center justify-center p-4 pointer-events-none">
+            <div
+              className={`pointer-events-auto bg-white rounded-lg w-full max-h-[90vh] overflow-auto pdf-print-root ${
+                printLayoutType === 'Thermal' ? 'thermal-print-modal-shell' : 'max-w-4xl'
+              }`}
+              style={
+                printLayoutType === 'Thermal'
+                  ? { maxWidth: getThermalDimensions(printerConfig.paperSize).modalMaxPx }
+                  : undefined
+              }
+            >
+              <UnifiedSalesInvoiceView
+                saleId={sale.id}
+                companyId={companyId}
+                templateType={printLayoutType}
+                onClose={() => setShowPrintLayout(false)}
+                showPrintAction={true}
+              />
+            </div>
           </div>
         </div>
       )}

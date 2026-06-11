@@ -13,6 +13,8 @@ import { useSubmitLock } from '../../../../contexts/LoadingContext';
 import { SaveBlockingOverlay } from '../../../common/SaveBlockingOverlay';
 import { AttachmentFilePicker } from '../../../shared/AttachmentFilePicker';
 import { AttachmentsSection } from '../../../shared/AttachmentsSection';
+import { DateInputField } from '../../../shared/DateTimePicker';
+import { toLocalDateString } from '../../../../utils/localDate';
 import { useAttachmentPreview } from '../../../../hooks/useAttachmentPreview';
 import {
   appendAccountingAttachments,
@@ -290,12 +292,10 @@ export function EditTransactionSheet({
             )}
             {!loading && !error && (
               <>
-                <label className="block text-xs text-[#9CA3AF]">Date</label>
-                <input
-                  type="date"
+                <DateInputField
+                  label="Date"
                   value={form.date}
-                  onChange={(e) => setForm((s) => ({ ...s, date: e.target.value }))}
-                  className="w-full h-10 rounded bg-[#111827] border border-[#374151] text-white px-3 text-sm"
+                  onChange={(v) => setForm((s) => ({ ...s, date: toLocalDateString(v) }))}
                 />
                 <label className="block text-xs text-[#9CA3AF]">Amount</label>
                 <input
