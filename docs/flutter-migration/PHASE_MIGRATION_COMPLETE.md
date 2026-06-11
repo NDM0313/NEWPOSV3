@@ -43,6 +43,10 @@
 
 ## Before production distribution
 
+Follow **[`12_OFFICE_REMAINING_PHASE.md`](12_OFFICE_REMAINING_PHASE.md)** (Phase 8A–8C).
+
+Quick list:
+
 1. `./scripts/smoke-api-check.sh` then `QA_SESSION_LOG.md` + `08_TESTING_QA_CHECKLIST.md`
 2. `10_PRODUCTION_RELEASE_CHECKLIST.md` vs Capacitor
 3. `android/key.properties` + keystore → `./scripts/build-release-apk.sh`

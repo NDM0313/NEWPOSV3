@@ -3,9 +3,13 @@
 **App path:** `erp-flutter-app/`  
 **Backend:** `https://erp.dincouture.pk` (locked)  
 **Version:** `1.0.4+5`  
-**Last updated:** Full migration completion pass
+**Last updated:** Phase 8 office handoff doc added
 
-## Phase summary — all phases complete (pilot scope)
+## Next work (office)
+
+**Start here:** [`12_OFFICE_REMAINING_PHASE.md`](12_OFFICE_REMAINING_PHASE.md) — Phase **8A** QA + signed APK + sign-off (mandatory); 8B/8C optional.
+
+## Phase summary — code phases 0–7 complete (pilot scope)
 
 | Phase | Status | Doc |
 |-------|--------|-----|
@@ -18,6 +22,7 @@
 | 5 Offline awareness | Done | `PHASE_5_PARTIAL_COMPLETION.md` + payment queue |
 | 6 Device features | Done | `PHASE_6_PARTIAL_COMPLETION.md` + studio/rental/print |
 | 7 Production release | Prep done | `PHASE_7_RELEASE_PREP.md`, `PHASE_MIGRATION_COMPLETE.md` |
+| **8 Office / prod gate** | **Not started** | **`12_OFFICE_REMAINING_PHASE.md`** |
 
 ## Implemented modules (routes)
 

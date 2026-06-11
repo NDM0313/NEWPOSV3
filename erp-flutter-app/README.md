@@ -2,7 +2,7 @@
 
 Native Flutter client for the **old/live DIN Collection ERP**. Same Supabase contract as [`erp-mobile-app/`](../../erp-mobile-app/) and web [`src/`](../../src/).
 
-Migration docs: [`docs/flutter-migration/`](../../docs/flutter-migration/) — see [`FLUTTER_MIGRATION_STATUS.md`](../../docs/flutter-migration/FLUTTER_MIGRATION_STATUS.md) for current scope.
+Migration docs: [`docs/flutter-migration/`](../../docs/flutter-migration/) — **office next steps:** [`12_OFFICE_REMAINING_PHASE.md`](../../docs/flutter-migration/12_OFFICE_REMAINING_PHASE.md)
 
 ## Prerequisites
 
@@ -27,13 +27,6 @@ Reads `VITE_SUPABASE_ANON_KEY` from the first file found:
 - repo root `.env.production`
 - repo root `.env.local`
 - `erp-mobile-app/.env.production`
-
-```bash
-chmod +x scripts/*.sh
-./scripts/build-release-apk.sh
-```
-
-Or with explicit env file at repo root:
 
 ```bash
 chmod +x scripts/*.sh
