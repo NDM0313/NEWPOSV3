@@ -296,11 +296,12 @@ SELECT '=== 5A. Unposted queue — order-status sales ===' AS audit_section;
 SELECT
   u.document_no,
   u.source_type,
-  u.due_amount,
+  u.amount AS unposted_amount,
   u.reason,
   s.status AS sale_status,
   s.total,
   s.paid_amount,
+  s.due_amount AS sale_due_amount,
   s.customer_name,
   EXISTS (
     SELECT 1 FROM journal_entries je
