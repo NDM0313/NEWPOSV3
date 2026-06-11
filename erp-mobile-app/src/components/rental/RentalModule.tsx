@@ -82,8 +82,6 @@ interface RentalModuleProps {
   user: User;
   companyId: string | null;
   branch: Branch | null;
-  focusRentalId?: string | null;
-  onFocusHandled?: () => void;
 }
 
 
@@ -108,14 +106,7 @@ function RentalStaffLines({
   );
 }
 
-export function RentalModule({
-  onBack,
-  user,
-  companyId,
-  branch,
-  focusRentalId,
-  onFocusHandled,
-}: RentalModuleProps) {
+export function RentalModule({ onBack, user, companyId, branch }: RentalModuleProps) {
   const effectiveUserId = useEffectiveWorkerId(user?.id ?? '');
   const effectiveProfileId = useEffectiveWorkerProfileId();
   const effectiveRole = useEffectiveWorkerRole(user?.role ?? 'admin');
@@ -147,12 +138,6 @@ export function RentalModule({
   const [metaBillRef, setMetaBillRef] = useState('');
   const [metaSaving, setMetaSaving] = useState(false);
   const wasInChildView = useRef(false);
-
-  useEffect(() => {
-    if (!focusRentalId) return;
-    setSelectedId(focusRentalId);
-    onFocusHandled?.();
-  }, [focusRentalId, onFocusHandled]);
 
   const rentalFetchOpts = useMemo(() => {
     const scopeToOwn =

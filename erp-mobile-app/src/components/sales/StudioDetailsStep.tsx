@@ -1,7 +1,5 @@
 import { useState } from 'react';
-import { ArrowLeft, FileText, Tag } from 'lucide-react';
-import { DateInputField } from '../shared/DateTimePicker';
-import { toLocalDateString } from '../../utils/localDate';
+import { ArrowLeft, Calendar, FileText, Tag } from 'lucide-react';
 
 export interface StudioDetailsData {
   orderDate: string;
@@ -66,17 +64,31 @@ export function StudioDetailsStep({ onBack, initialData, onNext }: StudioDetails
         <p className="text-sm text-[#9CA3AF]">Order date, deadline, studio product name (required), then optional notes.</p>
 
         <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 space-y-4">
-          <DateInputField
-            label="Order Date"
-            value={orderDate}
-            onChange={(v) => setOrderDate(toLocalDateString(v))}
-          />
+          <div>
+            <label className="block text-sm font-medium text-[#9CA3AF] mb-2">Order Date</label>
+            <div className="flex items-center gap-2 bg-[#111827] border border-[#374151] rounded-lg px-3 py-2.5">
+              <Calendar className="w-5 h-5 text-[#6B7280]" />
+              <input
+                type="date"
+                value={orderDate}
+                onChange={(e) => setOrderDate(e.target.value)}
+                className="flex-1 bg-transparent text-white text-sm outline-none"
+              />
+            </div>
+          </div>
 
-          <DateInputField
-            label="Deadline Date"
-            value={deadlineDate}
-            onChange={(v) => setDeadlineDate(toLocalDateString(v))}
-          />
+          <div>
+            <label className="block text-sm font-medium text-[#9CA3AF] mb-2">Deadline Date</label>
+            <div className="flex items-center gap-2 bg-[#111827] border border-[#374151] rounded-lg px-3 py-2.5">
+              <Calendar className="w-5 h-5 text-[#6B7280]" />
+              <input
+                type="date"
+                value={deadlineDate}
+                onChange={(e) => setDeadlineDate(e.target.value)}
+                className="flex-1 bg-transparent text-white text-sm outline-none"
+              />
+            </div>
+          </div>
 
           <div>
             <label className="block text-sm font-medium text-[#F9FAFB] mb-2">

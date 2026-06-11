@@ -12,7 +12,6 @@ final offlineSyncServiceProvider = Provider<OfflineSyncService>((ref) {
     salesWrite: ref.read(salesWriteRepositoryProvider),
     expensesWrite: ref.read(expensesWriteRepositoryProvider),
     purchasesWrite: ref.read(purchasesWriteRepositoryProvider),
-    journalWrite: ref.read(journalWriteRepositoryProvider),
     store: ref.read(offlinePendingStoreProvider),
   );
 });

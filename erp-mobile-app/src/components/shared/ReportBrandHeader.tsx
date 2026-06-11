@@ -1,65 +1,42 @@
 import type { CompanyBrand } from '../../api/reports';
-import type { ReportHeaderFieldVisibility } from '../../lib/reportPrintConfig';
 
 interface ReportBrandHeaderProps {
   brand: CompanyBrand;
   title: string;
   subtitle?: string;
   metaRows?: { label: string; value: string }[];
-  fieldVisibility?: ReportHeaderFieldVisibility;
-  compact?: boolean;
 }
 
 /**
  * Black-on-white branded header for PDF/print (table layout for html2canvas stability).
  */
-export function ReportBrandHeader({
-  brand,
-  title,
-  subtitle,
-  metaRows,
-  fieldVisibility,
-  compact = false,
-}: ReportBrandHeaderProps) {
-  const showLogo = fieldVisibility?.showLogo !== false;
-  const showAddress = fieldVisibility?.showCompanyAddress !== false;
-  const showPhone = fieldVisibility?.showPhone !== false;
-  const showEmail = fieldVisibility?.showEmail !== false;
-
-  const addressLine = showAddress
-    ? [brand.address, brand.city, brand.country]
-        .filter((v) => !!v && String(v).trim().length > 0)
-        .join(', ')
-    : '';
+export function ReportBrandHeader({ brand, title, subtitle, metaRows }: ReportBrandHeaderProps) {
+  const addressLine = [brand.address, brand.city, brand.country]
+    .filter((v) => !!v && String(v).trim().length > 0)
+    .join(', ');
 
   const contactLines: string[] = [];
-  if (showPhone && brand.phone?.trim()) contactLines.push(`Tel: ${brand.phone.trim()}`);
-  if (showEmail && brand.email?.trim()) contactLines.push(`Email: ${brand.email.trim()}`);
+  if (brand.phone?.trim()) contactLines.push(`Tel: ${brand.phone.trim()}`);
+  if (brand.email?.trim()) contactLines.push(`Email: ${brand.email.trim()}`);
   if (brand.website?.trim()) contactLines.push(brand.website.trim());
   if (brand.taxNumber?.trim()) contactLines.push(`NTN: ${brand.taxNumber.trim()}`);
 
   return (
     <table
       role="presentation"
-      className="report-brand-header pdf-report-header-block"
       cellPadding={0}
       cellSpacing={0}
-      style={{ width: '100%', borderCollapse: 'collapse', marginBottom: compact ? 8 : 14 }}
+      style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 14 }}
     >
       <tbody>
         <tr>
-          <td style={{ textAlign: 'center', paddingBottom: compact ? 6 : 10, borderBottom: '2px solid #111' }}>
-            {showLogo && brand.logoUrl ? (
-              <div style={{ marginBottom: compact ? 4 : 8 }}>
+          <td style={{ textAlign: 'center', paddingBottom: 10, borderBottom: '2px solid #111' }}>
+            {brand.logoUrl ? (
+              <div style={{ marginBottom: 8 }}>
                 <img
                   src={brand.logoUrl}
                   alt=""
-                  style={{
-                    width: compact ? 48 : 64,
-                    height: compact ? 48 : 64,
-                    objectFit: 'contain',
-                    display: 'inline-block',
-                  }}
+                  style={{ width: 64, height: 64, objectFit: 'contain', display: 'inline-block' }}
                   crossOrigin="anonymous"
                 />
               </div>

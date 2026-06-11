@@ -80,30 +80,7 @@ export async function getSalesmen(companyId: string): Promise<{ data: SalesmanRo
 }
 
 /** Roles eligible for Salary expense payee (mirrors web `userService.getUsersForSalary`). Workers are excluded. */
-const SALARY_EXPENSE_ROLES = [
-  'owner',
-  'admin',
-  'manager',
-  'staff',
-  'salesman',
-  'operator',
-  'cashier',
-  'inventory',
-] as const;
-
-function userEligibleForSalaryExpense(row: {
-  role?: string | null;
-  permissions?: Record<string, unknown> | null;
-}): boolean {
-  const role = String(row.role ?? '').toLowerCase();
-  if ((SALARY_EXPENSE_ROLES as readonly string[]).includes(role)) return true;
-  const perms = (row.permissions ?? {}) as Record<string, unknown>;
-  if (perms.canBeAssignedAsSalesman === true) return true;
-  if ((perms as { sales?: { canBeAssignedAsSalesman?: boolean } }).sales?.canBeAssignedAsSalesman === true) {
-    return true;
-  }
-  return false;
-}
+const SALARY_EXPENSE_ROLES = ['admin', 'manager', 'staff', 'salesman', 'operator', 'cashier', 'inventory'] as const;
 
 export interface SalaryUserRow {
   id: string;
@@ -120,33 +97,28 @@ export async function getUsersForSalary(companyId: string): Promise<{ data: Sala
 
   const { data: users, error } = await supabase
     .from('users')
-    .select('id, full_name, role, email, is_active, permissions')
+    .select('id, full_name, role, email, is_active')
     .eq('company_id', companyId);
 
   if (error) return { data: [], error: error.message };
 
-  type Row = {
-    id: string;
-    full_name?: string | null;
-    role?: string | null;
-    email?: string | null;
-    is_active?: boolean;
-    permissions?: Record<string, unknown> | null;
-  };
+  type Row = { id: string; full_name?: string | null; role?: string | null; email?: string | null; is_active?: boolean };
   const active = (users || []).filter((u) => (u as Row).is_active !== false);
-  const filtered = active.filter((u) => userEligibleForSalaryExpense(u as Row));
+  const roleOk = (r: string) => (SALARY_EXPENSE_ROLES as readonly string[]).includes(r);
+  const filtered = active.filter((u) => {
+    const role = String((u as Row).role ?? '').toLowerCase();
+    return roleOk(role);
+  });
 
-  const data: SalaryUserRow[] = filtered
-    .map((u) => {
-      const r = u as Row;
-      return {
-        id: String(r.id),
-        full_name: String(r.full_name ?? '—'),
-        email: r.email ?? null,
-        role: r.role ?? null,
-      };
-    })
-    .sort((a, b) => a.full_name.localeCompare(b.full_name, undefined, { sensitivity: 'base' }));
+  const data: SalaryUserRow[] = filtered.map((u) => {
+    const r = u as Row;
+    return {
+      id: String(r.id),
+      full_name: String(r.full_name ?? '—'),
+      email: r.email ?? null,
+      role: r.role ?? null,
+    };
+  });
 
   return { data, error: null };
 }

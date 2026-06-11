@@ -41,7 +41,6 @@ import {
 } from '../../lib/dataInvalidationBus';
 import { openWhatsAppShare } from '../../lib/phoneWhatsApp';
 import { getCurrentLocalTimestamp } from '../../utils/localDate';
-import { DateInputField } from '../shared/DateTimePicker';
 import { sortByDocumentDateTimeDesc } from '../../utils/chronologicalSort';
 import { CreatePurchaseFlow } from './CreatePurchaseFlow';
 import { MobilePaySupplier } from './MobilePaySupplier';
@@ -1534,7 +1533,11 @@ export function PurchaseModule({
                 />
                 {editSuppliersLoading && <p className="text-[10px] text-[#9CA3AF] mt-1">Loading suppliers…</p>}
               </div>
-              <DateInputField label="Order Date" value={editDate} onChange={setEditDate} />
+              <div>
+                <label className="block text-xs text-[#9CA3AF] mb-1">Order Date</label>
+                <input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)}
+                  className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm" />
+              </div>
 
               {(showDiscountField || Number(editOrder.discount ?? 0) > 0) && (
                 <div>

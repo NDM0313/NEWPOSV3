@@ -1,61 +1,4 @@
-import { markLocalMutation } from '@/app/lib/localMutationSuppression';
-
 export const DATA_INVALIDATED_EVENT = 'erp:dataInvalidated';
-
-/** Fired once when the user (or focus sync) requests a full app data refresh. */
-export const GLOBAL_REFRESH_EVENT = 'erp:globalRefresh';
-
-export type GlobalRefreshReason = 'user-refresh' | 'focus-refresh';
-
-export interface GlobalRefreshDetail {
-  companyId?: string | null;
-  branchId?: string | null;
-  reason: GlobalRefreshReason;
-  ts: number;
-}
-
-const ALL_INVALIDATION_DOMAINS: InvalidationDomain[] = [
-  'accounting',
-  'sales',
-  'purchases',
-  'contacts',
-  'inventory',
-  'rentals',
-  'studio',
-];
-
-/** Manual or focus refresh — one header control refreshes every module that listens to the invalidation bus. */
-export function dispatchGlobalRefresh(opts?: {
-  companyId?: string | null;
-  branchId?: string | null;
-  reason?: GlobalRefreshReason;
-}): void {
-  if (typeof window === 'undefined') return;
-  const reason = opts?.reason ?? 'user-refresh';
-  window.dispatchEvent(
-    new CustomEvent<GlobalRefreshDetail>(GLOBAL_REFRESH_EVENT, {
-      detail: {
-        companyId: opts?.companyId ?? null,
-        branchId: opts?.branchId ?? null,
-        reason,
-        ts: Date.now(),
-      },
-    }),
-  );
-  for (const domain of ALL_INVALIDATION_DOMAINS) {
-    dispatchDataInvalidated({
-      domain,
-      companyId: opts?.companyId ?? null,
-      branchId: opts?.branchId ?? null,
-      reason,
-    });
-  }
-}
-
-export function isGlobalRefreshReason(reason?: string | null): boolean {
-  const r = String(reason ?? '').toLowerCase();
-  return r === 'user-refresh' || r === 'focus-refresh';
-}
 
 export type InvalidationDomain =
   | 'contacts'
@@ -77,10 +20,6 @@ export interface DataInvalidationDetail {
 
 export function dispatchDataInvalidated(detail: Omit<DataInvalidationDetail, 'ts'>): void {
   if (typeof window === 'undefined') return;
-  const reason = String(detail.reason ?? '').toLowerCase();
-  if (reason && !reason.includes('realtime-change') && !reason.includes('fallback-poll')) {
-    markLocalMutation();
-  }
   window.dispatchEvent(
     new CustomEvent<DataInvalidationDetail>(DATA_INVALIDATED_EVENT, {
       detail: {
@@ -182,14 +121,9 @@ export function shouldSkipInventoryReloadForReason(reason?: string): boolean {
     r.includes('saledocumentjournalcreated') ||
     r.includes('accounting-entries-changed') ||
     r.includes('sales-context-payment') ||
-    r.includes('sales-context-create') ||
-    r.includes('sales-context-update') ||
-    r.includes('sale:sales-context-create') ||
-    r.includes('sale:sales-context-update') ||
     r.includes('manualreceipt') ||
     r.includes('manualsupplier') ||
-    r.includes('product-csv-import') ||
-    r.includes('expense-updated')
+    r.includes('product-csv-import')
   );
 }
 

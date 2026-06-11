@@ -2,26 +2,8 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { hasNormalizedAttachments } from '../lib/normalizeAttachments';
 import { getCompanyLogoDisplayUrl } from '../lib/companyLogoDisplay';
 import { getAllSales } from './sales';
-import { formatReferenceTypeLabel } from '../lib/formatReferenceTypeLabel';
 import { normalizeCompanyId } from './contactBalancesUtils';
 import { fetchContactBalancesSummary } from './contactBalancesRpc';
-import { inputHasTime, normalizeDateRangeInput } from '../utils/localDate';
-
-function applyDocumentDateRange<T extends { gte: (col: string, val: string) => T; lte: (col: string, val: string) => T }>(
-  q: T,
-  column: string,
-  from?: string,
-  to?: string,
-): T {
-  const bounds = normalizeDateRangeInput(from, to);
-  const narrow = Boolean((from && inputHasTime(from)) || (to && inputHasTime(to)));
-  let query = q;
-  if (bounds.dateFrom) query = query.gte(column, bounds.dateFrom);
-  if (bounds.dateTo) query = query.lte(column, bounds.dateTo);
-  if (narrow && bounds.timestampFrom) query = query.gte('created_at', bounds.timestampFrom);
-  if (narrow && bounds.timestampTo) query = query.lte('created_at', bounds.timestampTo);
-  return query;
-}
 
 export async function getCompanyName(companyId: string | null): Promise<string> {
   if (!isSupabaseConfigured || !companyId) return 'Company';
@@ -98,7 +80,9 @@ export function journalEntryMatchesLedgerBranch(
 /** One line in a ledger report (date, voucher, description, Dr, Cr, running balance). */
 export interface LedgerLine {
   id: string;
+  /** journal_entries.id ? source journal entry for this line (used for drill-down). */
   journalEntryId: string;
+  /** journal_entries.reference_id ? source record (sale, purchase, payment, ...). */
   sourceReferenceId: string | null;
   date: string;
   createdAt: string;
@@ -111,12 +95,6 @@ export interface LedgerLine {
   runningBalance: number;
   paymentId?: string | null;
   hasAttachments?: boolean;
-  /** Display-only enrichment from RPC / journal fields. */
-  transactionType?: string;
-  branchId?: string | null;
-  branch?: string;
-  paymentMethod?: string;
-  createdBy?: string;
 }
 
 /** Fetch ledger lines for any account with optional date range and optional branch scope (web parity). */
@@ -208,7 +186,6 @@ export async function getAccountLedgerLines(
 
   let running = opening;
   const lines: LedgerLine[] = [];
-  const branchIds = new Set<string>();
   for (const r of rows) {
     const je = Array.isArray(r.journal_entry) ? r.journal_entry[0] : r.journal_entry;
     if (!je || je.is_void === true) continue;
@@ -224,10 +201,6 @@ export async function getAccountLedgerLines(
     const payAttachments = paymentId ? paymentAttachmentsById.get(paymentId) : null;
     const hasAttachments =
       hasNormalizedAttachments(jeAttachments) || hasNormalizedAttachments(payAttachments);
-    const branchIdVal =
-      je.branch_id != null && String(je.branch_id).trim() !== '' ? String(je.branch_id) : null;
-    if (branchIdVal) branchIds.add(branchIdVal);
-    const refType = String(je.reference_type ?? '');
     lines.push({
       id: String(r.id ?? ''),
       journalEntryId: String(je.id ?? ''),
@@ -237,9 +210,7 @@ export async function getAccountLedgerLines(
       entryNo: String(je.entry_no ?? ''),
       description: String(r.description || je.description || ''),
       reference: String(je.entry_no ?? ''),
-      referenceType: refType,
-      transactionType: formatReferenceTypeLabel(refType),
-      branchId: branchIdVal,
+      referenceType: String(je.reference_type ?? ''),
       debit,
       credit,
       runningBalance: running,
@@ -247,20 +218,6 @@ export async function getAccountLedgerLines(
       hasAttachments,
     });
   }
-
-  if (branchIds.size > 0 && isSupabaseConfigured) {
-    const { data: branchRows } = await supabase
-      .from('branches')
-      .select('id, name')
-      .in('id', [...branchIds]);
-    const nameById = new Map(
-      (branchRows || []).map((b: { id: string; name?: string }) => [String(b.id), String(b.name ?? '—')]),
-    );
-    for (const line of lines) {
-      if (line.branchId) line.branch = nameById.get(line.branchId) ?? '—';
-    }
-  }
-
   return { openingBalance: opening, lines, error: null };
 }
 
@@ -596,7 +553,8 @@ export async function getSalesInRange(
     .order('invoice_date', { ascending: false })
     .order('created_at', { ascending: false })
     .limit(500);
-  q = applyDocumentDateRange(q, 'invoice_date', from, to);
+  if (from) q = q.gte('invoice_date', from);
+  if (to) q = q.lte('invoice_date', to);
   if (branchId && branchId !== 'all' && branchId !== 'default') q = q.eq('branch_id', branchId);
   if (typeof isStudio === 'boolean') q = q.eq('is_studio', isStudio);
   const { data, error } = await q;
@@ -648,7 +606,8 @@ export async function getPurchasesInRange(
     .eq('company_id', companyId)
     .order('po_date', { ascending: false })
     .limit(500);
-  q = applyDocumentDateRange(q, 'po_date', from, to);
+  if (from) q = q.gte('po_date', from);
+  if (to) q = q.lte('po_date', to);
   if (branchId && branchId !== 'all' && branchId !== 'default') q = q.eq('branch_id', branchId);
   const { data, error } = await q;
   if (error) return { data: [], error: error.message };
@@ -695,7 +654,8 @@ export async function getExpensesInRange(
     .eq('company_id', companyId)
     .order('expense_date', { ascending: false })
     .limit(500);
-  q = applyDocumentDateRange(q, 'expense_date', from, to);
+  if (from) q = q.gte('expense_date', from);
+  if (to) q = q.lte('expense_date', to);
   if (branchId && branchId !== 'all' && branchId !== 'default') q = q.eq('branch_id', branchId);
   const { data, error } = await q;
   if (error) return { data: [], error: error.message };
@@ -758,7 +718,10 @@ export async function getStudioProductions(
     .eq('company_id', companyId)
     .order('production_date', { ascending: false, nullsFirst: false })
     .limit(500);
-  q = applyDocumentDateRange(q, 'production_date', from, to);
+  // Prefer production_date for the range filter; fall back to created_at via OR
+  // would be fragile, so we accept ranges that use production_date OR created_at.
+  if (from) q = q.or(`production_date.gte.${from},created_at.gte.${from}T00:00:00+00:00`);
+  if (to) q = q.or(`production_date.lte.${to},created_at.lte.${to}T23:59:59+00:00`);
   const { data, error } = await q;
   if (error) return { data: [], error: error.message };
   const rows = (data || []) as Array<Record<string, unknown>>;
@@ -867,7 +830,10 @@ export async function getRentalsInRange(
     .eq('company_id', companyId)
     .order('booking_date', { ascending: false })
     .limit(500);
-  q = applyDocumentDateRange(q, 'booking_date', from, to);
+  // Use booking_date primary filter with created_at fallback so bookings that
+  // were back-dated or front-dated still appear within the report range.
+  if (from) q = q.or(`booking_date.gte.${from},created_at.gte.${from}T00:00:00+00:00`);
+  if (to) q = q.or(`booking_date.lte.${to},created_at.lte.${to}T23:59:59+00:00`);
   const { data, error } = await q;
   if (error) return { data: [], error: error.message };
   return {
@@ -935,9 +901,8 @@ export async function getStockMovements(
     .eq('company_id', companyId)
     .order('created_at', { ascending: false })
     .limit(1000);
-  const bounds = normalizeDateRangeInput(from, to);
-  if (bounds.timestampFrom) q = q.gte('created_at', bounds.timestampFrom);
-  if (bounds.timestampTo) q = q.lte('created_at', bounds.timestampTo);
+  if (from) q = q.gte('created_at', `${from}T00:00:00+00:00`);
+  if (to) q = q.lte('created_at', `${to}T23:59:59+00:00`);
   if (productId) q = q.eq('product_id', productId);
   if (variationId) q = q.eq('variation_id', variationId);
   const { data, error } = await q;

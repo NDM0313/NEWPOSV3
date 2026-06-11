@@ -91,10 +91,6 @@ export interface ReportExportSettings {
   /** Show page-number footer on tabular report PDF/print. */
   showReportFooter?: boolean;
   reportFontSize?: number;
-  /** Visible ledger print/PDF columns in order (Tier A Ledger Center V2). */
-  ledgerPrintColumns?: string[];
-  /** Column width % (5–50 per column; unset = auto split). */
-  ledgerColumnWidths?: Record<string, number>;
 }
 
 export type DocumentTemplateId =
@@ -185,17 +181,6 @@ export const DEFAULT_REPORT_EXPORT: ReportExportSettings = {
   showReportHeader: true,
   showReportFooter: true,
   reportFontSize: 11,
-  ledgerPrintColumns: [
-    'date',
-    'reference',
-    'type',
-    'description',
-    'branch',
-    'debit',
-    'credit',
-    'balance',
-  ],
-  ledgerColumnWidths: {},
 };
 
 export const DEFAULT_DOCUMENT_TEMPLATES: DocumentTemplateId[] = [

@@ -79,19 +79,6 @@ export async function getBranchPaymentDefaults(
   };
 }
 
-/** Branch fiscal year start (YYYY-MM-DD) for date-range presets. */
-export async function getBranchFiscalYearStart(branchId: string): Promise<string | null> {
-  if (!isSupabaseConfigured || !branchId?.trim()) return null;
-  const { data, error } = await supabase
-    .from('branches')
-    .select('fiscal_year_start')
-    .eq('id', branchId)
-    .maybeSingle();
-  if (error || !data) return null;
-  const raw = (data as { fiscal_year_start?: string | null }).fiscal_year_start;
-  return raw ? String(raw).split('T')[0] : null;
-}
-
 /** Create a branch (e.g. when company has none, to allow first sale). Requires company_id. */
 export async function createBranch(companyId: string, name: string = 'Main', code?: string): Promise<{ data: Branch | null; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };

@@ -15,7 +15,6 @@ import {
   ATTACHMENT_UPLOAD_VERIFY_FAIL_MSG,
   uploadStorageAttachmentFile,
 } from '../utils/storageAttachmentPipeline';
-import { shouldExcludePaymentFromSaleHistory } from '../lib/salePaymentHistoryFilter';
 
 export interface CreateSaleInput {
   companyId: string;
@@ -1444,14 +1443,14 @@ export async function getSalePayments(saleId: string): Promise<{
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
   const { data, error } = await supabase
     .from('payments')
-    .select('id, payment_date, reference_number, reference_type, amount, payment_method, notes, attachments, voided_at')
+    .select('id, payment_date, reference_number, amount, payment_method, notes, attachments, voided_at')
     .eq('reference_type', 'sale')
     .eq('reference_id', saleId)
     .is('voided_at', null)
     .order('payment_date', { ascending: false });
   if (error) return { data: [], error: error.message };
   const direct = (data || [])
-    .filter((p: Record<string, unknown>) => !p.voided_at && !shouldExcludePaymentFromSaleHistory(p as { reference_type?: string; reference_number?: string }))
+    .filter((p: Record<string, unknown>) => !p.voided_at)
     .map((p: Record<string, unknown>) => {
     let attachments: PaymentAttachment[] | undefined;
     const raw = p.attachments;
@@ -1490,16 +1489,13 @@ export async function getSalePayments(saleId: string): Promise<{
     if (payIds.length > 0) {
       const { data: parents } = await supabase
         .from('payments')
-        .select('id, payment_date, reference_number, reference_type, amount, payment_method, notes, attachments, voided_at')
+        .select('id, payment_date, reference_number, amount, payment_method, notes, attachments, voided_at')
         .in('id', payIds);
       const parentById = new Map((parents || []).map((pr: Record<string, unknown>) => [String(pr.id), pr]));
-      const directPaymentIds = new Set(direct.map((r) => r.id));
       for (const a of allocs || []) {
         const row = a as { id?: string; payment_id?: string; allocated_amount?: number; allocation_date?: string; allocation_order?: number };
         const pr = parentById.get(String(row.payment_id));
         if (!pr || pr.voided_at) continue;
-        if (shouldExcludePaymentFromSaleHistory(pr as { reference_type?: string; reference_number?: string })) continue;
-        if (directPaymentIds.has(String(row.payment_id))) continue;
         let attachments: PaymentAttachment[] | undefined;
         const raw = pr.attachments;
         if (Array.isArray(raw) && raw.length > 0) {

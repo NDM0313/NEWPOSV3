@@ -57,7 +57,6 @@ import { useSupabase } from '../../context/SupabaseContext';
 import { expenseCategoryService, type ExpenseCategoryRow, type ExpenseCategoryTreeItem } from '../../services/expenseCategoryService';
 import { expenseService } from '../../services/expenseService';
 import { branchService } from '../../services/branchService';
-import { userService } from '../../services/userService';
 import { normalizeCategoryForComparison } from '@/app/lib/expenseEditCanonical';
 import {
   EXPENSE_LIST_TRACE,
@@ -126,8 +125,6 @@ export const ExpensesDashboard = () => {
   const [accountFilter, setAccountFilter] = useState<string>('all');
   const [fromDate, setFromDate] = useState<string>('');
   const [toDate, setToDate] = useState<string>('');
-  const [payeeUserFilter, setPayeeUserFilter] = useState<string>('all');
-  const [salaryUsers, setSalaryUsers] = useState<Array<{ id: string; full_name: string }>>([]);
 
   const loadCategoriesFromDb = React.useCallback(() => {
     if (!companyId) return;
@@ -141,13 +138,6 @@ export const ExpensesDashboard = () => {
   useEffect(() => {
     if (!companyId) return;
     branchService.getBranchesCached(companyId).then(setBranches).catch(() => setBranches([]));
-  }, [companyId]);
-
-  useEffect(() => {
-    if (!companyId) return;
-    userService.getUsersForSalary(companyId).then((users) => {
-      setSalaryUsers((users || []).map((u) => ({ id: u.id, full_name: u.full_name || u.email || u.id })));
-    }).catch(() => setSalaryUsers([]));
   }, [companyId]);
 
   useEffect(() => {
@@ -260,23 +250,6 @@ export const ExpensesDashboard = () => {
     });
     return [...map.values()].sort((a, b) => b.amount - a.amount);
   }, [monthExpenses, categoriesFromDb]);
-
-  const salaryByStaff = useMemo(() => {
-    const map = new Map<string, { userId: string; name: string; count: number; amount: number }>();
-    operationalExpenses.forEach((e) => {
-      if (String(e.status || '').toLowerCase() !== 'paid') return;
-      const uid = e.paidToUserId;
-      if (!uid) return;
-      const cat = (e.category || '').toLowerCase();
-      if (cat !== 'salaries' && !cat.includes('salar')) return;
-      const name = e.payeeName || salaryUsers.find((u) => u.id === uid)?.full_name || uid.slice(0, 8);
-      const existing = map.get(uid) || { userId: uid, name, count: 0, amount: 0 };
-      existing.count += 1;
-      existing.amount += e.amount || 0;
-      map.set(uid, existing);
-    });
-    return [...map.values()].sort((a, b) => b.amount - a.amount);
-  }, [operationalExpenses, salaryUsers]);
 
   const priorMonthTotal = useMemo(() => {
     const now = new Date();
@@ -481,12 +454,6 @@ export const ExpensesDashboard = () => {
       if (!filterReason && fromDate && expenseDate < fromDate) filterReason = 'before_from_date';
       if (!filterReason && toDate && expenseDate > toDate) filterReason = 'after_to_date';
 
-      if (!filterReason && payeeUserFilter !== 'all') {
-        if ((expense.paidToUserId || '') !== payeeUserFilter) {
-          filterReason = 'payee_user_filter_mismatch';
-        }
-      }
-
       const watch = diagnosticWatchId.trim().toLowerCase();
       const isWatched =
         showFetchDiagnostics &&
@@ -522,7 +489,6 @@ export const ExpensesDashboard = () => {
     accountFilter,
     fromDate,
     toDate,
-    payeeUserFilter,
     showFetchDiagnostics,
     diagnosticWatchId,
     reversedExpenseIds,
@@ -540,7 +506,7 @@ export const ExpensesDashboard = () => {
   // Reset to page 1 when filters change
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, categoryFilter, subCategoryFilter, branchFilter, accountFilter, payeeUserFilter, fromDate, toDate, showReversedExpenses]);
+  }, [searchTerm, categoryFilter, subCategoryFilter, branchFilter, accountFilter, fromDate, toDate, showReversedExpenses]);
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
@@ -559,7 +525,6 @@ export const ExpensesDashboard = () => {
     accountFilter !== 'all',
     !!fromDate,
     !!toDate,
-    payeeUserFilter !== 'all',
     showReversedExpenses,
   ].filter(Boolean).length;
 
@@ -571,7 +536,6 @@ export const ExpensesDashboard = () => {
     setAccountFilter('all');
     setFromDate('');
     setToDate('');
-    setPayeeUserFilter('all');
     setShowReversedExpenses(false);
   };
 
@@ -583,13 +547,12 @@ export const ExpensesDashboard = () => {
 
   // Export handlers (use filtered list from backend)
   const getExportData = (): ExportData => ({
-    headers: ['Date', 'Reference #', 'Category', 'Branch', 'Pay to', 'Expense For', 'Paid Via', 'Amount', 'Status'],
+    headers: ['Date', 'Reference #', 'Category', 'Branch', 'Expense For', 'Paid Via', 'Amount', 'Status'],
     rows: filteredExpenses.map((e) => [
       new Date(e.date).toLocaleDateString(),
       e.expenseNo || '—',
       e.category,
       resolveExpenseBranchLabel(e.location),
-      e.payeeName || (e.paidToUserId ? salaryUsers.find((u) => u.id === e.paidToUserId)?.full_name || e.paidToUserId : '—'),
       e.description,
       paymentDisplayForExpense(e),
       e.amount ?? 0,
@@ -755,43 +718,6 @@ export const ExpensesDashboard = () => {
               </div>
             </div>
           </div>
-
-          {salaryByStaff.length > 0 ? (
-            <div className="bg-gray-900/50 border border-purple-900/30 rounded-xl overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between">
-                <h3 className="text-lg font-bold text-white">Salaries by staff (paid)</h3>
-                <span className="text-xs text-gray-500">Requires Pay to user on Salaries expenses</span>
-              </div>
-              <table className="w-full text-sm">
-                <thead className="text-xs text-gray-500 uppercase bg-gray-950/50">
-                  <tr>
-                    <th className="px-6 py-3 text-left font-medium">Staff</th>
-                    <th className="px-6 py-3 text-right font-medium">Payments</th>
-                    <th className="px-6 py-3 text-right font-medium">Total paid</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-800">
-                  {salaryByStaff.map((row) => (
-                    <tr
-                      key={row.userId}
-                      className="hover:bg-gray-800/30 cursor-pointer"
-                      onClick={() => {
-                        setActiveTab('list');
-                        setCategoryFilter('Salaries');
-                        setPayeeUserFilter(row.userId);
-                      }}
-                    >
-                      <td className="px-6 py-3 text-white font-medium">{row.name}</td>
-                      <td className="px-6 py-3 text-right text-gray-400">{row.count}</td>
-                      <td className="px-6 py-3 text-right text-purple-300 font-semibold tabular-nums">
-                        {formatCurrency(row.amount)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : null}
 
           {monthCategoryBreakdown.length > 0 ? (
             <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
@@ -999,24 +925,6 @@ export const ExpensesDashboard = () => {
                           <option value="all">All sub-categories</option>
                           {subCategoryFilterOptions.map((sub) => (
                             <option key={sub.id} value={sub.id}>{sub.name}</option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-
-                    {salaryUsers.length > 0 && (
-                      <div>
-                        <label className="text-xs text-gray-400 uppercase font-medium mb-2 block">
-                          Pay to (staff)
-                        </label>
-                        <select
-                          value={payeeUserFilter}
-                          onChange={(e) => setPayeeUserFilter(e.target.value)}
-                          className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
-                        >
-                          <option value="all">All staff</option>
-                          {salaryUsers.map((u) => (
-                            <option key={u.id} value={u.id}>{u.full_name}</option>
                           ))}
                         </select>
                       </div>

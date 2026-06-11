@@ -195,12 +195,19 @@ export const InventoryDashboardNew = () => {
       loadOverview();
       if (activeTab === 'analytics') loadMovements();
     };
+    const handleAccountingChanged = () => {
+      loadOverview();
+      if (activeTab === 'analytics') loadMovements();
+    };
+
     window.addEventListener('purchaseSaved', handlePurchaseSaved);
     window.addEventListener('purchaseDeleted', handlePurchaseDeleted);
     window.addEventListener('saleSaved', handleSaleSaved);
     window.addEventListener('saleDeleted', handleSaleDeleted);
     window.addEventListener('paymentAdded', handlePaymentAdded);
     window.addEventListener('products-updated', handleProductsUpdated);
+    window.addEventListener('accountingEntriesChanged', handleAccountingChanged);
+
     return () => {
       window.removeEventListener('purchaseSaved', handlePurchaseSaved);
       window.removeEventListener('purchaseDeleted', handlePurchaseDeleted);
@@ -208,6 +215,7 @@ export const InventoryDashboardNew = () => {
       window.removeEventListener('saleDeleted', handleSaleDeleted);
       window.removeEventListener('paymentAdded', handlePaymentAdded);
       window.removeEventListener('products-updated', handleProductsUpdated);
+      window.removeEventListener('accountingEntriesChanged', handleAccountingChanged);
     };
     // 🔒 FIX: Remove loadOverview and loadMovements from dependencies to prevent re-registration
     // These functions are stable (useCallback), but including them causes unnecessary re-renders

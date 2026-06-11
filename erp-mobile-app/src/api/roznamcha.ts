@@ -23,15 +23,8 @@ import {
   isEventDateInRange,
   resolveRoznamchaRowDateTime,
 } from '../utils/transactionEventDateTime';
-import {
-  roznamchaLiquidityLineDirection,
-  roznamchaPaymentDirection,
-  roznamchaPaymentTypeDirection,
-} from '../lib/roznamchaExpenseRules';
-import { paymentMatchesRoznamchaBranch, type RoznamchaBranchMaps } from '../lib/roznamchaBranchMatch';
 
 export { dedupeRoznamchaRows, roznamchaEntityKeys, roznamchaLooseMovementKey, roznamchaMovementKey };
-export { roznamchaLiquidityLineDirection, roznamchaPaymentDirection } from '../lib/roznamchaExpenseRules';
 
 export type AccountFilter = 'all' | 'cash' | 'bank' | 'wallet';
 
@@ -98,7 +91,8 @@ export interface RoznamchaResult {
 }
 
 function getDirection(paymentType: string): 'IN' | 'OUT' {
-  return roznamchaPaymentTypeDirection(paymentType);
+  const t = (paymentType || '').toLowerCase();
+  return t === 'received' ? 'IN' : 'OUT';
 }
 
 function getTypeLabel(referenceType: string): string {
@@ -147,6 +141,26 @@ function rentalPaymentMatchKey(
   accountId: string | null | undefined
 ): string {
   return `${rentalId}|${date}|${Math.round(amount * 100)}|${accountId || ''}`;
+}
+
+/** Branch filter: payment row branch OR linked rental document branch (legacy null payment.branch_id). */
+function paymentMatchesRoznamchaBranch(
+  payment: {
+    branch_id?: string | null;
+    reference_type?: string | null;
+    reference_id?: string | null;
+  },
+  branchId: string | null,
+  rentalBranchById: Map<string, string>
+): boolean {
+  if (!branchId) return true;
+  const payBranch = payment.branch_id != null ? String(payment.branch_id) : '';
+  if (payBranch === branchId) return true;
+  const rt = String(payment.reference_type || '').toLowerCase();
+  if (rt === 'rental' && payment.reference_id) {
+    return rentalBranchById.get(String(payment.reference_id)) === branchId;
+  }
+  return false;
 }
 
 function resolveSubAccountLabel(
@@ -373,14 +387,8 @@ async function loadRentalPaymentJournalLinks(
 }
 
 function shouldSkipJournalEntryForRoznamcha(
-  je: {
-    id: string;
-    reference_type?: string | null;
-    reference_id?: string | null;
-    action_fingerprint?: string | null;
-  },
-  skipJeIds: Set<string>,
-  expenseIdsWithLivePayments: Set<string> = new Set(),
+  je: { id: string; reference_type?: string | null; action_fingerprint?: string | null },
+  skipJeIds: Set<string>
 ): boolean {
   if (skipJeIds.has(je.id)) return true;
   const rt = String(je.reference_type || '').toLowerCase();
@@ -388,40 +396,7 @@ function shouldSkipJournalEntryForRoznamcha(
   if (rt === 'rental' && fp.startsWith('rental_party_payment:')) {
     return false;
   }
-  if (rt === 'expense') {
-    const expenseId = String(je.reference_id || '').trim();
-    if (expenseId && expenseIdsWithLivePayments.has(expenseId)) return true;
-    return false;
-  }
   return ROZNAMCHA_DOCUMENT_JE_TYPES.has(rt);
-}
-
-/** Expense ids that already have a live payments row (Roznamcha canonical path). */
-async function loadExpenseIdsWithLivePayments(
-  companyId: string,
-  expenseIds: string[],
-  includeVoidedReversed: boolean,
-): Promise<Set<string>> {
-  const out = new Set<string>();
-  const unique = [...new Set(expenseIds.map((id) => String(id || '').trim()).filter(Boolean))];
-  if (unique.length === 0) return out;
-  if (!isSupabaseConfigured) return out;
-
-  let q = supabase
-    .from('payments')
-    .select('reference_id')
-    .eq('company_id', companyId)
-    .eq('reference_type', 'expense')
-    .in('reference_id', unique);
-  if (!includeVoidedReversed) q = q.is('voided_at', null);
-
-  const { data, error } = await q;
-  if (error) return out;
-  (data || []).forEach((p: { reference_id?: string | null }) => {
-    const id = String(p.reference_id || '').trim();
-    if (id) out.add(id);
-  });
-  return out;
 }
 
 function rentalMatchesRoznamchaBranch(
@@ -507,7 +482,7 @@ async function buildJournalSkipJeIds(
   includeVoidedReversed: boolean,
   dateOpts: { dateFrom?: string; dateTo?: string; beforeDate?: string }
 ): Promise<Set<string>> {
-  const skipJeIds = await journalEntryIdsWithLiquidityPayments(companyId, journalEntryIds, branchId);
+  const skipJeIds = await journalEntryIdsWithLiquidityPayments(companyId, journalEntryIds);
   const rentalJeLinks = await loadRentalPaymentJournalLinks(companyId, branchId, {
     ...dateOpts,
     includeVoidedReversed,
@@ -587,89 +562,6 @@ function isSupplierPaymentPayment(refType: string, paymentType: string): boolean
   const rt = refType.toLowerCase();
   if (getDirection(paymentType) !== 'OUT') return false;
   return rt === 'on_account' || rt === 'manual_payment';
-}
-
-const MANUAL_DOCUMENT_JE_REF_TYPES = new Set([
-  'general',
-  'journal',
-  'transfer',
-  'manual',
-  'manual_journal',
-  'manual',
-]);
-
-type ManualDocumentJeContext = {
-  id: string;
-  description: string | null;
-  reference_type: string | null;
-  lines: Array<{
-    debit: number;
-    credit: number;
-    account?: { name: string; type: string; code: string | null } | null;
-  }>;
-};
-
-async function loadManualDocumentJeContextById(
-  companyId: string,
-  jeIds: string[],
-): Promise<Map<string, ManualDocumentJeContext>> {
-  const out = new Map<string, ManualDocumentJeContext>();
-  const unique = [...new Set(jeIds.map((id) => String(id || '').trim()).filter(Boolean))];
-  if (unique.length === 0) return out;
-
-  const { data } = await supabase
-    .from('journal_entries')
-    .select(
-      `
-      id,
-      description,
-      reference_type,
-      lines:journal_entry_lines(debit, credit, account:accounts(name, type, code))
-    `,
-    )
-    .eq('company_id', companyId)
-    .in('id', unique);
-
-  (data || []).forEach((je: ManualDocumentJeContext) => {
-    if (je?.id) out.set(String(je.id), je);
-  });
-  return out;
-}
-
-function counterpartyLabelFromManualJe(je: ManualDocumentJeContext, direction: 'IN' | 'OUT'): string | null {
-  for (const line of je.lines || []) {
-    const rawAcc = line.account as
-      | { name: string; type: string; code: string | null }
-      | { name: string; type: string; code: string | null }[]
-      | null
-      | undefined;
-    const acc = Array.isArray(rawAcc) ? rawAcc[0] : rawAcc;
-    if (!acc || !isLiquidityPaymentAccount(acc)) continue;
-    const debit = Number(line.debit) || 0;
-    const credit = Number(line.credit) || 0;
-    if (direction === 'OUT' && debit > 0) return String(acc.name || '').trim() || null;
-    if (direction === 'IN' && credit > 0) return String(acc.name || '').trim() || null;
-  }
-  return null;
-}
-
-function resolveManualDocumentJeForPayment(
-  payRefId: string,
-  paymentRowId: string,
-  journalEntryIdByPaymentId: Map<string, string>,
-  manualJeContextById: Map<string, ManualDocumentJeContext>,
-): ManualDocumentJeContext | undefined {
-  const candidates = [
-    payRefId,
-    journalEntryIdByPaymentId.get(paymentRowId) || '',
-  ].filter(Boolean);
-  for (const id of candidates) {
-    const je = manualJeContextById.get(id);
-    if (je && MANUAL_DOCUMENT_JE_REF_TYPES.has(String(je.reference_type || '').toLowerCase())) {
-      return je;
-    }
-  }
-  return undefined;
 }
 
 type ExpenseCategoryRow = { id: string; name: string; parent_id: string | null };
@@ -782,24 +674,6 @@ export function classifyRoznamchaLiquidity(
     ) {
       return { liquidity: 'wallet', shortLabel: walletDisplayLabel(accountName, paymentMethod) };
     }
-  }
-
-  if (isLiquidityPaymentAccount({ code: accountCode, type: accountType, name: accountName })) {
-    const inferred = paymentMethodForLiquidityAccount({
-      code: accountCode,
-      type: accountType,
-      name: accountName,
-    });
-    const im = inferred.toLowerCase();
-    if (im === 'bank') return { liquidity: 'bank', shortLabel: 'Bank' };
-    if (
-      im === 'mobile_wallet' ||
-      isWalletAccountCode(accountCode) ||
-      nameOrMethodLooksLikeWallet(n, m)
-    ) {
-      return { liquidity: 'wallet', shortLabel: walletDisplayLabel(accountName, paymentMethod) };
-    }
-    return { liquidity: 'cash', shortLabel: 'Cash' };
   }
 
   return { liquidity: null, shortLabel: '—' };
@@ -933,53 +807,8 @@ async function fetchPaymentRows(
     });
   }
 
-  const journalIdsForBranch = [
-    ...new Set(
-      paymentList
-        .filter((p: any) => {
-          const rt = String((p as any).reference_type || '').toLowerCase();
-          return rt === 'manual_receipt' || rt === 'manual_payment';
-        })
-        .map((p: any) => (p as any).reference_id)
-        .filter(Boolean)
-        .map((id: any) => String(id))
-    ),
-  ] as string[];
-  const journalBranchById = new Map<string, string>();
-  if (journalIdsForBranch.length > 0) {
-    const { data: jeBranchRows } = await supabase
-      .from('journal_entries')
-      .select('id, branch_id')
-      .in('id', journalIdsForBranch);
-    (jeBranchRows || []).forEach((r: any) => {
-      if (r?.id && r.branch_id) journalBranchById.set(String(r.id), String(r.branch_id));
-    });
-  }
-
-  const saleIdsForBranch = [
-    ...new Set(
-      paymentList
-        .filter((p: any) => String((p as any).reference_type || '').toLowerCase() === 'sale')
-        .map((p: any) => (p as any).reference_id)
-        .filter(Boolean)
-        .map((id: any) => String(id))
-    ),
-  ] as string[];
-  const saleBranchById = new Map<string, string>();
-  if (saleIdsForBranch.length > 0) {
-    const { data: saleBranchRows } = await supabase
-      .from('sales')
-      .select('id, branch_id')
-      .in('id', saleIdsForBranch);
-    (saleBranchRows || []).forEach((r: any) => {
-      if (r?.id && r.branch_id) saleBranchById.set(String(r.id), String(r.branch_id));
-    });
-  }
-
-  const branchMaps: RoznamchaBranchMaps = { rentalBranchById, journalBranchById, saleBranchById };
-
   if (branchId) {
-    paymentList = paymentList.filter((p: any) => paymentMatchesRoznamchaBranch(p, branchId, branchMaps));
+    paymentList = paymentList.filter((p: any) => paymentMatchesRoznamchaBranch(p, branchId, rentalBranchById));
   }
 
   const accountIds = [...new Set(paymentList.map((p: any) => p.payment_account_id).filter(Boolean))] as string[];
@@ -1124,18 +953,6 @@ async function fetchPaymentRows(
     if (c?.id && nm) contactNameById.set(String(c.id), nm);
   });
 
-  const manualDocJeIdSet = new Set<string>([...journalEntryIdByPaymentId.values()]);
-  for (const p of paymentList) {
-    const rt = String((p as any).reference_type || '').toLowerCase();
-    if (rt !== 'manual_receipt' && rt !== 'manual_payment') continue;
-    const refId = (p as any).reference_id ? String((p as any).reference_id) : '';
-    if (refId) manualDocJeIdSet.add(refId);
-  }
-  const manualJeContextById = await loadManualDocumentJeContextById(
-    companyId,
-    [...manualDocJeIdSet],
-  );
-
   const rows: RoznamchaRow[] = [];
   for (const p of paymentList) {
     const aid = (p as any).payment_account_id as string | null | undefined;
@@ -1157,10 +974,7 @@ async function fetchPaymentRows(
     }
 
     const amount = Number(p.amount) || 0;
-    const direction = roznamchaPaymentDirection(
-      String((p as any).reference_type || ''),
-      String((p as any).payment_type || ''),
-    );
+    const direction = getDirection((p as any).payment_type);
     const { date: dateStr, time: timeStr } = resolveRoznamchaRowDateTime(
       (p as any).payment_date,
       (p as any).created_at ? String((p as any).created_at) : null,
@@ -1315,24 +1129,6 @@ async function fetchPaymentRows(
       r.referenceDisplay = buildRoznamchaMetaLine(pay.reference_number, pay.notes, extraParts, r.details);
       r.partyLine = supplier ? null : 'Supplier Payment';
       return;
-    }
-
-    if (refType === 'manual_receipt' || refType === 'manual_payment') {
-      const manualJe = resolveManualDocumentJeForPayment(
-        refId,
-        r.id,
-        journalEntryIdByPaymentId,
-        manualJeContextById,
-      );
-      if (manualJe) {
-        const counterparty = counterpartyLabelFromManualJe(manualJe, r.direction);
-        r.details =
-          counterparty ||
-          journalDescriptionForDisplay(manualJe.description, 'General Entry');
-        r.referenceDisplay = buildRoznamchaMetaLine(pay.reference_number, pay.notes, [], r.details);
-        r.partyLine = null;
-        return;
-      }
     }
 
     if (isCustomerReceiptPayment(refType, paymentType)) {
@@ -1698,7 +1494,7 @@ function journalLiquidityTypeLabel(referenceType: string): string {
   const rt = (referenceType || '').toLowerCase();
   const m: Record<string, string> = {
     general: 'General Entry',
-    transfer: 'Account Transfer',
+    transfer: 'Internal Transfer',
     journal: 'Journal Entry',
     manual: 'Manual Entry',
     manual_journal: 'Journal Entry',
@@ -1716,58 +1512,18 @@ function sortRoznamchaRows(rows: RoznamchaRow[]): void {
   });
 }
 
-/** JE ids with a live manual liquidity payment visible in the current Roznamcha branch filter. */
-async function journalEntryIdsWithLiquidityPayments(
-  companyId: string,
-  journalEntryIds: string[],
-  branchId: string | null,
-): Promise<Set<string>> {
+/** JE ids that already have synthetic liquidity payments (reference_id = journal entry id). */
+async function journalEntryIdsWithLiquidityPayments(companyId: string, journalEntryIds: string[]): Promise<Set<string>> {
   if (journalEntryIds.length === 0) return new Set();
   const { data } = await supabase
     .from('payments')
-    .select('reference_id, branch_id, reference_type')
+    .select('reference_id')
     .eq('company_id', companyId)
-    .in('reference_id', journalEntryIds)
-    .in('reference_type', ['manual_receipt', 'manual_payment'])
-    .is('voided_at', null);
-  const rows = (data || []) as Array<{
-    reference_id?: string | null;
-    branch_id?: string | null;
-    reference_type?: string | null;
-  }>;
-  if (rows.length === 0) return new Set();
-
-  const jeIdsNeedingBranch = [
-    ...new Set(
-      rows
-        .filter((p) => !p.branch_id && p.reference_id)
-        .map((p) => String(p.reference_id)),
-    ),
-  ];
-  const journalBranchById = new Map<string, string>();
-  if (jeIdsNeedingBranch.length > 0) {
-    const { data: jeRows } = await supabase
-      .from('journal_entries')
-      .select('id, branch_id')
-      .in('id', jeIdsNeedingBranch);
-    (jeRows || []).forEach((r: { id?: string; branch_id?: string | null }) => {
-      if (r?.id && r.branch_id) journalBranchById.set(String(r.id), String(r.branch_id));
-    });
-  }
-
-  const branchMaps: RoznamchaBranchMaps = {
-    rentalBranchById: new Map(),
-    journalBranchById,
-    saleBranchById: new Map(),
-  };
-
+    .in('reference_id', journalEntryIds);
   const out = new Set<string>();
-  rows.forEach((p) => {
+  (data || []).forEach((p: { reference_id?: string | null }) => {
     const rid = String(p.reference_id || '').trim();
-    if (!rid) return;
-    if (!branchId || paymentMatchesRoznamchaBranch(p, branchId, branchMaps)) {
-      out.add(rid);
-    }
+    if (rid) out.add(rid);
   });
   return out;
 }
@@ -1811,11 +1567,10 @@ function mapJournalLiquidityLinesToRows(
   paymentLedgerAccountId: string | null,
   nameByUserId: Map<string, string>,
   expenseNoByExpenseId: Map<string, string> = new Map(),
-  expenseIdsWithLivePayments: Set<string> = new Set(),
 ): RoznamchaRow[] {
   const rows: RoznamchaRow[] = [];
   for (const je of entries) {
-    if (shouldSkipJournalEntryForRoznamcha(je, skipJeIds, expenseIdsWithLivePayments)) continue;
+    if (shouldSkipJournalEntryForRoznamcha(je, skipJeIds)) continue;
     const { date: dateStr, time: timeStr } = resolveRoznamchaRowDateTime(
       je.entry_date,
       je.created_at ? String(je.created_at) : null,
@@ -1840,7 +1595,7 @@ function mapJournalLiquidityLinesToRows(
       const credit = Number(line.credit) || 0;
       if (debit <= 0 && credit <= 0) continue;
       const amount = debit > 0 ? debit : credit;
-      const direction = roznamchaLiquidityLineDirection(je.reference_type, debit, credit);
+      const direction: 'IN' | 'OUT' = debit > 0 ? 'IN' : 'OUT';
       const { liquidity, shortLabel } = classifyRoznamchaLiquidity('', acc.type, acc.name, acc.code);
       if (!liquidity) continue;
       if (accountFilter !== 'all') {
@@ -1981,10 +1736,7 @@ async function fetchJournalLiquidityRows(
         .map((e) => String(e.reference_id)),
     ),
   ];
-  const [expenseNoByExpenseId, expenseIdsWithLivePayments] = await Promise.all([
-    loadExpenseNoById(expenseIds),
-    loadExpenseIdsWithLivePayments(companyId, expenseIds, includeVoidedReversed),
-  ]);
+  const expenseNoByExpenseId = await loadExpenseNoById(expenseIds);
 
   return mapJournalLiquidityLinesToRows(
     entries,
@@ -1993,7 +1745,6 @@ async function fetchJournalLiquidityRows(
     paymentLedgerAccountId,
     nameByUserId,
     expenseNoByExpenseId,
-    expenseIdsWithLivePayments,
   );
 }
 
@@ -2060,10 +1811,7 @@ async function getJournalLiquidityOpeningDelta(
         .map((e) => String(e.reference_id)),
     ),
   ];
-  const [expenseNoByExpenseId, expenseIdsWithLivePayments] = await Promise.all([
-    loadExpenseNoById(expenseIds),
-    loadExpenseIdsWithLivePayments(companyId, expenseIds, includeVoidedReversed),
-  ]);
+  const expenseNoByExpenseId = await loadExpenseNoById(expenseIds);
 
   const rows = mapJournalLiquidityLinesToRows(
     entries,
@@ -2072,7 +1820,6 @@ async function getJournalLiquidityOpeningDelta(
     paymentLedgerAccountId,
     new Map(),
     expenseNoByExpenseId,
-    expenseIdsWithLivePayments,
   );
   let total = 0;
   for (const r of rows) {
@@ -2093,7 +1840,7 @@ export async function getOpeningBalance(
   if (!isSupabaseConfigured) return 0;
   let q = supabase
     .from('payments')
-    .select('amount, payment_type, payment_method, payment_account_id, reference_type, voided_at')
+    .select('amount, payment_type, payment_method, payment_account_id, voided_at')
     .eq('company_id', companyId)
     .lt('payment_date', beforeDate);
 
@@ -2136,10 +1883,7 @@ export async function getOpeningBalance(
     }
     if (!liquidity) continue;
     const amount = Number(p.amount) || 0;
-    const dir = roznamchaPaymentDirection(
-      String((p as any).reference_type || ''),
-      String((p as any).payment_type || ''),
-    );
+    const dir = getDirection((p as any).payment_type);
     total += dir === 'IN' ? amount : -amount;
   }
 

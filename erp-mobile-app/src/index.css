@@ -163,6 +163,7 @@ input[type="number"] {
 }
 
 /* ----- PDF / Print preview ----- */
+/* The captured document is rendered inside an A4-sized white container so the preview and the PDF look identical. */
 .pdf-print-root {
   display: flex;
   justify-content: center;
@@ -174,6 +175,7 @@ input[type="number"] {
   color: #000000;
   width: 210mm;
   max-width: 100%;
+  min-height: 297mm;
   margin: 0 auto;
   padding: 14mm;
   box-sizing: border-box;
@@ -182,26 +184,6 @@ input[type="number"] {
   line-height: 1.4;
   text-align: left;
 }
-
-/** Short invoices / compact captures — content height only (no blank second page). */
-.pdf-document-compact {
-  min-height: auto;
-  width: 210mm;
-  max-width: 100%;
-  padding: 10mm 12mm;
-  font-size: 10px;
-}
-
-.pdf-document.pdf-document-landscape {
-  width: 297mm;
-  min-height: 210mm;
-}
-
-.pdf-document-compact.pdf-document-landscape {
-  width: 297mm;
-  min-height: auto;
-}
-
 .pdf-document * {
   color: inherit;
   box-sizing: border-box;
@@ -227,119 +209,36 @@ input[type="number"] {
   font-weight: 600;
 }
 
-.ledger-report-print .report-first-page-block {
-  break-after: avoid;
-  page-break-after: avoid;
-}
-
-.ledger-report-print .report-table thead {
-  display: table-header-group;
-}
-
-.ledger-report-print .report-table tbody {
-  display: table-row-group;
-}
-
-.ledger-report-print .report-table tfoot {
-  display: table-footer-group;
-}
-
+/* Print — force B&W as requested */
 @media print {
-  @page {
-    size: A4;
-    margin: 10mm;
-  }
-
-  html,
-  body {
-    display: block !important;
-    height: auto !important;
-    overflow: visible !important;
-    margin: 0 !important;
-    padding: 0 !important;
-  }
-
   body * {
-    display: none !important;
+    visibility: hidden;
   }
-
-  body *:has(.pdf-print-root),
-  body *:has(.pdf-document) {
-    display: revert !important;
-  }
-
   .pdf-print-root,
   .pdf-print-root * {
-    display: revert !important;
-    visibility: visible !important;
+    visibility: visible;
   }
-
-  .pdf-print-root table,
-  .pdf-document table {
-    display: table !important;
-  }
-
-  .pdf-print-root thead,
-  .pdf-print-root tbody,
-  .pdf-print-root tfoot,
-  .pdf-document thead,
-  .pdf-document tbody,
-  .pdf-document tfoot {
-    display: table-row-group !important;
-  }
-
-  .pdf-print-root tr,
-  .pdf-document tr {
-    display: table-row !important;
-  }
-
-  .pdf-print-root th,
-  .pdf-print-root td,
-  .pdf-document th,
-  .pdf-document td {
-    display: table-cell !important;
-  }
-
   .pdf-print-root {
-    position: static !important;
-    inset: auto !important;
-    width: 100% !important;
-    height: auto !important;
-    overflow: visible !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    box-shadow: none !important;
-    background: white !important;
-    color: black !important;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
   }
-
+  .pdf-print-root,
+  .pdf-print-root * {
+    color: #000 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+  .pdf-print-root img {
+    filter: grayscale(100%);
+  }
   .no-print {
     display: none !important;
   }
-
-  .pdf-document {
-    width: 100% !important;
-    min-height: auto !important;
-    padding: 0 !important;
-    box-shadow: none !important;
-    color: #000 !important;
-    background: #fff !important;
-  }
-
-  .pdf-document-compact {
-    page-break-after: avoid;
-  }
-
-  .pdf-document img {
-    filter: grayscale(100%) contrast(110%);
-  }
-
-  .ledger-report-print .report-first-page-block {
-    break-after: avoid;
-    page-break-after: avoid;
-  }
-
-  .ledger-report-print .report-table thead {
-    display: table-header-group;
+  @page {
+    size: A4;
+    margin: 12mm;
   }
 }

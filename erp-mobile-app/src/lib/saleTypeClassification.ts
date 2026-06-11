@@ -1,5 +1,5 @@
 /** Sale list type tabs — parity with web SalesPage isLikelyPOS / isStudioSale. */
-export type SaleListTypeFilter = 'all' | 'studio' | 'pos' | 'regular' | 'rental';
+export type SaleListTypeFilter = 'all' | 'studio' | 'pos' | 'regular';
 
 function saleDocNo(row: Record<string, unknown>): string {
   const inv = row.invoice_no != null ? String(row.invoice_no).trim() : '';
@@ -26,7 +26,6 @@ export function matchesSaleListTypeFilter(
   filter: SaleListTypeFilter
 ): boolean {
   if (filter === 'all') return true;
-  if (filter === 'rental') return false;
   if (filter === 'studio') return isStudioSaleRow(row);
   if (filter === 'pos') return isLikelyPosSaleRow(row);
   return !isLikelyPosSaleRow(row) && !isStudioSaleRow(row);
@@ -40,19 +39,7 @@ export function saleListTypeLabel(filter: SaleListTypeFilter): string {
       return 'POS';
     case 'regular':
       return 'Regular';
-    case 'rental':
-      return 'Rental';
     default:
       return 'All';
   }
-}
-
-function saleTypeFilterGridClass(tabCount: number): string {
-  if (tabCount <= 3) return 'grid-cols-3';
-  if (tabCount === 4) return 'grid-cols-4';
-  return 'grid-cols-5';
-}
-
-export function saleTypeFilterGridColsClass(tabs: SaleListTypeFilter[]): string {
-  return saleTypeFilterGridClass(tabs.length);
 }

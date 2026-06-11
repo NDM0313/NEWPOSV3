@@ -1,13 +1,11 @@
 import { useEffect } from 'react';
 import { useSupabase } from '@/app/context/SupabaseContext';
-import { dispatchDataInvalidated, dispatchGlobalRefresh } from '@/app/lib/dataInvalidationBus';
+import { dispatchDataInvalidated } from '@/app/lib/dataInvalidationBus';
 import { createDebouncedCallback, subscribeRealtimeDomains, type RealtimeDomain } from '@/app/lib/realtimeSubscriptions';
 import { webRealtimeHealth } from '@/lib/supabase';
-import { shouldSuppressRealtimeInvalidation } from '@/app/lib/localMutationSuppression';
 
 const FALLBACK_POLL_MS = 120_000;
 const FALLBACK_GRACE_MS = 120_000;
-const FOCUS_REFRESH_MIN_MS = 45_000;
 
 const FALLBACK_DOMAINS: RealtimeDomain[] = [
   'sales',
@@ -24,30 +22,11 @@ export function WebRealtimeBridge() {
 
   useEffect(() => {
     if (!companyId) return;
-    let lastFocusRefreshAt = 0;
-    const maybeFocusRefresh = () => {
-      if (typeof document !== 'undefined' && document.hidden) return;
-      const now = Date.now();
-      if (now - lastFocusRefreshAt < FOCUS_REFRESH_MIN_MS) return;
-      lastFocusRefreshAt = now;
-      dispatchGlobalRefresh({ companyId, branchId: branchId ?? null, reason: 'focus-refresh' });
-    };
-    document.addEventListener('visibilitychange', maybeFocusRefresh);
-    window.addEventListener('focus', maybeFocusRefresh);
-    return () => {
-      document.removeEventListener('visibilitychange', maybeFocusRefresh);
-      window.removeEventListener('focus', maybeFocusRefresh);
-    };
-  }, [companyId, branchId]);
-
-  useEffect(() => {
-    if (!companyId) return;
     const debouncedByDomain = new Map<RealtimeDomain, () => void>();
     const queueFor = (domain: RealtimeDomain) => {
       let queue = debouncedByDomain.get(domain);
       if (!queue) {
         queue = createDebouncedCallback(() => {
-          if (shouldSuppressRealtimeInvalidation()) return;
           dispatchDataInvalidated({
             domain,
             companyId,

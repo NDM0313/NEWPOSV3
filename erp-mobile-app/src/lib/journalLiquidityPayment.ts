@@ -20,11 +20,11 @@ export async function ensurePaymentsForLiquidityJournal(params: {
   description: string;
   lines: JournalLiquidityLineInput[];
   createdBy?: string | null;
-}): Promise<{ liquidityLegs: number; paymentsCreated: number }> {
-  if (!isSupabaseConfigured) return { liquidityLegs: 0, paymentsCreated: 0 };
+}): Promise<void> {
+  if (!isSupabaseConfigured) return;
   const { companyId, branchId, journalEntryId, entryNo, entryDate, description, lines, createdBy } = params;
   const accountIds = [...new Set(lines.map((l) => l.accountId).filter(Boolean))];
-  if (accountIds.length === 0) return { liquidityLegs: 0, paymentsCreated: 0 };
+  if (accountIds.length === 0) return;
 
   const { data: accounts } = await supabase
     .from('accounts')
@@ -41,7 +41,7 @@ export async function ensurePaymentsForLiquidityJournal(params: {
     const acc = accountById.get(l.accountId);
     return acc && isLiquidityPaymentAccount(acc);
   });
-  if (liquidityLines.length === 0) return { liquidityLegs: 0, paymentsCreated: 0 };
+  if (liquidityLines.length === 0) return;
 
   const notes = description || entryNo;
   const paymentIds: string[] = [];
@@ -77,6 +77,4 @@ export async function ensurePaymentsForLiquidityJournal(params: {
   if (paymentIds.length === 1) {
     await supabase.from('journal_entries').update({ payment_id: paymentIds[0] }).eq('id', journalEntryId);
   }
-
-  return { liquidityLegs: liquidityLines.length, paymentsCreated: paymentIds.length };
 }

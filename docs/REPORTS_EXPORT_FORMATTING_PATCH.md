@@ -137,22 +137,6 @@ Filtered tsc hits only unrelated: `productSellReportService.ts` (pre-existing), 
 
 ---
 
-## Settings ledger preview live sync (2026-06-10)
-
-Fixes Settings → Documents & Printing where **Ledger Statement** preview did not update when left-side controls changed.
-
-| Change | Files |
-|--------|-------|
-| Deep merge for printing settings draft | `mergePrintingSettingsPartial.ts`, `SettingsPageNew.tsx` |
-| A4 orientation syncs to `ledgerReportOrientation` | `resolveLedgerPrintOptions.ts`, `PrintingSettingsPanel.tsx` |
-| Ledger layout strip in A4 preview (orientation, header/footer, font) | `PrintingPreviewPanel.tsx` |
-| Brand on Reports & Export preview; single margin apply; remount key | `ReportExportPreviewPanel.tsx`, `buildSettingsPreviewBrand.ts` |
-| Field toggle defaults match merged settings | `PrintingSettingsPanel.tsx` |
-
-**Verify:** A4 Documents → Ledger Statement in dropdown → toggle Phone / change orientation → preview updates immediately without Save. Save still required for Ledger Center V2 runtime pages (via existing `notifyPrintingSettingsSaved`).
-
----
-
 ## 8. Phase 2 (not implemented)
 
 - Legacy reports via `exportUtils.ts`

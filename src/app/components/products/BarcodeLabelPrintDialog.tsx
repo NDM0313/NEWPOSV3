@@ -20,7 +20,6 @@ import { toast } from 'sonner';
 import { BarcodeLabelPreviewCard, A4SheetMiniPreview } from './barcodeLabelPreview';
 import { BarcodeLabelContentFields, BarcodeLabelSheetLayoutFields } from './BarcodeLabelLayoutFields';
 import { useNavigation } from '@/app/context/NavigationContext';
-import { useSettings } from '@/app/context/SettingsContext';
 import { writeSettingsHash } from '@/app/components/settings/settingsNavigation';
 
 export interface BarcodeLabelPrintDialogProps {
@@ -45,18 +44,6 @@ export function BarcodeLabelPrintDialog({
   companyId,
 }: BarcodeLabelPrintDialogProps) {
   const { setCurrentView } = useNavigation();
-  const { company } = useSettings();
-  const labelPrintCtx = useMemo(
-    () => ({
-      companyName,
-      branchName,
-      currency: company.currency,
-      decimalPrecision: company.decimalPrecision,
-      showCurrencySymbol: company.showCurrencySymbol,
-      currencySymbol: company.currencySymbol,
-    }),
-    [companyName, branchName, company.currency, company.decimalPrecision, company.showCurrencySymbol, company.currencySymbol],
-  );
   const [rows, setRows] = useState<LabelPrintLine[]>([]);
   const [showName, setShowName] = useState(labelSettings.showName);
   const [showPrice, setShowPrice] = useState(labelSettings.showPrice);
@@ -185,8 +172,8 @@ export function BarcodeLabelPrintDialog({
     setError(null);
     try {
       const settings = buildSettings();
-      const jobs = flattenLinesToJobs(rows, labelPrintCtx);
-      previewLabelsInBrowser(buildA4SheetHtml(jobs, settings, labelPrintCtx));
+      const jobs = flattenLinesToJobs(rows, { companyName, branchName });
+      previewLabelsInBrowser(buildA4SheetHtml(jobs, settings));
       toast.success('Sheet preview opened in a new tab');
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Preview failed';
@@ -200,7 +187,7 @@ export function BarcodeLabelPrintDialog({
     setBusy(true);
     setError(null);
     const settings = buildSettings();
-    const res = printProductLabelsBatch(rows, settings, labelPrintCtx);
+    const res = printProductLabelsBatch(rows, settings, { companyName, branchName });
     setBusy(false);
     if (!res.ok) {
       setError(res.hint || 'Print failed');

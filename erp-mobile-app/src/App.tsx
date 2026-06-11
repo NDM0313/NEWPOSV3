@@ -13,7 +13,6 @@ import {
 import { usePermissions } from './context/PermissionContext';
 import { useCounterWorker, useEffectiveWorkerProfile } from './context/CounterWorkerContext';
 import { useSettings } from './context/SettingsContext';
-import { FiscalYearProvider } from './context/FiscalYearContext';
 import { FEATURE_MOBILE_PERMISSION_V2 } from './config/featureFlags';
 import { getPermissionModuleForScreen, screenSkipsModuleViewPermission } from './utils/permissionModules';
 import { AccessDenied } from './components/AccessDenied';
@@ -37,7 +36,6 @@ import { isMediaCaptureActive, wasMediaCaptureRecent } from './lib/mediaCaptureS
 import { dispatchMobileInvalidated } from './lib/dataInvalidationBus';
 import { subscribeMobileRealtime } from './lib/realtimeSubscriptions';
 import { mobileRealtimeHealth } from './lib/supabase';
-import { shouldSuppressRealtimeInvalidation } from './lib/localMutationSuppression';
 import { resetLocalDataPlaneForNewCompany } from './lib/sessionIsolation';
 import { POSLockScreen } from './components/auth/POSLockScreen';
 import {
@@ -119,7 +117,6 @@ export default function App() {
   const [salesInitialType, setSalesInitialType] = useState<'regular' | 'studio' | null>(null);
   const [salesInitialDocumentBranchId, setSalesInitialDocumentBranchId] = useState<string | null>(null);
   const [studioFocusSaleId, setStudioFocusSaleId] = useState<string | null>(null);
-  const [rentalFocusId, setRentalFocusId] = useState<string | null>(null);
   const [isPinLocked, setIsPinLocked] = useState(false);
   const counterBootLockCheckedRef = useRef(false);
   /** When true, skip cold-boot POS lock once — user just came through `handleLogin` (already authenticated). */
@@ -336,7 +333,6 @@ export default function App() {
       channelKey: 'global',
       domains: ['sales', 'purchases', 'accounting', 'contacts'],
       onChange: (domain) => {
-        if (shouldSuppressRealtimeInvalidation()) return;
         dispatchMobileInvalidated({
           domain,
           companyId,
@@ -352,13 +348,7 @@ export default function App() {
 
   useEffect(() => {
     if (!companyId || mobileRealtimeHealth.canUseRealtime) return;
-    const mountedAt = Date.now();
-    const FALLBACK_POLL_MS = 120_000;
-    const FALLBACK_GRACE_MS = 120_000;
     const fallback = setInterval(() => {
-      if (typeof document !== 'undefined' && document.hidden) return;
-      if (Date.now() - mountedAt < FALLBACK_GRACE_MS) return;
-      if (shouldSuppressRealtimeInvalidation()) return;
       (['sales', 'purchases', 'accounting', 'contacts'] as const).forEach((domain) =>
         dispatchMobileInvalidated({
           domain,
@@ -367,7 +357,7 @@ export default function App() {
           reason: 'fallback-poll',
         })
       );
-    }, FALLBACK_POLL_MS);
+    }, 45000);
     return () => clearInterval(fallback);
   }, [companyId, selectedBranch?.id]);
 
@@ -811,7 +801,6 @@ export default function App() {
   ) : null;
 
   const content = (
-    <FiscalYearProvider branchId={selectedBranch?.id ?? null}>
     <div
       key={workerShellKey}
       className={lockOverlayActive ? 'pointer-events-none select-none' : undefined}
@@ -851,10 +840,6 @@ export default function App() {
                     setSalesInitialType(null);
                     setStudioFocusSaleId(saleId);
                     setCurrentScreen('studio');
-                  }}
-                  onOpenRental={(rentalId) => {
-                    setRentalFocusId(rentalId);
-                    setCurrentScreen('rental');
                   }}
                   initialEditSaleId={documentEditIntent?.kind === 'sale' ? documentEditIntent.id : null}
                   onConsumedInitialEditSaleId={() =>
@@ -935,14 +920,7 @@ export default function App() {
       {currentScreen === 'rental' && user && (
         !canAccessScreen('rental', selectedBranch?.id)
           ? <AccessDenied onBack={navigateHome} />
-          : <RentalModule
-              onBack={navigateHome}
-              user={user}
-              companyId={companyId}
-              branch={selectedBranch}
-              focusRentalId={rentalFocusId}
-              onFocusHandled={() => setRentalFocusId(null)}
-            />
+          : <RentalModule onBack={navigateHome} user={user} companyId={companyId} branch={selectedBranch} />
       )}
       {currentScreen === 'studio' && user && (
         !canAccessScreen('studio', selectedBranch?.id)
@@ -1027,7 +1005,6 @@ export default function App() {
     </>
     </Suspense>
     </div>
-    </FiscalYearProvider>
   );
 
   const syncBar = user && selectedBranch ? (

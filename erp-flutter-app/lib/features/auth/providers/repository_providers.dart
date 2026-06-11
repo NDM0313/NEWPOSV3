@@ -22,7 +22,6 @@ import '../../../data/repositories/sales_write_repository.dart';
 import '../../../data/repositories/studio_read_repository.dart';
 import '../../../data/repositories/studio_invoice_repository.dart';
 import '../../../data/repositories/studio_write_repository.dart';
-import '../../../data/repositories/journal_write_repository.dart';
 import '../../../data/repositories/settings_repository.dart';
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) => AuthRepository());
@@ -91,6 +90,3 @@ final partyLedgerRepositoryProvider =
 
 final journalReadRepositoryProvider =
     Provider<JournalReadRepository>((ref) => JournalReadRepository());
-
-final journalWriteRepositoryProvider =
-    Provider<JournalWriteRepository>((ref) => JournalWriteRepository());

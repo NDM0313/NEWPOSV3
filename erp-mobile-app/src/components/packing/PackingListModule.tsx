@@ -22,8 +22,6 @@ import { ShipmentAccountingStrip } from '../shipment/ShipmentAccountingStrip';
 import { resolveDbUserId } from '../../lib/resolveDbUserId';
 import { updateCourierAndSyncSale } from '../../api/shipmentSync';
 import { nextCourierStatus, statusLabel } from '../../lib/shipmentStatus';
-import { DateInputField } from '../shared/DateTimePicker';
-import { toLocalDateString } from '../../utils/localDate';
 
 interface PackingListModuleProps {
   onBack: () => void;
@@ -256,16 +254,24 @@ export function PackingListModule({ onBack, user, companyId, branchId }: Packing
               Dates
             </p>
             <div className="grid grid-cols-2 gap-2">
-              <DateInputField
-                label="Booking date"
-                value={bookingDateEdit}
-                onChange={(v) => setBookingDateEdit(toLocalDateString(v))}
-              />
-              <DateInputField
-                label="Expected delivery"
-                value={expectedDateEdit}
-                onChange={(v) => setExpectedDateEdit(toLocalDateString(v))}
-              />
+              <div>
+                <label className="text-[10px] text-[#9CA3AF]">Booking date</label>
+                <input
+                  type="date"
+                  value={bookingDateEdit}
+                  onChange={(e) => setBookingDateEdit(e.target.value)}
+                  className="w-full mt-1 h-9 rounded bg-[#111827] border border-[#374151] text-white px-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-[#9CA3AF]">Expected delivery</label>
+                <input
+                  type="date"
+                  value={expectedDateEdit}
+                  onChange={(e) => setExpectedDateEdit(e.target.value)}
+                  className="w-full mt-1 h-9 rounded bg-[#111827] border border-[#374151] text-white px-2 text-sm"
+                />
+              </div>
             </div>
             <button
               type="button"

@@ -80,7 +80,7 @@ export const DocumentShareActions: React.FC<DocumentShareActionsProps> = ({
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-2 no-print">
+    <div className="flex flex-wrap items-center gap-2">
       <Button
         onClick={() => setPreviewOpen(true)}
         variant="outline"

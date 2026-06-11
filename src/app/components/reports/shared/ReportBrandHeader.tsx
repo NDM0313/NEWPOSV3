@@ -42,7 +42,6 @@ export const ReportBrandHeader: React.FC<ReportBrandHeaderProps> = ({
   return (
     <table
       role="presentation"
-      className="report-brand-header pdf-report-header-block"
       cellPadding={0}
       cellSpacing={0}
       style={{ width: '100%', borderCollapse: 'collapse', marginBottom: compact ? 8 : 14 }}

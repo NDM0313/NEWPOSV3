@@ -51,8 +51,7 @@ export type LegacyReportKey =
   | 'studio-report'
   | 'rental-report'
   | 'inventory-report'
-  | 'courier-shipments'
-  | 'staff-statement';
+  | 'courier-shipments';
 
 interface ReportsHubProps {
   onBack: () => void;
@@ -250,13 +249,6 @@ export function ReportsHub({
                     gradient="from-[#10B981] to-[#059669]"
                     icon={<Users className="w-5 h-5 text-white" />}
                     onClick={() => onOpenReport('worker-ledger')}
-                  />
-                  <ReportTile
-                    title="Staff statement"
-                    description="Salary + commission by user"
-                    gradient="from-[#8B5CF6] to-[#6366F1]"
-                    icon={<Users className="w-5 h-5 text-white" />}
-                    onClick={() => onOpenReport('staff-statement')}
                   />
                   <ReportTile
                     title="Account Ledger"

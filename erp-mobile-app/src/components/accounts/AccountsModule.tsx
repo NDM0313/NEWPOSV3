@@ -26,7 +26,6 @@ import { InventoryReport } from './reports/InventoryReport';
 import { JournalEntryDetailPanel } from './JournalEntryDetailPanel';
 import { MyFinancialActivity } from './MyFinancialActivity';
 import { CourierShipmentsReport } from './reports/CourierShipmentsReport';
-import { StaffStatementReport } from './reports/StaffStatementReport';
 import {
   MOBILE_DATA_INVALIDATED_EVENT,
   shouldAcceptMobileInvalidation,
@@ -78,8 +77,7 @@ type View =
   | 'rental-report'
   | 'inventory-report'
   | 'my-activity'
-  | 'courier-shipments'
-  | 'staff-statement';
+  | 'courier-shipments';
 
 const PARTY_VIEWS: View[] = ['dashboard', 'my-activity'];
 
@@ -499,17 +497,6 @@ export function AccountsModule({
         companyId={companyId ?? null}
         branchId={branch?.id ?? null}
         onOpenSale={(saleId) => onNavigateToDocumentEdit?.('sale', saleId)}
-      />
-    );
-  }
-  if (view === 'staff-statement') {
-    return (
-      <StaffStatementReport
-        reportRefreshEpoch={reportRefreshEpoch}
-        onBack={backToReports}
-        companyId={companyId ?? null}
-        branchId={branch?.id ?? null}
-        user={user}
       />
     );
   }

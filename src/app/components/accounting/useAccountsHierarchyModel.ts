@@ -54,8 +54,6 @@ export type AccountsHierarchyRowModel = {
   onToggleCollapse: () => void;
   /** Professional mode: first row of a statement section (Assets, Liabilities, …). */
   sectionHeader?: string;
-  /** Operational / COA group row (is_group): render as section band + compact row. */
-  isCoaGroupHeader?: boolean;
   /** Operational COA: party / contact name as main title when linked */
   coaPrimaryLabel: string;
   /** Customer, Supplier, Worker, etc. */
@@ -169,18 +167,6 @@ export function useAccountsHierarchyModel(
         pid = p?.parent_id ?? undefined;
       }
     });
-    // Under any visible group header, include the full subtree (new committee / COA children auto-appear).
-    const addSubtreeUnderGroup = (groupId: string) => {
-      for (const child of all) {
-        if (child.parent_id !== groupId) continue;
-        if (!withAncestors.has(child.id)) withAncestors.add(child.id);
-        if (child.is_group) addSubtreeUnderGroup(child.id);
-      }
-    };
-    for (const id of [...withAncestors]) {
-      const node = accountsById.get(id);
-      if (node?.is_group) addSubtreeUnderGroup(id);
-    }
     // Party / worker sub-ledgers (children of 1100 / 2000 / 2010 / 1180): show under Operational COA even if leaf type is generic.
     all.forEach((a) => {
       if (!a.parent_id) return;
@@ -345,14 +331,8 @@ export function useAccountsHierarchyModel(
       const name = account.name || '';
       const entryCount = entryCountByAccountName.get(name) ?? 0;
       const sec = coaStatementSection({ type: account.type || account.accountType, code: account.code });
-      const isCoaGroupHeader = account.is_group === true;
-      let sectionHeader: string | undefined;
-      if (accountsViewMode === 'professional' && sec !== prevSection) {
-        sectionHeader = COA_SECTION_LABEL[sec];
-      } else if (isCoaGroupHeader) {
-        const code = String(account.code || '').trim();
-        sectionHeader = code ? `${account.name || 'Group'} · ${code}` : account.name || 'Group';
-      }
+      const sectionHeader =
+        accountsViewMode === 'professional' && sec !== prevSection ? COA_SECTION_LABEL[sec] : undefined;
       if (accountsViewMode === 'professional') prevSection = sec;
 
       const parent = account.parent_id ? accountsById.get(account.parent_id) : undefined;
@@ -411,7 +391,6 @@ export function useAccountsHierarchyModel(
         entryCount,
         trendPct: null,
         sectionHeader,
-        isCoaGroupHeader,
         coaPrimaryLabel,
         coaPartyRoleLabel,
         coaDetailLine,

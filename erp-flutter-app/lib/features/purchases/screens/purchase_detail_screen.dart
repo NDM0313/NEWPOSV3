@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../app/theme/app_colors.dart';
 import '../../../core/network/network_status_provider.dart' show connectivityProvider;
 import '../../../data/local/offline_pending_store.dart';
-import '../../../core/sync/sync_providers.dart';
 import '../../../data/sync/enqueue_or_run.dart';
 import '../../../core/permissions/purchase_actions.dart';
 import '../../../core/session/session_scope.dart';
@@ -172,46 +171,19 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
     });
 
     final repo = ref.read(purchasesWriteRepositoryProvider);
-    final online = ref.read(connectivityProvider).value ?? true;
-
-    final enqueueResult = await enqueueOrRun(
-      isOnline: online,
-      type: PendingType.purchaseCancel,
-      payload: {
-        'company_id': scope.companyId,
-        'branch_id': scope.branchId ?? '',
-        'purchase_id': widget.purchaseId,
-        'created_by': scope.authUserId,
-      },
-      companyId: scope.companyId,
-      branchId: scope.branchId ?? '',
-      onlineTask: () async {
-        final result = await repo.cancelPurchase(
-          purchaseId: widget.purchaseId,
-          userId: scope.authUserId,
-        );
-        return (success: result.success, error: result.error);
-      },
+    final result = await repo.cancelPurchase(
+      purchaseId: widget.purchaseId,
+      userId: scope.authUserId,
     );
 
     if (!mounted) return;
 
-    switch (enqueueResult) {
-      case OfflineQueued():
-        ref.invalidate(pendingSyncCountProvider);
-        setState(() {
-          _busy = false;
-          _actionSuccess = 'Cancel queued offline — sync when online.';
-        });
-        return;
-      case OnlineResult(value: final result):
-        if (!result.success) {
-          setState(() {
-            _busy = false;
-            _actionError = result.error ?? 'Cancel failed.';
-          });
-          return;
-        }
+    if (!result.success) {
+      setState(() {
+        _busy = false;
+        _actionError = result.error ?? 'Cancel failed.';
+      });
+      return;
     }
 
     ref.invalidate(purchaseDetailProvider(widget.purchaseId));

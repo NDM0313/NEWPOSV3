@@ -1,26 +1,28 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Download, Share2, Printer, Loader2 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { downloadPDF, printPDF, sharePdfWithWhatsAppFallback } from '../../utils/pdfGenerator';
-import type { ReportPrintOrientation } from '../../lib/reportPrintConfig';
 
 interface PdfPreviewModalProps {
   open: boolean;
   onClose: () => void;
   title: string;
   filename: string;
+  /** Rendered into an A4-sized white container. Use plain HTML/inline styles; tailwind dark classes are fine but printed output is B&W. */
   children: ReactNode;
+  /** Caption for native share + WhatsApp text fallback when PDF share is unavailable. */
   whatsAppFallbackText?: string;
+  /** Customer/supplier mobile or phone — dashes stripped when opening WhatsApp. */
   sharePhone?: string | null;
-  /** Use compact sheet height for short documents (invoices) — avoids blank extra PDF page. */
-  compact?: boolean;
-  orientation?: ReportPrintOrientation;
-  /** True while brand/settings are loading before preview opens. */
-  preparing?: boolean;
 }
 
+/**
+ * Universal PDF/Print preview modal (mobile).
+ * User sees the branded, final-looking document. Footer buttons: Share / Download / Print.
+ * The on-screen preview and captured PDF are the same DOM, so WYSIWYG.
+ */
 export function PdfPreviewModal({
   open,
   onClose,
@@ -29,14 +31,10 @@ export function PdfPreviewModal({
   children,
   whatsAppFallbackText,
   sharePhone,
-  compact = false,
-  orientation = 'portrait',
-  preparing = false,
 }: PdfPreviewModalProps) {
   const contentRef = useRef<HTMLDivElement | null>(null);
   const [busy, setBusy] = useState<false | 'share' | 'download' | 'print'>(false);
   const [toast, setToast] = useState<string | null>(null);
-  const actionLockRef = useRef(false);
 
   useEffect(() => {
     if (!open) return;
@@ -47,9 +45,13 @@ export function PdfPreviewModal({
     };
   }, [open]);
 
-  const captureToPdfBlob = useCallback(async (): Promise<Blob> => {
+  if (!open) return null;
+
+  const captureToPdfBlob = async (): Promise<Blob> => {
     const el = contentRef.current;
     if (!el) throw new Error('Preview element missing');
+    // useCORS:true + allowTaint:false: any image without CORS headers fails fast instead of
+    // silently corrupting the canvas (which is what produced "wrong PNG signature" in jsPDF).
     const canvas = await html2canvas(el, {
       scale: 2,
       useCORS: true,
@@ -61,15 +63,12 @@ export function PdfPreviewModal({
     if (!canvas.width || !canvas.height) {
       throw new Error('Captured canvas is empty — check that all images loaded.');
     }
+    // JPEG avoids jsPDF's PNG decode path entirely; smaller PDF, immune to "wrong PNG signature".
     const imgData = canvas.toDataURL('image/jpeg', 0.92);
     if (!imgData.startsWith('data:image/jpeg;base64,')) {
       throw new Error('Could not encode preview as JPEG — try again.');
     }
-    const pdf = new jsPDF({
-      unit: 'mm',
-      format: 'a4',
-      orientation: orientation === 'landscape' ? 'landscape' : 'portrait',
-    });
+    const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
     const pageW = pdf.internal.pageSize.getWidth();
     const pageH = pdf.internal.pageSize.getHeight();
     const ratio = canvas.width / canvas.height;
@@ -78,6 +77,7 @@ export function PdfPreviewModal({
     if (targetH <= pageH) {
       pdf.addImage(imgData, 'JPEG', 0, 0, targetW, targetH);
     } else {
+      // Multi-page slice
       const pxPerMm = canvas.width / pageW;
       const pageHeightPx = pageH * pxPerMm;
       let offsetY = 0;
@@ -106,90 +106,82 @@ export function PdfPreviewModal({
       }
     }
     return pdf.output('blob');
-  }, [orientation]);
+  };
 
-  const runAction = useCallback(
-    async (kind: 'share' | 'download' | 'print') => {
-      if (preparing || busy || actionLockRef.current) return;
-      actionLockRef.current = true;
-      setBusy(kind);
-      setToast(null);
-      try {
-        const blob = await captureToPdfBlob();
-        if (kind === 'share') {
-          const result = await sharePdfWithWhatsAppFallback(blob, filename, title, {
-            sharePhone,
-            whatsAppText: whatsAppFallbackText ?? title,
-          });
-          if (result === 'failed') setToast('Could not share PDF — try Download');
-        } else if (kind === 'download') {
-          const ok = await downloadPDF(blob, filename);
-          if (!ok) setToast('Could not save PDF — try again');
-        } else {
-          const ok = await printPDF(blob, filename);
-          if (!ok) setToast('Could not open print — try Share instead');
-        }
-      } catch (err) {
-        console.error(`[PdfPreview] ${kind} failed`, err);
-        setToast(
-          kind === 'share'
-            ? 'Could not share PDF — try again'
-            : kind === 'download'
-              ? 'Could not save PDF — try again'
-              : 'Could not open print — try Share instead',
-        );
-      } finally {
-        setBusy(false);
-        setTimeout(() => {
-          actionLockRef.current = false;
-        }, 300);
+  const handleShare = async () => {
+    if (busy) return;
+    setBusy('share');
+    setToast(null);
+    try {
+      const blob = await captureToPdfBlob();
+      const result = await sharePdfWithWhatsAppFallback(blob, filename, title, {
+        sharePhone,
+        whatsAppText: whatsAppFallbackText ?? title,
+      });
+      if (result === 'failed') {
+        setToast('Could not share PDF — try Download');
       }
-    },
-    [busy, captureToPdfBlob, filename, preparing, sharePhone, title, whatsAppFallbackText],
-  );
+    } catch (err) {
+      console.error('[PdfPreview] share failed', err);
+      setToast('Could not share PDF — try again');
+    } finally {
+      setBusy(false);
+    }
+  };
 
-  if (!open) return null;
+  const handleDownload = async () => {
+    if (busy) return;
+    setBusy('download');
+    setToast(null);
+    try {
+      const blob = await captureToPdfBlob();
+      const ok = await downloadPDF(blob, filename);
+      if (!ok) setToast('Could not save PDF — try again');
+    } catch (err) {
+      console.error('[PdfPreview] download failed', err);
+      setToast('Could not save PDF — try again');
+    } finally {
+      setBusy(false);
+    }
+  };
 
-  const isBlocked = preparing || !!busy;
-
-  const documentClass = [
-    'pdf-document',
-    compact ? 'pdf-document-compact' : '',
-    orientation === 'landscape' ? 'pdf-document-landscape' : '',
-  ]
-    .filter(Boolean)
-    .join(' ');
+  const handlePrint = async () => {
+    if (busy) return;
+    setBusy('print');
+    setToast(null);
+    try {
+      const blob = await captureToPdfBlob();
+      const ok = await printPDF(blob, filename);
+      if (!ok) setToast('Could not open print — try Share instead');
+    } catch (err) {
+      console.error('[PdfPreview] print failed', err);
+      setToast('Could not open print — try Share instead');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return createPortal(
     <div className="fixed inset-0 z-[100] bg-black/80 flex flex-col">
       <div className="bg-[#1F2937] text-[#F9FAFB] px-4 py-3 flex items-center justify-between border-b border-[#374151] no-print">
         <div className="min-w-0">
           <p className="text-sm font-medium truncate">{title}</p>
-          <p className="text-xs text-[#9CA3AF] truncate">
-            {preparing ? 'Preparing report…' : `Preview · A4 ${orientation}`}
-          </p>
+          <p className="text-xs text-[#9CA3AF] truncate">Preview · A4</p>
         </div>
         <button
           onClick={onClose}
-          disabled={!!busy}
-          className="p-2 hover:bg-[#374151] rounded-lg text-[#F9FAFB] disabled:opacity-60"
+          className="p-2 hover:bg-[#374151] rounded-lg text-[#F9FAFB]"
           aria-label="Close"
         >
           <X className="w-5 h-5" />
         </button>
       </div>
 
-      <div className="flex-1 overflow-auto bg-[#374151] p-3 sm:p-6 no-print relative">
-        {preparing ? (
-          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-[#374151]/90">
-            <Loader2 className="w-8 h-8 animate-spin text-white" />
-            <p className="text-sm text-white font-medium">Preparing report…</p>
-          </div>
-        ) : null}
+      <div className="flex-1 overflow-auto bg-[#374151] p-3 sm:p-6">
         <div className="mx-auto pdf-print-root" style={{ width: 'fit-content' }}>
           <div
             ref={contentRef}
-            className={`${documentClass} shadow-2xl`}
+            className="pdf-document shadow-2xl"
             style={{ transform: 'scale(var(--preview-scale, 1))', transformOrigin: 'top center' }}
           >
             {children}
@@ -199,24 +191,24 @@ export function PdfPreviewModal({
 
       <div className="bg-[#1F2937] border-t border-[#374151] p-3 grid grid-cols-3 gap-2 no-print pb-[calc(0.75rem+env(safe-area-inset-bottom,0))]">
         <button
-          onClick={() => void runAction('share')}
-          disabled={isBlocked}
+          onClick={() => void handleShare()}
+          disabled={!!busy}
           className="h-11 rounded-lg bg-[#10B981] hover:bg-[#059669] text-white font-medium flex items-center justify-center gap-2 disabled:opacity-60"
         >
           {busy === 'share' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
           Share
         </button>
         <button
-          onClick={() => void runAction('download')}
-          disabled={isBlocked}
+          onClick={handleDownload}
+          disabled={!!busy}
           className="h-11 rounded-lg bg-[#3B82F6] hover:bg-[#2563EB] text-white font-medium flex items-center justify-center gap-2 disabled:opacity-60"
         >
           {busy === 'download' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
           PDF
         </button>
         <button
-          onClick={() => void runAction('print')}
-          disabled={isBlocked}
+          onClick={() => void handlePrint()}
+          disabled={!!busy}
           className="h-11 rounded-lg bg-[#6B7280] hover:bg-[#4B5563] text-white font-medium flex items-center justify-center gap-2 disabled:opacity-60"
         >
           {busy === 'print' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
@@ -229,6 +221,6 @@ export function PdfPreviewModal({
         </div>
       ) : null}
     </div>,
-    document.body,
+    document.body
   );
 }

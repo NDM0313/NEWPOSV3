@@ -9,8 +9,6 @@ import { postSaleShipmentJournal } from '../../api/shipmentAccounting';
 import { COURIER_STATUS_STEPS } from '../../lib/shipmentStatus';
 import { useSubmitLock } from '../../contexts/LoadingContext';
 import { SaveBlockingOverlay } from '../common/SaveBlockingOverlay';
-import { DateInputField } from '../shared/DateTimePicker';
-import { toLocalDateString } from '../../utils/localDate';
 
 export type ShipmentModalMode = 'sale' | 'packing_list';
 
@@ -223,16 +221,24 @@ export function ShipmentModal({
             </div>
           )}
           <div className="grid grid-cols-2 gap-2">
-            <DateInputField
-              label="Booking date"
-              value={bookingDate}
-              onChange={(v) => setBookingDate(toLocalDateString(v))}
-            />
-            <DateInputField
-              label="Expected delivery"
-              value={expectedDeliveryDate}
-              onChange={(v) => setExpectedDeliveryDate(toLocalDateString(v))}
-            />
+            <div>
+              <label className="block text-sm font-medium text-[#D1D5DB] mb-1">Booking date</label>
+              <input
+                type="date"
+                value={bookingDate}
+                onChange={(e) => setBookingDate(e.target.value)}
+                className="w-full rounded-lg bg-[#111827] border border-[#374151] px-3 py-2 text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-[#D1D5DB] mb-1">Expected delivery</label>
+              <input
+                type="date"
+                value={expectedDeliveryDate}
+                onChange={(e) => setExpectedDeliveryDate(e.target.value)}
+                className="w-full rounded-lg bg-[#111827] border border-[#374151] px-3 py-2 text-white"
+              />
+            </div>
           </div>
           <div>
             <CustomSelect

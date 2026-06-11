@@ -1,6 +1,5 @@
 import { getCurrentLocalTimestamp, localNowDateString } from '@/app/utils/localDate';
 import { supabase } from '@/lib/supabase';
-import { shouldExcludePaymentFromSaleHistory } from '@/app/lib/salePaymentHistoryFilter';
 import { getDocumentConversionSchemaFlags } from '@/app/lib/documentConversionSchema';
 import { SALE_BUSINESS_ONLY_STATUSES } from '@/app/lib/documentStatusConstants';
 import {
@@ -2249,7 +2248,6 @@ export const saleService = {
       }
       for (const p of data as any[]) {
         if (p.voided_at) continue;
-        if (shouldExcludePaymentFromSaleHistory(p)) continue;
         let att = p.attachments;
         if (typeof att === 'string' && att) {
           try {
@@ -2287,16 +2285,13 @@ export const saleService = {
         const { data: parents } = await supabase
           .from('payments')
           .select(
-            `id, payment_date, reference_number, reference_type, amount, payment_method, payment_account_id, notes, attachments, voided_at, created_at, updated_at, account:accounts(id, name)`
+            `id, payment_date, reference_number, amount, payment_method, payment_account_id, notes, attachments, voided_at, created_at, updated_at, account:accounts(id, name)`
           )
           .in('id', payIds);
         const parentById = new Map((parents || []).map((p: any) => [p.id, p]));
-        const directPaymentIds = new Set(directRows.map((r) => r.id));
         for (const a of allocs as any[]) {
           const p = parentById.get(a.payment_id);
           if (!p || (p as any).voided_at) continue;
-          if (shouldExcludePaymentFromSaleHistory(p as any)) continue;
-          if (directPaymentIds.has(String(a.payment_id))) continue;
           const ord = Number(a.allocation_order) || 0;
           allocRows.push({
             id: `alloc:${a.id}`,

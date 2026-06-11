@@ -628,17 +628,7 @@ export async function createJournalEntry(params: {
   if (Math.abs(totalDebit - totalCredit) > 0.01) {
     return { data: null, error: 'Debit must equal Credit.' };
   }
-  let branchResolved: string;
-  try {
-    branchResolved = await resolveBranchUuidForWrite(
-      companyId,
-      branchId ?? null,
-      'Branch required for journal entry. Select a branch on the home screen.',
-    );
-  } catch (e) {
-    return { data: null, error: e instanceof Error ? e.message : 'Branch required for journal entry.' };
-  }
-  const entryNo = await getNextDocumentNumber(companyId, branchResolved, 'journal');
+  const entryNo = await getNextDocumentNumber(companyId, branchId ?? null, 'journal');
   const entryRow: Record<string, unknown> = {
     company_id: companyId,
     entry_no: entryNo,
@@ -646,8 +636,8 @@ export async function createJournalEntry(params: {
     description,
     reference_type: referenceType,
     created_by: userId ?? null,
-    branch_id: branchResolved,
   };
+  if (branchId && branchId !== 'all' && branchId !== 'default') entryRow.branch_id = branchId;
   if (referenceId) entryRow.reference_id = referenceId;
   if (actionFingerprint) entryRow.action_fingerprint = actionFingerprint;
   if (attachments && attachments.length > 0) entryRow.attachments = attachments;
@@ -679,11 +669,13 @@ export async function createJournalEntry(params: {
     if (lineErr) return { data: null, error: lineErr.message };
   }
 
+  const effectiveBranch =
+    branchId && branchId !== 'all' && branchId !== 'default' ? branchId : null;
   try {
     const { ensurePaymentsForLiquidityJournal } = await import('../lib/journalLiquidityPayment');
-    const backfill = await ensurePaymentsForLiquidityJournal({
+    await ensurePaymentsForLiquidityJournal({
       companyId,
-      branchId: branchResolved,
+      branchId: effectiveBranch,
       journalEntryId: entry.id,
       entryNo: entry.entry_no,
       entryDate,
@@ -695,24 +687,9 @@ export async function createJournalEntry(params: {
       })),
       createdBy: userId ?? null,
     });
-    if (backfill.liquidityLegs > 0 && backfill.paymentsCreated === 0) {
-      await supabase.from('journal_entry_lines').delete().eq('journal_entry_id', entry.id);
-      await supabase.from('journal_entries').delete().eq('id', entry.id);
-      return {
-        data: null,
-        error:
-          'Cash book (Roznamcha) row could not be created. Entry was not saved. Check payment permissions or account setup.',
-      };
-    }
-  } catch (e) {
-    await supabase.from('journal_entry_lines').delete().eq('journal_entry_id', entry.id);
-    await supabase.from('journal_entries').delete().eq('id', entry.id);
-    const msg = e instanceof Error ? e.message : 'Cash book backfill failed.';
-    return { data: null, error: `Roznamcha sync failed — entry was not saved: ${msg}` };
+  } catch {
+    /* Roznamcha read path still picks up journal liquidity legs if payment insert fails */
   }
-
-  const { markLocalMutation } = await import('../lib/localMutationSuppression');
-  markLocalMutation();
 
   return { data: { id: entry.id, entry_no: entry.entry_no }, error: null };
 }

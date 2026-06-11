@@ -1,10 +1,10 @@
 import '../../core/supabase/supabase_bootstrap.dart';
 import '../../core/utils/local_date.dart';
-import 'studio_finalize_after_invoice.dart';
+import 'sales_write_repository.dart';
 
 class StudioWriteRepository {
   final _client = SupabaseBootstrap.client;
-  final _finalizeAfterInvoice = StudioFinalizeAfterInvoiceRepository();
+  final _salesWrite = SalesWriteRepository();
 
   Future<({bool success, String? error})> assignWorkerToStage({
     required String stageId,
@@ -78,16 +78,61 @@ class StudioWriteRepository {
     return _rpcOk('rpc_reopen_stage', {'p_stage_id': stageId});
   }
 
-  /// When invoice line exists and all stages completed, full GL backfill (Capacitor parity).
+  /// When invoice line exists and all stages completed, finalize linked sale (GL via server RPC).
   Future<({bool ok, String? error, String? skipped})> tryFinalizeStudioProduction(
     String productionId,
   ) async {
-    final result =
-        await _finalizeAfterInvoice.tryFinalizeStudioProductionAfterMobileInvoice(productionId);
-    if (!result.ok) {
-      return (ok: false, error: result.error, skipped: null);
+    try {
+      final prod = await _client
+          .from('studio_productions')
+          .select('id, sale_id, generated_invoice_item_id, status')
+          .eq('id', productionId)
+          .maybeSingle();
+      if (prod == null) return (ok: false, error: 'Production not found.', skipped: null);
+
+      final saleId = prod['sale_id']?.toString();
+      if (saleId == null || saleId.isEmpty) {
+        return (ok: true, error: null, skipped: 'no_sale_id');
+      }
+      if (prod['generated_invoice_item_id'] == null) {
+        return (ok: true, error: null, skipped: 'no_invoice_line');
+      }
+
+      final stages = await _client
+          .from('studio_production_stages')
+          .select('status')
+          .eq('production_id', productionId);
+      final list = stages as List;
+      if (list.isEmpty) return (ok: true, error: null, skipped: 'no_stages');
+      final allDone = list.every(
+        (s) => (s as Map)['status']?.toString().toLowerCase() == 'completed',
+      );
+      if (!allDone) return (ok: true, error: null, skipped: 'stages_incomplete');
+
+      final sale = await _client.from('sales').select('status').eq('id', saleId).maybeSingle();
+      final status = sale?['status']?.toString().toLowerCase() ?? '';
+      if (status == 'final') {
+        await _client.from('studio_productions').update({
+          'status': 'completed',
+          'completed_at': DateTime.now().toIso8601String(),
+        }).eq('id', productionId);
+        return (ok: true, error: null, skipped: 'already_final');
+      }
+
+      final fin = await _salesWrite.finalizeSale(saleId);
+      if (!fin.success) {
+        return (ok: false, error: fin.error, skipped: null);
+      }
+
+      await _client.from('studio_productions').update({
+        'status': 'completed',
+        'completed_at': DateTime.now().toIso8601String(),
+      }).eq('id', productionId);
+
+      return (ok: true, error: null, skipped: null);
+    } catch (e) {
+      return (ok: false, error: e.toString(), skipped: null);
     }
-    return (ok: true, error: null, skipped: result.skipped);
   }
 
   Future<({bool success, String? error})> _rpcOk(

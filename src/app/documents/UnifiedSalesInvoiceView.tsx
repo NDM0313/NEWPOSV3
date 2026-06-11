@@ -12,7 +12,6 @@ import { ThermalInvoiceTemplate } from '@/app/components/shared/invoice/ThermalI
 import { getContactWhatsAppPhone } from '@/app/lib/phoneWhatsApp';
 import { DocumentShareActions } from '@/app/components/shared/DocumentShareActions';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
-import { useDocumentPrint } from '@/app/hooks/useDocumentPrint';
 import { useThermalPrint } from '@/app/hooks/useThermalPrint';
 import type { InvoiceTemplateType } from '@/app/types/invoiceDocument';
 import type { InvoiceTemplate } from '@/app/types/invoiceDocument';
@@ -61,7 +60,6 @@ export const UnifiedSalesInvoiceView: React.FC<UnifiedSalesInvoiceViewProps> = (
 }) => {
   const { formatCurrency } = useFormatCurrency();
   const { printThermal } = useThermalPrint();
-  const { runDocumentPrint } = useDocumentPrint();
   const [document, setDocument] = useState<InvoiceDocument | null>(documentProp ?? null);
   const [docLoading, setDocLoading] = useState(false);
   const [docError, setDocError] = useState<string | null>(null);
@@ -116,7 +114,7 @@ export const UnifiedSalesInvoiceView: React.FC<UnifiedSalesInvoiceViewProps> = (
     if (templateType === 'Thermal') {
       printThermal(effectivePaperSize);
     } else {
-      runDocumentPrint(() => window.print());
+      window.print();
     }
   };
 

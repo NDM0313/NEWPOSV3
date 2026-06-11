@@ -12,11 +12,7 @@ import { useSettings } from '@/app/context/SettingsContext';
 import { useCompanyLogoDisplayUrl } from '@/app/hooks/useCompanyLogoDisplayUrl';
 import { resolveLedgerPrintOptions } from '@/app/components/reports/shared/resolveLedgerPrintOptions';
 import { ReportExportPreviewPanel } from './printing/ReportExportPreviewPanel';
-import { buildSettingsPreviewBrand } from './printing/buildSettingsPreviewBrand';
-import { LedgerColumnLayoutEditor } from './printing/LedgerColumnLayoutEditor';
-import { Label } from '../ui/label';
-import { Switch } from '../ui/switch';
-import { Input } from '../ui/input';
+import type { CompanyBrand } from '@/app/services/companyBrandService';
 
 const PREVIEW_DOCUMENT_OPTIONS: { id: DocumentTemplateId; label: string }[] = [
   { id: 'sales_invoice', label: 'Sales Invoice' },
@@ -46,8 +42,18 @@ const MOCK_INVOICE = {
   notes: 'Thank you for your business.',
 };
 
-function buildPreviewBrand(company: ReturnType<typeof useSettings>['company'], logoUrl: string) {
-  return buildSettingsPreviewBrand(company, logoUrl);
+function buildPreviewBrand(company: ReturnType<typeof useSettings>['company'], logoUrl: string): CompanyBrand {
+  return {
+    name: company.businessName || 'Your Company',
+    address: company.businessAddress || '',
+    phone: company.businessPhone || null,
+    email: company.businessEmail || null,
+    website: null,
+    taxNumber: company.taxId || null,
+    logoUrl: logoUrl || null,
+    city: '',
+    country: '',
+  };
 }
 
 const MOCK_RECEIPT = {
@@ -76,8 +82,6 @@ interface PrintingPreviewPanelProps {
   settings: CompanyPrintingSettings | null;
   previewDocument: DocumentTemplateId;
   onPreviewDocumentChange: (id: DocumentTemplateId) => void;
-  onSettingsChange?: (partial: Partial<CompanyPrintingSettings>) => void;
-  formatCurrency?: (value: number) => string;
 }
 
 function flexPosition(pos: 'left' | 'center' | 'right') {
@@ -130,8 +134,6 @@ export function PrintingPreviewPanel({
   settings,
   previewDocument,
   onPreviewDocumentChange,
-  onSettingsChange,
-  formatCurrency: formatCurrencyProp,
 }: PrintingPreviewPanelProps) {
   const { company } = useSettings();
   const logoDisplayUrl = useCompanyLogoDisplayUrl(company.logoUrl);
@@ -141,12 +143,11 @@ export function PrintingPreviewPanel({
     () => buildPreviewBrand(company, logoDisplayUrl),
     [company, logoDisplayUrl],
   );
-  const { pageSetup, fields, layout, pdf, reportExport } = merged;
+  const { pageSetup, fields, layout, pdf } = merged;
   const isLandscape = pageSetup.orientation === 'landscape';
   const m = pageSetup.margins;
   const fontFamily = pdf.fontFamily || 'Inter';
   const title = PREVIEW_DOCUMENT_OPTIONS.find((o) => o.id === previewDocument)?.label ?? 'Document';
-  const fmtMoney = formatCurrencyProp ?? ((n: number) => n.toLocaleString());
 
   const renderInvoiceTable = () => (
     <>
@@ -189,11 +190,11 @@ export function PrintingPreviewPanel({
                 <td className="py-1">{row.product}</td>
                 {fields.showSku && <td className="py-1 text-gray-600">{row.sku}</td>}
                 <td className="text-right py-1">{row.qty}</td>
-                <td className="text-right py-1">{fmtMoney(row.rate)}</td>
-                {fields.showDiscount && <td className="text-right py-1">{row.discount > 0 ? fmtMoney(row.discount) : '—'}</td>}
-                {fields.showTax && <td className="text-right py-1">{fmtMoney(row.tax)}</td>}
-                {fields.showStudioCost && <td className="text-right py-1">{row.studioCost > 0 ? fmtMoney(row.studioCost) : '—'}</td>}
-                <td className="text-right py-1 font-medium">{fmtMoney(row.amount)}</td>
+                <td className="text-right py-1">{row.rate.toLocaleString()}</td>
+                {fields.showDiscount && <td className="text-right py-1">{row.discount > 0 ? row.discount : '—'}</td>}
+                {fields.showTax && <td className="text-right py-1">{row.tax.toLocaleString()}</td>}
+                {fields.showStudioCost && <td className="text-right py-1">{row.studioCost > 0 ? row.studioCost : '—'}</td>}
+                <td className="text-right py-1 font-medium">{row.amount.toLocaleString()}</td>
               </tr>
             ))}
           </tbody>
@@ -201,10 +202,10 @@ export function PrintingPreviewPanel({
       </div>
       <div className={`flex ${flexPosition(layout.table.alignment)} mt-2 text-xs`}>
         <div className="text-right space-y-0.5">
-          <div className="flex justify-end gap-6"><span className="text-gray-500">Subtotal</span><span>{fmtMoney(MOCK_INVOICE.subtotal)}</span></div>
-          {fields.showDiscount && <div className="flex justify-end gap-6"><span className="text-gray-500">Discount</span><span>{fmtMoney(MOCK_INVOICE.discount)}</span></div>}
-          {fields.showTax && <div className="flex justify-end gap-6"><span className="text-gray-500">Tax</span><span>{fmtMoney(MOCK_INVOICE.tax)}</span></div>}
-          <div className="flex justify-end gap-6 font-semibold border-t border-gray-300 pt-1 mt-1"><span>Total</span><span>{fmtMoney(MOCK_INVOICE.total)}</span></div>
+          <div className="flex justify-end gap-6"><span className="text-gray-500">Subtotal</span><span>{MOCK_INVOICE.subtotal.toLocaleString()}</span></div>
+          {fields.showDiscount && <div className="flex justify-end gap-6"><span className="text-gray-500">Discount</span><span>{MOCK_INVOICE.discount.toLocaleString()}</span></div>}
+          {fields.showTax && <div className="flex justify-end gap-6"><span className="text-gray-500">Tax</span><span>{MOCK_INVOICE.tax.toLocaleString()}</span></div>}
+          <div className="flex justify-end gap-6 font-semibold border-t border-gray-300 pt-1 mt-1"><span>Total</span><span>{MOCK_INVOICE.total.toLocaleString()}</span></div>
         </div>
       </div>
     </>
@@ -221,7 +222,7 @@ export function PrintingPreviewPanel({
           </>
         )}
         <div className="flex justify-between font-semibold text-base pt-2 border-t border-gray-200">
-          <span>Amount</span><span>{fmtMoney(MOCK_RECEIPT.amount)}</span>
+          <span>Amount</span><span>{MOCK_RECEIPT.amount.toLocaleString()}</span>
         </div>
         <div className="flex justify-between"><span className="text-gray-500">Method</span><span>{MOCK_RECEIPT.method}</span></div>
         <div className="flex justify-between"><span className="text-gray-500">Reference</span><span>{MOCK_RECEIPT.reference}</span></div>
@@ -314,86 +315,13 @@ export function PrintingPreviewPanel({
         </select>
         <p className="text-[11px] text-gray-500 mt-1.5">
           {previewDocument === 'ledger_statement'
-            ? '8-column Ledger Center V2 layout (incl. Branch). Preview updates live; Save applies to reports.'
+            ? 'Same 7-column layout as Ledger Center V2 PDF. Orientation: Reports & Export tab.'
             : 'Toggles (e.g. Show SKU) update this preview live.'}
         </p>
       </div>
       {previewDocument === 'ledger_statement' ? (
-        <div className="flex-1 min-h-0 p-3 overflow-auto space-y-3">
-          {onSettingsChange ? (
-            <div className="rounded-lg border border-gray-800 bg-gray-950/80 p-3 space-y-3">
-              <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider">Ledger report layout</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-gray-400 text-xs">Orientation</Label>
-                  <select
-                    value={reportExport.ledgerReportOrientation ?? pageSetup.orientation}
-                    onChange={(e) =>
-                      onSettingsChange({
-                        reportExport: {
-                          ...reportExport,
-                          ledgerReportOrientation: e.target.value as 'portrait' | 'landscape',
-                        },
-                      })
-                    }
-                    className="mt-1 w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-2 py-1.5 text-sm"
-                  >
-                    <option value="portrait">Portrait</option>
-                    <option value="landscape">Landscape</option>
-                  </select>
-                </div>
-                <div>
-                  <Label className="text-gray-400 text-xs">Report font size (px)</Label>
-                  <Input
-                    type="number"
-                    min={9}
-                    max={14}
-                    value={reportExport.reportFontSize ?? 11}
-                    onChange={(e) =>
-                      onSettingsChange({
-                        reportExport: {
-                          ...reportExport,
-                          reportFontSize: Number(e.target.value) || 11,
-                        },
-                      })
-                    }
-                    className="mt-1 bg-gray-800 border-gray-700 text-white h-9"
-                  />
-                </div>
-                <div className="flex items-center justify-between sm:col-span-2">
-                  <Label className="text-gray-400 text-xs">Show report header</Label>
-                  <Switch
-                    checked={reportExport.showReportHeader !== false}
-                    onCheckedChange={(v) =>
-                      onSettingsChange({
-                        reportExport: { ...reportExport, showReportHeader: v },
-                      })
-                    }
-                  />
-                </div>
-                <div className="flex items-center justify-between sm:col-span-2">
-                  <Label className="text-gray-400 text-xs">Show report footer</Label>
-                  <Switch
-                    checked={reportExport.showReportFooter !== false}
-                    onCheckedChange={(v) =>
-                      onSettingsChange({
-                        reportExport: { ...reportExport, showReportFooter: v },
-                      })
-                    }
-                  />
-                </div>
-              </div>
-            </div>
-          ) : null}
-          {onSettingsChange ? (
-            <LedgerColumnLayoutEditor settings={settings} onSettingsChange={onSettingsChange} />
-          ) : null}
-          <ReportExportPreviewPanel
-            brand={previewBrand}
-            ledgerOptions={ledgerPrintOptions}
-            showChrome={false}
-            formatCurrency={formatCurrencyProp}
-          />
+        <div className="flex-1 min-h-0 p-3 overflow-auto">
+          <ReportExportPreviewPanel brand={previewBrand} ledgerOptions={ledgerPrintOptions} />
         </div>
       ) : (
       <div className="flex-1 min-h-0 p-4 overflow-auto flex items-start justify-center">

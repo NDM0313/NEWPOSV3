@@ -10,12 +10,6 @@ import { useSupabase } from './SupabaseContext';
 import { safeLocalStorageGetItem, safeLocalStorageSetItem } from '@/app/lib/safeBrowserStorage';
 import { formatLocalDateYYYYMMDD, parseLocalDateInput } from '@/app/utils/localDate';
 import { getLastBusinessWeekRange, getThisBusinessWeekRange } from '@/app/utils/businessWeek';
-import {
-  getFinancialYearLabel,
-  getFinancialYearRangeToToday,
-  getLastFinancialYearLabel,
-  getLastFinancialYearRange,
-} from '@/app/utils/financialYear';
 import { dispatchDataInvalidated, type InvalidationDomain } from '@/app/lib/dataInvalidationBus';
 
 const STORAGE_KEY = 'erp-global-filters';
@@ -30,8 +24,6 @@ export type GlobalDateRangeType =
   | 'lastWeek'
   | 'thisMonth'
   | 'thisYear'
-  | 'currentFinancialYear'
-  | 'lastFinancialYear'
   | 'fromStart'
   | 'customRange';
 
@@ -54,12 +46,7 @@ export interface PersistedFilters {
   branchId: string | null;
 }
 
-function getDateRangeForType(
-  type: GlobalDateRangeType,
-  customStart?: string | null,
-  customEnd?: string | null,
-  fiscalYearStart?: string | null
-): { startDate: Date; endDate: Date } {
+function getDateRangeForType(type: GlobalDateRangeType, customStart?: string | null, customEnd?: string | null): { startDate: Date; endDate: Date } {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const endDate = new Date(today);
@@ -110,10 +97,6 @@ function getDateRangeForType(
       const s = new Date(today.getFullYear(), 0, 1);
       return { startDate: s, endDate };
     }
-    case 'currentFinancialYear':
-      return getFinancialYearRangeToToday(fiscalYearStart ?? undefined);
-    case 'lastFinancialYear':
-      return getLastFinancialYearRange(fiscalYearStart ?? undefined);
     default:
       return { startDate: today, endDate };
   }
@@ -199,47 +182,12 @@ const BRANCH_FILTER_INVALIDATION_DOMAINS: InvalidationDomain[] = [
 ];
 
 export const GlobalFilterProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { setBranchId: setSupabaseBranchId, companyId, branchId: supabaseBranchId, supabaseClient } = useSupabase();
+  const { setBranchId: setSupabaseBranchId, companyId } = useSupabase();
   const [currentModule, setCurrentModuleState] = useState<GlobalFilterModule>(DEFAULT_MODULE);
   const [persisted, setPersisted] = useState<PersistedFilters>(loadFromStorage);
-  const [fiscalYearStart, setFiscalYearStart] = useState<string | null>(null);
   const initialSyncDone = useRef(false);
   const persistedRef = useRef(persisted);
   persistedRef.current = persisted;
-
-  const effectiveBranchId = persisted.branchId ?? supabaseBranchId ?? null;
-
-  useEffect(() => {
-    let cancelled = false;
-    const loadFiscalYearStart = async () => {
-      if (!companyId) {
-        setFiscalYearStart(null);
-        return;
-      }
-      const branchQuery = effectiveBranchId
-        ? supabaseClient
-            .from('branches')
-            .select('fiscal_year_start')
-            .eq('id', effectiveBranchId)
-            .maybeSingle()
-        : supabaseClient
-            .from('branches')
-            .select('fiscal_year_start')
-            .eq('company_id', companyId)
-            .eq('is_active', true)
-            .order('is_default', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-      const { data } = await branchQuery;
-      if (cancelled) return;
-      const raw = (data as { fiscal_year_start?: string | null } | null)?.fiscal_year_start;
-      setFiscalYearStart(raw ? String(raw).split('T')[0] : null);
-    };
-    void loadFiscalYearStart();
-    return () => {
-      cancelled = true;
-    };
-  }, [companyId, effectiveBranchId, supabaseClient]);
 
   // Hydrate SupabaseContext branchId from persisted on first load (once we have Supabase)
   useEffect(() => {
@@ -307,10 +255,9 @@ export const GlobalFilterProvider: React.FC<{ children: ReactNode }> = ({ childr
       getDateRangeForType(
         effectiveDateType,
         persisted.customStartDate,
-        persisted.customEndDate,
-        fiscalYearStart
+        persisted.customEndDate
       ),
-    [effectiveDateType, persisted.customStartDate, persisted.customEndDate, fiscalYearStart]
+    [effectiveDateType, persisted.customStartDate, persisted.customEndDate]
   );
 
   const startDate = useMemo(
@@ -340,16 +287,10 @@ export const GlobalFilterProvider: React.FC<{ children: ReactNode }> = ({ childr
       lastWeek: 'Last Week (Sat–Fri)',
       thisMonth: 'This Month',
       thisYear: 'This Year',
-      currentFinancialYear: fiscalYearStart
-        ? `Current financial year (${getFinancialYearLabel(fiscalYearStart)})`
-        : 'Current financial year',
-      lastFinancialYear: fiscalYearStart
-        ? `Last financial year (${getLastFinancialYearLabel(fiscalYearStart)})`
-        : 'Last financial year',
       customRange: 'Custom Range',
     };
     return labels[type] ?? 'Last 30 Days';
-  }, [effectiveDateType, persisted.customStartDate, persisted.customEndDate, fiscalYearStart]);
+  }, [effectiveDateType, persisted.customStartDate, persisted.customEndDate]);
 
   const value = useMemo<GlobalFilterContextType>(
     () => ({

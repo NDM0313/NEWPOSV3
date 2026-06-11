@@ -228,31 +228,6 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
       permissions: permState,
     );
   }
-
-  /// Reload permission matrix for counter worker switch (shared tablet PIN mode).
-  Future<void> applyCounterWorkerPermissions(String workerRole) async {
-    final profile = state.profile;
-    if (profile == null) return;
-
-    final permRepo = ref.read(permissionRepositoryProvider);
-    final permissions = await permRepo.getRolePermissions(workerRole);
-    final isAdminOrOwner = isAdminOrOwnerAppRole(workerRole);
-    final isOwner = normalizeAppRole(workerRole) == 'owner';
-
-    final permState = PermissionState(
-      permissions: permissions,
-      branchIds: state.permissions.branchIds,
-      moduleToggles: state.permissions.moduleToggles,
-      moduleConfigStatus: state.permissions.moduleConfigStatus,
-      isLoaded: true,
-      isAdminOrOwner: isAdminOrOwner,
-      isOwner: isOwner,
-      canViewBalances: canViewFinancialBalances(workerRole),
-      moduleConfigBanner: state.permissions.moduleConfigBanner,
-    );
-
-    state = state.copyWith(permissions: permState);
-  }
 }
 
 final authSessionProvider =

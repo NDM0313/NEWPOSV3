@@ -24,7 +24,6 @@ import { toast } from 'sonner';
 import { RefreshCw, Banknote } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDialog';
-import { CommissionPaymentDialog } from './CommissionPaymentDialog';
 import { accountingService, type AccountLedgerEntry } from '@/app/services/accountingService';
 import {
   getSingleSupplierPartyReconciliation,
@@ -106,7 +105,6 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
 
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [workerPaymentDialogOpen, setWorkerPaymentDialogOpen] = useState(false);
-  const [commissionPaymentDialogOpen, setCommissionPaymentDialogOpen] = useState(false);
   const [balanceRefreshTick, setBalanceRefreshTick] = useState(0);
   const [showOpeningJournalHistory, setShowOpeningJournalHistory] = useState(false);
 
@@ -332,16 +330,6 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
             Pay Worker
           </Button>
         )}
-        {ledgerType === 'user' && (
-          <Button
-            type="button"
-            onClick={() => setCommissionPaymentDialogOpen(true)}
-            className="bg-green-600 hover:bg-green-500 text-white"
-          >
-            <Banknote className="w-4 h-4 mr-2" />
-            Pay Commission
-          </Button>
-        )}
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -356,7 +344,7 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
                   ? 'Purchases + supplier payments (document path)'
                   : ledgerType === 'worker'
                     ? 'Worker jobs / payments (worker_ledger_entries)'
-                    : 'Paid expenses (paid_to_user) + posted commission + commission payments',
+                    : 'Paid expenses (paid_to_user) + posted commission (sales)',
             },
             {
               id: 'gl' as const,
@@ -421,30 +409,6 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
             </div>
           ) : ledgerDataForViews ? (
             <>
-              {ledgerType === 'user' && ledgerDataForViews.userStatementSummary && (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pb-4">
-                  {(
-                    [
-                      ['Salary paid', ledgerDataForViews.userStatementSummary.salaryPaid],
-                      ['Commission earned', ledgerDataForViews.userStatementSummary.commissionEarned],
-                      ['Commission paid', ledgerDataForViews.userStatementSummary.commissionPaid],
-                      ['Net owed to user', ledgerDataForViews.userStatementSummary.netOwedToUser],
-                    ] as const
-                  ).map(([label, val]) => (
-                    <div key={label} className="rounded-lg border border-gray-800 bg-[#0F1419] p-3">
-                      <p className="text-[10px] uppercase tracking-wide text-gray-500">{label}</p>
-                      <p
-                        className={cn(
-                          'text-lg font-semibold tabular-nums mt-1',
-                          label === 'Net owed to user' && val > 0 ? 'text-amber-300' : 'text-white',
-                        )}
-                      >
-                        {formatCurrency(val)}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
               <div className="shrink-0 pb-6 border-b border-gray-800">
                 <ModernSummaryCards ledgerData={ledgerDataForViews} variant={ledgerType} />
               </div>
@@ -643,20 +607,6 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
           outstandingAmount={ledgerDataForViews?.invoicesSummary?.pendingAmount ?? 0}
           onSuccess={() => {
             setWorkerPaymentDialogOpen(false);
-            loadOperational();
-            setBalanceRefreshTick((t) => t + 1);
-          }}
-        />
-      )}
-      {ledgerType === 'user' && (
-        <CommissionPaymentDialog
-          isOpen={commissionPaymentDialogOpen}
-          onClose={() => setCommissionPaymentDialogOpen(false)}
-          userId={entityId}
-          userName={entityName}
-          suggestedAmount={ledgerDataForViews?.userStatementSummary?.netOwedToUser ?? 0}
-          onSuccess={() => {
-            setCommissionPaymentDialogOpen(false);
             loadOperational();
             setBalanceRefreshTick((t) => t + 1);
           }}

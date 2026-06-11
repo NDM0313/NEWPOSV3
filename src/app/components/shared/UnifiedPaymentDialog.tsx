@@ -18,19 +18,11 @@ import { prepareAttachmentFilesForUpload } from '@/app/utils/imageCompression';
 import { dispatchContactBalancesRefresh } from '@/app/lib/contactBalancesRefresh';
 import { dispatchAccountingEditCommitted } from '@/app/lib/unifiedTransactionEdit';
 import { resolvePaymentIdForMutation } from '@/app/lib/paymentRowEditRouting';
-import { useTransactionMutationConfirm } from '@/app/hooks/useTransactionMutationConfirm';
 import { rebuildManualReceiptFifoAllocations, rebuildManualSupplierFifoAllocations } from '@/app/services/paymentAllocationService';
 import {
   syncExpenseDateByPaymentId,
   syncJournalEntryDateByPaymentId,
 } from '@/app/services/journalTransactionDateSyncService';
-import { AccountSideLabelRow, MoneyFlowSummaryBar } from '@/app/components/accounting/DebitCreditInOutHint';
-import {
-  getPaymentAccountSide,
-  getPaymentFlowSummary,
-  paymentAccountFieldTitle,
-} from '@/app/lib/debitCreditInOutLabels';
-import { notifyAccountingEntriesChanged } from '@/app/lib/accountingInvalidate';
 
 // ============================================
 // 🎯 TYPES
@@ -186,7 +178,6 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
   const [selectedAccount, setSelectedAccount] = useState<string>('');
   const [notes, setNotes] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const { requestConfirm, ConfirmDialog } = useTransactionMutationConfirm();
   
   const [paymentDateTime, setPaymentDateTime] = useState<string>(() => formatLocalDateTimeYYYYMMDDHHmm(new Date()));
   
@@ -556,7 +547,31 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
     !!accounting &&
     (referenceId ? amount <= effectiveOutstanding : true);
 
-  const runPaymentSubmit = async () => {
+  // Handle payment submission
+  const handleSubmit = async () => {
+    // 🔧 FIX 4: PAYMENT ACCOUNT VALIDATION (MANDATORY)
+    if (!selectedAccount || selectedAccount === '') {
+      toast.error('Payment account is required. Please select an account.');
+      return;
+    }
+    
+    if (amount <= 0) {
+      toast.error('Payment amount must be greater than zero.');
+      return;
+    }
+    
+    if (referenceId && amount > effectiveOutstanding) {
+      toast.error(`Payment amount cannot exceed outstanding amount of ${effectiveOutstanding.toLocaleString()}`);
+      return;
+    }
+    
+    if (!canSubmit) return;
+
+    if (!accounting) {
+      toast.error('Accounting is not ready. Refresh the page or try again in a moment.');
+      return;
+    }
+
     setIsProcessing(true);
 
     try {
@@ -774,12 +789,9 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                 createdBy: (user as any)?.id ?? null,
                 payableAccountId: apId || undefined,
               });
-              notifyAccountingEntriesChanged({
-                companyId,
-                branchId: branchId ?? null,
-                entityId: referenceId,
-                reason: 'sale-payment',
-              });
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+              }
             } catch (adjErr) {
               console.warn('[UnifiedPaymentDialog] Supplier manual_payment amount adjustment JE failed:', adjErr);
             }
@@ -824,12 +836,9 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                 createdBy: (user as any)?.id ?? null,
                 receivableAccountId: arId || undefined,
               });
-              notifyAccountingEntriesChanged({
-                companyId,
-                branchId: branchId ?? null,
-                entityId: referenceId,
-                reason: 'sale-payment',
-              });
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+              }
             } catch (adjErr) {
               console.warn('[UnifiedPaymentDialog] Customer manual_receipt amount adjustment JE failed:', adjErr);
             }
@@ -871,12 +880,9 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                   entryDate: paymentDate,
                   createdBy: (user as any)?.id ?? null,
                 });
-                notifyAccountingEntriesChanged({
-                  companyId,
-                  branchId: branchId ?? null,
-                  entityId: referenceId,
-                  reason: 'sale-payment',
-                });
+                if (typeof window !== 'undefined') {
+                  window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+                }
               } catch (accErr) {
                 console.warn('[UnifiedPaymentDialog] Customer manual_receipt account transfer JE failed:', accErr);
               }
@@ -909,12 +915,9 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                   entryDate: paymentDate,
                   createdBy: (user as any)?.id ?? null,
                 });
-                notifyAccountingEntriesChanged({
-                  companyId,
-                  branchId: branchId ?? null,
-                  entityId: referenceId,
-                  reason: 'sale-payment',
-                });
+                if (typeof window !== 'undefined') {
+                  window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+                }
               } catch (accErr) {
                 console.warn('[UnifiedPaymentDialog] Supplier manual_payment account transfer JE failed:', accErr);
               }
@@ -1351,36 +1354,6 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
     }
   };
 
-  const handleSubmit = () => {
-    if (!selectedAccount || selectedAccount === '') {
-      toast.error('Payment account is required. Please select an account.');
-      return;
-    }
-    if (amount <= 0) {
-      toast.error('Payment amount must be greater than zero.');
-      return;
-    }
-    if (referenceId && amount > effectiveOutstanding) {
-      toast.error(`Payment amount cannot exceed outstanding amount of ${effectiveOutstanding.toLocaleString()}`);
-      return;
-    }
-    if (!canSubmit) return;
-    if (!accounting) {
-      toast.error('Accounting is not ready. Refresh the page or try again in a moment.');
-      return;
-    }
-    if (editMode && paymentToEdit) {
-      requestConfirm({
-        action: 'save_payment_edit',
-        referenceNo: linkedJournalEntryNo || referenceNo,
-        amount,
-        onConfirm: runPaymentSubmit,
-      });
-      return;
-    }
-    void runPaymentSubmit();
-  };
-
   if (!isOpen) return null;
 
   return (
@@ -1647,15 +1620,9 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
 
                 {/* Account Selection */}
                 <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
-                  {(() => {
-                    const flow = getPaymentFlowSummary(context);
-                    return flow ? <MoneyFlowSummaryBar inLabel={flow.inLabel} outLabel={flow.outLabel} /> : null;
-                  })()}
-                  <AccountSideLabelRow
-                    title={paymentAccountFieldTitle(getPaymentAccountSide(context))}
-                    side={getPaymentAccountSide(context)}
-                    required
-                  />
+                  <label className="block text-sm font-semibold text-gray-300 mb-2">
+                    Select Account <span className="text-red-400">*</span>
+                  </label>
                   <div className="relative">
                     <select
                       value={selectedAccount}
@@ -1889,7 +1856,6 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
           </fieldset>
         </div>
       </div>
-      <ConfirmDialog />
     </>
   );
 };

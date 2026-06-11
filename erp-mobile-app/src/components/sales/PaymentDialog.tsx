@@ -5,8 +5,7 @@ import { useSingleFlightAction } from '../../hooks/useSingleFlightAction';
 import { usePermissions } from '../../context/PermissionContext';
 import { formatAccountBalanceLineIfAllowed } from '../../utils/balancePrivacy';
 import { canViewFinancialBalances } from '../../config/functionalRoles';
-import { localNowDateTimeString, parsePaymentDateTimeLocal } from '../../utils/localDate';
-import { DateInputField } from '../shared/DateTimePicker';
+import { localNowDateString } from '../../utils/localDate';
 
 export interface PaymentResult {
   paymentMethod: string;
@@ -17,8 +16,6 @@ export interface PaymentResult {
   accountName?: string | null;
   /** Payment date YYYY-MM-DD (local calendar). */
   paymentDate?: string;
-  /** Full local timestamptz when time was set on payment date. */
-  paymentAt?: string;
 }
 
 interface PaymentDialogProps {
@@ -73,7 +70,7 @@ export function PaymentDialog({
     viewerRoleProp != null ? canViewFinancialBalances(viewerRoleProp) : canViewBalancesCtx;
   const showCredit = showCreditOption ?? hasCustomer;
   const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [paymentDate, setPaymentDate] = useState(() => localNowDateTimeString());
+  const [paymentDate, setPaymentDate] = useState(() => localNowDateString());
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(null);
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('full');
@@ -119,7 +116,7 @@ export function PaymentDialog({
             dueAmount: totalAmount,
             accountId: null,
             accountName: null,
-            ...parsePaymentDateTimeLocal(paymentDate),
+            paymentDate,
           });
         } catch (e) {
           console.error('[PaymentDialog] Credit onComplete failed:', e);
@@ -177,15 +174,13 @@ export function PaymentDialog({
     }
 
     const dueAmount = totalAmount - paymentAmount;
-    const { paymentDate: payDate, paymentAt } = parsePaymentDateTimeLocal(paymentDate);
     const result: PaymentResult = {
       paymentMethod: paymentMode === 'skip' ? `${getPaymentMethodLabel()} (Due)` : getPaymentMethodLabel(),
       paidAmount: paymentMode === 'skip' ? 0 : paymentAmount,
       dueAmount: paymentMode === 'skip' ? totalAmount : dueAmount,
       accountId: paymentMode === 'skip' ? null : selectedAccount?.id ?? null,
       accountName: paymentMode === 'skip' ? null : selectedAccount?.name ?? null,
-      paymentDate: payDate,
-      paymentAt,
+      paymentDate,
     };
     await runSingleFlight(async () => {
       try {
@@ -472,12 +467,14 @@ export function PaymentDialog({
           </div>
 
           <div className="mb-6">
-            <DateInputField
-              label="Payment date"
+            <label className="text-sm font-medium text-[#9CA3AF] mb-2 block">Payment date</label>
+            <input
+              type="date"
+              max={localNowDateString()}
               value={paymentDate}
-              onChange={setPaymentDate}
-              max={localNowDateTimeString()}
-              showTime
+              onChange={(e) => setPaymentDate(e.target.value)}
+              disabled={isBusy}
+              className="w-full max-w-xs h-10 bg-[#111827] border border-[#374151] rounded-lg px-3 text-sm text-white disabled:opacity-50"
             />
           </div>
 

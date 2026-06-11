@@ -200,7 +200,7 @@ export function LegacyPrinterSettingsSection({ printer }: LegacyPrinterSettingsS
             style={{ maxWidth: getThermalDimensions(paperSize).modalMaxPx }}
           >
 
-            <div className="flex items-center justify-between mb-3 no-print">
+            <div className="flex items-center justify-between mb-3">
 
               <p className="text-white font-medium text-sm">Sample thermal receipt</p>
 
@@ -211,8 +211,6 @@ export function LegacyPrinterSettingsSection({ printer }: LegacyPrinterSettingsS
               </button>
 
             </div>
-
-            <div className="pdf-print-root">
 
             <ThermalReceiptLayout
 
@@ -277,8 +275,6 @@ export function LegacyPrinterSettingsSection({ printer }: LegacyPrinterSettingsS
               }
 
             />
-
-            </div>
 
           </div>
 

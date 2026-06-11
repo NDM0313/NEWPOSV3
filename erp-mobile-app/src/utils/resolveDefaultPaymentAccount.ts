@@ -86,17 +86,3 @@ export function resolveDefaultPaymentAccountId(
 
   return filteredAccounts[0]?.id ?? null;
 }
-
-/** Expense form: try Cash default, then Bank, then Wallet; fall back to first account. */
-export function resolveDefaultExpensePaymentAccountId(
-  accounts: PaymentAccountPick[],
-  defaultAccounts: DefaultAccountsSettings | null,
-  branchDefaults: BranchPaymentDefaults | null,
-): string | null {
-  if (accounts.length === 0) return null;
-  for (const method of ['cash', 'bank', 'wallet'] as const) {
-    const id = resolveDefaultPaymentAccountId(method, accounts, defaultAccounts, branchDefaults);
-    if (id) return id;
-  }
-  return accounts[0]?.id ?? null;
-}

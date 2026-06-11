@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, CreditCard, Plus, Minus, Trash2, Search, User as UserIcon, Loader2, CheckCircle2, X, Users, Package } from 'lucide-react';
+import { ArrowLeft, CreditCard, Plus, Minus, Trash2, Search, User as UserIcon, Loader2, CheckCircle2, X, Users, Package, Calendar } from 'lucide-react';
 import { ProductImage } from '../products/ProductImage';
 import type { User } from '../../types';
 import { SwitchUserPinOverlay } from '../auth/SwitchUserPinOverlay';
@@ -12,8 +12,7 @@ import { addPending } from '../../lib/offlineStore';
 import { PaymentDialog, type PaymentResult } from '../sales/PaymentDialog';
 import { BarcodeScanner } from '../../features/barcode';
 import { MOBILE_DATA_INVALIDATED_EVENT, shouldAcceptMobileInvalidation, type MobileInvalidationDetail } from '../../lib/dataInvalidationBus';
-import { localNowDateString, toLocalDateString } from '../../utils/localDate';
-import { DateInputField } from '../shared/DateTimePicker';
+import { localNowDateString } from '../../utils/localDate';
 import { maybeAutoPrintAfterTransaction } from '../../services/printAfterTransaction';
 import { useWriteBranchSelection } from '../../hooks/useWriteBranchSelection';
 import { WriteBranchPickerField } from '../shared/WriteBranchPickerField';
@@ -670,13 +669,19 @@ export function POSModule({ onBack, user, companyId, branchId, onRequestCounterL
                     zIndexClass="z-[70]"
                   />
                 )}
-                <DateInputField
-                  label="Invoice date"
-                  value={invoiceDate}
-                  onChange={(v) => setInvoiceDate(toLocalDateString(v))}
-                  max={localNowDateString()}
-                  compact
-                />
+                <div className="bg-[#111827] border border-[#374151] rounded-lg px-3 py-2.5">
+                  <label className="text-xs text-[#9CA3AF] mb-1.5 block">Invoice date</label>
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-[#6B7280] shrink-0" />
+                    <input
+                      type="date"
+                      max={localNowDateString()}
+                      value={invoiceDate}
+                      onChange={(e) => setInvoiceDate(e.target.value)}
+                      className="flex-1 min-w-0 bg-transparent text-white text-sm outline-none"
+                    />
+                  </div>
+                </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-[#9CA3AF]">Subtotal</span>
                   <span className="text-white">Rs. {subtotal.toLocaleString()}</span>

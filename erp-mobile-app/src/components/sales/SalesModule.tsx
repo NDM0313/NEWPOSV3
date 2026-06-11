@@ -153,8 +153,6 @@ interface SalesModuleProps {
   onConsumedInitialDocumentBranchId?: () => void;
   /** If provided, completing a studio sale navigates to the Studio module with the new sale focused. */
   onOpenStudio?: (saleId: string) => void;
-  /** Open Rental module detail for a booking (Sales list Rental tab). */
-  onOpenRental?: (rentalId: string) => void;
   initialEditSaleId?: string | null;
   onConsumedInitialEditSaleId?: () => void;
 }
@@ -168,7 +166,6 @@ export function SalesModule({
   initialDocumentBranchId,
   onConsumedInitialDocumentBranchId,
   onOpenStudio,
-  onOpenRental,
   initialEditSaleId,
   onConsumedInitialEditSaleId,
 }: SalesModuleProps) {
@@ -637,7 +634,6 @@ export function SalesModule({
         <SalesHome
           onBack={onBack}
           onNewSale={handleNewSale}
-          onOpenRental={onOpenRental}
           companyId={companyId}
           branchId={branchId}
           userId={user?.id ?? null}
