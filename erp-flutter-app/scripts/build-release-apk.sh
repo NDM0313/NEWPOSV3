@@ -1,15 +1,23 @@
 #!/usr/bin/env bash
-# Build release APK with anon key from repo root .env.production (not committed).
+# Build release APK with anon key from local env (not committed).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$APP_ROOT/.." && pwd)"
-ENV_FILE="$REPO_ROOT/.env.production"
+
+# shellcheck source=lib/env-resolve.sh
+source "$SCRIPT_DIR/lib/env-resolve.sh"
 
 "$SCRIPT_DIR/verify-flutter-build-env.sh"
 
-KEY="$(grep -E '^VITE_SUPABASE_ANON_KEY=' "$ENV_FILE" | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'" | xargs)"
+if ! resolve_flutter_env_file "$REPO_ROOT"; then
+  echo "[build-release-apk] Env file missing after verify."
+  exit 1
+fi
+
+read_flutter_anon_key "$FLUTTER_ENV_FILE"
+KEY="$FLUTTER_ANON_KEY"
 
 cd "$APP_ROOT"
 flutter pub get

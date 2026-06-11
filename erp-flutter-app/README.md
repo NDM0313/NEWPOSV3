@@ -7,7 +7,7 @@ Migration docs: [`docs/flutter-migration/`](../../docs/flutter-migration/) — s
 ## Prerequisites
 
 - Flutter SDK 3.41+
-- Anon key from repo root `.env.production` → `VITE_SUPABASE_ANON_KEY`
+- Anon key in `.env.local`, `.env.production`, or `erp-mobile-app/.env.production` → `VITE_SUPABASE_ANON_KEY`
 
 ## Configuration
 
@@ -22,7 +22,18 @@ flutter run --dart-define=SUPABASE_ANON_KEY='your_anon_key'
 
 ## Build release APK
 
-With repo root `.env.production` (reads `VITE_SUPABASE_ANON_KEY`):
+Reads `VITE_SUPABASE_ANON_KEY` from the first file found:
+
+- repo root `.env.production`
+- repo root `.env.local`
+- `erp-mobile-app/.env.production`
+
+```bash
+chmod +x scripts/*.sh
+./scripts/build-release-apk.sh
+```
+
+Or with explicit env file at repo root:
 
 ```bash
 chmod +x scripts/*.sh
