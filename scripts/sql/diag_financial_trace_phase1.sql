@@ -259,7 +259,6 @@ SELECT '=== 3C. RCV-0008 in unmapped view (if present) ===' AS audit_section;
 SELECT *
 FROM v_ar_ap_unmapped_journals
 WHERE entry_no ILIKE '%RCV-0008%'
-   OR description ILIKE '%RCV-0008%'
 LIMIT 20;
 
 -- ---------------------------------------------------------------------------
