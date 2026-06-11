@@ -33,7 +33,13 @@ cd "$APP_ROOT"
 if [[ -z "$DEVICE_ID" ]]; then
   echo "[run-ios-device] Connected iOS devices:"
   flutter devices | grep -E 'ios|iPhone' || true
-  DEVICE_ID="$(flutter devices | grep 'iPhone' | head -1 | awk '{print $NF}' || true)"
+  DEVICE_ID="$(flutter devices --machine 2>/dev/null | python3 -c "
+import json, sys
+devices = json.load(sys.stdin)
+ios = [d for d in devices if d.get('targetPlatform') == 'ios']
+if ios:
+    print(ios[0]['id'])
+" 2>/dev/null || true)"
   if [[ -z "$DEVICE_ID" ]]; then
     echo "[run-ios-device] No iPhone found. Connect USB or enable wireless debugging in Xcode."
     exit 1
