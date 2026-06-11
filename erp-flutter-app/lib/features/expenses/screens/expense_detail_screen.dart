@@ -7,7 +7,6 @@ import '../../../core/widgets/app_error_state.dart';
 import '../../../core/widgets/app_loading.dart';
 import '../../../core/widgets/detail_section.dart';
 import '../../../core/widgets/module_scaffold.dart';
-import '../../../core/widgets/read_only_banner.dart';
 import '../providers/expenses_providers.dart';
 
 class ExpenseDetailScreen extends ConsumerWidget {
@@ -62,7 +61,6 @@ class ExpenseDetailScreen extends ConsumerWidget {
                   DetailRow(label: 'Description', value: expense.description),
                 ],
               ),
-              const ReadOnlyBanner(),
             ],
           );
         },

@@ -24,7 +24,7 @@ class AccountsListScreen extends ConsumerWidget {
       title: title,
       body: Column(
         children: [
-          const ReadOnlyBanner(),
+          const ReadOnlyBanner(message: 'Account balances — journal entry create is web-only.'),
           Expanded(
             child: asyncAccounts.when(
               loading: () => const AppLoading(message: 'Loading accounts…'),

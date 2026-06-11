@@ -115,4 +115,82 @@ class RentalsWriteRepository {
       return (rentalId: null, bookingNo: null, error: e.toString());
     }
   }
+
+  Future<({bool success, String? error})> recordRentalPayment({
+    required String companyId,
+    required String branchId,
+    required String rentalId,
+    required double amount,
+    required String createdBy,
+  }) async {
+    if (amount <= 0) {
+      return (success: false, error: 'Amount must be greater than zero.');
+    }
+
+    final branch = safeRpcBranchId(branchId);
+    if (branch == null) {
+      return (success: false, error: 'Invalid branch for payment.');
+    }
+
+    try {
+      final accountRow = await _client
+          .from('accounts')
+          .select('id')
+          .eq('company_id', companyId)
+          .inFilter('type', ['cash', 'bank'])
+          .limit(1)
+          .maybeSingle();
+
+      final accountId = accountRow?['id']?.toString();
+      if (accountId == null) {
+        return (success: false, error: 'No cash/bank account found for payments.');
+      }
+
+      final raw = await _client.rpc(
+        'record_payment_with_accounting',
+        params: {
+          'p_company_id': companyId,
+          'p_branch_id': branch,
+          'p_payment_type': 'received',
+          'p_reference_type': 'rental',
+          'p_reference_id': rentalId,
+          'p_amount': amount,
+          'p_payment_method': 'cash',
+          'p_payment_date': localTodayIso(),
+          'p_payment_account_id': accountId,
+          'p_reference_number': null,
+          'p_notes': 'Flutter ERP rental payment',
+          'p_created_by': createdBy,
+          'p_worker_stage_id': null,
+        },
+      );
+
+      if (raw is Map) {
+        final res = Map<String, dynamic>.from(raw);
+        if (res['success'] == true && res['payment_id'] != null) {
+          try {
+            await _client.from('rental_payments').insert({
+              'rental_id': rentalId,
+              'amount': amount,
+              'method': 'cash',
+              'payment_date': localTodayIso(),
+              'payment_type': 'remaining',
+              'payment_account_id': accountId,
+              'created_by': createdBy,
+            });
+          } catch (_) {
+            // informational row; RPC already updated rental totals.
+          }
+          return (success: true, error: null);
+        }
+        return (
+          success: false,
+          error: res['error']?.toString() ?? 'Payment failed.',
+        );
+      }
+      return (success: true, error: null);
+    } catch (e) {
+      return (success: false, error: e.toString());
+    }
+  }
 }

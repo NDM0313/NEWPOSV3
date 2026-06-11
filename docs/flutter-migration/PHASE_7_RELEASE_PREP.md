@@ -1,7 +1,7 @@
 # Phase 7 — release prep (partial)
 
 **App:** `erp-flutter-app/`  
-**Version:** `1.0.1+2` (`pubspec.yaml`)
+**Version:** `1.0.2+3` (`pubspec.yaml`)
 
 ## Done in this pass
 
@@ -12,7 +12,10 @@
 | Release APK script | `erp-flutter-app/scripts/build-release-apk.sh` |
 | Android `INTERNET` + `CAMERA` | `android/app/src/main/AndroidManifest.xml` |
 | Settings app version | `package_info_plus` on Settings screen |
-| Version bump | `1.0.1+2` |
+| Version bump | `1.0.2+3` |
+| Rental receive payment | `record_payment_with_accounting` rental |
+| Studio detail + stage complete | `/studio/:saleId`, `rpc_complete_stage` |
+| Release signing template | `android/key.properties.example` |
 
 ## Release build (local)
 

@@ -8,7 +8,6 @@ import '../../../core/widgets/app_empty_state.dart';
 import '../../../core/widgets/app_error_state.dart';
 import '../../../core/widgets/app_loading.dart';
 import '../../../core/widgets/module_scaffold.dart';
-import '../../../core/widgets/read_only_banner.dart';
 import '../../../data/repositories/studio_read_repository.dart';
 import '../providers/studio_providers.dart';
 
@@ -21,33 +20,26 @@ class StudioListScreen extends ConsumerWidget {
 
     return ModuleScaffold(
       title: 'Studio',
-      body: Column(
-        children: [
-          const ReadOnlyBanner(),
-          Expanded(
-            child: asyncSales.when(
-              loading: () => const AppLoading(message: 'Loading studio sales…'),
-              error: (e, _) => AppErrorState(
-                message: e.toString().replaceFirst('Exception: ', ''),
-                onRetry: () => ref.invalidate(studioSalesListProvider),
-              ),
-              data: (sales) {
-                if (sales.isEmpty) {
-                  return const AppEmptyState(
-                    title: 'No studio sales',
-                    subtitle: 'Studio orders will appear here.',
-                  );
-                }
-                return ListView.separated(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: sales.length,
-                  separatorBuilder: (context, index) => const SizedBox(height: 8),
-                  itemBuilder: (_, i) => _StudioTile(sale: sales[i]),
-                );
-              },
-            ),
-          ),
-        ],
+      body: asyncSales.when(
+        loading: () => const AppLoading(message: 'Loading studio sales…'),
+        error: (e, _) => AppErrorState(
+          message: e.toString().replaceFirst('Exception: ', ''),
+          onRetry: () => ref.invalidate(studioSalesListProvider),
+        ),
+        data: (sales) {
+          if (sales.isEmpty) {
+            return const AppEmptyState(
+              title: 'No studio sales',
+              subtitle: 'Studio orders will appear here.',
+            );
+          }
+          return ListView.separated(
+            padding: const EdgeInsets.all(16),
+            itemCount: sales.length,
+            separatorBuilder: (context, index) => const SizedBox(height: 8),
+            itemBuilder: (_, i) => _StudioTile(sale: sales[i]),
+          );
+        },
       ),
     );
   }
@@ -61,7 +53,7 @@ class _StudioTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: () => context.push('/sales/${sale.id}'),
+      onTap: () => context.push('/studio/${sale.id}'),
       borderRadius: BorderRadius.circular(12),
       child: Container(
         padding: const EdgeInsets.all(12),

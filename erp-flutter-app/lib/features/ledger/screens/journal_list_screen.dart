@@ -22,7 +22,7 @@ class JournalListScreen extends ConsumerWidget {
       title: 'Ledger',
       body: Column(
         children: [
-          const ReadOnlyBanner(),
+          const ReadOnlyBanner(message: 'Journal list — manual entries are web-only.'),
           Expanded(
             child: asyncEntries.when(
               loading: () => const AppLoading(message: 'Loading journal entries…'),

@@ -2,7 +2,7 @@
 
 **App path:** `erp-flutter-app/`  
 **Backend:** `https://erp.dincouture.pk` (locked)  
-**Last updated:** Phase 7 release prep pass
+**Last updated:** Phase 7 continuation (rental pay, studio detail)
 
 ## Phase summary
 
@@ -29,8 +29,8 @@
 | POS | `/pos` | Checkout + barcode |
 | Purchases | list, detail, create, finalize, pay, cancel | Draft + finalize |
 | Expenses | list, detail, create | Create + GL RPC |
-| Rentals | list, detail, `/rentals/new` | Create booking |
-| Studio | list | Read |
+| Rentals | list, detail, `/rentals/new` | Create + receive payment |
+| Studio | list, `/studio/:saleId` | Stage complete (partial) |
 | Accounts / Ledger | `/accounts`, `/ledger` | Read |
 | Dashboard / Reports | `/dashboard` | Read |
 | Settings | `/settings` | Branch switch |
@@ -43,15 +43,15 @@
 
 - Drift full schema + payment/journal offline types
 - Thermal Sunmi / Bluetooth native print
-- Studio production pipeline writes
-- Sale return is implemented; studio finalize writes not
+- Full studio workflow (assign/send/receive/pay stages, invoice line, finalize)
+- Sale return is implemented; studio full pipeline not
 - Counter/PIN mode
 
 ## Before production APK
 
 1. Run `08_TESTING_QA_CHECKLIST.md` on test company
 2. Compare money flows with Capacitor app (`10_PRODUCTION_RELEASE_CHECKLIST.md`)
-3. Configure release signing (`versionCode` bumped to `2` in `1.0.1+2`)
+3. Configure release signing — copy `android/key.properties.example` → `key.properties` (`versionCode` `3` in `1.0.2+3`)
 4. User sign-off for production distribution
 
 ## Run

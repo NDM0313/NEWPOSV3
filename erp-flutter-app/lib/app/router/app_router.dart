@@ -34,6 +34,7 @@ import '../../features/rentals/screens/rental_create_screen.dart';
 import '../../features/rentals/screens/rental_detail_screen.dart';
 import '../../features/rentals/screens/rentals_list_screen.dart';
 import '../../features/settings/screens/settings_screen.dart';
+import '../../features/studio/screens/studio_detail_screen.dart';
 import '../../features/studio/screens/studio_list_screen.dart';
 import '../../features/sales/screens/sales_list_screen.dart';
 
@@ -235,6 +236,15 @@ GoRouter createAppRouter(AuthSessionState session) {
       GoRoute(
         path: '/studio',
         builder: (context, state) => const StudioListScreen(),
+        routes: [
+          GoRoute(
+            path: ':saleId',
+            builder: (context, state) {
+              final saleId = state.pathParameters['saleId']!;
+              return StudioDetailScreen(saleId: saleId);
+            },
+          ),
+        ],
       ),
       GoRoute(
         path: '/accounts',
