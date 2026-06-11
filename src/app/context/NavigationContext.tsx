@@ -66,6 +66,7 @@ type View =
   | 'developer-integrity-lab'
   | 'accounting-developer-center'
   | 'ar-ap-reconciliation-center'
+  | 'financial-trace-center'
   | 'erp-permissions'
   | 'permission-inspector'
   | 'studio-order-detail-v3'

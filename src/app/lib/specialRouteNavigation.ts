@@ -6,6 +6,7 @@ export const SPECIAL_APP_PATHS = [
   '/admin/permission-inspector',
   '/admin/developer-integrity-lab',
   '/admin/accounting-developer-center',
+  '/admin/financial-trace-center',
   '/admin/accounting-test-bench',
   '/test/accounting-edit-trace',
   '/test/ar-ap-truth-lab',

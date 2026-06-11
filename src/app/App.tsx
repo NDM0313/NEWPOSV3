@@ -102,6 +102,9 @@ const AccountingDeveloperCenterPage = lazy(() =>
   import('./components/admin/AccountingDeveloperCenterPage').then((m) => ({ default: m.default }))
 );
 const ArApReconciliationCenterPage = lazy(() => import('./components/accounting/ArApReconciliationCenterPage').then(m => ({ default: m.default })));
+const FinancialTraceCenterPage = lazy(() =>
+  import('./components/accounting/FinancialTraceCenterPage').then((m) => ({ default: m.default }))
+);
 const AccountsHierarchyTestPage = lazy(() => import('./components/test/AccountsHierarchyTestPage').then(m => ({ default: m.default })));
 const ExpenseEditTraceTestPage = lazy(() => import('./components/test/ExpenseEditTraceTestPage').then(m => ({ default: m.default })));
 const AccountingEditTracePage = lazy(() => import('./components/test/AccountingEditTracePage').then(m => ({ default: m.default })));
@@ -173,6 +176,16 @@ const AppContent = () => {
   }
   if (pathname === '/admin/accounting-developer-center') {
     return (<Layout><AccountingDeveloperCenterPage /><GlobalDrawer /></Layout>);
+  }
+  if (pathname === '/admin/financial-trace-center' || currentView === 'financial-trace-center') {
+    return (
+      <Layout>
+        <Suspense fallback={<GlobalSuspenseFallback />}>
+          <FinancialTraceCenterPage />
+        </Suspense>
+        <GlobalDrawer />
+      </Layout>
+    );
   }
 
   // Route protection: module toggles are company-wide and apply to all users/roles (Admin, Manager, Staff).

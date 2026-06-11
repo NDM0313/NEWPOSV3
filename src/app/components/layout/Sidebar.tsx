@@ -28,6 +28,7 @@ import {
   Shield,
   Scale,
   BookOpen,
+  FileSearch,
   FileBarChart,
 } from 'lucide-react';
 import { useNavigation } from '../../context/NavigationContext';
@@ -113,6 +114,12 @@ export const Sidebar = () => {
       icon: Scale,
       isHidden: !settingsModules.accountingModuleEnabled || !hasPermission('accounting.view'),
     },
+    {
+      id: 'financial-trace-center',
+      label: 'Financial Trace Center',
+      icon: FileSearch,
+      isHidden: !settingsModules.accountingModuleEnabled || !hasPermission('accounting.view'),
+    },
     { id: 'reports', label: 'Reports', icon: PieChart, isHidden: !settingsModules.reportsModuleEnabled || !hasPermission('reports.view') },
     { id: 'settings', label: 'Settings', icon: Settings, isHidden: !hasPermission('settings.view') },
     {
@@ -166,6 +173,8 @@ export const Sidebar = () => {
       if (typeof window !== 'undefined') {
         if (item.id === 'permission-inspector') {
           window.history.pushState({}, '', '/admin/permission-inspector');
+        } else if (item.id === 'financial-trace-center') {
+          window.history.pushState({}, '', '/admin/financial-trace-center');
         } else {
           leaveSpecialAppRoute('/');
         }
