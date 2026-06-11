@@ -1,9 +1,11 @@
 import '../../core/supabase/supabase_bootstrap.dart';
 import '../../core/utils/branch_id.dart';
+import '../local/list_cache_store.dart';
 import '../models/contact.dart';
 
 class ContactsRepository {
   final _client = SupabaseBootstrap.client;
+  final _listCache = ListCacheStore();
 
   List<ContactRoleFilter> _typeToRoles(String type) {
     switch (type) {
@@ -79,30 +81,65 @@ class ContactsRepository {
     String? branchId,
     bool includeBalances = true,
   }) async {
-    var query = _client
-        .from('contacts')
-        .select(
-          'id, company_id, type, name, phone, mobile, email, city, address, opening_balance, credit_limit, is_active, code, is_system_generated',
-        )
-        .eq('company_id', companyId);
+    final filterKey = type?.name ?? 'all';
+    try {
+      var query = _client
+          .from('contacts')
+          .select(
+            'id, company_id, type, name, phone, mobile, email, city, address, opening_balance, credit_limit, is_active, code, is_system_generated',
+          )
+          .eq('company_id', companyId);
 
-    if (type == ContactRoleFilter.customer) {
-      query = query.inFilter('type', ['customer', 'both']);
-    } else if (type == ContactRoleFilter.supplier) {
-      query = query.inFilter('type', ['supplier', 'both']);
-    } else if (type == ContactRoleFilter.worker) {
-      query = query.eq('type', 'worker');
+      if (type == ContactRoleFilter.customer) {
+        query = query.inFilter('type', ['customer', 'both']);
+      } else if (type == ContactRoleFilter.supplier) {
+        query = query.inFilter('type', ['supplier', 'both']);
+      } else if (type == ContactRoleFilter.worker) {
+        query = query.eq('type', 'worker');
+      }
+
+      final data = await query.order('name');
+      final rowMaps = (data as List)
+          .map((row) => Map<String, dynamic>.from(row as Map))
+          .toList();
+      await _listCache.putContacts(companyId, filterKey, rowMaps);
+
+      final contacts = await _mapContactRows(
+        rowMaps,
+        companyId: companyId,
+        type: type,
+        branchId: branchId,
+        includeBalances: includeBalances,
+      );
+      return (contacts: contacts, error: null);
+    } catch (e) {
+      final cached = await _listCache.getContacts(companyId, filterKey);
+      if (cached == null || cached.isEmpty) {
+        return (contacts: <Contact>[], error: e.toString());
+      }
+      final contacts = await _mapContactRows(
+        cached,
+        companyId: companyId,
+        type: type,
+        branchId: branchId,
+        includeBalances: false,
+      );
+      return (contacts: contacts, error: 'Offline — showing cached contacts.');
     }
+  }
 
-    final data = await query.order('name');
-    final rows = data as List;
-
+  Future<List<Contact>> _mapContactRows(
+    List<Map<String, dynamic>> rowMaps, {
+    required String companyId,
+    ContactRoleFilter? type,
+    String? branchId,
+    required bool includeBalances,
+  }) async {
     final glMap = includeBalances
         ? await _fetchPartyGlBalances(companyId, branchId)
         : <String, _BalanceSlice>{};
 
-    final contacts = rows.map((row) {
-      final map = Map<String, dynamic>.from(row as Map);
+    return rowMaps.map((map) {
       final id = map['id'] as String;
       final contactType = map['type'] as String? ?? 'customer';
       final opening = _num(map['opening_balance']);
@@ -130,8 +167,6 @@ class ContactsRepository {
         isSystemGenerated: map['is_system_generated'] == true,
       );
     }).toList();
-
-    return (contacts: contacts, error: null);
   }
 
   Future<({Contact? contact, String? error})> getContactById({

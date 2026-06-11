@@ -2,7 +2,14 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
-enum PendingType { draftSale, posSale, expense, draftPurchase }
+enum PendingType {
+  draftSale,
+  posSale,
+  expense,
+  draftPurchase,
+  salePayment,
+  purchasePayment,
+}
 
 enum SyncQueueStatus { pending, syncing, synced, error }
 

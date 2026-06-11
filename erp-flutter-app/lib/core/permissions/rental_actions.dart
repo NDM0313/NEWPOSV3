@@ -9,3 +9,7 @@ bool canPayRental(PermissionState perms) {
       perms.hasPermission('rentals.edit') ||
       perms.hasPermission('payments.receive');
 }
+
+bool canManageRentalLifecycle(PermissionState perms) {
+  return perms.isAdminOrOwner || perms.hasPermission('rentals.edit');
+}

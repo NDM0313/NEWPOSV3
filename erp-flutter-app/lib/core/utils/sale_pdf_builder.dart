@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
@@ -7,7 +8,21 @@ import 'package:pdf/widgets.dart' as pw;
 import '../../data/models/sale.dart';
 import 'formatters.dart';
 
+Future<Uint8List> buildSalePdfBytes(SaleDetail sale) async {
+  final doc = _buildSalePdfDocument(sale);
+  return doc.save();
+}
+
 Future<File> buildSalePdfFile(SaleDetail sale) async {
+  final bytes = await buildSalePdfBytes(sale);
+  final dir = await getTemporaryDirectory();
+  final safeNo = sale.documentNo.replaceAll(RegExp(r'[^\w\-]+'), '_');
+  final file = File('${dir.path}/invoice_$safeNo.pdf');
+  await file.writeAsBytes(bytes);
+  return file;
+}
+
+pw.Document _buildSalePdfDocument(SaleDetail sale) {
   final doc = pw.Document();
   doc.addPage(
     pw.Page(
@@ -41,10 +56,5 @@ Future<File> buildSalePdfFile(SaleDetail sale) async {
       },
     ),
   );
-
-  final dir = await getTemporaryDirectory();
-  final safeNo = sale.documentNo.replaceAll(RegExp(r'[^\w\-]+'), '_');
-  final file = File('${dir.path}/invoice_$safeNo.pdf');
-  await file.writeAsBytes(await doc.save());
-  return file;
+  return doc;
 }

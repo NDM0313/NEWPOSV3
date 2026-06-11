@@ -2,6 +2,18 @@ import '../../core/supabase/supabase_bootstrap.dart';
 import '../../core/utils/branch_id.dart';
 import '../../core/utils/sale_document_no.dart';
 
+class StudioWorkerRow {
+  const StudioWorkerRow({
+    required this.id,
+    required this.name,
+    required this.rate,
+  });
+
+  final String id;
+  final String name;
+  final double rate;
+}
+
 class StudioStageRow {
   const StudioStageRow({
     required this.id,
@@ -128,6 +140,50 @@ class StudioReadRepository {
       return (sales: sales, error: null);
     } catch (e) {
       return (sales: <StudioSaleRow>[], error: e.toString());
+    }
+  }
+
+  Future<({List<StudioWorkerRow> workers, String? error})> getWorkers({
+    required String companyId,
+  }) async {
+    try {
+      final workersData = await _client
+          .from('workers')
+          .select('id, name, rate')
+          .eq('company_id', companyId)
+          .eq('is_active', true)
+          .order('name');
+
+      if ((workersData as List).isNotEmpty) {
+        final workers = workersData.map((row) {
+          final m = Map<String, dynamic>.from(row as Map);
+          return StudioWorkerRow(
+            id: m['id'] as String,
+            name: m['name'] as String? ?? 'Worker',
+            rate: _num(m['rate']),
+          );
+        }).toList();
+        return (workers: workers, error: null);
+      }
+
+      final contactsData = await _client
+          .from('contacts')
+          .select('id, name, worker_default_rate')
+          .eq('company_id', companyId)
+          .eq('type', 'worker')
+          .order('name');
+
+      final workers = (contactsData as List).map((row) {
+        final m = Map<String, dynamic>.from(row as Map);
+        return StudioWorkerRow(
+          id: m['id'] as String,
+          name: m['name'] as String? ?? 'Worker',
+          rate: _num(m['worker_default_rate']),
+        );
+      }).toList();
+      return (workers: workers, error: null);
+    } catch (e) {
+      return (workers: <StudioWorkerRow>[], error: e.toString());
     }
   }
 

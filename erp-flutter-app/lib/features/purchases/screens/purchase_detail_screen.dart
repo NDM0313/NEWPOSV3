@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/theme/app_colors.dart';
+import '../../../core/network/network_status_provider.dart' show connectivityProvider;
+import '../../../data/local/offline_pending_store.dart';
+import '../../../data/sync/enqueue_or_run.dart';
 import '../../../core/permissions/purchase_actions.dart';
 import '../../../core/session/session_scope.dart';
 import '../../../core/utils/formatters.dart';
@@ -87,17 +90,40 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
       _actionSuccess = null;
     });
 
+    final online = ref.read(connectivityProvider).value ?? true;
     final repo = ref.read(purchasesWriteRepositoryProvider);
-    final result = await repo.recordSupplierPayment(
+    final enqueueResult = await enqueueOrRun(
+      isOnline: online,
+      type: PendingType.purchasePayment,
+      payload: {
+        'company_id': scope.companyId,
+        'branch_id': scope.branchId!,
+        'purchase_id': widget.purchaseId,
+        'amount': amount,
+        'created_by': scope.authUserId,
+      },
       companyId: scope.companyId,
       branchId: scope.branchId!,
-      purchaseId: widget.purchaseId,
-      amount: amount,
-      createdBy: scope.authUserId,
+      onlineTask: () => repo.recordSupplierPayment(
+        companyId: scope.companyId,
+        branchId: scope.branchId!,
+        purchaseId: widget.purchaseId,
+        amount: amount,
+        createdBy: scope.authUserId,
+      ),
     );
 
     if (!mounted) return;
 
+    if (enqueueResult is OfflineQueued) {
+      setState(() {
+        _busy = false;
+        _actionSuccess = 'Offline — payment queued for sync.';
+      });
+      return;
+    }
+
+    final result = (enqueueResult as OnlineResult).value;
     if (!result.success) {
       setState(() {
         _busy = false;

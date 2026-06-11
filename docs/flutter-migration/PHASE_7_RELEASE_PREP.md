@@ -31,7 +31,7 @@ Requires repo root `.env.production` with `VITE_SUPABASE_ANON_KEY` (same as web/
 
 1. **QA** — `08_TESTING_QA_CHECKLIST.md` on a test company (money flows).
 2. **Parity** — `10_PRODUCTION_RELEASE_CHECKLIST.md` vs Capacitor app.
-3. **Release signing** — `android/app/build.gradle.kts` still uses debug signing for `release`; configure keystore + `key.properties` (do not commit secrets).
+3. **Release signing** — copy `android/key.properties.example` → `android/key.properties` + keystore (gitignored); falls back to debug if missing.
 4. **User sign-off** for APK distribution outside pilot.
 
 ## Explicitly not in Phase 7 prep

@@ -193,4 +193,123 @@ class RentalsWriteRepository {
       return (success: false, error: e.toString());
     }
   }
+
+  Future<({bool success, String? error})> markRentalPickedUp({
+    required String companyId,
+    required String rentalId,
+    required String userId,
+    String? notes,
+  }) async {
+    try {
+      final rental = await _client
+          .from('rentals')
+          .select('id, status, branch_id, notes')
+          .eq('id', rentalId)
+          .maybeSingle();
+
+      if (rental == null) {
+        return (success: false, error: 'Rental not found.');
+      }
+      final map = Map<String, dynamic>.from(rental);
+      if (map['status']?.toString() != 'booked') {
+        return (success: false, error: 'Only booked rentals can be marked picked up.');
+      }
+
+      final items = await _client
+          .from('rental_items')
+          .select('product_id, quantity')
+          .eq('rental_id', rentalId);
+
+      for (final row in items as List) {
+        final item = Map<String, dynamic>.from(row as Map);
+        await _client.from('stock_movements').insert({
+          'company_id': companyId,
+          'branch_id': map['branch_id'],
+          'product_id': item['product_id'],
+          'movement_type': 'rental_out',
+          'quantity': -(item['quantity'] as num).toDouble(),
+          'unit_cost': 0,
+          'total_cost': 0,
+          'reference_type': 'rental',
+          'reference_id': rentalId,
+          'created_by': userId,
+        });
+      }
+
+      await _client.from('rentals').update({
+        'status': 'picked_up',
+        'notes': notes ?? map['notes'],
+        'security_document_type': 'id_card',
+        'security_status': 'collected',
+      }).eq('id', rentalId);
+
+      return (success: true, error: null);
+    } catch (e) {
+      return (success: false, error: e.toString());
+    }
+  }
+
+  Future<({bool success, String? error})> receiveRentalReturn({
+    required String companyId,
+    required String rentalId,
+    required String userId,
+    String? notes,
+  }) async {
+    try {
+      final rental = await _client
+          .from('rentals')
+          .select('id, status, branch_id, due_amount')
+          .eq('id', rentalId)
+          .maybeSingle();
+
+      if (rental == null) {
+        return (success: false, error: 'Rental not found.');
+      }
+      final map = Map<String, dynamic>.from(rental);
+      final status = map['status']?.toString() ?? '';
+      if (!['rented', 'overdue', 'picked_up', 'active'].contains(status)) {
+        return (success: false, error: 'Mark picked up first, then return when due is cleared.');
+      }
+      final due = (map['due_amount'] as num?)?.toDouble() ?? 0;
+      if (due > 0) {
+        return (success: false, error: 'Clear due balance before completing return.');
+      }
+
+      final items = await _client
+          .from('rental_items')
+          .select('product_id, quantity')
+          .eq('rental_id', rentalId);
+
+      for (final row in items as List) {
+        final item = Map<String, dynamic>.from(row as Map);
+        await _client.from('stock_movements').insert({
+          'company_id': companyId,
+          'branch_id': map['branch_id'],
+          'product_id': item['product_id'],
+          'movement_type': 'rental_in',
+          'quantity': (item['quantity'] as num).toDouble(),
+          'unit_cost': 0,
+          'total_cost': 0,
+          'reference_type': 'rental',
+          'reference_id': rentalId,
+          'created_by': userId,
+        });
+      }
+
+      final today = localTodayIso();
+      await _client.from('rentals').update({
+        'status': 'returned',
+        'actual_return_date': today,
+        'returned_by': userId,
+        'condition_type': 'good',
+        'document_returned': true,
+        'security_status': 'returned',
+        if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
+      }).eq('id', rentalId);
+
+      return (success: true, error: null);
+    } catch (e) {
+      return (success: false, error: e.toString());
+    }
+  }
 }

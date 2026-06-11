@@ -81,11 +81,78 @@ class _RentalDetailScreenState extends ConsumerState<RentalDetailScreen> {
     });
   }
 
+  Future<void> _markPickedUp() async {
+    final scope = SessionScope.from(ref.read(authSessionProvider));
+    if (scope == null) return;
+
+    setState(() {
+      _busy = true;
+      _actionError = null;
+      _actionSuccess = null;
+    });
+
+    final repo = ref.read(rentalsWriteRepositoryProvider);
+    final result = await repo.markRentalPickedUp(
+      companyId: scope.companyId,
+      rentalId: widget.rentalId,
+      userId: scope.authUserId,
+    );
+
+    if (!mounted) return;
+    if (!result.success) {
+      setState(() {
+        _busy = false;
+        _actionError = result.error ?? 'Pickup failed.';
+      });
+      return;
+    }
+    ref.invalidate(rentalDetailProvider(widget.rentalId));
+    ref.invalidate(rentalsListProvider);
+    setState(() {
+      _busy = false;
+      _actionSuccess = 'Marked as picked up.';
+    });
+  }
+
+  Future<void> _completeReturn() async {
+    final scope = SessionScope.from(ref.read(authSessionProvider));
+    if (scope == null) return;
+
+    setState(() {
+      _busy = true;
+      _actionError = null;
+      _actionSuccess = null;
+    });
+
+    final repo = ref.read(rentalsWriteRepositoryProvider);
+    final result = await repo.receiveRentalReturn(
+      companyId: scope.companyId,
+      rentalId: widget.rentalId,
+      userId: scope.authUserId,
+    );
+
+    if (!mounted) return;
+    if (!result.success) {
+      setState(() {
+        _busy = false;
+        _actionError = result.error ?? 'Return failed.';
+      });
+      return;
+    }
+    ref.invalidate(rentalDetailProvider(widget.rentalId));
+    ref.invalidate(rentalsListProvider);
+    setState(() {
+      _busy = false;
+      _actionSuccess = 'Return completed.';
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final asyncRental = ref.watch(rentalDetailProvider(widget.rentalId));
     final scope = SessionScope.from(ref.watch(authSessionProvider));
     final canPay = scope != null && canPayRental(scope.permissions);
+    final canManage = scope != null && canManageRentalLifecycle(scope.permissions);
 
     return ModuleScaffold(
       title: 'Rental',
@@ -106,9 +173,12 @@ class _RentalDetailScreenState extends ConsumerState<RentalDetailScreen> {
             rental: rental,
             busy: _busy,
             canPay: canPay,
+            canManage: canManage,
             actionError: _actionError,
             actionSuccess: _actionSuccess,
             onReceivePayment: () => _receivePayment(rental),
+            onMarkPickedUp: _markPickedUp,
+            onCompleteReturn: _completeReturn,
           );
         },
       ),
@@ -121,21 +191,31 @@ class _RentalBody extends StatelessWidget {
     required this.rental,
     required this.busy,
     required this.canPay,
+    required this.canManage,
     required this.actionError,
     required this.actionSuccess,
     required this.onReceivePayment,
+    required this.onMarkPickedUp,
+    required this.onCompleteReturn,
   });
 
   final RentalDetail rental;
   final bool busy;
   final bool canPay;
+  final bool canManage;
   final String? actionError;
   final String? actionSuccess;
   final VoidCallback onReceivePayment;
+  final VoidCallback onMarkPickedUp;
+  final VoidCallback onCompleteReturn;
 
   @override
   Widget build(BuildContext context) {
     final showPay = canPay && rental.due > 0;
+    final showPickup = canManage && rental.status.toLowerCase() == 'booked';
+    final showReturn = canManage &&
+        rental.due <= 0 &&
+        ['rented', 'overdue', 'picked_up', 'active'].contains(rental.status.toLowerCase());
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -176,8 +256,15 @@ class _RentalBody extends StatelessWidget {
             ),
           ],
         ),
-        if (showPay) ...[
+        if (showPickup) ...[
           const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: busy ? null : onMarkPickedUp,
+            child: const Text('Mark picked up'),
+          ),
+        ],
+        if (showPay) ...[
+          const SizedBox(height: 8),
           ElevatedButton(
             onPressed: busy ? null : onReceivePayment,
             child: busy
@@ -187,6 +274,13 @@ class _RentalBody extends StatelessWidget {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : Text('Receive payment (${formatMoney(rental.due)} due)'),
+          ),
+        ],
+        if (showReturn) ...[
+          const SizedBox(height: 8),
+          OutlinedButton(
+            onPressed: busy ? null : onCompleteReturn,
+            child: const Text('Complete return'),
           ),
         ],
         if (rental.items.isNotEmpty) ...[

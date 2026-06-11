@@ -59,6 +59,6 @@ lib/
   features/     auth, home, sales, pos, …
 ```
 
-## Not in this build
+## Pilot exclusions
 
-Thermal print, full Drift offline DB, studio production writes. See migration status doc.
+Native Sunmi thermal print, full Drift DB, counter/PIN enroll — see `PHASE_MIGRATION_COMPLETE.md`.

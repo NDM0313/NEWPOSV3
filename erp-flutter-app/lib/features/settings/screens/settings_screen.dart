@@ -42,6 +42,11 @@ class SettingsScreen extends ConsumerWidget {
               DetailRow(label: 'App version', value: versionLabel),
             ],
           ),
+          const SizedBox(height: 12),
+          const Text(
+            'Counter/PIN tablet mode is not in this Flutter build — use the Capacitor APK on shared counter devices until a future release.',
+            style: TextStyle(color: AppColors.muted, fontSize: 12),
+          ),
           const SizedBox(height: 16),
           ElevatedButton(
             onPressed: () => context.push('/branch'),

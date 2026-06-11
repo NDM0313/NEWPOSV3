@@ -65,7 +65,45 @@ class OfflineSyncService {
         return _syncExpense(record, p);
       case PendingType.draftPurchase:
         return _syncDraftPurchase(record, p);
+      case PendingType.salePayment:
+        return _syncSalePayment(record, p);
+      case PendingType.purchasePayment:
+        return _syncPurchasePayment(record, p);
     }
+  }
+
+  Future<bool> _syncSalePayment(PendingRecord record, Map<String, dynamic> p) async {
+    final result = await _salesWrite.recordSalePaymentReceived(
+      companyId: p['company_id'] as String,
+      branchId: p['branch_id'] as String,
+      saleId: p['sale_id'] as String,
+      amount: (p['amount'] as num).toDouble(),
+      createdBy: p['created_by'] as String,
+    );
+    if (!result.success) {
+      await _store.update(
+        record.copyWith(status: SyncQueueStatus.error, syncError: result.error),
+      );
+      return false;
+    }
+    return true;
+  }
+
+  Future<bool> _syncPurchasePayment(PendingRecord record, Map<String, dynamic> p) async {
+    final result = await _purchasesWrite.recordSupplierPayment(
+      companyId: p['company_id'] as String,
+      branchId: p['branch_id'] as String,
+      purchaseId: p['purchase_id'] as String,
+      amount: (p['amount'] as num).toDouble(),
+      createdBy: p['created_by'] as String,
+    );
+    if (!result.success) {
+      await _store.update(
+        record.copyWith(status: SyncQueueStatus.error, syncError: result.error),
+      );
+      return false;
+    }
+    return true;
   }
 
   Future<bool> _syncDraftSale(PendingRecord record, Map<String, dynamic> p) async {

@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../app/theme/app_colors.dart';
+import '../../../core/network/network_status_provider.dart' show connectivityProvider;
+import '../../../data/local/offline_pending_store.dart';
+import '../../../data/sync/enqueue_or_run.dart';
 import '../../../core/permissions/sale_actions.dart';
 import '../../../core/session/session_scope.dart';
 import '../../../core/utils/formatters.dart';
@@ -138,17 +142,40 @@ class _SaleDetailBodyState extends ConsumerState<_SaleDetailBody> {
       _actionSuccess = null;
     });
 
+    final online = ref.read(connectivityProvider).value ?? true;
     final repo = ref.read(salesWriteRepositoryProvider);
-    final result = await repo.recordSalePaymentReceived(
+    final enqueueResult = await enqueueOrRun(
+      isOnline: online,
+      type: PendingType.salePayment,
+      payload: {
+        'company_id': scope.companyId,
+        'branch_id': scope.branchId!,
+        'sale_id': widget.saleId,
+        'amount': amount,
+        'created_by': scope.authUserId,
+      },
       companyId: scope.companyId,
       branchId: scope.branchId!,
-      saleId: widget.saleId,
-      amount: amount,
-      createdBy: scope.authUserId,
+      onlineTask: () => repo.recordSalePaymentReceived(
+        companyId: scope.companyId,
+        branchId: scope.branchId!,
+        saleId: widget.saleId,
+        amount: amount,
+        createdBy: scope.authUserId,
+      ),
     );
 
     if (!mounted) return;
 
+    if (enqueueResult is OfflineQueued) {
+      setState(() {
+        _busy = false;
+        _actionSuccess = 'Offline — payment queued for sync.';
+      });
+      return;
+    }
+
+    final result = (enqueueResult as OnlineResult).value;
     if (!result.success) {
       setState(() {
         _busy = false;
@@ -297,6 +324,15 @@ class _SaleDetailBodyState extends ConsumerState<_SaleDetailBody> {
               ),
             ),
           ],
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: () async {
+            final bytes = await buildSalePdfBytes(sale);
+            await Printing.layoutPdf(onLayout: (_) async => bytes);
+          },
+          icon: const Icon(Icons.print),
+          label: const Text('Print / preview PDF'),
         ),
         const SizedBox(height: 16),
         DetailSection(
