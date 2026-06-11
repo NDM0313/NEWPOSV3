@@ -1,7 +1,7 @@
 # Flutter ERP migration — completion summary
 
 **App:** `erp-flutter-app/`  
-**Version:** `1.0.3+4`  
+**Version:** `1.0.4+5`  
 **Status:** All planned phases **implemented** for pilot / staged rollout.
 
 ## Phase completion
@@ -39,14 +39,14 @@
 | WhatsApp-specific PDF intent | `share_plus` covers share sheet (user picks WhatsApp) |
 | Counter/PIN enroll on device | Use Capacitor APK on shared tablets for now |
 | Manual journal entry create | Web ERP |
-| Studio invoice line + auto-finalize | Partial — stage RPCs; full bill finalize remains web-heavy |
+| Studio stage worker ledger backfill | Web/mobile Capacitor parity for edge GL — Flutter uses `finalizeSale` after invoice line |
 
 ## Before production distribution
 
-1. `08_TESTING_QA_CHECKLIST.md` on test company
+1. `./scripts/smoke-api-check.sh` then `QA_SESSION_LOG.md` + `08_TESTING_QA_CHECKLIST.md`
 2. `10_PRODUCTION_RELEASE_CHECKLIST.md` vs Capacitor
-3. `android/key.properties` + keystore
-4. User sign-off
+3. `android/key.properties` + keystore → `./scripts/build-release-apk.sh`
+4. User sign-off in QA log
 
 ## Build
 

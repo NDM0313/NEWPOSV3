@@ -20,6 +20,7 @@ import '../../../data/repositories/rentals_read_repository.dart';
 import '../../../data/repositories/rentals_write_repository.dart';
 import '../../../data/repositories/sales_write_repository.dart';
 import '../../../data/repositories/studio_read_repository.dart';
+import '../../../data/repositories/studio_invoice_repository.dart';
 import '../../../data/repositories/studio_write_repository.dart';
 import '../../../data/repositories/settings_repository.dart';
 
@@ -68,6 +69,9 @@ final studioReadRepositoryProvider =
 
 final studioWriteRepositoryProvider =
     Provider<StudioWriteRepository>((ref) => StudioWriteRepository());
+
+final studioInvoiceRepositoryProvider =
+    Provider<StudioInvoiceRepository>((ref) => StudioInvoiceRepository());
 
 final accountsReadRepositoryProvider =
     Provider<AccountsReadRepository>((ref) => AccountsReadRepository());

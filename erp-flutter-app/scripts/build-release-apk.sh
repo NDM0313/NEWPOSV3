@@ -16,4 +16,6 @@ flutter pub get
 flutter analyze
 flutter build apk --release --dart-define=SUPABASE_ANON_KEY="$KEY"
 
+"$SCRIPT_DIR/copy-release-apk.sh"
+
 echo "[build-release-apk] APK: $APP_ROOT/build/app/outputs/flutter-apk/app-release.apk"

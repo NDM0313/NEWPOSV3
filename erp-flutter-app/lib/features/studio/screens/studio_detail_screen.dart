@@ -167,6 +167,91 @@ class _StudioDetailScreenState extends ConsumerState<StudioDetailScreen> {
     await _runAction(repo.completeStage(stage.id), 'Stage completed.');
   }
 
+  Future<void> _addInvoiceLine(StudioProductionRow production, StudioSaleDetail detail) async {
+    final scope = SessionScope.from(ref.read(authSessionProvider));
+    if (scope == null) return;
+
+    final priceController = TextEditingController(
+      text: detail.total > 0 ? detail.total.toString() : '',
+    );
+    final nameController = TextEditingController(text: production.designName);
+
+    if (!mounted) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Studio invoice line'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              decoration: const InputDecoration(labelText: 'Product / design name'),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: priceController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(labelText: 'Sale price'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    final price = double.tryParse(priceController.text.trim()) ?? 0;
+    if (price <= 0) {
+      setState(() => _actionError = 'Enter a valid sale price.');
+      return;
+    }
+
+    setState(() {
+      _busy = true;
+      _actionError = null;
+      _actionSuccess = null;
+    });
+
+    final invoiceRepo = ref.read(studioInvoiceRepositoryProvider);
+    final upsert = await invoiceRepo.upsertStudioInvoiceLine(
+      companyId: scope.companyId,
+      saleId: detail.saleId,
+      productionId: production.id,
+      invoiceNoLabel: detail.documentNo,
+      salePrice: price,
+      productName: nameController.text,
+    );
+
+    if (!mounted) return;
+    if (upsert.error != null || upsert.data == null) {
+      setState(() {
+        _busy = false;
+        _actionError = upsert.error ?? 'Invoice line failed.';
+      });
+      return;
+    }
+
+    final writeRepo = ref.read(studioWriteRepositoryProvider);
+    final fin = await writeRepo.tryFinalizeStudioProduction(production.id);
+
+    ref.invalidate(studioSaleDetailProvider(widget.saleId));
+    setState(() {
+      _busy = false;
+      if (fin.ok && fin.skipped == null) {
+        _actionSuccess = 'Invoice line saved and sale finalized.';
+      } else if (fin.ok && fin.skipped != null) {
+        _actionSuccess = 'Invoice line saved (${fin.skipped}).';
+      } else {
+        _actionSuccess = 'Invoice line saved.';
+        if (fin.error != null) _actionError = fin.error;
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final asyncDetail = ref.watch(studioSaleDetailProvider(widget.saleId));
@@ -206,6 +291,8 @@ class _StudioDetailScreenState extends ConsumerState<StudioDetailScreen> {
             onReceive: _receiveWork,
             onConfirmPayment: _confirmPayment,
             onComplete: _completeStage,
+            onAddInvoiceLine: (production, detail) =>
+                _addInvoiceLine(production, detail),
           );
         },
       ),
@@ -225,6 +312,7 @@ class _StudioBody extends StatelessWidget {
     required this.onReceive,
     required this.onConfirmPayment,
     required this.onComplete,
+    required this.onAddInvoiceLine,
   });
 
   final StudioSaleDetail detail;
@@ -237,6 +325,8 @@ class _StudioBody extends StatelessWidget {
   final Future<void> Function(StudioStageRow stage) onReceive;
   final Future<void> Function(StudioStageRow stage) onConfirmPayment;
   final Future<void> Function(StudioStageRow stage) onComplete;
+  final Future<void> Function(StudioProductionRow production, StudioSaleDetail detail)
+      onAddInvoiceLine;
 
   @override
   Widget build(BuildContext context) {
@@ -279,6 +369,13 @@ class _StudioBody extends StatelessWidget {
           if (production.designName.trim().isNotEmpty)
             Text(production.designName, style: const TextStyle(color: AppColors.muted, fontSize: 13)),
           Text('Status: ${production.status}', style: const TextStyle(color: AppColors.muted, fontSize: 12)),
+          if (canManage) ...[
+            const SizedBox(height: 8),
+            OutlinedButton(
+              onPressed: busy ? null : () => onAddInvoiceLine(production, detail),
+              child: const Text('Add / update invoice line'),
+            ),
+          ],
           const SizedBox(height: 8),
           if (production.stages.isEmpty)
             const Text('No stages yet.', style: TextStyle(color: AppColors.muted, fontSize: 13))

@@ -2,7 +2,7 @@
 
 **App path:** `erp-flutter-app/`  
 **Backend:** `https://erp.dincouture.pk` (locked)  
-**Version:** `1.0.3+4`  
+**Version:** `1.0.4+5`  
 **Last updated:** Full migration completion pass
 
 ## Phase summary — all phases complete (pilot scope)
