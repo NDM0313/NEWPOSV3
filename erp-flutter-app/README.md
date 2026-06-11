@@ -44,6 +44,26 @@ APK: `build/app/outputs/flutter-apk/app-release.apk`
 
 **Package ID:** `com.dincouture.erp.erp_flutter_app` (parallel pilot vs Capacitor `com.dincouture.erp`).
 
+## Install on iPhone (Mac + Xcode)
+
+1. iPhone USB ya **Wireless** (Xcode → Window → Devices) se connect karo.
+2. Pehli dafa signing: `./scripts/open-ios-workspace.sh` → Runner target → **Signing & Capabilities** → Team select karo.
+3. Install + run (reads anon key from `.env.local` etc.):
+
+```bash
+chmod +x scripts/*.sh
+./scripts/run-ios-device.sh
+```
+
+Specific device:
+
+```bash
+flutter devices
+./scripts/run-ios-device.sh 00008120-XXXXXXXX ios
+```
+
+iPhone par **Trust This Computer** / Developer app trust confirm karo. App name: **Erp Flutter App**.
+
 ## Features (summary)
 
 - Auth, branch picker, permission-gated home

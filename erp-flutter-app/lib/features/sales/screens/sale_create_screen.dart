@@ -272,37 +272,41 @@ class _SaleCreateScreenState extends ConsumerState<SaleCreateScreen> {
                   ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Draft only — finalize and payment come in a later step.',
+                  'Saves as draft — finalize from sale detail after sync.',
                   style: TextStyle(color: AppColors.muted, fontSize: 12),
                   textAlign: TextAlign.center,
                 ),
               ],
             ),
           ),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              border: Border(top: BorderSide(color: AppColors.border)),
-            ),
-            child: Row(
-              children: [
-                Text(
-                  'Total ${formatMoney(_total)}',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                ),
-                const Spacer(),
-                ElevatedButton(
-                  onPressed: _saving ? null : _saveDraft,
-                  child: _saving
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Save draft'),
-                ),
-              ],
+          SafeArea(
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                border: Border(top: BorderSide(color: AppColors.border)),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Total ${formatMoney(_total)}',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                    ),
+                  ),
+                  ElevatedButton(
+                    onPressed: _saving ? null : _saveDraft,
+                    child: _saving
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Save draft'),
+                  ),
+                ],
+              ),
             ),
           ),
         ],

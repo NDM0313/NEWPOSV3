@@ -129,6 +129,10 @@ flutter run --dart-define=SUPABASE_ANON_KEY="$FLUTTER_ANON_KEY"
 ./scripts/build-release-apk.sh
 # APK: build/app/outputs/flutter-apk/app-release.apk
 # Copy: releases/erp-flutter-*.apk
+
+# iPhone (Mac + Xcode, same anon key)
+./scripts/run-ios-device.sh
+# First time: ./scripts/open-ios-workspace.sh → Team signing
 ```
 
 ---
