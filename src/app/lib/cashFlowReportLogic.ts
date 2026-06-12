@@ -93,6 +93,83 @@ export function cashFlowStatusLabel(status: CashFlowRowStatus): string {
   return 'Live';
 }
 
+/** Primary status + optional Audit tag for void/reversal rows shown in audit mode. */
+export function cashFlowStatusBadges(status: CashFlowRowStatus, auditMode: boolean): string[] {
+  const badges = [cashFlowStatusLabel(status)];
+  if (auditMode && status !== 'live') badges.push('Audit');
+  return badges;
+}
+
+export function cashFlowStatusBadgesText(status: CashFlowRowStatus, auditMode: boolean): string {
+  return cashFlowStatusBadges(status, auditMode).join(' / ');
+}
+
+export const CASH_FLOW_CSV_HEADERS = [
+  'Date',
+  'Reference',
+  'Party/contact',
+  'Source module',
+  'Cash/bank account',
+  'In',
+  'Out',
+  'Running balance',
+  'Status',
+  'Branch',
+] as const;
+
+export interface CashFlowCsvRowInput {
+  dateTime: string;
+  reference: string;
+  party: string | null;
+  sourceModuleLabel: string;
+  cashAccount: string;
+  cashIn: number;
+  cashOut: number;
+  runningBalance: number;
+  status: CashFlowRowStatus;
+  branchName: string | null;
+  auditMode: boolean;
+}
+
+export function buildCashFlowCsvRows(rows: CashFlowCsvRowInput[]): (string | number)[][] {
+  return rows.map((r) => [
+    r.dateTime,
+    r.reference,
+    r.party || '',
+    r.sourceModuleLabel,
+    r.cashAccount,
+    r.cashIn > 0 ? r.cashIn : '',
+    r.cashOut > 0 ? r.cashOut : '',
+    r.runningBalance,
+    cashFlowStatusBadgesText(r.status, r.auditMode),
+    r.branchName || '',
+  ]);
+}
+
+export function cashFlowFiltersAffectRunningBalance(args: {
+  sourceModuleFilter: CashFlowSourceModule | 'all';
+  paymentLedgerAccountId: string;
+  accountFilter: string;
+  searchTerm: string;
+}): boolean {
+  return (
+    args.sourceModuleFilter !== 'all' ||
+    Boolean(args.paymentLedgerAccountId.trim()) ||
+    args.accountFilter !== 'all' ||
+    Boolean(args.searchTerm.trim())
+  );
+}
+
+export function cashFlowRunningBalanceNote(filtersActive: boolean): string | null {
+  if (!filtersActive) return null;
+  return 'Running balance is calculated on the filtered rows.';
+}
+
+export function cashFlowAuditModeNote(auditMode: boolean): string | null {
+  if (!auditMode) return null;
+  return 'Audit mode includes voided/reversed rows for traceability. Normal totals exclude them.';
+}
+
 /** Normal mode row gate — mirrors reportVisibilityContract + roznamcha normal stream. */
 export function includeCashFlowRowInNormalMode(input: CashFlowEnrichInput): boolean {
   return shouldIncludeInNormalCashMovement({

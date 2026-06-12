@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-12  
 **Product:** DIN Collection ERP  
-**Status:** CF-1 read-only tab implemented (Accounting → Cash Flow). Phase B GL summary strip pending.  
+**Status:** CF-1 read-only tab deployed. CF-1.1 adds Print/CSV export and UI polish. Phase B GL summary strip pending.  
 **Related:** [transaction-actions-analysis.md](./transaction-actions-analysis.md) · [transaction-actions-plan.md](./transaction-actions-plan.md)
 
 ---

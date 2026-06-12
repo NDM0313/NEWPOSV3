@@ -2,6 +2,10 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   assertUniqueCashFlowSourceKeys,
+  buildCashFlowCsvRows,
+  cashFlowFiltersAffectRunningBalance,
+  cashFlowRunningBalanceNote,
+  cashFlowStatusBadges,
   computeCashFlowSummary,
   includeCashFlowRowInNormalMode,
   inferCashFlowSourceModule,
@@ -93,5 +97,56 @@ test('source module inference for expense payment', () => {
   assert.equal(
     inferCashFlowSourceModule({ rowType: 'Internal transfer', referenceType: 'transfer', rowId: 'jel-x' }),
     'transfers'
+  );
+});
+
+test('status badges include Audit tag for reversal rows in audit mode', () => {
+  assert.deepEqual(cashFlowStatusBadges('reversed', true), ['Reversed', 'Audit']);
+  assert.deepEqual(cashFlowStatusBadges('live', true), ['Live']);
+});
+
+test('CSV export rows include status and branch columns', () => {
+  const rows = buildCashFlowCsvRows([
+    {
+      dateTime: '2026-01-01 10:00',
+      reference: 'RCV-0001',
+      party: 'Walk-in',
+      sourceModuleLabel: 'Sales receipts',
+      cashAccount: 'Cash',
+      cashIn: 100,
+      cashOut: 0,
+      runningBalance: 1100,
+      status: 'live',
+      branchName: 'HQ',
+      auditMode: false,
+    },
+  ]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0][8], 'Live');
+  assert.equal(rows[0][9], 'HQ');
+});
+
+test('running balance note when filters active', () => {
+  assert.equal(
+    cashFlowRunningBalanceNote(
+      cashFlowFiltersAffectRunningBalance({
+        sourceModuleFilter: 'expenses',
+        paymentLedgerAccountId: '',
+        accountFilter: 'all',
+        searchTerm: '',
+      })
+    ),
+    'Running balance is calculated on the filtered rows.'
+  );
+  assert.equal(
+    cashFlowRunningBalanceNote(
+      cashFlowFiltersAffectRunningBalance({
+        sourceModuleFilter: 'all',
+        paymentLedgerAccountId: '',
+        accountFilter: 'all',
+        searchTerm: '',
+      })
+    ),
+    null
   );
 });
