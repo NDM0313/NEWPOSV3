@@ -476,7 +476,7 @@ export function RelinkContactDialog(props: {
             Cancel
           </Button>
           {props.phase2SafeMode ? (
-            <Button className="bg-gray-700 cursor-not-allowed opacity-60" disabled title="Phase 2 — use relink dry-run wizard">
+            <Button className="bg-gray-700 cursor-not-allowed opacity-60" disabled title="Phase 2 — use Fix Link wizard">
               Save mapping (Phase 3)
             </Button>
           ) : (

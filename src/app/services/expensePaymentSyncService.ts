@@ -319,3 +319,54 @@ export async function applyExpensePaymentAmountRepair(
     repairMode: true,
   });
 }
+
+export interface ExpensePaymentRepairCandidateRow {
+  expenseId: string;
+  expenseNo: string;
+  expenseAmount: number;
+  paymentRef: string | null;
+  paymentAmount: number | null;
+  jeLiquidityAmount: number;
+  canApplyRepair: boolean;
+  blockReason?: string;
+  proposedAfterAmount: number;
+}
+
+/** Scan paid expenses for expense.amount vs payments.amount drift (repair queue auto-detection). */
+export async function listExpensePaymentRepairCandidates(
+  companyId: string,
+  limit = 80
+): Promise<ExpensePaymentRepairCandidateRow[]> {
+  const { data: expenses } = await supabase
+    .from('expenses')
+    .select('id, expense_no, amount')
+    .eq('company_id', companyId)
+    .eq('status', 'paid')
+    .order('updated_at', { ascending: false })
+    .limit(limit);
+
+  const rows: ExpensePaymentRepairCandidateRow[] = [];
+  for (const exp of expenses || []) {
+    const expenseId = String((exp as { id: string }).id);
+    const snapshot = await loadExpensePaymentSyncSnapshot(companyId, expenseId);
+    if (!snapshot) continue;
+    const mismatch = detectExpensePaymentAmountMismatch({
+      expenseAmount: snapshot.expenseAmount,
+      paymentAmount: snapshot.paymentAmount,
+      jeLiquidityAmount: snapshot.jeLiquidityAmount,
+    });
+    if (!mismatch.hasMismatch) continue;
+    rows.push({
+      expenseId: snapshot.expenseId,
+      expenseNo: snapshot.expenseNo,
+      expenseAmount: mismatch.expenseAmount,
+      paymentRef: snapshot.paymentRef,
+      paymentAmount: mismatch.paymentAmount,
+      jeLiquidityAmount: mismatch.jeLiquidityAmount,
+      canApplyRepair: mismatch.canApplyRepair,
+      blockReason: mismatch.blockReason,
+      proposedAfterAmount: mismatch.proposedAfterAmount,
+    });
+  }
+  return rows;
+}

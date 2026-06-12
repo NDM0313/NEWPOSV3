@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-12  
 **Product:** DIN Collection ERP  
-**Status:** CF-1 read-only tab deployed. CF-1.1 adds Print/CSV export and UI polish. Phase B GL summary strip pending.  
+**Status:** CF-1 read-only tab deployed. CF-1.1 Print/CSV + UI polish deployed. CF-2 GL summary strip complete (read-only).  
 **Related:** [transaction-actions-analysis.md](./transaction-actions-analysis.md) · [transaction-actions-plan.md](./transaction-actions-plan.md)
 
 ---

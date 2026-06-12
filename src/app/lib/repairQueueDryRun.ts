@@ -80,3 +80,31 @@ export const SAFE_SEQUENCE_SYNC_CONFIRM_PHRASE = 'SYNC-SEQUENCE-TO-EFFECTIVE-MAX
 export function isValidRepairConfirmPhrase(phrase: string, expected: string): boolean {
   return phrase.trim() === expected;
 }
+
+export function expensePaymentCandidateToDryRunPreview(row: {
+  expenseNo: string;
+  expenseAmount: number;
+  paymentRef: string | null;
+  paymentAmount: number | null;
+  jeLiquidityAmount: number;
+  canApplyRepair: boolean;
+  blockReason?: string;
+  proposedAfterAmount: number;
+}): RepairDryRunPreview {
+  const before = `Expense ${row.expenseNo}: Rs ${row.expenseAmount.toLocaleString()} · Payment ${row.paymentRef || '—'}: Rs ${(row.paymentAmount ?? 0).toLocaleString()} · JE liquidity: Rs ${row.jeLiquidityAmount.toLocaleString()}`;
+  const after = row.canApplyRepair
+    ? `Payment metadata → Rs ${row.proposedAfterAmount.toLocaleString()} (GL lines unchanged)`
+    : row.blockReason || 'Repair blocked';
+  return {
+    repairType: 'expense.sync_linked_payment_amount',
+    title: `Expense payment mismatch — ${row.expenseNo}`,
+    status: 'preview_ready',
+    beforeSummary: before,
+    afterSummary: after,
+    impactSummary: row.canApplyRepair
+      ? 'Updates payments.amount only when JE already matches expense'
+      : row.blockReason || 'Review GL before repair',
+    safeToApply: row.canApplyRepair,
+    requiresSuperAdmin: true,
+  };
+}

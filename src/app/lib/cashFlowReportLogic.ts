@@ -243,3 +243,32 @@ export function assertUniqueCashFlowSourceKeys(
   }
   return true;
 }
+
+/** CF-2 — GL cash flow statement bucket (journal-classified). */
+export interface GlCashFlowBucket {
+  in: number;
+  out: number;
+  net: number;
+}
+
+export interface GlCashFlowStatementSummary {
+  operating: GlCashFlowBucket;
+  investing: GlCashFlowBucket;
+  financing: GlCashFlowBucket;
+  netChange: number;
+}
+
+/** Normal GL cash flow excludes correction_reversal entries (JE-0168 class). */
+export function shouldIncludeInGlCashFlowEntry(
+  referenceType: string | null | undefined,
+  auditMode: boolean
+): boolean {
+  if (auditMode) return true;
+  return !isCorrectionReversalReferenceType(referenceType);
+}
+
+export function glCashFlowModeNote(auditMode: boolean): string {
+  return auditMode
+    ? 'GL summary includes correction/reversal entries for audit traceability.'
+    : 'GL summary excludes correction/reversal entries (Normal mode).';
+}

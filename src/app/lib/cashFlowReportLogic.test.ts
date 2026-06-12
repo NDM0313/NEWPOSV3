@@ -11,6 +11,8 @@ import {
   inferCashFlowSourceModule,
   recomputeCashFlowRunningBalance,
   resolveCashFlowRowStatus,
+  shouldIncludeInGlCashFlowEntry,
+  glCashFlowModeNote,
 } from './cashFlowReportLogic';
 
 test('normal mode excludes JE-0168-class correction_reversal rows', () => {
@@ -149,4 +151,15 @@ test('running balance note when filters active', () => {
     ),
     null
   );
+});
+
+test('GL cash flow normal mode excludes correction_reversal entries', () => {
+  assert.equal(shouldIncludeInGlCashFlowEntry('correction_reversal', false), false);
+  assert.equal(shouldIncludeInGlCashFlowEntry('correction_reversal', true), true);
+  assert.equal(shouldIncludeInGlCashFlowEntry('expense', false), true);
+});
+
+test('GL cash flow mode note', () => {
+  assert.match(glCashFlowModeNote(false), /excludes correction/i);
+  assert.match(glCashFlowModeNote(true), /includes correction/i);
 });

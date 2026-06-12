@@ -51,6 +51,19 @@ export function RepairQueueTab({ companyId }: Props) {
   }, [companyId, load]);
 
   const outOfSync = snapshot?.numberingRows.filter((r) => r.status === 'out_of_sync') ?? [];
+  const expenseMismatches = snapshot?.expensePaymentCandidates ?? [];
+
+  const queueExpensePaymentRepair = (row: (typeof expenseMismatches)[number]) => {
+    sendToRepairQueue({
+      actionId: 'expense.sync_linked_payment_amount',
+      sourceTab: 'repair',
+      params: { expenseId: row.expenseId, expenseNo: row.expenseNo },
+      detectedReason: `Payment Rs ${(row.paymentAmount ?? 0).toLocaleString()} ≠ expense Rs ${row.expenseAmount.toLocaleString()}`,
+      severity: row.canApplyRepair ? 'medium' : 'high',
+      title: `Sync expense payment — ${row.expenseNo}`,
+    });
+    toast.success('Added to repair queue — run dry-run below');
+  };
 
   const queueSequenceSync = (documentType: string, label: string) => {
     sendToRepairQueue({
@@ -130,6 +143,70 @@ export function RepairQueueTab({ companyId }: Props) {
                         <td className="py-2 pr-2 text-gray-300">{p.title}</td>
                         <td className="py-2 pr-2 text-gray-500 max-w-xs">{p.beforeSummary}</td>
                         <td className="py-2 text-gray-400 max-w-xs">{p.afterSummary}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="border-gray-800 bg-gray-900/40">
+            <CardHeader>
+              <CardTitle className="text-base">
+                Expense payment mismatches ({expenseMismatches.length})
+              </CardTitle>
+              <CardDescription>
+                Paid expense where payments.amount differs from expense.amount. Repair allowed only when JE
+                liquidity matches expense (metadata fix — GL unchanged).
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="overflow-x-auto">
+              {expenseMismatches.length === 0 ? (
+                <p className="text-sm text-gray-500">No expense/payment amount drift detected.</p>
+              ) : (
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-left text-gray-500 border-b border-gray-800">
+                      <th className="py-2 pr-2">Expense</th>
+                      <th className="py-2 pr-2">Expense amt</th>
+                      <th className="py-2 pr-2">Payment amt</th>
+                      <th className="py-2 pr-2">JE liquidity</th>
+                      <th className="py-2 pr-2">Status</th>
+                      <th className="py-2">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {expenseMismatches.map((row) => (
+                      <tr key={row.expenseId} className="border-b border-gray-800/60">
+                        <td className="py-2 pr-2 text-gray-200 font-mono">{row.expenseNo}</td>
+                        <td className="py-2 pr-2">{row.expenseAmount.toLocaleString()}</td>
+                        <td className="py-2 pr-2">{(row.paymentAmount ?? 0).toLocaleString()}</td>
+                        <td className="py-2 pr-2">{row.jeLiquidityAmount.toLocaleString()}</td>
+                        <td className="py-2 pr-2">
+                          {row.canApplyRepair ? (
+                            <Badge className="bg-emerald-900/40 text-emerald-300 border-emerald-800">
+                              repairable
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-amber-900/40 text-amber-300 border-amber-800" title={row.blockReason}>
+                              blocked
+                            </Badge>
+                          )}
+                        </td>
+                        <td className="py-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs"
+                            disabled={!row.canApplyRepair}
+                            title={row.canApplyRepair ? undefined : row.blockReason}
+                            onClick={() => queueExpensePaymentRepair(row)}
+                          >
+                            Send to queue
+                          </Button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>

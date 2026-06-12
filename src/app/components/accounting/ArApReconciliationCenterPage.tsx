@@ -874,7 +874,7 @@ export function ArApReconciliationCenterPage() {
                             items={[
                               { label: 'Line detail…', onClick: () => setUnmappedDetailRow(r) },
                               { label: 'Row trace', onClick: () => setTraceTarget({ kind: 'unmapped', row: r }) },
-                              { label: 'Fix Link (preview)', onClick: () => setRelinkDryRunRow(r) },
+                              { label: 'Fix Link…', onClick: () => setRelinkDryRunRow(r) },
                             ]}
                           />
                         </td>

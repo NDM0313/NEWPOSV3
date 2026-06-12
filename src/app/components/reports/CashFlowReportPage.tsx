@@ -37,9 +37,12 @@ import {
   cashFlowRunningBalanceNote,
   cashFlowStatusBadges,
   cashFlowStatusLabel,
+  glCashFlowModeNote,
   type CashFlowSourceModule,
+  type GlCashFlowStatementSummary,
 } from '@/app/lib/cashFlowReportLogic';
 import type { AccountFilter } from '@/app/services/roznamchaService';
+import { accountingReportsService } from '@/app/services/accountingReportsService';
 import { formatRoznamchaRowDateTimeDisplay } from '@/app/utils/transactionEventDateTime';
 import { journalDescriptionForDisplay } from '@/app/utils/journalDescriptionDisplay';
 import { ReportActions } from './ReportActions';
@@ -86,6 +89,7 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
   const [overrideGlobalDates, setOverrideGlobalDates] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [data, setData] = useState<CashFlowReportResult | null>(null);
+  const [glSummary, setGlSummary] = useState<GlCashFlowStatementSummary | null>(null);
   const [loading, setLoading] = useState(!!companyId);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -161,10 +165,12 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
 
   const runningBalanceNote = cashFlowRunningBalanceNote(filtersAffectBalance);
   const auditModeNote = cashFlowAuditModeNote(auditMode);
+  const glModeNote = glCashFlowModeNote(auditMode);
 
   const load = useCallback(async () => {
     if (!companyId || !dateFrom || !dateTo) {
       setData(null);
+      setGlSummary(null);
       setLoading(false);
       setLoadError(null);
       return;
@@ -172,19 +178,27 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
     setLoading(true);
     setLoadError(null);
     try {
-      const result = await getCashFlowReport({
-        companyId,
-        branchId: effectiveBranchId,
-        dateFrom,
-        dateTo,
-        accountFilter,
-        paymentLedgerAccountId: paymentLedgerAccountId.trim() || null,
-        auditMode,
-        sourceModuleFilter,
-      });
+      const branchArg = effectiveBranchId ?? undefined;
+      const [result, gl] = await Promise.all([
+        getCashFlowReport({
+          companyId,
+          branchId: effectiveBranchId,
+          dateFrom,
+          dateTo,
+          accountFilter,
+          paymentLedgerAccountId: paymentLedgerAccountId.trim() || null,
+          auditMode,
+          sourceModuleFilter,
+        }),
+        accountingReportsService.getCashFlowStatement(companyId, dateFrom, dateTo, branchArg, {
+          auditMode,
+        }),
+      ]);
       setData(result);
+      setGlSummary(gl);
     } catch (err) {
       setData(null);
+      setGlSummary(null);
       setLoadError(err instanceof Error ? err.message : 'Failed to load cash flow report');
     } finally {
       setLoading(false);
@@ -478,6 +492,50 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
               Refreshing…
             </div>
           ) : null}
+
+          {glSummary && (
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">
+                  GL cash flow summary
+                </h3>
+                <span className="text-xs text-gray-600">{glModeNote}</span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {[
+                  { label: 'Operating Cash Flow', value: glSummary.operating.net },
+                  { label: 'Investing Cash Flow', value: glSummary.investing.net },
+                  { label: 'Financing Cash Flow', value: glSummary.financing.net },
+                  {
+                    label: 'Net GL Cash Flow',
+                    value: glSummary.netChange,
+                    accent: glSummary.netChange >= 0 ? 'text-emerald-400' : 'text-red-400',
+                  },
+                ].map((card) => (
+                  <div
+                    key={card.label}
+                    className="rounded-xl border border-violet-900/40 bg-violet-950/20 p-3 sm:p-4 print:border-gray-300 print:bg-white"
+                  >
+                    <p className="text-xs text-gray-500 uppercase tracking-wide print:text-gray-600">
+                      {card.label}
+                    </p>
+                    <p
+                      className={cn(
+                        'text-lg sm:text-xl font-bold mt-1 text-white print:text-black',
+                        card.accent
+                      )}
+                    >
+                      {formatCurrency(card.value)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">
+            Operational cash movement
+          </h3>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             {[

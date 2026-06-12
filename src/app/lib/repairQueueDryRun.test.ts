@@ -2,6 +2,7 @@
 import { test } from 'node:test';
 import {
   buildNumberingDryRunPreviews,
+  expensePaymentCandidateToDryRunPreview,
   isValidRepairConfirmPhrase,
   SAFE_SEQUENCE_SYNC_CONFIRM_PHRASE,
 } from './repairQueueDryRun';
@@ -39,4 +40,33 @@ test('buildNumberingDryRunPreviews preserves documentType when not double-wrappe
 test('isValidRepairConfirmPhrase requires exact match', () => {
   assert.equal(isValidRepairConfirmPhrase(SAFE_SEQUENCE_SYNC_CONFIRM_PHRASE, SAFE_SEQUENCE_SYNC_CONFIRM_PHRASE), true);
   assert.equal(isValidRepairConfirmPhrase('wrong', SAFE_SEQUENCE_SYNC_CONFIRM_PHRASE), false);
+});
+
+test('expensePaymentCandidateToDryRunPreview marks repairable rows safe', () => {
+  const preview = expensePaymentCandidateToDryRunPreview({
+    expenseNo: 'EXP-0021',
+    expenseAmount: 7000,
+    paymentRef: 'PAY-123',
+    paymentAmount: 13500,
+    jeLiquidityAmount: 7000,
+    canApplyRepair: true,
+    proposedAfterAmount: 7000,
+  });
+  assert.equal(preview.safeToApply, true);
+  assert.match(preview.afterSummary, /7,000/);
+});
+
+test('expensePaymentCandidateToDryRunPreview blocks when JE differs', () => {
+  const preview = expensePaymentCandidateToDryRunPreview({
+    expenseNo: 'EXP-0099',
+    expenseAmount: 7000,
+    paymentRef: 'PAY-999',
+    paymentAmount: 13500,
+    jeLiquidityAmount: 13500,
+    canApplyRepair: false,
+    blockReason: 'JE liquidity amount differs from expense',
+    proposedAfterAmount: 7000,
+  });
+  assert.equal(preview.safeToApply, false);
+  assert.match(preview.afterSummary, /JE liquidity/i);
 });

@@ -11,6 +11,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { isCorrectionReversalReferenceType } from '@/app/lib/reportVisibilityContract';
 import { fetchInBatches } from '@/app/lib/chunkInQuery';
 import { COA_HEADER_CODES } from '@/app/data/defaultCoASeed';
 import { assertGlTruthQueryTable } from '@/app/services/accountingCanonicalGuard';
@@ -936,7 +937,8 @@ export const accountingReportsService = {
     companyId: string,
     startDate: string,
     endDate: string,
-    branchId?: string
+    branchId?: string,
+    options?: { auditMode?: boolean }
   ): Promise<{
     operating: { in: number; out: number; net: number };
     investing: { in: number; out: number; net: number };
@@ -947,6 +949,7 @@ export const accountingReportsService = {
   }> {
     const start = startDate.slice(0, 10);
     const end = endDate.slice(0, 10);
+    const auditMode = options?.auditMode === true;
     const { data: accounts } = await supabase
       .from('accounts')
       .select('id, type')
@@ -977,12 +980,16 @@ export const accountingReportsService = {
     }
     const { data: entriesInRange } = await supabase
       .from('journal_entries')
-      .select('id')
+      .select('id, reference_type')
       .eq('company_id', companyId)
       .gte('entry_date', start)
       .lte('entry_date', end)
       .or('is_void.is.null,is_void.eq.false');
-    const entryIdsInRange = (entriesInRange || []).map((e: any) => e.id);
+    const entryIdsInRange = (entriesInRange || [])
+      .filter((e: { reference_type?: string | null }) =>
+        auditMode ? true : !isCorrectionReversalReferenceType(e.reference_type)
+      )
+      .map((e: { id: string }) => e.id);
     if (!entryIdsInRange.length) {
       return {
         operating: { in: 0, out: 0, net: 0 },
