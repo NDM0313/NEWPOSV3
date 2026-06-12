@@ -27,6 +27,14 @@ export function MetadataReviewBadge() {
   );
 }
 
+export function AppliedGlCorrectionBadge() {
+  return (
+    <Badge className="border text-[10px] bg-emerald-500/15 text-emerald-200 border-emerald-500/40">
+      Applied GL correction — audit only
+    </Badge>
+  );
+}
+
 export function PostabilityBadge(props: { label: string; isNonFinal: boolean }) {
   return (
     <Badge

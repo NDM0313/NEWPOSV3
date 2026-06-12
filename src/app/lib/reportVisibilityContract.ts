@@ -101,6 +101,58 @@ export function isCancelledSaleGlCorrectionFingerprint(
   return fp.endsWith('-orphan-ar');
 }
 
+/** Fingerprint for additive rental 1100 leakage repairs (JV-000204 class). */
+export const RENTAL_1100_LEAKAGE_FP_PREFIX = 'developer_repair:gl_correction:rental-1100-leakage:';
+
+export function isRental1100LeakageGlCorrectionFingerprint(
+  actionFingerprint: string | null | undefined
+): boolean {
+  return String(actionFingerprint || '').trim().startsWith(RENTAL_1100_LEAKAGE_FP_PREFIX);
+}
+
+export function extractRentalLeakageSourceLineIdFromFingerprint(
+  actionFingerprint: string | null | undefined
+): string | null {
+  const fp = String(actionFingerprint || '').trim();
+  if (!isRental1100LeakageGlCorrectionFingerprint(fp)) return null;
+  const lineId = fp.slice(RENTAL_1100_LEAKAGE_FP_PREFIX.length).trim();
+  return lineId || null;
+}
+
+/** Source journal_entry_line ids with an applied rental-1100-leakage correction. */
+export function collectRepairedControl1100SourceLineIds(
+  rows: Array<{ je_action_fingerprint?: string | null }>
+): Set<string> {
+  const out = new Set<string>();
+  for (const row of rows) {
+    const lineId = extractRentalLeakageSourceLineIdFromFingerprint(row.je_action_fingerprint);
+    if (lineId) out.add(lineId);
+  }
+  return out;
+}
+
+export type Control1100LedgerRowInput = {
+  journalLineId?: string | null;
+  jeReferenceType?: string | null;
+  jeActionFingerprint?: string | null;
+  glAccountCode?: string | null;
+};
+
+/**
+ * Effective control-1100 GL: hide repaired mobile rental leakage pairs (original line + gl_correction offset).
+ * Audit mode shows full trail.
+ */
+export function shouldHideRepairedControl1100Row(
+  row: Control1100LedgerRowInput,
+  repairedSourceLineIds: Set<string>
+): boolean {
+  if (String(row.glAccountCode || '').trim() !== '1100') return false;
+  if (isRental1100LeakageGlCorrectionFingerprint(row.jeActionFingerprint)) return true;
+  const lineId = row.journalLineId ? String(row.journalLineId).trim() : '';
+  if (lineId && repairedSourceLineIds.has(lineId)) return true;
+  return false;
+}
+
 /** Cancelled-sale orphan GL correction rows (JV-000203 class) — audit/full statement only. */
 export function isCancelledSaleOrphanGlCorrectionRow(args: PartyEffectiveRowInput): boolean {
   if (!isGlCorrectionReferenceType(args.jeReferenceType)) return false;

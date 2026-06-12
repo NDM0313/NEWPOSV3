@@ -11,7 +11,7 @@
 | Role | Hash | Message |
 |------|------|---------|
 | Start | `ad6184e6` | CF-1.1 cash flow exports and read-only UI |
-| Final | `2b530e1d` | feat(accounting): complete cash flow and transaction repair cleanup |
+| Final | `f64cae33` | feat(accounting): complete cash flow and transaction repair cleanup |
 
 ---
 

@@ -7,10 +7,12 @@ describe('arApReconciliationAccess', () => {
     const admin = resolveArApReconciliationAccess('admin');
     assert.equal(admin.canApplyRelinkMapping, true);
     assert.equal(admin.canApplyGlRepair, false);
+    assert.equal(admin.canUseHybridRepair, true);
 
     const dev = resolveArApReconciliationAccess('developer');
     assert.equal(dev.canApplyRelinkMapping, true);
     assert.equal(dev.canApplyGlRepair, false);
+    assert.equal(dev.canUseHybridRepair, true);
   });
 
   it('denies relink mapping for auditor', () => {

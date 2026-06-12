@@ -1,6 +1,7 @@
 import '../../core/supabase/supabase_bootstrap.dart';
 import '../../core/utils/branch_id.dart';
 import '../../core/utils/local_date.dart';
+import 'rental_booking_accounting.dart';
 
 class RentalBookingLineInput {
   const RentalBookingLineInput({
@@ -21,7 +22,11 @@ class RentalBookingLineInput {
 }
 
 class RentalsWriteRepository {
+  RentalsWriteRepository({RentalBookingAccounting? accounting})
+      : _accounting = accounting ?? RentalBookingAccounting();
+
   final _client = SupabaseBootstrap.client;
+  final RentalBookingAccounting _accounting;
 
   Future<({String? rentalId, String? bookingNo, String? error})> createRentalBooking({
     required String companyId,
@@ -52,6 +57,15 @@ class RentalsWriteRepository {
     final today = localTodayIso();
     final pickup = pickupDate.length >= 10 ? pickupDate.substring(0, 10) : pickupDate;
     final returnD = returnDate.length >= 10 ? returnDate.substring(0, 10) : returnDate;
+
+    final subEnsure = await _accounting.ensurePartySubledgers(customerId);
+    if (!subEnsure.success) {
+      return (
+        rentalId: null,
+        bookingNo: null,
+        error: subEnsure.error ?? 'Could not set up customer AR sub-account.',
+      );
+    }
 
     final rentalPayload = <String, dynamic>{
       'booking_date': today,
@@ -106,9 +120,28 @@ class RentalsWriteRepository {
         return (rentalId: null, bookingNo: null, error: 'Invalid rental RPC response.');
       }
 
+      final rentalId = raw['rental_id'].toString();
+      final bookingNo = raw['booking_no']?.toString();
+
+      if (rentalCharges > 0) {
+        final rev = await _accounting.postRentalPartyRevenueJournal(
+          companyId: companyId,
+          branchId: branch,
+          rentalId: rentalId,
+          customerId: customerId,
+          customerName: customerName.trim().isEmpty ? 'Customer' : customerName.trim(),
+          rentalCharges: rentalCharges,
+          entryDate: today,
+          userId: createdBy,
+        );
+        if (rev.error != null) {
+          return (rentalId: null, bookingNo: null, error: rev.error);
+        }
+      }
+
       return (
-        rentalId: raw['rental_id'].toString(),
-        bookingNo: raw['booking_no']?.toString(),
+        rentalId: rentalId,
+        bookingNo: bookingNo,
         error: null,
       );
     } catch (e) {
@@ -168,18 +201,27 @@ class RentalsWriteRepository {
       if (raw is Map) {
         final res = Map<String, dynamic>.from(raw);
         if (res['success'] == true && res['payment_id'] != null) {
-          try {
-            await _client.from('rental_payments').insert({
-              'rental_id': rentalId,
-              'amount': amount,
-              'method': 'cash',
-              'payment_date': localTodayIso(),
-              'payment_type': 'remaining',
-              'payment_account_id': accountId,
-              'created_by': createdBy,
-            });
-          } catch (_) {
-            // informational row; RPC already updated rental totals.
+          final journalEntryId = res['journal_entry_id']?.toString();
+          final rpRow = await _client
+              .from('rental_payments')
+              .insert({
+                'rental_id': rentalId,
+                'amount': amount,
+                'method': 'cash',
+                'payment_date': localTodayIso(),
+                'payment_type': 'remaining',
+                'payment_account_id': accountId,
+                'created_by': createdBy,
+              })
+              .select('id')
+              .single();
+
+          final rentalPaymentId = Map<String, dynamic>.from(rpRow)['id']?.toString();
+          if (journalEntryId != null &&
+              journalEntryId.isNotEmpty &&
+              rentalPaymentId != null &&
+              rentalPaymentId.isNotEmpty) {
+            await _accounting.linkRentalPaymentJournalEntry(rentalPaymentId, journalEntryId);
           }
           return (success: true, error: null);
         }

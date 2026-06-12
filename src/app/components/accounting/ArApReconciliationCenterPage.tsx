@@ -33,11 +33,13 @@ import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 import { toast } from 'sonner';
 import {
   ensureArApSuspenseAccount,
+  fetchAppliedGlCorrections,
   fetchIntegrityLabSummary,
   fetchManualAdjustments,
   fetchReconciliationItemStates,
   fetchUnmappedJournalLines,
   fetchUnpostedDocuments,
+  type AppliedGlCorrectionAuditRow,
   manualJeItemKey,
   unmappedLineItemKey,
   unpostedItemKey,
@@ -54,7 +56,7 @@ import { resolveJournalUiRefsByJournalIds } from '@/app/services/integrityLabSer
 import {
   JournalRepairWizardDialog,
 } from '@/app/components/accounting/ArApRepairDialogs';
-import { resolveArApReconciliationAccess } from '@/app/lib/arApReconciliationAccess';
+import { resolveArApReconciliationAccess, mergeHybridRepairProbe } from '@/app/lib/arApReconciliationAccess';
 import { diagnoseUnpostedRow, diagnoseUnmappedLine } from '@/app/lib/arApReconciliationDiagnostics';
 import { batchFetchUnpostedDocumentStatuses, loadUnmappedTrace } from '@/app/services/arApReconciliationTraceService';
 import { SourceDocumentDetailModal, UnmappedRowDetailModal } from '@/app/components/accounting/ar-ap-repair/SourceDocumentDetailModal';
@@ -62,13 +64,23 @@ import { PostingDryRunWizard } from '@/app/components/accounting/ar-ap-repair/Po
 import { RelinkDryRunWizard } from '@/app/components/accounting/ar-ap-repair/RelinkDryRunWizard';
 import { StatusChangeModal, type StatusChangeIntent } from '@/app/components/accounting/ar-ap-repair/StatusChangeModal';
 import { RowTracePanel, type TraceTarget } from '@/app/components/accounting/ar-ap-repair/RowTracePanel';
-import { FalsePositiveBadge, MetadataReviewBadge, PostabilityBadge, RiskBadge } from '@/app/components/accounting/ar-ap-repair/ArApRepairBadges';
+import {
+  AppliedGlCorrectionBadge,
+  FalsePositiveBadge,
+  MetadataReviewBadge,
+  PostabilityBadge,
+  RiskBadge,
+} from '@/app/components/accounting/ar-ap-repair/ArApRepairBadges';
 import {
   ActionableRepairCard,
   type ActionableRepairCardProps,
 } from '@/app/components/accounting/ar-ap-repair/ActionableRepairCard';
 import { GlCorrectionDraftModal } from '@/app/components/accounting/ar-ap-repair/GlCorrectionDraftModal';
 import { KnownGlCorrectionSection } from '@/app/components/accounting/ar-ap-repair/KnownGlCorrectionSection';
+import { HybridRepairPanel } from '@/app/components/accounting/ar-ap-repair/HybridRepairPanel';
+import { ReceivablesVarianceBreakdownPanel } from '@/app/components/accounting/ar-ap-repair/ReceivablesVarianceBreakdownPanel';
+import { consumeOpenArApHybridRepairFocus } from '@/app/lib/arApHybridRepairNav';
+import { loadDeveloperRepairSystemStatus } from '@/app/services/developerRepairSystemStatusService';
 import {
   classifyUnmappedJournalLine,
   classifyUnpostedDocument as classifyUnpostedForRepair,
@@ -114,7 +126,12 @@ export function ArApReconciliationCenterPage() {
   const { companyId, branchId, userRole } = useSupabase();
   const { formatCurrency } = useFormatCurrency();
   const { canPostAccounting } = useCheckPermission();
-  const access = useMemo(() => resolveArApReconciliationAccess(userRole), [userRole]);
+  const baseAccess = useMemo(() => resolveArApReconciliationAccess(userRole), [userRole]);
+  const [glCorrectionRpcAvailable, setGlCorrectionRpcAvailable] = useState(false);
+  const access = useMemo(
+    () => mergeHybridRepairProbe(baseAccess, { glCorrectionRpcAvailable }),
+    [baseAccess, glCorrectionRpcAvailable]
+  );
   const { setCurrentView, setOpenSaleIdForView } = useNavigation();
   const [asOfDate, setAsOfDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [loading, setLoading] = useState(true);
@@ -126,6 +143,8 @@ export function ArApReconciliationCenterPage() {
   const [hideResolved, setHideResolved] = useState(true);
   const [ensuringSuspense, setEnsuringSuspense] = useState(false);
   const [activeTab, setActiveTab] = useState('queues');
+  const [dataRefreshToken, setDataRefreshToken] = useState(0);
+  const [appliedGlCorrections, setAppliedGlCorrections] = useState<AppliedGlCorrectionAuditRow[]>([]);
 
   const [sourceDetailRow, setSourceDetailRow] = useState<UnpostedDocumentRow | null>(null);
   const [postingDryRunRow, setPostingDryRunRow] = useState<UnpostedDocumentRow | null>(null);
@@ -150,6 +169,21 @@ export function ArApReconciliationCenterPage() {
   } | null>(null);
   const [glCorrectionDefectId, setGlCorrectionDefectId] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (!companyId || !access.canUseHybridRepair) return;
+    void loadDeveloperRepairSystemStatus(companyId, userRole).then((s) => {
+      setGlCorrectionRpcAvailable(s.probe.glCorrectionRpcAvailable);
+    });
+  }, [companyId, userRole, access.canUseHybridRepair]);
+
+  useEffect(() => {
+    if (!consumeOpenArApHybridRepairFocus()) return;
+    const t = window.setTimeout(() => {
+      document.getElementById('hybrid-repair-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 300);
+    return () => window.clearTimeout(t);
+  }, []);
+
   const load = useCallback(async () => {
     if (!companyId) {
       setSummary(null);
@@ -161,18 +195,21 @@ export function ArApReconciliationCenterPage() {
     }
     setLoading(true);
     try {
-      const [sum, up, um, man, states] = await Promise.all([
+      const [sum, up, um, man, states, appliedGl] = await Promise.all([
         fetchIntegrityLabSummary(companyId, branchId, asOfDate),
         fetchUnpostedDocuments(companyId, branchId, asOfDate),
         fetchUnmappedJournalLines(companyId, branchId, asOfDate),
         fetchManualAdjustments(companyId, branchId, asOfDate),
         fetchReconciliationItemStates(companyId),
+        fetchAppliedGlCorrections(companyId),
       ]);
       setSummary(sum);
       setUnposted(up);
       setUnmapped(um);
       setManual(man);
       setItemStates(states);
+      setAppliedGlCorrections(appliedGl);
+      setDataRefreshToken((t) => t + 1);
     } finally {
       setLoading(false);
     }
@@ -291,11 +328,26 @@ export function ArApReconciliationCenterPage() {
     setJournalWizardItemKey(itemKey);
   };
 
+  const openSaleById = (saleId: string, invoiceNo?: string) => {
+    setOpenSaleIdForView?.(saleId);
+    setCurrentView('sales');
+    toast.message('Opened Sales — finalize to post', {
+      description: invoiceNo
+        ? `${invoiceNo}: use Finalize in sale drawer to create invoice JE and clear order advance variance.`
+        : 'Finalize the sale to create invoice JE and clear order advance variance.',
+    });
+  };
+
+  const goToUnpostedOrders = () => {
+    setActiveTab('queues');
+    window.setTimeout(() => {
+      document.getElementById('unposted-queue-1a')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
+  };
+
   const openSourceDocument = (row: UnpostedDocumentRow) => {
     if (row.source_type === 'sale') {
-      setOpenSaleIdForView?.(row.source_id);
-      setCurrentView('sales');
-      toast.message('Opened Sales', { description: `Invoice ${row.document_no || row.source_id}` });
+      openSaleById(row.source_id, row.document_no || undefined);
       return;
     }
     if (row.source_type === 'purchase') {
@@ -389,13 +441,21 @@ export function ArApReconciliationCenterPage() {
     [unpostedVisible, unpostedStatusByKey]
   );
 
+  const unmappedCsAppliedGlCorrection = useMemo(
+    () =>
+      unmappedCustomerSupplier
+        .filter((r) => rowVisible(unmappedLineItemKey(r)))
+        .filter((r) => unmappedDiagByKey.get(unmappedLineItemKey(r))?.isAppliedGlCorrectionReview),
+    [unmappedCustomerSupplier, rowVisible, unmappedDiagByKey]
+  );
+
   const unmappedCsVisible = useMemo(
     () =>
       unmappedCustomerSupplier
         .filter((r) => rowVisible(unmappedLineItemKey(r)))
         .filter((r) => {
           const d = unmappedDiagByKey.get(unmappedLineItemKey(r));
-          return !d?.isLikelyFalsePositive && !d?.isMetadataReviewOnly;
+          return !d?.isLikelyFalsePositive && !d?.isMetadataReviewOnly && !d?.isAppliedGlCorrectionReview;
         }),
     [unmappedCustomerSupplier, rowVisible, unmappedDiagByKey]
   );
@@ -487,15 +547,28 @@ export function ArApReconciliationCenterPage() {
                   />
                 </td>
                 <td className="p-2 align-top">
-                  <ActionableRepairCard
-                    compact
-                    readOnly={access.readOnly}
-                    classification={repairCls}
-                    onAction={(btn) => {
-                      if (btn === 'open_source_document') openSourceDocument(r);
-                      else handleActionableRepair(btn, repairCls);
-                    }}
-                  />
+                  <div className="flex flex-col gap-1">
+                    <ActionableRepairCard
+                      compact
+                      readOnly={access.readOnly}
+                      classification={repairCls}
+                      onAction={(btn) => {
+                        if (btn === 'open_source_document') openSourceDocument(r);
+                        else handleActionableRepair(btn, repairCls);
+                      }}
+                    />
+                    {diag.isNonFinal && r.source_type === 'sale' ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-7 text-[10px] bg-amber-700 hover:bg-amber-600"
+                        disabled={access.readOnly}
+                        onClick={() => openSaleById(r.source_id, r.document_no || undefined)}
+                      >
+                        Finalize &amp; Open sale
+                      </Button>
+                    ) : null}
+                  </div>
                 </td>
                 <td className="p-2">
                   <RowActionsMenu
@@ -505,6 +578,9 @@ export function ArApReconciliationCenterPage() {
                       { label: 'Row trace', onClick: () => setTraceTarget({ kind: 'unposted', row: r }) },
                       ...(!diag.isNonFinal
                         ? [{ label: 'Preview posting…', onClick: () => setPostingDryRunRow(r) }]
+                        : []),
+                      ...(diag.isNonFinal && r.source_type === 'sale'
+                        ? [{ label: 'Open sale (finalize)…', onClick: () => openSaleById(r.source_id, r.document_no || undefined) }]
                         : []),
                       { label: 'Open in module', onClick: () => openSourceDocument(r) },
                       {
@@ -649,6 +725,17 @@ export function ArApReconciliationCenterPage() {
         open={!!glCorrectionDefectId}
         onOpenChange={(o) => !o && setGlCorrectionDefectId(null)}
         defectId={glCorrectionDefectId || 'hq-sl-0003-orphan-ar'}
+        canApplyGlRepair={access.canApplyGlRepair}
+        onApplied={() => void load()}
+      />
+
+      <HybridRepairPanel
+        companyId={companyId}
+        branchId={branchId}
+        asOfDate={asOfDate}
+        access={access}
+        onRefresh={() => void load()}
+        onOpenGlCorrectionDraft={(defectId) => setGlCorrectionDefectId(defectId)}
       />
 
       <div className="rounded-xl border border-blue-500/30 bg-blue-950/20 p-3 text-xs text-blue-100/90 flex gap-2">
@@ -661,9 +748,10 @@ export function ArApReconciliationCenterPage() {
             trace-only rows).
             {access.readOnly ? ' You have read-only auditor access.' : ''}
           </p>
-          {!access.canApplyGlRepair && (
+          {!access.canApplyGlRepair && access.canUseHybridRepair && (
             <p className="text-amber-300/90 mt-1 text-[11px]">
-              Blocked: canApplyGlRepair=false — no GL line amount or balance mutations from this center.
+              GL correction apply requires deployed create_gl_correction_journal RPC. Expense sync and Fix Link remain
+              available.
             </p>
           )}
         </div>
@@ -737,10 +825,18 @@ export function ArApReconciliationCenterPage() {
             effective mode). Audit/raw variance uses full posted GL.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            <SummaryCard title="Operational receivables" subtitle="Contacts RPC (full)" value={summary.operational_receivables_full} formatCurrency={formatCurrency} tone="green" />
+            <SummaryCard title="Operational receivables" subtitle="Party GL (1100 subtree, as of)" value={summary.operational_receivables_full} formatCurrency={formatCurrency} tone="green" />
+            <SummaryCard title="Operational receivables (signed)" subtitle="Includes negative contacts" value={summary.operational_receivables_signed} formatCurrency={formatCurrency} tone="green" />
             <SummaryCard title="GL receivables (raw)" subtitle="Dr − Cr, as of" value={summary.gl_ar_net_dr_minus_cr} formatCurrency={formatCurrency} tone="white" />
             <SummaryCard title="GL receivables (effective)" subtitle="Raw − audit-only chains" value={summary.effective_gl_ar_net_dr_minus_cr} formatCurrency={formatCurrency} tone="white" />
-            <SummaryCard title="Receivables variance (raw)" subtitle="Operational − GL raw" value={summary.variance_receivables} formatCurrency={formatCurrency} tone="warn" />
+            <SummaryCard
+              title="Receivables variance (raw)"
+              subtitle="Operational − GL raw · click for breakdown"
+              value={summary.variance_receivables}
+              formatCurrency={formatCurrency}
+              tone="warn"
+              onClick={() => document.getElementById('receivables-variance-breakdown')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            />
             <SummaryCard title="Receivables variance (effective)" subtitle="Operational − GL effective" value={summary.effective_variance_receivables} formatCurrency={formatCurrency} tone="warn" />
             <SummaryCard title="Audit-only AR adjustment" subtitle="Hidden from effective" value={summary.audit_only_ar_net_adjustment} formatCurrency={formatCurrency} tone="orange" />
             <SummaryCard title="Operational payables" subtitle="Contacts RPC (full)" value={summary.operational_payables_full} formatCurrency={formatCurrency} tone="red" />
@@ -760,6 +856,37 @@ export function ArApReconciliationCenterPage() {
               displayOverride={`${summary.manual_adjustment_je_count} · ${formatCurrency(summary.suspense_net_balance)}`}
             />
           </div>
+
+          <ReceivablesVarianceBreakdownPanel
+            companyId={companyId}
+            branchId={branchId}
+            asOfDate={asOfDate}
+            varianceTotal={summary.variance_receivables}
+            formatCurrency={formatCurrency}
+            refreshToken={dataRefreshToken}
+            onOpenSale={openSaleById}
+            onGoToUnpostedOrders={goToUnpostedOrders}
+            onTraceJournal={(journalEntryId) =>
+              setTraceTarget({
+                kind: 'manual',
+                row: {
+                  journal_entry_id: journalEntryId,
+                  company_id: companyId || '',
+                  branch_id: null,
+                  entry_no: null,
+                  entry_date: null,
+                  description: null,
+                  reference_type: null,
+                  reference_id: null,
+                  created_by: null,
+                  created_at: null,
+                  suspense_net_dr_minus_cr: 0,
+                  detection_kind: null,
+                  status: null,
+                },
+              })
+            }
+          />
 
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" className="border-violet-500/40 text-violet-200" onClick={() => void handleEnsureSuspense()} disabled={ensuringSuspense}>
@@ -790,9 +917,16 @@ export function ArApReconciliationCenterPage() {
           </TabsTrigger>
         </TabsList>
         <TabsContent value="queues" className="space-y-6">
-          <KnownGlCorrectionSection readOnly={access.readOnly} onAction={handleActionableRepair} />
+          <KnownGlCorrectionSection
+            companyId={companyId}
+            readOnly={access.readOnly}
+            canApplyGlRepair={access.canApplyGlRepair}
+            onAction={handleActionableRepair}
+            onApplied={() => void load()}
+          />
 
           <QueueSection
+            id="unposted-queue-1a"
             title="1a · Non-final documents (not postable)"
             icon={<FileWarning className="w-5 h-5 text-slate-400" />}
             rows={unpostedNonFinal.length}
@@ -984,7 +1118,7 @@ export function ArApReconciliationCenterPage() {
             title="2c · Mapped financially — metadata review"
             icon={<Eye className="w-5 h-5 text-violet-400" />}
             rows={unmappedCsMetadataReview.length}
-            subtitle="Rental/payment rows balanced on sub-ledger — JE vs payment reference metadata mismatch only"
+            subtitle="Ledger correct — JE payment vs payment rental metadata only (e.g. RCV-0008 / Saqib)"
           >
             <table className="w-full text-sm">
               <thead className="text-left text-gray-500 border-b border-gray-800">
@@ -1044,6 +1178,114 @@ export function ArApReconciliationCenterPage() {
                       </tr>
                     );
                   })
+                )}
+              </tbody>
+            </table>
+          </QueueSection>
+
+          <QueueSection
+            title="2d · Applied GL corrections (audit only)"
+            icon={<Eye className="w-5 h-5 text-emerald-400" />}
+            rows={unmappedCsAppliedGlCorrection.length + appliedGlCorrections.length}
+            subtitle="JV-000207 class — correction already posted; source JE unchanged"
+          >
+            <table className="w-full text-sm">
+              <thead className="text-left text-gray-500 border-b border-gray-800">
+                <tr>
+                  <th className="p-2 min-w-[200px]">Document</th>
+                  <th className="p-2">Label</th>
+                  <th className="p-2">Fingerprint</th>
+                  <th className="p-2 w-32">Fix status</th>
+                  <th className="p-2 w-36">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800/80">
+                {unmappedCsAppliedGlCorrection.length === 0 && appliedGlCorrections.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="p-6 text-center text-gray-500">
+                      No applied GL corrections in audit queue.
+                    </td>
+                  </tr>
+                ) : (
+                  <>
+                    {unmappedCsAppliedGlCorrection.map((r) => {
+                      const key = unmappedLineItemKey(r);
+                      const diag = unmappedDiagByKey.get(key);
+                      return (
+                        <tr key={key} className="hover:bg-gray-800/20 opacity-90">
+                          <td className="p-2 align-top">
+                            <AccountingRefDisplayCell ui={jeUiByJournalId.get(r.journal_entry_id)} />
+                          </td>
+                          <td className="p-2 align-top space-y-1">
+                            <AppliedGlCorrectionBadge />
+                            {diag?.appliedGlCorrectionReason ? (
+                              <p className="text-[10px] text-emerald-200/80 leading-snug max-w-xs">{diag.appliedGlCorrectionReason}</p>
+                            ) : null}
+                          </td>
+                          <td className="p-2 text-[10px] text-gray-500 font-mono">{r.reference_type || 'gl_correction'}</td>
+                          <td className="p-2">
+                            <FixStatusButton
+                              value={getStatus(key)}
+                              disabled={access.readOnly}
+                              onClick={() =>
+                                openStatusModal('unmapped_line', key, { kind: 'mark_reviewed' }, 'Mark correction reviewed')
+                              }
+                            />
+                          </td>
+                          <td className="p-2">
+                            <RowActionsMenu
+                              readOnly={access.readOnly}
+                              items={[
+                                { label: 'Line detail…', onClick: () => setUnmappedDetailRow(r) },
+                                { label: 'Row trace', onClick: () => setTraceTarget({ kind: 'unmapped', row: r }) },
+                              ]}
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {appliedGlCorrections.map((row) => (
+                      <tr key={`audit-${row.journal_entry_id}`} className="hover:bg-gray-800/20 opacity-80">
+                        <td className="p-2 text-gray-300 font-mono text-xs">{row.entry_no || row.journal_entry_id.slice(0, 8)}</td>
+                        <td className="p-2">
+                          <AppliedGlCorrectionBadge />
+                          <p className="text-[10px] text-gray-500 mt-1 max-w-xs">{row.description || 'Applied developer repair'}</p>
+                        </td>
+                        <td className="p-2 text-[10px] text-gray-600 font-mono break-all">{row.action_fingerprint}</td>
+                        <td className="p-2 text-xs text-gray-500">—</td>
+                        <td className="p-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 text-xs text-violet-300"
+                            onClick={() =>
+                              setTraceTarget({
+                                kind: 'manual',
+                                row: {
+                                  journal_entry_id: row.journal_entry_id,
+                                  company_id: companyId || '',
+                                  branch_id: null,
+                                  entry_no: row.entry_no,
+                                  entry_date: row.entry_date,
+                                  description: row.description,
+                                  reference_type: 'gl_correction',
+                                  reference_id: null,
+                                  created_by: null,
+                                  created_at: null,
+                                  suspense_net_dr_minus_cr: 0,
+                                  detection_kind: null,
+                                  status: null,
+                                },
+                              })
+                            }
+                          >
+                            Trace
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </>
                 )}
               </tbody>
             </table>
@@ -1260,8 +1502,9 @@ function SummaryCard(props: {
   formatCurrency: (n: number) => string;
   tone: 'green' | 'red' | 'white' | 'warn' | 'orange' | 'violet';
   displayOverride?: string;
+  onClick?: () => void;
 }) {
-  const { title, subtitle, value, formatCurrency, tone, displayOverride } = props;
+  const { title, subtitle, value, formatCurrency, tone, displayOverride, onClick } = props;
   const val =
     displayOverride != null && displayOverride !== ''
       ? displayOverride
@@ -1282,16 +1525,25 @@ function SummaryCard(props: {
             : tone === 'violet'
               ? 'text-violet-300'
               : 'text-white';
+  const Wrapper = onClick ? 'button' : 'div';
   return (
-    <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-4">
+    <Wrapper
+      type={onClick ? 'button' : undefined}
+      onClick={onClick}
+      className={cn(
+        'rounded-xl border border-gray-800 bg-gray-900/50 p-4 text-left w-full',
+        onClick && 'hover:border-amber-500/40 hover:bg-gray-900/70 cursor-pointer transition-colors'
+      )}
+    >
       <p className="text-xs text-gray-500 uppercase font-semibold tracking-wide">{title}</p>
       <p className="text-[10px] text-gray-600 mt-0.5">{subtitle}</p>
       <p className={cn('text-xl font-bold tabular-nums mt-2', color)}>{val}</p>
-    </div>
+    </Wrapper>
   );
 }
 
 function QueueSection(props: {
+  id?: string;
   title: string;
   icon: React.ReactNode;
   rows: number;
@@ -1299,7 +1551,7 @@ function QueueSection(props: {
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-gray-800 bg-gray-900/40 overflow-hidden">
+    <div id={props.id} className="rounded-xl border border-gray-800 bg-gray-900/40 overflow-hidden scroll-mt-4">
       <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-800 bg-gray-900/80">
         {props.icon}
         <div>

@@ -37,11 +37,14 @@ import {
 } from '@/app/lib/accountFlowPresentation';
 import { ledgerTransactionOpenEventDetail } from '@/app/lib/ledgerTransactionOpenRef';
 import {
+  collectRepairedControl1100SourceLineIds,
   isGlCorrectionReferenceType,
   partyEffectiveRowAuditLabel,
   partyStatementGlCorrectionAuditLabel,
+  shouldHideRepairedControl1100Row,
   shouldIncludePartyEffectiveRow,
 } from '@/app/lib/reportVisibilityContract';
+import { resolveGlCorrectionDisplayRef } from '@/app/lib/glCorrectionDisplayRef';
 
 /** AR / AP running balance sign: highlight “inverted” party positions so refunds / prepaids are obvious. */
 const PARTY_BAL_EPS = 0.005;
@@ -435,6 +438,7 @@ export const AccountLedgerReportPage: React.FC<{
   );
   /** payment_id → oldest non–payment_adjustment JE entry_no (e.g. JE-0032 / Cash G140 voucher). */
   const [primaryCashVoucherByPaymentId, setPrimaryCashVoucherByPaymentId] = useState<Record<string, string>>({});
+  const [glCorrectionDisplayByJeId, setGlCorrectionDisplayByJeId] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
   const [statementLoadedOnce, setStatementLoadedOnce] = useState(false);
@@ -856,6 +860,75 @@ export const AccountLedgerReportPage: React.FC<{
     })();
   }, [entries, companyId]);
 
+  useEffect(() => {
+    if (!companyId) {
+      setGlCorrectionDisplayByJeId({});
+      return;
+    }
+    const glRows = entries.filter((e) => isGlCorrectionReferenceType(e.je_reference_type) && e.journal_entry_id);
+    if (!glRows.length) {
+      setGlCorrectionDisplayByJeId({});
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const sourceJeIds = [
+        ...new Set(glRows.map((e) => String(e.je_reference_id || '').trim()).filter(Boolean)),
+      ];
+      const sourceJournals = new Map<string, { id: string; entry_no: string | null; reference_type: string | null; reference_id: string | null }>();
+      if (sourceJeIds.length) {
+        const { data: srcJes } = await supabase
+          .from('journal_entries')
+          .select('id, entry_no, reference_type, reference_id')
+          .eq('company_id', companyId)
+          .in('id', sourceJeIds);
+        for (const row of srcJes || []) {
+          sourceJournals.set(String((row as { id: string }).id), {
+            id: String((row as { id: string }).id),
+            entry_no: (row as { entry_no?: string }).entry_no ?? null,
+            reference_type: (row as { reference_type?: string }).reference_type ?? null,
+            reference_id: (row as { reference_id?: string }).reference_id ?? null,
+          });
+        }
+      }
+      const rentalIds = [
+        ...new Set(
+          [...sourceJournals.values()]
+            .filter((j) => String(j.reference_type || '').toLowerCase() === 'rental' && j.reference_id)
+            .map((j) => String(j.reference_id))
+        ),
+      ];
+      const rentals = new Map<string, { booking_no?: string | null }>();
+      if (rentalIds.length) {
+        const { data: rentalRows } = await supabase.from('rentals').select('id, booking_no').in('id', rentalIds);
+        for (const r of rentalRows || []) {
+          rentals.set(String((r as { id: string }).id), {
+            booking_no: (r as { booking_no?: string }).booking_no ?? null,
+          });
+        }
+      }
+      const out: Record<string, string> = {};
+      for (const e of glRows) {
+        const ui = resolveGlCorrectionDisplayRef(
+          {
+            id: e.journal_entry_id,
+            entry_no: e.entry_no ?? null,
+            reference_type: e.je_reference_type ?? null,
+            reference_id: e.je_reference_id ?? null,
+            action_fingerprint: e.je_action_fingerprint ?? null,
+            description: e.description ?? null,
+          },
+          { sales: new Map(), sourceJournals, rentals }
+        );
+        out[e.journal_entry_id] = ui.displayRef;
+      }
+      if (!cancelled) setGlCorrectionDisplayByJeId(out);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [entries, companyId]);
+
   const selectedPartyName =
     applied.statementType === 'worker'
       ? workers.find((w) => w.id === applied.selectedWorkerId)?.name || ''
@@ -1038,6 +1111,11 @@ export const AccountLedgerReportPage: React.FC<{
     applied.statementType === 'gl' &&
     String(selectedAccount?.code || '').trim() === '1100';
 
+  const repairedControl1100LineIds = useMemo(
+    () => collectRepairedControl1100SourceLineIds(entries),
+    [entries]
+  );
+
   const branchScopeResolved = STATEMENT_BRANCH_SCOPE_LABEL;
 
   const emptyPeriodMessage = useMemo(() => {
@@ -1100,6 +1178,21 @@ export const AccountLedgerReportPage: React.FC<{
 
   const presentedEntries = useMemo<PresentedLedgerRow[]>(() => {
     const base = sortedEntries.filter((e) => {
+      if (
+        isArControlSelected &&
+        viewMode === 'effective' &&
+        shouldHideRepairedControl1100Row(
+          {
+            journalLineId: e.journal_line_id,
+            jeReferenceType: e.je_reference_type,
+            jeActionFingerprint: e.je_action_fingerprint,
+            glAccountCode: e.gl_account_code ?? selectedAccount?.code,
+          },
+          repairedControl1100LineIds
+        )
+      ) {
+        return false;
+      }
       if (!applied.includeManualEntries && isManualRow(e)) return false;
       if (viewMode === 'effective' && isPartyRowHiddenInNormalEffective(e)) return false;
       return true;
@@ -1261,6 +1354,9 @@ export const AccountLedgerReportPage: React.FC<{
     applied.statementType,
     viewMode,
     isPartyStatement,
+    isArControlSelected,
+    repairedControl1100LineIds,
+    selectedAccount?.code,
   ]);
 
   const summary = useMemo(() => {
@@ -1675,10 +1771,23 @@ export const AccountLedgerReportPage: React.FC<{
       )}
 
       {isArControlSelected && (
-        <div className="rounded-lg border border-amber-700/50 bg-amber-950/30 px-4 py-3 text-sm text-amber-100">
-          Customer receipts post to each customer&apos;s <strong>AR sub-ledger</strong>, not the parent 1100 control account.
-          Use <strong>Customer Statement</strong> for party activity, or select the linked receivable account (e.g. Receivable — customer name).
-          Cash receipts appear on the <strong>Cash/Bank</strong> account you paid into.
+        <div className="rounded-lg border border-amber-700/50 bg-amber-950/30 px-4 py-3 text-sm text-amber-100 space-y-1">
+          <p>
+            Customer receipts belong on each customer&apos;s <strong>AR sub-ledger</strong>, not the parent 1100 control
+            account. Use <strong>Customer Statement</strong> or select <strong>Receivable — customer name</strong> for
+            party activity (e.g. Hasseb, Inayat).
+          </p>
+          {viewMode === 'effective' ? (
+            <p className="text-xs text-amber-200/80">
+              Effective view hides repaired mobile-rental leakage pairs (original + gl_correction offset). Enable{' '}
+              <strong>Include adjustments</strong> for the full audit trail on 1100.
+            </p>
+          ) : (
+            <p className="text-xs text-amber-200/80">
+              Audit view shows all lines on control 1100 including gl_correction repairs. Party amounts are on AR-CUS*
+              sub-ledgers after repair.
+            </p>
+          )}
         </div>
       )}
 
@@ -1912,7 +2021,10 @@ export const AccountLedgerReportPage: React.FC<{
                           : 'No journal reference type on this line'
                       }
                     >
-                      <span className="text-gray-200">{editTargetTypeLabel(e.je_reference_type)}</span>
+                      <span className="text-gray-200">
+                        {glCorrectionDisplayByJeId[e.journal_entry_id] ||
+                          editTargetTypeLabel(e.je_reference_type)}
+                      </span>
                       {e.je_reference_type &&
                       editTargetTypeLabel(e.je_reference_type).replace(/\s/g, '_').toLowerCase() !==
                         e.je_reference_type.toLowerCase() ? (

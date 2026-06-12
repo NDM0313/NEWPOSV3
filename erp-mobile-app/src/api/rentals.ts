@@ -7,6 +7,7 @@ import {
   postRentalExpenseJournalMobile,
   postRentalPartyRevenueJournalMobile,
 } from './rentalBookingAccounting';
+import { ensurePartySubledgersForContact } from './partySubledger';
 import { isRealBranchUuid, resolveBranchUuidForWrite } from '../utils/branchId';
 import { fetchProductStockByKey } from '../utils/productStockFetch';
 import { formatRentalPaymentRef } from '../utils/rentalPaymentRef';
@@ -448,6 +449,11 @@ export async function createBooking(input: CreateBookingInput): Promise<{ data: 
   if (!companyId || !branchId || branchId === 'all') return { data: null, error: 'Company and branch required.' };
   if (!items?.length) return { data: null, error: 'At least one item required.' };
   if (!customerId) return { data: null, error: 'Customer required.' };
+
+  const subEnsure = await ensurePartySubledgersForContact(customerId);
+  if (!subEnsure.success) {
+    return { data: null, error: subEnsure.error ?? 'Could not set up customer AR sub-account.' };
+  }
 
   const pickup = new Date(pickupDate);
   const ret = new Date(returnDate);
@@ -1198,10 +1204,17 @@ export async function addRentalPayment(
     });
 
     if (rpcErr) return { error: rpcErr.message };
-    const rpcRes = rpcData as { success?: boolean; payment_id?: string; reference_number?: string; error?: string };
+    const rpcRes = rpcData as {
+      success?: boolean;
+      payment_id?: string;
+      reference_number?: string;
+      journal_entry_id?: string;
+      error?: string;
+    };
     if (!rpcRes?.success) return { error: rpcRes?.error ?? 'Payment failed.' };
     paymentId = rpcRes.payment_id ?? null;
     referenceNumber = rpcRes.reference_number ?? null;
+    const journalEntryId = rpcRes.journal_entry_id ?? null;
 
     if (!referenceNumber && paymentId) {
       try {
@@ -1214,8 +1227,9 @@ export async function addRentalPayment(
       }
     }
 
-    try {
-      await supabase.from('rental_payments').insert({
+    const { data: rpRow, error: rpInsErr } = await supabase
+      .from('rental_payments')
+      .insert({
         rental_id: params.rentalId,
         amount: params.amount,
         method: normalizedMethod,
@@ -1224,9 +1238,16 @@ export async function addRentalPayment(
         payment_type: 'remaining',
         payment_account_id: params.paymentAccountId ?? null,
         created_by: params.userId ?? null,
-      });
-    } catch {
-      // rental_payments insert is informational; RPC already updated rentals totals.
+      })
+      .select('id')
+      .single();
+
+    if (rpInsErr || !rpRow) {
+      return { error: rpInsErr?.message ?? 'Failed to record rental payment row.' };
+    }
+
+    if (journalEntryId) {
+      await linkRentalPaymentJournalEntry((rpRow as { id: string }).id, journalEntryId);
     }
 
     if (paymentId && params.paymentAt) {
@@ -1235,6 +1256,13 @@ export async function addRentalPayment(
     }
 
     return { error: null, paymentId, referenceNumber };
+  }
+
+  const rentalCustomerId = r.customer_id as string | null | undefined;
+  if (rentalCustomerId) {
+    return {
+      error: 'Payment account required for named customer rentals (ledger posting via record_payment_with_accounting).',
+    };
   }
 
   await supabase.from('rental_payments').insert({

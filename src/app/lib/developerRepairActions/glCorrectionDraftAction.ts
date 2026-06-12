@@ -1,32 +1,54 @@
 /**
- * GL correction draft repair action — dry-run preview; apply blocked until RPC migration.
+ * GL correction draft repair action — dry-run preview; apply via create_gl_correction_journal RPC.
  */
 
 import type { ApplyResult, DeveloperRepairAction, DeveloperRepairContext, DryRunResult } from '@/app/lib/developerRepairTypes';
 import {
   buildGlCorrectionDraftDryRun,
   GL_CORRECTION_CONFIRM_PHRASE,
+  isRental1100LeakageDefectId,
   knownOrphanDefectById,
 } from '@/app/lib/glCorrectionDraftRepair';
+import { fetchRentalLeakageDraftPreviewFromServer } from '@/app/lib/arControlOrphanRepair';
 import { applyGlCorrectionJournalRpc } from '@/app/services/glCorrectionApplyService';
+
+async function resolveDefectForDryRun(
+  defectId: string,
+  ctx: DeveloperRepairContext
+): Promise<{ preview: ReturnType<typeof buildGlCorrectionDraftDryRun> | null; blockedReason?: string }> {
+  const known = knownOrphanDefectById(defectId);
+  if (known) {
+    return { preview: buildGlCorrectionDraftDryRun(known) };
+  }
+  if (isRental1100LeakageDefectId(defectId)) {
+    const preview = await fetchRentalLeakageDraftPreviewFromServer(ctx.companyId, defectId);
+    if (!preview) {
+      return {
+        preview: null,
+        blockedReason: `Rental leakage defect not found or already corrected: ${defectId}`,
+      };
+    }
+    return { preview };
+  }
+  return { preview: null, blockedReason: `Unknown defect id: ${defectId || '(missing)'}` };
+}
 
 async function dryRunGlCorrectionDraft(
   params: Record<string, unknown>,
-  _ctx: DeveloperRepairContext
+  ctx: DeveloperRepairContext
 ): Promise<DryRunResult> {
   const defectId = String(params.defectId || '');
-  const defect = knownOrphanDefectById(defectId);
-  if (!defect) {
+  const { preview, blockedReason } = await resolveDefectForDryRun(defectId, ctx);
+  if (!preview) {
     return {
       ok: false,
       dryRunHash: '',
       before: {},
       afterPreview: {},
-      blockedReason: `Unknown defect id: ${defectId || '(missing)'}`,
+      blockedReason: blockedReason || `Unknown defect id: ${defectId || '(missing)'}`,
     };
   }
 
-  const preview = buildGlCorrectionDraftDryRun(defect);
   return {
     ok: preview.ok,
     dryRunHash: preview.dryRunHash,
@@ -70,13 +92,13 @@ export const glCreateCorrectionDraftAction: DeveloperRepairAction = {
   id: 'gl.create_correction_draft',
   title: 'Create GL correction draft (additive JE)',
   description:
-    'Previews a new balanced correction JE for orphan party AR defects (JE-0161 class). Does not edit existing JEs.',
+    'Previews a new balanced correction JE for orphan party AR defects and rental 1100 leakage. Does not edit existing JEs.',
   riskLevel: 'high',
   requiredRole: 'super-admin',
   confirmPhrase: GL_CORRECTION_CONFIRM_PHRASE,
   whatItChanges: ['New additive correction journal entry (when RPC approved)', 'developer_repair_audit row'],
   whatItNeverChanges: [
-    'Existing JE-0160 / JE-0161 / JE-0168 rows',
+    'Existing posted journal entry lines',
     'Hard-delete of posted records',
     'Broad AR/AP reverse/repost',
   ],
@@ -87,3 +109,5 @@ export const glCreateCorrectionDraftAction: DeveloperRepairAction = {
 };
 
 export const GL_CORRECTION_REPAIR_ACTIONS = [glCreateCorrectionDraftAction];
+
+export { resolveDefectForDryRun };

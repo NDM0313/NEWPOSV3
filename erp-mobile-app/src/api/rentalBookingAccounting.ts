@@ -91,7 +91,7 @@ async function journalFingerprintExists(companyId: string, fingerprint: string):
   return !!(data as { id?: string } | null)?.id;
 }
 
-async function resolveReceivablePostingAccountIdMobile(companyId: string, contactId: string): Promise<string | null> {
+async function getArControlAccountId(companyId: string): Promise<string | null> {
   const { data: ctrl } = await supabase
     .from('accounts')
     .select('id')
@@ -99,18 +99,43 @@ async function resolveReceivablePostingAccountIdMobile(companyId: string, contac
     .eq('code', '1100')
     .eq('is_active', true)
     .maybeSingle();
-  const rootId = (ctrl as { id?: string } | null)?.id;
-  if (!rootId) return null;
-  const { data: sub } = await supabase
-    .from('accounts')
-    .select('id')
-    .eq('company_id', companyId)
-    .eq('linked_contact_id', contactId)
-    .eq('parent_id', rootId)
-    .eq('is_active', true)
-    .limit(1)
-    .maybeSingle();
-  return (sub as { id?: string } | null)?.id ?? rootId;
+  return (ctrl as { id?: string } | null)?.id ?? null;
+}
+
+/** Ensure AR-CUS* sub-ledger exists; never fall back to control 1100 for named customers. */
+async function resolveReceivablePostingAccountIdMobile(
+  companyId: string,
+  contactId: string
+): Promise<{ arId: string | null; error: string | null }> {
+  if (!contactId) {
+    return { arId: null, error: 'Customer contact id is required for AR posting.' };
+  }
+  const { data, error } = await supabase.rpc('ensure_party_subledgers_for_contact', {
+    p_contact_id: contactId,
+  });
+  if (error) return { arId: null, error: error.message };
+  const result = data as { success?: boolean; error?: string; ar_account_id?: string } | null;
+  if (!result?.success) {
+    return { arId: null, error: result?.error ?? 'Could not resolve customer AR sub-account.' };
+  }
+  const arId = result.ar_account_id ?? null;
+  if (!arId) return { arId: null, error: 'Customer receivable account not found.' };
+
+  const controlId = await getArControlAccountId(companyId);
+  if (controlId && arId === controlId) {
+    return {
+      arId: null,
+      error: 'Named customer must post to AR sub-ledger (AR-CUS*), not control account 1100.',
+    };
+  }
+  const { data: acc } = await supabase.from('accounts').select('code').eq('id', arId).maybeSingle();
+  if (String((acc as { code?: string } | null)?.code || '').trim() === '1100') {
+    return {
+      arId: null,
+      error: 'Named customer must post to AR sub-ledger (AR-CUS*), not control account 1100.',
+    };
+  }
+  return { arId, error: null };
 }
 
 async function resolveRentalIncomeAccountIdMobile(companyId: string): Promise<string | null> {
@@ -159,9 +184,9 @@ export async function postRentalPartyRevenueJournalMobile(params: {
   if (rentalCharges <= 0) return { error: null };
   const fp = rentalPartyRevenueFingerprint(companyId, rentalId);
   if (await journalFingerprintExists(companyId, fp)) return { error: null };
-  const arId = await resolveReceivablePostingAccountIdMobile(companyId, customerId);
+  const { arId, error: arErr } = await resolveReceivablePostingAccountIdMobile(companyId, customerId);
   const incId = await resolveRentalIncomeAccountIdMobile(companyId);
-  if (!arId || !incId) return { error: 'AR or Rental Income account not found.' };
+  if (arErr || !arId || !incId) return { error: arErr ?? 'AR or Rental Income account not found.' };
   const desc = `Rental charges — ${customerName}`;
   const res = await createJournalEntry({
     companyId,
@@ -237,8 +262,10 @@ export async function postRentalAdvanceJournalMobile(
       return { journalEntryId: (existing as { id?: string } | null)?.id ?? null, error: null };
     }
 
-    const arId = await resolveReceivablePostingAccountIdMobile(companyId, customerId);
-    if (!arId) return { journalEntryId: null, error: 'Customer receivable account not found.' };
+    const { arId, error: arErr } = await resolveReceivablePostingAccountIdMobile(companyId, customerId);
+    if (arErr || !arId) {
+      return { journalEntryId: null, error: arErr ?? 'Customer receivable account not found.' };
+    }
 
     const towardRent = Math.min(amount, Math.max(0, rentalCharges));
     const afterRent = Math.max(0, amount - towardRent);
@@ -389,10 +416,14 @@ export async function postRentalPartyPenaltySettlementMobile(params: {
   } = params;
   if (amount <= 0) return { chargeJournalEntryId: null, receiptJournalEntryId: null, error: null };
 
-  const arId = await resolveReceivablePostingAccountIdMobile(companyId, customerId);
+  const { arId, error: arErr } = await resolveReceivablePostingAccountIdMobile(companyId, customerId);
   const incId = await resolveRentalIncomeAccountIdMobile(companyId);
-  if (!arId || !incId) {
-    return { chargeJournalEntryId: null, receiptJournalEntryId: null, error: 'AR or Rental Income account not found.' };
+  if (arErr || !arId || !incId) {
+    return {
+      chargeJournalEntryId: null,
+      receiptJournalEntryId: null,
+      error: arErr ?? 'AR or Rental Income account not found.',
+    };
   }
 
   const chargeFp = rentalPartyPenaltyChargeFingerprint(companyId, rentalId);

@@ -1,11 +1,15 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  collectRepairedControl1100SourceLineIds,
   dayBookIncludeInNormalMode,
+  extractRentalLeakageSourceLineIdFromFingerprint,
   isCorrectionReversalReferenceType,
   isGlCorrectionReferenceType,
+  isRental1100LeakageGlCorrectionFingerprint,
   partyEffectiveRowAuditLabel,
   partyStatementGlCorrectionAuditLabel,
+  shouldHideRepairedControl1100Row,
   shouldIncludeCancelledSaleActivityInNormalStatement,
   shouldIncludeGlCorrectionInNormalStatement,
   shouldIncludeInNormalCashMovement,
@@ -179,5 +183,48 @@ test('active payment still included in normal cash movement', () => {
       paymentVoidedAt: null,
     }),
     true
+  );
+});
+
+test('control 1100 effective view hides repaired rental leakage pairs', () => {
+  const lineId = 'f0b54f90-e981-49fd-96fc-0b5068574dcc';
+  const fp = `developer_repair:gl_correction:rental-1100-leakage:${lineId}`;
+  assert.equal(isRental1100LeakageGlCorrectionFingerprint(fp), true);
+  assert.equal(extractRentalLeakageSourceLineIdFromFingerprint(fp), lineId);
+  const repaired = collectRepairedControl1100SourceLineIds([{ je_action_fingerprint: fp }]);
+  assert.equal(repaired.has(lineId), true);
+  assert.equal(
+    shouldHideRepairedControl1100Row(
+      {
+        journalLineId: lineId,
+        glAccountCode: '1100',
+        jeReferenceType: 'rental',
+      },
+      repaired
+    ),
+    true
+  );
+  assert.equal(
+    shouldHideRepairedControl1100Row(
+      {
+        journalLineId: 'other-line',
+        glAccountCode: '1100',
+        jeReferenceType: 'gl_correction',
+        jeActionFingerprint: fp,
+      },
+      repaired
+    ),
+    true
+  );
+  assert.equal(
+    shouldHideRepairedControl1100Row(
+      {
+        journalLineId: 'other-line',
+        glAccountCode: '1100',
+        jeReferenceType: 'manual_receipt',
+      },
+      repaired
+    ),
+    false
   );
 });

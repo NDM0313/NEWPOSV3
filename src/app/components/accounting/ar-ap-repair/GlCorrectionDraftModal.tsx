@@ -16,9 +16,14 @@ import { useSupabase } from '@/app/context/SupabaseContext';
 import {
   buildGlCorrectionDraftDryRun,
   GL_CORRECTION_CONFIRM_PHRASE,
+  isRental1100LeakageDefectId,
   knownOrphanDefectById,
   type GlCorrectionDraftDryRun,
 } from '@/app/lib/glCorrectionDraftRepair';
+import {
+  buildOrphanArDraftPreview,
+  fetchRentalLeakageDraftPreviewFromServer,
+} from '@/app/lib/arControlOrphanRepair';
 import { isValidRepairConfirmPhrase } from '@/app/lib/repairQueueDryRun';
 import { actionRequiresGlCorrectionRpc, resolveRepairApplyBlockReasons } from '@/app/lib/developerRepairApplyGate';
 import { canApplyDeveloperRepair } from '@/app/lib/developerAccountingAccess';
@@ -31,9 +36,11 @@ interface Props {
   defectId: string;
   onQueue?: () => void;
   onApplied?: () => void;
+  /** When set, overrides role-only check for GL correction apply (RPC probe + admin). */
+  canApplyGlRepair?: boolean;
 }
 
-export function GlCorrectionDraftModal({ open, onOpenChange, defectId, onQueue, onApplied }: Props) {
+export function GlCorrectionDraftModal({ open, onOpenChange, defectId, onQueue, onApplied, canApplyGlRepair }: Props) {
   const { companyId, userId, userRole } = useSupabase();
   const [preview, setPreview] = useState<GlCorrectionDraftDryRun | null>(null);
   const [confirmPhrase, setConfirmPhrase] = useState('');
@@ -41,7 +48,7 @@ export function GlCorrectionDraftModal({ open, onOpenChange, defectId, onQueue, 
   const [applying, setApplying] = useState(false);
   const [glCorrectionRpcAvailable, setGlCorrectionRpcAvailable] = useState(false);
 
-  const canApplyRole = canApplyDeveloperRepair(userRole);
+  const canApplyRole = canApplyGlRepair ?? canApplyDeveloperRepair(userRole);
 
   useEffect(() => {
     if (!open || !companyId) return;
@@ -50,21 +57,38 @@ export function GlCorrectionDraftModal({ open, onOpenChange, defectId, onQueue, 
     });
   }, [open, companyId, userRole]);
 
-  const runDryRun = useCallback(() => {
-    const defect = knownOrphanDefectById(defectId);
-    if (!defect) {
-      toast.error(`Unknown defect: ${defectId}`);
-      return;
-    }
+  const runDryRun = useCallback(async () => {
+    if (!companyId) return;
     setLoading(true);
     try {
-      const p = buildGlCorrectionDraftDryRun(defect);
-      setPreview(p);
+      const known = knownOrphanDefectById(defectId);
+      if (known) {
+        setPreview(buildGlCorrectionDraftDryRun(known));
+        toast.success('GL correction dry-run ready');
+        return;
+      }
+      if (isRental1100LeakageDefectId(defectId)) {
+        const serverPreview = await fetchRentalLeakageDraftPreviewFromServer(companyId, defectId);
+        if (!serverPreview) {
+          toast.error(`Defect not found or already corrected: ${defectId}`);
+          setPreview(null);
+          return;
+        }
+        setPreview(serverPreview);
+        toast.success('GL correction dry-run ready');
+        return;
+      }
+      const fallback = buildOrphanArDraftPreview(defectId);
+      if (!fallback) {
+        toast.error(`Unknown defect: ${defectId}`);
+        return;
+      }
+      setPreview(fallback);
       toast.success('GL correction dry-run ready');
     } finally {
       setLoading(false);
     }
-  }, [defectId]);
+  }, [defectId, companyId]);
 
   useEffect(() => {
     if (open && !preview) runDryRun();
@@ -149,7 +173,7 @@ export function GlCorrectionDraftModal({ open, onOpenChange, defectId, onQueue, 
             <div className="rounded border border-rose-800/50 bg-rose-950/25 p-3 text-rose-100/90 text-xs">
               <p className="font-medium">This creates a new correction journal entry. It does not edit history.</p>
               <p className="text-gray-400 mt-1">
-                JE-0160, JE-0161, and JE-0168 remain unchanged. Broad AR/AP post/reverse/repost stays disabled.
+                Source journal lines remain unchanged. Broad AR/AP post/reverse/repost stays disabled.
               </p>
             </div>
 
@@ -174,7 +198,7 @@ export function GlCorrectionDraftModal({ open, onOpenChange, defectId, onQueue, 
                   ))}
                 </tbody>
               </table>
-              <p className="text-[11px] text-gray-500 mt-1">{preview.originalWrongRows[1]?.note}</p>
+              <p className="text-[11px] text-gray-500 mt-1">{preview.originalWrongRows[0]?.note}</p>
             </Section>
 
             <Section title="New correction JE preview">
@@ -228,7 +252,7 @@ export function GlCorrectionDraftModal({ open, onOpenChange, defectId, onQueue, 
                   <p className="font-medium">Apply requires migration on database</p>
                   <p className="text-gray-400 mt-1">{preview.blockedApplyReason}</p>
                   <p className="text-gray-500 mt-1 font-mono text-[10px]">
-                    migrations/20260617120000_create_gl_correction_journal.sql
+                    migrations/20260618140000_hybrid_repair_gl_correction_targets.sql
                   </p>
                 </div>
               </div>
@@ -258,6 +282,13 @@ export function GlCorrectionDraftModal({ open, onOpenChange, defectId, onQueue, 
         ) : (
           <p className="text-gray-500 text-sm">Could not load dry-run.</p>
         )}
+
+        {preview ? (
+          <p className="text-[11px] text-gray-500 border-t border-gray-800 pt-3">
+            <strong className="text-gray-400">Dry-run = preview only.</strong> Click Apply GL Correction + confirm phrase
+            to post the correction JE.
+          </p>
+        ) : null}
 
         <DialogFooter className="gap-2">
           <Button type="button" variant="outline" className="border-gray-600" onClick={() => runDryRun()} disabled={loading}>

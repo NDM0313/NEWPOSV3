@@ -24,6 +24,8 @@ import { useSupabase } from '@/app/context/SupabaseContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { toast } from 'sonner';
 import { resolveArApReconciliationAccess } from '@/app/lib/arApReconciliationAccess';
+import { markOpenArApHybridRepair } from '@/app/lib/arApHybridRepairNav';
+import { detectRental1100LeakageDefects } from '@/app/lib/arControlOrphanRepair';
 import {
   basisBadgeClass,
   basisBadgeLabel,
@@ -177,6 +179,7 @@ export function FinancialTraceCenterPage() {
   const [searchQ, setSearchQ] = useState('');
   const [searchHits, setSearchHits] = useState<PartySearchHit[]>([]);
   const [partyTrace, setPartyTrace] = useState<PartyTraceResult | null>(null);
+  const [rentalLeakagePending, setRentalLeakagePending] = useState<number | null>(null);
   const [partyLoading, setPartyLoading] = useState(false);
 
   const [rentalQ, setRentalQ] = useState('REN-0002');
@@ -209,6 +212,25 @@ export function FinancialTraceCenterPage() {
   useEffect(() => {
     if (access.canAccess && companyId) loadAll();
   }, [access.canAccess, companyId, loadAll]);
+
+  useEffect(() => {
+    if (!companyId || !access.canUseHybridRepair) {
+      setRentalLeakagePending(null);
+      return;
+    }
+    let cancelled = false;
+    void detectRental1100LeakageDefects(companyId, null).then((rows) => {
+      if (!cancelled) setRentalLeakagePending(rows.length);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, access.canUseHybridRepair, overview?.asOfDate]);
+
+  const openHybridRepair = useCallback(() => {
+    markOpenArApHybridRepair();
+    setCurrentView('ar-ap-reconciliation-center');
+  }, [setCurrentView]);
 
   const navigateCross = useCallback(
     (view: string, url?: string, contactId?: string, contactName?: string) => {
@@ -653,6 +675,15 @@ export function FinancialTraceCenterPage() {
                         <CodeBadge key={c} code={c as DivergenceCode} />
                       ))}
                     </div>
+                    {access.canUseHybridRepair && rentalLeakagePending != null && rentalLeakagePending > 0 ? (
+                      <Button
+                        size="sm"
+                        className="mt-2 bg-violet-700 hover:bg-violet-600"
+                        onClick={openHybridRepair}
+                      >
+                        Open Hybrid Repair ({rentalLeakagePending} rental 1100 pending)
+                      </Button>
+                    ) : null}
                   </div>
                 )}
 
@@ -880,11 +911,16 @@ export function FinancialTraceCenterPage() {
               </div>
             ))}
             {gap1100 != null && gap1100 >= 1 && overview && (
-              <div className="rounded-lg border border-red-500/30 p-4">
+              <div className="rounded-lg border border-red-500/30 p-4 space-y-2">
                 <CodeBadge code="D7" />
                 <p className="text-sm mt-2">
                   1100 vs AR-CUS gap: {formatCurrency(gap1100)} — investigate chart rollup vs party sub-ledgers.
                 </p>
+                {access.canUseHybridRepair && rentalLeakagePending != null && rentalLeakagePending > 0 ? (
+                  <Button size="sm" variant="outline" className="border-violet-600 text-violet-200" onClick={openHybridRepair}>
+                    Open Hybrid Repair ({rentalLeakagePending} per-line fixes)
+                  </Button>
+                ) : null}
               </div>
             )}
             <CrossLinkBar onNavigate={navigateCross} />

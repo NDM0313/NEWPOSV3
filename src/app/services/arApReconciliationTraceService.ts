@@ -173,22 +173,26 @@ export interface ProposedPostingLine {
 }
 
 /** Batch-load document statuses for unposted queue split (read-only). */
+const UNPOSTED_STATUS_CHUNK = 80;
+
 export async function batchFetchUnpostedDocumentStatuses(
   rows: UnpostedDocumentRow[]
 ): Promise<Map<string, string | null>> {
   const out = new Map<string, string | null>();
   const saleIds = rows.filter((r) => r.source_type === 'sale').map((r) => r.source_id);
   const purchaseIds = rows.filter((r) => r.source_type === 'purchase').map((r) => r.source_id);
-  if (saleIds.length) {
-    const { data } = await supabase.from('sales').select('id, status').in('id', saleIds);
+  for (let i = 0; i < saleIds.length; i += UNPOSTED_STATUS_CHUNK) {
+    const chunk = saleIds.slice(i, i + UNPOSTED_STATUS_CHUNK);
+    const { data } = await supabase.from('sales').select('id, status').in('id', chunk);
     for (const row of data || []) {
       const id = String((row as { id: string }).id);
       const src = rows.find((r) => r.source_type === 'sale' && r.source_id === id);
       if (src) out.set(`${src.source_type}:${src.source_id}`, (row as { status?: string }).status ?? null);
     }
   }
-  if (purchaseIds.length) {
-    const { data } = await supabase.from('purchases').select('id, status').in('id', purchaseIds);
+  for (let i = 0; i < purchaseIds.length; i += UNPOSTED_STATUS_CHUNK) {
+    const chunk = purchaseIds.slice(i, i + UNPOSTED_STATUS_CHUNK);
+    const { data } = await supabase.from('purchases').select('id, status').in('id', chunk);
     for (const row of data || []) {
       const id = String((row as { id: string }).id);
       const src = rows.find((r) => r.source_type === 'purchase' && r.source_id === id);

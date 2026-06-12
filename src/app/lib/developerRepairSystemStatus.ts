@@ -144,6 +144,10 @@ export function isGlCorrectionRpcBusinessError(message: string | undefined): boo
     m.includes('dry-run hash mismatch') ||
     m.includes('company_id required') ||
     m.includes('hq-sl-0003') ||
+    m.includes('rental-1100-leakage') ||
+    m.includes('rental 1100') ||
+    m.includes('rental leakage') ||
+    m.includes('parametric gl') ||
     m.includes('already applied') ||
     m.includes('je-0160') ||
     m.includes('je-0161')

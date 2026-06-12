@@ -52,9 +52,12 @@ export interface IntegrityLabSnapshotRow {
 export interface IntegrityLabSummary extends IntegrityLabSnapshotRow {
   asOfDate: string;
   branchId: string | null;
-  /** Full Contacts RPC totals (includes openings, workers where applicable). */
+  /** Party GL (1100 subtree) clamped ≥0 per contact. */
   operational_receivables_full: number;
   operational_payables_full: number;
+  /** Signed party GL totals (includes negative per-contact AR). */
+  operational_receivables_signed: number;
+  operational_payables_signed: number;
   variance_receivables: number | null;
   variance_payables: number | null;
   /** GL AR after excluding audit-only cancelled/void/correction chains (effective statement model). */
@@ -193,7 +196,7 @@ export async function fetchIntegrityLabSummary(
       p_branch_id: b,
       p_as_of_date: end,
     }),
-    contactService.getContactBalancesSummary(companyId, branchId ?? null),
+    contactService.getContactBalancesSummary(companyId, branchId ?? null, end),
     accountingReportsService.getArApGlSnapshot(companyId, end, b ?? undefined),
   ]);
 
@@ -215,11 +218,15 @@ export async function fetchIntegrityLabSummary(
 
   let operational_receivables_full = 0;
   let operational_payables_full = 0;
+  let operational_receivables_signed = 0;
+  let operational_payables_signed = 0;
   if (!opRes.error) {
     opRes.map.forEach((v) => {
       operational_receivables_full += Number(v.receivables) || 0;
       operational_payables_full += Number(v.payables) || 0;
     });
+    operational_receivables_signed = opRes.signedReceivablesTotal;
+    operational_payables_signed = opRes.signedPayablesTotal;
   }
 
   const glAr = s.gl_ar_net_dr_minus_cr ?? glSnap.ar?.balance ?? null;
@@ -268,6 +275,8 @@ export async function fetchIntegrityLabSummary(
     branchId: b,
     operational_receivables_full,
     operational_payables_full,
+    operational_receivables_signed,
+    operational_payables_signed,
     variance_receivables,
     variance_payables,
     effective_gl_ar_net_dr_minus_cr,
@@ -407,6 +416,37 @@ export async function ensureArApSuspenseAccount(companyId: string): Promise<{ ac
   if (error) return { accountId: null, error: error.message };
   const id = typeof data === 'string' ? data : (data as string | null);
   return { accountId: id || null };
+}
+
+export interface AppliedGlCorrectionAuditRow {
+  journal_entry_id: string;
+  entry_no: string | null;
+  action_fingerprint: string | null;
+  description: string | null;
+  entry_date: string | null;
+}
+
+/** Recent applied developer_repair gl_correction JEs (audit queue 2d). */
+export async function fetchAppliedGlCorrections(
+  companyId: string,
+  limit = 10
+): Promise<AppliedGlCorrectionAuditRow[]> {
+  const { data, error } = await supabase
+    .from('journal_entries')
+    .select('id, entry_no, action_fingerprint, description, entry_date')
+    .eq('company_id', companyId)
+    .eq('is_void', false)
+    .like('action_fingerprint', 'developer_repair:gl_correction:%')
+    .order('entry_date', { ascending: false })
+    .limit(limit);
+  if (error) return [];
+  return (data || []).map((row) => ({
+    journal_entry_id: String((row as { id: string }).id),
+    entry_no: (row as { entry_no?: string }).entry_no ?? null,
+    action_fingerprint: (row as { action_fingerprint?: string }).action_fingerprint ?? null,
+    description: (row as { description?: string }).description ?? null,
+    entry_date: (row as { entry_date?: string }).entry_date ?? null,
+  }));
 }
 
 export function unpostedItemKey(row: UnpostedDocumentRow): string {

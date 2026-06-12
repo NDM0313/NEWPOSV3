@@ -54,6 +54,7 @@ import { CommissionReportPage } from './CommissionReportPage';
 import { ProductLedger } from './ProductLedger';
 import { ProductSellReportPage } from './ProductSellReportPage';
 import { LedgerStatementCenterV2Page } from '@/app/features/ledger-statement-center-v2/LedgerStatementCenterV2Page';
+import { RemainingBalanceReport } from './RemainingBalanceReport';
 import {
   accountingReportsService,
   type ProfitLossResult,
@@ -131,6 +132,7 @@ export const ReportsDashboardEnhanced = ({
     | 'sales-profit'
     | 'inventory-valuation'
     | 'ledger-statement-v2'
+    | 'remaining-balance'
   >('trial-balance');
   /** Expenses whose original expense JE has a correction_reversal — hidden from reports by default. */
   const [reversedExpenseIds, setReversedExpenseIds] = useState<Set<string>>(() => new Set());
@@ -920,6 +922,7 @@ export const ReportsDashboardEnhanced = ({
                 { key: 'sales-profit', label: 'Sales Profit' },
                 { key: 'inventory-valuation', label: 'Inventory Valuation' },
                 { key: 'ledger-statement-v2', label: 'Statements / Ledgers V2' },
+                { key: 'remaining-balance', label: 'Remaining Balance' },
               ].map((sub) => (
                 <button
                   key={sub.key}
@@ -934,7 +937,7 @@ export const ReportsDashboardEnhanced = ({
                 </button>
               ))}
             </div>
-            {financialReportType !== 'ledger-statement-v2' && (
+            {financialReportType !== 'ledger-statement-v2' && financialReportType !== 'remaining-balance' && (
               <div className="text-xs text-gray-500 mb-2">Period: {dateRangeLabel}</div>
             )}
             {financialReportType === 'trial-balance' && (
@@ -953,6 +956,9 @@ export const ReportsDashboardEnhanced = ({
               <InventoryValuationPage asOfDate={reportEndDate} branchId={branchId} />
             )}
             {financialReportType === 'ledger-statement-v2' && <LedgerStatementCenterV2Page embedded />}
+            {financialReportType === 'remaining-balance' && (
+              <RemainingBalanceReport branchId={branchId === 'all' ? null : branchId} />
+            )}
           </>
         )}
 

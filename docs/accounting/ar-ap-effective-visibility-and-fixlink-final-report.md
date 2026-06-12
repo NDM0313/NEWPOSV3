@@ -1,8 +1,8 @@
 # AR/AP effective visibility & Fix Link UX — final report
 
 **Date:** 2026-06-12  
-**Commit:** (see deploy hash below)  
-**Scope:** Frontend/report visibility only — no migrations, no GL mutations, JE-0168 unchanged.
+**Commit:** `83d947f4`  
+**Deployed:** `83d947f4` (frontend-only, erp-frontend recreated)
 
 ## Part A — AR-CUS0000 diagnosis (Walk-in Customer / AR-CUS0000)
 

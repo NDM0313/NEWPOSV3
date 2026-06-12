@@ -27,9 +27,24 @@ export interface UnmappedLineDiagnostics {
   /** Financially correct rental/payment row with JE vs payment metadata mismatch (Phase 2.1 — RCV-0008 class B). */
   isMetadataReviewOnly: boolean;
   metadataReviewReason: string | null;
+  /** Applied developer_repair gl_correction JE — audit only (JV-000207 class). */
+  isAppliedGlCorrectionReview: boolean;
+  appliedGlCorrectionReason: string | null;
   queueReason: string;
   suggestedAction: string;
   riskLevel: ArApRiskLevel;
+}
+
+/** Applied gl_correction repair JE — whitelist gap before migration or audit queue. */
+export function isLikelyAppliedGlCorrectionReview(input: {
+  jeReferenceType?: string | null;
+  actionFingerprint?: string | null;
+}): boolean {
+  const jeRef = String(input.jeReferenceType ?? '').toLowerCase().trim();
+  if (jeRef !== 'gl_correction') return false;
+  const fp = String(input.actionFingerprint ?? '').trim();
+  if (fp.startsWith('developer_repair:gl_correction:')) return true;
+  return jeRef === 'gl_correction';
 }
 
 export function diagnoseUnpostedRow(
@@ -142,9 +157,30 @@ export function isLikelyRentalPaymentMetadataReview(input: {
 export function diagnoseUnmappedLine(
   row: UnmappedJournalRow,
   paymentMeta?: { reference_type?: string | null; contact_id?: string | null; reference_number?: string | null },
-  arLinkedContactId?: string | null
+  arLinkedContactId?: string | null,
+  journalMeta?: { action_fingerprint?: string | null; entry_no?: string | null }
 ): UnmappedLineDiagnostics {
   const queueReason = row.reason || row.contact_mapping_status || 'Unmapped AR/AP line (heuristic).';
+
+  const appliedGlCorrection = isLikelyAppliedGlCorrectionReview({
+    jeReferenceType: row.reference_type,
+    actionFingerprint: journalMeta?.action_fingerprint,
+  });
+  if (appliedGlCorrection) {
+    const entryNo = journalMeta?.entry_no ? String(journalMeta.entry_no) : 'correction JE';
+    return {
+      isLikelyFalsePositive: false,
+      falsePositiveReason: null,
+      isMetadataReviewOnly: false,
+      metadataReviewReason: null,
+      isAppliedGlCorrectionReview: true,
+      appliedGlCorrectionReason: `${entryNo} fixed a prior GL issue — no action needed. Source JE unchanged.`,
+      queueReason,
+      suggestedAction: 'Audit only. Mark reviewed if still visible after whitelist migration.',
+      riskLevel: 'low',
+    };
+  }
+
   const fp = isLikelyPaymentOnAccountFalsePositive({
     jeReferenceType: row.reference_type,
     paymentReferenceType: paymentMeta?.reference_type,
@@ -160,6 +196,8 @@ export function diagnoseUnmappedLine(
         'Likely mapped — heuristic false positive: JE reference_type is payment, payment row is on_account, and AR sub-ledger linked_contact_id matches payment contact.',
       isMetadataReviewOnly: false,
       metadataReviewReason: null,
+      isAppliedGlCorrectionReview: false,
+      appliedGlCorrectionReason: null,
       queueReason,
       suggestedAction: 'Mark manual reviewed or hide after Phase 3 whitelist fix. Do not relink unless business confirms wrong customer.',
       riskLevel: 'low',
@@ -180,10 +218,12 @@ export function diagnoseUnmappedLine(
       falsePositiveReason: null,
       isMetadataReviewOnly: true,
       metadataReviewReason:
-        'Mapped financially — source metadata needs review: payment row is rental-linked and AR sub-ledger contact is set, but JE reference_type is payment (not on AR whitelist). Do not relink or reverse/repost.',
+        'Ledger balance correct. JE header says payment but payment row says rental — metadata only. Mark reviewed.',
+      isAppliedGlCorrectionReview: false,
+      appliedGlCorrectionReason: null,
       queueReason,
       suggestedAction:
-        'Metadata review only. Ledger and party sub-ledger appear correct; fix whitelist/JE reference_type in a future controlled change — not Phase 3 repair.',
+        'Metadata review only. Ledger and party sub-ledger appear correct; no relink or reverse/repost needed.',
       riskLevel: 'low',
     };
   }
@@ -194,6 +234,8 @@ export function diagnoseUnmappedLine(
       falsePositiveReason: null,
       isMetadataReviewOnly: false,
       metadataReviewReason: null,
+      isAppliedGlCorrectionReview: false,
+      appliedGlCorrectionReason: null,
       queueReason,
       suggestedAction: 'Identify source document or void/repost with audit trail.',
       riskLevel: 'critical',
@@ -206,6 +248,8 @@ export function diagnoseUnmappedLine(
       falsePositiveReason: null,
       isMetadataReviewOnly: false,
       metadataReviewReason: null,
+      isAppliedGlCorrectionReview: false,
+      appliedGlCorrectionReason: null,
       queueReason,
       suggestedAction: 'Relink worker contact (Phase 3) or mark ready to relink.',
       riskLevel: 'high',
@@ -217,6 +261,8 @@ export function diagnoseUnmappedLine(
     falsePositiveReason: null,
     isMetadataReviewOnly: false,
     metadataReviewReason: null,
+    isAppliedGlCorrectionReview: false,
+    appliedGlCorrectionReason: null,
     queueReason,
     suggestedAction: 'Review payment vs party; relink or reverse/repost in Phase 3.',
     riskLevel: 'medium',

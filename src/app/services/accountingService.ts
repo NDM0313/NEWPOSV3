@@ -68,6 +68,10 @@ export interface AccountLedgerEntry {
   je_reference_type?: string | null;
   /** PF-14 / Phase 4 fingerprint on journal_entries. */
   je_action_fingerprint?: string | null;
+  /** journal_entry_lines.id for control-1100 repair pairing. */
+  journal_line_id?: string | null;
+  /** journal_entries.reference_id (source document / source JE for gl_correction). */
+  je_reference_id?: string | null;
   payment_id?: string;
   sale_id?: string;
   rental_id?: string;
@@ -2595,6 +2599,8 @@ export const accountingService = {
             journal_entry_id: entry.id,
             je_reference_type: refType,
             je_action_fingerprint: (entry as { action_fingerprint?: string | null }).action_fingerprint ?? null,
+            journal_line_id: line.id != null ? String(line.id) : null,
+            je_reference_id: entry.reference_id != null ? String(entry.reference_id) : null,
             payment_id: entry.payment_id,
             sale_id: resolvedLinkedSaleId ?? entry.reference_id,
             linked_sale_status: resolvedLinkedSaleId
@@ -2604,6 +2610,7 @@ export const accountingService = {
             branch_id: resolvedBranchId ?? entry.branch_id,
             branch_name: branchName,
             account_name: accountNameLine,
+            gl_account_code: accCode || undefined,
             counter_account: counterAccount ?? undefined,
             ledger_kind: ledgerKind,
             document_type: glStatementDocumentTypeFromReferenceType(refType, sourceModule),
