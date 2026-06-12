@@ -60,3 +60,16 @@ export function dayBookIncludeInNormalMode(referenceType: string | null | undefi
 export function accountStatementIncludeReversalInNormal(referenceType: string | null | undefined): boolean {
   return !isCorrectionReversalReferenceType(referenceType);
 }
+
+const CANCELLED_SALE_REF_TYPES = new Set(['sale', 'sale_reversal', 'sale_return']);
+
+/** Normal party AR/AP statement: hide cancelled-sale document trails (audit mode shows them). */
+export function shouldIncludeCancelledSaleActivityInNormalStatement(args: {
+  jeReferenceType?: string | null;
+  linkedSaleStatus?: string | null;
+}): boolean {
+  const status = String(args.linkedSaleStatus || '').toLowerCase().trim();
+  if (status !== 'cancelled') return true;
+  const rt = String(args.jeReferenceType || '').toLowerCase().trim();
+  return !CANCELLED_SALE_REF_TYPES.has(rt);
+}

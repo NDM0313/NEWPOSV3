@@ -84,6 +84,8 @@ export interface AccountLedgerEntry {
   ledger_kind?: 'standard' | 'reversal';
   /** journal_entries.economic_event_id when present */
   economic_event_id?: string | null;
+  /** Linked sale.status when JE references a sale (sale / sale_reversal / sale_return). */
+  linked_sale_status?: string | null;
 }
 
 /**
@@ -108,6 +110,7 @@ function glStatementDocumentTypeFromReferenceType(
   const t = String(referenceType || '').toLowerCase().trim();
   if (t === 'sale') return 'Sale';
   if (t === 'sale_return') return 'Sale return';
+  if (t === 'sale_reversal') return 'Sale reversal';
   if (t === 'sale_adjustment' || t === 'sale_extra_expense') return 'Sale adjustment';
   if (t === 'payment' || t === 'payment_adjustment') return 'Payment';
   if (t === 'manual_receipt') return 'Manual receipt';
@@ -2216,7 +2219,10 @@ export const accountingService = {
       const saleIds = [...new Set(
         (lines as any[])
           .map((line: any) => line.journal_entry)
-          .filter((entry: any) => String(entry?.reference_type || '').toLowerCase() === 'sale' && entry?.reference_id)
+          .filter((entry: any) => {
+            const rt = String(entry?.reference_type || '').toLowerCase();
+            return entry?.reference_id && ['sale', 'sale_reversal', 'sale_return'].includes(rt);
+          })
           .map((entry: any) => String(entry.reference_id))
       )];
       const purchaseIds = [...new Set(
@@ -2226,16 +2232,18 @@ export const accountingService = {
           .map((entry: any) => String(entry.reference_id))
       )];
       const saleDocMap = new Map<string, string>();
+      const saleStatusById = new Map<string, string>();
       const purchaseDocMap = new Map<string, string>();
       const saleBranchById = new Map<string, string>();
       const purchaseBranchById = new Map<string, string>();
       const rentalBranchByRefId = new Map<string, string>();
       const branchLabelById = new Map<string, string>();
       if (saleIds.length) {
-        const { data: sales } = await supabase.from('sales').select('id, invoice_no, order_no, draft_no, branch_id').in('id', saleIds);
+        const { data: sales } = await supabase.from('sales').select('id, invoice_no, order_no, draft_no, branch_id, status').in('id', saleIds);
         (sales || []).forEach((s: any) => {
           const doc = String(s.invoice_no || s.order_no || s.draft_no || '').trim();
           if (doc) saleDocMap.set(String(s.id), doc);
+          if (s?.status) saleStatusById.set(String(s.id), String(s.status));
           if (s?.branch_id) saleBranchById.set(String(s.id), String(s.branch_id));
         });
       }
@@ -2415,6 +2423,9 @@ export const accountingService = {
           let sourceModule = 'Accounting';
           if (refType === 'sale') {
             sourceModule = 'Sales';
+          } else if (refType === 'sale_reversal') {
+            sourceModule = 'Sales';
+            ledgerKind = 'reversal';
           } else if (refType === 'correction_reversal') {
             sourceModule = 'Reversal';
           } else if (entry.payment_id) {
@@ -2502,6 +2513,11 @@ export const accountingService = {
           const accCode = acc?.code != null && String(acc.code).trim() !== '' ? String(acc.code).trim() : '';
           const accountNameLine = accName ? (accCode ? `${accName} (${accCode})` : accName) : undefined;
 
+          const linkedSaleId =
+            entry.reference_id && ['sale', 'sale_reversal', 'sale_return'].includes(refType)
+              ? String(entry.reference_id)
+              : undefined;
+
           return {
             date: entry.entry_date,
             created_at: (entry as any).created_at,
@@ -2517,7 +2533,8 @@ export const accountingService = {
             je_reference_type: refType,
             je_action_fingerprint: (entry as { action_fingerprint?: string | null }).action_fingerprint ?? null,
             payment_id: entry.payment_id,
-            sale_id: entry.reference_id,
+            sale_id: linkedSaleId ?? entry.reference_id,
+            linked_sale_status: linkedSaleId ? saleStatusById.get(linkedSaleId) ?? null : null,
             branch_id: resolvedBranchId ?? entry.branch_id,
             branch_name: branchName,
             account_name: accountNameLine,

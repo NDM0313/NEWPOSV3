@@ -35,6 +35,7 @@ import {
   editTargetTypeLabel,
 } from '@/app/lib/accountFlowPresentation';
 import { ledgerTransactionOpenEventDetail } from '@/app/lib/ledgerTransactionOpenRef';
+import { shouldIncludeCancelledSaleActivityInNormalStatement } from '@/app/lib/reportVisibilityContract';
 
 /** AR / AP running balance sign: highlight “inverted” party positions so refunds / prepaids are obvious. */
 const PARTY_BAL_EPS = 0.005;
@@ -249,6 +250,13 @@ function isAdjustmentRow(e: AccountLedgerEntry): boolean {
   return d.includes('adjust') || t.includes('adjust');
 }
 
+function isCancelledSaleActivityHiddenInNormal(e: AccountLedgerEntry): boolean {
+  return !shouldIncludeCancelledSaleActivityInNormalStatement({
+    jeReferenceType: e.je_reference_type,
+    linkedSaleStatus: e.linked_sale_status,
+  });
+}
+
 function isReversalRow(e: AccountLedgerEntry): boolean {
   const d = normalizeLower(e.description);
   const t = normalizeLower(e.document_type);
@@ -256,6 +264,7 @@ function isReversalRow(e: AccountLedgerEntry): boolean {
   return (
     e.ledger_kind === 'reversal' ||
     jeRt === 'correction_reversal' ||
+    jeRt === 'sale_reversal' ||
     d.includes('reversal') ||
     t.includes('reversal')
   );
@@ -1084,6 +1093,7 @@ export const AccountLedgerReportPage: React.FC<{
   const presentedEntries = useMemo<PresentedLedgerRow[]>(() => {
     const base = sortedEntries.filter((e) => {
       if (!applied.includeManualEntries && isManualRow(e)) return false;
+      if (viewMode === 'effective' && isCancelledSaleActivityHiddenInNormal(e)) return false;
       return true;
     });
     if (!base.length) return [];

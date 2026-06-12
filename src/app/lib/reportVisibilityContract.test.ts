@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import {
   dayBookIncludeInNormalMode,
   isCorrectionReversalReferenceType,
+  shouldIncludeCancelledSaleActivityInNormalStatement,
   shouldIncludeInNormalCashMovement,
 } from './reportVisibilityContract';
 
@@ -13,6 +14,30 @@ test('JE-0168 class correction_reversal excluded from normal cash movement', () 
     false
   );
   assert.equal(dayBookIncludeInNormalMode('correction_reversal'), false);
+});
+
+test('cancelled sale activity hidden from normal party statement', () => {
+  assert.equal(
+    shouldIncludeCancelledSaleActivityInNormalStatement({
+      jeReferenceType: 'sale',
+      linkedSaleStatus: 'cancelled',
+    }),
+    false
+  );
+  assert.equal(
+    shouldIncludeCancelledSaleActivityInNormalStatement({
+      jeReferenceType: 'sale_reversal',
+      linkedSaleStatus: 'cancelled',
+    }),
+    false
+  );
+  assert.equal(
+    shouldIncludeCancelledSaleActivityInNormalStatement({
+      jeReferenceType: 'sale',
+      linkedSaleStatus: 'final',
+    }),
+    true
+  );
 });
 
 test('active payment still included in normal cash movement', () => {
