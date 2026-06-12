@@ -70,8 +70,8 @@ Tie-out surfaces known audit residues (AR-CUS0000 Rs 1) as **documented differen
 
 **Commits:**
 - `1f86f936` — initial financial truth alignment (Parts A–F)
-- `445cccc5` — deploy hash record
-- *(pending)* — dashboard canonical GL + Day Book / Roznamcha / Effective Party Ledger basis banners
+- `445cccc5` — deploy hash record (prior deploy)
+- `38c77ac2` — dashboard canonical GL + Day Book / Roznamcha / Effective Party Ledger basis banners
 
-**Deployed:** frontend only via `deploy/vps-build-erp-only.sh` (no migrations).  
+**Deployed:** 2026-06-12 — run `bash deploy/vps-build-erp-only.sh` on VPS after `git pull` (frontend only, no migrations).  
 Hard refresh https://erp.dincouture.pk after deploy.
