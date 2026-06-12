@@ -4,11 +4,12 @@ import {
   dayBookIncludeInNormalMode,
   isCorrectionReversalReferenceType,
   isGlCorrectionReferenceType,
+  partyEffectiveRowAuditLabel,
   partyStatementGlCorrectionAuditLabel,
   shouldIncludeCancelledSaleActivityInNormalStatement,
   shouldIncludeGlCorrectionInNormalStatement,
   shouldIncludeInNormalCashMovement,
-  shouldIncludePartyStatementRowInNormal,
+  shouldIncludePartyEffectiveRow,
 } from './reportVisibilityContract';
 
 test('JE-0168 class correction_reversal excluded from normal cash movement', () => {
@@ -71,21 +72,53 @@ test('cancelled-sale orphan gl_correction hidden from normal party statement', (
   );
 });
 
-test('AR-CUS0000 normal effective balance Rs 0 after HQ-SL-0003 repair visibility', () => {
+test('voided payment and cancelled-sale payment hidden from effective statement', () => {
+  assert.equal(
+    shouldIncludePartyEffectiveRow({
+      jeReferenceType: 'payment',
+      linkedSaleStatus: 'cancelled',
+    }),
+    false
+  );
+  assert.equal(
+    shouldIncludePartyEffectiveRow({
+      jeReferenceType: 'payment',
+      paymentVoidedAt: '2026-06-02T00:00:00Z',
+      linkedSaleStatus: 'final',
+    }),
+    false
+  );
+  assert.equal(
+    shouldIncludePartyEffectiveRow({
+      jeReferenceType: 'payment',
+      linkedSaleStatus: 'final',
+    }),
+    true
+  );
+  assert.equal(
+    partyEffectiveRowAuditLabel({
+      jeReferenceType: 'sale',
+      linkedSaleStatus: 'cancelled',
+    }),
+    'Cancelled sale trail — audit only'
+  );
+});
+
+test('cancelled sale chain does not create negative effective balance', () => {
   type Row = {
     jeReferenceType: string;
     jeActionFingerprint?: string;
     linkedSaleStatus?: string;
+    paymentVoidedAt?: string;
     debit: number;
     credit: number;
   };
   const arCusRows: Row[] = [
-    {
-      jeReferenceType: 'sale',
-      linkedSaleStatus: 'cancelled',
-      debit: 150,
-      credit: 0,
-    },
+    { jeReferenceType: 'sale', linkedSaleStatus: 'cancelled', debit: 150, credit: 0 },
+    { jeReferenceType: 'sale', linkedSaleStatus: 'cancelled', debit: 150, credit: 0 },
+    { jeReferenceType: 'sale', linkedSaleStatus: 'cancelled', debit: 400, credit: 0 },
+    { jeReferenceType: 'sale_reversal', linkedSaleStatus: 'cancelled', debit: 0, credit: 400 },
+    { jeReferenceType: 'sale_reversal', linkedSaleStatus: 'cancelled', debit: 0, credit: 150 },
     {
       jeReferenceType: 'gl_correction',
       jeActionFingerprint: 'developer_repair:gl_correction:hq-sl-0003-orphan-ar',
@@ -95,6 +128,7 @@ test('AR-CUS0000 normal effective balance Rs 0 after HQ-SL-0003 repair visibilit
     },
     {
       jeReferenceType: 'correction_reversal',
+      paymentVoidedAt: '2026-06-02',
       debit: 1,
       credit: 0,
     },
@@ -102,15 +136,15 @@ test('AR-CUS0000 normal effective balance Rs 0 after HQ-SL-0003 repair visibilit
 
   const normalEffectiveRows = arCusRows.filter((r) => {
     if (
-      !shouldIncludePartyStatementRowInNormal({
+      !shouldIncludePartyEffectiveRow({
         jeReferenceType: r.jeReferenceType,
         jeActionFingerprint: r.jeActionFingerprint,
         linkedSaleStatus: r.linkedSaleStatus,
+        paymentVoidedAt: r.paymentVoidedAt,
       })
     ) {
       return false;
     }
-    // Party effective mode also hides correction_reversal (JE-0168) — audit-only.
     if (r.jeReferenceType === 'correction_reversal') return false;
     return true;
   });

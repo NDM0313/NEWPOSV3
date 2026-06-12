@@ -37,8 +37,9 @@ import {
 import { ledgerTransactionOpenEventDetail } from '@/app/lib/ledgerTransactionOpenRef';
 import {
   isGlCorrectionReferenceType,
+  partyEffectiveRowAuditLabel,
   partyStatementGlCorrectionAuditLabel,
-  shouldIncludePartyStatementRowInNormal,
+  shouldIncludePartyEffectiveRow,
 } from '@/app/lib/reportVisibilityContract';
 
 /** AR / AP running balance sign: highlight “inverted” party positions so refunds / prepaids are obvious. */
@@ -255,10 +256,11 @@ function isAdjustmentRow(e: AccountLedgerEntry): boolean {
 }
 
 function isPartyRowHiddenInNormalEffective(e: AccountLedgerEntry): boolean {
-  return !shouldIncludePartyStatementRowInNormal({
+  return !shouldIncludePartyEffectiveRow({
     jeReferenceType: e.je_reference_type,
     jeActionFingerprint: e.je_action_fingerprint,
     linkedSaleStatus: e.linked_sale_status,
+    paymentVoidedAt: e.payment_voided_at,
   });
 }
 
@@ -1126,8 +1128,14 @@ export const AccountLedgerReportPage: React.FC<{
         .filter((e) => (applied.includeReversals ? true : !isReversalRow(e)))
         .map((e) => {
           const adjustmentLabel = isAdjustmentRow(e) ? adjustmentSubtypeLabel(e) : '';
+          const auditTrailLabel = partyEffectiveRowAuditLabel({
+            jeReferenceType: e.je_reference_type,
+            jeActionFingerprint: e.je_action_fingerprint,
+            linkedSaleStatus: e.linked_sale_status,
+            paymentVoidedAt: e.payment_voided_at,
+          });
           const glCorrectionAudit = isGlCorrectionReferenceType(e.je_reference_type);
-          const auditPrefix = glCorrectionAudit ? partyStatementGlCorrectionAuditLabel() : adjustmentLabel;
+          const auditPrefix = auditTrailLabel || (glCorrectionAudit ? partyStatementGlCorrectionAuditLabel() : adjustmentLabel);
           return {
             ...e,
             description: auditPrefix ? `${auditPrefix}: ${e.description}` : e.description,
@@ -1136,9 +1144,10 @@ export const AccountLedgerReportPage: React.FC<{
             displayRunningBalance: Number(e.running_balance || 0),
             displayStatus: hasReversalTwin(e)
               ? 'Reversed'
-              : glCorrectionAudit
-                ? partyStatementGlCorrectionAuditLabel()
-                : (e.document_type || e.ledger_kind || (isReversalRow(e) ? 'Reversal' : '—')),
+              : auditTrailLabel ||
+                (glCorrectionAudit
+                  ? partyStatementGlCorrectionAuditLabel()
+                  : (e.document_type || e.ledger_kind || (isReversalRow(e) ? 'Reversal' : '—'))),
             presentationKind: presentationForLedgerEntry(e),
           };
         });

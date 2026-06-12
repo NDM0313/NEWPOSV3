@@ -726,13 +726,22 @@ export function ArApReconciliationCenterPage() {
         </div>
       ) : summary ? (
         <>
+          <p className="text-xs text-gray-500 leading-relaxed">
+            Effective variance excludes cancelled, voided, and audit-only GL chains (same rules as Account Statements
+            effective mode). Audit/raw variance uses full posted GL.
+          </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <SummaryCard title="Operational receivables" subtitle="Contacts RPC (full)" value={summary.operational_receivables_full} formatCurrency={formatCurrency} tone="green" />
-            <SummaryCard title="GL receivables" subtitle="Dr − Cr, as of" value={summary.gl_ar_net_dr_minus_cr} formatCurrency={formatCurrency} tone="white" />
-            <SummaryCard title="Receivables variance" subtitle="Operational − GL" value={summary.variance_receivables} formatCurrency={formatCurrency} tone="warn" />
+            <SummaryCard title="GL receivables (raw)" subtitle="Dr − Cr, as of" value={summary.gl_ar_net_dr_minus_cr} formatCurrency={formatCurrency} tone="white" />
+            <SummaryCard title="GL receivables (effective)" subtitle="Raw − audit-only chains" value={summary.effective_gl_ar_net_dr_minus_cr} formatCurrency={formatCurrency} tone="white" />
+            <SummaryCard title="Receivables variance (raw)" subtitle="Operational − GL raw" value={summary.variance_receivables} formatCurrency={formatCurrency} tone="warn" />
+            <SummaryCard title="Receivables variance (effective)" subtitle="Operational − GL effective" value={summary.effective_variance_receivables} formatCurrency={formatCurrency} tone="warn" />
+            <SummaryCard title="Audit-only AR adjustment" subtitle="Hidden from effective" value={summary.audit_only_ar_net_adjustment} formatCurrency={formatCurrency} tone="orange" />
             <SummaryCard title="Operational payables" subtitle="Contacts RPC (full)" value={summary.operational_payables_full} formatCurrency={formatCurrency} tone="red" />
-            <SummaryCard title="GL payables" subtitle="Cr − Dr, as of" value={summary.gl_ap_net_credit} formatCurrency={formatCurrency} tone="white" />
-            <SummaryCard title="Payables variance" subtitle="Operational − GL" value={summary.variance_payables} formatCurrency={formatCurrency} tone="warn" />
+            <SummaryCard title="GL payables (raw)" subtitle="Cr − Dr, as of" value={summary.gl_ap_net_credit} formatCurrency={formatCurrency} tone="white" />
+            <SummaryCard title="GL payables (effective)" subtitle="Raw − audit-only chains" value={summary.effective_gl_ap_net_credit} formatCurrency={formatCurrency} tone="white" />
+            <SummaryCard title="Payables variance (raw)" subtitle="Operational − GL raw" value={summary.variance_payables} formatCurrency={formatCurrency} tone="warn" />
+            <SummaryCard title="Payables variance (effective)" subtitle="Operational − GL effective" value={summary.effective_variance_payables} formatCurrency={formatCurrency} tone="warn" />
             <SummaryCard title="Unposted documents" subtitle="Missing sale/purchase JE" value={summary.unposted_document_count} formatCurrency={formatCurrency} tone="orange" />
             <SummaryCard title="Unmapped AR + supplier AP JEs" subtitle="Distinct JEs (heuristic)" value={summary.unmapped_ar_je_count + summary.unmapped_ap_supplier_je_count} formatCurrency={formatCurrency} tone="orange" />
             <SummaryCard title="Unmapped worker payable JEs" subtitle="2010 / Worker Payable" value={summary.unmapped_ap_worker_je_count} formatCurrency={formatCurrency} tone="orange" />

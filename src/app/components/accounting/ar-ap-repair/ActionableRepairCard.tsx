@@ -61,6 +61,16 @@ export function ActionableRepairCard({ classification: c, readOnly, compact, onA
         <span className="text-[10px] text-gray-500 line-clamp-2" title={c.issueType}>
           {c.issueType}
         </span>
+        {c.effectiveImpact ? (
+          <span className="text-[10px] text-cyan-400/80 line-clamp-1" title={c.effectiveImpact}>
+            Eff: {c.effectiveImpact}
+          </span>
+        ) : null}
+        {c.auditImpact ? (
+          <span className="text-[10px] text-gray-600 line-clamp-1" title={c.auditImpact}>
+            Audit: {c.auditImpact}
+          </span>
+        ) : null}
         <Button
           type="button"
           size="sm"

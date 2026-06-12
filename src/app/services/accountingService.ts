@@ -86,6 +86,8 @@ export interface AccountLedgerEntry {
   economic_event_id?: string | null;
   /** Linked sale.status when JE references a sale (sale / sale_reversal / sale_return). */
   linked_sale_status?: string | null;
+  /** payments.voided_at when row is payment-linked (voided payment trail). */
+  payment_voided_at?: string | null;
 }
 
 /**
@@ -2258,6 +2260,55 @@ export const accountingService = {
           if (p?.branch_id) purchaseBranchById.set(String(p.id), String(p.branch_id));
         });
       }
+
+      const ledgerPaymentIds = [
+        ...new Set(
+          (lines as any[])
+            .flatMap((line: any) => {
+              const entry = line.journal_entry;
+              if (!entry) return [];
+              const ids: string[] = [];
+              if (entry.payment_id) ids.push(String(entry.payment_id));
+              if (String(entry.reference_type || '').toLowerCase() === 'payment' && entry.reference_id) {
+                ids.push(String(entry.reference_id));
+              }
+              return ids;
+            })
+        ),
+      ];
+      const paymentMetaById = new Map<string, { voided_at: string | null; sale_id: string | null }>();
+      const paymentLinkedSaleIds: string[] = [];
+      if (ledgerPaymentIds.length) {
+        const { data: payRows } = await supabase
+          .from('payments')
+          .select('id, voided_at, reference_type, reference_id')
+          .eq('company_id', companyId)
+          .in('id', ledgerPaymentIds);
+        (payRows || []).forEach((p: any) => {
+          const saleId =
+            String(p.reference_type || '').toLowerCase() === 'sale' && p.reference_id
+              ? String(p.reference_id)
+              : null;
+          paymentMetaById.set(String(p.id), {
+            voided_at: p.voided_at ?? null,
+            sale_id: saleId,
+          });
+          if (saleId && !saleStatusById.has(saleId)) paymentLinkedSaleIds.push(saleId);
+        });
+        if (paymentLinkedSaleIds.length) {
+          const { data: extraSales } = await supabase
+            .from('sales')
+            .select('id, invoice_no, order_no, draft_no, branch_id, status')
+            .in('id', [...new Set(paymentLinkedSaleIds)]);
+          (extraSales || []).forEach((s: any) => {
+            const doc = String(s.invoice_no || s.order_no || s.draft_no || '').trim();
+            if (doc) saleDocMap.set(String(s.id), doc);
+            if (s?.status) saleStatusById.set(String(s.id), String(s.status));
+            if (s?.branch_id) saleBranchById.set(String(s.id), String(s.branch_id));
+          });
+        }
+      }
+
       const rentalRefIds = [
         ...new Set(
           (lines as any[])
@@ -2522,6 +2573,14 @@ export const accountingService = {
               ? String(entry.reference_id)
               : undefined;
 
+          const payMeta =
+            (entry.payment_id && paymentMetaById.get(String(entry.payment_id))) ||
+            (refType === 'payment' && entry.reference_id
+              ? paymentMetaById.get(String(entry.reference_id))
+              : undefined);
+          const paymentSaleId = payMeta?.sale_id ?? null;
+          const resolvedLinkedSaleId = linkedSaleId ?? paymentSaleId ?? undefined;
+
           return {
             date: entry.entry_date,
             created_at: (entry as any).created_at,
@@ -2537,8 +2596,11 @@ export const accountingService = {
             je_reference_type: refType,
             je_action_fingerprint: (entry as { action_fingerprint?: string | null }).action_fingerprint ?? null,
             payment_id: entry.payment_id,
-            sale_id: linkedSaleId ?? entry.reference_id,
-            linked_sale_status: linkedSaleId ? saleStatusById.get(linkedSaleId) ?? null : null,
+            sale_id: resolvedLinkedSaleId ?? entry.reference_id,
+            linked_sale_status: resolvedLinkedSaleId
+              ? saleStatusById.get(resolvedLinkedSaleId) ?? null
+              : null,
+            payment_voided_at: payMeta?.voided_at ?? null,
             branch_id: resolvedBranchId ?? entry.branch_id,
             branch_name: branchName,
             account_name: accountNameLine,
@@ -2753,10 +2815,6 @@ export const accountingService = {
             referenceNumber: String(p.reference_number),
             bankTraceId: extractBankTraceId(p.notes),
           });
-        }
-        // Add account name to payment details
-        if (p.payment_account_id && accountMap.has(p.payment_account_id)) {
-          p.payment_account = { name: accountMap.get(p.payment_account_id) };
         }
         paymentDetailsMap.set(p.id, p);
       });
@@ -2988,6 +3046,48 @@ export const accountingService = {
 
       let runningBalance = openingBalance;
 
+      const journalPaymentIds = [
+        ...new Set(
+          rangeLines
+            .flatMap((l: any) => {
+              const e = l.journal_entry;
+              if (!e) return [];
+              const ids: string[] = [];
+              if (e.payment_id) ids.push(String(e.payment_id));
+              if (String(e.reference_type || '').toLowerCase() === 'payment' && e.reference_id) {
+                ids.push(String(e.reference_id));
+              }
+              return ids;
+            })
+        ),
+      ].filter((id) => !paymentDetailsMap.has(id));
+      if (journalPaymentIds.length) {
+        const { data: extraPayRows } = await supabase
+          .from('payments')
+          .select('id, voided_at, reference_type, reference_id, reference_number, notes, payment_account_id')
+          .eq('company_id', companyId)
+          .in('id', journalPaymentIds);
+        (extraPayRows || []).forEach((p: any) => {
+          paymentDetailsMap.set(p.id, p);
+          if (p.reference_type === 'sale' && p.reference_id && !saleStatusById.has(String(p.reference_id))) {
+            saleStatusById.set(String(p.reference_id), '');
+          }
+        });
+        const extraSaleIds = (extraPayRows || [])
+          .filter((p: any) => String(p.reference_type || '').toLowerCase() === 'sale' && p.reference_id)
+          .map((p: any) => String(p.reference_id));
+        if (extraSaleIds.length) {
+          const { data: extraSalesMeta } = await supabase
+            .from('sales')
+            .select('id, status')
+            .eq('company_id', companyId)
+            .in('id', [...new Set(extraSaleIds)]);
+          (extraSalesMeta || []).forEach((s: any) => {
+            if (s?.id) saleStatusById.set(String(s.id), String(s.status || ''));
+          });
+        }
+      }
+
       // PHASE 4: Build ledger entries with running balance (from rangeLines only)
       console.log('[ACCOUNTING SERVICE] getCustomerLedger - PHASE 4: Building ledger entries', {
         rangeLines: rangeLines.length,
@@ -3158,6 +3258,18 @@ export const accountingService = {
             ? String(entry.reference_id)
             : undefined;
 
+        const payId =
+          entry.payment_id ||
+          (normalizedRefType === 'payment' && entry.reference_id ? String(entry.reference_id) : null);
+        const payDetail = payId ? paymentDetailsMap.get(payId) : undefined;
+        const paymentSaleId =
+          payDetail &&
+          String(payDetail.reference_type || '').toLowerCase() === 'sale' &&
+          payDetail.reference_id
+            ? String(payDetail.reference_id)
+            : null;
+        const resolvedLinkedSaleId = linkedSaleId ?? paymentSaleId ?? undefined;
+
         return {
           date: entry.entry_date,
           reference_number: referenceNumber,
@@ -3180,8 +3292,9 @@ export const accountingService = {
           payment_id:
             entry.payment_id ||
             (entry.reference_type === 'payment' && entry.reference_id ? String(entry.reference_id) : undefined),
-          sale_id: linkedSaleId,
-          linked_sale_status: linkedSaleId ? saleStatusById.get(linkedSaleId) ?? null : null,
+          sale_id: resolvedLinkedSaleId,
+          linked_sale_status: resolvedLinkedSaleId ? saleStatusById.get(resolvedLinkedSaleId) ?? null : null,
+          payment_voided_at: payDetail?.voided_at ?? null,
           rental_id: entry.reference_type === 'rental' ? entry.reference_id : undefined,
           branch_id: resolvedBranchId ?? entry.branch_id,
           branch_name: branchName,

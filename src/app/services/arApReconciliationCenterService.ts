@@ -6,6 +6,13 @@
 import { supabase } from '@/lib/supabase';
 import { contactService } from '@/app/services/contactService';
 import { accountingReportsService } from '@/app/services/accountingReportsService';
+import {
+  computeEffectiveGlAp,
+  computeEffectiveGlAr,
+  computeEffectiveVariance,
+  sumAuditOnlyPartyGlNet,
+} from '@/app/lib/arApEffectiveVariance';
+import { fetchPartyGlLinesForEffectiveVariance } from '@/app/services/arApEffectiveVarianceService';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -50,6 +57,13 @@ export interface IntegrityLabSummary extends IntegrityLabSnapshotRow {
   operational_payables_full: number;
   variance_receivables: number | null;
   variance_payables: number | null;
+  /** GL AR after excluding audit-only cancelled/void/correction chains (effective statement model). */
+  effective_gl_ar_net_dr_minus_cr: number | null;
+  effective_gl_ap_net_credit: number | null;
+  effective_variance_receivables: number | null;
+  effective_variance_payables: number | null;
+  audit_only_ar_net_adjustment: number;
+  audit_only_ap_net_adjustment: number;
   status: IntegrityLabStatus;
   statusLabels: string[];
 }
@@ -213,9 +227,33 @@ export async function fetchIntegrityLabSummary(
   const variance_receivables = glAr != null ? operational_receivables_full - glAr : null;
   const variance_payables = glAp != null ? operational_payables_full - glAp : null;
 
+  let audit_only_ar_net_adjustment = 0;
+  let audit_only_ap_net_adjustment = 0;
+  try {
+    const [arLines, apLines] = await Promise.all([
+      fetchPartyGlLinesForEffectiveVariance(companyId, 'AR', end),
+      fetchPartyGlLinesForEffectiveVariance(companyId, 'AP', end),
+    ]);
+    audit_only_ar_net_adjustment = sumAuditOnlyPartyGlNet(arLines);
+    audit_only_ap_net_adjustment = sumAuditOnlyPartyGlNet(apLines);
+  } catch (e) {
+    console.warn('[arApIntegrityLab] effective variance lines:', e);
+  }
+
+  const effective_gl_ar_net_dr_minus_cr = computeEffectiveGlAr(glAr, audit_only_ar_net_adjustment);
+  const effective_gl_ap_net_credit = computeEffectiveGlAp(glAp, audit_only_ap_net_adjustment);
+  const effective_variance_receivables = computeEffectiveVariance(
+    operational_receivables_full,
+    effective_gl_ar_net_dr_minus_cr
+  );
+  const effective_variance_payables = computeEffectiveVariance(
+    operational_payables_full,
+    effective_gl_ap_net_credit
+  );
+
   const { status, labels } = deriveIntegrityLabStatus({
-    varianceReceivables: variance_receivables,
-    variancePayables: variance_payables,
+    varianceReceivables: effective_variance_receivables ?? variance_receivables,
+    variancePayables: effective_variance_payables ?? variance_payables,
     unpostedCount: s.unposted_document_count,
     unmappedArJe: s.unmapped_ar_je_count,
     unmappedApJe: s.unmapped_ap_je_count,
@@ -232,6 +270,12 @@ export async function fetchIntegrityLabSummary(
     operational_payables_full,
     variance_receivables,
     variance_payables,
+    effective_gl_ar_net_dr_minus_cr,
+    effective_gl_ap_net_credit,
+    effective_variance_receivables,
+    effective_variance_payables,
+    audit_only_ar_net_adjustment,
+    audit_only_ap_net_adjustment,
     status,
     statusLabels: labels,
   };

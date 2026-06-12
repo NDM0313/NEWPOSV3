@@ -50,6 +50,10 @@ export interface ActionableRepairClassification {
   canApply: boolean;
   riskLevel: ActionableRiskLevel;
   blockReason?: string;
+  /** Impact on effective/normal party statement balance. */
+  effectiveImpact?: string;
+  /** Impact on raw GL / audit-full view. */
+  auditImpact?: string;
   queueItem?: Omit<RepairQueueItem, 'queueId'>;
 }
 
@@ -125,6 +129,8 @@ export function classifyCorrectionReversalRow(input: {
     canApply: false,
     riskLevel: 'low',
     blockReason: 'Audit-only row — GL repair disabled',
+    effectiveImpact: 'Excluded from effective statement — no closing balance effect',
+    auditImpact: 'Visible in audit/full statement with reversal label',
   };
 }
 
@@ -149,6 +155,8 @@ export function classifyCancelledSaleTrail(input: {
     primaryButton: 'mark_reviewed',
     canApply: false,
     riskLevel: 'low',
+    effectiveImpact: 'Hidden from effective balance (cancelled chain)',
+    auditImpact: 'Full cancelled sale/reversal trail visible in audit mode',
   };
 }
 
@@ -296,6 +304,8 @@ export function classifyUnmappedJournalLine(
       primaryButton: diag.isMetadataReviewOnly ? 'mark_reviewed' : 'fix_link',
       canApply: true,
       riskLevel: diag.riskLevel,
+      effectiveImpact: 'Fix Link updates trace metadata only — no effective GL balance change',
+      auditImpact: 'Audit trail shows linked contact after save',
     };
   }
 
@@ -326,6 +336,8 @@ export function classifyUnmappedJournalLine(
     primaryButton: 'fix_link',
     canApply: true,
     riskLevel: diag.riskLevel,
+    effectiveImpact: 'Metadata link — GL amounts unchanged',
+    auditImpact: 'Trace mapping updated; raw GL unchanged',
     queueItem: {
       actionId: 'payment.relink_payment_to_journal',
       sourceTab: 'ar-ap',
