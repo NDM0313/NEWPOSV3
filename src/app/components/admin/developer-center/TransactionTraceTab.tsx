@@ -20,6 +20,9 @@ import {
   type TraceMode,
   type TransactionTraceResult,
 } from '@/app/services/accountingDeveloperCenterService';
+import type { ReportModeVisibility, ReportVisibility } from '@/app/lib/transactionTraceReportVisibility';
+import { suggestTraceActions } from '@/app/lib/transactionTraceSuggestedActions';
+import { isCorrectionReversalReferenceType } from '@/app/lib/reportVisibilityContract';
 
 interface Props {
   companyId: string;
@@ -56,6 +59,50 @@ function inclBadge(included: boolean) {
     <Badge className="bg-emerald-900/40 text-emerald-300 border-emerald-800">included</Badge>
   ) : (
     <Badge className="bg-slate-800 text-slate-400 border-slate-700">excluded</Badge>
+  );
+}
+
+function modeVisLine(label: string, vis: ReportModeVisibility) {
+  return (
+    <div key={label} className="space-y-0.5">
+      <p>
+        {label} — normal {inclBadge(vis.normal.included)} · audit {inclBadge(vis.audit.included)}
+      </p>
+      <p className="text-gray-500 pl-2">{vis.normal.reason}</p>
+    </div>
+  );
+}
+
+function renderReportVisibility(vis: ReportVisibility, journalRt?: string | null) {
+  const suggested = suggestTraceActions({
+    issueType: 'none',
+    journalReferenceType: journalRt,
+    normalHiddenAuditVisible:
+      isCorrectionReversalReferenceType(journalRt) &&
+      !vis.roznamcha.normal.included &&
+      vis.roznamcha.audit.included,
+  });
+  return (
+    <div className="space-y-2">
+      {modeVisLine('Roznamcha', vis.roznamcha)}
+      {modeVisLine('Account statement', vis.accountStatement)}
+      {modeVisLine('Customer/supplier statement', vis.customerSupplierStatement)}
+      {modeVisLine('Day Book', vis.dayBook)}
+      <p>Dashboard: {vis.dashboard.note}</p>
+      {vis.dashboard.impacted.length > 0 && <p>KPIs: {vis.dashboard.impacted.join(', ')}</p>}
+      {suggested.length > 0 && (
+        <div className="border-t border-gray-800 pt-2 mt-2">
+          <p className="text-gray-300 font-medium">Suggested safe actions</p>
+          <ul className="list-disc pl-4 mt-1">
+            {suggested.map((s) => (
+              <li key={s.id}>
+                <span className="text-gray-200">{s.label}</span> — {s.detail}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -273,38 +320,14 @@ export function TransactionTraceTab({ companyId, initialQuery = '' }: Props) {
                       {row.entryNo || row.journalId.slice(0, 8)}
                       {row.referenceType ? ` · ${row.referenceType}` : ''}
                     </p>
-                    <p>
-                      Roznamcha {inclBadge(row.visibility.roznamcha.included)} — {row.visibility.roznamcha.reason}
-                    </p>
-                    <p>
-                      Account Statement {inclBadge(row.visibility.accountStatement.included)} —{' '}
-                      {row.visibility.accountStatement.reason}
-                    </p>
-                    <p>
-                      Day Book {inclBadge(row.visibility.dayBook.included)} — {row.visibility.dayBook.reason}
-                    </p>
-                    <p>Dashboard: {row.visibility.dashboard.note}</p>
-                    {row.visibility.dashboard.impacted.length > 0 && (
-                      <p>KPIs: {row.visibility.dashboard.impacted.join(', ')}</p>
-                    )}
+                    {renderReportVisibility(row.visibility, row.referenceType)}
                   </div>
                 ))}
               </div>
             ) : trace.reportVisibility.length > 0 ? (
               <div className="space-y-2">
                 {trace.reportVisibility.map((vis, i) => (
-                  <div key={i} className="space-y-2">
-                    <p>
-                      Roznamcha {inclBadge(vis.roznamcha.included)} — {vis.roznamcha.reason}
-                    </p>
-                    <p>
-                      Account Statement {inclBadge(vis.accountStatement.included)} — {vis.accountStatement.reason}
-                    </p>
-                    <p>
-                      Day Book {inclBadge(vis.dayBook.included)} — {vis.dayBook.reason}
-                    </p>
-                    <p>Dashboard: {vis.dashboard.note}</p>
-                  </div>
+                  <div key={i}>{renderReportVisibility(vis, trace.journals[i]?.reference_type)}</div>
                 ))}
               </div>
             ) : (

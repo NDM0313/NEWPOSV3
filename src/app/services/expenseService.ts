@@ -333,7 +333,57 @@ export const expenseService = {
     return data;
   },
 
-  // Delete expense — true delete + void JEs + void payments
+  /**
+   * Cancel posted expense — void GL/payments, keep expense row (status=rejected) for audit.
+   */
+  async cancelPostedExpense(
+    id: string,
+    companyId: string,
+    reason: string,
+    performedBy?: string | null
+  ) {
+    const now = getCurrentLocalTimestamp();
+    await supabase
+      .from('journal_entries')
+      .update({ is_void: true, void_reason: 'expense_cancelled', voided_at: now })
+      .eq('reference_type', 'expense')
+      .eq('reference_id', id)
+      .eq('company_id', companyId)
+      .or('is_void.is.null,is_void.eq.false');
+    await supabase
+      .from('payments')
+      .update({ voided_at: now, voided_reason: 'expense_cancelled' })
+      .eq('reference_type', 'expense')
+      .eq('reference_id', id)
+      .eq('company_id', companyId)
+      .is('voided_at', null);
+
+    const { error } = await supabase
+      .from('expenses')
+      .update({
+        status: 'rejected',
+        cancel_reason: reason,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .eq('company_id', companyId);
+    if (error) throw error;
+
+    const { activityLogService } = await import('@/app/services/activityLogService');
+    await activityLogService
+      .logActivity({
+        companyId,
+        module: 'expense',
+        entityId: id,
+        action: 'expense_cancelled',
+        performedBy: performedBy ?? null,
+        description: `Expense cancelled: ${reason}`,
+        notes: reason,
+      })
+      .catch(() => {});
+  },
+
+  // Delete expense — draft only: true delete + void any stray JEs + void payments
   async deleteExpense(id: string, companyId?: string) {
     const now = getCurrentLocalTimestamp();
     if (companyId) {

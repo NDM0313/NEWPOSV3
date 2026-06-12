@@ -59,6 +59,10 @@ import { expenseService } from '../../services/expenseService';
 import { branchService } from '../../services/branchService';
 import { normalizeCategoryForComparison } from '@/app/lib/expenseEditCanonical';
 import {
+  expenseDeleteOrCancelLabel,
+  isPostedExpenseStatus,
+} from '@/app/lib/expenseCancelPolicy';
+import {
   EXPENSE_LIST_TRACE,
   isExpenseListDiagnosticsEnabled,
   logExpenseListTrace,
@@ -104,7 +108,7 @@ const ICON_BY_SLUG: Record<string, React.ComponentType<{ size?: number }>> = {
 export const ExpensesDashboard = () => {
   const { formatCurrency } = useFormatCurrency();
   const { companyId } = useSupabase();
-  const { expenses, loading, deleteExpense, refreshExpenses } = useExpenses();
+  const { expenses, loading, deleteExpense, cancelExpense, refreshExpenses } = useExpenses();
   const { accounts } = useAccounting();
   const [activeTab, setActiveTab] = useState<'overview' | 'list' | 'categories'>('overview');
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -296,17 +300,24 @@ export const ExpensesDashboard = () => {
   };
   
   const handleDeleteExpense = async () => {
-    if (selectedExpense) {
-      try {
+    if (!selectedExpense) return;
+    const posted = isPostedExpenseStatus(selectedExpense.status);
+    try {
+      if (posted) {
+        await cancelExpense(selectedExpense.id);
+        toast.success(`Expense "${selectedExpense.expenseNo || selectedExpense.id}" cancelled — audit trail kept.`);
+      } else {
         await deleteExpense(selectedExpense.id);
-        await refreshExpenses();
-        toast.success(`Expense "${selectedExpense.expenseNo || selectedExpense.id}" deleted successfully.`);
-        setDeleteAlertOpen(false);
-        setSelectedExpense(null);
-      } catch (error: any) {
-        console.error('[EXPENSES DASHBOARD] Error deleting expense:', error);
-        toast.error('Failed to delete expense: ' + (error.message || 'Unknown error'));
+        toast.success(`Expense "${selectedExpense.expenseNo || selectedExpense.id}" deleted.`);
       }
+      await refreshExpenses();
+      setDeleteAlertOpen(false);
+      setSelectedExpense(null);
+    } catch (error: any) {
+      console.error('[EXPENSES DASHBOARD] Error removing expense:', error);
+      toast.error(
+        (posted ? 'Failed to cancel expense: ' : 'Failed to delete expense: ') + (error.message || 'Unknown error')
+      );
     }
   };
 
@@ -1149,22 +1160,26 @@ export const ExpensesDashboard = () => {
         onSuccess={loadCategoriesFromDb}
       />
 
-      {/* Delete Expense Confirmation */}
+      {/* Delete / Cancel Expense Confirmation */}
       <AlertDialog open={deleteAlertOpen} onOpenChange={setDeleteAlertOpen}>
         <AlertDialogContent className="bg-gray-900 border-gray-800 text-white">
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Expense</AlertDialogTitle>
+            <AlertDialogTitle>
+              {expenseDeleteOrCancelLabel(selectedExpense?.status)}
+            </AlertDialogTitle>
             <AlertDialogDescription className="text-gray-400">
-              Are you sure you want to delete expense {selectedExpense?.expenseNo || selectedExpense?.id}? This action cannot be undone.
+              {isPostedExpenseStatus(selectedExpense?.status)
+                ? `Cancel expense ${selectedExpense?.expenseNo || selectedExpense?.id}? Accounting will be voided; the row stays for audit and is hidden from normal reports.`
+                : `Delete draft expense ${selectedExpense?.expenseNo || selectedExpense?.id}? This removes the row.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="bg-gray-800 border-gray-700 text-white hover:bg-gray-700">Cancel</AlertDialogCancel>
+            <AlertDialogCancel className="bg-gray-800 border-gray-700 text-white hover:bg-gray-700">Back</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteExpense}
               className="bg-red-600 hover:bg-red-700 text-white"
             >
-              Delete
+              {isPostedExpenseStatus(selectedExpense?.status) ? 'Cancel Expense' : 'Delete'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

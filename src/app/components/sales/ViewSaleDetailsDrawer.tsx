@@ -1705,7 +1705,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                                 setDeleteConfirmationOpen(true);
                               }}
                               className="p-1.5 rounded-lg hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                              title="Delete Payment"
+                              title="Cancel Payment"
                               disabled={isDeletingPayment || loadingPayments}
                             >
                               <Trash2 size={14} />

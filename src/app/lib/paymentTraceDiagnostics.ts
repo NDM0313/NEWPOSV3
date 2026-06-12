@@ -89,8 +89,8 @@ export function buildPaymentTraceView(trace: TransactionTraceResult, query: stri
   }
 
   const vis = trace.reportVisibility;
-  const rozIncluded = vis.filter((v) => v.roznamcha.included).length;
-  const stmtIncluded = vis.filter((v) => v.accountStatement.included).length;
+  const rozIncluded = vis.filter((v) => v.roznamcha.normal.included).length;
+  const stmtIncluded = vis.filter((v) => v.accountStatement.normal.included).length;
   const reportVisibilitySummary = vis.length
     ? `Roznamcha: ${rozIncluded}/${vis.length} · Statement: ${stmtIncluded}/${vis.length}`
     : 'No visibility rows';

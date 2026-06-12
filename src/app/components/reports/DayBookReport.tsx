@@ -29,6 +29,7 @@ import {
 import { netEconomicMeaning } from '@/app/lib/accountFlowPresentation';
 import { Switch } from '@/app/components/ui/switch';
 import { Label } from '@/app/components/ui/label';
+import { isCorrectionReversalReferenceType } from '@/app/lib/reportVisibilityContract';
 
 export interface DayBookEntry {
   id: string;
@@ -235,6 +236,8 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
 
       const list: DayBookEntry[] = [];
       for (const je of data || []) {
+        const refTypeHeader = String(je.reference_type ?? '');
+        if (!auditMode && isCorrectionReversalReferenceType(refTypeHeader)) continue;
         const lines =
           (je.lines as Array<{
             id?: string;
@@ -256,7 +259,14 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
         const fp = String((je as { action_fingerprint?: string }).action_fingerprint || '');
         const presentationKind = journalEntryPresentationFromHeader(refType, fp);
         const payId = je.payment_id != null && String(je.payment_id).trim() ? String(je.payment_id) : null;
-        const descSuffix = refType === 'sale_adjustment' ? ' (sale edit)' : refType === 'payment_adjustment' ? ' (payment edit)' : '';
+        const descSuffix =
+          refType === 'sale_adjustment'
+            ? ' (sale edit)'
+            : refType === 'payment_adjustment'
+              ? ' (payment edit)'
+              : refType === 'correction_reversal'
+                ? ' (Reversal — audit)'
+                : '';
         const desc = stripJournalEditAuditSuffix(String(je.description ?? '')) + descSuffix;
         const type = refTypeToDisplayType(refType);
 

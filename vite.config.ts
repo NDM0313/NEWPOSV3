@@ -1,11 +1,26 @@
 import { defineConfig } from 'vite'
 import path from 'path'
+import { execSync } from 'child_process'
+
+function resolveBuildCommit(): string {
+  if (process.env.VITE_BUILD_COMMIT) return process.env.VITE_BUILD_COMMIT
+  try {
+    return execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim()
+  } catch {
+    return 'dev'
+  }
+}
+
+const buildCommit = resolveBuildCommit()
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import { applyStorageRlsPlugin } from './vite-plugin-apply-storage-rls'
 
 export default defineConfig({
+  define: {
+    'import.meta.env.VITE_BUILD_COMMIT': JSON.stringify(buildCommit),
+  },
   server: {
     host: true, // Expose on 0.0.0.0 for mobile/network access
     hmr: true,  // Explicitly enable Hot Module Replacement

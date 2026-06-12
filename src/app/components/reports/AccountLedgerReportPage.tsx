@@ -252,7 +252,13 @@ function isAdjustmentRow(e: AccountLedgerEntry): boolean {
 function isReversalRow(e: AccountLedgerEntry): boolean {
   const d = normalizeLower(e.description);
   const t = normalizeLower(e.document_type);
-  return e.ledger_kind === 'reversal' || d.includes('reversal') || t.includes('reversal');
+  const jeRt = normalizeLower(e.je_reference_type);
+  return (
+    e.ledger_kind === 'reversal' ||
+    jeRt === 'correction_reversal' ||
+    d.includes('reversal') ||
+    t.includes('reversal')
+  );
 }
 
 function isManualRow(e: AccountLedgerEntry): boolean {
@@ -384,7 +390,7 @@ export const AccountLedgerReportPage: React.FC<{
   const [transactionTypeFilter, setTransactionTypeFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [polarity, setPolarity] = useState<'all' | 'debit' | 'credit'>('all');
-  const [includeReversals, setIncludeReversals] = useState(true);
+  const [includeReversals, setIncludeReversals] = useState(false);
   const [includeManualEntries, setIncludeManualEntries] = useState(true);
   const [includeAdjustments, setIncludeAdjustments] = useState(true);
   const [applied, setApplied] = useState<FiltersState>({
@@ -398,7 +404,7 @@ export const AccountLedgerReportPage: React.FC<{
     transactionTypeFilter: 'all',
     searchTerm: '',
     polarity: 'all',
-    includeReversals: true,
+    includeReversals: false,
     includeManualEntries: true,
     includeAdjustments: true,
   });
@@ -992,6 +998,9 @@ export const AccountLedgerReportPage: React.FC<{
     if (statementType === 'cash_bank') {
       const firstCash = accounts.find((a) => classifyAccountCategory(a) === 'Cash / Bank / Wallet');
       if (firstCash?.id) setSelectedAccountId(firstCash.id);
+      setIncludeAdjustments(false);
+      setIncludeReversals(false);
+      setApplied((prev) => ({ ...prev, includeAdjustments: false, includeReversals: false }));
     }
   }, [statementType, accounts]);
 
@@ -1352,7 +1361,7 @@ export const AccountLedgerReportPage: React.FC<{
       transactionTypeFilter: 'all',
       searchTerm: '',
       polarity: 'all',
-      includeReversals: true,
+      includeReversals: false,
       includeManualEntries: true,
       includeAdjustments: true,
       selectedContactId: '',

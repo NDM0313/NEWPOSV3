@@ -18,6 +18,10 @@ export const DEVELOPER_MODE_TAP_RESET_MS = 4000;
 export const APP_VERSION =
   (import.meta.env?.VITE_APP_VERSION as string | undefined) || '0.0.1';
 
+/** Git commit baked at build time (vite.config) — use to confirm office vs home bundle. */
+export const APP_BUILD_COMMIT =
+  (import.meta.env?.VITE_BUILD_COMMIT as string | undefined) || 'dev';
+
 const CHANGE_EVENT = 'erp-developer-mode-changed';
 
 const AUTH_TOKEN_KEY_RE = /^sb-.+-auth-token$/;

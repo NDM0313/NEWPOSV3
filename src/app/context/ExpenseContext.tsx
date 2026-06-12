@@ -32,6 +32,7 @@ import {
   postedPaymentDisplayFromRow,
 } from '@/app/lib/resolveExpensePaymentAccount';
 import { toast } from 'sonner';
+import { isPostedExpenseStatus } from '@/app/lib/expenseCancelPolicy';
 
 // ============================================
 // TYPES
@@ -83,6 +84,7 @@ interface ExpenseContextType {
   createExpense: (expense: Omit<Expense, 'id' | 'expenseNo' | 'createdAt' | 'updatedAt'> & { category: ExpenseCategory | string }, options?: { branchId?: string; payment_account_id?: string; paidToUserId?: string; expense_category_id?: string }) => Promise<Expense>;
   updateExpense: (id: string, updates: Partial<Expense>, options?: { silent?: boolean }) => Promise<void>;
   deleteExpense: (id: string) => Promise<void>;
+  cancelExpense: (id: string, reason?: string) => Promise<void>;
   approveExpense: (id: string, approvedBy: string) => Promise<void>;
   rejectExpense: (id: string) => Promise<void>;
   markAsPaid: (id: string, paymentMethod: string) => Promise<void>;
@@ -114,6 +116,7 @@ export const useExpenses = () => {
           defaultError();
         },
         deleteExpense: defaultError,
+        cancelExpense: defaultError,
         recordPayment: defaultError,
         getExpensesByDateRange: () => [],
         getTotalByCategory: () => 0,
@@ -752,23 +755,48 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // Delete expense
+  // Delete expense (draft/unposted only)
   const deleteExpense = async (id: string): Promise<void> => {
     const expense = getExpenseById(id);
     if (!expense) {
       throw new Error('Expense not found');
     }
+    if (isPostedExpenseStatus(expense.status)) {
+      throw new Error('Posted expenses must be cancelled, not deleted.');
+    }
 
     try {
-      // Delete from Supabase
       await expenseService.deleteExpense(id, companyId || undefined);
-      
-      // Update local state
-      setExpenses(prev => prev.filter(e => e.id !== id));
+      setExpenses((prev) => prev.filter((e) => e.id !== id));
       toast.success(`${expense.expenseNo} deleted successfully!`);
     } catch (error: any) {
       console.error('[EXPENSE CONTEXT] Error deleting expense:', error);
       toast.error(`Failed to delete expense: ${error.message || 'Unknown error'}`);
+      throw error;
+    }
+  };
+
+  const cancelExpense = async (id: string, reason = 'Cancelled by user'): Promise<void> => {
+    const expense = getExpenseById(id);
+    if (!expense) {
+      throw new Error('Expense not found');
+    }
+    if (!companyId) {
+      throw new Error('Company not loaded');
+    }
+
+    try {
+      await expenseService.cancelPostedExpense(id, companyId, reason, user?.id ?? null);
+      setExpenses((prev) =>
+        prev.map((e) =>
+          e.id === id ? { ...e, status: 'rejected' as ExpenseStatus, updatedAt: new Date().toISOString() } : e
+        )
+      );
+      void accounting?.refreshEntries();
+      toast.success(`${expense.expenseNo} cancelled — audit trail preserved.`);
+    } catch (error: any) {
+      console.error('[EXPENSE CONTEXT] Error cancelling expense:', error);
+      toast.error(`Failed to cancel expense: ${error.message || 'Unknown error'}`);
       throw error;
     }
   };
@@ -868,6 +896,7 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
     createExpense,
     updateExpense,
     deleteExpense,
+    cancelExpense,
     approveExpense,
     rejectExpense,
     markAsPaid,
@@ -877,7 +906,7 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
     refreshExpenses: loadExpenses,
     __activate: activate,
   }), [
-    expenses, loading, getExpenseById, createExpense, updateExpense, deleteExpense,
+    expenses, loading, getExpenseById, createExpense, updateExpense, deleteExpense, cancelExpense,
     approveExpense, rejectExpense, markAsPaid, getExpensesByCategory,
     getExpensesByStatus, getTotalByCategory, loadExpenses, activate,
   ]);

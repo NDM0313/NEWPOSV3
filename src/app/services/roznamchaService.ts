@@ -23,6 +23,10 @@ import {
   resolveRoznamchaRowDateTime,
 } from '@/app/utils/transactionEventDateTime';
 import { filterLivePaymentsExcludingVoidedJournals } from '@/app/lib/paymentVoidVisibility';
+import {
+  isCorrectionReversalReferenceType,
+  roznamchaRowAuditSuffix,
+} from '@/app/lib/reportVisibilityContract';
 
 export { dedupeRoznamchaRows, roznamchaEntityKeys, roznamchaLooseMovementKey, roznamchaMovementKey };
 
@@ -1573,6 +1577,7 @@ function mapJournalLiquidityLinesToRows(
   paymentLedgerAccountId: string | null,
   nameByUserId: Map<string, string>,
   expenseNoByExpenseId: Map<string, string> = new Map(),
+  auditMode = false,
 ): RoznamchaRow[] {
   const rows: RoznamchaRow[] = [];
   for (const je of entries) {
@@ -1611,12 +1616,18 @@ function mapJournalLiquidityLinesToRows(
       }
       if (paymentLedgerAccountId && line.account_id !== paymentLedgerAccountId) continue;
 
+      const auditSuffix = auditMode
+        ? roznamchaRowAuditSuffix({
+            referenceType: je.reference_type,
+            journalIsVoid: (je as { is_void?: boolean }).is_void,
+          })
+        : '';
       rows.push({
         id: `jel-${line.id}`,
         date: dateStr,
         time: timeStr,
         ref,
-        details: desc,
+        details: desc + auditSuffix,
         referenceDisplay: '',
         partyLine: null,
         journalEntryNo,
@@ -1718,6 +1729,7 @@ async function fetchJournalLiquidityRows(
 
   let entries = (data as unknown as JournalLiquidityLineRow[]).filter((je) => {
     if (!includeVoidedReversed && (je as { is_void?: boolean }).is_void === true) return false;
+    if (!includeVoidedReversed && isCorrectionReversalReferenceType(je.reference_type)) return false;
     return true;
   });
   entries = await filterJournalEntriesForRoznamchaBranch(entries, branchId);
@@ -1750,6 +1762,7 @@ async function fetchJournalLiquidityRows(
     paymentLedgerAccountId,
     nameByUserId,
     expenseNoByExpenseId,
+    includeVoidedReversed,
   );
 }
 
@@ -1795,6 +1808,7 @@ async function getJournalLiquidityOpeningDelta(
 
   let entries = (data as unknown as JournalLiquidityLineRow[]).filter((je) => {
     if (!includeVoidedReversed && (je as { is_void?: boolean }).is_void === true) return false;
+    if (!includeVoidedReversed && isCorrectionReversalReferenceType(je.reference_type)) return false;
     return true;
   });
   entries = await filterJournalEntriesForRoznamchaBranch(entries, branchId);
@@ -1824,6 +1838,7 @@ async function getJournalLiquidityOpeningDelta(
     paymentLedgerAccountId,
     new Map(),
     expenseNoByExpenseId,
+    includeVoidedReversed,
   );
   let total = 0;
   for (const r of rows) {
@@ -2069,6 +2084,7 @@ async function recoverOrphanRentalPaymentJeRows(
 
   let entries = (jeData as unknown as JournalLiquidityLineRow[]).filter((je) => {
     if (!includeVoidedReversed && je.is_void === true) return false;
+    if (!includeVoidedReversed && isCorrectionReversalReferenceType(je.reference_type)) return false;
     return true;
   });
   entries = await filterJournalEntriesForRoznamchaBranch(entries, branchId);
