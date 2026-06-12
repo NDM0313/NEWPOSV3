@@ -18,7 +18,7 @@ test('JE-0161-class orphan AR defect is classified as GL correction draft requir
   const cls = classifyOrphanArReversalDefect(defect);
   assert.equal(cls.status, 'needs_gl_correction_draft');
   assert.equal(cls.primaryButton, 'create_gl_correction_draft');
-  assert.equal(cls.canApply, false);
+  assert.equal(cls.canApply, true);
   assert.match(cls.whyDetected, /JE-0161/);
   assert.match(cls.whyDetected, /1100/);
 
@@ -26,7 +26,7 @@ test('JE-0161-class orphan AR defect is classified as GL correction draft requir
   assert.equal(dry.ok, true);
   assert.equal(dry.newCorrectionJePreview.balanced, true);
   assert.equal(dry.newCorrectionJePreview.totalDebit, 150);
-  assert.match(dry.blockedApplyReason, /migration/i);
+  assert.match(dry.blockedApplyReason, /RPC/i);
 });
 
 test('correction_reversal JE-0168 is audit-only, no GL repair', () => {

@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Loader2, ShieldAlert } from 'lucide-react';
 import {
   Dialog,
@@ -22,22 +22,33 @@ import {
 import { isValidRepairConfirmPhrase } from '@/app/lib/repairQueueDryRun';
 import { actionRequiresGlCorrectionRpc, resolveRepairApplyBlockReasons } from '@/app/lib/developerRepairApplyGate';
 import { canApplyDeveloperRepair } from '@/app/lib/developerAccountingAccess';
+import { applyDeveloperRepair } from '@/app/services/developerRepairService';
+import { loadDeveloperRepairSystemStatus } from '@/app/services/developerRepairSystemStatusService';
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   defectId: string;
   onQueue?: () => void;
+  onApplied?: () => void;
 }
 
-export function GlCorrectionDraftModal({ open, onOpenChange, defectId, onQueue }: Props) {
-  const { userRole } = useSupabase();
+export function GlCorrectionDraftModal({ open, onOpenChange, defectId, onQueue, onApplied }: Props) {
+  const { companyId, userId, userRole } = useSupabase();
   const [preview, setPreview] = useState<GlCorrectionDraftDryRun | null>(null);
   const [confirmPhrase, setConfirmPhrase] = useState('');
   const [loading, setLoading] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const [glCorrectionRpcAvailable, setGlCorrectionRpcAvailable] = useState(false);
 
-  const canApply = canApplyDeveloperRepair(userRole);
-  const glCorrectionRpcAvailable = false;
+  const canApplyRole = canApplyDeveloperRepair(userRole);
+
+  useEffect(() => {
+    if (!open || !companyId) return;
+    void loadDeveloperRepairSystemStatus(companyId, userRole).then((s) => {
+      setGlCorrectionRpcAvailable(s.probe.glCorrectionRpcAvailable);
+    });
+  }, [open, companyId, userRole]);
 
   const runDryRun = useCallback(() => {
     const defect = knownOrphanDefectById(defectId);
@@ -55,11 +66,11 @@ export function GlCorrectionDraftModal({ open, onOpenChange, defectId, onQueue }
     }
   }, [defectId]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (open && !preview) runDryRun();
   }, [open, preview, runDryRun]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!open) {
       setPreview(null);
       setConfirmPhrase('');
@@ -67,16 +78,44 @@ export function GlCorrectionDraftModal({ open, onOpenChange, defectId, onQueue }
   }, [open]);
 
   const applyGate = resolveRepairApplyBlockReasons({
-    canApply,
+    canApply: canApplyRole,
     dryRun: preview
       ? { ok: preview.ok, dryRunHash: preview.dryRunHash, before: preview.before, afterPreview: preview.afterPreview }
       : null,
     confirmPhrase,
     expectedPhrase: GL_CORRECTION_CONFIRM_PHRASE,
-    applying: false,
+    applying,
     actionRequiresGlCorrectionRpc: actionRequiresGlCorrectionRpc('gl.create_correction_draft'),
     glCorrectionRpcAvailable,
   });
+
+  const handleApply = async () => {
+    if (applyGate.blocked || !preview || !companyId) {
+      toast.error(applyGate.reasons[0]?.message || 'Apply blocked');
+      return;
+    }
+    setApplying(true);
+    try {
+      const res = await applyDeveloperRepair(
+        'gl.create_correction_draft',
+        { defectId },
+        preview.dryRunHash,
+        confirmPhrase,
+        { companyId, userId, userRole }
+      );
+      if (res.ok) {
+        toast.success(res.message || 'GL correction applied');
+        onApplied?.();
+        onOpenChange(false);
+      } else {
+        toast.error(res.error || 'Apply failed');
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Apply failed');
+    } finally {
+      setApplying(false);
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -96,9 +135,22 @@ export function GlCorrectionDraftModal({ open, onOpenChange, defectId, onQueue }
           <div className="space-y-4 text-sm">
             <div className="flex flex-wrap gap-2">
               <Badge className="bg-red-900/40 text-red-300 border-red-800">{preview.riskLevel} risk</Badge>
-              <Badge variant="outline" className="border-amber-600 text-amber-300">
-                Apply blocked until RPC migration
-              </Badge>
+              {glCorrectionRpcAvailable ? (
+                <Badge variant="outline" className="border-emerald-600 text-emerald-300">
+                  Apply enabled (targeted RPC)
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="border-amber-600 text-amber-300">
+                  Apply blocked — migration not applied
+                </Badge>
+              )}
+            </div>
+
+            <div className="rounded border border-rose-800/50 bg-rose-950/25 p-3 text-rose-100/90 text-xs">
+              <p className="font-medium">This creates a new correction journal entry. It does not edit history.</p>
+              <p className="text-gray-400 mt-1">
+                JE-0160, JE-0161, and JE-0168 remain unchanged. Broad AR/AP post/reverse/repost stays disabled.
+              </p>
             </div>
 
             <Section title="Original wrong rows (unchanged)">
@@ -169,19 +221,21 @@ export function GlCorrectionDraftModal({ open, onOpenChange, defectId, onQueue }
               <p className="text-[11px] text-gray-500 mt-2">{preview.balances.auditImpact}</p>
             </Section>
 
-            <div className="rounded border border-amber-800/50 bg-amber-950/30 p-3 flex gap-2 text-amber-200/90 text-xs">
-              <ShieldAlert className="w-4 h-4 shrink-0" />
-              <div>
-                <p className="font-medium">Apply requires migration</p>
-                <p className="text-gray-400 mt-1">{preview.blockedApplyReason}</p>
-                <p className="text-gray-500 mt-1 font-mono text-[10px]">
-                  RPC: create_gl_correction_journal(company_id, lines_json, dry_run_hash, confirm_phrase)
-                </p>
+            {!glCorrectionRpcAvailable ? (
+              <div className="rounded border border-amber-800/50 bg-amber-950/30 p-3 flex gap-2 text-amber-200/90 text-xs">
+                <ShieldAlert className="w-4 h-4 shrink-0" />
+                <div>
+                  <p className="font-medium">Apply requires migration on database</p>
+                  <p className="text-gray-400 mt-1">{preview.blockedApplyReason}</p>
+                  <p className="text-gray-500 mt-1 font-mono text-[10px]">
+                    migrations/20260617120000_create_gl_correction_journal.sql
+                  </p>
+                </div>
               </div>
-            </div>
+            ) : null}
 
             <div className="space-y-2">
-              <label className="text-xs text-gray-500">Confirm phrase (required when apply is enabled)</label>
+              <label className="text-xs text-gray-500">Confirm phrase</label>
               <Input
                 value={confirmPhrase}
                 onChange={(e) => setConfirmPhrase(e.target.value)}
@@ -214,8 +268,14 @@ export function GlCorrectionDraftModal({ open, onOpenChange, defectId, onQueue }
               Send to repair queue
             </Button>
           ) : null}
-          <Button type="button" disabled className="opacity-50">
-            Apply (RPC pending)
+          <Button
+            type="button"
+            disabled={applyGate.blocked || applying}
+            className="bg-amber-700 hover:bg-amber-600"
+            onClick={() => void handleApply()}
+          >
+            {applying ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+            Apply GL Correction
           </Button>
         </DialogFooter>
       </DialogContent>

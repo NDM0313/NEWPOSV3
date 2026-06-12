@@ -87,7 +87,7 @@ test('actionRequiresRelinkRpc only for payment relink', () => {
   assert.equal(actionRequiresRelinkRpc('coa.update_description'), false);
 });
 
-test('resolveRepairApplyBlockReasons gl_correction_apply_disabled', () => {
+test('resolveRepairApplyBlockReasons gl_correction_apply_disabled when RPC missing', () => {
   const { reasons } = resolveRepairApplyBlockReasons({
     canApply: true,
     dryRun: { ok: true, dryRunHash: 'abc', before: {}, afterPreview: {} },
@@ -98,4 +98,18 @@ test('resolveRepairApplyBlockReasons gl_correction_apply_disabled', () => {
     glCorrectionRpcAvailable: false,
   });
   assert.ok(reasons.some((r) => r.code === 'gl_correction_apply_disabled'));
+});
+
+test('resolveRepairApplyBlockReasons gl correction allowed when RPC present', () => {
+  const { blocked, reasons } = resolveRepairApplyBlockReasons({
+    canApply: true,
+    dryRun: { ok: true, dryRunHash: 'abc', before: {}, afterPreview: {} },
+    confirmPhrase: 'APPLY GL CORRECTION',
+    expectedPhrase: 'APPLY GL CORRECTION',
+    applying: false,
+    actionRequiresGlCorrectionRpc: true,
+    glCorrectionRpcAvailable: true,
+  });
+  assert.equal(blocked, false);
+  assert.equal(reasons.length, 0);
 });

@@ -55,7 +55,7 @@ export function RepairActionPanel({ companyId, item, systemStatus, onRemove, onA
   const requiresRelinkRpc = actionRequiresRelinkRpc(item.actionId);
   const relinkRpcAvailable = systemStatus?.probe.relinkRpcAvailable ?? true;
   const requiresGlCorrectionRpc = actionRequiresGlCorrectionRpc(item.actionId);
-  const glCorrectionRpcAvailable = false;
+  const glCorrectionRpcAvailable = systemStatus?.probe.glCorrectionRpcAvailable ?? false;
 
   const applyGate = resolveRepairApplyBlockReasons({
     canApply,
@@ -66,7 +66,7 @@ export function RepairActionPanel({ companyId, item, systemStatus, onRemove, onA
     actionKnown: Boolean(action),
     actionRequiresRelinkRpc: requiresRelinkRpc,
     relinkRpcAvailable,
-    actionRequiresGlCorrectionRpc: requiresGlCorrectionRpc,
+    actionRequiresGlCorrectionRpc: actionRequiresGlCorrectionRpc(item.actionId),
     glCorrectionRpcAvailable,
   });
 

@@ -1,7 +1,12 @@
 -- AR-CUS0000 Walk-in Customer reconciliation (read-only)
--- Run: ssh dincouture-vps "docker exec -i supabase-db psql -U postgres -d postgres -v ON_ERROR_STOP=1" < scripts/sql/diag_ar_cus0000_reconciliation.sql
+--
+-- Supabase SQL editor: run ONE section at a time (select the query block, then Run).
+--   Do not use psql meta-commands (\echo etc.) — they are not valid SQL.
+--
+-- VPS psql:
+--   ssh dincouture-vps "docker exec -i supabase-db psql -U postgres -d postgres -v ON_ERROR_STOP=1" < scripts/sql/diag_ar_cus0000_reconciliation.sql
 
-\echo '=== 0. Walk-in contact + AR-CUS0000 account ==='
+-- === 0. Walk-in contact + AR-CUS0000 account ===
 WITH co AS (
   SELECT company_id FROM sales WHERE invoice_no IN ('HQ-SL-0003','SL-0001','SL-0013') LIMIT 1
 )
@@ -27,7 +32,7 @@ WHERE c.company_id = co.company_id
   )
 ORDER BY c.code, a.code;
 
-\echo '=== 1. AR-CUS0000 GL net (void excluded) ==='
+-- === 1. AR-CUS0000 GL net (void excluded) ===
 WITH co AS (
   SELECT company_id FROM sales WHERE invoice_no IN ('HQ-SL-0003','SL-0001') LIMIT 1
 ),
@@ -49,17 +54,12 @@ LEFT JOIN journal_entry_lines jel ON jel.account_id = aa.id
 LEFT JOIN journal_entries je ON je.id = jel.journal_entry_id AND je.company_id = (SELECT company_id FROM co)
 GROUP BY aa.code;
 
-\echo '=== 2. All AR-CUS0000 lines 2016-01-01 to today ==='
+-- === 2. All AR-CUS0000 lines 2016-01-01 to today ===
 WITH co AS (
   SELECT company_id FROM sales WHERE invoice_no IN ('HQ-SL-0003','SL-0001') LIMIT 1
 ),
 ar_acc AS (
   SELECT a.id FROM accounts a, co WHERE a.company_id = co.company_id AND a.code ILIKE 'AR-CUS0000%' LIMIT 1
-),
-walkin AS (
-  SELECT c.id FROM contacts c, co
-  WHERE c.company_id = co.company_id AND (c.code = 'CUS-0000' OR c.name ILIKE '%walk-in%')
-  LIMIT 1
 )
 SELECT
   je.entry_date,
@@ -99,7 +99,7 @@ WHERE je.company_id = (SELECT company_id FROM co)
   AND je.entry_date <= CURRENT_DATE
 ORDER BY je.entry_date, je.entry_no, jel.id;
 
-\echo '=== 3. Normal vs Audit balance sums ==='
+-- === 3. Normal vs Audit balance sums ===
 WITH co AS (
   SELECT company_id FROM sales WHERE invoice_no IN ('HQ-SL-0003','SL-0001') LIMIT 1
 ),
@@ -139,7 +139,7 @@ SELECT
   ROUND(SUM(debit - credit), 2) AS all_lines_net_including_void
 FROM lines;
 
-\echo '=== 4. Target trace: HQ-SL-0003, HQ-SL-0004, SL-0001 ==='
+-- === 4. Target trace: HQ-SL-0003, HQ-SL-0004, SL-0001 ===
 WITH co AS (SELECT company_id FROM sales WHERE invoice_no = 'HQ-SL-0003' LIMIT 1)
 SELECT 'sale' AS kind, s.invoice_no AS ref, s.status, s.total, s.paid_amount, s.due_amount,
   je.entry_no, je.reference_type, je.is_void, je.id AS je_id
@@ -155,7 +155,7 @@ WHERE p.reference_number IN ('RCV-0001','RCV-0006','RCV-0012','RCV-0014','RCV-00
    OR p.reference_number ILIKE '%RCV%0001%'
 ORDER BY ref;
 
-\echo '=== 5. JE-0168 / RCV-0001 chain ==='
+-- === 5. JE-0168 / RCV-0001 chain ===
 SELECT
   je.entry_no, je.entry_date, je.reference_type, je.reference_id, je.is_void, je.description,
   je.payment_id,
@@ -169,7 +169,7 @@ WHERE je.entry_no IN ('JE-0168','JE-0167','JE-0169')
    OR p.reference_number = 'RCV-0001'
 ORDER BY je.entry_no, a.code;
 
-\echo '=== 6. RCV-0006/SL-0013, RCV-0012/SL-0002, RCV-0014/SL-0015, RCV-0016/SL-0016 ==='
+-- === 6. RCV-0006/SL-0013, RCV-0012/SL-0002, RCV-0014/SL-0015, RCV-0016/SL-0016 ===
 SELECT
   p.reference_number AS rcv,
   p.amount AS pay_amt,
@@ -194,7 +194,7 @@ WHERE p.reference_number IN ('RCV-0006','RCV-0012','RCV-0014','RCV-0016')
    OR s.invoice_no IN ('SL-0013','SL-0002','SL-0015','SL-0016','HQ-SL-0003','HQ-SL-0004','SL-0001')
 ORDER BY p.reference_number NULLS LAST, s.invoice_no;
 
-\echo '=== 7. Open sales on walk-in customer ==='
+-- === 7. Open sales on walk-in customer ===
 WITH co AS (SELECT company_id FROM sales WHERE invoice_no = 'HQ-SL-0003' LIMIT 1),
 walkin AS (
   SELECT id FROM contacts c, co WHERE c.company_id=co.company_id AND (c.code='CUS-0000' OR c.name ILIKE '%walk-in%') LIMIT 1
@@ -205,7 +205,7 @@ FROM sales s, walkin w
 WHERE s.customer_id = w.id AND s.due_amount > 0
 ORDER BY s.invoice_date;
 
-\echo '=== 8. Party mapping on AR-CUS0000 unmapped lines ==='
+-- === 8. Party mapping on AR-CUS0000 unmapped lines (skip if view missing) ===
 SELECT v.entry_no, v.journal_line_id, v.account_code, v.debit, v.credit,
   v.linked_contact_id, v.linked_contact_name, v.control_bucket
 FROM v_ar_ap_unmapped_journals v

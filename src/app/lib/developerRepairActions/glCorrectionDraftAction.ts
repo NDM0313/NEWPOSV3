@@ -8,6 +8,7 @@ import {
   GL_CORRECTION_CONFIRM_PHRASE,
   knownOrphanDefectById,
 } from '@/app/lib/glCorrectionDraftRepair';
+import { applyGlCorrectionJournalRpc } from '@/app/services/glCorrectionApplyService';
 
 async function dryRunGlCorrectionDraft(
   params: Record<string, unknown>,
@@ -31,22 +32,37 @@ async function dryRunGlCorrectionDraft(
     dryRunHash: preview.dryRunHash,
     before: preview.before,
     afterPreview: preview.afterPreview,
-    blockedReason: preview.blockedApplyReason,
+    blockedReason: preview.ok ? undefined : preview.blockedApplyReason,
     targetTable: 'journal_entries',
     title: preview.title,
-    impactSummary: preview.blockedApplyReason,
+    impactSummary: preview.newCorrectionJePreview.description,
   };
 }
 
 async function applyGlCorrectionDraft(
-  _params: Record<string, unknown>,
-  _ctx: DeveloperRepairContext,
-  _dryRunHash: string
+  params: Record<string, unknown>,
+  ctx: DeveloperRepairContext,
+  dryRunHash: string
 ): Promise<ApplyResult> {
+  const defectId = String(params.defectId || '');
+  const confirmPhrase = String(params.confirmPhrase || '');
+  const result = await applyGlCorrectionJournalRpc({
+    companyId: ctx.companyId,
+    repairTarget: defectId,
+    dryRunHash,
+    confirmPhrase,
+    userId: ctx.userId,
+  });
+
+  if (!result.ok) {
+    return { ok: false, error: result.error || 'GL correction apply failed' };
+  }
+
   return {
-    ok: false,
-    error:
-      'GL correction apply blocked — requires migration RPC create_gl_correction_journal. Dry-run preview only.',
+    ok: true,
+    auditId: result.auditId,
+    after: result.after,
+    message: `Created correction ${result.entryNo || result.journalEntryId || 'JE'} — existing JEs unchanged`,
   };
 }
 

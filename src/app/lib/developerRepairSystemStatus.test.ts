@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import {
   buildDeveloperRepairSystemStatus,
   deriveRepairSystemOverallState,
+  isGlCorrectionRpcBusinessError,
   isMissingSchemaObjectError,
   isRelinkRpcBusinessError,
   type DeveloperRepairSystemProbe,
@@ -13,6 +14,7 @@ function baseProbe(overrides: Partial<DeveloperRepairSystemProbe> = {}): Develop
     companyIdPresent: true,
     auditTableAvailable: true,
     relinkRpcAvailable: true,
+    glCorrectionRpcAvailable: true,
     canApply: true,
     userRoleLabel: 'developer',
     ...overrides,
@@ -56,7 +58,7 @@ test('buildDeveloperRepairSystemStatus includes checklist rows', () => {
     baseProbe({ canApply: false, userRoleLabel: 'admin' })
   );
   assert.equal(status.overallState, 'blocked_view_only');
-  assert.equal(status.checklist.length, 4);
+  assert.equal(status.checklist.length, 5);
   assert.equal(status.checklist.find((r) => r.id === 'apply_role')?.ok, false);
 });
 
@@ -69,4 +71,9 @@ test('isMissingSchemaObjectError detects PostgREST codes', () => {
 test('isRelinkRpcBusinessError detects payment not found', () => {
   assert.equal(isRelinkRpcBusinessError('Payment not found: uuid'), true);
   assert.equal(isRelinkRpcBusinessError('function does not exist'), false);
+});
+
+test('isGlCorrectionRpcBusinessError detects confirm phrase errors', () => {
+  assert.equal(isGlCorrectionRpcBusinessError('Confirm phrase must be exactly: APPLY GL CORRECTION'), true);
+  assert.equal(isGlCorrectionRpcBusinessError('function does not exist'), false);
 });

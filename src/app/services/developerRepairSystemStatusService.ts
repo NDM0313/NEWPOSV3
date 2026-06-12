@@ -6,6 +6,7 @@
 import { canApplyDeveloperRepair, canonRole } from '@/app/lib/developerAccountingAccess';
 import {
   buildDeveloperRepairSystemStatus,
+  isGlCorrectionRpcBusinessError,
   isMissingSchemaObjectError,
   isRelinkRpcBusinessError,
   ZERO_UUID,
@@ -54,13 +55,34 @@ async function probeRelinkRpc(companyId: string): Promise<{ ok: boolean; error?:
   return { ok: true };
 }
 
+async function probeGlCorrectionRpc(companyId: string): Promise<{ ok: boolean; error?: string }> {
+  const probeCompanyId = companyId || ZERO_UUID;
+  const { error } = await supabase.rpc('create_gl_correction_journal', {
+    p_company_id: probeCompanyId,
+    p_repair_target: '',
+    p_dry_run_hash: '',
+    p_confirm_phrase: '',
+    p_user_id: null,
+  });
+
+  if (!error) return { ok: true };
+
+  const code = (error as { code?: string }).code;
+  if (isGlCorrectionRpcBusinessError(error.message)) return { ok: true };
+  if (isMissingSchemaObjectError(error.message, code)) {
+    return { ok: false, error: error.message };
+  }
+  return { ok: true };
+}
+
 export async function loadDeveloperRepairSystemStatus(
   companyId: string | null | undefined,
   userRole: string | null | undefined
 ): Promise<DeveloperRepairSystemStatus> {
-  const [auditProbe, rpcProbe] = await Promise.all([
+  const [auditProbe, rpcProbe, glCorrectionProbe] = await Promise.all([
     probeAuditTable(),
     probeRelinkRpc(companyId || ''),
+    probeGlCorrectionRpc(companyId || ''),
   ]);
 
   const roleLabel = canonRole(userRole) || 'unknown';
@@ -72,6 +94,8 @@ export async function loadDeveloperRepairSystemStatus(
     auditTableError: auditProbe.error,
     relinkRpcAvailable: rpcProbe.ok,
     relinkRpcError: rpcProbe.error,
+    glCorrectionRpcAvailable: glCorrectionProbe.ok,
+    glCorrectionRpcError: glCorrectionProbe.error,
     canApply,
     userRoleLabel: roleLabel,
   });

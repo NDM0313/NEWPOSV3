@@ -141,7 +141,7 @@ export function buildGlCorrectionDraftDryRun(input: OrphanArReversalDefectInput)
     note: 'New correction JE only — JE-0160, JE-0161, JE-0168 rows are never edited or deleted',
   };
 
-  const dryRunHash = computeDryRunHash({ actionId: 'gl.create_correction_draft', before, afterPreview });
+  const dryRunHash = computeDryRunHash('gl.create_correction_draft', { defectId: input.defectId }, before);
 
   return {
     ok: true,
@@ -149,7 +149,7 @@ export function buildGlCorrectionDraftDryRun(input: OrphanArReversalDefectInput)
     title: `GL correction draft — ${input.saleInvoiceNo} orphan ${party}`,
     riskLevel: 'high',
     blockedApplyReason:
-      'Apply requires migration RPC create_gl_correction_journal (additive JE insert + audit). Dry-run preview only until approved.',
+      'Requires create_gl_correction_journal RPC on database. Run dry-run, then apply with confirm phrase when RPC is deployed.',
     originalWrongRows,
     expectedCorrectionLines: correctionLines,
     newCorrectionJePreview: {

@@ -135,7 +135,7 @@ export async function applyDeveloperRepair(
 
   let applyResult: ApplyResult;
   try {
-    applyResult = await action.apply(params, ctx, dryRunHash);
+    applyResult = await action.apply({ ...params, confirmPhrase }, ctx, dryRunHash);
   } catch (e) {
     applyResult = { ok: false, error: e instanceof Error ? e.message : 'Apply failed' };
   }
@@ -144,20 +144,38 @@ export async function applyDeveloperRepair(
   const auditBefore = dryRun.before;
   const auditAfter = applyResult.ok ? after : { ...dryRun.afterPreview, error: applyResult.error };
 
-  const auditId = await writeRepairAudit({
-    companyId: ctx.companyId,
-    userId: ctx.userId,
-    actionId: action.id,
-    riskLevel: action.riskLevel,
-    targetTable: dryRun.targetTable,
-    targetId: dryRun.targetId,
-    before: auditBefore,
-    after: auditAfter,
-    dryRunHash,
-    confirmPhrase,
-    status: applyResult.ok ? 'success' : 'failed',
-    errorMessage: applyResult.error,
-  });
+  let auditId = applyResult.auditId;
+  if (actionId !== 'gl.create_correction_draft') {
+    auditId = await writeRepairAudit({
+      companyId: ctx.companyId,
+      userId: ctx.userId,
+      actionId: action.id,
+      riskLevel: action.riskLevel,
+      targetTable: dryRun.targetTable,
+      targetId: dryRun.targetId,
+      before: auditBefore,
+      after: auditAfter,
+      dryRunHash,
+      confirmPhrase,
+      status: applyResult.ok ? 'success' : 'failed',
+      errorMessage: applyResult.error,
+    });
+  } else if (!auditId && !applyResult.ok) {
+    auditId = await writeRepairAudit({
+      companyId: ctx.companyId,
+      userId: ctx.userId,
+      actionId: action.id,
+      riskLevel: action.riskLevel,
+      targetTable: dryRun.targetTable,
+      targetId: dryRun.targetId,
+      before: auditBefore,
+      after: auditAfter,
+      dryRunHash,
+      confirmPhrase,
+      status: 'failed',
+      errorMessage: applyResult.error,
+    });
+  }
 
   return { ...applyResult, auditId };
 }

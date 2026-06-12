@@ -14,6 +14,8 @@ export interface DeveloperRepairSystemProbe {
   auditTableError?: string;
   relinkRpcAvailable: boolean;
   relinkRpcError?: string;
+  glCorrectionRpcAvailable: boolean;
+  glCorrectionRpcError?: string;
   canApply: boolean;
   userRoleLabel: string;
 }
@@ -76,6 +78,15 @@ export function buildRepairSystemChecklist(probe: DeveloperRepairSystemProbe): R
         : probe.relinkRpcError || 'Missing — apply migration 20260606130000_developer_repair_relink_payment_je.sql',
     },
     {
+      id: 'gl_correction_rpc',
+      label: 'create_gl_correction_journal RPC',
+      ok: probe.glCorrectionRpcAvailable,
+      detail: probe.glCorrectionRpcAvailable
+        ? 'Targeted GL correction apply available (whitelist only)'
+        : probe.glCorrectionRpcError ||
+          'Missing — apply migration 20260617120000_create_gl_correction_journal.sql',
+    },
+    {
       id: 'company_scope',
       label: 'Company scope',
       ok: probe.companyIdPresent,
@@ -121,6 +132,21 @@ export function isRelinkRpcBusinessError(message: string | undefined): boolean {
     m.includes('company mismatch') ||
     m.includes('voided') ||
     m.includes('amount mismatch')
+  );
+}
+
+/** Business-logic errors mean create_gl_correction_journal exists. */
+export function isGlCorrectionRpcBusinessError(message: string | undefined): boolean {
+  const m = (message || '').toLowerCase();
+  return (
+    m.includes('confirm phrase') ||
+    m.includes('unknown or unsupported repair target') ||
+    m.includes('dry-run hash mismatch') ||
+    m.includes('company_id required') ||
+    m.includes('hq-sl-0003') ||
+    m.includes('already applied') ||
+    m.includes('je-0160') ||
+    m.includes('je-0161')
   );
 }
 
