@@ -92,6 +92,7 @@ import { useAccountsHierarchyModel } from '@/app/components/accounting/useAccoun
 import { AccountingDashboardAccountRowMenu } from '@/app/components/accounting/AccountingDashboardAccountRowMenu';
 import { ChartOfAccountsPartyDropdown } from '@/app/components/accounting/ChartOfAccountsPartyDropdown';
 import { ReportBasisBanner } from '@/app/components/accounting/ReportBasisBanner';
+import { accountingReportsService } from '@/app/services/accountingReportsService';
 import {
   allowsGenericAccountingUnifiedEdit,
   getJournalEntrySourceDocumentOpenTarget,
@@ -716,6 +717,51 @@ export const AccountingDashboard = () => {
     };
   }, [transactions]);
 
+  /** Official Posted GL — same source as Trial Balance / P&L (void excluded, corrections included). */
+  const [canonicalGlSummary, setCanonicalGlSummary] = useState<{
+    totalIncome: number;
+    totalExpense: number;
+    totalReceivable: number;
+    totalPayable: number;
+    netProfit: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!companyId) {
+      setCanonicalGlSummary(null);
+      return;
+    }
+    let cancelled = false;
+    const end = new Date().toISOString().slice(0, 10);
+    const start = `${end.slice(0, 4)}-01-01`;
+    const branch = branchId && branchId !== 'all' ? branchId : undefined;
+    (async () => {
+      try {
+        const [pl, snap] = await Promise.all([
+          accountingReportsService.getProfitLoss(companyId, start, end, branch),
+          accountingReportsService.getArApGlSnapshot(companyId, end, branch),
+        ]);
+        if (cancelled) return;
+        const arNet = snap.ar ? snap.ar.debit - snap.ar.credit : 0;
+        const apNet = snap.apNetCredit ?? 0;
+        setCanonicalGlSummary({
+          totalIncome: pl.revenue.total,
+          totalExpense: pl.costOfSales.total + pl.expenses.total,
+          totalReceivable: Math.max(0, arNet),
+          totalPayable: Math.max(0, apNet),
+          netProfit: pl.netProfit,
+        });
+      } catch {
+        if (!cancelled) setCanonicalGlSummary(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, branchId, accounting.entries.length]);
+
+  const displaySummary = canonicalGlSummary ?? summary;
+
   const [partyGlByContactId, setPartyGlByContactId] = useState<
     Awaited<ReturnType<typeof contactService.getContactPartyGlBalancesMap>>
   >(null);
@@ -1125,14 +1171,18 @@ export const AccountingDashboard = () => {
 
       {/* Summary Cards */}
       <div className="shrink-0 px-6 py-4 bg-[#0F1419] border-b border-gray-800 min-w-0">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+        <ReportBasisBanner
+          basis="official_gl"
+          detail="Top cards use Official Posted GL (same as Trial Balance / P&L): void excluded, correction journals included. Operational document due is on Receivables / Payables tabs."
+        />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mt-3">
           {/* Total Income */}
           <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
             <div className="flex items-start justify-between mb-3">
               <div>
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Income</p>
-                <p className="text-2xl font-bold text-green-400 mt-1">{formatCurrency(summary.totalIncome)}</p>
-                <p className="text-xs text-gray-500 mt-1">GL derived (journal lines)</p>
+                <p className="text-2xl font-bold text-green-400 mt-1">{formatCurrency(displaySummary.totalIncome)}</p>
+                <p className="text-xs text-gray-500 mt-1">Official Posted GL basis</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
                 <TrendingUp size={24} className="text-green-500" />
@@ -1145,8 +1195,8 @@ export const AccountingDashboard = () => {
             <div className="flex items-start justify-between mb-3">
               <div>
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Expense</p>
-                <p className="text-2xl font-bold text-red-400 mt-1">{formatCurrency(summary.totalExpense)}</p>
-                <p className="text-xs text-gray-500 mt-1">GL derived (journal lines)</p>
+                <p className="text-2xl font-bold text-red-400 mt-1">{formatCurrency(displaySummary.totalExpense)}</p>
+                <p className="text-xs text-gray-500 mt-1">Official Posted GL basis</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center">
                 <TrendingDown size={24} className="text-red-500" />
@@ -1161,15 +1211,15 @@ export const AccountingDashboard = () => {
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Net Profit</p>
                 <p className={cn(
                   "text-2xl font-bold mt-1",
-                  summary.netProfit >= 0 ? "text-green-400" : "text-red-400"
-                )}>{formatCurrency(summary.netProfit)}</p>
-                <p className="text-xs text-gray-500 mt-1">GL derived (Income - Expense)</p>
+                  displaySummary.netProfit >= 0 ? "text-green-400" : "text-red-400"
+                )}>{formatCurrency(displaySummary.netProfit)}</p>
+                <p className="text-xs text-gray-500 mt-1">Official Posted GL basis</p>
               </div>
               <div className={cn(
                 "w-12 h-12 rounded-full flex items-center justify-center",
-                summary.netProfit >= 0 ? "bg-green-500/10" : "bg-red-500/10"
+                displaySummary.netProfit >= 0 ? "bg-green-500/10" : "bg-red-500/10"
               )}>
-                <DollarSign size={24} className={summary.netProfit >= 0 ? "text-green-500" : "text-red-500"} />
+                <DollarSign size={24} className={displaySummary.netProfit >= 0 ? "text-green-500" : "text-red-500"} />
               </div>
             </div>
           </div>
@@ -1179,8 +1229,8 @@ export const AccountingDashboard = () => {
             <div className="flex items-start justify-between mb-3">
               <div>
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Receivables</p>
-                <p className="text-2xl font-bold text-blue-400 mt-1">{formatCurrency(summary.totalReceivable)}</p>
-                <p className="text-xs text-gray-500 mt-1">GL derived (AR journal legs)</p>
+                <p className="text-2xl font-bold text-blue-400 mt-1">{formatCurrency(displaySummary.totalReceivable)}</p>
+                <p className="text-xs text-gray-500 mt-1">AR control 1100 — Official GL</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center">
                 <Users size={24} className="text-blue-500" />
@@ -1193,8 +1243,8 @@ export const AccountingDashboard = () => {
             <div className="flex items-start justify-between mb-3">
               <div>
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Payables</p>
-                <p className="text-2xl font-bold text-orange-400 mt-1">{formatCurrency(summary.totalPayable)}</p>
-                <p className="text-xs text-gray-500 mt-1">GL derived (AP/worker payable legs)</p>
+                <p className="text-2xl font-bold text-orange-400 mt-1">{formatCurrency(displaySummary.totalPayable)}</p>
+                <p className="text-xs text-gray-500 mt-1">AP control 2000 — Official GL</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-orange-500/10 flex items-center justify-center">
                 <Building2 size={24} className="text-orange-500" />
@@ -1204,9 +1254,9 @@ export const AccountingDashboard = () => {
         </div>
         <p className="text-[11px] text-gray-600 mt-3 max-w-6xl leading-relaxed">
           <span className="font-medium text-gray-500">Semantics map — </span>
-          These cards are <span className="text-gray-400">GL journal–derived</span> (revenue/expense accounts and AR/AP control legs). Operational follow-up uses the{' '}
-          <span className="text-gray-400">Receivables / Payables</span> tabs (document due: <code className="text-gray-500">sales.due</code> / <code className="text-gray-500">purchases.due</code>). Contacts and AR/AP roll-up are GL-based from{' '}
-          <code className="text-gray-500">get_contact_party_gl_balances</code> (same chart/journal source).
+          Top cards load from <code className="text-gray-500">accountingReportsService</code> (Trial Balance / P&amp;L source). Operational follow-up uses{' '}
+          <span className="text-gray-400">Receivables / Payables</span> tabs and AR/AP Reconciliation (effective vs raw GL). See{' '}
+          <span className="text-gray-400">Financial Truth Center → Tie-out</span> for company-wide differences.
         </p>
       </div>
 

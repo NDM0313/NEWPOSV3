@@ -21,6 +21,7 @@ import {
   type EffectiveLedgerResult,
 } from '@/app/services/effectivePartyLedgerService';
 import { contactService } from '@/app/services/contactService';
+import { ReportBasisBanner } from '@/app/components/accounting/ReportBasisBanner';
 
 interface EffectivePartyLedgerPageProps {
   contactId?: string;
@@ -201,6 +202,12 @@ export const EffectivePartyLedgerPage: React.FC<EffectivePartyLedgerPageProps> =
     <div className="h-full flex flex-col bg-[#0f1729]">
       {/* Header */}
       <div className="sticky top-0 z-20 bg-[#111827] border-b border-gray-800">
+        <div className="px-6 pt-3">
+          <ReportBasisBanner
+            basis={mode === 'audit' ? 'audit_full' : 'effective_party'}
+            detail="Mutation-collapse ledger — latest effective result per payment/document (not the same JE-line filter as Account Statements)."
+          />
+        </div>
         <div className="px-6 py-4 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <Button variant="ghost" size="icon" onClick={onClose} className="text-gray-400 hover:text-white">

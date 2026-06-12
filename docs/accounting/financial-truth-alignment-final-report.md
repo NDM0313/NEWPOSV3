@@ -21,6 +21,8 @@
 ### Part C — Basis banners + Cash Flow GL fix
 
 - `ReportBasisBanner` / `ReportBasisBadge` wired on TB, BS, P&L, party statements, AR/AP center, Ledger V2, COA, Cash Flow
+- **AccountingDashboard top cards** load from `accountingReportsService.getProfitLoss` + `getArApGlSnapshot` (Official Posted GL)
+- **Day Book**, **Roznamcha**, **Effective Party Ledger** — basis banners added (effective vs audit)
 - `getCashFlowStatement` accepts `basis: 'official_gl' | 'effective_party'`; official includes all non-void JEs (incl. `correction_reversal`)
 
 ### Part D–F — Diagnostics
@@ -48,8 +50,11 @@ No auto-repair applied. JE-0168 and orphan GL corrections unchanged.
 npx tsx --test \
   src/app/lib/financialTruthBasis.test.ts \
   src/app/lib/financialTruthTieOut.test.ts \
-  src/app/lib/cashFlowReportLogic.test.ts
-# 24 pass, 0 fail
+  src/app/lib/cashFlowReportLogic.test.ts \
+  src/app/lib/reportVisibilityContract.test.ts \
+  src/app/lib/phase2bReportConsistency.test.ts \
+  src/app/lib/arApEffectiveVariance.test.ts \
+  ... (61 pass extended accounting suite)
 
 npm run build
 # success
@@ -63,6 +68,10 @@ Tie-out surfaces known audit residues (AR-CUS0000 Rs 1) as **documented differen
 
 ## Deploy
 
-**Commit:** `1f86f936` — `fix(accounting): align financial truth across reports and ledgers`  
-**Deployed:** 2026-06-11 via `deploy/vps-build-erp-only.sh` on dincouture-vps (frontend only, no migrations).  
+**Commits:**
+- `1f86f936` — initial financial truth alignment (Parts A–F)
+- `445cccc5` — deploy hash record
+- *(pending)* — dashboard canonical GL + Day Book / Roznamcha / Effective Party Ledger basis banners
+
+**Deployed:** frontend only via `deploy/vps-build-erp-only.sh` (no migrations).  
 Hard refresh https://erp.dincouture.pk after deploy.

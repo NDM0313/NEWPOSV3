@@ -29,6 +29,7 @@ import {
   type RoznamchaRowWithBalance,
 } from '@/app/services/roznamchaService';
 import { accountService } from '@/app/services/accountService';
+import { ReportBasisBanner } from '@/app/components/accounting/ReportBasisBanner';
 
 const ROZNAMCHA_CACHE_TTL_MS = 30_000;
 const roznamchaResultCache = new Map<string, { at: number; data: RoznamchaResult }>();
@@ -323,6 +324,10 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
 
   return (
     <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
+      <ReportBasisBanner
+        basis={includeVoidedReversed ? 'audit_full' : 'effective_party'}
+        detail="Operational cash book — payments and rental_payments only (not full GL). Toggle voided rows for audit view."
+      />
       <p className="text-xs text-gray-500 border border-gray-800/80 rounded-lg px-3 py-2 bg-gray-950/40 max-w-3xl">
         Cash / bank / wallet receive &amp; pay only — from <strong className="text-gray-400">payments</strong> and{' '}
         <strong className="text-gray-400">rental_payments</strong> (not rental journal vouchers). One row per actual

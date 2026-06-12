@@ -30,6 +30,7 @@ import { netEconomicMeaning } from '@/app/lib/accountFlowPresentation';
 import { Switch } from '@/app/components/ui/switch';
 import { Label } from '@/app/components/ui/label';
 import { isCorrectionReversalReferenceType } from '@/app/lib/reportVisibilityContract';
+import { ReportBasisBanner } from '@/app/components/accounting/ReportBasisBanner';
 
 export interface DayBookEntry {
   id: string;
@@ -503,6 +504,14 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
 
   return (
     <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
+      <ReportBasisBanner
+        basis={auditMode ? 'audit_full' : 'effective_party'}
+        detail={
+          auditMode
+            ? 'Audit basis — full posted history including correction reversals and voided rows.'
+            : 'Effective operational basis — hides correction_reversal and voided payment trails (same rules as Account Statements effective mode).'
+        }
+      />
       <div className="no-print">
         <ReportActions
           title="Journal Day Book"
