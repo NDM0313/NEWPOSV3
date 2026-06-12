@@ -3,7 +3,7 @@
  * Dry-run preview only; apply requires a reviewed RPC migration.
  */
 
-import { computeDryRunHash } from '@/app/lib/developerRepairHash';
+import { fnv1aHash, stableRepairJson } from '@/app/lib/developerRepairHash';
 
 export const GL_CORRECTION_CONFIRM_PHRASE = 'APPLY GL CORRECTION';
 
@@ -75,6 +75,15 @@ export function isOrphanArReversalDefect(input: {
   return Math.abs(wrongCredit - orphan) < 0.01;
 }
 
+/** Compact JSON payload hash — must match SQL developer_repair_compute_gl_correction_dry_run_hash. */
+export function computeGlCorrectionRepairDryRunHash(
+  before: Record<string, unknown>,
+  defectId: string
+): string {
+  const payload = `{"actionId":"gl.create_correction_draft","before":${stableRepairJson(before)},"params":{"defectId":"${defectId}"}}`;
+  return fnv1aHash(payload);
+}
+
 export function buildGlCorrectionDraftDryRun(input: OrphanArReversalDefectInput): GlCorrectionDraftDryRun {
   const amt = Math.abs(Number(input.orphanAmount) || 0);
   const party = input.partyArAccountCode;
@@ -141,7 +150,7 @@ export function buildGlCorrectionDraftDryRun(input: OrphanArReversalDefectInput)
     note: 'New correction JE only — JE-0160, JE-0161, JE-0168 rows are never edited or deleted',
   };
 
-  const dryRunHash = computeDryRunHash('gl.create_correction_draft', { defectId: input.defectId }, before);
+  const dryRunHash = computeGlCorrectionRepairDryRunHash(before, input.defectId);
 
   return {
     ok: true,
