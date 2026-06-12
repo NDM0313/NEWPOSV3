@@ -63,4 +63,6 @@ Tie-out surfaces known audit residues (AR-CUS0000 Rs 1) as **documented differen
 
 ## Deploy
 
-Frontend-only via `deploy/vps-build-erp-only.sh` (see commit hash below after push).
+**Commit:** `1f86f936` — `fix(accounting): align financial truth across reports and ledgers`  
+**Deployed:** 2026-06-11 via `deploy/vps-build-erp-only.sh` on dincouture-vps (frontend only, no migrations).  
+Hard refresh https://erp.dincouture.pk after deploy.
