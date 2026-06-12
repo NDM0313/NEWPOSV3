@@ -2221,7 +2221,10 @@ export const accountingService = {
           .map((line: any) => line.journal_entry)
           .filter((entry: any) => {
             const rt = String(entry?.reference_type || '').toLowerCase();
-            return entry?.reference_id && ['sale', 'sale_reversal', 'sale_return'].includes(rt);
+            return (
+              entry?.reference_id &&
+              (['sale', 'sale_reversal', 'sale_return', 'gl_correction'].includes(rt))
+            );
           })
           .map((entry: any) => String(entry.reference_id))
       )];
@@ -2514,7 +2517,8 @@ export const accountingService = {
           const accountNameLine = accName ? (accCode ? `${accName} (${accCode})` : accName) : undefined;
 
           const linkedSaleId =
-            entry.reference_id && ['sale', 'sale_reversal', 'sale_return'].includes(refType)
+            entry.reference_id &&
+            ['sale', 'sale_reversal', 'sale_return', 'gl_correction'].includes(refType)
               ? String(entry.reference_id)
               : undefined;
 
@@ -2653,6 +2657,7 @@ export const accountingService = {
             reference_type,
             reference_id,
             payment_id,
+            action_fingerprint,
             branch_id,
             created_by,
             created_at,
@@ -3147,6 +3152,12 @@ export const accountingService = {
           });
         }
 
+        const linkedSaleId =
+          entry.reference_id &&
+          ['sale', 'sale_reversal', 'sale_return', 'gl_correction'].includes(normalizedRefType)
+            ? String(entry.reference_id)
+            : undefined;
+
         return {
           date: entry.entry_date,
           reference_number: referenceNumber,
@@ -3164,10 +3175,13 @@ export const accountingService = {
           notes: notes,
           created_by: entry.created_by,
           journal_entry_id: entry.id, // Use journal_entry_id as fallback if entry_no is missing
+          je_reference_type: entry.reference_type || undefined,
+          je_action_fingerprint: (entry as { action_fingerprint?: string | null }).action_fingerprint ?? null,
           payment_id:
             entry.payment_id ||
             (entry.reference_type === 'payment' && entry.reference_id ? String(entry.reference_id) : undefined),
-          sale_id: entry.reference_type === 'sale' ? entry.reference_id : undefined,
+          sale_id: linkedSaleId,
+          linked_sale_status: linkedSaleId ? saleStatusById.get(linkedSaleId) ?? null : null,
           rental_id: entry.reference_type === 'rental' ? entry.reference_id : undefined,
           branch_id: resolvedBranchId ?? entry.branch_id,
           branch_name: branchName,

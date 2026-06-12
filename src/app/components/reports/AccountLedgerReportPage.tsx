@@ -35,7 +35,11 @@ import {
   editTargetTypeLabel,
 } from '@/app/lib/accountFlowPresentation';
 import { ledgerTransactionOpenEventDetail } from '@/app/lib/ledgerTransactionOpenRef';
-import { shouldIncludeCancelledSaleActivityInNormalStatement } from '@/app/lib/reportVisibilityContract';
+import {
+  isGlCorrectionReferenceType,
+  partyStatementGlCorrectionAuditLabel,
+  shouldIncludePartyStatementRowInNormal,
+} from '@/app/lib/reportVisibilityContract';
 
 /** AR / AP running balance sign: highlight “inverted” party positions so refunds / prepaids are obvious. */
 const PARTY_BAL_EPS = 0.005;
@@ -250,9 +254,10 @@ function isAdjustmentRow(e: AccountLedgerEntry): boolean {
   return d.includes('adjust') || t.includes('adjust');
 }
 
-function isCancelledSaleActivityHiddenInNormal(e: AccountLedgerEntry): boolean {
-  return !shouldIncludeCancelledSaleActivityInNormalStatement({
+function isPartyRowHiddenInNormalEffective(e: AccountLedgerEntry): boolean {
+  return !shouldIncludePartyStatementRowInNormal({
     jeReferenceType: e.je_reference_type,
+    jeActionFingerprint: e.je_action_fingerprint,
     linkedSaleStatus: e.linked_sale_status,
   });
 }
@@ -1093,7 +1098,7 @@ export const AccountLedgerReportPage: React.FC<{
   const presentedEntries = useMemo<PresentedLedgerRow[]>(() => {
     const base = sortedEntries.filter((e) => {
       if (!applied.includeManualEntries && isManualRow(e)) return false;
-      if (viewMode === 'effective' && isCancelledSaleActivityHiddenInNormal(e)) return false;
+      if (viewMode === 'effective' && isPartyRowHiddenInNormalEffective(e)) return false;
       return true;
     });
     if (!base.length) return [];
@@ -1121,15 +1126,19 @@ export const AccountLedgerReportPage: React.FC<{
         .filter((e) => (applied.includeReversals ? true : !isReversalRow(e)))
         .map((e) => {
           const adjustmentLabel = isAdjustmentRow(e) ? adjustmentSubtypeLabel(e) : '';
+          const glCorrectionAudit = isGlCorrectionReferenceType(e.je_reference_type);
+          const auditPrefix = glCorrectionAudit ? partyStatementGlCorrectionAuditLabel() : adjustmentLabel;
           return {
             ...e,
-            description: adjustmentLabel ? `${adjustmentLabel}: ${e.description}` : e.description,
+            description: auditPrefix ? `${auditPrefix}: ${e.description}` : e.description,
             displayDebit: Number(e.debit || 0),
             displayCredit: Number(e.credit || 0),
             displayRunningBalance: Number(e.running_balance || 0),
             displayStatus: hasReversalTwin(e)
               ? 'Reversed'
-              : (e.document_type || e.ledger_kind || (isReversalRow(e) ? 'Reversal' : '—')),
+              : glCorrectionAudit
+                ? partyStatementGlCorrectionAuditLabel()
+                : (e.document_type || e.ledger_kind || (isReversalRow(e) ? 'Reversal' : '—')),
             presentationKind: presentationForLedgerEntry(e),
           };
         });
