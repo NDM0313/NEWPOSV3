@@ -598,10 +598,16 @@ export function ArApReconciliationCenterPage() {
         <div>
           <p className="font-semibold">AR/AP repair — scoped apply</p>
           <p className="text-gray-400 mt-0.5">
-            Fix Link saves contact mapping metadata only (including trace-only rows). GL posting, reverse/repost, and amount
-            mutations remain disabled.
+            GL posting/reverse/repost is intentionally disabled for safety. Use Fix Link for metadata-only trace
+            fixes (contact mapping — GL amounts unchanged). Fix Link saves contact mapping metadata only (including
+            trace-only rows).
             {access.readOnly ? ' You have read-only auditor access.' : ''}
           </p>
+          {!access.canApplyGlRepair && (
+            <p className="text-amber-300/90 mt-1 text-[11px]">
+              Blocked: canApplyGlRepair=false — no GL line amount or balance mutations from this center.
+            </p>
+          )}
         </div>
       </div>
 

@@ -44,6 +44,10 @@ import {
   isTransactionActionPanelEnabled,
   type TransactionActionId,
 } from '@/app/lib/transactionActionRules';
+import {
+  MANUAL_JE_CANCEL_LABEL,
+  manualJournalCancelConfirmMessage,
+} from '@/app/lib/manualJournalCancelPolicy';
 import { TransactionActionPanel } from '@/app/components/accounting/TransactionActionPanel';
 import { openJournalSourceDocumentFromEntry } from '@/app/lib/openJournalSourceDocument';
 import { getJournalEntrySourceDocumentOpenTarget } from '@/app/lib/journalEntryEditPolicy';
@@ -890,10 +894,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     const paymentId =
       transaction.payment_id ??
       (Array.isArray(transaction.payment) ? transaction.payment[0]?.id : transaction.payment?.id);
-    const confirmMsg = paymentId
-      ? 'Cancel this payment? It will be removed from Roznamcha, statements, ledger, and GL. This cannot be undone.'
-      : 'Cancel this entry? It will be removed from GL, reports, and balances. This cannot be undone.';
-    if (!window.confirm(confirmMsg)) return;
+    if (!window.confirm(manualJournalCancelConfirmMessage(!!paymentId))) return;
     try {
       if (paymentId) {
         const { voidPaymentAfterJournalReversal } = await import('@/app/services/paymentLifecycleService');
@@ -1325,7 +1326,10 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                       onClick={() => run('Voiding...', () => handleVoidJournal())}
                     >
                       <Trash2 size={14} />
-                      Void / Cancel
+                      {transaction.payment_id ||
+                      (Array.isArray(transaction.payment) ? transaction.payment[0]?.id : transaction.payment?.id)
+                        ? 'Cancel Payment'
+                        : MANUAL_JE_CANCEL_LABEL}
                     </Button>
                   )}
                   {transaction.id && !transaction.is_void && !editingAccounts && (() => {
@@ -2088,8 +2092,12 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
       />
     )}
 
-    <Sheet open={paymentTraceOpen} onOpenChange={setPaymentTraceOpen}>
-      <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto bg-gray-950 border-gray-800 text-gray-200">
+    <Sheet open={paymentTraceOpen} onOpenChange={setPaymentTraceOpen} modal>
+      <SheetContent
+        side="right"
+        overlayClassName="z-[115]"
+        className="z-[120] w-full sm:max-w-lg overflow-y-auto bg-gray-950 border-gray-800 text-gray-200"
+      >
         <SheetHeader>
           <SheetTitle className="text-white">Payment / GL trace</SheetTitle>
           <p className="text-xs text-gray-500 font-normal">

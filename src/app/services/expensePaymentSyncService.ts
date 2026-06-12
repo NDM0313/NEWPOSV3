@@ -6,6 +6,7 @@
 import {
   amountsClose,
   detectExpensePaymentAmountMismatch,
+  expensePaymentRepairPassesMinMismatch,
   type ExpensePaymentMismatchResult,
   type ExpensePaymentSyncAmounts,
 } from '@/app/lib/expensePaymentSyncLogic';
@@ -330,20 +331,105 @@ export interface ExpensePaymentRepairCandidateRow {
   canApplyRepair: boolean;
   blockReason?: string;
   proposedAfterAmount: number;
+  expenseDate?: string | null;
+  branchId?: string | null;
 }
 
-/** Scan paid expenses for expense.amount vs payments.amount drift (repair queue auto-detection). */
-export async function listExpensePaymentRepairCandidates(
+export interface ExpensePaymentRepairSearchFilters {
+  expenseNo?: string;
+  paymentRef?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  branchId?: string;
+  minMismatchAmount?: number;
+  limit?: number;
+}
+
+export const DEFAULT_EXPENSE_REPAIR_SCAN_LIMIT = 80;
+export const MAX_EXPENSE_REPAIR_SEARCH_LIMIT = 200;
+
+function snapshotToCandidateRow(
+  snapshot: ExpensePaymentSyncSnapshot,
+  mismatch: ReturnType<typeof detectExpensePaymentAmountMismatch>,
+  meta?: { expenseDate?: string | null; branchId?: string | null }
+): ExpensePaymentRepairCandidateRow {
+  return {
+    expenseId: snapshot.expenseId,
+    expenseNo: snapshot.expenseNo,
+    expenseAmount: mismatch.expenseAmount,
+    paymentRef: snapshot.paymentRef,
+    paymentAmount: mismatch.paymentAmount,
+    jeLiquidityAmount: mismatch.jeLiquidityAmount,
+    canApplyRepair: mismatch.canApplyRepair,
+    blockReason: mismatch.blockReason,
+    proposedAfterAmount: mismatch.proposedAfterAmount,
+    expenseDate: meta?.expenseDate ?? null,
+    branchId: meta?.branchId ?? null,
+  };
+}
+
+function passesMismatchAmountFilter(
+  mismatch: ReturnType<typeof detectExpensePaymentAmountMismatch>,
+  minMismatchAmount?: number
+): boolean {
+  return expensePaymentRepairPassesMinMismatch(
+    mismatch.expenseAmount,
+    mismatch.paymentAmount,
+    minMismatchAmount
+  );
+}
+
+/** Search paid expenses for expense.amount vs payments.amount drift (on-demand, filterable). */
+export async function searchExpensePaymentRepairCandidates(
   companyId: string,
-  limit = 80
+  filters: ExpensePaymentRepairSearchFilters = {}
 ): Promise<ExpensePaymentRepairCandidateRow[]> {
-  const { data: expenses } = await supabase
+  const limit = Math.min(filters.limit ?? DEFAULT_EXPENSE_REPAIR_SCAN_LIMIT, MAX_EXPENSE_REPAIR_SEARCH_LIMIT);
+
+  let expenseIdsFromPayment: string[] | null = null;
+  if (filters.paymentRef?.trim()) {
+    const { data: pays } = await supabase
+      .from('payments')
+      .select('reference_id')
+      .eq('company_id', companyId)
+      .eq('reference_type', 'expense')
+      .ilike('reference_number', `%${filters.paymentRef.trim()}%`)
+      .is('voided_at', null)
+      .limit(100);
+    expenseIdsFromPayment = [
+      ...new Set(
+        (pays || [])
+          .map((p) => (p as { reference_id?: string }).reference_id)
+          .filter(Boolean)
+          .map(String)
+      ),
+    ];
+    if (!expenseIdsFromPayment.length) return [];
+  }
+
+  let query = supabase
     .from('expenses')
-    .select('id, expense_no, amount')
+    .select('id, expense_no, amount, expense_date, branch_id')
     .eq('company_id', companyId)
-    .eq('status', 'paid')
-    .order('updated_at', { ascending: false })
-    .limit(limit);
+    .eq('status', 'paid');
+
+  if (filters.expenseNo?.trim()) {
+    query = query.ilike('expense_no', `%${filters.expenseNo.trim()}%`);
+  }
+  if (filters.branchId?.trim()) {
+    query = query.eq('branch_id', filters.branchId.trim());
+  }
+  if (filters.dateFrom) {
+    query = query.gte('expense_date', filters.dateFrom.slice(0, 10));
+  }
+  if (filters.dateTo) {
+    query = query.lte('expense_date', filters.dateTo.slice(0, 10));
+  }
+  if (expenseIdsFromPayment) {
+    query = query.in('id', expenseIdsFromPayment);
+  }
+
+  const { data: expenses } = await query.order('expense_date', { ascending: false }).limit(limit);
 
   const rows: ExpensePaymentRepairCandidateRow[] = [];
   for (const exp of expenses || []) {
@@ -356,17 +442,21 @@ export async function listExpensePaymentRepairCandidates(
       jeLiquidityAmount: snapshot.jeLiquidityAmount,
     });
     if (!mismatch.hasMismatch) continue;
-    rows.push({
-      expenseId: snapshot.expenseId,
-      expenseNo: snapshot.expenseNo,
-      expenseAmount: mismatch.expenseAmount,
-      paymentRef: snapshot.paymentRef,
-      paymentAmount: mismatch.paymentAmount,
-      jeLiquidityAmount: mismatch.jeLiquidityAmount,
-      canApplyRepair: mismatch.canApplyRepair,
-      blockReason: mismatch.blockReason,
-      proposedAfterAmount: mismatch.proposedAfterAmount,
-    });
+    if (!passesMismatchAmountFilter(mismatch, filters.minMismatchAmount)) continue;
+    rows.push(
+      snapshotToCandidateRow(snapshot, mismatch, {
+        expenseDate: (exp as { expense_date?: string }).expense_date ?? null,
+        branchId: (exp as { branch_id?: string | null }).branch_id ?? null,
+      })
+    );
   }
   return rows;
+}
+
+/** Lightweight default scan — recent paid expenses only (not full-table). */
+export async function listExpensePaymentRepairCandidates(
+  companyId: string,
+  limit = DEFAULT_EXPENSE_REPAIR_SCAN_LIMIT
+): Promise<ExpensePaymentRepairCandidateRow[]> {
+  return searchExpensePaymentRepairCandidates(companyId, { limit });
 }

@@ -30,13 +30,16 @@ import {
 } from '@/app/services/cashFlowReportService';
 import {
   buildCashFlowCsvRows,
+  buildCashFlowTieOutDiagnosticHints,
   CASH_FLOW_CSV_HEADERS,
   CASH_FLOW_SOURCE_MODULE_LABELS,
+  CASH_FLOW_TIEOUT_EXPLANATION,
   cashFlowAuditModeNote,
   cashFlowFiltersAffectRunningBalance,
   cashFlowRunningBalanceNote,
   cashFlowStatusBadges,
   cashFlowStatusLabel,
+  computeCashFlowTieOut,
   glCashFlowModeNote,
   type CashFlowSourceModule,
   type GlCashFlowStatementSummary,
@@ -241,6 +244,23 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
   }, [data?.rows, searchTerm]);
 
   const summary = data?.summary;
+
+  const tieOut = useMemo(() => {
+    if (!summary || !glSummary) return null;
+    return computeCashFlowTieOut(summary.netMovement, glSummary.netChange);
+  }, [summary, glSummary]);
+
+  const tieOutHints = useMemo(() => {
+    return buildCashFlowTieOutDiagnosticHints(
+      filteredRows.map((r) => ({
+        sourceModule: r.sourceModule,
+        status: r.status,
+        referenceType: r.referenceType,
+        party: r.party,
+        branchName: r.branchName,
+      }))
+    );
+  }, [filteredRows]);
 
   const csvExportRows = useMemo(() => {
     return buildCashFlowCsvRows(
@@ -530,6 +550,56 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {tieOut && (
+            <div className="rounded-xl border border-gray-700/80 bg-gray-900/50 p-4 space-y-3 print:border-gray-300 print:bg-white">
+              <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider print:text-black">
+                Tie-out / Difference
+              </h3>
+              <p className="text-xs text-gray-500 leading-relaxed print:text-gray-700">{CASH_FLOW_TIEOUT_EXPLANATION}</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="rounded-lg border border-gray-800 p-3 print:border-gray-300">
+                  <p className="text-xs text-gray-500 uppercase">Operational Net Movement</p>
+                  <p className="text-lg font-bold text-white mt-1 print:text-black">
+                    {formatCurrency(tieOut.operationalNetMovement)}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-gray-800 p-3 print:border-gray-300">
+                  <p className="text-xs text-gray-500 uppercase">GL Summary Net Movement</p>
+                  <p className="text-lg font-bold text-white mt-1 print:text-black">
+                    {formatCurrency(tieOut.glNetMovement)}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-gray-800 p-3 print:border-gray-300">
+                  <p className="text-xs text-gray-500 uppercase">Difference</p>
+                  <p
+                    className={cn(
+                      'text-lg font-bold mt-1 print:text-black',
+                      tieOut.difference === 0
+                        ? 'text-emerald-400'
+                        : Math.abs(tieOut.difference) < 1
+                          ? 'text-amber-400'
+                          : 'text-amber-300'
+                    )}
+                  >
+                    {formatCurrency(tieOut.difference)}
+                  </p>
+                </div>
+              </div>
+              {tieOutHints.length > 0 && (
+                <div className="no-print space-y-1">
+                  <p className="text-[10px] uppercase text-gray-500 font-semibold">Diagnostic hints</p>
+                  <ul className="text-xs text-gray-500 space-y-0.5">
+                    {tieOutHints.map((h) => (
+                      <li key={h.code}>
+                        {h.label}: {h.count} row(s)
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           )}
 

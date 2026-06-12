@@ -13,6 +13,9 @@ import {
   resolveCashFlowRowStatus,
   shouldIncludeInGlCashFlowEntry,
   glCashFlowModeNote,
+  computeCashFlowTieOut,
+  buildCashFlowTieOutDiagnosticHints,
+  CASH_FLOW_TIEOUT_EXPLANATION,
 } from './cashFlowReportLogic';
 
 test('normal mode excludes JE-0168-class correction_reversal rows', () => {
@@ -162,4 +165,21 @@ test('GL cash flow normal mode excludes correction_reversal entries', () => {
 test('GL cash flow mode note', () => {
   assert.match(glCashFlowModeNote(false), /excludes correction/i);
   assert.match(glCashFlowModeNote(true), /includes correction/i);
+});
+
+test('Cash Flow tie-out difference is operational minus GL net', () => {
+  const tie = computeCashFlowTieOut(1500, 1200);
+  assert.equal(tie.operationalNetMovement, 1500);
+  assert.equal(tie.glNetMovement, 1200);
+  assert.equal(tie.difference, 300);
+});
+
+test('Cash Flow tie-out diagnostic hints count manual and reversal rows', () => {
+  const hints = buildCashFlowTieOutDiagnosticHints([
+    { sourceModule: 'manual_je', status: 'live', referenceType: 'journal', party: 'A', branchName: 'HQ' },
+    { sourceModule: 'other', status: 'reversed', referenceType: 'correction_reversal', party: null, branchName: 'HQ' },
+  ]);
+  assert.ok(hints.some((h) => h.code === 'manual_cash_je'));
+  assert.ok(hints.some((h) => h.code === 'reversal_audit'));
+  assert.match(CASH_FLOW_TIEOUT_EXPLANATION, /Operational grid/i);
 });

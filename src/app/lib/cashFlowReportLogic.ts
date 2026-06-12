@@ -272,3 +272,79 @@ export function glCashFlowModeNote(auditMode: boolean): string {
     ? 'GL summary includes correction/reversal entries for audit traceability.'
     : 'GL summary excludes correction/reversal entries (Normal mode).';
 }
+
+export const CASH_FLOW_TIEOUT_EXPLANATION =
+  'Operational grid is based on cash/bank movement rows. GL summary groups journal activity by accounting class. ' +
+  'Differences can occur due to classification, opening entries, manual JEs, or unclassified accounts.';
+
+export interface CashFlowTieOutResult {
+  operationalNetMovement: number;
+  glNetMovement: number;
+  difference: number;
+}
+
+export function computeCashFlowTieOut(
+  operationalNetMovement: number,
+  glNetMovement: number
+): CashFlowTieOutResult {
+  const op = Number(operationalNetMovement) || 0;
+  const gl = Number(glNetMovement) || 0;
+  return {
+    operationalNetMovement: op,
+    glNetMovement: gl,
+    difference: Math.round((op - gl) * 100) / 100,
+  };
+}
+
+export type CashFlowTieOutHintCode =
+  | 'unclassified_je'
+  | 'manual_cash_je'
+  | 'reversal_audit'
+  | 'missing_source_module'
+  | 'missing_party_or_branch';
+
+export interface CashFlowTieOutDiagnosticHint {
+  code: CashFlowTieOutHintCode;
+  label: string;
+  count: number;
+}
+
+export interface CashFlowTieOutRowInput {
+  sourceModule: CashFlowSourceModule;
+  status: CashFlowRowStatus;
+  referenceType?: string | null;
+  party?: string | null;
+  branchName?: string | null;
+}
+
+export function buildCashFlowTieOutDiagnosticHints(
+  rows: CashFlowTieOutRowInput[]
+): CashFlowTieOutDiagnosticHint[] {
+  const counts: Record<CashFlowTieOutHintCode, number> = {
+    unclassified_je: 0,
+    manual_cash_je: 0,
+    reversal_audit: 0,
+    missing_source_module: 0,
+    missing_party_or_branch: 0,
+  };
+
+  for (const row of rows) {
+    if (row.sourceModule === 'other') counts.unclassified_je += 1;
+    if (row.sourceModule === 'manual_je') counts.manual_cash_je += 1;
+    if (row.status === 'reversed' || row.status === 'voided') counts.reversal_audit += 1;
+    if (row.sourceModule === 'other' && !row.referenceType) counts.missing_source_module += 1;
+    if (!row.party?.trim() || !row.branchName?.trim()) counts.missing_party_or_branch += 1;
+  }
+
+  const labels: Record<CashFlowTieOutHintCode, string> = {
+    unclassified_je: 'Unclassified JE / other module rows',
+    manual_cash_je: 'Manual cash/bank JE rows',
+    reversal_audit: 'Reversal or voided audit rows',
+    missing_source_module: 'Rows with missing source module mapping',
+    missing_party_or_branch: 'Rows missing party or branch metadata',
+  };
+
+  return (Object.keys(counts) as CashFlowTieOutHintCode[])
+    .filter((code) => counts[code] > 0)
+    .map((code) => ({ code, label: labels[code], count: counts[code] }));
+}

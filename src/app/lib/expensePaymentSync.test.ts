@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import {
   amountsClose,
   detectExpensePaymentAmountMismatch,
+  expensePaymentRepairPassesMinMismatch,
+  expensePaymentRepairSearchIsTargeted,
+  expensePaymentMismatchAmount,
 } from './expensePaymentSyncLogic.ts';
 
 describe('expensePaymentSync', () => {
@@ -44,5 +47,19 @@ describe('expensePaymentSync', () => {
   it('amountsClose uses epsilon', () => {
     assert.equal(amountsClose(7000, 7000.01), true);
     assert.equal(amountsClose(7000, 7001), false);
+  });
+
+  it('targeted search detects explicit filters beyond recent scan', () => {
+    assert.equal(expensePaymentRepairSearchIsTargeted({}), false);
+    assert.equal(expensePaymentRepairSearchIsTargeted({ expenseNo: 'EXP-0001' }), true);
+    assert.equal(expensePaymentRepairSearchIsTargeted({ paymentRef: 'PAY-99' }), true);
+    assert.equal(expensePaymentRepairSearchIsTargeted({ dateFrom: '2024-01-01' }), true);
+    assert.equal(expensePaymentRepairSearchIsTargeted({ minMismatchAmount: 50 }), true);
+  });
+
+  it('min mismatch filter allows older large drift only', () => {
+    assert.equal(expensePaymentRepairPassesMinMismatch(7000, 13500, 100), true);
+    assert.equal(expensePaymentRepairPassesMinMismatch(7000, 7050, 100), false);
+    assert.equal(expensePaymentMismatchAmount(7000, 13500), 6500);
   });
 });

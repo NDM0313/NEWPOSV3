@@ -959,28 +959,19 @@ export interface RepairQueueSnapshot {
   issues: IntegrityLabIssueRow[];
   issuePreviews: RepairDryRunPreview[];
   numberingRows: NumberingDryRunRow[];
-  expensePaymentCandidates: import('@/app/services/expensePaymentSyncService').ExpensePaymentRepairCandidateRow[];
-  expensePaymentPreviews: RepairDryRunPreview[];
   loadedAt: string;
 }
 
-/** Repair queue dry-run snapshot (Phase D) â€” preview only. */
+/** Repair queue dry-run snapshot (Phase D) — preview only. Expense mismatch search is on-demand in Repair Queue tab. */
 export async function loadRepairQueueSnapshot(companyId: string): Promise<RepairQueueSnapshot> {
-  const { listExpensePaymentRepairCandidates } = await import(
-    '@/app/services/expensePaymentSyncService'
-  );
-  const { expensePaymentCandidateToDryRunPreview } = await import('@/app/lib/repairQueueDryRun');
-  const [issues, numberingRows, expensePaymentCandidates] = await Promise.all([
+  const [issues, numberingRows] = await Promise.all([
     listIntegrityIssues(companyId, { hideResolved: true, limit: 100 }),
     numberingMaintenanceService.analyze(companyId),
-    listExpensePaymentRepairCandidates(companyId, 80),
   ]);
   return {
     issues,
     issuePreviews: issues.slice(0, 50).map(integrityIssueToDryRunPreview),
     numberingRows: buildNumberingDryRunPreviews(numberingRows),
-    expensePaymentCandidates,
-    expensePaymentPreviews: expensePaymentCandidates.map(expensePaymentCandidateToDryRunPreview),
     loadedAt: new Date().toISOString(),
   };
 }
