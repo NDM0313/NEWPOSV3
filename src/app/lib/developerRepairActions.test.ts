@@ -18,11 +18,12 @@ const PHASE_F_REPAIR_ACTION_IDS = [
   'opening.create_adjustment_je',
   'opening.orphan_je_review',
   'roznamcha.report_duplicate_source',
+  'expense.sync_linked_payment_amount',
 ] as const;
 
 test('Phase F repair action ids are unique', () => {
   assert.equal(PHASE_F_REPAIR_ACTION_IDS.length, new Set(PHASE_F_REPAIR_ACTION_IDS).size);
-  assert.equal(PHASE_F_REPAIR_ACTION_IDS.length, 12);
+  assert.equal(PHASE_F_REPAIR_ACTION_IDS.length, 13);
 });
 
 test('sequence sync action id is registered in catalog', () => {

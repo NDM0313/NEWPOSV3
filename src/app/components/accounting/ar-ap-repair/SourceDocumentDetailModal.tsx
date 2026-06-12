@@ -165,12 +165,12 @@ export function UnmappedSourceDetailModal(props: {
           </Button>
           {props.onOpenTrace && (
             <Button variant="outline" className="border-gray-600" onClick={props.onOpenTrace}>
-              Full trace panel
+              Check Link
             </Button>
           )}
           {!props.readOnly && props.onOpenRelinkDryRun && (
             <Button className="bg-emerald-700 hover:bg-emerald-600" onClick={props.onOpenRelinkDryRun}>
-              Relink dry-run…
+              Fix Link
             </Button>
           )}
         </DialogFooter>

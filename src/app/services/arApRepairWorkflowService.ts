@@ -413,26 +413,84 @@ export async function saveJournalPartyContactMapping(params: {
   partyContactId: string;
   suggestedFrom: string;
   notes?: string;
-}): Promise<{ ok: boolean; error?: string }> {
+}): Promise<{ ok: boolean; error?: string; mappingId?: string }> {
   const { data: userRes } = await supabase.auth.getUser();
   const uid = userRes?.user?.id ?? null;
 
-  const { error } = await supabase.from('journal_party_contact_mapping').insert({
-    company_id: params.companyId,
-    journal_entry_id: params.journalEntryId,
-    journal_line_id: params.journalLineId,
-    party_contact_id: params.partyContactId,
-    mapping_source: 'reconciliation_lab',
-    suggested_from: params.suggestedFrom.slice(0, 200),
-    notes: params.notes?.slice(0, 500) ?? null,
-    created_by: uid,
-  });
+  const { data, error } = await supabase
+    .from('journal_party_contact_mapping')
+    .insert({
+      company_id: params.companyId,
+      journal_entry_id: params.journalEntryId,
+      journal_line_id: params.journalLineId,
+      party_contact_id: params.partyContactId,
+      mapping_source: 'reconciliation_lab',
+      suggested_from: params.suggestedFrom.slice(0, 200),
+      notes: params.notes?.slice(0, 500) ?? null,
+      created_by: uid,
+    })
+    .select('id')
+    .maybeSingle();
 
   if (error) {
     if (error.code === '23505') {
-      return { ok: false, error: 'A mapping already exists for this line or entry. Remove it in SQL or extend UI to replace.' };
+      return { ok: false, error: 'A mapping already exists for this line or entry.' };
     }
     return { ok: false, error: error.message };
   }
-  return { ok: true };
+  return { ok: true, mappingId: (data as { id?: string } | null)?.id };
+}
+
+/** Phase 2A — metadata-only Fix Link apply with party_repair_audit (no GL line edits). */
+export async function applyRelinkContactForTrace(params: {
+  companyId: string;
+  journalEntryId: string;
+  journalLineId: string | null;
+  partyContactId: string;
+  suggestedFrom: string;
+  entryNo?: string | null;
+  beforeContactName?: string | null;
+  afterContactName: string;
+  traceOnly: boolean;
+  notes?: string;
+  appliedByUserId?: string | null;
+}): Promise<{ ok: boolean; error?: string; auditId?: string }> {
+  const mapResult = await saveJournalPartyContactMapping({
+    companyId: params.companyId,
+    journalEntryId: params.journalEntryId,
+    journalLineId: params.journalLineId,
+    partyContactId: params.partyContactId,
+    suggestedFrom: params.suggestedFrom,
+    notes: params.notes,
+  });
+  if (!mapResult.ok) return { ok: false, error: mapResult.error };
+
+  const reasonCode = params.traceOnly ? 'ar_ap_relink_contact_audit_trace' : 'ar_ap_relink_contact';
+  const { data: audit, error: audErr } = await supabase
+    .from('party_repair_audit')
+    .insert({
+      company_id: params.companyId,
+      table_name: 'journal_party_contact_mapping',
+      row_id: mapResult.mappingId || params.journalEntryId,
+      column_name: 'party_contact_id',
+      old_value: params.beforeContactName || '',
+      new_value: params.afterContactName,
+      reason_code: reasonCode,
+      metadata: {
+        journal_entry_id: params.journalEntryId,
+        journal_line_id: params.journalLineId,
+        party_contact_id: params.partyContactId,
+        entry_no: params.entryNo ?? null,
+        trace_only: params.traceOnly,
+        gl_lines_unchanged: true,
+      },
+      applied_by: params.appliedByUserId ?? null,
+    })
+    .select('id')
+    .maybeSingle();
+
+  if (audErr) {
+    return { ok: false, error: `Mapping saved but audit failed: ${audErr.message}` };
+  }
+  return { ok: true, auditId: (audit as { id?: string } | null)?.id };
 }

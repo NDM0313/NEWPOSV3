@@ -8,6 +8,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { useAccountingOptional } from '@/app/context/AccountingContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { expenseService, Expense as SupabaseExpense } from '@/app/services/expenseService';
+import { syncExpenseLinkedPayment } from '@/app/services/expensePaymentSyncService';
 import { accountingService } from '@/app/services/accountingService';
 import { voidJournalEntries } from '@/app/services/accountingIntegrityService';
 import {
@@ -658,6 +659,34 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
             phase: 'inplace_update',
             data: { jeId, oldAmount: existing?.amount, newAmount, description: newDesc },
           });
+
+          const mergedPayAcc =
+            updates.paymentAccountId !== undefined
+              ? updates.paymentAccountId || null
+              : existing.paymentAccountId || null;
+
+          if (classification.actionPlan.touchPayments) {
+            const sync = await syncExpenseLinkedPayment({
+              companyId,
+              expenseId: id,
+              expenseNo: existing.expenseNo,
+              amount: newAmount,
+              paymentAccountId: mergedPayAcc,
+              jeId,
+              performedBy: user?.id ?? null,
+            });
+            if (!sync.ok) {
+              throw new Error(sync.error || 'Could not sync linked payment amount to expense.');
+            }
+            pushExpenseEditTrace({
+              traceId,
+              ts: getCurrentLocalTimestamp(),
+              expenseId: id,
+              companyId: companyId || null,
+              phase: 'payment_sync',
+              data: { paymentId: sync.paymentId, updated: sync.updated },
+            });
+          }
 
           // Refresh
           if (typeof window !== 'undefined') {

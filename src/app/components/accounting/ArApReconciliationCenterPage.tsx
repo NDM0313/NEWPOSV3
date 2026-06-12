@@ -550,6 +550,8 @@ export function ArApReconciliationCenterPage() {
         onOpenChange={(o) => !o && setRelinkDryRunRow(null)}
         row={relinkDryRunRow}
         companyId={companyId}
+        canApplyRelinkMapping={access.canApplyRelinkMapping}
+        onSaved={() => void load()}
       />
       <JournalRepairWizardDialog
         open={!!journalWizardId}
@@ -594,9 +596,10 @@ export function ArApReconciliationCenterPage() {
       <div className="rounded-xl border border-blue-500/30 bg-blue-950/20 p-3 text-xs text-blue-100/90 flex gap-2">
         <ShieldAlert className="w-4 h-4 shrink-0 text-blue-400 mt-0.5" />
         <div>
-          <p className="font-semibold">Phase 2 — safe UI only</p>
+          <p className="font-semibold">AR/AP repair — scoped apply</p>
           <p className="text-gray-400 mt-0.5">
-            Dry-run previews only. Post, relink apply, and journal execute are disabled or gated. No GL, payment, or journal mutations.
+            Fix Link saves contact mapping metadata only (including trace-only rows). GL posting, reverse/repost, and amount
+            mutations remain disabled.
             {access.readOnly ? ' You have read-only auditor access.' : ''}
           </p>
         </div>

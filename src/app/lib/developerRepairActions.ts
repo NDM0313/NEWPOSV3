@@ -6,6 +6,7 @@ import { COA_REPAIR_ACTIONS } from '@/app/lib/developerRepairActions/coaActions'
 import { numberingSyncSequenceAction } from '@/app/lib/developerRepairActions/numberingAction';
 import { OPENING_REPAIR_ACTIONS } from '@/app/lib/developerRepairActions/openingActions';
 import { PAYMENT_REPAIR_ACTIONS } from '@/app/lib/developerRepairActions/paymentActions';
+import { EXPENSE_REPAIR_ACTIONS } from '@/app/lib/developerRepairActions/expenseActions';
 import { ROZNAMCHA_REPAIR_ACTIONS } from '@/app/lib/developerRepairActions/roznamchaActions';
 import type { DeveloperRepairAction } from '@/app/lib/developerRepairTypes';
 
@@ -15,12 +16,14 @@ export { numberingSyncSequenceAction } from '@/app/lib/developerRepairActions/nu
 export { COA_REPAIR_ACTIONS } from '@/app/lib/developerRepairActions/coaActions';
 export { PAYMENT_REPAIR_ACTIONS } from '@/app/lib/developerRepairActions/paymentActions';
 export { OPENING_REPAIR_ACTIONS } from '@/app/lib/developerRepairActions/openingActions';
+export { EXPENSE_REPAIR_ACTIONS } from '@/app/lib/developerRepairActions/expenseActions';
 export { ROZNAMCHA_REPAIR_ACTIONS } from '@/app/lib/developerRepairActions/roznamchaActions';
 
 const ALL_ACTIONS: DeveloperRepairAction[] = [
   numberingSyncSequenceAction,
   ...COA_REPAIR_ACTIONS,
   ...PAYMENT_REPAIR_ACTIONS,
+  ...EXPENSE_REPAIR_ACTIONS,
   ...OPENING_REPAIR_ACTIONS,
   ...ROZNAMCHA_REPAIR_ACTIONS,
 ];

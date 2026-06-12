@@ -15,8 +15,12 @@ export function resolveArApReconciliationAccess(userRole: string | null | undefi
   canAccess: boolean;
   readOnly: boolean;
   canUseDryRunUI: boolean;
-  /** Phase 2: always false — apply disabled until Phase 3 */
+  /** @deprecated Use canApplyRelinkMapping — kept for callers expecting legacy flag */
   canApplyRepair: boolean;
+  /** Phase 2A: metadata-only contact mapping apply (no GL) */
+  canApplyRelinkMapping: boolean;
+  /** Phase 2A: GL post / reverse / repost — always false */
+  canApplyGlRepair: boolean;
   canDeveloperBypassExecuteGate: boolean;
 } {
   const role = canonRole(userRole);
@@ -27,6 +31,8 @@ export function resolveArApReconciliationAccess(userRole: string | null | undefi
       readOnly: false,
       canUseDryRunUI: false,
       canApplyRepair: false,
+      canApplyRelinkMapping: false,
+      canApplyGlRepair: false,
       canDeveloperBypassExecuteGate: false,
     };
   }
@@ -37,18 +43,23 @@ export function resolveArApReconciliationAccess(userRole: string | null | undefi
       readOnly: true,
       canUseDryRunUI: false,
       canApplyRepair: false,
+      canApplyRelinkMapping: false,
+      canApplyGlRepair: false,
       canDeveloperBypassExecuteGate: false,
     };
   }
   const isDev = DRY_RUN_ROLES.has(role);
   const isAdmin = ADMIN_VIEW_ROLES.has(role);
   if (isDev || isAdmin) {
+    const canRelink = isDev || isAdmin;
     return {
       level: isDev ? 'dry_run' : 'admin_view',
       canAccess: true,
       readOnly: false,
       canUseDryRunUI: true,
-      canApplyRepair: false,
+      canApplyRepair: canRelink,
+      canApplyRelinkMapping: canRelink,
+      canApplyGlRepair: false,
       canDeveloperBypassExecuteGate: isDev || role === 'super admin' || role === 'superadmin' || role === 'super_admin',
     };
   }
@@ -58,6 +69,8 @@ export function resolveArApReconciliationAccess(userRole: string | null | undefi
     readOnly: false,
     canUseDryRunUI: false,
     canApplyRepair: false,
+    canApplyRelinkMapping: false,
+    canApplyGlRepair: false,
     canDeveloperBypassExecuteGate: false,
   };
 }

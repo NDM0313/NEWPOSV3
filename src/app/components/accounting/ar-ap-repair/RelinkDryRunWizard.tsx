@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import {
   Dialog,
   DialogContent,
@@ -11,23 +12,35 @@ import {
 import { Button } from '@/app/components/ui/button';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import type { UnmappedJournalRow } from '@/app/services/arApReconciliationCenterService';
+import { unmappedLineItemKey, upsertArApItemFixStatus } from '@/app/services/arApReconciliationCenterService';
 import {
+  applyRelinkContactForTrace,
   suggestPartyContactsForUnmappedLine,
   type PartyCandidate,
 } from '@/app/services/arApRepairWorkflowService';
 import { loadUnmappedTrace } from '@/app/services/arApReconciliationTraceService';
 import { diagnoseUnmappedLine } from '@/app/lib/arApReconciliationDiagnostics';
+import {
+  canSaveRelinkContact,
+  isJournalTraceOnlyRelinkContext,
+  relinkSaveButtonLabel,
+} from '@/app/lib/arApRelinkApply';
 import { cn } from '@/app/components/ui/utils';
 import { FalsePositiveBadge, RiskBadge } from './ArApRepairBadges';
+import { useSupabase } from '@/app/context/SupabaseContext';
 
 export function RelinkDryRunWizard(props: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   row: UnmappedJournalRow | null;
   companyId: string;
+  canApplyRelinkMapping?: boolean;
+  onSaved?: () => void;
 }) {
   const { formatCurrency } = useFormatCurrency();
+  const { user } = useSupabase();
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [candidates, setCandidates] = useState<PartyCandidate[]>([]);
   const [selected, setSelected] = useState<PartyCandidate | null>(null);
   const [trace, setTrace] = useState<Awaited<ReturnType<typeof loadUnmappedTrace>> | null>(null);
@@ -62,14 +75,60 @@ export function RelinkDryRunWizard(props: {
   if (!props.row) return null;
 
   const diag = diagnoseUnmappedLine(props.row, trace?.payment ?? undefined, trace?.lineAccount?.linked_contact_id);
+  const traceOnly = isJournalTraceOnlyRelinkContext(trace?.journal ?? null);
+  const saveEnabled = canSaveRelinkContact({
+    selectedContactId: selected?.contact_id,
+    canApplyRelinkMapping: !!props.canApplyRelinkMapping,
+    journalEntryId: props.row.journal_entry_id,
+  });
+  const saveLabel = relinkSaveButtonLabel(traceOnly);
+
+  const handleSave = async () => {
+    if (!selected || !saveEnabled) return;
+    setSaving(true);
+    try {
+      const result = await applyRelinkContactForTrace({
+        companyId: props.companyId,
+        journalEntryId: props.row.journal_entry_id,
+        journalLineId: props.row.journal_line_id,
+        partyContactId: selected.contact_id,
+        suggestedFrom: selected.suggested_from,
+        entryNo: trace?.journal?.entry_no || props.row.entry_no,
+        beforeContactName: trace?.lineAccount?.linked_contact_name,
+        afterContactName: selected.name,
+        traceOnly,
+        notes: traceOnly
+          ? 'Phase 2A trace-only contact mapping (void/reversal row — GL unchanged)'
+          : 'Phase 2A contact mapping (GL unchanged)',
+        appliedByUserId: user?.id ?? null,
+      });
+      if (!result.ok) {
+        toast.error(result.error || 'Could not save link');
+        return;
+      }
+      await upsertArApItemFixStatus(
+        props.companyId,
+        'unmapped_line',
+        unmappedLineItemKey(props.row),
+        'resolved'
+      );
+      toast.success(traceOnly ? 'Contact link saved for trace' : 'Contact link saved');
+      props.onSaved?.();
+      props.onOpenChange(false);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
       <DialogContent className="bg-gray-950 border-gray-800 text-white max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Relink contact dry-run</DialogTitle>
+          <DialogTitle>Fix Link</DialogTitle>
           <DialogDescription className="text-gray-400">
-            Preview only — Phase 2 does not save mappings or change GL lines.
+            Maps a contact to this journal line for traceability. GL debit/credit amounts and account balances are
+            unchanged.
+            {traceOnly ? ' This row is voided or a reversal — saving is for audit trace only.' : ''}
           </DialogDescription>
         </DialogHeader>
 
@@ -80,6 +139,11 @@ export function RelinkDryRunWizard(props: {
             <div className="flex flex-wrap gap-2">
               <RiskBadge level={diag.riskLevel} />
               {diag.isLikelyFalsePositive && <FalsePositiveBadge />}
+              {traceOnly && (
+                <span className="text-[10px] uppercase font-semibold px-2 py-0.5 rounded border border-amber-500/40 text-amber-200 bg-amber-950/30">
+                  Trace only
+                </span>
+              )}
             </div>
 
             {diag.isLikelyFalsePositive && diag.falsePositiveReason && (
@@ -119,10 +183,10 @@ export function RelinkDryRunWizard(props: {
               </div>
             </dl>
 
-            <p className="text-[10px] uppercase text-gray-500 font-semibold">Suggested contact (preview selection)</p>
+            <p className="text-[10px] uppercase text-gray-500 font-semibold">Suggested contact</p>
             <div className="space-y-2 max-h-36 overflow-y-auto">
               {candidates.length === 0 ? (
-                <p className="text-gray-500 text-xs">No candidates from reference graph.</p>
+                <p className="text-gray-500 text-xs">No candidates from reference graph — Save stays disabled.</p>
               ) : (
                 candidates.map((c) => (
                   <button
@@ -145,16 +209,16 @@ export function RelinkDryRunWizard(props: {
 
             {selected && (
               <div className="rounded-lg border border-gray-700 bg-gray-900/40 p-2 text-xs">
-                <p className="text-gray-500 uppercase text-[10px] font-semibold mb-1">Before → After (mapping intent)</p>
+                <p className="text-gray-500 uppercase text-[10px] font-semibold mb-1">Before → After (mapping metadata)</p>
                 <p>
                   <span className="text-gray-400">Before:</span> {trace?.lineAccount?.linked_contact_name || 'Unmapped'}{' '}
                   on {props.row.account_code}
                 </p>
                 <p>
-                  <span className="text-gray-400">After (Phase 3 audit only):</span> {selected.name} → journal_party_contact_mapping
+                  <span className="text-gray-400">After:</span> {selected.name} → journal_party_contact_mapping
                 </p>
-                <p className="text-amber-400/90 mt-2">
-                  Warning: current relink is audit-only until Phase 3 apply. GL journal lines are not updated in Phase 2.
+                <p className="text-gray-400 mt-2">
+                  Journal entry lines and amounts are not modified. View Audit after save to confirm.
                 </p>
               </div>
             )}
@@ -165,8 +229,12 @@ export function RelinkDryRunWizard(props: {
           <Button variant="outline" className="border-gray-700" onClick={() => props.onOpenChange(false)}>
             Close
           </Button>
-          <Button className="bg-gray-700 cursor-not-allowed opacity-60" disabled title="Phase 3">
-            Save mapping (Phase 3)
+          <Button
+            className={saveEnabled ? 'bg-emerald-700 hover:bg-emerald-600' : 'bg-gray-700 cursor-not-allowed opacity-60'}
+            disabled={!saveEnabled || saving}
+            onClick={() => void handleSave()}
+          >
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : saveLabel}
           </Button>
         </DialogFooter>
       </DialogContent>
