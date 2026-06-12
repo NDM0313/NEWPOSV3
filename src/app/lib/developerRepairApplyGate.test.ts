@@ -86,3 +86,16 @@ test('actionRequiresRelinkRpc only for payment relink', () => {
   assert.equal(actionRequiresRelinkRpc('payment.relink_payment_to_journal'), true);
   assert.equal(actionRequiresRelinkRpc('coa.update_description'), false);
 });
+
+test('resolveRepairApplyBlockReasons gl_correction_apply_disabled', () => {
+  const { reasons } = resolveRepairApplyBlockReasons({
+    canApply: true,
+    dryRun: { ok: true, dryRunHash: 'abc', before: {}, afterPreview: {} },
+    confirmPhrase: 'APPLY GL CORRECTION',
+    expectedPhrase: 'APPLY GL CORRECTION',
+    applying: false,
+    actionRequiresGlCorrectionRpc: true,
+    glCorrectionRpcAvailable: false,
+  });
+  assert.ok(reasons.some((r) => r.code === 'gl_correction_apply_disabled'));
+});

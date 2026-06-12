@@ -9,6 +9,7 @@ import { useSupabase } from '@/app/context/SupabaseContext';
 import { canApplyDeveloperRepair } from '@/app/lib/developerAccountingAccess';
 import {
   actionRequiresRelinkRpc,
+  actionRequiresGlCorrectionRpc,
   resolveRepairApplyBlockReasons,
 } from '@/app/lib/developerRepairApplyGate';
 import {
@@ -53,6 +54,8 @@ export function RepairActionPanel({ companyId, item, systemStatus, onRemove, onA
 
   const requiresRelinkRpc = actionRequiresRelinkRpc(item.actionId);
   const relinkRpcAvailable = systemStatus?.probe.relinkRpcAvailable ?? true;
+  const requiresGlCorrectionRpc = actionRequiresGlCorrectionRpc(item.actionId);
+  const glCorrectionRpcAvailable = false;
 
   const applyGate = resolveRepairApplyBlockReasons({
     canApply,
@@ -63,6 +66,8 @@ export function RepairActionPanel({ companyId, item, systemStatus, onRemove, onA
     actionKnown: Boolean(action),
     actionRequiresRelinkRpc: requiresRelinkRpc,
     relinkRpcAvailable,
+    actionRequiresGlCorrectionRpc: requiresGlCorrectionRpc,
+    glCorrectionRpcAvailable,
   });
 
   const runDryRun = useCallback(async () => {

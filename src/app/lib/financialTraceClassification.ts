@@ -184,6 +184,16 @@ export interface KnownTraceCase {
 
 export const KNOWN_TRACE_CASES: KnownTraceCase[] = [
   {
+    id: 'hq-sl-0003-orphan-ar',
+    title: 'Walk-in / HQ-SL-0003 orphan AR',
+    codes: ['D7'],
+    tab: 'deeper',
+    searchHint: 'HQ-SL-0003',
+    summary:
+      'JE-0160 Dr AR-CUS0000 Rs 150; JE-0161 reversal credited 1100 not AR-CUS0000. Normal statement hidden by report filter; raw GL orphan Rs 150 — GL correction draft dry-run available.',
+    statusLabel: 'GL correction draft required — apply blocked until RPC migration',
+  },
+  {
     id: 'inayat-ren-0002',
     title: 'Inayat / REN-0002',
     codes: ['D4', 'D5', 'D7'],

@@ -29,6 +29,11 @@ import {
   type ExpensePaymentRepairSearchFilters,
 } from '@/app/services/expensePaymentSyncService';
 import { expensePaymentCandidateToDryRunPreview } from '@/app/lib/repairQueueDryRun';
+import {
+  ActionableRepairCard,
+  ActionableRepairStatusBadge,
+} from '@/app/components/accounting/ar-ap-repair/ActionableRepairCard';
+import { classifyExpensePaymentMismatch } from '@/app/lib/actionableRepairClassifier';
 
 interface Props {
   companyId: string;
@@ -280,14 +285,17 @@ export function RepairQueueTab({ companyId }: Props) {
                     <th className="py-2 pr-2">Expense amt</th>
                     <th className="py-2 pr-2">Payment amt</th>
                     <th className="py-2 pr-2">JE liquidity</th>
-                    <th className="py-2 pr-2">Proposed</th>
+                    <th className="py-2 pr-2">Issue</th>
                     <th className="py-2 pr-2">Status</th>
+                    <th className="py-2 pr-2">Risk</th>
+                    <th className="py-2 pr-2">Can apply?</th>
                     <th className="py-2">Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {expenseMismatches.map((row) => {
                     const preview = expensePaymentCandidateToDryRunPreview(row);
+                    const repairCls = classifyExpensePaymentMismatch(row);
                     return (
                       <tr key={row.expenseId} className="border-b border-gray-800/60">
                         <td className="py-2 pr-2 text-gray-200 font-mono">{row.expenseNo}</td>
@@ -296,14 +304,25 @@ export function RepairQueueTab({ companyId }: Props) {
                         <td className="py-2 pr-2">{(row.paymentAmount ?? 0).toLocaleString()}</td>
                         <td className="py-2 pr-2">{row.jeLiquidityAmount.toLocaleString()}</td>
                         <td className="py-2 pr-2">{row.proposedAfterAmount.toLocaleString()}</td>
+                        <td className="py-2 pr-2 text-gray-400 max-w-[120px] truncate" title={repairCls.issueType}>
+                          {repairCls.issueType}
+                        </td>
+                        <td className="py-2 pr-2">
+                          <ActionableRepairStatusBadge status={repairCls.status} />
+                        </td>
+                        <td className="py-2 pr-2">
+                          <Badge variant="outline" className="text-[10px] border-gray-700">
+                            {repairCls.riskLevel}
+                          </Badge>
+                        </td>
                         <td className="py-2 pr-2">
                           {row.canApplyRepair ? (
                             <Badge className="bg-emerald-900/40 text-emerald-300 border-emerald-800" title={preview.afterSummary}>
-                              canApply
+                              yes
                             </Badge>
                           ) : (
                             <Badge className="bg-amber-900/40 text-amber-300 border-amber-800" title={row.blockReason}>
-                              blocked
+                              no
                             </Badge>
                           )}
                         </td>
@@ -317,7 +336,7 @@ export function RepairQueueTab({ companyId }: Props) {
                             title={row.canApplyRepair ? preview.afterSummary : row.blockReason}
                             onClick={() => queueExpensePaymentRepair(row)}
                           >
-                            Send to queue
+                            Sync Payment Amount
                           </Button>
                         </td>
                       </tr>

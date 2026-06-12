@@ -62,6 +62,17 @@ import { RelinkDryRunWizard } from '@/app/components/accounting/ar-ap-repair/Rel
 import { StatusChangeModal, type StatusChangeIntent } from '@/app/components/accounting/ar-ap-repair/StatusChangeModal';
 import { RowTracePanel, type TraceTarget } from '@/app/components/accounting/ar-ap-repair/RowTracePanel';
 import { FalsePositiveBadge, MetadataReviewBadge, PostabilityBadge, RiskBadge } from '@/app/components/accounting/ar-ap-repair/ArApRepairBadges';
+import {
+  ActionableRepairCard,
+  type ActionableRepairCardProps,
+} from '@/app/components/accounting/ar-ap-repair/ActionableRepairCard';
+import { GlCorrectionDraftModal } from '@/app/components/accounting/ar-ap-repair/GlCorrectionDraftModal';
+import { KnownGlCorrectionSection } from '@/app/components/accounting/ar-ap-repair/KnownGlCorrectionSection';
+import {
+  classifyUnmappedJournalLine,
+  classifyUnpostedDocument as classifyUnpostedForRepair,
+  type ActionableRepairButton,
+} from '@/app/lib/actionableRepairClassifier';
 
 function statusBadgeClass(status: IntegrityLabSummary['status']): string {
   switch (status) {
@@ -136,6 +147,7 @@ export function ArApReconciliationCenterPage() {
     description?: string;
     rowStillInQueue?: boolean;
   } | null>(null);
+  const [glCorrectionDefectId, setGlCorrectionDefectId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!companyId) {
@@ -301,6 +313,33 @@ export function ArApReconciliationCenterPage() {
     toast.message('Developer Accounting Integrity Lab');
   };
 
+  const handleActionableRepair: ActionableRepairCardProps['onAction'] = (button, classification) => {
+    switch (button) {
+      case 'create_gl_correction_draft': {
+        const defectId = String(classification.queueItem?.params.defectId || 'hq-sl-0003-orphan-ar');
+        setGlCorrectionDefectId(defectId);
+        break;
+      }
+      case 'fix_link':
+        toast.message('Use Fix Link on the unmapped row — metadata only, GL unchanged');
+        break;
+      case 'open_source_document':
+        toast.message('Open the source document from the row Actions menu');
+        break;
+      case 'mark_reviewed':
+        toast.message('Use Mark reviewed on the row — requires a note');
+        break;
+      case 'view_audit':
+        toast.message('Switch Account Statement to audit mode to view reversal trails');
+        break;
+      case 'blocked_explain':
+        toast.warning(classification.blockReason || 'Action blocked — review required');
+        break;
+      default:
+        toast.info(classification.recommendedAction);
+    }
+  };
+
   const handleEnsureSuspense = async () => {
     if (!companyId) return;
     setEnsuringSuspense(true);
@@ -404,13 +443,14 @@ export function ArApReconciliationCenterPage() {
           <th className="p-2 text-right">Amount</th>
           <th className="p-2">Date</th>
           <th className="p-2 w-32">Fix status</th>
+          <th className="p-2 min-w-[160px]">Repair</th>
           <th className="p-2 w-40">Actions</th>
         </tr>
       </thead>
       <tbody className="divide-y divide-gray-800/80">
         {rows.length === 0 ? (
           <tr>
-            <td colSpan={7} className="p-6 text-center text-gray-500">
+            <td colSpan={8} className="p-6 text-center text-gray-500">
               {emptyLabel}
             </td>
           </tr>
@@ -419,6 +459,7 @@ export function ArApReconciliationCenterPage() {
             const key = unpostedItemKey(r);
             const st = unpostedStatusByKey.get(key);
             const diag = diagnoseUnpostedRow(r, st);
+            const repairCls = classifyUnpostedForRepair(r, diag);
             return (
               <tr key={key} className="hover:bg-gray-800/20">
                 <td className="p-2 align-top">
@@ -442,6 +483,17 @@ export function ArApReconciliationCenterPage() {
                         description: 'Select a new status and provide a reason.',
                       })
                     }
+                  />
+                </td>
+                <td className="p-2 align-top">
+                  <ActionableRepairCard
+                    compact
+                    readOnly={access.readOnly}
+                    classification={repairCls}
+                    onAction={(btn) => {
+                      if (btn === 'open_source_document') openSourceDocument(r);
+                      else handleActionableRepair(btn, repairCls);
+                    }}
                   />
                 </td>
                 <td className="p-2">
@@ -592,6 +644,11 @@ export function ArApReconciliationCenterPage() {
         }}
       />
       <RowTracePanel open={!!traceTarget} onClose={() => setTraceTarget(null)} target={traceTarget} companyId={companyId} />
+      <GlCorrectionDraftModal
+        open={!!glCorrectionDefectId}
+        onOpenChange={(o) => !o && setGlCorrectionDefectId(null)}
+        defectId={glCorrectionDefectId || 'hq-sl-0003-orphan-ar'}
+      />
 
       <div className="rounded-xl border border-blue-500/30 bg-blue-950/20 p-3 text-xs text-blue-100/90 flex gap-2">
         <ShieldAlert className="w-4 h-4 shrink-0 text-blue-400 mt-0.5" />
@@ -718,6 +775,8 @@ export function ArApReconciliationCenterPage() {
           </TabsTrigger>
         </TabsList>
         <TabsContent value="queues" className="space-y-6">
+          <KnownGlCorrectionSection readOnly={access.readOnly} onAction={handleActionableRepair} />
+
           <QueueSection
             title="1a · Non-final documents (not postable)"
             icon={<FileWarning className="w-5 h-5 text-slate-400" />}
@@ -750,19 +809,22 @@ export function ArApReconciliationCenterPage() {
                   <th className="p-2 text-right">Dr</th>
                   <th className="p-2 text-right">Cr</th>
                   <th className="p-2 w-32">Fix status</th>
+                  <th className="p-2 min-w-[160px]">Repair</th>
                   <th className="p-2 w-40">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-800/80">
                 {unmappedCsVisible.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="p-6 text-center text-gray-500">
+                    <td colSpan={8} className="p-6 text-center text-gray-500">
                       No rows.
                     </td>
                   </tr>
                 ) : (
                   unmappedCsVisible.map((r) => {
                     const key = unmappedLineItemKey(r);
+                    const diag = unmappedDiagByKey.get(key) ?? diagnoseUnmappedLine(r);
+                    const repairCls = classifyUnmappedJournalLine(r, diag);
                     return (
                       <tr key={key} className="hover:bg-gray-800/20">
                         <td className="p-2 align-top">
@@ -784,6 +846,17 @@ export function ArApReconciliationCenterPage() {
                             onClick={() =>
                               openStatusModal('unmapped_line', key, { kind: 'set', status: getStatus(key) }, 'Change fix status')
                             }
+                          />
+                        </td>
+                        <td className="p-2 align-top">
+                          <ActionableRepairCard
+                            compact
+                            readOnly={access.readOnly}
+                            classification={repairCls}
+                            onAction={(btn) => {
+                              if (btn === 'fix_link') setRelinkDryRunRow(r);
+                              else handleActionableRepair(btn, repairCls);
+                            }}
                           />
                         </td>
                         <td className="p-2">

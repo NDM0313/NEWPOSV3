@@ -13,6 +13,7 @@ export type RepairApplyBlockReasonCode =
   | 'role_cannot_apply'
   | 'applying_in_progress'
   | 'migration_missing'
+  | 'gl_correction_apply_disabled'
   | 'unknown_action';
 
 export interface RepairApplyBlockReason {
@@ -29,12 +30,19 @@ export interface ResolveRepairApplyBlockInput {
   actionKnown?: boolean;
   actionRequiresRelinkRpc?: boolean;
   relinkRpcAvailable?: boolean;
+  actionRequiresGlCorrectionRpc?: boolean;
+  glCorrectionRpcAvailable?: boolean;
 }
 
 const PAYMENT_RELINK_ACTION_ID = 'payment.relink_payment_to_journal';
+const GL_CORRECTION_ACTION_ID = 'gl.create_correction_draft';
 
 export function actionRequiresRelinkRpc(actionId: string): boolean {
   return actionId === PAYMENT_RELINK_ACTION_ID;
+}
+
+export function actionRequiresGlCorrectionRpc(actionId: string): boolean {
+  return actionId === GL_CORRECTION_ACTION_ID;
 }
 
 export function resolveRepairApplyBlockReasons(
@@ -54,6 +62,14 @@ export function resolveRepairApplyBlockReasons(
       code: 'migration_missing',
       message:
         'Payment relink RPC missing — apply migration migrations/20260606130000_developer_repair_relink_payment_je.sql',
+    });
+  }
+
+  if (input.actionRequiresGlCorrectionRpc && input.glCorrectionRpcAvailable === false) {
+    reasons.push({
+      code: 'gl_correction_apply_disabled',
+      message:
+        'GL correction apply disabled — requires migration RPC create_gl_correction_journal. Dry-run preview is available.',
     });
   }
 
