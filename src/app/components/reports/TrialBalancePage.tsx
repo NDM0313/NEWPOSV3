@@ -14,7 +14,7 @@ import {
   type TrialBalanceArApMode,
 } from '@/app/services/accountingReportsService';
 import { exportToPDF, exportToExcel, ExportData } from '@/app/utils/exportUtils';
-import { AccountLedgerView } from '@/app/components/accounting/AccountLedgerView';
+import { ReportBasisBanner } from '@/app/components/accounting/ReportBasisBanner';
 
 const toExport = (
   r: TrialBalanceResult,
@@ -132,10 +132,7 @@ export const TrialBalancePage: React.FC<{
 
   return (
     <div className="space-y-4">
-      <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/[0.07] px-3 py-2 text-sm text-emerald-100/95">
-        <strong className="font-semibold">Basis: GL (journal)</strong> — Canonical trial balance from posted lines. Not operational
-        document totals. Compare to Contacts/Sales only via explicit reconciliation (different basis).
-      </div>
+      <ReportBasisBanner basis="official_gl" />
       {creditHeavyAssetRows.length > 0 && (
         <div className="rounded-xl border border-amber-500/35 bg-amber-500/[0.08] p-4 text-base text-amber-100/95 flex gap-3">
           <AlertTriangle className="w-5 h-5 shrink-0 text-amber-400 mt-0.5" />

@@ -938,7 +938,7 @@ export const accountingReportsService = {
     startDate: string,
     endDate: string,
     branchId?: string,
-    options?: { auditMode?: boolean }
+    options?: { auditMode?: boolean; basis?: 'official_gl' | 'effective_party' }
   ): Promise<{
     operating: { in: number; out: number; net: number };
     investing: { in: number; out: number; net: number };
@@ -950,6 +950,7 @@ export const accountingReportsService = {
     const start = startDate.slice(0, 10);
     const end = endDate.slice(0, 10);
     const auditMode = options?.auditMode === true;
+    const officialGlBasis = options?.basis === 'official_gl' || auditMode;
     const { data: accounts } = await supabase
       .from('accounts')
       .select('id, type')
@@ -987,7 +988,7 @@ export const accountingReportsService = {
       .or('is_void.is.null,is_void.eq.false');
     const entryIdsInRange = (entriesInRange || [])
       .filter((e: { reference_type?: string | null }) =>
-        auditMode ? true : !isCorrectionReversalReferenceType(e.reference_type)
+        officialGlBasis ? true : !isCorrectionReversalReferenceType(e.reference_type)
       )
       .map((e: { id: string }) => e.id);
     if (!entryIdsInRange.length) {

@@ -258,19 +258,20 @@ export interface GlCashFlowStatementSummary {
   netChange: number;
 }
 
-/** Normal GL cash flow excludes correction_reversal entries (JE-0168 class). */
+/** GL cash flow entry filter by basis. Official Posted GL includes correction_reversal. */
 export function shouldIncludeInGlCashFlowEntry(
   referenceType: string | null | undefined,
-  auditMode: boolean
+  auditModeOrBasis: boolean | 'official_gl' | 'effective_party' = false
 ): boolean {
-  if (auditMode) return true;
+  if (auditModeOrBasis === true || auditModeOrBasis === 'official_gl') return true;
   return !isCorrectionReversalReferenceType(referenceType);
 }
 
-export function glCashFlowModeNote(auditMode: boolean): string {
-  return auditMode
-    ? 'GL summary includes correction/reversal entries for audit traceability.'
-    : 'GL summary excludes correction/reversal entries (Normal mode).';
+export function glCashFlowModeNote(auditMode: boolean, basis?: 'official_gl' | 'effective_party'): string {
+  if (basis === 'official_gl' || auditMode) {
+    return 'Official Posted GL — includes all non-void journal entries (correction/reversal included).';
+  }
+  return 'Effective operational — excludes correction/reversal entries (audit-only class).';
 }
 
 export const CASH_FLOW_TIEOUT_EXPLANATION =

@@ -7,6 +7,7 @@ import { useSupabase } from '@/app/context/SupabaseContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { accountingReportsService, ProfitLossResult } from '@/app/services/accountingReportsService';
 import { exportToPDF, exportToExcel, ExportData } from '@/app/utils/exportUtils';
+import { ReportBasisBanner } from '@/app/components/accounting/ReportBasisBanner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/components/ui/select';
 
 const toExport = (
@@ -130,10 +131,10 @@ export const ProfitLossPage: React.FC<{
 
   return (
     <div className="space-y-4">
-      <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/[0.07] px-3 py-2 text-xs text-emerald-100/95">
-        <strong className="font-semibold">Basis: GL (journal)</strong> — Canonical net profit from account types and posted lines.
-        Reports Overview “operational flow” uses documents — do not compare without reading both labels.
-      </div>
+      <ReportBasisBanner
+        basis="official_gl"
+        detail='Reports Overview "operational flow" uses documents — do not compare without reading both labels.'
+      />
       <div className="no-print">
         <ReportActions
           title="Profit & Loss (GL)"

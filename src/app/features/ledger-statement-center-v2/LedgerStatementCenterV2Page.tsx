@@ -21,6 +21,7 @@ import { compareGlWithDocumentsV2 } from '@/app/services/ledgerStatementCenterV2
 import { canAccessDeveloperIntegrityLab } from '@/app/lib/developerAccountingAccess';
 import { TransactionDetailModal } from '@/app/components/accounting/TransactionDetailModal';
 import { ReportActions } from '@/app/components/reports/ReportActions';
+import { ReportBasisBanner } from '@/app/components/accounting/ReportBasisBanner';
 import { LedgerStatementReportPreview } from '@/app/components/reports/shared/LedgerStatementReportPreview';
 import { buildTabularPrintSnapshot } from '@/app/components/reports/shared/buildTabularPrintSnapshot';
 import { LEDGER_EXPORT_COLUMNS } from '@/app/components/reports/shared/ledgerExportColumns';
@@ -461,12 +462,10 @@ export function LedgerStatementCenterV2Page({ embedded = false }: { embedded?: b
         </div>
       </div>
 
-      <div className="rounded-lg border border-sky-500/25 bg-sky-950/30 px-3 py-2.5">
-        <p className="text-sm font-medium text-sky-100">Basis: Posted GL / Accounting Ledger</p>
-        <p className="text-xs text-sky-200/70 mt-0.5">
-          Official balance from journal entries. Documents open on reference click for detail only.
-        </p>
-      </div>
+      <ReportBasisBanner
+        basis="official_gl"
+        detail="Posted GL statements — same engine as Accounting → Account Statements (official journal basis)."
+      />
 
       {showDiagnosticTools ? (
         <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer w-fit">

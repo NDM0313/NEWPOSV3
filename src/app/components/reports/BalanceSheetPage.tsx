@@ -18,6 +18,7 @@ import { accountingReportsService, BalanceSheetResult, type BalanceSheetLineItem
 import type { BalanceSheetAssetGroup } from '@/app/lib/accountHierarchy';
 import { exportToPDF, exportToExcel, ExportData } from '@/app/utils/exportUtils';
 import { fetchControlAccountBreakdown, type ControlAccountBreakdownResult } from '@/app/services/controlAccountBreakdownService';
+import { ReportBasisBanner } from '@/app/components/accounting/ReportBasisBanner';
 import { supabase } from '@/lib/supabase';
 
 // Group account items into standard Balance Sheet subgroups with subtotals
@@ -352,10 +353,10 @@ export const BalanceSheetPage: React.FC<{
 
   return (
     <div className="space-y-4">
-      <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/[0.07] px-3 py-2 text-xs text-emerald-100/95">
-        <strong className="font-semibold">Basis: GL (journal)</strong> — Point-in-time balance sheet from posted accounts.
-        Party “Parties” drill-down is <strong className="text-emerald-200">Party GL</strong> attribution, not operational due.
-      </div>
+      <ReportBasisBanner
+        basis="official_gl"
+        detail="Point-in-time balance sheet from posted accounts. Party “Parties” drill-down is Party GL attribution, not operational due."
+      />
       <div className="no-print">
         <ReportActions
           title="Balance Sheet (GL)"

@@ -12,6 +12,7 @@ import { DateTimeDisplay } from '@/app/components/ui/DateTimeDisplay';
 import { contactService } from '@/app/services/contactService';
 import { studioService } from '@/app/services/studioService';
 import { StatementScopeBanner } from '@/app/components/reports/StatementScopeBanner';
+import { ReportBasisBanner } from '@/app/components/accounting/ReportBasisBanner';
 import {
   accountingStatementExportSlug,
   accountingStatementModeLabel,
@@ -1661,6 +1662,17 @@ export const AccountLedgerReportPage: React.FC<{
               : 'Audit — shows reversals/adjustments when the include checkboxes allow.'
         }
       />
+
+      {(applied.statementType === 'customer' || applied.statementType === 'supplier') && (
+        <ReportBasisBanner
+          basis={viewMode === 'effective' ? 'effective_party' : 'audit_full'}
+          detail={
+            viewMode === 'effective'
+              ? 'Rollup rules hide cancelled/void/audit-only chains; balance follows posted GL on visible rows.'
+              : 'Shows reversals and adjustments when include checkboxes allow.'
+          }
+        />
+      )}
 
       {isArControlSelected && (
         <div className="rounded-lg border border-amber-700/50 bg-amber-950/30 px-4 py-3 text-sm text-amber-100">

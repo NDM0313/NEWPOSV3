@@ -53,6 +53,11 @@ import {
   type PartyTraceResult,
   type RentalTraceResult,
 } from '@/app/services/financialTraceCenterService';
+import {
+  fetchFinancialTruthTieOut,
+  type FinancialTruthTieOutResult,
+} from '@/app/services/financialTruthTieOutService';
+import type { TieOutDrilldownTarget } from '@/app/lib/financialTruthTieOut';
 import type { UnmappedJournalRow, UnpostedDocumentRow } from '@/app/services/arApReconciliationCenterService';
 
 function BasisBadge({ basis }: { basis: BasisBadge }) {
@@ -153,7 +158,7 @@ function CrossLinkBar({
 export function FinancialTraceCenterPage() {
   const { setCurrentView, openPartyLedger } = useNavigation();
   const { companyId, userRole } = useSupabase();
-  const formatCurrency = useFormatCurrency();
+  const { formatCurrency } = useFormatCurrency();
   const access = resolveArApReconciliationAccess(userRole);
 
   const [tab, setTab] = useState('overview');
@@ -177,17 +182,20 @@ export function FinancialTraceCenterPage() {
   const [rentalQ, setRentalQ] = useState('REN-0002');
   const [rentalTrace, setRentalTrace] = useState<RentalTraceResult | null>(null);
   const [rentalLoading, setRentalLoading] = useState(false);
+  const [tieOut, setTieOut] = useState<FinancialTruthTieOutResult | null>(null);
 
   const loadAll = useCallback(async () => {
     if (!companyId) return;
     setLoading(true);
     try {
-      const [ov, q] = await Promise.all([
+      const [ov, q, tie] = await Promise.all([
         fetchFinancialTraceOverview(companyId),
         fetchTraceQueues(companyId),
+        fetchFinancialTruthTieOut(companyId),
       ]);
       setOverview(ov);
       setQueues(q);
+      setTieOut(tie);
       const meta = await enrichUnmappedWithPayment(companyId, q.unmapped.slice(0, 40));
       setPaymentMeta(meta);
     } catch (e) {
@@ -220,6 +228,41 @@ export function FinancialTraceCenterPage() {
       setCurrentView(view as never);
     },
     [openPartyLedger, setCurrentView]
+  );
+
+  const handleTieOutDrilldown = useCallback(
+    (target: TieOutDrilldownTarget) => {
+      switch (target) {
+        case 'trial_balance':
+        case 'balance_sheet':
+        case 'profit_loss':
+          setCurrentView('reports');
+          break;
+        case 'ar_ap_center':
+          setCurrentView('ar-ap-reconciliation-center');
+          break;
+        case 'account_statements':
+          setCurrentView('accounting');
+          break;
+        case 'cash_flow':
+          setCurrentView('accounting');
+          break;
+        case 'party_trace':
+          setTab('party');
+          break;
+        default:
+          break;
+      }
+    },
+    [setCurrentView]
+  );
+
+  const regressionQuickLinks = useMemo(
+    () =>
+      KNOWN_TRACE_CASES.filter((c) =>
+        ['inayat-ren-0002', 'saqib-rcv-0008', 'hq-sl-0003-orphan-ar'].includes(c.id)
+      ),
+    []
   );
 
   const metadataRows = useMemo(() => {
@@ -365,9 +408,9 @@ export function FinancialTraceCenterPage() {
         <div className="flex-1 min-w-[200px]">
           <h1 className="text-lg font-semibold flex items-center gap-2">
             <FileSearch className="h-5 w-5 text-cyan-400" />
-            Financial Trace Center
+            Financial Truth Center
           </h1>
-          <p className="text-xs text-gray-500">Read-only diagnosis — no repairs, no Phase 3 apply</p>
+          <p className="text-xs text-gray-500">Read-only tie-out and diagnosis — no repairs, no Phase 3 apply</p>
         </div>
         <Badge variant="outline" className="border-emerald-500/40 text-emerald-300">
           Read-only
@@ -393,6 +436,7 @@ export function FinancialTraceCenterPage() {
       ) : (
         <Tabs value={tab} onValueChange={setTab} className="flex-1 flex flex-col min-h-0">
           <TabsList className="mx-4 mt-3 bg-gray-900/80 border border-gray-800 flex-wrap h-auto print:hidden">
+            <TabsTrigger value="tieout">Tie-out</TabsTrigger>
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="party">Party Trace</TabsTrigger>
             <TabsTrigger value="rental">Rental Trace</TabsTrigger>
@@ -400,6 +444,151 @@ export function FinancialTraceCenterPage() {
             <TabsTrigger value="non-final">Non-final Docs</TabsTrigger>
             <TabsTrigger value="deeper">D7 Deeper Trace</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="tieout" className="flex-1 overflow-auto p-4 space-y-4">
+            {tieOut ? (
+              <>
+                <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                  <span>As of {tieOut.asOfDate}</span>
+                  <span>·</span>
+                  <span>P&amp;L period {tieOut.periodStart} → {tieOut.profitAndLoss.endDate}</span>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <MetricCard
+                    label="TB total debit"
+                    value={formatCurrency(tieOut.trialBalance.totalDebit)}
+                    basis="gl"
+                  />
+                  <MetricCard
+                    label="TB total credit"
+                    value={formatCurrency(tieOut.trialBalance.totalCredit)}
+                    basis="gl"
+                  />
+                  <MetricCard
+                    label="TB difference"
+                    value={formatCurrency(tieOut.trialBalance.difference)}
+                    basis="gl"
+                    warn={!tieOut.trialBalance.balanced}
+                  />
+                  <MetricCard
+                    label="BS A = L + E diff"
+                    value={formatCurrency(tieOut.balanceSheet.difference)}
+                    basis="gl"
+                    warn={Math.abs(tieOut.balanceSheet.difference) >= 0.01}
+                  />
+                  <MetricCard
+                    label="P&amp;L net profit"
+                    value={formatCurrency(tieOut.profitAndLoss.netProfit)}
+                    basis="gl"
+                  />
+                  <MetricCard
+                    label="AR control (1100)"
+                    value={formatCurrency(tieOut.ar.controlGl ?? 0)}
+                    basis="gl"
+                  />
+                  <MetricCard
+                    label="AR-CUS sum (raw GL)"
+                    value={formatCurrency(tieOut.ar.subledgerRawSum ?? 0)}
+                    basis="gl"
+                  />
+                  <MetricCard
+                    label="AR-CUS sum (effective)"
+                    value={formatCurrency(tieOut.ar.subledgerEffectiveSum ?? 0)}
+                    basis="operational"
+                  />
+                  <MetricCard
+                    label="Cash/Bank GL (official)"
+                    value={formatCurrency(tieOut.cash.glNetOfficial ?? 0)}
+                    basis="gl"
+                  />
+                  <MetricCard
+                    label="Cash flow closing (ops)"
+                    value={formatCurrency(tieOut.cash.operationalClosing ?? 0)}
+                    basis="operational"
+                  />
+                </div>
+
+                <div className="rounded-lg border border-gray-700 overflow-hidden">
+                  <div className="px-4 py-2 border-b border-gray-700 bg-gray-900/60 flex items-center gap-2">
+                    <Scale className="h-4 w-4 text-cyan-400" />
+                    <p className="text-sm font-medium">Difference rows</p>
+                  </div>
+                  {tieOut.differences.length === 0 ? (
+                    <p className="p-4 text-sm text-emerald-300">All checked pairs tie within Rs 0.01 on official / effective surfaces.</p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="text-left text-xs text-gray-500 border-b border-gray-800">
+                            <th className="p-3">Pair</th>
+                            <th className="p-3 text-right">Left</th>
+                            <th className="p-3 text-right">Right</th>
+                            <th className="p-3 text-right">Diff</th>
+                            <th className="p-3">Reason</th>
+                            <th className="p-3">Action</th>
+                            <th className="p-3" />
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {tieOut.differences.map((row) => (
+                            <tr key={row.id} className="border-b border-gray-800/80 hover:bg-gray-900/40">
+                              <td className="p-3">
+                                <p className="font-medium text-gray-200">{row.label}</p>
+                                <p className="text-xs text-gray-500">{row.leftLabel} vs {row.rightLabel}</p>
+                              </td>
+                              <td className="p-3 text-right tabular-nums">{formatCurrency(row.leftAmount)}</td>
+                              <td className="p-3 text-right tabular-nums">{formatCurrency(row.rightAmount)}</td>
+                              <td className={cn('p-3 text-right tabular-nums font-medium', Math.abs(row.difference) >= 0.01 && 'text-amber-200')}>
+                                {formatCurrency(row.difference)}
+                              </td>
+                              <td className="p-3 text-xs text-gray-400">{row.reasonLabel}</td>
+                              <td className="p-3 text-xs text-gray-500 max-w-[200px]">{row.recommendedAction}</td>
+                              <td className="p-3">
+                                <Button variant="outline" size="sm" className="border-gray-600 text-xs" onClick={() => handleTieOutDrilldown(row.drilldown)}>
+                                  Open
+                                </Button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                {regressionQuickLinks.length > 0 && (
+                  <div className="rounded-lg border border-gray-700 p-4 space-y-2">
+                    <p className="text-sm font-medium text-gray-300">Known regression cases</p>
+                    <div className="flex flex-wrap gap-2">
+                      {regressionQuickLinks.map((c) => (
+                        <Button
+                          key={c.id}
+                          variant="outline"
+                          size="sm"
+                          className="border-gray-600 text-xs"
+                          onClick={() => {
+                            if (c.tab === 'rental') {
+                              setRentalQ(c.searchHint);
+                              setTab('rental');
+                            } else {
+                              setSearchQ(c.searchHint);
+                              setTab(c.tab === 'metadata' ? 'metadata' : 'party');
+                            }
+                          }}
+                        >
+                          {c.title}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <CrossLinkBar onNavigate={navigateCross} />
+              </>
+            ) : (
+              <p className="text-sm text-gray-500">Tie-out data unavailable.</p>
+            )}
+          </TabsContent>
 
           <TabsContent value="overview" className="flex-1 overflow-auto p-4 space-y-4">
             {overview && (

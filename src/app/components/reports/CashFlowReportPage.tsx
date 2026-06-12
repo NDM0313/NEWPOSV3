@@ -46,6 +46,7 @@ import {
 } from '@/app/lib/cashFlowReportLogic';
 import type { AccountFilter } from '@/app/services/roznamchaService';
 import { accountingReportsService } from '@/app/services/accountingReportsService';
+import { ReportBasisBanner, ReportBasisBadge } from '@/app/components/accounting/ReportBasisBanner';
 import { formatRoznamchaRowDateTimeDisplay } from '@/app/utils/transactionEventDateTime';
 import { journalDescriptionForDisplay } from '@/app/utils/journalDescriptionDisplay';
 import { ReportActions } from './ReportActions';
@@ -168,7 +169,7 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
 
   const runningBalanceNote = cashFlowRunningBalanceNote(filtersAffectBalance);
   const auditModeNote = cashFlowAuditModeNote(auditMode);
-  const glModeNote = glCashFlowModeNote(auditMode);
+  const glModeNote = glCashFlowModeNote(auditMode, auditMode ? 'official_gl' : 'effective_party');
 
   const load = useCallback(async () => {
     if (!companyId || !dateFrom || !dateTo) {
@@ -195,6 +196,7 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
         }),
         accountingReportsService.getCashFlowStatement(companyId, dateFrom, dateTo, branchArg, {
           auditMode,
+          basis: auditMode ? 'official_gl' : 'effective_party',
         }),
       ]);
       setData(result);
@@ -355,12 +357,10 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
 
   return (
     <div className="space-y-6 min-w-0">
-      <p className="text-xs text-gray-500 border border-gray-800/80 rounded-lg px-3 py-2 bg-gray-950/40 max-w-4xl">
-        <ArrowLeftRight className="inline w-3.5 h-3.5 mr-1 text-gray-400" />
-        Read-only operational cash/bank movement by source module.{' '}
-        <strong className="text-gray-400">Normal</strong> hides voided and reversal trails;{' '}
-        <strong className="text-gray-400">Audit</strong> shows them with badges. No edit or cancel on this tab.
-      </p>
+      <ReportBasisBanner
+        basis={auditMode ? 'audit_full' : 'effective_party'}
+        detail="Operational grid: cash/bank movement rows. Normal hides voided and reversal trails; Audit shows them with badges."
+      />
 
       <div className="no-print">
         <ReportActions
@@ -515,10 +515,11 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
 
           {glSummary && (
             <div className="space-y-2">
-              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">
                   GL cash flow summary
                 </h3>
+                <ReportBasisBadge basis={auditMode ? 'official_gl' : 'effective_party'} />
                 <span className="text-xs text-gray-600">{glModeNote}</span>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

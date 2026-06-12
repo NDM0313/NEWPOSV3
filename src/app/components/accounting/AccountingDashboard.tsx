@@ -91,6 +91,7 @@ import { ControlLinkedPartiesSheet } from '@/app/components/accounting/ControlLi
 import { useAccountsHierarchyModel } from '@/app/components/accounting/useAccountsHierarchyModel';
 import { AccountingDashboardAccountRowMenu } from '@/app/components/accounting/AccountingDashboardAccountRowMenu';
 import { ChartOfAccountsPartyDropdown } from '@/app/components/accounting/ChartOfAccountsPartyDropdown';
+import { ReportBasisBanner } from '@/app/components/accounting/ReportBasisBanner';
 import {
   allowsGenericAccountingUnifiedEdit,
   getJournalEntrySourceDocumentOpenTarget,
@@ -2164,6 +2165,7 @@ export const AccountingDashboard = () => {
 
         {activeTab === 'accounts' && (
           <div className="space-y-4">
+            <ReportBasisBanner basis="official_gl" detail="Chart of Accounts balances use Official Posted GL (void excluded, corrections included)." />
             {/* Header with Mode Toggle & Create Button */}
             <div className="flex items-center justify-between">
               <div>

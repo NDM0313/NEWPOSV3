@@ -41,6 +41,7 @@ describe('financialTraceClassification', () => {
   it('includes known Phase 1 cases', () => {
     expect(KNOWN_TRACE_CASES.some((c) => c.id === 'inayat-ren-0002')).toBe(true);
     expect(KNOWN_TRACE_CASES.some((c) => c.id === 'saqib-rcv-0008')).toBe(true);
+    expect(KNOWN_TRACE_CASES.some((c) => c.id === 'hq-sl-0003-orphan-ar')).toBe(true);
     expect(DIVERGENCE_LABELS.D3).toMatch(/Metadata/);
   });
 });

@@ -156,15 +156,17 @@ test('running balance note when filters active', () => {
   );
 });
 
-test('GL cash flow normal mode excludes correction_reversal entries', () => {
-  assert.equal(shouldIncludeInGlCashFlowEntry('correction_reversal', false), false);
+test('GL cash flow official basis includes correction_reversal entries', () => {
+  assert.equal(shouldIncludeInGlCashFlowEntry('correction_reversal', 'official_gl'), true);
+  assert.equal(shouldIncludeInGlCashFlowEntry('correction_reversal', 'effective_party'), false);
   assert.equal(shouldIncludeInGlCashFlowEntry('correction_reversal', true), true);
-  assert.equal(shouldIncludeInGlCashFlowEntry('expense', false), true);
+  assert.equal(shouldIncludeInGlCashFlowEntry('expense', 'effective_party'), true);
 });
 
-test('GL cash flow mode note', () => {
-  assert.match(glCashFlowModeNote(false), /excludes correction/i);
-  assert.match(glCashFlowModeNote(true), /includes correction/i);
+test('GL cash flow mode note by basis', () => {
+  assert.match(glCashFlowModeNote(false, 'effective_party'), /excludes correction/i);
+  assert.match(glCashFlowModeNote(false, 'official_gl'), /includes all non-void/i);
+  assert.match(glCashFlowModeNote(true, 'official_gl'), /includes all non-void/i);
 });
 
 test('Cash Flow tie-out difference is operational minus GL net', () => {

@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
+import { ReportBasisBanner } from '@/app/components/accounting/ReportBasisBanner';
 import { DatePicker } from '@/app/components/ui/DatePicker';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
 import {
@@ -700,6 +701,11 @@ export function ArApReconciliationCenterPage() {
             Refresh
           </Button>
         </div>
+      </div>
+
+      <div className="space-y-2">
+        <ReportBasisBanner basis="official_gl" detail="GL receivables/payables (raw) cards use Official Posted GL — all non-void posted lines." />
+        <ReportBasisBanner basis="effective_party" detail="Effective variance cards subtract audit-only / cancelled chains (same rules as Account Statements effective mode)." />
       </div>
 
       {summary && (
