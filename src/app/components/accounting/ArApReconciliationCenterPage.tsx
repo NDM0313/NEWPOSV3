@@ -451,7 +451,7 @@ export function ArApReconciliationCenterPage() {
                       { label: 'Source detail…', onClick: () => setSourceDetailRow(r) },
                       { label: 'Row trace', onClick: () => setTraceTarget({ kind: 'unposted', row: r }) },
                       ...(!diag.isNonFinal
-                        ? [{ label: 'Posting dry-run…', onClick: () => setPostingDryRunRow(r) }]
+                        ? [{ label: 'Preview posting…', onClick: () => setPostingDryRunRow(r) }]
                         : []),
                       { label: 'Open in module', onClick: () => openSourceDocument(r) },
                       {
@@ -786,7 +786,7 @@ export function ArApReconciliationCenterPage() {
                             items={[
                               { label: 'Line detail…', onClick: () => setUnmappedDetailRow(r) },
                               { label: 'Row trace', onClick: () => setTraceTarget({ kind: 'unmapped', row: r }) },
-                              { label: 'Relink dry-run…', onClick: () => setRelinkDryRunRow(r) },
+                              { label: 'Fix Link…', onClick: () => setRelinkDryRunRow(r) },
                               {
                                 label: 'Journal wizard (review)',
                                 onClick: () => openJournalWizard(r.journal_entry_id, 'unmapped_line', key),
@@ -874,7 +874,7 @@ export function ArApReconciliationCenterPage() {
                             items={[
                               { label: 'Line detail…', onClick: () => setUnmappedDetailRow(r) },
                               { label: 'Row trace', onClick: () => setTraceTarget({ kind: 'unmapped', row: r }) },
-                              { label: 'Relink dry-run (preview)', onClick: () => setRelinkDryRunRow(r) },
+                              { label: 'Fix Link (preview)', onClick: () => setRelinkDryRunRow(r) },
                             ]}
                           />
                         </td>
@@ -1006,7 +1006,7 @@ export function ArApReconciliationCenterPage() {
                                 label: 'Journal wizard (review)',
                                 onClick: () => openJournalWizard(r.journal_entry_id, 'unmapped_line', key),
                               },
-                              { label: 'Relink dry-run…', onClick: () => setRelinkDryRunRow(r) },
+                              { label: 'Fix Link…', onClick: () => setRelinkDryRunRow(r) },
                               {
                                 label: 'Mark resolved…',
                                 onClick: () =>

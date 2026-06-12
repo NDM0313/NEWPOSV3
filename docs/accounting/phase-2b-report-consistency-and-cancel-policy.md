@@ -128,12 +128,17 @@ npm run build
 
 ---
 
+## Phase 2B.1 cleanup (post `a499e287`)
+
+- **ExpensesList** aligned with `expenseCancelPolicy` (Delete vs Cancel Expense menu + confirm).
+- **Docker build hash:** `VITE_BUILD_COMMIT` passed as build-arg from `deploy.sh` (`git rev-parse --short HEAD`) — no `.git` in image required.
+- **Office vs home:** Settings → tap App version row → compare **build** hash; if stale vs VPS deploy, use **Clear cache & refresh**.
+- AR/AP Reconciliation row menus: **Fix Link** (was “Relink dry-run”), **Preview posting** (was “Posting dry-run”).
+
 ## Remaining risks
 
 - GL statement type still defaults `includeReversals: false` after change — users who relied on old default for non-cash GL must enable checkbox.
-- Expenses list page (`ExpensesList.tsx`) still uses delete confirm for all rows — dashboard path is primary; list should be aligned in a follow-up.
 - Manual JE cancel in `TransactionDetailModal` may still set `is_void` on header — align with `createReversalEntry` in a future pass if required.
-- Office/home mismatch needs user confirmation of build hash after deploy.
 
 ---
 

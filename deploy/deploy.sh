@@ -214,9 +214,13 @@ if ! grep -q "counterWorkerRegistry\|CounterWorkerContext" erp-mobile-app/src/co
 fi
 # Fresh CACHEBUST so Docker never uses cached mobile build (always get latest login UI on /m/)
 CACHEBUST=$(date +%s)
-grep -v '^CACHEBUST=' .env.production > .env.production.tmp 2>/dev/null || true
+VITE_BUILD_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo dev)
+grep -v '^CACHEBUST=' .env.production 2>/dev/null | grep -v '^VITE_BUILD_COMMIT=' > .env.production.tmp || true
 echo "CACHEBUST=$CACHEBUST" >> .env.production.tmp
+echo "VITE_BUILD_COMMIT=$VITE_BUILD_COMMIT" >> .env.production.tmp
 mv .env.production.tmp .env.production
+export VITE_BUILD_COMMIT
+echo "[deploy] VITE_BUILD_COMMIT=$VITE_BUILD_COMMIT"
 set -a
 . ./.env.production
 set +a

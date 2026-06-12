@@ -24,6 +24,9 @@ export function AppVersionTapTarget() {
       App version <span className="font-mono text-gray-400">{APP_VERSION}</span>
       {' · '}
       build <span className="font-mono text-gray-500">{APP_BUILD_COMMIT}</span>
+      <span className="block text-[10px] text-gray-600 mt-0.5">
+        Compare this build hash on office vs home; if stale, use Settings → Clear cache &amp; refresh.
+      </span>
       <span className="sr-only">. Tap seven times to unlock developer tools.</span>
     </button>
   );
