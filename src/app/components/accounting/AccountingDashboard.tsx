@@ -31,6 +31,7 @@ import {
   X,
   BookMarked,
   Truck,
+  ArrowLeftRight,
   RotateCcw,
   Scale,
   ShieldAlert,
@@ -104,6 +105,7 @@ const DepositsTab = lazy(() => import('./DepositsTab').then((m) => ({ default: m
 const CourierReportsTab = lazy(() => import('./CourierReportsTab').then((m) => ({ default: m.CourierReportsTab })));
 const DayBookReport = lazy(() => import('@/app/components/reports/DayBookReport').then((m) => ({ default: m.DayBookReport })));
 const RoznamchaReport = lazy(() => import('@/app/components/reports/RoznamchaReport').then((m) => ({ default: m.RoznamchaReport })));
+const CashFlowReportPage = lazy(() => import('@/app/components/reports/CashFlowReportPage').then((m) => ({ default: m.CashFlowReportPage })));
 const AccountLedgerReportPage = lazy(() => import('@/app/components/reports/AccountLedgerReportPage').then((m) => ({ default: m.AccountLedgerReportPage })));
 const AccountingIntegrityTestLab = lazy(() => import('./AccountingIntegrityTestLab'));
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
@@ -559,7 +561,7 @@ export const AccountingDashboard = () => {
     setCurrentModule('accounting');
   }, [setCurrentModule]);
 
-  const [activeTab, setActiveTab] = useState<'journal_entries' | 'daybook' | 'roznamcha' | 'accounts' | 'ledger' | 'receivables' | 'payables' | 'courier' | 'deposits' | 'studio' | 'account_statements' | 'integrity_lab'>('journal_entries');
+  const [activeTab, setActiveTab] = useState<'journal_entries' | 'daybook' | 'roznamcha' | 'cash_flow' | 'accounts' | 'ledger' | 'receivables' | 'payables' | 'courier' | 'deposits' | 'studio' | 'account_statements' | 'integrity_lab'>('journal_entries');
   /** Align Account Statements period with global header filter when set (same idea as Day Book / Roznamcha). */
   const reportStartDate = useMemo(() => {
     const g = globalStartDate && String(globalStartDate).trim();
@@ -887,6 +889,7 @@ export const AccountingDashboard = () => {
     { key: 'journal_entries', label: 'Journal Entries', icon: Receipt },
     { key: 'daybook', label: 'Day Book', icon: List },
     { key: 'roznamcha', label: 'Roznamcha', icon: BookMarked },
+    { key: 'cash_flow', label: 'Cash Flow', icon: ArrowLeftRight },
     { key: 'accounts', label: 'Accounts', icon: Wallet },
     { key: 'ledger', label: 'Party statements', icon: FileText },
     { key: 'receivables', label: 'Receivables', icon: TrendingUp },
@@ -2134,6 +2137,24 @@ export const AccountingDashboard = () => {
             </div>
             <Suspense fallback={<ReportTabSuspenseFallback label="Loading roznamcha…" />}>
               <RoznamchaReport
+                globalStartDate={globalStartDate}
+                globalEndDate={globalEndDate}
+              />
+            </Suspense>
+          </div>
+        )}
+
+        {activeTab === 'cash_flow' && (
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-lg font-bold text-white">Cash Flow</h3>
+              <p className="text-sm text-gray-400 mt-1">
+                Operational cash and bank movements by source module. Read-only — use Normal mode for live balances;
+                Audit mode for voided and reversal trails.
+              </p>
+            </div>
+            <Suspense fallback={<ReportTabSuspenseFallback label="Loading cash flow…" />}>
+              <CashFlowReportPage
                 globalStartDate={globalStartDate}
                 globalEndDate={globalEndDate}
               />
