@@ -1094,6 +1094,16 @@ export const AccountLedgerReportPage: React.FC<{
     }
   }, [statementType, accounts]);
 
+  // Control 1100 defaults to effective view (hide repaired mobile-rental leakage pairs).
+  useEffect(() => {
+    if (statementType !== 'gl') return;
+    const acct = accounts.find((a) => a.id === selectedAccountId);
+    if (String(acct?.code || '').trim() !== '1100') return;
+    setIncludeAdjustments(false);
+    setIncludeReversals(false);
+    setApplied((prev) => ({ ...prev, includeAdjustments: false, includeReversals: false }));
+  }, [selectedAccountId, statementType, accounts]);
+
   // Primary selector auto-fetch: statement/account/contact fields update applied state immediately.
   useEffect(() => {
     setApplied((prev) => ({
@@ -1469,14 +1479,17 @@ export const AccountLedgerReportPage: React.FC<{
   const handleExportExcel = () => exportToExcel(toExport(), accountingStatementExportSlug(applied.statementType));
 
   const resetFilters = () => {
+    const acct = accounts.find((a) => a.id === selectedAccountId);
+    const is1100Gl =
+      statementType === 'gl' && String(acct?.code || '').trim() === '1100';
     setSelectedCategory('all');
     setSourceModuleFilter('all');
     setTransactionTypeFilter('all');
     setSearchTerm('');
     setPolarity('all');
-    setIncludeReversals(true);
+    setIncludeReversals(is1100Gl ? false : true);
     setIncludeManualEntries(true);
-    setIncludeAdjustments(true);
+    setIncludeAdjustments(is1100Gl ? false : true);
     setSelectedContactId('');
     setSelectedWorkerId('');
     setApplied((prev) => ({
@@ -1488,7 +1501,7 @@ export const AccountLedgerReportPage: React.FC<{
       polarity: 'all',
       includeReversals: false,
       includeManualEntries: true,
-      includeAdjustments: true,
+      includeAdjustments: is1100Gl ? false : true,
       selectedContactId: '',
       selectedWorkerId: '',
     }));

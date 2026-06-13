@@ -34,7 +34,7 @@ Effective view hides **repaired rental leakage pairs only**. Control 1100 net on
 ## Optional engineering (Phase 2)
 
 - [ ] **Server RPC** `get_control_ar_gl_ledger` if client-side 1100 pairing is slow on large ledgers (plan Phase 2 — not needed yet).
-- [ ] Default **Include adjustments = off** when account 1100 is selected (minor UX polish).
+- [x] Default **Include adjustments = off** when account 1100 is selected (minor UX polish) — `AccountLedgerReportPage.tsx` (2026-06-13).
 
 ---
 
@@ -49,14 +49,16 @@ Effective view hides **repaired rental leakage pairs only**. Control 1100 net on
 
 ```bash
 # On VPS
-ssh dincouture-vps 'docker exec -i supabase-db psql -U supabase_admin -d postgres' \
+ssh dincouture-vps 'docker exec -i supabase-db psql -U postgres -d postgres' \
   < scripts/sql/diag_rental_1100_leakage.sql
 
-ssh dincouture-vps 'docker exec -i supabase-db psql -U supabase_admin -d postgres' \
+ssh dincouture-vps 'docker exec -i supabase-db psql -U postgres -d postgres' \
   < scripts/sql/diag_ar_ap_variance.sql
 ```
 
 Expected today: **eligible rental leaks = 0**, **corrected = 4**, Inayat party AR ~10,000, Haseeb N38 ~0.
+
+**Last run (2026-06-13, Windows after `git pull`):** all expected — eligible **0**, corrected **4** / Rs 210,000; control 1100 net **-176,500**; Inayat **10,000**, Haseeb N38 **0**; RCV-0008 **not** in unmapped heuristic (`is_unmapped_heuristic = f`); variance residual **0**.
 
 ---
 
