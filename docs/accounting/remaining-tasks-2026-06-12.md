@@ -1,6 +1,8 @@
-# Remaining tasks — 12 Jun 2026
+# Remaining tasks — 12–13 Jun 2026
 
-Work applied today: **rental AR sub-ledger fail-closed**, **Hybrid Repair / gl_correction**, **AR/AP Reconciliation UX** (variance breakdown, queue 2d, unmapped whitelist), **Control 1100 effective ledger visibility** (hide repaired mobile-rental pairs). Deployed to VPS (`deploy-erp` rebuild + DB migrations through `20260620130000`).
+Work applied: **rental AR sub-ledger fail-closed**, **Hybrid Repair / gl_correction**, **AR/AP Reconciliation UX** (variance breakdown, queue 2d, unmapped whitelist), **Control 1100 effective ledger visibility**, plus **2026-06-13 bundle** (Duplicate Product, rental bill ref parity, Customers & Suppliers report, accounting diagnostics hub).
+
+**Sync status (13 Jun):** Local + VPS at `main` `1d8c216f`. VPS migrations through `20260623120000` recorded; `deploy/vps-build-erp-only.sh` rebuild + `erp-frontend` healthy.
 
 ---
 
@@ -15,12 +17,11 @@ Work applied today: **rental AR sub-ledger fail-closed**, **Hybrid Repair / gl_c
 
 ## Control 1100 — follow-up (not rental repair)
 
-Effective view hides **repaired rental leakage pairs only**. Control 1100 net on DIN BRIDAL is still **-176,500** from non-rental lines:
+Effective view hides **repaired rental leakage pairs only**. Control 1100 net on DIN BRIDAL is **-136,500** (journal lines, non-void) from non-rental lines:
 
 | Entry | Type | Amount direction | Notes |
 |-------|------|------------------|-------|
 | JE-0155 / JE-0157 | sale_reversal | Cr ~136,500 | Posted on control 1100 — review if should live on party sub-ledgers |
-| JE-0170 | manual_receipt | Cr 40,000 | Manual receipt on control — review posting target |
 | JV-000203 | gl_correction (HQ-SL orphan) | Dr 150 | Different fingerprint; intentionally still visible on 1100 |
 
 **Options (pick one per item):**
@@ -56,9 +57,20 @@ ssh dincouture-vps 'docker exec -i supabase-db psql -U postgres -d postgres' \
   < scripts/sql/diag_ar_ap_variance.sql
 ```
 
-Expected today: **eligible rental leaks = 0**, **corrected = 4**, Inayat party AR ~10,000, Haseeb N38 ~0.
+Expected: **eligible rental leaks = 0**, **corrected = 4**, Inayat party AR ~10,000, Haseeb N38 ~0.
 
-**Last run (2026-06-13, Windows after `git pull`):** all expected — eligible **0**, corrected **4** / Rs 210,000; control 1100 net **-176,500**; Inayat **10,000**, Haseeb N38 **0**; RCV-0008 **not** in unmapped heuristic (`is_unmapped_heuristic = f`); variance residual **0**.
+**Last run (2026-06-13, after `git pull` + VPS deploy):** eligible **0**, corrected **4** / Rs 210,000; control 1100 net **-136,500**; Inayat **10,000**, Haseeb N38 **0**; RCV-0008 `is_unmapped_heuristic = f`; variance RPC `ok`, residual bucket **0**, Patras/Mahvish order-advance links present.
+
+---
+
+## 2026-06-13 release — manual QA (see `docs/RELEASE_NOTES_2026-06-13.md`)
+
+- [ ] Web: Duplicate product → one new row only
+- [ ] Web: Rental booking with bill ref → list Bill # → pickup preserves bill ref
+- [ ] Mobile: SalesHome All + Rental tabs; rental payment Ref lines
+- [ ] Reports → Sales loads data (no 400); lifecycle filters correct
+- [ ] Reports → **Customers & Suppliers** loads with Due (GL) + Advance (GL) columns
+- [ ] Accounting hub: AR/AP diagnostics tabs, Balance Basis Guide, Trial Balance journal search
 
 ---
 
