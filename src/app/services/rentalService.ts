@@ -253,6 +253,8 @@ export const rentalService = {
       variationId?: string | null;
     }>;
     skipAvailabilityCheck?: boolean;
+    /** Manual bill book ref → rentals.document_number (not booking_no). */
+    documentNumber?: string | null;
   }): Promise<{ id: string; booking_no: string }> {
     const {
       companyId,
@@ -275,6 +277,7 @@ export const rentalService = {
       commissionEligibleAmount = null,
       items,
       skipAvailabilityCheck = false,
+      documentNumber = null,
     } = params;
 
     if (!items?.length) throw new Error('At least one item is required');
@@ -391,6 +394,17 @@ export const rentalService = {
 
     const rentalData = { id: rpc.rental_id, booking_no: rpc.booking_no ?? '' };
     const bookingNo = rentalData.booking_no;
+
+    const docNumTrim = documentNumber != null ? String(documentNumber).trim() : '';
+    if (docNumTrim) {
+      const { error: docPatchErr } = await supabase
+        .from('rentals')
+        .update({ document_number: docNumTrim })
+        .eq('id', rentalData.id);
+      if (docPatchErr) {
+        console.warn('[rentalService] Failed to patch manual bill ref:', docPatchErr.message);
+      }
+    }
 
     // Party AR GL (named customer): revenue (when charges > 0) + optional advance cash receipt
     if (customerId) {
@@ -539,6 +553,7 @@ export const rentalService = {
       securityDeposit?: number;
       paidAmount?: number;
       notes?: string | null;
+      documentNumber?: string | null;
       salesmanId?: string | null;
       items?: Array<{
         productId: string;
@@ -603,6 +618,10 @@ export const rentalService = {
     if (updates.securityDeposit !== undefined) payload.security_deposit = updates.securityDeposit;
     if (updates.paidAmount !== undefined) payload.paid_amount = updates.paidAmount;
     if (updates.notes !== undefined) payload.notes = updates.notes;
+    if (updates.documentNumber !== undefined) {
+      const v = updates.documentNumber != null ? String(updates.documentNumber).trim() : '';
+      payload.document_number = v || null;
+    }
     if (updates.salesmanId !== undefined) payload.salesman_id = updates.salesmanId || null;
 
     if (updates.items && updates.items.length > 0) {
@@ -652,6 +671,32 @@ export const rentalService = {
         description: `Rental ${r.booking_no || r.rental_no} updated`,
       })
       .catch((e) => console.warn('[RENTAL SERVICE] Activity log failed:', e));
+  },
+
+  /** Patch manual bill ref / notes on draft or booked rentals only. */
+  async updateRentalMeta(
+    rentalId: string,
+    patch: { documentNumber?: string | null; notes?: string | null }
+  ): Promise<void> {
+    const { data: row, error: fetchErr } = await supabase
+      .from('rentals')
+      .select('status')
+      .eq('id', rentalId)
+      .maybeSingle();
+    if (fetchErr || !row) throw new Error(fetchErr?.message ?? 'Rental not found');
+    const st = String((row as { status?: string }).status ?? '').toLowerCase();
+    if (!['draft', 'booked'].includes(st)) {
+      throw new Error('Bill ref and notes can only be edited on draft or booked rentals.');
+    }
+    const upd: Record<string, unknown> = {};
+    if (patch.documentNumber !== undefined) {
+      const v = patch.documentNumber != null ? String(patch.documentNumber).trim() : '';
+      upd.document_number = v || null;
+    }
+    if (patch.notes !== undefined) upd.notes = patch.notes;
+    if (Object.keys(upd).length === 0) return;
+    const { error } = await supabase.from('rentals').update(upd).eq('id', rentalId);
+    if (error) throw error;
   },
 
   async updateRental(
@@ -865,14 +910,19 @@ export const rentalService = {
       actual_pickup_date: actualPickupDate,
       picked_up_by: performedBy || null,
       document_type: documentType,
-      document_number: documentNumber,
       document_expiry: documentExpiry || null,
       document_received: documentReceived,
       remaining_payment_confirmed: remainingPaymentConfirmed,
       credit_flag: deliverOnCredit === true,
       notes: notes || r.notes || null,
+      security_document_type: documentType,
+      security_document_number: documentNumber?.trim() || null,
+      security_status: 'collected',
     };
-    if (documentFrontImage) updatePayload.document_front_image = documentFrontImage;
+    if (documentFrontImage) {
+      updatePayload.document_front_image = documentFrontImage;
+      updatePayload.security_document_image_url = documentFrontImage;
+    }
     if (documentBackImage) updatePayload.document_back_image = documentBackImage;
     if (customerPhoto) updatePayload.customer_photo = customerPhoto;
 

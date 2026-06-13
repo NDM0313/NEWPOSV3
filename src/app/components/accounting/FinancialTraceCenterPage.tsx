@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   BookOpen,
+  CheckCircle2,
   Copy,
   Download,
   ExternalLink,
@@ -26,6 +27,10 @@ import { toast } from 'sonner';
 import { resolveArApReconciliationAccess } from '@/app/lib/arApReconciliationAccess';
 import { markOpenArApHybridRepair } from '@/app/lib/arApHybridRepairNav';
 import { detectRental1100LeakageDefects } from '@/app/lib/arControlOrphanRepair';
+import {
+  fetchGlCorrectionEntryNo,
+  isGlCorrectionDefectResolved,
+} from '@/app/lib/glCorrectionResolveStatus';
 import {
   basisBadgeClass,
   basisBadgeLabel,
@@ -61,6 +66,44 @@ import {
 } from '@/app/services/financialTruthTieOutService';
 import type { TieOutDrilldownTarget } from '@/app/lib/financialTruthTieOut';
 import type { UnmappedJournalRow, UnpostedDocumentRow } from '@/app/services/arApReconciliationCenterService';
+
+export type FinancialTraceTabId =
+  | 'tieout'
+  | 'overview'
+  | 'party'
+  | 'rental'
+  | 'metadata'
+  | 'non-final'
+  | 'deeper';
+
+export type FinancialTraceDiagnosticsPanelProps = {
+  embedded?: boolean;
+  /** When set, only these trace sub-tabs render (embedded hub sections). */
+  visibleTabs?: FinancialTraceTabId[];
+  initialTab?: FinancialTraceTabId;
+  onOpenHybridRepair?: () => void;
+  onSwitchHubTab?: (tab: string) => void;
+};
+
+const ALL_TRACE_TABS: FinancialTraceTabId[] = [
+  'tieout',
+  'overview',
+  'party',
+  'rental',
+  'metadata',
+  'non-final',
+  'deeper',
+];
+
+const TRACE_TAB_LABELS: Record<FinancialTraceTabId, string> = {
+  tieout: 'Tie-out',
+  overview: 'Overview',
+  party: 'Party Trace',
+  rental: 'Rental Trace',
+  metadata: 'Metadata Review',
+  'non-final': 'Non-final Docs',
+  deeper: 'D7 Deeper Trace',
+};
 
 function BasisBadge({ basis }: { basis: BasisBadge }) {
   return (
@@ -109,10 +152,14 @@ function CrossLinkBar({
   contactId,
   contactName,
   onNavigate,
+  embedded,
+  onOpenDeveloperCenter,
 }: {
   contactId?: string | null;
   contactName?: string | null;
   onNavigate: (view: string, url?: string, cId?: string, cName?: string) => void;
+  embedded?: boolean;
+  onOpenDeveloperCenter?: () => void;
 }) {
   return (
     <div className="flex flex-wrap gap-2 pt-2">
@@ -137,19 +184,25 @@ function CrossLinkBar({
       >
         Ledger V2
       </Button>
+      {!embedded && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="border-gray-600"
+          onClick={() => onNavigate('ar-ap-reconciliation-center')}
+        >
+          <Scale className="h-3 w-3 mr-1" /> AR/AP Reconciliation
+        </Button>
+      )}
       <Button
         variant="outline"
         size="sm"
         className="border-gray-600"
-        onClick={() => onNavigate('ar-ap-reconciliation-center')}
-      >
-        <Scale className="h-3 w-3 mr-1" /> AR/AP Reconciliation
-      </Button>
-      <Button
-        variant="outline"
-        size="sm"
-        className="border-gray-600"
-        onClick={() => onNavigate('dev-center', '/admin/accounting-developer-center')}
+        onClick={() =>
+          onOpenDeveloperCenter
+            ? onOpenDeveloperCenter()
+            : onNavigate('dev-center', '/admin/accounting-developer-center')
+        }
       >
         <ExternalLink className="h-3 w-3 mr-1" /> Developer Center
       </Button>
@@ -157,13 +210,32 @@ function CrossLinkBar({
   );
 }
 
-export function FinancialTraceCenterPage() {
+export function FinancialTraceDiagnosticsPanel({
+  embedded = false,
+  visibleTabs,
+  initialTab,
+  onOpenHybridRepair,
+  onSwitchHubTab,
+}: FinancialTraceDiagnosticsPanelProps = {}) {
   const { setCurrentView, openPartyLedger } = useNavigation();
   const { companyId, userRole } = useSupabase();
   const { formatCurrency } = useFormatCurrency();
   const access = resolveArApReconciliationAccess(userRole);
 
-  const [tab, setTab] = useState('overview');
+  const tabsToShow = useMemo(() => {
+    if (visibleTabs?.length) return visibleTabs;
+    if (embedded) return ALL_TRACE_TABS.filter((t) => t !== 'overview');
+    return ALL_TRACE_TABS;
+  }, [embedded, visibleTabs]);
+
+  const [tab, setTab] = useState<FinancialTraceTabId>(() => {
+    if (initialTab && tabsToShow.includes(initialTab)) return initialTab;
+    return tabsToShow[0] ?? 'tieout';
+  });
+
+  useEffect(() => {
+    if (!tabsToShow.includes(tab)) setTab(tabsToShow[0] ?? 'tieout');
+  }, [tab, tabsToShow]);
   const [loading, setLoading] = useState(true);
   const [overview, setOverview] = useState<FinancialTraceOverview | null>(null);
   const [queues, setQueues] = useState<{
@@ -180,6 +252,7 @@ export function FinancialTraceCenterPage() {
   const [searchHits, setSearchHits] = useState<PartySearchHit[]>([]);
   const [partyTrace, setPartyTrace] = useState<PartyTraceResult | null>(null);
   const [rentalLeakagePending, setRentalLeakagePending] = useState<number | null>(null);
+  const [resolvedTraceEntryNos, setResolvedTraceEntryNos] = useState<Record<string, string | null>>({});
   const [partyLoading, setPartyLoading] = useState(false);
 
   const [rentalQ, setRentalQ] = useState('REN-0002');
@@ -228,9 +301,18 @@ export function FinancialTraceCenterPage() {
   }, [companyId, access.canUseHybridRepair, overview?.asOfDate]);
 
   const openHybridRepair = useCallback(() => {
+    if (onOpenHybridRepair) {
+      onOpenHybridRepair();
+      return;
+    }
     markOpenArApHybridRepair();
     setCurrentView('ar-ap-reconciliation-center');
-  }, [setCurrentView]);
+  }, [onOpenHybridRepair, setCurrentView]);
+
+  const openDeveloperCenter = useCallback(() => {
+    window.history.pushState({}, '', '/admin/accounting-developer-center');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  }, []);
 
   const navigateCross = useCallback(
     (view: string, url?: string, contactId?: string, contactName?: string) => {
@@ -261,7 +343,8 @@ export function FinancialTraceCenterPage() {
           setCurrentView('reports');
           break;
         case 'ar_ap_center':
-          setCurrentView('ar-ap-reconciliation-center');
+          if (onSwitchHubTab) onSwitchHubTab('queues');
+          else setCurrentView('ar-ap-reconciliation-center');
           break;
         case 'account_statements':
           setCurrentView('accounting');
@@ -276,15 +359,40 @@ export function FinancialTraceCenterPage() {
           break;
       }
     },
-    [setCurrentView]
+    [onSwitchHubTab, setCurrentView]
   );
+
+  useEffect(() => {
+    if (!companyId) {
+      setResolvedTraceEntryNos({});
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const traceCases = KNOWN_TRACE_CASES.filter((c) => c.glCorrectionDefectId);
+      const entries: Record<string, string | null> = {};
+      await Promise.all(
+        traceCases.map(async (c) => {
+          const defectId = c.glCorrectionDefectId!;
+          const applied = await isGlCorrectionDefectResolved(companyId, defectId);
+          if (applied) {
+            entries[c.id] = await fetchGlCorrectionEntryNo(companyId, defectId);
+          }
+        })
+      );
+      if (!cancelled) setResolvedTraceEntryNos(entries);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, overview?.asOfDate]);
 
   const regressionQuickLinks = useMemo(
     () =>
       KNOWN_TRACE_CASES.filter((c) =>
         ['inayat-ren-0002', 'saqib-rcv-0008', 'hq-sl-0003-orphan-ar'].includes(c.id)
-      ),
-    []
+      ).filter((c) => !(c.id in resolvedTraceEntryNos)),
+    [resolvedTraceEntryNos]
   );
 
   const metadataRows = useMemo(() => {
@@ -312,7 +420,15 @@ export function FinancialTraceCenterPage() {
     });
   }, [queues]);
 
-  const deeperRows = useMemo(() => KNOWN_TRACE_CASES.filter((c) => c.codes.includes('D7')), []);
+  const deeperRows = useMemo(
+    () => KNOWN_TRACE_CASES.filter((c) => c.codes.includes('D7') && !(c.id in resolvedTraceEntryNos)),
+    [resolvedTraceEntryNos]
+  );
+
+  const resolvedDeeperRows = useMemo(
+    () => KNOWN_TRACE_CASES.filter((c) => c.codes.includes('D7') && c.id in resolvedTraceEntryNos),
+    [resolvedTraceEntryNos]
+  );
 
   const runSearch = useCallback(async () => {
     if (!companyId || searchQ.trim().length < 2) return;
@@ -422,50 +538,59 @@ export function FinancialTraceCenterPage() {
       : null;
 
   return (
-    <div className="flex flex-col h-full bg-[#0a0a0f] text-gray-100 print:bg-white print:text-black">
-      <div className="border-b border-gray-800 px-4 py-3 flex flex-wrap items-center gap-3 print:hidden">
-        <Button variant="ghost" size="sm" onClick={() => setCurrentView('accounting')}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <div className="flex-1 min-w-[200px]">
-          <h1 className="text-lg font-semibold flex items-center gap-2">
-            <FileSearch className="h-5 w-5 text-cyan-400" />
-            Financial Truth Center
-          </h1>
-          <p className="text-xs text-gray-500">Read-only tie-out and diagnosis — no repairs, no Phase 3 apply</p>
+    <div className={cn('flex flex-col text-gray-100 print:bg-white print:text-black', embedded ? 'min-h-0' : 'h-full bg-[#0a0a0f]')}>
+      {!embedded ? (
+        <div className="border-b border-gray-800 px-4 py-3 flex flex-wrap items-center gap-3 print:hidden">
+          <Button variant="ghost" size="sm" onClick={() => setCurrentView('accounting')}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div className="flex-1 min-w-[200px]">
+            <h1 className="text-lg font-semibold flex items-center gap-2">
+              <FileSearch className="h-5 w-5 text-cyan-400" />
+              Financial Truth Center
+            </h1>
+            <p className="text-xs text-gray-500">Read-only tie-out and diagnosis — no repairs, no Phase 3 apply</p>
+          </div>
+          <Badge variant="outline" className="border-emerald-500/40 text-emerald-300">
+            Read-only
+          </Badge>
+          <Button variant="outline" size="sm" className="border-gray-600" onClick={() => loadAll()} disabled={loading}>
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+          </Button>
+          <Button variant="outline" size="sm" className="border-gray-600" onClick={handleExportOverview}>
+            <Download className="h-4 w-4 mr-1" /> CSV
+          </Button>
+          <Button variant="outline" size="sm" className="border-gray-600" onClick={handleCopySummary}>
+            <Copy className="h-4 w-4 mr-1" /> Copy
+          </Button>
+          <Button variant="outline" size="sm" className="border-gray-600" onClick={handlePrint}>
+            <Printer className="h-4 w-4 mr-1" /> Print
+          </Button>
         </div>
-        <Badge variant="outline" className="border-emerald-500/40 text-emerald-300">
-          Read-only
-        </Badge>
-        <Button variant="outline" size="sm" className="border-gray-600" onClick={() => loadAll()} disabled={loading}>
-          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-        </Button>
-        <Button variant="outline" size="sm" className="border-gray-600" onClick={handleExportOverview}>
-          <Download className="h-4 w-4 mr-1" /> CSV
-        </Button>
-        <Button variant="outline" size="sm" className="border-gray-600" onClick={handleCopySummary}>
-          <Copy className="h-4 w-4 mr-1" /> Copy
-        </Button>
-        <Button variant="outline" size="sm" className="border-gray-600" onClick={handlePrint}>
-          <Printer className="h-4 w-4 mr-1" /> Print
-        </Button>
-      </div>
+      ) : (
+        <div className="flex justify-end px-1 pb-2 print:hidden">
+          <Button variant="outline" size="sm" className="border-gray-600" onClick={() => loadAll()} disabled={loading}>
+            {loading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RefreshCw className="h-4 w-4 mr-1" />}
+            Refresh trace
+          </Button>
+        </div>
+      )}
 
       {loading && !overview ? (
-        <div className="flex-1 flex items-center justify-center">
+        <div className="flex-1 flex items-center justify-center py-12">
           <Loader2 className="h-8 w-8 animate-spin text-cyan-400" />
         </div>
       ) : (
-        <Tabs value={tab} onValueChange={setTab} className="flex-1 flex flex-col min-h-0">
-          <TabsList className="mx-4 mt-3 bg-gray-900/80 border border-gray-800 flex-wrap h-auto print:hidden">
-            <TabsTrigger value="tieout">Tie-out</TabsTrigger>
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="party">Party Trace</TabsTrigger>
-            <TabsTrigger value="rental">Rental Trace</TabsTrigger>
-            <TabsTrigger value="metadata">Metadata Review</TabsTrigger>
-            <TabsTrigger value="non-final">Non-final Docs</TabsTrigger>
-            <TabsTrigger value="deeper">D7 Deeper Trace</TabsTrigger>
-          </TabsList>
+        <Tabs value={tab} onValueChange={(v) => setTab(v as FinancialTraceTabId)} className="flex-1 flex flex-col min-h-0">
+          {tabsToShow.length > 1 ? (
+            <TabsList className={cn('bg-gray-900/80 border border-gray-800 flex-wrap h-auto print:hidden', embedded ? 'mb-2' : 'mx-4 mt-3')}>
+              {tabsToShow.map((tid) => (
+                <TabsTrigger key={tid} value={tid}>
+                  {TRACE_TAB_LABELS[tid]}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          ) : null}
 
           <TabsContent value="tieout" className="flex-1 overflow-auto p-4 space-y-4">
             {tieOut ? (
@@ -605,7 +730,7 @@ export function FinancialTraceCenterPage() {
                   </div>
                 )}
 
-                <CrossLinkBar onNavigate={navigateCross} />
+                <CrossLinkBar embedded={embedded} onNavigate={navigateCross} onOpenDeveloperCenter={openDeveloperCenter} />
               </>
             ) : (
               <p className="text-sm text-gray-500">Tie-out data unavailable.</p>
@@ -687,7 +812,7 @@ export function FinancialTraceCenterPage() {
                   </div>
                 )}
 
-                <CrossLinkBar onNavigate={navigateCross} />
+                <CrossLinkBar embedded={embedded} onNavigate={navigateCross} onOpenDeveloperCenter={openDeveloperCenter} />
               </>
             )}
           </TabsContent>
@@ -751,7 +876,9 @@ export function FinancialTraceCenterPage() {
                 <CrossLinkBar
                   contactId={partyTrace.contact.id}
                   contactName={partyTrace.contact.name}
+                  embedded={embedded}
                   onNavigate={navigateCross}
+                  onOpenDeveloperCenter={openDeveloperCenter}
                 />
               </div>
             )}
@@ -842,7 +969,7 @@ export function FinancialTraceCenterPage() {
                   Inayat / REN-0002: active HQ-RCV-0003 (50k) + HQ-RCV-0006 (10k); void REN-0002-PAY / JE-0011.
                   Deeper trace required — no auto repair.
                 </p>
-                <CrossLinkBar onNavigate={navigateCross} />
+                <CrossLinkBar embedded={embedded} onNavigate={navigateCross} onOpenDeveloperCenter={openDeveloperCenter} />
               </div>
             )}
           </TabsContent>
@@ -887,8 +1014,27 @@ export function FinancialTraceCenterPage() {
 
           <TabsContent value="deeper" className="flex-1 overflow-auto p-4 space-y-4">
             <p className="text-sm text-gray-400">
-              D7 — escalate for manual review. This tab does not fix anything.
+              D7 — escalate for manual review. GL-correction cases move to Resolved when fingerprint JE exists.
             </p>
+            {resolvedDeeperRows.length > 0 ? (
+              <details className="rounded-lg border border-emerald-500/30 bg-emerald-950/20 p-4 space-y-2 group">
+                <summary className="cursor-pointer text-sm font-medium text-emerald-200 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4" />
+                  Resolved GL corrections ({resolvedDeeperRows.length})
+                </summary>
+                <div className="pt-3 space-y-2">
+                  {resolvedDeeperRows.map((c) => (
+                    <div key={c.id} className="text-sm text-gray-300 border-t border-emerald-500/15 pt-2 first:border-0 first:pt-0">
+                      <span className="text-emerald-200 font-medium">{c.title}</span>
+                      {resolvedTraceEntryNos[c.id] ? (
+                        <span className="text-gray-500 ml-2 font-mono">→ {resolvedTraceEntryNos[c.id]}</span>
+                      ) : null}
+                      <p className="text-xs text-gray-500 mt-0.5">Additive correction applied — source JEs unchanged.</p>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            ) : null}
             {deeperRows.map((c) => (
               <div key={c.id} className="rounded-lg border border-red-500/30 bg-red-500/5 p-4 space-y-2">
                 <div className="flex flex-wrap gap-2">
@@ -899,14 +1045,23 @@ export function FinancialTraceCenterPage() {
                 </div>
                 <p className="text-sm text-gray-300">{c.summary}</p>
                 <p className="text-sm text-amber-200">{c.statusLabel}</p>
-                <p className="text-xs text-gray-500">Recommended: manual review in AR/AP Reconciliation (status-only).</p>
+                {c.glCorrectionDefectId ? (
+                  <p className="text-xs text-violet-300/90">
+                    Fix in AR/AP Reconciliation Center → Hybrid Repair (confirm: APPLY GL CORRECTION).
+                  </p>
+                ) : (
+                  <p className="text-xs text-gray-500">Recommended: manual review in AR/AP Reconciliation (status-only).</p>
+                )}
                 <Button
                   variant="outline"
                   size="sm"
                   className="border-gray-600"
-                  onClick={() => setCurrentView('ar-ap-reconciliation-center')}
+                  onClick={() => {
+                    if (c.glCorrectionDefectId) markOpenArApHybridRepair();
+                    openHybridRepair();
+                  }}
                 >
-                  Open AR/AP Reconciliation (read-only queue)
+                  {c.glCorrectionDefectId ? 'Open Hybrid Repair' : 'Open repair queues'}
                 </Button>
               </div>
             ))}
@@ -931,4 +1086,7 @@ export function FinancialTraceCenterPage() {
   );
 }
 
-export default FinancialTraceCenterPage;
+export default FinancialTraceDiagnosticsPanel;
+
+/** @deprecated Use FinancialTraceRedirect — standalone page merged into AR/AP Diagnostics hub. */
+export const FinancialTraceCenterPage = FinancialTraceDiagnosticsPanel;

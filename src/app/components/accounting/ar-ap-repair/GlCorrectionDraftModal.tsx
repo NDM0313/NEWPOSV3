@@ -29,6 +29,7 @@ import { actionRequiresGlCorrectionRpc, resolveRepairApplyBlockReasons } from '@
 import { canApplyDeveloperRepair } from '@/app/lib/developerAccountingAccess';
 import { applyDeveloperRepair } from '@/app/services/developerRepairService';
 import { loadDeveloperRepairSystemStatus } from '@/app/services/developerRepairSystemStatusService';
+import { notifyGlCorrectionApplied } from '@/app/lib/glCorrectionResolveStatus';
 
 interface Props {
   open: boolean;
@@ -129,6 +130,7 @@ export function GlCorrectionDraftModal({ open, onOpenChange, defectId, onQueue, 
       );
       if (res.ok) {
         toast.success(res.message || 'GL correction applied');
+        notifyGlCorrectionApplied(companyId);
         onApplied?.();
         onOpenChange(false);
       } else {

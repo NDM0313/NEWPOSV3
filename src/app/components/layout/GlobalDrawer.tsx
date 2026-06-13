@@ -178,6 +178,9 @@ export const GlobalDrawer = () => {
         {/* Product Form - Add */}
         {activeDrawer === 'addProduct' && (
           <EnhancedProductForm 
+            duplicateFromProductId={
+              drawerData?.duplicateFrom?.uuid ?? drawerData?.duplicateFrom?.id ?? undefined
+            }
             onCancel={() => closeDrawer()}
             onSave={(product?: any) => {
               if (hasNestedProductDrawer && product && setCreatedProduct) {

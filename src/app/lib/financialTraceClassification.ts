@@ -180,6 +180,8 @@ export interface KnownTraceCase {
   searchHint: string;
   summary: string;
   statusLabel: string;
+  /** When set, resolved when create_gl_correction_journal fingerprint exists. */
+  glCorrectionDefectId?: string;
 }
 
 export const KNOWN_TRACE_CASES: KnownTraceCase[] = [
@@ -189,9 +191,10 @@ export const KNOWN_TRACE_CASES: KnownTraceCase[] = [
     codes: ['D7'],
     tab: 'deeper',
     searchHint: 'HQ-SL-0003',
+    glCorrectionDefectId: 'hq-sl-0003-orphan-ar',
     summary:
-      'JE-0160 Dr AR-CUS0000 Rs 150; JE-0161 reversal credited 1100 not AR-CUS0000. Normal statement hidden by report filter; raw GL orphan Rs 150 — GL correction draft dry-run available.',
-    statusLabel: 'GL correction draft required — apply blocked until RPC migration',
+      'JE-0160 Dr AR-CUS0000 Rs 150; JE-0161 reversal credited 1100 not AR-CUS0000. Apply additive GL correction (Dr 1100 / Cr AR-CUS0000) via AR/AP Reconciliation Center.',
+    statusLabel: 'GL correction available — AR/AP Reconciliation → Hybrid Repair',
   },
   {
     id: 'inayat-ren-0002',

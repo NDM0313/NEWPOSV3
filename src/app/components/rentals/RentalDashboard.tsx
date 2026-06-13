@@ -293,7 +293,7 @@ export const RentalDashboard = () => {
           if (!open) setRentalForReturn(null);
         }}
         rental={rentalForReturn}
-        documentInfo={rentalForReturn ? { documentType: rentalForReturn.documentType, documentNumber: rentalForReturn.documentNumber } : undefined}
+        documentInfo={rentalForReturn ? { documentType: rentalForReturn.pickupDocumentType || rentalForReturn.documentType, documentNumber: rentalForReturn.pickupDocumentNumber || undefined } : undefined}
         onConfirm={async (id, payload) => {
           await receiveReturn(id, payload);
           await refreshRentals();

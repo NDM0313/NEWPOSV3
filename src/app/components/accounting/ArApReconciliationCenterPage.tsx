@@ -7,6 +7,7 @@ import {
   ExternalLink,
   Eye,
   FileWarning,
+  FileSearch,
   Loader2,
   RefreshCw,
   Scale,
@@ -79,7 +80,16 @@ import { GlCorrectionDraftModal } from '@/app/components/accounting/ar-ap-repair
 import { KnownGlCorrectionSection } from '@/app/components/accounting/ar-ap-repair/KnownGlCorrectionSection';
 import { HybridRepairPanel } from '@/app/components/accounting/ar-ap-repair/HybridRepairPanel';
 import { ReceivablesVarianceBreakdownPanel } from '@/app/components/accounting/ar-ap-repair/ReceivablesVarianceBreakdownPanel';
+import { PayablesVarianceExplainerPanel } from '@/app/components/accounting/ar-ap-repair/PayablesVarianceExplainerPanel';
+import { ArApRepairProgressStrip } from '@/app/components/accounting/ar-ap-repair/ArApRepairProgressStrip';
 import { consumeOpenArApHybridRepairFocus } from '@/app/lib/arApHybridRepairNav';
+import {
+  parseArApDiagnosticsHubTabFromUrl,
+  syncArApDiagnosticsHubTabToUrl,
+  type ArApDiagnosticsHubTab,
+} from '@/app/lib/arApDiagnosticsHubTabs';
+import { FinancialTraceDiagnosticsPanel } from '@/app/components/accounting/FinancialTraceCenterPage';
+import { JournalHygienePanel } from '@/app/components/accounting/ar-ap-diagnostics/JournalHygienePanel';
 import { loadDeveloperRepairSystemStatus } from '@/app/services/developerRepairSystemStatusService';
 import {
   classifyUnmappedJournalLine,
@@ -132,7 +142,7 @@ export function ArApReconciliationCenterPage() {
     () => mergeHybridRepairProbe(baseAccess, { glCorrectionRpcAvailable }),
     [baseAccess, glCorrectionRpcAvailable]
   );
-  const { setCurrentView, setOpenSaleIdForView } = useNavigation();
+  const { setCurrentView, setOpenSaleIdForView, openPartyLedger } = useNavigation();
   const [asOfDate, setAsOfDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<IntegrityLabSummary | null>(null);
@@ -142,6 +152,7 @@ export function ArApReconciliationCenterPage() {
   const [itemStates, setItemStates] = useState<Map<string, ArApFixStatus>>(new Map());
   const [hideResolved, setHideResolved] = useState(true);
   const [ensuringSuspense, setEnsuringSuspense] = useState(false);
+  const [hubTab, setHubTab] = useState<ArApDiagnosticsHubTab>(() => parseArApDiagnosticsHubTabFromUrl());
   const [activeTab, setActiveTab] = useState('queues');
   const [dataRefreshToken, setDataRefreshToken] = useState(0);
   const [appliedGlCorrections, setAppliedGlCorrections] = useState<AppliedGlCorrectionAuditRow[]>([]);
@@ -178,11 +189,31 @@ export function ArApReconciliationCenterPage() {
 
   useEffect(() => {
     if (!consumeOpenArApHybridRepairFocus()) return;
+    setHubTab('queues');
+    syncArApDiagnosticsHubTabToUrl('queues');
     const t = window.setTimeout(() => {
       document.getElementById('hybrid-repair-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 300);
     return () => window.clearTimeout(t);
   }, []);
+
+  useEffect(() => {
+    const onPop = () => setHubTab(parseArApDiagnosticsHubTabFromUrl());
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
+  const setHubTabAndSync = useCallback((tab: ArApDiagnosticsHubTab) => {
+    setHubTab(tab);
+    syncArApDiagnosticsHubTabToUrl(tab);
+  }, []);
+
+  const scrollToHybridRepair = useCallback(() => {
+    setHubTabAndSync('queues');
+    window.setTimeout(() => {
+      document.getElementById('hybrid-repair-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 150);
+  }, [setHubTabAndSync]);
 
   const load = useCallback(async () => {
     if (!companyId) {
@@ -339,11 +370,15 @@ export function ArApReconciliationCenterPage() {
   };
 
   const goToUnpostedOrders = () => {
+    scrollToQueueSection(unpostedFinalMissing.length > 0 ? 'unposted-queue-1b' : 'unposted-queue-1a');
+  };
+
+  const scrollToQueueSection = useCallback((elementId: string) => {
     setActiveTab('queues');
     window.setTimeout(() => {
-      document.getElementById('unposted-queue-1a')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      document.getElementById(elementId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 50);
-  };
+  }, []);
 
   const openSourceDocument = (row: UnpostedDocumentRow) => {
     if (row.source_type === 'sale') {
@@ -729,11 +764,79 @@ export function ArApReconciliationCenterPage() {
         onApplied={() => void load()}
       />
 
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="space-y-2">
+          <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white -ml-2 gap-1.5" onClick={() => setCurrentView('contacts')}>
+            <ArrowLeft size={16} /> Back to Contacts
+          </Button>
+          <div className="flex flex-wrap items-center gap-3">
+            <Scale className="w-8 h-8 text-blue-400" />
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">AR/AP Diagnostics &amp; Repair</h1>
+              <p className="text-sm text-gray-400 max-w-2xl">
+                One hub for exception queues, hybrid repair, financial tie-out, party trace, and journal hygiene.
+                Advanced COA repairs: Accounting Developer Center.
+              </p>
+            </div>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="text-xs text-gray-500 uppercase font-semibold shrink-0">As of</label>
+          <DatePicker
+            value={asOfDate}
+            onChange={(v) => setAsOfDate(v)}
+            className="w-40"
+          />
+          {hubTab === 'queues' ? (
+            <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
+              <input type="checkbox" checked={hideResolved} onChange={(e) => setHideResolved(e.target.checked)} className="rounded border-gray-600" />
+              Hide resolved
+            </label>
+          ) : null}
+          <Button variant="outline" size="sm" className="border-gray-600 gap-1.5" onClick={() => void load()} disabled={loading && hubTab === 'queues'}>
+            {loading && hubTab === 'queues' ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            Refresh
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-gray-600"
+            onClick={() => {
+              window.history.pushState({}, '', '/admin/accounting-developer-center');
+              window.dispatchEvent(new PopStateEvent('popstate'));
+            }}
+          >
+            <ExternalLink className="w-4 h-4 mr-1" /> Developer Center
+          </Button>
+        </div>
+      </div>
+
+      <Tabs value={hubTab} onValueChange={(v) => setHubTabAndSync(v as ArApDiagnosticsHubTab)} className="space-y-4">
+        <TabsList className="bg-gray-900 border border-gray-800 flex-wrap h-auto">
+          <TabsTrigger value="queues" className="data-[state=active]:bg-gray-800">
+            Overview &amp; Queues
+          </TabsTrigger>
+          <TabsTrigger value="tie-out" className="data-[state=active]:bg-gray-800">
+            <FileSearch className="w-3.5 h-3.5 mr-1.5" /> Tie-out
+          </TabsTrigger>
+          <TabsTrigger value="party-rental" className="data-[state=active]:bg-gray-800">
+            Party &amp; Rental Trace
+          </TabsTrigger>
+          <TabsTrigger value="metadata" className="data-[state=active]:bg-gray-800">
+            Metadata &amp; Docs
+          </TabsTrigger>
+          <TabsTrigger value="journal-hygiene" className="data-[state=active]:bg-gray-800">
+            Journal hygiene
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="queues" className="space-y-6 mt-0">
       <HybridRepairPanel
         companyId={companyId}
         branchId={branchId}
         asOfDate={asOfDate}
         access={access}
+        refreshToken={dataRefreshToken}
         onRefresh={() => void load()}
         onOpenGlCorrectionDraft={(defectId) => setGlCorrectionDefectId(defectId)}
       />
@@ -757,44 +860,27 @@ export function ArApReconciliationCenterPage() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="space-y-2">
-          <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white -ml-2 gap-1.5" onClick={() => setCurrentView('contacts')}>
-            <ArrowLeft size={16} /> Back to Contacts
-          </Button>
-          <div className="flex flex-wrap items-center gap-3">
-            <Scale className="w-8 h-8 text-blue-400" />
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">AR/AP Reconciliation Center</h1>
-              <p className="text-sm text-gray-400 max-w-2xl">
-                Queues are grouped: unposted docs, customer/supplier AR·AP unmapped lines, worker payable unmapped (separate), then manual/suspense.
-                Repair actions are explicit — no silent GL changes.
-              </p>
-            </div>
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <label className="text-xs text-gray-500 uppercase font-semibold shrink-0">As of</label>
-          <DatePicker
-            value={asOfDate}
-            onChange={(v) => setAsOfDate(v)}
-            className="w-40"
-          />
-          <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
-            <input type="checkbox" checked={hideResolved} onChange={(e) => setHideResolved(e.target.checked)} className="rounded border-gray-600" />
-            Hide resolved
-          </label>
-          <Button variant="outline" size="sm" className="border-gray-600 gap-1.5" onClick={() => void load()} disabled={loading}>
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-            Refresh
-          </Button>
-        </div>
-      </div>
-
       <div className="space-y-2">
         <ReportBasisBanner basis="official_gl" detail="GL receivables/payables (raw) cards use Official Posted GL — all non-void posted lines." />
         <ReportBasisBanner basis="effective_party" detail="Effective variance cards subtract audit-only / cancelled chains (same rules as Account Statements effective mode)." />
       </div>
+
+      {companyId && access.canUseHybridRepair ? (
+        <ArApRepairProgressStrip
+          companyId={companyId}
+          branchId={branchId}
+          asOfDate={asOfDate}
+          glCorrectionRpcAvailable={glCorrectionRpcAvailable}
+          varianceReceivables={summary?.variance_receivables ?? null}
+          refreshToken={dataRefreshToken}
+          onScrollToHybrid={() =>
+            document.getElementById('hybrid-repair-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+          }
+          onScrollToVariance={() =>
+            document.getElementById('receivables-variance-breakdown')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+          }
+        />
+      ) : null}
 
       {summary && (
         <div className="flex flex-wrap items-center gap-2">
@@ -839,21 +925,70 @@ export function ArApReconciliationCenterPage() {
             />
             <SummaryCard title="Receivables variance (effective)" subtitle="Operational − GL effective" value={summary.effective_variance_receivables} formatCurrency={formatCurrency} tone="warn" />
             <SummaryCard title="Audit-only AR adjustment" subtitle="Hidden from effective" value={summary.audit_only_ar_net_adjustment} formatCurrency={formatCurrency} tone="orange" />
-            <SummaryCard title="Operational payables" subtitle="Contacts RPC (full)" value={summary.operational_payables_full} formatCurrency={formatCurrency} tone="red" />
-            <SummaryCard title="GL payables (raw)" subtitle="Cr − Dr, as of" value={summary.gl_ap_net_credit} formatCurrency={formatCurrency} tone="white" />
+            <SummaryCard title="Operational payables" subtitle="Document due · not party GL" value={summary.operational_payables_full} formatCurrency={formatCurrency} tone="red" />
+            <SummaryCard
+              title="Party GL payables (signed)"
+              subtitle="get_contact_party_gl_balances — same as Contacts"
+              value={summary.party_gl_payables_signed}
+              formatCurrency={formatCurrency}
+              tone="green"
+            />
+            <SummaryCard title="GL payables (raw)" subtitle="AP control Cr − Dr, as of" value={summary.gl_ap_net_credit} formatCurrency={formatCurrency} tone="white" />
+            <SummaryCard
+              title="Party GL vs control AP"
+              subtitle="Supplier sub-ledger − AP 2000"
+              value={summary.party_gl_vs_control_variance}
+              formatCurrency={formatCurrency}
+              tone="warn"
+              onClick={() =>
+                document.getElementById('payables-variance-explainer')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              }
+            />
             <SummaryCard title="GL payables (effective)" subtitle="Raw − audit-only chains" value={summary.effective_gl_ap_net_credit} formatCurrency={formatCurrency} tone="white" />
-            <SummaryCard title="Payables variance (raw)" subtitle="Operational − GL raw" value={summary.variance_payables} formatCurrency={formatCurrency} tone="warn" />
+            <SummaryCard
+              title="Payables variance (raw)"
+              subtitle="Operational − GL raw · click for explainer"
+              value={summary.variance_payables}
+              formatCurrency={formatCurrency}
+              tone="warn"
+              onClick={() =>
+                document.getElementById('payables-variance-explainer')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              }
+            />
             <SummaryCard title="Payables variance (effective)" subtitle="Operational − GL effective" value={summary.effective_variance_payables} formatCurrency={formatCurrency} tone="warn" />
-            <SummaryCard title="Unposted documents" subtitle="Missing sale/purchase JE" value={summary.unposted_document_count} formatCurrency={formatCurrency} tone="orange" />
-            <SummaryCard title="Unmapped AR + supplier AP JEs" subtitle="Distinct JEs (heuristic)" value={summary.unmapped_ar_je_count + summary.unmapped_ap_supplier_je_count} formatCurrency={formatCurrency} tone="orange" />
-            <SummaryCard title="Unmapped worker payable JEs" subtitle="2010 / Worker Payable" value={summary.unmapped_ap_worker_je_count} formatCurrency={formatCurrency} tone="orange" />
+            <SummaryCard title="Audit-only AP adjustment" subtitle="Hidden from effective" value={summary.audit_only_ap_net_adjustment} formatCurrency={formatCurrency} tone="orange" />
+            <SummaryCard
+              title="Unposted documents"
+              subtitle="Click to view queue · missing sale/purchase JE"
+              value={summary.unposted_document_count}
+              formatCurrency={formatCurrency}
+              tone="orange"
+              onClick={goToUnpostedOrders}
+            />
+            <SummaryCard
+              title="Unmapped AR + supplier AP JEs"
+              subtitle="Click to view queue · distinct JEs"
+              value={summary.unmapped_ar_je_count + summary.unmapped_ap_supplier_je_count}
+              formatCurrency={formatCurrency}
+              tone="orange"
+              onClick={() => scrollToQueueSection('unmapped-queue-2')}
+            />
+            <SummaryCard
+              title="Unmapped worker payable JEs"
+              subtitle="Click to view queue · 2010 / Worker Payable"
+              value={summary.unmapped_ap_worker_je_count}
+              formatCurrency={formatCurrency}
+              tone="orange"
+              onClick={() => scrollToQueueSection('unmapped-queue-3')}
+            />
             <SummaryCard
               title="Manual / suspense"
-              subtitle="Tagged JE · suspense Dr−Cr"
+              subtitle="Click to view queue · tagged JE"
               value={summary.manual_adjustment_je_count}
               formatCurrency={formatCurrency}
               tone="violet"
               displayOverride={`${summary.manual_adjustment_je_count} · ${formatCurrency(summary.suspense_net_balance)}`}
+              onClick={() => scrollToQueueSection('manual-queue-4')}
             />
           </div>
 
@@ -866,6 +1001,10 @@ export function ArApReconciliationCenterPage() {
             refreshToken={dataRefreshToken}
             onOpenSale={openSaleById}
             onGoToUnpostedOrders={goToUnpostedOrders}
+            onOpenPartyLedger={(contactId, contactName) =>
+              openPartyLedger?.({ contactId, contactName, contactType: 'customer' })
+            }
+            onGoToFinancialTrace={() => setHubTabAndSync('tie-out')}
             onTraceJournal={(journalEntryId) =>
               setTraceTarget({
                 kind: 'manual',
@@ -887,6 +1026,8 @@ export function ArApReconciliationCenterPage() {
               })
             }
           />
+
+          <PayablesVarianceExplainerPanel summary={summary} formatCurrency={formatCurrency} />
 
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" className="border-violet-500/40 text-violet-200" onClick={() => void handleEnsureSuspense()} disabled={ensuringSuspense}>
@@ -940,6 +1081,7 @@ export function ArApReconciliationCenterPage() {
           </QueueSection>
 
           <QueueSection
+            id="unposted-queue-1b"
             title="1b · Final documents missing posting"
             icon={<FileWarning className="w-5 h-5 text-orange-400" />}
             rows={unpostedFinalMissing.length}
@@ -948,7 +1090,7 @@ export function ArApReconciliationCenterPage() {
             {renderUnpostedTable(unpostedFinalMissing, 'No final documents missing posting.')}
           </QueueSection>
 
-          <QueueSection title="2 · Customer / supplier AR & supplier AP (unmapped lines)" icon={<Users className="w-5 h-5 text-amber-400" />} rows={unmappedCsVisible.length}>
+          <QueueSection id="unmapped-queue-2" title="2 · Customer / supplier AR & supplier AP (unmapped lines)" icon={<Users className="w-5 h-5 text-amber-400" />} rows={unmappedCsVisible.length}>
             <table className="w-full text-sm">
               <thead className="text-left text-gray-500 border-b border-gray-800">
                 <tr>
@@ -1291,7 +1433,7 @@ export function ArApReconciliationCenterPage() {
             </table>
           </QueueSection>
 
-          <QueueSection title="3 · Worker payable unmapped (2010 / Worker Payable only)" icon={<ClipboardList className="w-5 h-5 text-rose-400" />} rows={unmappedWpVisible.length}>
+          <QueueSection id="unmapped-queue-3" title="3 · Worker payable unmapped (2010 / Worker Payable only)" icon={<ClipboardList className="w-5 h-5 text-rose-400" />} rows={unmappedWpVisible.length}>
             <table className="w-full text-sm">
               <thead className="text-left text-gray-500 border-b border-gray-800">
                 <tr>
@@ -1362,7 +1504,7 @@ export function ArApReconciliationCenterPage() {
             </table>
           </QueueSection>
 
-          <QueueSection title="4 · Manual reconciliation / suspense" icon={<ShieldAlert className="w-5 h-5 text-violet-400" />} rows={manualVisible.length}>
+          <QueueSection id="manual-queue-4" title="4 · Manual reconciliation / suspense" icon={<ShieldAlert className="w-5 h-5 text-violet-400" />} rows={manualVisible.length}>
             <table className="w-full text-sm">
               <thead className="text-left text-gray-500 border-b border-gray-800">
                 <tr>
@@ -1447,6 +1589,42 @@ export function ArApReconciliationCenterPage() {
           <p>
             <strong className="text-gray-200">Fix status:</strong> stored in <code>ar_ap_reconciliation_review_items.fix_status</code>; mark resolved requires reason and stays reviewed if row remains in SQL view.
           </p>
+        </TabsContent>
+      </Tabs>
+        </TabsContent>
+
+        <TabsContent value="tie-out" className="mt-0">
+          <FinancialTraceDiagnosticsPanel
+            embedded
+            visibleTabs={['tieout']}
+            initialTab="tieout"
+            onOpenHybridRepair={scrollToHybridRepair}
+            onSwitchHubTab={(t) => setHubTabAndSync(t as ArApDiagnosticsHubTab)}
+          />
+        </TabsContent>
+
+        <TabsContent value="party-rental" className="mt-0">
+          <FinancialTraceDiagnosticsPanel
+            embedded
+            visibleTabs={['party', 'rental']}
+            initialTab="party"
+            onOpenHybridRepair={scrollToHybridRepair}
+            onSwitchHubTab={(t) => setHubTabAndSync(t as ArApDiagnosticsHubTab)}
+          />
+        </TabsContent>
+
+        <TabsContent value="metadata" className="mt-0">
+          <FinancialTraceDiagnosticsPanel
+            embedded
+            visibleTabs={['metadata', 'non-final', 'deeper']}
+            initialTab="metadata"
+            onOpenHybridRepair={scrollToHybridRepair}
+            onSwitchHubTab={(t) => setHubTabAndSync(t as ArApDiagnosticsHubTab)}
+          />
+        </TabsContent>
+
+        <TabsContent value="journal-hygiene" className="mt-0">
+          <JournalHygienePanel />
         </TabsContent>
       </Tabs>
     </div>

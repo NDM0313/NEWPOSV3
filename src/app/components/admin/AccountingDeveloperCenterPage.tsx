@@ -114,8 +114,22 @@ export default function AccountingDeveloperCenterPage() {
         </div>
       </div>
 
-      <div className="rounded-lg border border-violet-900/40 bg-violet-950/20 px-3 py-2 text-xs text-violet-200/90">
-        Phase F controlled repairs: dry-run, confirm phrase, and audit log for every apply. No SQL editor or mass updates.
+      <div className="rounded-lg border border-violet-900/40 bg-violet-950/20 px-3 py-2 text-xs text-violet-200/90 space-y-1">
+        <p>Phase F controlled repairs: dry-run, confirm phrase, and audit log for every apply. No SQL editor or mass updates.</p>
+        <p className="text-gray-400">
+          For AR/AP variance and exception queues, start at{' '}
+          <button
+            type="button"
+            className="text-cyan-300 hover:underline"
+            onClick={() => {
+              setCurrentView('ar-ap-reconciliation-center');
+              leaveSpecialAppRoute('/');
+            }}
+          >
+            AR/AP Diagnostics
+          </button>{' '}
+          (Overview &amp; Queues / Tie-out) — this center is for COA, trace shells, and confirm-gated repairs.
+        </p>
       </div>
 
       <RepairQueueProvider>

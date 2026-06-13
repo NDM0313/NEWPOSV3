@@ -708,7 +708,12 @@ export const accountingService = {
         .map(e => e.reference_id) as string[];
       
       const saleIds = dataFiltered
-        .filter((e: any) => (e.reference_type === 'sale' || e.reference_type === 'sale_adjustment') && e.reference_id)
+        .filter((e: any) =>
+          (e.reference_type === 'sale' ||
+            e.reference_type === 'sale_adjustment' ||
+            e.reference_type === 'sale_reversal') &&
+          e.reference_id
+        )
         .map((e: any) => e.reference_id) as string[];
       
       // Include journal_entries.payment_id in the payments batch so supplier/customer settlement rows get PAY-xx / RCV-xx
@@ -954,19 +959,24 @@ export const accountingService = {
           .trim()
           .replace(/\s+/g, '_');
         if (rtN === 'expense' && e.reference_id) expenseIdsForNo.add(String(e.reference_id));
+        if ((rtN === 'sale' || rtN === 'sale_reversal') && e.reference_id) {
+          saleIdsForInvoice.add(String(e.reference_id));
+        }
       });
       (paymentsList || []).forEach((p: any) => {
         if (p.reference_type === 'expense' && p.reference_id) expenseIdsForNo.add(String(p.reference_id));
       });
 
       const saleInvoiceNoById = new Map<string, string>();
+      const saleStatusById = new Map<string, string>();
       if (saleIdsForInvoice.size > 0) {
         const { data: saleRows } = await supabase
           .from('sales')
-          .select('id, invoice_no')
+          .select('id, invoice_no, status')
           .in('id', [...saleIdsForInvoice]);
         (saleRows || []).forEach((s: any) => {
           if (s?.id && s.invoice_no) saleInvoiceNoById.set(String(s.id), String(s.invoice_no));
+          if (s?.id && s.status) saleStatusById.set(String(s.id), String(s.status));
         });
       }
 
@@ -1077,6 +1087,8 @@ export const accountingService = {
         let opExpenseNo: string | undefined;
         if ((rtN === 'sale' || rtN === 'sale_adjustment') && entry.reference_id) {
           opSaleInv = saleInvoiceNoById.get(String(entry.reference_id));
+        } else if (rtN === 'sale_reversal' && entry.reference_id) {
+          opSaleInv = saleInvoiceNoById.get(String(entry.reference_id));
         } else if ((rtN === 'purchase' || rtN === 'purchase_adjustment') && entry.reference_id) {
           opPurPo = purchasePoNoById.get(String(entry.reference_id));
         } else if (rtN === 'expense' && entry.reference_id) {
@@ -1108,6 +1120,13 @@ export const accountingService = {
         if (opSaleInv) out._display_sale_invoice_no = opSaleInv;
         if (opPurPo) out._display_purchase_po_no = opPurPo;
         if (opExpenseNo) out._display_expense_no = opExpenseNo;
+        const saleRefId =
+          (rtN === 'sale' || rtN === 'sale_adjustment' || rtN === 'sale_reversal') && entry.reference_id
+            ? String(entry.reference_id)
+            : undefined;
+        if (saleRefId && saleStatusById.has(saleRefId)) {
+          out._linked_sale_status = saleStatusById.get(saleRefId);
+        }
         return out;
       });
 

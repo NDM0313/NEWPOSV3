@@ -21,14 +21,15 @@ import {
   Users,
   Loader2,
   BookOpen,
+  Home,
 } from 'lucide-react';
 import { Card } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
-import { useSales } from '@/app/context/SalesContext';
+import type { Sale } from '@/app/context/SalesContext';
+import { convertFromSupabaseSale } from '@/app/context/SalesContext';
 import { usePurchases } from '@/app/context/PurchaseContext';
 import { useExpenses } from '@/app/context/ExpenseContext';
-import { useAccounting } from '@/app/context/AccountingContext';
 import { BarChart, Bar, PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import { ChartContainer } from '@/app/components/ui/chart';
 import { exportToCSV, exportToExcel, exportToPDF } from '@/app/utils/exportUtils';
@@ -37,7 +38,27 @@ import { useFormatDate } from '@/app/hooks/useFormatDate';
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { expenseService } from '@/app/services/expenseService';
+import { saleService } from '@/app/services/saleService';
+import { supabase } from '@/lib/supabase';
+import {
+  filterSalesByLifecycle,
+  salesForOperationalMetrics,
+  orderPipelineSales,
+  isStudioSale,
+  type SalesLifecycleFilter,
+} from '@/app/services/reportsSalesLogic';
+import { getEffectiveSaleStatus, getSaleStatusBadgeConfig } from '@/app/utils/statusHelpers';
+import { cn } from '@/app/components/ui/utils';
+import { toast } from 'sonner';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/app/components/ui/select';
 import { useGlobalFilter } from '@/app/context/GlobalFilterContext';
+import { useNavigation } from '@/app/context/NavigationContext';
 import { BranchSelector } from '@/app/components/layout/BranchSelector';
 import {
   DropdownMenu,
@@ -55,6 +76,9 @@ import { ProductLedger } from './ProductLedger';
 import { ProductSellReportPage } from './ProductSellReportPage';
 import { LedgerStatementCenterV2Page } from '@/app/features/ledger-statement-center-v2/LedgerStatementCenterV2Page';
 import { RemainingBalanceReport } from './RemainingBalanceReport';
+import { CustomersSuppliersReportPage } from './CustomersSuppliersReportPage';
+import { BalanceBasisGuidePage } from './BalanceBasisGuidePage';
+import type { FinancialReportType } from '@/app/lib/navDeepLinks';
 import {
   accountingReportsService,
   type ProfitLossResult,
@@ -95,20 +119,28 @@ export type ReportsDashboardReportType =
 
 export const ReportsDashboardEnhanced = ({
   initialReportType = 'overview',
+  initialFinancialReportType,
 }: {
   initialReportType?: ReportsDashboardReportType;
+  initialFinancialReportType?: FinancialReportType;
 }) => {
-  const sales = useSales();
   const purchases = usePurchases();
   const expenses = useExpenses();
-  const accounting = useAccounting();
   const { formatCurrency } = useFormatCurrency();
   const { formatDate } = useFormatDate();
   const { canViewReports } = useCheckPermission();
   const { branchId, companyId } = useSupabase();
   const globalFilter = useGlobalFilter();
+  const { ledgerV2Initial, setLedgerV2Initial } = useNavigation();
   const { startDate: globalStart, endDate: globalEnd, setCurrentModule, getDateRangeLabel } = globalFilter;
   const dateRangeLabel = getDateRangeLabel();
+
+  React.useEffect(() => {
+    if (ledgerV2Initial) {
+      setReportType('financial');
+      setFinancialReportType('ledger-statement-v2');
+    }
+  }, [ledgerV2Initial]);
 
   React.useEffect(() => {
     setCurrentModule('reports');
@@ -128,15 +160,44 @@ export const ReportsDashboardEnhanced = ({
   const [financialReportType, setFinancialReportType] = useState<
     | 'trial-balance'
     | 'profit-loss'
+    | 'customers-suppliers'
+    | 'balance-basis-guide'
     | 'balance-sheet'
     | 'sales-profit'
     | 'inventory-valuation'
     | 'ledger-statement-v2'
     | 'remaining-balance'
-  >('trial-balance');
+  >(initialFinancialReportType ?? 'trial-balance');
   /** Expenses whose original expense JE has a correction_reversal — hidden from reports by default. */
   const [reversedExpenseIds, setReversedExpenseIds] = useState<Set<string>>(() => new Set());
   const [showReversedExpenses, setShowReversedExpenses] = useState(false);
+
+  /** Period sales from dedicated report fetch (not paginated SalesContext). */
+  const [reportSales, setReportSales] = useState<Sale[]>([]);
+  const [reportSalesLoading, setReportSalesLoading] = useState(false);
+  const [reportSalesTruncated, setReportSalesTruncated] = useState(false);
+  const [salesLifecycleFilter, setSalesLifecycleFilter] = useState<SalesLifecycleFilter>('operational');
+  const [showNonOperationalSales, setShowNonOperationalSales] = useState(false);
+  const [includeOrdersInCharts, setIncludeOrdersInCharts] = useState(false);
+  const [salePaymentsInPeriod, setSalePaymentsInPeriod] = useState<number | null>(null);
+  const [rentalGl4200, setRentalGl4200] = useState<number | null>(null);
+  const [rentalBookingStats, setRentalBookingStats] = useState<{
+    total: number;
+    active: number;
+    returned: number;
+    cancelled: number;
+    bookingTotal: number;
+  } | null>(null);
+  const [purchaseLifecycleFilter, setPurchaseLifecycleFilter] = useState<'operational' | 'all' | 'cancelled'>('operational');
+
+  const reportStartDate = globalStart ? globalStart.slice(0, 10) : '1900-01-01';
+  const reportEndDate = globalEnd ? globalEnd.slice(0, 10) : new Date().toISOString().slice(0, 10);
+  const rangeStart = globalStart ? new Date(globalStart) : null;
+  const rangeEnd = globalEnd ? new Date(globalEnd) : new Date();
+  const filterByRange = useCallback(
+    (dateStr: string | undefined) => isInRange(dateStr, rangeStart, rangeEnd),
+    [rangeStart, rangeEnd]
+  );
 
   React.useEffect(() => {
     if (reportType !== 'overview') setOverviewBasis('operational');
@@ -154,24 +215,144 @@ export const ReportsDashboardEnhanced = ({
       .catch(() => setReversedExpenseIds(new Set()));
   }, [companyId, expenses.expenses]);
 
-  const reportStartDate = globalStart ? globalStart.slice(0, 10) : '1900-01-01';
-  const reportEndDate = globalEnd ? globalEnd.slice(0, 10) : new Date().toISOString().slice(0, 10);
-  const rangeStart = globalStart ? new Date(globalStart) : null;
-  const rangeEnd = globalEnd ? new Date(globalEnd) : new Date();
-  const filterByRange = useCallback(
-    (dateStr: string | undefined) => isInRange(dateStr, rangeStart, rangeEnd),
-    [rangeStart, rangeEnd]
+  React.useEffect(() => {
+    if (!companyId) {
+      setReportSales([]);
+      setReportSalesTruncated(false);
+      return;
+    }
+    let cancelled = false;
+    setReportSalesLoading(true);
+    const b = branchId === 'all' || !branchId ? undefined : branchId;
+    saleService
+      .getSalesForReports(companyId, reportStartDate, reportEndDate, b)
+      .then(({ data, truncated }) => {
+        if (cancelled) return;
+        setReportSales((data || []).map((row) => convertFromSupabaseSale({ ...row, items: row.items || [] })));
+        setReportSalesTruncated(truncated);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.error('[Reports] getSalesForReports failed', err);
+          toast.error('Could not load sales for report period');
+          setReportSales([]);
+          setReportSalesTruncated(false);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setReportSalesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, reportStartDate, reportEndDate, branchId]);
+
+  React.useEffect(() => {
+    if (!companyId || reportType !== 'sales') {
+      setSalePaymentsInPeriod(null);
+      setRentalGl4200(null);
+      setRentalBookingStats(null);
+      return;
+    }
+    let cancelled = false;
+    const b = branchId === 'all' || !branchId ? undefined : branchId;
+    Promise.all([
+      saleService.getSalePaymentsTotalInPeriod(companyId, reportStartDate, reportEndDate, b),
+      accountingReportsService.getProfitLoss(companyId, reportStartDate, reportEndDate, b),
+      supabase
+        .from('rentals')
+        .select('id, status, total_amount, booking_date, branch_id')
+        .eq('company_id', companyId)
+        .gte('booking_date', reportStartDate)
+        .lte('booking_date', reportEndDate)
+        .then(({ data, error }) => {
+          if (error) throw error;
+          const rows = data || [];
+          const branchFiltered =
+            b != null
+              ? rows.filter((r: { branch_id?: string }) => !r.branch_id || r.branch_id === b)
+              : rows;
+          let active = 0;
+          let returned = 0;
+          let cancelledCount = 0;
+          let bookingTotal = 0;
+          for (const r of branchFiltered as { status?: string; total_amount?: number }[]) {
+            const st = String(r.status || '').toLowerCase();
+            bookingTotal += Number(r.total_amount) || 0;
+            if (st === 'cancelled') cancelledCount++;
+            else if (st === 'returned' || st === 'completed') returned++;
+            else active++;
+          }
+          return {
+            total: branchFiltered.length,
+            active,
+            returned,
+            cancelled: cancelledCount,
+            bookingTotal,
+          };
+        }),
+    ])
+      .then(([paymentsTotal, pl, rentalStats]) => {
+        if (cancelled) return;
+        setSalePaymentsInPeriod(paymentsTotal);
+        const rentalLine = pl.revenue.items.find((i) => String(i.code || '').trim() === '4200');
+        setRentalGl4200(rentalLine?.amount ?? 0);
+        setRentalBookingStats(rentalStats);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSalePaymentsInPeriod(null);
+          setRentalGl4200(null);
+          setRentalBookingStats(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, reportType, reportStartDate, reportEndDate, branchId]);
+
+  // Period sales from dedicated fetch (already scoped by invoice_date on server)
+  const filteredSales = useMemo(() => reportSales, [reportSales]);
+
+  const finalSales = useMemo(() => salesForOperationalMetrics(filteredSales), [filteredSales]);
+  const orderPipeline = useMemo(() => orderPipelineSales(filteredSales), [filteredSales]);
+
+  const salesListDisplay = useMemo(
+    () => filterSalesByLifecycle(filteredSales, salesLifecycleFilter, showNonOperationalSales),
+    [filteredSales, salesLifecycleFilter, showNonOperationalSales]
   );
 
-  // Filtered data by date range
-  const filteredSales = useMemo(
-    () => sales.sales.filter((s) => filterByRange(s.date)),
-    [sales.sales, filterByRange]
+  const chartSalesSource = useMemo(() => {
+    const base = includeOrdersInCharts
+      ? filterSalesByLifecycle(filteredSales, 'operational', showNonOperationalSales)
+      : finalSales;
+    return base.filter((s) => s.type === 'invoice' || getEffectiveSaleStatus(s) === 'final');
+  }, [filteredSales, finalSales, includeOrdersInCharts, showNonOperationalSales]);
+
+  const studioFinalTotal = useMemo(
+    () => finalSales.filter(isStudioSale).reduce((sum, s) => sum + (s.total ?? 0), 0),
+    [finalSales]
   );
-  const filteredPurchases = useMemo(
-    () => purchases.purchases.filter((p) => filterByRange(p.date)),
-    [purchases.purchases, filterByRange]
+  const merchandiseFinalTotal = useMemo(
+    () => finalSales.filter((s) => !isStudioSale(s)).reduce((sum, s) => sum + (s.total ?? 0), 0),
+    [finalSales]
   );
+  const orderPipelineTotal = useMemo(
+    () => orderPipeline.reduce((sum, s) => sum + (s.total ?? 0), 0),
+    [orderPipeline]
+  );
+
+  const filteredPurchases = useMemo(() => {
+    const inRange = purchases.purchases.filter((p) => filterByRange(p.date));
+    if (purchaseLifecycleFilter === 'all') return inRange;
+    if (purchaseLifecycleFilter === 'cancelled') {
+      return inRange.filter((p) => String((p as { status?: string }).status || '').toLowerCase() === 'cancelled');
+    }
+    return inRange.filter((p) => {
+      const st = String((p as { status?: string }).status || '').toLowerCase();
+      return st !== 'cancelled' && st !== 'draft';
+    });
+  }, [purchases.purchases, filterByRange, purchaseLifecycleFilter]);
   const filteredExpenses = useMemo(
     () => expenses.expenses.filter((e) => filterByRange(e.date)),
     [expenses.expenses, filterByRange]
@@ -185,7 +366,6 @@ export const ReportsDashboardEnhanced = ({
   // ============================================
   // METRICS (from filtered data) – ERP golden rule: only FINAL/posted
   // ============================================
-  const finalSales = useMemo(() => filteredSales.filter((s) => (s as any).status === 'final'), [filteredSales]);
   const finalPurchases = useMemo(() => filteredPurchases.filter((p) => (p as any).status === 'final' || (p as any).status === 'received'), [filteredPurchases]);
 
   const metrics = useMemo(() => {
@@ -281,9 +461,9 @@ export const ReportsDashboardEnhanced = ({
       const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999);
       const monthLabel = MONTH_NAMES[d.getMonth()] + ' ' + d.getFullYear().toString().slice(2);
 
-      const monthSales = filteredSales
+      const monthSales = chartSalesSource
         .filter((s) => {
-          if (s.type !== 'invoice' || !s.date) return false;
+          if (!s.date) return false;
           const sd = new Date(s.date);
           return sd >= monthStart && sd <= monthEnd;
         })
@@ -303,7 +483,7 @@ export const ReportsDashboardEnhanced = ({
       });
     }
     return result;
-  }, [filteredSales, filteredPurchases, reportableExpenses]);
+  }, [chartSalesSource, filteredPurchases, reportableExpenses]);
 
   // Export data for current report type
   const getExportData = useCallback((): { headers: string[]; rows: (string | number)[][]; title: string } => {
@@ -351,17 +531,21 @@ export const ReportsDashboardEnhanced = ({
       case 'sales':
         return {
           title,
-          headers: ['Date', 'Invoice #', 'Customer', 'Type', 'Total', 'Paid', 'Due', 'Status'],
-          rows: filteredSales.map((s) => [
-            s.date || '',
-            s.invoiceNo || '',
-            s.customerName || '',
-            s.type || '',
-            s.total ?? 0,
-            s.paid ?? 0,
-            s.due ?? 0,
-            s.paymentStatus || '',
-          ]),
+          headers: ['Date', 'Invoice #', 'Customer', 'Lifecycle', 'Category', 'Total', 'Paid', 'Due', 'Payment'],
+          rows: salesListDisplay.map((s) => {
+            const life = getSaleStatusBadgeConfig(s);
+            return [
+              s.date || '',
+              s.invoiceNo || '',
+              s.customerName || '',
+              life.label,
+              isStudioSale(s) ? 'Studio' : 'Merchandise',
+              s.total ?? 0,
+              s.paid ?? 0,
+              s.due ?? 0,
+              s.paymentStatus || '',
+            ];
+          }),
         };
       case 'purchases':
         return {
@@ -407,7 +591,7 @@ export const ReportsDashboardEnhanced = ({
       default:
         return { title, headers: [], rows: [] };
     }
-  }, [reportType, dateRangeLabel, metrics, filteredSales, filteredPurchases, reportableExpenses, overviewBasis, glFinancialOverview, branchId]);
+  }, [reportType, dateRangeLabel, metrics, salesListDisplay, filteredPurchases, reportableExpenses, overviewBasis, glFinancialOverview, branchId]);
 
   const handleExportPDF = () => {
     const data = getExportData();
@@ -729,14 +913,93 @@ export const ReportsDashboardEnhanced = ({
         {/* Sales Tab */}
         {reportType === 'sales' && (
           <>
+            {reportSalesLoading && (
+              <div className="flex items-center gap-2 text-sm text-gray-400 px-1">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Loading sales for {dateRangeLabel}…
+              </div>
+            )}
+            {reportSalesTruncated && (
+              <p className="text-xs text-amber-400/90 px-1">
+                Showing first 5,000 invoices in this period — narrow the date range for a complete list.
+              </p>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <MetricCard title="Total Sales" value={formatCurrency(metrics.totalSales)} change={`${metrics.salesCount} invoices`} trend="up" icon={TrendingUp} iconColor="text-green-400" iconBg="bg-green-400/10" />
-              <MetricCard title="Receivables" value={formatCurrency(metrics.totalReceivables)} change="Outstanding" trend="up" icon={DollarSign} iconColor="text-blue-400" iconBg="bg-blue-400/10" />
-              <StatCard icon={ShoppingCart} label="Invoices" value={metrics.salesCount} color="bg-green-500/10 text-green-400" />
+              <MetricCard title="Total Sales (final)" value={formatCurrency(metrics.totalSales)} change={`${metrics.salesCount} invoices`} trend="up" icon={TrendingUp} iconColor="text-green-400" iconBg="bg-green-400/10" />
+              <MetricCard title="Receivables (final due)" value={formatCurrency(metrics.totalReceivables)} change="Outstanding on final invoices" trend="up" icon={DollarSign} iconColor="text-blue-400" iconBg="bg-blue-400/10" />
+              <StatCard icon={ShoppingCart} label="Final invoices" value={metrics.salesCount} color="bg-green-500/10 text-green-400" />
+            </div>
+            <p className="text-[11px] text-gray-500 px-1">
+              Total Sales = final invoices in period (document flow). Cash/bank GL includes rentals, refunds, and non-sales receipts — use Overview → Financial GL or Roznamcha for cash tie-out.
+              {salePaymentsInPeriod != null && (
+                <> Diagnostic: cash collected on sales (payments) in period: <strong className="text-gray-400">{formatCurrency(salePaymentsInPeriod)}</strong>.</>
+              )}
+            </p>
+            {orderPipelineTotal > 0 && (
+              <p className="text-[11px] text-purple-300/80 px-1">
+                Orders pipeline (unfinalized): {formatCurrency(orderPipelineTotal)} · {orderPipeline.length} order(s) — not included in Total Sales until final.
+              </p>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <Card className="bg-gray-900/80 border-gray-800 p-4">
+                <p className="text-xs text-gray-500 uppercase tracking-wide">Merchandise (4000)</p>
+                <p className="text-lg font-semibold text-green-400 mt-1">{formatCurrency(merchandiseFinalTotal)}</p>
+                <p className="text-[10px] text-gray-600 mt-1">Final non-studio sales</p>
+              </Card>
+              <Card className="bg-gray-900/80 border-gray-800 p-4">
+                <p className="text-xs text-gray-500 uppercase tracking-wide">Studio service (4010)</p>
+                <p className="text-lg font-semibold text-violet-400 mt-1">{formatCurrency(studioFinalTotal)}</p>
+                <p className="text-[10px] text-gray-600 mt-1">Final studio-flagged sales</p>
+              </Card>
+              <Card className="bg-gray-900/80 border-gray-800 p-4">
+                <p className="text-xs text-gray-500 uppercase tracking-wide flex items-center gap-1">
+                  <Home className="w-3 h-3" /> Rental income (GL 4200)
+                </p>
+                <p className="text-lg font-semibold text-pink-400 mt-1">
+                  {rentalGl4200 != null ? formatCurrency(rentalGl4200) : '—'}
+                </p>
+                <p className="text-[10px] text-gray-600 mt-1">
+                  {rentalBookingStats
+                    ? `${rentalBookingStats.total} booking(s) · ${rentalBookingStats.returned} returned · ${rentalBookingStats.cancelled} cancelled`
+                    : 'Not in Sales List — see Rentals module'}
+                </p>
+              </Card>
+            </div>
+            <div className="flex flex-wrap items-center gap-3 px-1">
+              <Select value={salesLifecycleFilter} onValueChange={(v) => setSalesLifecycleFilter(v as SalesLifecycleFilter)}>
+                <SelectTrigger className="w-[200px] bg-gray-900 border-gray-700 text-sm h-9">
+                  <SelectValue placeholder="Lifecycle filter" />
+                </SelectTrigger>
+                <SelectContent className="bg-gray-900 border-gray-700">
+                  <SelectItem value="operational">Operational (final + orders)</SelectItem>
+                  <SelectItem value="final_only">Final only</SelectItem>
+                  <SelectItem value="orders_pipeline">Orders pipeline</SelectItem>
+                  <SelectItem value="cancelled">Cancelled</SelectItem>
+                  <SelectItem value="all">All statuses</SelectItem>
+                </SelectContent>
+              </Select>
+              <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showNonOperationalSales}
+                  onChange={(e) => setShowNonOperationalSales(e.target.checked)}
+                  className="rounded border-gray-600"
+                />
+                Show draft / quotation
+              </label>
+              <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeOrdersInCharts}
+                  onChange={(e) => setIncludeOrdersInCharts(e.target.checked)}
+                  className="rounded border-gray-600"
+                />
+                Include orders in charts
+              </label>
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Card className="bg-gray-900 border-gray-800 p-6">
-                <h3 className="text-lg font-bold text-white mb-4">Sales by Payment Status</h3>
+                <h3 className="text-lg font-bold text-white mb-4">Sales by Payment Status (final)</h3>
                 <ChartContainer className="h-[260px]">
                   <PieChart>
                     <Pie data={salesByStatus} cx="50%" cy="50%" labelLine={false} label={({ name, value }) => `${name}: ${value}`} outerRadius={80} dataKey="value">
@@ -747,7 +1010,7 @@ export const ReportsDashboardEnhanced = ({
                 </ChartContainer>
               </Card>
               <Card className="bg-gray-900 border-gray-800 p-6">
-                <h3 className="text-lg font-bold text-white mb-4">Monthly Sales</h3>
+                <h3 className="text-lg font-bold text-white mb-4">Monthly Sales {includeOrdersInCharts ? '(operational)' : '(final)'}</h3>
                 <ChartContainer className="h-[260px]">
                   <BarChart data={monthlyTrend}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
@@ -760,27 +1023,52 @@ export const ReportsDashboardEnhanced = ({
               </Card>
             </div>
             <Card className="bg-gray-900 border-gray-800 p-6">
-              <h3 className="text-lg font-bold text-white mb-4">Sales List</h3>
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+                <h3 className="text-lg font-bold text-white">Sales List</h3>
+                <span className="text-xs text-gray-500">{salesListDisplay.length} row(s) · filter: {salesLifecycleFilter.replace('_', ' ')}</span>
+              </div>
               <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
                 <table className="w-full text-base text-left leading-snug">
                   <thead className="text-gray-500 uppercase border-b border-gray-800 sticky top-0 bg-gray-900 text-sm">
-                    <tr><th className="py-2 pr-4">Date</th><th className="py-2 pr-4">Invoice #</th><th className="py-2 pr-4">Customer</th><th className="py-2 pr-4">Total</th><th className="py-2 pr-4">Paid</th><th className="py-2 pr-4">Due</th><th className="py-2 pr-4">Status</th></tr>
+                    <tr>
+                      <th className="py-2 pr-4">Date</th>
+                      <th className="py-2 pr-4">Invoice #</th>
+                      <th className="py-2 pr-4">Customer</th>
+                      <th className="py-2 pr-4">Category</th>
+                      <th className="py-2 pr-4">Total</th>
+                      <th className="py-2 pr-4">Paid</th>
+                      <th className="py-2 pr-4">Due</th>
+                      <th className="py-2 pr-4">Lifecycle</th>
+                      <th className="py-2 pr-4">Payment</th>
+                    </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-800">
-                    {filteredSales.length === 0 ? (
-                      <tr><td colSpan={7} className="py-8 text-center text-gray-500">No sales in selected period</td></tr>
+                    {reportSalesLoading ? (
+                      <tr><td colSpan={9} className="py-8 text-center text-gray-500"><Loader2 className="w-5 h-5 animate-spin inline mr-2" />Loading…</td></tr>
+                    ) : salesListDisplay.length === 0 ? (
+                      <tr><td colSpan={9} className="py-8 text-center text-gray-500">No sales match filter in selected period</td></tr>
                     ) : (
-                      filteredSales.map((s) => (
-                        <tr key={s.id} className="text-gray-300">
-                          <td className="py-2 pr-4">{s.date ? formatDate(new Date(s.date)) : '—'}</td>
-                          <td className="py-2 pr-4 font-mono">{s.invoiceNo || '—'}</td>
-                          <td className="py-2 pr-4">{s.customerName || '—'}</td>
-                          <td className="py-2 pr-4">{formatCurrency(s.total ?? 0)}</td>
-                          <td className="py-2 pr-4">{formatCurrency(s.paid ?? 0)}</td>
-                          <td className="py-2 pr-4">{formatCurrency(s.due ?? 0)}</td>
-                          <td className="py-2 pr-4"><Badge variant="outline" className="text-sm">{s.paymentStatus || '—'}</Badge></td>
-                        </tr>
-                      ))
+                      salesListDisplay.map((s) => {
+                        const life = getSaleStatusBadgeConfig(s);
+                        const cancelled = getEffectiveSaleStatus(s) === 'cancelled';
+                        return (
+                          <tr key={s.id} className={cn('text-gray-300', cancelled && 'opacity-60')}>
+                            <td className={cn('py-2 pr-4', cancelled && 'line-through')}>{s.date ? formatDate(new Date(s.date)) : '—'}</td>
+                            <td className={cn('py-2 pr-4 font-mono', cancelled && 'line-through')}>{s.invoiceNo || s.orderNo || '—'}</td>
+                            <td className="py-2 pr-4">{s.customerName || '—'}</td>
+                            <td className="py-2 pr-4 text-xs">{isStudioSale(s) ? <span className="text-violet-400">Studio</span> : <span className="text-gray-400">Merchandise</span>}</td>
+                            <td className={cn('py-2 pr-4', cancelled && 'line-through')}>{formatCurrency(s.total ?? 0)}</td>
+                            <td className="py-2 pr-4">{formatCurrency(s.paid ?? 0)}</td>
+                            <td className="py-2 pr-4">{formatCurrency(s.due ?? 0)}</td>
+                            <td className="py-2 pr-4">
+                              <Badge variant="outline" className={cn('text-xs border', life.bg, life.text, life.border)}>{life.label}</Badge>
+                            </td>
+                            <td className="py-2 pr-4">
+                              <Badge variant="outline" className="text-xs capitalize">{s.paymentStatus || '—'}</Badge>
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
@@ -797,6 +1085,18 @@ export const ReportsDashboardEnhanced = ({
               <MetricCard title="Payables" value={formatCurrency(metrics.totalPayables)} change="Outstanding" trend="up" icon={DollarSign} iconColor="text-orange-400" iconBg="bg-orange-400/10" />
               <StatCard icon={Package} label="Purchase Orders" value={metrics.purchasesCount} color="bg-blue-500/10 text-blue-400" />
             </div>
+            <div className="flex flex-wrap items-center gap-3 px-1 mb-2">
+              <Select value={purchaseLifecycleFilter} onValueChange={(v) => setPurchaseLifecycleFilter(v as typeof purchaseLifecycleFilter)}>
+                <SelectTrigger className="w-[180px] bg-gray-900 border-gray-700 text-sm h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-gray-900 border-gray-700">
+                  <SelectItem value="operational">Operational (excl. draft/cancelled)</SelectItem>
+                  <SelectItem value="cancelled">Cancelled only</SelectItem>
+                  <SelectItem value="all">All statuses</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <Card className="bg-gray-900 border-gray-800 p-6">
               <h3 className="text-lg font-bold text-white mb-4">Monthly Purchases</h3>
               <ChartContainer className="h-[280px] mb-6">
@@ -812,22 +1112,27 @@ export const ReportsDashboardEnhanced = ({
               <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
                 <table className="w-full text-base text-left leading-snug">
                   <thead className="text-gray-500 uppercase border-b border-gray-800 sticky top-0 bg-gray-900 text-sm">
-                    <tr><th className="py-2 pr-4">Date</th><th className="py-2 pr-4">PO #</th><th className="py-2 pr-4">Supplier</th><th className="py-2 pr-4">Total</th><th className="py-2 pr-4">Paid</th><th className="py-2 pr-4">Due</th></tr>
+                    <tr><th className="py-2 pr-4">Date</th><th className="py-2 pr-4">PO #</th><th className="py-2 pr-4">Supplier</th><th className="py-2 pr-4">Total</th><th className="py-2 pr-4">Paid</th><th className="py-2 pr-4">Due</th><th className="py-2 pr-4">Status</th></tr>
                   </thead>
                   <tbody className="divide-y divide-gray-800">
                     {filteredPurchases.length === 0 ? (
-                      <tr><td colSpan={6} className="py-8 text-center text-gray-500">No purchases in selected period</td></tr>
+                      <tr><td colSpan={7} className="py-8 text-center text-gray-500">No purchases in selected period</td></tr>
                     ) : (
-                      filteredPurchases.map((p) => (
-                        <tr key={p.id} className="text-gray-300">
+                      filteredPurchases.map((p) => {
+                        const st = String((p as { status?: string }).status || '—');
+                        const isCancelled = st.toLowerCase() === 'cancelled';
+                        return (
+                        <tr key={p.id} className={cn('text-gray-300', isCancelled && 'opacity-60')}>
                           <td className="py-2 pr-4">{p.date ? formatDate(new Date(p.date)) : '—'}</td>
                           <td className="py-2 pr-4 font-mono">{p.purchaseNo || '—'}</td>
                           <td className="py-2 pr-4">{p.supplierName || '—'}</td>
                           <td className="py-2 pr-4">{formatCurrency(p.total ?? 0)}</td>
                           <td className="py-2 pr-4">{formatCurrency(p.paid ?? 0)}</td>
                           <td className="py-2 pr-4">{formatCurrency(p.due ?? 0)}</td>
+                          <td className="py-2 pr-4"><Badge variant="outline" className="text-xs capitalize">{st}</Badge></td>
                         </tr>
-                      ))
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
@@ -911,13 +1216,19 @@ export const ReportsDashboardEnhanced = ({
         {/* Financial Tab – Trial Balance, P&L, Balance Sheet, Sales Profit, Inventory Valuation */}
         {reportType === 'financial' && (
           <>
-            <div className="rounded-lg border border-sky-500/25 bg-sky-950/30 px-3 py-2 text-[11px] text-sky-100/90 mb-2">
-              These reports are <strong className="text-sky-200">canonical GL</strong> (journal). Overview → Operational uses documents — compare only after reading basis labels on both.
-            </div>
+            {financialReportType !== 'customers-suppliers' &&
+              financialReportType !== 'remaining-balance' &&
+              financialReportType !== 'balance-basis-guide' && (
+              <div className="rounded-lg border border-sky-500/25 bg-sky-950/30 px-3 py-2 text-[11px] text-sky-100/90 mb-2">
+                These reports are <strong className="text-sky-200">canonical GL</strong> (journal). Overview → Operational uses documents — compare only after reading basis labels on both.
+              </div>
+            )}
             <div className="flex flex-wrap items-center gap-2 mb-4">
               {[
                 { key: 'trial-balance', label: 'Trial Balance' },
                 { key: 'profit-loss', label: 'Profit & Loss' },
+                { key: 'customers-suppliers', label: 'Customers & Suppliers' },
+                { key: 'balance-basis-guide', label: 'Balance Basis Guide' },
                 { key: 'balance-sheet', label: 'Balance Sheet' },
                 { key: 'sales-profit', label: 'Sales Profit' },
                 { key: 'inventory-valuation', label: 'Inventory Valuation' },
@@ -937,14 +1248,29 @@ export const ReportsDashboardEnhanced = ({
                 </button>
               ))}
             </div>
-            {financialReportType !== 'ledger-statement-v2' && financialReportType !== 'remaining-balance' && (
+            {financialReportType !== 'ledger-statement-v2' &&
+              financialReportType !== 'remaining-balance' &&
+              financialReportType !== 'balance-basis-guide' && (
               <div className="text-xs text-gray-500 mb-2">Period: {dateRangeLabel}</div>
+            )}
+            {financialReportType === 'balance-basis-guide' && (
+              <div className="text-xs text-gray-500 mb-2">As of: {reportEndDate}</div>
             )}
             {financialReportType === 'trial-balance' && (
               <TrialBalancePage startDate={reportStartDate} endDate={reportEndDate} branchId={branchId} />
             )}
             {financialReportType === 'profit-loss' && (
               <ProfitLossPage startDate={reportStartDate} endDate={reportEndDate} branchId={branchId} />
+            )}
+            {financialReportType === 'customers-suppliers' && (
+              <CustomersSuppliersReportPage
+                startDate={reportStartDate}
+                endDate={reportEndDate}
+                branchId={branchId}
+              />
+            )}
+            {financialReportType === 'balance-basis-guide' && (
+              <BalanceBasisGuidePage asOfDate={reportEndDate} branchId={branchId} />
             )}
             {financialReportType === 'balance-sheet' && (
               <BalanceSheetPage asOfDate={reportEndDate} branchId={branchId} />
@@ -955,14 +1281,26 @@ export const ReportsDashboardEnhanced = ({
             {financialReportType === 'inventory-valuation' && (
               <InventoryValuationPage asOfDate={reportEndDate} branchId={branchId} />
             )}
-            {financialReportType === 'ledger-statement-v2' && <LedgerStatementCenterV2Page embedded />}
+            {financialReportType === 'ledger-statement-v2' && (
+              <LedgerStatementCenterV2Page
+                embedded
+                initialLedgerEntity={ledgerV2Initial}
+                onInitialLedgerConsumed={() => setLedgerV2Initial(null)}
+              />
+            )}
             {financialReportType === 'remaining-balance' && (
               <RemainingBalanceReport branchId={branchId === 'all' ? null : branchId} />
             )}
           </>
         )}
 
-        {reportType === 'ledger-v2' && <LedgerStatementCenterV2Page embedded />}
+        {reportType === 'ledger-v2' && (
+          <LedgerStatementCenterV2Page
+            embedded
+            initialLedgerEntity={ledgerV2Initial}
+            onInitialLedgerConsumed={() => setLedgerV2Initial(null)}
+          />
+        )}
 
         {reportType === 'commission' && (
           <CommissionReportPage

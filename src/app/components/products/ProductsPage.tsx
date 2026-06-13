@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { 
   Search, Filter, Download, Upload, Package, DollarSign, AlertCircle, 
-  MoreVertical, Eye, Edit, Trash2, FileText, X, ShoppingCart, Tag, Building2, Columns3,
+  MoreVertical, Eye, Edit, Trash2, FileText, X, ShoppingCart, Tag, Building2, Columns3, Copy,
   CheckCircle, TrendingDown, AlertTriangle, ImageIcon, Box, Check, Loader2,
   ChevronDown, ChevronUp, Printer, Barcode, Square, CheckSquare
 } from 'lucide-react';
@@ -291,6 +291,9 @@ export const ProductsPage = () => {
         break;
       case 'edit':
         openDrawer('edit-product', undefined, { product });
+        break;
+      case 'duplicate':
+        openDrawer('addProduct', undefined, { duplicateFrom: product });
         break;
       case 'stock-history':
         setStockHistoryOpen(true);
@@ -1290,6 +1293,13 @@ export const ProductsPage = () => {
                                     >
                                       <Edit size={14} className="mr-2 text-green-400" />
                                       Edit Product
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onClick={() => handleAction(product, 'duplicate')}
+                                      className="hover:bg-gray-800 cursor-pointer"
+                                    >
+                                      <Copy size={14} className="mr-2 text-cyan-400" />
+                                      Duplicate Product
                                     </DropdownMenuItem>
                                     <DropdownMenuItem 
                                       onClick={() => handleAction(product, 'stock-history')}

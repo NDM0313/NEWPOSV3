@@ -160,6 +160,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
 
   const [visibleColumns, setVisibleColumns] = useState({
     rentalNo: true,
+    billRef: true,
     customer: true,
     product: false,
     item: true,
@@ -177,11 +178,12 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
   });
 
   const [columnOrder, setColumnOrder] = useState([
-    'createdAt', 'rentalNo', 'customer', 'item', 'branch', 'salesman', 'startDate', 'expectedReturn', 'actualReturn', 'status', 'action', 'total', 'paid', 'due',
+    'createdAt', 'rentalNo', 'billRef', 'customer', 'item', 'branch', 'salesman', 'startDate', 'expectedReturn', 'actualReturn', 'status', 'action', 'total', 'paid', 'due',
   ]);
 
   const columnLabels: Record<string, string> = {
     rentalNo: 'Rental No',
+    billRef: 'Bill #',
     customer: 'Customer',
     product: 'Product',
     item: 'Item',
@@ -222,7 +224,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
 
   const getColumnWidth = (key: string): string => {
     const w: Record<string, string> = {
-      rentalNo: '110px', customer: '160px', product: '170px', item: '150px', branch: '120px',
+      rentalNo: '110px', billRef: '90px', customer: '160px', product: '170px', item: '150px', branch: '120px',
       createdAt: '110px', salesman: '130px',
       startDate: '100px', expectedReturn: '110px', actualReturn: '100px', status: '100px',
       action: '120px',
@@ -273,6 +275,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
         );
         if (
           !r.rentalNo.toLowerCase().includes(q) &&
+          !(r.documentNumber || '').toLowerCase().includes(q) &&
           !r.customerName.toLowerCase().includes(q) &&
           !r.location.toLowerCase().includes(q) &&
           !itemTextMatch
@@ -540,6 +543,13 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                         switch (key) {
                           case 'rentalNo':
                             cell = <span className="text-sm font-mono text-pink-400">{r.rentalNo}</span>;
+                            break;
+                          case 'billRef':
+                            cell = (
+                              <span className="text-sm text-violet-300 truncate" title={r.documentNumber || ''}>
+                                {r.documentNumber || '—'}
+                              </span>
+                            );
                             break;
                           case 'customer':
                             cell = <span className="text-sm text-white truncate">{r.customerName}</span>;
@@ -1008,7 +1018,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
           if (!open) setSelectedRental(null);
         }}
         rental={selectedRental}
-        documentInfo={selectedRental ? { documentType: selectedRental.documentType, documentNumber: selectedRental.documentNumber } : undefined}
+        documentInfo={selectedRental ? { documentType: selectedRental.pickupDocumentType || selectedRental.documentType, documentNumber: selectedRental.pickupDocumentNumber || undefined } : undefined}
         onConfirm={async (id, payload) => await receiveReturn(id, payload)}
       />
     </div>

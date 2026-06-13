@@ -67,6 +67,12 @@ export interface IntegrityLabSummary extends IntegrityLabSnapshotRow {
   effective_variance_payables: number | null;
   audit_only_ar_net_adjustment: number;
   audit_only_ap_net_adjustment: number;
+  /** Sum of signed gl_ap_payable from get_contact_party_gl_balances (Contacts GL basis). */
+  party_gl_payables_signed: number | null;
+  /** Sum of GREATEST(0, gl_ap_payable) per contact. */
+  party_gl_payables_clamped: number | null;
+  /** party_gl_payables_signed − gl_ap_net_credit (control AP Cr−Dr). */
+  party_gl_vs_control_variance: number | null;
   status: IntegrityLabStatus;
   statusLabels: string[];
 }
@@ -190,7 +196,7 @@ export async function fetchIntegrityLabSummary(
   const end = (asOfDate ?? new Date().toISOString().slice(0, 10)).slice(0, 10);
   const b = safeBranchForFilter(branchId);
 
-  const [rpc, opRes, glSnap] = await Promise.all([
+  const [rpc, opRes, glSnap, partyGlMap] = await Promise.all([
     supabase.rpc('ar_ap_integrity_lab_snapshot', {
       p_company_id: companyId,
       p_branch_id: b,
@@ -198,6 +204,7 @@ export async function fetchIntegrityLabSummary(
     }),
     contactService.getContactBalancesSummary(companyId, branchId ?? null, end),
     accountingReportsService.getArApGlSnapshot(companyId, end, b ?? undefined),
+    contactService.getContactPartyGlBalancesMap(companyId, branchId ?? null, end),
   ]);
 
   const snap = pickSnapshotRow(rpc.data);
@@ -258,6 +265,24 @@ export async function fetchIntegrityLabSummary(
     effective_gl_ap_net_credit
   );
 
+  let party_gl_payables_signed: number | null = null;
+  let party_gl_payables_clamped: number | null = null;
+  if (partyGlMap && partyGlMap.size > 0) {
+    let signed = 0;
+    let clamped = 0;
+    partyGlMap.forEach((slice) => {
+      const ap = Number(slice.glApPayable) || 0;
+      signed += ap;
+      clamped += Math.max(0, ap);
+    });
+    party_gl_payables_signed = signed;
+    party_gl_payables_clamped = clamped;
+  }
+  const party_gl_vs_control_variance =
+    party_gl_payables_signed != null && glAp != null
+      ? party_gl_payables_signed - glAp
+      : null;
+
   const { status, labels } = deriveIntegrityLabStatus({
     varianceReceivables: effective_variance_receivables ?? variance_receivables,
     variancePayables: effective_variance_payables ?? variance_payables,
@@ -285,6 +310,9 @@ export async function fetchIntegrityLabSummary(
     effective_variance_payables,
     audit_only_ar_net_adjustment,
     audit_only_ap_net_adjustment,
+    party_gl_payables_signed,
+    party_gl_payables_clamped,
+    party_gl_vs_control_variance,
     status,
     statusLabels: labels,
   };

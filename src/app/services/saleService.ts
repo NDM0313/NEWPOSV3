@@ -24,6 +24,9 @@ import {
 } from '@/app/services/journalTransactionDateSyncService';
 import { filterSaleLinesForStockPosting } from '@/app/lib/saleStockLineEligibility';
 
+/** Max rows for Reports dashboard period fetch (no pagination). */
+const REPORT_SALES_MAX = 5000;
+
 /** Sale lines that require stock balance check at Final (excludes deferred bespoke/fabric). */
 async function itemsRequiringStockAtFinal(items: SaleItem[], companyId: string): Promise<SaleItem[]> {
   const productIds = [...new Set(items.map((i) => i.product_id).filter(Boolean))];
@@ -1919,19 +1922,118 @@ export const saleService = {
     }
   },
 
-  // Get sales report
-  async getSalesReport(companyId: string, startDate: string, endDate: string) {
-    const { data, error } = await supabase
-      .from('sales')
-      .select('*')
-      .eq('company_id', companyId)
-      .eq('status', 'final')
-      .gte('invoice_date', startDate)
-      .lte('invoice_date', endDate)
-      .order('invoice_date');
+  /**
+   * Full date-range sales fetch for Reports (all lifecycle statuses by default).
+   * Lightweight select — no line items; enriches return counts for status badges.
+   */
+  async getSalesForReports(
+    companyId: string,
+    startDate: string,
+    endDate: string,
+    branchId?: string | null,
+    opts?: { statuses?: string[] }
+  ): Promise<{ data: any[]; total: number; truncated: boolean }> {
+    const max = REPORT_SALES_MAX;
+    const selectAttempts = [
+      `id, company_id, branch_id, invoice_no, draft_no, quotation_no, order_no,
+       invoice_date, customer_id, customer_name, status, payment_status, payment_method,
+       subtotal, discount_amount, tax_amount, extra_expenses, total, paid_amount, due_amount,
+       return_due, notes, is_studio, created_at, updated_at,
+       branch:branches(id, name, code)`,
+      `id, company_id, branch_id, invoice_no, draft_no, quotation_no, order_no,
+       invoice_date, customer_id, customer_name, status, payment_status, payment_method,
+       subtotal, discount_amount, tax_amount, total, paid_amount, due_amount,
+       notes, is_studio, created_at, updated_at,
+       branch:branches(id, name, code)`,
+      `*, branch:branches(id, name, code)`,
+    ];
 
-    if (error) throw error;
+    const runQuery = (selectFields: string) => {
+      let q = supabase
+        .from('sales')
+        .select(selectFields, { count: 'exact' })
+        .eq('company_id', companyId)
+        .gte('invoice_date', startDate)
+        .lte('invoice_date', endDate)
+        .order('invoice_date', { ascending: false })
+        .limit(max);
+      if (branchId && branchId !== 'all') {
+        q = q.eq('branch_id', branchId);
+      }
+      if (opts?.statuses?.length) {
+        q = q.in('status', opts.statuses);
+      }
+      return q;
+    };
+
+    let rows: any[] = [];
+    let count: number | null = null;
+    let lastError: { message?: string } | null = null;
+    for (const fields of selectAttempts) {
+      const { data, error, count: c } = await runQuery(fields);
+      if (!error) {
+        rows = data || [];
+        count = c;
+        lastError = null;
+        break;
+      }
+      lastError = error;
+      console.warn('[saleService.getSalesForReports] select fallback:', fields.trim().slice(0, 80), error.message || error);
+    }
+    if (lastError) throw lastError;
+
+    if (rows.length > 0) {
+      const saleIds = rows.map((s: any) => s.id);
+      const { data: allReturns } = await supabase
+        .from('sale_returns')
+        .select('original_sale_id')
+        .in('original_sale_id', saleIds)
+        .eq('status', 'final');
+      const returnsMap = new Map<string, number>();
+      (allReturns || []).forEach((r: any) => {
+        const c = returnsMap.get(r.original_sale_id) || 0;
+        returnsMap.set(r.original_sale_id, c + 1);
+      });
+      rows.forEach((sale: any) => {
+        sale.items = [];
+        sale.hasReturn = returnsMap.has(sale.id);
+        sale.returnCount = returnsMap.get(sale.id) || 0;
+      });
+    }
+    const total = count ?? rows.length;
+    return { data: rows, total, truncated: total > max };
+  },
+
+  /** POS / day-end: final invoices only in date range. */
+  async getSalesReport(companyId: string, startDate: string, endDate: string) {
+    const { data } = await this.getSalesForReports(companyId, startDate, endDate, undefined, {
+      statuses: ['final'],
+    });
     return data;
+  },
+
+  /** Sum of sale payment receipts in period (diagnostic — not GL cash position). */
+  async getSalePaymentsTotalInPeriod(
+    companyId: string,
+    startDate: string,
+    endDate: string,
+    branchId?: string | null
+  ): Promise<number> {
+    let q = supabase
+      .from('payments')
+      .select('amount, branch_id')
+      .eq('company_id', companyId)
+      .eq('reference_type', 'sale')
+      .gte('payment_date', startDate)
+      .lte('payment_date', endDate);
+    const { data, error } = await q;
+    if (error) throw error;
+    const rows = (data || []) as { amount?: number; branch_id?: string }[];
+    const filtered =
+      branchId && branchId !== 'all'
+        ? rows.filter((r) => r.branch_id === branchId)
+        : rows;
+    return filtered.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
   },
 
   // Get a single payment by ID (for ledger detail panel)

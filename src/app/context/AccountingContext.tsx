@@ -218,6 +218,8 @@ export interface AccountingEntry {
     journalEntryVoid?: boolean;
     /** Active PF-07 `correction_reversal` child exists for this journal header — lock Journal edit/reverse. */
     hasActiveCorrectionReversal?: boolean;
+    /** Linked sales.status when JE references a sale document (sale / sale_reversal). */
+    linkedSaleStatus?: string;
   };
 }
 
@@ -622,6 +624,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       'purchase_return': 'Purchase',
       'purchase_reversal': 'Reversal',
       'sale_return': 'Sale_Return',
+      'sale_reversal': 'Reversal',
       'manual_payment': 'Payment',
       /** Customer manual receipt / contact receipt — must map to Payment so Journal “by document” sums with payment_adjustment. */
       'manual_receipt': 'Payment',
@@ -726,6 +729,8 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     metadata.journalEntryVoid = (journalEntry as { is_void?: boolean }).is_void === true;
     metadata.hasActiveCorrectionReversal =
       (journalEntry as { _has_active_correction_reversal?: boolean })._has_active_correction_reversal === true;
+    const linkedSaleStatus = (journalEntry as { _linked_sale_status?: string })._linked_sale_status;
+    if (linkedSaleStatus) metadata.linkedSaleStatus = linkedSaleStatus;
 
     if (journalEntry.reference_id) {
       if (source === 'Sale') metadata.invoiceId = journalEntry.reference_id;

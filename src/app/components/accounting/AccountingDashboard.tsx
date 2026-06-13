@@ -19,7 +19,6 @@ import {
   Wrench,
   FileText,
   BarChart3,
-  TestTube,
   Edit,
   XCircle,
   Star,
@@ -63,6 +62,7 @@ import { AccountingTestPage } from '@/app/components/test/AccountingTestPage';
 import { AddEntryV2 } from './AddEntryV2';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { INTEGRITY_LAB_SESSION_KEY } from '@/app/lib/integrityLabConstants';
+import { syncArApDiagnosticsHubTabToUrl } from '@/app/lib/arApDiagnosticsHubTabs';
 import {
   safeSessionStorageGetItem,
   safeSessionStorageRemoveItem,
@@ -109,7 +109,6 @@ const DayBookReport = lazy(() => import('@/app/components/reports/DayBookReport'
 const RoznamchaReport = lazy(() => import('@/app/components/reports/RoznamchaReport').then((m) => ({ default: m.RoznamchaReport })));
 const CashFlowReportPage = lazy(() => import('@/app/components/reports/CashFlowReportPage').then((m) => ({ default: m.CashFlowReportPage })));
 const AccountLedgerReportPage = lazy(() => import('@/app/components/reports/AccountLedgerReportPage').then((m) => ({ default: m.AccountLedgerReportPage })));
-const AccountingIntegrityTestLab = lazy(() => import('./AccountingIntegrityTestLab'));
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 import { useSubmitLock } from '@/app/context/LoadingContext';
@@ -355,6 +354,32 @@ function journalRowPresentation(entry: AccountingEntry): {
   };
 }
 
+/** Sale cancel audit badges for General Entries (original sale JE + sale_reversal pair). */
+function saleCancellationJournalBadge(entry: AccountingEntry): React.ReactNode {
+  const meta = entry.metadata as {
+    referenceType?: string;
+    linkedSaleStatus?: string;
+    documentNo?: string;
+  } | undefined;
+  const rt = String(meta?.referenceType || '').toLowerCase();
+  const inv = meta?.documentNo;
+  if (rt === 'sale_reversal') {
+    return (
+      <Badge className="ml-2 bg-amber-500/15 text-amber-300 border-amber-500/35 text-[10px] whitespace-nowrap">
+        Cancellation reversal{inv ? ` · ${inv}` : ''}
+      </Badge>
+    );
+  }
+  if (rt === 'sale' && String(meta?.linkedSaleStatus || '').toLowerCase() === 'cancelled') {
+    return (
+      <Badge className="ml-2 bg-amber-500/15 text-amber-300 border-amber-500/35 text-[10px] whitespace-nowrap">
+        Sale cancelled
+      </Badge>
+    );
+  }
+  return null;
+}
+
 /** Journal list Account column: leaf names + party from convertFromJournalEntry; grouped = compact union. */
 function journalEntryAccountPair(entry: AccountingEntry): { debit: string; credit: string } {
   return {
@@ -563,7 +588,7 @@ export const AccountingDashboard = () => {
     setCurrentModule('accounting');
   }, [setCurrentModule]);
 
-  const [activeTab, setActiveTab] = useState<'journal_entries' | 'daybook' | 'roznamcha' | 'cash_flow' | 'accounts' | 'ledger' | 'receivables' | 'payables' | 'courier' | 'deposits' | 'studio' | 'account_statements' | 'integrity_lab'>('journal_entries');
+  const [activeTab, setActiveTab] = useState<'journal_entries' | 'daybook' | 'roznamcha' | 'cash_flow' | 'accounts' | 'ledger' | 'receivables' | 'payables' | 'courier' | 'deposits' | 'studio' | 'account_statements'>('journal_entries');
   /** Align Account Statements period with global header filter when set (same idea as Day Book / Roznamcha). */
   const reportStartDate = useMemo(() => {
     const g = globalStartDate && String(globalStartDate).trim();
@@ -945,7 +970,6 @@ export const AccountingDashboard = () => {
     { key: 'deposits', label: 'Deposits', icon: Shield, isHidden: !settingsModules.rentalModuleEnabled },
     { key: 'studio', label: 'Studio Costs', icon: Wrench, isHidden: !settingsModules.studioModuleEnabled },
     { key: 'account_statements', label: 'Account Statements', icon: BarChart3 },
-    { key: 'integrity_lab', label: 'Integrity Test Lab', icon: TestTube },
   ];
   const tabs = allTabs.filter((t) => !('isHidden' in t) || !(t as any).isHidden);
 
@@ -965,6 +989,12 @@ export const AccountingDashboard = () => {
         ledgerType?: typeof ledgerType;
         searchTerm?: string;
       };
+      if (o.tab === 'integrity_lab') {
+        safeSessionStorageRemoveItem(INTEGRITY_LAB_SESSION_KEY);
+        syncArApDiagnosticsHubTabToUrl('journal-hygiene');
+        setCurrentView('ar-ap-reconciliation-center');
+        return;
+      }
       if (o.tab) setActiveTab(o.tab);
       if (o.ledgerType) setLedgerType(o.ledgerType);
       if (o.searchTerm) setSearchTerm(o.searchTerm);
@@ -975,7 +1005,7 @@ export const AccountingDashboard = () => {
     } catch {
       safeSessionStorageRemoveItem(INTEGRITY_LAB_SESSION_KEY);
     }
-  }, []);
+  }, [setCurrentView]);
 
   // Filter transactions based on search and filters
   const filteredTransactions = useMemo(() => {
@@ -1318,7 +1348,7 @@ export const AccountingDashboard = () => {
         </div>
       </div>
 
-      {/* Tab Content — flows with page scroll; inner tables keep their own overflow-x where needed */}
+      {/* Tab Content — journal table uses its own 2-axis scroll viewport */}
       <div className="px-6 py-4 bg-[#0B0F19] min-w-0">
         {activeTab === 'journal_entries' && (
           <div className="space-y-4">
@@ -1450,9 +1480,9 @@ export const AccountingDashboard = () => {
                     Refreshing journal entries…
                   </div>
                 ) : null}
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-gray-900 border-b border-gray-800">
+                <div className="overflow-auto max-h-[calc(100dvh-18rem)] overscroll-contain touch-pan-x touch-pan-y [-webkit-overflow-scrolling:touch]">
+                  <table className="w-full min-w-[1280px] border-collapse">
+                    <thead className="bg-gray-900 border-b border-gray-800 sticky top-0 z-10 shadow-[0_1px_0_0_rgba(31,41,55,1)]">
                       <tr className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
                         {(['date', 'reference', 'module', 'description', 'type', 'paymentMethod', 'amount', 'source'] as const).map((key) => {
                           const label = key === 'paymentMethod' ? 'Payment Method' : key.charAt(0).toUpperCase() + key.slice(1);
@@ -1570,8 +1600,11 @@ export const AccountingDashboard = () => {
                                     {module}
                                   </Badge>
                                 </td>
-                                <td className="px-4 py-3 text-sm text-gray-300 max-w-xs truncate">
-                                  {entry.description || 'No description'}
+                                <td className="px-4 py-3 text-sm text-gray-300 max-w-xs">
+                                  <span className="truncate inline-flex items-center max-w-full">
+                                    {entry.description || 'No description'}
+                                    {saleCancellationJournalBadge(entry)}
+                                  </span>
                                   {adjustmentCount > 0 && (
                                     <span className="text-gray-500 ml-1">(edit trail)</span>
                                   )}
@@ -1877,8 +1910,11 @@ export const AccountingDashboard = () => {
                                     {module}
                                   </Badge>
                                 </td>
-                                <td className="px-4 py-3 text-sm text-gray-300 max-w-xs truncate">
-                                  {entry.description || 'No description'}
+                                <td className="px-4 py-3 text-sm text-gray-300 max-w-xs">
+                                  <span className="truncate inline-flex items-center max-w-full">
+                                    {entry.description || 'No description'}
+                                    {saleCancellationJournalBadge(entry)}
+                                  </span>
                                 </td>
                                 <td className="px-4 py-3">
                                   <Badge className={pres.badgeClass}>
@@ -2683,18 +2719,6 @@ export const AccountingDashboard = () => {
           </div>
         )}
 
-        {activeTab === 'integrity_lab' && (
-          <Suspense fallback={<div className="flex items-center justify-center py-12 text-gray-400">Loading…</div>}>
-            <AccountingIntegrityTestLab
-              onOpenJournalTrace={(fragment) => {
-                setActiveTab('journal_entries');
-                setJournalViewMode('audit');
-                setSearchTerm(fragment.trim());
-                toast.message('Journal Entries (audit view) filtered for trace.');
-              }}
-            />
-          </Suspense>
-        )}
       </div>
       
       {/* Add Entry flow: V2 (default) or legacy */}

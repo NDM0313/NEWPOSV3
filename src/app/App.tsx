@@ -102,8 +102,8 @@ const AccountingDeveloperCenterPage = lazy(() =>
   import('./components/admin/AccountingDeveloperCenterPage').then((m) => ({ default: m.default }))
 );
 const ArApReconciliationCenterPage = lazy(() => import('./components/accounting/ArApReconciliationCenterPage').then(m => ({ default: m.default })));
-const FinancialTraceCenterPage = lazy(() =>
-  import('./components/accounting/FinancialTraceCenterPage').then((m) => ({ default: m.default }))
+const FinancialTraceRedirect = lazy(() =>
+  import('./components/accounting/ar-ap-diagnostics/FinancialTraceRedirect').then((m) => ({ default: m.default }))
 );
 const AccountsHierarchyTestPage = lazy(() => import('./components/test/AccountsHierarchyTestPage').then(m => ({ default: m.default })));
 const ExpenseEditTraceTestPage = lazy(() => import('./components/test/ExpenseEditTraceTestPage').then(m => ({ default: m.default })));
@@ -121,7 +121,7 @@ const ProductionOrdersPage = lazy(() => import('./manufacturing/ProductionOrders
 const ProductionWorkflow = lazy(() => import('./manufacturing/ProductionWorkflow').then(m => ({ default: m.ProductionWorkflow })));
 
 const AppContent = () => {
-  const { currentView, partyLedgerParams, setCurrentView, setPartyLedgerParams } = useNavigation();
+  const { currentView, partyLedgerParams, setCurrentView, setPartyLedgerParams, reportsFinancialInitial } = useNavigation();
   const { modules, featureFlags, businessSettings } = useSettings();
   const { hasPermission } = useCheckPermission();
   const studioProductionV2 = featureFlags?.studio_production_v2 === true;
@@ -181,7 +181,7 @@ const AppContent = () => {
     return (
       <Layout>
         <Suspense fallback={<GlobalSuspenseFallback />}>
-          <FinancialTraceCenterPage />
+          <FinancialTraceRedirect />
         </Suspense>
         <GlobalDrawer />
       </Layout>
@@ -335,7 +335,12 @@ const AppContent = () => {
       {currentView === 'accounting-demo' && <AccountingIntegrationDemo />}
       {currentView === 'users' && <UserDashboard />}
       {currentView === 'roles' && <ErpPermissionArchitecturePage />}
-      {currentView === 'reports' && <ReportsDashboardEnhanced />}
+      {currentView === 'reports' && (
+        <ReportsDashboardEnhanced
+          initialReportType={reportsFinancialInitial ? 'financial' : 'overview'}
+          initialFinancialReportType={reportsFinancialInitial ?? undefined}
+        />
+      )}
       {currentView === 'settings' && (
         hasPermission('settings.view') ? <SettingsPageNew /> : (
           <div className="p-8 text-center text-gray-300">You do not have permission to access Settings.</div>

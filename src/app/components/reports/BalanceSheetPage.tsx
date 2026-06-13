@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Loader2, Calendar, Users, AlertTriangle, ShieldAlert } from 'lucide-react';
+import { Loader2, Calendar, Users, AlertTriangle, ShieldAlert, ChevronRight } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { ReportActions } from './ReportActions';
 import { FinancialReportPrintLayout, FinancialReportDataTable } from './FinancialReportPrintLayout';
@@ -17,9 +17,11 @@ import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { accountingReportsService, BalanceSheetResult, type BalanceSheetLineItem } from '@/app/services/accountingReportsService';
 import type { BalanceSheetAssetGroup } from '@/app/lib/accountHierarchy';
 import { exportToPDF, exportToExcel, ExportData } from '@/app/utils/exportUtils';
-import { fetchControlAccountBreakdown, type ControlAccountBreakdownResult } from '@/app/services/controlAccountBreakdownService';
+import { fetchControlAccountBreakdown, type ControlAccountBreakdownResult, type PartyGlRow } from '@/app/services/controlAccountBreakdownService';
 import { ReportBasisBanner } from '@/app/components/accounting/ReportBasisBanner';
+import { useNavigation } from '@/app/context/NavigationContext';
 import { supabase } from '@/lib/supabase';
+import { cn } from '@/app/components/ui/utils';
 
 // Group account items into standard Balance Sheet subgroups with subtotals
 type GroupKey = string;
@@ -251,6 +253,7 @@ export const BalanceSheetPage: React.FC<{
 }> = ({ asOfDate: initialAsOfDate, branchId }) => {
   const { companyId } = useSupabase();
   const { formatCurrency } = useFormatCurrency();
+  const { openLedgerStatementV2 } = useNavigation();
   const defaultDate = initialAsOfDate || new Date().toISOString().slice(0, 10);
   const [asOfDate, setAsOfDate] = useState(defaultDate);
   const [data, setData] = useState<BalanceSheetResult | null>(null);
@@ -326,6 +329,7 @@ export const BalanceSheetPage: React.FC<{
         accountCode: String(acc.code || code),
         accountName: String(acc.name || ''),
         controlKind: kind === 'ar' ? 'ar' : 'ap',
+        asOfDate,
       });
       setPartyBreakdown(b);
     } catch {
@@ -333,6 +337,23 @@ export const BalanceSheetPage: React.FC<{
     } finally {
       setPartyLoading(false);
     }
+  };
+
+  const openPartyLedgerV2 = (row: PartyGlRow) => {
+    if (!partyKind) return;
+    openLedgerStatementV2?.({
+      entityId: row.contactId,
+      statementType: partyKind === 'ar' ? 'customer' : 'supplier',
+      entityLabel: row.name,
+    });
+    setPartyKind(null);
+    setPartyBreakdown(null);
+  };
+
+  const formatPartyCode = (row: PartyGlRow) => {
+    if (row.contactCode) return row.contactCode;
+    if (row.subledgerAccountCode) return row.subledgerAccountCode;
+    return '—';
   };
 
   if (loading) {
@@ -443,7 +464,7 @@ export const BalanceSheetPage: React.FC<{
               have unequal debit and credit sides. This is a data integrity issue, not a reporting formula issue.
             </p>
             <p className="text-amber-200/80 text-xs">
-              <strong>Fix:</strong> Go to <span className="font-medium text-white">Accounting → Integrity Test Lab → Phase 8</span> (Load detection → Unbalanced JEs table)
+              <strong>Fix:</strong> Go to <span className="font-medium text-white">AR/AP Diagnostics → Tie-out</span> (unbalanced JEs / TB difference rows)
               to identify the specific entry/entries causing this imbalance, then reverse or manually adjust them.
             </p>
           </div>
@@ -451,7 +472,7 @@ export const BalanceSheetPage: React.FC<{
       )}
 
       <Dialog open={partyKind !== null} onOpenChange={(o) => !o && setPartyKind(null)}>
-        <DialogContent className="max-w-lg bg-gray-900 border-gray-800 text-white">
+        <DialogContent className="max-w-2xl bg-gray-900 border-gray-800 text-white">
           <DialogHeader>
             <DialogTitle>
               {partyKind === 'ar' ? 'Receivables — party breakdown' : partyKind === 'ap' ? 'Payables — party breakdown' : 'Party breakdown'}
@@ -462,14 +483,51 @@ export const BalanceSheetPage: React.FC<{
               <Loader2 className="h-8 w-8 animate-spin text-blue-400" />
             </div>
           ) : partyBreakdown?.partyRows?.length ? (
-            <ul className="space-y-2 max-h-[360px] overflow-y-auto text-sm">
-              {partyBreakdown.partyRows.map((r) => (
-                <li key={r.contactId} className="flex justify-between gap-2 border-b border-gray-800 pb-2">
-                  <span className="text-gray-300 truncate">{r.name}</span>
-                  <span className="tabular-nums text-white shrink-0">{formatCurrency(r.glAmount)}</span>
-                </li>
-              ))}
-            </ul>
+            <div className="space-y-2">
+              <div className="overflow-x-auto max-h-[360px] overflow-y-auto rounded-lg border border-gray-800">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-gray-900/95 text-gray-500 text-left">
+                    <tr>
+                      <th className="py-2 px-3 font-medium">Code</th>
+                      <th className="py-2 px-3 font-medium">Party</th>
+                      <th className="py-2 px-3 font-medium text-right">GL balance</th>
+                      <th className="w-8" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {partyBreakdown.partyRows.map((r) => (
+                      <tr
+                        key={r.contactId}
+                        className={cn(
+                          'border-t border-gray-800/80 cursor-pointer hover:bg-indigo-950/30 transition-colors',
+                          r.glAmount < -0.005 && 'bg-amber-950/10'
+                        )}
+                        onClick={() => openPartyLedgerV2(r)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            openPartyLedgerV2(r);
+                          }
+                        }}
+                        tabIndex={0}
+                        role="button"
+                        title="Open Ledger Statement V2"
+                      >
+                        <td className="py-2 px-3 font-mono text-xs text-gray-400">{formatPartyCode(r)}</td>
+                        <td className="py-2 px-3 text-gray-200 truncate max-w-[220px]">{r.name}</td>
+                        <td className="py-2 px-3 text-right tabular-nums text-white shrink-0">
+                          {formatCurrency(r.glAmount)}
+                        </td>
+                        <td className="py-2 px-2 text-gray-500">
+                          <ChevronRight className="w-4 h-4" />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-xs text-gray-500">Click a row to open Ledger Statement V2 for that party.</p>
+            </div>
           ) : (
             <p className="text-sm text-gray-500">No party rows or data unavailable (ensure GL mapping RPC is applied).</p>
           )}

@@ -59,7 +59,19 @@ function formatLedgerPeriodLabel(from: string, to: string, formatDate: (d: strin
   return `${formatDate(from)} → ${formatDate(to)}`;
 }
 
-export function LedgerStatementCenterV2Page({ embedded = false }: { embedded?: boolean }) {
+export function LedgerStatementCenterV2Page({
+  embedded = false,
+  initialLedgerEntity = null,
+  onInitialLedgerConsumed,
+}: {
+  embedded?: boolean;
+  initialLedgerEntity?: {
+    entityId: string;
+    statementType: 'customer' | 'supplier';
+    entityLabel?: string;
+  } | null;
+  onInitialLedgerConsumed?: () => void;
+}) {
   const { companyId, userRole } = useSupabase();
   const globalFilter = useGlobalFilter();
   const { startDate: fromDate, endDate: toDate, getDateRangeLabel, setCurrentModule } = globalFilter;
@@ -81,6 +93,14 @@ export function LedgerStatementCenterV2Page({ embedded = false }: { embedded?: b
   const [rowActionBusy, setRowActionBusy] = useState(false);
 
   const rowActionLockRef = useRef(false);
+  const pendingInitialEntityRef = useRef<typeof initialLedgerEntity>(null);
+
+  useEffect(() => {
+    if (initialLedgerEntity?.entityId) {
+      pendingInitialEntityRef.current = initialLedgerEntity;
+      setStatementType(initialLedgerEntity.statementType);
+    }
+  }, [initialLedgerEntity]);
 
   const [transactionReference, setTransactionReference] = useState<string | null>(null);
   const [journalEntryIdHint, setJournalEntryIdHint] = useState<string | null>(null);
@@ -119,17 +139,30 @@ export function LedgerStatementCenterV2Page({ embedded = false }: { embedded?: b
   useEffect(() => {
     if (!companyId) return;
     setEntitiesLoading(true);
-    setEntityId('');
+    const pending = pendingInitialEntityRef.current;
+    if (!pending || pending.statementType !== statementType) {
+      setEntityId('');
+    }
     setResult(null);
     listLedgerEntitiesV2(companyId, statementType)
-      .then(setEntities)
+      .then((list) => {
+        setEntities(list);
+        if (pending && pending.statementType === statementType && pending.entityId) {
+          const found = list.some((e) => e.id === pending.entityId);
+          if (found) {
+            setEntityId(pending.entityId);
+          }
+          pendingInitialEntityRef.current = null;
+          onInitialLedgerConsumed?.();
+        }
+      })
       .catch((err) => {
         console.error(err);
         toast.error('Failed to load parties / accounts');
         setEntities([]);
       })
       .finally(() => setEntitiesLoading(false));
-  }, [companyId, statementType]);
+  }, [companyId, statementType, onInitialLedgerConsumed]);
 
   const entityLabel = useMemo(
     () => entities.find((e) => e.id === entityId)?.label || result?.entityLabel || '',

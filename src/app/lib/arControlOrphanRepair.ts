@@ -9,6 +9,7 @@ import {
   type GlCorrectionDraftDryRun,
   type OrphanArReversalDefectInput,
 } from '@/app/lib/glCorrectionDraftRepair';
+import { isHqSlEquivalentCorrectionApplied } from '@/app/lib/glCorrectionResolveStatus';
 import { supabase } from '@/lib/supabase';
 
 export type ArControlDiagnosticSnapshot = {
@@ -78,7 +79,11 @@ export async function isOrphanDefectAlreadyApplied(
     defectId === 'hq-sl-0003-orphan-ar'
       ? HQ_SL_0003_FINGERPRINT
       : `developer_repair:gl_correction:${defectId}`;
-  return isGlCorrectionFingerprintApplied(companyId, fingerprint);
+  if (await isGlCorrectionFingerprintApplied(companyId, fingerprint)) return true;
+  if (defectId === 'hq-sl-0003-orphan-ar') {
+    return isHqSlEquivalentCorrectionApplied(companyId);
+  }
+  return false;
 }
 
 export async function detectRental1100LeakageDefects(

@@ -28,7 +28,6 @@ import {
   Shield,
   Scale,
   BookOpen,
-  FileSearch,
   FileBarChart,
 } from 'lucide-react';
 import { useNavigation } from '../../context/NavigationContext';
@@ -38,6 +37,13 @@ import { useCheckPermission } from '../../hooks/useCheckPermission';
 import { canAccessTechnicalDeveloperSettings } from '@/app/lib/developerAccountingAccess';
 import { canAccessAccountingDeveloperCenter } from '@/app/lib/accountingDeveloperCenterAccess';
 import { leaveSpecialAppRoute } from '@/app/lib/specialRouteNavigation';
+import { buildNavOpenUrl, syncNavUrlToHistory } from '@/app/lib/navDeepLinks';
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from '@/app/components/ui/context-menu';
 import { clsx } from 'clsx';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -110,14 +116,8 @@ export const Sidebar = () => {
     { id: 'party-ledger', label: 'Party Ledger', icon: BookOpen, isHidden: !settingsModules.accountingModuleEnabled || !hasPermission('accounting.view') },
     {
       id: 'ar-ap-reconciliation-center',
-      label: 'AR/AP Reconciliation',
+      label: 'AR/AP Diagnostics',
       icon: Scale,
-      isHidden: !settingsModules.accountingModuleEnabled || !hasPermission('accounting.view'),
-    },
-    {
-      id: 'financial-trace-center',
-      label: 'Financial Trace Center',
-      icon: FileSearch,
       isHidden: !settingsModules.accountingModuleEnabled || !hasPermission('accounting.view'),
     },
     { id: 'reports', label: 'Reports', icon: PieChart, isHidden: !settingsModules.reportsModuleEnabled || !hasPermission('reports.view') },
@@ -166,21 +166,50 @@ export const Sidebar = () => {
       if (!isSidebarOpen) toggleSidebar();
       toggleExpand(item.id);
     } else {
-      if (item.id === 'party-ledger') {
-        setPartyLedgerParams?.(null);
-      }
-      setCurrentView(item.id as any);
-      if (typeof window !== 'undefined') {
-        if (item.id === 'permission-inspector') {
-          window.history.pushState({}, '', '/admin/permission-inspector');
-        } else if (item.id === 'financial-trace-center') {
-          window.history.pushState({}, '', '/admin/financial-trace-center');
-        } else {
-          leaveSpecialAppRoute('/');
-        }
-      }
+      navigateToView(item.id);
     }
   };
+
+  const navigateToView = (viewId: string) => {
+    if (viewId === 'party-ledger') {
+      setPartyLedgerParams?.(null);
+    }
+    setCurrentView(viewId as any);
+    if (typeof window !== 'undefined') {
+      leaveSpecialAppRoute('/');
+      syncNavUrlToHistory(viewId);
+    }
+  };
+
+  /** Parent groups without a landing page open their first child in a new tab. */
+  const resolveNewTabViewId = (item: NavItem): string => {
+    if (item.children?.length) return item.children[0].id;
+    return item.id;
+  };
+
+  const openNavInNewTab = (viewId: string) => {
+    window.open(buildNavOpenUrl(viewId), '_blank', 'noopener,noreferrer');
+  };
+
+  const renderNavContextMenu = (viewId: string, trigger: React.ReactNode, onOpen: () => void) => (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{trigger}</ContextMenuTrigger>
+      <ContextMenuContent className="w-48 bg-gray-900 border-gray-700 text-white">
+        <ContextMenuItem
+          className="cursor-pointer focus:bg-gray-800 focus:text-white"
+          onSelect={() => onOpen()}
+        >
+          Open
+        </ContextMenuItem>
+        <ContextMenuItem
+          className="cursor-pointer focus:bg-gray-800 focus:text-white"
+          onSelect={() => openNavInNewTab(viewId)}
+        >
+          Open in new tab
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
+  );
 
   return (
     <motion.aside 
@@ -230,48 +259,58 @@ export const Sidebar = () => {
           return (
             <div key={item.id}>
               <div className="flex items-center gap-1 w-full group/item">
-                <button
-                  onClick={() => handleItemClick(item)}
-                  className={clsx(
-                    "flex-1 flex items-center justify-between p-3 rounded-xl transition-all duration-200 group relative min-w-0",
-                    isActive && !item.children
-                      ? "bg-blue-600 text-white shadow-lg shadow-blue-900/20" 
-                      : "text-gray-400 hover:bg-gray-800 hover:text-white"
-                  )}
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <item.icon size={20} strokeWidth={1.5} className={clsx("shrink-0", isActive && "text-white")} />
-                    
-                    {isSidebarOpen ? (
-                      <motion.span 
-                        initial={{ opacity: 0 }} 
-                        animate={{ opacity: 1 }}
-                        className="font-medium whitespace-nowrap text-sm truncate flex items-center gap-1.5"
-                      >
-                        {item.label}
-                        {item.id === 'studio-group' && studioProductionV3 && (
-                          <span className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400">V3</span>
-                        )}
-                        {item.id === 'studio-group' && studioProductionV2 && !studioProductionV3 && (
-                          <span className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400">V2</span>
-                        )}
-                      </motion.span>
-                    ) : (
-                      <div className="absolute left-14 bg-gray-900 text-white text-sm px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity border border-gray-700 whitespace-nowrap z-50 shadow-xl flex items-center gap-1.5">
-                        {item.label}
-                        {item.id === 'studio-group' && studioProductionV3 && <span className="text-emerald-400 text-xs font-semibold">V3</span>}
-                        {item.id === 'studio-group' && studioProductionV2 && !studioProductionV3 && <span className="text-amber-400 text-xs font-semibold">V2</span>}
-                      </div>
+                {renderNavContextMenu(
+                  resolveNewTabViewId(item),
+                  <button
+                    onClick={() => handleItemClick(item)}
+                    className={clsx(
+                      "flex-1 flex items-center justify-between p-3 rounded-xl transition-all duration-200 group relative min-w-0",
+                      isActive && !item.children
+                        ? "bg-blue-600 text-white shadow-lg shadow-blue-900/20" 
+                        : "text-gray-400 hover:bg-gray-800 hover:text-white"
                     )}
-                  </div>
-                  
-                  {item.children && isSidebarOpen && (
-                    <ChevronDown 
-                      size={16} 
-                      className={clsx("shrink-0 transition-transform duration-200", isExpanded && "rotate-180")} 
-                    />
-                  )}
-                </button>
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <item.icon size={20} strokeWidth={1.5} className={clsx("shrink-0", isActive && "text-white")} />
+                      
+                      {isSidebarOpen ? (
+                        <motion.span 
+                          initial={{ opacity: 0 }} 
+                          animate={{ opacity: 1 }}
+                          className="font-medium whitespace-nowrap text-sm truncate flex items-center gap-1.5"
+                        >
+                          {item.label}
+                          {item.id === 'studio-group' && studioProductionV3 && (
+                            <span className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400">V3</span>
+                          )}
+                          {item.id === 'studio-group' && studioProductionV2 && !studioProductionV3 && (
+                            <span className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400">V2</span>
+                          )}
+                        </motion.span>
+                      ) : (
+                        <div className="absolute left-14 bg-gray-900 text-white text-sm px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity border border-gray-700 whitespace-nowrap z-50 shadow-xl flex items-center gap-1.5">
+                          {item.label}
+                          {item.id === 'studio-group' && studioProductionV3 && <span className="text-emerald-400 text-xs font-semibold">V3</span>}
+                          {item.id === 'studio-group' && studioProductionV2 && !studioProductionV3 && <span className="text-amber-400 text-xs font-semibold">V2</span>}
+                        </div>
+                      )}
+                    </div>
+                    
+                    {item.children && isSidebarOpen && (
+                      <ChevronDown 
+                        size={16} 
+                        className={clsx("shrink-0 transition-transform duration-200", isExpanded && "rotate-180")} 
+                      />
+                    )}
+                  </button>,
+                  () => {
+                    if (item.children) {
+                      handleItemClick(item);
+                    } else {
+                      navigateToView(item.id);
+                    }
+                  }
+                )}
                 {/* Quick Add / Import for Contacts */}
                 {item.id === 'contacts' && isSidebarOpen && (
                   <div className="flex gap-0.5 opacity-0 group-hover/item:opacity-100 transition-opacity shrink-0">
@@ -296,42 +335,27 @@ export const Sidebar = () => {
                     className="overflow-hidden"
                   >
                     <div className="pl-11 py-1 space-y-1">
-                      {item.children.map(child => (
-                        <button
-                          key={child.id}
-                          onClick={() => {
-                            setCurrentView(child.id as any);
-                            if (typeof window !== 'undefined') {
-                              const p = window.location.pathname;
-                              if (child.id === 'permission-inspector') {
-                                window.history.pushState({}, '', '/admin/permission-inspector');
-                              } else if (child.id === 'developer-integrity-lab') {
-                                window.history.pushState({}, '', '/admin/developer-integrity-lab');
-                              } else if (child.id === 'accounting-developer-center') {
-                                window.history.pushState({}, '', '/admin/accounting-developer-center');
-                              } else if (child.id === 'accounting-edit-trace') {
-                                window.history.pushState({}, '', '/test/accounting-edit-trace');
-                              } else if (child.id === 'ar-ap-truth-lab') {
-                                window.history.pushState({}, '', '/test/ar-ap-truth-lab');
-                              } else if (child.id === 'expense-edit-trace') {
-                                window.history.pushState({}, '', '/test/expense-edit-trace');
-                              } else {
-                                leaveSpecialAppRoute('/');
-                              }
-                            }
-                          }}
-                          className={clsx(
-                            "w-full text-left py-2 px-3 text-sm rounded-lg transition-colors",
-                            currentView === child.id ||
-                              (child.id === 'accounting-edit-trace' && pathname === '/test/accounting-edit-trace') ||
-                              (child.id === 'ar-ap-truth-lab' && pathname === '/test/ar-ap-truth-lab') ||
-                              (child.id === 'expense-edit-trace' && pathname === '/test/expense-edit-trace')
-                              ? "text-blue-400 bg-blue-500/10 font-medium" 
-                              : "text-gray-500 hover:text-white hover:bg-gray-800/50"
+                      {item.children.map((child) => (
+                        <React.Fragment key={child.id}>
+                          {renderNavContextMenu(
+                            child.id,
+                            <button
+                              onClick={() => navigateToView(child.id)}
+                              className={clsx(
+                                "w-full text-left py-2 px-3 text-sm rounded-lg transition-colors",
+                                currentView === child.id ||
+                                  (child.id === 'accounting-edit-trace' && pathname === '/test/accounting-edit-trace') ||
+                                  (child.id === 'ar-ap-truth-lab' && pathname === '/test/ar-ap-truth-lab') ||
+                                  (child.id === 'expense-edit-trace' && pathname === '/test/expense-edit-trace')
+                                  ? "text-blue-400 bg-blue-500/10 font-medium" 
+                                  : "text-gray-500 hover:text-white hover:bg-gray-800/50"
+                              )}
+                            >
+                              {child.label}
+                            </button>,
+                            () => navigateToView(child.id)
                           )}
-                        >
-                          {child.label}
-                        </button>
+                        </React.Fragment>
                       ))}
                     </div>
                   </motion.div>

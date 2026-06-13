@@ -22,6 +22,7 @@ import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import type { ArApReconciliationAccess } from '@/app/lib/arApReconciliationAccess';
 import { GL_CORRECTION_CONFIRM_PHRASE } from '@/app/lib/glCorrectionDraftRepair';
 import { hybridIdToOrphanDefectId } from '@/app/lib/arControlOrphanRepair';
+import { notifyGlCorrectionApplied } from '@/app/lib/glCorrectionResolveStatus';
 import {
   applyHybridRepairCandidate,
   dryRunHybridRepairCandidate,
@@ -43,6 +44,7 @@ type Props = {
   access: ArApReconciliationAccess;
   onRefresh: () => void;
   onOpenGlCorrectionDraft: (defectId: string) => void;
+  refreshToken?: number;
 };
 
 function categoryLabel(cat: HybridRepairCandidate['category']): string {
@@ -178,6 +180,7 @@ export function HybridRepairPanel({
   access,
   onRefresh,
   onOpenGlCorrectionDraft,
+  refreshToken = 0,
 }: Props) {
   const { userId, userRole } = useSupabase();
   const { formatCurrency } = useFormatCurrency();
@@ -216,7 +219,18 @@ export function HybridRepairPanel({
 
   useEffect(() => {
     void loadCandidates();
-  }, [loadCandidates]);
+  }, [loadCandidates, refreshToken]);
+
+  const afterRepairApplied = useCallback(
+    (category?: HybridRepairCandidate['category']) => {
+      onRefresh();
+      void loadCandidates();
+      if (category === 'orphan_ar_gl_correction') {
+        notifyGlCorrectionApplied(companyId);
+      }
+    },
+    [companyId, loadCandidates, onRefresh]
+  );
 
   const diagnosticRows = useMemo(
     () => candidates.filter((c) => c.diagnosticOnly),
@@ -285,8 +299,7 @@ export function HybridRepairPanel({
       const res = await applyHybridRepairCandidate(row, repairCtx, { dryRunHash: dry.dryRunHash });
       if (res.ok) {
         toast.success(res.message || 'Repair applied');
-        onRefresh();
-        void loadCandidates();
+        afterRepairApplied(row.category);
       } else {
         toast.error(res.error || 'Apply failed');
       }
@@ -306,8 +319,7 @@ export function HybridRepairPanel({
       if (res.ok) {
         toast.success(res.message || 'GL correction posted');
         setGlConfirmOpen(null);
-        onRefresh();
-        void loadCandidates();
+        afterRepairApplied(glConfirmOpen.category);
       } else {
         toast.error(res.error || 'Apply failed');
       }
@@ -343,6 +355,9 @@ export function HybridRepairPanel({
       toast.success('Batch reconciliation fix complete', {
         description: parts.join(' · ') || 'Nothing to apply',
       });
+      if (result.applied.some((row) => row.id.startsWith('orphan-ar:'))) {
+        notifyGlCorrectionApplied(companyId);
+      }
       onRefresh();
       void loadCandidates();
     } finally {

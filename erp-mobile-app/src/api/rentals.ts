@@ -231,6 +231,9 @@ export interface RentalPaymentRow {
   amount: number;
   method: string;
   reference: string | null;
+  /** RCV-* from linked payments row when available */
+  referenceNo?: string | null;
+  notes?: string | null;
   paymentDate: string;
 }
 
@@ -885,10 +888,51 @@ export async function getRentalById(rentalId: string): Promise<{ data: RentalDet
 
   const { data: payments, error: pErr } = await supabase
     .from('rental_payments')
-    .select('id, amount, method, reference, payment_date, created_at')
+    .select('id, amount, method, reference, payment_date, created_at, journal_entry_id')
     .eq('rental_id', rentalId)
+    .is('voided_at', null)
     .order('created_at', { ascending: false });
   if (pErr) return { data: null, error: pErr.message };
+
+  const paymentRefByRentalPaymentId = new Map<string, { referenceNo: string | null; notes: string | null }>();
+  const paymentListRaw = (payments || []) as Array<Record<string, unknown>>;
+  const jeIds = paymentListRaw
+    .map((p) => p.journal_entry_id)
+    .filter((id): id is string => typeof id === 'string' && id.length > 0);
+  if (jeIds.length > 0) {
+    const { data: jes } = await supabase.from('journal_entries').select('id, payment_id').in('id', jeIds);
+    const paymentIds = (jes || [])
+      .map((j) => (j as { payment_id?: string | null }).payment_id)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0);
+    if (paymentIds.length > 0) {
+      const { data: payRows } = await supabase
+        .from('payments')
+        .select('id, reference_number, notes')
+        .in('id', paymentIds);
+      const jeToPayment = new Map<string, string>();
+      for (const j of jes || []) {
+        const rec = j as { id?: string; payment_id?: string | null };
+        if (rec.id && rec.payment_id) jeToPayment.set(String(rec.id), String(rec.payment_id));
+      }
+      const payById = new Map<string, { reference_number?: string | null; notes?: string | null }>();
+      for (const pay of payRows || []) {
+        const rec = pay as { id?: string; reference_number?: string | null; notes?: string | null };
+        if (rec.id) payById.set(String(rec.id), rec);
+      }
+      for (const rp of paymentListRaw) {
+        const rpId = String(rp.id);
+        const jeId = rp.journal_entry_id != null ? String(rp.journal_entry_id) : '';
+        const payId = jeId ? jeToPayment.get(jeId) : undefined;
+        const linked = payId ? payById.get(payId) : undefined;
+        if (linked) {
+          paymentRefByRentalPaymentId.set(rpId, {
+            referenceNo: linked.reference_number != null ? String(linked.reference_number) : null,
+            notes: linked.notes != null ? String(linked.notes) : null,
+          });
+        }
+      }
+    }
+  }
 
   const r = rental as Record<string, unknown>;
   const branch = r.branch as { name?: string; code?: string } | null;
@@ -923,8 +967,11 @@ export async function getRentalById(rentalId: string): Promise<{ data: RentalDet
       securityDocumentNumber: (r.security_document_number as string) ?? null,
       securityDocumentImageUrl: (r.security_document_image_url as string) ?? null,
       securityStatus: (r.security_status as string) ?? null,
-      pickupDocumentType: (r.document_type as string) ?? null,
-      pickupDocumentNumber: (r.document_number as string) ?? null,
+      pickupDocumentType: (r.security_document_type as string) ?? ((r.document_received ? r.document_type : null) as string | null) ?? null,
+      pickupDocumentNumber:
+        (r.security_document_number as string)
+        ?? (r.document_received && r.document_type && !r.security_document_number ? (r.document_number as string) : null)
+        ?? null,
       createdBy: r.created_by != null ? String(r.created_by) : null,
       salesmanId: r.salesman_id != null ? String(r.salesman_id) : null,
       items: itemList.map((i) => ({
@@ -945,11 +992,16 @@ export async function getRentalById(rentalId: string): Promise<{ data: RentalDet
             : rawDate instanceof Date
               ? rawDate.toISOString().slice(0, 10)
               : '';
+        const rpId = String(p.id);
+        const linked = paymentRefByRentalPaymentId.get(rpId);
+        const fallbackRef = (p.reference as string) ?? null;
         return {
-          id: String(p.id),
+          id: rpId,
           amount: Number(p.amount) ?? 0,
           method: String(p.method ?? ''),
-          reference: (p.reference as string) ?? null,
+          reference: fallbackRef,
+          referenceNo: linked?.referenceNo ?? fallbackRef,
+          notes: linked?.notes ?? null,
           paymentDate,
         };
       }),

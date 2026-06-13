@@ -53,6 +53,12 @@ export interface RentalUI {
   notes?: string | null;
   documentType?: string;
   documentNumber?: string;
+  /** Pickup security ID (CNIC etc.) — separate from manual bill ref. */
+  securityDocumentType?: string | null;
+  securityDocumentNumber?: string | null;
+  /** Legacy web pickup ID when stored in document_number before security columns. */
+  pickupDocumentType?: string | null;
+  pickupDocumentNumber?: string | null;
   /** Assessed at return (damage / penalty) — not part of rental line items total */
   damageCharges?: number;
   conditionType?: string | null;
@@ -128,6 +134,13 @@ function convertFromSupabaseRental(row: any): RentalUI {
     notes: row.notes,
     documentType: row.document_type,
     documentNumber: row.document_number,
+    securityDocumentType: row.security_document_type ?? null,
+    securityDocumentNumber: row.security_document_number ?? null,
+    pickupDocumentType: row.security_document_type || (row.document_received ? row.document_type : null) || null,
+    pickupDocumentNumber:
+      row.security_document_number
+      || (row.document_received && row.document_type && !row.security_document_number ? row.document_number : null)
+      || null,
     damageCharges: Number(row.damage_charges ?? 0) || 0,
     conditionType: row.condition_type ?? null,
     damageNotes: row.damage_notes ?? null,

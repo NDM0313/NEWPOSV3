@@ -181,6 +181,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
   const [salesmanDropdownOpen, setSalesmanDropdownOpen] = useState(false);
   const [commissionType, setCommissionType] = useState<'percentage' | 'fixed'>('percentage');
   const [commissionValue, setCommissionValue] = useState<number>(0);
+  const [documentNumber, setDocumentNumber] = useState('');
   
   // Return Modal State
   const [showReturnModal, setShowReturnModal] = useState(false);
@@ -217,6 +218,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
       setReturnDate(editRental.expectedReturnDate ? new Date(editRental.expectedReturnDate) : addDays(new Date(), 3));
       setAdvancePaid(editRental.paidAmount?.toString() || '');
       setSalesmanId(editRental.salesmanId || '');
+      setDocumentNumber(editRental.documentNumber || '');
       const editItems = editRental.items ?? [];
       if (editItems.length > 0) {
         const toSearchProduct = (item: (typeof editItems)[0]): SearchProduct => ({
@@ -272,6 +274,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
       setManualRentPrice('');
       setAdvancePaid('');
       setSalesmanId('');
+      setDocumentNumber('');
       setBookingDate(new Date());
       setPickupDate(new Date());
       setReturnDate(addDays(new Date(), 3));
@@ -478,6 +481,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
           securityDeposit: 0,
           paidAmount: parseFloat(advancePaid) || 0,
           notes: null,
+          documentNumber: documentNumber.trim() || null,
           salesmanId: salesmanId || null,
           items,
         });
@@ -502,6 +506,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
           securityDeposit: 0,
           paidAmount: 0,
           notes: null,
+          documentNumber: documentNumber.trim() || null,
           salesmanId: salesmanId || null,
           commissionAmount: salesmanId ? calcCommission : 0,
           commissionPercent: salesmanId && commissionType === 'percentage' ? commissionValue : null,
@@ -725,6 +730,20 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                         required
                       />
                    </div>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs text-gray-500 uppercase">Bill / manual ref # (optional)</Label>
+                  <Input
+                    type="text"
+                    value={documentNumber}
+                    onChange={(e) => setDocumentNumber(e.target.value)}
+                    placeholder="e.g. A 109 — not the auto REN booking #"
+                    className="h-9 bg-gray-900 border-gray-700 text-white text-sm"
+                  />
+                  <p className="text-[11px] text-gray-500">
+                    System booking number (REN-*) is assigned on save; this field is only for your paper bill book reference.
+                  </p>
                 </div>
 
                 {/* Row 1b: Salesman & Commission */}

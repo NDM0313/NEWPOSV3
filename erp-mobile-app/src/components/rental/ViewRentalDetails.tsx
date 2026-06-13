@@ -385,9 +385,20 @@ export function ViewRentalDetails({
             </h3>
             <ul className="space-y-2">
               {rental.payments.map((p) => (
-                <li key={p.id} className="flex justify-between text-sm">
-                  <span className="text-[#9CA3AF]">{p.paymentDate} · {p.method}</span>
-                  <span className="text-white">Rs. {p.amount.toLocaleString()}</span>
+                <li key={p.id} className="flex justify-between items-start text-sm py-2 border-b border-[#374151] last:border-0 gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-white font-medium">Rs. {p.amount.toLocaleString()}</p>
+                    <p className="text-xs text-[#9CA3AF]">{p.method} • {p.paymentDate}</p>
+                    {p.referenceNo && p.referenceNo !== '—' && (
+                      <p className="text-xs text-[#6B7280]">Ref: {p.referenceNo}</p>
+                    )}
+                    {p.notes && (
+                      <p className="text-xs text-[#9CA3AF] mt-1 break-words">{p.notes}</p>
+                    )}
+                    {!p.referenceNo && p.reference && (
+                      <p className="text-xs text-[#6B7280]">{p.reference}</p>
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>
