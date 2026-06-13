@@ -315,7 +315,7 @@ export function PrintingPreviewPanel({
         </select>
         <p className="text-[11px] text-gray-500 mt-1.5">
           {previewDocument === 'ledger_statement'
-            ? 'Same 7-column layout as Ledger Center V2 PDF. Orientation: Reports & Export tab.'
+            ? 'Same 7-column layout as Account Statements PDF. Orientation: Reports & Export tab.'
             : 'Toggles (e.g. Show SKU) update this preview live.'}
         </p>
       </div>

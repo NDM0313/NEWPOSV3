@@ -180,9 +180,9 @@ function CrossLinkBar({
         variant="outline"
         size="sm"
         className="border-gray-600"
-        onClick={() => onNavigate('ledger-v2', '/reports/ledger-statement-center-v2')}
+        onClick={() => onNavigate('accounting')}
       >
-        Ledger V2
+        Account Statements
       </Button>
       {!embedded && (
         <Button
@@ -217,7 +217,7 @@ export function FinancialTraceDiagnosticsPanel({
   onOpenHybridRepair,
   onSwitchHubTab,
 }: FinancialTraceDiagnosticsPanelProps = {}) {
-  const { setCurrentView, openPartyLedger } = useNavigation();
+  const { setCurrentView, openPartyLedger, setAccountingTabInitial } = useNavigation();
   const { companyId, userRole } = useSupabase();
   const { formatCurrency } = useFormatCurrency();
   const access = resolveArApReconciliationAccess(userRole);
@@ -329,9 +329,14 @@ export function FinancialTraceDiagnosticsPanel({
         });
         return;
       }
+      if (view === 'accounting') {
+        setAccountingTabInitial('account_statements');
+        setCurrentView('accounting');
+        return;
+      }
       setCurrentView(view as never);
     },
-    [openPartyLedger, setCurrentView]
+    [openPartyLedger, setAccountingTabInitial, setCurrentView]
   );
 
   const handleTieOutDrilldown = useCallback(

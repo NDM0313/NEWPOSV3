@@ -46,6 +46,7 @@ import { Input } from "../ui/input";
 import { Badge } from "../ui/badge";
 import { cn } from "../ui/utils";
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { AdaptiveCurrencyValue } from '@/app/components/shared/AdaptiveCurrencyValue';
 import { ReturnDressModal } from './ReturnDressModal';
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Label } from "../ui/label";
@@ -526,12 +527,12 @@ export const RentalOrdersList = () => {
           <p className="text-xs text-red-400 mt-1">Need immediate action</p>
         </div>
 
-        <div className="bg-gradient-to-br from-green-900/30 to-green-900/10 border border-green-900/50 rounded-xl p-4">
+        <div className="bg-gradient-to-br from-green-900/30 to-green-900/10 border border-green-900/50 rounded-xl p-4 min-w-0">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs text-gray-400 uppercase font-medium">Outstanding</span>
             <DollarSign size={16} className="text-green-400" />
           </div>
-          <p className="text-3xl font-bold text-white">₹{(stats.totalOutstanding / 1000).toFixed(0)}k</p>
+          <AdaptiveCurrencyValue value={stats.totalOutstanding} className="text-3xl font-bold text-white" as="p" />
           <p className="text-xs text-green-400 mt-1">Total balance due</p>
         </div>
 

@@ -57,7 +57,7 @@ function marginPadding(m: PageMargins): React.CSSProperties {
   };
 }
 
-/** Ledger statement preview for Settings (matches Ledger Center V2 PDF). */
+/** Ledger statement preview for Settings (matches Account Statements PDF). */
 export function ReportExportPreviewPanel({
   brand,
   ledgerOptions,

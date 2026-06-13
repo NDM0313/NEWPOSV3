@@ -10,6 +10,7 @@ import { shareViaWhatsApp } from '@/app/services/documentShareService';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useNavigation } from '@/app/context/NavigationContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { toast } from 'sonner';
 import {
   accountingReportsService,
   TrialBalanceResult,
@@ -69,6 +70,8 @@ export const TrialBalancePage: React.FC<{
   const { formatCurrency } = useFormatCurrency();
   const [data, setData] = useState<TrialBalanceResult | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [fetchRetryKey, setFetchRetryKey] = useState(0);
   const [ledgerRow, setLedgerRow] = useState<TrialBalanceRow | null>(null);
   const [arApMode, setArApMode] = useState<TrialBalanceArApMode>('flat');
   const [searchTerm, setSearchTerm] = useState('');
@@ -78,17 +81,22 @@ export const TrialBalancePage: React.FC<{
 
   useEffect(() => {
     if (!companyId || !startDate || !endDate) {
-      setData(null);
-      setLoading(false);
+      if (!companyId) setLoading(true);
       return;
     }
     setLoading(true);
+    setFetchError(null);
     accountingReportsService
       .getTrialBalance(companyId, startDate, endDate, branchId, { arApMode })
       .then(setData)
-      .catch(() => setData(null))
+      .catch((err) => {
+        const msg = err instanceof Error ? err.message : 'Failed to load trial balance';
+        setFetchError(msg);
+        toast.error(msg);
+        setData(null);
+      })
       .finally(() => setLoading(false));
-  }, [companyId, startDate, endDate, branchId, arApMode]);
+  }, [companyId, startDate, endDate, branchId, arApMode, fetchRetryKey]);
 
   useEffect(() => {
     if (!journalSearchEnabled || !searchTerm.trim() || !companyId) {
@@ -189,8 +197,15 @@ export const TrialBalancePage: React.FC<{
   if (!data) {
     return (
       <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-6 text-center text-gray-400">
-        <p className="font-medium">No data for the selected period</p>
-        <p className="text-sm text-gray-500 mt-1">Adjust the date range or ensure journal entries exist.</p>
+        <p className="font-medium">{fetchError || 'No data for the selected period'}</p>
+        <p className="text-sm text-gray-500 mt-1">
+          {fetchError ? 'Check your connection and try again.' : 'Adjust the date range or ensure journal entries exist.'}
+        </p>
+        {fetchError ? (
+          <Button variant="outline" className="mt-4 border-gray-700" onClick={() => { setFetchError(null); setFetchRetryKey((k) => k + 1); }}>
+            Retry
+          </Button>
+        ) : null}
       </div>
     );
   }

@@ -14,6 +14,7 @@ import {
 } from '@/app/components/ui/dialog';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { toast } from 'sonner';
 import { accountingReportsService, BalanceSheetResult, type BalanceSheetLineItem } from '@/app/services/accountingReportsService';
 import type { BalanceSheetAssetGroup } from '@/app/lib/accountHierarchy';
 import { exportToPDF, exportToExcel, ExportData } from '@/app/utils/exportUtils';
@@ -258,23 +259,30 @@ export const BalanceSheetPage: React.FC<{
   const [asOfDate, setAsOfDate] = useState(defaultDate);
   const [data, setData] = useState<BalanceSheetResult | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [fetchRetryKey, setFetchRetryKey] = useState(0);
   const [partyKind, setPartyKind] = useState<'ar' | 'ap' | null>(null);
   const [partyLoading, setPartyLoading] = useState(false);
   const [partyBreakdown, setPartyBreakdown] = useState<ControlAccountBreakdownResult | null>(null);
 
   useEffect(() => {
     if (!companyId || !asOfDate) {
-      setData(null);
-      setLoading(false);
+      if (!companyId) setLoading(true);
       return;
     }
     setLoading(true);
+    setFetchError(null);
     accountingReportsService
       .getBalanceSheet(companyId, asOfDate, branchId)
       .then(setData)
-      .catch(() => setData(null))
+      .catch((err) => {
+        const msg = err instanceof Error ? err.message : 'Failed to load balance sheet';
+        setFetchError(msg);
+        toast.error(msg);
+        setData(null);
+      })
       .finally(() => setLoading(false));
-  }, [companyId, asOfDate, branchId]);
+  }, [companyId, asOfDate, branchId, fetchRetryKey]);
 
   const reportPrintRef = useRef<HTMLDivElement>(null);
   const groupedAssets = useMemo(() => (data ? groupAssets(data.assets.items) : []), [data]);
@@ -366,8 +374,15 @@ export const BalanceSheetPage: React.FC<{
   if (!data) {
     return (
       <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-6 text-center text-gray-400">
-        <p className="font-medium">No data for the selected period</p>
-        <p className="text-sm text-gray-500 mt-1">Adjust the date or ensure journal entries exist.</p>
+        <p className="font-medium">{fetchError || 'No data for the selected period'}</p>
+        <p className="text-sm text-gray-500 mt-1">
+          {fetchError ? 'Check your connection and try again.' : 'Adjust the date or ensure journal entries exist.'}
+        </p>
+        {fetchError ? (
+          <Button variant="outline" className="mt-4 border-gray-700" onClick={() => { setFetchError(null); setFetchRetryKey((k) => k + 1); }}>
+            Retry
+          </Button>
+        ) : null}
       </div>
     );
   }
@@ -511,7 +526,7 @@ export const BalanceSheetPage: React.FC<{
                         }}
                         tabIndex={0}
                         role="button"
-                        title="Open Ledger Statement V2"
+                        title="Open Account Statements for this party"
                       >
                         <td className="py-2 px-3 font-mono text-xs text-gray-400">{formatPartyCode(r)}</td>
                         <td className="py-2 px-3 text-gray-200 truncate max-w-[220px]">{r.name}</td>
@@ -526,7 +541,7 @@ export const BalanceSheetPage: React.FC<{
                   </tbody>
                 </table>
               </div>
-              <p className="text-xs text-gray-500">Click a row to open Ledger Statement V2 for that party.</p>
+              <p className="text-xs text-gray-500">Click a row to open Account Statements for that party.</p>
             </div>
           ) : (
             <p className="text-sm text-gray-500">No party rows or data unavailable (ensure GL mapping RPC is applied).</p>

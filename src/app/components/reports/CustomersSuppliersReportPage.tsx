@@ -8,12 +8,9 @@ import {
   ChevronDown,
   ChevronUp,
   Columns3,
-  FileSpreadsheet,
-  FileText,
   Filter,
   Info,
   Loader2,
-  Printer,
   Search,
   X,
 } from 'lucide-react';
@@ -35,6 +32,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/app/components/ui/too
 import { cn } from '@/app/components/ui/utils';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { formatAmount } from '@/app/utils/formatCurrency';
+import { toast } from 'sonner';
+import { ReportActions } from './ReportActions';
 import {
   exportCustomersSuppliersCsv,
   exportCustomersSuppliersExcel,
@@ -60,6 +60,8 @@ import {
   type CustomersSuppliersColumnKey,
   type CustomersSuppliersReportRow,
 } from '@/app/services/customersSuppliersReportService';
+
+const CS_COLUMNS_SESSION_KEY = 'reports-customers-suppliers-columns';
 
 type Props = {
   startDate: string;
@@ -112,9 +114,17 @@ export function CustomersSuppliersReportPage({ startDate, endDate, branchId }: P
 
   const [columnsOpen, setColumnsOpen] = useState(false);
   const columnsRef = useRef<HTMLDivElement>(null);
-  const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(() =>
-    resolveVisibleColumns('both')
-  );
+  const printPreviewRef = useRef<HTMLDivElement>(null);
+  const [exportBusy, setExportBusy] = useState(false);
+  const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(() => {
+    try {
+      const raw = sessionStorage.getItem(CS_COLUMNS_SESSION_KEY);
+      if (raw) return { ...resolveVisibleColumns('both'), ...JSON.parse(raw) };
+    } catch {
+      /* ignore */
+    }
+    return resolveVisibleColumns('both');
+  });
 
   useEffect(() => {
     if (!overrideGlobalDates) {
@@ -123,8 +133,16 @@ export function CustomersSuppliersReportPage({ startDate, endDate, branchId }: P
   }, [startDate, endDate, overrideGlobalDates]);
 
   useEffect(() => {
-    setVisibleColumns(resolveVisibleColumns(contactType));
+    setVisibleColumns((prev) => ({ ...resolveVisibleColumns(contactType), ...prev, contact: true }));
   }, [contactType]);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(CS_COLUMNS_SESSION_KEY, JSON.stringify(visibleColumns));
+    } catch {
+      /* ignore */
+    }
+  }, [visibleColumns]);
 
   const effectiveStartDate = overrideGlobalDates
     ? format(dateRange.from ?? new Date(), 'yyyy-MM-dd')
@@ -138,7 +156,7 @@ export function CustomersSuppliersReportPage({ startDate, endDate, branchId }: P
   const load = useCallback(async () => {
     if (!companyId) {
       setRows([]);
-      setLoading(false);
+      setLoading(true);
       return;
     }
     setLoading(true);
@@ -230,19 +248,37 @@ export function CustomersSuppliersReportPage({ startDate, endDate, branchId }: P
   };
 
   const handleExportCsv = () => {
-    exportCustomersSuppliersCsv(filteredRows, visibleCols, totals, formatCurrency, exportMeta);
+    try {
+      exportCustomersSuppliersCsv(filteredRows, visibleCols, totals, formatCurrency, exportMeta);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'CSV export failed');
+    }
   };
 
-  const handleExportExcel = () => {
-    void exportCustomersSuppliersExcel(filteredRows, visibleCols, totals, formatCurrency, exportMeta);
+  const handleExportExcel = async () => {
+    setExportBusy(true);
+    try {
+      await exportCustomersSuppliersExcel(filteredRows, visibleCols, totals, formatCurrency, exportMeta);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Excel export failed');
+    } finally {
+      setExportBusy(false);
+    }
   };
 
-  const handleExportPdf = () => {
-    void exportCustomersSuppliersPdf(filteredRows, visibleCols, totals, formatCurrency, exportMeta);
+  const handleExportPdf = async () => {
+    setExportBusy(true);
+    try {
+      await exportCustomersSuppliersPdf(filteredRows, visibleCols, totals, formatCurrency, exportMeta);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'PDF export failed');
+    } finally {
+      setExportBusy(false);
+    }
   };
 
-  const renderCurrencyCell = (value: number) => (
-    <span className="tabular-nums">{formatCurrency(value)}</span>
+  const renderAmountCell = (value: number) => (
+    <span className="tabular-nums">{formatAmount(value)}</span>
   );
 
   const renderCell = (row: CustomersSuppliersReportRow, col: CustomersSuppliersColumnKey) => {
@@ -254,29 +290,29 @@ export function CustomersSuppliersReportPage({ startDate, endDate, branchId }: P
           </span>
         );
       case 'totalPurchase':
-        return renderCurrencyCell(row.totalPurchase);
+        return renderAmountCell(row.totalPurchase);
       case 'totalPurchaseReturn':
-        return renderCurrencyCell(row.totalPurchaseReturn);
+        return renderAmountCell(row.totalPurchaseReturn);
       case 'totalSale':
-        return renderCurrencyCell(row.totalSale);
+        return renderAmountCell(row.totalSale);
       case 'totalSellReturn':
-        return renderCurrencyCell(row.totalSellReturn);
+        return renderAmountCell(row.totalSellReturn);
       case 'payment':
-        return renderCurrencyCell(row.payment);
+        return renderAmountCell(row.payment);
       case 'totalDiscount':
-        return renderCurrencyCell(row.totalDiscount);
+        return renderAmountCell(row.totalDiscount);
       case 'openingBalanceDue':
-        return renderCurrencyCell(row.openingBalanceDue);
+        return renderAmountCell(row.openingBalanceDue);
       case 'due':
         return (
           <span className={cn('tabular-nums', row.due > 0 ? 'text-amber-300' : 'text-gray-300')}>
-            {formatCurrency(row.due)}
+            {formatAmount(row.due)}
           </span>
         );
       case 'advanceGl':
         return (
           <span className={cn('tabular-nums', row.advanceGl > 0 ? 'text-cyan-300' : 'text-gray-500')}>
-            {formatCurrency(row.advanceGl)}
+            {formatAmount(row.advanceGl)}
           </span>
         );
       default:
@@ -288,7 +324,7 @@ export function CustomersSuppliersReportPage({ startDate, endDate, branchId }: P
     if (col === 'contact') return 'Total:';
     const key = col as keyof typeof totals;
     if (key in totals) {
-      return forPrint ? formatCurrency(totals[key]) : renderCurrencyCell(totals[key]);
+      return forPrint ? formatAmount(totals[key]) : renderAmountCell(totals[key]);
     }
     return null;
   };
@@ -316,7 +352,9 @@ export function CustomersSuppliersReportPage({ startDate, endDate, branchId }: P
               'px-2 py-2 whitespace-nowrap font-medium',
               !forPrint && 'cursor-pointer select-none hover:text-gray-200',
               col !== 'contact' && 'text-right',
-              forPrint && 'border border-gray-300 text-left text-black bg-gray-100'
+              forPrint && col !== 'contact' && 'text-right',
+              forPrint && col === 'contact' && 'text-left text-black bg-gray-100',
+              forPrint && col !== 'contact' && 'border border-gray-300 text-black bg-gray-100'
             )}
             onClick={forPrint ? undefined : () => toggleSort(col)}
           >
@@ -464,6 +502,19 @@ export function CustomersSuppliersReportPage({ startDate, endDate, branchId }: P
         )}
       </div>
 
+      <ReportActions
+        title="Customers & Suppliers"
+        onPrint={printCustomersSuppliersReport}
+        onPdf={handleExportPdf}
+        onExcel={handleExportExcel}
+        onCsv={handleExportCsv}
+        previewContentRef={printPreviewRef}
+        previewDocumentType="ledger"
+        previewReference={`customers-suppliers-${effectiveStartDate}`}
+        pdfLoading={exportBusy}
+        className="no-print !static !bg-transparent !border-0 !p-0 !mb-2"
+      />
+
       <div className="no-print flex flex-wrap items-center gap-3 py-2">
         <div className="flex items-center gap-2 text-sm text-gray-400 shrink-0">
           <span>Show</span>
@@ -479,36 +530,6 @@ export function CustomersSuppliersReportPage({ startDate, endDate, branchId }: P
         </div>
 
         <div className="flex flex-wrap items-center gap-2 flex-1 justify-center">
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-9 gap-1.5 bg-gray-900 border-gray-700 text-gray-300"
-            onClick={handleExportCsv}
-            disabled={filteredRows.length === 0}
-          >
-            <FileText size={14} />
-            Export CSV
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-9 gap-1.5 bg-gray-900 border-gray-700 text-gray-300"
-            onClick={handleExportExcel}
-            disabled={filteredRows.length === 0}
-          >
-            <FileSpreadsheet size={14} />
-            Export Excel
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-9 gap-1.5 bg-gray-900 border-gray-700 text-gray-300"
-            onClick={printCustomersSuppliersReport}
-            disabled={filteredRows.length === 0}
-          >
-            <Printer size={14} />
-            Print
-          </Button>
           <div ref={columnsRef} className="relative">
             <Button
               variant="outline"
@@ -553,16 +574,6 @@ export function CustomersSuppliersReportPage({ startDate, endDate, branchId }: P
               </div>
             )}
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-9 gap-1.5 bg-gray-900 border-gray-700 text-gray-300"
-            onClick={handleExportPdf}
-            disabled={filteredRows.length === 0}
-          >
-            <FileText size={14} />
-            Export PDF
-          </Button>
         </div>
 
         <div className="relative w-full sm:w-64 shrink-0 ml-auto">
@@ -593,6 +604,7 @@ export function CustomersSuppliersReportPage({ startDate, endDate, branchId }: P
 
       {/* Print-only layout (classic-print-base visible on @media print) */}
       <div
+        ref={printPreviewRef}
         className="classic-print-base"
         style={{ position: 'absolute', left: '-9999px', top: 0, width: '1px', height: '1px', overflow: 'hidden' }}
         aria-hidden
@@ -615,7 +627,7 @@ export function CustomersSuppliersReportPage({ startDate, endDate, branchId }: P
                     >
                       {col === 'contact'
                         ? r.contactName
-                        : formatCurrency(r[col as keyof CustomersSuppliersReportRow] as number)}
+                        : formatAmount(r[col as keyof CustomersSuppliersReportRow] as number)}
                     </td>
                   ))}
                 </tr>
@@ -650,7 +662,7 @@ export function CustomersSuppliersReportPage({ startDate, endDate, branchId }: P
         ) : (
           <>
             <div className="overflow-x-auto max-h-[calc(100dvh-22rem)] overflow-y-auto">
-              <table className="w-full text-left text-xs min-w-[1100px]">
+              <table className="w-full text-left text-sm min-w-[1100px]">
                 {renderTableHead()}
                 <tbody className="divide-y divide-gray-800/80 text-gray-200">
                   {pageSlice.length === 0 ? (
@@ -678,7 +690,7 @@ export function CustomersSuppliersReportPage({ startDate, endDate, branchId }: P
                   )}
                 </tbody>
                 {filteredRows.length > 0 && (
-                  <tfoot className="sticky bottom-0 z-10 bg-gray-950/95 border-t border-gray-800 text-gray-300 font-semibold">
+                  <tfoot className="sticky bottom-0 z-10 bg-gray-950/95 border-t border-gray-800 text-gray-300 text-sm font-bold">
                     <tr>
                       {visibleCols.map((col) => (
                         <td

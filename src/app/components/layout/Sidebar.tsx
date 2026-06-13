@@ -27,8 +27,6 @@ import {
   Plus,
   Shield,
   Scale,
-  BookOpen,
-  FileBarChart,
 } from 'lucide-react';
 import { useNavigation } from '../../context/NavigationContext';
 import { useSettings } from '../../context/SettingsContext';
@@ -81,8 +79,16 @@ export const Sidebar = () => {
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'contacts', label: 'Contacts', icon: Users, isHidden: !hasPermission('contacts.view') },
     { id: 'products', label: 'Products', icon: Package, isHidden: !hasPermission('products.view') },
-    { id: 'inventory', label: 'Inventory', icon: Warehouse, isHidden: !hasPermission('inventory.view') },
-    { id: 'stock-report', label: 'Stock Report', icon: FileBarChart, isHidden: !hasPermission('inventory.view') },
+    {
+      id: 'inventory-group',
+      label: 'Inventory',
+      icon: Warehouse,
+      isHidden: !hasPermission('inventory.view'),
+      children: [
+        { id: 'inventory', label: 'Stock Overview' },
+        { id: 'stock-report', label: 'Stock Report' },
+      ],
+    },
     { id: 'purchases', label: 'Purchases', icon: ShoppingBag, isHidden: !settingsModules.purchasesModuleEnabled || !hasPermission('purchases.view') },
     { id: 'sales', label: 'Sales', icon: ShoppingCart, isHidden: !settingsModules.salesModuleEnabled || !hasPermission('sales.view') },
     { id: 'bespoke-work-orders', label: 'Work Orders', icon: Scissors, isHidden: !settingsModules.salesModuleEnabled || !hasPermission('sales.view') || !businessSettings.enableBespokeOrders },
@@ -112,8 +118,16 @@ export const Sidebar = () => {
       ]
     },
     { id: 'expenses', label: 'Expenses', icon: Receipt, isHidden: !expensesNavVisible },
-    { id: 'accounting', label: 'Accounting', icon: Calculator, isHidden: !settingsModules.accountingModuleEnabled || !hasPermission('accounting.view') },
-    { id: 'party-ledger', label: 'Party Ledger', icon: BookOpen, isHidden: !settingsModules.accountingModuleEnabled || !hasPermission('accounting.view') },
+    {
+      id: 'accounting-group',
+      label: 'Accounting',
+      icon: Calculator,
+      isHidden: !settingsModules.accountingModuleEnabled || !hasPermission('accounting.view'),
+      children: [
+        { id: 'accounting', label: 'Accounting Dashboard' },
+        { id: 'party-ledger', label: 'Party Ledger' },
+      ],
+    },
     {
       id: 'ar-ap-reconciliation-center',
       label: 'AR/AP Diagnostics',
@@ -144,7 +158,6 @@ export const Sidebar = () => {
         { id: 'user-management-test', label: 'User Management Test' },
         { id: 'branch-management-test', label: 'Branch Management Test' },
         { id: 'accounting-chart-test', label: 'Chart of Accounts Test' },
-        { id: 'inventory-design-test', label: 'Inventory Design Test' },
         { id: 'rls-validation', label: 'RLS Validation' },
         { id: 'accounting-integrity-lab', label: 'Accounting Integrity Lab' },
         { id: 'developer-integrity-lab', label: 'Developer Integrity Lab' },

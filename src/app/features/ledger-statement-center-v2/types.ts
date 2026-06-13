@@ -3,6 +3,13 @@ import type { Transaction } from '@/app/services/customerLedgerTypes';
 
 export type LedgerStatementV2Type = 'customer' | 'supplier' | 'worker' | 'account';
 
+/** Pre-select entity when opening from Balance Sheet, COA, Contacts, etc. */
+export type LedgerStatementV2Initial = {
+  entityId: string;
+  statementType: LedgerStatementV2Type;
+  entityLabel?: string;
+};
+
 export type LedgerTransactionTypeFilter =
   | 'all'
   | 'sale'

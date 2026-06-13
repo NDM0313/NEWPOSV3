@@ -150,7 +150,7 @@ export async function buildLedgerRowWhatsAppMessage(
     lines.push(...extra);
   }
 
-  lines.push('', 'Shared from Ledger Center V2');
+  lines.push('', 'Shared from Account Statements');
   return lines.join('\n');
 }
 

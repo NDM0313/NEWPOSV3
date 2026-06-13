@@ -6,15 +6,26 @@ import { shareViaWhatsApp } from '@/app/services/documentShareService';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { accountingReportsService, SalesProfitResult } from '@/app/services/accountingReportsService';
+import { branchService } from '@/app/services/branchService';
 import { exportToPDF, exportToExcel, ExportData } from '@/app/utils/exportUtils';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/app/components/ui/select';
+import { Label } from '@/app/components/ui/label';
+import { Switch } from '@/app/components/ui/switch';
 
 const toExport = (r: SalesProfitResult, formatCurrency: (n: number) => string): ExportData => ({
   title: `Sales Profit Report (${r.startDate} to ${r.endDate})`,
-  headers: ['Invoice', 'Date', 'Customer', 'Revenue', 'Cost', 'Profit', 'Margin %'],
+  headers: ['Invoice', 'Date', 'Branch', 'Customer', 'Revenue', 'Cost', 'Profit', 'Margin %'],
   rows: [
     ...r.rows.map((row) => [
       row.invoice_no,
       row.sale_date,
+      row.branch_name,
       row.customer_name,
       formatCurrency(row.revenue),
       formatCurrency(row.cost),
@@ -22,7 +33,7 @@ const toExport = (r: SalesProfitResult, formatCurrency: (n: number) => string): 
       `${row.margin_pct.toFixed(1)}%`,
     ]),
     [],
-    ['Total', '', '', formatCurrency(r.totalRevenue), formatCurrency(r.totalCost), formatCurrency(r.totalProfit), ''],
+    ['Total', '', '', '', formatCurrency(r.totalRevenue), formatCurrency(r.totalCost), formatCurrency(r.totalProfit), ''],
   ],
 });
 
@@ -31,28 +42,54 @@ export const SalesProfitPage: React.FC<{
   endDate: string;
   branchId?: string;
   customerId?: string;
-}> = ({ startDate, endDate, branchId, customerId }) => {
+}> = ({ startDate, endDate, branchId: globalBranchId, customerId }) => {
   const { companyId } = useSupabase();
   const { formatCurrency } = useFormatCurrency();
   const [data, setData] = useState<SalesProfitResult | null>(null);
   const [loading, setLoading] = useState(true);
+  const [overrideBranch, setOverrideBranch] = useState(false);
+  const [branchOverride, setBranchOverride] = useState<string>('all');
+  const [branches, setBranches] = useState<{ id: string; name: string }[]>([]);
+
+  const effectiveBranchId = overrideBranch
+    ? branchOverride === 'all'
+      ? undefined
+      : branchOverride
+    : globalBranchId && globalBranchId !== 'all'
+      ? globalBranchId
+      : undefined;
+
+  useEffect(() => {
+    if (!companyId) return;
+    branchService.getBranchesCached(companyId).then((list) => {
+      setBranches(list.map((b) => ({ id: b.id, name: b.name || b.code || b.id })));
+    });
+  }, [companyId]);
+
+  useEffect(() => {
+    if (!overrideBranch && globalBranchId && globalBranchId !== 'all') {
+      setBranchOverride(globalBranchId);
+    }
+  }, [globalBranchId, overrideBranch]);
 
   useEffect(() => {
     if (!companyId || !startDate || !endDate) {
-      setData(null);
-      setLoading(false);
+      if (!companyId) setLoading(true);
       return;
     }
     setLoading(true);
     accountingReportsService
-      .getSalesProfit(companyId, startDate, endDate, branchId, customerId)
+      .getSalesProfit(companyId, startDate, endDate, effectiveBranchId, customerId)
       .then(setData)
       .catch(() => setData(null))
       .finally(() => setLoading(false));
-  }, [companyId, startDate, endDate, branchId, customerId]);
+  }, [companyId, startDate, endDate, effectiveBranchId, customerId]);
 
   const reportPrintRef = useRef<HTMLDivElement>(null);
-  const branchLabel = branchId && branchId !== 'all' ? 'Branch scope' : 'All branches';
+  const branchLabel =
+    effectiveBranchId != null
+      ? branches.find((b) => b.id === effectiveBranchId)?.name || 'Branch scope'
+      : 'All branches';
   const exportPayload = useMemo(() => (data ? toExport(data, formatCurrency) : null), [data, formatCurrency]);
 
   const handleExportPDF = () => {
@@ -88,7 +125,7 @@ export const SalesProfitPage: React.FC<{
 
   return (
     <div className="space-y-4">
-      <div className="no-print">
+      <div className="no-print flex flex-wrap items-end gap-4">
         <ReportActions
           title="Sales Profit Report"
           onPrint={() => window.print()}
@@ -98,10 +135,34 @@ export const SalesProfitPage: React.FC<{
           previewContentRef={reportPrintRef}
           previewDocumentType="ledger"
           previewReference={`sales-profit-${data.startDate}-${data.endDate}`}
+          className="flex-1 !static !bg-transparent !border-0 !p-0 !mb-0"
         />
       </div>
+      <div className="no-print flex flex-wrap items-center gap-4 rounded-lg border border-gray-800 bg-gray-900/40 px-3 py-2">
+        <div className="flex items-center gap-2">
+          <Switch checked={overrideBranch} onCheckedChange={setOverrideBranch} id="sp-override-branch" />
+          <Label htmlFor="sp-override-branch" className="text-xs text-gray-400 cursor-pointer">
+            Override header branch
+          </Label>
+        </div>
+        {overrideBranch ? (
+          <Select value={branchOverride} onValueChange={setBranchOverride}>
+            <SelectTrigger className="w-[200px] bg-gray-950 border-gray-700 h-9">
+              <SelectValue placeholder="Branch" />
+            </SelectTrigger>
+            <SelectContent className="bg-gray-900 border-gray-700">
+              <SelectItem value="all">All branches</SelectItem>
+              {branches.map((b) => (
+                <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          <span className="text-sm text-gray-400">Branch: {branchLabel}</span>
+        )}
+      </div>
       <p className="no-print text-sm text-gray-400">
-        Period: {data.startDate} to {data.endDate} • Total Revenue: {formatCurrency(data.totalRevenue)} • Total Profit: {formatCurrency(data.totalProfit)}
+        Period: {data.startDate} to {data.endDate} • Branch: {branchLabel} • Total Revenue: {formatCurrency(data.totalRevenue)} • Total Profit: {formatCurrency(data.totalProfit)}
       </p>
       {exportPayload ? (
         <div className="fixed left-[-9999px] top-0 w-[820px] pointer-events-none" aria-hidden>
@@ -121,6 +182,7 @@ export const SalesProfitPage: React.FC<{
             <tr>
               <th className="p-3 text-left font-medium text-gray-300">Invoice</th>
               <th className="p-3 text-left font-medium text-gray-300">Date</th>
+              <th className="p-3 text-left font-medium text-gray-300">Branch</th>
               <th className="p-3 text-left font-medium text-gray-300">Customer</th>
               <th className="p-3 text-right font-medium text-gray-300">Revenue</th>
               <th className="p-3 text-right font-medium text-gray-300">Cost</th>
@@ -131,7 +193,7 @@ export const SalesProfitPage: React.FC<{
           <tbody className="divide-y divide-gray-800">
             {data.rows.length === 0 ? (
               <tr>
-                <td colSpan={7} className="p-6 text-center text-gray-500">
+                <td colSpan={8} className="p-6 text-center text-gray-500">
                   No sales in this period.
                 </td>
               </tr>
@@ -140,11 +202,12 @@ export const SalesProfitPage: React.FC<{
                 <tr key={row.sale_id} className="hover:bg-gray-800/30">
                   <td className="p-3 font-mono text-white">{row.invoice_no}</td>
                   <td className="p-3 text-gray-300">{row.sale_date}</td>
+                  <td className="p-3 text-gray-300">{row.branch_name || '—'}</td>
                   <td className="p-3 text-gray-300">{row.customer_name}</td>
-                  <td className="p-3 text-right text-white">{formatCurrency(row.revenue)}</td>
-                  <td className="p-3 text-right text-gray-300">{formatCurrency(row.cost)}</td>
-                  <td className="p-3 text-right text-green-400">{formatCurrency(row.profit)}</td>
-                  <td className="p-3 text-right text-gray-300">{row.margin_pct.toFixed(1)}%</td>
+                  <td className="p-3 text-right text-white tabular-nums">{formatCurrency(row.revenue)}</td>
+                  <td className="p-3 text-right text-gray-300 tabular-nums">{formatCurrency(row.cost)}</td>
+                  <td className="p-3 text-right text-green-400 tabular-nums">{formatCurrency(row.profit)}</td>
+                  <td className="p-3 text-right text-gray-300 tabular-nums">{row.margin_pct.toFixed(1)}%</td>
                 </tr>
               ))
             )}
@@ -152,10 +215,10 @@ export const SalesProfitPage: React.FC<{
           {data.rows.length > 0 && (
             <tfoot className="border-t-2 border-gray-700 bg-gray-800/50">
               <tr>
-                <td colSpan={3} className="p-3 font-medium text-white">Total</td>
-                <td className="p-3 text-right font-medium text-white">{formatCurrency(data.totalRevenue)}</td>
-                <td className="p-3 text-right font-medium text-white">{formatCurrency(data.totalCost)}</td>
-                <td className="p-3 text-right font-medium text-green-400">{formatCurrency(data.totalProfit)}</td>
+                <td colSpan={4} className="p-3 font-medium text-white">Total</td>
+                <td className="p-3 text-right font-medium text-white tabular-nums">{formatCurrency(data.totalRevenue)}</td>
+                <td className="p-3 text-right font-medium text-white tabular-nums">{formatCurrency(data.totalCost)}</td>
+                <td className="p-3 text-right font-medium text-green-400 tabular-nums">{formatCurrency(data.totalProfit)}</td>
                 <td className="p-3 text-right font-medium text-white">—</td>
               </tr>
             </tfoot>

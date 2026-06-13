@@ -15,6 +15,7 @@ import {
   unifiedEditButtonLabel,
   type JournalTransactionLike,
 } from '@/app/lib/unifiedTransactionEdit';
+import { STALE_REVERSAL_VOID_LABEL } from '@/app/lib/staleCorrectionReversalPolicy';
 
 export type TransactionActionContext =
   | 'journal'
@@ -30,6 +31,7 @@ export type TransactionActionId =
   | 'edit'
   | 'cancel_payment'
   | 'cancel_entry'
+  | 'void_stale_reversal'
   | 'undo_last_change'
   | 'open_source_document'
   | 'view_trace'
@@ -118,6 +120,9 @@ export interface GetTransactionActionsOptions {
   isReversalRow?: boolean;
   /** When false, skip journal-only View action (detail modal). */
   includeViewAction?: boolean;
+  /** Admin/owner: show Remove from live GL for stale correction_reversal rows. */
+  allowStaleReversalVoid?: boolean;
+  staleReversalVoidEligible?: boolean;
 }
 
 export function getTransactionActions(
@@ -133,6 +138,19 @@ export function getTransactionActions(
 
   if (isReversalRow) {
     if (includeView) actions.push({ id: 'view', label: 'View', severity: 'secondary' });
+    if (
+      isCorrectionReversal &&
+      options.allowStaleReversalVoid &&
+      options.staleReversalVoidEligible &&
+      row.is_void !== true
+    ) {
+      actions.push({
+        id: 'void_stale_reversal',
+        label: STALE_REVERSAL_VOID_LABEL,
+        severity: 'destructive',
+        title: 'Mark reversal void — removes from Cash, Trial Balance, and normal Day Book (audit trail kept)',
+      });
+    }
     if (hasPaymentTraceTarget(row)) {
       actions.push({ id: 'view_trace', label: 'View Trace', severity: 'secondary' });
     }

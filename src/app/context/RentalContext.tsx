@@ -14,144 +14,15 @@ import {
   shouldAcceptInvalidation,
   type DataInvalidationDetail,
 } from '@/app/lib/dataInvalidationBus';
+import { mapRentalRowToUI, mapRentalRowsSafe } from '@/app/lib/rentalUiMapper';
+import type { RentalUI, RentalItemUI } from '@/app/types/rentalTypes';
 
-export interface RentalItemUI {
-  id: string;
-  productId: string;
-  productName: string;
-  sku: string;
-  quantity: number;
-  unit: string;
-  rate: number;
-  total: number;
-  boxes?: number | null;
-  pieces?: number | null;
-}
-
-export interface RentalUI {
-  id: string;
-  rentalNo: string;
-  customerId: string | null;
-  customerName: string;
-  customerContact?: string;
-  branchId: string;
-  location: string;
-  startDate: string;
-  expectedReturnDate: string;
-  actualReturnDate: string | null;
-  status: RentalStatus;
-  totalAmount: number;
-  paidAmount: number;
-  dueAmount: number;
-  itemsCount: number;
-  items?: RentalItemUI[];
-  createdAt?: string;
-  salesmanId?: string | null;
-  salesmanName?: string;
-  createdBy?: string;
-  createdByName?: string;
-  notes?: string | null;
-  documentType?: string;
-  documentNumber?: string;
-  /** Pickup security ID (CNIC etc.) — separate from manual bill ref. */
-  securityDocumentType?: string | null;
-  securityDocumentNumber?: string | null;
-  /** Legacy web pickup ID when stored in document_number before security columns. */
-  pickupDocumentType?: string | null;
-  pickupDocumentNumber?: string | null;
-  /** Assessed at return (damage / penalty) — not part of rental line items total */
-  damageCharges?: number;
-  conditionType?: string | null;
-  damageNotes?: string | null;
-  penaltyPaid?: boolean;
-  /** Security deposit minus penalty (when returned) */
-  refundAmount?: number;
-}
-
-// Map DB status (booked, picked_up, returned, closed, cancelled, overdue) to UI status
-function mapStatus(status: string): RentalStatus {
-  const map: Record<string, RentalStatus> = {
-    draft: 'draft',
-    booked: 'booked',
-    rented: 'rented',
-    returned: 'returned',
-    overdue: 'overdue',
-    cancelled: 'cancelled',
-    picked_up: 'rented',
-    active: 'rented',
-    closed: 'returned',
-  };
-  return (map[status] || 'draft') as RentalStatus;
-}
-
-function convertFromSupabaseRental(row: any): RentalUI {
-  let location = '';
-  if (row.branch) {
-    location = row.branch.name || row.branch.code || '';
-  }
-  if (location && row.branch?.code) location = `${row.branch.code} | ${location}`.trim();
-  if (!location && row.branch_id) location = row.branch_id;
-
-  // Support both new schema (start_date, expected_return_date, rental_no) and old (pickup_date, return_date, booking_no)
-  const startDate = row.start_date || row.pickup_date || row.booking_date || '';
-  const expectedReturnDate = row.expected_return_date || row.return_date || '';
-  const actualReturnDate = row.actual_return_date ?? null;
-  const rentalNo = row.rental_no || row.booking_no || '';
-
-  const items = row.items || [];
-  return {
-    id: row.id,
-    rentalNo,
-    customerId: row.customer_id || null,
-    customerName: row.customer_name || row.customer?.name || 'Unknown',
-    customerContact: row.customer?.phone,
-    branchId: row.branch_id || '',
-    location,
-    startDate,
-    expectedReturnDate,
-    actualReturnDate,
-    status: mapStatus(row.status || 'draft'),
-    totalAmount: Number(row.total_amount ?? row.rental_charges ?? 0),
-    paidAmount: Number(row.paid_amount ?? 0),
-    dueAmount: Number(row.due_amount ?? 0),
-    itemsCount: items.length,
-    items: items.map((i: any) => ({
-      id: i.id,
-      productId: i.product_id,
-      productName: i.product_name || i.product?.name || '',
-      sku: i.sku || i.product?.sku || '',
-      quantity: Number(i.quantity ?? 0),
-      unit: i.unit || 'piece',
-      rate: Number(i.rate ?? i.rate_per_day ?? 0),
-      total: Number(i.total ?? 0),
-      boxes: i.boxes,
-      pieces: i.pieces,
-    })),
-    createdAt: row.created_at || row.booking_date || '',
-    salesmanId: row.salesman_id ?? null,
-    createdBy: row.created_by,
-    createdByName: row.created_by_user?.full_name || row.created_by_user?.email || 'System',
-    notes: row.notes,
-    documentType: row.document_type,
-    documentNumber: row.document_number,
-    securityDocumentType: row.security_document_type ?? null,
-    securityDocumentNumber: row.security_document_number ?? null,
-    pickupDocumentType: row.security_document_type || (row.document_received ? row.document_type : null) || null,
-    pickupDocumentNumber:
-      row.security_document_number
-      || (row.document_received && row.document_type && !row.security_document_number ? row.document_number : null)
-      || null,
-    damageCharges: Number(row.damage_charges ?? 0) || 0,
-    conditionType: row.condition_type ?? null,
-    damageNotes: row.damage_notes ?? null,
-    penaltyPaid: row.penalty_paid === true,
-    refundAmount: Number(row.refund_amount ?? 0) || 0,
-  };
-}
+export type { RentalUI, RentalItemUI } from '@/app/types/rentalTypes';
 
 interface RentalContextType {
   rentals: RentalUI[];
   loading: boolean;
+  loadFailed: boolean;
   rentalsTotal: number;
   rentalsPage: number;
   rentalsPageSize: number;
@@ -178,6 +49,7 @@ export const useRentals = () => {
       return {
         rentals: [],
         loading: false,
+        loadFailed: false,
         rentalsTotal: 0,
         rentalsPage: 0,
         rentalsPageSize: 100,
@@ -206,6 +78,7 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
   const [rentalsTotal, setRentalsTotal] = useState(0);
   const [rentalsPage, setRentalsPageState] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const { companyId, branchId, user, requiresBranchSelection } = useSupabase();
   const accounting = useAccountingOptional();
 
@@ -218,20 +91,25 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
     const showBlockingLoader = !hasLoadedOnceRef.current;
     try {
       if (showBlockingLoader) setLoading(true);
+      setLoadFailed(false);
       // Non-blocking: overdue marking must not delay the list fetch
       void rentalService.markOverdueRentals(companyId).catch((e) => {
         console.warn('[RENTAL CONTEXT] markOverdueRentals:', e);
       });
-      const result = await rentalService.getAllRentals(
+      const { rows, total } = await rentalService.fetchRentalsForList(
         companyId,
         branchId === 'all' ? undefined : branchId || undefined,
         { limit: RENTALS_PAGE_SIZE, offset: rentalsPage * RENTALS_PAGE_SIZE }
       );
-      const isPaginated =
-        result && typeof result === 'object' && 'data' in result && 'total' in result;
-      const data = isPaginated ? (result as { data: any[]; total: number }).data : (result as any[]);
-      const total = isPaginated ? (result as { data: any[]; total: number }).total : data.length;
+      if (rows.length === 0 && rentalsPage > 0 && total > 0) {
+        setRentalsPageState(0);
+        return;
+      }
       setRentalsTotal(total);
+      const mapped = mapRentalRowsSafe(rows);
+      if (mapped.length === 0 && rows.length > 0) {
+        console.warn('[RENTAL CONTEXT] all rows failed to map', rows.length);
+      }
       const salesmen = await userService.getSalesmen(companyId).catch(() => []);
       const salesmanNameById = new Map(
         (salesmen || []).map((s: { id: string; full_name?: string; name?: string }) => [
@@ -241,8 +119,7 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
       );
       if (seq !== loadSeqRef.current) return;
       setRentals(
-        (data || []).map((row) => {
-          const rental = convertFromSupabaseRental(row);
+        mapped.map((rental) => {
           if (rental.salesmanId) {
             rental.salesmanName = salesmanNameById.get(rental.salesmanId) || '';
           }
@@ -254,6 +131,7 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
       if (seq !== loadSeqRef.current) return;
       console.error('[RENTAL CONTEXT]', e);
       toast.error('Failed to load rentals');
+      setLoadFailed(true);
       if (!hasLoadedOnceRef.current) setRentals([]);
       setRentalsTotal(0);
     } finally {
@@ -624,6 +502,7 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
   const value = useMemo<RentalContextType>(() => ({
     rentals,
     loading,
+    loadFailed,
     rentalsTotal,
     rentalsPage,
     rentalsPageSize: RENTALS_PAGE_SIZE,
@@ -640,7 +519,7 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
     deleteRental,
     markAsPickedUp,
   }), [
-    rentals, loading, rentalsTotal, rentalsPage, setRentalsPage, getRentalById, loadRentals, createRental, updateRental,
+    rentals, loading, loadFailed, rentalsTotal, rentalsPage, setRentalsPage, getRentalById, loadRentals, createRental, updateRental,
     finalizeRental, receiveReturn, cancelRental, addPayment, deletePayment,
     deleteRental, markAsPickedUp,
   ]);

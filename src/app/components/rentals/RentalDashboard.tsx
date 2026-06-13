@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { toast } from 'sonner';
 import { Plus, LayoutList, Calendar as CalendarIcon, Truck, CornerDownLeft, DollarSign } from 'lucide-react';
 import { Button } from '../ui/button';
@@ -15,11 +15,14 @@ import { ReturnModal } from './ReturnModal';
 import { UnifiedPaymentDialog } from '../shared/UnifiedPaymentDialog';
 import { clsx } from 'clsx';
 import { useRentals, type RentalUI } from '@/app/context/RentalContext';
+import { useSupabase } from '@/app/context/SupabaseContext';
+import { rentalService } from '@/app/services/rentalService';
 import { supabase } from '@/lib/supabase';
 import { safeSessionStorageGetItem, safeSessionStorageRemoveItem } from '@/app/lib/safeBrowserStorage';
 
 export const RentalDashboard = () => {
-  const { refreshRentals, markAsPickedUp, receiveReturn, getRentalById } = useRentals();
+  const { refreshRentals, markAsPickedUp, receiveReturn, getRentalById, rentals } = useRentals();
+  const { companyId, branchId } = useSupabase();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [editRental, setEditRental] = useState<RentalUI | null>(null);
   const [viewRental, setViewRental] = useState<RentalUI | null>(null);
@@ -30,6 +33,39 @@ export const RentalDashboard = () => {
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [collectionRental, setCollectionRental] = useState<RentalUI | null>(null);
   const [activeTab, setActiveTab] = useState<'list' | 'calendar' | 'pickupToday' | 'returnToday' | 'collections' | 'reports'>('list');
+  const [queueRefreshKey, setQueueRefreshKey] = useState(0);
+  const [tabCounts, setTabCounts] = useState({ pickup: 0, return: 0, collections: 0 });
+
+  const activeCount = useMemo(
+    () => rentals.filter((r) => ['booked', 'active', 'rented', 'picked_up', 'overdue'].includes(r.status)).length,
+    [rentals]
+  );
+
+  const bumpQueueRefresh = useCallback(async () => {
+    setQueueRefreshKey((k) => k + 1);
+    await refreshRentals();
+  }, [refreshRentals]);
+
+  const loadTabCounts = useCallback(async () => {
+    if (!companyId) return;
+    const b = branchId === 'all' || !branchId ? undefined : branchId;
+    try {
+      const [pickups, returns, outstanding] = await Promise.all([
+        rentalService.getPickupsDue(companyId, b),
+        rentalService.getReturnsDue(companyId, b),
+        rentalService.getOutstandingForCollections(companyId, b),
+      ]);
+      setTabCounts({ pickup: pickups.length, return: returns.length, collections: outstanding.length });
+    } catch (e) {
+      console.error('[RentalDashboard] tab counts', e);
+      toast.error('Failed to load rental queue counts');
+      setTabCounts({ pickup: 0, return: 0, collections: 0 });
+    }
+  }, [companyId, branchId]);
+
+  useEffect(() => {
+    void loadTabCounts();
+  }, [loadTabCounts, queueRefreshKey]);
 
   const handleAddRental = () => {
     setEditRental(null);
@@ -47,6 +83,14 @@ export const RentalDashboard = () => {
   };
 
   /** Deep-link from accounting unified edit (rental JE): open booking drawer after navigating to Rentals. */
+  useEffect(() => {
+    const initialTab = safeSessionStorageGetItem('rentalsInitialTab');
+    if (initialTab === 'reports') {
+      safeSessionStorageRemoveItem('rentalsInitialTab');
+      setActiveTab('reports');
+    }
+  }, []);
+
   useEffect(() => {
     const pending = safeSessionStorageGetItem('pendingRentalDetailsId');
     if (!pending) return;
@@ -109,6 +153,11 @@ export const RentalDashboard = () => {
               >
                 <Truck size={16} className="mr-1.5 inline" />
                 Pickup Today
+                {tabCounts.pickup > 0 && (
+                  <span className="ml-1.5 text-xs font-bold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400">
+                    {tabCounts.pickup}
+                  </span>
+                )}
               </button>
               <button
                 onClick={() => setActiveTab('returnToday')}
@@ -120,6 +169,11 @@ export const RentalDashboard = () => {
               >
                 <CornerDownLeft size={16} className="mr-1.5 inline" />
                 Return Today
+                {tabCounts.return > 0 && (
+                  <span className="ml-1.5 text-xs font-bold px-1.5 py-0.5 rounded-full bg-green-500/20 text-green-400">
+                    {tabCounts.return}
+                  </span>
+                )}
               </button>
               <button
                 onClick={() => setActiveTab('collections')}
@@ -131,6 +185,11 @@ export const RentalDashboard = () => {
               >
                 <DollarSign size={16} className="mr-1.5 inline" />
                 Collections
+                {tabCounts.collections > 0 && (
+                  <span className="ml-1.5 text-xs font-bold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400">
+                    {tabCounts.collections}
+                  </span>
+                )}
               </button>
               <button
                 onClick={() => setActiveTab('reports')}
@@ -165,6 +224,9 @@ export const RentalDashboard = () => {
         )}
         {activeTab === 'pickupToday' && (
           <PickupTodayTab
+            refreshKey={queueRefreshKey}
+            activeCount={activeCount}
+            onViewAllRentals={() => setActiveTab('list')}
             onProcessPickup={(r) => {
               setRentalForPickup(r);
               setPickupModalOpen(true);
@@ -173,6 +235,9 @@ export const RentalDashboard = () => {
         )}
         {activeTab === 'returnToday' && (
           <ReturnTodayTab
+            refreshKey={queueRefreshKey}
+            activeCount={activeCount}
+            onViewAllRentals={() => setActiveTab('list')}
             onProcessReturn={(r) => {
               setRentalForReturn(r);
               setReturnModalOpen(true);
@@ -181,6 +246,7 @@ export const RentalDashboard = () => {
         )}
         {activeTab === 'collections' && (
           <RentalCollectionsTab
+            refreshKey={queueRefreshKey}
             onCollectPayment={(r) => {
               setCollectionRental(r);
               setPaymentDialogOpen(true);
@@ -231,7 +297,7 @@ export const RentalDashboard = () => {
         rental={rentalForPickup}
         onConfirm={async (id, payload) => {
           await markAsPickedUp(id, payload);
-          await refreshRentals();
+          await bumpQueueRefresh();
         }}
         onAddPayment={(r) => {
           setRentalForPickup(r);
@@ -281,7 +347,7 @@ export const RentalDashboard = () => {
               setPickupModalOpen(true);
             }
             // Refresh context AFTER modal is re-opened with fresh data
-            await refreshRentals();
+            await bumpQueueRefresh();
           }}
         />
       )}
@@ -296,7 +362,7 @@ export const RentalDashboard = () => {
         documentInfo={rentalForReturn ? { documentType: rentalForReturn.pickupDocumentType || rentalForReturn.documentType, documentNumber: rentalForReturn.pickupDocumentNumber || undefined } : undefined}
         onConfirm={async (id, payload) => {
           await receiveReturn(id, payload);
-          await refreshRentals();
+          await bumpQueueRefresh();
         }}
       />
     </div>

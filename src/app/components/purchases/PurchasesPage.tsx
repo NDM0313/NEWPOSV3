@@ -60,6 +60,7 @@ import { toast } from 'sonner';
 import { exportToCSV, exportToExcel, exportToPDF, type ExportData } from '@/app/utils/exportUtils';
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { AdaptiveCurrencyValue } from '@/app/components/shared/AdaptiveCurrencyValue';
 import { getEffectivePurchaseStatus, getPurchaseStatusBadgeConfig, DEFAULT_PURCHASE_BADGE, isPaymentClosedForPurchase, canAddPaymentToPurchase } from '@/app/utils/statusHelpers';
 import { getPurchaseDisplayNumber } from '@/app/lib/documentDisplayNumbers';
 import {
@@ -1471,11 +1472,11 @@ export const PurchasesPage = () => {
       <div className="shrink-0 px-6 py-4 bg-[#0F1419] border-b border-gray-800">
         <div className="grid grid-cols-4 gap-4">
           {/* Total Purchase */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 min-w-0">
             <div className="flex items-start justify-between mb-3">
-              <div>
+              <div className="min-w-0">
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Purchase</p>
-                <p className="text-2xl font-bold text-white mt-1">{formatCurrency(summary.totalPurchase)}</p>
+                <AdaptiveCurrencyValue value={summary.totalPurchase} className="text-2xl font-bold text-white mt-1" as="p" />
                 <p className="text-xs text-gray-500 mt-1">This month</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-orange-500/10 flex items-center justify-center">
@@ -1485,11 +1486,11 @@ export const PurchasesPage = () => {
           </div>
 
           {/* Amount Due */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 min-w-0">
             <div className="flex items-start justify-between mb-3">
-              <div>
+              <div className="min-w-0">
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Amount Due</p>
-                <p className="text-2xl font-bold text-red-400 mt-1">{formatCurrency(summary.totalDue)}</p>
+                <AdaptiveCurrencyValue value={summary.totalDue} className="text-2xl font-bold text-red-400 mt-1" as="p" />
                 <p className="text-xs text-gray-500 mt-1">Pending payments</p>
                 <p className="text-[10px] text-gray-500 mt-2 leading-snug">
                   Listed POs: supplier document due. Not Contacts mixed payables or GL AP 2000 alone — use supplier-only operational vs AP 2000 on Contacts reconciliation.
@@ -1502,11 +1503,11 @@ export const PurchasesPage = () => {
           </div>
 
           {/* Returns */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 min-w-0">
             <div className="flex items-start justify-between mb-3">
-              <div>
+              <div className="min-w-0">
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Returns</p>
-                <p className="text-2xl font-bold text-yellow-400 mt-1">{formatCurrency(summary.returns)}</p>
+                <AdaptiveCurrencyValue value={summary.returns} className="text-2xl font-bold text-yellow-400 mt-1" as="p" />
                 <p className="text-xs text-gray-500 mt-1">2 items returned</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-yellow-500/10 flex items-center justify-center">

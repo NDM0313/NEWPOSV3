@@ -398,8 +398,7 @@ export function AccountingIntegrityLabPage() {
     if (a.type === 'accounting') {
       const payload: Record<string, string> = { tab: a.tab };
       if (a.focusJournalEntryId) payload.searchTerm = a.focusJournalEntryId;
-      if (a.focusAccountId) payload.searchTerm = a.focusAccountId;
-      if (a.ledgerType) payload.ledgerType = a.ledgerType;
+      if (a.focusAccountId) payload.focusAccountId = a.focusAccountId;
       safeSessionStorageSetItem(INTEGRITY_LAB_SESSION_KEY, JSON.stringify(payload));
       setCurrentView('accounting');
       toast.info(`Accounting → ${a.tab}${a.focusJournalEntryId ? ' (search JE id)' : ''}`);

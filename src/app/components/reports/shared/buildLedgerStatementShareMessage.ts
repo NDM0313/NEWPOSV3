@@ -30,6 +30,6 @@ export function buildLedgerStatementShareMessage(input: LedgerStatementShareInpu
   if (input.generatedAt) {
     lines.push('', `Generated: ${input.generatedAt}`);
   }
-  lines.push('', 'Shared from Ledger Center V2');
+  lines.push('', 'Shared from Account Statements');
   return lines.join('\n');
 }

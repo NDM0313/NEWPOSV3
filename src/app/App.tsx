@@ -157,7 +157,7 @@ const AppContent = () => {
     return (
       <Layout>
         <Suspense fallback={<GlobalSuspenseFallback />}>
-          <ReportsDashboardEnhanced initialReportType="ledger-v2" />
+          <AccountingDashboard />
         </Suspense>
         <GlobalDrawer />
       </Layout>

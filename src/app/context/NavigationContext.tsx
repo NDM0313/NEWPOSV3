@@ -1,5 +1,8 @@
 import React, { createContext, useContext, useState, useCallback, useMemo, useEffect, ReactNode } from 'react';
 import { parseNavLocationFromUrl, type FinancialReportType } from '@/app/lib/navDeepLinks';
+import type { LedgerStatementV2Initial } from '@/app/features/ledger-statement-center-v2/types';
+
+export type AccountingTabInitial = 'account_statements' | null;
 
 export type View = 
   | 'dashboard' 
@@ -126,18 +129,17 @@ interface NavigationContextType {
   openPartyLedger?: (params: { contactId?: string; contactName?: string; contactType?: 'customer' | 'supplier' }) => void;
   /** Set from `?financial=` when opening Reports via deep link. */
   reportsFinancialInitial: FinancialReportType | null;
-  /** Pre-select party/account when opening Ledger Statement V2 from Balance Sheet etc. */
-  ledgerV2Initial: {
-    entityId: string;
-    statementType: 'customer' | 'supplier';
-    entityLabel?: string;
-  } | null;
-  setLedgerV2Initial: (p: NavigationContextType['ledgerV2Initial']) => void;
-  openLedgerStatementV2: (params: {
-    entityId: string;
-    statementType: 'customer' | 'supplier';
-    entityLabel?: string;
-  }) => void;
+  /** Pre-select party/account when opening Account Statements (embedded V2) from Balance Sheet etc. */
+  accountStatementV2Initial: LedgerStatementV2Initial | null;
+  setAccountStatementV2Initial: (p: LedgerStatementV2Initial | null) => void;
+  /** One-shot tab to open when navigating to Accounting (e.g. account_statements). */
+  accountingTabInitial: AccountingTabInitial;
+  setAccountingTabInitial: (tab: AccountingTabInitial) => void;
+  openLedgerStatementV2: (params: LedgerStatementV2Initial) => void;
+  /** @deprecated use accountStatementV2Initial */
+  ledgerV2Initial: LedgerStatementV2Initial | null;
+  /** @deprecated use setAccountStatementV2Initial */
+  setLedgerV2Initial: (p: LedgerStatementV2Initial | null) => void;
 }
 
 const NavigationContext = createContext<NavigationContextType | undefined>(undefined);
@@ -169,6 +171,10 @@ const defaultNavigationContext: NavigationContextType = {
   saleDrawerBespokeMode: false,
   clearSaleDrawerBespokeMode: () => {},
   reportsFinancialInitial: null,
+  accountStatementV2Initial: null,
+  setAccountStatementV2Initial: () => {},
+  accountingTabInitial: null,
+  setAccountingTabInitial: () => {},
   ledgerV2Initial: null,
   setLedgerV2Initial: () => {},
   openLedgerStatementV2: () => {},
@@ -194,17 +200,17 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
   const [createdProduct, setCreatedProduct] = useState<any | null>(null);
   const [saleDrawerBespokeMode, setSaleDrawerBespokeMode] = useState(false);
   const [reportsFinancialInitial, setReportsFinancialInitial] = useState<FinancialReportType | null>(null);
-  const [ledgerV2Initial, setLedgerV2Initial] = useState<{
-    entityId: string;
-    statementType: 'customer' | 'supplier';
-    entityLabel?: string;
-  } | null>(null);
+  const [accountStatementV2Initial, setAccountStatementV2Initial] = useState<LedgerStatementV2Initial | null>(null);
+  const [accountingTabInitial, setAccountingTabInitial] = useState<AccountingTabInitial>(null);
 
   useEffect(() => {
-    const { view, financial } = parseNavLocationFromUrl();
+    const { view, financial, openAccountStatements } = parseNavLocationFromUrl();
     if (view) {
       setCurrentView(view as View);
       if (financial) setReportsFinancialInitial(financial);
+      if (openAccountStatements) {
+        setAccountingTabInitial('account_statements');
+      }
     }
   }, []);
 
@@ -248,14 +254,11 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
     setCurrentView('party-ledger');
   }, []);
 
-  const openLedgerStatementV2 = useCallback(
-    (params: { entityId: string; statementType: 'customer' | 'supplier'; entityLabel?: string }) => {
-      setLedgerV2Initial(params);
-      setReportsFinancialInitial('ledger-statement-v2');
-      setCurrentView('reports');
-    },
-    []
-  );
+  const openLedgerStatementV2 = useCallback((params: LedgerStatementV2Initial) => {
+    setAccountStatementV2Initial(params);
+    setAccountingTabInitial('account_statements');
+    setCurrentView('accounting');
+  }, []);
 
   // Use functional updater to avoid stale closure on isSidebarOpen
   const toggleSidebar = useCallback(() => setIsSidebarOpen(prev => !prev), []);
@@ -378,8 +381,12 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
     saleDrawerBespokeMode,
     clearSaleDrawerBespokeMode,
     reportsFinancialInitial,
-    ledgerV2Initial,
-    setLedgerV2Initial,
+    accountStatementV2Initial,
+    setAccountStatementV2Initial,
+    accountingTabInitial,
+    setAccountingTabInitial,
+    ledgerV2Initial: accountStatementV2Initial,
+    setLedgerV2Initial: setAccountStatementV2Initial,
     openLedgerStatementV2,
   }), [
     currentView, isSidebarOpen, mobileNavOpen, activeDrawer, parentDrawer,
@@ -388,7 +395,7 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
     drawerPrefillPhone, createdContactId, createdContactType, createdProduct, packingModalOpen,
     packingModalData, partyLedgerParams, toggleSidebar, openDrawer, closeDrawer, setCreatedContactId, setCreatedProduct,
     openPackingModal, closePackingModal, openPartyLedger, openLedgerStatementV2, saleDrawerBespokeMode, clearSaleDrawerBespokeMode,
-    reportsFinancialInitial, ledgerV2Initial,
+    reportsFinancialInitial, accountStatementV2Initial, accountingTabInitial,
   ]);
 
   return (

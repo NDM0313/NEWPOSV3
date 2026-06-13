@@ -2,13 +2,16 @@
  * Operational Remaining Balance — open document due (effective operational basis).
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Download, Loader2, Search } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Loader2, Search } from 'lucide-react';
 import { ReportBasisBanner } from '@/app/components/accounting/ReportBasisBanner';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { exportToPDF, exportToExcel } from '@/app/utils/exportUtils';
+import { toast } from 'sonner';
+import { ReportActions } from './ReportActions';
 import {
   loadRemainingBalanceReport,
   remainingBalanceToCsv,
@@ -22,6 +25,7 @@ type Props = {
 export function RemainingBalanceReport({ branchId }: Props) {
   const { companyId } = useSupabase();
   const { formatCurrency } = useFormatCurrency();
+  const printRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [rows, setRows] = useState<RemainingBalanceRow[]>([]);
@@ -32,7 +36,7 @@ export function RemainingBalanceReport({ branchId }: Props) {
   const load = useCallback(async () => {
     if (!companyId) {
       setRows([]);
-      setLoading(false);
+      setLoading(true);
       return;
     }
     setLoading(true);
@@ -64,18 +68,79 @@ export function RemainingBalanceReport({ branchId }: Props) {
   );
 
   const exportCsv = () => {
-    const csv = remainingBalanceToCsv(rows);
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `remaining-balance-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      const csv = remainingBalanceToCsv(rows);
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `remaining-balance-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'CSV export failed');
+    }
+  };
+
+  const exportPayload = useMemo(
+    () => ({
+      title: 'Remaining Balance Report',
+      headers: ['Contact', 'Code', 'Type', 'Receivable due', 'Payable due', 'Net follow-up'],
+      rows: rows.map((r) => [
+        r.name,
+        r.contactCode || '',
+        r.contactType,
+        formatCurrency(r.receivableDue),
+        formatCurrency(r.payableDue),
+        formatCurrency(r.netFollowUp),
+      ]),
+    }),
+    [rows, formatCurrency]
+  );
+
+  const handleExportPdf = () => {
+    try {
+      exportToPDF(exportPayload, 'remaining-balance');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'PDF export failed');
+    }
+  };
+
+  const handleExportExcel = () => {
+    try {
+      exportToExcel(exportPayload, 'remaining-balance');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Excel export failed');
+    }
   };
 
   return (
     <div className="space-y-4">
+      <ReportActions
+        title="Remaining Balance"
+        onPrint={() => window.print()}
+        onPdf={handleExportPdf}
+        onExcel={handleExportExcel}
+        onCsv={exportCsv}
+        previewContentRef={printRef}
+        previewDocumentType="ledger"
+        previewReference="remaining-balance"
+      />
+      <div ref={printRef} className="classic-print-base" style={{ position: 'absolute', left: '-9999px', top: 0, width: '1px', height: '1px', overflow: 'hidden' }} aria-hidden>
+        <div className="p-4 text-black bg-white">
+          <h1 className="text-lg font-bold">{exportPayload.title}</h1>
+          <table className="w-full text-xs border-collapse mt-4">
+            <thead>
+              <tr>{exportPayload.headers.map((h) => <th key={h} className="border px-2 py-1 text-left">{h}</th>)}</tr>
+            </thead>
+            <tbody>
+              {exportPayload.rows.map((row, i) => (
+                <tr key={i}>{row.map((cell, j) => <td key={j} className="border px-2 py-1">{cell}</td>)}</tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
       <ReportBasisBanner
         basis="effective_party"
         detail="Open document due from get_contact_balances_summary — sales/purchases/rentals/openings. Excludes void/cancelled GL audit trails. Use for customer/supplier follow-up, not Trial Balance."
@@ -109,9 +174,11 @@ export function RemainingBalanceReport({ branchId }: Props) {
           <input type="checkbox" checked={hideZero} onChange={(e) => setHideZero(e.target.checked)} />
           Hide zero balances
         </label>
-        <Button size="sm" variant="outline" className="border-gray-700 gap-1.5" onClick={exportCsv}>
-          <Download className="w-3.5 h-3.5" /> CSV
-        </Button>
+        {error ? (
+          <Button size="sm" variant="outline" className="border-red-800 text-red-300" onClick={() => void load()}>
+            Retry load
+          </Button>
+        ) : null}
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">

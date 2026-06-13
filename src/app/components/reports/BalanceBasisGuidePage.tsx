@@ -2,22 +2,23 @@
  * Balance Basis Guide — explains Operational vs Party GL signed vs Control GL (Balance Sheet).
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronDown,
   ChevronRight,
   ChevronUp,
-  Download,
   Info,
   Loader2,
   Search,
 } from 'lucide-react';
 import { ReportBasisBanner } from '@/app/components/accounting/ReportBasisBanner';
-import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { cn } from '@/app/components/ui/utils';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { exportToCSV, exportToExcel, exportToPDF, type ExportData } from '@/app/utils/exportUtils';
+import { toast } from 'sonner';
+import { ReportActions } from './ReportActions';
 import {
   filterBalanceBasisGuideRows,
   formatRowGapExplanation,
@@ -30,7 +31,6 @@ import {
   type SortDirection,
 } from '@/app/lib/balanceBasisGuideLogic';
 import {
-  balanceBasisGuideToCsv,
   loadBalanceBasisGuideReport,
   type BalanceBasisGuideReportResult,
 } from '@/app/services/balanceBasisGuideReportService';
@@ -84,6 +84,8 @@ function VarianceLine({ label, value, formatCurrency }: { label: string; value: 
 export function BalanceBasisGuidePage({ asOfDate, branchId }: Props) {
   const { companyId } = useSupabase();
   const { formatCurrency } = useFormatCurrency();
+  const printRef = useRef<HTMLDivElement>(null);
+  const [exportBusy, setExportBusy] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -101,7 +103,7 @@ export function BalanceBasisGuidePage({ asOfDate, branchId }: Props) {
   const load = useCallback(async () => {
     if (!companyId) {
       setReport(null);
-      setLoading(false);
+      setLoading(true);
       return;
     }
     setLoading(true);
@@ -162,15 +164,97 @@ export function BalanceBasisGuidePage({ asOfDate, branchId }: Props) {
     </th>
   );
 
+  const exportPayload = useMemo((): ExportData | null => {
+    if (!filteredRows.length) return null;
+    const headers = [
+      'Contact',
+      'Code / GL',
+      'Type',
+      'AR signed',
+      'AR operational',
+      'Hidden AR',
+      'AP signed',
+      'AP operational',
+      'Hidden AP',
+      'Doc due AR',
+      'Doc due AP',
+    ];
+    const rows = filteredRows.map((r) => [
+      r.contactName,
+      r.contactCode || r.subledgerAccountHint || '',
+      r.contactType,
+      formatCurrency(r.glArSigned),
+      formatCurrency(r.operationalReceivable),
+      formatCurrency(r.hiddenCreditAr),
+      formatCurrency(r.glApSigned),
+      formatCurrency(r.operationalPayable),
+      formatCurrency(r.hiddenCreditAp),
+      formatCurrency(r.documentDueReceivable),
+      formatCurrency(r.documentDuePayable),
+    ]);
+    if (filteredTotals) {
+      rows.push([
+        `Totals (${filteredRows.length} rows)`,
+        '',
+        '',
+        formatCurrency(filteredTotals.receivablesPartySigned),
+        formatCurrency(filteredTotals.receivablesOperational),
+        formatCurrency(filteredTotals.receivablesOperationalVsSigned),
+        formatCurrency(filteredTotals.payablesPartySigned),
+        formatCurrency(filteredTotals.payablesOperational),
+        formatCurrency(filteredTotals.payablesOperationalVsSigned),
+        '',
+        '',
+      ]);
+    }
+    return {
+      title: `Balance Basis Guide — as of ${asOfDate}`,
+      headers,
+      rows,
+    };
+  }, [filteredRows, filteredTotals, formatCurrency, asOfDate]);
+
   const exportCsv = () => {
-    const csv = balanceBasisGuideToCsv(filteredRows);
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `balance-basis-guide-${asOfDate}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      const data = exportPayload;
+      if (!data) {
+        toast.error('No rows to export');
+        return;
+      }
+      exportToCSV(data, `balance-basis-guide-${asOfDate}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'CSV export failed');
+    }
+  };
+
+  const handleExportPdf = () => {
+    if (!exportPayload) {
+      toast.error('No rows to export');
+      return;
+    }
+    setExportBusy(true);
+    try {
+      exportToPDF(exportPayload, `balance-basis-guide-${asOfDate}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'PDF export failed');
+    } finally {
+      setExportBusy(false);
+    }
+  };
+
+  const handleExportExcel = () => {
+    if (!exportPayload) {
+      toast.error('No rows to export');
+      return;
+    }
+    setExportBusy(true);
+    try {
+      exportToExcel(exportPayload, `balance-basis-guide-${asOfDate}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Excel export failed');
+    } finally {
+      setExportBusy(false);
+    }
   };
 
   const totals = report?.totals;
@@ -238,6 +322,49 @@ export function BalanceBasisGuidePage({ asOfDate, branchId }: Props) {
                 <p className="text-gray-400 mt-1">Balance Sheet line (1100 / 2000 / 2010)</p>
               </div>
             </div>
+          </div>
+        ) : null}
+      </div>
+
+      <ReportActions
+        title="Balance Basis Guide"
+        onPrint={() => window.print()}
+        onPdf={handleExportPdf}
+        onExcel={handleExportExcel}
+        onCsv={exportCsv}
+        previewContentRef={printRef}
+        previewDocumentType="ledger"
+        previewReference={`balance-basis-${asOfDate}`}
+        pdfLoading={exportBusy}
+      />
+
+      <div
+        ref={printRef}
+        className="classic-print-base"
+        style={{ position: 'absolute', left: '-9999px', top: 0, width: '1px', height: '1px', overflow: 'hidden' }}
+        aria-hidden
+      >
+        {exportPayload ? (
+          <div className="p-4 text-black bg-white">
+            <h1 className="text-lg font-bold">{exportPayload.title}</h1>
+            <table className="w-full text-xs border-collapse mt-4">
+              <thead>
+                <tr>
+                  {exportPayload.headers.map((h) => (
+                    <th key={h} className="border border-gray-300 px-2 py-1 text-left">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {exportPayload.rows.map((row, i) => (
+                  <tr key={i}>
+                    {row.map((cell, j) => (
+                      <td key={j} className="border border-gray-300 px-2 py-1">{String(cell)}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         ) : null}
       </div>
@@ -373,9 +500,6 @@ export function BalanceBasisGuidePage({ asOfDate, branchId }: Props) {
               <input type="checkbox" checked={showOnlyWithGap} onChange={(e) => setShowOnlyWithGap(e.target.checked)} />
               Only with gap
             </label>
-            <Button size="sm" variant="outline" className="border-gray-700 gap-1.5" onClick={exportCsv}>
-              <Download className="w-3.5 h-3.5" /> CSV
-            </Button>
           </div>
 
           <div className="overflow-x-auto rounded-lg border border-gray-800">

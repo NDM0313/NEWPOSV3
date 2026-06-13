@@ -84,7 +84,7 @@ export interface PdfExportSettings {
 export interface ReportExportSettings {
   stockReportOrientation: Orientation;
   productSellOrientation: Orientation;
-  /** Ledger Center V2 / party ledger statement PDF default. */
+  /** Account Statements / party ledger statement PDF default. */
   ledgerReportOrientation?: Orientation;
   /** Show branded header block on tabular report PDF/print. */
   showReportHeader?: boolean;

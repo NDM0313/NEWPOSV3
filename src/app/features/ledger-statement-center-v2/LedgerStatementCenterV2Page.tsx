@@ -40,6 +40,7 @@ import { LedgerRowLoadingOverlay } from './LedgerRowLoadingOverlay';
 import type {
   LedgerDocumentComparisonResult,
   LedgerEntityOption,
+  LedgerStatementV2Initial,
   LedgerStatementV2Result,
   LedgerStatementV2Row,
   LedgerStatementV2Type,
@@ -63,14 +64,13 @@ export function LedgerStatementCenterV2Page({
   embedded = false,
   initialLedgerEntity = null,
   onInitialLedgerConsumed,
+  moduleContext = 'reports',
 }: {
   embedded?: boolean;
-  initialLedgerEntity?: {
-    entityId: string;
-    statementType: 'customer' | 'supplier';
-    entityLabel?: string;
-  } | null;
+  initialLedgerEntity?: LedgerStatementV2Initial | null;
   onInitialLedgerConsumed?: () => void;
+  /** Global filter module label when embedded in Accounting vs Reports. */
+  moduleContext?: 'accounting' | 'reports';
 }) {
   const { companyId, userRole } = useSupabase();
   const globalFilter = useGlobalFilter();
@@ -114,8 +114,8 @@ export function LedgerStatementCenterV2Page({
   const mergedPrintRef = reportExport.printRef;
 
   useEffect(() => {
-    setCurrentModule('reports');
-  }, [setCurrentModule]);
+    setCurrentModule(moduleContext);
+  }, [setCurrentModule, moduleContext]);
 
   useEffect(() => {
     if (!companyId) return;
@@ -476,6 +476,7 @@ export function LedgerStatementCenterV2Page({
     >
       <LedgerRowLoadingOverlay open={rowActionBusy} />
 
+      {!(embedded && moduleContext === 'accounting') && (
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-start gap-3">
           {!embedded && (
@@ -486,18 +487,23 @@ export function LedgerStatementCenterV2Page({
           <div>
             <h1 className={`font-bold flex items-center gap-2 ${embedded ? 'text-lg' : 'text-xl'}`}>
               <BookOpen className="text-blue-500" size={embedded ? 20 : 22} />
-              Ledger & Statement Center V2
+              Ledger & Statement Center
             </h1>
             <p className="text-sm text-gray-500 mt-1">
-              Posted GL statements — same engine as Accounting → Account Statements.
+              Posted GL statements — print, PDF, and share.
             </p>
           </div>
         </div>
       </div>
+      )}
 
       <ReportBasisBanner
         basis="official_gl"
-        detail="Posted GL statements — same engine as Accounting → Account Statements (official journal basis)."
+        detail={
+          moduleContext === 'accounting'
+            ? 'Official posted GL — customer, supplier, worker, and account statements.'
+            : 'Posted GL statements — official journal basis.'
+        }
       />
 
       {showDiagnosticTools ? (

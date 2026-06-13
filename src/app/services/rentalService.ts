@@ -14,6 +14,19 @@ import { formatRentalPaymentRef, isRcvReference } from '@/app/lib/rentalPaymentR
 import { isLiquidityPaymentAccount } from '@/app/lib/liquidityPaymentAccount';
 import { voidJournalEntries } from '@/app/services/accountingIntegrityService';
 import { voidPaymentAfterJournalReversal } from '@/app/services/paymentLifecycleService';
+import {
+  mapRentalRowToUI,
+  mapRentalRowsSafe,
+  dbStatusesForReturnQueue,
+  dbStatusesForCollections,
+} from '@/app/lib/rentalUiMapper';
+import {
+  isPickupDue,
+  isReturnDue,
+  hasOutstandingBalance,
+  getRentalDueAmount,
+} from '@/app/lib/rentalQueueUtils';
+import type { RentalUI } from '@/app/types/rentalTypes';
 
 /** Next customer receipt number (RCV-*) for a rental payment — same sequence as sale receipts. */
 async function nextRentalCustomerReceiptRef(
@@ -45,6 +58,16 @@ async function resolveBranchIdForRental(companyId: string, branchId: string): Pr
 }
 
 export type RentalStatus = 'draft' | 'booked' | 'active' | 'rented' | 'picked_up' | 'returned' | 'overdue' | 'cancelled';
+
+const RENTAL_QUEUE_SELECT = `
+        *,
+        customer:contacts(name, phone),
+        branch:branches(id, name, code),
+        items:rental_items(
+          *,
+          product:products(name, sku)
+        )
+      `;
 
 export interface Rental {
   id?: string;
@@ -1580,45 +1603,204 @@ export const rentalService = {
     return (data || []) as RentalPayment[];
   },
 
-  async getAllRentals(
+  async getPickupsDue(
     companyId: string,
     branchId?: string | null,
-    opts?: { limit?: number; offset?: number }
-  ): Promise<any[] | { data: any[]; total: number }> {
-    const limit = opts?.limit ?? 500;
-    const offset = opts?.offset ?? 0;
-    // No created_by_user:users join – production DB may have no FK rentals→users (PGRST200)
+    opts?: { asOfDate?: string }
+  ): Promise<RentalUI[]> {
+    const asOf = (opts?.asOfDate || new Date().toISOString()).slice(0, 10);
     let query = supabase
       .from('rentals')
-      .select(
-        `
-        *,
-        customer:contacts(name, phone),
-        branch:branches(id, name, code),
-        items:rental_items(
-          *,
-          product:products(name, sku)
-        )
-      `,
-        opts ? { count: 'exact' } : undefined
-      )
+      .select(RENTAL_QUEUE_SELECT)
       .eq('company_id', companyId)
+      .eq('status', 'booked')
+      .order('created_at', { ascending: true });
+
+    if (branchId && branchId !== 'all') {
+      query = query.eq('branch_id', branchId);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data || [])
+      .map((row) => mapRentalRowToUI(row as Record<string, unknown>))
+      .filter((r) => isPickupDue(r, asOf))
+      .sort((a, b) => a.startDate.localeCompare(b.startDate));
+  },
+
+  async getReturnsDue(
+    companyId: string,
+    branchId?: string | null,
+    asOfDate?: string
+  ): Promise<RentalUI[]> {
+    const asOf = (asOfDate || new Date().toISOString()).slice(0, 10);
+    const statuses = dbStatusesForReturnQueue();
+    let query = supabase
+      .from('rentals')
+      .select(RENTAL_QUEUE_SELECT)
+      .eq('company_id', companyId)
+      .in('status', statuses)
+      .order('created_at', { ascending: true });
+
+    if (branchId && branchId !== 'all') {
+      query = query.eq('branch_id', branchId);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data || [])
+      .map((row) => mapRentalRowToUI(row as Record<string, unknown>))
+      .filter((r) => isReturnDue(r, asOf))
+      .sort((a, b) => a.expectedReturnDate.localeCompare(b.expectedReturnDate));
+  },
+
+  async getOutstandingForCollections(
+    companyId: string,
+    branchId?: string | null
+  ): Promise<RentalUI[]> {
+    const statuses = dbStatusesForCollections();
+    let query = supabase
+      .from('rentals')
+      .select(RENTAL_QUEUE_SELECT)
+      .eq('company_id', companyId)
+      .in('status', statuses)
       .order('created_at', { ascending: false });
 
     if (branchId && branchId !== 'all') {
       query = query.eq('branch_id', branchId);
     }
 
-    if (opts) {
-      query = query.range(offset, offset + limit - 1);
-    } else {
-      query = query.limit(limit);
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data || [])
+      .map((row) => mapRentalRowToUI(row as Record<string, unknown>))
+      .filter(hasOutstandingBalance)
+      .sort((a, b) => getRentalDueAmount(b) - getRentalDueAmount(a));
+  },
+
+  async fetchRentalsForList(
+    companyId: string,
+    branchId?: string | null,
+    opts?: { limit?: number; offset?: number }
+  ): Promise<{ rows: Record<string, unknown>[]; total: number }> {
+    const limit = opts?.limit ?? 500;
+    const offset = opts?.offset ?? 0;
+
+    let query = supabase
+      .from('rentals')
+      .select(RENTAL_QUEUE_SELECT)
+      .eq('company_id', companyId)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (branchId && branchId !== 'all') {
+      query = query.eq('branch_id', branchId);
     }
 
-    const { data, error, count } = await query;
-    if (error) throw error;
-    const rows = data || [];
-    return opts ? { data: rows, total: count ?? rows.length } : rows;
+    const { data, error } = await query;
+    if (!error && data) {
+      const countQuery = supabase
+        .from('rentals')
+        .select('id', { count: 'exact', head: true })
+        .eq('company_id', companyId);
+      const countQ = branchId && branchId !== 'all' ? countQuery.eq('branch_id', branchId) : countQuery;
+      const { count } = await countQ;
+      return { rows: data as Record<string, unknown>[], total: count ?? data.length };
+    }
+
+    console.warn('[rentalService] fetchRentalsForList join failed, using flat fallback', error);
+
+    let flatQuery = supabase
+      .from('rentals')
+      .select('*')
+      .eq('company_id', companyId)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (branchId && branchId !== 'all') {
+      flatQuery = flatQuery.eq('branch_id', branchId);
+    }
+
+    const { data: flatData, error: flatErr } = await flatQuery;
+    if (flatErr) throw flatErr;
+
+    const flatRows = (flatData || []) as Record<string, unknown>[];
+    const rentalIds = flatRows.map((r) => String(r.id)).filter(Boolean);
+
+    const itemsByRental = new Map<string, Record<string, unknown>[]>();
+    const customerIds = new Set<string>();
+    const branchIds = new Set<string>();
+
+    flatRows.forEach((r) => {
+      if (r.customer_id) customerIds.add(String(r.customer_id));
+      if (r.branch_id) branchIds.add(String(r.branch_id));
+    });
+
+    if (rentalIds.length > 0) {
+      const { data: items } = await supabase
+        .from('rental_items')
+        .select('*, product:products(name, sku)')
+        .in('rental_id', rentalIds);
+      for (const item of (items || []) as Record<string, unknown>[]) {
+        const rid = String(item.rental_id);
+        const list = itemsByRental.get(rid) || [];
+        list.push(item);
+        itemsByRental.set(rid, list);
+      }
+    }
+
+    const customersById = new Map<string, { name?: string; phone?: string }>();
+    if (customerIds.size > 0) {
+      const { data: contacts } = await supabase
+        .from('contacts')
+        .select('id, name, phone')
+        .in('id', [...customerIds]);
+      for (const c of (contacts || []) as { id: string; name?: string; phone?: string }[]) {
+        customersById.set(c.id, c);
+      }
+    }
+
+    const branchesById = new Map<string, { id: string; name?: string; code?: string }>();
+    if (branchIds.size > 0) {
+      const { data: branches } = await supabase
+        .from('branches')
+        .select('id, name, code')
+        .in('id', [...branchIds]);
+      for (const b of (branches || []) as { id: string; name?: string; code?: string }[]) {
+        branchesById.set(b.id, b);
+      }
+    }
+
+    const enriched = flatRows.map((r) => {
+      const id = String(r.id);
+      return {
+        ...r,
+        customer: r.customer_id ? customersById.get(String(r.customer_id)) : undefined,
+        branch: r.branch_id ? branchesById.get(String(r.branch_id)) : undefined,
+        items: itemsByRental.get(id) || [],
+      };
+    });
+
+    const countQuery = supabase
+      .from('rentals')
+      .select('id', { count: 'exact', head: true })
+      .eq('company_id', companyId);
+    const countQ = branchId && branchId !== 'all' ? countQuery.eq('branch_id', branchId) : countQuery;
+    const { count } = await countQ;
+
+    return { rows: enriched, total: count ?? enriched.length };
+  },
+
+  async getAllRentals(
+    companyId: string,
+    branchId?: string | null,
+    opts?: { limit?: number; offset?: number }
+  ): Promise<any[] | { data: any[]; total: number }> {
+    const { rows, total } = await this.fetchRentalsForList(companyId, branchId, opts);
+    if (opts) {
+      return { data: rows, total };
+    }
+    return rows;
   },
 
   async getRental(id: string) {

@@ -44,6 +44,15 @@ import {
   isTransactionActionPanelEnabled,
   type TransactionActionId,
 } from '@/app/lib/transactionActionRules';
+import { canApplyDeveloperRepair } from '@/app/lib/developerAccountingAccess';
+import {
+  getStaleCorrectionReversalCandidates,
+  voidStaleCorrectionReversals,
+} from '@/app/services/accountingIntegrityService';
+import {
+  STALE_REVERSAL_VOID_LABEL,
+  staleCorrectionReversalVoidConfirmMessage,
+} from '@/app/lib/staleCorrectionReversalPolicy';
 import {
   MANUAL_JE_CANCEL_LABEL,
   manualJournalCancelConfirmMessage,
@@ -240,7 +249,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
   autoScrollToAudit = false,
   onAutoScrollToAuditConsumed,
 }) => {
-  const { companyId, branchId } = useSupabase();
+  const { companyId, branchId, userRole } = useSupabase();
   const { openDrawer, setCurrentView } = useNavigation();
   const accounting = useAccounting();
   const { run, busy } = useSubmitLock();
@@ -290,6 +299,8 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
   const [accountSearch, setAccountSearch] = useState<Record<string, string>>({});
   const [activityLogs, setActivityLogs] = useState<Awaited<ReturnType<typeof activityLogService.getEntityActivityLogs>>>([]);
   const [loadingActivityLogs, setLoadingActivityLogs] = useState(false);
+  const [staleReversalVoidEligible, setStaleReversalVoidEligible] = useState(false);
+  const canVoidStaleReversal = canApplyDeveloperRepair(userRole);
 
   const loadPaymentTrace = useCallback(async () => {
     if (!companyId || !transaction?.id) return;
@@ -483,6 +494,8 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
         includeViewAction: false,
         paymentChainBlockReason: paymentChainBlockReason,
         sourceOpenTarget: sourceOpen,
+        allowStaleReversalVoid: canVoidStaleReversal,
+        staleReversalVoidEligible: staleReversalVoidEligible,
       }
     );
   }, [
@@ -492,7 +505,35 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     paymentChainMemberCount,
     paymentChainBlockReason,
     paymentForActions,
+    canVoidStaleReversal,
+    staleReversalVoidEligible,
   ]);
+
+  useEffect(() => {
+    if (!companyId || !transaction?.id) {
+      setStaleReversalVoidEligible(false);
+      return;
+    }
+    const rt = String(transaction.reference_type || '').toLowerCase().trim();
+    if (rt !== 'correction_reversal' || transaction.is_void === true) {
+      setStaleReversalVoidEligible(false);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const candidates = await getStaleCorrectionReversalCandidates(companyId);
+        if (!cancelled) {
+          setStaleReversalVoidEligible(candidates.some((c) => c.id === String(transaction.id)));
+        }
+      } catch {
+        if (!cancelled) setStaleReversalVoidEligible(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, transaction?.id, transaction?.reference_type, transaction?.is_void]);
 
   useEffect(() => {
     if (!autoOpenPaymentTrace || !isOpen || loading || !transaction) return;
@@ -888,6 +929,28 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     }
   };
 
+  const handleVoidStaleReversal = async () => {
+    if (!transaction?.id || !companyId || !staleReversalVoidEligible) return;
+    const entryNo = transaction.entry_no ?? transaction.reference_number;
+    const amount = Math.max(
+      ...(effectiveLines.length ? effectiveLines : journalLines).map(
+        (l: { debit?: number; credit?: number }) => Math.max(Number(l.debit) || 0, Number(l.credit) || 0)
+      ),
+      0
+    );
+    if (!window.confirm(staleCorrectionReversalVoidConfirmMessage(entryNo, amount || null))) return;
+    try {
+      const res = await voidStaleCorrectionReversals(companyId, [String(transaction.id)]);
+      if (!res.success) throw new Error(res.error || 'Void failed');
+      toast.success('Reversal removed from live GL');
+      await loadTransaction();
+      dispatchAccountingEditCommitted();
+      accounting.refreshEntries?.();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Remove from live GL failed');
+    }
+  };
+
   // Void/Cancel: payment-linked JEs also void payments.voided_at (Roznamcha / statements / ledger).
   const handleVoidJournal = async () => {
     if (!transaction?.id || !companyId) return;
@@ -966,6 +1029,9 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
       case 'cancel_payment':
       case 'cancel_entry':
         void run('Cancelling...', () => handleVoidJournal());
+        break;
+      case 'void_stale_reversal':
+        void run('Removing...', () => handleVoidStaleReversal());
         break;
       case 'undo_last_change':
         void run('Undoing...', () => handleUndoLastPaymentChange());
@@ -1317,20 +1383,38 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                       </Button>
                     )}
                   {transaction.id && !transaction.is_void && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="gap-1 border-red-500/40 text-red-300"
-                      disabled={actionLocked}
-                      onClick={() => run('Voiding...', () => handleVoidJournal())}
-                    >
-                      <Trash2 size={14} />
-                      {transaction.payment_id ||
-                      (Array.isArray(transaction.payment) ? transaction.payment[0]?.id : transaction.payment?.id)
-                        ? 'Cancel Payment'
-                        : MANUAL_JE_CANCEL_LABEL}
-                    </Button>
+                    <>
+                      {String(transaction.reference_type || '').toLowerCase() === 'correction_reversal' &&
+                      staleReversalVoidEligible &&
+                      canVoidStaleReversal ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="gap-1 border-rose-500/40 text-rose-300"
+                          disabled={actionLocked}
+                          onClick={() => run('Removing...', () => handleVoidStaleReversal())}
+                        >
+                          <Trash2 size={14} />
+                          {STALE_REVERSAL_VOID_LABEL}
+                        </Button>
+                      ) : String(transaction.reference_type || '').toLowerCase() !== 'correction_reversal' ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="gap-1 border-red-500/40 text-red-300"
+                          disabled={actionLocked}
+                          onClick={() => run('Voiding...', () => handleVoidJournal())}
+                        >
+                          <Trash2 size={14} />
+                          {transaction.payment_id ||
+                          (Array.isArray(transaction.payment) ? transaction.payment[0]?.id : transaction.payment?.id)
+                            ? 'Cancel Payment'
+                            : MANUAL_JE_CANCEL_LABEL}
+                        </Button>
+                      ) : null}
+                    </>
                   )}
                   {transaction.id && !transaction.is_void && !editingAccounts && (() => {
                     const rt = String(transaction.reference_type || '').toLowerCase();

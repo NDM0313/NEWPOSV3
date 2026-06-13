@@ -446,7 +446,7 @@ export function PrintingSettingsPanel({
           {/* ─── REPORTS & EXPORT ─── */}
           {tab === 'reportsExport' && (
             <>
-              <AppliesToBanner targets="Stock Report, Product Sell Report, Ledger Center V2 — PDF, Print, CSV, Excel exports." />
+              <AppliesToBanner targets="Stock Report, Product Sell Report, Account Statements — PDF, Print, CSV, Excel exports." />
 
               <SectionCard title="Report layout" icon={<Layout size={18} />}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

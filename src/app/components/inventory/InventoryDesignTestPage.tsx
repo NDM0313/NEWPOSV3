@@ -262,6 +262,10 @@ export const InventoryDesignTestPage = () => {
           <p className="text-sm text-gray-400 mt-0.5">Track and manage your stock efficiently</p>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" className="gap-2 border-gray-700 text-gray-300" onClick={() => setCurrentView('stock-report')}>
+            <BarChart3 size={16} />
+            Stock Report
+          </Button>
           <Button variant="outline" className="gap-2 border-gray-700 text-gray-300" onClick={() => setCurrentView('inventory-analytics-test')}>
             <BarChart3 size={16} />
             Stock Analytics

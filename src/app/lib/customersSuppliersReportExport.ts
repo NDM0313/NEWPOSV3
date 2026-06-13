@@ -103,6 +103,13 @@ export async function exportCustomersSuppliersPdf(
     footStyles: { fillColor: [241, 245, 249], textColor: 0, fontStyle: 'bold' },
     theme: 'grid',
     margin: { left: 10, right: 10 },
+    columnStyles: visibleKeys.reduce(
+      (acc, k, i) => {
+        if (k !== 'contact') acc[i] = { halign: 'right' };
+        return acc;
+      },
+      {} as Record<number, { halign: 'right' }>
+    ),
   });
 
   pdf.save(`${meta.filenameBase}_${new Date().toISOString().slice(0, 10)}.pdf`);

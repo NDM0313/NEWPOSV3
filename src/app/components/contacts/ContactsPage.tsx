@@ -30,8 +30,6 @@ import {
 } from '@/app/services/contactBalanceReconciliationService';
 import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDialog';
 import { AddEntryV2 } from '@/app/components/accounting/AddEntryV2';
-import CustomerLedgerPageOriginal from '@/app/components/customer-ledger-test/CustomerLedgerPageOriginal';
-import { GenericLedgerView } from '@/app/components/accounting/GenericLedgerView';
 import { ViewContactProfile } from './ViewContactProfile';
 import { ImportContactsModal } from './ImportContactsModal';
 import { toast } from 'sonner';
@@ -187,7 +185,7 @@ function contactPartyGlPayableSigned(
 }
 
 export const ContactsPage = () => {
-  const { openDrawer, setCurrentView, createdContactId, setCreatedContactId, openPartyLedger } = useNavigation();
+  const { openDrawer, setCurrentView, createdContactId, setCreatedContactId, openPartyLedger, openLedgerStatementV2 } = useNavigation();
   const { companyId, branchId, userRole } = useSupabase();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [mergedWorkerRoles, setMergedWorkerRoles] = useState<WorkerRoleOption[]>([]);
@@ -225,7 +223,6 @@ export const ContactsPage = () => {
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   /** Customer receipt vs supplier payment when opening Add Entry V2 from this page (incl. `both` contacts). */
   const [paymentFlowMode, setPaymentFlowMode] = useState<'customer_receipt' | 'supplier_payment' | null>(null);
-  const [ledgerOpen, setLedgerOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   /** Row-level delete in progress (UUID) — avoids full-table skeleton on delete refresh. */
   const [deletingContactUuid, setDeletingContactUuid] = useState<string | null>(null);
@@ -2294,13 +2291,18 @@ export const ContactsPage = () => {
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onClick={() => {
-                                    setSelectedContact(contact);
-                                    setLedgerOpen(true);
+                                    const contactId = contact.uuid || contact.id?.toString();
+                                    if (!contactId) return;
+                                    openLedgerStatementV2?.({
+                                      entityId: contactId,
+                                      statementType: 'customer',
+                                      entityLabel: contact.name,
+                                    });
                                   }}
                                   className="hover:bg-gray-800 cursor-pointer"
                                 >
-                                  <FileText size={14} className="mr-2 text-purple-400" />
-                                  Party statement (Operational / GL / Reconciliation)
+                                  <FileText size={14} className="mr-2 text-blue-400" />
+                                  GL Statement
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator className="bg-gray-700" />
                                 <DropdownMenuItem 
@@ -2376,13 +2378,18 @@ export const ContactsPage = () => {
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onClick={() => {
-                                    setSelectedContact(contact);
-                                    setLedgerOpen(true);
+                                    const contactId = contact.uuid || contact.id?.toString();
+                                    if (!contactId) return;
+                                    openLedgerStatementV2?.({
+                                      entityId: contactId,
+                                      statementType: 'supplier',
+                                      entityLabel: contact.name,
+                                    });
                                   }}
                                   className="hover:bg-gray-800 cursor-pointer"
                                 >
                                   <FileText size={14} className="mr-2 text-blue-400" />
-                                  Party statement (Operational / GL / Reconciliation)
+                                  GL Statement
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator className="bg-gray-700" />
                                 <DropdownMenuItem 
@@ -2457,13 +2464,18 @@ export const ContactsPage = () => {
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onClick={() => {
-                                    setSelectedContact(contact);
-                                    setLedgerOpen(true);
+                                    const contactId = contact.uuid || contact.id?.toString();
+                                    if (!contactId) return;
+                                    openLedgerStatementV2?.({
+                                      entityId: contactId,
+                                      statementType: 'worker',
+                                      entityLabel: contact.name,
+                                    });
                                   }}
                                   className="hover:bg-gray-800 cursor-pointer"
                                 >
                                   <FileText size={14} className="mr-2 text-violet-400" />
-                                  Party statement (Operational / GL / Reconciliation)
+                                  GL Statement
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator className="bg-gray-700" />
                                 <DropdownMenuItem 
@@ -2567,54 +2579,6 @@ export const ContactsPage = () => {
             refreshContacts();
           }}
         />
-      )}
-
-      {/* Customer Ledger - Full Screen (for customers and both) */}
-      {selectedContact && (selectedContact.type === 'customer' || selectedContact.type === 'both') && ledgerOpen && (
-        <div className="fixed inset-0 z-50 bg-[#111827] overflow-y-auto">
-          <CustomerLedgerPageOriginal
-            initialCustomerId={selectedContact.uuid}
-            onClose={() => {
-              setLedgerOpen(false);
-              setSelectedContact(null);
-            }}
-          />
-        </div>
-      )}
-
-      {/* Supplier / Worker Ledger - Full screen (exclude customer-only so 'both' uses Customer Ledger above) */}
-      {selectedContact && (selectedContact.type === 'supplier' || selectedContact.type === 'worker') && ledgerOpen && (
-        <div className="fixed inset-0 z-50 bg-[#111827] overflow-y-auto">
-          <div className="sticky top-0 z-10 bg-[#111827] border-b border-gray-800 px-6 py-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="text-xl font-bold text-white">
-                {selectedContact.type === 'supplier' ? 'Supplier' : 'Worker'} statement — {selectedContact.name}
-              </h2>
-              <p className="text-[11px] text-gray-500 mt-1 max-w-xl">
-                <span className="text-amber-400/90 font-medium">LEGACY supplier/worker statement</span> — not canonical
-                truth; same three engines as customer (no mixed running balance). Prefer AR/AP Truth Lab for AR/AP deltas.
-              </p>
-            </div>
-            <Button
-              variant="outline"
-              className="border-gray-600 text-gray-300 hover:bg-gray-800 shrink-0"
-              onClick={() => {
-                setLedgerOpen(false);
-                setSelectedContact(null);
-              }}
-            >
-              <X size={18} className="mr-2" />
-              Close
-            </Button>
-          </div>
-          <div className="p-6">
-            <GenericLedgerView
-              ledgerType={selectedContact.type === 'supplier' ? 'supplier' : 'worker'}
-              entityId={selectedContact.uuid ?? ''}
-              entityName={selectedContact.name}
-            />
-          </div>
-        </div>
       )}
 
       {/* View Contact Profile */}

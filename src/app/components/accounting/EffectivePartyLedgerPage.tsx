@@ -231,6 +231,9 @@ export const EffectivePartyLedgerPage: React.FC<EffectivePartyLedgerPageProps> =
                 )}
               </div>
               <p className="text-xs text-gray-500 mt-0.5">
+                Effective collapsed balance — for full GL statement with PDF/share use Accounting → Account Statements.
+              </p>
+              <p className="text-xs text-gray-500 mt-0.5">
                 {mode === 'effective'
                   ? 'Showing latest effective result for each transaction'
                   : 'Showing full accounting history with all mutations'}

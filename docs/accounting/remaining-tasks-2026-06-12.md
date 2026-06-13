@@ -4,6 +4,8 @@ Work applied: **rental AR sub-ledger fail-closed**, **Hybrid Repair / gl_correct
 
 **Sync status (13 Jun):** Local + VPS at `main` `1d8c216f`. VPS migrations through `20260623120000` recorded; `deploy/vps-build-erp-only.sh` rebuild + `erp-frontend` healthy.
 
+**Self-service void:** Admin/Owner can remove stale payment reversals from live GL — see [`transaction-cancel-guide.md`](transaction-cancel-guide.md) (Journal hygiene → **Remove from live GL**).
+
 ---
 
 ## Verify on production (user)

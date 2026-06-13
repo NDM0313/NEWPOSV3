@@ -55,7 +55,8 @@ import { AccountLedgerView } from './AccountLedgerView';
 import { AccountLedgerPage } from './AccountLedgerPage';
 import { TransactionDetailModal } from './TransactionDetailModal';
 import { AddAccountDrawer } from './AddAccountDrawer';
-import { LedgerHub } from './LedgerHub';
+import { LedgerStatementCenterV2Page } from '@/app/features/ledger-statement-center-v2/LedgerStatementCenterV2Page';
+import type { LedgerStatementV2Initial } from '@/app/features/ledger-statement-center-v2/types';
 import { PayCourierModal } from './PayCourierModal';
 import { useSettings } from '@/app/context/SettingsContext';
 import { AccountingTestPage } from '@/app/components/test/AccountingTestPage';
@@ -110,6 +111,7 @@ const RoznamchaReport = lazy(() => import('@/app/components/reports/RoznamchaRep
 const CashFlowReportPage = lazy(() => import('@/app/components/reports/CashFlowReportPage').then((m) => ({ default: m.CashFlowReportPage })));
 const AccountLedgerReportPage = lazy(() => import('@/app/components/reports/AccountLedgerReportPage').then((m) => ({ default: m.AccountLedgerReportPage })));
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { AdaptiveCurrencyValue } from '@/app/components/shared/AdaptiveCurrencyValue';
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 import { useSubmitLock } from '@/app/context/LoadingContext';
 import { DateTimeDisplay } from '@/app/components/ui/DateTimeDisplay';
@@ -503,7 +505,7 @@ export const AccountingDashboard = () => {
   const sales = useSales();
   const purchases = usePurchases();
   const expenses = useExpenses();
-  const { openDrawer, setCurrentView } = useNavigation();
+  const { openDrawer, setCurrentView, accountStatementV2Initial, setAccountStatementV2Initial, accountingTabInitial, setAccountingTabInitial } = useNavigation();
   const { companyId, branchId } = useSupabase();
   const { setCurrentModule, startDate: globalStartDate, endDate: globalEndDate } = useGlobalFilter();
   const { formatCurrency } = useFormatCurrency();
@@ -588,7 +590,7 @@ export const AccountingDashboard = () => {
     setCurrentModule('accounting');
   }, [setCurrentModule]);
 
-  const [activeTab, setActiveTab] = useState<'journal_entries' | 'daybook' | 'roznamcha' | 'cash_flow' | 'accounts' | 'ledger' | 'receivables' | 'payables' | 'courier' | 'deposits' | 'studio' | 'account_statements'>('journal_entries');
+  const [activeTab, setActiveTab] = useState<'journal_entries' | 'daybook' | 'roznamcha' | 'cash_flow' | 'accounts' | 'receivables' | 'payables' | 'courier' | 'deposits' | 'studio' | 'account_statements'>('journal_entries');
   /** Align Account Statements period with global header filter when set (same idea as Day Book / Roznamcha). */
   const reportStartDate = useMemo(() => {
     const g = globalStartDate && String(globalStartDate).trim();
@@ -608,6 +610,21 @@ export const AccountingDashboard = () => {
   const [accountStatementEnd, setAccountStatementEnd] = useState(() => reportEndDate);
   /** Set from Accounts row ⋮ → Statement; pre-selects that GL account on Account Statements tab. */
   const [accountStatementPreselectId, setAccountStatementPreselectId] = useState<string | null>(null);
+
+  const accountStatementV2Entity = useMemo((): LedgerStatementV2Initial | null => {
+    if (accountStatementV2Initial?.entityId) return accountStatementV2Initial;
+    if (accountStatementPreselectId) {
+      return { entityId: accountStatementPreselectId, statementType: 'account' };
+    }
+    return null;
+  }, [accountStatementV2Initial, accountStatementPreselectId]);
+
+  useEffect(() => {
+    if (accountingTabInitial === 'account_statements') {
+      setActiveTab('account_statements');
+      setAccountingTabInitial(null);
+    }
+  }, [accountingTabInitial, setAccountingTabInitial]);
   useEffect(() => {
     setAccountStatementStart(reportStartDate);
     setAccountStatementEnd(reportEndDate);
@@ -673,8 +690,8 @@ export const AccountingDashboard = () => {
   /** PF-14.3B: Default = grouped (one logical row per sale); audit = all raw JEs. */
   const [journalViewMode, setJournalViewMode] = useState<'grouped' | 'audit'>('grouped');
   
-  // Ledger: type chosen from dropdown (no inner Ledger dropdown on page)
-  const [ledgerType, setLedgerType] = useState<'customer' | 'supplier' | 'user' | 'worker'>('customer');
+  /** Account Statements: standard = embedded V2 UI; advanced = effective/audit filters (legacy engine). */
+  const [accountStatementsViewMode, setAccountStatementsViewMode] = useState<'standard' | 'advanced'>('standard');
   
   // Filters
   const [typeFilter, setTypeFilter] = useState<string>('all');
@@ -963,7 +980,6 @@ export const AccountingDashboard = () => {
     { key: 'roznamcha', label: 'Roznamcha', icon: BookMarked },
     { key: 'cash_flow', label: 'Cash Flow', icon: ArrowLeftRight },
     { key: 'accounts', label: 'Accounts', icon: Wallet },
-    { key: 'ledger', label: 'Party statements', icon: FileText },
     { key: 'receivables', label: 'Receivables', icon: TrendingUp },
     { key: 'payables', label: 'Payables', icon: TrendingDown },
     { key: 'courier', label: 'Courier Reports', icon: Truck },
@@ -985,8 +1001,8 @@ export const AccountingDashboard = () => {
       const raw = safeSessionStorageGetItem(INTEGRITY_LAB_SESSION_KEY);
       if (!raw) return;
       const o = JSON.parse(raw) as {
-        tab?: typeof activeTab;
-        ledgerType?: typeof ledgerType;
+        tab?: typeof activeTab | 'ledger';
+        focusAccountId?: string;
         searchTerm?: string;
       };
       if (o.tab === 'integrity_lab') {
@@ -995,8 +1011,12 @@ export const AccountingDashboard = () => {
         setCurrentView('ar-ap-reconciliation-center');
         return;
       }
-      if (o.tab) setActiveTab(o.tab);
-      if (o.ledgerType) setLedgerType(o.ledgerType);
+      const tab = o.tab === 'ledger' ? 'account_statements' : o.tab;
+      if (tab) setActiveTab(tab);
+      if (o.focusAccountId) {
+        setAccountStatementPreselectId(o.focusAccountId);
+        setAccountStatementsViewMode('standard');
+      }
       if (o.searchTerm) setSearchTerm(o.searchTerm);
       safeSessionStorageRemoveItem(INTEGRITY_LAB_SESSION_KEY);
       if (o.searchTerm) {
@@ -1151,29 +1171,7 @@ export const AccountingDashboard = () => {
     );
   }
 
-  // Ledger full screen – same page, dropdown se select karne par full screen overlay
-  if (activeTab === 'ledger') {
-    return (
-      <div className="fixed inset-0 z-50 bg-[#111827] overflow-y-auto">
-        <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 border-b border-gray-800 bg-[#0F1419]">
-          <h2 className="text-lg font-semibold text-white">
-            {ledgerType === 'customer' ? 'Customer Ledger' : ledgerType === 'supplier' ? 'Supplier Ledger' : ledgerType === 'user' ? 'User Ledger' : 'Worker Ledger'}
-          </h2>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="text-gray-400 hover:text-white hover:bg-gray-800"
-            onClick={() => setActiveTab('journal_entries')}
-          >
-            <X className="h-5 w-5" />
-          </Button>
-        </div>
-        <div className="p-6">
-          <LedgerHub ledgerType={ledgerType} />
-        </div>
-      </div>
-    );
-  }
+  // Ledger full screen removed — use Party Ledger (sidebar) or Account Statements tab.
 
   return (
     <div className="flex flex-col bg-[#0B0F19] min-h-0 min-w-0 w-full max-w-full">
@@ -1207,11 +1205,11 @@ export const AccountingDashboard = () => {
         />
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mt-3">
           {/* Total Income */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 min-w-0">
             <div className="flex items-start justify-between mb-3">
-              <div>
+              <div className="min-w-0">
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Income</p>
-                <p className="text-2xl font-bold text-green-400 mt-1">{formatCurrency(displaySummary.totalIncome)}</p>
+                <AdaptiveCurrencyValue value={displaySummary.totalIncome} className="text-2xl font-bold text-green-400 mt-1" as="p" />
                 <p className="text-xs text-gray-500 mt-1">Official Posted GL basis</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
@@ -1221,11 +1219,11 @@ export const AccountingDashboard = () => {
           </div>
 
           {/* Total Expense */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 min-w-0">
             <div className="flex items-start justify-between mb-3">
-              <div>
+              <div className="min-w-0">
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Expense</p>
-                <p className="text-2xl font-bold text-red-400 mt-1">{formatCurrency(displaySummary.totalExpense)}</p>
+                <AdaptiveCurrencyValue value={displaySummary.totalExpense} className="text-2xl font-bold text-red-400 mt-1" as="p" />
                 <p className="text-xs text-gray-500 mt-1">Official Posted GL basis</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center">
@@ -1235,14 +1233,18 @@ export const AccountingDashboard = () => {
           </div>
 
           {/* Net Profit */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 min-w-0">
             <div className="flex items-start justify-between mb-3">
-              <div>
+              <div className="min-w-0">
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Net Profit</p>
-                <p className={cn(
-                  "text-2xl font-bold mt-1",
-                  displaySummary.netProfit >= 0 ? "text-green-400" : "text-red-400"
-                )}>{formatCurrency(displaySummary.netProfit)}</p>
+                <AdaptiveCurrencyValue
+                  value={displaySummary.netProfit}
+                  className={cn(
+                    'text-2xl font-bold mt-1',
+                    displaySummary.netProfit >= 0 ? 'text-green-400' : 'text-red-400'
+                  )}
+                  as="p"
+                />
                 <p className="text-xs text-gray-500 mt-1">Official Posted GL basis</p>
               </div>
               <div className={cn(
@@ -1255,11 +1257,11 @@ export const AccountingDashboard = () => {
           </div>
 
           {/* Receivables */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 min-w-0">
             <div className="flex items-start justify-between mb-3">
-              <div>
+              <div className="min-w-0">
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Receivables</p>
-                <p className="text-2xl font-bold text-blue-400 mt-1">{formatCurrency(displaySummary.totalReceivable)}</p>
+                <AdaptiveCurrencyValue value={displaySummary.totalReceivable} className="text-2xl font-bold text-blue-400 mt-1" as="p" />
                 <p className="text-xs text-gray-500 mt-1">AR control 1100 — Official GL</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center">
@@ -1269,11 +1271,11 @@ export const AccountingDashboard = () => {
           </div>
 
           {/* Payables */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 min-w-0">
             <div className="flex items-start justify-between mb-3">
-              <div>
+              <div className="min-w-0">
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Payables</p>
-                <p className="text-2xl font-bold text-orange-400 mt-1">{formatCurrency(displaySummary.totalPayable)}</p>
+                <AdaptiveCurrencyValue value={displaySummary.totalPayable} className="text-2xl font-bold text-orange-400 mt-1" as="p" />
                 <p className="text-xs text-gray-500 mt-1">AP control 2000 — Official GL</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-orange-500/10 flex items-center justify-center">
@@ -1290,45 +1292,11 @@ export const AccountingDashboard = () => {
         </p>
       </div>
 
-      {/* Tabs – Ledger is dropdown only (no page change on click; select option → same page, same UI) */}
+      {/* Tabs */}
       <div className="shrink-0 px-6 border-b border-gray-800 min-w-0 overflow-x-auto overflow-y-hidden overscroll-x-contain">
         <div className="flex gap-1 -mb-px flex-nowrap w-max min-w-full">
           {tabs.map(tab => {
             const Icon = tab.icon;
-            if (tab.key === 'ledger') {
-              return (
-                <DropdownMenu key="ledger">
-                  <DropdownMenuTrigger asChild>
-                    <button
-                      className={cn(
-                        "flex items-center gap-2 px-4 py-3 text-sm font-medium transition-all border-b-2",
-                        activeTab === 'ledger'
-                          ? "text-blue-400 border-blue-400"
-                          : "text-gray-500 border-transparent hover:text-gray-300 hover:border-gray-700"
-                      )}
-                    >
-                      <FileText size={16} />
-                      Ledger
-                      <ChevronDown size={14} className="opacity-70" />
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="bg-gray-900 border-gray-800">
-                    <DropdownMenuItem onClick={() => { setLedgerType('customer'); setActiveTab('ledger'); }}>
-                      Customer Ledger
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => { setLedgerType('supplier'); setActiveTab('ledger'); }}>
-                      Supplier Ledger
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => { setLedgerType('user'); setActiveTab('ledger'); }}>
-                      User Ledger
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => { setLedgerType('worker'); setActiveTab('ledger'); }}>
-                      Worker Ledger
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              );
-            }
             return (
               <button
                 key={tab.key}
@@ -2678,44 +2646,91 @@ export const AccountingDashboard = () => {
 
         {activeTab === 'account_statements' && (
           <div className="space-y-4">
-            <h3 className="text-lg font-bold text-white">Account Statements</h3>
-            <p className="text-sm text-gray-400">Account-wise ledger / statement by date range</p>
-            <div className="flex flex-wrap items-end gap-4 pt-1">
-              <div className="space-y-1">
-                <Label htmlFor="account-statement-from" className="text-xs text-gray-400">
-                  From
-                </Label>
-                <DatePicker
-                  value={accountStatementStart}
-                  onChange={(v) => setAccountStatementStart(v)}
-                  maxDate={accountStatementEnd ? new Date(accountStatementEnd + 'T12:00:00') : undefined}
-                  className="w-[11.5rem]"
-                />
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-bold text-white">Account Statements</h3>
+                <p className="text-sm text-gray-400 mt-0.5">
+                  GL statements — print, PDF, share. Use <strong className="text-gray-300 font-medium">Advanced</strong> for effective/audit filters and control-account rollup rules.
+                </p>
               </div>
-              <div className="space-y-1">
-                <Label htmlFor="account-statement-to" className="text-xs text-gray-400">
-                  To
-                </Label>
-                <DatePicker
-                  value={accountStatementEnd}
-                  onChange={(v) => setAccountStatementEnd(v)}
-                  minDate={accountStatementStart ? new Date(accountStatementStart + 'T12:00:00') : undefined}
-                  className="w-[11.5rem]"
-                />
+              <div className="flex rounded-lg border border-gray-700 overflow-hidden shrink-0">
+                <button
+                  type="button"
+                  className={cn(
+                    'px-3 py-1.5 text-xs font-medium transition-colors',
+                    accountStatementsViewMode === 'standard'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-900 text-gray-400 hover:text-gray-200'
+                  )}
+                  onClick={() => setAccountStatementsViewMode('standard')}
+                >
+                  Standard (PDF / share)
+                </button>
+                <button
+                  type="button"
+                  className={cn(
+                    'px-3 py-1.5 text-xs font-medium transition-colors border-l border-gray-700',
+                    accountStatementsViewMode === 'advanced'
+                      ? 'bg-amber-700/80 text-white'
+                      : 'bg-gray-900 text-gray-400 hover:text-gray-200'
+                  )}
+                  onClick={() => setAccountStatementsViewMode('advanced')}
+                >
+                  Advanced (effective / audit)
+                </button>
               </div>
-              <p className="text-xs text-gray-500 pb-2">
-                Global filter updates the default dates above. Statements include <strong className="text-gray-400 font-medium">all branches</strong> — use the Branch column on each row to see HQ, BR-0002, etc. The header branch selector does not limit this report.
-              </p>
             </div>
-            <Suspense fallback={<ReportTabSuspenseFallback label="Loading account statement…" />}>
-              <AccountLedgerReportPage
-                startDate={accountStatementStart}
-                endDate={accountStatementEnd}
-                branchId={branchId}
-                branchScopeLabel={accountStatementBranchLabel}
-                initialAccountId={accountStatementPreselectId}
+            {accountStatementsViewMode === 'standard' ? (
+              <LedgerStatementCenterV2Page
+                embedded
+                moduleContext="accounting"
+                initialLedgerEntity={accountStatementV2Entity}
+                onInitialLedgerConsumed={() => {
+                  setAccountStatementV2Initial(null);
+                  setAccountStatementPreselectId(null);
+                }}
               />
-            </Suspense>
+            ) : (
+              <>
+                <div className="flex flex-wrap items-end gap-4 pt-1">
+                  <div className="space-y-1">
+                    <Label htmlFor="account-statement-from" className="text-xs text-gray-400">
+                      From
+                    </Label>
+                    <DatePicker
+                      value={accountStatementStart}
+                      onChange={(v) => setAccountStatementStart(v)}
+                      maxDate={accountStatementEnd ? new Date(accountStatementEnd + 'T12:00:00') : undefined}
+                      className="w-[11.5rem]"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="account-statement-to" className="text-xs text-gray-400">
+                      To
+                    </Label>
+                    <DatePicker
+                      value={accountStatementEnd}
+                      onChange={(v) => setAccountStatementEnd(v)}
+                      minDate={accountStatementStart ? new Date(accountStatementStart + 'T12:00:00') : undefined}
+                      className="w-[11.5rem]"
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500 pb-2">
+                    Global filter updates the default dates above. Statements include{' '}
+                    <strong className="text-gray-400 font-medium">all branches</strong> — use the Branch column on each row.
+                  </p>
+                </div>
+                <Suspense fallback={<ReportTabSuspenseFallback label="Loading account statement…" />}>
+                  <AccountLedgerReportPage
+                    startDate={accountStatementStart}
+                    endDate={accountStatementEnd}
+                    branchId={branchId}
+                    branchScopeLabel={accountStatementBranchLabel}
+                    initialAccountId={accountStatementPreselectId}
+                  />
+                </Suspense>
+              </>
+            )}
           </div>
         )}
 

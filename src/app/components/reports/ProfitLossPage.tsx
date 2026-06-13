@@ -9,6 +9,8 @@ import { accountingReportsService, ProfitLossResult } from '@/app/services/accou
 import { exportToPDF, exportToExcel, ExportData } from '@/app/utils/exportUtils';
 import { ReportBasisBanner } from '@/app/components/accounting/ReportBasisBanner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/components/ui/select';
+import { Button } from '@/app/components/ui/button';
+import { toast } from 'sonner';
 
 const toExport = (
   r: ProfitLossResult,
@@ -67,6 +69,8 @@ export const ProfitLossPage: React.FC<{
   const { formatCurrency } = useFormatCurrency();
   const [data, setData] = useState<ProfitLossResult | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [fetchRetryKey, setFetchRetryKey] = useState(0);
   const [comparePeriod, setComparePeriod] = useState<'none' | 'prior-month' | 'prior-quarter'>('none');
 
   const compareOptions = useMemo(() => {
@@ -76,18 +80,23 @@ export const ProfitLossPage: React.FC<{
 
   useEffect(() => {
     if (!companyId || !startDate || !endDate) {
-      setData(null);
-      setLoading(false);
+      if (!companyId) setLoading(true);
       return;
     }
     setLoading(true);
+    setFetchError(null);
     const options = compareOptions ? { compareStartDate: compareOptions.compareStart, compareEndDate: compareOptions.compareEnd } : undefined;
     accountingReportsService
       .getProfitLoss(companyId, startDate, endDate, branchId, options)
       .then(setData)
-      .catch(() => setData(null))
+      .catch((err) => {
+        const msg = err instanceof Error ? err.message : 'Failed to load profit & loss';
+        setFetchError(msg);
+        toast.error(msg);
+        setData(null);
+      })
       .finally(() => setLoading(false));
-  }, [companyId, startDate, endDate, branchId, compareOptions?.compareStart, compareOptions?.compareEnd]);
+  }, [companyId, startDate, endDate, branchId, compareOptions?.compareStart, compareOptions?.compareEnd, fetchRetryKey]);
 
   const reportPrintRef = useRef<HTMLDivElement>(null);
   const exportPeriodLabel = `${data?.startDate ?? startDate} to ${data?.endDate ?? endDate}`;
@@ -122,7 +131,12 @@ export const ProfitLossPage: React.FC<{
   if (!data) {
     return (
       <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-6 text-center text-gray-400">
-        No data or error loading P&L.
+        <p className="font-medium">{fetchError || 'No data for the selected period'}</p>
+        {fetchError ? (
+          <Button variant="outline" className="mt-4 border-gray-700" onClick={() => { setFetchError(null); setFetchRetryKey((k) => k + 1); }}>
+            Retry
+          </Button>
+        ) : null}
       </div>
     );
   }

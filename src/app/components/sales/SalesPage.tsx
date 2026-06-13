@@ -85,6 +85,7 @@ import { exportToCSV, exportToExcel, exportToPDF, type ExportData } from '@/app/
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 import { getEffectiveSaleStatus, getSaleStatusBadgeConfig, DEFAULT_SALE_BADGE, isPaymentClosedForSale, canAddPaymentToSale, saleLifecycleHidesPaymentColumns } from '@/app/utils/statusHelpers';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { AdaptiveCurrencyValue } from '@/app/components/shared/AdaptiveCurrencyValue';
 import { getSaleDisplayNumber } from '@/app/lib/documentDisplayNumbers';
 import { transitionSaleLifecycle, restoreSaleFromCancelled } from '@/app/lib/documentLifecycleActions';
 import { SaleLifecycleMenuBlock, type SaleLifecycleAction } from '@/app/components/sales/SaleLifecycleMenuBlock';
@@ -1662,11 +1663,11 @@ export const SalesPage = () => {
       <div className="shrink-0 px-6 py-4 bg-[#0F1419] border-b border-gray-800">
         <div className="grid grid-cols-4 gap-4">
           {/* Total Sales */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 min-w-0">
             <div className="flex items-start justify-between mb-3">
-              <div>
+              <div className="min-w-0">
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Sales</p>
-                <p className="text-2xl font-bold text-white mt-1">{formatCurrency(summary.totalSales)}</p>
+                <AdaptiveCurrencyValue value={summary.totalSales} className="text-2xl font-bold text-white mt-1" as="p" />
                 <p className="text-xs text-gray-500 mt-1">All invoices</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center">
@@ -1676,11 +1677,11 @@ export const SalesPage = () => {
           </div>
 
           {/* Total Paid */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 min-w-0">
             <div className="flex items-start justify-between mb-3">
-              <div>
+              <div className="min-w-0">
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Paid</p>
-                <p className="text-2xl font-bold text-green-400 mt-1">{formatCurrency(summary.totalPaid)}</p>
+                <AdaptiveCurrencyValue value={summary.totalPaid} className="text-2xl font-bold text-green-400 mt-1" as="p" />
                 <p className="text-xs text-gray-500 mt-1">Received amount</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
@@ -1690,11 +1691,11 @@ export const SalesPage = () => {
           </div>
 
           {/* Total Due */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 min-w-0">
             <div className="flex items-start justify-between mb-3">
-              <div>
+              <div className="min-w-0">
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Due</p>
-                <p className="text-2xl font-bold text-red-400 mt-1">{formatCurrency(summary.totalDue)}</p>
+                <AdaptiveCurrencyValue value={summary.totalDue} className="text-2xl font-bold text-red-400 mt-1" as="p" />
                 <p className="text-xs text-gray-500 mt-1">Pending payments</p>
                 <p className="text-[10px] text-gray-500 mt-2 leading-snug">
                   Listed final sales: effective due (product + shipment to customer + studio − paid). Not Contacts operational receivables or GL AR 1100 — use Contacts reconciliation or Financial reports to tie out.

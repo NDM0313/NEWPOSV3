@@ -7,7 +7,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Plus, Package, DollarSign, Calendar, MoreVertical, Eye, Edit, Trash2, FileText,
-  CornerDownLeft, Receipt, MapPin, Loader2, ShoppingBag, Truck, CheckCircle2,
+  CornerDownLeft, Receipt, MapPin, Loader2, ShoppingBag, Truck, CheckCircle2, RefreshCw,
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
@@ -45,6 +45,7 @@ import { PickupModal } from '@/app/components/rentals/PickupModal';
 import { ReturnModal } from '@/app/components/rentals/ReturnModal';
 import { toast } from 'sonner';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { AdaptiveCurrencyValue } from '@/app/components/shared/AdaptiveCurrencyValue';
 
 const STATUS_LABELS: Record<RentalStatus, string> = {
   draft: 'Draft',
@@ -124,7 +125,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
   const { companyId, branchId } = useSupabase();
   const { formatCurrency } = useFormatCurrency();
   const globalFilter = useGlobalFilter();
-  const { startDate, endDate, setCurrentModule } = globalFilter;
+  const { startDate, endDate, dateRangeType, setCurrentModule } = globalFilter;
 
   useEffect(() => {
     setCurrentModule('rentals');
@@ -135,7 +136,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
     userService.getSalesmen(companyId).then((list) => setSalesmen(list || [])).catch(() => setSalesmen([]));
   }, [companyId]);
 
-  const { rentals, loading, refreshRentals, receiveReturn, cancelRental, addPayment, deletePayment, deleteRental, markAsPickedUp, getRentalById } = useRentals();
+  const { rentals, loading, loadFailed, refreshRentals, receiveReturn, cancelRental, addPayment, deletePayment, deleteRental, markAsPickedUp, getRentalById } = useRentals();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterOpen, setFilterOpen] = useState(false);
@@ -254,13 +255,15 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
     (r: RentalUI) => {
       if (!startDate && !endDate) return true;
       const d = rentalDateKey(r);
-      if (!d) return false;
+      if (!d) return dateRangeType === 'fromStart';
       if (startDate && d < startDate) return false;
       if (endDate && d > endDate) return false;
       return true;
     },
-    [startDate, endDate, rentalDateKey]
+    [startDate, endDate, rentalDateKey, dateRangeType]
   );
+
+  const hasNonDateFilters = listFilter !== 'all' || !!searchTerm || branchFilter !== 'all' || salesmanFilter !== 'all';
 
   const filteredRentals = useMemo(() => {
     return rentals.filter((r) => {
@@ -287,6 +290,39 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
       return true;
     });
   }, [rentals, searchTerm, listFilter, branchFilter, salesmanFilter, filterByDate, today]);
+
+  const emptyListMessage = useMemo(() => {
+    if (loading && rentals.length === 0) return null;
+    if (rentals.length === 0) {
+      return loadFailed ? 'Could not load rentals' : 'No rentals yet';
+    }
+    if (filteredRentals.length > 0) return null;
+    if (hasNonDateFilters) return 'No rentals match this filter';
+    const matchesWithoutDate = rentals.some((r) => {
+      if (!matchesRentalListFilter(r, listFilter, today)) return false;
+      if (searchTerm) {
+        const q = searchTerm.toLowerCase();
+        const itemTextMatch = (r.items ?? []).some(
+          (it) =>
+            (it.productName || '').toLowerCase().includes(q) ||
+            (it.sku || '').toLowerCase().includes(q)
+        );
+        if (
+          !r.rentalNo.toLowerCase().includes(q) &&
+          !(r.documentNumber || '').toLowerCase().includes(q) &&
+          !r.customerName.toLowerCase().includes(q) &&
+          !r.location.toLowerCase().includes(q) &&
+          !itemTextMatch
+        )
+          return false;
+      }
+      if (branchFilter !== 'all' && r.branchId !== branchFilter) return false;
+      if (salesmanFilter !== 'all' && (r.salesmanId || '') !== salesmanFilter) return false;
+      return true;
+    });
+    if (matchesWithoutDate && (startDate || endDate)) return 'No rentals in selected date range';
+    return 'No rentals found';
+  }, [loading, rentals, filteredRentals.length, loadFailed, hasNonDateFilters, listFilter, searchTerm, branchFilter, salesmanFilter, startDate, endDate, today]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -361,13 +397,13 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
           <span className="text-pink-300/90">operational</span> (rental orders). Not GL AR 1100 or canonical P&amp;L unless posted to those accounts.
         </p>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4">
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 min-w-0">
             <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Rental (Month)</p>
-            <p className="text-2xl font-bold text-white mt-1">{formatCurrency(summary.totalAmount)}</p>
+            <AdaptiveCurrencyValue value={summary.totalAmount} className="text-2xl font-bold text-white mt-1" as="p" />
           </div>
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 min-w-0">
             <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Amount Due</p>
-            <p className="text-2xl font-bold text-red-400 mt-1">{formatCurrency(summary.totalDue)}</p>
+            <AdaptiveCurrencyValue value={summary.totalDue} className="text-2xl font-bold text-red-400 mt-1" as="p" />
           </div>
           <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
             <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Today Pickups</p>
@@ -520,13 +556,18 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                 ) : paginatedRentals.length === 0 ? (
                   <div className="py-12 text-center">
                     <ShoppingBag size={48} className="mx-auto text-gray-600 mb-3" />
-                    <p className="text-gray-400 text-sm">
-                      {rentals.length === 0 && !loading
-                        ? 'No rentals yet'
-                        : listFilter !== 'all' || searchTerm || branchFilter !== 'all'
-                          ? 'No rentals match this filter'
-                          : 'No rentals found'}
-                    </p>
+                    <p className="text-gray-400 text-sm">{emptyListMessage ?? 'No rentals found'}</p>
+                    {loadFailed && rentals.length === 0 && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="mt-4 border-gray-700 text-gray-300"
+                        onClick={() => void refreshRentals()}
+                      >
+                        <RefreshCw size={14} className="mr-2" />
+                        Retry
+                      </Button>
+                    )}
                   </div>
                 ) : (
                   paginatedRentals.map((r) => (
