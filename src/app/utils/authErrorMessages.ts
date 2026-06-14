@@ -16,6 +16,56 @@ export const ALREADY_HAS_BUSINESS_MESSAGE =
 const CREATE_BUSINESS_WRONG_PASSWORD_MESSAGE =
   'This email is already registered with a different password. Use the password from your first signup attempt, sign in on the login page, or choose a different email.';
 
+export const CREATE_BUSINESS_SIGNUP_SERVER_ERROR_MESSAGE =
+  'Signup failed on the server. This email may already be registered with a different password, or there is a database configuration issue. Try Sign In, use a different email, or contact your administrator.';
+
+/** GoTrue self-hosted may return this generic message for duplicate email OR a real Postgres failure. */
+export function isAmbiguousSignupDatabaseError(
+  authError: { message?: string } | null | undefined
+): boolean {
+  const msg = authError?.message?.toLowerCase() ?? '';
+  return msg.includes('database error saving new user');
+}
+
+/** Explicit duplicate-email errors from GoTrue (safe to treat as "already registered"). */
+export function isExplicitDuplicateSignupError(
+  authError: { message?: string; status?: number } | null | undefined
+): boolean {
+  if (!authError) return false;
+  const msg = authError.message?.toLowerCase() ?? '';
+  return (
+    msg.includes('already registered') ||
+    msg.includes('already exists') ||
+    msg.includes('user already exists') ||
+    (authError.status === 422 &&
+      (msg.includes('already') || msg.includes('exists') || msg.includes('registered')))
+  );
+}
+
+/** Whether Create Business should try sign-in after signUp failure. */
+export function shouldAttemptSignupSignInFallback(
+  authError: { message?: string; status?: number } | null | undefined
+): boolean {
+  return isExplicitDuplicateSignupError(authError) || isAmbiguousSignupDatabaseError(authError);
+}
+
+export function formatCreateBusinessSignupFallbackError(
+  signUpError: { message?: string },
+  signInError: { message?: string }
+): string {
+  const signInMessage = signInError.message ?? 'Sign in failed';
+  if (signInMessage.includes('Email not confirmed')) {
+    return 'Please confirm your email address first.';
+  }
+  if (signInMessage.includes('Invalid login credentials')) {
+    if (isAmbiguousSignupDatabaseError(signUpError)) {
+      return CREATE_BUSINESS_SIGNUP_SERVER_ERROR_MESSAGE;
+    }
+    return CREATE_BUSINESS_WRONG_PASSWORD_MESSAGE;
+  }
+  return formatSignInError(signInError, { context: 'createBusinessFallback' });
+}
+
 function isStorageSecurityMessage(err: unknown): boolean {
   if (!err || typeof err !== 'object') return false;
   const o = err as { name?: string; message?: string };
@@ -86,6 +136,7 @@ export function isCreateBusinessAccountError(message: string): boolean {
   return (
     m.includes('reserved for system login') ||
     m.includes('already registered with a different password') ||
+    m.includes('signup failed on the server') ||
     m.includes('already have a business linked') ||
     m.includes('sign in on the login page') ||
     m.includes('confirm your email')

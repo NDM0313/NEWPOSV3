@@ -20,6 +20,7 @@ import { useNavigation } from '@/app/context/NavigationContext';
 import { format } from 'date-fns';
 import { cn } from '@/app/components/ui/utils';
 import { getAttachmentOpenUrl } from '@/app/utils/paymentAttachmentUrl';
+import { normalizeAttachmentList } from '@/app/utils/transactionAttachments';
 import type { AccountingEntry, PaymentMethod } from '@/app/context/AccountingContext';
 import { toast } from 'sonner';
 import { safeSessionStorageSetItem } from '@/app/lib/safeBrowserStorage';
@@ -236,6 +237,35 @@ async function enrichLedgerPaymentEditorFields(args: {
   };
 }
 
+function collectTransactionAttachmentUrls(
+  transaction: { attachments?: unknown } | null | undefined,
+  expenseReceiptUrl?: string | null,
+  sourceDocumentAttachments?: unknown
+): string[] {
+  const urls: string[] = [];
+  const jeAtt = transaction?.attachments;
+  if (Array.isArray(jeAtt)) {
+    for (const att of jeAtt) {
+      const u =
+        typeof att === 'string'
+          ? att
+          : (att as { url?: string; fileUrl?: string })?.url ||
+            (att as { url?: string; fileUrl?: string })?.fileUrl;
+      if (u) urls.push(String(u));
+    }
+  } else if (typeof jeAtt === 'string' && jeAtt.trim()) {
+    urls.push(jeAtt.trim());
+  }
+  const receipt = expenseReceiptUrl?.trim();
+  if (receipt) urls.push(receipt);
+  if (sourceDocumentAttachments) {
+    for (const att of normalizeAttachmentList(sourceDocumentAttachments)) {
+      if (att.url) urls.push(att.url);
+    }
+  }
+  return [...new Set(urls)];
+}
+
 export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
   isOpen,
   onClose,
@@ -261,6 +291,8 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
   const [loading, setLoading] = useState(false);
   const actionLocked = busy || loading;
   const [selectedAttachment, setSelectedAttachment] = useState<string | null>(null);
+  const [expenseReceiptUrl, setExpenseReceiptUrl] = useState<string | null>(null);
+  const [sourceDocumentAttachments, setSourceDocumentAttachments] = useState<unknown>(null);
   const [journalQuickEditOpen, setJournalQuickEditOpen] = useState(false);
   const [editEntryDateTime, setEditEntryDateTime] = useState('');
   const [editDescription, setEditDescription] = useState('');
@@ -396,8 +428,96 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
       setRentalForPaymentDialog(null);
       setTxnHasActiveCorrectionReversal(false);
       setJournalQuickEditOpen(false);
+      setExpenseReceiptUrl(null);
+      setSourceDocumentAttachments(null);
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!transaction || !companyId) {
+      setExpenseReceiptUrl(null);
+      setSourceDocumentAttachments(null);
+      return;
+    }
+    const prt = String(transaction.reference_type || '').toLowerCase();
+    const refId = transaction.reference_id;
+    if ((prt === 'expense' || prt === 'extra_expense') && refId) {
+      let cancelled = false;
+      void (async () => {
+        try {
+          const { supabase } = await import('@/lib/supabase');
+          const { data } = await supabase
+            .from('expenses')
+            .select('receipt_url')
+            .eq('id', refId)
+            .eq('company_id', companyId)
+            .maybeSingle();
+          if (!cancelled) {
+            setExpenseReceiptUrl(data?.receipt_url ? String(data.receipt_url) : null);
+            setSourceDocumentAttachments(null);
+          }
+        } catch {
+          if (!cancelled) {
+            setExpenseReceiptUrl(null);
+            setSourceDocumentAttachments(null);
+          }
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }
+    if (
+      refId &&
+      (prt === 'sale' ||
+        prt === 'sale_adjustment' ||
+        prt === 'sale_reversal' ||
+        prt === 'purchase' ||
+        prt === 'purchase_adjustment' ||
+        prt === 'purchase_return')
+    ) {
+      let cancelled = false;
+      void (async () => {
+        try {
+          const { supabase } = await import('@/lib/supabase');
+          const table =
+            prt === 'sale' || prt === 'sale_adjustment' || prt === 'sale_reversal' ? 'sales' : 'purchases';
+          const { data } = await supabase
+            .from(table)
+            .select('attachments')
+            .eq('id', refId)
+            .eq('company_id', companyId)
+            .maybeSingle();
+          if (!cancelled) {
+            setExpenseReceiptUrl(null);
+            setSourceDocumentAttachments(data?.attachments ?? null);
+          }
+        } catch {
+          if (!cancelled) {
+            setExpenseReceiptUrl(null);
+            setSourceDocumentAttachments(null);
+          }
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }
+    setExpenseReceiptUrl(null);
+    setSourceDocumentAttachments(null);
+  }, [transaction?.id, transaction?.reference_type, transaction?.reference_id, companyId]);
+
+  const transactionAttachmentUrls = useMemo(
+    () => collectTransactionAttachmentUrls(transaction, expenseReceiptUrl, sourceDocumentAttachments),
+    [transaction, expenseReceiptUrl, sourceDocumentAttachments]
+  );
+
+  const openFirstTransactionAttachment = useCallback(async () => {
+    const url = transactionAttachmentUrls[0];
+    if (!url) return;
+    const openUrl = await getAttachmentOpenUrl(url);
+    setSelectedAttachment(openUrl);
+  }, [transactionAttachmentUrls]);
 
   useEffect(() => {
     if (!transaction || String(transaction.reference_type || '').toLowerCase() !== 'manual_receipt') {
@@ -799,6 +919,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
 
     setLoading(true);
     setTxnHasActiveCorrectionReversal(false);
+    setExpenseReceiptUrl(null);
     try {
       // CRITICAL FIX: Prioritize entry_no lookup (JE-0058) over UUID lookup
       // UUID format: 8-4-4-4-12 hex characters
@@ -1018,6 +1139,10 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
         paymentId: transaction.payment_id,
       },
     };
+    onClose();
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => resolve());
+    });
     await openJournalSourceDocumentFromEntry(entry as AccountingEntry, { openDrawer, setCurrentView });
   };
 
@@ -1221,7 +1346,19 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
           <DialogTitle className="text-white flex items-center justify-between">
             <div>
               <h2 className="text-xl font-bold">Transaction Details</h2>
-              <p className="text-sm text-gray-400 mt-1">Reference: {voucherDisplayRef}</p>
+              <p className="text-sm text-gray-400 mt-1 flex items-center gap-2 flex-wrap">
+                <span>Reference: {voucherDisplayRef}</span>
+                {transactionAttachmentUrls.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => void openFirstTransactionAttachment()}
+                    className="inline-flex items-center p-0.5 hover:bg-amber-500/10 rounded transition-colors"
+                    title="View attachment"
+                  >
+                    <Paperclip size={14} className="text-amber-400" />
+                  </button>
+                ) : null}
+              </p>
               {rentalPaymentVoucherRef && transaction?.entry_no && (
                 <p className="text-xs text-gray-500 mt-0.5">Journal: {transaction.entry_no}</p>
               )}
@@ -1292,12 +1429,12 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
 
             {/* SECTION A: BASIC INFO */}
             <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                <h3 className="text-sm font-semibold text-gray-300 flex items-center gap-2">
+              <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-2 mb-3">
+                <h3 className="text-sm font-semibold text-gray-300 flex items-center gap-2 shrink-0">
                   <FileText size={16} />
                   Basic Information
                 </h3>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2 max-w-full min-w-0">
                   {useTransactionActionPanel ? (
                     <>
                       <TransactionActionPanel
@@ -1465,7 +1602,19 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <span className="text-gray-400">Reference Number:</span>
-                  <p className="text-white font-medium">{voucherDisplayRef}</p>
+                  <p className="text-white font-medium flex items-center gap-2 flex-wrap">
+                    <span>{voucherDisplayRef}</span>
+                    {transactionAttachmentUrls.length > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => void openFirstTransactionAttachment()}
+                        className="inline-flex items-center p-0.5 hover:bg-amber-500/10 rounded transition-colors"
+                        title="View attachment"
+                      >
+                        <Paperclip size={14} className="text-amber-400" />
+                      </button>
+                    ) : null}
+                  </p>
                   {rentalPaymentVoucherRef && transaction?.entry_no && (
                     <p className="text-xs text-gray-500 mt-0.5">Journal: {transaction.entry_no}</p>
                   )}

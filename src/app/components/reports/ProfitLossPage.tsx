@@ -1,12 +1,11 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Loader2, GitCompare } from 'lucide-react';
-import { ReportActions } from './ReportActions';
-import { FinancialReportPrintLayout, FinancialReportDataTable } from './FinancialReportPrintLayout';
-import { shareViaWhatsApp } from '@/app/services/documentShareService';
+import { FinancialReportPrintShell } from './shared/FinancialReportPrintShell';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { accountingReportsService, ProfitLossResult } from '@/app/services/accountingReportsService';
-import { exportToPDF, exportToExcel, ExportData } from '@/app/utils/exportUtils';
+import { exportToExcel, ExportData } from '@/app/utils/exportUtils';
+import { shareViaWhatsApp } from '@/app/services/documentShareService';
 import { ReportBasisBanner } from '@/app/components/accounting/ReportBasisBanner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/components/ui/select';
 import { Button } from '@/app/components/ui/button';
@@ -98,18 +97,14 @@ export const ProfitLossPage: React.FC<{
       .finally(() => setLoading(false));
   }, [companyId, startDate, endDate, branchId, compareOptions?.compareStart, compareOptions?.compareEnd, fetchRetryKey]);
 
-  const reportPrintRef = useRef<HTMLDivElement>(null);
   const exportPeriodLabel = `${data?.startDate ?? startDate} to ${data?.endDate ?? endDate}`;
   const branchLabel = branchId && branchId !== 'all' ? 'Branch scope' : 'All branches';
+
   const exportPayload = useMemo(
     () => (data ? toExport(data, formatCurrency, exportPeriodLabel) : null),
     [data, formatCurrency, exportPeriodLabel]
   );
 
-  const handleExportPDF = () => {
-    if (!exportPayload) return;
-    exportToPDF(exportPayload, `P_L_GL_${data!.startDate}_${data!.endDate}`);
-  };
   const handleExportExcel = () => {
     if (!exportPayload) return;
     exportToExcel(exportPayload, `P_L_GL_${data!.startDate}_${data!.endDate}`);
@@ -149,18 +144,17 @@ export const ProfitLossPage: React.FC<{
         basis="official_gl"
         detail='Reports Overview "operational flow" uses documents — do not compare without reading both labels.'
       />
-      <div className="no-print">
-        <ReportActions
-          title="Profit & Loss (GL)"
-          onPrint={() => window.print()}
-          onPdf={handleExportPDF}
-          onExcel={handleExportExcel}
-          onWhatsapp={handleWhatsApp}
-          previewContentRef={reportPrintRef}
-          previewDocumentType="ledger"
-          previewReference={`profit-loss-${data.startDate}-${data.endDate}`}
-        />
-      </div>
+      <FinancialReportPrintShell
+        companyId={companyId}
+        actionsTitle="Profit & Loss (GL)"
+        reportTitle="Profit & Loss (GL)"
+        periodLabel={exportPeriodLabel}
+        branchLabel={branchLabel}
+        previewReference={`profit-loss-${data.startDate}-${data.endDate}`}
+        exportPayload={exportPayload}
+        onExcel={handleExportExcel}
+        onWhatsapp={handleWhatsApp}
+      />
       <div className="no-print flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-gray-400">
           Period: {data.startDate} to {data.endDate}
@@ -186,18 +180,6 @@ export const ProfitLossPage: React.FC<{
           </div>
         </div>
       </div>
-      {exportPayload ? (
-        <div className="fixed left-[-9999px] top-0 w-[820px] pointer-events-none" aria-hidden>
-          <FinancialReportPrintLayout
-            ref={reportPrintRef}
-            title="Profit & Loss (GL)"
-            periodLabel={exportPeriodLabel}
-            branchLabel={branchLabel}
-          >
-            <FinancialReportDataTable headers={exportPayload.headers} rows={exportPayload.rows} />
-          </FinancialReportPrintLayout>
-        </div>
-      ) : null}
       <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-6 space-y-6 no-print">
         <section>
           <h3 className="text-lg font-semibold text-white mb-2">{data.revenue.label}</h3>

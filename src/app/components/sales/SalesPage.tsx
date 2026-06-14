@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { readSaleBillRef } from '@/app/utils/saleBillRef';
+import { parseLocalDateInput } from '@/app/utils/localDate';
 import { 
   Plus, ShoppingCart, DollarSign, TrendingUp, 
   MoreVertical, Eye, Edit, Trash2, FileText, Phone, MapPin,
@@ -974,11 +975,13 @@ export const SalesPage = () => {
       }
       // activeTab === 'all' shows all
 
-      // Global filter date range
+      // Global filter date range (local calendar — inclusive end of day)
       if (startDate && endDate) {
-        const saleDate = new Date(sale.date);
-        const start = new Date(startDate);
-        const end = new Date(endDate);
+        const saleDate = parseLocalDateInput(String(sale.date).slice(0, 10));
+        const start = parseLocalDateInput(startDate);
+        start.setHours(0, 0, 0, 0);
+        const end = parseLocalDateInput(endDate);
+        end.setHours(23, 59, 59, 999);
         if (saleDate < start || saleDate > end) return false;
       }
       // If no date range, show all (no filter applied)
@@ -1143,6 +1146,10 @@ export const SalesPage = () => {
   React.useEffect(() => {
     setPage(0);
   }, [searchTerm, dateFilter, customerFilter, paymentStatusFilter, saleStatusFilter, shippingStatusFilter, branchFilter, paymentMethodFilter, setPage]);
+
+  React.useEffect(() => {
+    setPage(0);
+  }, [startDate, endDate, branchId, setPage]);
 
   // Clamp page when total pages shrinks (e.g. filter leaves fewer pages)
   React.useEffect(() => {

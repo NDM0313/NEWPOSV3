@@ -86,6 +86,16 @@ export interface ReportExportSettings {
   productSellOrientation: Orientation;
   /** Account Statements / party ledger statement PDF default. */
   ledgerReportOrientation?: Orientation;
+  /** Daily cash book (Roznamcha). */
+  roznamchaOrientation?: Orientation;
+  /** Cash Flow operational grid. */
+  cashFlowOrientation?: Orientation;
+  /** Journal Day Book. */
+  dayBookOrientation?: Orientation;
+  /** Trial Balance, P&L, Balance Sheet, etc. */
+  financialReportOrientation?: Orientation;
+  /** Stock Ledger by Product (movement history). */
+  stockMovementHistoryOrientation?: Orientation;
   /** Show branded header block on tabular report PDF/print. */
   showReportHeader?: boolean;
   /** Show page-number footer on tabular report PDF/print. */
@@ -178,6 +188,11 @@ export const DEFAULT_REPORT_EXPORT: ReportExportSettings = {
   stockReportOrientation: 'landscape',
   productSellOrientation: 'portrait',
   ledgerReportOrientation: 'portrait',
+  roznamchaOrientation: 'landscape',
+  cashFlowOrientation: 'landscape',
+  dayBookOrientation: 'landscape',
+  financialReportOrientation: 'portrait',
+  stockMovementHistoryOrientation: 'landscape',
   showReportHeader: true,
   showReportFooter: true,
   reportFontSize: 11,

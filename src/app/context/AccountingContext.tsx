@@ -35,6 +35,7 @@ import {
 } from '@/app/services/paymentChainMutationGuard';
 import { logPaymentCreated } from '@/app/services/auditLogService';
 import { fetchInBatches } from '@/app/lib/chunkInQuery';
+import { mergeAttachmentLists, normalizeAttachmentList } from '@/app/utils/transactionAttachments';
 
 /** Prefer source document branch (rental/sale/purchase) over session branch selector. */
 function resolvePostingBranchId(
@@ -732,6 +733,13 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     const linkedSaleStatus = (journalEntry as { _linked_sale_status?: string })._linked_sale_status;
     if (linkedSaleStatus) metadata.linkedSaleStatus = linkedSaleStatus;
 
+    const jeAttachments = normalizeAttachmentList((journalEntry as { attachments?: unknown }).attachments);
+    const sourceAttachments = normalizeAttachmentList(
+      (journalEntry as { _source_attachments?: unknown })._source_attachments
+    );
+    const allAttachments = mergeAttachmentLists(jeAttachments, sourceAttachments);
+    if (allAttachments.length > 0) metadata.attachments = allAttachments;
+
     if (journalEntry.reference_id) {
       if (source === 'Sale') metadata.invoiceId = journalEntry.reference_id;
       if (source === 'Purchase') metadata.purchaseId = journalEntry.reference_id;
@@ -1165,6 +1173,15 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
         reason.includes('sales-context-payment')
       ) {
         const rows = await accountingService.fetchJournalEntriesForSale(
+          companyId,
+          entityId,
+          branchFilter
+        );
+        if (rows.length > 0) return mergeIncrementalJournalRows(rows as JournalEntryWithLines[]);
+      }
+
+      if (reason.includes('expense:') && (reason.includes('created') || reason.includes('updated'))) {
+        const rows = await accountingService.fetchJournalEntriesForExpense(
           companyId,
           entityId,
           branchFilter

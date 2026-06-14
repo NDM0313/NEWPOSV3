@@ -52,6 +52,24 @@ export function getFinancialYearRange(
 }
 
 /**
+ * Prior financial year range (immediately before current FY).
+ */
+export function getLastFinancialYearRange(
+  financialYearStart: string | Date | null | undefined
+): { start: Date; end: Date } {
+  const current = getFinancialYearRange(financialYearStart);
+  const lastEnd = new Date(current.start);
+  lastEnd.setDate(lastEnd.getDate() - 1);
+  lastEnd.setHours(23, 59, 59, 999);
+
+  const lastStart = new Date(current.start);
+  lastStart.setFullYear(lastStart.getFullYear() - 1);
+  lastStart.setHours(0, 0, 0, 0);
+
+  return { start: lastStart, end: lastEnd };
+}
+
+/**
  * Get financial year label (e.g. "FY 2024-25")
  */
 export function getFinancialYearLabel(

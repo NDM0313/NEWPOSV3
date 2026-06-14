@@ -4,9 +4,18 @@
  * Structure: Filters → Summary Cards → Cash Split → Roznamcha Table.
  */
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { ReportActions } from './ReportActions';
+import { PdfPreviewModal, type PdfPreviewOrientation } from '@/app/components/shared/PdfPreviewModal';
+import { useReportExport } from './shared/useReportExport';
+import { CashBookReportPreview } from './shared/CashBookReportPreview';
+import {
+  buildRoznamchaPrintRows,
+  buildRoznamchaSummaryStats,
+  ROZNAMCHA_PRINT_COLUMNS,
+  roznamchaDetailsForDisplay,
+} from './shared/buildRoznamchaPrintPreview';
 import { DateRangePicker } from '../ui/DateRangePicker';
 import { Button } from '../ui/button';
 import {
@@ -53,8 +62,8 @@ function roznamchaCacheKey(
     paymentLedgerAccountId ?? '',
   ].join('|');
 }
-import { exportToPDF, exportToExcel } from '@/app/utils/exportUtils';
-import { shareViaWhatsApp } from '@/app/services/documentShareService';
+import { exportToExcel } from '@/app/utils/exportUtils';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { useFormatDate } from '@/app/hooks/useFormatDate';
 import { DateTimeDisplay } from '../ui/DateTimeDisplay';
 import { Loader2, BookOpen, Wallet, Building2, CreditCard, Smartphone, Search } from 'lucide-react';
@@ -62,10 +71,6 @@ import { Input } from '../ui/input';
 import { cn } from '../ui/utils';
 import { format, parseISO } from 'date-fns';
 import { journalDescriptionForDisplay } from '@/app/utils/journalDescriptionDisplay';
-
-function roznamchaDetailsForDisplay(r: RoznamchaRowWithBalance): string {
-  return journalDescriptionForDisplay(r.details, r.type || 'Payment');
-}
 
 function rowSortTimestamp(r: RoznamchaRowWithBalance): number {
   const t = r.time?.length === 5 ? `${r.time}:00` : r.time || '00:00:00';
@@ -111,8 +116,10 @@ export interface RoznamchaReportProps {
 }
 
 export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaReportProps = {}) => {
-  const rozPrintRef = useRef<HTMLDivElement>(null);
   const { companyId, branchId: contextBranchId } = useSupabase();
+  const reportExport = useReportExport({ companyId, documentType: 'ledger', reportKind: 'roznamcha' });
+  const { formatCurrency } = useFormatCurrency();
+  const [printOrientation, setPrintOrientation] = useState<PdfPreviewOrientation>('landscape');
   const { formatDate, formatDateTime } = useFormatDate();
   const today = new Date();
   const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({ from: today, to: today });
@@ -298,6 +305,28 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
 
   const selectedBranchLabel = contextBranchId === 'all' || !contextBranchId ? 'All Branches' : 'Selected branch';
 
+  useEffect(() => {
+    setPrintOrientation(reportExport.accountingPrintOptions.orientation);
+  }, [reportExport.accountingPrintOptions.orientation]);
+
+  const handleOpenPdfPreview = useCallback(async () => {
+    await reportExport.openPreview();
+  }, [reportExport]);
+
+  const printOpts = reportExport.accountingPrintOptions;
+  const periodLabel = dateFrom && dateTo ? `${dateFrom} → ${dateTo}` : '—';
+  const generatedAt = useMemo(() => new Date().toLocaleString(), [reportExport.previewOpen]);
+
+  const rozPrintPreview = useMemo(() => {
+    if (!data?.summary) return null;
+    return {
+      summaryStats: buildRoznamchaSummaryStats(data.summary, formatCurrency),
+      rows: buildRoznamchaPrintRows(filteredRows, roznamchaDetailsForDisplay),
+      openingBalance: formatCurrency(data.summary.openingBalance),
+      closingBalance: formatCurrency(data.summary.closingBalance),
+    };
+  }, [data?.summary, filteredRows, formatCurrency]);
+
   const exportData = {
     title: `Roznamcha ${dateFrom} to ${dateTo} – ${selectedBranchLabel}`,
     headers: ['Date & Time', 'Ref / Journal', 'Details', 'Account', 'Cash In', 'Cash Out', 'Balance'],
@@ -340,30 +369,93 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
       <div className="no-print">
         <ReportActions
           title="Roznamcha"
-          onPrint={() => window.print()}
-          onPdf={() => exportToPDF(exportData, 'Roznamcha')}
+          onPrint={() => void handleOpenPdfPreview()}
+          onOpenPdfPreview={() => void handleOpenPdfPreview()}
           onExcel={() => exportToExcel(exportData, 'Roznamcha')}
+          pdfLoading={reportExport.loadingBrand}
           onWhatsapp={() => {
             const s = data?.summary;
-            const msg = [
-              'Roznamcha (Daily Cash Book)',
-              `Period: ${dateFrom} to ${dateTo}`,
-              s
-                ? `Opening: ${s.openingBalance.toLocaleString()} · In: ${s.cashIn.toLocaleString()} · Out: ${s.cashOut.toLocaleString()} · Closing: ${s.closingBalance.toLocaleString()}`
-                : '',
-              `Rows shown: ${filteredRows.length}`,
-            ]
-              .filter(Boolean)
-              .join('\n');
-            shareViaWhatsApp(msg);
+            reportExport.shareViaWhatsApp({
+              title: 'Roznamcha (Daily Cash Book)',
+              period: `${dateFrom} to ${dateTo}`,
+              message: [
+                'Roznamcha (Daily Cash Book)',
+                `Period: ${dateFrom} to ${dateTo}`,
+                s
+                  ? `Opening: ${s.openingBalance.toLocaleString()} · In: ${s.cashIn.toLocaleString()} · Out: ${s.cashOut.toLocaleString()} · Closing: ${s.closingBalance.toLocaleString()}`
+                  : '',
+                `Rows shown: ${filteredRows.length}`,
+              ]
+                .filter(Boolean)
+                .join('\n'),
+            });
           }}
-          previewContentRef={rozPrintRef}
+          previewContentRef={reportExport.printRef}
           previewDocumentType="ledger"
           previewReference={dateFrom && dateTo ? `Roznamcha-${dateFrom}-${dateTo}` : 'Roznamcha'}
         />
       </div>
 
-      <div ref={rozPrintRef} className="space-y-6">
+      {reportExport.previewOpen && reportExport.brand && rozPrintPreview ? (
+        <PdfPreviewModal
+          open={reportExport.previewOpen}
+          onClose={reportExport.closePreview}
+          title="Roznamcha (Daily Cash Book)"
+          documentType="ledger"
+          reference={dateFrom && dateTo ? `Roznamcha-${dateFrom}-${dateTo}` : 'Roznamcha'}
+          format={reportExport.printFormat}
+          orientation={printOrientation}
+          showOrientationToggle
+          onOrientationChange={setPrintOrientation}
+          pageNumbers={printOpts.showFooter}
+        >
+          <CashBookReportPreview
+            brand={reportExport.brand}
+            title="Roznamcha (Daily Cash Book)"
+            periodLabel={periodLabel}
+            branchScopeLabel={selectedBranchLabel}
+            generatedAt={generatedAt}
+            columns={ROZNAMCHA_PRINT_COLUMNS}
+            rows={rozPrintPreview.rows}
+            summaryStats={rozPrintPreview.summaryStats}
+            openingBalance={rozPrintPreview.openingBalance}
+            closingBalance={rozPrintPreview.closingBalance}
+            fieldVisibility={printOpts.fieldVisibility}
+            showHeader={printOpts.showHeader}
+            showFooter={printOpts.showFooter}
+            orientation={printOrientation}
+            fontSize={printOpts.fontSize}
+            fontFamily={printOpts.fontFamily}
+            margins={printOpts.margins}
+          />
+        </PdfPreviewModal>
+      ) : null}
+
+      <div ref={reportExport.printRef} className="sr-only">
+        {reportExport.brand && rozPrintPreview ? (
+          <CashBookReportPreview
+            brand={reportExport.brand}
+            title="Roznamcha (Daily Cash Book)"
+            periodLabel={periodLabel}
+            branchScopeLabel={selectedBranchLabel}
+            generatedAt={generatedAt}
+            columns={ROZNAMCHA_PRINT_COLUMNS}
+            rows={rozPrintPreview.rows}
+            summaryStats={rozPrintPreview.summaryStats}
+            openingBalance={rozPrintPreview.openingBalance}
+            closingBalance={rozPrintPreview.closingBalance}
+            fieldVisibility={printOpts.fieldVisibility}
+            showHeader={printOpts.showHeader}
+            showFooter={printOpts.showFooter}
+            orientation={printOrientation}
+            fontSize={printOpts.fontSize}
+            fontFamily={printOpts.fontFamily}
+            margins={printOpts.margins}
+          />
+        ) : null}
+      </div>
+
+      <div className="space-y-6">
 
       {/* 1. FILTERS */}
       <div className="no-print rounded-xl border border-gray-800 bg-gray-900/50 p-4">
@@ -585,12 +677,6 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
         </div>
       ) : data ? (
         <>
-          {loading ? (
-            <div className="flex items-center justify-center gap-2 py-2 text-xs text-blue-400">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Refreshing roznamcha…
-            </div>
-          ) : null}
           {/* 2. SUMMARY CARDS */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <SummaryCard
@@ -657,7 +743,17 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
           </div>
 
           {/* 4. ROZNAMCHA TABLE */}
-          <div className="rounded-xl border border-gray-800 overflow-hidden bg-gray-900/50">
+          <div className="relative rounded-xl border border-gray-800 overflow-hidden bg-gray-900/50">
+            {loading ? (
+              <div
+                className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-gray-950/70 backdrop-blur-sm pointer-events-none"
+                aria-live="polite"
+                aria-busy="true"
+              >
+                <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+                <p className="text-sm text-gray-300">Loading roznamcha…</p>
+              </div>
+            ) : null}
             <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider p-4 border-b border-gray-800">
               Roznamcha Table
             </h3>

@@ -13,6 +13,12 @@ import {
 } from '@/app/lib/partyLedgerReference';
 import { filterLivePaymentsExcludingVoidedJournals } from '@/app/lib/paymentVoidVisibility';
 import { appendRentalPaymentMergeItems } from '@/app/lib/rentalPenaltyLedgerLines';
+import {
+  mergeAttachmentLists,
+  normalizeAttachmentList,
+  receiptUrlToAttachments,
+  type TransactionAttachment,
+} from '@/app/utils/transactionAttachments';
 
 export interface JournalEntry {
   id?: string;
@@ -761,7 +767,7 @@ export const accountingService = {
       if (uniquePaymentIds.length > 0) {
         const { data: payments } = await supabase
           .from('payments')
-          .select('id, reference_type, reference_id, reference_number')
+          .select('id, reference_type, reference_id, reference_number, attachments')
           .in('id', uniquePaymentIds);
         
         if (payments) {
@@ -969,38 +975,55 @@ export const accountingService = {
 
       const saleInvoiceNoById = new Map<string, string>();
       const saleStatusById = new Map<string, string>();
+      const saleAttachmentsById = new Map<string, TransactionAttachment[]>();
       if (saleIdsForInvoice.size > 0) {
         const { data: saleRows } = await supabase
           .from('sales')
-          .select('id, invoice_no, status')
+          .select('id, invoice_no, status, attachments')
           .in('id', [...saleIdsForInvoice]);
         (saleRows || []).forEach((s: any) => {
           if (s?.id && s.invoice_no) saleInvoiceNoById.set(String(s.id), String(s.invoice_no));
           if (s?.id && s.status) saleStatusById.set(String(s.id), String(s.status));
+          if (s?.id && s.attachments) {
+            saleAttachmentsById.set(String(s.id), normalizeAttachmentList(s.attachments));
+          }
         });
       }
 
       const purchasePoNoById = new Map<string, string>();
+      const purchaseAttachmentsById = new Map<string, TransactionAttachment[]>();
       if (purchaseIdsForPo.size > 0) {
         const { data: purRows } = await supabase
           .from('purchases')
-          .select('id, po_no')
+          .select('id, po_no, attachments')
           .in('id', [...purchaseIdsForPo]);
         (purRows || []).forEach((r: any) => {
           if (r?.id && r.po_no) purchasePoNoById.set(String(r.id), String(r.po_no));
+          if (r?.id && r.attachments) {
+            purchaseAttachmentsById.set(String(r.id), normalizeAttachmentList(r.attachments));
+          }
         });
       }
 
       const expenseNoById = new Map<string, string>();
+      const expenseReceiptById = new Map<string, string>();
       if (expenseIdsForNo.size > 0) {
         const { data: expRows } = await supabase
           .from('expenses')
-          .select('id, expense_no')
+          .select('id, expense_no, receipt_url')
           .in('id', [...expenseIdsForNo]);
         (expRows || []).forEach((r: any) => {
           if (r?.id && r.expense_no) expenseNoById.set(String(r.id), String(r.expense_no).trim());
+          if (r?.id && r.receipt_url) expenseReceiptById.set(String(r.id), String(r.receipt_url).trim());
         });
       }
+
+      const paymentAttachmentsById = new Map<string, TransactionAttachment[]>();
+      (paymentsList || []).forEach((p: any) => {
+        if (p?.id && p.attachments) {
+          paymentAttachmentsById.set(String(p.id), normalizeAttachmentList(p.attachments));
+        }
+      });
 
       validEntries = validEntries.map((e: any) => {
         const rtNorm = String(e.reference_type || '')
@@ -1127,6 +1150,47 @@ export const accountingService = {
         if (saleRefId && saleStatusById.has(saleRefId)) {
           out._linked_sale_status = saleStatusById.get(saleRefId);
         }
+        const sourceAttachmentParts: unknown[] = [];
+        if (rtN === 'expense' && entry.reference_id) {
+          const receipt = expenseReceiptById.get(String(entry.reference_id));
+          if (receipt) sourceAttachmentParts.push(...receiptUrlToAttachments(receipt));
+        } else if ((rtN === 'sale' || rtN === 'sale_adjustment' || rtN === 'sale_reversal') && entry.reference_id) {
+          const saleAtt = saleAttachmentsById.get(String(entry.reference_id));
+          if (saleAtt?.length) sourceAttachmentParts.push(...saleAtt);
+        } else if (
+          (rtN === 'purchase' || rtN === 'purchase_adjustment' || rtN === 'purchase_return') &&
+          entry.reference_id
+        ) {
+          const purAtt = purchaseAttachmentsById.get(String(entry.reference_id));
+          if (purAtt?.length) sourceAttachmentParts.push(...purAtt);
+        }
+        if (payKeyForOps) {
+          const payAtt = paymentAttachmentsById.get(String(payKeyForOps));
+          if (payAtt?.length) sourceAttachmentParts.push(...payAtt);
+          const linkedPayRtForAtt = paymentRefTypeByPaymentId.get(String(payKeyForOps));
+          const payRowForAtt = (paymentsList || []).find((p: any) => String(p.id) === String(payKeyForOps));
+          if (linkedPayRtForAtt === 'expense' && payRowForAtt?.reference_id) {
+            const receipt = expenseReceiptById.get(String(payRowForAtt.reference_id));
+            if (receipt) sourceAttachmentParts.push(...receiptUrlToAttachments(receipt));
+          } else if (linkedPayRtForAtt === 'sale' && payRowForAtt?.reference_id) {
+            const saleAtt = saleAttachmentsById.get(String(payRowForAtt.reference_id));
+            if (saleAtt?.length) sourceAttachmentParts.push(...saleAtt);
+          } else if (linkedPayRtForAtt === 'purchase' && payRowForAtt?.reference_id) {
+            const purAtt = purchaseAttachmentsById.get(String(payRowForAtt.reference_id));
+            if (purAtt?.length) sourceAttachmentParts.push(...purAtt);
+          }
+        }
+        const rootRefId = out.root_reference_id;
+        const rootRefType = String(out.root_reference_type || '').toLowerCase();
+        if (rootRefId && rootRefType === 'sale') {
+          const saleAtt = saleAttachmentsById.get(String(rootRefId));
+          if (saleAtt?.length) sourceAttachmentParts.push(...saleAtt);
+        } else if (rootRefId && rootRefType === 'purchase') {
+          const purAtt = purchaseAttachmentsById.get(String(rootRefId));
+          if (purAtt?.length) sourceAttachmentParts.push(...purAtt);
+        }
+        const mergedSource = mergeAttachmentLists(sourceAttachmentParts);
+        if (mergedSource.length > 0) out._source_attachments = mergedSource;
         return out;
       });
 
@@ -1212,6 +1276,58 @@ export const accountingService = {
       if (row?.id) byId.set(String(row.id), row);
     }
     return Array.from(byId.values());
+  },
+
+  /** Incremental refresh: journal rows for an expense document (avoids full getAllEntries). */
+  async fetchJournalEntriesForExpense(
+    companyId: string,
+    expenseId: string,
+    branchId?: string
+  ): Promise<any[]> {
+    if (!companyId || !expenseId) return [];
+    const jeSelect = `
+      *,
+      lines:journal_entry_lines(
+        id,
+        journal_entry_id,
+        account_id,
+        debit,
+        credit,
+        description,
+        account:accounts(name, code, type)
+      )
+    `;
+    let query = supabase
+      .from('journal_entries')
+      .select(jeSelect)
+      .eq('company_id', companyId)
+      .eq('reference_id', expenseId)
+      .eq('reference_type', 'expense');
+    if (branchId) {
+      query = query.or(`branch_id.eq.${branchId},branch_id.is.null`);
+    }
+    const { data, error } = await query;
+    if (error && import.meta.env?.DEV) {
+      console.warn('[ACCOUNTING SERVICE] fetchJournalEntriesForExpense:', error.message);
+    }
+    const rows = ((data || []) as any[]).filter((e) => e.is_void !== true);
+    if (rows.length === 0) return rows;
+    const { data: expRow } = await supabase
+      .from('expenses')
+      .select('receipt_url')
+      .eq('id', expenseId)
+      .eq('company_id', companyId)
+      .maybeSingle();
+    const receipt = expRow?.receipt_url ? String(expRow.receipt_url).trim() : '';
+    if (!receipt) return rows;
+    const sourceAtt = receiptUrlToAttachments(receipt);
+    return rows.map((row) => ({
+      ...row,
+      _source_attachments: mergeAttachmentLists(
+        (row as { _source_attachments?: unknown })._source_attachments,
+        sourceAtt
+      ),
+    }));
   },
 
   /**

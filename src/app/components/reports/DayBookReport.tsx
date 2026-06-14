@@ -1,16 +1,18 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useFormatDate } from '@/app/hooks/useFormatDate';
 import { formatDateTime as formatDateTimeUtil } from '@/app/utils/formatDate';
 import { ReportActions } from './ReportActions';
+import { PdfPreviewModal, type PdfPreviewOrientation } from '@/app/components/shared/PdfPreviewModal';
+import { useReportExport } from './shared/useReportExport';
+import { TabularReportPreview } from './shared/TabularReportPreview';
 import { DateRangePicker } from '../ui/DateRangePicker';
 import { DateTimeDisplay } from '../ui/DateTimeDisplay';
 import { Button } from '../ui/button';
 import { Loader2, BookOpen, ChevronDown, ChevronUp, ChevronsUpDown, Pencil, Search } from 'lucide-react';
 import { cn } from '../ui/utils';
-import { exportToPDF, exportToExcel } from '@/app/utils/exportUtils';
-import { shareViaWhatsApp } from '@/app/services/documentShareService';
+import { exportToExcel } from '@/app/utils/exportUtils';
 import { Input } from '../ui/input';
 import {
   Select,
@@ -101,6 +103,8 @@ function journalEntriesBranchOrFilter(branchId: string | null | undefined): stri
 
 export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartDate, globalEndDate }: DayBookReportProps) => {
   const { companyId, branchId: contextBranchId } = useSupabase();
+  const reportExport = useReportExport({ companyId, documentType: 'ledger', reportKind: 'day_book' });
+  const [printOrientation, setPrintOrientation] = useState<PdfPreviewOrientation>('landscape');
   const { dateFormat, timeFormat, timezone } = useFormatDate();
   const today = new Date();
   const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({
@@ -499,8 +503,59 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
     title: `Journal Day Book ${dateFrom} to ${dateTo} – ${branchScopeLabel}`,
   };
 
-  const previewRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    setPrintOrientation(reportExport.accountingPrintOptions.orientation);
+  }, [reportExport.accountingPrintOptions.orientation]);
+
+  const handleOpenPdfPreview = useCallback(async () => {
+    await reportExport.openPreview();
+  }, [reportExport]);
+
+  const printOpts = reportExport.accountingPrintOptions;
+  const periodLabel = dateFrom && dateTo ? `${dateFrom} → ${dateTo}` : '—';
+  const generatedAt = useMemo(() => new Date().toLocaleString(), [reportExport.previewOpen]);
+
+  const dayBookPrintColumns = useMemo(
+    () => exportData.headers.map((label, i) => ({
+      key: `col${i}`,
+      label,
+      align: (label.includes('Debit') || label.includes('Credit') ? 'right' : 'left') as 'left' | 'right',
+    })),
+    [exportData.headers],
+  );
+
+  const dayBookPrintStats = useMemo(
+    () => [
+      { label: 'Lines', value: String(sortedEntries.length) },
+      { label: 'Total debit', value: totalDebit.toLocaleString() },
+      { label: 'Total credit', value: totalCredit.toLocaleString() },
+    ],
+    [sortedEntries.length, totalDebit, totalCredit],
+  );
+
   const whatsappSummary = `Journal Day Book\nPeriod: ${dateFrom} to ${dateTo}\nLines: ${sortedEntries.length}\nDebit total: ${totalDebit.toLocaleString()}\nCredit total: ${totalCredit.toLocaleString()}`;
+
+  const renderDayBookPrintPreview = () =>
+    reportExport.brand ? (
+      <TabularReportPreview
+        brand={reportExport.brand}
+        title="Journal Day Book"
+        subtitle={branchScopeLabel}
+        periodLabel={periodLabel}
+        generatedAt={generatedAt}
+        columns={dayBookPrintColumns}
+        rows={exportData.rows}
+        stats={dayBookPrintStats}
+        fieldVisibility={printOpts.fieldVisibility}
+        showHeader={printOpts.showHeader}
+        showFooter={printOpts.showFooter}
+        orientation={printOrientation}
+        fontSize={printOpts.fontSize}
+        fontFamily={printOpts.fontFamily}
+        margins={printOpts.margins}
+        compact={sortedEntries.length > 80}
+      />
+    ) : null;
 
   return (
     <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
@@ -515,17 +570,42 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
       <div className="no-print">
         <ReportActions
           title="Journal Day Book"
-          onPrint={() => window.print()}
-          onPdf={() => exportToPDF(exportData, 'DayBook')}
+          onPrint={() => void handleOpenPdfPreview()}
+          onOpenPdfPreview={() => void handleOpenPdfPreview()}
           onExcel={() => exportToExcel(exportData, 'DayBook')}
-          onWhatsapp={() => shareViaWhatsApp(whatsappSummary)}
-          previewContentRef={previewRef}
+          pdfLoading={reportExport.loadingBrand}
+          onWhatsapp={() =>
+            reportExport.shareViaWhatsApp({ title: 'Journal Day Book', message: whatsappSummary })
+          }
+          previewContentRef={reportExport.printRef}
           previewDocumentType="ledger"
           previewReference={`daybook-${dateFrom}-${dateTo}`}
         />
       </div>
 
-      <div ref={previewRef} className="space-y-6">
+      {reportExport.previewOpen ? (
+        <PdfPreviewModal
+          open={reportExport.previewOpen}
+          onClose={reportExport.closePreview}
+          title="Journal Day Book"
+          documentType="ledger"
+          reference={`daybook-${dateFrom}-${dateTo}`}
+          format={reportExport.printFormat}
+          orientation={printOrientation}
+          showOrientationToggle
+          onOrientationChange={setPrintOrientation}
+          pageNumbers={printOpts.showFooter}
+          fitSinglePage={sortedEntries.length <= 40}
+        >
+          {renderDayBookPrintPreview()}
+        </PdfPreviewModal>
+      ) : null}
+
+      <div ref={reportExport.printRef} className="sr-only">
+        {renderDayBookPrintPreview()}
+      </div>
+
+      <div className="space-y-6">
 
       <div className="no-print flex flex-wrap items-end gap-3 rounded-xl border border-gray-800 bg-gray-900/50 p-4">
         <div className="flex flex-col gap-1.5 min-w-[12rem] flex-1">

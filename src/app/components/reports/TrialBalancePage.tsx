@@ -1,12 +1,13 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Loader2, ExternalLink, AlertTriangle, ShieldAlert, Search } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Switch } from '@/app/components/ui/switch';
 import { Label } from '@/app/components/ui/label';
 import { ReportActions } from './ReportActions';
-import { FinancialReportPrintLayout, FinancialReportDataTable } from './FinancialReportPrintLayout';
-import { shareViaWhatsApp } from '@/app/services/documentShareService';
+import { PdfPreviewModal } from '@/app/components/shared/PdfPreviewModal';
+import { FinancialReportPreview } from './shared/FinancialReportPreview';
+import { useFinancialReportPrint } from './shared/useFinancialReportPrint';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useNavigation } from '@/app/context/NavigationContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
@@ -17,7 +18,7 @@ import {
   TrialBalanceRow,
   type TrialBalanceArApMode,
 } from '@/app/services/accountingReportsService';
-import { exportToPDF, exportToExcel, ExportData } from '@/app/utils/exportUtils';
+import { exportToExcel, ExportData } from '@/app/utils/exportUtils';
 import { ReportBasisBanner } from '@/app/components/accounting/ReportBasisBanner';
 import { AccountLedgerView } from '@/app/components/accounting/AccountLedgerView';
 import {
@@ -66,6 +67,7 @@ export const TrialBalancePage: React.FC<{
   branchId?: string;
 }> = ({ startDate, endDate, branchId }) => {
   const { companyId } = useSupabase();
+  const financialPrint = useFinancialReportPrint(companyId);
   const { setCurrentView } = useNavigation();
   const { formatCurrency } = useFormatCurrency();
   const [data, setData] = useState<TrialBalanceResult | null>(null);
@@ -155,11 +157,11 @@ export const TrialBalancePage: React.FC<{
     });
   }, [filteredRows]);
 
-  const reportPrintRef = useRef<HTMLDivElement>(null);
-  const arApModeLabel =
-    arApMode === 'summary' ? 'Summary (AR+AP rolled)' : arApMode === 'expanded' ? 'Expanded party subledgers' : 'All accounts (GL lines)';
-  const periodExportLabel = `${startDate} to ${endDate} · ${arApModeLabel}`;
   const branchLabel = branchId && branchId !== 'all' ? 'Branch scope' : 'All branches';
+  const generatedAt = useMemo(
+    () => new Date().toLocaleString(),
+    [financialPrint.previewOpen],
+  );
 
   const exportResult = useMemo((): TrialBalanceResult | null => {
     if (!data) return null;
@@ -167,25 +169,46 @@ export const TrialBalancePage: React.FC<{
     return { rows: filteredRows, ...filteredTotals };
   }, [data, isSearchActive, filteredRows, filteredTotals]);
 
+  const arApModeLabel =
+    arApMode === 'summary' ? 'Summary (AR+AP rolled)' : arApMode === 'expanded' ? 'Expanded party subledgers' : 'All accounts (GL lines)';
+  const periodExportLabel = `${startDate} to ${endDate} · ${arApModeLabel}`;
+
   const exportPayload = useMemo(
     () => (exportResult ? toExport(exportResult, formatCurrency, periodExportLabel) : null),
     [exportResult, formatCurrency, periodExportLabel]
   );
 
-  const handleExportPDF = () => {
-    if (!exportPayload) return;
-    exportToPDF(exportPayload, `Trial_Balance_GL_${startDate}_${endDate}`);
-  };
   const handleExportExcel = () => {
     if (!exportPayload) return;
     exportToExcel(exportPayload, `Trial_Balance_GL_${startDate}_${endDate}`);
   };
   const handleWhatsApp = () => {
     if (!exportResult) return;
-    void shareViaWhatsApp(
-      `Trial Balance (GL)\n${periodExportLabel}\nTotal Debit: ${formatCurrency(exportResult.totalDebit)}\nTotal Credit: ${formatCurrency(exportResult.totalCredit)}\nDifference: ${formatCurrency(exportResult.difference)}`
-    );
+    financialPrint.shareViaWhatsApp({
+      title: 'Trial Balance (GL)',
+      message: `Trial Balance (GL)\n${periodExportLabel}\nTotal Debit: ${formatCurrency(exportResult.totalDebit)}\nTotal Credit: ${formatCurrency(exportResult.totalCredit)}\nDifference: ${formatCurrency(exportResult.difference)}`,
+    });
   };
+
+  const renderFinancialPreview = () =>
+    financialPrint.brand && exportPayload ? (
+      <FinancialReportPreview
+        brand={financialPrint.brand}
+        title="Trial Balance (GL)"
+        periodLabel={periodExportLabel}
+        branchLabel={branchLabel}
+        generatedAt={generatedAt}
+        headers={exportPayload.headers}
+        rows={exportPayload.rows}
+        fieldVisibility={financialPrint.printOpts.fieldVisibility}
+        showHeader={financialPrint.printOpts.showHeader}
+        showFooter={financialPrint.printOpts.showFooter}
+        orientation={financialPrint.printOrientation}
+        fontSize={financialPrint.printOpts.fontSize}
+        fontFamily={financialPrint.printOpts.fontFamily}
+        margins={financialPrint.printOpts.margins}
+      />
+    ) : null;
 
   if (loading) {
     return (
@@ -239,14 +262,36 @@ export const TrialBalancePage: React.FC<{
       <div className="no-print">
         <ReportActions
           title="Trial Balance (GL)"
-          onPrint={() => window.print()}
-          onPdf={handleExportPDF}
+          onPrint={() => void financialPrint.handleOpenPreview()}
+          onOpenPdfPreview={() => void financialPrint.handleOpenPreview()}
           onExcel={handleExportExcel}
           onWhatsapp={handleWhatsApp}
-          previewContentRef={reportPrintRef}
+          pdfLoading={financialPrint.loadingBrand}
+          previewContentRef={financialPrint.printRef}
           previewDocumentType="ledger"
           previewReference={`trial-balance-${startDate}-${endDate}-${arApMode}`}
         />
+      </div>
+
+      {financialPrint.previewOpen ? (
+        <PdfPreviewModal
+          open={financialPrint.previewOpen}
+          onClose={financialPrint.closePreview}
+          title="Trial Balance (GL)"
+          documentType="ledger"
+          reference={`trial-balance-${startDate}-${endDate}-${arApMode}`}
+          format={financialPrint.printFormat}
+          orientation={financialPrint.printOrientation}
+          showOrientationToggle
+          onOrientationChange={financialPrint.setPrintOrientation}
+          pageNumbers={financialPrint.printOpts.showFooter}
+        >
+          {renderFinancialPreview()}
+        </PdfPreviewModal>
+      ) : null}
+
+      <div ref={financialPrint.printRef} className="sr-only">
+        {renderFinancialPreview()}
       </div>
       <div className="no-print flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-3">
@@ -318,18 +363,6 @@ export const TrialBalancePage: React.FC<{
         ) : null}
       </div>
 
-      {exportPayload ? (
-        <div className="fixed left-[-9999px] top-0 w-[820px] pointer-events-none" aria-hidden>
-          <FinancialReportPrintLayout
-            ref={reportPrintRef}
-            title="Trial Balance (GL)"
-            periodLabel={periodExportLabel}
-            branchLabel={branchLabel}
-          >
-            <FinancialReportDataTable headers={exportPayload.headers} rows={exportPayload.rows} />
-          </FinancialReportPrintLayout>
-        </div>
-      ) : null}
       <div className="overflow-auto rounded-xl border border-gray-800 bg-gray-900/50 no-print">
         <table className="w-full text-base leading-snug">
           <thead className="border-b border-gray-800 bg-gray-800/50">

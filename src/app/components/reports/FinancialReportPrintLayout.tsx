@@ -1,43 +1,89 @@
 import React from 'react';
-import { useSettings } from '@/app/context/SettingsContext';
-import { useSupabase } from '@/app/context/SupabaseContext';
-import { useUnifiedDocumentSettings } from '@/app/documents/useUnifiedDocumentSettings';
+
+import type { CompanyBrand } from '@/app/services/companyBrandService';
+import type { PageMargins } from '@/app/types/printingSettings';
+
+import { ReportBrandFooter } from '@/app/components/reports/shared/ReportBrandFooter';
+import { ReportBrandHeader } from '@/app/components/reports/shared/ReportBrandHeader';
+import type { ReportHeaderFieldVisibility, ReportPrintOrientation } from '@/app/components/reports/shared/reportPrintConfig';
+import { REPORT_DEFAULT_FONT_SIZE } from '@/app/components/reports/shared/reportPrintConfig';
 
 export interface FinancialReportPrintLayoutProps {
   title: string;
   periodLabel: string;
   branchLabel?: string;
+  brand?: CompanyBrand | null;
+  generatedAt?: string;
+  fieldVisibility?: ReportHeaderFieldVisibility;
+  showHeader?: boolean;
+  showFooter?: boolean;
+  orientation?: ReportPrintOrientation;
+  fontSize?: number;
+  fontFamily?: string;
+  margins?: PageMargins;
   children: React.ReactNode;
 }
 
 export const FinancialReportPrintLayout = React.forwardRef<HTMLDivElement, FinancialReportPrintLayoutProps>(
-  function FinancialReportPrintLayout({ title, periodLabel, branchLabel, children }, ref) {
-    const { companyId } = useSupabase();
-    const { company } = useSettings();
-    const { showLogo } = useUnifiedDocumentSettings(companyId, 'ledger_statement');
+  function FinancialReportPrintLayout(
+    {
+      title,
+      periodLabel,
+      branchLabel,
+      brand,
+      generatedAt,
+      fieldVisibility,
+      showHeader = true,
+      showFooter = true,
+      orientation = 'portrait',
+      fontSize = REPORT_DEFAULT_FONT_SIZE,
+      fontFamily = 'Arial, Helvetica, sans-serif',
+      margins,
+      children,
+    },
+    ref,
+  ) {
+    const landscapeClass = orientation === 'landscape' ? 'pdf-document-landscape' : '';
+    const rootClass = ['pdf-document', landscapeClass, 'bg-white text-black'].filter(Boolean).join(' ');
+    const metaSubtitle = branchLabel ? `${periodLabel} · ${branchLabel}` : periodLabel;
+
+    const marginStyle: React.CSSProperties | undefined = margins
+      ? {
+          paddingTop: margins.top,
+          paddingBottom: margins.bottom,
+          paddingLeft: margins.left,
+          paddingRight: margins.right,
+        }
+      : undefined;
 
     return (
       <div
         ref={ref}
-        className="financial-report-print-root rounded-xl border border-gray-800 bg-white text-gray-900 p-6 shadow-sm print:shadow-none print:border-0"
+        className={rootClass}
+        data-print-format="a4"
+        style={{ fontFamily, fontSize, color: '#111', ...marginStyle }}
       >
-        <div className="flex items-start gap-4 border-b border-gray-200 pb-4 mb-4 print:border-gray-400">
-          {showLogo && company?.logoUrl ? (
-            <img src={company.logoUrl} alt="" className="h-14 w-auto max-w-[120px] object-contain shrink-0" />
-          ) : null}
-          <div className="min-w-0">
-            <p className="text-lg font-bold text-gray-900">{company?.name || 'Company'}</p>
-            <h2 className="text-base font-semibold text-gray-800 mt-0.5">{title}</h2>
-            <p className="text-sm text-gray-600 mt-1">
-              {periodLabel}
-              {branchLabel ? ` · ${branchLabel}` : ''}
-            </p>
+        {showHeader && brand ? (
+          <ReportBrandHeader
+            brand={brand}
+            title={title}
+            metaRows={[
+              { label: 'Period', value: metaSubtitle },
+              ...(generatedAt ? [{ label: 'Generated', value: generatedAt }] : []),
+            ]}
+            fieldVisibility={fieldVisibility}
+          />
+        ) : (
+          <div style={{ marginBottom: 14, borderBottom: '2px solid #111', paddingBottom: 10 }}>
+            <div style={{ fontSize: 16, fontWeight: 700, textTransform: 'uppercase' }}>{title}</div>
+            <div style={{ fontSize: 10, marginTop: 4, color: '#444' }}>{metaSubtitle}</div>
           </div>
-        </div>
+        )}
         {children}
+        {showFooter ? <ReportBrandFooter currentPage={1} totalPages={1} /> : null}
       </div>
     );
-  }
+  },
 );
 
 /** Simple print-friendly table from export rows */
@@ -48,12 +94,22 @@ export function FinancialReportDataTable({
   headers: string[];
   rows: (string | number)[][];
 }) {
+  const thStyle: React.CSSProperties = {
+    padding: '5px 4px',
+    textAlign: 'left',
+    fontWeight: 700,
+    fontSize: 9,
+    background: '#f0f0f0',
+    color: '#111',
+    border: '1px solid #333',
+  };
+
   return (
-    <table className="w-full text-sm border-collapse financial-report-data-table">
+    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 9 }}>
       <thead>
-        <tr className="border-b border-gray-300">
+        <tr>
           {headers.map((h) => (
-            <th key={h} className="text-left p-2 font-semibold text-gray-800">
+            <th key={h} style={thStyle}>
               {h}
             </th>
           ))}
@@ -64,15 +120,24 @@ export function FinancialReportDataTable({
           if (row.length === 0) {
             return (
               <tr key={`spacer-${i}`}>
-                <td colSpan={headers.length} className="h-2" />
+                <td colSpan={headers.length} style={{ height: 6 }} />
               </tr>
             );
           }
-          const isTotal = String(row[0] ?? '').toLowerCase().includes('total') || String(row[0] ?? '').toLowerCase().includes('difference');
+          const isTotal =
+            String(row[0] ?? '').toLowerCase().includes('total') ||
+            String(row[0] ?? '').toLowerCase().includes('difference');
           return (
-            <tr key={i} className={isTotal ? 'font-semibold border-t border-gray-200' : 'border-b border-gray-100'}>
+            <tr
+              key={i}
+              style={{
+                fontWeight: isTotal ? 700 : 400,
+                borderBottom: '1px solid #ddd',
+                background: isTotal ? '#f3f4f6' : undefined,
+              }}
+            >
               {headers.map((_, j) => (
-                <td key={j} className="p-2 text-gray-900 align-top">
+                <td key={j} style={{ padding: '4px 5px', color: '#111', verticalAlign: 'top' }}>
                   {row[j] ?? ''}
                 </td>
               ))}

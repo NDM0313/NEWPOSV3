@@ -62,6 +62,7 @@ export const MobileNavDrawer = () => {
       children: [
         { id: 'inventory', label: 'Stock Overview' },
         { id: 'stock-report', label: 'Stock Report' },
+        { id: 'stock-movement-history', label: 'Stock Ledger by Product' },
       ],
     },
     { id: 'purchases', label: 'Purchases', icon: ShoppingBag, isHidden: !settingsModules.purchasesModuleEnabled || !hasPermission('purchases.view') },

@@ -1,9 +1,10 @@
 import { supabase } from '@/lib/supabase';
 import {
   ALREADY_HAS_BUSINESS_MESSAGE,
-  formatSignInError,
+  formatCreateBusinessSignupFallbackError,
   isReservedSystemEmail,
   RESERVED_SYSTEM_EMAIL_MESSAGE,
+  shouldAttemptSignupSignInFallback,
 } from '@/app/utils/authErrorMessages';
 
 export interface CreateBusinessRequest {
@@ -45,22 +46,10 @@ export interface CreateBusinessResponse {
   error?: string;
 }
 
-/** GoTrue self-hosted may return 500 "Database error saving new user" when email already exists in auth.users. */
-function isSignupExistingEmailError(authError: { message?: string; status?: number } | null): boolean {
-  if (!authError) return false;
-  const msg = authError.message?.toLowerCase() ?? '';
-  return (
-    msg.includes('already registered') ||
-    msg.includes('already exists') ||
-    msg.includes('user already exists') ||
-    msg.includes('database error saving new user') ||
-    authError.status === 422
-  );
-}
-
 async function signInExistingUserForCreateBusiness(
   email: string,
-  password: string
+  password: string,
+  signUpError: { message?: string }
 ): Promise<{ user: { id: string } | null; error?: string }> {
   const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
     email,
@@ -69,7 +58,7 @@ async function signInExistingUserForCreateBusiness(
   if (signInError) {
     return {
       user: null,
-      error: formatSignInError(signInError, { context: 'createBusinessFallback' }),
+      error: formatCreateBusinessSignupFallbackError(signUpError, signInError),
     };
   }
   return { user: signInData?.user ?? null };
@@ -114,11 +103,15 @@ export const businessService = {
 
       let user = signUpData?.user;
 
-      if (authError && isSignupExistingEmailError(authError)) {
+      if (authError && shouldAttemptSignupSignInFallback(authError)) {
         if (import.meta.env.DEV) {
           console.warn('[createBusiness] signUp failed, trying sign-in fallback', authError);
         }
-        const signInResult = await signInExistingUserForCreateBusiness(data.email, data.password);
+        const signInResult = await signInExistingUserForCreateBusiness(
+          data.email,
+          data.password,
+          authError
+        );
         if (signInResult.error) {
           return { success: false, error: signInResult.error };
         }

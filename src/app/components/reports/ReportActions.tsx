@@ -11,6 +11,8 @@ interface ReportActionsProps {
   onPdf?: () => void;
   /** When set, PDF button opens WYSIWYG preview instead of onPdf. */
   onOpenPdfPreview?: () => void;
+  /** When set, Preview button uses this instead of cloning previewContentRef directly. */
+  onPreview?: () => void;
   onExcel?: () => void;
   onCsv?: () => void;
   onWhatsapp?: () => void;
@@ -29,6 +31,7 @@ export const ReportActions = ({
   onPrint = () => window.print(), 
   onPdf, 
   onOpenPdfPreview,
+  onPreview,
   onExcel, 
   onCsv,
   onWhatsapp,
@@ -39,10 +42,12 @@ export const ReportActions = ({
   previewFormat = 'a4',
   pdfLoading,
 }: ReportActionsProps) => {
-  const showPreview = Boolean(previewContentRef && previewDocumentType);
   const handlePdf = onOpenPdfPreview ?? onPdf;
+  const handlePrint = onOpenPdfPreview ?? onPrint ?? (() => window.print());
+  const handlePreview = onPreview ?? onOpenPdfPreview;
+  const showLegacyPreview = Boolean(previewContentRef && previewDocumentType && !handlePreview);
   return (
-    <div className={cn("sticky top-0 z-10 flex flex-col sm:flex-row items-start sm:items-center justify-between bg-gray-900/95 backdrop-blur-sm border-b border-gray-800 p-4 mb-6 gap-4", className)}>
+    <div className={cn("flex flex-col sm:flex-row items-start sm:items-center justify-between bg-gray-900/95 backdrop-blur-sm border-b border-gray-800 p-4 mb-6 gap-4", className)}>
       {title && (
         <h3 className="text-lg font-bold text-white flex items-center gap-2">
           <FileText className="text-blue-500" size={20} />
@@ -51,7 +56,7 @@ export const ReportActions = ({
       )}
       
       <div className="flex flex-wrap items-center gap-2">
-        {showPreview && previewContentRef && (
+        {showLegacyPreview && previewContentRef && (
           <DocumentPreviewButton
             contentRef={previewContentRef}
             documentType={previewDocumentType}
@@ -61,14 +66,27 @@ export const ReportActions = ({
             className="border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800 gap-2"
           />
         )}
+        {handlePreview && !showLegacyPreview && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handlePreview}
+            disabled={pdfLoading}
+            className="border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800 gap-2"
+          >
+            <FileText size={16} />
+            <span className="hidden sm:inline">{pdfLoading ? 'Loading…' : 'Preview'}</span>
+          </Button>
+        )}
         <Button 
           variant="outline" 
           size="sm" 
-          onClick={onPrint}
+          onClick={handlePrint}
+          disabled={pdfLoading}
           className="border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800 gap-2"
         >
           <Printer size={16} />
-          <span className="hidden sm:inline">Print</span>
+          <span className="hidden sm:inline">{pdfLoading ? 'Loading…' : 'Print'}</span>
         </Button>
         
         <Button 

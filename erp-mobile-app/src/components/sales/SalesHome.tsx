@@ -72,6 +72,8 @@ import { printReceiptLines } from '../../services/printService';
 import { getEffectivePrinterSettings } from '../../api/settings';
 import { AttachmentsSection } from '../shared/AttachmentsSection';
 import { normalizeAttachments } from '../../lib/normalizeAttachments';
+import { SaleAddAttachmentsSheet } from './SaleAddAttachmentsSheet';
+import { SaleAttachmentEditor } from './SaleAttachmentEditor';
 import { usePermissions } from '../../context/PermissionContext';
 import { canViewSaleBalances, maskMoney } from '../../utils/balancePrivacy';
 import {
@@ -331,6 +333,35 @@ export function SalesHome({
     setAttachmentPreviewStart(startIndex);
   };
 
+  const patchLocalSaleAttachments = useCallback(
+    (saleId: string, attachments: { url: string; name: string }[]) => {
+      setRecentSales((prev) =>
+        prev.map((s) =>
+          s.id === saleId ? { ...s, raw: { ...s.raw, attachments } } : s,
+        ),
+      );
+      setSelectedSale((prev) =>
+        prev?.id === saleId ? { ...prev, raw: { ...prev.raw, attachments } } : prev,
+      );
+    },
+    [],
+  );
+
+  const openAttachmentSheet = (sale: SaleRecord) => {
+    if (!navigator.onLine) {
+      setActionError('Attachments require an internet connection.');
+      return;
+    }
+    setMenuSale(null);
+    setAttachmentSale(sale);
+  };
+
+  const handleAttachmentSaved = (saleId: string, merged: { url: string; name: string }[]) => {
+    patchLocalSaleAttachments(saleId, merged);
+    void refetchSales({ silent: true });
+    setActionSuccess('Attachments saved.');
+  };
+
   const scopedRecentSales = useMemo(() => {
     let rows = recentSales.filter((sale) => rowInListBranchScope(sale.raw, listBranchScope));
     if (isolateWorkerData) {
@@ -587,6 +618,8 @@ export function SalesHome({
   const [showExtrasField, setShowExtrasField] = useState(false);
   const [editDiscount, setEditDiscount] = useState<string>('0');
   const [editExtra, setEditExtra] = useState<string>('0');
+  const [editPendingAttachments, setEditPendingAttachments] = useState<File[]>([]);
+  const [attachmentSale, setAttachmentSale] = useState<SaleRecord | null>(null);
   const [editSaving, setEditSaving] = useState(false);
 
   const dispatchSaleEditInvalidation = useCallback(
@@ -747,6 +780,7 @@ export function SalesHome({
     setShowAddProductRow(false);
     setShowDiscountField(false);
     setShowExtrasField(false);
+    setEditPendingAttachments([]);
   };
 
   const handleEdit = (sale: SaleRecord) => {
@@ -763,6 +797,7 @@ export function SalesHome({
     setEditExtra(String(Number(sale.raw.extra_expenses ?? 0) || 0));
     setShowDiscountField(Number(sale.raw.discount_amount ?? 0) > 0);
     setShowExtrasField(Number(sale.raw.extra_expenses ?? 0) > 0);
+    setEditPendingAttachments([]);
     setProductSearch('');
     setShowAddProductRow(false);
     setEditSale(sale);
@@ -922,6 +957,21 @@ export function SalesHome({
             .filter(Boolean)
             .join('; ');
           setActionSuccess(`Invoice ${editSale.id} updated.${ledgerNote ? ` (${ledgerNote})` : ''}`);
+          if (editPendingAttachments.length > 0 && companyId) {
+            const existing = normalizeAttachments(raw.attachments);
+            const attRes = await salesApi.appendSaleAttachments(
+              companyId,
+              String(raw.id),
+              editPendingAttachments,
+              existing,
+            );
+            if (attRes.error) {
+              setActionError(`Invoice updated but attachments failed: ${attRes.error}`);
+            } else {
+              patchLocalSaleAttachments(String(raw.id), attRes.data);
+              setEditPendingAttachments([]);
+            }
+          }
           await refetchSales();
           dispatchSaleEditInvalidation();
           setEditSale(null);
@@ -999,6 +1049,21 @@ export function SalesHome({
         .filter(Boolean)
         .join('; ');
       setActionSuccess(`Invoice ${editSale.id} updated.${ledgerNote ? ` (${ledgerNote})` : ''}`);
+      if (editPendingAttachments.length > 0 && companyId) {
+        const existing = normalizeAttachments(raw.attachments);
+        const attRes = await salesApi.appendSaleAttachments(
+          companyId,
+          String(raw.id),
+          editPendingAttachments,
+          existing,
+        );
+        if (attRes.error) {
+          setActionError(`Invoice updated but attachments failed: ${attRes.error}`);
+        } else {
+          patchLocalSaleAttachments(String(raw.id), attRes.data);
+          setEditPendingAttachments([]);
+        }
+      }
       await refetchSales();
       dispatchSaleEditInvalidation();
       setEditSale(null);
@@ -1142,10 +1207,10 @@ export function SalesHome({
   }, [actionError, cancelConfirmSale]);
 
   useEffect(() => {
-    if (editSale || returnSale || previewSale || cancelConfirmSale || addPaymentSale) {
+    if (editSale || returnSale || previewSale || cancelConfirmSale || addPaymentSale || attachmentSale) {
       setMenuSale(null);
     }
-  }, [editSale, returnSale, previewSale, cancelConfirmSale, addPaymentSale]);
+  }, [editSale, returnSale, previewSale, cancelConfirmSale, addPaymentSale, attachmentSale]);
 
   const renderSaleMenuActions = (sale: SaleRecord) => (
     <>
@@ -1170,6 +1235,10 @@ export function SalesHome({
       </button>
       <button onClick={() => handleDownloadPdf(sale)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
         <Download className="w-5 h-5 text-[#3B82F6]" /> Download PDF
+      </button>
+      <button onClick={() => openAttachmentSheet(sale)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
+        <Paperclip className="w-5 h-5 text-[#3B82F6]" />
+        {normalizeAttachments(sale.raw.attachments).length > 0 ? 'Add attachments' : 'Add attachment'}
       </button>
       <div className="border-t border-[#374151]" />
       <button onClick={() => handleEdit(sale)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
@@ -2019,6 +2088,21 @@ export function SalesHome({
         </PdfPreviewModal>
       )}
 
+      {attachmentSale && companyId && (
+        <SaleAddAttachmentsSheet
+          open
+          companyId={companyId}
+          saleId={String(attachmentSale.raw.id ?? attachmentSale.id)}
+          existingRaw={attachmentSale.raw.attachments}
+          invoiceLabel={saleDocumentDisplayNo(attachmentSale.raw) || attachmentSale.id}
+          onClose={() => setAttachmentSale(null)}
+          onSaved={(merged) => {
+            handleAttachmentSaved(String(attachmentSale.raw.id ?? attachmentSale.id), merged);
+            setAttachmentSale(null);
+          }}
+        />
+      )}
+
       {editSale && (
         <div
           className="fixed inset-0 z-[80] bg-black/70 flex items-end sm:items-center justify-center p-4"
@@ -2152,6 +2236,15 @@ export function SalesHome({
                   className="w-full rounded-lg bg-[#111827] border border-[#374151] text-white px-3 py-2 text-sm resize-none"
                 />
               </div>
+
+              <SaleAttachmentEditor
+                existing={normalizeAttachments(editSale.raw.attachments)}
+                pendingFiles={editPendingAttachments}
+                onPendingChange={setEditPendingAttachments}
+                onOpenExisting={openAttachmentPreview}
+                disabled={editSaving}
+                compact
+              />
 
               <div className="border-t border-[#374151] pt-3">
                 <div className="flex items-center justify-between mb-2 gap-2">

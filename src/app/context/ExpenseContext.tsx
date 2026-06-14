@@ -35,6 +35,8 @@ import { toast } from 'sonner';
 import { isPostedExpenseStatus } from '@/app/lib/expenseCancelPolicy';
 import {
   DATA_INVALIDATED_EVENT,
+  dispatchAccountingInvalidated,
+  dispatchDataInvalidated,
   dispatchExpenseLifecycleInvalidated,
   shouldAcceptInvalidation,
   type DataInvalidationDetail,
@@ -275,6 +277,29 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
     else if (!companyId) setLoading(false);
   }, [companyId, activated, loadExpenses]);
 
+  const patchExpenseInList = useCallback(
+    async (expenseId: string) => {
+      if (!companyId) return;
+      try {
+        const row = await expenseService.getExpense(expenseId);
+        if (!row) return;
+        const updated = convertFromSupabaseExpense(row);
+        setExpenses((prev) => {
+          const idx = prev.findIndex((e) => e.id === expenseId);
+          if (idx >= 0) {
+            const next = [...prev];
+            next[idx] = updated;
+            return next;
+          }
+          return [updated, ...prev];
+        });
+      } catch (e) {
+        console.warn('[EXPENSE CONTEXT] patchExpenseInList failed:', e);
+      }
+    },
+    [companyId, convertFromSupabaseExpense]
+  );
+
   useEffect(() => {
     if (!companyId || !activated) return;
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -298,6 +323,10 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
       ) {
         return;
       }
+      if ((reason === 'created' || reason === 'updated') && detail?.entityId) {
+        void patchExpenseInList(String(detail.entityId));
+        return;
+      }
       queue();
     };
     window.addEventListener(DATA_INVALIDATED_EVENT, onDataInvalidated as EventListener);
@@ -305,7 +334,7 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
       if (timer) clearTimeout(timer);
       window.removeEventListener(DATA_INVALIDATED_EVENT, onDataInvalidated as EventListener);
     };
-  }, [branchId, companyId, activated, loadExpenses]);
+  }, [branchId, companyId, activated, loadExpenses, patchExpenseInList]);
 
   const notifyExpenseChanged = useCallback(
     (expenseId: string | null, reason: string) => {
@@ -380,22 +409,35 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
         window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'user', entityId: options.paidToUserId } }));
       }
 
-      // Auto-post to accounting if paid (same RPC path as mobile ERP)
-      if (newExpense.status === 'paid') {
-        const post = await expenseService.postExpenseAccounting(newExpense.id);
-        if (!post.success) {
-          toast.warning(
-            post.error
-              ? `Expense saved; accounting post failed: ${post.error}`
-              : 'Expense saved; cash book may be missing until accounting posts.',
-          );
-        }
-      }
-
       toast.success(`Expense ${newExpense.expenseNo || expenseNo} created successfully!`);
       if (receiptWarning) toast.warning(receiptWarning);
-      notifyExpenseChanged(newExpense.id, 'created');
-      
+
+      dispatchDataInvalidated({
+        domain: 'expenses',
+        companyId,
+        branchId: effectiveBranchId,
+        entityId: newExpense.id,
+        reason: 'created',
+      });
+
+      if (newExpense.status === 'paid') {
+        void expenseService.postExpenseAccounting(newExpense.id).then((post) => {
+          if (!post.success) {
+            toast.warning(
+              post.error
+                ? `Expense saved; accounting post failed: ${post.error}`
+                : 'Expense saved; cash book may be missing until accounting posts.',
+            );
+          }
+          dispatchAccountingInvalidated({
+            companyId,
+            branchId: effectiveBranchId,
+            entityId: newExpense.id,
+            reason: 'expense:created',
+          });
+        });
+      }
+
       return newExpense;
     } catch (error: any) {
       console.error('[EXPENSE CONTEXT] Error creating expense:', error);

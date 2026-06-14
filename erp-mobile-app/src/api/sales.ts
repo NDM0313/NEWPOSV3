@@ -118,7 +118,77 @@ export async function patchSaleBillRef(
 }
 
 const SALE_ATTACHMENTS_BUCKET = 'sale-attachments';
-const MAX_SALE_ATTACHMENT_BYTES = 10 * 1024 * 1024; // 10MB each
+export const MAX_SALE_ATTACHMENT_BYTES = 10 * 1024 * 1024; // 10MB each
+export const MAX_SALE_ATTACHMENTS_COUNT = 5;
+
+export type SaleAttachmentMeta = { url: string; name: string };
+
+/** Merge attachment lists; dedupe by url; cap at MAX_SALE_ATTACHMENTS_COUNT. */
+export function mergeSaleAttachments(
+  existing: SaleAttachmentMeta[],
+  uploaded: SaleAttachmentMeta[],
+): SaleAttachmentMeta[] {
+  const seen = new Set<string>();
+  const out: SaleAttachmentMeta[] = [];
+  const push = (a: SaleAttachmentMeta) => {
+    const u = String(a.url || '').trim();
+    if (!u || seen.has(u)) return;
+    seen.add(u);
+    out.push({ url: u, name: a.name || 'Attachment' });
+  };
+  for (const a of existing) push(a);
+  for (const a of uploaded) push(a);
+  return out.slice(0, MAX_SALE_ATTACHMENTS_COUNT);
+}
+
+async function fetchSaleAttachments(saleId: string): Promise<SaleAttachmentMeta[]> {
+  if (!isSupabaseConfigured) return [];
+  const { data } = await supabase.from('sales').select('attachments').eq('id', saleId).maybeSingle();
+  const raw = (data as { attachments?: unknown } | null)?.attachments;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((a: unknown) => {
+      const o = a as Record<string, unknown>;
+      return { url: String(o?.url ?? ''), name: String(o?.name ?? 'Attachment') };
+    })
+    .filter((a) => a.url.length > 0);
+}
+
+/** Upload new files and merge onto existing sale.attachments (max 5 total). */
+export async function appendSaleAttachments(
+  companyId: string,
+  saleId: string,
+  files: File[],
+  existing?: SaleAttachmentMeta[],
+): Promise<{ data: SaleAttachmentMeta[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  if (!files.length) {
+    const current = existing ?? (await fetchSaleAttachments(saleId));
+    return { data: current, error: null };
+  }
+
+  const prior = existing ?? (await fetchSaleAttachments(saleId));
+  const slotsLeft = MAX_SALE_ATTACHMENTS_COUNT - prior.length;
+  if (slotsLeft <= 0) {
+    return {
+      data: prior,
+      error: `Maximum ${MAX_SALE_ATTACHMENTS_COUNT} attachments per sale.`,
+    };
+  }
+
+  const toUpload = files.slice(0, slotsLeft);
+  const upload = await uploadSaleAttachments(companyId, saleId, toUpload);
+  if (upload.error) {
+    return { data: prior, error: upload.error };
+  }
+
+  const merged = mergeSaleAttachments(prior, upload.data);
+  const upd = await updateSaleAttachments(saleId, merged);
+  if (upd.error) {
+    return { data: prior, error: upd.error };
+  }
+  return { data: merged, error: null };
+}
 
 /** Upload files to sale-attachments bucket (path: companyId/saleId/...). */
 export async function uploadSaleAttachments(

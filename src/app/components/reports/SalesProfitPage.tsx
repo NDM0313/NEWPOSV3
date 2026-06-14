@@ -1,13 +1,12 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Loader2 } from 'lucide-react';
-import { ReportActions } from './ReportActions';
-import { FinancialReportPrintLayout, FinancialReportDataTable } from './FinancialReportPrintLayout';
+import { FinancialReportPrintShell } from './shared/FinancialReportPrintShell';
 import { shareViaWhatsApp } from '@/app/services/documentShareService';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { accountingReportsService, SalesProfitResult } from '@/app/services/accountingReportsService';
 import { branchService } from '@/app/services/branchService';
-import { exportToPDF, exportToExcel, ExportData } from '@/app/utils/exportUtils';
+import { exportToExcel, ExportData } from '@/app/utils/exportUtils';
 import {
   Select,
   SelectContent,
@@ -85,17 +84,12 @@ export const SalesProfitPage: React.FC<{
       .finally(() => setLoading(false));
   }, [companyId, startDate, endDate, effectiveBranchId, customerId]);
 
-  const reportPrintRef = useRef<HTMLDivElement>(null);
   const branchLabel =
     effectiveBranchId != null
       ? branches.find((b) => b.id === effectiveBranchId)?.name || 'Branch scope'
       : 'All branches';
   const exportPayload = useMemo(() => (data ? toExport(data, formatCurrency) : null), [data, formatCurrency]);
 
-  const handleExportPDF = () => {
-    if (!exportPayload) return;
-    exportToPDF(exportPayload, 'Sales_Profit');
-  };
   const handleExportExcel = () => {
     if (!exportPayload) return;
     exportToExcel(exportPayload, 'Sales_Profit');
@@ -126,16 +120,16 @@ export const SalesProfitPage: React.FC<{
   return (
     <div className="space-y-4">
       <div className="no-print flex flex-wrap items-end gap-4">
-        <ReportActions
-          title="Sales Profit Report"
-          onPrint={() => window.print()}
-          onPdf={handleExportPDF}
+        <FinancialReportPrintShell
+          companyId={companyId}
+          actionsTitle="Sales Profit Report"
+          reportTitle="Sales Profit Report"
+          periodLabel={`${data.startDate} to ${data.endDate}`}
+          branchLabel={branchLabel}
+          previewReference={`sales-profit-${data.startDate}-${data.endDate}`}
+          exportPayload={exportPayload}
           onExcel={handleExportExcel}
           onWhatsapp={handleWhatsApp}
-          previewContentRef={reportPrintRef}
-          previewDocumentType="ledger"
-          previewReference={`sales-profit-${data.startDate}-${data.endDate}`}
-          className="flex-1 !static !bg-transparent !border-0 !p-0 !mb-0"
         />
       </div>
       <div className="no-print flex flex-wrap items-center gap-4 rounded-lg border border-gray-800 bg-gray-900/40 px-3 py-2">
@@ -164,18 +158,6 @@ export const SalesProfitPage: React.FC<{
       <p className="no-print text-sm text-gray-400">
         Period: {data.startDate} to {data.endDate} • Branch: {branchLabel} • Total Revenue: {formatCurrency(data.totalRevenue)} • Total Profit: {formatCurrency(data.totalProfit)}
       </p>
-      {exportPayload ? (
-        <div className="fixed left-[-9999px] top-0 w-[820px] pointer-events-none" aria-hidden>
-          <FinancialReportPrintLayout
-            ref={reportPrintRef}
-            title="Sales Profit Report"
-            periodLabel={`${data.startDate} to ${data.endDate}`}
-            branchLabel={branchLabel}
-          >
-            <FinancialReportDataTable headers={exportPayload.headers} rows={exportPayload.rows} />
-          </FinancialReportPrintLayout>
-        </div>
-      ) : null}
       <div className="overflow-auto rounded-xl border border-gray-800 bg-gray-900/50 no-print">
         <table className="w-full text-base leading-snug">
           <thead className="border-b border-gray-800 bg-gray-800/50">

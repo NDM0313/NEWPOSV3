@@ -9,6 +9,7 @@ import {
   type AccountFilter,
   type RoznamchaRowWithBalance,
 } from '@/app/services/roznamchaService';
+import { isGenericRoznamchaPartyLabel } from '@/app/lib/roznamchaCounterpartyLabel';
 import { branchService } from '@/app/services/branchService';
 import {
   CASH_FLOW_SOURCE_MODULE_LABELS,
@@ -139,7 +140,11 @@ function mapRoznamchaToCashFlowRow(
     time: row.time,
     reference: roznamchaRefDisplay(row),
     journalEntryNo: row.journalEntryNo ?? null,
-    party: row.partyLine ?? row.referenceDisplay ?? null,
+    party:
+      row.partyLine ??
+      (!isGenericRoznamchaPartyLabel(row.details) ? row.details : null) ??
+      row.referenceDisplay ??
+      null,
     sourceModule,
     sourceModuleLabel: CASH_FLOW_SOURCE_MODULE_LABELS[sourceModule],
     cashAccount: (row.accountName ?? row.accountLabel) || '—',

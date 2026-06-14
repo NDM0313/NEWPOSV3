@@ -19,7 +19,8 @@ export type InvalidationDomain =
   | 'sales'
   | 'purchases'
   | 'rentals'
-  | 'studio';
+  | 'studio'
+  | 'expenses';
 
 const ALL_INVALIDATION_DOMAINS: InvalidationDomain[] = [
   'accounting',
@@ -29,6 +30,7 @@ const ALL_INVALIDATION_DOMAINS: InvalidationDomain[] = [
   'inventory',
   'rentals',
   'studio',
+  'expenses',
 ];
 
 /** Manual refresh — one header control refreshes every module that listens to the invalidation bus. */
@@ -197,6 +199,7 @@ export function dispatchAccountingInvalidated(opts: {
   });
 }
 
+/** Studio production lists / summaries. */
 export function dispatchStudioDataInvalidated(opts: {
   companyId: string;
   branchId?: string | null;
@@ -207,6 +210,29 @@ export function dispatchStudioDataInvalidated(opts: {
     companyId: opts.companyId,
     branchId: opts.branchId ?? null,
     reason: opts.reason,
+  });
+}
+
+/** Expense list / dashboard refresh after create, update, or cancel. */
+export function dispatchExpenseLifecycleInvalidated(opts: {
+  companyId: string;
+  branchId?: string | null;
+  expenseId?: string | null;
+  reason: string;
+}): void {
+  dispatchDataInvalidated({
+    domain: 'expenses',
+    companyId: opts.companyId,
+    branchId: opts.branchId ?? null,
+    entityId: opts.expenseId ?? null,
+    reason: opts.reason,
+  });
+  dispatchDataInvalidated({
+    domain: 'accounting',
+    companyId: opts.companyId,
+    branchId: opts.branchId ?? null,
+    entityId: opts.expenseId ?? null,
+    reason: `expense:${opts.reason}`,
   });
 }
 

@@ -1,6 +1,6 @@
 # Report Print Systems — Comparison Guide
 
-> Last updated: 2026-06-04  
+> Last updated: 2026-06-13  
 > Related: [`DOCUMENTS_AND_PRINTING.md`](DOCUMENTS_AND_PRINTING.md) (Settings apply matrix)
 
 Yeh document **do alag print engines** ko compare karta hai jo abhi web ERP mein parallel chal rahe hain. Aap khud analyze kar sakte hain ke kis screen par kya apply hota hai aur next step kya hona chahiye.
@@ -18,6 +18,8 @@ Web app mein reports/print ke **do alag systems** hain:
 Agar Settings change karne ke baad report header same dikhe → pehle check karein ke aap **kis system** wali screen par hain. Dono alag code paths hain — yeh bug nahi, intentional separation hai (invoices/thermal alag, tabular reports alag).
 
 **Settings (2026-06):** Tabular reports ab **Settings → Documents & Printing → Reports & Export** se configure hote hain — header toggles + default orientation (`reportExport` JSONB). Invoice/thermal settings is tab ko affect **nahi** karte.
+
+**Tier C — Accounting reports (2026-06-13):** Roznamcha, Cash Flow, Day Book, Trial Balance, P&amp;L, Balance Sheet, Sales Profit, Inventory Valuation, and Rental Reports now use **System B** (`useReportExport` + `PdfPreviewModal` + `.pdf-document` / `CashBookReportPreview` / `FinancialReportPrintShell`). Print and PDF both open the WYSIWYG preview modal first (landscape toggle in modal). Legacy `exportToPDF` window path removed for these screens. Remaining Balance / Customers &amp; Suppliers / Balance Basis / Reports dashboard ops tabs still use **ClassicPrintBase** with improved offscreen capture width (820px) for Preview/PDF clone.
 
 ---
 

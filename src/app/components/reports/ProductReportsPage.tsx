@@ -1,12 +1,13 @@
 /**
- * Unified Products tab — Inventory (stock card) and Sales report modes.
+ * Unified Products tab — Inventory (stock card), movement history, and Sales report modes.
  */
 
 import React, { useState } from 'react';
-import { Package, ShoppingBag } from 'lucide-react';
+import { Package, ShoppingBag, BookOpen } from 'lucide-react';
 import { cn } from '@/app/components/ui/utils';
 import { ProductLedger } from './ProductLedger';
 import { ProductSellReportPage } from './ProductSellReportPage';
+import { StockMovementHistoryReportPage } from './stock-movement-history/StockMovementHistoryReportPage';
 
 type Props = {
   startDate: string;
@@ -14,7 +15,7 @@ type Props = {
   branchId?: string;
 };
 
-type ProductReportMode = 'inventory' | 'sales';
+type ProductReportMode = 'inventory' | 'movement-history' | 'sales';
 
 export function ProductReportsPage({ startDate, endDate, branchId }: Props) {
   const [mode, setMode] = useState<ProductReportMode>('inventory');
@@ -25,6 +26,7 @@ export function ProductReportsPage({ startDate, endDate, branchId }: Props) {
         {(
           [
             { key: 'inventory' as const, label: 'Inventory', icon: Package },
+            { key: 'movement-history' as const, label: 'Stock Ledger', icon: BookOpen },
             { key: 'sales' as const, label: 'Sales', icon: ShoppingBag },
           ] as const
         ).map((t) => (
@@ -47,6 +49,8 @@ export function ProductReportsPage({ startDate, endDate, branchId }: Props) {
 
       {mode === 'inventory' ? (
         <ProductLedger />
+      ) : mode === 'movement-history' ? (
+        <StockMovementHistoryReportPage startDate={startDate} endDate={endDate} branchId={branchId} />
       ) : (
         <ProductSellReportPage startDate={startDate} endDate={endDate} branchId={branchId} />
       )}

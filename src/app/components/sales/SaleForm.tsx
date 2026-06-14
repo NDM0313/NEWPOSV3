@@ -2010,19 +2010,22 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
         return 'text-gray-500'; // Zero
     };
 
-    // Display invoice number: when editing draft/qt/order and user selected Final → show next SL- (preview); else actual or new preview
+    // Display invoice number: final SL assigned on save via global RPC (no local counter preview)
     const displayInvoiceNumber = useMemo(() => {
         if (initialSale?.invoiceNo) {
             const inv = initialSale.invoiceNo;
             if (saleStatus === 'final' && isPreFinalSaleDocumentNo(inv)) {
-                if (typeof generateDocumentNumber === 'function') return generateDocumentNumber('invoice');
-                return 'SL-0001';
+                return 'Auto';
             }
             return inv;
         }
-        if (typeof generateDocumentNumber !== 'function') return 'SL-0001';
-        if (isStudioSale) return generateDocumentNumber('studio');
-        const docType = saleStatus === 'final' ? 'invoice' : saleStatus === 'quotation' ? 'quotation' : saleStatus === 'order' ? 'order' : 'draft';
+        if (isStudioSale) {
+            if (typeof generateDocumentNumber === 'function') return generateDocumentNumber('studio');
+            return 'STD-0001';
+        }
+        if (saleStatus === 'final') return 'Auto';
+        if (typeof generateDocumentNumber !== 'function') return 'SDR-0001';
+        const docType = saleStatus === 'quotation' ? 'quotation' : saleStatus === 'order' ? 'order' : 'draft';
         return generateDocumentNumber(docType);
     }, [initialSale?.invoiceNo, isStudioSale, saleStatus, generateDocumentNumber]);
 
@@ -2648,7 +2651,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                             break;
                         case 'final':
                             documentType = 'invoice';
-                            documentNumber = generateDocumentNumber('invoice');
+                            documentNumber = '';
                             break;
                         default:
                             documentType = 'draft';
@@ -2775,9 +2778,6 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 if (isStudioSale && !initialSale.invoiceNo.startsWith('STD-') && !initialSale.invoiceNo.startsWith('ST-')) {
                     incrementNextNumber('studio');
                 }
-                if (documentType === 'invoice' && initialSale.invoiceNo && isPreFinalSaleDocumentNo(initialSale.invoiceNo)) {
-                    incrementNextNumber('invoice');
-                }
                 if (isOrderToFinal) {
                     saleFormBootstrapCache.clear();
                     await refreshSales();
@@ -2847,8 +2847,10 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                         toast.warning('Sale created but some attachments could not be uploaded.');
                     }
                 }
-                // Increment document number after successful save (conversion toast comes from SalesContext)
-                incrementNextNumber(documentType);
+                // Increment local counter only for stage numbers (draft/qt/order/studio); final SL is global RPC
+                if (documentType !== 'invoice') {
+                    incrementNextNumber(documentType);
+                }
                 if (!convertToFinal) {
                     toast.success(`${saleType === 'invoice' ? 'Invoice' : 'Quotation'} created successfully!`);
                 }

@@ -19,6 +19,7 @@ import {
   mergeWithDefaults,
 } from '@/app/types/printingSettings';
 import { resolveLedgerPrintOptions } from '@/app/components/reports/shared/resolveLedgerPrintOptions';
+import { resolveAccountingReportPrintOptions } from '@/app/components/reports/shared/resolveAccountingReportPrintOptions';
 import { POS_SILENT_PRINT_GUIDE, getPosPrintAutomationHint } from '@/app/services/printingSettingsService';
 import { PrintingPreviewPanel } from './PrintingPreviewPanel';
 import { AppliesToBanner } from './printing/AppliesToBanner';
@@ -110,6 +111,7 @@ export function PrintingSettingsPanel({
   const merged = mergeWithDefaults(settings);
   const tab = resolveTab(subTabId);
   const ledgerPrintOptions = resolveLedgerPrintOptions(settings);
+  const roznamchaPrintOptions = resolveAccountingReportPrintOptions(settings, 'roznamcha');
   const [previewDocument, setPreviewDocument] = useState<DocumentTemplateId>('sales_invoice');
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
@@ -446,7 +448,7 @@ export function PrintingSettingsPanel({
           {/* ─── REPORTS & EXPORT ─── */}
           {tab === 'reportsExport' && (
             <>
-              <AppliesToBanner targets="Stock Report, Product Sell Report, Account Statements — PDF, Print, CSV, Excel exports." />
+              <AppliesToBanner targets="Stock Report, Product Sell, Account Statements, Roznamcha, Cash Flow, Day Book, Trial Balance, P&L, Balance Sheet — PDF, Print, CSV, Excel exports." />
 
               <SectionCard title="Report layout" icon={<Layout size={18} />}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -560,6 +562,70 @@ export function PrintingSettingsPanel({
                       <option value="landscape">Landscape</option>
                     </select>
                   </div>
+                  <div>
+                    <Label className="text-gray-300">Roznamcha (Daily Cash Book)</Label>
+                    <select
+                      value={merged.reportExport.roznamchaOrientation ?? 'landscape'}
+                      onChange={(e) =>
+                        update('reportExport', {
+                          ...merged.reportExport,
+                          roznamchaOrientation: e.target.value as 'portrait' | 'landscape',
+                        })
+                      }
+                      className="mt-1 w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2"
+                    >
+                      <option value="landscape">Landscape (recommended)</option>
+                      <option value="portrait">Portrait</option>
+                    </select>
+                  </div>
+                  <div>
+                    <Label className="text-gray-300">Cash Flow</Label>
+                    <select
+                      value={merged.reportExport.cashFlowOrientation ?? 'landscape'}
+                      onChange={(e) =>
+                        update('reportExport', {
+                          ...merged.reportExport,
+                          cashFlowOrientation: e.target.value as 'portrait' | 'landscape',
+                        })
+                      }
+                      className="mt-1 w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2"
+                    >
+                      <option value="landscape">Landscape (recommended)</option>
+                      <option value="portrait">Portrait</option>
+                    </select>
+                  </div>
+                  <div>
+                    <Label className="text-gray-300">Journal Day Book</Label>
+                    <select
+                      value={merged.reportExport.dayBookOrientation ?? 'landscape'}
+                      onChange={(e) =>
+                        update('reportExport', {
+                          ...merged.reportExport,
+                          dayBookOrientation: e.target.value as 'portrait' | 'landscape',
+                        })
+                      }
+                      className="mt-1 w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2"
+                    >
+                      <option value="landscape">Landscape (recommended)</option>
+                      <option value="portrait">Portrait</option>
+                    </select>
+                  </div>
+                  <div>
+                    <Label className="text-gray-300">Financial reports (TB / P&L / BS)</Label>
+                    <select
+                      value={merged.reportExport.financialReportOrientation ?? 'portrait'}
+                      onChange={(e) =>
+                        update('reportExport', {
+                          ...merged.reportExport,
+                          financialReportOrientation: e.target.value as 'portrait' | 'landscape',
+                        })
+                      }
+                      className="mt-1 w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2"
+                    >
+                      <option value="portrait">Portrait (recommended)</option>
+                      <option value="landscape">Landscape</option>
+                    </select>
+                  </div>
                 </div>
               </SectionCard>
 
@@ -660,6 +726,7 @@ export function PrintingSettingsPanel({
             <div className="p-3">
               <ReportExportPreviewPanel
                 ledgerOptions={ledgerPrintOptions}
+                roznamchaOptions={roznamchaPrintOptions}
               />
             </div>
           )}

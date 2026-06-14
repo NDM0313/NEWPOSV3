@@ -6,6 +6,14 @@
 
 import { supabase } from '@/lib/supabase';
 import { isLiquidityPaymentAccount, paymentMethodForLiquidityAccount } from '@/app/lib/liquidityPaymentAccount';
+import {
+  buildExpenseCounterpartyByDirectionFromJeLines,
+  isGenericRoznamchaPartyLabel,
+  resolveExpenseCounterpartyFromJeLines,
+  resolveGenericPaymentExpenseLabel,
+  type CounterpartyByDirection,
+  type RoznamchaJeLineRef,
+} from '@/app/lib/roznamchaCounterpartyLabel';
 import { journalDescriptionForDisplay } from '@/app/utils/journalDescriptionDisplay';
 import {
   formatRentalPaymentRef,
@@ -18,6 +26,11 @@ import {
   roznamchaLooseMovementKey,
   roznamchaMovementKey,
 } from '@/app/services/roznamchaDedupe';
+import {
+  resolveCanonicalRoznamchaRef,
+  roznamchaJournalSubtitle,
+  roznamchaRefDisplay,
+} from '@/app/lib/roznamchaRefDisplay';
 import {
   isEventDateInRange,
   resolveRoznamchaRowDateTime,
@@ -175,69 +188,11 @@ function resolveSubAccountLabel(
   return name || shortLabel || '—';
 }
 
-/** RCV / PAY / REN / EXP over JE — audit-facing ref column. */
-export function resolveCanonicalRoznamchaRef(opts: {
-  referenceNumber?: string | null;
-  rentalBookingNo?: string | null;
-  expenseNo?: string | null;
-  journalEntryNo?: string | null;
-  fallbackRef?: string | null;
-}): { ref: string; journalEntryNo: string | null } {
-  const refNum = String(opts.referenceNumber || '').trim();
-  const jeNo = String(opts.journalEntryNo || '').trim();
-  const rentalNo = String(opts.rentalBookingNo || '').trim();
-  const expenseNo = String(opts.expenseNo || '').trim();
-  const fallback = String(opts.fallbackRef || '').trim();
-
-  const jeSubtitle =
-    jeNo && refNum && jeNo.toLowerCase() !== refNum.toLowerCase() ? jeNo : null;
-
-  if (isRcvReference(refNum)) return { ref: refNum, journalEntryNo: jeSubtitle };
-  if (expenseNo) {
-    const expenseJeSubtitle =
-      jeNo &&
-      jeNo.toLowerCase() !== expenseNo.toLowerCase() &&
-      (/^JE-/i.test(jeNo) || /^JV-/i.test(jeNo))
-        ? jeNo
-        : null;
-    return { ref: expenseNo, journalEntryNo: expenseJeSubtitle };
-  }
-  if (/^PAY-/i.test(refNum) || /^WPY-/i.test(refNum)) return { ref: refNum, journalEntryNo: jeSubtitle };
-  if (/^REN-.+-PAY$/i.test(refNum)) return { ref: refNum, journalEntryNo: jeSubtitle || (jeNo || null) };
-  if (rentalNo && (isGenericRentalPaymentReference(refNum) || !refNum) && !isRcvReference(refNum)) {
-    const synthesized = formatRentalPaymentRef(rentalNo);
-    return {
-      ref: synthesized || rentalNo,
-      journalEntryNo: jeNo && jeNo.toLowerCase() !== (synthesized || rentalNo).toLowerCase() ? jeNo : null,
-    };
-  }
-  if (rentalNo) return { ref: rentalNo, journalEntryNo: jeNo && jeNo.toLowerCase() !== rentalNo.toLowerCase() ? jeNo : null };
-  if (/^REN-/i.test(refNum)) return { ref: refNum, journalEntryNo: jeSubtitle };
-  if (refNum && !/^JE-/i.test(refNum) && !/^JV-/i.test(refNum)) {
-    return { ref: refNum, journalEntryNo: jeSubtitle };
-  }
-  if (jeNo) return { ref: jeNo, journalEntryNo: null };
-  if (fallback) return { ref: fallback, journalEntryNo: null };
-  return { ref: refNum || '—', journalEntryNo: null };
-}
-
-/** Ref column for UI/export — never repeat JE twice. */
-export function roznamchaRefDisplay(row: Pick<RoznamchaRow, 'ref' | 'journalEntryNo'>): string {
-  const ref = String(row.ref || '').trim();
-  const je = String(row.journalEntryNo || '').trim();
-  if (!je || je.toLowerCase() === ref.toLowerCase()) return ref || '—';
-  return ref;
-}
-
-export function roznamchaJournalSubtitle(row: Pick<RoznamchaRow, 'ref' | 'journalEntryNo'>): string | null {
-  const ref = String(row.ref || '').trim();
-  const je = String(row.journalEntryNo || '').trim();
-  if (!je || je.toLowerCase() === ref.toLowerCase()) return null;
-  if (/^JE-/i.test(ref) || /^JV-/i.test(ref)) return null;
-  // Expense document ref (EXP-*) is canonical; legacy JE entry_no uses a different counter.
-  if (/^EXP-/i.test(ref)) return null;
-  return je;
-}
+export {
+  resolveCanonicalRoznamchaRef,
+  roznamchaJournalSubtitle,
+  roznamchaRefDisplay,
+} from '@/app/lib/roznamchaRefDisplay';
 
 async function loadRentalPaymentsInPaymentsTable(
   companyId: string,
@@ -445,6 +400,36 @@ async function loadLiquidityDebitAccountByJeId(
     }
   });
   return liquidityAccountByJeId;
+}
+
+async function loadExpenseCounterpartyByJeId(jeIds: string[]): Promise<Map<string, CounterpartyByDirection>> {
+  const out = new Map<string, CounterpartyByDirection>();
+  if (jeIds.length === 0) return out;
+
+  const { data: jeLines } = await supabase
+    .from('journal_entry_lines')
+    .select('journal_entry_id, debit, credit, account:accounts(name, type, code)')
+    .in('journal_entry_id', jeIds);
+
+  const linesByJeId = new Map<string, RoznamchaJeLineRef[]>();
+  (jeLines || []).forEach((line: any) => {
+    const jeId = String(line.journal_entry_id || '');
+    if (!jeId) return;
+    const rawAcc = line.account;
+    const acc = Array.isArray(rawAcc) ? rawAcc[0] : rawAcc;
+    const bucket = linesByJeId.get(jeId) || [];
+    bucket.push({
+      debit: Number(line.debit) || 0,
+      credit: Number(line.credit) || 0,
+      account: acc as RoznamchaJeLineRef['account'],
+    });
+    linesByJeId.set(jeId, bucket);
+  });
+
+  linesByJeId.forEach((lines, jeId) => {
+    out.set(jeId, buildExpenseCounterpartyByDirectionFromJeLines(lines));
+  });
+  return out;
 }
 
 function resolveRentalPaymentLiquidity(
@@ -957,6 +942,9 @@ async function fetchPaymentRows(
     }
   }
 
+  const linkedJeIds = [...new Set(journalEntryIdByPaymentId.values())];
+  const expenseCounterpartyByJeId = await loadExpenseCounterpartyByJeId(linkedJeIds);
+
   const contactNameById = new Map<string, string>();
   (contactRes.data || []).forEach((c: any) => {
     const nm = String(c?.name || '').trim();
@@ -1146,20 +1134,36 @@ async function fetchPaymentRows(
         contactName ||
         (refType === 'sale' && refId ? saleCustomerByRefId.get(refId) : null) ||
         null;
-      r.details = customer || getPartyAwareTypeLabel(refType, paymentType);
+      const generic = getPartyAwareTypeLabel(refType, paymentType);
+      const expenseLabel = resolveGenericPaymentExpenseLabel(
+        generic,
+        r.id,
+        r.direction,
+        journalEntryIdByPaymentId,
+        expenseCounterpartyByJeId
+      );
+      r.details = customer || expenseLabel || generic;
       const extraParts: string[] = [];
       if (refType === 'sale' && refId && saleInvoiceByRefId.has(refId)) {
         extraParts.push(`Invoice ${saleInvoiceByRefId.get(refId)!}`);
       }
       r.referenceDisplay = buildRoznamchaMetaLine(pay.reference_number, pay.notes, extraParts, r.details);
-      r.partyLine = customer ? null : 'Customer Receipt';
+      r.partyLine = customer || expenseLabel ? null : 'Customer Receipt';
       return;
     }
 
     if (isSupplierPaymentPayment(refType, paymentType)) {
-      r.details = contactName || getPartyAwareTypeLabel(refType, paymentType);
+      const generic = getPartyAwareTypeLabel(refType, paymentType);
+      const expenseLabel = resolveGenericPaymentExpenseLabel(
+        generic,
+        r.id,
+        r.direction,
+        journalEntryIdByPaymentId,
+        expenseCounterpartyByJeId
+      );
+      r.details = contactName || expenseLabel || generic;
       r.referenceDisplay = buildRoznamchaMetaLine(pay.reference_number, pay.notes, [], r.details);
-      r.partyLine = contactName ? null : 'Supplier Payment';
+      r.partyLine = contactName || expenseLabel ? null : 'Supplier Payment';
       return;
     }
 
@@ -1586,7 +1590,6 @@ function mapJournalLiquidityLinesToRows(
       je.entry_date,
       je.created_at ? String(je.created_at) : null,
     );
-    const desc = journalDescriptionForDisplay(je.description, journalLiquidityTypeLabel(je.reference_type || ''));
     const entryNo = String(je.entry_no || '').trim();
     const refType = String(je.reference_type || '').toLowerCase();
     const expenseId = je.reference_id ? String(je.reference_id) : '';
@@ -1597,6 +1600,7 @@ function mapJournalLiquidityLinesToRows(
       expenseNo && entryNo && expenseNo.toLowerCase() !== entryNo.toLowerCase() ? entryNo : null;
     const typeLabel = journalLiquidityTypeLabel(je.reference_type || '');
     const creatorName = je.created_by ? nameByUserId.get(je.created_by) || null : null;
+    const desc = journalDescriptionForDisplay(je.description, typeLabel);
 
     for (const line of je.lines || []) {
       const rawAcc = line.account as { id: string; name: string; type: string; code: string | null } | { id: string; name: string; type: string; code: string | null }[] | null | undefined;
@@ -1616,6 +1620,12 @@ function mapJournalLiquidityLinesToRows(
       }
       if (paymentLedgerAccountId && line.account_id !== paymentLedgerAccountId) continue;
 
+      const descriptionFallback = desc;
+      const expenseLabel = isGenericRoznamchaPartyLabel(descriptionFallback)
+        ? resolveExpenseCounterpartyFromJeLines(je.lines, direction)
+        : null;
+      const primaryDetails = expenseLabel ?? descriptionFallback;
+
       const auditSuffix = auditMode
         ? roznamchaRowAuditSuffix({
             referenceType: je.reference_type,
@@ -1627,7 +1637,7 @@ function mapJournalLiquidityLinesToRows(
         date: dateStr,
         time: timeStr,
         ref,
-        details: desc + auditSuffix,
+        details: primaryDetails + auditSuffix,
         referenceDisplay: '',
         partyLine: null,
         journalEntryNo,

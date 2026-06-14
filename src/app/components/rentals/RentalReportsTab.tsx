@@ -1,7 +1,7 @@
 /**
  * Rental Reports Tab — Monthly revenue, products, customers with filters and exports.
  */
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { BarChart3, TrendingUp, Users, Package, Loader2 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useSupabase } from '@/app/context/SupabaseContext';
@@ -11,6 +11,9 @@ import { AdaptiveCurrencyValue } from '@/app/components/shared/AdaptiveCurrencyV
 import { cn } from '../ui/utils';
 import { mapRentalStatus } from '@/app/lib/rentalUiMapper';
 import { ReportActions } from '@/app/components/reports/ReportActions';
+import { PdfPreviewModal, type PdfPreviewOrientation } from '@/app/components/shared/PdfPreviewModal';
+import { useReportExport } from '@/app/components/reports/shared/useReportExport';
+import { TabularReportPreview } from '@/app/components/reports/shared/TabularReportPreview';
 import { branchService } from '@/app/services/branchService';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Input } from '../ui/input';
@@ -39,7 +42,8 @@ function monthsAgoIso(months: number): string {
 export const RentalReportsTab = () => {
   const { companyId, branchId: globalBranchId } = useSupabase();
   const { formatCurrency } = useFormatCurrency();
-  const printRef = useRef<HTMLDivElement>(null);
+  const reportExport = useReportExport({ companyId, documentType: 'ledger', reportKind: 'stock' });
+  const [printOrientation, setPrintOrientation] = useState<PdfPreviewOrientation>('landscape');
 
   const [loading, setLoading] = useState(false);
   const [rentals, setRentals] = useState<RentalRow[]>([]);
@@ -224,6 +228,66 @@ export const RentalReportsTab = () => {
 
   const fmtCount = (n: number) => (n ? n.toLocaleString('en-PK') : '0');
 
+  const rentalPrintColumns = useMemo(
+    () => [
+      { key: 'booking', label: 'Booking No' },
+      { key: 'customer', label: 'Customer' },
+      { key: 'date', label: 'Booking Date' },
+      { key: 'status', label: 'Status' },
+      { key: 'revenue', label: 'Revenue', align: 'right' as const },
+      { key: 'collected', label: 'Collected', align: 'right' as const },
+      { key: 'due', label: 'Due', align: 'right' as const },
+    ],
+    [],
+  );
+
+  const rentalPrintRows = useMemo(
+    () =>
+      filtered.map((r) => [
+        r.bookingNo,
+        r.customerName,
+        r.bookingDate,
+        mapRentalStatus(r.status),
+        formatCurrency(r.rentalCharges),
+        formatCurrency(r.paidAmount),
+        formatCurrency(r.dueAmount),
+      ]),
+    [filtered, formatCurrency],
+  );
+
+  const handleOpenPdfPreview = useCallback(async () => {
+    await reportExport.openPreview();
+  }, [reportExport]);
+
+  const tabularPrint = reportExport.tabularPrintOptions;
+  const periodLabel = `${startDate} → ${endDate}`;
+
+  const renderRentalPrintPreview = () =>
+    reportExport.brand ? (
+      <TabularReportPreview
+        brand={reportExport.brand}
+        title="Rental Reports"
+        periodLabel={periodLabel}
+        generatedAt={new Date().toLocaleString()}
+        columns={rentalPrintColumns}
+        rows={rentalPrintRows}
+        stats={[
+          { label: 'Bookings', value: fmtCount(stats.total) },
+          { label: 'Revenue', value: formatCurrency(stats.totalRevenue) },
+          { label: 'Collected', value: formatCurrency(stats.totalCollected) },
+          { label: 'Outstanding', value: formatCurrency(stats.totalOutstanding) },
+        ]}
+        fieldVisibility={tabularPrint.fieldVisibility}
+        showHeader={tabularPrint.showHeader}
+        showFooter={tabularPrint.showFooter}
+        orientation={printOrientation}
+        fontSize={tabularPrint.fontSize}
+        fontFamily={tabularPrint.fontFamily}
+        margins={tabularPrint.margins}
+        compact={filtered.length > 60}
+      />
+    ) : null;
+
   if (loading && rentals.length === 0) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -237,14 +301,38 @@ export const RentalReportsTab = () => {
       <ReportActions
         title="Rental Reports"
         onCsv={exportCsv}
-        onPrint={() => window.print()}
-        previewContentRef={printRef}
+        onPrint={() => void handleOpenPdfPreview()}
+        onOpenPdfPreview={() => void handleOpenPdfPreview()}
+        pdfLoading={reportExport.loadingBrand}
+        previewContentRef={reportExport.printRef}
         previewDocumentType="ledger"
         previewReference="Rental Reports"
         className="mb-0 border-b border-gray-800"
       />
 
-      <div ref={printRef} className="flex-1 p-4 md:p-6 space-y-6 overflow-y-auto">
+      {reportExport.previewOpen ? (
+        <PdfPreviewModal
+          open={reportExport.previewOpen}
+          onClose={reportExport.closePreview}
+          title="Rental Reports"
+          documentType="ledger"
+          reference="Rental Reports"
+          format={reportExport.printFormat}
+          orientation={printOrientation}
+          showOrientationToggle
+          onOrientationChange={setPrintOrientation}
+          pageNumbers={tabularPrint.showFooter}
+          fitSinglePage={filtered.length <= 35}
+        >
+          {renderRentalPrintPreview()}
+        </PdfPreviewModal>
+      ) : null}
+
+      <div ref={reportExport.printRef} className="sr-only">
+        {renderRentalPrintPreview()}
+      </div>
+
+      <div className="flex-1 p-4 md:p-6 space-y-6 overflow-y-auto">
         <div className="flex flex-wrap items-end gap-3">
           <div>
             <label className="text-xs text-gray-400 block mb-1">From</label>

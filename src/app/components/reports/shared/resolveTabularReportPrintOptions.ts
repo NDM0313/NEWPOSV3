@@ -10,7 +10,7 @@ import {
   type ReportPrintOrientation,
 } from './reportPrintConfig';
 
-export type TabularReportKind = 'stock' | 'product_sell';
+export type TabularReportKind = 'stock' | 'product_sell' | 'stock_movement_history';
 
 export interface TabularReportPrintOptions {
   orientation: ReportPrintOrientation;
@@ -30,7 +30,9 @@ export function resolveTabularReportPrintOptions(
   const orientation =
     kind === 'stock'
       ? merged.reportExport.stockReportOrientation
-      : merged.reportExport.productSellOrientation;
+      : kind === 'stock_movement_history'
+        ? merged.reportExport.stockMovementHistoryOrientation ?? 'landscape'
+        : merged.reportExport.productSellOrientation;
   return {
     orientation,
     fieldVisibility: pickReportHeaderFieldVisibility(merged.fields),

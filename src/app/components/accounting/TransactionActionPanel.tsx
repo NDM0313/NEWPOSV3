@@ -65,7 +65,7 @@ export function TransactionActionPanel({
   if (actions.length === 0) return null;
 
   return (
-    <div className={cn('flex flex-wrap items-center gap-1', className)}>
+    <div className={cn('flex flex-wrap items-center gap-1 max-w-full', className)}>
       {actions.map((action) => {
         const Icon = ACTION_ICONS[action.id] ?? Pencil;
         const isModal = variant === 'modal';
@@ -76,7 +76,7 @@ export function TransactionActionPanel({
             variant={isModal ? 'outline' : 'ghost'}
             size="sm"
             className={cn(
-              isModal ? 'gap-1 h-8' : 'h-8',
+              isModal ? 'gap-1 h-8 shrink-0' : 'h-8',
               !isModal && severityClasses(action),
               isModal &&
                 action.severity === 'destructive' &&

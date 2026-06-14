@@ -1,8 +1,7 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Loader2, Calendar, Users, AlertTriangle, ShieldAlert, ChevronRight } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
-import { ReportActions } from './ReportActions';
-import { FinancialReportPrintLayout, FinancialReportDataTable } from './FinancialReportPrintLayout';
+import { FinancialReportPrintShell } from './shared/FinancialReportPrintShell';
 import { shareViaWhatsApp } from '@/app/services/documentShareService';
 import { Input } from '@/app/components/ui/input';
 import { DatePicker } from '@/app/components/ui/DatePicker';
@@ -17,7 +16,7 @@ import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { toast } from 'sonner';
 import { accountingReportsService, BalanceSheetResult, type BalanceSheetLineItem } from '@/app/services/accountingReportsService';
 import type { BalanceSheetAssetGroup } from '@/app/lib/accountHierarchy';
-import { exportToPDF, exportToExcel, ExportData } from '@/app/utils/exportUtils';
+import { exportToExcel, ExportData } from '@/app/utils/exportUtils';
 import { fetchControlAccountBreakdown, type ControlAccountBreakdownResult, type PartyGlRow } from '@/app/services/controlAccountBreakdownService';
 import { ReportBasisBanner } from '@/app/components/accounting/ReportBasisBanner';
 import { useNavigation } from '@/app/context/NavigationContext';
@@ -284,7 +283,6 @@ export const BalanceSheetPage: React.FC<{
       .finally(() => setLoading(false));
   }, [companyId, asOfDate, branchId, fetchRetryKey]);
 
-  const reportPrintRef = useRef<HTMLDivElement>(null);
   const groupedAssets = useMemo(() => (data ? groupAssets(data.assets.items) : []), [data]);
   const groupedLiabilities = useMemo(() => (data ? groupLiabilities(data.liabilities.items) : []), [data]);
   const groupedEquity = useMemo(() => (data ? groupEquity(data.equity.items) : []), [data]);
@@ -298,10 +296,6 @@ export const BalanceSheetPage: React.FC<{
     return toExportGrouped(data, formatCurrency, ga, gl, ge);
   }, [data, formatCurrency, groupedAssets, groupedLiabilities, groupedEquity]);
 
-  const handleExportPDF = () => {
-    if (!exportPayload) return;
-    exportToPDF(exportPayload, `Balance_Sheet_GL_${data!.asOfDate}`);
-  };
   const handleExportExcel = () => {
     if (!exportPayload) return;
     exportToExcel(exportPayload, `Balance_Sheet_GL_${data!.asOfDate}`);
@@ -393,18 +387,17 @@ export const BalanceSheetPage: React.FC<{
         basis="official_gl"
         detail="Point-in-time balance sheet from posted accounts. Party “Parties” drill-down is Party GL attribution, not operational due."
       />
-      <div className="no-print">
-        <ReportActions
-          title="Balance Sheet (GL)"
-          onPrint={() => window.print()}
-          onPdf={handleExportPDF}
-          onExcel={handleExportExcel}
-          onWhatsapp={handleWhatsApp}
-          previewContentRef={reportPrintRef}
-          previewDocumentType="ledger"
-          previewReference={`balance-sheet-${asOfDate}`}
-        />
-      </div>
+      <FinancialReportPrintShell
+        companyId={companyId}
+        actionsTitle="Balance Sheet (GL)"
+        reportTitle="Balance Sheet (GL)"
+        periodLabel={`As at ${data.asOfDate}`}
+        branchLabel={branchLabel}
+        previewReference={`balance-sheet-${asOfDate}`}
+        exportPayload={exportPayload}
+        onExcel={handleExportExcel}
+        onWhatsapp={handleWhatsApp}
+      />
       <div className="no-print flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2">
@@ -426,18 +419,6 @@ export const BalanceSheetPage: React.FC<{
           )}
         </div>
       </div>
-      {exportPayload ? (
-        <div className="fixed left-[-9999px] top-0 w-[820px] pointer-events-none" aria-hidden>
-          <FinancialReportPrintLayout
-            ref={reportPrintRef}
-            title="Balance Sheet (GL)"
-            periodLabel={`As at ${data.asOfDate}`}
-            branchLabel={branchLabel}
-          >
-            <FinancialReportDataTable headers={exportPayload.headers} rows={exportPayload.rows} />
-          </FinancialReportPrintLayout>
-        </div>
-      ) : null}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 no-print">
         <SectionBlock
           title={data.assets.label}

@@ -126,7 +126,7 @@ export function RemainingBalanceReport({ branchId }: Props) {
         previewDocumentType="ledger"
         previewReference="remaining-balance"
       />
-      <div ref={printRef} className="classic-print-base" style={{ position: 'absolute', left: '-9999px', top: 0, width: '1px', height: '1px', overflow: 'hidden' }} aria-hidden>
+      <div ref={printRef} className="classic-print-base" style={{ position: 'absolute', left: '-9999px', top: 0, width: '820px', minHeight: '240px', overflow: 'visible' }} aria-hidden>
         <div className="p-4 text-black bg-white">
           <h1 className="text-lg font-bold">{exportPayload.title}</h1>
           <table className="w-full text-xs border-collapse mt-4">

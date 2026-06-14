@@ -616,7 +616,21 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       const isPaginated = result && typeof result === 'object' && 'data' in result && 'total' in result;
       const data = isPaginated ? (result as { data: any[]; total: number }).data : (result as any[]);
       const total = isPaginated ? (result as { data: any[]; total: number }).total : data.length;
-      setSales(data.map(convertFromSupabaseSale));
+      let mapped = data.map(convertFromSupabaseSale);
+      const pageIds = new Set(mapped.map((s) => s.id));
+      const missingRecent = recentCreatedSaleIdsRef.current.filter((id) => !pageIds.has(id));
+      if (missingRecent.length > 0) {
+        const extraRows = await Promise.all(
+          missingRecent.map((id) => saleService.getSaleById(id).catch(() => null))
+        );
+        const extras = extraRows
+          .filter(Boolean)
+          .map((row) => convertFromSupabaseSale(row!));
+        if (extras.length > 0) {
+          mapped = [...extras, ...mapped];
+        }
+      }
+      setSales(mapped);
       setTotalCount(total);
     } catch (error) {
       console.error('[SALES CONTEXT] Error loading sales:', error);
@@ -634,6 +648,13 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
 
   const activatedRef = React.useRef(false);
   const [activated, setActivated] = React.useState(false);
+  const recentCreatedSaleIdsRef = React.useRef<string[]>([]);
+  const rememberRecentCreatedSale = useCallback((saleId: string) => {
+    recentCreatedSaleIdsRef.current = [
+      saleId,
+      ...recentCreatedSaleIdsRef.current.filter((id) => id !== saleId),
+    ].slice(0, 10);
+  }, []);
   const activate = useCallback(() => {
     if (!activatedRef.current) { activatedRef.current = true; setActivated(true); }
   }, []);
@@ -693,6 +714,17 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
     };
     const onDataInvalidated = (ev: Event) => {
       const detail = (ev as CustomEvent<DataInvalidationDetail>).detail;
+      const reason = String(detail?.reason ?? '');
+      if (reason.includes('fallback-poll')) return;
+      if (
+        reason.includes('sales-context-create') &&
+        detail?.entityId &&
+        detail?.companyId === companyId
+      ) {
+        setPageState(0);
+        void patchSaleInList(String(detail.entityId));
+        return;
+      }
       if (
         !shouldAcceptInvalidation(detail, {
           domain: ['sales', 'contacts', 'studio'],
@@ -702,8 +734,6 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       ) {
         return;
       }
-      const reason = String(detail?.reason ?? '');
-      if (reason.includes('fallback-poll')) return;
       if (
         (reason.includes('sales-context-payment') || reason.includes('sale-payment')) &&
         detail?.entityId
@@ -718,7 +748,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       if (timer) clearTimeout(timer);
       window.removeEventListener(DATA_INVALIDATED_EVENT, onDataInvalidated as EventListener);
     };
-  }, [branchId, companyId, loadSales]);
+  }, [branchId, companyId, loadSales, patchSaleInList]);
 
   useEffect(() => {
     setPageState(0);
@@ -794,11 +824,10 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       try {
         invoiceNo = await documentNumberService.getNextDocumentNumberGlobal(companyId, sequenceType);
       } catch (e) {
-        // Fallback to form number only if RPC missing (e.g. migration not run)
-        const formInvoiceNo = (saleData as any).invoiceNo as string | undefined;
-        invoiceNo = (typeof formInvoiceNo === 'string' && formInvoiceNo && !formInvoiceNo.includes('undefined'))
-          ? formInvoiceNo
-          : generateDocumentNumber(docType);
+        const msg = e instanceof Error ? e.message : String(e);
+        throw new Error(
+          `Could not allocate document number (${sequenceType}). Apply migrations on the server (get_next_document_number_global self-heal) and retry. ${msg}`
+        );
       }
       const weGeneratedNumber = true;
       if (!invoiceNo || invoiceNo.includes('undefined') || invoiceNo.includes('NaN')) {
@@ -1207,6 +1236,25 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       }
       
       setSales((prev) => [newSale, ...prev]);
+      rememberRecentCreatedSale(newSale.id);
+
+      if (
+        branchId &&
+        branchId !== 'all' &&
+        newSale.branchId &&
+        newSale.branchId !== branchId
+      ) {
+        const branchLabel = newSale.location?.trim() || 'another branch';
+        toast.info(
+          `Sale saved on ${branchLabel}. Switch header branch to All or ${branchLabel} to see it in the default list.`
+        );
+      }
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('saleUpdated', { detail: { saleId: newSale.id, fullReload: false } })
+        );
+      }
       
       // Stock OUT: handled by DB trigger (if exists) + syncSaleStockForDocument (Z1 below).
       // The manual stock creation loop was removed because it raced with the DB trigger,

@@ -164,6 +164,8 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   /** Production: ignore logout (session=null) for this many ms after sign-in – GoTrue can emit SIGNED_OUT on SecurityError. */
   /** Log storage/security retry only once per userId to avoid 15–20 console messages. */
   const storageErrorLoggedRef = useRef<Set<string>>(new Set());
+  /** User clicked Sign Out — skip onAuthStateChange getSession() recovery that would re-login. */
+  const userInitiatedSignOutRef = useRef(false);
 
   const requestUserProfileLoad = (userId: string) => {
     const now = Date.now();
@@ -268,6 +270,11 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       // PRODUCTION: Never clear session in the listener. GoTrue emits session=null/SIGNED_OUT on SecurityError
       // and breaks production login. Only our signOut() (user clicked Sign Out) should clear state.
       if (!newUser) {
+        if (userInitiatedSignOutRef.current) {
+          userInitiatedSignOutRef.current = false;
+          setLoading(false);
+          return;
+        }
         try {
           const { data: { session: current } } = await supabase.auth.getSession();
           if (current?.user) {
@@ -790,7 +797,8 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // Sign out
   const signOut = async () => {
-    await supabase.auth.signOut();
+    userInitiatedSignOutRef.current = true;
+    await supabase.auth.signOut({ scope: 'local' });
     setConnectionError(false);
     setStorageBlocked(false);
     setAuthConfigError(null);

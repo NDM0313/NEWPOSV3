@@ -26,11 +26,24 @@ import {
   type TabularReportKind,
   type TabularReportPrintOptions,
 } from './resolveTabularReportPrintOptions';
+import {
+  resolveAccountingReportPrintOptions,
+  type AccountingReportKind,
+  type AccountingReportPrintOptions,
+} from './resolveAccountingReportPrintOptions';
 
 export { buildTabularPrintSnapshot } from './buildTabularPrintSnapshot';
 export type { TabularPrintSnapshot, TabularColumnDef } from './buildTabularPrintSnapshot';
 
-export type ReportExportKind = 'ledger' | 'stock' | 'product_sell';
+export type ReportExportKind =
+  | 'ledger'
+  | 'stock'
+  | 'product_sell'
+  | 'stock_movement_history'
+  | 'roznamcha'
+  | 'cash_flow'
+  | 'day_book'
+  | 'financial';
 
 export interface UseReportExportOptions {
   companyId: string | null;
@@ -58,12 +71,34 @@ export function useReportExport({
     resolveLedgerPrintOptions(null),
   );
   const [tabularPrintOptions, setTabularPrintOptions] = useState<TabularReportPrintOptions>(() =>
-    resolveTabularReportPrintOptions(null, reportKind === 'product_sell' ? 'product_sell' : 'stock'),
+    resolveTabularReportPrintOptions(
+      null,
+      reportKind === 'product_sell'
+        ? 'product_sell'
+        : reportKind === 'stock_movement_history'
+          ? 'stock_movement_history'
+          : 'stock',
+    ),
+  );
+  const accountingKind: AccountingReportKind | null =
+    reportKind === 'roznamcha' ||
+    reportKind === 'cash_flow' ||
+    reportKind === 'day_book' ||
+    reportKind === 'financial'
+      ? reportKind
+      : null;
+  const [accountingPrintOptions, setAccountingPrintOptions] = useState<AccountingReportPrintOptions>(() =>
+    resolveAccountingReportPrintOptions(null, accountingKind ?? 'roznamcha'),
   );
   const [previewOpen, setPreviewOpen] = useState(false);
   const [loadingBrand, setLoadingBrand] = useState(false);
 
-  const tabularKind: TabularReportKind = reportKind === 'product_sell' ? 'product_sell' : 'stock';
+  const tabularKind: TabularReportKind =
+    reportKind === 'product_sell'
+      ? 'product_sell'
+      : reportKind === 'stock_movement_history'
+        ? 'stock_movement_history'
+        : 'stock';
 
   const refreshReportSettings = useCallback(async () => {
     if (!companyId) return;
@@ -72,10 +107,13 @@ export function useReportExport({
     setFieldVisibility(pickReportHeaderFieldVisibility(merged.fields));
     setReportExportSettings(merged.reportExport);
     setLedgerPrintOptions(resolveLedgerPrintOptions(settingsRes.data));
-    if (reportKind === 'stock' || reportKind === 'product_sell') {
+    if (reportKind === 'stock' || reportKind === 'product_sell' || reportKind === 'stock_movement_history') {
       setTabularPrintOptions(resolveTabularReportPrintOptions(settingsRes.data, tabularKind));
     }
-  }, [companyId, reportKind, tabularKind]);
+    if (accountingKind) {
+      setAccountingPrintOptions(resolveAccountingReportPrintOptions(settingsRes.data, accountingKind));
+    }
+  }, [companyId, reportKind, tabularKind, accountingKind]);
 
   const ensureBrand = useCallback(async (): Promise<CompanyBrand | null> => {
     if (!companyId) return null;
@@ -157,6 +195,7 @@ export function useReportExport({
     reportExportSettings,
     ledgerPrintOptions,
     tabularPrintOptions,
+    accountingPrintOptions,
     printFormat: REPORT_PRINT_FORMAT,
     reportFontSize,
     previewOpen,

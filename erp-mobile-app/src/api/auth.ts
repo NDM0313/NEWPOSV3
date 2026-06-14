@@ -27,6 +27,7 @@ import {
   formatCreateBusinessSignInFallbackError,
   isReservedSystemEmail,
   RESERVED_SYSTEM_EMAIL_MESSAGE,
+  shouldAttemptSignupSignInFallback,
 } from '../utils/authErrorMessages';
 
 export { getOAuthRedirectTo } from '../lib/oauthRedirect';
@@ -185,14 +186,7 @@ export async function signInWithGoogle(): Promise<{
 }
 
 function isSignupExistingEmailError(authError: { message?: string; status?: number }): boolean {
-  const msg = authError.message?.toLowerCase() ?? '';
-  return (
-    msg.includes('already registered') ||
-    msg.includes('already exists') ||
-    msg.includes('user already exists') ||
-    msg.includes('database error saving new user') ||
-    authError.status === 422
-  );
+  return shouldAttemptSignupSignInFallback(authError);
 }
 
 export async function signUpForNewBusiness(params: {
@@ -250,7 +244,7 @@ export async function signUpForNewBusiness(params: {
         hasSession: false,
         error: {
           message: signInError
-            ? formatCreateBusinessSignInFallbackError(signInError)
+            ? formatCreateBusinessSignInFallbackError(signInError, error)
             : 'This email is already registered. Sign in with your password, or use a different email.',
         },
       };

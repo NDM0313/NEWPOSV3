@@ -606,7 +606,7 @@ export function CustomersSuppliersReportPage({ startDate, endDate, branchId }: P
       <div
         ref={printPreviewRef}
         className="classic-print-base"
-        style={{ position: 'absolute', left: '-9999px', top: 0, width: '1px', height: '1px', overflow: 'hidden' }}
+        style={{ position: 'absolute', left: '-9999px', top: 0, width: '820px', minHeight: '240px', overflow: 'visible' }}
         aria-hidden
       >
         <div className="p-4 text-black bg-white">

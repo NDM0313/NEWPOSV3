@@ -29,9 +29,22 @@ function minimalTrace(overrides: Partial<TransactionTraceResult> = {}): Transact
     branchChain: [],
     reportVisibility: [
       {
-        roznamcha: { included: true, reason: 'payments stream' },
-        accountStatement: { included: true, reason: 'party payment' },
-        dayBook: { included: true, reason: 'all JE lines' },
+        roznamcha: {
+          normal: { included: true, reason: 'payments stream' },
+          audit: { included: true, reason: 'payments stream' },
+        },
+        accountStatement: {
+          normal: { included: true, reason: 'party payment' },
+          audit: { included: true, reason: 'party payment' },
+        },
+        customerSupplierStatement: {
+          normal: { included: true, reason: 'party payment' },
+          audit: { included: true, reason: 'party payment' },
+        },
+        dayBook: {
+          normal: { included: true, reason: 'all JE lines' },
+          audit: { included: true, reason: 'all JE lines' },
+        },
         dashboard: { impacted: [], note: '' },
       },
     ],

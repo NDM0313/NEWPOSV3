@@ -84,7 +84,7 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
   const { formatCurrency } = useFormatCurrency();
   const { canManageSettings } = useCheckPermission();
   const { companyId, branchId: contextBranchId, requiresBranchSelection } = useSupabase();
-  const { createExpense, updateExpense, refreshExpenses } = useExpenses();
+  const { createExpense, updateExpense } = useExpenses();
   const { accounts: coaAccounts } = useAccounting();
 
   const [date, setDate] = useState<Date | undefined>(new Date());
@@ -381,7 +381,6 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
           }
         );
       }
-      await refreshExpenses();
       resetForm();
       onClose();
       onSuccess?.();

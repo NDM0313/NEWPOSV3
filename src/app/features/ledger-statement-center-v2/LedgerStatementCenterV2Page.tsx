@@ -132,9 +132,8 @@ export function LedgerStatementCenterV2Page({
   }, [reportExport]);
 
   const handlePrint = useCallback(async () => {
-    await reportExport.preparePrint();
-    window.print();
-  }, [reportExport]);
+    await handleOpenPdfPreview();
+  }, [handleOpenPdfPreview]);
 
   useEffect(() => {
     if (!companyId) return;

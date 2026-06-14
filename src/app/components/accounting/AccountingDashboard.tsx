@@ -38,6 +38,7 @@ import {
   Undo2,
   Search,
   Loader2,
+  Paperclip,
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { DatePicker } from '@/app/components/ui/DatePicker';
@@ -54,6 +55,14 @@ import { ManualEntryDialog } from './ManualEntryDialog';
 import { AccountLedgerView } from './AccountLedgerView';
 import { AccountLedgerPage } from './AccountLedgerPage';
 import { TransactionDetailModal } from './TransactionDetailModal';
+import { AttachmentViewer } from '@/app/components/shared/AttachmentViewer';
+import {
+  collectEntryAttachments,
+  collectGroupAttachments,
+  entryHasAttachments,
+  groupEntryHasAttachments,
+  type TransactionAttachment,
+} from '@/app/utils/transactionAttachments';
 import { AddAccountDrawer } from './AddAccountDrawer';
 import { LedgerStatementCenterV2Page } from '@/app/features/ledger-statement-center-v2/LedgerStatementCenterV2Page';
 import type { LedgerStatementV2Initial } from '@/app/features/ledger-statement-center-v2/types';
@@ -689,6 +698,7 @@ export const AccountingDashboard = () => {
   const useTransactionActionPanel = isTransactionActionPanelEnabled();
   /** PF-14.3B: Default = grouped (one logical row per sale); audit = all raw JEs. */
   const [journalViewMode, setJournalViewMode] = useState<'grouped' | 'audit'>('grouped');
+  const [attachmentsDialogList, setAttachmentsDialogList] = useState<TransactionAttachment[] | null>(null);
   
   /** Account Statements: standard = embedded V2 UI; advanced = effective/audit filters (legacy engine). */
   const [accountStatementsViewMode, setAccountStatementsViewMode] = useState<'standard' | 'advanced'>('standard');
@@ -1545,23 +1555,39 @@ export const AccountingDashboard = () => {
                                   )}
                                 </td>
                                 <td className="px-4 py-3">
-                                  <button
-                                    type="button"
-                                    disabled={busy}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      if (busy) return;
-                                      setTransactionDetailAutoEdit(false);
-                                      setTransactionReference(entry.id);
-                                      setSelectedGroupEntries(group.entries);
-                                    }}
-                                    className="text-blue-400 hover:text-blue-300 hover:underline text-sm font-medium disabled:opacity-40"
-                                  >
-                                    {voucherLabel}
-                                    {adjustmentCount > 0 && (
-                                      <span className="ml-1.5 text-gray-500 font-normal">(+{adjustmentCount})</span>
-                                    )}
-                                  </button>
+                                  <span className="inline-flex items-center gap-1">
+                                    <button
+                                      type="button"
+                                      disabled={busy}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (busy) return;
+                                        setTransactionDetailAutoEdit(false);
+                                        setTransactionReference(entry.id);
+                                        setSelectedGroupEntries(group.entries);
+                                      }}
+                                      className="text-blue-400 hover:text-blue-300 hover:underline text-sm font-medium disabled:opacity-40"
+                                    >
+                                      {voucherLabel}
+                                      {adjustmentCount > 0 && (
+                                        <span className="ml-1.5 text-gray-500 font-normal">(+{adjustmentCount})</span>
+                                      )}
+                                    </button>
+                                    {groupEntryHasAttachments(group.entries) ? (
+                                      <button
+                                        type="button"
+                                        disabled={busy}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setAttachmentsDialogList(collectGroupAttachments(group.entries));
+                                        }}
+                                        className="text-amber-400 hover:text-amber-300 disabled:opacity-40 shrink-0"
+                                        title="View attachment"
+                                      >
+                                        <Paperclip size={14} />
+                                      </button>
+                                    ) : null}
+                                  </span>
                                 </td>
                                 <td className="px-4 py-3">
                                   <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">
@@ -1858,20 +1884,36 @@ export const AccountingDashboard = () => {
                                   )}
                                 </td>
                                 <td className="px-4 py-3">
-                                  <button
-                                    type="button"
-                                    disabled={busy}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      if (busy) return;
-                                      setTransactionDetailAutoEdit(false);
-                                      setTransactionReference(entry.id);
-                                      setSelectedGroupEntries(null);
-                                    }}
-                                    className="text-blue-400 hover:text-blue-300 hover:underline text-sm font-medium"
-                                  >
-                                    {voucherLabel}
-                                  </button>
+                                  <span className="inline-flex items-center gap-1">
+                                    <button
+                                      type="button"
+                                      disabled={busy}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (busy) return;
+                                        setTransactionDetailAutoEdit(false);
+                                        setTransactionReference(entry.id);
+                                        setSelectedGroupEntries(null);
+                                      }}
+                                      className="text-blue-400 hover:text-blue-300 hover:underline text-sm font-medium"
+                                    >
+                                      {voucherLabel}
+                                    </button>
+                                    {entryHasAttachments(entry) ? (
+                                      <button
+                                        type="button"
+                                        disabled={busy}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setAttachmentsDialogList(collectEntryAttachments(entry));
+                                        }}
+                                        className="text-amber-400 hover:text-amber-300 disabled:opacity-40 shrink-0"
+                                        title="View attachment"
+                                      >
+                                        <Paperclip size={14} />
+                                      </button>
+                                    ) : null}
+                                  </span>
                                 </td>
                                 <td className="px-4 py-3">
                                   <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">
@@ -2840,6 +2882,14 @@ export const AccountingDashboard = () => {
           onClose={() => setLedgerAccount(null)}
         />
       )}
+
+      {attachmentsDialogList ? (
+        <AttachmentViewer
+          attachments={attachmentsDialogList}
+          isOpen={!!attachmentsDialogList}
+          onClose={() => setAttachmentsDialogList(null)}
+        />
+      ) : null}
 
       {/* Transaction Detail Modal (PF-14.3B: pass group entries to show edit trail when opening from grouped row) */}
       {transactionReference && (

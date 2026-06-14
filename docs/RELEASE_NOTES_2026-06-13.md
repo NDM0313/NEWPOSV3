@@ -61,24 +61,25 @@ Web pickup was writing guarantee ID into `rentals.document_number`, overwriting 
 
 ---
 
-## 5. Remaining tasks (post-push)
+## 5. Deploy status (2026-06-14)
 
-### VPS deploy (web ERP)
-```bash
-ssh dincouture-vps "cd /root/NEWPOSV3 && git pull && bash deploy/vps-build-erp-only.sh"
-```
+| Step | Status |
+|------|--------|
+| GitHub pull (local + VPS → `815bf7fe`) | Done |
+| VPS migrations (`run-migrations-vps.sh`) | Done — all applied |
+| VPS ERP rebuild (`vps-build-erp-only.sh`) | Done — `erp-frontend` restarted |
+| Web + mobile production builds | Done |
+| Android debug APK (`android:debug:win`) | Done — `erp-mobile-app/android/app/build/outputs/apk/debug/app-debug.apk` |
 
-### Database
-Apply any new migrations under `migrations/` not yet on production (see table above).
+**Live:** https://erp.dincouture.pk/ — hard refresh (Ctrl+Shift+R) after deploy.
 
-### Mobile APK
-Rebuild Capacitor APK after pull if using native mobile build (`erp-mobile-app`).
-
-### Manual QA checklist
+### Manual QA checklist (you verify in browser / device)
 - [ ] Web: Duplicate product → one new row only
 - [ ] Web: Rental booking with bill ref → list Bill # → pickup preserves bill ref
 - [ ] Mobile: SalesHome All + Rental tabs; rental payment Ref lines
 - [ ] Reports → Sales loads data (no 400); lifecycle filters correct
+
+**Also see:** [`docs/accounting/remaining-tasks-2026-06-14.md`](accounting/remaining-tasks-2026-06-14.md) for 14 Jun rentals/reports KPI backlog.
 
 ---
 

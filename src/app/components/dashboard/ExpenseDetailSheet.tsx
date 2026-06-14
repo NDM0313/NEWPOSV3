@@ -1,5 +1,5 @@
-import React from 'react';
-import { Pencil, Trash } from 'lucide-react';
+import React, { useRef } from 'react';
+import { Pencil, Trash, Paperclip } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Sheet, SheetContent } from '../ui/sheet';
@@ -41,6 +41,7 @@ export function ExpenseDetailSheet({
   getStatusBadgeStyle,
 }: ExpenseDetailSheetProps) {
   const { formatCurrency } = useFormatCurrency();
+  const receiptSectionRef = useRef<HTMLDivElement>(null);
 
   return (
     <Sheet open={open} onOpenChange={(isOpen) => { if (!isOpen) onClose(); }}>
@@ -49,11 +50,23 @@ export function ExpenseDetailSheet({
           <div className="flex flex-col min-h-full">
             <div className="bg-gray-950/80 border-b border-gray-800 px-6 py-5">
               <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Expense</p>
-                  <h2 className="text-xl font-bold text-white mt-1 truncate">
-                    {expense.expenseNo || expense.id.slice(0, 8)}
-                  </h2>
+                <div className="min-w-0 flex items-start gap-2">
+                  <div className="min-w-0">
+                    <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Expense</p>
+                    <h2 className="text-xl font-bold text-white mt-1 truncate">
+                      {expense.expenseNo || expense.id.slice(0, 8)}
+                    </h2>
+                  </div>
+                  {expense.receiptUrl ? (
+                    <button
+                      type="button"
+                      onClick={() => receiptSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })}
+                      className="mt-5 p-1.5 rounded-lg hover:bg-amber-500/10 transition-colors shrink-0"
+                      title="View attachment"
+                    >
+                      <Paperclip size={18} className="text-amber-400" />
+                    </button>
+                  ) : null}
                 </div>
                 <Badge className={cn('shrink-0 capitalize', getStatusBadgeStyle(expense.status))}>
                   {expense.status}
@@ -101,7 +114,7 @@ export function ExpenseDetailSheet({
               </div>
 
               {expense.receiptUrl ? (
-                <div>
+                <div ref={receiptSectionRef}>
                   <p className="text-xs text-gray-500 uppercase font-medium mb-2">Receipt / attachment</p>
                   {isPdfUrl(expense.receiptUrl) ? (
                     <div className="rounded-lg bg-gray-800/50 border border-gray-700 p-4">

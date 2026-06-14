@@ -101,8 +101,7 @@ export const TopHeader = () => {
     try {
       await signOut();
       toast.success('Logged out successfully');
-      // Redirect will happen automatically via ProtectedRoute
-      window.location.reload();
+      window.location.assign('/');
     } catch (error) {
       console.error('Logout error:', error);
       toast.error('Failed to logout. Please try again.');
@@ -402,6 +401,24 @@ export const TopHeader = () => {
               )}
             >
               This Year
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => setDateRangeType('currentFinancialYear')}
+              className={cn(
+                "px-3 py-2 rounded-lg cursor-pointer",
+                dateRangeType === 'currentFinancialYear' ? "bg-primary/10 text-primary" : "text-foreground hover:bg-accent"
+              )}
+            >
+              Current Financial Year
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => setDateRangeType('lastFinancialYear')}
+              className={cn(
+                "px-3 py-2 rounded-lg cursor-pointer",
+                dateRangeType === 'lastFinancialYear' ? "bg-primary/10 text-primary" : "text-foreground hover:bg-accent"
+              )}
+            >
+              Last Financial Year
             </DropdownMenuItem>
             <DropdownMenuSeparator className="bg-border my-2" />
             <DropdownMenuItem

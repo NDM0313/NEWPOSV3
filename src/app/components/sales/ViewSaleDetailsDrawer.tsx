@@ -399,6 +399,12 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
     }
   }, [isOpen, saleId, companyId, loadPayments, loadActivityLogs]);
 
+  // Refresh activity logs when History tab is opened (e.g. after mobile attachment add)
+  useEffect(() => {
+    if (!isOpen || !saleId || activeTab !== 'history') return;
+    void loadActivityLogs(saleId);
+  }, [isOpen, saleId, activeTab, loadActivityLogs]);
+
   // Load studio summary for this sale (real-time sync: productions + stages)
   useEffect(() => {
     if (!isOpen || !saleId) {
@@ -1797,6 +1803,10 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                           return <DollarSign size={16} className="text-blue-500" />;
                         case 'payment_deleted':
                           return <DollarSign size={16} className="text-red-500" />;
+                        case 'attachment_added':
+                          return <Paperclip size={16} className="text-blue-400" />;
+                        case 'attachment_removed':
+                          return <Paperclip size={16} className="text-orange-400" />;
                         case 'update':
                           return <Edit size={16} className="text-yellow-500" />;
                         case 'delete':
@@ -1816,6 +1826,10 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                           return 'bg-blue-500/20';
                         case 'payment_deleted':
                           return 'bg-red-500/20';
+                        case 'attachment_added':
+                          return 'bg-blue-500/20';
+                        case 'attachment_removed':
+                          return 'bg-orange-500/20';
                         case 'update':
                           return 'bg-yellow-500/20';
                         case 'delete':

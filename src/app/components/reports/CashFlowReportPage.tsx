@@ -2,7 +2,7 @@
  * CF-1 / CF-1.1 — Cash Flow tab (read-only operational cash/bank movement report).
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { format, startOfMonth } from 'date-fns';
 import { AlertCircle, ArrowLeftRight, Loader2, RefreshCw, Wallet } from 'lucide-react';
 import { useSupabase } from '@/app/context/SupabaseContext';
@@ -50,6 +50,14 @@ import { ReportBasisBanner, ReportBasisBadge } from '@/app/components/accounting
 import { formatRoznamchaRowDateTimeDisplay } from '@/app/utils/transactionEventDateTime';
 import { journalDescriptionForDisplay } from '@/app/utils/journalDescriptionDisplay';
 import { ReportActions } from './ReportActions';
+import { PdfPreviewModal, type PdfPreviewOrientation } from '@/app/components/shared/PdfPreviewModal';
+import { useReportExport } from './shared/useReportExport';
+import { CashBookReportPreview } from './shared/CashBookReportPreview';
+import {
+  buildCashFlowPrintRows,
+  buildCashFlowSummaryStats,
+  CASH_FLOW_PRINT_COLUMNS,
+} from './shared/buildCashFlowPrintPreview';
 import { exportToCSV } from '@/app/utils/exportUtils';
 
 export interface CashFlowReportPageProps {
@@ -75,8 +83,9 @@ function auditBadgeClass(): string {
 }
 
 export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowReportPageProps) {
-  const printRef = useRef<HTMLDivElement>(null);
   const { companyId, branchId: contextBranchId } = useSupabase();
+  const reportExport = useReportExport({ companyId, documentType: 'ledger', reportKind: 'cash_flow' });
+  const [printOrientation, setPrintOrientation] = useState<PdfPreviewOrientation>('landscape');
   const { company } = useSettings();
   const { formatCurrency } = useFormatCurrency();
   const businessName = company?.businessName?.trim() || 'Business';
@@ -247,6 +256,28 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
 
   const summary = data?.summary;
 
+  useEffect(() => {
+    setPrintOrientation(reportExport.accountingPrintOptions.orientation);
+  }, [reportExport.accountingPrintOptions.orientation]);
+
+  const handleOpenPdfPreview = useCallback(async () => {
+    await reportExport.openPreview();
+  }, [reportExport]);
+
+  const printOpts = reportExport.accountingPrintOptions;
+  const periodLabel = dateFrom && dateTo ? `${dateFrom} → ${dateTo}` : '—';
+  const generatedAt = useMemo(() => new Date().toLocaleString(), [reportExport.previewOpen]);
+
+  const cashFlowPrintPreview = useMemo(() => {
+    if (!summary) return null;
+    return {
+      summaryStats: buildCashFlowSummaryStats(summary, formatCurrency),
+      rows: buildCashFlowPrintRows(filteredRows),
+      openingBalance: formatCurrency(summary.opening),
+      closingBalance: formatCurrency(summary.closing),
+    };
+  }, [summary, filteredRows, formatCurrency]);
+
   const tieOut = useMemo(() => {
     if (!summary || !glSummary) return null;
     return computeCashFlowTieOut(summary.netMovement, glSummary.netChange);
@@ -320,37 +351,41 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
     }
     return rows.map((r) => (
       <tr key={r.id} className="border-t border-gray-800/80 hover:bg-gray-900/40">
-        <td className="p-3 text-gray-300 whitespace-nowrap">
+        <td className="p-3 text-gray-300 whitespace-nowrap align-middle">
           {formatRoznamchaRowDateTimeDisplay(r.date, r.time || '')}
         </td>
-        <td className="p-3 min-w-[140px]">
-          <div className="font-medium text-white">{r.reference}</div>
+        <td className="p-3 align-middle min-w-0">
+          <div className="font-medium text-white leading-snug">{r.reference}</div>
           {r.journalEntryNo && (
             <div className="text-xs text-gray-500 font-mono">{r.journalEntryNo}</div>
           )}
-          <div className="text-xs text-gray-500 mt-0.5">
+          <div className="text-xs text-gray-500 mt-0.5 leading-snug">
             {journalDescriptionForDisplay(r.details, r.sourceModuleLabel)}
           </div>
         </td>
-        <td className="p-3 text-gray-300">{r.party || '—'}</td>
-        <td className="p-3 text-gray-300 whitespace-nowrap">{r.sourceModuleLabel}</td>
-        <td className="p-3 text-gray-300 min-w-[120px]">
+        <td className="p-3 text-gray-300 align-middle min-w-[200px] max-w-[280px] break-words leading-snug">
+          {r.party || '—'}
+        </td>
+        <td className="p-3 text-gray-300 align-middle min-w-[120px]">
           <span className="inline-flex items-center gap-1">
             <Wallet className="w-3 h-3 shrink-0 text-gray-500" />
-            {r.cashAccount}
+            <span className="leading-snug">{r.cashAccount}</span>
           </span>
         </td>
-        <td className="p-3 text-right text-emerald-400 tabular-nums whitespace-nowrap">
+        <td className="p-3 text-right text-emerald-400 tabular-nums whitespace-nowrap align-middle">
           {r.cashIn > 0 ? formatCurrency(r.cashIn) : '—'}
         </td>
-        <td className="p-3 text-right text-red-400 tabular-nums whitespace-nowrap">
+        <td className="p-3 text-right text-red-400 tabular-nums whitespace-nowrap align-middle">
           {r.cashOut > 0 ? formatCurrency(r.cashOut) : '—'}
         </td>
-        <td className="p-3 text-right text-white tabular-nums font-medium whitespace-nowrap">
+        <td className="p-3 text-right text-white tabular-nums font-medium whitespace-nowrap align-middle">
           {formatCurrency(r.runningBalance)}
         </td>
-        <td className="p-3 whitespace-nowrap">{renderStatusBadges(r)}</td>
-        <td className="p-3 text-gray-400 text-xs whitespace-nowrap">{r.branchName || '—'}</td>
+        <td className="p-3 text-gray-400 text-[11px] leading-tight align-middle w-[72px] max-w-[88px]">
+          {r.sourceModuleLabel}
+        </td>
+        <td className="p-3 whitespace-nowrap align-middle">{renderStatusBadges(r)}</td>
+        <td className="p-3 text-gray-400 text-xs whitespace-nowrap align-middle">{r.branchName || '—'}</td>
       </tr>
     ));
   };
@@ -365,12 +400,77 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
       <div className="no-print">
         <ReportActions
           title="Cash Flow"
-          onPrint={() => window.print()}
+          onPrint={() => void handleOpenPdfPreview()}
+          onOpenPdfPreview={() => void handleOpenPdfPreview()}
           onCsv={handleCsvExport}
-          previewContentRef={printRef}
+          pdfLoading={reportExport.loadingBrand}
+          previewContentRef={reportExport.printRef}
           previewDocumentType="ledger"
           previewReference={dateFrom && dateTo ? `CashFlow-${dateFrom}-${dateTo}` : 'CashFlow'}
         />
+      </div>
+
+      {reportExport.previewOpen && reportExport.brand && cashFlowPrintPreview ? (
+        <PdfPreviewModal
+          open={reportExport.previewOpen}
+          onClose={reportExport.closePreview}
+          title="Cash Flow"
+          documentType="ledger"
+          reference={dateFrom && dateTo ? `CashFlow-${dateFrom}-${dateTo}` : 'CashFlow'}
+          format={reportExport.printFormat}
+          orientation={printOrientation}
+          showOrientationToggle
+          onOrientationChange={setPrintOrientation}
+          pageNumbers={printOpts.showFooter}
+        >
+          <CashBookReportPreview
+            brand={reportExport.brand}
+            title="Cash Flow"
+            subtitle={`${modeLabel} mode · ${liquidityLabel} · ${sourceModuleLabel}`}
+            periodLabel={periodLabel}
+            branchScopeLabel={branchLabel}
+            generatedAt={generatedAt}
+            columns={CASH_FLOW_PRINT_COLUMNS}
+            rows={cashFlowPrintPreview.rows}
+            summaryStats={cashFlowPrintPreview.summaryStats}
+            openingBalance={cashFlowPrintPreview.openingBalance}
+            closingBalance={cashFlowPrintPreview.closingBalance}
+            balanceColumnIndex={6}
+            fieldVisibility={printOpts.fieldVisibility}
+            showHeader={printOpts.showHeader}
+            showFooter={printOpts.showFooter}
+            orientation={printOrientation}
+            fontSize={printOpts.fontSize}
+            fontFamily={printOpts.fontFamily}
+            margins={printOpts.margins}
+          />
+        </PdfPreviewModal>
+      ) : null}
+
+      <div ref={reportExport.printRef} className="sr-only">
+        {reportExport.brand && cashFlowPrintPreview ? (
+          <CashBookReportPreview
+            brand={reportExport.brand}
+            title="Cash Flow"
+            subtitle={`${modeLabel} mode · ${liquidityLabel} · ${sourceModuleLabel}`}
+            periodLabel={periodLabel}
+            branchScopeLabel={branchLabel}
+            generatedAt={generatedAt}
+            columns={CASH_FLOW_PRINT_COLUMNS}
+            rows={cashFlowPrintPreview.rows}
+            summaryStats={cashFlowPrintPreview.summaryStats}
+            openingBalance={cashFlowPrintPreview.openingBalance}
+            closingBalance={cashFlowPrintPreview.closingBalance}
+            balanceColumnIndex={6}
+            fieldVisibility={printOpts.fieldVisibility}
+            showHeader={printOpts.showHeader}
+            showFooter={printOpts.showFooter}
+            orientation={printOrientation}
+            fontSize={printOpts.fontSize}
+            fontFamily={printOpts.fontFamily}
+            margins={printOpts.margins}
+          />
+        ) : null}
       </div>
 
       <div className="no-print rounded-xl border border-gray-800 bg-gray-900/50 p-4 space-y-4">
@@ -495,7 +595,7 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
           </Button>
         </div>
       ) : summary ? (
-        <div ref={printRef} className="space-y-6 min-w-0">
+        <div className="space-y-6 min-w-0">
           {/* Print header — visible on screen in print block and when printing */}
           <div className="hidden print:block mb-4 text-black">
             <h1 className="text-xl font-bold">{businessName}</h1>
@@ -505,13 +605,6 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
               {liquidityLabel} · Module: {sourceModuleLabel} · Mode: {modeLabel}
             </p>
           </div>
-
-          {loading ? (
-            <div className="no-print flex items-center justify-center gap-2 py-2 text-xs text-blue-400">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Refreshing…
-            </div>
-          ) : null}
 
           {glSummary && (
             <div className="space-y-2">
@@ -634,21 +727,43 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
             </div>
           )}
 
-          <div className="rounded-xl border border-gray-800 overflow-hidden print:border-gray-300">
+          <div className="relative rounded-xl border border-gray-800 overflow-hidden print:border-gray-300">
+            {loading ? (
+              <div
+                className="no-print absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-gray-950/70 backdrop-blur-sm pointer-events-none"
+                aria-live="polite"
+                aria-busy="true"
+              >
+                <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+                <p className="text-sm text-gray-300">Loading cash flow…</p>
+              </div>
+            ) : null}
             <div className="overflow-x-auto -mx-px">
-              <table className="w-full text-sm min-w-[960px] print:min-w-0 print:text-black">
+              <table className="w-full text-sm min-w-[1080px] table-fixed print:min-w-0 print:text-black">
+                <colgroup>
+                  <col className="w-[132px]" />
+                  <col className="w-[168px]" />
+                  <col className="w-[240px]" />
+                  <col className="w-[136px]" />
+                  <col className="w-[96px]" />
+                  <col className="w-[96px]" />
+                  <col className="w-[120px]" />
+                  <col className="w-[80px]" />
+                  <col className="w-[96px]" />
+                  <col className="w-[96px]" />
+                </colgroup>
                 <thead>
                   <tr className="bg-gray-900/80 text-gray-400 text-left text-xs uppercase tracking-wide print:bg-gray-100 print:text-gray-700">
-                    <th className="p-3">Date</th>
-                    <th className="p-3">Reference</th>
-                    <th className="p-3">Party</th>
-                    <th className="p-3">Source</th>
-                    <th className="p-3">Cash/bank account</th>
-                    <th className="p-3 text-right">In</th>
-                    <th className="p-3 text-right">Out</th>
-                    <th className="p-3 text-right">Running balance</th>
-                    <th className="p-3">Status</th>
-                    <th className="p-3">Branch</th>
+                    <th className="p-3 align-middle">Date</th>
+                    <th className="p-3 align-middle">Reference</th>
+                    <th className="p-3 align-middle">Party</th>
+                    <th className="p-3 align-middle">Cash/bank account</th>
+                    <th className="p-3 text-right align-middle">In</th>
+                    <th className="p-3 text-right align-middle">Out</th>
+                    <th className="p-3 text-right align-middle">Running balance</th>
+                    <th className="p-3 align-middle text-[10px] leading-tight">Source</th>
+                    <th className="p-3 align-middle">Status</th>
+                    <th className="p-3 align-middle">Branch</th>
                   </tr>
                 </thead>
                 <tbody className="print:text-black">

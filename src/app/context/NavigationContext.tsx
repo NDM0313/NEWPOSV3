@@ -79,6 +79,7 @@ export type View =
   | 'manufacturing-workflow'
   | 'party-ledger'
   | 'stock-report'
+  | 'stock-movement-history'
   | 'bespoke-work-orders';
 
 type DrawerType = 'none' | 'addUser' | 'addProduct' | 'edit-product' | 'addSale' | 'edit-sale' | 'addPurchase' | 'edit-purchase' | 'addContact';

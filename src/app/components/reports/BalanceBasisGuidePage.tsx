@@ -341,7 +341,7 @@ export function BalanceBasisGuidePage({ asOfDate, branchId }: Props) {
       <div
         ref={printRef}
         className="classic-print-base"
-        style={{ position: 'absolute', left: '-9999px', top: 0, width: '1px', height: '1px', overflow: 'hidden' }}
+        style={{ position: 'absolute', left: '-9999px', top: 0, width: '820px', minHeight: '240px', overflow: 'visible' }}
         aria-hidden
       >
         {exportPayload ? (
