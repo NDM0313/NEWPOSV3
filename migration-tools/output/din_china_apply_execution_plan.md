@@ -77,3 +77,43 @@ Outputs: `din_china_post_apply_audit.json`, `din_china_post_apply_audit.md`, `le
 Message: `chore(migration): finalize DIN CHINA legacy import`
 
 **Deploy:** Migration-only changes → **no frontend deploy**. No unrelated SQL migrations.
+
+## 9. COA cleanup (post-import metadata only)
+
+**Applied:** 2026-06-14 — `repairDinChinaPostImport.js --apply-coa-cleanup`
+
+**Scope:** Six imported payment accounts only. Updates `name`, `code`, `parent_id`, `type` (metadata). No balance, JE amount, payment/expense amount, or account ID changes.
+
+**Parents created (groups):**
+
+| Code | Name | Role |
+|------|------|------|
+| 1201 | USD TT Agent Clearing | tt_agent_clearing |
+| 1203 | Carrier Shipment Agent | agent_clearing |
+
+**Account renames / codes:**
+
+| Old code | New code | Old name | New name | Parent |
+|----------|----------|----------|----------|--------|
+| DC0115 | 1051 | DIN CHINA Cash | China Cash | 1050 Cash & Cash Equivalents |
+| DC0106 | 1061 | MCB | MCB | 1060 Bank Accounts |
+| DC0108 | 1062 | DIN FHD MZ | FHD MZ | 1060 Bank Accounts |
+| DC0159 | 1063 | DIN NDM MZ | NDM MZ | 1060 Bank Accounts |
+| DC0133 | 1202 | WALI DIN T/T | WALI T/T | 1201 USD TT Agent Clearing |
+| DC0157 | 1204 | YAQOOB | YAQOOB | 1203 Carrier Shipment Agent |
+
+**Commands:**
+
+```bash
+# Preview (must pass before apply)
+node migration-tools/repairDinChinaPostImport.js --company-id 30bd8592-3384-4f34-899a-f3907e336485
+
+# Apply
+node migration-tools/repairDinChinaPostImport.js --company-id 30bd8592-3384-4f34-899a-f3907e336485 --apply-coa-cleanup
+```
+
+**Outputs:** `din_china_coa_cleanup_preview.md/json`, `din_china_coa_cleanup_final_report.md`
+
+**Verification:** All DC codes removed company-wide; balances and payment/expense link counts unchanged; no account 4000; no 4050 posting lines.
+
+**Deploy:** Migration-tools + reports only → **no VPS/frontend deploy**.
