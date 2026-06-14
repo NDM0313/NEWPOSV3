@@ -1,5 +1,7 @@
 /** COA preflight for DIN CHINA legacy import — mirrors saleAccountingService account resolution. */
 
+import { supabaseRead } from './supabaseReadRetry.js';
+
 const PARENT_HEADER_CODES = new Set(['1050', '1060', '1070', '4050', '2090', '3090', '6090', '1090']);
 
 export const SALE_JOURNAL_STRATEGY = 'createSaleJournalEntry';
@@ -228,10 +230,11 @@ export function validatePaymentAccountTargets(accountPlan, dbAccounts) {
 export async function runCoaPreflight(supabase, companyId, accountPlan, options = {}) {
   const saleJournalStrategy = options.saleJournalStrategy ?? SALE_JOURNAL_STRATEGY;
 
-  const { data: accounts, error } = await supabase
-    .from('accounts')
-    .select('id, company_id, code, name, type, subtype, is_group, parent_id, is_active')
-    .eq('company_id', companyId);
+  const { data: accounts, error } = await supabaseRead('accounts_coa_preflight', () =>
+    supabase
+      .from('accounts')
+      .select('id, company_id, code, name, type, subtype, is_group, parent_id, is_active')
+      .eq('company_id', companyId));
 
   if (error) {
     return {

@@ -35,6 +35,10 @@ import {
 import { mapLegacyPaymentMethod } from './lib/mapLegacyPaymentMethod.js';
 import { runCoaPreflight, SALE_JOURNAL_STRATEGY } from './lib/dinChinaCoaPreflight.js';
 import { runApply, writeApplyFinalReport } from './lib/dinChinaApply.js';
+import { isGatewayReadError, supabaseRead } from './lib/supabaseReadRetry.js';
+
+const GATEWAY_BRANCH_ERROR =
+  'Supabase/API gateway temporarily failed during read-only branch check. No import was applied. Re-run dry-run after service recovers.';
 
 const BRANCH_NAME = 'DIN CHINA';
 const BRANCH_CODE = 'BL0002';
@@ -124,15 +128,16 @@ const SCHEMA_TABLES = [
 async function inspectSchema(supabase, companyId) {
   const results = [];
   for (const table of SCHEMA_TABLES) {
-    let res = await table.probe(supabase, companyId);
+    let res = await supabaseRead(`schema_${table.name}`, () => table.probe(supabase, companyId));
     let tableName = table.name;
     if (res.error && table.fallback) {
       const alt = table.fallback;
       if (table.name === 'sales_items') {
-        res = await supabase
-          .from(alt)
-          .select('id, sale_id, product_id, variation_id, product_name, sku, quantity, unit_price, total')
-          .limit(1);
+        res = await supabaseRead(`schema_${alt}`, () =>
+          supabase
+            .from(alt)
+            .select('id, sale_id, product_id, variation_id, product_name, sku, quantity, unit_price, total')
+            .limit(1));
         if (!res.error) tableName = alt;
       }
     }
@@ -155,21 +160,26 @@ async function inspectSchema(supabase, companyId) {
 }
 
 async function findWalkingCustomer(supabase, companyId) {
-  const { data } = await supabase
-    .from('contacts')
-    .select('id, name, system_type')
-    .eq('company_id', companyId)
-    .eq('system_type', 'walking_customer')
-    .maybeSingle();
+  const { data } = await supabaseRead('walking_customer', () =>
+    supabase
+      .from('contacts')
+      .select('id, name, system_type')
+      .eq('company_id', companyId)
+      .eq('system_type', 'walking_customer')
+      .maybeSingle());
   return data?.id ?? null;
 }
 
 async function resolveBranch(supabase, companyId) {
-  const { data: branches, error } = await supabase
-    .from('branches')
-    .select('id, name, code, is_active')
-    .eq('company_id', companyId);
-  if (error) throw new Error(`Branch query failed: ${error.message}`);
+  const { data: branches, error } = await supabaseRead('branches', () =>
+    supabase.from('branches').select('id, name, code, is_active').eq('company_id', companyId));
+
+  if (error) {
+    if (isGatewayReadError(error)) {
+      return { action: 'error', error: GATEWAY_BRANCH_ERROR, gatewayFailure: true };
+    }
+    return { action: 'error', error: `Branch query failed: ${error.message}` };
+  }
 
   const hit = (branches || []).find(
     (b) => normalizeBranchName(b.name) === normalizeBranchName(BRANCH_NAME),
@@ -211,11 +221,8 @@ async function runDryRun(supabase, env, csvBundle) {
     blockingErrors.push(...csvValidation.errors.map((e) => `CSV: ${e}`));
   }
 
-  const { data: company, error: companyErr } = await supabase
-    .from('companies')
-    .select('id, name')
-    .eq('id', env.targetCompanyId)
-    .maybeSingle();
+  const { data: company, error: companyErr } = await supabaseRead('companies', () =>
+    supabase.from('companies').select('id, name').eq('id', env.targetCompanyId).maybeSingle());
   if (companyErr) blockingErrors.push(`Company lookup: ${companyErr.message}`);
   else if (!company) blockingErrors.push(`Company not found: ${env.targetCompanyId}`);
   report.company = company || null;
@@ -226,15 +233,19 @@ async function runDryRun(supabase, env, csvBundle) {
   }
 
   const branchPlan = company ? await resolveBranch(supabase, env.targetCompanyId) : { action: 'blocked' };
+  if (branchPlan.action === 'error') {
+    blockingErrors.push(branchPlan.error);
+  }
   report.branch = { legacyBranchId: LEGACY_BRANCH_ID, ...branchPlan };
 
   const walkingCustomerId = await findWalkingCustomer(supabase, env.targetCompanyId);
   report.walkingCustomerId = walkingCustomerId;
 
-  const { data: dbContacts } = await supabase
-    .from('contacts')
-    .select('id, type, name, phone, mobile, code, notes, system_type')
-    .eq('company_id', env.targetCompanyId);
+  const { data: dbContacts } = await supabaseRead('contacts', () =>
+    supabase
+      .from('contacts')
+      .select('id, type, name, phone, mobile, code, notes, system_type')
+      .eq('company_id', env.targetCompanyId));
   const { customers, suppliers } = collectUniqueContacts(data);
   const allLegacyContacts = [
     ...customers,
@@ -253,13 +264,10 @@ async function runDryRun(supabase, env, csvBundle) {
     details: contactPlan,
   };
 
-  const { data: dbProducts } = await supabase
-    .from('products')
-    .select('id, name, sku')
-    .eq('company_id', env.targetCompanyId);
-  const { data: dbVariations } = await supabase
-    .from('product_variations')
-    .select('id, product_id, sku');
+  const { data: dbProducts } = await supabaseRead('products', () =>
+    supabase.from('products').select('id, name, sku').eq('company_id', env.targetCompanyId));
+  const { data: dbVariations } = await supabaseRead('product_variations', () =>
+    supabase.from('product_variations').select('id, product_id, sku'));
   const legacyProducts = collectUniqueProducts(data);
   const productPlan = buildProductMatchPlan(legacyProducts, dbProducts || [], dbVariations || []);
   report.products = {
@@ -269,10 +277,11 @@ async function runDryRun(supabase, env, csvBundle) {
   };
 
   const legacyAccountIds = collectLegacyAccountIds(data);
-  const { data: dbAccounts } = await supabase
-    .from('accounts')
-    .select('id, code, name, type, subtype, is_group, parent_id, is_active')
-    .eq('company_id', env.targetCompanyId);
+  const { data: dbAccounts } = await supabaseRead('accounts', () =>
+    supabase
+      .from('accounts')
+      .select('id, code, name, type, subtype, is_group, parent_id, is_active')
+      .eq('company_id', env.targetCompanyId));
   const accountPlan = buildAccountMatchPlan(legacyAccountIds, dbAccounts || []);
   report.accounts = {
     legacyIds: legacyAccountIds,
@@ -568,7 +577,28 @@ async function main() {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  const report = await runDryRun(supabase, env, csvBundle);
+  let report;
+  try {
+    report = await runDryRun(supabase, env, csvBundle);
+  } catch (err) {
+    const msg = err?.message || String(err);
+    report = {
+      mode: 'dry-run',
+      generatedAt: new Date().toISOString(),
+      targetCompanyId: env.targetCompanyId,
+      sourceSystem: SOURCE_SYSTEM,
+      csvPaths: csvBundle.paths,
+      liveImportApplied: false,
+      pass: false,
+      blockingErrors: [
+        msg.includes('Bad Gateway') || msg.includes('502')
+          ? GATEWAY_BRANCH_ERROR
+          : `Dry-run aborted: ${msg}`,
+      ],
+      warnings: [],
+      summary: {},
+    };
+  }
   fs.mkdirSync(env.outputDir, { recursive: true });
   const outPath = path.join(env.outputDir, 'din_china_dry_run_report.json');
   fs.writeFileSync(outPath, JSON.stringify(report, null, 2), 'utf8');
