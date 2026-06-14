@@ -22,6 +22,17 @@ export async function findActiveCanonicalSaleDocumentJournalEntryId(supabase, sa
   return data?.[0]?.id ?? null;
 }
 
+async function journalHasValidArRevenueLines(supabase, jeId, arAccountId, revenueAccountId) {
+  const { data: lines } = await supabase
+    .from('journal_entry_lines')
+    .select('account_id, debit, credit')
+    .eq('journal_entry_id', jeId);
+  if (!lines?.length) return false;
+  const hasAr = lines.some((l) => l.account_id === arAccountId && Number(l.debit) > 0);
+  const hasRev = lines.some((l) => l.account_id === revenueAccountId && Number(l.credit) > 0);
+  return hasAr && hasRev && lines.length === 2;
+}
+
 /**
  * Minimal sale document JE for legacy import — Dr AR / Cr 4100 (no COGS, no record_sale RPC).
  */
@@ -46,11 +57,17 @@ export async function createImportSaleJournalEntry(supabase, params) {
   }
 
   const existing = await findActiveCanonicalSaleDocumentJournalEntryId(supabase, saleId);
-  if (existing) {
+  if (
+    existing &&
+    (await journalHasValidArRevenueLines(supabase, existing, arAccountId, revenueAccountId))
+  ) {
     return { ok: true, skipped: true, reason: 'exists', journalEntryId: existing };
   }
 
-  const jeId = dinChinaUuid('journal_sale_doc', saleId);
+  const jeId = existing ?? dinChinaUuid('journal_sale_doc', saleId);
+  if (existing) {
+    await supabase.from('journal_entry_lines').delete().eq('journal_entry_id', existing);
+  }
   const fingerprint = saleDocumentJournalFingerprint(companyId, saleId);
   const dateStr = String(entryDate || '').slice(0, 10) || new Date().toISOString().slice(0, 10);
 

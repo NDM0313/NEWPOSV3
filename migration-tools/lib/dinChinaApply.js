@@ -49,6 +49,11 @@ function contactIdFromPlan(contactPlan, legacyContactId) {
   return hit?.newContactId ?? null;
 }
 
+function contactNameFromPlan(contactPlan, legacyContactId) {
+  const hit = contactPlan.find((c) => c.legacyContactId === Number(legacyContactId));
+  return hit?.name ?? null;
+}
+
 function productFromPlan(productPlan, legacyProductId, legacyVariationId) {
   return productPlan.find(
     (p) =>
@@ -63,11 +68,21 @@ function accountIdFromPlan(accountPlan, legacyAccountId) {
 }
 
 async function insertSaleItemRow(supabase, row) {
-  let res = await supabase.from('sale_items').insert(row).select('id').single();
+  let res = await supabase.from('sales_items').insert(row).select('id').single();
   if (res.error?.code === '42P01') {
-    res = await supabase.from('sales_items').insert(row).select('id').single();
+    res = await supabase.from('sale_items').insert(row).select('id').single();
   }
   return res;
+}
+
+async function resolveArPostingAccountId(supabase, companyId, customerId, controlArAccountId) {
+  if (!customerId || !controlArAccountId) return controlArAccountId;
+  const { data, error } = await supabase.rpc('_ensure_ar_subaccount_for_contact', {
+    p_company_id: companyId,
+    p_contact_id: customerId,
+  });
+  if (error || !data) return controlArAccountId;
+  return data;
 }
 
 async function rpcRecordPayment(supabase, params) {
@@ -84,6 +99,7 @@ async function rpcRecordPayment(supabase, params) {
     p_reference_number: params.referenceNumber ?? null,
     p_notes: params.notes ?? null,
     p_created_by: null,
+    p_worker_stage_id: null,
   });
   if (error) return { ok: false, error: error.message };
   const res = data;
@@ -198,7 +214,6 @@ async function ensureProducts(supabase, companyId, productPlan, stats, errors) {
           retail_price: 0,
           has_variations: true,
           track_stock: false,
-          notes: legacyProductNote(p.legacyProductId),
         },
         { onConflict: 'id' },
       );
@@ -288,9 +303,13 @@ export async function runApply(supabase, env, csvBundle, dryReport) {
   const legacyIds = collectLegacyIdsFromCsv(data);
   const importCache = await loadDinChinaImportStateCache(supabase, companyId, legacyIds);
 
-  const readySaleTxnIds = new Set(
-    (dryReport.sales?.readyDetails || []).map((s) => String(s.legacyTransactionId)),
-  );
+  const readySaleTxnIds = new Set();
+  for (const s of dryReport.sales?.readyDetails || []) {
+    readySaleTxnIds.add(String(s.legacyTransactionId));
+  }
+  for (const d of dryReport.sales?.duplicateDetails || []) {
+    readySaleTxnIds.add(String(d.legacyTransactionId));
+  }
 
   for (const s of data.sales.rows) {
     const legacyId = Number(s.legacy_transaction_id);
@@ -304,6 +323,10 @@ export async function runApply(supabase, env, csvBundle, dryReport) {
         errors.push(`Sale ${legacyId}: customer ${s.customer_id} not mapped`);
         continue;
       }
+      const customerName =
+        String(s.customer_name || '').trim() ||
+        contactNameFromPlan(contactPlan, s.customer_id) ||
+        'Walk-In Customer';
       const total = num(s.final_total);
       const { error } = await supabase.from('sales').upsert(
         {
@@ -313,6 +336,8 @@ export async function runApply(supabase, env, csvBundle, dryReport) {
           invoice_no: legacyInvoiceNo(s.invoice_no),
           invoice_date: dateSlice(s.transaction_date),
           customer_id: customerId,
+          customer_name: customerName,
+          type: 'invoice',
           status: 'draft',
           payment_status: String(s.payment_status || 'unpaid').toLowerCase(),
           subtotal: num(s.subtotal),
@@ -404,7 +429,12 @@ export async function runApply(supabase, env, csvBundle, dryReport) {
       total,
       invoiceNo: saleRow.invoice_no || legacyInvoiceNo(s.invoice_no),
       entryDate: saleRow.invoice_date || dateSlice(s.transaction_date),
-      arAccountId,
+      arAccountId: await resolveArPostingAccountId(
+        supabase,
+        companyId,
+        contactIdFromPlan(contactPlan, s.customer_id),
+        arAccountId,
+      ),
       revenueAccountId,
       legacyTransactionId: legacyId,
     });
@@ -451,9 +481,13 @@ export async function runApply(supabase, env, csvBundle, dryReport) {
     }
   }
 
-  const readyPurchLegacyIds = new Set(
-    (dryReport.purchases?.readyDetails || []).map((p) => String(p.legacyTransactionId)),
-  );
+  const readyPurchLegacyIds = new Set();
+  for (const p of dryReport.purchases?.readyDetails || []) {
+    readyPurchLegacyIds.add(String(p.legacyTransactionId));
+  }
+  for (const d of dryReport.purchases?.duplicateDetails || []) {
+    readyPurchLegacyIds.add(String(d.legacyTransactionId));
+  }
 
   for (const p of data.purchases.rows) {
     const legacyId = Number(p.legacy_transaction_id);
@@ -467,6 +501,10 @@ export async function runApply(supabase, env, csvBundle, dryReport) {
         errors.push(`Purchase ${legacyId}: supplier ${p.supplier_id} not mapped`);
         continue;
       }
+      const supplierName =
+        String(p.supplier_name || '').trim() ||
+        contactNameFromPlan(contactPlan, p.supplier_id) ||
+        'Supplier';
       const total = num(p.final_total);
       const { error } = await supabase.from('purchases').upsert(
         {
@@ -476,6 +514,7 @@ export async function runApply(supabase, env, csvBundle, dryReport) {
           po_no: p.po_no,
           po_date: dateSlice(p.transaction_date),
           supplier_id: supplierId,
+          supplier_name: supplierName,
           status: 'received',
           payment_status: String(p.payment_status || 'unpaid').toLowerCase(),
           subtotal: num(p.subtotal),

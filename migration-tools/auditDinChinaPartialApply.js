@@ -29,6 +29,28 @@ function num(v) {
   return Number(v) || 0;
 }
 
+function isArPostingAccount(acct, control1100Id) {
+  if (!acct) return false;
+  const code = String(acct.code || '').trim();
+  if (code === '1100') return true;
+  if (control1100Id && acct.parent_id === control1100Id) return true;
+  if (/^AR-/i.test(code)) return true;
+  return false;
+}
+
+function saleJeHasArAndRevenue(jLines, acctById, control1100Id) {
+  if (jLines.length !== 2) return false;
+  const hasAr = jLines.some((l) => {
+    const acct = acctById.get(l.account_id);
+    return isArPostingAccount(acct, control1100Id) && num(l.debit) > 0;
+  });
+  const has4100 = jLines.some((l) => {
+    const acct = acctById.get(l.account_id);
+    return String(acct?.code || '').trim() === '4100' && num(l.credit) > 0;
+  });
+  return hasAr && has4100;
+}
+
 function parseLegacyTxnIdFromNotes(notes) {
   const m = String(notes || '').match(/legacy_transaction_id=(\d+)/);
   return m ? Number(m[1]) : null;
@@ -41,15 +63,47 @@ function parseLegacyPaymentIdFromNotes(notes) {
 
 async function main() {
   const argv = process.argv.slice(2);
+  const preApplyGate = argv.includes('--pre-apply-gate');
   argv.push('--dry-run', '--require-supabase');
   const env = loadMigrationEnv(argv);
   const companyId = env.targetCompanyId;
   const csvBundle = loadAllCsvData();
-  const { data: csv } = csvBundle;
 
   const supabase = createClient(env.supabaseUrl, env.serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+
+  const audit = await buildDinChinaPartialAudit(supabase, env, csvBundle);
+
+  const outDir = env.outputDir;
+  fs.mkdirSync(outDir, { recursive: true });
+  const jsonPath = path.join(outDir, 'din_china_partial_apply_audit.json');
+  fs.writeFileSync(jsonPath, JSON.stringify(audit, null, 2), 'utf8');
+
+  const mdPath = path.join(outDir, 'din_china_partial_apply_audit.md');
+  fs.writeFileSync(mdPath, buildMarkdown(audit), 'utf8');
+
+  console.log(`Audit JSON: ${jsonPath}`);
+  console.log(`Audit MD: ${mdPath}`);
+  console.log(`Sales imported: ${audit.sales.importedCount}/${audit.sales.expectedCount}`);
+  console.log(`Sale items: ${audit.saleItems.importedCount}/${audit.saleItems.expectedCount}`);
+  console.log(`Sale payments: ${audit.salePayments.count}/${audit.salePayments.expectedCount}`);
+
+  if (preApplyGate) {
+    const gate = evaluatePreApplyGate(audit, csvBundle.data);
+    console.log(`Pre-apply gate: ${gate.pass ? 'PASS' : 'FAIL'}`);
+    if (gate.alreadyComplete) console.log('Import already complete — skip apply.');
+    if (gate.issues.length) {
+      for (const i of gate.issues) console.log(`  - ${i}`);
+    }
+    process.exit(gate.pass ? 0 : 1);
+  }
+}
+
+/** @param {import('@supabase/supabase-js').SupabaseClient} supabase */
+export async function buildDinChinaPartialAudit(supabase, env, csvBundle) {
+  const companyId = env.targetCompanyId;
+  const { data: csv } = csvBundle;
 
   const expectedSales = csv.sales.rows.map((r) => ({
     legacyTransactionId: Number(r.legacy_transaction_id),
@@ -272,6 +326,10 @@ async function main() {
   }
 
   if (saleIds.length) {
+    const { data: control1100 } = await supabaseRead('audit_ar_control', () =>
+      supabase.from('accounts').select('id').eq('company_id', companyId).eq('code', '1100').maybeSingle());
+    const control1100Id = control1100?.id ?? null;
+
     const { data: jes } = await supabaseRead('audit_sale_jes', () =>
       supabase
         .from('journal_entries')
@@ -290,19 +348,20 @@ async function main() {
           .in('journal_entry_id', jeIds));
       const accountIdsUsed = [...new Set((lines || []).map((l) => l.account_id))];
       const { data: accts } = await supabaseRead('audit_je_accounts', () =>
-        supabase.from('accounts').select('id, code, name').in('id', accountIdsUsed));
-      const codeById = new Map((accts || []).map((a) => [a.id, a.code]));
+        supabase.from('accounts').select('id, code, name, parent_id').in('id', accountIdsUsed));
+      const acctById = new Map((accts || []).map((a) => [a.id, a]));
       for (const je of activeJes) {
         const jLines = (lines || []).filter((l) => l.journal_entry_id === je.id);
-        const codes = jLines.map((l) => codeById.get(l.account_id));
-        const has1100 = codes.includes('1100');
-        const has4100 = codes.includes('4100');
+        const codes = jLines.map((l) => acctById.get(l.account_id)?.code);
         const has4050 = codes.includes('4050');
         const has4000 = codes.includes('4000');
         if (has4050) audit.saleJournals.used4050 = true;
         if (has4000) audit.saleJournals.used4000 = true;
-        if (has1100 && has4100 && jLines.length === 2) audit.saleJournals.withDr1100Cr4100++;
-        else audit.saleJournals.issues.push({ saleId: je.reference_id, codes });
+        if (saleJeHasArAndRevenue(jLines, acctById, control1100Id)) {
+          audit.saleJournals.withDr1100Cr4100++;
+        } else {
+          audit.saleJournals.issues.push({ saleId: je.reference_id, codes });
+        }
       }
     }
   }
@@ -414,20 +473,64 @@ async function main() {
     'Resume apply should reuse existing branch/accounts/contacts via upsert and batch-loaded import cache.',
   );
 
-  const outDir = env.outputDir;
-  fs.mkdirSync(outDir, { recursive: true });
-  const jsonPath = path.join(outDir, 'din_china_partial_apply_audit.json');
-  fs.writeFileSync(jsonPath, JSON.stringify(audit, null, 2), 'utf8');
+  return audit;
+}
 
-  const md = buildMarkdown(audit);
-  const mdPath = path.join(outDir, 'din_china_partial_apply_audit.md');
-  fs.writeFileSync(mdPath, md, 'utf8');
+export function evaluatePreApplyGate(audit, csvData) {
+  const issues = [];
+  const sales = audit.sales.importedCount;
+  const expectedSales = audit.sales.expectedCount;
+  const salePayments = audit.salePayments.count;
+  const expectedPayments = audit.salePayments.expectedCount;
+  const saleItems = audit.saleItems.importedCount;
+  const expectedItems = audit.saleItems.expectedCount;
+  const expFound = audit.expenses.imported.filter((e) => e.found).length;
+  const expectedExp = audit.expenses.imported.length;
 
-  console.log(`Audit JSON: ${jsonPath}`);
-  console.log(`Audit MD: ${mdPath}`);
-  console.log(`Sales imported: ${audit.sales.importedCount}/${audit.sales.expectedCount}`);
-  console.log(`Sale items: ${audit.saleItems.importedCount}/${audit.saleItems.expectedCount}`);
-  console.log(`Sale payments: ${audit.salePayments.count}/${audit.salePayments.expectedCount}`);
+  if (sales > 0 && sales < expectedSales) {
+    issues.push(`Partial sales import: ${sales}/${expectedSales} — stop before apply`);
+  }
+  if (salePayments > 0 && salePayments < expectedPayments) {
+    issues.push(`Partial sale payments: ${salePayments}/${expectedPayments} — stop before apply`);
+  }
+  if (saleItems > 0 && saleItems < expectedItems) {
+    issues.push(`Partial sale items: ${saleItems}/${expectedItems} — stop before apply`);
+  }
+  if (audit.purchase?.found) {
+    if (audit.purchaseItems.count < csvData.purchaseItems.rows.length) {
+      issues.push(`Partial purchase items: ${audit.purchaseItems.count}/${csvData.purchaseItems.rows.length}`);
+    }
+    if (audit.purchasePayments.count < csvData.purchasePayments.rows.length) {
+      issues.push(`Partial purchase payments: ${audit.purchasePayments.count}/${csvData.purchasePayments.rows.length}`);
+    }
+  }
+  if (expFound > 0 && expFound < expectedExp) {
+    issues.push(`Partial expenses: ${expFound}/${expectedExp}`);
+  }
+  if (audit.revenueAccount4000?.exists) {
+    issues.push('Account 4000 Revenue exists — review before apply');
+  }
+  if (audit.saleJournals.used4050) {
+    issues.push('Sale journals used parent 4050 — review before apply');
+  }
+  if (!audit.resumeAssessment.safeToResume) {
+    issues.push('resumeAssessment.safeToResume is false');
+  }
+
+  const alreadyComplete =
+    sales === expectedSales &&
+    saleItems === expectedItems &&
+    salePayments === expectedPayments &&
+    audit.purchase?.found === true &&
+    audit.purchaseItems.count === csvData.purchaseItems.rows.length &&
+    audit.purchasePayments.count === csvData.purchasePayments.rows.length &&
+    expFound === expectedExp;
+
+  return {
+    pass: issues.length === 0,
+    alreadyComplete,
+    issues,
+  };
 }
 
 function buildMarkdown(audit) {

@@ -732,6 +732,11 @@ async function main() {
     console.log('\nRunning live apply...');
     const applyResult = await runApply(supabase, env, csvBundle, report);
     printApplySummary(applyResult);
+    fs.writeFileSync(
+      path.join(env.outputDir, 'din_china_apply_result.json'),
+      JSON.stringify(applyResult, null, 2),
+      'utf8',
+    );
     const finalReportPath = writeApplyFinalReport(env.outputDir, report, applyResult);
     console.log(`Final report: ${finalReportPath}`);
     process.exit(applyResult.pass ? 0 : 1);
