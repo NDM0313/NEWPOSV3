@@ -36,6 +36,10 @@ import { mapLegacyPaymentMethod } from './lib/mapLegacyPaymentMethod.js';
 import { runCoaPreflight, SALE_JOURNAL_STRATEGY } from './lib/dinChinaCoaPreflight.js';
 import { runApply, writeApplyFinalReport } from './lib/dinChinaApply.js';
 import { isGatewayReadError, supabaseRead } from './lib/supabaseReadRetry.js';
+import {
+  loadDinChinaImportStateCache,
+  collectLegacyIdsFromCsv,
+} from './lib/dinChinaImportStateCache.js';
 
 const GATEWAY_BRANCH_ERROR =
   'Supabase/API gateway temporarily failed during read-only branch check. No import was applied. Re-run dry-run after service recovers.';
@@ -306,11 +310,19 @@ async function runDryRun(supabase, env, csvBundle) {
   if (coa.warnings?.length) warnings.push(...coa.warnings);
   if (coa.blockingIssues?.length) blockingErrors.push(...coa.blockingIssues);
 
+  const legacyIds = collectLegacyIdsFromCsv(data);
+  const importCache = await loadDinChinaImportStateCache(supabase, env.targetCompanyId, legacyIds);
+
   const saleDuplicates = [];
   const salesReady = [];
   for (const s of data.sales.rows) {
     const legacyId = Number(s.legacy_transaction_id);
-    const existing = await findExistingLegacySale(supabase, env.targetCompanyId, legacyId);
+    const existing = await findExistingLegacySale(
+      supabase,
+      env.targetCompanyId,
+      legacyId,
+      importCache,
+    );
     if (existing) {
       saleDuplicates.push({ legacyTransactionId: legacyId, match: existing.match, id: existing.row.id });
       continue;
@@ -377,7 +389,12 @@ async function runDryRun(supabase, env, csvBundle) {
   const purchasesReady = [];
   for (const p of data.purchases.rows) {
     const legacyId = Number(p.legacy_transaction_id);
-    const existing = await findExistingLegacyPurchase(supabase, env.targetCompanyId, legacyId);
+    const existing = await findExistingLegacyPurchase(
+      supabase,
+      env.targetCompanyId,
+      legacyId,
+      importCache,
+    );
     if (existing) {
       purchDuplicates.push({ legacyTransactionId: legacyId, match: existing.match, id: existing.row.id });
       continue;
@@ -425,7 +442,12 @@ async function runDryRun(supabase, env, csvBundle) {
   const expensesReady = [];
   for (const e of data.expenses.rows) {
     const legacyId = Number(e.legacy_transaction_id);
-    const existing = await findExistingLegacyExpense(supabase, env.targetCompanyId, legacyId);
+    const existing = await findExistingLegacyExpense(
+      supabase,
+      env.targetCompanyId,
+      legacyId,
+      importCache,
+    );
     if (existing) {
       expDuplicates.push({ legacyTransactionId: legacyId, id: existing.row.id });
       continue;

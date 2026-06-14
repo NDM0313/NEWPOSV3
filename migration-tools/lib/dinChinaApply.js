@@ -17,6 +17,10 @@ import { resolvePaymentAccountId } from './dinChinaMatch.js';
 import { mapLegacyPaymentMethod } from './mapLegacyPaymentMethod.js';
 import { createImportSaleJournalEntry } from './dinChinaSaleJournal.js';
 import { SALE_JOURNAL_STRATEGY } from './dinChinaCoaPreflight.js';
+import {
+  loadDinChinaImportStateCache,
+  collectLegacyIdsFromCsv,
+} from './dinChinaImportStateCache.js';
 
 function dateSlice(v) {
   const s = String(v || '').trim();
@@ -281,6 +285,9 @@ export async function runApply(supabase, env, csvBundle, dryReport) {
   await ensureContacts(supabase, companyId, contactPlan, stats, errors);
   await ensureProducts(supabase, companyId, productPlan, stats, errors);
 
+  const legacyIds = collectLegacyIdsFromCsv(data);
+  const importCache = await loadDinChinaImportStateCache(supabase, companyId, legacyIds);
+
   const readySaleTxnIds = new Set(
     (dryReport.sales?.readyDetails || []).map((s) => String(s.legacyTransactionId)),
   );
@@ -290,7 +297,7 @@ export async function runApply(supabase, env, csvBundle, dryReport) {
     if (!readySaleTxnIds.has(String(legacyId))) continue;
 
     const saleId = dinChinaUuid('transactions', legacyId);
-    const existing = await findExistingLegacySale(supabase, companyId, legacyId);
+    const existing = await findExistingLegacySale(supabase, companyId, legacyId, importCache);
     if (!existing) {
       const customerId = contactIdFromPlan(contactPlan, s.customer_id);
       if (!customerId) {
@@ -332,12 +339,7 @@ export async function runApply(supabase, env, csvBundle, dryReport) {
     for (const line of data.saleItems.rows) {
       if (String(line.transaction_id) !== String(legacyId)) continue;
       const itemId = dinChinaUuid('sale_items', line.line_id);
-      const { data: existingItem } = await supabase
-        .from('sale_items')
-        .select('id')
-        .eq('id', itemId)
-        .maybeSingle();
-      if (existingItem) {
+      if (importCache.hasSaleItem(itemId)) {
         stats.saleItemsSkipped++;
         continue;
       }
@@ -418,7 +420,7 @@ export async function runApply(supabase, env, csvBundle, dryReport) {
   for (const p of data.salePayments.rows) {
     if (!readySaleTxnIds.has(String(p.transaction_id))) continue;
     const legacyPaymentId = Number(p.payment_id);
-    const existingPay = await findExistingLegacyPayment(supabase, companyId, legacyPaymentId);
+    const existingPay = await findExistingLegacyPayment(supabase, companyId, legacyPaymentId, importCache);
     if (existingPay) {
       stats.salePaymentsSkipped++;
       continue;
@@ -458,7 +460,7 @@ export async function runApply(supabase, env, csvBundle, dryReport) {
     if (!readyPurchLegacyIds.has(String(legacyId))) continue;
 
     const purchaseId = dinChinaUuid('transactions', legacyId);
-    const existing = await findExistingLegacyPurchase(supabase, companyId, legacyId);
+    const existing = await findExistingLegacyPurchase(supabase, companyId, legacyId, importCache);
     if (!existing) {
       const supplierId = contactIdFromPlan(contactPlan, p.supplier_id);
       if (!supplierId) {
@@ -499,12 +501,7 @@ export async function runApply(supabase, env, csvBundle, dryReport) {
     for (const line of data.purchaseItems.rows) {
       if (String(line.transaction_id) !== String(legacyId)) continue;
       const itemId = dinChinaUuid('purchase_items', line.line_id);
-      const { data: existingItem } = await supabase
-        .from('purchase_items')
-        .select('id')
-        .eq('id', itemId)
-        .maybeSingle();
-      if (existingItem) {
+      if (importCache.hasPurchaseItem(itemId)) {
         stats.purchaseItemsSkipped++;
         continue;
       }
@@ -537,7 +534,7 @@ export async function runApply(supabase, env, csvBundle, dryReport) {
 
   for (const p of data.purchasePayments.rows) {
     const legacyPaymentId = Number(p.payment_id);
-    const existingPay = await findExistingLegacyPayment(supabase, companyId, legacyPaymentId);
+    const existingPay = await findExistingLegacyPayment(supabase, companyId, legacyPaymentId, importCache);
     if (existingPay) {
       stats.purchasePaymentsSkipped++;
       continue;
@@ -577,7 +574,7 @@ export async function runApply(supabase, env, csvBundle, dryReport) {
     if (!readyExpLegacyIds.has(String(legacyId))) continue;
 
     const expenseId = dinChinaUuid('transactions', legacyId);
-    const existing = await findExistingLegacyExpense(supabase, companyId, legacyId);
+    const existing = await findExistingLegacyExpense(supabase, companyId, legacyId, importCache);
     if (!existing) {
       const legacyAcctId = Number(e.payment_account_id);
       const paymentAccountId = accountIdFromPlan(accountPlan, legacyAcctId);

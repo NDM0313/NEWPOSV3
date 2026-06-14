@@ -49,7 +49,10 @@ export function saveLegacyMapFile(mapPath, data) {
 }
 
 /** Check if a legacy sale was already imported (dry-run + apply idempotency). */
-export async function findExistingLegacySale(supabase, companyId, legacyTransactionId) {
+export async function findExistingLegacySale(supabase, companyId, legacyTransactionId, cache = null) {
+  if (cache?.findExistingSale) {
+    return cache.findExistingSale(legacyTransactionId);
+  }
   const id = dinChinaUuid('transactions', legacyTransactionId);
   const { data: byId } = await supabaseRead(`sales_dup_id_${legacyTransactionId}`, () =>
     supabase.from('sales').select('id, invoice_no, total, paid_amount').eq('id', id).maybeSingle());
@@ -69,7 +72,10 @@ export async function findExistingLegacySale(supabase, companyId, legacyTransact
   return null;
 }
 
-export async function findExistingLegacyPurchase(supabase, companyId, legacyTransactionId) {
+export async function findExistingLegacyPurchase(supabase, companyId, legacyTransactionId, cache = null) {
+  if (cache?.findExistingPurchase) {
+    return cache.findExistingPurchase(legacyTransactionId);
+  }
   const id = dinChinaUuid('transactions', legacyTransactionId);
   const { data: byId } = await supabaseRead(`purchases_dup_id_${legacyTransactionId}`, () =>
     supabase.from('purchases').select('id, po_no, total, paid_amount').eq('id', id).maybeSingle());
@@ -88,7 +94,10 @@ export async function findExistingLegacyPurchase(supabase, companyId, legacyTran
   return null;
 }
 
-export async function findExistingLegacyPayment(supabase, companyId, legacyPaymentId) {
+export async function findExistingLegacyPayment(supabase, companyId, legacyPaymentId, cache = null) {
+  if (cache?.findExistingPayment) {
+    return cache.findExistingPayment(legacyPaymentId);
+  }
   const id = dinChinaUuid('transaction_payments', legacyPaymentId);
   const { data: byId } = await supabaseRead(`payments_dup_id_${legacyPaymentId}`, () =>
     supabase.from('payments').select('id, reference_number, amount').eq('id', id).maybeSingle());
@@ -108,7 +117,10 @@ export async function findExistingLegacyPayment(supabase, companyId, legacyPayme
   return null;
 }
 
-export async function findExistingLegacyExpense(supabase, companyId, legacyTransactionId) {
+export async function findExistingLegacyExpense(supabase, companyId, legacyTransactionId, cache = null) {
+  if (cache?.findExistingExpense) {
+    return cache.findExistingExpense(legacyTransactionId);
+  }
   const id = dinChinaUuid('transactions', legacyTransactionId);
   const { data: byId } = await supabaseRead(`expenses_dup_id_${legacyTransactionId}`, () =>
     supabase.from('expenses').select('id, expense_no, amount').eq('id', id).maybeSingle());
