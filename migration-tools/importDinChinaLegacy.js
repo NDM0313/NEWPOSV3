@@ -35,7 +35,7 @@ import {
 import { mapLegacyPaymentMethod } from './lib/mapLegacyPaymentMethod.js';
 import { runCoaPreflight, SALE_JOURNAL_STRATEGY } from './lib/dinChinaCoaPreflight.js';
 import { runApply, writeApplyFinalReport } from './lib/dinChinaApply.js';
-import { isGatewayReadError, supabaseRead } from './lib/supabaseReadRetry.js';
+import { isGatewayReadError, isTransientReadError, supabaseRead } from './lib/supabaseReadRetry.js';
 import {
   loadDinChinaImportStateCache,
   collectLegacyIdsFromCsv,
@@ -43,6 +43,9 @@ import {
 
 const GATEWAY_BRANCH_ERROR =
   'Supabase/API gateway temporarily failed during read-only branch check. No import was applied. Re-run dry-run after service recovers.';
+
+const GATEWAY_COMPANY_ERROR =
+  'Supabase/API gateway failed during company preflight. No import was applied. Re-run after service recovers.';
 
 const BRANCH_NAME = 'DIN CHINA';
 const BRANCH_CODE = 'BL0002';
@@ -205,6 +208,39 @@ function normalizeBranchName(n) {
     .toUpperCase();
 }
 
+function isGatewayOrTransientErr(err) {
+  return isGatewayReadError(err) || isTransientReadError(err);
+}
+
+function finalizeDryRunReport(report, blockingErrors, warnings) {
+  report.warnings = warnings ?? [];
+  report.blockingErrors = blockingErrors ?? [];
+  report.pass = report.blockingErrors.length === 0;
+  report.liveImportApplied = false;
+  if (!report.branch) {
+    report.branch = { legacyBranchId: LEGACY_BRANCH_ID, action: 'blocked' };
+  }
+  if (!report.summary) {
+    report.summary = { branch: report.branch?.action ?? 'blocked' };
+  }
+  return report;
+}
+
+/** Abort apply unless dry-run produced a complete passing report. */
+function canRunApply(report) {
+  if (!report) return { ok: false, reason: 'dry-run report missing' };
+  if (report.pass !== true) return { ok: false, reason: 'dry-run pass is false' };
+  if (!report.company?.id) return { ok: false, reason: 'company record missing from dry-run' };
+  if (!report.branch) return { ok: false, reason: 'branch plan missing from dry-run' };
+  if (!Array.isArray(report.blockingErrors) || report.blockingErrors.length > 0) {
+    return { ok: false, reason: 'dry-run has blocking errors' };
+  }
+  if (!report.summary || typeof report.summary !== 'object') {
+    return { ok: false, reason: 'dry-run summary missing' };
+  }
+  return { ok: true };
+}
+
 async function runDryRun(supabase, env, csvBundle) {
   const { data } = csvBundle;
   const blockingErrors = [];
@@ -225,11 +261,34 @@ async function runDryRun(supabase, env, csvBundle) {
     blockingErrors.push(...csvValidation.errors.map((e) => `CSV: ${e}`));
   }
 
-  const { data: company, error: companyErr } = await supabaseRead('companies', () =>
-    supabase.from('companies').select('id, name').eq('id', env.targetCompanyId).maybeSingle());
-  if (companyErr) blockingErrors.push(`Company lookup: ${companyErr.message}`);
-  else if (!company) blockingErrors.push(`Company not found: ${env.targetCompanyId}`);
+  const { data: company, error: companyErr } = await (async () => {
+    try {
+      return await supabaseRead('companies', () =>
+        supabase.from('companies').select('id, name').eq('id', env.targetCompanyId).maybeSingle());
+    } catch (err) {
+      return { data: null, error: err };
+    }
+  })();
+
+  if (companyErr) {
+    if (isGatewayOrTransientErr(companyErr)) {
+      report.companyLookupStatus = 'gateway_failure';
+      blockingErrors.push(GATEWAY_COMPANY_ERROR);
+    } else {
+      report.companyLookupStatus = 'error';
+      blockingErrors.push(`Company lookup: ${companyErr.message || String(companyErr)}`);
+    }
+  } else if (!company) {
+    report.companyLookupStatus = 'not_found';
+    blockingErrors.push(`Company not found: ${env.targetCompanyId}`);
+  } else {
+    report.companyLookupStatus = 'ok';
+  }
   report.company = company || null;
+
+  if (report.companyLookupStatus === 'gateway_failure') {
+    return finalizeDryRunReport(report, blockingErrors, warnings);
+  }
 
   report.schema = await inspectSchema(supabase, env.targetCompanyId);
   for (const s of report.schema) {
@@ -490,7 +549,7 @@ async function runDryRun(supabase, env, csvBundle) {
   report.pass = blockingErrors.length === 0;
 
   report.summary = {
-    branch: branchPlan.action,
+    branch: branchPlan?.action ?? 'blocked',
     saleJournalStrategy: SALE_JOURNAL_STRATEGY,
     revenuePostingCode: coa.revenuePostingAccount?.code ?? null,
     revenueResolvedBy: coa.revenueResolvedBy ?? null,
@@ -520,49 +579,75 @@ async function runDryRun(supabase, env, csvBundle) {
 
 function printConsoleSummary(report) {
   console.log('\n========== DIN CHINA Legacy Import DRY-RUN ==========');
-  console.log(`Company: ${report.company?.name || 'NOT FOUND'} (${report.targetCompanyId})`);
-  console.log(`Branch: ${report.branch.action} → ${report.branch.name} (${report.branch.branchId || 'pending'})`);
+  const companyLabel =
+    report.company?.name ??
+    (report.companyLookupStatus === 'gateway_failure'
+      ? 'API GATEWAY FAILURE (company not loaded)'
+      : 'NOT FOUND');
+  console.log(`Company: ${companyLabel} (${report.targetCompanyId})`);
+
+  const branch = report.branch;
+  if (branch) {
+    console.log(
+      `Branch: ${branch.action ?? 'unknown'} → ${branch.name ?? 'n/a'} (${branch.branchId || 'pending'})`,
+    );
+  } else {
+    console.log('Branch: not resolved (preflight incomplete)');
+  }
   console.log(`Pass: ${report.pass ? 'YES' : 'NO'}`);
 
   const coa = report.coaPreflight || {};
   console.log('\nCOA preflight:');
-  console.log(
-    `  Revenue account: ${coa.revenueAccountFound ? `${coa.revenuePostingAccount?.code} ${coa.revenuePostingAccount?.name}` : 'NOT FOUND'} (${coa.revenueResolvedBy || 'n/a'})`,
-  );
-  console.log(`  AR account: ${coa.arAccount ? `${coa.arAccount.code} ${coa.arAccount.name}` : 'NOT FOUND'}`);
-  console.log(`  Sale JE strategy: ${coa.saleJournalStrategy || 'n/a'}`);
-  if (coa.rpc4000AutoCreateRisk?.mitigated) {
-    console.log(`  RPC 4000 auto-create risk: mitigated (${coa.rpc4000AutoCreateRisk.mitigation})`);
-  } else if (coa.rpc4000AutoCreateRisk?.blocker) {
-    console.log(`  RPC 4000 auto-create risk: BLOCKER — ${coa.rpc4000AutoCreateRisk.reason}`);
+  if (!report.coaPreflight) {
+    console.log('  Skipped or incomplete (preflight did not finish)');
   } else {
-    console.log('  RPC 4000 auto-create risk: none');
+    console.log(
+      `  Revenue account: ${coa.revenueAccountFound ? `${coa.revenuePostingAccount?.code} ${coa.revenuePostingAccount?.name}` : 'NOT FOUND'} (${coa.revenueResolvedBy || 'n/a'})`,
+    );
+    console.log(`  AR account: ${coa.arAccount ? `${coa.arAccount.code} ${coa.arAccount.name}` : 'NOT FOUND'}`);
+    console.log(`  Sale JE strategy: ${coa.saleJournalStrategy || 'n/a'}`);
+    if (coa.rpc4000AutoCreateRisk?.mitigated) {
+      console.log(`  RPC 4000 auto-create risk: mitigated (${coa.rpc4000AutoCreateRisk.mitigation})`);
+    } else if (coa.rpc4000AutoCreateRisk?.blocker) {
+      console.log(`  RPC 4000 auto-create risk: BLOCKER — ${coa.rpc4000AutoCreateRisk.reason}`);
+    } else {
+      console.log('  RPC 4000 auto-create risk: none');
+    }
+    const payValid = (coa.paymentAccounts || []).filter((p) => p.valid);
+    console.log(
+      `  Payment accounts: ${payValid.length} detail targets (${coa.paymentAccountsValid ? 'valid' : 'INVALID'})`,
+    );
   }
-  const payValid = (coa.paymentAccounts || []).filter((p) => p.valid);
-  console.log(
-    `  Payment accounts: ${payValid.length} detail targets (${coa.paymentAccountsValid ? 'valid' : 'INVALID'})`,
-  );
 
-  console.log('\nCounts:');
   const s = report.summary;
-  console.log(`  Branch: ${s.branch}`);
-  console.log(`  Accounts: ${s.accountsReuse} reuse / ${s.accountsCreate} create`);
-  console.log(`  Contacts: ${s.contactsReuse} reuse / ${s.contactsCreate} create`);
-  console.log(`  Products: ${s.productsReuse} reuse / ${s.productsCreate} create / ${s.productsCreateVariation} new variants`);
-  console.log(`  Sales ready: ${s.salesReady} (dup skip: ${s.saleDuplicates})`);
-  console.log(`  Sale items ready: ${s.saleItemsReady}`);
-  console.log(`  Sale payments ready: ${s.salePaymentsReady}`);
-  console.log(`  Purchases ready: ${s.purchasesReady}`);
-  console.log(`  Purchase items ready: ${s.purchaseItemsReady}`);
-  console.log(`  Purchase payments ready: ${s.purchasePaymentsReady}`);
-  console.log(`  Expenses ready: ${s.expensesReady}`);
-  if (report.blockingErrors.length) {
-    console.log('\nBlocking errors:');
-    for (const e of report.blockingErrors) console.log(`  - ${e}`);
+  console.log('\nCounts:');
+  if (!s) {
+    console.log('  unavailable (preflight incomplete)');
+  } else {
+    console.log(`  Branch: ${s.branch ?? 'n/a'}`);
+    console.log(`  Accounts: ${s.accountsReuse ?? 0} reuse / ${s.accountsCreate ?? 0} create`);
+    console.log(`  Contacts: ${s.contactsReuse ?? 0} reuse / ${s.contactsCreate ?? 0} create`);
+    console.log(
+      `  Products: ${s.productsReuse ?? 0} reuse / ${s.productsCreate ?? 0} create / ${s.productsCreateVariation ?? 0} new variants`,
+    );
+    console.log(`  Sales ready: ${s.salesReady ?? 0} (dup skip: ${s.saleDuplicates ?? 0})`);
+    console.log(`  Sale items ready: ${s.saleItemsReady ?? 0}`);
+    console.log(`  Sale payments ready: ${s.salePaymentsReady ?? 0}`);
+    console.log(`  Purchases ready: ${s.purchasesReady ?? 0}`);
+    console.log(`  Purchase items ready: ${s.purchaseItemsReady ?? 0}`);
+    console.log(`  Purchase payments ready: ${s.purchasePaymentsReady ?? 0}`);
+    console.log(`  Expenses ready: ${s.expensesReady ?? 0}`);
   }
-  if (report.warnings.length) {
+
+  const blockingErrors = report.blockingErrors ?? [];
+  if (blockingErrors.length) {
+    console.log('\nBlocking errors:');
+    for (const e of blockingErrors) console.log(`  - ${e}`);
+  }
+  const warnings = report.warnings ?? [];
+  if (warnings.length) {
     console.log('\nWarnings:');
-    for (const w of report.warnings) console.log(`  - ${w}`);
+    for (const w of warnings) console.log(`  - ${w}`);
   }
   console.log('\nLive import applied: NO');
   console.log('====================================================\n');
@@ -604,6 +689,7 @@ async function main() {
     report = await runDryRun(supabase, env, csvBundle);
   } catch (err) {
     const msg = err?.message || String(err);
+    const gateway = isGatewayOrTransientErr(err) || /bad gateway|502|503|504/i.test(msg);
     report = {
       mode: 'dry-run',
       generatedAt: new Date().toISOString(),
@@ -611,14 +697,15 @@ async function main() {
       sourceSystem: SOURCE_SYSTEM,
       csvPaths: csvBundle.paths,
       liveImportApplied: false,
+      company: null,
+      companyLookupStatus: gateway ? 'gateway_failure' : 'error',
       pass: false,
       blockingErrors: [
-        msg.includes('Bad Gateway') || msg.includes('502')
-          ? GATEWAY_BRANCH_ERROR
-          : `Dry-run aborted: ${msg}`,
+        gateway ? GATEWAY_COMPANY_ERROR : `Dry-run aborted: ${msg}`,
       ],
       warnings: [],
-      summary: {},
+      branch: { legacyBranchId: LEGACY_BRANCH_ID, action: 'blocked' },
+      summary: { branch: 'blocked' },
     };
   }
   fs.mkdirSync(env.outputDir, { recursive: true });
@@ -633,6 +720,15 @@ async function main() {
   }
 
   if (env.apply) {
+    const gate = canRunApply(report);
+    if (!gate.ok) {
+      console.error(`\nApply blocked: ${gate.reason}. No import was applied.`);
+      if (report.companyLookupStatus === 'gateway_failure') {
+        console.error(GATEWAY_COMPANY_ERROR);
+      }
+      writeApplyFinalReport(env.outputDir, report, null);
+      process.exit(1);
+    }
     console.log('\nRunning live apply...');
     const applyResult = await runApply(supabase, env, csvBundle, report);
     printApplySummary(applyResult);
