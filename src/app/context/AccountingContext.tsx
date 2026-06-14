@@ -23,6 +23,7 @@ import {
   shouldAcceptInvalidation,
 } from '@/app/lib/dataInvalidationBus';
 import { isBulkImportActive } from '@/app/lib/bulkImportSession';
+import { formatLocalDateYYYYMMDD } from '@/app/utils/localDate';
 import {
   buildPaymentChainIndex,
   paymentChainFlagsForJournalEntry,
@@ -34,6 +35,33 @@ import {
 } from '@/app/services/paymentChainMutationGuard';
 import { logPaymentCreated } from '@/app/services/auditLogService';
 import { fetchInBatches } from '@/app/lib/chunkInQuery';
+
+/** Prefer source document branch (rental/sale/purchase) over session branch selector. */
+function resolvePostingBranchId(
+  documentBranchId: string | null | undefined,
+  sessionBranchId: string | null | undefined
+): string | null {
+  const doc =
+    documentBranchId != null && String(documentBranchId).trim() !== ''
+      ? String(documentBranchId).trim()
+      : null;
+  if (doc) return doc;
+  const sess =
+    sessionBranchId != null && String(sessionBranchId).trim() !== '' && sessionBranchId !== 'all'
+      ? String(sessionBranchId).trim()
+      : null;
+  return sess;
+}
+
+async function loadRentalDocumentBranchId(rentalId: string): Promise<string | null> {
+  const { data } = await supabase.from('rentals').select('branch_id').eq('id', rentalId).maybeSingle();
+  return (data as { branch_id?: string | null } | null)?.branch_id ?? null;
+}
+
+async function loadSaleDocumentBranchId(saleId: string): Promise<string | null> {
+  const { data } = await supabase.from('sales').select('branch_id').eq('id', saleId).maybeSingle();
+  return (data as { branch_id?: string | null } | null)?.branch_id ?? null;
+}
 
 /** Leading numeric segment of account code (e.g. "1021-NDM" → "1021"). */
 function accountCodeDigits(acc: { code?: string } | null): string {
@@ -190,6 +218,8 @@ export interface AccountingEntry {
     journalEntryVoid?: boolean;
     /** Active PF-07 `correction_reversal` child exists for this journal header — lock Journal edit/reverse. */
     hasActiveCorrectionReversal?: boolean;
+    /** Linked sales.status when JE references a sale document (sale / sale_reversal). */
+    linkedSaleStatus?: string;
   };
 }
 
@@ -212,6 +242,8 @@ interface AccountingContextType {
   createReversalEntry: (originalJournalEntryId: string, reason?: string) => Promise<boolean>;
   undoLastPaymentMutation: (paymentId: string) => Promise<boolean>;
   refreshEntries: () => Promise<void>;
+  /** Load journal entries on first accounting/reports open (skipped on app boot for speed). */
+  ensureEntriesLoaded: () => Promise<void>;
   /** Reload COA only (no full journal fetch) — use when opening payment dialogs. */
   refreshAccounts: () => Promise<void>;
   /** Upsert journal rows into local state without a full getAllEntries fetch. */
@@ -219,6 +251,11 @@ interface AccountingContextType {
     input: AccountingEntry | AccountingEntry[] | JournalEntryWithLines | JournalEntryWithLines[]
   ) => void;
   patchAccountBalances: (accountIdToBalance: Record<string, number>) => void;
+  /** Total journal rows in DB for current filters (paginated fetch). */
+  entriesTotal: number;
+  entriesPage: number;
+  entriesPageSize: number;
+  setEntriesPage: (page: number) => void;
   getEntriesByReference: (referenceNo: string) => AccountingEntry[];
   getEntriesBySource: (source: TransactionSource) => AccountingEntry[];
   getAccountBalance: (accountType: AccountType) => number;
@@ -319,6 +356,8 @@ export interface RentalReturnParams {
   paymentMethod?: PaymentMethod;
   paymentAccountId?: string;
   paymentDate?: string;
+  rentalPaymentId?: string;
+  branchId?: string | null;
 }
 
 export interface StudioSaleParams {
@@ -467,6 +506,7 @@ const AccountingContext = createContext<AccountingContextType | undefined>(undef
 
 const BALANCE_SYNC_THROTTLE_MS = 60_000;
 const COALESCED_REFRESH_MS = 1200;
+const ENTRIES_FETCH_LIMIT = 500;
 
 /** Reload COA on invalidation only when the chart changed — not payments/sales/realtime noise. */
 function invalidationShouldReloadAccounts(reason?: string): boolean {
@@ -482,13 +522,26 @@ function invalidationShouldReloadAccounts(reason?: string): boolean {
   return /account-created|chart-of-accounts|coa-|new-account|accounts-changed/.test(r);
 }
 
+/** Full journal reload only when accounting module is open — skip fallback-poll noise. */
+function invalidationShouldReloadEntries(reason: string | undefined, entriesBootstrapped: boolean): boolean {
+  if (!entriesBootstrapped) return false;
+  if (!reason) return true;
+  const r = reason.toLowerCase();
+  if (/fallback-poll/.test(r)) return false;
+  return true;
+}
+
 type LoadEntriesOptions = {
   showBlockingLoading?: boolean;
   skipBalanceSync?: boolean;
+  page?: number;
 };
 
 export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [entries, setEntries] = useState<AccountingEntry[]>([]);
+  const [entriesTotal, setEntriesTotal] = useState(0);
+  const [entriesPage, setEntriesPageState] = useState(0);
+  const entriesPageSize = ENTRIES_FETCH_LIMIT;
   const [balances, setBalances] = useState<Map<AccountType, number>>(new Map());
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [initialLoading, setInitialLoading] = useState<boolean>(true);
@@ -501,8 +554,8 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     const start = new Date(end);
     start.setDate(start.getDate() - 29);
     return {
-      start: start.toISOString().slice(0, 10),
-      end: end.toISOString().slice(0, 10),
+      start: formatLocalDateYYYYMMDD(start),
+      end: formatLocalDateYYYYMMDD(end),
     };
   }, []);
 
@@ -514,6 +567,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
   const currentUserId = user?.id;
 
   const loadEntriesInFlightRef = useRef<Promise<void> | null>(null);
+  const entriesBootstrappedRef = useRef(false);
   const pendingEntriesReloadRef = useRef(false);
   const loadAccountsInFlightRef = useRef<Promise<void> | null>(null);
   const pendingAccountsReloadRef = useRef(false);
@@ -570,6 +624,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       'purchase_return': 'Purchase',
       'purchase_reversal': 'Reversal',
       'sale_return': 'Sale_Return',
+      'sale_reversal': 'Reversal',
       'manual_payment': 'Payment',
       /** Customer manual receipt / contact receipt — must map to Payment so Journal “by document” sums with payment_adjustment. */
       'manual_receipt': 'Payment',
@@ -674,6 +729,8 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     metadata.journalEntryVoid = (journalEntry as { is_void?: boolean }).is_void === true;
     metadata.hasActiveCorrectionReversal =
       (journalEntry as { _has_active_correction_reversal?: boolean })._has_active_correction_reversal === true;
+    const linkedSaleStatus = (journalEntry as { _linked_sale_status?: string })._linked_sale_status;
+    if (linkedSaleStatus) metadata.linkedSaleStatus = linkedSaleStatus;
 
     if (journalEntry.reference_id) {
       if (source === 'Sale') metadata.invoiceId = journalEntry.reference_id;
@@ -683,9 +740,12 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
 
     const saleInvDisplay = (journalEntry as { _display_sale_invoice_no?: string })._display_sale_invoice_no;
     const purPoDisplay = (journalEntry as { _display_purchase_po_no?: string })._display_purchase_po_no;
-    // Prefer payment voucher (list/enriched or embedded join) before PO/invoice so supplier settlement shows PAY-xx not PUR-xx.
+    const expenseNoDisplay = (journalEntry as { _display_expense_no?: string })._display_expense_no;
+    // Expense: show EXP-* document no, not internal PAY-* payment voucher.
     const operationalRef =
-      listPaymentRef || embeddedPaymentRef || saleInvDisplay || purPoDisplay || undefined;
+      source === 'Expense' && expenseNoDisplay
+        ? expenseNoDisplay
+        : listPaymentRef || embeddedPaymentRef || saleInvDisplay || purPoDisplay || expenseNoDisplay || undefined;
     const referenceNo =
       operationalRef || journalEntry.entry_no || journalEntry.id?.substring(0, 8) || 'N/A';
     if (operationalRef) metadata.documentNo = operationalRef;
@@ -900,14 +960,19 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
             }
           }
 
-          const startDate = startDateISO ? new Date(startDateISO) : null;
-          const endDate = endDateISO ? new Date(endDateISO) : null;
-          const data = await accountingService.getAllEntries(
+          const page = opts?.page ?? entriesPage;
+          const result = await accountingService.getAllEntries(
             companyId,
             branchId === 'all' ? undefined : branchId || undefined,
-            startDate,
-            endDate
+            startDateISO || undefined,
+            endDateISO || undefined,
+            { limit: ENTRIES_FETCH_LIMIT, offset: page * ENTRIES_FETCH_LIMIT }
           );
+          const isPaginated =
+            result && typeof result === 'object' && 'data' in result && 'total' in result;
+          const data = isPaginated ? (result as { data: any[]; total: number }).data : (result as any[]);
+          const total = isPaginated ? (result as { data: any[]; total: number }).total : data.length;
+          setEntriesTotal(total);
           const jeIds = (data as { id?: string }[])
             .map((j) => String(j.id || '').trim())
             .filter(Boolean);
@@ -943,6 +1008,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
         } catch (error) {
           console.error('[ACCOUNTING CONTEXT] Error loading journal entries:', error);
           setEntries([]);
+          setEntriesTotal(0);
         } finally {
           if (blocking) setInitialLoading(false);
           setBackgroundSync(false);
@@ -958,8 +1024,19 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       loadEntriesInFlightRef.current = p;
       return p;
     },
-    [companyId, branchId, startDateISO, endDateISO, applyJournalRowsToState, maybeSyncBalancesFromJournal]
+    [companyId, branchId, startDateISO, endDateISO, entriesPage, applyJournalRowsToState, maybeSyncBalancesFromJournal]
   );
+
+  const setEntriesPage = useCallback((p: number) => {
+    setEntriesPageState(Math.max(0, p));
+  }, []);
+
+  const ensureEntriesLoaded = useCallback(async () => {
+    if (!companyId || entriesBootstrappedRef.current) return;
+    await loadEntries({ showBlockingLoading: true });
+    entriesBootstrappedRef.current = true;
+    await runPaymentAccountSyncOnce();
+  }, [companyId, loadEntries, runPaymentAccountSyncOnce]);
 
   const scheduleCoalescedRefresh = useCallback(
     (opts?: { entries?: boolean; accounts?: boolean; blocking?: boolean }) => {
@@ -980,10 +1057,12 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
         const o = { ...coalescedRefreshOptsRef.current };
         coalescedRefreshOptsRef.current = { entries: false, accounts: false, blocking: false };
         if (o.accounts) void loadAccounts();
-        if (o.entries) void loadEntries({ showBlockingLoading: o.blocking });
+        if (o.entries) {
+          void ensureEntriesLoaded().then(() => loadEntries({ showBlockingLoading: o.blocking }));
+        }
       }, COALESCED_REFRESH_MS);
     },
-    [loadAccounts, loadEntries]
+    [loadAccounts, loadEntries, ensureEntriesLoaded]
   );
 
   scheduleCoalescedRefreshRef.current = scheduleCoalescedRefresh;
@@ -1122,15 +1201,33 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     };
   }, []);
 
-  // Load accounts and entries on mount and when company/branch/date range changes
+  // Load accounts on mount; journal entries deferred until accounting module opens.
   useEffect(() => {
     if (!companyId) return;
     paymentSyncDoneForCompanyRef.current = null;
+    entriesBootstrappedRef.current = false;
+    setEntriesPageState(0);
     void loadAccountsRef.current();
-    void loadEntriesRef.current({ showBlockingLoading: true }).then(() => {
-      void runPaymentAccountSyncOnce();
-    });
-  }, [companyId, branchId, startDateISO, endDateISO, runPaymentAccountSyncOnce]);
+  }, [companyId, branchId]);
+
+  useEffect(() => {
+    const onBootstrap = () => {
+      void ensureEntriesLoaded();
+    };
+    window.addEventListener('erp-accounting-bootstrap-entries', onBootstrap);
+    return () => window.removeEventListener('erp-accounting-bootstrap-entries', onBootstrap);
+  }, [ensureEntriesLoaded]);
+
+  // Reset journal page when global date filter changes
+  useEffect(() => {
+    setEntriesPageState(0);
+  }, [startDateISO, endDateISO]);
+
+  // Reload entries when date range or page changes after bootstrap
+  useEffect(() => {
+    if (!companyId || !entriesBootstrappedRef.current) return;
+    void loadEntriesRef.current({ showBlockingLoading: false, page: entriesPage });
+  }, [companyId, startDateISO, endDateISO, entriesPage]);
 
   // Listen for purchase/sale delete events
   useEffect(() => {
@@ -1153,6 +1250,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     if (!companyId) return;
 
     const bumpEntriesOnly = () => {
+      if (!entriesBootstrappedRef.current) return;
       void (async () => {
         const handled = await tryIncrementalJournalFromInvalidationRef.current(undefined);
         if (!handled) {
@@ -1173,11 +1271,20 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
         return;
       }
       void (async () => {
-        const handled = await tryIncrementalJournalFromInvalidationRef.current(detail);
+        const reloadEntries = invalidationShouldReloadEntries(
+          detail?.reason,
+          entriesBootstrappedRef.current
+        );
+        if (!reloadEntries && !invalidationShouldReloadAccounts(detail?.reason)) {
+          return;
+        }
+        const handled = reloadEntries
+          ? await tryIncrementalJournalFromInvalidationRef.current(detail)
+          : false;
         if (handled) return;
         const reloadAccounts = invalidationShouldReloadAccounts(detail?.reason);
         scheduleCoalescedRefreshRef.current({
-          entries: true,
+          entries: reloadEntries,
           accounts: reloadAccounts,
         });
       })();
@@ -1581,6 +1688,8 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       // Canonical rule: if a transaction touches Cash/Bank/Wallet, create payments row so Roznamcha shows it
       let manualPaymentId: string | null = null;
       let manualRefType: string | null = null;
+      let supplierPaymentViaRpc = false;
+      let supplierPaymentRpcJournalId: string | null = null;
       const debitIsPayment = debitAccountObj ? isPaymentAccount(debitAccountObj) : false;
       const creditIsPayment = creditAccountObj ? isPaymentAccount(creditAccountObj) : false;
 
@@ -1615,37 +1724,68 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
             });
           }
         } else if (!debitIsPayment && creditIsPayment) {
-          const refNo = await documentNumberService.getNextDocumentNumber(companyId, validBranchId, 'supplier_payment').catch(() => generatePaymentReference(null));
-          const { data: { user } } = await supabase.auth.getUser();
-          const manualPaymentPayload: Record<string, unknown> = {
-            company_id: companyId,
-            branch_id: validBranchId,
-            payment_type: 'paid',
-            reference_type: 'manual_payment',
-            reference_id: null,
-            amount: entry.amount,
-            payment_method: paymentMethodFromAccount(creditAccountObj),
-            payment_account_id: creditAccountObj.id,
-            payment_date: entryDate,
-            reference_number: refNo,
-            received_by: (user as any)?.id ?? null,
-            created_by: currentUserId ?? null,
-          };
-          // Supplier ledger: set contact_id when Dr AP (supplier payment) and supplier selected (real schema: payments.contact_id)
-          const manualSupplierContactId = (entry.debitAccount === 'Accounts Payable' && (entry.metadata as any)?.contactId) ? (entry.metadata as any).contactId : null;
-          if (manualSupplierContactId) manualPaymentPayload.contact_id = manualSupplierContactId;
-          if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-            console.debug('[SUPPLIER_LEDGER] Manual payment payload', { contact_id: manualSupplierContactId ?? null, reference_type: 'manual_payment', amount: manualPaymentPayload.amount });
+          const manualSupplierContactId =
+            entry.debitAccount === 'Accounts Payable' && (entry.metadata as { contactId?: string })?.contactId
+              ? (entry.metadata as { contactId: string }).contactId
+              : null;
+          const debitCodeEarly = String((debitAccountObj as { code?: string } | undefined)?.code ?? '');
+          const debitNameEarly = String((debitAccountObj as { name?: string } | undefined)?.name ?? '').toLowerCase();
+          const debitIsApEarly =
+            entry.debitAccount === 'Accounts Payable' ||
+            debitCodeEarly === '2000' ||
+            debitNameEarly.includes('accounts payable') ||
+            debitNameEarly.includes('payable');
+
+          if (manualSupplierContactId && debitIsApEarly) {
+            try {
+              const { createManualSupplierPayment } = await import('@/app/services/supplierPaymentService');
+              const rpcRes = await createManualSupplierPayment({
+                companyId,
+                branchId: validBranchId,
+                supplierContactId: manualSupplierContactId,
+                amount: entry.amount,
+                paymentMethod: paymentMethodFromAccount(creditAccountObj),
+                paymentAccountId: creditAccountObj.id,
+                paymentDate: entryDate,
+                notes: entry.description || null,
+              });
+              manualPaymentId = rpcRes.paymentId;
+              manualRefType = 'manual_payment';
+              supplierPaymentViaRpc = true;
+              supplierPaymentRpcJournalId = rpcRes.journalEntryId;
+            } catch (rpcErr: unknown) {
+              console.warn('[ACCOUNTING] Manual supplier RPC payment failed; falling back to client insert:', rpcErr);
+            }
           }
-          const { data: row, error } = await supabase.from('payments').insert(manualPaymentPayload).select('id').single();
-          if (!error && row) {
-            manualPaymentId = (row as { id: string }).id;
-            manualRefType = 'manual_payment';
-            logPaymentCreated(companyId, manualPaymentId, {
+
+          if (!supplierPaymentViaRpc) {
+            const refNo = await documentNumberService.getNextDocumentNumber(companyId, validBranchId, 'payment').catch(() => generatePaymentReference(null));
+            const { data: { user } } = await supabase.auth.getUser();
+            const manualPaymentPayload: Record<string, unknown> = {
+              company_id: companyId,
+              branch_id: validBranchId,
+              payment_type: 'paid',
               reference_type: 'manual_payment',
+              reference_id: null,
               amount: entry.amount,
-              contact_id: manualSupplierContactId,
-            });
+              payment_method: paymentMethodFromAccount(creditAccountObj),
+              payment_account_id: creditAccountObj.id,
+              payment_date: entryDate,
+              reference_number: refNo,
+              received_by: (user as any)?.id ?? null,
+              created_by: currentUserId ?? null,
+            };
+            if (manualSupplierContactId) manualPaymentPayload.contact_id = manualSupplierContactId;
+            const { data: row, error } = await supabase.from('payments').insert(manualPaymentPayload).select('id').single();
+            if (!error && row) {
+              manualPaymentId = (row as { id: string }).id;
+              manualRefType = 'manual_payment';
+              logPaymentCreated(companyId, manualPaymentId, {
+                reference_type: 'manual_payment',
+                amount: entry.amount,
+                contact_id: manualSupplierContactId,
+              });
+            }
           }
         }
       }
@@ -1755,8 +1895,18 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       ];
 
       // Save to database (link to payment when Manual entry involves payment account)
-      const paymentIdToLink = manualPaymentId || (entry.metadata as any)?.paymentId;
-      const savedEntry = await accountingService.createEntry(journalEntry, lines, paymentIdToLink);
+      const paymentIdToLink = supplierPaymentViaRpc ? null : manualPaymentId || (entry.metadata as any)?.paymentId;
+      let savedEntry: JournalEntryWithLines;
+      if (supplierPaymentViaRpc && supplierPaymentRpcJournalId) {
+        const loaded = await accountingService.getEntryById(supplierPaymentRpcJournalId, companyId);
+        if (!loaded) {
+          toast.error('Supplier payment saved but journal entry could not be loaded.');
+          return false;
+        }
+        savedEntry = loaded as JournalEntryWithLines;
+      } else {
+        savedEntry = (await accountingService.createEntry(journalEntry, lines, paymentIdToLink)) as JournalEntryWithLines;
+      }
       if (typeof window !== 'undefined' && entry.debitAccount === 'Worker Payable') {
         console.log('[WORKER LEDGER DEBUG] journal insert result', {
           journalEntryId: (savedEntry as any)?.id ?? null,
@@ -1810,7 +1960,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       }
 
       // Manual supplier payment (Dr AP, Cr cash/bank/wallet): FIFO allocate to open purchase bills — same as Add Entry V2.
-      if (manualRefType === 'manual_payment' && manualPaymentId && companyId) {
+      if (manualRefType === 'manual_payment' && manualPaymentId && companyId && !supplierPaymentViaRpc) {
         const supplierId = (entry.metadata as { contactId?: string } | undefined)?.contactId;
         const debitCode = String((debitAccountObj as { code?: string } | undefined)?.code ?? '');
         const debitName = String((debitAccountObj as { name?: string } | undefined)?.name ?? '').toLowerCase();
@@ -1911,10 +2061,11 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       }
 
       // Convert and add to local state (no global refetch)
+      const convertedEntry = convertFromJournalEntry(savedEntry as JournalEntryWithLines);
       appendOrMergeEntries(savedEntry as JournalEntryWithLines);
-      
+
       // Update balances
-    updateBalances(entry.debitAccount, entry.creditAccount, entry.amount);
+      updateBalances(entry.debitAccount, entry.creditAccount, entry.amount);
 
       console.log('✅ Accounting Entry Created and Saved:', convertedEntry);
       toast.success('Accounting entry created successfully');
@@ -2177,9 +2328,25 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
           .maybeSingle();
         
         if (existingPayment?.id) {
+          const saleDocBranch = await loadSaleDocumentBranchId(saleId);
+          const paymentBranch = resolvePostingBranchId(saleDocBranch, branchId);
+          if (paymentBranch) {
+            await supabase
+              .from('payments')
+              .update({ branch_id: paymentBranch })
+              .eq('id', existingPayment.id)
+              .is('branch_id', null);
+          }
           const { ensureSalePaymentJournalAfterInsert } = await import('@/app/services/saleAccountingService');
           const { assertActiveJournalForPaymentId } = await import('@/app/lib/paymentPostingInvariant');
           await ensureSalePaymentJournalAfterInsert(existingPayment.id as string);
+          if (paymentBranch) {
+            await supabase
+              .from('journal_entries')
+              .update({ branch_id: paymentBranch })
+              .eq('payment_id', existingPayment.id)
+              .is('branch_id', null);
+          }
           await assertActiveJournalForPaymentId(existingPayment.id as string, 'AccountingContext.recordSalePayment');
         } else {
           console.warn('[ACCOUNTING] recordSalePayment: no matching payments row yet for sale/amount — caller must insert payment first');
@@ -2223,7 +2390,8 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
 
     if (advanceAmount <= 0) return true;
 
-    const rentalBranchId = (branchId && branchId !== 'all') ? branchId : null;
+    const rentalDocBranch = await loadRentalDocumentBranchId(bookingId);
+    const rentalBranchId = resolvePostingBranchId(rentalDocBranch, branchId);
 
     // Party AR model (named customer): Dr Cash/Bank / Cr party AR + ensure Dr AR / Cr Rental Income for charges.
     if (customerId && companyId && paymentAccountId) {
@@ -2337,7 +2505,8 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     const { bookingId, customerName, customerId, remainingAmount, paymentMethod, paymentAccountId, paymentDate, rentalPaymentId } = params;
 
     const postingDate = paymentDate?.slice(0, 10) || new Date().toISOString().split('T')[0];
-    const rentalBranchId = (branchId && branchId !== 'all') ? branchId : null;
+    const rentalDocBranch = await loadRentalDocumentBranchId(bookingId);
+    const rentalBranchId = resolvePostingBranchId(rentalDocBranch, branchId);
 
     if (remainingAmount <= 0) {
       await recognizeRentalAdvance({ bookingId, customerName, customerId, postingDate });
@@ -2534,27 +2703,58 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
   };
 
   const recordRentalReturn = async (params: RentalReturnParams): Promise<boolean> => {
-    const { bookingId, customerName, customerId, securityDepositAmount, damageCharge, paymentMethod, paymentAccountId, paymentDate } = params;
+    const {
+      bookingId,
+      customerName,
+      customerId,
+      securityDepositAmount,
+      damageCharge,
+      paymentMethod,
+      paymentAccountId,
+      paymentDate,
+      rentalPaymentId,
+      branchId: paramBranchId,
+    } = params;
     const postingDate = paymentDate?.slice(0, 10) || new Date().toISOString().split('T')[0];
 
     if (damageCharge && damageCharge > 0) {
-      // Damage charge: Dr payment account (Cash/Bank per CoA), Cr Rental Income
-      await createEntry({
-        source: 'Rental',
-        referenceNo: bookingId,
-        debitAccount: (paymentAccountId ? 'Cash' : paymentMethod || 'Cash') as AccountType,
-        creditAccount: 'Rental Income',
-        amount: damageCharge,
-        description: `Rental damage / penalty - ${customerName}`,
-        module: 'Rental',
-        metadata: {
-          customerId,
+      const cid = String(customerId || '').trim();
+      if (cid && companyId) {
+        const { postRentalPartyPenaltySettlement } = await import('@/app/services/rentalPartyArAccounting');
+        const { chargeJournalEntryId, receiptJournalEntryId } = await postRentalPartyPenaltySettlement({
+          companyId,
+          branchId: paramBranchId ?? (branchId === 'all' ? null : branchId),
+          rentalId: bookingId,
+          rentalPaymentId: rentalPaymentId ?? null,
+          customerId: cid,
           customerName,
-          bookingId,
-          postingDate,
-          ...(paymentAccountId ? { debitAccountId: paymentAccountId } : {}),
-        },
-      });
+          amount: damageCharge,
+          paymentAccountId: paymentAccountId ?? null,
+          entryDate: postingDate,
+          createdBy: user?.id ?? null,
+        });
+        if (!chargeJournalEntryId && !receiptJournalEntryId && paymentAccountId) {
+          console.warn('[AccountingContext] Penalty party AR posting incomplete for rental', bookingId);
+        }
+      } else {
+        // Walk-in: Dr Cash/Bank, Cr Rental Income (no party AR)
+        await createEntry({
+          source: 'Rental',
+          referenceNo: bookingId,
+          debitAccount: (paymentAccountId ? 'Cash' : paymentMethod || 'Cash') as AccountType,
+          creditAccount: 'Rental Income',
+          amount: damageCharge,
+          description: `Rental damage / penalty - ${customerName}`,
+          module: 'Rental',
+          metadata: {
+            customerId,
+            customerName,
+            bookingId,
+            postingDate,
+            ...(paymentAccountId ? { debitAccountId: paymentAccountId } : {}),
+          },
+        });
+      }
     }
 
     // Recognize any unreleased advance as income (handles fully advance-paid rentals on return)
@@ -3026,11 +3226,12 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
 
   // Refresh both accounts and entries
   const refreshEntries = useCallback(async () => {
+    await ensureEntriesLoaded();
     await Promise.all([
       loadAccounts(),
       loadEntries({ showBlockingLoading: false }),
     ]);
-  }, [loadAccounts, loadEntries]);
+  }, [loadAccounts, loadEntries, ensureEntriesLoaded]);
 
   const refreshAccounts = useCallback(async () => {
     await loadAccounts();
@@ -3117,9 +3318,14 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     createReversalEntry,
     undoLastPaymentMutation,
     refreshEntries,
+    ensureEntriesLoaded,
     refreshAccounts,
     appendOrMergeEntries,
     patchAccountBalances,
+    entriesTotal,
+    entriesPage,
+    entriesPageSize,
+    setEntriesPage,
     getEntriesByReference,
     getEntriesBySource,
     getAccountBalance,
@@ -3149,8 +3355,8 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     getAccountsByType,
     getAccountById,
   }), [
-    entries, balances, initialLoading, backgroundSync, accounts,
-    createEntry, createReversalEntry, undoLastPaymentMutation, refreshEntries, refreshAccounts, appendOrMergeEntries, patchAccountBalances,
+    entries, entriesTotal, entriesPage, entriesPageSize, setEntriesPage, balances, initialLoading, backgroundSync, accounts,
+    createEntry, createReversalEntry, undoLastPaymentMutation, refreshEntries, ensureEntriesLoaded, refreshAccounts, appendOrMergeEntries, patchAccountBalances,
     getEntriesByReference, getEntriesBySource,
     getAccountBalance, getEntriesBySupplier, getEntriesByCustomer, getEntriesByWorker,
     getSupplierBalance, getCustomerBalance, getWorkerBalance,

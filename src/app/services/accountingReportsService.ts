@@ -11,6 +11,8 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { inventoryService } from '@/app/services/inventoryService';
+import { isCorrectionReversalReferenceType } from '@/app/lib/reportVisibilityContract';
 import { fetchInBatches } from '@/app/lib/chunkInQuery';
 import { COA_HEADER_CODES } from '@/app/data/defaultCoASeed';
 import { assertGlTruthQueryTable } from '@/app/services/accountingCanonicalGuard';
@@ -227,6 +229,8 @@ export interface SalesProfitRow {
   invoice_no: string;
   sale_date: string;
   customer_name: string;
+  branch_id?: string | null;
+  branch_name: string;
   revenue: number;
   cost: number;
   profit: number;
@@ -244,8 +248,11 @@ export interface SalesProfitResult {
 
 export interface InventoryValuationRow {
   product_id: string;
+  variation_id?: string | null;
   product_name: string;
   sku: string;
+  category: string;
+  unit: string;
   quantity: number;
   unit_cost: number;
   total_value: number;
@@ -778,7 +785,7 @@ export const accountingReportsService = {
   ): Promise<SalesProfitResult> {
     let saleQuery = supabase
       .from('sales')
-      .select('id, invoice_no, invoice_date, total, customer_id, customer:contacts(name), branch_id')
+      .select('id, invoice_no, invoice_date, total, customer_id, customer:contacts(name), branch_id, branch:branches(id, name, code)')
       .eq('company_id', companyId)
       .eq('status', 'final')
       .gte('invoice_date', startDate.slice(0, 10))
@@ -811,6 +818,8 @@ export const accountingReportsService = {
         invoice_no: s.invoice_no || `S-${s.id?.slice(0, 8)}`,
         sale_date: s.invoice_date || '',
         customer_name: s.customer?.name || '—',
+        branch_id: s.branch_id ?? null,
+        branch_name: s.branch?.name || s.branch?.code || '—',
         revenue,
         cost,
         profit,
@@ -824,10 +833,7 @@ export const accountingReportsService = {
   },
 
   /**
-   * Inventory Valuation (Phase 6): stock_movements as single source; align with stock screen.
-   * Quantity/cost: same product+variant grouping as inventoryService (has_variations → sum by variation; else by product_id with variation_id null).
-   * Unit cost: weighted avg from movements (total_cost/quantity); fallback product.cost_price/cost.
-   * Names: product.name/sku → sales_items.product_name → purchase_items.product_name → product_variations sku → "Product" (never "Unknown product (id)").
+   * Inventory Valuation: canonical stock from inventoryService.getInventoryOverview (same names/SKU as Inventory screen).
    */
   async getInventoryValuation(
     companyId: string,
@@ -835,97 +841,61 @@ export const accountingReportsService = {
     branchId?: string
   ): Promise<InventoryValuationResult> {
     const asOf = asOfDate ? asOfDate.slice(0, 10) : new Date().toISOString().slice(0, 10);
-    let movQuery = supabase
-      .from('stock_movements')
-      .select('product_id, variation_id, quantity, unit_cost, total_cost, created_at')
-      .eq('company_id', companyId);
-    if (branchId && branchId !== 'all') movQuery = movQuery.eq('branch_id', branchId);
-    const { data: movements } = await movQuery;
-    if (!movements?.length) {
-      return { rows: [], totalValue: 0, asOfDate: asOf };
-    }
-    const movementProductIds = [...new Set((movements as any[]).map((m: any) => m.product_id).filter(Boolean))] as string[];
-    const [productsRes, variationsRes] = await Promise.all([
-      supabase.from('products').select('id, name, sku, cost_price, cost, has_variations').eq('company_id', companyId).in('id', movementProductIds),
-      supabase.from('product_variations').select('id, product_id, sku').in('product_id', movementProductIds).eq('is_active', true),
-    ]);
-    const products = productsRes.data || [];
-    const variations = variationsRes.data || [];
-    const productMap = new Map(products.map((p: any) => [p.id, p]));
-    const variationMap: Record<string, string[]> = {};
-    variations.forEach((v: any) => {
-      if (!variationMap[v.product_id]) variationMap[v.product_id] = [];
-      variationMap[v.product_id].push(v.id);
-    });
-    const byProduct: Record<string, { qty: number; costSum: number; costQty: number }> = {};
-    movements.forEach((m: any) => {
-      const createdAt = m.created_at;
-      if (createdAt && String(createdAt).slice(0, 10) > asOf) return;
-      const pid = m.product_id;
-      if (!pid) return;
-      const variationIds = variationMap[pid];
-      const hasVariations = variationIds?.length > 0 || productMap.get(pid)?.has_variations === true;
-      if (hasVariations) {
-        if (!m.variation_id || !variationIds?.includes(m.variation_id)) return;
-      } else {
-        if (m.variation_id != null) return;
+    const overview = await inventoryService.getInventoryOverview(companyId, branchId);
+    const rows: InventoryValuationRow[] = [];
+
+    overview.forEach((product) => {
+      const baseName = (product.name || '').trim() || '—';
+      const baseSku = (product.sku || '').trim() || '—';
+      const category = (product.category || '').trim() || '—';
+      const unit = (product.unit || '').trim() || '—';
+
+      if (product.hasVariations && product.variations?.length) {
+        product.variations.forEach((v) => {
+          if ((v.stock ?? 0) <= 0) return;
+          const attrEntries =
+            typeof v.attributes === 'object' && v.attributes !== null
+              ? Object.entries(v.attributes).filter(([, val]) => String(val).trim() !== '')
+              : [];
+          const attrLabel = attrEntries.map(([, val]) => val).join(' / ');
+          const displayName = attrLabel ? `${baseName} (${attrLabel})` : baseName;
+          const sku = (v.sku || '').trim() || baseSku;
+          const qty = v.stock ?? 0;
+          const unitCost = v.purchasePrice ?? product.avgCost ?? 0;
+          const totalValue = v.stockValueAtCost ?? qty * unitCost;
+          rows.push({
+            product_id: product.productId,
+            variation_id: v.id,
+            product_name: displayName,
+            sku,
+            category,
+            unit,
+            quantity: qty,
+            unit_cost: Math.round(unitCost * 100) / 100,
+            total_value: Math.round(totalValue * 100) / 100,
+          });
+        });
+      } else if ((product.stock ?? 0) > 0) {
+        const qty = product.stock ?? 0;
+        const unitCost = product.avgCost ?? 0;
+        const totalValue = product.stockValue ?? qty * unitCost;
+        rows.push({
+          product_id: product.productId,
+          variation_id: null,
+          product_name: baseName,
+          sku: baseSku,
+          category,
+          unit,
+          quantity: qty,
+          unit_cost: Math.round(unitCost * 100) / 100,
+          total_value: Math.round(totalValue * 100) / 100,
+        });
       }
-      if (!byProduct[pid]) byProduct[pid] = { qty: 0, costSum: 0, costQty: 0 };
-      const qty = Number(m.quantity) || 0;
-      byProduct[pid].qty += qty;
-      const tc = Number(m.total_cost);
-      const uc = Number(m.unit_cost) || 0;
-      if (qty !== 0) {
-        if (tc && !Number.isNaN(tc)) {
-          byProduct[pid].costSum += tc;
-          byProduct[pid].costQty += qty;
-        } else if (uc > 0) {
-          byProduct[pid].costSum += uc * qty;
-          byProduct[pid].costQty += qty;
-        }
-      }
     });
-    const productIds = Object.keys(byProduct).filter((id) => byProduct[id].qty > 0);
-    if (!productIds.length) return { rows: [], totalValue: 0, asOfDate: asOf };
-    const missingIds = productIds.filter((id) => !productMap.has(id));
-    const nameFallback = new Map<string, string>();
-    if (missingIds.length > 0) {
-      const [fromSales, fromPurchases, fromVariations] = await Promise.all([
-        supabase.from('sales_items').select('product_id, product_name').in('product_id', missingIds).not('product_name', 'is', null).limit(missingIds.length * 2),
-        supabase.from('purchase_items').select('product_id, product_name').in('product_id', missingIds).not('product_name', 'is', null).limit(missingIds.length * 2),
-        supabase.from('product_variations').select('product_id, sku').in('product_id', missingIds).limit(missingIds.length * 2),
-      ]);
-      (fromSales.data || []).forEach((r: any) => {
-        if (r?.product_name?.trim() && !nameFallback.has(r.product_id)) nameFallback.set(r.product_id, String(r.product_name).trim());
-      });
-      (fromPurchases.data || []).forEach((r: any) => {
-        if (r?.product_name?.trim() && !nameFallback.has(r.product_id)) nameFallback.set(r.product_id, String(r.product_name).trim());
-      });
-      (fromVariations.data || []).forEach((r: any) => {
-        if (r?.sku?.trim() && !nameFallback.has(r.product_id)) nameFallback.set(r.product_id, String(r.sku).trim());
-      });
-    }
-    let totalValue = 0;
-    const rows: InventoryValuationRow[] = productIds.map((pid) => {
-      const p = productMap.get(pid);
-      const rec = byProduct[pid];
-      const avgCost =
-        rec.costQty > 0 ? rec.costSum / rec.costQty : Number(p?.cost_price ?? p?.cost) || 0;
-      const total_value = Math.round(rec.qty * avgCost * 100) / 100;
-      totalValue += total_value;
-      const fromProduct = (p?.name != null && String(p.name).trim() !== '') ? String(p.name).trim() : (p?.sku != null && String(p.sku).trim() !== '') ? String(p.sku).trim() : (p ? 'Unnamed product' : null);
-      const product_name = fromProduct ?? nameFallback.get(pid) ?? 'Product';
-      const sku = (p?.sku != null && String(p.sku).trim() !== '') ? String(p.sku).trim() : '—';
-      return {
-        product_id: pid,
-        product_name,
-        sku,
-        quantity: rec.qty,
-        unit_cost: Math.round(avgCost * 100) / 100,
-        total_value,
-      };
-    });
-    return { rows, totalValue: Math.round(totalValue * 100) / 100, asOfDate: asOf };
+
+    rows.sort((a, b) => a.product_name.localeCompare(b.product_name));
+    const totalValue = Math.round(rows.reduce((s, r) => s + r.total_value, 0) * 100) / 100;
+    return { rows, totalValue, asOfDate: asOf };
   },
 
   /**
@@ -936,7 +906,8 @@ export const accountingReportsService = {
     companyId: string,
     startDate: string,
     endDate: string,
-    branchId?: string
+    branchId?: string,
+    options?: { auditMode?: boolean; basis?: 'official_gl' | 'effective_party' }
   ): Promise<{
     operating: { in: number; out: number; net: number };
     investing: { in: number; out: number; net: number };
@@ -947,6 +918,8 @@ export const accountingReportsService = {
   }> {
     const start = startDate.slice(0, 10);
     const end = endDate.slice(0, 10);
+    const auditMode = options?.auditMode === true;
+    const officialGlBasis = options?.basis === 'official_gl' || auditMode;
     const { data: accounts } = await supabase
       .from('accounts')
       .select('id, type')
@@ -977,12 +950,16 @@ export const accountingReportsService = {
     }
     const { data: entriesInRange } = await supabase
       .from('journal_entries')
-      .select('id')
+      .select('id, reference_type')
       .eq('company_id', companyId)
       .gte('entry_date', start)
       .lte('entry_date', end)
       .or('is_void.is.null,is_void.eq.false');
-    const entryIdsInRange = (entriesInRange || []).map((e: any) => e.id);
+    const entryIdsInRange = (entriesInRange || [])
+      .filter((e: { reference_type?: string | null }) =>
+        officialGlBasis ? true : !isCorrectionReversalReferenceType(e.reference_type)
+      )
+      .map((e: { id: string }) => e.id);
     if (!entryIdsInRange.length) {
       return {
         operating: { in: 0, out: 0, net: 0 },

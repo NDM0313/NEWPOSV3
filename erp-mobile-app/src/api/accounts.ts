@@ -24,6 +24,8 @@ export interface AccountRow {
   balance: number;
   parentId?: string | null;
   isGroup?: boolean;
+  isDefaultCash?: boolean;
+  isDefaultBank?: boolean;
   /** Party-linked AR/AP sub-account — enables party GL ledger RPC on mobile. */
   linkedContactId?: string | null;
 }
@@ -213,22 +215,37 @@ export async function getPaymentAccounts(companyId: string): Promise<{ data: Acc
       error: filtered.length ? null : 'Offline: payment accounts not cached. Connect once while logged in.',
     };
   }
-  const q = supabase
+  const withDefaults = await supabase
     .from('accounts')
-    .select('id, code, name, type, balance')
+    .select('id, code, name, type, balance, is_default_cash, is_default_bank')
     .eq('company_id', companyId)
     .eq('is_active', true)
     .or('is_group.eq.false,is_group.is.null')
     .in('type', ['cash', 'bank', 'mobile_wallet', 'wallet'])
     .order('code');
-  const { data, error } = await q;
+  let rawRows: Record<string, unknown>[] = (withDefaults.data || []) as Record<string, unknown>[];
+  let error = withDefaults.error;
+  if (error && /is_default_cash|is_default_bank|column/i.test(String(error.message || ''))) {
+    const fallback = await supabase
+      .from('accounts')
+      .select('id, code, name, type, balance')
+      .eq('company_id', companyId)
+      .eq('is_active', true)
+      .or('is_group.eq.false,is_group.is.null')
+      .in('type', ['cash', 'bank', 'mobile_wallet', 'wallet'])
+      .order('code');
+    rawRows = (fallback.data || []) as Record<string, unknown>[];
+    error = fallback.error;
+  }
   if (error) return { data: [], error: error.message };
-  const rows = (data || []).map((r: Record<string, unknown>) => ({
+  const rows = rawRows.map((r) => ({
     id: String(r.id ?? ''),
     code: String(r.code ?? '—'),
     name: String(r.name ?? '—'),
     type: String(r.type ?? '—'),
     balance: Number(r.balance) || 0,
+    isDefaultCash: r.is_default_cash === true,
+    isDefaultBank: r.is_default_bank === true,
   }));
   void listCacheSet(cacheKey, rows);
   return { data: rows, error: null };
@@ -247,6 +264,8 @@ export interface JournalEntryRow {
   entry_no: string;
   /** Payments voucher no (PAY-xx / RCV-xx) when this JE links via payment_id — preferred list label over JE entry_no. */
   payment_reference_number?: string | null;
+  /** Expense document no (EXP-xx) — preferred over PAY for expense JEs. */
+  display_expense_no?: string | null;
   entry_date: string;
   description: string;
   reference_type: string;
@@ -313,10 +332,19 @@ export async function getJournalEntries(
   const paymentRefNoById = new Map<string, string | null>();
   const paymentTypeById = new Map<string, 'received' | 'paid' | null>();
   const paymentAttachmentsById = new Map<string, unknown>();
+  const paymentExpenseIdById = new Map<string, string>();
+  const expenseIdsForNo = new Set<string>();
+  (data || []).forEach((e: Record<string, unknown>) => {
+    const rt = String(e.reference_type ?? '')
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, '_');
+    if (rt === 'expense' && e.reference_id) expenseIdsForNo.add(String(e.reference_id));
+  });
   if (paymentIds.length > 0) {
     const { data: paymentRows } = await supabase
       .from('payments')
-      .select('id, notes, reference_number, payment_type, attachments')
+      .select('id, notes, reference_number, payment_type, attachments, reference_type, reference_id')
       .in('id', paymentIds);
     for (const row of paymentRows || []) {
       const id = String((row as Record<string, unknown>).id ?? '');
@@ -331,6 +359,28 @@ export async function getJournalEntries(
       const pt = String((row as Record<string, unknown>).payment_type ?? '').trim().toLowerCase();
       paymentTypeById.set(id, pt === 'received' ? 'received' : pt === 'paid' ? 'paid' : null);
       paymentAttachmentsById.set(id, (row as Record<string, unknown>).attachments);
+      const payRt = String((row as Record<string, unknown>).reference_type ?? '')
+        .toLowerCase()
+        .trim()
+        .replace(/\s+/g, '_');
+      const payRefId = (row as Record<string, unknown>).reference_id;
+      if (payRt === 'expense' && payRefId) {
+        const eid = String(payRefId);
+        paymentExpenseIdById.set(id, eid);
+        expenseIdsForNo.add(eid);
+      }
+    }
+  }
+  const expenseNoById = new Map<string, string>();
+  if (expenseIdsForNo.size > 0) {
+    const { data: expRows } = await supabase
+      .from('expenses')
+      .select('id, expense_no')
+      .in('id', [...expenseIdsForNo]);
+    for (const row of expRows || []) {
+      const id = String((row as Record<string, unknown>).id ?? '');
+      const no = String((row as Record<string, unknown>).expense_no ?? '').trim();
+      if (id && no) expenseNoById.set(id, no);
     }
   }
   const rows = (data || []).map((e: Record<string, unknown>) => {
@@ -342,10 +392,22 @@ export async function getJournalEntries(
     const payAttachments = paymentId ? paymentAttachmentsById.get(paymentId) : null;
     const hasAttachments =
       hasNormalizedAttachments(jeAttachments) || hasNormalizedAttachments(payAttachments);
+    const refType = String(e.reference_type ?? '')
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, '_');
+    const expenseId =
+      refType === 'expense' && e.reference_id
+        ? String(e.reference_id)
+        : paymentId
+          ? paymentExpenseIdById.get(paymentId)
+          : undefined;
+    const displayExpenseNo = expenseId ? expenseNoById.get(expenseId) ?? null : null;
     return {
       id: String(e.id ?? ''),
       entry_no: String(e.entry_no ?? ''),
       payment_reference_number: paymentId ? paymentRefNoById.get(paymentId) ?? null : null,
+      display_expense_no: displayExpenseNo,
       entry_date: e.entry_date ? toLocalDateString(e.entry_date as string) : '',
       description: String(e.description ?? ''),
       reference_type: String(e.reference_type ?? ''),
@@ -364,9 +426,32 @@ export async function getJournalEntries(
       lines,
       attachments: jeAttachments,
       hasAttachments,
+      _expenseRefId:
+        refType === 'expense' || refType === 'expense_payment'
+          ? e.reference_id != null && String(e.reference_id).trim() !== ''
+            ? String(e.reference_id)
+            : null
+          : expenseId ?? null,
     };
   });
-  return { data: rows, error: null };
+
+  const expenseIdsNeedingCheck = rows
+    .filter((r) => !r.hasAttachments && r._expenseRefId)
+    .map((r) => r._expenseRefId as string);
+  if (expenseIdsNeedingCheck.length > 0) {
+    const { batchExpenseIdsWithReceiptUrl } = await import('../lib/loadMergedAttachments');
+    const withReceipt = await batchExpenseIdsWithReceiptUrl(companyId, expenseIdsNeedingCheck);
+    for (const row of rows) {
+      if (!row.hasAttachments && row._expenseRefId && withReceipt.has(row._expenseRefId)) {
+        row.hasAttachments = true;
+      }
+    }
+  }
+
+  return {
+    data: rows.map(({ _expenseRefId: _, ...rest }) => rest as JournalEntryRow),
+    error: null,
+  };
 }
 
 
@@ -833,6 +918,7 @@ export async function recordSupplierPayment(params: {
   purchaseId: string;
   amount: number;
   paymentDate: string;
+  paymentAt?: string | null;
   paymentAccountId: string;
   paymentMethod: 'cash' | 'bank' | 'card' | 'other';
   reference?: string;
@@ -880,6 +966,10 @@ export async function recordSupplierPayment(params: {
   }
   const res = data as { success?: boolean; payment_id?: string; error?: string };
   if (res?.success && res.payment_id) {
+    if (params.paymentAt) {
+      const { patchPaymentCreatedAt } = await import('./paymentTimestamp');
+      await patchPaymentCreatedAt(res.payment_id, params.paymentAt);
+    }
     const rpcRef = (res as { reference_number?: string | null }).reference_number ?? null;
     return { data: { payment_id: res.payment_id, reference_number: rpcRef }, error: null };
   }
@@ -1099,6 +1189,7 @@ export async function recordWorkerPayment(params: {
   workerId: string;
   amount: number;
   paymentDate: string;
+  paymentAt?: string | null;
   paymentAccountId: string;
   paymentMethod?: string;
   workerName?: string;
@@ -1161,6 +1252,11 @@ export async function recordWorkerPayment(params: {
   const paymentId = res.payment_id;
   const journalEntryId = res.journal_entry_id;
   const ref = String(res.reference_number ?? '');
+
+  if (params.paymentAt) {
+    const { patchPaymentCreatedAt } = await import('./paymentTimestamp');
+    await patchPaymentCreatedAt(paymentId, params.paymentAt);
+  }
 
   const { data: existingLedger } = await supabase
     .from('worker_ledger_entries')

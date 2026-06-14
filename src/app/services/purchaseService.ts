@@ -1879,6 +1879,61 @@ export const purchaseService = {
     }
   },
 
+  /** Period purchases for reports (not paginated PurchaseContext). */
+  async getPurchasesForReports(
+    companyId: string,
+    startDate: string,
+    endDate: string,
+    branchId?: string | null
+  ): Promise<{ data: any[]; total: number; truncated: boolean }> {
+    const max = 5000;
+    const selectAttempts = [
+      `id, company_id, branch_id, po_no, draft_no, order_no, po_date, supplier_id, supplier_name,
+       status, payment_status, subtotal, discount_amount, tax_amount, total, paid_amount, due_amount,
+       created_at, branch:branches(id, name, code)`,
+      `id, company_id, branch_id, po_no, draft_no, order_no, po_date, supplier_id, supplier_name,
+       status, payment_status, subtotal, total, paid_amount, due_amount, created_at,
+       branch:branches(id, name, code)`,
+      `*, branch:branches(id, name, code)`,
+    ];
+
+    const runQuery = (selectFields: string, dateCol: 'po_date' | 'created_at') => {
+      let q = supabase
+        .from('purchases')
+        .select(selectFields, { count: 'exact' })
+        .eq('company_id', companyId)
+        .gte(dateCol, startDate)
+        .lte(dateCol, endDate)
+        .order(dateCol, { ascending: false })
+        .limit(max);
+      if (branchId && branchId !== 'all') q = q.eq('branch_id', branchId);
+      return q;
+    };
+
+    let rows: any[] = [];
+    let count: number | null = null;
+    let lastError: unknown = null;
+
+    for (const fields of selectAttempts) {
+      let res = await runQuery(fields, 'po_date');
+      if (res.error && (res.error as { code?: string }).code === '42703') {
+        res = await runQuery(fields, 'created_at');
+      }
+      if (!res.error) {
+        rows = res.data || [];
+        count = res.count;
+        lastError = null;
+        break;
+      }
+      lastError = res.error;
+      console.warn('[purchaseService.getPurchasesForReports] select fallback:', fields.trim().slice(0, 80), res.error);
+    }
+    if (lastError) throw lastError;
+
+    const total = count ?? rows.length;
+    return { data: rows, total, truncated: total > max };
+  },
+
   // Direct delete fallback (if RPC not available)
   async deletePaymentDirect(paymentId: string, purchaseId: string) {
     try {

@@ -4,10 +4,10 @@
  * Actions: View, Edit (draft), Receive Return (rented/overdue), Add Payment, Print, Delete (draft)
  */
 
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Plus, Package, DollarSign, Calendar, MoreVertical, Eye, Edit, Trash2, FileText,
-  CornerDownLeft, Receipt, MapPin, Loader2, ShoppingBag, Truck, CheckCircle2,
+  CornerDownLeft, Receipt, MapPin, Loader2, ShoppingBag, Truck, CheckCircle2, RefreshCw,
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
@@ -35,6 +35,9 @@ import { useGlobalFilter } from '@/app/context/GlobalFilterContext';
 import { Pagination } from '@/app/components/ui/pagination';
 import { ListToolbar } from '@/app/components/ui/list-toolbar';
 import { formatLongDate } from '@/app/components/ui/utils';
+import { DateTimeDisplay } from '@/app/components/ui/DateTimeDisplay';
+import { formatLocalDateYYYYMMDD } from '@/app/utils/localDate';
+import { userService } from '@/app/services/userService';
 import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDialog';
 import { ViewPaymentsModal } from '@/app/components/sales/ViewPaymentsModal';
 import { ViewRentalDetailsDrawer } from '@/app/components/rentals/ViewRentalDetailsDrawer';
@@ -42,6 +45,7 @@ import { PickupModal } from '@/app/components/rentals/PickupModal';
 import { ReturnModal } from '@/app/components/rentals/ReturnModal';
 import { toast } from 'sonner';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { AdaptiveCurrencyValue } from '@/app/components/shared/AdaptiveCurrencyValue';
 
 const STATUS_LABELS: Record<RentalStatus, string> = {
   draft: 'Draft',
@@ -59,6 +63,55 @@ interface RentalsPageProps {
   embedded?: boolean;
 }
 
+/** List toolbar quick filters (All + operational views). */
+type RentalListFilter =
+  | 'all'
+  | 'pickup_today'
+  | 'return_today'
+  | 'booked'
+  | 'rented'
+  | 'returned'
+  | 'overdue'
+  | 'draft'
+  | 'cancelled';
+
+const LIST_FILTER_TABS: { value: RentalListFilter; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'pickup_today', label: 'Pickup Today' },
+  { value: 'return_today', label: 'Return Today' },
+  { value: 'booked', label: 'Booked' },
+  { value: 'rented', label: 'Rented' },
+  { value: 'returned', label: 'Returned' },
+  { value: 'overdue', label: 'Overdue' },
+  { value: 'draft', label: 'Draft' },
+  { value: 'cancelled', label: 'Cancelled' },
+];
+
+function matchesRentalListFilter(r: RentalUI, filter: RentalListFilter, today: string): boolean {
+  switch (filter) {
+    case 'all':
+      return true;
+    case 'pickup_today':
+      return r.startDate === today && r.status === 'booked';
+    case 'return_today':
+      return r.expectedReturnDate === today && ['booked', 'rented', 'overdue'].includes(r.status);
+    case 'booked':
+      return r.status === 'booked';
+    case 'rented':
+      return r.status === 'rented';
+    case 'returned':
+      return r.status === 'returned';
+    case 'overdue':
+      return r.status === 'overdue' || (r.status === 'rented' && !!r.expectedReturnDate && r.expectedReturnDate < today);
+    case 'draft':
+      return r.status === 'draft';
+    case 'cancelled':
+      return r.status === 'cancelled';
+    default:
+      return true;
+  }
+}
+
 const STATUS_CLASS: Record<RentalStatus, string> = {
   draft: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
   booked: 'bg-pink-500/20 text-pink-400 border-pink-500/30',
@@ -72,19 +125,28 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
   const { companyId, branchId } = useSupabase();
   const { formatCurrency } = useFormatCurrency();
   const globalFilter = useGlobalFilter();
-  const { startDate, endDate, setCurrentModule } = globalFilter;
+  const { startDate, endDate, dateRangeType, setCurrentModule } = globalFilter;
 
   useEffect(() => {
     setCurrentModule('rentals');
   }, [setCurrentModule]);
 
-  const { rentals, loading, refreshRentals, receiveReturn, cancelRental, addPayment, deletePayment, deleteRental, markAsPickedUp, getRentalById } = useRentals();
+  useEffect(() => {
+    if (!companyId) return;
+    userService.getSalesmen(companyId).then((list) => setSalesmen(list || [])).catch(() => setSalesmen([]));
+  }, [companyId]);
+
+  const { rentals, loading, loadFailed, refreshRentals, receiveReturn, cancelRental, addPayment, deletePayment, deleteRental, markAsPickedUp, getRentalById } = useRentals();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterOpen, setFilterOpen] = useState(false);
   const [hoveredRow, setHoveredRow] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<'all' | RentalStatus>('all');
+  const [listFilter, setListFilter] = useState<RentalListFilter>('all');
   const [branchFilter, setBranchFilter] = useState('all');
+  const [salesmanFilter, setSalesmanFilter] = useState('all');
+  const [dateFilterMode, setDateFilterMode] = useState<'pickup' | 'created'>('pickup');
+  const [salesmen, setSalesmen] = useState<Array<{ id: string; full_name?: string; name?: string }>>([]);
+  const [viewDetailsPrintMode, setViewDetailsPrintMode] = useState(false);
   const [pageSize, setPageSize] = useState(25);
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedRental, setSelectedRental] = useState<RentalUI | null>(null);
@@ -99,10 +161,13 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
 
   const [visibleColumns, setVisibleColumns] = useState({
     rentalNo: true,
+    billRef: true,
     customer: true,
-    product: true,
+    product: false,
     item: true,
     branch: true,
+    createdAt: true,
+    salesman: true,
     startDate: true,
     expectedReturn: true,
     actualReturn: true,
@@ -114,15 +179,18 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
   });
 
   const [columnOrder, setColumnOrder] = useState([
-    'rentalNo', 'customer', 'product', 'item', 'branch', 'startDate', 'expectedReturn', 'actualReturn', 'status', 'action', 'total', 'paid', 'due',
+    'createdAt', 'rentalNo', 'billRef', 'customer', 'item', 'branch', 'salesman', 'startDate', 'expectedReturn', 'actualReturn', 'status', 'action', 'total', 'paid', 'due',
   ]);
 
   const columnLabels: Record<string, string> = {
     rentalNo: 'Rental No',
+    billRef: 'Bill #',
     customer: 'Customer',
     product: 'Product',
     item: 'Item',
     branch: 'Branch',
+    createdAt: 'Created',
+    salesman: 'Salesman',
     startDate: 'Start Date',
     expectedReturn: 'Expected Return',
     actualReturn: 'Actual Return',
@@ -157,7 +225,8 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
 
   const getColumnWidth = (key: string): string => {
     const w: Record<string, string> = {
-      rentalNo: '110px', customer: '160px', product: '170px', item: '150px', branch: '120px',
+      rentalNo: '110px', billRef: '90px', customer: '160px', product: '170px', item: '150px', branch: '120px',
+      createdAt: '110px', salesman: '130px',
       startDate: '100px', expectedReturn: '110px', actualReturn: '100px', status: '100px',
       action: '120px',
       total: '100px', paid: '90px', due: '90px',
@@ -172,21 +241,34 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
     return `${parts.join(' ')} 60px`.trim();
   }, [columnOrder, visibleColumns]);
 
+  const today = new Date().toISOString().slice(0, 10);
+
+  const rentalDateKey = useCallback((r: RentalUI) => {
+    const raw = dateFilterMode === 'created' ? r.createdAt : r.startDate;
+    if (!raw) return '';
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) return String(raw).slice(0, 10);
+    return formatLocalDateYYYYMMDD(parsed);
+  }, [dateFilterMode]);
+
   const filterByDate = useCallback(
-    (dateStr: string | undefined) => {
+    (r: RentalUI) => {
       if (!startDate && !endDate) return true;
-      if (!dateStr) return false;
-      const d = new Date(dateStr);
-      if (startDate && d < new Date(startDate)) return false;
-      if (endDate && d > new Date(endDate + 'T23:59:59')) return false;
+      const d = rentalDateKey(r);
+      if (!d) return dateRangeType === 'fromStart';
+      if (startDate && d < startDate) return false;
+      if (endDate && d > endDate) return false;
       return true;
     },
-    [startDate, endDate]
+    [startDate, endDate, rentalDateKey, dateRangeType]
   );
+
+  const hasNonDateFilters = listFilter !== 'all' || !!searchTerm || branchFilter !== 'all' || salesmanFilter !== 'all';
 
   const filteredRentals = useMemo(() => {
     return rentals.filter((r) => {
-      if (!filterByDate(r.startDate)) return false;
+      if (!filterByDate(r)) return false;
+      if (!matchesRentalListFilter(r, listFilter, today)) return false;
       if (searchTerm) {
         const q = searchTerm.toLowerCase();
         const itemTextMatch = (r.items ?? []).some(
@@ -196,17 +278,55 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
         );
         if (
           !r.rentalNo.toLowerCase().includes(q) &&
+          !(r.documentNumber || '').toLowerCase().includes(q) &&
           !r.customerName.toLowerCase().includes(q) &&
           !r.location.toLowerCase().includes(q) &&
           !itemTextMatch
         )
           return false;
       }
-      if (statusFilter !== 'all' && r.status !== statusFilter) return false;
       if (branchFilter !== 'all' && r.branchId !== branchFilter) return false;
+      if (salesmanFilter !== 'all' && (r.salesmanId || '') !== salesmanFilter) return false;
       return true;
     });
-  }, [rentals, searchTerm, statusFilter, branchFilter, filterByDate]);
+  }, [rentals, searchTerm, listFilter, branchFilter, salesmanFilter, filterByDate, today]);
+
+  const emptyListMessage = useMemo(() => {
+    if (loading && rentals.length === 0) return null;
+    if (rentals.length === 0) {
+      return loadFailed ? 'Could not load rentals' : 'No rentals yet';
+    }
+    if (filteredRentals.length > 0) return null;
+    if (hasNonDateFilters) return 'No rentals match this filter';
+    const matchesWithoutDate = rentals.some((r) => {
+      if (!matchesRentalListFilter(r, listFilter, today)) return false;
+      if (searchTerm) {
+        const q = searchTerm.toLowerCase();
+        const itemTextMatch = (r.items ?? []).some(
+          (it) =>
+            (it.productName || '').toLowerCase().includes(q) ||
+            (it.sku || '').toLowerCase().includes(q)
+        );
+        if (
+          !r.rentalNo.toLowerCase().includes(q) &&
+          !(r.documentNumber || '').toLowerCase().includes(q) &&
+          !r.customerName.toLowerCase().includes(q) &&
+          !r.location.toLowerCase().includes(q) &&
+          !itemTextMatch
+        )
+          return false;
+      }
+      if (branchFilter !== 'all' && r.branchId !== branchFilter) return false;
+      if (salesmanFilter !== 'all' && (r.salesmanId || '') !== salesmanFilter) return false;
+      return true;
+    });
+    if (matchesWithoutDate && (startDate || endDate)) return 'No rentals in selected date range';
+    return 'No rentals found';
+  }, [loading, rentals, filteredRentals.length, loadFailed, hasNonDateFilters, listFilter, searchTerm, branchFilter, salesmanFilter, startDate, endDate, today]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, listFilter, branchFilter, salesmanFilter, startDate, endDate]);
 
   const paginatedRentals = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
@@ -214,8 +334,6 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
   }, [filteredRentals, currentPage, pageSize]);
 
   const totalPages = Math.max(1, Math.ceil(filteredRentals.length / pageSize));
-
-  const today = new Date().toISOString().slice(0, 10);
 
   const summary = useMemo(() => {
     const thisMonth = new Date().toISOString().slice(0, 7);
@@ -279,13 +397,13 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
           <span className="text-pink-300/90">operational</span> (rental orders). Not GL AR 1100 or canonical P&amp;L unless posted to those accounts.
         </p>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4">
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 min-w-0">
             <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Rental (Month)</p>
-            <p className="text-2xl font-bold text-white mt-1">{formatCurrency(summary.totalAmount)}</p>
+            <AdaptiveCurrencyValue value={summary.totalAmount} className="text-2xl font-bold text-white mt-1" as="p" />
           </div>
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 min-w-0">
             <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Amount Due</p>
-            <p className="text-2xl font-bold text-red-400 mt-1">{formatCurrency(summary.totalDue)}</p>
+            <AdaptiveCurrencyValue value={summary.totalDue} className="text-2xl font-bold text-red-400 mt-1" as="p" />
           </div>
           <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
             <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Today Pickups</p>
@@ -308,6 +426,24 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
             <p className="text-2xl font-bold text-cyan-400 mt-1">{summary.utilization}%</p>
           </div>
         </div>
+      </div>
+
+      <div className="shrink-0 px-6 pt-2 pb-1 flex items-center gap-1 border-b border-gray-800/50 overflow-x-auto">
+        {LIST_FILTER_TABS.map((tab) => (
+          <button
+            key={tab.value}
+            type="button"
+            onClick={() => setListFilter(tab.value)}
+            className={cn(
+              'px-3 py-2 rounded-t-md text-sm font-medium transition-all whitespace-nowrap',
+              listFilter === tab.value
+                ? 'bg-gray-800 text-white border-t border-x border-gray-700 -mb-px'
+                : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
+            )}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       <ListToolbar
@@ -339,22 +475,23 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
         filter={{
           isOpen: filterOpen,
           onToggle: () => setFilterOpen(!filterOpen),
-          activeCount: [statusFilter, branchFilter].filter((f) => f !== 'all').length,
+          activeCount: [
+            listFilter !== 'all' ? listFilter : null,
+            branchFilter !== 'all' ? branchFilter : null,
+            salesmanFilter !== 'all' ? salesmanFilter : null,
+            dateFilterMode !== 'pickup' ? dateFilterMode : null,
+          ].filter(Boolean).length,
           renderPanel: () => (
-            <div className="absolute right-0 top-12 w-64 bg-gray-900 border border-gray-700 rounded-lg shadow-xl p-4 z-50">
+            <div className="absolute right-0 top-12 w-64 max-h-[min(70vh,22rem)] overflow-y-auto bg-gray-900 border border-gray-700 rounded-lg shadow-xl p-4 z-50">
               <p className="text-sm font-semibold text-white mb-2">Filters</p>
-              <label className="text-xs text-gray-400">Status</label>
+              <label className="text-xs text-gray-400">Date filter basis</label>
               <select
                 className="w-full mt-1 bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-white text-sm"
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as any)}
+                value={dateFilterMode}
+                onChange={(e) => setDateFilterMode(e.target.value as 'pickup' | 'created')}
               >
-                <option value="all">All</option>
-                {(Object.keys(STATUS_LABELS) as RentalStatus[]).map((s) => (
-                  <option key={s} value={s}>
-                    {STATUS_LABELS[s]}
-                  </option>
-                ))}
+                <option value="pickup">Pickup / start date</option>
+                <option value="created">Created date</option>
               </select>
               <label className="text-xs text-gray-400 mt-2 block">Branch</label>
               <select
@@ -362,10 +499,23 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                 value={branchFilter}
                 onChange={(e) => setBranchFilter(e.target.value)}
               >
-                <option value="all">All</option>
+                <option value="all">All branches</option>
                 {Array.from(new Set(rentals.map((r) => r.branchId))).map((bid) => (
                   <option key={bid} value={bid}>
                     {rentals.find((r) => r.branchId === bid)?.location || bid}
+                  </option>
+                ))}
+              </select>
+              <label className="text-xs text-gray-400 mt-2 block">Salesman</label>
+              <select
+                className="w-full mt-1 bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-white text-sm"
+                value={salesmanFilter}
+                onChange={(e) => setSalesmanFilter(e.target.value)}
+              >
+                <option value="all">All</option>
+                {salesmen.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.full_name || s.name || s.id}
                   </option>
                 ))}
               </select>
@@ -373,19 +523,12 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
           ),
         }}
       />
-      {(startDate || endDate) && (
-        <div className="px-6 pb-2">
-          <p className="text-xs text-amber-300/80">
-            Active date filter is hiding older rentals. Availability checks still include overlapping booked/active rentals outside current date window.
-          </p>
-        </div>
-      )}
 
       <div className="flex-1 overflow-auto px-6 py-4">
         <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
-            <div className="min-w-[1320px]">
-              <div className="sticky top-0 z-10 min-w-[1320px] w-max bg-gray-900 border-b border-gray-800">
+            <div className="min-w-[1560px]">
+              <div className="sticky top-0 z-[1] min-w-[1560px] w-max bg-gray-900 border-b border-gray-800">
                 <div
                   className="grid gap-3 px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider"
                   style={{ gridTemplateColumns: gridTemplateColumns }}
@@ -404,8 +547,8 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                 </div>
               </div>
 
-              <div className="min-w-[1320px] w-max">
-                {loading ? (
+              <div className="min-w-[1560px] w-max">
+                {loading && rentals.length === 0 ? (
                   <div className="py-12 text-center">
                     <Loader2 size={48} className="mx-auto text-pink-500 mb-3 animate-spin" />
                     <p className="text-gray-400 text-sm">Loading rentals…</p>
@@ -413,7 +556,18 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                 ) : paginatedRentals.length === 0 ? (
                   <div className="py-12 text-center">
                     <ShoppingBag size={48} className="mx-auto text-gray-600 mb-3" />
-                    <p className="text-gray-400 text-sm">No rentals found</p>
+                    <p className="text-gray-400 text-sm">{emptyListMessage ?? 'No rentals found'}</p>
+                    {loadFailed && rentals.length === 0 && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="mt-4 border-gray-700 text-gray-300"
+                        onClick={() => void refreshRentals()}
+                      >
+                        <RefreshCw size={14} className="mr-2" />
+                        Retry
+                      </Button>
+                    )}
                   </div>
                 ) : (
                   paginatedRentals.map((r) => (
@@ -421,7 +575,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                       key={r.id}
                       onMouseEnter={() => setHoveredRow(r.id)}
                       onMouseLeave={() => setHoveredRow(null)}
-                      className="grid gap-3 px-4 h-14 min-w-[1320px] w-max hover:bg-gray-800/30 items-center border-b border-gray-800 last:border-b-0"
+                      className="grid gap-3 px-4 h-14 min-w-[1560px] w-max hover:bg-gray-800/30 items-center border-b border-gray-800 last:border-b-0"
                       style={{ gridTemplateColumns: gridTemplateColumns }}
                     >
                       {columnOrder.map((key) => {
@@ -430,6 +584,13 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                         switch (key) {
                           case 'rentalNo':
                             cell = <span className="text-sm font-mono text-pink-400">{r.rentalNo}</span>;
+                            break;
+                          case 'billRef':
+                            cell = (
+                              <span className="text-sm text-violet-300 truncate" title={r.documentNumber || ''}>
+                                {r.documentNumber || '—'}
+                              </span>
+                            );
                             break;
                           case 'customer':
                             cell = <span className="text-sm text-white truncate">{r.customerName}</span>;
@@ -471,6 +632,20 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                           }
                           case 'branch':
                             cell = <span className="text-xs text-gray-400 truncate">{r.location || '—'}</span>;
+                            break;
+                          case 'createdAt':
+                            cell = r.createdAt ? (
+                              <DateTimeDisplay date={r.createdAt} dateOnly className="text-sm text-gray-400" />
+                            ) : (
+                              <span className="text-sm text-gray-500">—</span>
+                            );
+                            break;
+                          case 'salesman':
+                            cell = (
+                              <span className="text-sm text-gray-400 truncate" title={r.salesmanName || ''}>
+                                {r.salesmanName || '—'}
+                              </span>
+                            );
                             break;
                           case 'startDate':
                             cell = <span className="text-sm text-gray-400">{formatLongDate(r.startDate)}</span>;
@@ -668,6 +843,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                               className="hover:bg-gray-800 cursor-pointer"
                               onClick={() => {
                                 setSelectedRental(r);
+                                setViewDetailsPrintMode(true);
                                 setViewDetailsOpen(true);
                               }}
                             >
@@ -806,8 +982,10 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
 
       <ViewRentalDetailsDrawer
         isOpen={viewDetailsOpen}
+        openPrintOnMount={viewDetailsPrintMode}
         onClose={() => {
           setViewDetailsOpen(false);
+          setViewDetailsPrintMode(false);
           setSelectedRental(null);
         }}
         rental={selectedRental}
@@ -881,7 +1059,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
           if (!open) setSelectedRental(null);
         }}
         rental={selectedRental}
-        documentInfo={selectedRental ? { documentType: selectedRental.documentType, documentNumber: selectedRental.documentNumber } : undefined}
+        documentInfo={selectedRental ? { documentType: selectedRental.pickupDocumentType || selectedRental.documentType, documentNumber: selectedRental.pickupDocumentNumber || undefined } : undefined}
         onConfirm={async (id, payload) => await receiveReturn(id, payload)}
       />
     </div>

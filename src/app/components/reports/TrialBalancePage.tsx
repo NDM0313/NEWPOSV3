@@ -1,9 +1,16 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Loader2, FileText, FileSpreadsheet, ExternalLink, AlertTriangle, ShieldAlert } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Loader2, ExternalLink, AlertTriangle, ShieldAlert, Search } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
+import { Input } from '@/app/components/ui/input';
+import { Switch } from '@/app/components/ui/switch';
+import { Label } from '@/app/components/ui/label';
+import { ReportActions } from './ReportActions';
+import { FinancialReportPrintLayout, FinancialReportDataTable } from './FinancialReportPrintLayout';
+import { shareViaWhatsApp } from '@/app/services/documentShareService';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useNavigation } from '@/app/context/NavigationContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { toast } from 'sonner';
 import {
   accountingReportsService,
   TrialBalanceResult,
@@ -11,7 +18,13 @@ import {
   type TrialBalanceArApMode,
 } from '@/app/services/accountingReportsService';
 import { exportToPDF, exportToExcel, ExportData } from '@/app/utils/exportUtils';
+import { ReportBasisBanner } from '@/app/components/accounting/ReportBasisBanner';
 import { AccountLedgerView } from '@/app/components/accounting/AccountLedgerView';
+import {
+  computeTrialBalanceTotals,
+  mergeTrialBalanceSearchResults,
+  searchTrialBalanceJournalAccounts,
+} from '@/app/lib/trialBalanceJournalSearch';
 
 const toExport = (
   r: TrialBalanceResult,
@@ -57,43 +70,121 @@ export const TrialBalancePage: React.FC<{
   const { formatCurrency } = useFormatCurrency();
   const [data, setData] = useState<TrialBalanceResult | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [fetchRetryKey, setFetchRetryKey] = useState(0);
   const [ledgerRow, setLedgerRow] = useState<TrialBalanceRow | null>(null);
   const [arApMode, setArApMode] = useState<TrialBalanceArApMode>('flat');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [journalSearchEnabled, setJournalSearchEnabled] = useState(false);
+  const [journalAccountIds, setJournalAccountIds] = useState<Set<string> | null>(null);
+  const [journalSearchLoading, setJournalSearchLoading] = useState(false);
 
   useEffect(() => {
     if (!companyId || !startDate || !endDate) {
-      setData(null);
-      setLoading(false);
+      if (!companyId) setLoading(true);
       return;
     }
     setLoading(true);
+    setFetchError(null);
     accountingReportsService
       .getTrialBalance(companyId, startDate, endDate, branchId, { arApMode })
       .then(setData)
-      .catch(() => setData(null))
+      .catch((err) => {
+        const msg = err instanceof Error ? err.message : 'Failed to load trial balance';
+        setFetchError(msg);
+        toast.error(msg);
+        setData(null);
+      })
       .finally(() => setLoading(false));
-  }, [companyId, startDate, endDate, branchId, arApMode]);
+  }, [companyId, startDate, endDate, branchId, arApMode, fetchRetryKey]);
+
+  useEffect(() => {
+    if (!journalSearchEnabled || !searchTerm.trim() || !companyId) {
+      setJournalAccountIds(null);
+      setJournalSearchLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setJournalSearchLoading(true);
+    const timer = window.setTimeout(() => {
+      void searchTrialBalanceJournalAccounts({
+        companyId,
+        startDate,
+        endDate,
+        branchId,
+        query: searchTerm,
+      })
+        .then((ids) => {
+          if (!cancelled) setJournalAccountIds(ids);
+        })
+        .catch(() => {
+          if (!cancelled) setJournalAccountIds(new Set());
+        })
+        .finally(() => {
+          if (!cancelled) setJournalSearchLoading(false);
+        });
+    }, 300);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [journalSearchEnabled, searchTerm, companyId, startDate, endDate, branchId]);
+
+  const filteredRows = useMemo(() => {
+    if (!data?.rows?.length) return [];
+    return mergeTrialBalanceSearchResults(
+      data.rows,
+      searchTerm,
+      journalAccountIds,
+      journalSearchEnabled
+    );
+  }, [data?.rows, searchTerm, journalAccountIds, journalSearchEnabled]);
+
+  const filteredTotals = useMemo(() => computeTrialBalanceTotals(filteredRows), [filteredRows]);
+
+  const isSearchActive = searchTerm.trim().length > 0;
 
   /** Debit−Credit; negative on receivable-type assets usually indicates mis-posting or legacy journals. */
   const creditHeavyAssetRows = useMemo(() => {
-    if (!data?.rows?.length) return [];
-    return data.rows.filter((r) => {
+    if (!filteredRows.length) return [];
+    return filteredRows.filter((r) => {
       const t = (r.account_type || '').toLowerCase();
       const looksAsset = t.includes('asset') || t.includes('receivable') || t.includes('cash') || t.includes('bank');
       const isPayable = /payable/i.test(r.account_name || '');
       return looksAsset && !isPayable && r.balance < -0.01;
     });
-  }, [data]);
+  }, [filteredRows]);
 
-  const periodExportLabel = `${startDate} to ${endDate}${branchId && branchId !== 'all' ? ` · branch` : ' · all branches'}`;
+  const reportPrintRef = useRef<HTMLDivElement>(null);
+  const arApModeLabel =
+    arApMode === 'summary' ? 'Summary (AR+AP rolled)' : arApMode === 'expanded' ? 'Expanded party subledgers' : 'All accounts (GL lines)';
+  const periodExportLabel = `${startDate} to ${endDate} · ${arApModeLabel}`;
+  const branchLabel = branchId && branchId !== 'all' ? 'Branch scope' : 'All branches';
+
+  const exportResult = useMemo((): TrialBalanceResult | null => {
+    if (!data) return null;
+    if (!isSearchActive) return data;
+    return { rows: filteredRows, ...filteredTotals };
+  }, [data, isSearchActive, filteredRows, filteredTotals]);
+
+  const exportPayload = useMemo(
+    () => (exportResult ? toExport(exportResult, formatCurrency, periodExportLabel) : null),
+    [exportResult, formatCurrency, periodExportLabel]
+  );
 
   const handleExportPDF = () => {
-    if (!data) return;
-    exportToPDF(toExport(data, formatCurrency, periodExportLabel), `Trial_Balance_GL_${startDate}_${endDate}`);
+    if (!exportPayload) return;
+    exportToPDF(exportPayload, `Trial_Balance_GL_${startDate}_${endDate}`);
   };
   const handleExportExcel = () => {
-    if (!data) return;
-    exportToExcel(toExport(data, formatCurrency, periodExportLabel), `Trial_Balance_GL_${startDate}_${endDate}`);
+    if (!exportPayload) return;
+    exportToExcel(exportPayload, `Trial_Balance_GL_${startDate}_${endDate}`);
+  };
+  const handleWhatsApp = () => {
+    if (!exportResult) return;
+    void shareViaWhatsApp(
+      `Trial Balance (GL)\n${periodExportLabel}\nTotal Debit: ${formatCurrency(exportResult.totalDebit)}\nTotal Credit: ${formatCurrency(exportResult.totalCredit)}\nDifference: ${formatCurrency(exportResult.difference)}`
+    );
   };
 
   if (loading) {
@@ -106,18 +197,24 @@ export const TrialBalancePage: React.FC<{
   if (!data) {
     return (
       <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-6 text-center text-gray-400">
-        <p className="font-medium">No data for the selected period</p>
-        <p className="text-sm text-gray-500 mt-1">Adjust the date range or ensure journal entries exist.</p>
+        <p className="font-medium">{fetchError || 'No data for the selected period'}</p>
+        <p className="text-sm text-gray-500 mt-1">
+          {fetchError ? 'Check your connection and try again.' : 'Adjust the date range or ensure journal entries exist.'}
+        </p>
+        {fetchError ? (
+          <Button variant="outline" className="mt-4 border-gray-700" onClick={() => { setFetchError(null); setFetchRetryKey((k) => k + 1); }}>
+            Retry
+          </Button>
+        ) : null}
       </div>
     );
   }
 
+  const displayTotals = isSearchActive ? filteredTotals : data;
+
   return (
     <div className="space-y-4">
-      <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/[0.07] px-3 py-2 text-sm text-emerald-100/95">
-        <strong className="font-semibold">Basis: GL (journal)</strong> — Canonical trial balance from posted lines. Not operational
-        document totals. Compare to Contacts/Sales only via explicit reconciliation (different basis).
-      </div>
+      <ReportBasisBanner basis="official_gl" />
       {creditHeavyAssetRows.length > 0 && (
         <div className="rounded-xl border border-amber-500/35 bg-amber-500/[0.08] p-4 text-base text-amber-100/95 flex gap-3">
           <AlertTriangle className="w-5 h-5 shrink-0 text-amber-400 mt-0.5" />
@@ -139,7 +236,19 @@ export const TrialBalancePage: React.FC<{
           </div>
         </div>
       )}
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="no-print">
+        <ReportActions
+          title="Trial Balance (GL)"
+          onPrint={() => window.print()}
+          onPdf={handleExportPDF}
+          onExcel={handleExportExcel}
+          onWhatsapp={handleWhatsApp}
+          previewContentRef={reportPrintRef}
+          previewDocumentType="ledger"
+          previewReference={`trial-balance-${startDate}-${endDate}-${arApMode}`}
+        />
+      </div>
+      <div className="no-print flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-3">
           <label className="text-sm text-gray-500 flex items-center gap-2">
             AR / AP view
@@ -158,23 +267,70 @@ export const TrialBalancePage: React.FC<{
           Period: {startDate} to {endDate}
           {data.rows.length > 0 && (
             <span className="ml-2">
-              • Total Debit: {formatCurrency(data.totalDebit)} • Total Credit: {formatCurrency(data.totalCredit)}
-              {data.difference !== 0 && (
-                <span className="text-amber-400"> • Difference: {formatCurrency(data.difference)}</span>
+              • Total Debit: {formatCurrency(displayTotals.totalDebit)} • Total Credit: {formatCurrency(displayTotals.totalCredit)}
+              {displayTotals.difference !== 0 && (
+                <span className="text-amber-400"> • Difference: {formatCurrency(displayTotals.difference)}</span>
               )}
             </span>
           )}
         </p>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={handleExportPDF} className="gap-1">
-            <FileText size={14} /> PDF
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleExportExcel} className="gap-1">
-            <FileSpreadsheet size={14} /> Excel
-          </Button>
-        </div>
       </div>
-      <div className="overflow-auto rounded-xl border border-gray-800 bg-gray-900/50">
+
+      <div className="no-print rounded-xl border border-gray-800 bg-gray-900/50 p-4 space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="flex flex-col gap-2 min-w-0 sm:col-span-2 lg:col-span-2">
+            <Label className="text-xs text-gray-500 uppercase tracking-wide">Search</Label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none" />
+              <Input
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Code, account, amount…"
+                className="pl-9 bg-gray-950 border-gray-700 text-white h-10"
+              />
+              {journalSearchLoading ? (
+                <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-blue-400 animate-spin" />
+              ) : null}
+            </div>
+          </div>
+          <div className="flex flex-col gap-2 min-w-0 justify-end">
+            <div className="flex items-center gap-2">
+              <Switch
+                id="tb-journal-search"
+                checked={journalSearchEnabled}
+                onCheckedChange={setJournalSearchEnabled}
+              />
+              <Label htmlFor="tb-journal-search" className="text-sm text-gray-300 cursor-pointer leading-snug">
+                Search journal lines (ref / description)
+              </Label>
+            </div>
+            {journalSearchEnabled ? (
+              <span className="text-xs text-gray-600">
+                Also matches entry no, document no, description, and payment ref in this period.
+              </span>
+            ) : null}
+          </div>
+        </div>
+        {isSearchActive ? (
+          <p className="text-xs text-gray-500">
+            Showing {filteredRows.length} of {data.rows.length} accounts
+          </p>
+        ) : null}
+      </div>
+
+      {exportPayload ? (
+        <div className="fixed left-[-9999px] top-0 w-[820px] pointer-events-none" aria-hidden>
+          <FinancialReportPrintLayout
+            ref={reportPrintRef}
+            title="Trial Balance (GL)"
+            periodLabel={periodExportLabel}
+            branchLabel={branchLabel}
+          >
+            <FinancialReportDataTable headers={exportPayload.headers} rows={exportPayload.rows} />
+          </FinancialReportPrintLayout>
+        </div>
+      ) : null}
+      <div className="overflow-auto rounded-xl border border-gray-800 bg-gray-900/50 no-print">
         <table className="w-full text-base leading-snug">
           <thead className="border-b border-gray-800 bg-gray-800/50">
             <tr>
@@ -188,14 +344,14 @@ export const TrialBalancePage: React.FC<{
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-800">
-            {data.rows.length === 0 ? (
+            {filteredRows.length === 0 ? (
               <tr>
                 <td colSpan={7} className="p-6 text-center text-gray-500">
-                  No journal entries in this period.
+                  {isSearchActive ? 'No accounts match your search.' : 'No journal entries in this period.'}
                 </td>
               </tr>
             ) : (
-              data.rows.map((row) => {
+              filteredRows.map((row) => {
                 const t = (row.account_type || '').toLowerCase();
                 const looksAsset = t.includes('asset') || t.includes('receivable') || t.includes('cash') || t.includes('bank');
                 const isPayable = /payable/i.test(row.account_name || '');
@@ -247,13 +403,13 @@ export const TrialBalancePage: React.FC<{
               })
             )}
           </tbody>
-          {data.rows.length > 0 && (
+          {filteredRows.length > 0 && (
             <tfoot className="border-t-2 border-gray-700 bg-gray-800/50">
               <tr>
                 <td colSpan={3} className="p-3 font-medium text-white">Total</td>
-                <td className="p-3 text-right font-medium text-white">{formatCurrency(data.totalDebit)}</td>
-                <td className="p-3 text-right font-medium text-white">{formatCurrency(data.totalCredit)}</td>
-                <td className="p-3 text-right font-medium text-white">{formatCurrency(data.totalDebit - data.totalCredit)}</td>
+                <td className="p-3 text-right font-medium text-white">{formatCurrency(displayTotals.totalDebit)}</td>
+                <td className="p-3 text-right font-medium text-white">{formatCurrency(displayTotals.totalCredit)}</td>
+                <td className="p-3 text-right font-medium text-white">{formatCurrency(displayTotals.totalDebit - displayTotals.totalCredit)}</td>
                 <td className="p-3" />
               </tr>
             </tfoot>

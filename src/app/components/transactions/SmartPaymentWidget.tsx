@@ -10,14 +10,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "../ui/popover";
-import { Calendar } from "../ui/calendar";
 import { format } from "date-fns";
-import { cn } from "../ui/utils";
+import { DatePicker } from "../ui/DatePicker";
+import { formatLocalDateYYYYMMDD, parseLocalDateInput } from '@/app/utils/localDate';
 import { useFormatCurrency } from "@/app/hooks/useFormatCurrency";
 
 type PaymentMode = 'cash' | 'card' | 'bank' | 'cheque';
@@ -247,29 +242,11 @@ export const SmartPaymentWidget = ({
               <CalendarIcon size={14} />
               Payment Due Date
             </Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className={cn(
-                    "w-full justify-start text-left font-normal bg-gray-900 border-yellow-500/30 text-white hover:bg-gray-800",
-                    !dueDate && "text-gray-500"
-                  )}
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {dueDate ? format(dueDate, "PPP") : <span>Pick a date</span>}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0 bg-gray-900 border-gray-800">
-                <Calendar
-                  mode="single"
-                  selected={dueDate}
-                  onSelect={setDueDate}
-                  initialFocus
-                  className="bg-gray-900 text-white"
-                />
-              </PopoverContent>
-            </Popover>
+            <DatePicker
+              value={dueDate ? formatLocalDateYYYYMMDD(dueDate) : ''}
+              onChange={(v) => setDueDate(v ? parseLocalDateInput(v) : undefined)}
+              placeholder="Pick a date"
+            />
             <p className="text-xs text-yellow-400/70">
               Customer will need to pay by this date
             </p>

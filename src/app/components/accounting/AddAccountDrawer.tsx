@@ -3,6 +3,7 @@ import { X, Landmark, Wallet, Smartphone, Receipt, ArrowDownCircle, ArrowUpCircl
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { DatePicker } from "../ui/DatePicker";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
@@ -75,6 +76,7 @@ export const AddAccountDrawer = ({ isOpen, onClose, onSuccess }: AddAccountDrawe
   const [accountCode, setAccountCode] = useState('');
   const [notes, setNotes] = useState('');
   const [openingBalance, setOpeningBalance] = useState(0);
+  const [openingBalanceDate, setOpeningBalanceDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [isActive, setIsActive] = useState(true);
 
   // Operational only
@@ -240,6 +242,7 @@ export const AddAccountDrawer = ({ isOpen, onClose, onSuccess }: AddAccountDrawe
             accountName: created.name,
             category: mapDbAccountTypeToOpeningCategory(String(payload.type)),
             openingAmount: ob,
+            entryDate: openingBalanceDate,
           });
         } catch (e: any) {
           console.error('[ADD ACCOUNT] Opening balance JE failed:', e);
@@ -252,6 +255,7 @@ export const AddAccountDrawer = ({ isOpen, onClose, onSuccess }: AddAccountDrawe
       setAccountCode('');
       setNotes('');
       setOpeningBalance(0);
+      setOpeningBalanceDate(new Date().toISOString().slice(0, 10));
       setIsActive(true);
       setParentId(null);
       onSuccess?.();
@@ -352,6 +356,20 @@ export const AddAccountDrawer = ({ isOpen, onClose, onSuccess }: AddAccountDrawe
                       className="bg-gray-800 border-gray-700 text-white h-11 pl-8"
                     />
                   </div>
+                  {Math.abs(openingBalance) >= 0.01 ? (
+                    <div className="space-y-2 pt-1">
+                      <Label className="text-xs text-gray-500 uppercase tracking-wider">
+                        Opening balance effective date
+                      </Label>
+                      <DatePicker
+                        value={openingBalanceDate}
+                        onChange={(v) => setOpeningBalanceDate(v)}
+                      />
+                      <p className="text-xs text-gray-500">
+                        Journal entry date for this opening balance (when it applies in the ledger).
+                      </p>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="flex items-center justify-between bg-gray-900 border border-gray-800 p-4 rounded-lg">
@@ -452,6 +470,20 @@ export const AddAccountDrawer = ({ isOpen, onClose, onSuccess }: AddAccountDrawe
                       className="bg-gray-800 border-gray-700 text-white h-11 pl-8"
                     />
                   </div>
+                  {Math.abs(openingBalance) >= 0.01 ? (
+                    <div className="space-y-2 pt-1">
+                      <Label className="text-xs text-gray-500 uppercase tracking-wider">
+                        Opening balance effective date
+                      </Label>
+                      <DatePicker
+                        value={openingBalanceDate}
+                        onChange={(v) => setOpeningBalanceDate(v)}
+                      />
+                      <p className="text-xs text-gray-500">
+                        Journal entry date for this opening balance (when it applies in the ledger).
+                      </p>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="flex items-center justify-between bg-gray-900 border border-gray-800 p-4 rounded-lg">

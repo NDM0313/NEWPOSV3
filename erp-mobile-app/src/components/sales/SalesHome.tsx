@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { ArrowLeft, Plus, Loader2, MoreVertical, Printer, RotateCcw, Ban, History, Search, ShoppingCart, Calendar, Paperclip, Briefcase, Share2, Download, FileText, AlertTriangle, SquarePen, X, Trash2, Zap, Store } from 'lucide-react';
+import { ArrowLeft, Plus, Loader2, MoreVertical, Printer, RotateCcw, Ban, History, Search, ShoppingCart, Calendar, Paperclip, Briefcase, Share2, Download, FileText, AlertTriangle, SquarePen, X, Trash2, Zap, Store, Package } from 'lucide-react';
 import * as salesApi from '../../api/sales';
 import * as saleChargesApi from '../../api/saleCharges';
 import { useBespokeEnabled } from '../../hooks/useBespokeEnabled';
@@ -77,12 +77,20 @@ import { canViewSaleBalances, maskMoney } from '../../utils/balancePrivacy';
 import {
   isLikelyPosSaleRow,
   isStudioSaleRow,
-  matchesSaleListTypeFilter,
   saleListTypeLabel,
   type SaleListTypeFilter,
 } from '../../lib/saleTypeClassification';
+import * as rentalsApi from '../../api/rentals';
+import type { RentalListItem } from '../../api/rentals';
+import { ViewRentalDetails } from '../rental/ViewRentalDetails';
+import {
+  saleToUnifiedRow,
+  rentalToUnifiedRow,
+  mergeUnifiedRows,
+  filterUnifiedRows,
+  searchUnifiedRows,
+} from '../../lib/unifiedTransactionList';
 import { formatDocumentListDateTime, getCurrentLocalTimestamp } from '../../utils/localDate';
-import { sortByDocumentDateTimeDesc } from '../../utils/chronologicalSort';
 import { openWhatsAppShare } from '../../lib/phoneWhatsApp';
 import { resolvePaymentBranchId } from '../../utils/writeBranchResolution';
 import {
@@ -186,9 +194,16 @@ export function SalesHome({
   const saleTypeFilterTabs = useMemo((): SaleListTypeFilter[] => {
     const tabs: SaleListTypeFilter[] = ['all'];
     if (studioModuleOn) tabs.push('studio');
-    tabs.push('pos', 'regular');
+    tabs.push('pos', 'regular', 'rental');
     return tabs;
   }, [studioModuleOn]);
+
+  const saleTypeTabGridClass =
+    saleTypeFilterTabs.length >= 5
+      ? 'grid-cols-5'
+      : saleTypeFilterTabs.length === 4
+        ? 'grid-cols-4'
+        : 'grid-cols-3';
 
   const listBranchScope = useMemo(
     (): ListBranchScope =>
@@ -199,10 +214,12 @@ export function SalesHome({
   const useScopedStats =
     isolateWorkerData || listBranchScope.mode === 'accessible';
   const [recentSales, setRecentSales] = useState<SaleRecord[]>([]);
+  const [recentRentals, setRecentRentals] = useState<RentalListItem[]>([]);
   const [stats, setStats] = useState<{ today: number; week: number; month: number }>({ today: 0, week: 0, month: 0 });
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [saleTypeFilter, setSaleTypeFilter] = useState<SaleListTypeFilter>('all');
+  const [selectedRentalId, setSelectedRentalId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!studioModuleOn && saleTypeFilter === 'studio') {
@@ -252,8 +269,14 @@ export function SalesHome({
       const accessibleBranchIds = scope.mode === 'accessible' ? scope.branchIds : undefined;
       const summaryBranchId = apiBranchId;
       if (!opts?.silent) setLoading(true);
-      const [salesRes, todayRes, weekRes, monthRes, pendingRows] = await Promise.all([
+      const [salesRes, rentalsRes, todayRes, weekRes, monthRes, pendingRows] = await Promise.all([
         salesApi.getAllSales(companyId, apiBranchId, { accessibleBranchIds }),
+        rentalsApi.getRentals(companyId, apiBranchId, {
+          accessibleBranchIds,
+          ...(isolateWorkerData
+            ? { scopeToOwn: { authUserId: effectiveUserId, profileId: effectiveProfileId } }
+            : {}),
+        }),
         online && !useScopedStats
           ? reportsApi.getSalesSummary(companyId, summaryBranchId, 1)
           : Promise.resolve({ data: null, error: null }),
@@ -276,6 +299,7 @@ export function SalesHome({
       } else {
         setRecentSales([]);
       }
+      setRecentRentals(rentalsRes.data || []);
       if (online && !useScopedStats) {
         setStats({
           today: todayRes.data?.totalSales ?? 0,
@@ -285,7 +309,7 @@ export function SalesHome({
       }
       return list;
     },
-    [companyId, listBranchScope, online, useScopedStats],
+    [companyId, listBranchScope, online, useScopedStats, isolateWorkerData, effectiveUserId, effectiveProfileId],
   );
 
   useEffect(() => {
@@ -323,6 +347,24 @@ export function SalesHome({
     effectiveProfileId,
   ]);
 
+  const scopedRecentRentals = useMemo(() => {
+    return recentRentals.filter((r) => {
+      if (listBranchScope.mode === 'accessible') {
+        return !r.branchId || listBranchScope.branchIds.includes(r.branchId);
+      }
+      if (listBranchScope.mode === 'single') {
+        return !r.branchId || r.branchId === listBranchScope.branchId;
+      }
+      return true;
+    });
+  }, [recentRentals, listBranchScope]);
+
+  const unifiedList = useMemo(() => {
+    const saleRows = scopedRecentSales.map(saleToUnifiedRow);
+    const rentalRows = scopedRecentRentals.map(rentalToUnifiedRow);
+    return mergeUnifiedRows(saleRows, rentalRows);
+  }, [scopedRecentSales, scopedRecentRentals]);
+
   const displayStats = useMemo(() => {
     if (!useScopedStats) return stats;
     const now = new Date();
@@ -344,31 +386,33 @@ export function SalesHome({
       if (d >= weekAgo) week += amt;
       if (d >= monthAgo) month += amt;
     }
+    for (const rental of scopedRecentRentals) {
+      const d = new Date(rental.bookingDate);
+      if (Number.isNaN(d.getTime())) continue;
+      const amt = rental.total;
+      if (d >= todayStart) today += amt;
+      if (d >= weekAgo) week += amt;
+      if (d >= monthAgo) month += amt;
+    }
     return { today, week, month };
-  }, [stats, scopedRecentSales, useScopedStats]);
+  }, [stats, scopedRecentSales, scopedRecentRentals, useScopedStats]);
 
-  const filteredSales = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    const byType = scopedRecentSales.filter((sale) => matchesSaleListTypeFilter(sale.raw, saleTypeFilter));
-    const searched = q
-      ? byType.filter((sale) => {
-          const billRef = salesApi.readSaleBillRef(sale.raw).toLowerCase();
-          return (
-            sale.id.toLowerCase().includes(q) ||
-            sale.customer.toLowerCase().includes(q) ||
-            billRef.includes(q)
-          );
-        })
-      : byType;
-    const sorted = sortByDocumentDateTimeDesc(searched, (sale) => ({
-      documentDate: (sale.raw.invoice_date as string) || null,
-      eventTimestamp: (sale.raw.created_at as string) || null,
-    }));
-    return sorted.slice(0, SALE_LIST_DISPLAY_CAP);
-  }, [scopedRecentSales, saleTypeFilter, searchQuery]);
+  const filteredList = useMemo(() => {
+    const byType = filterUnifiedRows(unifiedList, saleTypeFilter);
+    const searched = searchUnifiedRows(byType, searchQuery);
+    return searched.slice(0, SALE_LIST_DISPLAY_CAP);
+  }, [unifiedList, saleTypeFilter, searchQuery]);
 
-  const saleTypeBadge = (sale: SaleRecord) => {
-    if (isStudioSaleRow(sale.raw)) {
+  const listRowBadge = (row: { kind: 'sale' | 'rental'; saleRaw?: Record<string, unknown> }) => {
+    if (row.kind === 'rental') {
+      return (
+        <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-medium bg-pink-500/20 text-pink-300 border border-pink-500/40">
+          <Package className="w-3 h-3" />
+          Rental
+        </span>
+      );
+    }
+    if (row.saleRaw && isStudioSaleRow(row.saleRaw)) {
       return (
         <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-medium bg-purple-500/20 text-purple-300 border border-purple-500/40">
           <Briefcase className="w-3 h-3" />
@@ -376,7 +420,7 @@ export function SalesHome({
         </span>
       );
     }
-    if (isLikelyPosSaleRow(sale.raw)) {
+    if (row.saleRaw && isLikelyPosSaleRow(row.saleRaw)) {
       return (
         <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-medium bg-amber-500/20 text-amber-300 border border-amber-500/40">
           <Zap className="w-3 h-3" />
@@ -393,8 +437,9 @@ export function SalesHome({
   };
 
   const emptyListMessage = () => {
-    if (searchQuery.trim()) return 'No sales match your search';
-    if (saleTypeFilter === 'all') return 'No sales found';
+    if (searchQuery.trim()) return 'No invoices match your search';
+    if (saleTypeFilter === 'all') return 'No sales or rentals found';
+    if (saleTypeFilter === 'rental') return 'No rentals found';
     return `No ${saleListTypeLabel(saleTypeFilter).toLowerCase()} sales found`;
   };
 
@@ -1155,7 +1200,15 @@ export function SalesHome({
   // Sale Detail View (full-page, same layout as Purchase detail)
   return (
   <>
-    {selectedSale ? (() => {
+    {selectedRentalId ? (
+      <ViewRentalDetails
+        rentalId={selectedRentalId}
+        companyId={companyId}
+        userId={userId ?? null}
+        onBack={() => setSelectedRentalId(null)}
+        onRefresh={() => void refetchSales({ silent: true })}
+      />
+    ) : selectedSale ? (() => {
     const items = (selectedSale.raw.items as Array<{ product_name?: string; quantity?: number; unit_price?: number; total?: number; packing_details?: { total_boxes?: number; total_pieces?: number } }>) ?? [];
     const saleAmount = selectedSale.amount;
     const studioCost = selectedSale.studio_charges ?? 0;
@@ -1532,8 +1585,8 @@ export function SalesHome({
             <h1 className="font-semibold text-white text-lg">Sales</h1>
             <p className="text-xs text-white/80">
               {saleTypeFilter === 'all'
-                ? `${filteredSales.length} invoice${filteredSales.length === 1 ? '' : 's'}`
-                : `${filteredSales.length} ${saleListTypeLabel(saleTypeFilter).toLowerCase()} invoice${filteredSales.length === 1 ? '' : 's'}`}
+                ? `${filteredList.length} item${filteredList.length === 1 ? '' : 's'}`
+                : `${filteredList.length} ${saleListTypeLabel(saleTypeFilter).toLowerCase()} item${filteredList.length === 1 ? '' : 's'}`}
             </p>
           </div>
           <button
@@ -1560,11 +1613,7 @@ export function SalesHome({
           </div>
         </div>
 
-        <div
-          className={`grid gap-1.5 mb-3 ${
-            saleTypeFilterTabs.length === 3 ? 'grid-cols-3' : 'grid-cols-4'
-          }`}
-        >
+        <div className={`grid gap-1.5 mb-3 ${saleTypeTabGridClass}`}>
           {saleTypeFilterTabs.map((tab) => {
             const active = saleTypeFilter === tab;
             const label = tab === 'all' ? 'All' : saleListTypeLabel(tab);
@@ -1584,7 +1633,7 @@ export function SalesHome({
             );
           })}
         </div>
-        {saleTypeFilter !== 'all' && (
+        {saleTypeFilter !== 'all' && saleTypeFilter !== 'rental' && (
           <p className="text-[10px] text-white/60 mb-2 -mt-1">Totals include all sale types.</p>
         )}
 
@@ -1594,7 +1643,7 @@ export function SalesHome({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search invoice # or customer..."
+            placeholder="Search invoice, rental, bill # or customer..."
             className="w-full h-10 bg-white/15 border border-white/20 rounded-xl pl-10 pr-4 text-sm text-white placeholder:text-white/60 focus:outline-none focus:bg-white/20 focus:border-white/40"
           />
         </div>
@@ -1615,7 +1664,93 @@ export function SalesHome({
       ) : (
         <>
           <div className="p-4 pt-4 space-y-3">
-            {filteredSales.map((sale) => {
+            {filteredList.map((row) => {
+              if (row.kind === 'rental') {
+                const isCancelled = row.rentalStatus === 'cancelled';
+                const paid = row.balance_due <= 0;
+                const partial = row.balance_due > 0 && row.total_received > 0;
+                const unpaid = row.balance_due > 0 && row.total_received === 0;
+                return (
+                  <div key={`rental-${row.rentalId}`} className="relative bg-[#1F2937] border border-[#374151] rounded-xl overflow-hidden hover:border-[#3B82F6]/50 transition-all min-w-0">
+                    <button
+                      type="button"
+                      onClick={() => row.rentalId && setSelectedRentalId(row.rentalId)}
+                      className="w-full p-4 text-left active:scale-[0.98] min-w-0"
+                    >
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <h3 className={`font-medium truncate ${isCancelled ? 'text-[#9CA3AF] line-through' : 'text-white'}`}>{row.id}</h3>
+                        <span className={`text-sm font-semibold shrink-0 ${isCancelled ? 'text-[#9CA3AF] line-through' : 'text-[#10B981]'}`}>
+                          Rs. {(row.grand_total ?? row.amount).toLocaleString()}
+                        </span>
+                      </div>
+                      <p className="text-sm text-[#D1D5DB] truncate">{row.customer}</p>
+                      {row.billRef ? (
+                        <p className="text-xs text-[#8B5CF6]/90 mt-0.5">Bill: {row.billRef}</p>
+                      ) : null}
+                      <div className="mt-1">{listRowBadge(row)}</div>
+                      {row.created_by_name ? (
+                        <p className="text-xs text-[#9CA3AF] mt-0.5">Salesman: {row.created_by_name}</p>
+                      ) : null}
+                      <div className="flex items-center gap-2 mt-1 text-xs text-[#9CA3AF]">
+                        <Calendar className="w-3.5 h-3.5 shrink-0" />
+                        <span>{row.date}</span>
+                      </div>
+                      <div className="border-t border-[#374151] my-3" aria-hidden="true" />
+                      <div className="space-y-1 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-[#9CA3AF]">Total:</span>
+                          <span className="font-medium text-white">Rs. {row.amount.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-[#9CA3AF]">Received:</span>
+                          <span className="text-[#10B981]">Rs. {row.total_received.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between items-center gap-2">
+                          <span className="text-[#9CA3AF]">Balance:</span>
+                          <span className="font-medium shrink-0 text-white">Rs. {row.balance_due.toLocaleString()}</span>
+                        </div>
+                      </div>
+                      <div className="mt-2 flex items-center gap-2 flex-wrap">
+                        {isCancelled && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#EF4444]/20 text-[#EF4444]">
+                            Cancelled
+                          </span>
+                        )}
+                        {!isCancelled && paid && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#10B981]/20 text-[#10B981]">
+                            ✔ Paid
+                          </span>
+                        )}
+                        {!isCancelled && partial && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#F59E0B]/20 text-[#F59E0B]">
+                            Partially Paid
+                          </span>
+                        )}
+                        {!isCancelled && unpaid && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#6B7280]/20 text-[#9CA3AF]">
+                            Unpaid
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  </div>
+                );
+              }
+              const sale: SaleRecord = {
+                raw: row.saleRaw!,
+                id: row.id,
+                customer: row.customer,
+                billRef: row.billRef,
+                amount: row.amount,
+                total_received: row.total_received,
+                balance_due: row.balance_due,
+                credit_balance: row.credit_balance,
+                date: row.date,
+                created_by_name: row.created_by_name,
+                studio_charges: row.studio_charges,
+                grand_total: row.grand_total,
+                shipment_status: row.shipment_status,
+              };
               const showSaleBalances = canViewSaleBalances(
                 canViewBalances,
                 sale.raw,
@@ -1645,7 +1780,7 @@ export function SalesHome({
                   {sale.billRef ? (
                     <p className="text-xs text-[#8B5CF6]/90 mt-0.5">Bill: {sale.billRef}</p>
                   ) : null}
-                  <div className="mt-1">{saleTypeBadge(sale)}</div>
+                  <div className="mt-1">{listRowBadge(row)}</div>
                   {sale.shipment_status && (
                     <span className="inline-block mt-1 text-xs font-medium px-2 py-0.5 rounded bg-[#3B82F6]/20 text-[#93C5FD] border border-[#3B82F6]/30">
                       {sale.shipment_status === 'Delivered' || sale.shipment_status === 'delivered' ? '✅ Delivered' :
@@ -1759,7 +1894,7 @@ export function SalesHome({
               );
             })}
 
-            {filteredSales.length === 0 && (
+            {filteredList.length === 0 && (
               <div className="text-center py-12">
                 <ShoppingCart className="w-16 h-16 mx-auto mb-4 text-[#374151]" />
                 <p className="text-[#9CA3AF]">{emptyListMessage()}</p>

@@ -15,10 +15,22 @@ export function AttachmentIndicatorButton({
   disabled = false,
 }: AttachmentIndicatorButtonProps) {
   const iconClass = size === 'sm' ? 'w-4 h-4' : 'w-5 h-5';
+  const stopTouch = (e: React.TouchEvent) => {
+    e.stopPropagation();
+  };
+
   return (
     <button
       type="button"
       disabled={disabled}
+      onTouchStart={stopTouch}
+      onTouchEnd={(e) => {
+        e.stopPropagation();
+        if (!disabled) {
+          e.preventDefault();
+          onClick(e as unknown as React.MouseEvent);
+        }
+      }}
       onClick={(e) => {
         e.stopPropagation();
         if (!disabled) onClick(e);

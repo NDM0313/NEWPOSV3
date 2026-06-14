@@ -43,12 +43,12 @@ export const PaymentDeleteConfirmationModal: React.FC<PaymentDeleteConfirmationM
               <AlertTriangle className="text-red-500 h-6 w-6" />
             </div>
             <AlertDialogTitle className="text-xl font-bold text-white">
-              Confirm Delete Payment
+              Cancel Payment
             </AlertDialogTitle>
           </div>
           <AlertDialogDescription className="text-gray-300 space-y-3 pt-2">
             <p className="text-sm leading-relaxed">
-              This payment will be <strong className="text-red-400">permanently deleted</strong>.
+              This payment will be <strong className="text-amber-400">cancelled</strong> with an accounting reversal. The audit trail is preserved.
             </p>
             
             <div className="bg-gray-800/50 rounded-lg p-3 space-y-2 text-sm border border-gray-700">
@@ -75,15 +75,15 @@ export const PaymentDeleteConfirmationModal: React.FC<PaymentDeleteConfirmationM
             <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 space-y-1.5 text-xs">
               <p className="text-yellow-400 font-semibold">⚠️ What will happen:</p>
               <ul className="list-disc list-inside space-y-1 text-gray-300 ml-2">
-                <li>Payment record will be removed</li>
-                <li>Accounting journal entry will be reversed</li>
+                <li>Payment will be voided (not hard-deleted when posted)</li>
+                <li>Accounting reversal entry may be created</li>
                 <li>Paid & Due amounts will be recalculated</li>
                 <li>Activity log entry will be created</li>
               </ul>
             </div>
 
-            <p className="text-red-400 font-semibold text-sm pt-2">
-              ⚠️ This action cannot be undone.
+            <p className="text-amber-400 font-semibold text-sm pt-2">
+              Cancelled payments remain visible in audit reports.
             </p>
           </AlertDialogDescription>
         </AlertDialogHeader>
@@ -103,10 +103,10 @@ export const PaymentDeleteConfirmationModal: React.FC<PaymentDeleteConfirmationM
             {isLoading ? (
               <span className="flex items-center gap-2">
                 <span className="animate-spin">⏳</span>
-                Deleting...
+                Cancelling...
               </span>
             ) : (
-              'Yes, Delete Payment'
+              'Yes, Cancel Payment'
             )}
           </AlertDialogAction>
         </AlertDialogFooter>

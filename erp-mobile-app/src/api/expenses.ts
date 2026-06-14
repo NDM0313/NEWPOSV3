@@ -1,4 +1,6 @@
+import { Capacitor } from '@capacitor/core';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { formatNetworkFetchError, isNetworkFetchError } from '../utils/networkErrorMessages';
 import { listCacheKeys } from '../lib/listCache';
 import { readThroughCache } from '../lib/offlineData';
 import { localNowDateString, getCurrentLocalTimestamp } from '../utils/localDate';
@@ -6,7 +8,6 @@ import { resolveBranchUuidForWrite } from '../utils/branchId';
 import {
   classifyStorageUploadError,
   type StorageUploadErrorKind,
-  storageErrorStatus,
 } from '../utils/storageUploadErrors';
 import { UPLOAD_TIMEOUT_MS, withUploadTimeout } from '../utils/uploadWithTimeout';
 import {
@@ -19,6 +20,7 @@ import {
   postedPaymentAccountIdFromRow,
   postedPaymentDisplayFromRow,
 } from '../lib/resolveExpensePaymentAccount';
+import { patchExpenseJournalInPlace } from './expenseAccountingPatch';
 
 /** DB / RPC expect cash | bank | card | other — wallet accounts must map to other. */
 function normalizeExpensePaymentMethodForDb(raw: string | undefined): string {
@@ -88,13 +90,27 @@ export async function getExpenses(
       : options?.accessibleBranchIds?.length
         ? `acc:${[...options.accessibleBranchIds].sort().join(',')}`
         : 'all';
+  if (
+    (!branchId || branchId === 'all' || branchId === 'default') &&
+    options?.accessibleBranchIds !== undefined &&
+    options.accessibleBranchIds.length === 0
+  ) {
+    return { data: [], error: 'No branch access configured for your account.' };
+  }
+
   const cacheKey = listCacheKeys.expenses(companyId, branchKey);
   const cached = await readThroughCache(
     cacheKey,
     async () => fetchExpensesOnline(companyId, branchId, options?.accessibleBranchIds),
     [],
   );
-  return { data: cached.data, error: cached.error };
+  if (cached.error && (!cached.data || cached.data.length === 0)) {
+    return { data: [], error: formatNetworkFetchError(cached.error) };
+  }
+  return {
+    data: cached.data ?? [],
+    error: cached.error ? formatNetworkFetchError(cached.error) : null,
+  };
 }
 
 async function enrichExpenseRowsWithCreatorNames(rows: Record<string, unknown>[]): Promise<void> {
@@ -166,70 +182,86 @@ const EXPENSE_LIST_SELECT = `
   payment_account:accounts(code, name, type)
 `;
 
+const EXPENSE_LIST_SELECT_PLAIN =
+  'id, expense_no, expense_date, category, description, amount, payment_method, payment_account_id, receipt_url, status, created_by, paid_to_user_id, branch_id, created_at, expense_category_id, vendor_name';
+
+const EXPENSE_LIST_SELECT_MINIMAL =
+  'id, expense_no, expense_date, category, description, amount, payment_method, status, created_by, paid_to_user_id, branch_id, created_at';
+
+function applyExpenseListBranchFilter<
+  T extends { eq: (col: string, val: string) => T; in: (col: string, vals: string[]) => T },
+>(
+  query: T,
+  branchId?: string | null,
+  accessibleBranchIds?: string[],
+): T {
+  if (branchId && branchId !== 'all' && branchId !== 'default') {
+    return query.eq('branch_id', branchId);
+  }
+  if (accessibleBranchIds?.length) {
+    return query.in('branch_id', accessibleBranchIds);
+  }
+  return query;
+}
+
+function buildExpenseListQuery(
+  select: string,
+  companyId: string,
+  branchId?: string | null,
+  accessibleBranchIds?: string[],
+) {
+  const query = supabase
+    .from('expenses')
+    .select(select)
+    .eq('company_id', companyId)
+    .order('expense_date', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(50);
+  return applyExpenseListBranchFilter(query, branchId, accessibleBranchIds);
+}
+
 async function fetchExpensesOnline(
   companyId: string,
   branchId?: string | null,
   accessibleBranchIds?: string[],
 ) {
-  let q = supabase
-    .from('expenses')
-    .select(EXPENSE_LIST_SELECT)
-    .eq('company_id', companyId)
-    .order('expense_date', { ascending: false })
-    .order('created_at', { ascending: false })
-    .limit(50);
-  if (branchId && branchId !== 'all' && branchId !== 'default') {
-    q = q.eq('branch_id', branchId);
-  } else if (accessibleBranchIds?.length) {
-    q = q.in('branch_id', accessibleBranchIds);
-  }
-  let { data, error } = await q;
+  const preferPlain = Capacitor.isNativePlatform();
+  let select = preferPlain ? EXPENSE_LIST_SELECT_PLAIN : EXPENSE_LIST_SELECT;
+  let { data, error } = await buildExpenseListQuery(select, companyId, branchId, accessibleBranchIds);
 
-  if (error?.message?.includes('accounts') || error?.message?.includes('payment_account')) {
-    let q2 = supabase
-      .from('expenses')
-      .select(
-        'id, expense_no, expense_date, category, description, amount, payment_method, payment_account_id, receipt_url, status, created_by, paid_to_user_id, branch_id, created_at, expense_category_id, vendor_name',
-      )
-      .eq('company_id', companyId)
-      .order('expense_date', { ascending: false })
-      .order('created_at', { ascending: false })
-      .limit(50);
-    if (branchId && branchId !== 'all' && branchId !== 'default') {
-      q2 = q2.eq('branch_id', branchId);
-    } else if (accessibleBranchIds?.length) {
-      q2 = q2.in('branch_id', accessibleBranchIds);
-    }
-    const retry = await q2;
+  if (
+    error &&
+    (error.message?.includes('accounts') ||
+      error.message?.includes('payment_account') ||
+      (!preferPlain && isNetworkFetchError(error.message)))
+  ) {
+    select = EXPENSE_LIST_SELECT_PLAIN;
+    const retry = await buildExpenseListQuery(select, companyId, branchId, accessibleBranchIds);
     data = retry.data as typeof data;
     error = retry.error;
   }
 
-  if (error?.message?.includes('expense_category_id') || error?.message?.includes('receipt_url') || error?.message?.includes('payment_account_id')) {
-    let q3 = supabase
-      .from('expenses')
-      .select(
-        'id, expense_no, expense_date, category, description, amount, payment_method, status, created_by, paid_to_user_id, branch_id, created_at',
-      )
-      .eq('company_id', companyId)
-      .order('expense_date', { ascending: false })
-      .order('created_at', { ascending: false })
-      .limit(50);
-    if (branchId && branchId !== 'all' && branchId !== 'default') {
-      q3 = q3.eq('branch_id', branchId);
-    } else if (accessibleBranchIds?.length) {
-      q3 = q3.in('branch_id', accessibleBranchIds);
-    }
-    const retry = await q3;
+  if (
+    error?.message?.includes('expense_category_id') ||
+    error?.message?.includes('receipt_url') ||
+    error?.message?.includes('payment_account_id') ||
+    error?.message?.includes('expense_no')
+  ) {
+    select = EXPENSE_LIST_SELECT_MINIMAL;
+    const retry = await buildExpenseListQuery(select, companyId, branchId, accessibleBranchIds);
     data = retry.data as typeof data;
     error = retry.error;
   }
 
-  if (error) return { data: [], error: error.message };
+  if (error) return { data: [], error: formatNetworkFetchError(error.message) };
 
-  const rows = (data || []) as Record<string, unknown>[];
+  const rows = (data || []) as unknown as Record<string, unknown>[];
   await enrichExpenseRowsWithCreatorNames(rows);
-  await enrichExpenseRowsWithPostedPaymentAccount(rows, companyId);
+  try {
+    await enrichExpenseRowsWithPostedPaymentAccount(rows, companyId);
+  } catch (e) {
+    console.warn('[fetchExpensesOnline] enrichExpenseRowsWithPostedPaymentAccount:', e);
+  }
   return { data: rows.map(mapExpenseRow), error: null };
 }
 
@@ -513,12 +545,15 @@ export async function getExtraServiceClearingLines(
 }> {
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
 
-  const twoArgRpc = {
+  // Fetch all open lines; category narrowing is done client-side (legacy sale_charges
+  // may lack expense_category_id and would be dropped by the RPC filter).
+  const rpcArgs = {
     p_company_id: companyId,
     p_tailor_contact_id: filters?.tailorContactId ?? null,
+    p_expense_category_id: null,
   };
 
-  const { data, error } = await supabase.rpc('extra_service_clearing_lines', twoArgRpc);
+  const { data, error } = await supabase.rpc('extra_service_clearing_lines', rpcArgs);
 
   if (error) {
     if (error.code === '42883' || String(error.message).includes('does not exist')) {
@@ -557,6 +592,28 @@ export async function getExtraServiceClearingLines(
   }
 
   return { data: lines, error: null, filterWarning };
+}
+
+async function patchExpenseReceiptUrl(
+  expenseId: string,
+  companyId: string,
+  receiptUrl: string,
+): Promise<{ ok: boolean; warning?: string }> {
+  const url = receiptUrl.trim();
+  if (!url) return { ok: true };
+  const { error } = await supabase
+    .from('expenses')
+    .update({ receipt_url: url })
+    .eq('id', expenseId)
+    .eq('company_id', companyId);
+  if (error) {
+    const msg = String(error.message || '').toLowerCase();
+    if (msg.includes('receipt_url') || msg.includes('schema')) {
+      return { ok: false, warning: 'Expense saved but receipt could not be linked (receipt_url column missing).' };
+    }
+    return { ok: false, warning: error.message || 'Expense saved but receipt could not be linked.' };
+  }
+  return { ok: true };
 }
 
 export async function createExpense(input: {
@@ -618,12 +675,14 @@ export async function createExpense(input: {
   let call = await callRpc(expensePayload);
   let rpcRaw = call.data;
   let rpcErr = call.error;
+  let receiptStrippedInFallback = false;
 
   if (rpcErr) {
     const msg = String(rpcErr.message || '').toLowerCase();
     const schemaMissing =
       msg.includes('payment_account_id') || msg.includes('receipt_url') || (msg.includes('column') && msg.includes('schema'));
     if (schemaMissing && (payAcct || receipt)) {
+      if (receipt) receiptStrippedInFallback = true;
       const fallback = { ...expensePayload };
       delete fallback.payment_account_id;
       delete fallback.receipt_url;
@@ -639,8 +698,6 @@ export async function createExpense(input: {
   if (!rpc?.success || !rpc.expense_id) {
     return { data: null, error: rpc?.error ?? 'Failed to create expense.' };
   }
-
-  const result = { data: { id: rpc.expense_id, expense_no: rpc.expense_no } };
 
   // Accounting: post journal entry (Dr mapped expense account, Cr payment
   // account). Soft-warn on failure.
@@ -675,6 +732,7 @@ export async function createExpense(input: {
   if (saleChargeId) patch.sale_charge_id = saleChargeId;
   if (tailorId) patch.tailor_contact_id = tailorId;
   if (expenseCategoryId) patch.expense_category_id = expenseCategoryId;
+  if (receipt) patch.receipt_url = receipt;
 
   if (expenseId && Object.keys(patch).length > 0) {
     let upd = await supabase.from('expenses').update(patch).eq('id', expenseId).eq('company_id', input.companyId);
@@ -686,6 +744,7 @@ export async function createExpense(input: {
         'sale_charge_id',
         'tailor_contact_id',
         'expense_category_id',
+        'receipt_url',
       ] as const;
       let slim = { ...patch };
       for (const key of dropKeys) {
@@ -710,44 +769,140 @@ export async function createExpense(input: {
     }
   }
 
-  return { data: result.data, error: null };
+  let receiptWarning: string | null = null;
+  if (receipt && expenseId) {
+    const { data: checkRow } = await supabase
+      .from('expenses')
+      .select('receipt_url')
+      .eq('id', expenseId)
+      .eq('company_id', input.companyId)
+      .maybeSingle();
+    if (!checkRow?.receipt_url) {
+      const patched = await patchExpenseReceiptUrl(expenseId, input.companyId, receipt);
+      if (!patched.ok) {
+        receiptWarning = patched.warning ?? 'Expense saved but receipt could not be linked.';
+      }
+    }
+    if (receiptStrippedInFallback && !receiptWarning) {
+      receiptWarning = 'Expense saved; receipt was linked after create (RPC omitted receipt_url).';
+    }
+  }
+
+  return {
+    data: { id: rpc.expense_id, expense_no: rpc.expense_no, receiptWarning },
+    error: null,
+  };
+}
+
+export async function updateExpense(input: {
+  companyId: string;
+  expenseId: string;
+  branchId?: string | null;
+  category: string;
+  description: string;
+  amount: number;
+  paymentMethod: string;
+  expenseDate?: string;
+  paymentAccountId?: string | null;
+  receiptUrl?: string | null;
+  paidToUserId?: string | null;
+  payeeName?: string | null;
+  expenseCategoryId?: string | null;
+}) {
+  if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
+
+  const { data: existingRow, error: fetchErr } = await getExpenseById(input.companyId, input.expenseId);
+  if (fetchErr || !existingRow) {
+    return { data: null, error: fetchErr || 'Expense not found.' };
+  }
+
+  const paymentMethod = normalizeExpensePaymentMethodForDb(input.paymentMethod);
+  const payAcct = sanitizeUuid(input.paymentAccountId ?? null);
+  const paidUid = sanitizeUuid(input.paidToUserId ?? null);
+  const expenseCategoryId = sanitizeUuid(input.expenseCategoryId ?? null);
+  const vendor = (input.payeeName ?? '').trim().slice(0, 255);
+
+  const payload: Record<string, unknown> = {
+    expense_date: input.expenseDate || existingRow.expense_date,
+    category: input.category,
+    description: input.description,
+    amount: input.amount,
+    payment_method: paymentMethod,
+  };
+  if (payAcct) payload.payment_account_id = payAcct;
+  if (paidUid) payload.paid_to_user_id = paidUid;
+  if (vendor) payload.vendor_name = vendor;
+  if (expenseCategoryId) payload.expense_category_id = expenseCategoryId;
+  if (input.receiptUrl !== undefined) payload.receipt_url = input.receiptUrl || null;
+  if (input.branchId) payload.branch_id = input.branchId;
+
+  const isPosted = existingRow.status === 'paid' || existingRow.status === 'approved';
+  if (isPosted) {
+    const patch = await patchExpenseJournalInPlace({
+      companyId: input.companyId,
+      expenseId: input.expenseId,
+      oldAmount: Number(existingRow.amount) || 0,
+      newAmount: input.amount,
+      category: input.category,
+      description: input.description,
+      expenseDate: input.expenseDate || existingRow.expense_date,
+    });
+    if (!patch.ok) {
+      return { data: null, error: patch.error || 'Could not update expense accounting.' };
+    }
+  }
+
+  let upd = await supabase
+    .from('expenses')
+    .update(payload)
+    .eq('id', input.expenseId)
+    .eq('company_id', input.companyId)
+    .select(EXPENSE_LIST_SELECT)
+    .single();
+
+  if (upd.error) {
+    const msg = String(upd.error.message || '').toLowerCase();
+    const dropKeys = [
+      'vendor_name',
+      'paid_to_user_id',
+      'expense_category_id',
+      'receipt_url',
+      'payment_account_id',
+      'branch_id',
+    ] as const;
+    let slim = { ...payload };
+    for (const key of dropKeys) {
+      if (msg.includes(key) || msg.includes('schema cache')) {
+        const { [key]: _d, ...rest } = slim;
+        slim = rest;
+      }
+    }
+    if (Object.keys(slim).length > 0) {
+      upd = await supabase
+        .from('expenses')
+        .update(slim)
+        .eq('id', input.expenseId)
+        .eq('company_id', input.companyId)
+        .select(EXPENSE_LIST_SELECT)
+        .single();
+    }
+    if (upd.error) return { data: null, error: upd.error.message };
+  }
+
+  const row = upd.data as Record<string, unknown>;
+  await enrichExpenseRowsWithCreatorNames([row]);
+  await enrichExpenseRowsWithPostedPaymentAccount([row], input.companyId);
+  return { data: mapExpenseRow(row), error: null };
 }
 
 const EXPENSE_RECEIPT_BUCKET = 'expense-receipts';
 const MAX_RECEIPT_BYTES = 5 * 1024 * 1024; // 5MB
-
-let expenseReceiptBucketPreflight: Promise<boolean> | null = null;
 
 function isDevBuild(): boolean {
   return Boolean(
     typeof import.meta !== 'undefined' &&
       (import.meta as { env?: { DEV?: boolean } }).env?.DEV,
   );
-}
-
-async function ensureExpenseReceiptBucketExists(): Promise<{ ok: true } | { ok: false; error: string; kind: StorageUploadErrorKind }> {
-  if (!expenseReceiptBucketPreflight) {
-    expenseReceiptBucketPreflight = (async () => {
-      const { data, error } = await supabase.storage.listBuckets();
-      if (error) {
-        if (isDevBuild()) {
-          console.warn('[uploadExpenseReceipt] listBuckets failed', {
-            status: storageErrorStatus(error),
-            message: error.message,
-          });
-        }
-        return true;
-      }
-      return (data ?? []).some((b) => b.name === EXPENSE_RECEIPT_BUCKET);
-    })();
-  }
-  const exists = await expenseReceiptBucketPreflight;
-  if (exists) return { ok: true };
-  const classified = classifyStorageUploadError(
-    { statusCode: 400, message: 'Bucket not found', error: 'Bucket not found' },
-    'receipt',
-  );
-  return { ok: false, error: classified.userMessage, kind: classified.kind };
 }
 
 export interface ExpenseReceiptUploadResult {
@@ -767,11 +922,6 @@ export async function uploadExpenseReceipt(
   }
   if (!isSupabaseConfigured) return { url: null, error: 'App not configured.' };
   if (file.size > MAX_RECEIPT_BYTES) return { url: null, error: 'File too large. Max 5MB.' };
-
-  const bucketCheck = await ensureExpenseReceiptBucketExists();
-  if (!bucketCheck.ok) {
-    return { url: null, error: bucketCheck.error, kind: bucketCheck.kind };
-  }
 
   const safeName = (file.name || 'receipt').replace(/[^a-zA-Z0-9.-]/g, '_');
   const path = `${companyId}/receipts/${Date.now()}_${safeName}`;

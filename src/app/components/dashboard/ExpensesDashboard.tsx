@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import { 
   Receipt, 
@@ -13,7 +13,8 @@ import {
   LayoutGrid,
   List as ListIcon,
   Loader2,
-  Clock
+  Clock,
+  Paperclip
 } from 'lucide-react';
 import { Button } from "../ui/button";
 import { cn } from "../ui/utils";
@@ -22,6 +23,11 @@ import { AddCategoryModal } from './AddCategoryModal';
 import { ExpenseCategoryTreePanel } from './ExpenseCategoryTreePanel';
 import { ExpenseDetailSheet } from './ExpenseDetailSheet';
 import { expenseMatchesMainFilter, findPathToCategory, formatCategoryPathFromNodes } from '@/app/lib/expenseCategoryTreeUtils';
+import { PENDING_EXPENSE_OPEN_KEY } from '@/app/lib/notificationNavConstants';
+import {
+  safeSessionStorageGetItem,
+  safeSessionStorageRemoveItem,
+} from '@/app/lib/safeBrowserStorage';
 import { Badge } from "../ui/badge";
 import {
   DropdownMenu,
@@ -41,6 +47,8 @@ import {
   AlertDialogTitle,
 } from "../ui/alert-dialog";
 import { toast } from "sonner";
+import { AttachmentViewer } from '@/app/components/shared/AttachmentViewer';
+import type { Expense } from '@/app/context/ExpenseContext';
 import { Building2, Zap, Users, ShoppingCart, Briefcase, Utensils, Car, Wallet, Home } from 'lucide-react';
 import { ListToolbar } from '../ui/list-toolbar';
 import { DatePicker } from '../ui/DatePicker';
@@ -51,7 +59,12 @@ import { useAccounting } from '../../context/AccountingContext';
 import { useSupabase } from '../../context/SupabaseContext';
 import { expenseCategoryService, type ExpenseCategoryRow, type ExpenseCategoryTreeItem } from '../../services/expenseCategoryService';
 import { expenseService } from '../../services/expenseService';
+import { branchService } from '../../services/branchService';
 import { normalizeCategoryForComparison } from '@/app/lib/expenseEditCanonical';
+import {
+  expenseDeleteOrCancelLabel,
+  isPostedExpenseStatus,
+} from '@/app/lib/expenseCancelPolicy';
 import {
   EXPENSE_LIST_TRACE,
   isExpenseListDiagnosticsEnabled,
@@ -95,10 +108,23 @@ const ICON_BY_SLUG: Record<string, React.ComponentType<{ size?: number }>> = {
   Other: Wallet,
 };
 
+function expenseReceiptAttachments(expense: Pick<Expense, 'receiptUrl' | 'receiptAttached'>) {
+  const url = expense.receiptUrl?.trim();
+  if (!url) return null;
+  const base = url.split('/').pop() || 'receipt';
+  let name = base;
+  try {
+    name = decodeURIComponent(base.replace(/^\d+_/, ''));
+  } catch {
+    /* keep base */
+  }
+  return [{ url, name }];
+}
+
 export const ExpensesDashboard = () => {
   const { formatCurrency } = useFormatCurrency();
   const { companyId } = useSupabase();
-  const { expenses, loading, deleteExpense, refreshExpenses } = useExpenses();
+  const { expenses, loading, deleteExpense, cancelExpense, refreshExpenses } = useExpenses();
   const { accounts } = useAccounting();
   const [activeTab, setActiveTab] = useState<'overview' | 'list' | 'categories'>('overview');
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -106,6 +132,19 @@ export const ExpensesDashboard = () => {
   const [selectedCategory, setSelectedCategory] = useState<ExpenseCategoryRow | null>(null);
   const [categoryModalParentId, setCategoryModalParentId] = useState<string | null>(null);
   const [categoriesFromDb, setCategoriesFromDb] = useState<ExpenseCategoryTreeItem[]>([]);
+
+  // List filtering states (declared before hooks that depend on them)
+  const [searchTerm, setSearchTerm] = useState('');
+  const [pageSize, setPageSize] = useState(25);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [subCategoryFilter, setSubCategoryFilter] = useState<string>('all');
+  const [branchFilter, setBranchFilter] = useState<string>('all');
+  const [branches, setBranches] = useState<Array<{ id: string; name: string; code?: string }>>([]);
+  const [accountFilter, setAccountFilter] = useState<string>('all');
+  const [fromDate, setFromDate] = useState<string>('');
+  const [toDate, setToDate] = useState<string>('');
 
   const loadCategoriesFromDb = React.useCallback(() => {
     if (!companyId) return;
@@ -116,20 +155,59 @@ export const ExpensesDashboard = () => {
     loadCategoriesFromDb();
   }, [loadCategoriesFromDb]);
 
+  useEffect(() => {
+    if (!companyId) return;
+    branchService.getBranchesCached(companyId).then(setBranches).catch(() => setBranches([]));
+  }, [companyId]);
+
+  useEffect(() => {
+    setSubCategoryFilter('all');
+  }, [categoryFilter]);
+
+  const branchNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    branches.forEach((b) => {
+      const label = b.code ? `${b.code} | ${b.name}` : b.name;
+      map.set(b.id, label);
+    });
+    return map;
+  }, [branches]);
+
+  const resolveExpenseBranchLabel = useCallback(
+    (location?: string) => {
+      if (!location) return '—';
+      return branchNameById.get(location) || location;
+    },
+    [branchNameById]
+  );
+
+  const subCategoryFilterOptions = useMemo(() => {
+    if (categoryFilter === 'all') return [];
+    const main = categoriesFromDb.find((m) => m.name === categoryFilter);
+    return main?.children ?? [];
+  }, [categoryFilter, categoriesFromDb]);
+
   // 🎯 NEW: Action States
   const [selectedExpense, setSelectedExpense] = useState<any>(null);
   const [viewDetailsOpen, setViewDetailsOpen] = useState(false);
+  const [attachmentsDialogList, setAttachmentsDialogList] = useState<{ url: string; name: string }[] | null>(null);
   const [deleteAlertOpen, setDeleteAlertOpen] = useState(false);
 
-  // List filtering states
-  const [searchTerm, setSearchTerm] = useState('');
-  const [pageSize, setPageSize] = useState(25);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [filterOpen, setFilterOpen] = useState(false);
-  const [categoryFilter, setCategoryFilter] = useState<string>('all');
-  const [accountFilter, setAccountFilter] = useState<string>('all');
-  const [fromDate, setFromDate] = useState<string>('');
-  const [toDate, setToDate] = useState<string>('');
+  useEffect(() => {
+    try {
+      const pendingId = safeSessionStorageGetItem(PENDING_EXPENSE_OPEN_KEY);
+      if (!pendingId || expenses.length === 0) return;
+      const match = expenses.find((e) => e.id === pendingId);
+      safeSessionStorageRemoveItem(PENDING_EXPENSE_OPEN_KEY);
+      if (match) {
+        setActiveTab('list');
+        setSelectedExpense(match);
+        setIsDrawerOpen(true);
+      }
+    } catch {
+      safeSessionStorageRemoveItem(PENDING_EXPENSE_OPEN_KEY);
+    }
+  }, [expenses]);
   /** Expense documents whose GL posting was reversed (correction_reversal on the expense JE). */
   const [reversedExpenseIds, setReversedExpenseIds] = useState<Set<string>>(() => new Set());
   const [showReversedExpenses, setShowReversedExpenses] = useState(false);
@@ -239,17 +317,24 @@ export const ExpensesDashboard = () => {
   };
   
   const handleDeleteExpense = async () => {
-    if (selectedExpense) {
-      try {
+    if (!selectedExpense) return;
+    const posted = isPostedExpenseStatus(selectedExpense.status);
+    try {
+      if (posted) {
+        await cancelExpense(selectedExpense.id);
+        toast.success(`Expense "${selectedExpense.expenseNo || selectedExpense.id}" cancelled — audit trail kept.`);
+      } else {
         await deleteExpense(selectedExpense.id);
-        await refreshExpenses();
-        toast.success(`Expense "${selectedExpense.expenseNo || selectedExpense.id}" deleted successfully.`);
-        setDeleteAlertOpen(false);
-        setSelectedExpense(null);
-      } catch (error: any) {
-        console.error('[EXPENSES DASHBOARD] Error deleting expense:', error);
-        toast.error('Failed to delete expense: ' + (error.message || 'Unknown error'));
+        toast.success(`Expense "${selectedExpense.expenseNo || selectedExpense.id}" deleted.`);
       }
+      await refreshExpenses();
+      setDeleteAlertOpen(false);
+      setSelectedExpense(null);
+    } catch (error: any) {
+      console.error('[EXPENSES DASHBOARD] Error removing expense:', error);
+      toast.error(
+        (posted ? 'Failed to cancel expense: ' : 'Failed to delete expense: ') + (error.message || 'Unknown error')
+      );
     }
   };
 
@@ -361,16 +446,28 @@ export const ExpensesDashboard = () => {
         if (!matchesSearch) filterReason = 'search_term_mismatch';
       }
 
-      // Category filter: main includes its sub-categories
+      // Category filter: sub-category exact match, or main includes its sub-categories
       if (!filterReason && categoryFilter !== 'all') {
-        const main = categoriesFromDb.find((m) => m.name === categoryFilter);
-        if (main) {
-          const catId = (expense as { expense_category_id?: string }).expense_category_id;
-          if (!expenseMatchesMainFilter(expense.category, catId, main, categoriesFromDb)) {
-            filterReason = `category_filter: not under "${categoryFilter}"`;
+        const catId = (expense as { expense_category_id?: string }).expense_category_id;
+        if (subCategoryFilter !== 'all') {
+          if (catId !== subCategoryFilter) {
+            filterReason = `subcategory_filter: expense category id "${catId}" !== "${subCategoryFilter}"`;
           }
-        } else if ((expense.category || '') !== categoryFilter) {
-          filterReason = `category_filter: list shows "${expense.category}" but filter is "${categoryFilter}"`;
+        } else {
+          const main = categoriesFromDb.find((m) => m.name === categoryFilter);
+          if (main) {
+            if (!expenseMatchesMainFilter(expense.category, catId, main, categoriesFromDb)) {
+              filterReason = `category_filter: not under "${categoryFilter}"`;
+            }
+          } else if ((expense.category || '') !== categoryFilter) {
+            filterReason = `category_filter: list shows "${expense.category}" but filter is "${categoryFilter}"`;
+          }
+        }
+      }
+
+      if (!filterReason && branchFilter !== 'all') {
+        if ((expense.location || '') !== branchFilter) {
+          filterReason = 'branch_filter_mismatch';
         }
       }
 
@@ -414,6 +511,8 @@ export const ExpensesDashboard = () => {
     operationalExpenses,
     searchTerm,
     categoryFilter,
+    subCategoryFilter,
+    branchFilter,
     categoriesFromDb,
     accountFilter,
     fromDate,
@@ -435,7 +534,7 @@ export const ExpensesDashboard = () => {
   // Reset to page 1 when filters change
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, categoryFilter, accountFilter, fromDate, toDate, showReversedExpenses]);
+  }, [searchTerm, categoryFilter, subCategoryFilter, branchFilter, accountFilter, fromDate, toDate, showReversedExpenses]);
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
@@ -449,6 +548,8 @@ export const ExpensesDashboard = () => {
   // Active filter count
   const activeFilterCount = [
     categoryFilter !== 'all',
+    subCategoryFilter !== 'all',
+    branchFilter !== 'all',
     accountFilter !== 'all',
     !!fromDate,
     !!toDate,
@@ -458,6 +559,8 @@ export const ExpensesDashboard = () => {
   // Clear filters
   const clearFilters = () => {
     setCategoryFilter('all');
+    setSubCategoryFilter('all');
+    setBranchFilter('all');
     setAccountFilter('all');
     setFromDate('');
     setToDate('');
@@ -472,11 +575,12 @@ export const ExpensesDashboard = () => {
 
   // Export handlers (use filtered list from backend)
   const getExportData = (): ExportData => ({
-    headers: ['Date', 'Reference #', 'Category', 'Expense For', 'Paid Via', 'Amount', 'Status'],
+    headers: ['Date', 'Reference #', 'Category', 'Branch', 'Expense For', 'Paid Via', 'Amount', 'Status'],
     rows: filteredExpenses.map((e) => [
       new Date(e.date).toLocaleDateString(),
       e.expenseNo || '—',
       e.category,
+      resolveExpenseBranchLabel(e.location),
       e.description,
       paymentDisplayForExpense(e),
       e.amount ?? 0,
@@ -836,6 +940,44 @@ export const ExpensesDashboard = () => {
                       </select>
                     </div>
 
+                    {subCategoryFilterOptions.length > 0 && (
+                      <div>
+                        <label className="text-xs text-gray-400 uppercase font-medium mb-2 block">
+                          Sub-category
+                        </label>
+                        <select
+                          value={subCategoryFilter}
+                          onChange={(e) => setSubCategoryFilter(e.target.value)}
+                          className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                        >
+                          <option value="all">All sub-categories</option>
+                          {subCategoryFilterOptions.map((sub) => (
+                            <option key={sub.id} value={sub.id}>{sub.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {branches.length > 0 && (
+                      <div>
+                        <label className="text-xs text-gray-400 uppercase font-medium mb-2 block">
+                          Branch
+                        </label>
+                        <select
+                          value={branchFilter}
+                          onChange={(e) => setBranchFilter(e.target.value)}
+                          className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                        >
+                          <option value="all">All Branches</option>
+                          {branches.map((b) => (
+                            <option key={b.id} value={b.id}>
+                              {b.code ? `${b.code} | ${b.name}` : b.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
                     {/* Account Filter */}
                     <div>
                       <label className="text-xs text-gray-400 uppercase font-medium mb-2 block">
@@ -873,32 +1015,33 @@ export const ExpensesDashboard = () => {
             }}
           />
 
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden flex flex-col">
+          <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden flex flex-col max-w-full">
            {/* Table */}
-           <div className="overflow-x-auto flex-1">
-              <table className="w-full text-sm text-left">
+           <div className="overflow-x-auto flex-1 max-w-full">
+              <table className="w-full table-fixed text-sm text-left">
                  <thead className="text-xs text-gray-500 uppercase bg-gray-950/50 border-b border-gray-800">
                     <tr>
-                       <th className="px-6 py-3 font-medium">Date</th>
-                       <th className="px-6 py-3 font-medium">Reference #</th>
-                       <th className="px-6 py-3 font-medium">Category</th>
-                       <th className="px-6 py-3 font-medium">Expense For</th>
-                       <th className="px-6 py-3 font-medium">Paid Via</th>
-                       <th className="px-6 py-3 font-medium text-right">Amount</th>
-                       <th className="px-6 py-3 font-medium text-center">Action</th>
+                       <th className="px-3 py-3 font-medium w-[6.5rem]">Date</th>
+                       <th className="px-3 py-3 font-medium w-[5.5rem]">Reference #</th>
+                       <th className="px-3 py-3 font-medium max-w-[8rem]">Category</th>
+                       <th className="px-3 py-3 font-medium max-w-[8rem] hidden md:table-cell">Branch</th>
+                       <th className="px-3 py-3 font-medium w-[12rem]">Expense For</th>
+                       <th className="px-3 py-3 font-medium max-w-[8rem]">Paid Via</th>
+                       <th className="px-3 py-3 font-medium text-right w-[5.5rem]">Amount</th>
+                       <th className="px-3 py-3 font-medium text-center w-[4rem]">Action</th>
                     </tr>
                  </thead>
                  <tbody className="divide-y divide-gray-800">
                     {loading ? (
                       <tr>
-                        <td colSpan={7} className="px-6 py-12 text-center">
+                        <td colSpan={8} className="px-3 py-12 text-center">
                           <Loader2 size={48} className="mx-auto text-blue-500 mb-3 animate-spin" />
                           <p className="text-gray-400 text-sm">Loading expenses...</p>
                         </td>
                       </tr>
                     ) : paginatedExpenses.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="px-6 py-12 text-center">
+                        <td colSpan={8} className="px-3 py-12 text-center">
                           <Receipt size={48} className="mx-auto text-gray-600 mb-3" />
                           <p className="text-gray-400 text-sm">No expenses found</p>
                           <p className="text-gray-600 text-xs mt-1">Try adjusting your search or filters</p>
@@ -907,30 +1050,49 @@ export const ExpensesDashboard = () => {
                     ) : (
                       paginatedExpenses.map((expense) => (
                        <tr key={expense.id} className="group hover:bg-gray-800/30 transition-colors">
-                          <td className="px-6 py-4 font-medium text-gray-300">
-                             <div className="flex items-center gap-2">
-                                <Calendar size={14} className="text-gray-500" />
-                                {new Date(expense.date).toLocaleDateString()}
+                          <td className="px-3 py-3 font-medium text-gray-300">
+                             <div className="flex items-center gap-1.5 truncate">
+                                <Calendar size={14} className="text-gray-500 shrink-0" />
+                                <span className="truncate">{new Date(expense.date).toLocaleDateString()}</span>
                              </div>
                           </td>
-                          <td className="px-6 py-4 text-gray-500 font-mono text-xs">
+                          <td className="px-3 py-3 text-white font-mono font-bold text-[0.75rem] truncate">
                              {expense.expenseNo || '—'}
                           </td>
-                          <td className="px-6 py-4">
-                             <Badge variant="outline" className={cn("font-normal", getCategoryBadgeStyle(expense.category))}>
-                                {expense.category}
+                          <td className="px-3 py-3 max-w-[8rem]">
+                             <Badge variant="outline" className={cn("font-normal truncate max-w-full", getCategoryBadgeStyle(expense.category))}>
+                                <span className="truncate">{expense.category}</span>
                              </Badge>
                           </td>
-                          <td className="px-6 py-4 text-white">
-                             {expense.description}
+                          <td className="px-3 py-3 text-gray-400 text-sm max-w-[8rem] truncate hidden md:table-cell">
+                             {resolveExpenseBranchLabel(expense.location)}
                           </td>
-                          <td className="px-6 py-4 text-gray-400">
+                          <td className="px-3 py-3 text-white max-w-[12rem]">
+                             <div className="flex items-center gap-1.5 min-w-0">
+                               <span className="truncate">{expense.description}</span>
+                               {(expense.receiptUrl || expense.receiptAttached) && expenseReceiptAttachments(expense) ? (
+                                 <button
+                                   type="button"
+                                   onClick={(e) => {
+                                     e.stopPropagation();
+                                     const list = expenseReceiptAttachments(expense);
+                                     if (list?.length) setAttachmentsDialogList(list);
+                                   }}
+                                   className="shrink-0 p-0.5 hover:bg-amber-500/20 rounded transition-colors"
+                                   title="View attachment"
+                                 >
+                                   <Paperclip size={14} className="text-amber-400" />
+                                 </button>
+                               ) : null}
+                             </div>
+                          </td>
+                          <td className="px-3 py-3 text-gray-400 max-w-[8rem] truncate">
                              {paymentDisplayForExpense(expense)}
                           </td>
-                          <td className="px-6 py-4 text-right font-bold text-red-500">
+                          <td className="px-3 py-3 text-right font-bold text-red-500 whitespace-nowrap">
                              -{formatCurrency(expense.amount)}
                           </td>
-                          <td className="px-6 py-4 text-center">
+                          <td className="px-3 py-3 text-center">
                              <DropdownMenu>
                                <DropdownMenuTrigger asChild>
                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-gray-500 hover:text-white data-[state=open]:bg-gray-800">
@@ -1031,26 +1193,38 @@ export const ExpensesDashboard = () => {
         onSuccess={loadCategoriesFromDb}
       />
 
-      {/* Delete Expense Confirmation */}
+      {/* Delete / Cancel Expense Confirmation */}
       <AlertDialog open={deleteAlertOpen} onOpenChange={setDeleteAlertOpen}>
         <AlertDialogContent className="bg-gray-900 border-gray-800 text-white">
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Expense</AlertDialogTitle>
+            <AlertDialogTitle>
+              {expenseDeleteOrCancelLabel(selectedExpense?.status)}
+            </AlertDialogTitle>
             <AlertDialogDescription className="text-gray-400">
-              Are you sure you want to delete expense {selectedExpense?.expenseNo || selectedExpense?.id}? This action cannot be undone.
+              {isPostedExpenseStatus(selectedExpense?.status)
+                ? `Cancel expense ${selectedExpense?.expenseNo || selectedExpense?.id}? Accounting will be voided; the row stays for audit and is hidden from normal reports.`
+                : `Delete draft expense ${selectedExpense?.expenseNo || selectedExpense?.id}? This removes the row.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="bg-gray-800 border-gray-700 text-white hover:bg-gray-700">Cancel</AlertDialogCancel>
+            <AlertDialogCancel className="bg-gray-800 border-gray-700 text-white hover:bg-gray-700">Back</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteExpense}
               className="bg-red-600 hover:bg-red-700 text-white"
             >
-              Delete
+              {isPostedExpenseStatus(selectedExpense?.status) ? 'Cancel Expense' : 'Delete'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {attachmentsDialogList ? (
+        <AttachmentViewer
+          attachments={attachmentsDialogList}
+          isOpen={!!attachmentsDialogList}
+          onClose={() => setAttachmentsDialogList(null)}
+        />
+      ) : null}
 
     </div>
   );

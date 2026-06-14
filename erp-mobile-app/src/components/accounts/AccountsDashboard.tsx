@@ -264,6 +264,10 @@ export function AccountsDashboard({
           e.payment_reference_number && String(e.payment_reference_number).trim()
             ? String(e.payment_reference_number).trim()
             : null;
+        const expenseDocNo =
+          e.display_expense_no && String(e.display_expense_no).trim()
+            ? String(e.display_expense_no).trim()
+            : null;
         const sourceKind = classifySource(
           e.reference_type,
           e.payment_id,
@@ -277,7 +281,10 @@ export function AccountsDashboard({
         const postedAt = e.posted_at || e.created_at || null;
         return {
           id: e.id,
-          entryNumber: paymentRef || e.entry_no,
+          entryNumber:
+            String(e.reference_type || '').toLowerCase().replace(/\s+/g, '_') === 'expense' && expenseDocNo
+              ? expenseDocNo
+              : paymentRef || e.entry_no,
           type: mapReferenceTypeToEntryType(e.reference_type),
           date: e.entry_date,
           description: e.description,
@@ -553,7 +560,7 @@ export function AccountsDashboard({
                     </div>
                     <div className="text-right shrink-0">
                       <div className="flex items-center gap-1 justify-end">
-                        {entry.hasAttachments && companyId ? (
+                        {attachmentActions.hasAnyAttachmentHint(rowAttachParams) && companyId ? (
                           <AttachmentIndicatorButton
                             onClick={() => void attachmentActions.previewAttachments(rowAttachParams)}
                             size="sm"

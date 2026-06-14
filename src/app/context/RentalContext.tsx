@@ -5,8 +5,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useAccountingOptional } from '@/app/context/AccountingContext';
-import { supabase, isPlaceholderSupabaseAnonKey } from '@/lib/supabase';
 import { rentalService, RentalStatus } from '@/app/services/rentalService';
+import { userService } from '@/app/services/userService';
 import { toast } from 'sonner';
 import {
   DATA_INVALIDATED_EVENT,
@@ -14,126 +14,19 @@ import {
   shouldAcceptInvalidation,
   type DataInvalidationDetail,
 } from '@/app/lib/dataInvalidationBus';
+import { mapRentalRowToUI, mapRentalRowsSafe } from '@/app/lib/rentalUiMapper';
+import type { RentalUI, RentalItemUI } from '@/app/types/rentalTypes';
 
-export interface RentalItemUI {
-  id: string;
-  productId: string;
-  productName: string;
-  sku: string;
-  quantity: number;
-  unit: string;
-  rate: number;
-  total: number;
-  boxes?: number | null;
-  pieces?: number | null;
-}
-
-export interface RentalUI {
-  id: string;
-  rentalNo: string;
-  customerId: string | null;
-  customerName: string;
-  customerContact?: string;
-  branchId: string;
-  location: string;
-  startDate: string;
-  expectedReturnDate: string;
-  actualReturnDate: string | null;
-  status: RentalStatus;
-  totalAmount: number;
-  paidAmount: number;
-  dueAmount: number;
-  itemsCount: number;
-  items?: RentalItemUI[];
-  createdBy?: string;
-  createdByName?: string;
-  notes?: string | null;
-  documentType?: string;
-  documentNumber?: string;
-  /** Assessed at return (damage / penalty) — not part of rental line items total */
-  damageCharges?: number;
-  conditionType?: string | null;
-  damageNotes?: string | null;
-  penaltyPaid?: boolean;
-  /** Security deposit minus penalty (when returned) */
-  refundAmount?: number;
-}
-
-// Map DB status (booked, picked_up, returned, closed, cancelled, overdue) to UI status
-function mapStatus(status: string): RentalStatus {
-  const map: Record<string, RentalStatus> = {
-    draft: 'draft',
-    booked: 'booked',
-    rented: 'rented',
-    returned: 'returned',
-    overdue: 'overdue',
-    cancelled: 'cancelled',
-    picked_up: 'rented',
-    active: 'rented',
-    closed: 'returned',
-  };
-  return (map[status] || 'draft') as RentalStatus;
-}
-
-function convertFromSupabaseRental(row: any): RentalUI {
-  let location = '';
-  if (row.branch) {
-    location = row.branch.name || row.branch.code || '';
-  }
-  if (location && row.branch?.code) location = `${row.branch.code} | ${location}`.trim();
-  if (!location && row.branch_id) location = row.branch_id;
-
-  // Support both new schema (start_date, expected_return_date, rental_no) and old (pickup_date, return_date, booking_no)
-  const startDate = row.start_date || row.pickup_date || row.booking_date || '';
-  const expectedReturnDate = row.expected_return_date || row.return_date || '';
-  const actualReturnDate = row.actual_return_date ?? null;
-  const rentalNo = row.rental_no || row.booking_no || '';
-
-  const items = row.items || [];
-  return {
-    id: row.id,
-    rentalNo,
-    customerId: row.customer_id || null,
-    customerName: row.customer_name || row.customer?.name || 'Unknown',
-    customerContact: row.customer?.phone,
-    branchId: row.branch_id || '',
-    location,
-    startDate,
-    expectedReturnDate,
-    actualReturnDate,
-    status: mapStatus(row.status || 'draft'),
-    totalAmount: Number(row.total_amount ?? row.rental_charges ?? 0),
-    paidAmount: Number(row.paid_amount ?? 0),
-    dueAmount: Number(row.due_amount ?? 0),
-    itemsCount: items.length,
-    items: items.map((i: any) => ({
-      id: i.id,
-      productId: i.product_id,
-      productName: i.product_name || i.product?.name || '',
-      sku: i.sku || i.product?.sku || '',
-      quantity: Number(i.quantity ?? 0),
-      unit: i.unit || 'piece',
-      rate: Number(i.rate ?? i.rate_per_day ?? 0),
-      total: Number(i.total ?? 0),
-      boxes: i.boxes,
-      pieces: i.pieces,
-    })),
-    createdBy: row.created_by,
-    createdByName: row.created_by_user?.full_name || row.created_by_user?.email || 'System',
-    notes: row.notes,
-    documentType: row.document_type,
-    documentNumber: row.document_number,
-    damageCharges: Number(row.damage_charges ?? 0) || 0,
-    conditionType: row.condition_type ?? null,
-    damageNotes: row.damage_notes ?? null,
-    penaltyPaid: row.penalty_paid === true,
-    refundAmount: Number(row.refund_amount ?? 0) || 0,
-  };
-}
+export type { RentalUI, RentalItemUI } from '@/app/types/rentalTypes';
 
 interface RentalContextType {
   rentals: RentalUI[];
   loading: boolean;
+  loadFailed: boolean;
+  rentalsTotal: number;
+  rentalsPage: number;
+  rentalsPageSize: number;
+  setRentalsPage: (page: number) => void;
   getRentalById: (id: string) => RentalUI | undefined;
   refreshRentals: () => Promise<void>;
   createRental: (rental: Omit<RentalUI, 'id' | 'rentalNo' | 'itemsCount'> & { items: RentalItemUI[] }) => Promise<RentalUI>;
@@ -156,6 +49,11 @@ export const useRentals = () => {
       return {
         rentals: [],
         loading: false,
+        loadFailed: false,
+        rentalsTotal: 0,
+        rentalsPage: 0,
+        rentalsPageSize: 100,
+        setRentalsPage: () => {},
         getRentalById: () => undefined,
         refreshRentals: async () => {},
         createRental: async () => ({} as RentalUI),
@@ -171,80 +69,95 @@ export const useRentals = () => {
     }
     throw new Error('useRentals must be used within RentalProvider');
   }
-  const activate = (ctx as RentalContextType & { __activate?: () => void }).__activate;
-  useEffect(() => {
-    activate?.();
-  }, [activate]);
   return ctx;
 };
 
 export const RentalProvider = ({ children }: { children: ReactNode }) => {
+  const RENTALS_PAGE_SIZE = 100;
   const [rentals, setRentals] = useState<RentalUI[]>([]);
+  const [rentalsTotal, setRentalsTotal] = useState(0);
+  const [rentalsPage, setRentalsPageState] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const { companyId, branchId, user, requiresBranchSelection } = useSupabase();
   const accounting = useAccountingOptional();
 
+  const loadSeqRef = React.useRef(0);
+  const hasLoadedOnceRef = React.useRef(false);
+
   const loadRentals = useCallback(async () => {
     if (!companyId) return;
+    const seq = ++loadSeqRef.current;
+    const showBlockingLoader = !hasLoadedOnceRef.current;
     try {
-      setLoading(true);
-      await rentalService.markOverdueRentals(companyId);
-      const data = await rentalService.getAllRentals(
+      if (showBlockingLoader) setLoading(true);
+      setLoadFailed(false);
+      // Non-blocking: overdue marking must not delay the list fetch
+      void rentalService.markOverdueRentals(companyId).catch((e) => {
+        console.warn('[RENTAL CONTEXT] markOverdueRentals:', e);
+      });
+      const { rows, total } = await rentalService.fetchRentalsForList(
         companyId,
-        branchId === 'all' ? undefined : branchId || undefined
+        branchId === 'all' ? undefined : branchId || undefined,
+        { limit: RENTALS_PAGE_SIZE, offset: rentalsPage * RENTALS_PAGE_SIZE }
       );
-      setRentals((data || []).map(convertFromSupabaseRental));
+      if (rows.length === 0 && rentalsPage > 0 && total > 0) {
+        setRentalsPageState(0);
+        return;
+      }
+      setRentalsTotal(total);
+      const mapped = mapRentalRowsSafe(rows);
+      if (mapped.length === 0 && rows.length > 0) {
+        console.warn('[RENTAL CONTEXT] all rows failed to map', rows.length);
+      }
+      const salesmen = await userService.getSalesmen(companyId).catch(() => []);
+      const salesmanNameById = new Map(
+        (salesmen || []).map((s: { id: string; full_name?: string; name?: string }) => [
+          s.id,
+          s.full_name || s.name || '',
+        ])
+      );
+      if (seq !== loadSeqRef.current) return;
+      setRentals(
+        mapped.map((rental) => {
+          if (rental.salesmanId) {
+            rental.salesmanName = salesmanNameById.get(rental.salesmanId) || '';
+          }
+          return rental;
+        })
+      );
+      hasLoadedOnceRef.current = true;
     } catch (e) {
+      if (seq !== loadSeqRef.current) return;
       console.error('[RENTAL CONTEXT]', e);
       toast.error('Failed to load rentals');
-      setRentals([]);
+      setLoadFailed(true);
+      if (!hasLoadedOnceRef.current) setRentals([]);
+      setRentalsTotal(0);
     } finally {
-      setLoading(false);
+      if (seq === loadSeqRef.current && showBlockingLoader) setLoading(false);
     }
-  }, [companyId, branchId]);
+  }, [companyId, branchId, rentalsPage]);
 
-  const activatedRef = React.useRef(false);
-  const [activated, setActivated] = React.useState(false);
-  const activate = useCallback(() => {
-    if (!activatedRef.current) { activatedRef.current = true; setActivated(true); }
+  const setRentalsPage = useCallback((p: number) => {
+    setRentalsPageState(Math.max(0, p));
   }, []);
 
   useEffect(() => {
-    if (companyId && activated) loadRentals();
-    else if (!companyId) setLoading(false);
-  }, [companyId, activated, loadRentals]);
+    if (!companyId) {
+      setLoading(false);
+      return;
+    }
+    hasLoadedOnceRef.current = false;
+    setRentalsPageState(0);
+  }, [companyId, branchId]);
 
-  // Real-time: reload rentals when rentals/rental_payments change (skip if disabled or when WS fails to avoid 403 spam)
   useEffect(() => {
     if (!companyId) return;
-    if (import.meta.env.VITE_DISABLE_REALTIME === 'true') return;
-    if (isPlaceholderSupabaseAnonKey) return;
-    const channel = supabase
-      .channel('rentals-realtime')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'rentals' },
-        () => loadRentals()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'rental_payments' },
-        () => loadRentals()
-      )
-      .subscribe((status) => {
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          try {
-            supabase.removeChannel(channel);
-          } catch (_) {}
-        }
-      });
-    return () => {
-      try {
-        supabase.removeChannel(channel);
-      } catch (_) {}
-    };
-  }, [companyId, loadRentals]);
+    void loadRentals();
+  }, [companyId, branchId, rentalsPage, loadRentals]);
 
+  // Realtime: WebRealtimeBridge only (avoids duplicate channels with this provider).
   useEffect(() => {
     if (!companyId) return;
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -257,9 +170,11 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
     };
     const onDataInvalidated = (ev: Event) => {
       const detail = (ev as CustomEvent<DataInvalidationDetail>).detail;
+      const reason = String(detail?.reason ?? '');
+      if (reason.includes('fallback-poll')) return;
       if (
         !shouldAcceptInvalidation(detail, {
-          domain: ['rentals', 'accounting'],
+          domain: ['rentals'],
           companyId,
           branchId: branchId === 'all' ? null : branchId ?? null,
         })
@@ -389,16 +304,35 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
     await rentalService.receiveReturn(id, companyId, payload, user?.id);
     if (payload.penaltyAmount > 0 && rental) {
       if (payload.penaltyPaid) {
-        // Pay now: Dr Cash/Bank, Cr Rental Income (skip if UnifiedPaymentDialog already posted payment + JE)
+        // Party AR: Dr AR / Cr Income (charge) + Dr Cash / Cr AR (receipt). Skip if UnifiedPaymentDialog already posted.
         if (!payload.penaltyPaymentPreRecorded) {
-          accounting?.recordRentalReturn({
-            bookingId: id,
-            customerName: rental.customerName,
-            customerId: rental.customerId || '',
-            securityDepositAmount: 0,
-            damageCharge: payload.penaltyAmount,
-            paymentMethod: (payload.penaltyPaymentMethod || 'Cash') as any,
-          })?.catch((err) => console.warn('[RentalContext] Ledger penalty posting:', err));
+          let penaltyPaymentId: string | undefined;
+          try {
+            const { supabase } = await import('@/lib/supabase');
+            const { data: penRow } = await supabase
+              .from('rental_payments')
+              .select('id')
+              .eq('rental_id', id)
+              .eq('payment_type', 'penalty')
+              .order('payment_date', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            penaltyPaymentId = (penRow as { id?: string } | null)?.id;
+          } catch {
+            penaltyPaymentId = undefined;
+          }
+          accounting
+            ?.recordRentalReturn({
+              bookingId: id,
+              customerName: rental.customerName,
+              customerId: rental.customerId || '',
+              securityDepositAmount: 0,
+              damageCharge: payload.penaltyAmount,
+              paymentMethod: (payload.penaltyPaymentMethod || 'Cash') as any,
+              rentalPaymentId: penaltyPaymentId,
+              branchId: rental.branchId || branchId,
+            })
+            ?.catch((err) => console.warn('[RentalContext] Ledger penalty posting:', err));
         }
       } else {
         // Credit mode: Dr AR (customer owes), Cr Rental Income
@@ -568,6 +502,11 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
   const value = useMemo<RentalContextType>(() => ({
     rentals,
     loading,
+    loadFailed,
+    rentalsTotal,
+    rentalsPage,
+    rentalsPageSize: RENTALS_PAGE_SIZE,
+    setRentalsPage,
     getRentalById,
     refreshRentals: loadRentals,
     createRental,
@@ -579,11 +518,10 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
     deletePayment,
     deleteRental,
     markAsPickedUp,
-    __activate: activate,
   }), [
-    rentals, loading, getRentalById, loadRentals, createRental, updateRental,
+    rentals, loading, loadFailed, rentalsTotal, rentalsPage, setRentalsPage, getRentalById, loadRentals, createRental, updateRental,
     finalizeRental, receiveReturn, cancelRental, addPayment, deletePayment,
-    deleteRental, markAsPickedUp, activate,
+    deleteRental, markAsPickedUp,
   ]);
 
   return <RentalContext.Provider value={value}>{children}</RentalContext.Provider>;

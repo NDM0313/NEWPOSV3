@@ -629,7 +629,7 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
                             <button
                               onClick={() => handleDeleteClick(payment)}
                               className="p-1.5 rounded-lg hover:bg-gray-700 text-gray-400 hover:text-red-400 transition-colors"
-                              title="Delete Payment"
+                              title="Cancel Payment"
                             >
                               <Trash2 size={14} />
                             </button>
@@ -737,7 +737,7 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
           <AlertDialogHeader>
             <AlertDialogTitle className="text-white flex items-center gap-2">
               <AlertCircle size={20} className="text-red-400" />
-              Delete Payment
+              Cancel Payment
             </AlertDialogTitle>
             <AlertDialogDescription className="text-gray-400">
               {paymentToDelete && (
@@ -775,7 +775,7 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
               ) : (
                 <>
                   <Trash2 size={14} className="mr-1" />
-                  Delete Payment
+                  Cancel Payment
                 </>
               )}
             </AlertDialogAction>

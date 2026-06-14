@@ -1,4 +1,5 @@
-import { getCurrentLocalTimestamp, localNowDateString } from '@/app/utils/localDate';
+import { getCurrentLocalTimestamp, localNowDateString, formatLocalDateTimeYYYYMMDDHHmm } from '@/app/utils/localDate';
+import { DateTimePicker } from '@/app/components/ui/DateTimePicker';
 import React, { useState, useEffect } from 'react';
 import { X, Wallet, Building2, CreditCard, AlertCircle, Check, ChevronDown, Upload, FileText, Calendar, Clock, Trash2, History, Banknote } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
@@ -18,7 +19,10 @@ import { dispatchContactBalancesRefresh } from '@/app/lib/contactBalancesRefresh
 import { dispatchAccountingEditCommitted } from '@/app/lib/unifiedTransactionEdit';
 import { resolvePaymentIdForMutation } from '@/app/lib/paymentRowEditRouting';
 import { rebuildManualReceiptFifoAllocations, rebuildManualSupplierFifoAllocations } from '@/app/services/paymentAllocationService';
-import { syncJournalEntryDateByPaymentId } from '@/app/services/journalTransactionDateSyncService';
+import {
+  syncExpenseDateByPaymentId,
+  syncJournalEntryDateByPaymentId,
+} from '@/app/services/journalTransactionDateSyncService';
 
 // ============================================
 // 🎯 TYPES
@@ -175,16 +179,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
   const [notes, setNotes] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   
-  // 🎯 NEW: Date & Time states (combined as datetime-local)
-  const [paymentDateTime, setPaymentDateTime] = useState<string>(() => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    return `${year}-${month}-${day}T${hours}:${minutes}`;
-  });
+  const [paymentDateTime, setPaymentDateTime] = useState<string>(() => formatLocalDateTimeYYYYMMDDHHmm(new Date()));
   
   // New files to upload
   const [attachments, setAttachments] = useState<File[]>([]);
@@ -722,7 +717,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
             .from('payments')
             .update(patch)
             .eq('id', paymentIdForUpdate)
-            .select('id, company_id, reference_type')
+            .select('id, company_id, reference_type, reference_id')
             .single();
           if (upErr) throw upErr;
           const rt = String((updatedPayment as any)?.reference_type || '').toLowerCase();
@@ -745,6 +740,10 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
               companyId,
               paymentId: paymentIdForUpdate,
               entryDate: paymentDate,
+            });
+            await syncExpenseDateByPaymentId({
+              paymentId: paymentIdForUpdate,
+              expenseDate: paymentDate,
             });
           }
           // Supplier Add Entry / on-account manual_payment: amount edit updated `payments` only — GL must get a delta JE (same as purchase-linked path).
@@ -1244,13 +1243,19 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                   paymentMethod,
                   paymentAccountId: selectedAccount,
                   paymentDate: payDay,
+                  rentalPaymentId: rp?.id,
+                  branchId,
                 })
                 .catch((err) => {
                   console.warn('[UnifiedPaymentDialog] Penalty JE failed (payment row recorded):', err);
                 });
-              const jeId = await rentalService.findLatestJournalEntryForRental(companyId, referenceId, journalSince);
-              if (rp?.id && jeId) {
-                await rentalService.syncRentalPaymentGlLink(rp.id, jeId);
+              if (rp?.id) {
+                const linkedJe =
+                  (rp as { journal_entry_id?: string | null }).journal_entry_id ||
+                  (await rentalService.findLatestJournalEntryForRental(companyId, referenceId, journalSince));
+                if (linkedJe) {
+                  await rentalService.syncRentalPaymentGlLink(rp.id, String(linkedJe));
+                }
               }
             } else {
               const rp = await rentalService.addPayment(
@@ -1689,18 +1694,12 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                 
                 {/* Date & Time */}
                 <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
-                  <label className="block text-sm font-semibold text-gray-300 mb-2">
-                    Payment Date & Time <span className="text-red-400">*</span>
-                  </label>
-                  <div className="relative">
-                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
-                    <input
-                      type="datetime-local"
-                      value={paymentDateTime}
-                      onChange={(e) => setPaymentDateTime(e.target.value)}
-                      className="w-full bg-gray-900 border-2 border-gray-700 rounded-lg pl-10 pr-4 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500 transition-colors"
-                    />
-                  </div>
+                  <DateTimePicker
+                    label="Payment Date & Time"
+                    value={paymentDateTime}
+                    onChange={setPaymentDateTime}
+                    required
+                  />
                 </div>
 
                 {/* Attachments */}

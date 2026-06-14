@@ -61,7 +61,7 @@ git commit -m "Bug fix: Purchase service FK issue"
 
 On current machine:
 git add .
-git commit -m "TESTING MODE ON 01"
+git commit -m "Windows: feature work snapshot"
 git push origin main
 
 On new machine:
@@ -71,6 +71,11 @@ git pull origin main
 
 Set-Location "c:\Users\ndm31\dev\Corusr\NEW POSV3\erp-mobile-app"
 npm run android:apk:release:win
+
+
+cd erp-mobile-app
+npm run android:apk:release:mac   # Android
+npm run ios:ipa:release:mac     # iOS
 
 ==================================================
 4️⃣ DEPLOYMENT RULE

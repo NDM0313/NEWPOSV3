@@ -23,6 +23,12 @@ import { comboService } from '@/app/services/comboService';
 import { supabase } from '@/lib/supabase';
 import { uploadProductImages, removeProductImagesFromStorage } from '@/app/utils/productImageUpload';
 import { parseVariationAttributesRaw, publicVariationAttributes } from '@/app/utils/variationFieldMap';
+import {
+  duplicateProductName,
+  duplicateVariationRows,
+  duplicateVariantAttributes,
+  duplicateImageUrls,
+} from '@/app/utils/productDuplicateUtils';
 import { ProductImage } from './ProductImage';
 import { getSupabaseStorageDashboardUrl } from '@/app/utils/paymentAttachmentUrl';
 import { toast } from 'sonner';
@@ -125,6 +131,8 @@ const setValueAsNumber = (v: unknown): number => {
 
 interface EnhancedProductFormProps {
   product?: any; // Product data for edit mode
+  /** When set, pre-fill Add form from this product id (create mode, not update). */
+  duplicateFromProductId?: string;
   onCancel: () => void;
   onSave: (product?: any) => void;
   onSaveAndAdd?: (product: any) => void;
@@ -132,6 +140,7 @@ interface EnhancedProductFormProps {
 
 export const EnhancedProductForm = ({
   product: initialProduct,
+  duplicateFromProductId,
   onCancel,
   onSave,
   onSaveAndAdd,
@@ -179,6 +188,10 @@ export const EnhancedProductForm = ({
   /** When in edit mode, full product fetched from API (with variations, category_id, etc.). Form hydrates from this. */
   const [fullProductForEdit, setFullProductForEdit] = useState<any>(null);
   const [loadingFullProduct, setLoadingFullProduct] = useState(false);
+  /** Duplicate mode: source product fetched from API before seeding create form. */
+  const [duplicateSourceFull, setDuplicateSourceFull] = useState<any>(null);
+  const [loadingDuplicateSource, setLoadingDuplicateSource] = useState(false);
+  const isDuplicateMode = !!duplicateFromProductId && !initialProduct;
   const [generatedVariations, setGeneratedVariations] = useState<
     Array<{
       id?: string;
@@ -494,7 +507,7 @@ export const EnhancedProductForm = ({
 
   // Auto-generate unique SKU for new product only (collision-safe via DB check)
   useEffect(() => {
-    if (initialProduct || !companyId) return;
+    if (initialProduct || duplicateFromProductId || !companyId) return;
     let cancelled = false;
     (async () => {
       try {
@@ -505,7 +518,103 @@ export const EnhancedProductForm = ({
       }
     })();
     return () => { cancelled = true; };
-  }, [companyId, initialProduct, setValue, generateDocumentNumberSafe, generateSKU]);
+  }, [companyId, initialProduct, duplicateFromProductId, setValue, generateDocumentNumberSafe, generateSKU]);
+
+  // Duplicate mode: fetch full source product
+  useEffect(() => {
+    if (!duplicateFromProductId || initialProduct) {
+      setDuplicateSourceFull(null);
+      setLoadingDuplicateSource(false);
+      return;
+    }
+    let cancelled = false;
+    setLoadingDuplicateSource(true);
+    setDuplicateSourceFull(null);
+    productService.getProduct(duplicateFromProductId)
+      .then((full) => {
+        if (!cancelled) setDuplicateSourceFull(full);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.error('[PRODUCT FORM] Failed to load product for duplicate:', err);
+          toast.error('Could not load product to duplicate');
+          setDuplicateSourceFull(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingDuplicateSource(false);
+      });
+    return () => { cancelled = true; };
+  }, [duplicateFromProductId, initialProduct]);
+
+  // Duplicate mode: seed create form from fetched source
+  useEffect(() => {
+    if (!isDuplicateMode || !duplicateSourceFull) return;
+    let cancelled = false;
+    const source = duplicateSourceFull;
+    (async () => {
+      let nextSku = '';
+      try {
+        nextSku = await generateDocumentNumberSafe('production');
+      } catch {
+        nextSku = generateSKU();
+      }
+      if (cancelled) return;
+
+      setValue('name', duplicateProductName(source.name || ''));
+      setValue('sku', nextSku);
+      setValue('barcodeType', (source as any).barcode_type || 'code128');
+      setValue('barcode', '');
+      setValue('purchasePrice', source.cost_price ?? 0);
+      setValue('sellingPrice', source.retail_price ?? 0);
+      setValue('wholesalePrice', source.wholesale_price ?? source.retail_price ?? 0);
+      setValue('rentalPrice', source.rental_price_daily ?? 0);
+      setValue('alertQty', source.min_stock ?? 0);
+      setValue('maxStock', source.max_stock ?? 1000);
+      setValue('initialStock', 0);
+      setValue('description', source.description || '');
+      setValue('brand', source.brand_id || '');
+      setValue('unit', source.unit_id || '');
+      setValue('supplier', (source as any).supplier_id || (source as any).supplier || '');
+      setValue('supplierCode', (source as any).supplier_code || (source as any).supplierCode || '');
+
+      const catId = source.category_id || source.category?.id || '';
+      if (catId) {
+        try {
+          const cat = await productCategoryService.getById(catId);
+          if (cat.parent_id) {
+            setValue('category', cat.parent_id);
+            setValue('subCategory', cat.id);
+          } else {
+            setValue('category', cat.id);
+            setValue('subCategory', '');
+          }
+        } catch {
+          setValue('category', catId);
+          setValue('subCategory', '');
+        }
+      } else {
+        setValue('category', '');
+        setValue('subCategory', '');
+      }
+
+      const hasVar = !!(source.has_variations ?? (source.variations?.length > 0));
+      setEnableVariations(hasVar);
+      if (hasVar && Array.isArray(source.variations) && source.variations.length > 0) {
+        setVariantAttributes(duplicateVariantAttributes(source.variations));
+        setGeneratedVariations(duplicateVariationRows(source.variations, nextSku));
+      } else {
+        setVariantAttributes([]);
+        setGeneratedVariations([]);
+      }
+
+      setExistingImageUrls(duplicateImageUrls(source));
+      setIsComboProduct(!!source.is_combo_product);
+      setCurrentComboItems([]);
+      setCombos([]);
+    })();
+    return () => { cancelled = true; };
+  }, [isDuplicateMode, duplicateSourceFull, setValue, generateDocumentNumberSafe, generateSKU]);
 
   // Edit mode: fetch full product by id so we have variations, category_id, unit_id, brand_id (list product often has only display fields)
   useEffect(() => {
@@ -1462,19 +1571,27 @@ export const EnhancedProductForm = ({
 
   return (
     <div className="flex flex-col h-full min-h-0 bg-gray-950 text-white relative">
-      {loadingFullProduct && initialProduct && (
+      {(loadingFullProduct && initialProduct) || (loadingDuplicateSource && isDuplicateMode) ? (
         <div className="absolute inset-0 bg-gray-950/80 z-20 flex items-center justify-center rounded-xl">
           <div className="flex flex-col items-center gap-3">
             <RefreshCcw size={32} className="text-blue-400 animate-spin" />
-            <p className="text-sm text-gray-400">Loading product...</p>
+            <p className="text-sm text-gray-400">
+              {isDuplicateMode ? 'Preparing duplicate...' : 'Loading product...'}
+            </p>
           </div>
         </div>
-      )}
+      ) : null}
       <div className="p-6 border-b border-gray-800 flex justify-between items-center bg-gray-900 sticky top-0 z-10">
         <div>
-          <h2 className="text-xl font-bold">{initialProduct ? 'Edit Product' : 'Add New Product'}</h2>
+          <h2 className="text-xl font-bold">
+            {initialProduct ? 'Edit Product' : isDuplicateMode ? 'Duplicate Product' : 'Add New Product'}
+          </h2>
           <p className="text-sm text-gray-400">
-            {initialProduct ? 'Update product details' : 'Complete product details for inventory'}
+            {initialProduct
+              ? 'Update product details'
+              : isDuplicateMode
+                ? 'Review and save as a new product'
+                : 'Complete product details for inventory'}
           </p>
         </div>
         <button

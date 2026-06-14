@@ -39,12 +39,24 @@ git pull
 npm ci
 cp .env.example .env   # set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
 npm run cap:sync:ios:prod
-npx cap open ios
+cd ios/App && pod install
 ```
+
+Or one command:
+
+```bash
+npm run ios:prep:mac
+```
+
+**ML Kit barcode (required):** `@capacitor-mlkit/barcode-scanning` uses CocoaPods on iOS (not SPM). After sync, `pod install` is required (`App/Pods` is gitignored).
+
+**Important:** Open **`ios/App/App.xcworkspace`** — never `App.xcodeproj` alone (Pods will not build → “Search path Capacitor not found” errors). From `erp-mobile-app`: `npm run cap:ios`.
+
+If Xcode still shows stale SPM warnings (CapacitorHaptics, etc.): **Product → Clean Build Folder**, quit Xcode, reopen `App.xcworkspace`.
 
 In Xcode:
 
-1. Select the **App** target → **Signing & Capabilities** → Team + automatic signing.
+1. Select the **NDM ERP** target → **Signing & Capabilities** → Team + automatic signing.
 2. Choose a simulator or connected iPhone.
 3. **Product → Run** for debug, or **Product → Archive** for TestFlight / App Store.
 

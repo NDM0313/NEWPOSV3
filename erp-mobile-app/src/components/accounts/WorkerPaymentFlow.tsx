@@ -66,11 +66,12 @@ export function WorkerPaymentFlow({ onBack, onComplete, user, companyId, branchI
     const methodForApi = payload.method === 'wallet' ? 'mobile_wallet' : payload.method;
     const { data, error } = await recordWorkerPayment({
       companyId,
-      branchId: branchId ?? null,
+      branchId: payload.branchId ?? branchId ?? null,
       workerId: selectedWorker.id,
       workerName: selectedWorker.name,
       amount: payload.amount,
       paymentDate: payload.paymentDate,
+      paymentAt: payload.paymentAt,
       paymentAccountId: payload.accountId,
       paymentMethod: methodForApi,
       userId: user.id,
@@ -94,6 +95,8 @@ export function WorkerPaymentFlow({ onBack, onComplete, user, companyId, branchI
         companyId={companyId}
         branchId={branchId ?? null}
         userId={user.id}
+        userRole={user.role}
+        profileId={user.profileId ?? null}
         partyName={selectedWorker.name}
         referenceNo={getWorkerTypeLabel(selectedWorker.type)}
         outstandingAmount={selectedWorker.totalPayable}

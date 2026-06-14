@@ -43,6 +43,8 @@ import {
   requestCounterLockScreen,
   setLastCounterCompanyId,
 } from './lib/sharedCounterMode';
+import { dispatchMobileBackPress, registerMobileBackHandler } from './lib/mobileBackPress';
+import { initNativeShell } from './lib/nativeShell';
 import { withBootTimeout } from './lib/bootTimeout';
 
 const LAST_AUTOSYNC_KEY = 'erp_mobile_last_autosync_at';
@@ -167,6 +169,7 @@ export default function App() {
 
   useEffect(() => {
     const cleanup = initInputKeyboard();
+    void initNativeShell();
     return () => { cleanup?.(); };
   }, []);
 
@@ -593,6 +596,7 @@ export default function App() {
   const navigateHome = () => {
     setCurrentScreen('home');
     setActiveBottomTab('home');
+    setShowModuleGrid(false);
   };
 
   const navigateToDocumentEdit = (kind: 'sale' | 'purchase', documentId: string) => {
@@ -668,6 +672,47 @@ export default function App() {
   // Only show BottomNav on home so modules (Sales, Purchase, Expense, Settings, etc.) are full screen
   const showBottomNav = currentScreen === 'home' && user && selectedBranch;
   const showSidebar = (currentScreen !== 'login' && currentScreen !== 'branch-selection' && user && selectedBranch) && responsive.isTablet;
+  const lockOverlayActive = Boolean(user && (isCounterLocked || isPinLocked));
+
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user || currentScreen === 'login' || currentScreen === 'branch-selection') return;
+    if (lockOverlayActive) return;
+
+    const unregister = registerMobileBackHandler(() => {
+      if (showModuleGrid) {
+        setShowModuleGrid(false);
+        return true;
+      }
+      return false;
+    });
+
+    let backListener: { remove: () => void } | undefined;
+    void import('@capacitor/app')
+      .then(({ App }) =>
+        App.addListener('backButton', () => {
+          if (dispatchMobileBackPress()) return;
+          if (currentScreen !== 'home') {
+            if (currentScreen === 'sales') {
+              setSalesInitialType(null);
+              setSalesInitialDocumentBranchId(null);
+            }
+            navigateHome();
+            return;
+          }
+          void App.exitApp();
+        }),
+      )
+      .then((handle) => {
+        backListener = handle;
+      })
+      .catch(() => {});
+
+    return () => {
+      unregister();
+      backListener?.remove();
+    };
+  }, [authLoading, user, currentScreen, lockOverlayActive, showModuleGrid]);
 
   if (authLoading) {
     return (
@@ -717,7 +762,6 @@ export default function App() {
     user && companyId
       ? `${companyId}:${effectiveProfile?.userId ?? user.id}`
       : 'guest';
-  const lockOverlayActive = Boolean(user && (isCounterLocked || isPinLocked));
 
   const lockOverlays = user ? (
     <>
@@ -964,7 +1008,8 @@ export default function App() {
   );
 
   const syncBar = user && selectedBranch ? (
-    <div className="flex justify-end p-2 border-b border-[#374151]/50 bg-[#111827] safe-area-inset-top">
+    <header className="erp-app-header flex items-center justify-between gap-2 px-3 py-2 border-b border-[#374151]/50 bg-[#111827] min-h-[44px]">
+      <span className="text-sm font-semibold text-white truncate">Din Collection</span>
       <SyncStatusBar
         status={status}
         onSyncClick={() => {
@@ -973,7 +1018,7 @@ export default function App() {
           runSync().then(({ errors }) => setStatus(errors > 0 ? 'sync_error' : 'online')).catch(() => setStatus('sync_error'));
         }}
       />
-    </div>
+    </header>
   ) : null;
 
   const permissionBar =

@@ -22,6 +22,7 @@ import { useSettings } from '../../context/SettingsContext';
 import { useCheckPermission } from '../../hooks/useCheckPermission';
 import { Sheet, SheetContent } from '../ui/sheet';
 import { clsx } from 'clsx';
+import { leaveSpecialAppRoute } from '@/app/lib/specialRouteNavigation';
 
 type NavItem = {
   id: string;
@@ -32,7 +33,7 @@ type NavItem = {
 };
 
 export const MobileNavDrawer = () => {
-  const { currentView, setCurrentView, mobileNavOpen, setMobileNavOpen } = useNavigation();
+  const { currentView, setCurrentView, mobileNavOpen, setMobileNavOpen, setPartyLedgerParams } = useNavigation();
   const { modules: settingsModules, featureFlags, isPermissionLoaded } = useSettings();
   const { hasPermission } = useCheckPermission();
   const studioProductionV2 = featureFlags?.studio_production_v2 === true;
@@ -53,7 +54,16 @@ export const MobileNavDrawer = () => {
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'contacts', label: 'Contacts', icon: Users, isHidden: !hasPermission('contacts.view') },
     { id: 'products', label: 'Products', icon: Package, isHidden: !hasPermission('products.view') },
-    { id: 'inventory', label: 'Inventory', icon: Warehouse, isHidden: !hasPermission('inventory.view') },
+    {
+      id: 'inventory-group',
+      label: 'Inventory',
+      icon: Warehouse,
+      isHidden: !hasPermission('inventory.view'),
+      children: [
+        { id: 'inventory', label: 'Stock Overview' },
+        { id: 'stock-report', label: 'Stock Report' },
+      ],
+    },
     { id: 'purchases', label: 'Purchases', icon: ShoppingBag, isHidden: !settingsModules.purchasesModuleEnabled || !hasPermission('purchases.view') },
     { id: 'sales', label: 'Sales', icon: ShoppingCart, isHidden: !settingsModules.salesModuleEnabled || !hasPermission('sales.view') },
     { id: 'rentals', label: 'Rentals', icon: Shirt, isHidden: !settingsModules.rentalModuleEnabled || !hasPermission('rentals.view') },
@@ -71,7 +81,16 @@ export const MobileNavDrawer = () => {
       ],
     },
     { id: 'expenses', label: 'Expenses', icon: Receipt, isHidden: !expensesNavVisible },
-    { id: 'accounting', label: 'Accounting', icon: Calculator, isHidden: !settingsModules.accountingModuleEnabled || !hasPermission('accounting.view') },
+    {
+      id: 'accounting-group',
+      label: 'Accounting',
+      icon: Calculator,
+      isHidden: !settingsModules.accountingModuleEnabled || !hasPermission('accounting.view'),
+      children: [
+        { id: 'accounting', label: 'Accounting Dashboard' },
+        { id: 'party-ledger', label: 'Party Ledger' },
+      ],
+    },
     {
       id: 'ar-ap-reconciliation-center',
       label: 'AR/AP Reconciliation',
@@ -85,7 +104,11 @@ export const MobileNavDrawer = () => {
   const visibleItems = navItems.filter((item) => (isPermissionLoaded ? !item.isHidden : item.id === 'dashboard'));
 
   const handleNavClick = (id: string) => {
+    if (id === 'party-ledger') {
+      setPartyLedgerParams?.(null);
+    }
     setCurrentView(id as any);
+    leaveSpecialAppRoute('/');
     setMobileNavOpen(false);
   };
 

@@ -18,10 +18,11 @@ Roznamcha shows **actual cash / bank / mobile wallet movements** — receive and
 
 ## Dedupe rule
 
-**One cash movement → one row.** Two-pass dedupe in [`roznamchaService.ts`](../../src/app/services/roznamchaService.ts):
+**One cash movement → one row.** Three-pass dedupe in [`roznamchaService.ts`](../../src/app/services/roznamchaService.ts):
 
-1. **Strict key:** `date|direction|amount|payment_account_id`
-2. **Loose key:** `date|direction|amount` — merges rows when account id is missing on one side (e.g. rental JE vs `rental_payments`)
+1. **Entity key:** `rp:{rental_payment_id}` or `je:{journal_entry_id}` — collapses the same rental payment or JE from multiple sources
+2. **Strict key:** `date|direction|amount|payment_account_id`
+3. **Strict movement key only** — loose `date|direction|amount` merge removed (was hiding two real same-day same-amount receipts)
 
 Priority when keys collide:
 
@@ -43,6 +44,10 @@ Implementation: `resolveCanonicalRoznamchaRef`, `roznamchaRefDisplay`, `dedupeRo
 
 - Customer bill Rs 50,000, payment Rs 25,000 → Roznamcha shows **Rs 25,000** (Customer Payment), not Rs 50,000
 - Rental receive Rs 10,000 → **one** Cash In line (not Rental + Journal duplicate)
+
+## Deep-dive (data sources, duplicates, diagnostics)
+
+For production issues (duplicate rows, missing rental receipts, orphan JE recovery, SQL checks), see **[`docs/accounting/ROZNAMCHA_DATA_SOURCES_AND_DUPLICATES.md`](../accounting/ROZNAMCHA_DATA_SOURCES_AND_DUPLICATES.md)** and the **[accounting reports index](../accounting/ACCOUNTING_REPORTS_INDEX.md)**.
 
 ## Related
 

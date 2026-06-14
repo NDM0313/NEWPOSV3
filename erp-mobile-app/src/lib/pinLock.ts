@@ -4,6 +4,13 @@
  */
 
 import { getDevicePinMaxAgeMs } from './counterSessionPolicy';
+import {
+  safeLocalStorageGetItem,
+  safeLocalStorageSetItem,
+  safeSessionStorageGetItem,
+  safeSessionStorageRemoveItem,
+  safeSessionStorageSetItem,
+} from './safeBrowserStorage';
 
 const SETTINGS_KEY = 'erp_mobile_pin_lock_settings';
 const LAST_UNLOCK_KEY = 'erp_mobile_pin_last_unlock';
@@ -40,7 +47,7 @@ function idleTimeoutMs(id: PinIdleTimeoutId): number | null {
 /** Migrate legacy settings shape (enabled + timeoutMs only). */
 export function getPinLockSettings(): PinLockSettings {
   try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
+    const raw = safeLocalStorageGetItem(SETTINGS_KEY);
     if (!raw) {
       return {
         lockOnBackground: true,
@@ -75,84 +82,52 @@ export function getPinLockSettings(): PinLockSettings {
 
 export function setPinLockSettings(next: Partial<PinLockSettings>): void {
   const merged = { ...getPinLockSettings(), ...next };
-  try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(merged));
-  } catch {
-    /* ignore */
-  }
+  safeLocalStorageSetItem(SETTINGS_KEY, JSON.stringify(merged));
 }
 
 /** Call after a successful PIN unlock OR email/password login. */
 export function markUnlocked(): void {
   const now = String(Date.now());
-  try {
-    sessionStorage.setItem(LAST_UNLOCK_KEY, now);
-    sessionStorage.setItem(LAST_ACTIVITY_KEY, now);
-    sessionStorage.removeItem(LAST_BACKGROUND_KEY);
-  } catch {
-    /* ignore */
-  }
+  safeSessionStorageSetItem(LAST_UNLOCK_KEY, now);
+  safeSessionStorageSetItem(LAST_ACTIVITY_KEY, now);
+  safeSessionStorageRemoveItem(LAST_BACKGROUND_KEY);
 }
 
 export function clearUnlockMark(): void {
-  try {
-    sessionStorage.removeItem(LAST_UNLOCK_KEY);
-    sessionStorage.removeItem(LAST_BACKGROUND_KEY);
-    sessionStorage.removeItem(LAST_ACTIVITY_KEY);
-  } catch {
-    /* ignore */
-  }
+  safeSessionStorageRemoveItem(LAST_UNLOCK_KEY);
+  safeSessionStorageRemoveItem(LAST_BACKGROUND_KEY);
+  safeSessionStorageRemoveItem(LAST_ACTIVITY_KEY);
 }
 
 /** Call when app goes to background (home button, task switch). */
 export function markBackgrounded(): void {
-  try {
-    sessionStorage.setItem(LAST_BACKGROUND_KEY, String(Date.now()));
-  } catch {
-    /* ignore */
-  }
+  safeSessionStorageSetItem(LAST_BACKGROUND_KEY, String(Date.now()));
 }
 
 /** Call on user interaction while app is unlocked (extends idle timer). */
 export function touchPinActivity(): void {
-  try {
-    sessionStorage.setItem(LAST_ACTIVITY_KEY, String(Date.now()));
-  } catch {
-    /* ignore */
-  }
+  safeSessionStorageSetItem(LAST_ACTIVITY_KEY, String(Date.now()));
 }
 
 function getLastUnlock(): number {
-  try {
-    const raw = sessionStorage.getItem(LAST_UNLOCK_KEY);
-    if (!raw) return 0;
-    const n = Number(raw);
-    return Number.isFinite(n) ? n : 0;
-  } catch {
-    return 0;
-  }
+  const raw = safeSessionStorageGetItem(LAST_UNLOCK_KEY);
+  if (!raw) return 0;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : 0;
 }
 
 function wasBackgroundedSinceUnlock(): boolean {
-  try {
-    return sessionStorage.getItem(LAST_BACKGROUND_KEY) != null;
-  } catch {
-    return false;
-  }
+  return safeSessionStorageGetItem(LAST_BACKGROUND_KEY) != null;
 }
 
 function idleExceeded(idle: PinIdleTimeoutId): boolean {
   const ms = idleTimeoutMs(idle);
   if (ms == null) return false;
-  try {
-    const raw = sessionStorage.getItem(LAST_ACTIVITY_KEY);
-    if (!raw) return true;
-    const n = Number(raw);
-    if (!Number.isFinite(n)) return true;
-    return Date.now() - n > ms;
-  } catch {
-    return false;
-  }
+  const raw = safeSessionStorageGetItem(LAST_ACTIVITY_KEY);
+  if (!raw) return true;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return true;
+  return Date.now() - n > ms;
 }
 
 /**

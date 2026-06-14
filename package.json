@@ -38,9 +38,10 @@
     "mobile:apk:release:win": "cd erp-mobile-app && npm run android:apk:release:win",
     "deploy:prepare": "node scripts/run-migrations.js --allow-fail && vite build",
     "deploy:prepare:mobile": "node scripts/sync-mobile-env.js && cd erp-mobile-app && npx vite build",
-    "test:unit": "npx tsx --test src/app/services/roznamchaService.dedupe.test.ts src/app/lib/partyLedgerReference.test.ts src/app/services/saleDocumentRevenueAmounts.test.ts src/app/lib/coaHealthChecks.test.ts src/app/lib/transactionTraceReportVisibility.test.ts src/app/lib/transactionTraceLiquidity.test.ts src/app/lib/accountingDeveloperCenterAccess.test.ts src/app/lib/accountingDeveloperCenterTabs.test.ts src/app/lib/roznamchaTraceDiagnostics.test.ts",
+    "test:unit": "npx tsx --test src/app/lib/dashboardV2Period.test.ts src/app/lib/dashboardV2Stock.test.ts src/app/lib/dashboardV2Mappers.test.ts src/app/services/roznamchaService.dedupe.test.ts src/app/lib/partyLedgerReference.test.ts src/app/lib/paymentVoidVisibility.test.ts src/app/lib/rentalPenaltyLedgerLines.test.ts src/app/services/saleDocumentRevenueAmounts.test.ts src/app/lib/coaHealthChecks.test.ts src/app/lib/transactionTraceReportVisibility.test.ts src/app/lib/transactionTraceLiquidity.test.ts src/app/lib/accountingDeveloperCenterAccess.test.ts src/app/lib/accountingDeveloperCenterTabs.test.ts src/app/lib/roznamchaTraceDiagnostics.test.ts src/app/lib/statementTraceDiagnostics.test.ts src/app/lib/dayBookDiagnostics.test.ts src/app/lib/paymentTraceDiagnostics.test.ts src/app/lib/repairQueueDryRun.test.ts src/app/lib/openingBalanceDiagnostics.test.ts src/app/lib/developerCenterAuditLog.test.ts src/app/lib/transactionTraceResolver.test.ts src/app/lib/developerRepairActions.test.ts src/app/lib/developerRepairHash.test.ts src/app/lib/paymentJournalRepairEligibility.test.ts src/app/lib/developerRepairCoaSafety.test.ts src/app/lib/roznamchaRepairDiagnostics.test.ts src/app/lib/transactionTraceRepairDiagnostics.test.ts src/app/lib/developerRepairSystemStatus.test.ts src/app/lib/developerRepairApplyGate.test.ts src/app/lib/traceRepairCandidateLabels.test.ts",
     "test:bootstrap": "npx tsx --test src/app/config/moduleConfigSemantics.test.ts",
     "test:permissions": "npx tsx --test src/app/utils/checkPermission.test.ts erp-mobile-app/src/api/permissions.test.ts",
+    "test:mobile:date": "npx tsx --test erp-mobile-app/src/lib/dateRangePresets.test.ts",
     "report:bootstrap-gap": "npx tsx scripts/generate-bootstrap-gap-report.ts"
   },
   "dependencies": {
@@ -86,6 +87,7 @@
     "html2canvas": "^1.4.1",
     "input-otp": "1.4.2",
     "jspdf": "^4.0.0",
+    "jspdf-autotable": "^5.0.8",
     "jszip": "^3.10.1",
     "lucide-react": "0.487.0",
     "motion": "12.23.24",
@@ -107,6 +109,7 @@
     "tw-animate-css": "1.3.8",
     "typescript": "^6.0.3",
     "vaul": "1.1.2",
+    "xlsx": "^0.18.5",
     "zod": "^4.2.1"
   },
   "devDependencies": {
@@ -118,7 +121,7 @@
     "dotenv": "^16.6.1",
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.18",
-    "vite": "6.3.5",
+    "vite": "^6.4.3",
     "vite-plugin-pwa": "^1.2.0"
   },
   "peerDependencies": {

@@ -7,6 +7,7 @@ import { useSupabase } from '@/app/context/SupabaseContext';
 import { supabase } from '@/lib/supabase';
 import { Loader2, FileText } from 'lucide-react';
 import { format } from 'date-fns';
+import { friendlyNumberingDocumentType } from '@/app/lib/numberingDocumentTypeLabels';
 
 export interface AuditRow {
   id: string;
@@ -84,7 +85,7 @@ export function NumberAuditTable() {
               )}
               {rows.map((r) => (
                 <tr key={r.id} className="hover:bg-gray-800/30 bg-gray-950/30">
-                  <td className="px-4 py-3 text-gray-300 capitalize">{r.document_type?.toLowerCase()}</td>
+                  <td className="px-4 py-3 text-gray-300">{friendlyNumberingDocumentType(r.document_type)}</td>
                   <td className="px-4 py-3 font-mono text-white">{r.document_number || '—'}</td>
                   <td className="px-4 py-3 text-gray-400">{r.reference_type} ({r.reference_id?.slice(0, 8)}…)</td>
                   <td className="px-4 py-3 text-gray-400">{r.reason || '—'}</td>

@@ -8,8 +8,8 @@
 import React, { createContext, useContext, useState, useCallback, useMemo, useEffect, useRef, ReactNode } from 'react';
 import { useSupabase } from './SupabaseContext';
 import { safeLocalStorageGetItem, safeLocalStorageSetItem } from '@/app/lib/safeBrowserStorage';
-import { formatLocalDateYYYYMMDD } from '@/app/utils/localDate';
-import { getThisBusinessWeekRange } from '@/app/utils/businessWeek';
+import { formatLocalDateYYYYMMDD, parseLocalDateInput } from '@/app/utils/localDate';
+import { getLastBusinessWeekRange, getThisBusinessWeekRange } from '@/app/utils/businessWeek';
 import { dispatchDataInvalidated, type InvalidationDomain } from '@/app/lib/dataInvalidationBus';
 
 const STORAGE_KEY = 'erp-global-filters';
@@ -21,6 +21,7 @@ export type GlobalDateRangeType =
   | 'last30days'
   | 'last90days'
   | 'thisWeek'
+  | 'lastWeek'
   | 'thisMonth'
   | 'thisYear'
   | 'fromStart'
@@ -52,9 +53,9 @@ function getDateRangeForType(type: GlobalDateRangeType, customStart?: string | n
   endDate.setHours(23, 59, 59, 999);
 
   if (type === 'customRange' && customStart && customEnd) {
-    const start = new Date(customStart);
+    const start = parseLocalDateInput(customStart);
     start.setHours(0, 0, 0, 0);
-    const end = new Date(customEnd);
+    const end = parseLocalDateInput(customEnd);
     end.setHours(23, 59, 59, 999);
     return { startDate: start, endDate: end };
   }
@@ -86,6 +87,8 @@ function getDateRangeForType(type: GlobalDateRangeType, customStart?: string | n
     }
     case 'thisWeek':
       return getThisBusinessWeekRange(today);
+    case 'lastWeek':
+      return getLastBusinessWeekRange(today);
     case 'thisMonth': {
       const s = new Date(today.getFullYear(), today.getMonth(), 1);
       return { startDate: s, endDate };
@@ -133,9 +136,9 @@ interface GlobalFilterContextType {
   /** For custom range. */
   customStartDate: string | null;
   customEndDate: string | null;
-  /** Start of range (ISO string) for queries. */
+  /** Start of range (local calendar YYYY-MM-DD) for queries. */
   startDate: string;
-  /** End of range (ISO string) for queries. */
+  /** End of range (local calendar YYYY-MM-DD) for queries. */
   endDate: string;
   /** Start/end as Date for components that need it. */
   startDateObj: Date;
@@ -257,8 +260,14 @@ export const GlobalFilterProvider: React.FC<{ children: ReactNode }> = ({ childr
     [effectiveDateType, persisted.customStartDate, persisted.customEndDate]
   );
 
-  const startDate = useMemo(() => startDateObj?.toISOString() ?? new Date().toISOString(), [startDateObj]);
-  const endDate = useMemo(() => endDateObj?.toISOString() ?? new Date().toISOString(), [endDateObj]);
+  const startDate = useMemo(
+    () => (startDateObj ? formatLocalDateYYYYMMDD(startDateObj) : formatLocalDateYYYYMMDD(new Date())),
+    [startDateObj]
+  );
+  const endDate = useMemo(
+    () => (endDateObj ? formatLocalDateYYYYMMDD(endDateObj) : formatLocalDateYYYYMMDD(new Date())),
+    [endDateObj]
+  );
 
   const getDateRangeLabel = useCallback((): string => {
     const type = effectiveDateType;
@@ -275,6 +284,7 @@ export const GlobalFilterProvider: React.FC<{ children: ReactNode }> = ({ childr
       last30days: 'Last 30 Days',
       last90days: 'Last 90 Days',
       thisWeek: 'This Week (Sat–Fri)',
+      lastWeek: 'Last Week (Sat–Fri)',
       thisMonth: 'This Month',
       thisYear: 'This Year',
       customRange: 'Custom Range',

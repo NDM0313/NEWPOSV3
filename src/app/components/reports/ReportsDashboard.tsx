@@ -489,9 +489,9 @@ export const ReportsDashboard = () => {
         );
 
       case 'roznamcha':
-        return <RoznamchaReport />;
+        return <RoznamchaReport globalStartDate={startDate} globalEndDate={endDate} />;
       case 'daybook':
-        return <DayBookReport />;
+        return <DayBookReport globalStartDate={startDate} globalEndDate={endDate} />;
 
       case 'sales':
         return (

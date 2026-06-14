@@ -14,9 +14,108 @@ Copy a new block for every build. Keep the newest entry at the top.
 
 API base for production APK: `https://erp.dincouture.pk` from `.env.production` at sync time (not localhost).
 
+### Expenses list: APK vs localhost dev (troubleshooting)
+
+| Symptom | Likely cause | What to do |
+|---------|----------------|------------|
+| **Expenses** show `TypeError: Failed to fetch` on APK; login + category chips OK; localhost:5174 works | Native Capacitor called REST with embedded join `payment_account:accounts(...)`; network layer fails before PostgREST JSON error (no fallback) | Install **build 36+** — plain select on native, payment display via enrichment |
+| Categories load but list empty / Rs. 0 totals | Same as above — only `expenses` list query failed | Rebuild: `npm run android:apk:release:win` |
+| Raw `Failed to fetch` on other screens too | Global network / CORS / stale anon key | [`MOBILE_APK_LOCKED_PATTERN.md`](../../docs/infra/MOBILE_APK_LOCKED_PATTERN.md); Settings → 7-tap version → Connection Debug |
+
 ---
 
-## Latest build — 1.0.5 (build 10 iOS / versionCode 35 Android) — 2026-06-03
+## Latest build — 1.0.5 (build 14 iOS / versionCode 39 Android) — 2026-06-08
+
+| Field | Value |
+|--------|--------|
+| **Date** | 2026-06-08 |
+| **versionName** | 1.0.5 |
+| **iOS build** | 14 (`CURRENT_PROJECT_VERSION`) |
+| **Android versionCode** | 39 |
+| **APK path (local)** | `releases/erp-mobile-1.0.5-build39.apk` |
+| **IPA path (local)** | `releases/erp-mobile-1.0.5-build14.ipa` |
+| **Install guide (iOS)** | [`releases/IOS_DEVELOPMENT_IPA_BUILD14.md`](IOS_DEVELOPMENT_IPA_BUILD14.md) |
+| **Built on** | Mac — `npm run android:apk:release:mac` / `npm run ios:ipa:release:mac` |
+
+### Changelog (user-facing) — build 14 / 39
+
+- **Home screen:** Safe-area top header (`flow-screen-header`); logout/settings clear of status bar.
+- **iOS camera:** Release builds require `VITE_TARGET=capacitor` (ML Kit, not web stub); verify script fails early.
+- **Mobile storage:** Safe session/local storage for PIN lock + Supabase auth.
+- **Web ERP:** Storage hardening deployed; TopHeader one-click logout.
+
+---
+
+## Previous build — 1.0.5 (build 12 iOS / versionCode 37 Android) — 2026-06-07
+
+| Field | Value |
+|--------|--------|
+| **Date** | 2026-06-07 |
+| **versionName** | 1.0.5 |
+| **iOS build** | 12 (`CURRENT_PROJECT_VERSION`) |
+| **Android versionCode** | 37 |
+| **APK path (local)** | `releases/erp-mobile-1.0.5-build37.apk` |
+| **IPA path (local)** | `releases/erp-mobile-1.0.5-build12.ipa` |
+| **Install guide (iOS)** | [`releases/IOS_DEVELOPMENT_IPA_BUILD12.md`](IOS_DEVELOPMENT_IPA_BUILD12.md) |
+| **Built on** | Mac — open **`App.xcworkspace`** (CocoaPods + ML Kit barcode) |
+
+### Changelog (user-facing) — build 12 / 37
+
+- **Sales → Add Products:** Camera barcode scan on native (ML Kit); Scan button always on phone.
+- **iOS:** CocoaPods migration for `@capacitor-mlkit/barcode-scanning` (fixes camera on iPhone).
+- **Rentals:** Shared date presets (This week / Last week) via `DateRangeBar`.
+- **Expenses:** Sub-category filter chips from category tree.
+- **Includes office build 36 fix:** Expenses list `Failed to fetch` on APK (plain PostgREST select on native).
+
+### Install notes — iOS (build 12)
+
+1. Open `ios/App/App.xcworkspace` (not `.xcodeproj`).
+2. Drag `releases/erp-mobile-1.0.5-build12.ipa` in Xcode **Devices and Simulators**.
+3. Full steps: [`IOS_DEVELOPMENT_IPA_BUILD12.md`](IOS_DEVELOPMENT_IPA_BUILD12.md).
+
+### Install notes — Android (build 37)
+
+1. `adb install -r releases/erp-mobile-1.0.5-build37.apk`
+2. API base: `https://erp.dincouture.pk`
+
+---
+
+## Previous build — 1.0.5 (build 36 Android) — 2026-06-07 (office PC)
+
+| Field | Value |
+|--------|--------|
+| **Date** | 2026-06-07 |
+| **versionName** | 1.0.5 |
+| **Android versionCode** | 36 |
+| **Git commit** | `78d0596` |
+| **APK path (local)** | `releases/erp-mobile-1.0.5-build36.apk` |
+| **Built with** | `npm run android:apk:release:win` (VPS anon sync + `cap:sync:android:prod`) |
+
+### Problem fixed (build 36)
+
+On installed APK, **Expenses** showed `TypeError: Failed to fetch` while **login** and **expense category chips** worked.
+
+**Root cause:** PostgREST embed on native failed at transport layer; retry only ran on JSON errors.
+
+### Changelog (technical) — build 36
+
+- Native APK uses plain `expenses` select first; browser keeps embed-first.
+- [`networkErrorMessages.ts`](../../erp-mobile-app/src/utils/networkErrorMessages.ts) for user-facing network errors.
+
+---
+
+## Previous build — 1.0.5 (build 11 iOS) — 2026-06-04
+
+| Field | Value |
+|--------|--------|
+| **Date** | 2026-06-04 |
+| **iOS build** | 11 |
+| **IPA path (local)** | `releases/erp-mobile-1.0.5-build11.ipa` |
+| **Install guide** | [`releases/IOS_DEVELOPMENT_IPA_BUILD11.md`](IOS_DEVELOPMENT_IPA_BUILD11.md) |
+
+---
+
+## Previous build — 1.0.5 (build 10 iOS / versionCode 35 Android) — 2026-06-03
 
 | Field | Value |
 |--------|--------|

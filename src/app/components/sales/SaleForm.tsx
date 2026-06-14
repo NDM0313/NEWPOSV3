@@ -50,7 +50,9 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Separator } from "../ui/separator";
 import { Badge } from "../ui/badge";
-import { CalendarDatePicker } from "../ui/CalendarDatePicker";
+import { DateTimePicker, dateToDateTimePickerValue, dateTimePickerValueToDate } from "../ui/DateTimePicker";
+import { DatePicker } from "../ui/DatePicker";
+import { formatLocalDateYYYYMMDD, parseLocalDateInput } from '@/app/utils/localDate';
 import { SearchableSelect } from "../ui/searchable-select";
 import { InlineVariationSelector, Variation } from "../ui/inline-variation-selector";
 import {
@@ -281,7 +283,8 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
     // Supabase & Context
     const { companyId, branchId: contextBranchId, user, userRole, accessibleBranchIds, requiresBranchSelection } = useSupabase();
     const { canManageSettings } = useCheckPermission();
-    const { inventorySettings, businessSettings, loading: settingsLoading, company } = useSettings();
+    const { inventorySettings, businessSettings, loading: settingsLoading, company, modules: settingsModules } = useSettings();
+    const studioModuleEnabled = settingsModules.studioModuleEnabled;
     const enablePacking = inventorySettings.enablePacking;
     const enableBespoke = businessSettings.enableBespokeOrders;
     const bespokeFormConfig = businessSettings.bespokeFormConfig;
@@ -562,6 +565,12 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
 
     // Studio Sale State
     const [isStudioSale, setIsStudioSale] = useState<boolean>(false);
+
+    useEffect(() => {
+        if (!studioModuleEnabled && !initialSale?.id) {
+            setIsStudioSale(false);
+        }
+    }, [studioModuleEnabled, initialSale?.id]);
     /** Persisted to studio_productions.design_name (required for studio sales). */
     const [studioProductName, setStudioProductName] = useState<string>("");
     const [studioNotes, setStudioNotes] = useState<string>("");
@@ -2957,45 +2966,54 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                     : displayInvoiceNumber}
                             </span>
                         </div>
-                        {/* Type (Regular / Studio) - in header row */}
-                        <Popover open={typeDropdownOpen} onOpenChange={setTypeDropdownOpen}>
-                            <PopoverTrigger asChild>
-                                <button
-                                    type="button"
-                                    className="flex items-center gap-2 bg-gray-900/50 border border-gray-800 rounded-lg px-2.5 py-1 hover:bg-gray-800 transition-colors cursor-pointer h-8"
-                                >
-                                    <Tag size={14} className="text-gray-500 shrink-0" />
-                                    <span className="text-xs text-white capitalize">{isStudioSale ? 'Studio' : 'Regular'}</span>
-                                    <ChevronRight size={12} className="text-gray-500 rotate-90 shrink-0" />
-                                </button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-48 bg-gray-900 border-gray-800 text-white p-2" align="start">
-                                <div className="space-y-1">
-                                    {(['regular', 'studio'] as const).map((t) => (
-                                        <button
-                                            key={t}
-                                            type="button"
-                                            onClick={() => {
-                                                setIsStudioSale(t === 'studio');
-                                                if (t === 'studio') setShippingEnabled(false);
-                                                setTypeDropdownOpen(false);
-                                            }}
-                                            className={cn(
-                                                'w-full text-left px-3 py-2 rounded-md text-sm transition-all flex items-center gap-2',
-                                                (isStudioSale ? 'studio' : 'regular') === t
-                                                    ? 'bg-gray-800 text-white'
-                                                    : 'text-gray-400 hover:bg-gray-800 hover:text-white'
-                                            )}
-                                        >
-                                            <Tag size={16} className={cn(
-                                                (isStudioSale ? 'studio' : 'regular') === t ? 'text-blue-400' : 'text-gray-500'
-                                            )} />
-                                            <span className="capitalize">{t}</span>
-                                        </button>
-                                    ))}
-                                </div>
-                            </PopoverContent>
-                        </Popover>
+                        {/* Type (Regular / Studio) — Studio hidden when module disabled */}
+                        {studioModuleEnabled ? (
+                            <Popover open={typeDropdownOpen} onOpenChange={setTypeDropdownOpen}>
+                                <PopoverTrigger asChild>
+                                    <button
+                                        type="button"
+                                        className="flex items-center gap-2 bg-gray-900/50 border border-gray-800 rounded-lg px-2.5 py-1 hover:bg-gray-800 transition-colors cursor-pointer h-8"
+                                    >
+                                        <Tag size={14} className="text-gray-500 shrink-0" />
+                                        <span className="text-xs text-white capitalize">{isStudioSale ? 'Studio' : 'Regular'}</span>
+                                        <ChevronRight size={12} className="text-gray-500 rotate-90 shrink-0" />
+                                    </button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-48 bg-gray-900 border-gray-800 text-white p-2" align="start">
+                                    <div className="space-y-1">
+                                        {(['regular', 'studio'] as const).map((t) => (
+                                            <button
+                                                key={t}
+                                                type="button"
+                                                onClick={() => {
+                                                    setIsStudioSale(t === 'studio');
+                                                    if (t === 'studio') setShippingEnabled(false);
+                                                    setTypeDropdownOpen(false);
+                                                }}
+                                                className={cn(
+                                                    'w-full text-left px-3 py-2 rounded-md text-sm transition-all flex items-center gap-2',
+                                                    (isStudioSale ? 'studio' : 'regular') === t
+                                                        ? 'bg-gray-800 text-white'
+                                                        : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                                                )}
+                                            >
+                                                <Tag size={16} className={cn(
+                                                    (isStudioSale ? 'studio' : 'regular') === t ? 'text-blue-400' : 'text-gray-500'
+                                                )} />
+                                                <span className="capitalize">{t}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </PopoverContent>
+                            </Popover>
+                        ) : (
+                            <div className="flex items-center gap-2 bg-gray-900/50 border border-gray-800 rounded-lg px-2.5 py-1 h-8">
+                                <Tag size={14} className="text-gray-500 shrink-0" />
+                                <span className="text-xs text-white capitalize">
+                                    {isStudioSale ? 'Studio' : 'Regular'}
+                                </span>
+                            </div>
+                        )}
                     </div>
 
                     {/* Right side: Status, Salesman, Branch */}
@@ -3304,10 +3322,9 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                 <div className="flex flex-col w-[184px] absolute left-[798px] top-[77px] z-0">
                                     <Label className="text-gray-500 font-medium text-xs uppercase tracking-wide h-[14px] mb-1.5">Date</Label>
                                     <div className="[&>div>button]:bg-gray-900/50 [&>div>button]:border-gray-800 [&>div>button]:text-white [&>div>button]:text-xs [&>div>button]:h-10 [&>div>button]:min-h-[40px] [&>div>button]:px-2.5 [&>div>button]:py-1 [&>div>button]:rounded-lg [&>div>button]:border [&>div>button]:hover:bg-gray-800 [&>div>button]:w-full [&>div>button]:justify-start" style={{ width: '209px' }}>
-                                        <CalendarDatePicker
-                                            value={saleDate}
-                                            onChange={(date) => setSaleDate(date || new Date())}
-                                            showTime={true}
+                                        <DateTimePicker
+                                            value={dateToDateTimePickerValue(saleDate)}
+                                            onChange={(v) => setSaleDate(dateTimePickerValueToDate(v) || new Date())}
                                             required
                                         />
                                     </div>
@@ -3351,14 +3368,14 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                 </div>
                                 <div className="w-40">
                                     <Label className="text-[10px] uppercase tracking-wide text-purple-400/90 mb-0.5 block">Deadline</Label>
-                                    <CalendarDatePicker
-                                        value={studioDeadline}
-                                        onChange={(date) => {
-                                            studioDeadlineRef.current = date ?? undefined;
-                                            setStudioDeadline(date ?? undefined);
+                                    <DatePicker
+                                        value={studioDeadline ? formatLocalDateYYYYMMDD(studioDeadline) : ''}
+                                        onChange={(v) => {
+                                            const d = v ? parseLocalDateInput(v) : undefined;
+                                            studioDeadlineRef.current = d;
+                                            setStudioDeadline(d);
                                         }}
                                         placeholder="Deadline"
-                                        showTime={false}
                                     />
                                 </div>
                             </div>

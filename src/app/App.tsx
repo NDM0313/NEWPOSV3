@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useEffect } from 'react';
+import React, { lazy, Suspense, useEffect, useState } from 'react';
 import { FeatureFlagProvider, useFeatureFlag } from './context/FeatureFlagContext';
 import { NavigationProvider, useNavigation } from './context/NavigationContext';
 import { Layout } from './components/layout/Layout';
@@ -34,7 +34,7 @@ const GlobalSuspenseFallback = () => (
   </div>
 );
 
-const Dashboard = lazy(() => import('./components/dashboard/Dashboard').then(m => ({ default: m.Dashboard })));
+const Dashboard = lazy(() => import('./components/dashboard/v2/DashboardV2Page').then(m => ({ default: m.DashboardV2Page })));
 const ProductsPage = lazy(() => import('./components/products/ProductsPage').then(m => ({ default: m.ProductsPage })));
 const POS = lazy(() => import('./components/pos/POS').then(m => ({ default: m.POS })));
 const SalesEntry = lazy(() => import('./components/sales/SalesEntry').then(m => ({ default: m.SalesEntry })));
@@ -102,6 +102,9 @@ const AccountingDeveloperCenterPage = lazy(() =>
   import('./components/admin/AccountingDeveloperCenterPage').then((m) => ({ default: m.default }))
 );
 const ArApReconciliationCenterPage = lazy(() => import('./components/accounting/ArApReconciliationCenterPage').then(m => ({ default: m.default })));
+const FinancialTraceRedirect = lazy(() =>
+  import('./components/accounting/ar-ap-diagnostics/FinancialTraceRedirect').then((m) => ({ default: m.default }))
+);
 const AccountsHierarchyTestPage = lazy(() => import('./components/test/AccountsHierarchyTestPage').then(m => ({ default: m.default })));
 const ExpenseEditTraceTestPage = lazy(() => import('./components/test/ExpenseEditTraceTestPage').then(m => ({ default: m.default })));
 const AccountingEditTracePage = lazy(() => import('./components/test/AccountingEditTracePage').then(m => ({ default: m.default })));
@@ -118,11 +121,17 @@ const ProductionOrdersPage = lazy(() => import('./manufacturing/ProductionOrders
 const ProductionWorkflow = lazy(() => import('./manufacturing/ProductionWorkflow').then(m => ({ default: m.ProductionWorkflow })));
 
 const AppContent = () => {
-  const { currentView, partyLedgerParams, setCurrentView, setPartyLedgerParams } = useNavigation();
+  const { currentView, partyLedgerParams, setCurrentView, setPartyLedgerParams, reportsFinancialInitial } = useNavigation();
   const { modules, featureFlags, businessSettings } = useSettings();
   const { hasPermission } = useCheckPermission();
   const studioProductionV2 = featureFlags?.studio_production_v2 === true;
   const studioProductionV3 = featureFlags?.studio_production_v3 === true;
+  const [, bumpRouteSync] = useState(0);
+  useEffect(() => {
+    const syncRoute = () => bumpRouteSync((n) => n + 1);
+    window.addEventListener('popstate', syncRoute);
+    return () => window.removeEventListener('popstate', syncRoute);
+  }, []);
   const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
 
   // 🎯 Enable global keyboard shortcuts
@@ -144,6 +153,16 @@ const AppContent = () => {
   if (pathname === '/test/ar-ap-truth-lab') {
     return (<Layout><ArApTruthLabPage /><GlobalDrawer /></Layout>);
   }
+  if (pathname === '/reports/ledger-statement-center-v2') {
+    return (
+      <Layout>
+        <Suspense fallback={<GlobalSuspenseFallback />}>
+          <AccountingDashboard />
+        </Suspense>
+        <GlobalDrawer />
+      </Layout>
+    );
+  }
   if (pathname === '/admin/permission-inspector' || currentView === 'permission-inspector') {
     return (<Layout><PermissionInspectorPage /><GlobalDrawer /></Layout>);
   }
@@ -155,11 +174,18 @@ const AppContent = () => {
   ) {
     return (<Layout><AccountingTestBenchPage /><GlobalDrawer /></Layout>);
   }
-  if (
-    pathname === '/admin/accounting-developer-center' ||
-    currentView === 'accounting-developer-center'
-  ) {
+  if (pathname === '/admin/accounting-developer-center') {
     return (<Layout><AccountingDeveloperCenterPage /><GlobalDrawer /></Layout>);
+  }
+  if (pathname === '/admin/financial-trace-center' || currentView === 'financial-trace-center') {
+    return (
+      <Layout>
+        <Suspense fallback={<GlobalSuspenseFallback />}>
+          <FinancialTraceRedirect />
+        </Suspense>
+        <GlobalDrawer />
+      </Layout>
+    );
   }
 
   // Route protection: module toggles are company-wide and apply to all users/roles (Admin, Manager, Staff).
@@ -309,7 +335,12 @@ const AppContent = () => {
       {currentView === 'accounting-demo' && <AccountingIntegrationDemo />}
       {currentView === 'users' && <UserDashboard />}
       {currentView === 'roles' && <ErpPermissionArchitecturePage />}
-      {currentView === 'reports' && <ReportsDashboardEnhanced />}
+      {currentView === 'reports' && (
+        <ReportsDashboardEnhanced
+          initialReportType={reportsFinancialInitial ? 'financial' : 'overview'}
+          initialFinancialReportType={reportsFinancialInitial ?? undefined}
+        />
+      )}
       {currentView === 'settings' && (
         hasPermission('settings.view') ? <SettingsPageNew /> : (
           <div className="p-8 text-center text-gray-300">You do not have permission to access Settings.</div>
@@ -385,7 +416,7 @@ export default function App() {
   if (pathname === '/register-contact' || pathname.startsWith('/register-contact')) {
     return (
       <ErrorBoundary>
-        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
+        <ThemeProvider attribute="class" defaultTheme="dark" forcedTheme="dark" enableSystem={false}>
           <SupabaseProvider>
             <PublicContactForm />
             <Toaster position="bottom-right" theme="dark" />
@@ -402,7 +433,7 @@ export default function App() {
           // e.g. Sentry.captureException(err, { extra: info });
         }
       }}>
-      <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
+      <ThemeProvider attribute="class" defaultTheme="dark" forcedTheme="dark" enableSystem={false}>
         <FeatureFlagProvider>
           <PermissionV2ThemeSync>
             <SupabaseProvider>

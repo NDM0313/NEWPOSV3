@@ -41,6 +41,7 @@ export async function loadPartyFormBalances(
     supabase.rpc('get_contact_party_gl_balances', {
       p_company_id: companyId,
       p_branch_id: b,
+      p_as_of_date: null,
     }),
     contactService.getContactBalancesSummary(companyId, branchId ?? null),
   ]);

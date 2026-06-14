@@ -3,10 +3,11 @@ import {
   AlertTriangle,
   ArrowLeft,
   BookMarked,
-  CheckCircle2,
   ClipboardList,
   ExternalLink,
+  Eye,
   FileWarning,
+  FileSearch,
   Loader2,
   RefreshCw,
   Scale,
@@ -16,13 +17,13 @@ import {
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
-import { Input } from '@/app/components/ui/input';
+import { ReportBasisBanner } from '@/app/components/accounting/ReportBasisBanner';
+import { DatePicker } from '@/app/components/ui/DatePicker';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/app/components/ui/dropdown-menu';
 import { cn } from '@/app/components/ui/utils';
@@ -33,11 +34,13 @@ import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 import { toast } from 'sonner';
 import {
   ensureArApSuspenseAccount,
+  fetchAppliedGlCorrections,
   fetchIntegrityLabSummary,
   fetchManualAdjustments,
   fetchReconciliationItemStates,
   fetchUnmappedJournalLines,
   fetchUnpostedDocuments,
+  type AppliedGlCorrectionAuditRow,
   manualJeItemKey,
   unmappedLineItemKey,
   unpostedItemKey,
@@ -53,18 +56,46 @@ import type { AccountingUiRef } from '@/app/lib/accountingDisplayReference';
 import { resolveJournalUiRefsByJournalIds } from '@/app/services/integrityLabService';
 import {
   JournalRepairWizardDialog,
-  RelinkContactDialog,
-  UnpostedRepairDialog,
 } from '@/app/components/accounting/ArApRepairDialogs';
-
-const FIX_STATUSES: ArApFixStatus[] = [
-  'new',
-  'reviewed',
-  'ready_to_post',
-  'ready_to_relink',
-  'ready_to_reverse_repost',
-  'resolved',
-];
+import { resolveArApReconciliationAccess, mergeHybridRepairProbe } from '@/app/lib/arApReconciliationAccess';
+import { diagnoseUnpostedRow, diagnoseUnmappedLine } from '@/app/lib/arApReconciliationDiagnostics';
+import { batchFetchUnpostedDocumentStatuses, loadUnmappedTrace } from '@/app/services/arApReconciliationTraceService';
+import { SourceDocumentDetailModal, UnmappedRowDetailModal } from '@/app/components/accounting/ar-ap-repair/SourceDocumentDetailModal';
+import { PostingDryRunWizard } from '@/app/components/accounting/ar-ap-repair/PostingDryRunWizard';
+import { RelinkDryRunWizard } from '@/app/components/accounting/ar-ap-repair/RelinkDryRunWizard';
+import { StatusChangeModal, type StatusChangeIntent } from '@/app/components/accounting/ar-ap-repair/StatusChangeModal';
+import { RowTracePanel, type TraceTarget } from '@/app/components/accounting/ar-ap-repair/RowTracePanel';
+import {
+  AppliedGlCorrectionBadge,
+  FalsePositiveBadge,
+  MetadataReviewBadge,
+  PostabilityBadge,
+  RiskBadge,
+} from '@/app/components/accounting/ar-ap-repair/ArApRepairBadges';
+import {
+  ActionableRepairCard,
+  type ActionableRepairCardProps,
+} from '@/app/components/accounting/ar-ap-repair/ActionableRepairCard';
+import { GlCorrectionDraftModal } from '@/app/components/accounting/ar-ap-repair/GlCorrectionDraftModal';
+import { KnownGlCorrectionSection } from '@/app/components/accounting/ar-ap-repair/KnownGlCorrectionSection';
+import { HybridRepairPanel } from '@/app/components/accounting/ar-ap-repair/HybridRepairPanel';
+import { ReceivablesVarianceBreakdownPanel } from '@/app/components/accounting/ar-ap-repair/ReceivablesVarianceBreakdownPanel';
+import { PayablesVarianceExplainerPanel } from '@/app/components/accounting/ar-ap-repair/PayablesVarianceExplainerPanel';
+import { ArApRepairProgressStrip } from '@/app/components/accounting/ar-ap-repair/ArApRepairProgressStrip';
+import { consumeOpenArApHybridRepairFocus } from '@/app/lib/arApHybridRepairNav';
+import {
+  parseArApDiagnosticsHubTabFromUrl,
+  syncArApDiagnosticsHubTabToUrl,
+  type ArApDiagnosticsHubTab,
+} from '@/app/lib/arApDiagnosticsHubTabs';
+import { FinancialTraceDiagnosticsPanel } from '@/app/components/accounting/FinancialTraceCenterPage';
+import { JournalHygienePanel } from '@/app/components/accounting/ar-ap-diagnostics/JournalHygienePanel';
+import { loadDeveloperRepairSystemStatus } from '@/app/services/developerRepairSystemStatusService';
+import {
+  classifyUnmappedJournalLine,
+  classifyUnpostedDocument as classifyUnpostedForRepair,
+  type ActionableRepairButton,
+} from '@/app/lib/actionableRepairClassifier';
 
 function statusBadgeClass(status: IntegrityLabSummary['status']): string {
   switch (status) {
@@ -83,32 +114,35 @@ function statusBadgeClass(status: IntegrityLabSummary['status']): string {
   }
 }
 
-function FixStatusSelect(props: {
+function FixStatusButton(props: {
   value: ArApFixStatus;
-  onChange: (v: ArApFixStatus) => void;
+  onClick: () => void;
   disabled?: boolean;
 }) {
   return (
-    <select
-      value={props.value}
+    <button
+      type="button"
       disabled={props.disabled}
-      onChange={(e) => props.onChange(e.target.value as ArApFixStatus)}
-      className="max-w-[140px] bg-gray-900 border border-gray-700 rounded px-2 py-1 text-[11px] text-gray-200"
+      onClick={props.onClick}
+      className="max-w-[140px] bg-gray-900 border border-gray-700 rounded px-2 py-1 text-[11px] text-gray-200 text-left hover:bg-gray-800 disabled:opacity-50"
+      title="Change status (requires reason)"
     >
-      {FIX_STATUSES.map((s) => (
-        <option key={s} value={s}>
-          {s.replace(/_/g, ' ')}
-        </option>
-      ))}
-    </select>
+      {props.value.replace(/_/g, ' ')}
+    </button>
   );
 }
 
 export function ArApReconciliationCenterPage() {
-  const { companyId, branchId } = useSupabase();
+  const { companyId, branchId, userRole } = useSupabase();
   const { formatCurrency } = useFormatCurrency();
   const { canPostAccounting } = useCheckPermission();
-  const { setCurrentView, setOpenSaleIdForView } = useNavigation();
+  const baseAccess = useMemo(() => resolveArApReconciliationAccess(userRole), [userRole]);
+  const [glCorrectionRpcAvailable, setGlCorrectionRpcAvailable] = useState(false);
+  const access = useMemo(
+    () => mergeHybridRepairProbe(baseAccess, { glCorrectionRpcAvailable }),
+    [baseAccess, glCorrectionRpcAvailable]
+  );
+  const { setCurrentView, setOpenSaleIdForView, openPartyLedger } = useNavigation();
   const [asOfDate, setAsOfDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<IntegrityLabSummary | null>(null);
@@ -118,12 +152,68 @@ export function ArApReconciliationCenterPage() {
   const [itemStates, setItemStates] = useState<Map<string, ArApFixStatus>>(new Map());
   const [hideResolved, setHideResolved] = useState(true);
   const [ensuringSuspense, setEnsuringSuspense] = useState(false);
+  const [hubTab, setHubTab] = useState<ArApDiagnosticsHubTab>(() => parseArApDiagnosticsHubTabFromUrl());
   const [activeTab, setActiveTab] = useState('queues');
+  const [dataRefreshToken, setDataRefreshToken] = useState(0);
+  const [appliedGlCorrections, setAppliedGlCorrections] = useState<AppliedGlCorrectionAuditRow[]>([]);
 
-  const [unpostedRepairRow, setUnpostedRepairRow] = useState<UnpostedDocumentRow | null>(null);
+  const [sourceDetailRow, setSourceDetailRow] = useState<UnpostedDocumentRow | null>(null);
+  const [postingDryRunRow, setPostingDryRunRow] = useState<UnpostedDocumentRow | null>(null);
+  const [relinkDryRunRow, setRelinkDryRunRow] = useState<UnmappedJournalRow | null>(null);
+  const [unmappedDetailRow, setUnmappedDetailRow] = useState<UnmappedJournalRow | null>(null);
+  const [traceTarget, setTraceTarget] = useState<TraceTarget | null>(null);
   const [journalWizardId, setJournalWizardId] = useState<string | null>(null);
-  const [relinkRow, setRelinkRow] = useState<UnmappedJournalRow | null>(null);
+  const [journalWizardItemKey, setJournalWizardItemKey] = useState<string | null>(null);
+  const [journalWizardItemKind, setJournalWizardItemKind] = useState<string>('unmapped_line');
   const [jeUiByJournalId, setJeUiByJournalId] = useState<Map<string, AccountingUiRef>>(new Map());
+  const [unpostedStatusByKey, setUnpostedStatusByKey] = useState<Map<string, string | null>>(new Map());
+  const [unmappedDiagByKey, setUnmappedDiagByKey] = useState<
+    Map<string, ReturnType<typeof diagnoseUnmappedLine>>
+  >(new Map());
+  const [statusModal, setStatusModal] = useState<{
+    kind: string;
+    key: string;
+    intent: StatusChangeIntent;
+    title: string;
+    description?: string;
+    rowStillInQueue?: boolean;
+  } | null>(null);
+  const [glCorrectionDefectId, setGlCorrectionDefectId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!companyId || !access.canUseHybridRepair) return;
+    void loadDeveloperRepairSystemStatus(companyId, userRole).then((s) => {
+      setGlCorrectionRpcAvailable(s.probe.glCorrectionRpcAvailable);
+    });
+  }, [companyId, userRole, access.canUseHybridRepair]);
+
+  useEffect(() => {
+    if (!consumeOpenArApHybridRepairFocus()) return;
+    setHubTab('queues');
+    syncArApDiagnosticsHubTabToUrl('queues');
+    const t = window.setTimeout(() => {
+      document.getElementById('hybrid-repair-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 300);
+    return () => window.clearTimeout(t);
+  }, []);
+
+  useEffect(() => {
+    const onPop = () => setHubTab(parseArApDiagnosticsHubTabFromUrl());
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
+  const setHubTabAndSync = useCallback((tab: ArApDiagnosticsHubTab) => {
+    setHubTab(tab);
+    syncArApDiagnosticsHubTabToUrl(tab);
+  }, []);
+
+  const scrollToHybridRepair = useCallback(() => {
+    setHubTabAndSync('queues');
+    window.setTimeout(() => {
+      document.getElementById('hybrid-repair-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 150);
+  }, [setHubTabAndSync]);
 
   const load = useCallback(async () => {
     if (!companyId) {
@@ -136,18 +226,21 @@ export function ArApReconciliationCenterPage() {
     }
     setLoading(true);
     try {
-      const [sum, up, um, man, states] = await Promise.all([
+      const [sum, up, um, man, states, appliedGl] = await Promise.all([
         fetchIntegrityLabSummary(companyId, branchId, asOfDate),
         fetchUnpostedDocuments(companyId, branchId, asOfDate),
         fetchUnmappedJournalLines(companyId, branchId, asOfDate),
         fetchManualAdjustments(companyId, branchId, asOfDate),
         fetchReconciliationItemStates(companyId),
+        fetchAppliedGlCorrections(companyId),
       ]);
       setSummary(sum);
       setUnposted(up);
       setUnmapped(um);
       setManual(man);
       setItemStates(states);
+      setAppliedGlCorrections(appliedGl);
+      setDataRefreshToken((t) => t + 1);
     } finally {
       setLoading(false);
     }
@@ -156,6 +249,46 @@ export function ArApReconciliationCenterPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!unposted.length) {
+      setUnpostedStatusByKey(new Map());
+      return;
+    }
+    let cancelled = false;
+    void batchFetchUnpostedDocumentStatuses(unposted).then((m) => {
+      if (!cancelled) setUnpostedStatusByKey(m);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [unposted]);
+
+  useEffect(() => {
+    if (!unmapped.length) {
+      setUnmappedDiagByKey(new Map());
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const m = new Map<string, ReturnType<typeof diagnoseUnmappedLine>>();
+      await Promise.all(
+        unmapped.map(async (r) => {
+          const key = unmappedLineItemKey(r);
+          try {
+            const t = await loadUnmappedTrace(r);
+            m.set(key, diagnoseUnmappedLine(r, t.payment ?? undefined, t.lineAccount?.linked_contact_id));
+          } catch {
+            m.set(key, diagnoseUnmappedLine(r));
+          }
+        })
+      );
+      if (!cancelled) setUnmappedDiagByKey(m);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [unmapped]);
 
   useEffect(() => {
     const onInvalidate = (e: Event) => {
@@ -209,22 +342,47 @@ export function ArApReconciliationCenterPage() {
     [getStatus, hideResolved]
   );
 
-  const onFixStatusChange = async (kind: string, key: string, status: ArApFixStatus) => {
-    if (!companyId) return;
+  const onFixStatusChange = async (kind: string, key: string, status: ArApFixStatus, note?: string) => {
+    if (!companyId || access.readOnly) return;
     const r = await upsertArApItemFixStatus(companyId, kind, key, status);
     if (!r.ok) {
       toast.error(r.error || 'Could not save status');
       return;
     }
     setItemStates((prev) => new Map(prev).set(key, status));
-    toast.success('Status updated');
+    toast.success('Status updated', { description: note ? note.slice(0, 120) : undefined });
   };
+
+  const openJournalWizard = (journalEntryId: string, itemKind: string, itemKey: string) => {
+    setJournalWizardId(journalEntryId);
+    setJournalWizardItemKind(itemKind);
+    setJournalWizardItemKey(itemKey);
+  };
+
+  const openSaleById = (saleId: string, invoiceNo?: string) => {
+    setOpenSaleIdForView?.(saleId);
+    setCurrentView('sales');
+    toast.message('Opened Sales — finalize to post', {
+      description: invoiceNo
+        ? `${invoiceNo}: use Finalize in sale drawer to create invoice JE and clear order advance variance.`
+        : 'Finalize the sale to create invoice JE and clear order advance variance.',
+    });
+  };
+
+  const goToUnpostedOrders = () => {
+    scrollToQueueSection(unpostedFinalMissing.length > 0 ? 'unposted-queue-1b' : 'unposted-queue-1a');
+  };
+
+  const scrollToQueueSection = useCallback((elementId: string) => {
+    setActiveTab('queues');
+    window.setTimeout(() => {
+      document.getElementById(elementId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
+  }, []);
 
   const openSourceDocument = (row: UnpostedDocumentRow) => {
     if (row.source_type === 'sale') {
-      setOpenSaleIdForView?.(row.source_id);
-      setCurrentView('sales');
-      toast.message('Opened Sales', { description: `Invoice ${row.document_no || row.source_id}` });
+      openSaleById(row.source_id, row.document_no || undefined);
       return;
     }
     if (row.source_type === 'purchase') {
@@ -241,6 +399,33 @@ export function ArApReconciliationCenterPage() {
   const openDeveloperIntegrityLab = () => {
     setCurrentView('accounting-integrity-lab');
     toast.message('Developer Accounting Integrity Lab');
+  };
+
+  const handleActionableRepair: ActionableRepairCardProps['onAction'] = (button, classification) => {
+    switch (button) {
+      case 'create_gl_correction_draft': {
+        const defectId = String(classification.queueItem?.params.defectId || 'hq-sl-0003-orphan-ar');
+        setGlCorrectionDefectId(defectId);
+        break;
+      }
+      case 'fix_link':
+        toast.message('Use Fix Link on the unmapped row — metadata only, GL unchanged');
+        break;
+      case 'open_source_document':
+        toast.message('Open the source document from the row Actions menu');
+        break;
+      case 'mark_reviewed':
+        toast.message('Use Mark reviewed on the row — requires a note');
+        break;
+      case 'view_audit':
+        toast.message('Switch Account Statement to audit mode to view reversal trails');
+        break;
+      case 'blocked_explain':
+        toast.warning(classification.blockReason || 'Action blocked — review required');
+        break;
+      default:
+        toast.info(classification.recommendedAction);
+    }
   };
 
   const handleEnsureSuspense = async () => {
@@ -272,9 +457,58 @@ export function ArApReconciliationCenterPage() {
     () => unposted.filter((r) => rowVisible(unpostedItemKey(r))),
     [unposted, rowVisible]
   );
+
+  const unpostedNonFinal = useMemo(
+    () =>
+      unpostedVisible.filter((r) => {
+        const st = unpostedStatusByKey.get(unpostedItemKey(r));
+        return diagnoseUnpostedRow(r, st).isNonFinal;
+      }),
+    [unpostedVisible, unpostedStatusByKey]
+  );
+
+  const unpostedFinalMissing = useMemo(
+    () =>
+      unpostedVisible.filter((r) => {
+        const st = unpostedStatusByKey.get(unpostedItemKey(r));
+        return !diagnoseUnpostedRow(r, st).isNonFinal;
+      }),
+    [unpostedVisible, unpostedStatusByKey]
+  );
+
+  const unmappedCsAppliedGlCorrection = useMemo(
+    () =>
+      unmappedCustomerSupplier
+        .filter((r) => rowVisible(unmappedLineItemKey(r)))
+        .filter((r) => unmappedDiagByKey.get(unmappedLineItemKey(r))?.isAppliedGlCorrectionReview),
+    [unmappedCustomerSupplier, rowVisible, unmappedDiagByKey]
+  );
+
   const unmappedCsVisible = useMemo(
-    () => unmappedCustomerSupplier.filter((r) => rowVisible(unmappedLineItemKey(r))),
-    [unmappedCustomerSupplier, rowVisible]
+    () =>
+      unmappedCustomerSupplier
+        .filter((r) => rowVisible(unmappedLineItemKey(r)))
+        .filter((r) => {
+          const d = unmappedDiagByKey.get(unmappedLineItemKey(r));
+          return !d?.isLikelyFalsePositive && !d?.isMetadataReviewOnly && !d?.isAppliedGlCorrectionReview;
+        }),
+    [unmappedCustomerSupplier, rowVisible, unmappedDiagByKey]
+  );
+
+  const unmappedCsFalsePositive = useMemo(
+    () =>
+      unmappedCustomerSupplier
+        .filter((r) => rowVisible(unmappedLineItemKey(r)))
+        .filter((r) => unmappedDiagByKey.get(unmappedLineItemKey(r))?.isLikelyFalsePositive),
+    [unmappedCustomerSupplier, rowVisible, unmappedDiagByKey]
+  );
+
+  const unmappedCsMetadataReview = useMemo(
+    () =>
+      unmappedCustomerSupplier
+        .filter((r) => rowVisible(unmappedLineItemKey(r)))
+        .filter((r) => unmappedDiagByKey.get(unmappedLineItemKey(r))?.isMetadataReviewOnly),
+    [unmappedCustomerSupplier, rowVisible, unmappedDiagByKey]
   );
   const unmappedWpVisible = useMemo(
     () => unmappedWorkerPayable.filter((r) => rowVisible(unmappedLineItemKey(r))),
@@ -284,6 +518,148 @@ export function ArApReconciliationCenterPage() {
     () => manual.filter((r) => rowVisible(manualJeItemKey(r))),
     [manual, rowVisible]
   );
+
+  const openStatusModal = (
+    kind: string,
+    key: string,
+    intent: StatusChangeIntent,
+    title: string,
+    opts?: { description?: string; rowStillInQueue?: boolean }
+  ) => {
+    setStatusModal({ kind, key, intent, title, ...opts });
+  };
+
+  const renderUnpostedTable = (rows: UnpostedDocumentRow[], emptyLabel: string) => (
+    <table className="w-full text-sm">
+      <thead className="text-left text-gray-500 border-b border-gray-800">
+        <tr>
+          <th className="p-2 min-w-[200px]">Document</th>
+          <th className="p-2">Label</th>
+          <th className="p-2">Contact</th>
+          <th className="p-2 text-right">Amount</th>
+          <th className="p-2">Date</th>
+          <th className="p-2 w-32">Fix status</th>
+          <th className="p-2 min-w-[160px]">Repair</th>
+          <th className="p-2 w-40">Actions</th>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-gray-800/80">
+        {rows.length === 0 ? (
+          <tr>
+            <td colSpan={8} className="p-6 text-center text-gray-500">
+              {emptyLabel}
+            </td>
+          </tr>
+        ) : (
+          rows.map((r) => {
+            const key = unpostedItemKey(r);
+            const st = unpostedStatusByKey.get(key);
+            const diag = diagnoseUnpostedRow(r, st);
+            const repairCls = classifyUnpostedForRepair(r, diag);
+            return (
+              <tr key={key} className="hover:bg-gray-800/20">
+                <td className="p-2 align-top">
+                  <AccountingRefDisplayCell ui={unpostedDocumentUiRef(r)} />
+                </td>
+                <td className="p-2 align-top">
+                  <div className="flex flex-col gap-1">
+                    <PostabilityBadge label={diag.label} isNonFinal={diag.isNonFinal} />
+                    <RiskBadge level={diag.riskLevel} />
+                  </div>
+                </td>
+                <td className="p-2 text-gray-300">{r.contact_name || '—'}</td>
+                <td className="p-2 text-right tabular-nums">{formatCurrency(Number(r.amount) || 0)}</td>
+                <td className="p-2 text-gray-400">{r.document_date || '—'}</td>
+                <td className="p-2">
+                  <FixStatusButton
+                    value={getStatus(key)}
+                    disabled={access.readOnly}
+                    onClick={() =>
+                      openStatusModal('unposted', key, { kind: 'set', status: getStatus(key) }, 'Change fix status', {
+                        description: 'Select a new status and provide a reason.',
+                      })
+                    }
+                  />
+                </td>
+                <td className="p-2 align-top">
+                  <div className="flex flex-col gap-1">
+                    <ActionableRepairCard
+                      compact
+                      readOnly={access.readOnly}
+                      classification={repairCls}
+                      onAction={(btn) => {
+                        if (btn === 'open_source_document') openSourceDocument(r);
+                        else handleActionableRepair(btn, repairCls);
+                      }}
+                    />
+                    {diag.isNonFinal && r.source_type === 'sale' ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-7 text-[10px] bg-amber-700 hover:bg-amber-600"
+                        disabled={access.readOnly}
+                        onClick={() => openSaleById(r.source_id, r.document_no || undefined)}
+                      >
+                        Finalize &amp; Open sale
+                      </Button>
+                    ) : null}
+                  </div>
+                </td>
+                <td className="p-2">
+                  <RowActionsMenu
+                    readOnly={access.readOnly}
+                    items={[
+                      { label: 'Source detail…', onClick: () => setSourceDetailRow(r) },
+                      { label: 'Row trace', onClick: () => setTraceTarget({ kind: 'unposted', row: r }) },
+                      ...(!diag.isNonFinal
+                        ? [{ label: 'Preview posting…', onClick: () => setPostingDryRunRow(r) }]
+                        : []),
+                      ...(diag.isNonFinal && r.source_type === 'sale'
+                        ? [{ label: 'Open sale (finalize)…', onClick: () => openSaleById(r.source_id, r.document_no || undefined) }]
+                        : []),
+                      { label: 'Open in module', onClick: () => openSourceDocument(r) },
+                      {
+                        label: 'Mark reviewed…',
+                        onClick: () =>
+                          openStatusModal('unposted', key, { kind: 'mark_reviewed' }, 'Mark reviewed', {
+                            description: 'Requires a note explaining manual review.',
+                          }),
+                      },
+                      {
+                        label: 'Mark resolved…',
+                        onClick: () =>
+                          openStatusModal('unposted', key, { kind: 'mark_resolved' }, 'Mark resolved', {
+                            description: 'True resolved only if row disappears from queue after refresh.',
+                            rowStillInQueue: true,
+                          }),
+                        className: 'text-emerald-400',
+                      },
+                    ]}
+                  />
+                </td>
+              </tr>
+            );
+          })
+        )}
+      </tbody>
+    </table>
+  );
+
+  if (!access.canAccess) {
+    return (
+      <div className="min-h-screen bg-[#0B0F19] text-white p-8 flex flex-col items-center justify-center gap-4">
+        <ShieldAlert className="w-12 h-12 text-amber-400" />
+        <h1 className="text-xl font-semibold">Access denied</h1>
+        <p className="text-gray-400 text-sm max-w-md text-center">
+          AR/AP Reconciliation Center is available to Admin, Developer, Super Admin, and Accounting Auditor roles only.
+          Sales staff cannot access this page in Phase 2.
+        </p>
+        <Button variant="outline" className="border-gray-600" onClick={() => setCurrentView('contacts')}>
+          Back to Contacts
+        </Button>
+      </div>
+    );
+  }
 
   if (!companyId) {
     return (
@@ -295,29 +671,97 @@ export function ArApReconciliationCenterPage() {
 
   return (
     <div className="min-h-screen bg-[#0B0F19] text-white p-4 md:p-8 space-y-6">
-      <UnpostedRepairDialog
-        open={!!unpostedRepairRow}
-        onOpenChange={(o) => !o && setUnpostedRepairRow(null)}
-        row={unpostedRepairRow}
+      <SourceDocumentDetailModal
+        open={!!sourceDetailRow}
+        onOpenChange={(o) => !o && setSourceDetailRow(null)}
+        row={sourceDetailRow}
+        readOnly={access.readOnly}
+        onOpenDryRun={
+          access.readOnly
+            ? undefined
+            : () => {
+                setPostingDryRunRow(sourceDetailRow);
+                setSourceDetailRow(null);
+              }
+        }
+      />
+      <PostingDryRunWizard
+        open={!!postingDryRunRow}
+        onOpenChange={(o) => !o && setPostingDryRunRow(null)}
+        row={postingDryRunRow}
         companyId={companyId}
         branchId={branchId}
-        canPost={canPostAccounting}
-        onSuccess={() => void load()}
+      />
+      <UnmappedRowDetailModal
+        open={!!unmappedDetailRow}
+        onOpenChange={(o) => !o && setUnmappedDetailRow(null)}
+        row={unmappedDetailRow}
+        readOnly={access.readOnly}
+        onOpenRelinkDryRun={
+          access.readOnly
+            ? undefined
+            : () => {
+                setRelinkDryRunRow(unmappedDetailRow);
+                setUnmappedDetailRow(null);
+              }
+        }
+        onOpenTrace={() => {
+          if (unmappedDetailRow) setTraceTarget({ kind: 'unmapped', row: unmappedDetailRow });
+        }}
+      />
+      <RelinkDryRunWizard
+        open={!!relinkDryRunRow}
+        onOpenChange={(o) => !o && setRelinkDryRunRow(null)}
+        row={relinkDryRunRow}
+        companyId={companyId}
+        canApplyRelinkMapping={access.canApplyRelinkMapping}
+        onSaved={() => void load()}
       />
       <JournalRepairWizardDialog
         open={!!journalWizardId}
-        onOpenChange={(o) => !o && setJournalWizardId(null)}
+        onOpenChange={(o) => {
+          if (!o) {
+            setJournalWizardId(null);
+            setJournalWizardItemKey(null);
+          }
+        }}
         journalEntryId={journalWizardId}
         companyId={companyId}
         canPost={canPostAccounting}
         onSuccess={() => void load()}
+        phase2SafeMode
+        canDeveloperExecute={access.canDeveloperBypassExecuteGate}
+        itemFixStatus={journalWizardItemKey ? getStatus(journalWizardItemKey) : null}
+        onSendToRepairQueue={
+          access.readOnly || !journalWizardItemKey
+            ? undefined
+            : async () => {
+                await onFixStatusChange(journalWizardItemKind, journalWizardItemKey, 'ready_to_reverse_repost', 'Sent to repair queue from journal wizard');
+                toast.message('Queued for repair', { description: 'Execute remains gated until Phase 3 or Developer bypass.' });
+              }
+        }
       />
-      <RelinkContactDialog
-        open={!!relinkRow}
-        onOpenChange={(o) => !o && setRelinkRow(null)}
-        row={relinkRow}
-        companyId={companyId}
-        onSuccess={() => void load()}
+      <StatusChangeModal
+        open={!!statusModal}
+        onOpenChange={(o) => !o && setStatusModal(null)}
+        title={statusModal?.title || 'Change status'}
+        description={statusModal?.description}
+        intent={statusModal?.intent || null}
+        currentStatus={statusModal ? getStatus(statusModal.key) : 'new'}
+        rowStillInQueue={statusModal?.rowStillInQueue}
+        readOnly={access.readOnly}
+        onConfirm={async (note, effectiveStatus) => {
+          if (!statusModal) return;
+          await onFixStatusChange(statusModal.kind, statusModal.key, effectiveStatus, note);
+        }}
+      />
+      <RowTracePanel open={!!traceTarget} onClose={() => setTraceTarget(null)} target={traceTarget} companyId={companyId} />
+      <GlCorrectionDraftModal
+        open={!!glCorrectionDefectId}
+        onOpenChange={(o) => !o && setGlCorrectionDefectId(null)}
+        defectId={glCorrectionDefectId || 'hq-sl-0003-orphan-ar'}
+        canApplyGlRepair={access.canApplyGlRepair}
+        onApplied={() => void load()}
       />
 
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -328,32 +772,115 @@ export function ArApReconciliationCenterPage() {
           <div className="flex flex-wrap items-center gap-3">
             <Scale className="w-8 h-8 text-blue-400" />
             <div>
-              <h1 className="text-2xl font-bold tracking-tight">AR/AP Reconciliation Center</h1>
+              <h1 className="text-2xl font-bold tracking-tight">AR/AP Diagnostics &amp; Repair</h1>
               <p className="text-sm text-gray-400 max-w-2xl">
-                Queues are grouped: unposted docs, customer/supplier AR·AP unmapped lines, worker payable unmapped (separate), then manual/suspense.
-                Repair actions are explicit — no silent GL changes.
+                One hub for exception queues, hybrid repair, financial tie-out, party trace, and journal hygiene.
+                Advanced COA repairs: Accounting Developer Center.
               </p>
             </div>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <label className="text-xs text-gray-500 uppercase font-semibold shrink-0">As of</label>
-          <Input
-            type="date"
+          <DatePicker
             value={asOfDate}
-            onChange={(e) => setAsOfDate(e.target.value)}
-            className="w-40 bg-gray-900 border-gray-700 text-white"
+            onChange={(v) => setAsOfDate(v)}
+            className="w-40"
           />
-          <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
-            <input type="checkbox" checked={hideResolved} onChange={(e) => setHideResolved(e.target.checked)} className="rounded border-gray-600" />
-            Hide resolved
-          </label>
-          <Button variant="outline" size="sm" className="border-gray-600 gap-1.5" onClick={() => void load()} disabled={loading}>
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+          {hubTab === 'queues' ? (
+            <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
+              <input type="checkbox" checked={hideResolved} onChange={(e) => setHideResolved(e.target.checked)} className="rounded border-gray-600" />
+              Hide resolved
+            </label>
+          ) : null}
+          <Button variant="outline" size="sm" className="border-gray-600 gap-1.5" onClick={() => void load()} disabled={loading && hubTab === 'queues'}>
+            {loading && hubTab === 'queues' ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
             Refresh
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-gray-600"
+            onClick={() => {
+              window.history.pushState({}, '', '/admin/accounting-developer-center');
+              window.dispatchEvent(new PopStateEvent('popstate'));
+            }}
+          >
+            <ExternalLink className="w-4 h-4 mr-1" /> Developer Center
           </Button>
         </div>
       </div>
+
+      <Tabs value={hubTab} onValueChange={(v) => setHubTabAndSync(v as ArApDiagnosticsHubTab)} className="space-y-4">
+        <TabsList className="bg-gray-900 border border-gray-800 flex-wrap h-auto">
+          <TabsTrigger value="queues" className="data-[state=active]:bg-gray-800">
+            Overview &amp; Queues
+          </TabsTrigger>
+          <TabsTrigger value="tie-out" className="data-[state=active]:bg-gray-800">
+            <FileSearch className="w-3.5 h-3.5 mr-1.5" /> Tie-out
+          </TabsTrigger>
+          <TabsTrigger value="party-rental" className="data-[state=active]:bg-gray-800">
+            Party &amp; Rental Trace
+          </TabsTrigger>
+          <TabsTrigger value="metadata" className="data-[state=active]:bg-gray-800">
+            Metadata &amp; Docs
+          </TabsTrigger>
+          <TabsTrigger value="journal-hygiene" className="data-[state=active]:bg-gray-800">
+            Journal hygiene
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="queues" className="space-y-6 mt-0">
+      <HybridRepairPanel
+        companyId={companyId}
+        branchId={branchId}
+        asOfDate={asOfDate}
+        access={access}
+        refreshToken={dataRefreshToken}
+        onRefresh={() => void load()}
+        onOpenGlCorrectionDraft={(defectId) => setGlCorrectionDefectId(defectId)}
+      />
+
+      <div className="rounded-xl border border-blue-500/30 bg-blue-950/20 p-3 text-xs text-blue-100/90 flex gap-2">
+        <ShieldAlert className="w-4 h-4 shrink-0 text-blue-400 mt-0.5" />
+        <div>
+          <p className="font-semibold">AR/AP repair — scoped apply</p>
+          <p className="text-gray-400 mt-0.5">
+            GL posting/reverse/repost is intentionally disabled for safety. Use Fix Link for metadata-only trace
+            fixes (contact mapping — GL amounts unchanged). Fix Link saves contact mapping metadata only (including
+            trace-only rows).
+            {access.readOnly ? ' You have read-only auditor access.' : ''}
+          </p>
+          {!access.canApplyGlRepair && access.canUseHybridRepair && (
+            <p className="text-amber-300/90 mt-1 text-[11px]">
+              GL correction apply requires deployed create_gl_correction_journal RPC. Expense sync and Fix Link remain
+              available.
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <ReportBasisBanner basis="official_gl" detail="GL receivables/payables (raw) cards use Official Posted GL — all non-void posted lines." />
+        <ReportBasisBanner basis="effective_party" detail="Effective variance cards subtract audit-only / cancelled chains (same rules as Account Statements effective mode)." />
+      </div>
+
+      {companyId && access.canUseHybridRepair ? (
+        <ArApRepairProgressStrip
+          companyId={companyId}
+          branchId={branchId}
+          asOfDate={asOfDate}
+          glCorrectionRpcAvailable={glCorrectionRpcAvailable}
+          varianceReceivables={summary?.variance_receivables ?? null}
+          refreshToken={dataRefreshToken}
+          onScrollToHybrid={() =>
+            document.getElementById('hybrid-repair-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+          }
+          onScrollToVariance={() =>
+            document.getElementById('receivables-variance-breakdown')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+          }
+        />
+      ) : null}
 
       {summary && (
         <div className="flex flex-wrap items-center gap-2">
@@ -379,25 +906,128 @@ export function ArApReconciliationCenterPage() {
         </div>
       ) : summary ? (
         <>
+          <p className="text-xs text-gray-500 leading-relaxed">
+            Effective variance excludes cancelled, voided, and audit-only GL chains (same rules as Account Statements
+            effective mode). Audit/raw variance uses full posted GL.
+          </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            <SummaryCard title="Operational receivables" subtitle="Contacts RPC (full)" value={summary.operational_receivables_full} formatCurrency={formatCurrency} tone="green" />
-            <SummaryCard title="GL receivables" subtitle="Dr − Cr, as of" value={summary.gl_ar_net_dr_minus_cr} formatCurrency={formatCurrency} tone="white" />
-            <SummaryCard title="Receivables variance" subtitle="Operational − GL" value={summary.variance_receivables} formatCurrency={formatCurrency} tone="warn" />
-            <SummaryCard title="Operational payables" subtitle="Contacts RPC (full)" value={summary.operational_payables_full} formatCurrency={formatCurrency} tone="red" />
-            <SummaryCard title="GL payables" subtitle="Cr − Dr, as of" value={summary.gl_ap_net_credit} formatCurrency={formatCurrency} tone="white" />
-            <SummaryCard title="Payables variance" subtitle="Operational − GL" value={summary.variance_payables} formatCurrency={formatCurrency} tone="warn" />
-            <SummaryCard title="Unposted documents" subtitle="Missing sale/purchase JE" value={summary.unposted_document_count} formatCurrency={formatCurrency} tone="orange" />
-            <SummaryCard title="Unmapped AR + supplier AP JEs" subtitle="Distinct JEs (heuristic)" value={summary.unmapped_ar_je_count + summary.unmapped_ap_supplier_je_count} formatCurrency={formatCurrency} tone="orange" />
-            <SummaryCard title="Unmapped worker payable JEs" subtitle="2010 / Worker Payable" value={summary.unmapped_ap_worker_je_count} formatCurrency={formatCurrency} tone="orange" />
+            <SummaryCard title="Operational receivables" subtitle="Party GL (1100 subtree, as of)" value={summary.operational_receivables_full} formatCurrency={formatCurrency} tone="green" />
+            <SummaryCard title="Operational receivables (signed)" subtitle="Includes negative contacts" value={summary.operational_receivables_signed} formatCurrency={formatCurrency} tone="green" />
+            <SummaryCard title="GL receivables (raw)" subtitle="Dr − Cr, as of" value={summary.gl_ar_net_dr_minus_cr} formatCurrency={formatCurrency} tone="white" />
+            <SummaryCard title="GL receivables (effective)" subtitle="Raw − audit-only chains" value={summary.effective_gl_ar_net_dr_minus_cr} formatCurrency={formatCurrency} tone="white" />
+            <SummaryCard
+              title="Receivables variance (raw)"
+              subtitle="Operational − GL raw · click for breakdown"
+              value={summary.variance_receivables}
+              formatCurrency={formatCurrency}
+              tone="warn"
+              onClick={() => document.getElementById('receivables-variance-breakdown')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            />
+            <SummaryCard title="Receivables variance (effective)" subtitle="Operational − GL effective" value={summary.effective_variance_receivables} formatCurrency={formatCurrency} tone="warn" />
+            <SummaryCard title="Audit-only AR adjustment" subtitle="Hidden from effective" value={summary.audit_only_ar_net_adjustment} formatCurrency={formatCurrency} tone="orange" />
+            <SummaryCard title="Operational payables" subtitle="Document due · not party GL" value={summary.operational_payables_full} formatCurrency={formatCurrency} tone="red" />
+            <SummaryCard
+              title="Party GL payables (signed)"
+              subtitle="get_contact_party_gl_balances — same as Contacts"
+              value={summary.party_gl_payables_signed}
+              formatCurrency={formatCurrency}
+              tone="green"
+            />
+            <SummaryCard title="GL payables (raw)" subtitle="AP control Cr − Dr, as of" value={summary.gl_ap_net_credit} formatCurrency={formatCurrency} tone="white" />
+            <SummaryCard
+              title="Party GL vs control AP"
+              subtitle="Supplier sub-ledger − AP 2000"
+              value={summary.party_gl_vs_control_variance}
+              formatCurrency={formatCurrency}
+              tone="warn"
+              onClick={() =>
+                document.getElementById('payables-variance-explainer')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              }
+            />
+            <SummaryCard title="GL payables (effective)" subtitle="Raw − audit-only chains" value={summary.effective_gl_ap_net_credit} formatCurrency={formatCurrency} tone="white" />
+            <SummaryCard
+              title="Payables variance (raw)"
+              subtitle="Operational − GL raw · click for explainer"
+              value={summary.variance_payables}
+              formatCurrency={formatCurrency}
+              tone="warn"
+              onClick={() =>
+                document.getElementById('payables-variance-explainer')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              }
+            />
+            <SummaryCard title="Payables variance (effective)" subtitle="Operational − GL effective" value={summary.effective_variance_payables} formatCurrency={formatCurrency} tone="warn" />
+            <SummaryCard title="Audit-only AP adjustment" subtitle="Hidden from effective" value={summary.audit_only_ap_net_adjustment} formatCurrency={formatCurrency} tone="orange" />
+            <SummaryCard
+              title="Unposted documents"
+              subtitle="Click to view queue · missing sale/purchase JE"
+              value={summary.unposted_document_count}
+              formatCurrency={formatCurrency}
+              tone="orange"
+              onClick={goToUnpostedOrders}
+            />
+            <SummaryCard
+              title="Unmapped AR + supplier AP JEs"
+              subtitle="Click to view queue · distinct JEs"
+              value={summary.unmapped_ar_je_count + summary.unmapped_ap_supplier_je_count}
+              formatCurrency={formatCurrency}
+              tone="orange"
+              onClick={() => scrollToQueueSection('unmapped-queue-2')}
+            />
+            <SummaryCard
+              title="Unmapped worker payable JEs"
+              subtitle="Click to view queue · 2010 / Worker Payable"
+              value={summary.unmapped_ap_worker_je_count}
+              formatCurrency={formatCurrency}
+              tone="orange"
+              onClick={() => scrollToQueueSection('unmapped-queue-3')}
+            />
             <SummaryCard
               title="Manual / suspense"
-              subtitle="Tagged JE · suspense Dr−Cr"
+              subtitle="Click to view queue · tagged JE"
               value={summary.manual_adjustment_je_count}
               formatCurrency={formatCurrency}
               tone="violet"
               displayOverride={`${summary.manual_adjustment_je_count} · ${formatCurrency(summary.suspense_net_balance)}`}
+              onClick={() => scrollToQueueSection('manual-queue-4')}
             />
           </div>
+
+          <ReceivablesVarianceBreakdownPanel
+            companyId={companyId}
+            branchId={branchId}
+            asOfDate={asOfDate}
+            varianceTotal={summary.variance_receivables}
+            formatCurrency={formatCurrency}
+            refreshToken={dataRefreshToken}
+            onOpenSale={openSaleById}
+            onGoToUnpostedOrders={goToUnpostedOrders}
+            onOpenPartyLedger={(contactId, contactName) =>
+              openPartyLedger?.({ contactId, contactName, contactType: 'customer' })
+            }
+            onGoToFinancialTrace={() => setHubTabAndSync('tie-out')}
+            onTraceJournal={(journalEntryId) =>
+              setTraceTarget({
+                kind: 'manual',
+                row: {
+                  journal_entry_id: journalEntryId,
+                  company_id: companyId || '',
+                  branch_id: null,
+                  entry_no: null,
+                  entry_date: null,
+                  description: null,
+                  reference_type: null,
+                  reference_id: null,
+                  created_by: null,
+                  created_at: null,
+                  suspense_net_dr_minus_cr: 0,
+                  detection_kind: null,
+                  status: null,
+                },
+              })
+            }
+          />
+
+          <PayablesVarianceExplainerPanel summary={summary} formatCurrency={formatCurrency} />
 
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" className="border-violet-500/40 text-violet-200" onClick={() => void handleEnsureSuspense()} disabled={ensuringSuspense}>
@@ -428,55 +1058,39 @@ export function ArApReconciliationCenterPage() {
           </TabsTrigger>
         </TabsList>
         <TabsContent value="queues" className="space-y-6">
-          <QueueSection title="1 · Missing / unposted documents" icon={<FileWarning className="w-5 h-5 text-orange-400" />} rows={unpostedVisible.length}>
-            <table className="w-full text-sm">
-              <thead className="text-left text-gray-500 border-b border-gray-800">
-                <tr>
-                  <th className="p-2 min-w-[200px]">Document</th>
-                  <th className="p-2">Contact</th>
-                  <th className="p-2 text-right">Amount</th>
-                  <th className="p-2">Date</th>
-                  <th className="p-2 w-32">Fix status</th>
-                  <th className="p-2 w-36">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-800/80">
-                {unpostedVisible.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="p-6 text-center text-gray-500">
-                      No rows.
-                    </td>
-                  </tr>
-                ) : (
-                  unpostedVisible.map((r) => {
-                    const key = unpostedItemKey(r);
-                    return (
-                      <tr key={key} className="hover:bg-gray-800/20">
-                        <td className="p-2 align-top">
-                          <AccountingRefDisplayCell ui={unpostedDocumentUiRef(r)} />
-                        </td>
-                        <td className="p-2 text-gray-300">{r.contact_name || '—'}</td>
-                        <td className="p-2 text-right tabular-nums">{formatCurrency(Number(r.amount) || 0)}</td>
-                        <td className="p-2 text-gray-400">{r.document_date || '—'}</td>
-                        <td className="p-2">
-                          <FixStatusSelect value={getStatus(key)} onChange={(v) => void onFixStatusChange('unposted', key, v)} />
-                        </td>
-                        <td className="p-2">
-                          <RowMini
-                            onOpenSource={() => openSourceDocument(r)}
-                            onPost={() => setUnpostedRepairRow(r)}
-                            onReviewed={() => void onFixStatusChange('unposted', key, 'reviewed')}
-                          />
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
+          <KnownGlCorrectionSection
+            companyId={companyId}
+            readOnly={access.readOnly}
+            canApplyGlRepair={access.canApplyGlRepair}
+            onAction={handleActionableRepair}
+            onApplied={() => void load()}
+          />
+
+          <QueueSection
+            id="unposted-queue-1a"
+            title="1a · Non-final documents (not postable)"
+            icon={<FileWarning className="w-5 h-5 text-slate-400" />}
+            rows={unpostedNonFinal.length}
+            subtitle="Order/draft sales — no urgent missing posting"
+          >
+            <p className="text-xs text-slate-400 mb-3 px-1">
+              These are order-stage sales. They are not postable until finalized. Finalize the sale to create normal
+              accounting posting, or leave as order if still pending.
+            </p>
+            {renderUnpostedTable(unpostedNonFinal, 'No non-final documents in queue.')}
           </QueueSection>
 
-          <QueueSection title="2 · Customer / supplier AR & supplier AP (unmapped lines)" icon={<Users className="w-5 h-5 text-amber-400" />} rows={unmappedCsVisible.length}>
+          <QueueSection
+            id="unposted-queue-1b"
+            title="1b · Final documents missing posting"
+            icon={<FileWarning className="w-5 h-5 text-orange-400" />}
+            rows={unpostedFinalMissing.length}
+            subtitle="Requires posting dry-run — apply disabled in Phase 2"
+          >
+            {renderUnpostedTable(unpostedFinalMissing, 'No final documents missing posting.')}
+          </QueueSection>
+
+          <QueueSection id="unmapped-queue-2" title="2 · Customer / supplier AR & supplier AP (unmapped lines)" icon={<Users className="w-5 h-5 text-amber-400" />} rows={unmappedCsVisible.length}>
             <table className="w-full text-sm">
               <thead className="text-left text-gray-500 border-b border-gray-800">
                 <tr>
@@ -486,19 +1100,22 @@ export function ArApReconciliationCenterPage() {
                   <th className="p-2 text-right">Dr</th>
                   <th className="p-2 text-right">Cr</th>
                   <th className="p-2 w-32">Fix status</th>
+                  <th className="p-2 min-w-[160px]">Repair</th>
                   <th className="p-2 w-40">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-800/80">
                 {unmappedCsVisible.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="p-6 text-center text-gray-500">
+                    <td colSpan={8} className="p-6 text-center text-gray-500">
                       No rows.
                     </td>
                   </tr>
                 ) : (
                   unmappedCsVisible.map((r) => {
                     const key = unmappedLineItemKey(r);
+                    const diag = unmappedDiagByKey.get(key) ?? diagnoseUnmappedLine(r);
+                    const repairCls = classifyUnmappedJournalLine(r, diag);
                     return (
                       <tr key={key} className="hover:bg-gray-800/20">
                         <td className="p-2 align-top">
@@ -514,34 +1131,56 @@ export function ArApReconciliationCenterPage() {
                         <td className="p-2 text-right tabular-nums">{formatCurrency(Number(r.debit) || 0)}</td>
                         <td className="p-2 text-right tabular-nums">{formatCurrency(Number(r.credit) || 0)}</td>
                         <td className="p-2">
-                          <FixStatusSelect value={getStatus(key)} onChange={(v) => void onFixStatusChange('unmapped_line', key, v)} />
+                          <FixStatusButton
+                            value={getStatus(key)}
+                            disabled={access.readOnly}
+                            onClick={() =>
+                              openStatusModal('unmapped_line', key, { kind: 'set', status: getStatus(key) }, 'Change fix status')
+                            }
+                          />
+                        </td>
+                        <td className="p-2 align-top">
+                          <ActionableRepairCard
+                            compact
+                            readOnly={access.readOnly}
+                            classification={repairCls}
+                            onAction={(btn) => {
+                              if (btn === 'fix_link') setRelinkDryRunRow(r);
+                              else handleActionableRepair(btn, repairCls);
+                            }}
+                          />
                         </td>
                         <td className="p-2">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="sm" className="h-8 text-blue-400">
-                                <ExternalLink size={14} className="mr-1" /> Actions
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700 text-gray-200">
-                              <DropdownMenuItem className="cursor-pointer" onClick={() => setJournalWizardId(r.journal_entry_id)}>
-                                Open journal wizard
-                              </DropdownMenuItem>
-                              <DropdownMenuItem className="cursor-pointer" onClick={() => setRelinkRow(r)}>
-                                Relink contact…
-                              </DropdownMenuItem>
-                              <DropdownMenuItem className="cursor-pointer" onClick={() => void onFixStatusChange('unmapped_line', key, 'ready_to_reverse_repost')}>
-                                Mark ready to reverse/repost
-                              </DropdownMenuItem>
-                              <DropdownMenuItem className="cursor-pointer" onClick={() => void onFixStatusChange('unmapped_line', key, 'ready_to_relink')}>
-                                Mark ready to relink
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator className="bg-gray-700" />
-                              <DropdownMenuItem className="cursor-pointer text-emerald-400" onClick={() => void onFixStatusChange('unmapped_line', key, 'resolved')}>
-                                <CheckCircle2 size={14} className="mr-2 inline" /> Mark resolved
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                          <RowActionsMenu
+                            readOnly={access.readOnly}
+                            items={[
+                              { label: 'Line detail…', onClick: () => setUnmappedDetailRow(r) },
+                              { label: 'Row trace', onClick: () => setTraceTarget({ kind: 'unmapped', row: r }) },
+                              { label: 'Fix Link…', onClick: () => setRelinkDryRunRow(r) },
+                              {
+                                label: 'Journal wizard (review)',
+                                onClick: () => openJournalWizard(r.journal_entry_id, 'unmapped_line', key),
+                              },
+                              {
+                                label: 'Send to repair queue…',
+                                onClick: () =>
+                                  openStatusModal('unmapped_line', key, { kind: 'send_repair_queue' }, 'Send to repair queue'),
+                              },
+                              {
+                                label: 'Mark ready to relink…',
+                                onClick: () =>
+                                  openStatusModal('unmapped_line', key, { kind: 'set', status: 'ready_to_relink' }, 'Mark ready to relink'),
+                              },
+                              {
+                                label: 'Mark resolved…',
+                                onClick: () =>
+                                  openStatusModal('unmapped_line', key, { kind: 'mark_resolved' }, 'Mark resolved', {
+                                    rowStillInQueue: true,
+                                  }),
+                                className: 'text-emerald-400',
+                              },
+                            ]}
+                          />
                         </td>
                       </tr>
                     );
@@ -551,7 +1190,250 @@ export function ArApReconciliationCenterPage() {
             </table>
           </QueueSection>
 
-          <QueueSection title="3 · Worker payable unmapped (2010 / Worker Payable only)" icon={<ClipboardList className="w-5 h-5 text-rose-400" />} rows={unmappedWpVisible.length}>
+          <QueueSection
+            title="2b · Likely mapped — heuristic false positives"
+            icon={<Eye className="w-5 h-5 text-cyan-400" />}
+            rows={unmappedCsFalsePositive.length}
+            subtitle="Payment on_account with matching AR contact — not sent to repair by default"
+          >
+            <table className="w-full text-sm">
+              <thead className="text-left text-gray-500 border-b border-gray-800">
+                <tr>
+                  <th className="p-2 min-w-[200px]">Document</th>
+                  <th className="p-2">Label</th>
+                  <th className="p-2">Account</th>
+                  <th className="p-2 text-right">Cr</th>
+                  <th className="p-2 w-32">Fix status</th>
+                  <th className="p-2 w-36">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800/80">
+                {unmappedCsFalsePositive.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="p-6 text-center text-gray-500">
+                      No heuristic false positives.
+                    </td>
+                  </tr>
+                ) : (
+                  unmappedCsFalsePositive.map((r) => {
+                    const key = unmappedLineItemKey(r);
+                    return (
+                      <tr key={key} className="hover:bg-gray-800/20 opacity-90">
+                        <td className="p-2 align-top">
+                          <AccountingRefDisplayCell ui={jeUiByJournalId.get(r.journal_entry_id)} />
+                        </td>
+                        <td className="p-2">
+                          <FalsePositiveBadge />
+                        </td>
+                        <td className="p-2 text-xs">
+                          {r.account_name} <span className="text-gray-600">{r.account_code}</span>
+                        </td>
+                        <td className="p-2 text-right tabular-nums">{formatCurrency(Number(r.credit) || 0)}</td>
+                        <td className="p-2">
+                          <FixStatusButton
+                            value={getStatus(key)}
+                            disabled={access.readOnly}
+                            onClick={() =>
+                              openStatusModal('unmapped_line', key, { kind: 'mark_reviewed' }, 'Mark manual reviewed')
+                            }
+                          />
+                        </td>
+                        <td className="p-2">
+                          <RowActionsMenu
+                            readOnly={access.readOnly}
+                            items={[
+                              { label: 'Line detail…', onClick: () => setUnmappedDetailRow(r) },
+                              { label: 'Row trace', onClick: () => setTraceTarget({ kind: 'unmapped', row: r }) },
+                              { label: 'Fix Link…', onClick: () => setRelinkDryRunRow(r) },
+                            ]}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </QueueSection>
+
+          <QueueSection
+            title="2c · Mapped financially — metadata review"
+            icon={<Eye className="w-5 h-5 text-violet-400" />}
+            rows={unmappedCsMetadataReview.length}
+            subtitle="Ledger correct — JE payment vs payment rental metadata only (e.g. RCV-0008 / Saqib)"
+          >
+            <table className="w-full text-sm">
+              <thead className="text-left text-gray-500 border-b border-gray-800">
+                <tr>
+                  <th className="p-2 min-w-[200px]">Document</th>
+                  <th className="p-2">Label</th>
+                  <th className="p-2">Account</th>
+                  <th className="p-2 text-right">Cr</th>
+                  <th className="p-2 w-32">Fix status</th>
+                  <th className="p-2 w-36">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800/80">
+                {unmappedCsMetadataReview.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="p-6 text-center text-gray-500">
+                      No metadata-review rows.
+                    </td>
+                  </tr>
+                ) : (
+                  unmappedCsMetadataReview.map((r) => {
+                    const key = unmappedLineItemKey(r);
+                    const diag = unmappedDiagByKey.get(key);
+                    return (
+                      <tr key={key} className="hover:bg-gray-800/20 opacity-90">
+                        <td className="p-2 align-top">
+                          <AccountingRefDisplayCell ui={jeUiByJournalId.get(r.journal_entry_id)} />
+                        </td>
+                        <td className="p-2 align-top space-y-1">
+                          <MetadataReviewBadge />
+                          {diag?.metadataReviewReason && (
+                            <p className="text-[10px] text-violet-200/80 leading-snug max-w-xs">{diag.metadataReviewReason}</p>
+                          )}
+                        </td>
+                        <td className="p-2 text-xs">
+                          {r.account_name} <span className="text-gray-600">{r.account_code}</span>
+                        </td>
+                        <td className="p-2 text-right tabular-nums">{formatCurrency(Number(r.credit) || 0)}</td>
+                        <td className="p-2">
+                          <FixStatusButton
+                            value={getStatus(key)}
+                            disabled={access.readOnly}
+                            onClick={() =>
+                              openStatusModal('unmapped_line', key, { kind: 'mark_reviewed' }, 'Mark metadata reviewed')
+                            }
+                          />
+                        </td>
+                        <td className="p-2">
+                          <RowActionsMenu
+                            readOnly={access.readOnly}
+                            items={[
+                              { label: 'Line detail…', onClick: () => setUnmappedDetailRow(r) },
+                              { label: 'Row trace', onClick: () => setTraceTarget({ kind: 'unmapped', row: r }) },
+                            ]}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </QueueSection>
+
+          <QueueSection
+            title="2d · Applied GL corrections (audit only)"
+            icon={<Eye className="w-5 h-5 text-emerald-400" />}
+            rows={unmappedCsAppliedGlCorrection.length + appliedGlCorrections.length}
+            subtitle="JV-000207 class — correction already posted; source JE unchanged"
+          >
+            <table className="w-full text-sm">
+              <thead className="text-left text-gray-500 border-b border-gray-800">
+                <tr>
+                  <th className="p-2 min-w-[200px]">Document</th>
+                  <th className="p-2">Label</th>
+                  <th className="p-2">Fingerprint</th>
+                  <th className="p-2 w-32">Fix status</th>
+                  <th className="p-2 w-36">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800/80">
+                {unmappedCsAppliedGlCorrection.length === 0 && appliedGlCorrections.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="p-6 text-center text-gray-500">
+                      No applied GL corrections in audit queue.
+                    </td>
+                  </tr>
+                ) : (
+                  <>
+                    {unmappedCsAppliedGlCorrection.map((r) => {
+                      const key = unmappedLineItemKey(r);
+                      const diag = unmappedDiagByKey.get(key);
+                      return (
+                        <tr key={key} className="hover:bg-gray-800/20 opacity-90">
+                          <td className="p-2 align-top">
+                            <AccountingRefDisplayCell ui={jeUiByJournalId.get(r.journal_entry_id)} />
+                          </td>
+                          <td className="p-2 align-top space-y-1">
+                            <AppliedGlCorrectionBadge />
+                            {diag?.appliedGlCorrectionReason ? (
+                              <p className="text-[10px] text-emerald-200/80 leading-snug max-w-xs">{diag.appliedGlCorrectionReason}</p>
+                            ) : null}
+                          </td>
+                          <td className="p-2 text-[10px] text-gray-500 font-mono">{r.reference_type || 'gl_correction'}</td>
+                          <td className="p-2">
+                            <FixStatusButton
+                              value={getStatus(key)}
+                              disabled={access.readOnly}
+                              onClick={() =>
+                                openStatusModal('unmapped_line', key, { kind: 'mark_reviewed' }, 'Mark correction reviewed')
+                              }
+                            />
+                          </td>
+                          <td className="p-2">
+                            <RowActionsMenu
+                              readOnly={access.readOnly}
+                              items={[
+                                { label: 'Line detail…', onClick: () => setUnmappedDetailRow(r) },
+                                { label: 'Row trace', onClick: () => setTraceTarget({ kind: 'unmapped', row: r }) },
+                              ]}
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {appliedGlCorrections.map((row) => (
+                      <tr key={`audit-${row.journal_entry_id}`} className="hover:bg-gray-800/20 opacity-80">
+                        <td className="p-2 text-gray-300 font-mono text-xs">{row.entry_no || row.journal_entry_id.slice(0, 8)}</td>
+                        <td className="p-2">
+                          <AppliedGlCorrectionBadge />
+                          <p className="text-[10px] text-gray-500 mt-1 max-w-xs">{row.description || 'Applied developer repair'}</p>
+                        </td>
+                        <td className="p-2 text-[10px] text-gray-600 font-mono break-all">{row.action_fingerprint}</td>
+                        <td className="p-2 text-xs text-gray-500">—</td>
+                        <td className="p-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 text-xs text-violet-300"
+                            onClick={() =>
+                              setTraceTarget({
+                                kind: 'manual',
+                                row: {
+                                  journal_entry_id: row.journal_entry_id,
+                                  company_id: companyId || '',
+                                  branch_id: null,
+                                  entry_no: row.entry_no,
+                                  entry_date: row.entry_date,
+                                  description: row.description,
+                                  reference_type: 'gl_correction',
+                                  reference_id: null,
+                                  created_by: null,
+                                  created_at: null,
+                                  suspense_net_dr_minus_cr: 0,
+                                  detection_kind: null,
+                                  status: null,
+                                },
+                              })
+                            }
+                          >
+                            Trace
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </>
+                )}
+              </tbody>
+            </table>
+          </QueueSection>
+
+          <QueueSection id="unmapped-queue-3" title="3 · Worker payable unmapped (2010 / Worker Payable only)" icon={<ClipboardList className="w-5 h-5 text-rose-400" />} rows={unmappedWpVisible.length}>
             <table className="w-full text-sm">
               <thead className="text-left text-gray-500 border-b border-gray-800">
                 <tr>
@@ -584,27 +1466,35 @@ export function ArApReconciliationCenterPage() {
                         <td className="p-2 text-right tabular-nums">{formatCurrency(Number(r.debit) || 0)}</td>
                         <td className="p-2 text-right tabular-nums">{formatCurrency(Number(r.credit) || 0)}</td>
                         <td className="p-2">
-                          <FixStatusSelect value={getStatus(key)} onChange={(v) => void onFixStatusChange('unmapped_line', key, v)} />
+                          <FixStatusButton
+                            value={getStatus(key)}
+                            disabled={access.readOnly}
+                            onClick={() =>
+                              openStatusModal('unmapped_line', key, { kind: 'set', status: getStatus(key) }, 'Change fix status')
+                            }
+                          />
                         </td>
                         <td className="p-2">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="sm" className="h-8 text-blue-400">
-                                <ExternalLink size={14} className="mr-1" /> Actions
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700 text-gray-200">
-                              <DropdownMenuItem className="cursor-pointer" onClick={() => setJournalWizardId(r.journal_entry_id)}>
-                                Open journal wizard
-                              </DropdownMenuItem>
-                              <DropdownMenuItem className="cursor-pointer" onClick={() => setRelinkRow(r)}>
-                                Relink worker contact…
-                              </DropdownMenuItem>
-                              <DropdownMenuItem className="cursor-pointer" onClick={() => void onFixStatusChange('unmapped_line', key, 'resolved')}>
-                                Mark resolved
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                          <RowActionsMenu
+                            readOnly={access.readOnly}
+                            items={[
+                              { label: 'Line detail…', onClick: () => setUnmappedDetailRow(r) },
+                              { label: 'Row trace', onClick: () => setTraceTarget({ kind: 'unmapped', row: r }) },
+                              {
+                                label: 'Journal wizard (review)',
+                                onClick: () => openJournalWizard(r.journal_entry_id, 'unmapped_line', key),
+                              },
+                              { label: 'Fix Link…', onClick: () => setRelinkDryRunRow(r) },
+                              {
+                                label: 'Mark resolved…',
+                                onClick: () =>
+                                  openStatusModal('unmapped_line', key, { kind: 'mark_resolved' }, 'Mark resolved', {
+                                    rowStillInQueue: true,
+                                  }),
+                                className: 'text-emerald-400',
+                              },
+                            ]}
+                          />
                         </td>
                       </tr>
                     );
@@ -614,7 +1504,7 @@ export function ArApReconciliationCenterPage() {
             </table>
           </QueueSection>
 
-          <QueueSection title="4 · Manual reconciliation / suspense" icon={<ShieldAlert className="w-5 h-5 text-violet-400" />} rows={manualVisible.length}>
+          <QueueSection id="manual-queue-4" title="4 · Manual reconciliation / suspense" icon={<ShieldAlert className="w-5 h-5 text-violet-400" />} rows={manualVisible.length}>
             <table className="w-full text-sm">
               <thead className="text-left text-gray-500 border-b border-gray-800">
                 <tr>
@@ -649,12 +1539,30 @@ export function ArApReconciliationCenterPage() {
                           {r.description}
                         </td>
                         <td className="p-2">
-                          <FixStatusSelect value={getStatus(key)} onChange={(v) => void onFixStatusChange('manual_je', key, v)} />
+                          <FixStatusButton
+                            value={getStatus(key)}
+                            disabled={access.readOnly}
+                            onClick={() =>
+                              openStatusModal('manual_je', key, { kind: 'set', status: getStatus(key) }, 'Change fix status')
+                            }
+                          />
                         </td>
                         <td className="p-2">
-                          <Button variant="ghost" size="sm" className="h-8 text-blue-400" onClick={() => setJournalWizardId(r.journal_entry_id)}>
-                            <ExternalLink size={14} className="mr-1" /> Wizard
-                          </Button>
+                          <RowActionsMenu
+                            readOnly={access.readOnly}
+                            items={[
+                              { label: 'Row trace', onClick: () => setTraceTarget({ kind: 'manual', row: r }) },
+                              {
+                                label: 'Journal wizard (review)',
+                                onClick: () => openJournalWizard(r.journal_entry_id, 'manual_je', key),
+                              },
+                              {
+                                label: 'Send to repair queue…',
+                                onClick: () =>
+                                  openStatusModal('manual_je', key, { kind: 'send_repair_queue' }, 'Send to repair queue'),
+                              },
+                            ]}
+                          />
                         </td>
                       </tr>
                     );
@@ -666,18 +1574,57 @@ export function ArApReconciliationCenterPage() {
         </TabsContent>
         <TabsContent value="about" className="prose prose-invert prose-sm max-w-none text-gray-400 space-y-3">
           <p>
-            <strong className="text-gray-200">Missing posting:</strong> opens validation + <code>postSaleDocumentAccounting</code> /{' '}
-            <code>postPurchaseDocumentAccounting</code>. Branch checkbox blocks post when filter differs.
+            <strong className="text-gray-200">Phase 2 (current):</strong> dry-run wizards, trace panels, and status changes with required notes.
+            Post, relink apply, and journal execute are disabled or gated — no GL mutations.
           </p>
           <p>
-            <strong className="text-gray-200">Journal wizard:</strong> shows lines; sale/purchase → void canonical document JEs + repost; else void this JE with reason.
+            <strong className="text-gray-200">Non-final sales (order/draft):</strong> queue 1a — order-stage sales are not postable until finalized.
           </p>
           <p>
-            <strong className="text-gray-200">Relink:</strong> saves <code>journal_party_contact_mapping</code> (audit). Does not alter posted lines until party_contact_id rollout.
+            <strong className="text-gray-200">False-positive unmapped AR:</strong> payment JE + on_account payment + matching AR linked contact → queue 2b.
           </p>
           <p>
-            <strong className="text-gray-200">Fix status:</strong> stored in <code>ar_ap_reconciliation_review_items.fix_status</code>; resolved rows can be hidden.
+            <strong className="text-gray-200">Metadata review (e.g. RCV-0008):</strong> rental payment with correct AR sub-ledger but JE reference_type=payment → queue 2c; no relink/repost in Phase 2.
           </p>
+          <p>
+            <strong className="text-gray-200">Fix status:</strong> stored in <code>ar_ap_reconciliation_review_items.fix_status</code>; mark resolved requires reason and stays reviewed if row remains in SQL view.
+          </p>
+        </TabsContent>
+      </Tabs>
+        </TabsContent>
+
+        <TabsContent value="tie-out" className="mt-0">
+          <FinancialTraceDiagnosticsPanel
+            embedded
+            visibleTabs={['tieout']}
+            initialTab="tieout"
+            onOpenHybridRepair={scrollToHybridRepair}
+            onSwitchHubTab={(t) => setHubTabAndSync(t as ArApDiagnosticsHubTab)}
+          />
+        </TabsContent>
+
+        <TabsContent value="party-rental" className="mt-0">
+          <FinancialTraceDiagnosticsPanel
+            embedded
+            visibleTabs={['party', 'rental']}
+            initialTab="party"
+            onOpenHybridRepair={scrollToHybridRepair}
+            onSwitchHubTab={(t) => setHubTabAndSync(t as ArApDiagnosticsHubTab)}
+          />
+        </TabsContent>
+
+        <TabsContent value="metadata" className="mt-0">
+          <FinancialTraceDiagnosticsPanel
+            embedded
+            visibleTabs={['metadata', 'non-final', 'deeper']}
+            initialTab="metadata"
+            onOpenHybridRepair={scrollToHybridRepair}
+            onSwitchHubTab={(t) => setHubTabAndSync(t as ArApDiagnosticsHubTab)}
+          />
+        </TabsContent>
+
+        <TabsContent value="journal-hygiene" className="mt-0">
+          <JournalHygienePanel />
         </TabsContent>
       </Tabs>
     </div>
@@ -700,7 +1647,10 @@ function unpostedDocumentUiRef(r: UnpostedDocumentRow): AccountingUiRef {
   };
 }
 
-function RowMini(props: { onOpenSource: () => void; onPost: () => void; onReviewed: () => void }) {
+function RowActionsMenu(props: {
+  readOnly?: boolean;
+  items: Array<{ label: string; onClick: () => void; className?: string }>;
+}) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -709,16 +1659,15 @@ function RowMini(props: { onOpenSource: () => void; onPost: () => void; onReview
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700 text-gray-200">
-        <DropdownMenuItem className="cursor-pointer" onClick={props.onOpenSource}>
-          Open source document
-        </DropdownMenuItem>
-        <DropdownMenuItem className="cursor-pointer" onClick={props.onPost}>
-          Validate & create posting…
-        </DropdownMenuItem>
-        <DropdownMenuSeparator className="bg-gray-700" />
-        <DropdownMenuItem className="cursor-pointer text-emerald-400" onClick={props.onReviewed}>
-          Quick: mark reviewed
-        </DropdownMenuItem>
+        {props.items.map((item) => (
+          <DropdownMenuItem
+            key={item.label}
+            className={cn('cursor-pointer', item.className, props.readOnly && 'opacity-50 pointer-events-none')}
+            onClick={() => !props.readOnly && item.onClick()}
+          >
+            {item.label}
+          </DropdownMenuItem>
+        ))}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -731,8 +1680,9 @@ function SummaryCard(props: {
   formatCurrency: (n: number) => string;
   tone: 'green' | 'red' | 'white' | 'warn' | 'orange' | 'violet';
   displayOverride?: string;
+  onClick?: () => void;
 }) {
-  const { title, subtitle, value, formatCurrency, tone, displayOverride } = props;
+  const { title, subtitle, value, formatCurrency, tone, displayOverride, onClick } = props;
   const val =
     displayOverride != null && displayOverride !== ''
       ? displayOverride
@@ -753,23 +1703,41 @@ function SummaryCard(props: {
             : tone === 'violet'
               ? 'text-violet-300'
               : 'text-white';
+  const Wrapper = onClick ? 'button' : 'div';
   return (
-    <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-4">
+    <Wrapper
+      type={onClick ? 'button' : undefined}
+      onClick={onClick}
+      className={cn(
+        'rounded-xl border border-gray-800 bg-gray-900/50 p-4 text-left w-full',
+        onClick && 'hover:border-amber-500/40 hover:bg-gray-900/70 cursor-pointer transition-colors'
+      )}
+    >
       <p className="text-xs text-gray-500 uppercase font-semibold tracking-wide">{title}</p>
       <p className="text-[10px] text-gray-600 mt-0.5">{subtitle}</p>
       <p className={cn('text-xl font-bold tabular-nums mt-2', color)}>{val}</p>
-    </div>
+    </Wrapper>
   );
 }
 
-function QueueSection(props: { title: string; icon: React.ReactNode; rows: number; children: React.ReactNode }) {
+function QueueSection(props: {
+  id?: string;
+  title: string;
+  icon: React.ReactNode;
+  rows: number;
+  subtitle?: string;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="rounded-xl border border-gray-800 bg-gray-900/40 overflow-hidden">
+    <div id={props.id} className="rounded-xl border border-gray-800 bg-gray-900/40 overflow-hidden scroll-mt-4">
       <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-800 bg-gray-900/80">
         {props.icon}
         <div>
           <h2 className="text-sm font-semibold text-white">{props.title}</h2>
-          <p className="text-xs text-gray-500">{props.rows} row(s) shown</p>
+          <p className="text-xs text-gray-500">
+            {props.rows} row(s) shown
+            {props.subtitle ? ` · ${props.subtitle}` : ''}
+          </p>
         </div>
       </div>
       <div className="p-2 overflow-x-auto">{props.children}</div>

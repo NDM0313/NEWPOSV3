@@ -301,12 +301,12 @@ export function AccountingIntegrityTestLab({ onOpenJournalTrace }: AccountingInt
           <div className="text-2xl font-bold text-white mt-1">{orphans.length}</div>
           <div className="text-xs text-gray-500 mt-1">Missing sale/payment link</div>
         </div>
-        <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-4">
-          <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Voided (audit)</div>
-          <div className="text-2xl font-bold text-amber-400/90 mt-1">
+        <div className="rounded-xl border border-gray-700/60 bg-gray-950/40 p-4">
+          <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Voided history (info)</div>
+          <div className="text-2xl font-bold text-gray-300 mt-1">
             {summary?.voidedCountByType.reduce((s, t) => s + t.count, 0) ?? 0}
           </div>
-          <div className="text-xs text-gray-500 mt-1">Excluded from business views</div>
+          <div className="text-xs text-gray-500 mt-1">Browse-only — not an actionable hygiene queue</div>
         </div>
         <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-4 min-w-0 sm:col-span-2 lg:col-span-1">
           <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Active JEs by type</div>

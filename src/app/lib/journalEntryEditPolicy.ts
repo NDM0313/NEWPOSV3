@@ -86,6 +86,8 @@ function rowToJournalTransactionLike(row: {
   is_void?: boolean | null;
   payment_chain_is_historical?: boolean | null;
   has_active_correction_reversal?: boolean | null;
+  action_fingerprint?: string | null;
+  description?: string | null;
 }): JournalTransactionLike {
   return {
     reference_type: row.reference_type,
@@ -94,6 +96,8 @@ function rowToJournalTransactionLike(row: {
     is_void: row.is_void,
     payment_chain_is_historical: row.payment_chain_is_historical,
     has_active_correction_reversal: row.has_active_correction_reversal,
+    action_fingerprint: row.action_fingerprint,
+    description: row.description,
   };
 }
 
@@ -108,6 +112,8 @@ export function journalReversalBlockedReason(
     payment_id?: string | null;
     is_void?: boolean | null;
     payment_chain_is_historical?: boolean | null;
+    action_fingerprint?: string | null;
+    description?: string | null;
     /** True when an active `correction_reversal` JE references this header (terminal for edit/reverse from Journal). */
     hasActiveCorrectionReversal?: boolean | null;
   },

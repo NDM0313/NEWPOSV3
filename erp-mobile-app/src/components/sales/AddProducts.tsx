@@ -17,6 +17,7 @@ import {
 import type { ProductVariationRow } from '../../api/products';
 import { BarcodeCameraModal } from './BarcodeCameraModal';
 import { MobileActionBar } from '../shared/MobileActionBar';
+import { Capacitor } from '@capacitor/core';
 import { useBarcodeScanner } from '../../features/barcode';
 import { ProductImage } from '../products/ProductImage';
 import { useBespokeEnabled } from '../../hooks/useBespokeEnabled';
@@ -126,6 +127,8 @@ export function AddProducts({
   const [fabricAttachMode, setFabricAttachMode] = useState(false);
   const scannerInputRef = useRef<HTMLInputElement>(null);
   const barcode = useBarcodeScanner();
+  const preferNativeCamera = Capacitor.isNativePlatform();
+  const showCameraScan = preferNativeCamera || barcodeMethod === 'camera';
   const { negativeStockAllowed, loaded: settingsLoaded, reload: reloadSettings } = useSettings();
   const { enabled: bespokeEnabled } = useBespokeEnabled(companyId);
 
@@ -188,8 +191,8 @@ export function AddProducts({
   }, [companyId]);
 
   useEffect(() => {
-    if (barcodeMethod === 'camera') void barcode.checkStatus();
-  }, [barcodeMethod]);
+    if (showCameraScan) void barcode.checkStatus();
+  }, [showCameraScan, barcode.checkStatus]);
 
   const searchLower = search.toLowerCase().trim();
 
@@ -279,7 +282,7 @@ export function AddProducts({
   };
 
   const handleScanClick = async () => {
-    if (barcode.supported) {
+    if (preferNativeCamera || barcode.supported) {
       if (barcode.permissionGranted === false) {
         await barcode.requestPermission();
       }
@@ -287,7 +290,10 @@ export function AddProducts({
         setScanMessage({ type: 'error', text: barcode.error });
         return;
       }
-      await barcode.startScan(handleBarcodeDetected);
+      const result = await barcode.startScan(handleBarcodeDetected);
+      if (!result?.code && barcode.error) {
+        setScanMessage({ type: 'error', text: barcode.error });
+      }
       return;
     }
     setCameraScanOpen(true);
@@ -534,17 +540,19 @@ export function AddProducts({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               onKeyDown={handleSearchKeyDown}
-              placeholder={barcodeMethod === 'camera' ? 'Search or type barcode...' : 'Search products...'}
+              placeholder={
+                showCameraScan ? 'Search or tap Scan for camera…' : 'Search products...'
+              }
               className="w-full h-11 bg-[#111827] border border-[#374151] rounded-lg pl-11 pr-4 text-sm text-[#F9FAFB] placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6]"
             />
           </div>
-          {barcodeMethod === 'camera' && (
+          {showCameraScan && (
             <button
               type="button"
               onClick={() => void handleScanClick()}
               disabled={barcode.loading}
               className="h-11 px-4 bg-[#3B82F6] hover:bg-[#2563EB] disabled:opacity-60 rounded-lg flex items-center gap-2 text-white font-medium shrink-0"
-              title="Scan barcode"
+              title="Scan barcode with camera"
             >
               {barcode.loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Scan className="w-5 h-5" />}
               <span className="hidden sm:inline">Scan</span>

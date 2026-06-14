@@ -21,6 +21,17 @@ import { canPostAccountingForSaleStatus } from '@/app/lib/postingStatusGate';
 import { accountHelperService } from './accountHelperService';
 import { accountingService, type JournalEntry, type JournalEntryLine } from './accountingService';
 import { resolveReceivablePostingAccountId } from './partySubledgerAccountService';
+import {
+  assertJournalLinesBalanced,
+  computeSaleDocumentRevenueAmounts,
+  type SaleDocumentRevenueSnapshot,
+} from './saleDocumentRevenueAmounts';
+
+export {
+  assertJournalLinesBalanced,
+  computeSaleDocumentRevenueAmounts,
+  type SaleDocumentRevenueSnapshot,
+} from './saleDocumentRevenueAmounts';
 
 /**
  * Canonical sale **document** JE (Dr AR / Cr Revenue / COGS — Phase 4):
@@ -693,14 +704,14 @@ export const saleAccountingService = {
       action_fingerprint: saleDocumentJournalFingerprint(companyId, saleId),
     };
 
+    const amounts = computeSaleDocumentRevenueAmounts({
+      total,
+      discount: discountAmount,
+      extraExpense: await loadSaleExtraServiceIncomeAmount(saleId),
+      shippingCharges: shipmentCharges,
+    });
+    const { arDebit, merchandisePool, extraAmount, shippingAmount } = amounts;
     const hasDiscount = discountAmount > 0;
-    const shippingAmount = Math.round((Number(shipmentCharges) || 0) * 100) / 100;
-    // AR = the FULL amount the customer owes: product total + shipping.
-    // sales.total may exclude shipping (PF-03: product-only total when shipping exists),
-    // so we always add shippingAmount to ensure AR reflects the complete receivable.
-    const arDebit = Math.round((total + shippingAmount) * 100) / 100;
-    // grossTotal = items subtotal (before discount) + shipping, used to split revenue vs shipping credits.
-    const grossTotal = (hasDiscount ? total + discountAmount : total) + shippingAmount;
 
     const lines: JournalEntryLine[] = [
       {
@@ -727,9 +738,6 @@ export const saleAccountingService = {
       }
     }
 
-    const revenueCredit = Math.round((grossTotal - shippingAmount) * 100) / 100;
-    const extraAmount = await loadSaleExtraServiceIncomeAmount(saleId);
-    const merchandisePool = Math.round((revenueCredit - extraAmount) * 100) / 100;
     if (merchandisePool > 0) {
       const split = await computeProductRevenueCreditSplit(saleId, merchandisePool);
       const studioRevAccount = await ensureStudioServiceRevenueAccount(companyId);
@@ -843,6 +851,7 @@ export const saleAccountingService = {
     }
 
     try {
+      assertJournalLinesBalanced(lines, `createSaleJournalEntry ${invoiceNo}`);
       const result = await accountingService.createEntry(entry, lines);
       const journalEntryId = (result as any)?.id ?? null;
       console.log(`[saleAccountingService] Journal entry created for sale ${invoiceNo}: ${journalEntryId}`);

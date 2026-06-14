@@ -20,6 +20,7 @@ import { usePdfPreview } from '../../shared/usePdfPreview';
 import { EditTransactionSheet } from './_shared/EditTransactionSheet';
 import { dispatchMobileAccountingInvalidated } from '../../../lib/dataInvalidationBus';
 import { AttachmentPreviewModal } from '../../sales/AttachmentPreviewModal';
+import { AttachmentIndicatorButton } from '../../shared/AttachmentIndicatorButton';
 import { AttachmentsSection } from '../../shared/AttachmentsSection';
 import { normalizeAttachments } from '../../../lib/normalizeAttachments';
 import { formatPaymentDateTimeLine, paymentDateTimeIsoForReceipt } from '../../../utils/transactionDisplayDate';
@@ -92,6 +93,8 @@ export function TransactionDetailSheet({ paymentId, companyId, onClose, onViewLe
     setAttachmentPreviewStart(startIndex);
   };
 
+  const attachmentItems = detail ? normalizeAttachments(detail.attachments) : [];
+
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center md:justify-center bg-black/60" onClick={onClose}>
       <div
@@ -100,9 +103,17 @@ export function TransactionDetailSheet({ paymentId, companyId, onClose, onViewLe
       >
         <div className="sticky top-0 z-10 flow-screen-header bg-[#111827] border-b border-[#1F2937] flex items-center justify-between px-4 py-3">
           <h2 className="text-base font-semibold text-white">Transaction</h2>
-          <button onClick={onClose} className="p-1.5 hover:bg-[#1F2937] rounded-lg text-[#9CA3AF]">
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1">
+            {attachmentItems.length > 0 ? (
+              <AttachmentIndicatorButton
+                onClick={() => openAttachmentPreview(attachmentItems, 0)}
+                size="sm"
+              />
+            ) : null}
+            <button onClick={onClose} className="p-1.5 hover:bg-[#1F2937] rounded-lg text-[#9CA3AF]">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {loading && (
@@ -231,11 +242,8 @@ export function TransactionDetailSheet({ paymentId, companyId, onClose, onViewLe
               </section>
             )}
 
-            {normalizeAttachments(detail.attachments).length > 0 && (
-              <AttachmentsSection
-                items={normalizeAttachments(detail.attachments)}
-                onOpenPreview={openAttachmentPreview}
-              />
+            {attachmentItems.length > 0 && (
+              <AttachmentsSection items={attachmentItems} onOpenPreview={openAttachmentPreview} />
             )}
 
             <div className="grid grid-cols-2 gap-2 pt-2">

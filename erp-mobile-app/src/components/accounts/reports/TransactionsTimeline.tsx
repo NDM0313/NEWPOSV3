@@ -459,7 +459,7 @@ export function TransactionsTimeline({
                   >
                     <TransactionRowCard
                       tx={t}
-                      showAttachmentIcon={attachmentActions.transactionShowsAttachmentIcon(t)}
+                      showAttachmentIcon={attachmentActions.hasAnyAttachmentHint({ transactionRow: t })}
                       onAttachmentClick={() => void attachmentActions.previewAttachments(rowAttachParams)}
                       readOnly={rowReadOnly}
                       editability={editability}

@@ -1,6 +1,6 @@
 import { FileText, CreditCard, TrendingUp, TrendingDown } from 'lucide-react';
 import type { LedgerData } from '@/app/services/customerLedgerTypes';
-import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { AdaptiveCurrencyValue } from '@/app/components/shared/AdaptiveCurrencyValue';
 
 export type ModernSummaryCardsVariant = 'customer' | 'supplier' | 'user' | 'worker';
 
@@ -11,7 +11,6 @@ interface ModernSummaryCardsProps {
 }
 
 export function ModernSummaryCards({ ledgerData, variant = 'customer' }: ModernSummaryCardsProps) {
-  const { formatCurrency } = useFormatCurrency();
   const { openingBalance, totalDebit, totalCredit, closingBalance, invoicesSummary } = ledgerData;
 
   const isSupplier = variant === 'supplier';
@@ -28,11 +27,11 @@ export function ModernSummaryCards({ ledgerData, variant = 'customer' }: ModernS
       {/* Primary Balance Cards – exact match to Products page cards */}
       <div className="grid grid-cols-4 gap-4">
         {/* Opening Balance */}
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 min-w-0">
           <div className="flex items-start justify-between mb-3">
-            <div>
+            <div className="min-w-0">
               <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Opening Balance</p>
-              <p className="text-2xl font-bold text-white mt-1">{formatCurrency(openingBalance)}</p>
+              <AdaptiveCurrencyValue value={openingBalance} className="text-2xl font-bold text-white mt-1" as="p" />
               <p className="text-xs text-gray-500 mt-1">{isSupplier ? 'Opening payable' : 'Opening'}</p>
             </div>
             <div className="w-12 h-12 rounded-full bg-gray-500/10 flex items-center justify-center">
@@ -42,11 +41,11 @@ export function ModernSummaryCards({ ledgerData, variant = 'customer' }: ModernS
         </div>
 
         {/* Total Debit */}
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 min-w-0">
           <div className="flex items-start justify-between mb-3">
-            <div>
+            <div className="min-w-0">
               <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Debit</p>
-              <p className="text-2xl font-bold text-yellow-400 mt-1">{formatCurrency(totalDebit)}</p>
+              <AdaptiveCurrencyValue value={totalDebit} className="text-2xl font-bold text-yellow-400 mt-1" as="p" />
               <p className="text-xs text-gray-500 mt-1">{debitSub}</p>
             </div>
             <div className="w-12 h-12 rounded-full bg-yellow-500/10 flex items-center justify-center">
@@ -56,11 +55,11 @@ export function ModernSummaryCards({ ledgerData, variant = 'customer' }: ModernS
         </div>
 
         {/* Total Credit */}
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 min-w-0">
           <div className="flex items-start justify-between mb-3">
-            <div>
+            <div className="min-w-0">
               <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Credit</p>
-              <p className="text-2xl font-bold text-green-400 mt-1">{formatCurrency(totalCredit)}</p>
+              <AdaptiveCurrencyValue value={totalCredit} className="text-2xl font-bold text-green-400 mt-1" as="p" />
               <p className="text-xs text-gray-500 mt-1">{creditSub}</p>
             </div>
             <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
@@ -70,11 +69,11 @@ export function ModernSummaryCards({ ledgerData, variant = 'customer' }: ModernS
         </div>
 
         {/* Closing Balance */}
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 min-w-0">
           <div className="flex items-start justify-between mb-3">
-            <div>
+            <div className="min-w-0">
               <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Closing Balance</p>
-              <p className="text-2xl font-bold text-white mt-1">{formatCurrency(closingBalance)}</p>
+              <AdaptiveCurrencyValue value={closingBalance} className="text-2xl font-bold text-white mt-1" as="p" />
               <p className="text-xs text-gray-500 mt-1">{closingSub}</p>
             </div>
             <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center">
@@ -100,19 +99,19 @@ export function ModernSummaryCards({ ledgerData, variant = 'customer' }: ModernS
             <div className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-1">Total Invoices</div>
             <div className="text-2xl font-bold text-white">{invoicesSummary.totalInvoices}</div>
           </div>
-          <div className="text-center p-4 rounded-lg bg-gray-800/50 border border-gray-800">
+          <div className="text-center p-4 rounded-lg bg-gray-800/50 border border-gray-800 min-w-0">
             <div className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-1">Invoice Amount</div>
-            <div className="text-xl font-bold text-blue-400">{formatCurrency(invoicesSummary.totalInvoiceAmount)}</div>
+            <AdaptiveCurrencyValue value={invoicesSummary.totalInvoiceAmount} className="text-xl font-bold text-blue-400" as="p" />
           </div>
-          <div className="text-center p-4 rounded-lg bg-gray-800/50 border border-gray-800">
+          <div className="text-center p-4 rounded-lg bg-gray-800/50 border border-gray-800 min-w-0">
             <div className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-1">
               {isSupplier ? 'Payments made' : 'Payment Received'}
             </div>
-            <div className="text-xl font-bold text-green-400">{formatCurrency(invoicesSummary.totalPaymentReceived)}</div>
+            <AdaptiveCurrencyValue value={invoicesSummary.totalPaymentReceived} className="text-xl font-bold text-green-400" as="p" />
           </div>
-          <div className="text-center p-4 rounded-lg bg-gray-800/50 border border-gray-800">
+          <div className="text-center p-4 rounded-lg bg-gray-800/50 border border-gray-800 min-w-0">
             <div className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-1">Pending Amount</div>
-            <div className="text-xl font-bold text-yellow-400">{formatCurrency(invoicesSummary.pendingAmount)}</div>
+            <AdaptiveCurrencyValue value={invoicesSummary.pendingAmount} className="text-xl font-bold text-yellow-400" as="p" />
           </div>
         </div>
         <div className="flex items-center justify-center gap-8 pt-4 border-t border-gray-800">

@@ -22,11 +22,10 @@ import { format, addDays, differenceInDays } from "date-fns";
 import { formatLocalDateYYYYMMDD } from '@/app/utils/localDate';
 import { cn } from "../ui/utils";
 import { Button } from "../ui/button";
-import { Calendar } from "../ui/calendar";
 import { Input } from "../ui/input";
 import { Badge } from "../ui/badge";
 import { ScrollArea } from "../ui/scroll-area";
-import { CalendarDatePicker } from "../ui/CalendarDatePicker";
+import { DateTimePicker, dateToDateTimePickerValue, dateTimePickerValueToDate } from "../ui/DateTimePicker";
 import {
   Popover,
   PopoverContent,
@@ -182,6 +181,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
   const [salesmanDropdownOpen, setSalesmanDropdownOpen] = useState(false);
   const [commissionType, setCommissionType] = useState<'percentage' | 'fixed'>('percentage');
   const [commissionValue, setCommissionValue] = useState<number>(0);
+  const [documentNumber, setDocumentNumber] = useState('');
   
   // Return Modal State
   const [showReturnModal, setShowReturnModal] = useState(false);
@@ -217,32 +217,64 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
       setPickupDate(editRental.startDate ? new Date(editRental.startDate) : new Date());
       setReturnDate(editRental.expectedReturnDate ? new Date(editRental.expectedReturnDate) : addDays(new Date(), 3));
       setAdvancePaid(editRental.paidAmount?.toString() || '');
-      const firstItem = editRental.items?.[0];
-      if (firstItem) {
-        const rentVal = firstItem.total || firstItem.rate || 0;
-        const product: SearchProduct = {
-          id: firstItem.productId,
-          name: firstItem.productName,
-          sku: firstItem.sku || '',
+      setSalesmanId(editRental.salesmanId || '');
+      setDocumentNumber(editRental.documentNumber || '');
+      const editItems = editRental.items ?? [];
+      if (editItems.length > 0) {
+        const toSearchProduct = (item: (typeof editItems)[0]): SearchProduct => ({
+          id: item.productId,
+          name: item.productName,
+          sku: item.sku || '',
           image: '',
           status: 'available',
-          rentPrice: firstItem.rate || firstItem.total || 0,
+          rentPrice: item.rate || item.total || 0,
           retailPrice: 0,
-        };
-        setSelectedProduct(product);
-        productService.getProduct(String(firstItem.productId)).then((row) => {
-          const img = getPrimaryProductImageUrl(row as Record<string, unknown>);
-          setSelectedProduct((prev) =>
-            prev && String(prev.id) === String(firstItem.productId) ? { ...prev, image: img } : prev
+        });
+        if (editItems.length === 1) {
+          const firstItem = editItems[0];
+          const rentVal = firstItem.total || firstItem.rate || 0;
+          setSelectedProduct(toSearchProduct(firstItem));
+          setCartItems([]);
+          productService.getProduct(String(firstItem.productId)).then((row) => {
+            const img = getPrimaryProductImageUrl(row as Record<string, unknown>);
+            setSelectedProduct((prev) =>
+              prev && String(prev.id) === String(firstItem.productId) ? { ...prev, image: img } : prev
+            );
+          }).catch(() => {});
+          setManualRentPrice(String(rentVal || editRental.totalAmount || ''));
+        } else {
+          setSelectedProduct(null);
+          setManualRentPrice('');
+          setCartItems(
+            editItems.map((item) => ({
+              product: toSearchProduct(item),
+              rentPrice: item.total || item.rate || 0,
+            }))
           );
-        }).catch(() => {});
-        setManualRentPrice(String(rentVal || editRental.totalAmount || ''));
+          editItems.forEach((item) => {
+            productService.getProduct(String(item.productId)).then((row) => {
+              const img = getPrimaryProductImageUrl(row as Record<string, unknown>);
+              setCartItems((prev) =>
+                prev.map((c) =>
+                  String(c.product.id) === String(item.productId) ? { ...c, product: { ...c.product, image: img } } : c
+                )
+              );
+            }).catch(() => {});
+          });
+        }
+      } else {
+        setSelectedProduct(null);
+        setCartItems([]);
+        setManualRentPrice('');
       }
     } else if (isOpen && !editRental) {
       setSelectedCustomer('');
       setSelectedProduct(null);
+      setCartItems([]);
       setManualRentPrice('');
       setAdvancePaid('');
+      setSalesmanId('');
+      setDocumentNumber('');
       setBookingDate(new Date());
       setPickupDate(new Date());
       setReturnDate(addDays(new Date(), 3));
@@ -449,6 +481,8 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
           securityDeposit: 0,
           paidAmount: parseFloat(advancePaid) || 0,
           notes: null,
+          documentNumber: documentNumber.trim() || null,
+          salesmanId: salesmanId || null,
           items,
         });
         toast.success('Booking updated successfully');
@@ -472,6 +506,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
           securityDeposit: 0,
           paidAmount: 0,
           notes: null,
+          documentNumber: documentNumber.trim() || null,
           salesmanId: salesmanId || null,
           commissionAmount: salesmanId ? calcCommission : 0,
           commissionPercent: salesmanId && commissionType === 'percentage' ? commissionValue : null,
@@ -688,13 +723,27 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                       </div>
                    </div>
                    <div className="w-36 space-y-1">
-                      <CalendarDatePicker
+                      <DateTimePicker
                         label="Booking Date"
-                        value={bookingDate}
-                        onChange={(date) => setBookingDate(date || new Date())}
-                        showTime={true}
+                        value={dateToDateTimePickerValue(bookingDate)}
+                        onChange={(v) => setBookingDate(dateTimePickerValueToDate(v) || new Date())}
+                        required
                       />
                    </div>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs text-gray-500 uppercase">Bill / manual ref # (optional)</Label>
+                  <Input
+                    type="text"
+                    value={documentNumber}
+                    onChange={(e) => setDocumentNumber(e.target.value)}
+                    placeholder="e.g. A 109 — not the auto REN booking #"
+                    className="h-9 bg-gray-900 border-gray-700 text-white text-sm"
+                  />
+                  <p className="text-[11px] text-gray-500">
+                    System booking number (REN-*) is assigned on save; this field is only for your paper bill book reference.
+                  </p>
                 </div>
 
                 {/* Row 1b: Salesman & Commission */}
@@ -778,29 +827,11 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                          <Label className="text-xs text-blue-400 uppercase font-bold flex items-center gap-2">
                             <Box size={14} /> Pickup Date
                          </Label>
-                         <Popover>
-                            <PopoverTrigger asChild>
-                                <Button
-                                variant={"outline"}
-                                className={cn(
-                                    "w-full justify-start text-left font-medium bg-gray-800 border-gray-700 text-white hover:bg-gray-700 h-11",
-                                    !pickupDate && "text-muted-foreground"
-                                )}
-                                >
-                                <CalendarIcon className="mr-2 h-4 w-4 text-gray-400" />
-                                {pickupDate ? format(pickupDate, "PPP") : <span>Pick date</span>}
-                                </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0 bg-gray-900 border-gray-800" align="start">
-                                <Calendar
-                                    mode="single"
-                                    selected={pickupDate}
-                                    onSelect={setPickupDate}
-                                    initialFocus
-                                    className="bg-gray-900 text-white"
-                                />
-                            </PopoverContent>
-                        </Popover>
+                         <DateTimePicker
+                            value={pickupDate ? dateToDateTimePickerValue(pickupDate) : ''}
+                            onChange={(v) => setPickupDate(dateTimePickerValueToDate(v) || undefined)}
+                            placeholder="Pick date & time"
+                          />
                       </div>
 
                       {/* Duration Indicator */}
@@ -813,31 +844,13 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                          <Label className="text-xs text-green-400 uppercase font-bold flex items-center gap-2">
                              Return Date <Box size={14} className="rotate-180" />
                          </Label>
-                         <Popover>
-                            <PopoverTrigger asChild>
-                                <Button
-                                variant={"outline"}
-                                className={cn(
-                                    "w-full justify-start text-left font-medium bg-gray-800 border-gray-700 text-white hover:bg-gray-700 h-11",
-                                    !returnDate && "text-muted-foreground",
-                                    hasConflict && "border-red-500 text-red-500 bg-red-900/10"
-                                )}
-                                >
-                                <CalendarIcon className="mr-2 h-4 w-4 text-gray-400" />
-                                {returnDate ? format(returnDate, "PPP") : <span>Pick date</span>}
-                                </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0 bg-gray-900 border-gray-800" align="end">
-                                <Calendar
-                                    mode="single"
-                                    selected={returnDate}
-                                    onSelect={setReturnDate}
-                                    initialFocus
-                                    className="bg-gray-900 text-white"
-                                    fromDate={pickupDate}
-                                />
-                            </PopoverContent>
-                        </Popover>
+                         <div className={cn(hasConflict && 'rounded-lg ring-1 ring-red-500')}>
+                            <DateTimePicker
+                              value={returnDate ? dateToDateTimePickerValue(returnDate) : ''}
+                              onChange={(v) => setReturnDate(dateTimePickerValueToDate(v) || undefined)}
+                              placeholder="Pick date & time"
+                            />
+                          </div>
                       </div>
 
                    </div>

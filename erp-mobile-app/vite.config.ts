@@ -136,7 +136,23 @@ export default defineConfig(({ mode }) => {
       modulePreload: isCapacitorBuild ? false : undefined,
       rollupOptions: isCapacitorBuild
         ? { output: { inlineDynamicImports: true } }
-        : undefined,
+        : {
+            output: {
+              manualChunks(id) {
+                if (!id.includes('node_modules')) return;
+                if (id.includes('@supabase')) return 'vendor-supabase';
+                if (id.includes('jspdf') || id.includes('html2canvas')) return 'vendor-pdf';
+                if (id.includes('lucide-react')) return 'vendor-icons';
+                if (
+                  id.includes('/react/') ||
+                  id.includes('/react-dom/') ||
+                  id.includes('/scheduler/')
+                ) {
+                  return 'vendor-react';
+                }
+              },
+            },
+          },
     },
   };
 });
