@@ -117,3 +117,34 @@ node migration-tools/repairDinChinaPostImport.js --company-id 30bd8592-3384-4f34
 **Verification:** All DC codes removed company-wide; balances and payment/expense link counts unchanged; no account 4000; no 4050 posting lines.
 
 **Deploy:** Migration-tools + reports only → **no VPS/frontend deploy**.
+
+## 10. Stock movement repair (post-import document backfill)
+
+**Applied:** 2026-06-14 — `repairDinChinaPostImport.js --apply-stock-repair`
+
+**Scope:** Backfill `stock_movements` for legacy final sales (OUT) and received purchase (IN). No opening balance stock. No JE/payment changes.
+
+**Root cause:** Import used `track_stock: false` on products; purchase header inserted as `received` before line items (trigger idempotency blocked remaining IN lines).
+
+**Results:**
+
+| Metric | Count |
+|--------|-------|
+| Sale movement lines inserted | 63 |
+| Purchase movement lines inserted | 16 (+ 1 existing) |
+| Sales with movements | 34/34 |
+| Purchase lines covered | 17/17 |
+| Products `track_stock` → true | 16 |
+
+**Commands:**
+
+```bash
+node migration-tools/repairDinChinaPostImport.js --company-id 30bd8592-3384-4f34-899a-f3907e336485 --preview-stock-repair
+node migration-tools/repairDinChinaPostImport.js --company-id 30bd8592-3384-4f34-899a-f3907e336485 --apply-stock-repair
+```
+
+**Outputs:** `din_china_stock_repair_preview.md/json`, `din_china_stock_repair_final_report.md`
+
+**Future import fix:** [`dinChinaApply.js`](../../migration-tools/lib/dinChinaApply.js) — `track_stock: true`; purchase `ordered` → items → `received`.
+
+**Deploy:** Migration-tools only → **no VPS/frontend deploy**.

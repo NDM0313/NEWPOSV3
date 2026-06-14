@@ -213,7 +213,7 @@ async function ensureProducts(supabase, companyId, productPlan, stats, errors) {
           cost_price: 0,
           retail_price: 0,
           has_variations: true,
-          track_stock: false,
+          track_stock: true,
         },
         { onConflict: 'id' },
       );
@@ -268,6 +268,7 @@ export async function runApply(supabase, env, csvBundle, dryReport) {
     salePaymentsSkipped: 0,
     purchasesCreated: 0,
     purchasesSkipped: 0,
+    purchasesReceived: 0,
     purchaseItemsCreated: 0,
     purchaseItemsSkipped: 0,
     purchasePaymentsPosted: 0,
@@ -515,7 +516,7 @@ export async function runApply(supabase, env, csvBundle, dryReport) {
           po_date: dateSlice(p.transaction_date),
           supplier_id: supplierId,
           supplier_name: supplierName,
-          status: 'received',
+          status: 'ordered',
           payment_status: String(p.payment_status || 'unpaid').toLowerCase(),
           subtotal: num(p.subtotal),
           discount_amount: num(p.discount_amount),
@@ -567,6 +568,25 @@ export async function runApply(supabase, env, csvBundle, dryReport) {
         errors.push(`Purchase item ${line.line_id}: ${itemErr.message}`);
       } else {
         stats.purchaseItemsCreated++;
+      }
+    }
+
+    const { data: purchRow, error: purchFetchErr } = await supabase
+      .from('purchases')
+      .select('status')
+      .eq('id', purchaseId)
+      .single();
+    if (purchFetchErr) {
+      errors.push(`Purchase ${legacyId} status fetch: ${purchFetchErr.message}`);
+    } else if (!['received', 'final'].includes(String(purchRow.status || '').toLowerCase())) {
+      const { error: recvErr } = await supabase
+        .from('purchases')
+        .update({ status: 'received' })
+        .eq('id', purchaseId);
+      if (recvErr) {
+        errors.push(`Purchase ${legacyId} receive: ${recvErr.message}`);
+      } else {
+        stats.purchasesReceived++;
       }
     }
   }
