@@ -401,3 +401,55 @@ export async function uploadUnifiedStylePaymentAttachments(
   }
   return results;
 }
+
+const EXPENSE_RECEIPT_MAX_BYTES = 5 * 1024 * 1024;
+
+export type ExpenseReceiptUploadResult = { url: string | null; error: string | null };
+
+/** Upload one expense receipt/bill to expense-receipts bucket. Returns storage ref for receipt_url column. */
+export async function uploadExpenseReceipt(
+  companyId: string,
+  file: File | null | undefined,
+): Promise<ExpenseReceiptUploadResult> {
+  if (!file) return { url: null, error: null };
+  if (file.size === 0) {
+    return { url: null, error: 'Receipt file is empty. Try again or save without attachment.' };
+  }
+  if (file.size > EXPENSE_RECEIPT_MAX_BYTES) {
+    return { url: null, error: 'File too large. Max 5MB.' };
+  }
+  const bucket = 'expense-receipts';
+  const safeName = (file.name || 'receipt').replace(/[^a-zA-Z0-9.-]/g, '_');
+  const path = `${companyId}/receipts/${Date.now()}_${safeName}`;
+  try {
+    const { error } = await withUploadTimeout(
+      supabase.storage.from(bucket).upload(path, file, {
+        upsert: true,
+        contentType: file.type || 'application/octet-stream',
+      }),
+      UPLOAD_TIMEOUT_MS,
+      `Upload ${file.name || 'receipt'}`,
+    );
+    if (error) {
+      if (isStorageRlsError(error)) {
+        showStorageRlsToast();
+        return { url: null, error: 'Storage upload blocked by RLS.' };
+      }
+      if (isBucketNotFoundError(error)) {
+        showBucketNotFoundToast('expense-receipts');
+        return { url: null, error: 'Storage bucket "expense-receipts" not found on server.' };
+      }
+      if (isFileTooLargeError(error)) {
+        showFileTooLargeToast(file.name, 5);
+        return { url: null, error: 'File too large. Max 5MB.' };
+      }
+      return { url: null, error: error.message || 'Receipt upload failed.' };
+    }
+    return { url: storageRefForPersistence(bucket, path), error: null };
+  } catch (err: unknown) {
+    const msg = String((err as { message?: string })?.message ?? 'Receipt upload failed.');
+    if (isFileTooLargeException(err)) showFileTooLargeToast(file.name, 5);
+    else if (isStorageRlsError(err as { message?: string })) showStorageRlsToast();
+    return { url: null, error: msg };
+  }
+}

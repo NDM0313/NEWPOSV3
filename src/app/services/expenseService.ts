@@ -70,6 +70,28 @@ export interface Expense {
   created_by: string;
 }
 
+async function patchExpenseReceiptUrl(
+  expenseId: string,
+  companyId: string,
+  receiptUrl: string,
+): Promise<{ ok: boolean; warning?: string }> {
+  const url = receiptUrl.trim();
+  if (!url) return { ok: true };
+  const { error } = await supabase
+    .from('expenses')
+    .update({ receipt_url: url })
+    .eq('id', expenseId)
+    .eq('company_id', companyId);
+  if (error) {
+    const msg = String(error.message || '').toLowerCase();
+    if (msg.includes('receipt_url') || msg.includes('schema')) {
+      return { ok: false, warning: 'Expense saved but receipt could not be linked (receipt_url column missing).' };
+    }
+    return { ok: false, warning: error.message || 'Expense saved but receipt could not be linked.' };
+  }
+  return { ok: true };
+}
+
 export const expenseService = {
   /** Server-allocated expense_no via create_expense_document (same path as mobile ERP). */
   async createExpenseDocument(input: {
@@ -117,6 +139,8 @@ export const expenseService = {
 
     let { data: rpcRaw, error: rpcErr } = await callRpc(expensePayload);
 
+    let receiptStrippedInFallback = false;
+
     if (rpcErr) {
       const msg = String(rpcErr.message || '').toLowerCase();
       const schemaMissing =
@@ -124,6 +148,7 @@ export const expenseService = {
         msg.includes('receipt_url') ||
         (msg.includes('column') && msg.includes('schema'));
       if (schemaMissing && (expensePayload.payment_account_id || expensePayload.receipt_url)) {
+        if (expensePayload.receipt_url) receiptStrippedInFallback = true;
         const fallback = { ...expensePayload };
         delete fallback.payment_account_id;
         delete fallback.receipt_url;
@@ -141,21 +166,24 @@ export const expenseService = {
     }
 
     const expenseId = rpc.expense_id;
+    const requestedReceiptUrl = String(input.expense.receipt_url || '').trim();
     const patch = input.patch ?? {};
     const patchPayload: Record<string, unknown> = {};
     if (patch.paid_to_user_id) patchPayload.paid_to_user_id = patch.paid_to_user_id;
     if (patch.vendor_name) patchPayload.vendor_name = patch.vendor_name;
     if (patch.expense_category_id) patchPayload.expense_category_id = patch.expense_category_id;
+    if (requestedReceiptUrl) patchPayload.receipt_url = requestedReceiptUrl;
 
     if (Object.keys(patchPayload).length > 0) {
       let upd = await supabase.from('expenses').update(patchPayload).eq('id', expenseId).eq('company_id', input.companyId);
       if (upd.error) {
         const msg = String(upd.error.message || '');
-        if (/vendor_name|expense_category_id|paid_to_user_id|schema cache/i.test(msg)) {
+        if (/vendor_name|expense_category_id|paid_to_user_id|receipt_url|schema cache/i.test(msg)) {
           const slim = { ...patchPayload };
           delete slim.vendor_name;
           delete slim.expense_category_id;
           delete slim.paid_to_user_id;
+          delete slim.receipt_url;
           if (Object.keys(slim).length > 0) {
             await supabase.from('expenses').update(slim).eq('id', expenseId).eq('company_id', input.companyId);
           }
@@ -163,10 +191,32 @@ export const expenseService = {
       }
     }
 
+    let receiptWarning: string | undefined;
+    if (requestedReceiptUrl) {
+      const { data: checkRow } = await supabase
+        .from('expenses')
+        .select('receipt_url')
+        .eq('id', expenseId)
+        .eq('company_id', input.companyId)
+        .maybeSingle();
+      if (!checkRow?.receipt_url) {
+        const patched = await patchExpenseReceiptUrl(expenseId, input.companyId, requestedReceiptUrl);
+        if (!patched.ok) {
+          receiptWarning = patched.warning ?? 'Expense saved but receipt could not be linked.';
+        }
+      }
+      if (receiptStrippedInFallback && !receiptWarning) {
+        receiptWarning = 'Expense saved; receipt was linked after create (RPC omitted receipt_url).';
+      }
+    }
+
     const { data: row, error: fetchErr } = await supabase.from('expenses').select('*').eq('id', expenseId).single();
     if (fetchErr) throw fetchErr;
     if (!row.expense_no && rpc.expense_no) {
       (row as { expense_no?: string }).expense_no = rpc.expense_no;
+    }
+    if (receiptWarning) {
+      (row as { _receiptWarning?: string })._receiptWarning = receiptWarning;
     }
     return row;
   },

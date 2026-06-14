@@ -13,7 +13,8 @@ import {
   LayoutGrid,
   List as ListIcon,
   Loader2,
-  Clock
+  Clock,
+  Paperclip
 } from 'lucide-react';
 import { Button } from "../ui/button";
 import { cn } from "../ui/utils";
@@ -46,6 +47,8 @@ import {
   AlertDialogTitle,
 } from "../ui/alert-dialog";
 import { toast } from "sonner";
+import { AttachmentViewer } from '@/app/components/shared/AttachmentViewer';
+import type { Expense } from '@/app/context/ExpenseContext';
 import { Building2, Zap, Users, ShoppingCart, Briefcase, Utensils, Car, Wallet, Home } from 'lucide-react';
 import { ListToolbar } from '../ui/list-toolbar';
 import { DatePicker } from '../ui/DatePicker';
@@ -104,6 +107,19 @@ const ICON_BY_SLUG: Record<string, React.ComponentType<{ size?: number }>> = {
   Zap, Users, Car, Building2, Utensils, Wallet, Briefcase, Home, ShoppingCart,
   Other: Wallet,
 };
+
+function expenseReceiptAttachments(expense: Pick<Expense, 'receiptUrl' | 'receiptAttached'>) {
+  const url = expense.receiptUrl?.trim();
+  if (!url) return null;
+  const base = url.split('/').pop() || 'receipt';
+  let name = base;
+  try {
+    name = decodeURIComponent(base.replace(/^\d+_/, ''));
+  } catch {
+    /* keep base */
+  }
+  return [{ url, name }];
+}
 
 export const ExpensesDashboard = () => {
   const { formatCurrency } = useFormatCurrency();
@@ -174,6 +190,7 @@ export const ExpensesDashboard = () => {
   // 🎯 NEW: Action States
   const [selectedExpense, setSelectedExpense] = useState<any>(null);
   const [viewDetailsOpen, setViewDetailsOpen] = useState(false);
+  const [attachmentsDialogList, setAttachmentsDialogList] = useState<{ url: string; name: string }[] | null>(null);
   const [deleteAlertOpen, setDeleteAlertOpen] = useState(false);
 
   useEffect(() => {
@@ -998,33 +1015,33 @@ export const ExpensesDashboard = () => {
             }}
           />
 
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden flex flex-col">
+          <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden flex flex-col max-w-full">
            {/* Table */}
-           <div className="overflow-x-auto flex-1">
-              <table className="w-full text-sm text-left">
+           <div className="overflow-x-auto flex-1 max-w-full">
+              <table className="w-full table-fixed text-sm text-left">
                  <thead className="text-xs text-gray-500 uppercase bg-gray-950/50 border-b border-gray-800">
                     <tr>
-                       <th className="px-6 py-3 font-medium">Date</th>
-                       <th className="px-6 py-3 font-medium">Reference #</th>
-                       <th className="px-6 py-3 font-medium">Category</th>
-                       <th className="px-6 py-3 font-medium">Branch</th>
-                       <th className="px-6 py-3 font-medium">Expense For</th>
-                       <th className="px-6 py-3 font-medium">Paid Via</th>
-                       <th className="px-6 py-3 font-medium text-right">Amount</th>
-                       <th className="px-6 py-3 font-medium text-center">Action</th>
+                       <th className="px-3 py-3 font-medium w-[6.5rem]">Date</th>
+                       <th className="px-3 py-3 font-medium w-[5.5rem]">Reference #</th>
+                       <th className="px-3 py-3 font-medium max-w-[8rem]">Category</th>
+                       <th className="px-3 py-3 font-medium max-w-[8rem] hidden md:table-cell">Branch</th>
+                       <th className="px-3 py-3 font-medium w-[12rem]">Expense For</th>
+                       <th className="px-3 py-3 font-medium max-w-[8rem]">Paid Via</th>
+                       <th className="px-3 py-3 font-medium text-right w-[5.5rem]">Amount</th>
+                       <th className="px-3 py-3 font-medium text-center w-[4rem]">Action</th>
                     </tr>
                  </thead>
                  <tbody className="divide-y divide-gray-800">
                     {loading ? (
                       <tr>
-                        <td colSpan={8} className="px-6 py-12 text-center">
+                        <td colSpan={8} className="px-3 py-12 text-center">
                           <Loader2 size={48} className="mx-auto text-blue-500 mb-3 animate-spin" />
                           <p className="text-gray-400 text-sm">Loading expenses...</p>
                         </td>
                       </tr>
                     ) : paginatedExpenses.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="px-6 py-12 text-center">
+                        <td colSpan={8} className="px-3 py-12 text-center">
                           <Receipt size={48} className="mx-auto text-gray-600 mb-3" />
                           <p className="text-gray-400 text-sm">No expenses found</p>
                           <p className="text-gray-600 text-xs mt-1">Try adjusting your search or filters</p>
@@ -1033,33 +1050,49 @@ export const ExpensesDashboard = () => {
                     ) : (
                       paginatedExpenses.map((expense) => (
                        <tr key={expense.id} className="group hover:bg-gray-800/30 transition-colors">
-                          <td className="px-6 py-4 font-medium text-gray-300">
-                             <div className="flex items-center gap-2">
-                                <Calendar size={14} className="text-gray-500" />
-                                {new Date(expense.date).toLocaleDateString()}
+                          <td className="px-3 py-3 font-medium text-gray-300">
+                             <div className="flex items-center gap-1.5 truncate">
+                                <Calendar size={14} className="text-gray-500 shrink-0" />
+                                <span className="truncate">{new Date(expense.date).toLocaleDateString()}</span>
                              </div>
                           </td>
-                          <td className="px-6 py-4 text-white font-mono font-bold text-[0.825rem]">
+                          <td className="px-3 py-3 text-white font-mono font-bold text-[0.75rem] truncate">
                              {expense.expenseNo || '—'}
                           </td>
-                          <td className="px-6 py-4">
-                             <Badge variant="outline" className={cn("font-normal", getCategoryBadgeStyle(expense.category))}>
-                                {expense.category}
+                          <td className="px-3 py-3 max-w-[8rem]">
+                             <Badge variant="outline" className={cn("font-normal truncate max-w-full", getCategoryBadgeStyle(expense.category))}>
+                                <span className="truncate">{expense.category}</span>
                              </Badge>
                           </td>
-                          <td className="px-6 py-4 text-gray-400 text-sm">
+                          <td className="px-3 py-3 text-gray-400 text-sm max-w-[8rem] truncate hidden md:table-cell">
                              {resolveExpenseBranchLabel(expense.location)}
                           </td>
-                          <td className="px-6 py-4 text-white">
-                             {expense.description}
+                          <td className="px-3 py-3 text-white max-w-[12rem]">
+                             <div className="flex items-center gap-1.5 min-w-0">
+                               <span className="truncate">{expense.description}</span>
+                               {(expense.receiptUrl || expense.receiptAttached) && expenseReceiptAttachments(expense) ? (
+                                 <button
+                                   type="button"
+                                   onClick={(e) => {
+                                     e.stopPropagation();
+                                     const list = expenseReceiptAttachments(expense);
+                                     if (list?.length) setAttachmentsDialogList(list);
+                                   }}
+                                   className="shrink-0 p-0.5 hover:bg-amber-500/20 rounded transition-colors"
+                                   title="View attachment"
+                                 >
+                                   <Paperclip size={14} className="text-amber-400" />
+                                 </button>
+                               ) : null}
+                             </div>
                           </td>
-                          <td className="px-6 py-4 text-gray-400">
+                          <td className="px-3 py-3 text-gray-400 max-w-[8rem] truncate">
                              {paymentDisplayForExpense(expense)}
                           </td>
-                          <td className="px-6 py-4 text-right font-bold text-red-500">
+                          <td className="px-3 py-3 text-right font-bold text-red-500 whitespace-nowrap">
                              -{formatCurrency(expense.amount)}
                           </td>
-                          <td className="px-6 py-4 text-center">
+                          <td className="px-3 py-3 text-center">
                              <DropdownMenu>
                                <DropdownMenuTrigger asChild>
                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-gray-500 hover:text-white data-[state=open]:bg-gray-800">
@@ -1184,6 +1217,14 @@ export const ExpensesDashboard = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {attachmentsDialogList ? (
+        <AttachmentViewer
+          attachments={attachmentsDialogList}
+          isOpen={!!attachmentsDialogList}
+          onClose={() => setAttachmentsDialogList(null)}
+        />
+      ) : null}
 
     </div>
   );

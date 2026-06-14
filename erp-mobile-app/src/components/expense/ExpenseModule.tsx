@@ -35,6 +35,8 @@ import { useSubmitLock } from '../../contexts/LoadingContext';
 import { formatSaleChargeDisplayLabel } from '../../lib/saleChargeDisplay';
 import { ExpenseCategorySheet } from './ExpenseCategorySheet';
 import { ExpenseDetailSheet } from './ExpenseDetailSheet';
+import { AttachmentIndicatorButton } from '../shared/AttachmentIndicatorButton';
+import { AttachmentPreviewModal } from '../sales/AttachmentPreviewModal';
 import {
   categoryIsDirect4120Clearing,
   collectCategoryIdsForClearingFilter,
@@ -46,6 +48,15 @@ import {
 } from '../../lib/expenseCategoryTreeUtils';
 
 const MAX_EXPENSE_RECEIPT_BYTES = 5 * 1024 * 1024;
+
+function expenseReceiptName(url: string): string {
+  const base = url.split('/').pop() || 'receipt';
+  try {
+    return decodeURIComponent(base.replace(/^\d+_/, ''));
+  } catch {
+    return base;
+  }
+}
 
 interface ExpenseModuleProps {
   onBack: () => void;
@@ -165,6 +176,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
   const [showAdd, setShowAdd] = useState(false);
   const [showCategories, setShowCategories] = useState(false);
   const [detailExpenseId, setDetailExpenseId] = useState<string | null>(null);
+  const [receiptPreview, setReceiptPreview] = useState<{ url: string; name: string } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<expensesApi.ExpenseRow | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [addCategory, setAddCategory] = useState(CATEGORY_OPTIONS[0]);
@@ -190,6 +202,9 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
   const [subCategoryId, setSubCategoryId] = useState('');
   const [leafCategoryId, setLeafCategoryId] = useState('');
   const [addReceiptFile, setAddReceiptFile] = useState<File | null>(null);
+  const [existingReceiptUrl, setExistingReceiptUrl] = useState<string | null>(null);
+  const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
+  const [editingExpenseNo, setEditingExpenseNo] = useState<string | null>(null);
   const [isProcessingReceipt, setIsProcessingReceipt] = useState(false);
   const [receiptNotice, setReceiptNotice] = useState<string | null>(null);
   const [documentBranchId, setDocumentBranchId] = useState<string | null>(null);
@@ -241,6 +256,9 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
     setLeafCategoryId('');
     setPaidToUserId('');
     setAddReceiptFile(null);
+    setExistingReceiptUrl(null);
+    setEditingExpenseId(null);
+    setEditingExpenseNo(null);
     setAddExpenseDate(localNowDateString());
     setSelectedClearingChargeId('');
     setClearingLines([]);
@@ -301,6 +319,9 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
 
   const handleOpenAdd = () => {
     if (!companyId || branchGateLoading) return;
+    setEditingExpenseId(null);
+    setEditingExpenseNo(null);
+    setExistingReceiptUrl(null);
     if (branch?.id === 'all') {
       runWithBranch(
         (pickedId) => {
@@ -604,20 +625,16 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
       return;
     }
     const expenseUserId = effectiveUserId;
-    await runSave('Saving expense...', async () => {
+    const editId = editingExpenseId;
+    await runSave(editId ? 'Updating expense...' : 'Saving expense...', async () => {
     setAddError(null);
     setSubmitErrorModal(null);
-    let receiptUrl: string | null = null;
+    let receiptUrl: string | null = existingReceiptUrl;
     if (addReceiptFile && navigator.onLine) {
       const up = await expensesApi.uploadExpenseReceipt(companyId, addReceiptFile);
       if (up.error) {
-        if (up.kind === 'bucket') {
-          receiptUrl = null;
-          showExpenseError(up.error);
-        } else {
-          showExpenseError(up.error);
-          return;
-        }
+        showExpenseError(up.error);
+        return;
       } else if (!up.url) {
         showExpenseError('Receipt could not be uploaded. Remove the file or try again.');
         return;
@@ -626,6 +643,61 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
       }
     }
     const paymentMethod = paymentAccounts.length > 0 ? paymentMethodFromAccount : 'cash';
+
+    if (editId) {
+      if (!navigator.onLine) {
+        showExpenseError('Editing expenses requires an internet connection.');
+        return;
+      }
+      const { data, error } = await expensesApi.updateExpense({
+        companyId,
+        expenseId: editId,
+        branchId: writeBranchId,
+        category: effectiveCategorySlug,
+        description: descriptionFinal,
+        amount: amt,
+        paymentMethod,
+        expenseDate: addExpenseDate,
+        paymentAccountId: addAccountId || undefined,
+        receiptUrl: receiptUrl ?? undefined,
+        paidToUserId: isSalaryCategory && paidToUserId ? paidToUserId : undefined,
+        payeeName: isSalaryCategory && selectedSalaryUser ? selectedSalaryUser.full_name : undefined,
+        expenseCategoryId: resolvedCategoryId || undefined,
+      });
+      if (error) {
+        showExpenseError(error);
+        return;
+      }
+      const displayCategory = resolvedCategoryId
+        ? displayLabelForCategoryId(categoryTree, resolvedCategoryId, addCategory)
+        : addCategory;
+      const updated = data!;
+      setList((prev) =>
+        prev.map((e) =>
+          e.id === editId
+            ? {
+                ...e,
+                expense_no: updated.expense_no || e.expense_no,
+                date: updated.expense_date,
+                category: displayCategory,
+                expense_category_id: updated.expense_category_id ?? resolvedCategoryId ?? null,
+                description: updated.description,
+                amount: updated.amount,
+                branch_id: updated.branch_id ?? writeBranchId,
+                payment_account_id: updated.payment_account_id ?? null,
+                payment_account_display: updated.payment_account_display,
+                payment_method: updated.payment_method,
+                receipt_url: updated.receipt_url ?? null,
+              }
+            : e,
+        ),
+      );
+      setAddError(null);
+      setSubmitErrorModal(null);
+      resetAddFormAndDraft();
+      void loadExpenses({ silent: true });
+      return;
+    }
 
     if (!navigator.onLine) {
       try {
@@ -716,12 +788,17 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
         amount: amt,
         branch_id: writeBranchId,
         created_by: expenseUserId,
+        receipt_url: receiptUrl || null,
       },
       ...prev,
     ]);
+    if (data?.receiptWarning) {
+      setReceiptNotice(data.receiptWarning);
+    }
     setAddError(null);
     setSubmitErrorModal(null);
     resetAddFormAndDraft();
+    void loadExpenses({ silent: true });
     });
   };
 
@@ -756,6 +833,10 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
 
   const prefillEditFromRow = useCallback(
     (row: (typeof list)[number]) => {
+      setEditingExpenseId(row.id);
+      setEditingExpenseNo(row.expense_no || null);
+      setExistingReceiptUrl(row.receipt_url ?? null);
+      setAddReceiptFile(null);
       setAddDesc(row.description);
       setAddAmount(String(row.amount));
       setAddExpenseDate(row.date);
@@ -846,8 +927,12 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
               <ArrowLeft className="w-5 h-5" />
             </button>
             <div>
-              <h1 className="font-semibold text-white">Add Expense</h1>
-              <p className="text-xs text-white/80">Record new business expense</p>
+              <h1 className="font-semibold text-white">{editingExpenseId ? 'Edit Expense' : 'Add Expense'}</h1>
+              <p className="text-xs text-white/80">
+                {editingExpenseId
+                  ? editingExpenseNo || 'Update existing expense'
+                  : 'Record new business expense'}
+              </p>
             </div>
           </div>
         </div>
@@ -1363,7 +1448,18 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
                             <p className="text-xs text-[#9CA3AF] line-clamp-2">{e.description}</p>
                           </div>
                         </div>
-                        <div className="text-right ml-2">
+                        <div className="text-right ml-2 flex items-start gap-0.5 shrink-0">
+                          {e.receipt_url ? (
+                            <AttachmentIndicatorButton
+                              size="sm"
+                              onClick={() =>
+                                setReceiptPreview({
+                                  url: e.receipt_url!,
+                                  name: expenseReceiptName(e.receipt_url!),
+                                })
+                              }
+                            />
+                          ) : null}
                           <p className="text-base font-bold text-[#EF4444]">- Rs. {e.amount.toLocaleString()}</p>
                         </div>
                       </div>
@@ -1429,6 +1525,14 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
           setDetailExpenseId(null);
           setDeleteTarget(exp);
         }}
+      />
+    ) : null}
+    {receiptPreview ? (
+      <AttachmentPreviewModal
+        isOpen={!!receiptPreview}
+        attachments={[receiptPreview]}
+        initialIndex={0}
+        onClose={() => setReceiptPreview(null)}
       />
     ) : null}
     {deleteTarget ? (

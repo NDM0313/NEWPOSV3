@@ -44,6 +44,7 @@ import { toast } from "sonner";
 import type { ExpenseCategory } from "@/app/context/ExpenseContext";
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
+import { uploadExpenseReceipt } from '@/app/utils/uploadTransactionAttachments';
 
 interface AddExpenseDrawerProps {
   isOpen: boolean;
@@ -64,6 +65,7 @@ interface AddExpenseDrawerProps {
     status?: string;
     paymentAccountId?: string;
     expense_category_id?: string;
+    receiptUrl?: string;
   } | null;
 }
 
@@ -102,6 +104,10 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
   const [saving, setSaving] = useState(false);
   const [branches, setBranches] = useState<Array<{ id: string; name: string; address?: string }>>([]);
   const [paymentAccounts, setPaymentAccounts] = useState<Array<{ id: string; name: string; balance?: number; icon: typeof Wallet }>>([]);
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [existingReceiptUrl, setExistingReceiptUrl] = useState<string | null>(null);
+  const receiptInputRef = React.useRef<HTMLInputElement>(null);
+  const editingIdRef = React.useRef<string | null>(null);
 
   const userRole = "Admin";
 
@@ -139,6 +145,7 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
   // Pre-fill form when editing (depend on full expenseToEdit so switching rows refreshes the form)
   useEffect(() => {
     if (isOpen && expenseToEdit) {
+      editingIdRef.current = expenseToEdit.id || null;
       setDate(expenseToEdit.date ? new Date(expenseToEdit.date) : new Date());
       setAmount(String(expenseToEdit.amount || ''));
       setDescription(expenseToEdit.description || '');
@@ -148,7 +155,10 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
       if (expenseToEdit.paymentAccountId && /^[0-9a-f-]{36}$/i.test(expenseToEdit.paymentAccountId)) {
         setPaidFromAccountId(expenseToEdit.paymentAccountId);
       }
+      setExistingReceiptUrl(expenseToEdit.receiptUrl || null);
+      setReceiptFile(null);
     } else if (isOpen && !expenseToEdit) {
+      editingIdRef.current = null;
       setDate(new Date());
       setAmount('');
       setDescription('');
@@ -159,6 +169,8 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
       setPaidToUserId('');
       setSalaryUserSearch('');
       setPaidFromAccountId('');
+      setReceiptFile(null);
+      setExistingReceiptUrl(null);
     }
   }, [isOpen, expenseToEdit]);
 
@@ -280,6 +292,10 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
     setPaidToUserId("");
     setSalaryUserSearch("");
     setPaidFromAccountId("");
+    setReceiptFile(null);
+    setExistingReceiptUrl(null);
+    editingIdRef.current = null;
+    if (receiptInputRef.current) receiptInputRef.current.value = '';
   }, []);
 
   const handleSave = async () => {
@@ -311,10 +327,26 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
     }
     setSaving(true);
     try {
-      if (expenseToEdit) {
+      let receiptUrl: string | null | undefined = existingReceiptUrl;
+      if (receiptFile && companyId) {
+        const up = await uploadExpenseReceipt(companyId, receiptFile);
+        if (up.error || !up.url) {
+          toast.error(up.error || 'Receipt upload failed. Remove the file or try again.');
+          return;
+        }
+        receiptUrl = up.url;
+      }
+
+      const editId = expenseToEdit?.id ?? editingIdRef.current ?? undefined;
+      if (editId && !/^[0-9a-f-]{36}$/i.test(editId)) {
+        toast.error('Invalid expense id — close and reopen the expense to edit.');
+        return;
+      }
+
+      if (editId) {
         const paymentAccountId =
           paidFromAccountId && /^[0-9a-f-]{36}$/i.test(paidFromAccountId) ? paidFromAccountId : undefined;
-        await updateExpense(expenseToEdit.id, {
+        await updateExpense(editId, {
           category: effectiveSlug,
           description: description.trim() || (isSalaryCategory && selectedSalaryUser ? `${selectedSalaryUser.full_name} – Salary` : deepestCategory?.name ?? effectiveSlug),
           amount: amt,
@@ -322,6 +354,8 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
           paymentMethod: paymentMethodName,
           payeeName: isSalaryCategory && selectedSalaryUser ? selectedSalaryUser.full_name : "",
           location: effectiveBranchId,
+          receiptAttached: Boolean(receiptUrl),
+          receiptUrl: receiptUrl || null,
           ...(paymentAccountId ? { paymentAccountId } : {}),
         });
       } else {
@@ -336,7 +370,8 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
             location: effectiveBranchId,
             status: "paid",
             submittedBy: "",
-            receiptAttached: false,
+            receiptAttached: Boolean(receiptUrl),
+            receiptUrl: receiptUrl || undefined,
           },
           {
             branchId: effectiveBranchId,
@@ -616,12 +651,63 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
             {/* Row 6: Upload Receipt Box */}
             <div className="space-y-2">
               <Label className="text-gray-400 text-sm">Upload Receipt (Optional)</Label>
-              <div className="border-2 border-dashed border-gray-700 rounded-lg p-6 flex flex-col items-center justify-center text-center hover:bg-gray-800/50 transition-colors cursor-pointer group bg-gray-900/50">
+              <input
+                ref={receiptInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/jpg,application/pdf"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] ?? null;
+                  setReceiptFile(file);
+                  if (file) setExistingReceiptUrl(null);
+                }}
+              />
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => receiptInputRef.current?.click()}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') receiptInputRef.current?.click(); }}
+                className="border-2 border-dashed border-gray-700 rounded-lg p-6 flex flex-col items-center justify-center text-center hover:bg-gray-800/50 transition-colors cursor-pointer group bg-gray-900/50"
+              >
                 <div className="h-10 w-10 rounded-full bg-gray-800 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform border border-gray-700">
                   <Upload className="h-5 w-5 text-gray-400" />
                 </div>
-                <p className="text-sm text-gray-400">Click to upload bill</p>
-                <p className="text-xs text-gray-600 mt-1">PNG, JPG up to 5MB</p>
+                {receiptFile ? (
+                  <>
+                    <p className="text-sm text-white truncate max-w-full px-2">{receiptFile.name}</p>
+                    <button
+                      type="button"
+                      className="text-xs text-red-400 mt-2 hover:underline"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setReceiptFile(null);
+                        if (receiptInputRef.current) receiptInputRef.current.value = '';
+                      }}
+                    >
+                      Remove
+                    </button>
+                  </>
+                ) : existingReceiptUrl ? (
+                  <>
+                    <p className="text-sm text-amber-400">Receipt attached</p>
+                    <p className="text-xs text-gray-500 mt-1 truncate max-w-full px-2">{existingReceiptUrl.split('/').pop()}</p>
+                    <button
+                      type="button"
+                      className="text-xs text-red-400 mt-2 hover:underline"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setExistingReceiptUrl(null);
+                      }}
+                    >
+                      Remove attachment
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm text-gray-400">Click to upload bill</p>
+                    <p className="text-xs text-gray-600 mt-1">PNG, JPG, PDF up to 5MB</p>
+                  </>
+                )}
               </div>
             </div>
 
