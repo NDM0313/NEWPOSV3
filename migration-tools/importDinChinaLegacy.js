@@ -34,6 +34,7 @@ import {
 } from './lib/dinChinaLegacyMap.js';
 import { mapLegacyPaymentMethod } from './lib/mapLegacyPaymentMethod.js';
 import { runCoaPreflight, SALE_JOURNAL_STRATEGY } from './lib/dinChinaCoaPreflight.js';
+import { runApply, writeApplyFinalReport } from './lib/dinChinaApply.js';
 
 const BRANCH_NAME = 'DIN CHINA';
 const BRANCH_CODE = 'BL0002';
@@ -383,6 +384,8 @@ async function runDryRun(supabase, env, csvBundle) {
     csvCount: data.purchases.rows.length,
     ready: purchasesReady.length,
     duplicates: purchDuplicates.length,
+    duplicateDetails: purchDuplicates,
+    readyDetails: purchasesReady,
     importStatus: 'received',
     note: 'Historical PO imported as received (no stock IN until finalized)',
   };
@@ -429,6 +432,8 @@ async function runDryRun(supabase, env, csvBundle) {
     csvCount: data.expenses.rows.length,
     ready: expensesReady.length,
     duplicates: expDuplicates.length,
+    duplicateDetails: expDuplicates,
+    readyDetails: expensesReady,
     rpcAfterInsert: 'record_expense_with_accounting',
   };
 
@@ -532,23 +537,31 @@ function printConsoleSummary(report) {
   console.log('====================================================\n');
 }
 
+function printApplySummary(applyResult) {
+  console.log('\n========== DIN CHINA Legacy Import APPLY ==========');
+  console.log(`Pass: ${applyResult.pass ? 'YES' : 'NO'}`);
+  console.log(`Sale JE strategy: ${applyResult.saleJournalStrategy}`);
+  console.log(`Revenue code: ${applyResult.revenuePostingCode} | AR: ${applyResult.arAccountCode}`);
+  console.log('\nApply stats:');
+  for (const [k, v] of Object.entries(applyResult.stats)) {
+    console.log(`  ${k}: ${v}`);
+  }
+  if (applyResult.errors.length) {
+    console.log('\nApply errors:');
+    for (const e of applyResult.errors) console.log(`  - ${e}`);
+  }
+  console.log('===================================================\n');
+}
+
 async function main() {
   const argv = process.argv.slice(2);
   if (!argv.includes('--dry-run') && !argv.includes('--apply')) {
     console.error('Pass --dry-run or --apply');
     process.exit(1);
   }
-  if (argv.includes('--apply')) {
-    console.error('--apply is not implemented in this prompt. Use --dry-run only.');
-    process.exit(1);
-  }
 
   argv.push('--require-supabase');
   const env = loadMigrationEnv(argv);
-  if (!env.dryRun) {
-    console.error('Only --dry-run is allowed in this session.');
-    process.exit(1);
-  }
 
   const csvBundle = loadAllCsvData();
   const supabase = createClient(env.supabaseUrl, env.serviceRoleKey, {
@@ -562,6 +575,21 @@ async function main() {
   printConsoleSummary(report);
   console.log(`Report: ${outPath}`);
 
+  if (!report.pass) {
+    writeApplyFinalReport(env.outputDir, report, null);
+    process.exit(1);
+  }
+
+  if (env.apply) {
+    console.log('\nRunning live apply...');
+    const applyResult = await runApply(supabase, env, csvBundle, report);
+    printApplySummary(applyResult);
+    const finalReportPath = writeApplyFinalReport(env.outputDir, report, applyResult);
+    console.log(`Final report: ${finalReportPath}`);
+    process.exit(applyResult.pass ? 0 : 1);
+  }
+
+  writeApplyFinalReport(env.outputDir, report, null);
   process.exit(report.pass ? 0 : 1);
 }
 

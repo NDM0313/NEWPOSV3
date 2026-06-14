@@ -92,6 +92,28 @@ export async function findExistingLegacyPurchase(supabase, companyId, legacyTran
   return null;
 }
 
+export async function findExistingLegacyPayment(supabase, companyId, legacyPaymentId) {
+  const id = dinChinaUuid('transaction_payments', legacyPaymentId);
+  const { data: byId } = await supabase
+    .from('payments')
+    .select('id, reference_number, amount')
+    .eq('id', id)
+    .maybeSingle();
+  if (byId) return { match: 'id', row: byId };
+
+  const needle = `legacy_payment_id=${legacyPaymentId}`;
+  const { data: byNotes } = await supabase
+    .from('payments')
+    .select('id, reference_number, amount, notes')
+    .eq('company_id', companyId)
+    .ilike('notes', `%${needle}%`)
+    .limit(1)
+    .maybeSingle();
+  if (byNotes) return { match: 'notes', row: byNotes };
+
+  return null;
+}
+
 export async function findExistingLegacyExpense(supabase, companyId, legacyTransactionId) {
   const id = dinChinaUuid('transactions', legacyTransactionId);
   const { data: byId } = await supabase
