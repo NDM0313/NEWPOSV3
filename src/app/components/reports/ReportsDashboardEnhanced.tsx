@@ -1619,34 +1619,38 @@ export const ReportsDashboardEnhanced = ({
             {financialReportType === 'balance-basis-guide' && (
               <div className="text-xs text-gray-500 mb-2">As of: {reportEndDate}</div>
             )}
-            {financialReportType === 'trial-balance' && (
-              <TrialBalancePage startDate={reportStartDate} endDate={reportEndDate} branchId={reportBranchId} />
-            )}
-            {financialReportType === 'profit-loss' && (
-              <ProfitLossPage startDate={reportStartDate} endDate={reportEndDate} branchId={reportBranchId} />
-            )}
-            {financialReportType === 'customers-suppliers' && (
-              <CustomersSuppliersReportPage
-                startDate={reportStartDate}
-                endDate={reportEndDate}
-                branchId={reportBranchId ?? null}
-              />
-            )}
-            {financialReportType === 'balance-basis-guide' && (
-              <BalanceBasisGuidePage asOfDate={reportEndDate} branchId={reportBranchId ?? null} />
-            )}
-            {financialReportType === 'balance-sheet' && (
-              <BalanceSheetPage asOfDate={reportEndDate} branchId={reportBranchId} />
-            )}
-            {financialReportType === 'sales-profit' && (
-              <SalesProfitPage startDate={reportStartDate} endDate={reportEndDate} branchId={reportBranchId} />
-            )}
-            {financialReportType === 'inventory-valuation' && (
-              <InventoryValuationPage asOfDate={reportEndDate} branchId={reportBranchId} />
-            )}
-            {financialReportType === 'remaining-balance' && (
-              <RemainingBalanceReport branchId={reportBranchId ?? null} />
-            )}
+            <div
+              key={`${reportStartDate}-${reportEndDate}-${reportBranchId ?? 'all'}-${financialReportType}`}
+            >
+              {financialReportType === 'trial-balance' && (
+                <TrialBalancePage startDate={reportStartDate} endDate={reportEndDate} branchId={reportBranchId} />
+              )}
+              {financialReportType === 'profit-loss' && (
+                <ProfitLossPage startDate={reportStartDate} endDate={reportEndDate} branchId={reportBranchId} />
+              )}
+              {financialReportType === 'customers-suppliers' && (
+                <CustomersSuppliersReportPage
+                  startDate={reportStartDate}
+                  endDate={reportEndDate}
+                  branchId={reportBranchId ?? null}
+                />
+              )}
+              {financialReportType === 'balance-basis-guide' && (
+                <BalanceBasisGuidePage asOfDate={reportEndDate} branchId={reportBranchId ?? null} />
+              )}
+              {financialReportType === 'balance-sheet' && (
+                <BalanceSheetPage asOfDate={reportEndDate} branchId={reportBranchId} />
+              )}
+              {financialReportType === 'sales-profit' && (
+                <SalesProfitPage startDate={reportStartDate} endDate={reportEndDate} branchId={reportBranchId} />
+              )}
+              {financialReportType === 'inventory-valuation' && (
+                <InventoryValuationPage asOfDate={reportEndDate} branchId={reportBranchId} />
+              )}
+              {financialReportType === 'remaining-balance' && (
+                <RemainingBalanceReport branchId={reportBranchId ?? null} />
+              )}
+            </div>
           </>
         )}
 

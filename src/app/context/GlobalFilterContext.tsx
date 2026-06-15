@@ -207,7 +207,23 @@ const BRANCH_FILTER_INVALIDATION_DOMAINS: InvalidationDomain[] = [
   'inventory',
   'rentals',
   'studio',
+  'reports',
 ];
+
+function dispatchFilterInvalidation(
+  companyId: string,
+  branchId: string | null,
+  reason: 'branch_filter_changed' | 'date_filter_changed',
+) {
+  for (const domain of BRANCH_FILTER_INVALIDATION_DOMAINS) {
+    dispatchDataInvalidated({
+      domain,
+      companyId,
+      branchId,
+      reason,
+    });
+  }
+}
 
 export const GlobalFilterProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { setBranchId: setSupabaseBranchId, companyId } = useSupabase();
@@ -267,14 +283,7 @@ export const GlobalFilterProvider: React.FC<{ children: ReactNode }> = ({ childr
       setPersisted(next);
       setSupabaseBranchId?.(id);
       if (companyId) {
-        for (const domain of BRANCH_FILTER_INVALIDATION_DOMAINS) {
-          dispatchDataInvalidated({
-            domain,
-            companyId,
-            branchId: id,
-            reason: 'branch_filter_changed',
-          });
-        }
+        dispatchFilterInvalidation(companyId, id, 'branch_filter_changed');
       }
     },
     [setSupabaseBranchId, companyId]
@@ -283,23 +292,35 @@ export const GlobalFilterProvider: React.FC<{ children: ReactNode }> = ({ childr
   // Do not sync Supabase -> persisted; only persisted -> Supabase on init.
   // Single-branch auto-set is done in TopHeader via setGlobalBranchId(branches[0].id).
 
-  const setDateRangeType = useCallback((type: GlobalDateRangeType) => {
-    setPersisted((prev) => {
-      const next = { ...prev, dateRangeType: type };
-      saveToStorage(next);
-      return next;
-    });
-  }, []);
+  const setDateRangeType = useCallback(
+    (type: GlobalDateRangeType) => {
+      setPersisted((prev) => {
+        const next = { ...prev, dateRangeType: type };
+        saveToStorage(next);
+        return next;
+      });
+      if (companyId) {
+        dispatchFilterInvalidation(companyId, persistedRef.current.branchId, 'date_filter_changed');
+      }
+    },
+    [companyId],
+  );
 
-  const setCustomDateRange = useCallback((startDate: Date, endDate: Date) => {
-    const start = formatLocalDateYYYYMMDD(startDate);
-    const end = formatLocalDateYYYYMMDD(endDate);
-    setPersisted((prev) => {
-      const next = { ...prev, dateRangeType: 'customRange', customStartDate: start, customEndDate: end };
-      saveToStorage(next);
-      return next;
-    });
-  }, []);
+  const setCustomDateRange = useCallback(
+    (startDate: Date, endDate: Date) => {
+      const start = formatLocalDateYYYYMMDD(startDate);
+      const end = formatLocalDateYYYYMMDD(endDate);
+      setPersisted((prev) => {
+        const next = { ...prev, dateRangeType: 'customRange', customStartDate: start, customEndDate: end };
+        saveToStorage(next);
+        return next;
+      });
+      if (companyId) {
+        dispatchFilterInvalidation(companyId, persistedRef.current.branchId, 'date_filter_changed');
+      }
+    },
+    [companyId],
+  );
 
   const setCurrentModule = useCallback((module: GlobalFilterModule) => {
     setCurrentModuleState(module);

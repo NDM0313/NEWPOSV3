@@ -256,6 +256,9 @@ export const BalanceSheetPage: React.FC<{
   const { openLedgerStatementV2 } = useNavigation();
   const defaultDate = initialAsOfDate || new Date().toISOString().slice(0, 10);
   const [asOfDate, setAsOfDate] = useState(defaultDate);
+  useEffect(() => {
+    if (initialAsOfDate) setAsOfDate(initialAsOfDate);
+  }, [initialAsOfDate]);
   const [data, setData] = useState<BalanceSheetResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);

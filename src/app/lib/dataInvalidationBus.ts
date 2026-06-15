@@ -20,7 +20,8 @@ export type InvalidationDomain =
   | 'purchases'
   | 'rentals'
   | 'studio'
-  | 'expenses';
+  | 'expenses'
+  | 'reports';
 
 const ALL_INVALIDATION_DOMAINS: InvalidationDomain[] = [
   'accounting',
@@ -31,6 +32,7 @@ const ALL_INVALIDATION_DOMAINS: InvalidationDomain[] = [
   'rentals',
   'studio',
   'expenses',
+  'reports',
 ];
 
 /** Manual refresh — one header control refreshes every module that listens to the invalidation bus. */

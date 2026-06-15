@@ -33,7 +33,7 @@ const toExport = (
   periodLabel: string
 ): ExportData => ({
   title: `Trial Balance (GL) — ${periodLabel}`,
-  headers: ['Code', 'Account', 'Type', 'Debit', 'Credit', 'Balance'],
+  headers: ['Code', 'Account', 'Type', 'Debit', 'Credit', 'Period net (Dr−Cr)'],
   rows: [
     ...r.rows.map((row) => [
       row.account_code,
@@ -372,7 +372,12 @@ export const TrialBalancePage: React.FC<{
               <th className="p-3 text-left font-medium text-gray-300">Type</th>
               <th className="p-3 text-right font-medium text-gray-300">Debit</th>
               <th className="p-3 text-right font-medium text-gray-300">Credit</th>
-              <th className="p-3 text-right font-medium text-gray-300">Balance</th>
+              <th
+                className="p-3 text-right font-medium text-gray-300"
+                title="Period net (Dr−Cr). For amount owed, use Balance Basis Guide or party GL statement."
+              >
+                Period net (Dr−Cr)
+              </th>
               <th className="p-3 w-40 font-medium text-gray-300">Actions</th>
             </tr>
           </thead>
