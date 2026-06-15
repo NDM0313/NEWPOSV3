@@ -1,0 +1,862 @@
+{
+  "mode": "dry-run",
+  "applyRun": false,
+  "generatedAt": "2026-06-15T18:32:51.597Z",
+  "companyId": "30bd8592-3384-4f34-899a-f3907e336485",
+  "branch": {
+    "id": "92f4184e-ee9b-4b6c-8e76-10ee1d166f55",
+    "code": "BL0002",
+    "name": "DIN CHINA",
+    "guard": {
+      "ok": true,
+      "branch": {
+        "id": "92f4184e-ee9b-4b6c-8e76-10ee1d166f55",
+        "code": "BL0002",
+        "name": "DIN CHINA",
+        "company_id": "30bd8592-3384-4f34-899a-f3907e336485"
+      },
+      "issues": []
+    }
+  },
+  "coa": {
+    "revenue": {
+      "found": true,
+      "account": {
+        "id": "ce23889c-07c0-4f09-9946-1e55764719e1",
+        "code": "4100",
+        "name": "Sales Revenue",
+        "type": "revenue",
+        "balance": -49040015,
+        "is_group": false,
+        "parent_id": "9bcc1db7-9689-46f5-b8b8-a1345ad0f81f"
+      }
+    },
+    "ar": {
+      "found": true,
+      "account": {
+        "id": "51ef008a-00ca-48cd-94f8-4fdad79b7065",
+        "code": "1100",
+        "name": "Accounts Receivable",
+        "type": "asset",
+        "balance": -21416540,
+        "is_group": false,
+        "parent_id": null
+      }
+    },
+    "inventory": {
+      "found": true,
+      "account": {
+        "id": "250bbcfc-3f85-4614-879c-5be749399810",
+        "code": "1200",
+        "name": "Inventory",
+        "type": "inventory",
+        "balance": 28678939.27,
+        "is_group": false,
+        "parent_id": "525d6cdc-7a3f-4b79-8ece-708e6e890a7d"
+      }
+    },
+    "cogs": {
+      "found": true,
+      "account": {
+        "id": "e0821405-9244-4f43-9fd2-694f0e905b1b",
+        "code": "5010",
+        "name": "COGS - Inventory",
+        "type": "expense",
+        "balance": 39299479.13,
+        "is_group": false,
+        "parent_id": "4ec1e8ac-c86c-4d87-b7fe-5dcd966f2e64"
+      }
+    },
+    "ap": {
+      "found": true,
+      "account": {
+        "id": "7cbf1212-1a47-4de2-aad5-3690c587372a",
+        "code": "2000",
+        "name": "Accounts Payable",
+        "type": "liability",
+        "balance": 0,
+        "is_group": false,
+        "parent_id": "cff32042-f169-40b4-bb2e-42fb591df39a"
+      }
+    }
+  },
+  "taskA": {
+    "revenueAccount": {
+      "id": "ce23889c-07c0-4f09-9946-1e55764719e1",
+      "code": "4100",
+      "name": "Sales Revenue",
+      "type": "revenue",
+      "balance": -49040015,
+      "is_group": false,
+      "parent_id": "9bcc1db7-9689-46f5-b8b8-a1345ad0f81f"
+    },
+    "operationalSalesCount": 92,
+    "operationalSalesTotal": 49951100,
+    "csvSalesCount": 34,
+    "csvSalesTotal": 28343979,
+    "glRevenueFromSaleDocumentJes": 50099918,
+    "gl4100CreditAggregate": 50099918,
+    "missingRevenueJeCount": 0,
+    "duplicateJeCount": 0,
+    "wrongAmountCount": 0,
+    "wrongAccountsCount": 92,
+    "wrongBranchSalesCount": 0,
+    "okCount": 0,
+    "mismatchInvoices": [
+      "DC-0073",
+      "DC-0041",
+      "DC-0044",
+      "DC-0054",
+      "DC-0046",
+      "DC-0037",
+      "DC-0042",
+      "DC-0017",
+      "DC-0036",
+      "DC-0078",
+      "DC-0007",
+      "DC-0074",
+      "DC-0008",
+      "DC-0005",
+      "DC-0004",
+      "DC-0013",
+      "DC-0006",
+      "DC-0001",
+      "DC-0015",
+      "DC-0079",
+      "DC-0003",
+      "DC-0010",
+      "DC-0014",
+      "DC-0009",
+      "DC-0018",
+      "DC-0016",
+      "DC-0020",
+      "DC-0034",
+      "DC-0032",
+      "DC-0055",
+      "DC-0048",
+      "DC-0080",
+      "DC-0027",
+      "DC-0038",
+      "DC-0040",
+      "DC-0043",
+      "DC-0045",
+      "DC-0047",
+      "DC-0050",
+      "DC-0052",
+      "DC-0057",
+      "DC-0023",
+      "DC-0033",
+      "DC-0024",
+      "DC-0025",
+      "DC-0022",
+      "DC-0029",
+      "DC-0030",
+      "DC-0070",
+      "DC-0058",
+      "DC-0088",
+      "DC-0093",
+      "DC-0076",
+      "DC-0053",
+      "DC-0056",
+      "DC-0075",
+      "DC-0081",
+      "DC-0012",
+      "DC-0026",
+      "DC-0071",
+      "DC-0077",
+      "DC-0059",
+      "DC-0082",
+      "DC-0089",
+      "DC-0061",
+      "DC-0083",
+      "DC-0066",
+      "DC-0019",
+      "DC-0021",
+      "DC-0035",
+      "DC-0039",
+      "DC-0049",
+      "DC-0062",
+      "DC-0067",
+      "DC-0084",
+      "DC-0060",
+      "DC-0085",
+      "DC-0090",
+      "DC-0011",
+      "DC-0064",
+      "DC-0068",
+      "DC-0086",
+      "DC-0091",
+      "DC-0065",
+      "DC-0072",
+      "DC-0031",
+      "DC-0069",
+      "DC-0092",
+      "DC-0087",
+      "DC-0028",
+      "DC-0051",
+      "DC-0002"
+    ],
+    "proposedRepairs": [],
+    "examples": {
+      "missing": [],
+      "wrongAmount": [],
+      "duplicate": []
+    }
+  },
+  "taskB": {
+    "importStrategyNote": "Legacy import posted Dr AR / Cr 4100 only. Phase 2 adds Dr 5010 / Cr 1200 when product cost_price is set.",
+    "purchaseInventoryGlDebit": 68785345.52,
+    "stockMovementInSummary": {
+      "qty": 218406.85,
+      "value": 67978418.4
+    },
+    "saleStockOutQty": 0,
+    "saleItemQtyTotal": 130655.35,
+    "expectedCogsTotal": 0,
+    "actualCogsPosted": 40106406.25,
+    "actualInventoryCreditFromSales": 40106406.25,
+    "cogsGap": -40106406.25,
+    "inventoryOverstatementEstimate": 40106406.25,
+    "missingStockOutCount": 0,
+    "stockQtyMismatchCount": 0,
+    "balanceSheetInventoryOverstated": false,
+    "cogsAccount": {
+      "id": "e0821405-9244-4f43-9fd2-694f0e905b1b",
+      "code": "5010",
+      "name": "COGS - Inventory",
+      "type": "expense",
+      "balance": 39299479.13,
+      "is_group": false,
+      "parent_id": "4ec1e8ac-c86c-4d87-b7fe-5dcd966f2e64"
+    },
+    "inventoryAccount": {
+      "id": "250bbcfc-3f85-4614-879c-5be749399810",
+      "code": "1200",
+      "name": "Inventory",
+      "type": "inventory",
+      "balance": 28678939.27,
+      "is_group": false,
+      "parent_id": "525d6cdc-7a3f-4b79-8ece-708e6e890a7d"
+    },
+    "missingCostProducts": [
+      {
+        "productId": "b881fbdd-b5c4-4fab-8e4b-5330263b2e42",
+        "sku": "0017-1",
+        "name": "TAIBO"
+      },
+      {
+        "productId": "a52110d7-9adf-483c-8765-d85852862b51",
+        "sku": "0013-4",
+        "name": "WOOL"
+      },
+      {
+        "productId": "71c8a39d-b31f-458b-801f-34c964fb9cb1",
+        "sku": "0014",
+        "name": "VELVET SETECHABLE"
+      },
+      {
+        "productId": "45e72f65-67aa-48b9-8e3b-2533f543e86b",
+        "sku": "0003-3",
+        "name": "TR"
+      },
+      {
+        "productId": "abc23aaf-afab-425f-8549-0106f9647b20",
+        "sku": "0018",
+        "name": "COTTON WHITE"
+      },
+      {
+        "productId": "c7dec26c-e1c2-4554-842e-72a10a224ae8",
+        "sku": "0005",
+        "name": "SHAMIZ RIYAN"
+      },
+      {
+        "productId": "fc9d1281-7aa9-4927-85ec-671024454f03",
+        "sku": "0011",
+        "name": "RAD RIYAN"
+      },
+      {
+        "productId": "679e7e52-a8db-4773-8206-99cb680310cb",
+        "sku": "0012",
+        "name": "TC"
+      },
+      {
+        "productId": "659126ee-dfaa-4e72-857e-9979c58c2cbc",
+        "sku": "0009",
+        "name": "SILK COLOR POLYSTER"
+      },
+      {
+        "productId": "97a2e574-53c1-4f41-8c23-0cdf48ceb746",
+        "sku": "0004",
+        "name": "KATAN RIYAN"
+      },
+      {
+        "productId": "57e6d4ff-503f-47b8-8bae-43158eabed15",
+        "sku": "0008",
+        "name": "DUBAL SHADE POLYSTER"
+      },
+      {
+        "productId": "74fa8f4e-67dd-4898-8db0-ec26ceb4ef19",
+        "sku": "0010",
+        "name": "RIYAN SILK PRINT"
+      }
+    ],
+    "proposedCogsRepairs": [],
+    "examples": []
+  },
+  "taskC": {
+    "erpPurchaseTotal": 0,
+    "latestCsvTotal": 67978418.4,
+    "updatedCsvTotal": 67514347.4,
+    "purchaseItemsTotal": 0,
+    "glInventoryDebit": 68785345.52,
+    "glApCredit": 0,
+    "paymentsTotal": 0,
+    "apRemainingDue": 0,
+    "mismatchAmount": -67514347.4,
+    "requiresUserApproval": true,
+    "purchaseDetail": null,
+    "proposedRepairStrategy": {
+      "phase": 3,
+      "note": "Manual approval required — adjust purchase header total via approved migration only",
+      "erpTotal": 0,
+      "targetTotal": 67514347.4,
+      "delta": -67514347.4
+    }
+  },
+  "taskD": {
+    "salesTotal": 49951100,
+    "paidTotal": 31608701,
+    "expectedArOutstanding": 17792088,
+    "expectedArSalesMinusPayments": 18342399,
+    "paymentRecordsTotal": 22402880,
+    "glAccountsReceivableBalance": -21416540,
+    "arExpectedVsActualGap": 39208628,
+    "paymentJeCount": 235,
+    "paymentIssues": [],
+    "examples": {
+      "paymentIssues": [],
+      "customers": [
+        {
+          "invoiceNo": "DC-0073",
+          "total": 287725,
+          "paid": 0,
+          "due": 287725
+        },
+        {
+          "invoiceNo": "DC-0041",
+          "total": 323594,
+          "paid": 323594,
+          "due": 0
+        },
+        {
+          "invoiceNo": "DC-0044",
+          "total": 646000,
+          "paid": 0,
+          "due": 646000
+        },
+        {
+          "invoiceNo": "DC-0054",
+          "total": 799400,
+          "paid": 0,
+          "due": 799400
+        },
+        {
+          "invoiceNo": "DC-0046",
+          "total": 27740,
+          "paid": 14848,
+          "due": 12892
+        },
+        {
+          "invoiceNo": "DC-0037",
+          "total": 191026,
+          "paid": 0,
+          "due": 191026
+        },
+        {
+          "invoiceNo": "DC-0042",
+          "total": 204948,
+          "paid": 0,
+          "due": 204948
+        },
+        {
+          "invoiceNo": "DC-0017",
+          "total": 463626,
+          "paid": 463626,
+          "due": 0
+        },
+        {
+          "invoiceNo": "DC-0036",
+          "total": 255864,
+          "paid": 255864,
+          "due": 0
+        },
+        {
+          "invoiceNo": "DC-0078",
+          "total": 287700,
+          "paid": 287700,
+          "due": 0
+        }
+      ]
+    }
+  },
+  "taskE": {
+    "generatedAt": "2026-06-15T18:32:47.924Z",
+    "accountSnapshots": {
+      "ar1100": {
+        "id": "51ef008a-00ca-48cd-94f8-4fdad79b7065",
+        "code": "1100",
+        "name": "Accounts Receivable",
+        "balance": -21416540
+      },
+      "inventory1200": {
+        "id": "250bbcfc-3f85-4614-879c-5be749399810",
+        "code": "1200",
+        "name": "Inventory",
+        "balance": 28678939.27
+      },
+      "ap2100": {
+        "id": "7cbf1212-1a47-4de2-aad5-3690c587372a",
+        "code": "2000",
+        "name": "Accounts Payable",
+        "balance": 0
+      },
+      "revenue4100": {
+        "id": "ce23889c-07c0-4f09-9946-1e55764719e1",
+        "code": "4100",
+        "name": "Sales Revenue",
+        "balance": -49040015
+      },
+      "cogs5010": {
+        "id": "e0821405-9244-4f43-9fd2-694f0e905b1b",
+        "code": "5010",
+        "name": "COGS - Inventory",
+        "balance": 39299479.13
+      },
+      "discount5200": {
+        "id": "327829be-35fc-4700-bd60-7767e74a699c",
+        "code": "5200",
+        "name": "Discount Allowed",
+        "balance": 148818
+      }
+    },
+    "sections": [
+      {
+        "topic": "Inventory vs COGS",
+        "explanation": [
+          "Expected COGS from cost_price × qty: Rs 0",
+          "Actual COGS posted (5010): Rs 40106406.25",
+          "Inventory credit on sale JEs: Rs 40106406.25",
+          "COGS/inventory relief appears aligned with expected costs."
+        ]
+      },
+      {
+        "topic": "AR vs customer dues",
+        "explanation": [
+          "Sum of sale due_amount: Rs 17792088",
+          "GL AR (1100) balance: Rs -21416540",
+          "Gap: Rs 39208628",
+          "Phase 6 sell returns (~Rs 1.06M) may explain part of any residual AR gap."
+        ]
+      },
+      {
+        "topic": "Purchase / AP",
+        "explanation": [
+          "ERP purchase total: Rs 0",
+          "Updated CSV target: Rs 67514347.4",
+          "Mismatch: Rs -67514347.4 (Phase 3 requires approval)"
+        ]
+      },
+      {
+        "topic": "Revenue tie-out",
+        "explanation": [
+          "Operational sales total: Rs 49951100",
+          "GL 4100 on sale document JEs: Rs 50099918",
+          "Missing revenue JEs: 0"
+        ]
+      }
+    ]
+  },
+  "taskF": {
+    "dryRunOnly": true,
+    "applyNotRun": true,
+    "phases": [
+      {
+        "phase": 1,
+        "name": "Missing sale revenue JE repair",
+        "description": "Post Dr AR / Cr Sales Revenue 4100 for imported final sales with no canonical document JE.",
+        "eligibleCount": 0,
+        "action": "createImportSaleJournalEntry (migration-tools/lib/dinChinaSaleJournal.js)",
+        "gates": [
+          "Sales Revenue 4100 must resolve",
+          "No duplicate active document JE for same sale",
+          "DIN CHINA branch scope only",
+          "Does not change sale totals/items/payments"
+        ],
+        "blocked": false
+      },
+      {
+        "phase": 2,
+        "name": "Missing COGS / Inventory relief repair",
+        "description": "Append Dr COGS 5010 / Cr Inventory 1200 on sale document JEs when cost source is reliable.",
+        "eligibleCount": 0,
+        "expectedCogsTotal": 0,
+        "gates": [
+          "5010 and 1200 accounts must exist",
+          "Product cost from weighted avg or cost_price — never sale price",
+          "Stock movement qty must match sale item qty",
+          "Missing cost products block apply"
+        ],
+        "blocked": true
+      },
+      {
+        "phase": 3,
+        "name": "Purchase total / inventory mismatch repair",
+        "description": "Adjust stale ERP purchase total (67,978,418.40) vs updated CSV (67,514,347.40).",
+        "mismatchAmount": -67514347.4,
+        "requiresUserApproval": true,
+        "gates": [
+          "Explicit user approval required",
+          "Never auto-update purchase header without approved migration",
+          "Flag --approve-purchase-repair on apply (future)"
+        ],
+        "blocked": true,
+        "note": "Manual approval required — adjust purchase header total via approved migration only"
+      },
+      {
+        "phase": 4,
+        "name": "AR / payment party tie-out repair",
+        "description": "Reclass payment JEs to correct cash/bank or customer AR sub-ledger if mismatches found.",
+        "paymentIssueCount": 0,
+        "arGap": 39208628,
+        "gates": [
+          "Only if Task D finds wrong account or party",
+          "No duplicate payment posting"
+        ],
+        "blocked": false
+      },
+      {
+        "phase": 5,
+        "name": "Owner Equity Opening Clearing review",
+        "description": "Analysis only — FS2 routing / opening equity clearing; no apply unless separately approved.",
+        "gates": [
+          "User must explicitly approve separate owner-equity repair"
+        ],
+        "blocked": true,
+        "applyAllowed": false
+      },
+      {
+        "phase": 6,
+        "name": "Legacy sell return import + GL",
+        "description": "Import 4 excluded sell_return documents (CN2025/0001–0002, CN2026/0003–0004) with settlement Dr 4100 / Cr AR and inventory reversal.",
+        "eligibleCount": 0,
+        "expectedReturnTotal": 1059903,
+        "gates": [
+          "Dry-run review required",
+          "Pass --apply --apply-phase 6 after approval",
+          "DIN CHINA branch only",
+          "Idempotent fingerprints on return JEs"
+        ],
+        "blocked": true,
+        "requiresUserApproval": true,
+        "note": "Not applied automatically — reduces AR gap by ~Rs 1,059,903 when posted."
+      },
+      {
+        "phase": 7.5,
+        "name": "Screenshot discount backfill (sales + GL)",
+        "description": "Backfill old-ERP Customers & Suppliers screenshot discounts on DC-0041, DC-0004, DC-0002 — UPDATE sales.discount_amount/total/due and amend document JE (Dr AR net, Cr 4100 gross, Dr 5200).",
+        "eligibleCount": 0,
+        "expectedDiscountTotal": 0,
+        "gates": [
+          "Dry-run review required",
+          "Pass --apply --apply-phase 7.5 --approve-screenshot-discount-backfill",
+          "Approved map: DIN CHINA/07_maps_json/din_china_screenshot_discount_backfill_map.json"
+        ],
+        "blocked": true,
+        "requiresUserApproval": true,
+        "note": "Screenshot backfill: UPDATE sales.discount_amount/total/due, then amend document JE — reduce Dr AR, increase Cr 4100, add Dr 5200."
+      },
+      {
+        "phase": 7,
+        "name": "Discount GL alignment (Dr 5200 / gross 4100)",
+        "description": "Amend sale document JEs for legacy sales with discount_amount > 0 — increase Cr 4100, add Dr Discount Allowed 5200.",
+        "eligibleCount": 0,
+        "expectedDiscountTotal": 148818,
+        "gates": [
+          "Dry-run review required",
+          "Pass --apply --apply-phase 7 after approval",
+          "5200 and 4100 accounts must exist",
+          "Does not change sale.total rows"
+        ],
+        "blocked": true,
+        "requiresUserApproval": true,
+        "note": "Phase 7 amends document JE: Cr 4100 gross, Dr AR net, Dr 5200 discount. Phase 7.5 handles screenshot-only discounts."
+      }
+    ],
+    "proposedRepairs": [
+      {
+        "phase": 3,
+        "note": "Manual approval required — adjust purchase header total via approved migration only",
+        "erpTotal": 0,
+        "targetTotal": 67514347.4,
+        "delta": -67514347.4
+      }
+    ],
+    "blockingErrors": [
+      "12 products missing cost source — Phase 2 COGS repair blocked",
+      "Purchase total mismatch -67514347.4 requires user approval before Phase 3"
+    ],
+    "summary": {
+      "phase1Eligible": 0,
+      "phase2Eligible": 0,
+      "phase3RequiresApproval": true,
+      "phase4PaymentIssues": 0
+    }
+  },
+  "taskG": {
+    "expectedSellReturnTotal": 1059903,
+    "legacyParsedSellReturnTotal": 1059903,
+    "erpSellReturnCount": 4,
+    "erpSellReturnTotal": 1059903,
+    "expectedDiscountTotal": 148818,
+    "erpDiscountTotal": 148818,
+    "salesWithDiscountCount": 4,
+    "gl5200Posted": 148818,
+    "gl5200Gap": 0,
+    "missingReturnJeCount": 4,
+    "arGapReductionEstimate": 0,
+    "proposedPhase6Count": 4,
+    "proposedPhase7Count": 4,
+    "importStrategyNote": "Original import excluded sell_return CN2025/0001 and related CN docs. Phase 6 imports settlement JEs when approved.",
+    "legacyReturns": [
+      {
+        "returnNo": "CN2025/0001",
+        "legacyId": null,
+        "amount": 0,
+        "note": "Excluded in original import scope"
+      },
+      {
+        "returnNo": "CN2025/0002",
+        "amount": 0
+      },
+      {
+        "returnNo": "CN2026/0003",
+        "amount": 0
+      },
+      {
+        "returnNo": "CN2026/0004",
+        "amount": 0
+      }
+    ],
+    "customerLedgerChecks": []
+  },
+  "phase6Plan": {
+    "dryRunOnly": true,
+    "proposedRepairs": [
+      {
+        "returnNo": "CN2025/0002",
+        "existingId": "75750be5-a8f7-4a29-8a56-0af832c76a62",
+        "estimatedTotal": 0,
+        "status": "already_imported",
+        "returnId": "75750be5-a8f7-4a29-8a56-0af832c76a62"
+      },
+      {
+        "returnNo": "CN2026/0003",
+        "existingId": "d9570ff0-1e6e-49b8-8b31-f276fcc760c0",
+        "estimatedTotal": 0,
+        "status": "already_imported",
+        "returnId": "d9570ff0-1e6e-49b8-8b31-f276fcc760c0"
+      },
+      {
+        "returnNo": "CN2026/0004",
+        "existingId": "9578930f-9714-4a0d-8b0f-dfb0f433603b",
+        "estimatedTotal": 0,
+        "status": "already_imported",
+        "returnId": "9578930f-9714-4a0d-8b0f-dfb0f433603b"
+      }
+    ],
+    "eligibleCount": 0,
+    "expectedReturnTotal": 0,
+    "strategyNote": "Phase 6 not auto-applied — requires --approve-return-import after dry-run review."
+  },
+  "phase7Plan": {
+    "dryRunOnly": true,
+    "proposedRepairs": [
+      {
+        "saleId": "ca23d0f6-3ae4-45b7-8099-586c3fd182ec",
+        "invoiceNo": "DC-0041",
+        "discountAmount": 13540,
+        "journalEntryId": "f09b6694-e635-4ab1-8402-f62e7aad2ebe",
+        "alreadyComplete": true,
+        "ok": true
+      },
+      {
+        "saleId": "1fd33e3e-9e10-4e78-8b03-6eff10bce58a",
+        "invoiceNo": "DC-0004",
+        "discountAmount": 35218,
+        "journalEntryId": "fd665df3-4a41-4d8d-89cd-bffa53bf8374",
+        "alreadyComplete": true,
+        "ok": true
+      },
+      {
+        "saleId": "720e9153-23dd-4416-8d0e-b7f49102f20e",
+        "invoiceNo": "DC-0014",
+        "discountAmount": 60,
+        "journalEntryId": "30a0961e-c154-489f-8589-35d9c2e0e723",
+        "alreadyComplete": true,
+        "ok": true
+      },
+      {
+        "saleId": "66bfeeeb-a216-4906-8256-08067a3ac53a",
+        "invoiceNo": "DC-0002",
+        "discountAmount": 100000,
+        "journalEntryId": "b3cc690c-c218-4eb7-87eb-bd26e7e3b6b5",
+        "alreadyComplete": true,
+        "ok": true
+      }
+    ],
+    "eligibleCount": 0,
+    "expectedDiscountTotal": 0,
+    "strategyNote": "Phase 7 amends document JE: Cr 4100 gross, Dr AR net, Dr 5200 discount. Phase 7.5 handles screenshot-only discounts."
+  },
+  "phase75Plan": {
+    "dryRunOnly": true,
+    "mapPath": "/Users/ndm/Documents/Development/CursorDev/NEWPOSV3/DIN CHINA/07_maps_json/din_china_screenshot_discount_backfill_map.json",
+    "mapSource": "old_erp_customers_suppliers_screenshot_2026",
+    "discountAccount": {
+      "id": "327829be-35fc-4700-bd60-7767e74a699c",
+      "code": "5200",
+      "name": "Discount Allowed"
+    },
+    "proposedRepairs": [
+      {
+        "phase": 7.5,
+        "saleId": "ca23d0f6-3ae4-45b7-8099-586c3fd182ec",
+        "invoiceNo": "DC-0041",
+        "customerName": "AZIZ JAMURAD",
+        "legacyTransactionId": 53,
+        "journalEntryId": "f09b6694-e635-4ab1-8402-f62e7aad2ebe",
+        "discountAmount": 13540,
+        "forgiveRemainingDue": true,
+        "saleBefore": {
+          "total": 323594,
+          "discount_amount": 13540,
+          "paid_amount": 323594,
+          "due_amount": 0,
+          "payment_status": "paid"
+        },
+        "saleAfter": {
+          "total": 323594,
+          "discount_amount": 13540,
+          "paid_amount": 323594,
+          "due_amount": 0,
+          "payment_status": "paid"
+        },
+        "jeBefore": {
+          "arDebit": 323594,
+          "revenueCredit": 337134,
+          "discountDebit": 13540
+        },
+        "jeAfter": {
+          "arDebit": 323594,
+          "revenueCredit": 337134,
+          "discountDebit": 13540
+        },
+        "alreadyComplete": true,
+        "ok": true
+      },
+      {
+        "phase": 7.5,
+        "saleId": "1fd33e3e-9e10-4e78-8b03-6eff10bce58a",
+        "invoiceNo": "DC-0004",
+        "customerName": "SHAHURKH KHAN",
+        "legacyTransactionId": 7,
+        "journalEntryId": "fd665df3-4a41-4d8d-89cd-bffa53bf8374",
+        "discountAmount": 35218,
+        "forgiveRemainingDue": true,
+        "saleBefore": {
+          "total": 100000,
+          "discount_amount": 35218,
+          "paid_amount": 0,
+          "due_amount": 0,
+          "payment_status": "paid"
+        },
+        "saleAfter": {
+          "total": 100000,
+          "discount_amount": 35218,
+          "paid_amount": 0,
+          "due_amount": 0,
+          "payment_status": "paid"
+        },
+        "jeBefore": {
+          "arDebit": 100000,
+          "revenueCredit": 135218,
+          "discountDebit": 35218
+        },
+        "jeAfter": {
+          "arDebit": 100000,
+          "revenueCredit": 135218,
+          "discountDebit": 35218
+        },
+        "alreadyComplete": true,
+        "ok": true
+      },
+      {
+        "phase": 7.5,
+        "saleId": "66bfeeeb-a216-4906-8256-08067a3ac53a",
+        "invoiceNo": "DC-0002",
+        "customerName": "LAL MOHAMMAD",
+        "legacyTransactionId": 5,
+        "journalEntryId": "b3cc690c-c218-4eb7-87eb-bd26e7e3b6b5",
+        "discountAmount": 100000,
+        "forgiveRemainingDue": false,
+        "saleBefore": {
+          "total": 1093124,
+          "discount_amount": 100000,
+          "paid_amount": 1028700,
+          "due_amount": 64424,
+          "payment_status": "partial"
+        },
+        "saleAfter": {
+          "total": 1093124,
+          "discount_amount": 100000,
+          "paid_amount": 1028700,
+          "due_amount": 64424,
+          "payment_status": "partial"
+        },
+        "jeBefore": {
+          "arDebit": 1093124,
+          "revenueCredit": 1193124,
+          "discountDebit": 100000
+        },
+        "jeAfter": {
+          "arDebit": 1093124,
+          "revenueCredit": 1193124,
+          "discountDebit": 100000
+        },
+        "alreadyComplete": true,
+        "ok": true
+      }
+    ],
+    "eligibleCount": 0,
+    "skipCount": 3,
+    "expectedDiscountTotal": 0,
+    "strategyNote": "Screenshot backfill: UPDATE sales.discount_amount/total/due, then amend document JE — reduce Dr AR, increase Cr 4100, add Dr 5200."
+  },
+  "blockingErrors": [
+    "12 products missing cost source — Phase 2 COGS repair blocked",
+    "Purchase total mismatch -67514347.4 requires user approval before Phase 3"
+  ],
+  "auditStatus": {
+    "criticalBlockingErrors": [
+      "12 products missing cost source — Phase 2 COGS repair blocked"
+    ],
+    "approvalRequired": [
+      "Purchase total mismatch -67514347.4 requires user approval before Phase 3"
+    ],
+    "arGapNote": "AR tie-out gap Rs 39208628 — Phase 4 review; Phase 6 returns (~Rs 1.06M) may explain part",
+    "phase1Complete": true,
+    "phase2Complete": false,
+    "coreAuditPass": false,
+    "dryRunExitCode": 1
+  }
+}
