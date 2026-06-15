@@ -1,6 +1,6 @@
 {
   "companyId": "30bd8592-3384-4f34-899a-f3907e336485",
-  "generatedAt": "2026-06-14T20:49:18.031Z",
+  "generatedAt": "2026-06-15T07:08:09.569Z",
   "blockingErrors": [],
   "pass": true,
   "summary": {
@@ -12,7 +12,7 @@
     "purchaseLinesToInsert": 0,
     "saleLinesAlreadyCovered": 63,
     "purchaseLinesAlreadyCovered": 17,
-    "trackStockProductsToUpdate": 16
+    "trackStockProductsToUpdate": 0
   },
   "rowsToInsert": [],
   "rowsAlreadyCovered": [
@@ -737,86 +737,5 @@
       "existingMovementId": "c0e01b84-dd11-42e8-ad08-ad01e6bf5ead"
     }
   ],
-  "trackStockUpdates": [
-    {
-      "productId": "fcb31e70-762f-47db-9cff-387228e8dfc6",
-      "sku": "CUSTOM-BRIDAL",
-      "oldTrackStock": false
-    },
-    {
-      "productId": "7e386cb8-66c2-4653-a823-fd1d2b6384a1",
-      "sku": "CUSTOM-PARTYWEAR",
-      "oldTrackStock": false
-    },
-    {
-      "productId": "99e556e1-6d35-46fc-80c0-13d5ec6fb047",
-      "sku": "CUSTOM-FORMAL",
-      "oldTrackStock": false
-    },
-    {
-      "productId": "ced773a7-0e52-46db-8321-75c86bc64269",
-      "sku": "CUSTOM-CASUAL",
-      "oldTrackStock": false
-    },
-    {
-      "productId": "71c8a39d-b31f-458b-801f-34c964fb9cb1",
-      "sku": "0014",
-      "oldTrackStock": false
-    },
-    {
-      "productId": "a52110d7-9adf-483c-8765-d85852862b51",
-      "sku": "0013-3",
-      "oldTrackStock": false
-    },
-    {
-      "productId": "45e72f65-67aa-48b9-8e3b-2533f543e86b",
-      "sku": "0003-3",
-      "oldTrackStock": false
-    },
-    {
-      "productId": "679e7e52-a8db-4773-8206-99cb680310cb",
-      "sku": "0012",
-      "oldTrackStock": false
-    },
-    {
-      "productId": "b881fbdd-b5c4-4fab-8e4b-5330263b2e42",
-      "sku": "0017-1",
-      "oldTrackStock": false
-    },
-    {
-      "productId": "97a2e574-53c1-4f41-8c23-0cdf48ceb746",
-      "sku": "0004",
-      "oldTrackStock": false
-    },
-    {
-      "productId": "c7dec26c-e1c2-4554-842e-72a10a224ae8",
-      "sku": "0005",
-      "oldTrackStock": false
-    },
-    {
-      "productId": "57e6d4ff-503f-47b8-8bae-43158eabed15",
-      "sku": "0008",
-      "oldTrackStock": false
-    },
-    {
-      "productId": "659126ee-dfaa-4e72-857e-9979c58c2cbc",
-      "sku": "0009",
-      "oldTrackStock": false
-    },
-    {
-      "productId": "74fa8f4e-67dd-4898-8db0-ec26ceb4ef19",
-      "sku": "0010",
-      "oldTrackStock": false
-    },
-    {
-      "productId": "2009a404-e2fc-45dc-801a-5440b88c7354",
-      "sku": "0007",
-      "oldTrackStock": false
-    },
-    {
-      "productId": "fc9d1281-7aa9-4927-85ec-671024454f03",
-      "sku": "0011",
-      "oldTrackStock": false
-    }
-  ]
+  "trackStockUpdates": []
 }

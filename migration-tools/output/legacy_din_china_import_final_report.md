@@ -1,83 +1,26 @@
 # DIN CHINA Legacy Import — Final Report
 
-Generated: 2026-06-14T19:52:17.272Z
-Company: 30bd8592-3384-4f34-899a-f3907e336485
-Source: legacy_din_china
+Generated: 2026-06-15T07:07:56.525Z
+Company: DIN CHINA (30bd8592-3384-4f34-899a-f3907e336485)
 
-## Post-apply validation
-- Pass: **YES**
+## Apply path
+- Implemented: yes
+- Live import applied: no (dry-run only)
+- Sale journal strategy: createSaleJournalEntry
+- Revenue posting code: 4100
+- AR account: 1100
 
-### Checks
-- PASS sales count: expected 34, got 34
-- PASS sale items count: expected 63, got 63
-- PASS sale payments count: expected 70, got 70
-- PASS sale payments total: expected 8416540, got 8416540
-- PASS purchase count: expected 1, got 1
-- PASS purchase items count: expected 17, got 17
-- PASS purchase payments count: expected 4, got 4
-- PASS purchase payments total: expected 65916440, got 65916440
-- PASS expenses count: expected 4, got 4
-- PASS expenses total: expected 88000, got 88000
-- PASS sale JEs Dr1100/Cr4100: expected >=34, got 34
-- PASS no 4050 parent posting: expected false, got false
-- PASS no 4000 Revenue account: expected false, got false
-- PASS no 4000 in sale JEs: expected false, got false
-- PASS no branch id 1 in import set: expected DIN CHINA branch only, got BL0002
+## Duplicate protection
+- Deterministic UUIDs (`dinChinaUuid`) for branch, accounts, contacts, products, variations, sales, purchases, expenses, sale/purchase line items
+- `findExistingLegacySale/Purchase/Expense/Payment` — match by deterministic id or notes/description marker
+- Sale document JE fingerprint `sale_document:{companyId}:{saleId}` + skip if active canonical JE exists
+- Payment/expense RPCs skipped when legacy payment/expense markers already present
 
-## Imported counts
-- Sales: 34/34
-- Sale items: 63/63
-- Sale payments: 70/70 (total 8416540)
-- Purchase: 1
-- Purchase items: 17
-- Purchase payments: 4 (total 65916440)
-- Expenses: 4/4
+## Dry-run
+- Pass: YES
+- Blocking errors: 0
 
-## Accounting
-- Sale document JEs Dr1100/Cr4100: 34
-- Used 4050: false
-- Used 4000 in JEs: false
-- Account 4000 exists: false
 
-## Excluded (by design)
-- account_transactions, fund transfers, opening balances, manual GL, branch id 1, sell_return CN2025/0001, unlinked advances — not part of this import.
-
-## Resume / idempotency
-- Safe to resume: true
-
-## Apply stats (from last run)
-{
-  "pass": true,
-  "errors": [],
-  "stats": {
-    "branchCreated": 0,
-    "branchReused": 1,
-    "accountsCreated": 0,
-    "contactsCreated": 0,
-    "productsCreated": 0,
-    "variationsCreated": 0,
-    "salesCreated": 0,
-    "salesSkipped": 34,
-    "salesFinalized": 0,
-    "saleJournalsCreated": 34,
-    "saleJournalsSkipped": 0,
-    "saleItemsCreated": 0,
-    "saleItemsSkipped": 63,
-    "salePaymentsPosted": 0,
-    "salePaymentsSkipped": 70,
-    "purchasesCreated": 0,
-    "purchasesSkipped": 1,
-    "purchaseItemsCreated": 0,
-    "purchaseItemsSkipped": 17,
-    "purchasePaymentsPosted": 0,
-    "purchasePaymentsSkipped": 4,
-    "expensesCreated": 0,
-    "expensesSkipped": 0,
-    "expensesPosted": 0,
-    "expensesPostSkipped": 0
-  },
-  "saleJournalStrategy": "createSaleJournalEntry",
-  "revenuePostingCode": "4100",
-  "arAccountCode": "1100",
-  "branchId": "92f4184e-ee9b-4b6c-8e76-10ee1d166f55"
-}
+## Warnings
+- Import uses createSaleJournalEntry (ensureRevenueAccount name/code fallback), not record_sale RPC
+- Revenue 4050 confirmed as parent/group — posting will use detail child 4100, not 4050

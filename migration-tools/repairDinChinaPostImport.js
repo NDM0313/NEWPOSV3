@@ -50,6 +50,19 @@ async function runCoaCleanup(env, applyCoa) {
   }
 
   if (!applyCoa) {
+    if (plan.alreadyAppliedCount === plan.rows.length && plan.rows.length > 0) {
+      console.log('All accounts already cleaned — running verification only...');
+      const verification = await verifyCoaCleanup(supabase, env.targetCompanyId, plan);
+      const finalPath = writeCleanupFinalReport(
+        env.outputDir,
+        plan,
+        { ok: true, stats: { accountsUpdated: 0, parentsCreated: 0, errors: [] } },
+        verification,
+      );
+      console.log(`Final report: ${finalPath}`);
+      console.log(`Verification pass: ${verification.pass ? 'YES' : 'NO'}`);
+      process.exit(verification.pass ? 0 : 1);
+    }
     console.log('Preview only — re-run with --apply-coa-cleanup to apply.');
     process.exit(0);
   }

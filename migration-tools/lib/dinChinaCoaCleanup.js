@@ -51,6 +51,29 @@ function findByCode(accounts, code) {
   return accounts.find((a) => String(a.code || '').trim() === c);
 }
 
+function resolveCleanupAccount(accounts, spec) {
+  const byLegacy = findByCode(accounts, spec.legacyCode);
+  if (byLegacy) return { account: byLegacy, resolvedBy: 'legacyCode' };
+  if (spec.accountId) {
+    const byId = accounts.find((a) => a.id === spec.accountId);
+    if (byId) return { account: byId, resolvedBy: 'accountId' };
+  }
+  if (spec.currentCode) {
+    const byCurrent = findByCode(accounts, spec.currentCode);
+    if (byCurrent) return { account: byCurrent, resolvedBy: 'currentCode' };
+  }
+  return { account: null, resolvedBy: null };
+}
+
+function isAlreadyCleanedAccount(acct, spec) {
+  if (!acct) return false;
+  const code = String(acct.code || '').trim();
+  if (/^DC/i.test(code)) return false;
+  if (spec.currentCode && code === String(spec.currentCode).trim()) return true;
+  if (acct.name === spec.newName && !/^DC/i.test(code)) return true;
+  return false;
+}
+
 function findParentByRole(accounts, role) {
   const canon = CANONICAL_PARENT_CODES[role];
   if (canon) {
@@ -192,15 +215,19 @@ export async function buildCoaCleanupPlan(supabase, companyId) {
   const workingAccounts = [...accounts];
 
   for (const spec of config.accounts) {
-    const acct = findByCode(accounts, spec.legacyCode);
+    const { account: acct, resolvedBy } = resolveCleanupAccount(accounts, spec);
     if (!acct) {
-      blockingErrors.push(`Account with code ${spec.legacyCode} not found`);
+      blockingErrors.push(
+        `Account not found for ${spec.legacyCode}${spec.accountId ? ` / id ${spec.accountId}` : ''}${spec.currentCode ? ` / code ${spec.currentCode}` : ''}`,
+      );
       continue;
     }
     if (acct.is_group === true) {
-      blockingErrors.push(`${spec.legacyCode} is a group account, not a detail payment account`);
+      blockingErrors.push(`${spec.legacyCode || acct.code} is a group account, not a detail payment account`);
       continue;
     }
+
+    const alreadyApplied = isAlreadyCleanedAccount(acct, spec);
 
     const { parent: newParent, created: parentCreated } = planNewParent(
       spec.parentRole,
@@ -208,15 +235,15 @@ export async function buildCoaCleanupPlan(supabase, companyId) {
       parentsToCreate,
     );
     if (!newParent) {
-      blockingErrors.push(`Could not resolve parent for role ${spec.parentRole} (${spec.legacyCode})`);
+      blockingErrors.push(`Could not resolve parent for role ${spec.parentRole} (${spec.legacyCode || acct.code})`);
       continue;
     }
     if (newParent.is_group !== true) {
-      blockingErrors.push(`Parent for ${spec.legacyCode} is not a group: ${accountLabel(newParent)}`);
+      blockingErrors.push(`Parent for ${spec.legacyCode || acct.code} is not a group: ${accountLabel(newParent)}`);
       continue;
     }
 
-    if (parentCreated) {
+    if (parentCreated && !alreadyApplied) {
       workingAccounts.push({
         id: newParent.id,
         code: newParent.code,
@@ -227,21 +254,28 @@ export async function buildCoaCleanupPlan(supabase, companyId) {
       });
     }
 
-    const newCode = allocateUniqueChildCode(newParent, workingAccounts, acct.id);
-    const owner = workingAccounts.find(
-      (a) => String(a.code || '').trim() === newCode && a.id !== acct.id,
-    );
-    if (owner) {
-      blockingErrors.push(`Code ${newCode} already used by ${owner.name} (${owner.id})`);
-    }
-    if (/^DC/i.test(newCode)) {
-      blockingErrors.push(`Allocated code ${newCode} still has DC prefix for ${spec.legacyCode}`);
+    const newCode = alreadyApplied
+      ? String(acct.code || '').trim()
+      : allocateUniqueChildCode(newParent, workingAccounts, acct.id);
+    if (!alreadyApplied) {
+      const owner = workingAccounts.find(
+        (a) => String(a.code || '').trim() === newCode && a.id !== acct.id,
+      );
+      if (owner) {
+        blockingErrors.push(`Code ${newCode} already used by ${owner.name} (${owner.id})`);
+      }
+      if (/^DC/i.test(newCode)) {
+        blockingErrors.push(`Allocated code ${newCode} still has DC prefix for ${spec.legacyCode}`);
+      }
     }
 
     const oldParent = accounts.find((a) => a.id === acct.parent_id);
     const newType = spec.preferredType || acct.type;
     const notes = [];
-    if (parentCreated) {
+    if (alreadyApplied) {
+      notes.push(`Already cleaned (resolved by ${resolvedBy})`);
+    }
+    if (parentCreated && !alreadyApplied) {
       notes.push(`Created parent group ${newParent.code} ${newParent.name}`);
     }
     if (spec.parentRole === 'agent_clearing' || spec.parentRole === 'tt_agent_clearing') {
@@ -253,32 +287,39 @@ export async function buildCoaCleanupPlan(supabase, companyId) {
 
     rows.push({
       accountId: acct.id,
-      legacyCode: spec.legacyCode,
+      legacyCode: spec.legacyCode || acct.code,
+      alreadyApplied,
       oldName: acct.name,
       newName: spec.newName,
       oldCode: acct.code,
       newCode,
       oldParentId: acct.parent_id,
-      newParentId: newParent.id,
+      newParentId: alreadyApplied ? acct.parent_id : newParent.id,
       oldParentCode: oldParent?.code ?? null,
-      newParentCode: newParent.code,
+      newParentCode: alreadyApplied
+        ? accounts.find((a) => a.id === acct.parent_id)?.code ?? newParent.code
+        : newParent.code,
       oldParentName: oldParent?.name ?? null,
-      newParentName: newParent.name,
+      newParentName: alreadyApplied
+        ? accounts.find((a) => a.id === acct.parent_id)?.name ?? newParent.name
+        : newParent.name,
       oldType: acct.type,
-      newType,
+      newType: alreadyApplied ? acct.type : newType,
       oldSubtype: acct.subtype ?? null,
       newSubtype: acct.subtype ?? null,
       riskNotes: notes,
     });
 
-    workingAccounts.push({
-      id: acct.id,
-      code: newCode,
-      name: spec.newName,
-      parent_id: newParent.id,
-      is_group: false,
-      type: newType,
-    });
+    if (!alreadyApplied) {
+      workingAccounts.push({
+        id: acct.id,
+        code: newCode,
+        name: spec.newName,
+        parent_id: newParent.id,
+        is_group: false,
+        type: newType,
+      });
+    }
   }
 
   const accountIds = rows.map((r) => r.accountId);
@@ -316,8 +357,9 @@ export async function buildCoaCleanupPlan(supabase, companyId) {
     companyId,
     generatedAt: new Date().toISOString(),
     blockingErrors,
-    parentsToCreate,
+    parentsToCreate: rows.every((r) => r.alreadyApplied) ? [] : parentsToCreate,
     rows,
+    alreadyAppliedCount: rows.filter((r) => r.alreadyApplied).length,
     pass: blockingErrors.length === 0 && rows.length === config.accounts.length,
   };
 }
