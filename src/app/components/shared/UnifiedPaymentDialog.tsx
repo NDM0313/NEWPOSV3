@@ -23,6 +23,11 @@ import {
   syncExpenseDateByPaymentId,
   syncJournalEntryDateByPaymentId,
 } from '@/app/services/journalTransactionDateSyncService';
+import {
+  formatAccountSelectOptionLabel,
+  getPaymentLiquidityPostingSide,
+} from '@/app/lib/accountPostingInOutLabel';
+import { AccountPickerFieldLabel } from '@/app/components/accounting/AccountPickerFieldLabel';
 
 // ============================================
 // 🎯 TYPES
@@ -1620,9 +1625,12 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
 
                 {/* Account Selection */}
                 <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
-                  <label className="block text-sm font-semibold text-gray-300 mb-2">
-                    Select Account <span className="text-red-400">*</span>
-                  </label>
+                  <AccountPickerFieldLabel
+                    className="block text-sm font-semibold text-gray-300 mb-2"
+                    base="Select Account"
+                    inOut={context === 'customer' ? 'IN' : 'OUT'}
+                    required
+                  />
                   <div className="relative">
                     <select
                       value={selectedAccount}
@@ -1636,7 +1644,12 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                       </option>
                       {getAccountsForPaymentSelect().map((account) => (
                         <option key={account.id} value={account.id} className="text-white bg-gray-900">
-                          {account.name} • GL: {formatCurrency(account.balance)}
+                          {formatAccountSelectOptionLabel(account, {
+                            postingSide: getPaymentLiquidityPostingSide(context === 'customer'),
+                            balance: account.balance,
+                            formatBalance: formatCurrency,
+                            includeGlBalance: true,
+                          })}
                         </option>
                       ))}
                     </select>

@@ -11,6 +11,10 @@ import {
   SelectValue,
 } from "../ui/select";
 import { Button } from "../ui/button";
+import {
+  formatAccountSelectOptionLabel,
+  getPaymentLiquidityPostingSide,
+} from "@/app/lib/accountPostingInOutLabel";
 
 type PaymentMethod = "cash" | "bank" | "card" | "cheque";
 type TransactionType = "sale" | "purchase";
@@ -327,7 +331,9 @@ export function PaymentModal({
                         <span className="text-lg">{account.icon}</span>
                         <div className="flex-1 min-w-0">
                           <div className="font-medium text-white">
-                            {account.name}
+                            {formatAccountSelectOptionLabel(account, {
+                              postingSide: getPaymentLiquidityPostingSide(transactionType === 'sale'),
+                            })}
                           </div>
                           <div className="text-xs text-gray-400">
                             Balance: {formatCurrency(account.balance)}

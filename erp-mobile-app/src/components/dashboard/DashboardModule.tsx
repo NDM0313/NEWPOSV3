@@ -530,6 +530,8 @@ export function DashboardModule({ onBack, user, companyId, branchId, onNewSale, 
             onChange={setDateRange}
             variant="dark"
             hidePresets={['all', 'quarter', 'year', 'custom']}
+            companyId={companyId}
+            branchId={branchId}
           />
         </div>
 

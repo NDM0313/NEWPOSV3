@@ -52,6 +52,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Badge } from "../ui/badge";
 import { cn } from "../ui/utils";
+import { formatQty } from '@/app/utils/quantity';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "../ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Check, ChevronsUpDown } from "lucide-react";
@@ -1130,7 +1131,7 @@ export const POS = () => {
                   {/* Stock Badge (for products without variations; with variations show in modal) */}
                   {!product.variations?.length && (
                     <Badge variant="secondary" className="absolute top-2 right-2 bg-black/40 text-white text-[10px] px-1.5 py-0.5 border-0 backdrop-blur-sm">
-                      {product.stock} left
+                      {formatQty(product.stock)} left
                     </Badge>
                   )}
                   {product.variations?.length ? (

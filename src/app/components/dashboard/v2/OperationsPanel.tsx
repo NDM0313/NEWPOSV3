@@ -1,6 +1,7 @@
 import React from 'react';
 import { Package, FileText, CreditCard, Calendar } from 'lucide-react';
 import type { DashboardV2Snapshot } from '@/app/lib/dashboardV2Mappers';
+import { formatQty } from '@/app/utils/quantity';
 
 interface Props {
   operations: DashboardV2Snapshot['operations'];
@@ -119,8 +120,8 @@ export const OperationsPanel: React.FC<Props> = ({ operations, formatCurrency, o
                 {lowStock.map((r) => (
                   <tr key={r.id} className="border-b border-[#374151]/50 text-white">
                     <td className="px-4 py-2">{r.name}</td>
-                    <td className="px-4 py-2 text-right">
-                      {r.stock} / {r.minStock}
+                    <td className="px-4 py-2 text-right tabular-nums">
+                      {formatQty(r.stock)} / {formatQty(r.minStock)}
                     </td>
                     <td className="px-4 py-2 text-right capitalize text-[#9CA3AF]">{r.status}</td>
                   </tr>

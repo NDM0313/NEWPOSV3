@@ -46,6 +46,26 @@ test('buildStockAlerts preview count matches alert count', () => {
   assert.equal(alerts[0].count, 1);
 });
 
+test('buildStockAlerts formats negative stock without float noise', () => {
+  const rows: DashboardV2StockRow[] = [
+    {
+      id: '1',
+      productId: 'p1',
+      name: 'SHAMIZ RIYAN',
+      sku: 'S',
+      stock: -2498.2999999999997,
+      minStock: 0,
+      status: 'negative',
+      category: 'C',
+    },
+  ];
+  const alerts = buildStockAlerts(rows);
+  assert.equal(alerts.length, 1);
+  assert.equal(alerts[0].kind, 'negative_stock');
+  assert.equal(alerts[0].previewRows?.[0]?.detail, '-2498.30');
+  assert.doesNotMatch(alerts[0].previewRows?.[0]?.detail ?? '', /999999/);
+});
+
 test('mergeTrends aligns expense trend dates with sales trend', () => {
   const merged = mergeTrends(
     [{ date: '2026-01-01', value: 100 }],

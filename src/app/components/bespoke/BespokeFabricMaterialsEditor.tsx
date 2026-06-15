@@ -11,7 +11,8 @@ import {
   CommandList,
 } from '../ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
-import { cn, formatDecimal } from '../ui/utils';
+import { cn } from '../ui/utils';
+import { formatQty } from '@/app/utils/quantity';
 import type { BespokeFabricMaterial } from '@/app/types/bespoke';
 import {
   bespokeFabricProductService,
@@ -197,7 +198,7 @@ export function BespokeFabricMaterialsEditor({
                                   <span className="text-sm">{p.name}</span>
                                   <span className="text-xs text-gray-400">
                                     {p.sku} · {p.unit_code}
-                                    {p.stock != null ? ` · Stock ${formatDecimal(p.stock)}` : ''}
+                                    {p.stock != null ? ` · Stock ${formatQty(p.stock)}` : ''}
                                   </span>
                                 </div>
                               </CommandItem>

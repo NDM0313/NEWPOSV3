@@ -4,6 +4,11 @@
  */
 import { formatLocalDateYYYYMMDD, localNowDateString } from '../utils/localDate';
 import { getLastBusinessWeekRange, getThisBusinessWeekRange } from '../utils/businessWeek';
+import {
+  getFinancialYearRange,
+  getLastFinancialYearRange,
+  type FiscalYearConfig,
+} from '../utils/financialYear';
 
 export type DateRangePreset =
   | 'today'
@@ -16,6 +21,8 @@ export type DateRangePreset =
   | 'month'
   | 'quarter'
   | 'year'
+  | 'currentFinancialYear'
+  | 'lastFinancialYear'
   | 'all'
   | 'custom';
 
@@ -36,6 +43,8 @@ export const DATE_RANGE_PRESET_CHIPS: { id: DateRangePreset; label: string }[] =
   { id: 'month', label: 'This month' },
   { id: 'quarter', label: 'Quarter' },
   { id: 'year', label: 'This year' },
+  { id: 'currentFinancialYear', label: 'Current FY' },
+  { id: 'lastFinancialYear', label: 'Last FY' },
   { id: 'all', label: 'All time' },
   { id: 'custom', label: 'Custom' },
 ];
@@ -49,7 +58,11 @@ function todayIso(anchor: Date = new Date()): string {
 }
 
 /** Resolve preset → { from, to } YMD (inclusive). */
-export function buildDateRange(preset: DateRangePreset, anchorDate: Date = new Date()): DateRangeValue {
+export function buildDateRange(
+  preset: DateRangePreset,
+  anchorDate: Date = new Date(),
+  fiscalYearConfig?: FiscalYearConfig | null,
+): DateRangeValue {
   const today = new Date(anchorDate);
   today.setHours(0, 0, 0, 0);
   const to = todayIso(today);
@@ -91,6 +104,15 @@ export function buildDateRange(preset: DateRangePreset, anchorDate: Date = new D
     case 'year':
       from.setMonth(0, 1);
       return { from: toIso(from), to, preset };
+    case 'currentFinancialYear': {
+      const { start, end } = getFinancialYearRange(fiscalYearConfig, today);
+      const cappedEnd = end > today ? today : end;
+      return { from: toIso(start), to: toIso(cappedEnd), preset };
+    }
+    case 'lastFinancialYear': {
+      const { start, end } = getLastFinancialYearRange(fiscalYearConfig, today);
+      return { from: toIso(start), to: toIso(end), preset };
+    }
     case 'all':
       return { from: '', to: '', preset };
     case 'custom':

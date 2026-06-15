@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { CalendarDays } from 'lucide-react';
 import {
   buildDateRange,
@@ -7,6 +7,8 @@ import {
   type DateRangePreset,
   type DateRangeValue,
 } from '../../lib/dateRangePresets';
+import { resolveFiscalYearConfig } from '../../api/fiscalYearConfig';
+import type { FiscalYearConfig } from '../../utils/financialYear';
 
 export type { DateRangePreset, DateRangeValue };
 
@@ -16,6 +18,9 @@ export interface DateRangeBarProps {
   hidePresets?: DateRangePreset[];
   /** Report gradient header (default) vs dark module chrome vs rental purple header */
   variant?: 'gradient' | 'dark' | 'purple';
+  companyId?: string | null;
+  branchId?: string | null;
+  fiscalYearConfig?: FiscalYearConfig | null;
 }
 
 const VARIANT_STYLES = {
@@ -48,11 +53,38 @@ export function DateRangeBar({
   onChange,
   hidePresets,
   variant = 'gradient',
+  companyId,
+  branchId,
+  fiscalYearConfig: fiscalYearConfigProp,
 }: DateRangeBarProps) {
   const [customOpen, setCustomOpen] = useState(value.preset === 'custom');
+  const [loadedFiscalYearConfig, setLoadedFiscalYearConfig] = useState<FiscalYearConfig | null>(null);
   const hide = new Set(hidePresets ?? []);
   const styles = VARIANT_STYLES[variant];
   const chips = DATE_RANGE_PRESET_CHIPS.filter((c) => !hide.has(c.id));
+  const fiscalYearConfig = fiscalYearConfigProp ?? loadedFiscalYearConfig;
+
+  useEffect(() => {
+    if (fiscalYearConfigProp) {
+      setLoadedFiscalYearConfig(fiscalYearConfigProp);
+      return;
+    }
+    if (!companyId) {
+      setLoadedFiscalYearConfig(null);
+      return;
+    }
+    let cancelled = false;
+    resolveFiscalYearConfig(companyId, branchId)
+      .then((cfg) => {
+        if (!cancelled) setLoadedFiscalYearConfig(cfg);
+      })
+      .catch(() => {
+        if (!cancelled) setLoadedFiscalYearConfig(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, branchId, fiscalYearConfigProp]);
 
   const select = (preset: DateRangePreset) => {
     if (preset === 'custom') {
@@ -64,7 +96,7 @@ export function DateRangeBar({
       });
     } else {
       setCustomOpen(false);
-      onChange(buildDateRange(preset));
+      onChange(buildDateRange(preset, undefined, fiscalYearConfig));
     }
   };
 

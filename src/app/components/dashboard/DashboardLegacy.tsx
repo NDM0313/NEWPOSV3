@@ -19,6 +19,7 @@ import { formatLocalDateYYYYMMDD } from '@/app/utils/localDate';
 import { useFormatCurrency } from '../../hooks/useFormatCurrency';
 import { businessService } from '../../services/businessService';
 import { branchService } from '@/app/services/branchService';
+import { formatQty } from '@/app/utils/quantity';
 
 const DashboardRevenueChart = lazy(() =>
   import('./DashboardRevenueChart').then((m) => ({ default: m.DashboardRevenueChart }))
@@ -830,8 +831,8 @@ export const DashboardLegacy = () => {
                         <p className="text-xs text-[#9CA3AF]">SKU: {item.sku}</p>
                       </div>
                       <div className="text-right">
-                        <p className="font-bold text-red-500">{item.stock}</p>
-                        <p className="text-xs text-[#9CA3AF]">Min: {item.min}</p>
+                        <p className="font-bold text-red-500 tabular-nums">{formatQty(item.stock)}</p>
+                        <p className="text-xs text-[#9CA3AF] tabular-nums">Min: {formatQty(item.min)}</p>
                       </div>
                     </div>
                   ))}

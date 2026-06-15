@@ -17,6 +17,7 @@ import {
   buildTransferAutoDescription,
   composeJournalEntryDescription,
 } from '../../utils/journalEntryDescription';
+import { accountInOutBadgeLabel, POSTING_FIELD_TITLES } from '../../lib/accountPostingInOutLabel';
 
 interface AccountTransferFlowProps {
   onBack: () => void;
@@ -227,7 +228,7 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
         {step === 1 && (
           <div className="space-y-4">
             <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 mb-4">
-              <h2 className="text-sm font-semibold text-white mb-2">Transfer From</h2>
+              <h2 className="text-sm font-semibold text-white mb-2">{POSTING_FIELD_TITLES.transferFrom}</h2>
               <p className="text-xs text-[#9CA3AF]">Select source account</p>
             </div>
             <div className="relative">
@@ -255,6 +256,9 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
                         <span className="text-2xl">{getAccountIcon(account.type)}</span>
                         <div>
                           <p className="text-sm font-semibold text-white">{account.name}</p>
+                          <p className="text-xs text-amber-400 font-medium">
+                            {accountInOutBadgeLabel(account, 'debit', 'OUT')}
+                          </p>
                           {formatAccountBalanceInline(account.balance, canViewBalances) && (
                             <p className="text-xs text-[#9CA3AF]">{formatAccountBalanceInline(account.balance, canViewBalances)}</p>
                           )}
@@ -276,7 +280,7 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
         {step === 2 && (
           <div className="space-y-4">
             <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 mb-4">
-              <h2 className="text-sm font-semibold text-white mb-2">Transfer To</h2>
+              <h2 className="text-sm font-semibold text-white mb-2">{POSTING_FIELD_TITLES.transferTo}</h2>
               <p className="text-xs text-[#9CA3AF]">Select destination account</p>
               {transferData.fromAccountName && (
                 <div className="mt-3 p-2 bg-[#EF4444]/10 border border-[#EF4444]/30 rounded-lg flex items-center gap-2">
@@ -315,6 +319,9 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
                           <span className="text-2xl">{getAccountIcon(account.type)}</span>
                           <div>
                             <p className="text-sm font-semibold text-white">{account.name}</p>
+                            <p className="text-xs text-emerald-400 font-medium">
+                              {accountInOutBadgeLabel(account, 'debit', 'IN')}
+                            </p>
                             {formatAccountBalanceInline(account.balance, canViewBalances) && (
                             <p className="text-xs text-[#9CA3AF]">{formatAccountBalanceInline(account.balance, canViewBalances)}</p>
                           )}

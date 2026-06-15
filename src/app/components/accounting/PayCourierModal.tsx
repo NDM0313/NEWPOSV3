@@ -16,6 +16,8 @@ import { shipmentAccountingService } from '@/app/services/shipmentAccountingServ
 import { toast } from 'sonner';
 import { formatLocalDateTimeYYYYMMDDHHmm } from '@/app/utils/localDate';
 import { DateTimePicker } from '@/app/components/ui/DateTimePicker';
+import { formatAccountSelectOptionLabel } from '@/app/lib/accountPostingInOutLabel';
+import { AccountPickerFieldLabel } from '@/app/components/accounting/AccountPickerFieldLabel';
 
 interface PayCourierModalProps {
   open: boolean;
@@ -324,9 +326,12 @@ export function PayCourierModal({ open, onClose, companyId, branchId, onSuccess 
 
                 {/* Select Account */}
                 <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
-                  <label className="block text-sm font-semibold text-gray-300 mb-2">
-                    Select Account <span className="text-red-400">*</span>
-                  </label>
+                  <AccountPickerFieldLabel
+                    className="block text-sm font-semibold text-gray-300 mb-2"
+                    base="Select Account"
+                    inOut="OUT"
+                    required
+                  />
                   <div className="relative">
                     <select
                       value={selectedAccount}
@@ -340,7 +345,12 @@ export function PayCourierModal({ open, onClose, companyId, branchId, onSuccess 
                       </option>
                       {filteredAccounts.map((account) => (
                         <option key={account.id} value={account.id} className="text-white bg-gray-900">
-                          {account.name} • Balance: {formatCurrency(account.balance)}
+                          {formatAccountSelectOptionLabel(account, {
+                            postingSide: 'credit',
+                            balance: account.balance,
+                            formatBalance: formatCurrency,
+                            includeGlBalance: true,
+                          })}
                         </option>
                       ))}
                     </select>

@@ -8,6 +8,7 @@ import { accountingReportsService, InventoryValuationResult } from '@/app/servic
 import { exportToExcel, ExportData } from '@/app/utils/exportUtils';
 import { Button } from '@/app/components/ui/button';
 import { toast } from 'sonner';
+import { formatQty } from '@/app/utils/quantity';
 
 const toExport = (r: InventoryValuationResult, formatCurrency: (n: number) => string): ExportData => ({
   title: `Inventory Valuation as at ${r.asOfDate}`,
@@ -18,7 +19,7 @@ const toExport = (r: InventoryValuationResult, formatCurrency: (n: number) => st
       row.sku,
       row.category,
       row.unit,
-      row.quantity,
+      formatQty(row.quantity),
       formatCurrency(row.unit_cost),
       formatCurrency(row.total_value),
     ]),
@@ -127,7 +128,7 @@ export const InventoryValuationPage: React.FC<{
                 <td className="p-3 text-gray-400 font-mono text-sm">{row.sku}</td>
                 <td className="p-3 text-gray-300">{row.category}</td>
                 <td className="p-3 text-gray-300">{row.unit}</td>
-                <td className="p-3 text-right text-gray-300">{row.quantity}</td>
+                <td className="p-3 text-right text-gray-300 tabular-nums">{formatQty(row.quantity)}</td>
                 <td className="p-3 text-right text-gray-300">{formatCurrency(row.unit_cost)}</td>
                 <td className="p-3 text-right text-white font-medium">{formatCurrency(row.total_value)}</td>
               </tr>

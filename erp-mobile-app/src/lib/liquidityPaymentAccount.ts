@@ -1,4 +1,4 @@
-/** Cash / bank / wallet detection — keep aligned with src/app/lib/liquidityPaymentAccount.ts */
+/** Cash / bank / wallet (liquidity) detection — mobile mirror of web liquidityPaymentAccount. */
 
 export type LiquidityAccountRef = {
   code?: string | null;
@@ -25,6 +25,7 @@ export function isLiquidityPaymentAccount(acc: LiquidityAccountRef | null | unde
   return false;
 }
 
+/** Map liquidity account to payments.payment_method enum. */
 export function paymentMethodForLiquidityAccount(acc: LiquidityAccountRef | null | undefined): string {
   if (!acc) return 'cash';
   const type = String(acc.type ?? '').toLowerCase();

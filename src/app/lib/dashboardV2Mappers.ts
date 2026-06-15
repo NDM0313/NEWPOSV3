@@ -4,6 +4,7 @@
 import type { FinancialDashboardMetrics } from '@/app/services/financialDashboardService';
 import type { DashboardV2StockRow } from '@/app/lib/dashboardV2Stock';
 import { formatPeriodLabel, trendPercent } from '@/app/lib/dashboardV2Period';
+import { formatQty } from '@/app/utils/quantity';
 
 export interface DashboardV2Alert {
   id: string;
@@ -129,7 +130,10 @@ export function buildStockAlerts(stockRows: DashboardV2StockRow[]): DashboardV2A
       severity: 'warning',
       count: low.length,
       viewTarget: 'inventory',
-      previewRows: low.slice(0, 5).map((r) => ({ label: r.name, detail: `${r.stock} / min ${r.minStock}` })),
+      previewRows: low.slice(0, 5).map((r) => ({
+        label: r.name,
+        detail: `${formatQty(r.stock)} / min ${formatQty(r.minStock)}`,
+      })),
     });
   }
   if (out.length) {
@@ -141,7 +145,7 @@ export function buildStockAlerts(stockRows: DashboardV2StockRow[]): DashboardV2A
       severity: 'critical',
       count: out.length,
       viewTarget: 'inventory',
-      previewRows: out.slice(0, 5).map((r) => ({ label: r.name, detail: `Stock: ${r.stock}` })),
+      previewRows: out.slice(0, 5).map((r) => ({ label: r.name, detail: `Stock: ${formatQty(r.stock)}` })),
     });
   }
   if (neg.length) {
@@ -153,7 +157,7 @@ export function buildStockAlerts(stockRows: DashboardV2StockRow[]): DashboardV2A
       severity: 'critical',
       count: neg.length,
       viewTarget: 'inventory',
-      previewRows: neg.slice(0, 5).map((r) => ({ label: r.name, detail: `${r.stock}` })),
+      previewRows: neg.slice(0, 5).map((r) => ({ label: r.name, detail: formatQty(r.stock) })),
     });
   }
   return alerts;

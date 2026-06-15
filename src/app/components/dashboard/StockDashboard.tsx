@@ -1,6 +1,7 @@
 import React from 'react';
 import { DollarSign, Package, TrendingUp, AlertTriangle, ArrowRight } from 'lucide-react';
 import { Button } from "../ui/button";
+import { formatQty } from '@/app/utils/quantity';
 
 const slowMovingItems = [
   { id: 1, name: 'Patterned Silk Scarf', sku: 'SCF-009', days: 120, stock: 45, value: 22500 },
@@ -75,7 +76,7 @@ export const StockDashboard = () => {
                     {item.days} Days
                   </span>
                 </td>
-                <td className="px-6 py-4 text-center text-gray-900 dark:text-white">{item.stock}</td>
+                <td className="px-6 py-4 text-center text-gray-900 dark:text-white tabular-nums">{formatQty(item.stock)}</td>
                 <td className="px-6 py-4 text-right font-bold text-gray-900 dark:text-white">${item.value.toLocaleString()}</td>
               </tr>
             ))}

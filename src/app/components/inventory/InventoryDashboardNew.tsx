@@ -8,6 +8,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Badge } from "../ui/badge";
 import { cn, formatBoxesPieces, formatDecimal } from "../ui/utils";
+import { formatQty } from '@/app/utils/quantity';
 import { useSupabase } from '../../context/SupabaseContext';
 import { useSettings } from '../../context/SettingsContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
@@ -799,7 +800,7 @@ export const InventoryDashboardNew = () => {
                         case 'stockQty':
                           return (
                             <td key={key} className="px-4 py-2 text-center">
-                              <span className={cn("font-bold font-mono text-sm tabular-nums", product.stock < 0 ? "text-red-400" : product.status === 'Out' || product.status === 'Low' ? "text-red-400" : "text-white")}>{formatDecimal(product.stock)}</span>
+                              <span className={cn("font-bold font-mono text-sm tabular-nums", product.stock < 0 ? "text-red-400" : product.status === 'Out' || product.status === 'Low' ? "text-red-400" : "text-white")}>{formatQty(product.stock)}</span>
                             </td>
                           );
                         case 'boxes':
@@ -807,7 +808,7 @@ export const InventoryDashboardNew = () => {
                         case 'pieces':
                           return <td key={key} className="px-4 py-2 text-center text-gray-400 text-sm tabular-nums">{formatBoxesPieces(product.pieces)}</td>;
                         case 'unit':
-                          return <td key={key} className="px-4 py-2 text-center text-gray-400 text-sm font-mono tabular-nums">{formatDecimal(product.stock)}</td>;
+                          return <td key={key} className="px-4 py-2 text-center text-gray-400 text-sm font-mono tabular-nums">{formatQty(product.stock)}</td>;
                         case 'avgCost':
                           return (
                             <td key={key} className={cn('px-4 py-2 text-right text-sm font-medium tabular-nums', product.avgCost < 0 ? 'text-red-400' : 'text-green-400')}>

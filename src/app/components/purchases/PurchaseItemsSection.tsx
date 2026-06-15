@@ -3,7 +3,8 @@ import { Search, Plus, Trash2, Package, ChevronsUpDown, Edit, Sparkles } from 'l
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Badge } from "../ui/badge";
-import { cn, formatBoxesPieces, formatDecimal } from "../ui/utils";
+import { cn, formatBoxesPieces } from "../ui/utils";
+import { formatQty } from '@/app/utils/quantity';
 import { toast } from 'sonner';
 import {
     Command,
@@ -253,7 +254,7 @@ export const PurchaseItemsSection: React.FC<PurchaseItemsSectionProps> = ({
                                                                             <>
                                                                                 <span>•</span>
                                                                                 <span className={p.stock > 0 ? 'text-green-500' : 'text-red-500'}>
-                                                                                    Stock: {formatDecimal(p.stock)}
+                                                                                    Stock: {formatQty(p.stock)}
                                                                                 </span>
                                                                             </>
                                                                         )}

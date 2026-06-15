@@ -16,7 +16,8 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/app/components/ui/dropdown-menu";
-import { cn, formatDecimal } from "@/app/components/ui/utils";
+import { cn } from "@/app/components/ui/utils";
+import { formatQty } from '@/app/utils/quantity';
 import { useNavigation } from '@/app/context/NavigationContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useGlobalFilter } from '@/app/context/GlobalFilterContext';
@@ -766,7 +767,7 @@ export const ProductsPage = () => {
               product.stock > 0 && product.stock <= product.lowStockThreshold && 'text-yellow-400',
               product.stock > product.lowStockThreshold && 'text-white'
             )}>
-              {formatDecimal(product.stock)}
+              {formatQty(product.stock)}
             </div>
             {getStockStatusBadge(product)}
           </div>

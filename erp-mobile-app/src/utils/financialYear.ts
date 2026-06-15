@@ -1,16 +1,13 @@
 /**
- * Financial year utilities — derive date ranges from business fiscal start/end settings.
- * No hardcoded Jan–Dec assumptions when config is present.
+ * Financial year utilities — mobile mirror of web financialYear.ts
  */
 
-import { formatLocalDateYYYYMMDD, parseLocalDateInput } from '@/app/utils/localDate';
+import { formatLocalDateYYYYMMDD, parseLocalDateInput } from '../utils/localDate';
 
 export interface FiscalYearConfig {
   start: string;
   end?: string | null;
 }
-
-export const FISCAL_YEAR_CONFIG_UPDATED_EVENT = 'erp:fiscal-year-config-updated';
 
 export function normalizeFiscalYearConfig(
   start?: string | null,
@@ -64,10 +61,6 @@ function endDateFromTemplates(
   return end;
 }
 
-/**
- * @param financialYearInput - Fiscal config or legacy start-only string/date
- * @param anchorDate - Date used to locate the current financial year window
- */
 export function getFinancialYearRange(
   financialYearInput: FiscalYearInput,
   anchorDate?: Date,
@@ -111,7 +104,6 @@ export function getFinancialYearRange(
   return { start, end };
 }
 
-/** Prior financial year range (immediately before current FY). */
 export function getLastFinancialYearRange(
   financialYearInput: FiscalYearInput,
   anchorDate?: Date,
@@ -126,38 +118,4 @@ export function getLastFinancialYearRange(
   lastStart.setHours(0, 0, 0, 0);
 
   return { start: lastStart, end: lastEnd };
-}
-
-/** Get financial year label (e.g. "FY 2024-25"). */
-export function getFinancialYearLabel(
-  financialYearInput: FiscalYearInput,
-  anchorDate?: Date,
-): string {
-  const { start, end } = getFinancialYearRange(financialYearInput, anchorDate);
-  const startYear = start.getFullYear();
-  const endYear = end.getFullYear();
-  if (startYear === endYear) return `FY ${startYear}`;
-  return `FY ${startYear}-${String(endYear).slice(-2)}`;
-}
-
-/** Human-readable range for filter chips (e.g. "1 Oct 2025 – 30 Sep 2026"). */
-export function formatFinancialYearRangeLabel(
-  financialYearInput: FiscalYearInput,
-  anchorDate?: Date,
-): string {
-  const { start, end } = getFinancialYearRange(financialYearInput, anchorDate);
-  const fmt = (d: Date) =>
-    d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-  return `${fmt(start)} – ${fmt(end)}`;
-}
-
-/** Human-readable range for last financial year. */
-export function formatLastFinancialYearRangeLabel(
-  financialYearInput: FiscalYearInput,
-  anchorDate?: Date,
-): string {
-  const { start, end } = getLastFinancialYearRange(financialYearInput, anchorDate);
-  const fmt = (d: Date) =>
-    d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-  return `${fmt(start)} – ${fmt(end)}`;
 }
