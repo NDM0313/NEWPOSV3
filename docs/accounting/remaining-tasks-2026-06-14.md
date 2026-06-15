@@ -1,6 +1,8 @@
 # Remaining tasks — 14 Jun 2026
 
-**Latest session doc:** [`../2026-06-14-RENTALS-REPORTS-KPI-SESSION.md`](../2026-06-14-RENTALS-REPORTS-KPI-SESSION.md)
+**Superseded by:** [`remaining-tasks-2026-06-16.md`](remaining-tasks-2026-06-16.md) (TB/Reports fix + updated backlog)
+
+**Latest session doc:** [`2026-06-16-tb-reports-balance-date-sync.md`](2026-06-16-tb-reports-balance-date-sync.md)
 
 **Prior backlog:** [`remaining-tasks-2026-06-12.md`](remaining-tasks-2026-06-12.md) (AR/AP, Control 1100, mobile rental sub-ledger)
 
