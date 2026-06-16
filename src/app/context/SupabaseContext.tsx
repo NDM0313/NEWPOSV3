@@ -87,6 +87,12 @@ interface SupabaseContextType {
   retryConnection: () => void;
   /** Re-fetch public.users profile after business create/link (no page reload). */
   refreshUserProfile: () => void;
+  /** Optimistic header/profile display after self-service save. */
+  refreshErpProfileDisplay: (partial: { full_name?: string; phone?: string | null }) => void;
+  /** ERP public.users.id (may differ from auth.users.id). */
+  erpUserId: string | null;
+  erpFullName: string | null;
+  erpPhone: string | null;
   signIn: (email: string, password: string) => Promise<any>;
   signOut: () => Promise<void>;
   companyId: string | null;
@@ -122,6 +128,9 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [branchCount, setBranchCount] = useState<number>(0);
   const [requiresBranchSelection, setRequiresBranchSelection] = useState<boolean>(false);
   const [enablePacking, setEnablePackingState] = useState<boolean>(false);
+  const [erpUserId, setErpUserId] = useState<string | null>(null);
+  const [erpFullName, setErpFullName] = useState<string | null>(null);
+  const [erpPhone, setErpPhone] = useState<string | null>(null);
   const [profileLoadComplete, setProfileLoadComplete] = useState<boolean>(false);
   const [connectionError, setConnectionError] = useState<boolean>(false);
   const [storageBlocked, setStorageBlocked] = useState<boolean>(false);
@@ -317,6 +326,27 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return () => subscription.unsubscribe();
   }, []);
 
+  const applyErpProfileFields = useCallback((data: UserProfileRow) => {
+    setErpUserId(data.id);
+    setErpFullName(data.full_name?.trim() || null);
+    setErpPhone(data.phone?.trim() || null);
+  }, []);
+
+  const clearErpProfileFields = useCallback(() => {
+    setErpUserId(null);
+    setErpFullName(null);
+    setErpPhone(null);
+  }, []);
+
+  const refreshErpProfileDisplay = useCallback((partial: { full_name?: string; phone?: string | null }) => {
+    if (partial.full_name !== undefined) {
+      setErpFullName(partial.full_name.trim() || null);
+    }
+    if (partial.phone !== undefined) {
+      setErpPhone(partial.phone?.trim() || null);
+    }
+  }, []);
+
   const applyProfileFromRow = async (data: UserProfileRow, userId: string) => {
     if (data.is_active === false) {
       await supabase.auth.signOut();
@@ -324,11 +354,13 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setUserRole(null);
       setBranchId(null);
       setDefaultBranchId(null);
+      clearErpProfileFields();
       setProfileLoadComplete(true);
       return;
     }
     setCompanyId(data.company_id);
     setUserRole(data.role);
+    applyErpProfileFields(data);
     setProfileLoadComplete(true);
     setConnectionError(false);
     setStorageBlocked(false);
@@ -365,6 +397,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setUserRole(null);
       setBranchId(null);
       setDefaultBranchId(null);
+      clearErpProfileFields();
       setProfileLoadComplete(true);
       setConnectionError(false);
       setStorageBlocked(false);
@@ -408,7 +441,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       const { data, error } = await supabase
         .from('users')
-        .select('id, auth_user_id, company_id, role, is_active')
+        .select('id, auth_user_id, company_id, role, is_active, full_name, phone')
         .or(`id.eq.${userId},auth_user_id.eq.${userId}`)
         .limit(1)
         .maybeSingle();
@@ -435,6 +468,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           setUserRole(null);
           setBranchId(null);
           setDefaultBranchId(null);
+          clearErpProfileFields();
           setProfileLoadComplete(true);
           return;
         }
@@ -500,6 +534,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setUserRole(null);
         setBranchId(null);
         setDefaultBranchId(null);
+        clearErpProfileFields();
         setProfileLoadComplete(true);
         return;
       }
@@ -513,6 +548,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setUserRole(null);
         setBranchId(null);
         setDefaultBranchId(null);
+        clearErpProfileFields();
         setProfileLoadComplete(true);
         return;
       }
@@ -520,6 +556,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (import.meta.env?.DEV) console.log('[FETCH USER DATA SUCCESS]', { companyId: data.company_id, role: data.role });
       setCompanyId(data.company_id);
       setUserRole(data.role);
+      applyErpProfileFields(data);
       setProfileLoadComplete(true);
       fetchedRef.current.add(userId);
       lastFetchedUserIdRef.current = userId;
@@ -813,6 +850,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setBranchId(null);
     setDefaultBranchId(null);
     setAccessibleBranchIds([]);
+    clearErpProfileFields();
     fetchingRef.current.clear();
     fetchedRef.current.clear();
     lastFetchedUserIdRef.current = null;
@@ -843,6 +881,10 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     authConfigError,
     retryConnection,
     refreshUserProfile,
+    refreshErpProfileDisplay,
+    erpUserId,
+    erpFullName,
+    erpPhone,
     signIn,
     signOut,
     companyId,
@@ -860,8 +902,9 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     supabaseClient: supabase,
   }), [
     user, session, loading, profileLoadComplete, connectionError, storageBlocked, authConfigError, companyId, userRole, branchId, defaultBranchId,
+    erpUserId, erpFullName, erpPhone,
     accessibleBranchIds, branchCount, requiresBranchSelection, enablePacking,
-    signIn, signOut, retryConnection, refreshUserProfile, setBranchId, setAccessibleBranchIds, setEnablePacking, refreshEnablePacking,
+    signIn, signOut, retryConnection, refreshUserProfile, refreshErpProfileDisplay, setBranchId, setAccessibleBranchIds, setEnablePacking, refreshEnablePacking,
   ]);
 
   return (
@@ -882,6 +925,10 @@ const defaultSupabaseContext: SupabaseContextType = {
   authConfigError: null,
   retryConnection: () => {},
   refreshUserProfile: () => {},
+  refreshErpProfileDisplay: () => {},
+  erpUserId: null,
+  erpFullName: null,
+  erpPhone: null,
   signIn: async () => {},
   signOut: async () => {},
   companyId: null,

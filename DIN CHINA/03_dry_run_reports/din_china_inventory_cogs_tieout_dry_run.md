@@ -1,6 +1,6 @@
 # DIN CHINA Inventory / COGS Tie-Out — Dry Run
 
-**Generated:** 2026-06-15T18:32:51.597Z
+**Generated:** 2026-06-16T09:14:47.464Z
 
 ## Import strategy note
 
@@ -43,9 +43,9 @@ Legacy import posted Dr AR / Cr 4100 only. Phase 2 adds Dr 5010 / Cr 1200 when p
 | b881fbdd-b5c4-4fab-8e4b-5330263b2e42 | 0017-1 | TAIBO |
 | a52110d7-9adf-483c-8765-d85852862b51 | 0013-4 | WOOL |
 | 71c8a39d-b31f-458b-801f-34c964fb9cb1 | 0014 | VELVET SETECHABLE |
+| c7dec26c-e1c2-4554-842e-72a10a224ae8 | 0005 | SHAMIZ RIYAN |
 | 45e72f65-67aa-48b9-8e3b-2533f543e86b | 0003-3 | TR |
 | abc23aaf-afab-425f-8549-0106f9647b20 | 0018 | COTTON WHITE |
-| c7dec26c-e1c2-4554-842e-72a10a224ae8 | 0005 | SHAMIZ RIYAN |
 | fc9d1281-7aa9-4927-85ec-671024454f03 | 0011 | RAD RIYAN |
 | 679e7e52-a8db-4773-8206-99cb680310cb | 0012 | TC |
 | 659126ee-dfaa-4e72-857e-9979c58c2cbc | 0009 | SILK COLOR POLYSTER |

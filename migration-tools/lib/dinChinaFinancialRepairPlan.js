@@ -3,6 +3,7 @@ import { roundMoney } from './dinChinaFinancialAuditShared.js';
 export function buildRepairPlan(ctx, taskResults, blockingErrors, extras = {}) {
   const { revenue: taskA, cogs: taskB, purchase: taskC, ar: taskD } = taskResults;
   const taskG = extras.taskG;
+  const phase4Plan = extras.phase4Plan || taskD?.phase4Plan;
   const phase6Plan = extras.phase6Plan;
   const phase7Plan = extras.phase7Plan;
   const phase75Plan = extras.phase75Plan;
@@ -54,12 +55,21 @@ export function buildRepairPlan(ctx, taskResults, blockingErrors, extras = {}) {
     },
     {
       phase: 4,
-      name: 'AR / payment party tie-out repair',
-      description: 'Reclass payment JEs to correct cash/bank or customer AR sub-ledger if mismatches found.',
+      name: 'AR payment party reclass (1100 → AR-*)',
+      description:
+        'Relink sale receipt AR credits from control 1100 to customer party sub-ledger when the sale document JE debited AR-*.',
+      eligibleCount: phase4Plan?.eligibleCount ?? taskD?.partyReclassEligible ?? 0,
+      expectedReclassTotal: phase4Plan?.totalReclassAmount ?? taskD?.partyReclassAmount ?? 0,
       paymentIssueCount: taskD?.paymentIssues?.length ?? 0,
       arGap: taskD?.arExpectedVsActualGap ?? 0,
-      gates: ['Only if Task D finds wrong account or party', 'No duplicate payment posting'],
-      blocked: (taskD?.paymentIssues?.length ?? 0) === 0 && Math.abs(taskD?.arExpectedVsActualGap ?? 0) < 0.02,
+      gates: [
+        'Dry-run review required',
+        'Pass --apply --apply-phase 4 --approve-ar-party-reclass',
+        'Only moves AR credit lines on payment JEs (no sale total / payment amount changes)',
+      ],
+      blocked: true,
+      requiresUserApproval: true,
+      note: phase4Plan?.strategyNote,
     },
     {
       phase: 5,
@@ -189,10 +199,18 @@ export function collectBlockingErrors(ctx, taskResults) {
 export function classifyAuditErrors(blockingErrors, taskResults) {
   const { revenue: taskA, cogs: taskB, purchase: taskC, ar: taskD } = taskResults;
 
+  const phase2Blockers = blockingErrors.filter(
+    (e) =>
+      e.includes('missing cost source') ||
+      e.includes('COGS account 5010 not found') ||
+      e.includes('stock movement qty mismatch'),
+  );
+
   const critical = blockingErrors.filter(
     (e) =>
       !e.includes('Purchase total mismatch') &&
-      !e.includes('requires user approval before Phase 3'),
+      !e.includes('requires user approval before Phase 3') &&
+      !phase2Blockers.includes(e),
   );
 
   const approvalRequired = blockingErrors.filter((e) =>
@@ -206,7 +224,11 @@ export function classifyAuditErrors(blockingErrors, taskResults) {
 
   const phase2Complete =
     Math.abs(num(taskB?.expectedCogsTotal) - num(taskB?.actualCogsPosted)) < 0.02 &&
-    (taskB?.missingCostProducts?.length ?? 0) === 0;
+    (taskB?.missingCostProducts?.length ?? 0) === 0 &&
+    phase2Blockers.length === 0;
+
+  const phase4Eligible = taskD?.partyReclassEligible ?? taskD?.phase4Plan?.eligibleCount ?? 0;
+  const phase4Ready = phase4Eligible > 0;
 
   const arGapNote =
     Math.abs(num(taskD?.arExpectedVsActualGap)) > 0.02
@@ -217,10 +239,13 @@ export function classifyAuditErrors(blockingErrors, taskResults) {
 
   return {
     criticalBlockingErrors: critical,
+    phase2Blockers,
     approvalRequired,
     arGapNote,
     phase1Complete,
     phase2Complete,
+    phase4Ready,
+    phase4Eligible,
     coreAuditPass,
     dryRunExitCode: critical.length === 0 ? 0 : 1,
   };

@@ -221,8 +221,17 @@ function buildArPaymentMd(audit) {
         ['Expected vs actual AR gap', t.arExpectedVsActualGap],
         ['Payment JE count', t.paymentJeCount],
         ['Payment JE issues', t.paymentIssues.length],
+        ['Party reclass lines (Phase 4)', t.partyReclassEligible ?? 0],
+        ['Party reclass amount', t.partyReclassAmount ?? 0],
+        ['Customers with GL≠due (pre-reclass)', t.partyGlGapCustomerCount ?? 0],
       ],
     ),
+    '',
+    '## Party GL projections (after Phase 4 reclass)',
+    '',
+    '```json',
+    JSON.stringify(t.examples.partyGlProjections, null, 2),
+    '```',
     '',
     '## Payment JE issues',
     '',
@@ -386,6 +395,8 @@ export function printConsoleSummary(audit) {
     console.log('AUDIT STATUS: PASS — Phases 1 (revenue) and 2 (COGS/inventory) are complete.\n');
   } else if (status?.criticalBlockingErrors?.length) {
     console.log('AUDIT STATUS: FAIL — critical issues must be fixed before apply.\n');
+  } else if (status?.phase4Ready) {
+    console.log('AUDIT STATUS: PASS for Phase 4 — AR party reclass ready (other phases may still be blocked).\n');
   } else {
     console.log('AUDIT STATUS: PARTIAL — some repairs still pending.\n');
   }
@@ -428,9 +439,24 @@ export function printConsoleSummary(audit) {
     console.log('\nPending approval (not a dry-run failure):');
     for (const e of status.approvalRequired) console.log(`  - ${e}`);
   }
+  if (status?.phase2Blockers?.length) {
+    console.log('\nPhase 2 only (does not block Phase 4 dry-run / apply):');
+    for (const e of status.phase2Blockers) console.log(`  - ${e}`);
+  }
   if (status?.criticalBlockingErrors?.length) {
     console.log('\nCritical blocking errors:');
     for (const e of status.criticalBlockingErrors) console.log(`  - ${e}`);
+  }
+  if (status?.phase4Ready) {
+    console.log(
+      `\nPhase 4 READY: ${status.phase4Eligible} payment AR line(s) to reclass (1100 → party AR-*).`,
+    );
+    console.log(
+      'After you approve the dry-run reports, apply with:\n' +
+        '  node migration-tools/dinChinaFinancialIntegrityAudit.js \\\n' +
+        `    --company-id ${audit.companyId} --apply --apply-phase 4 \\\n` +
+        '    --approve-ar-party-reclass --require-supabase',
+    );
   }
   if (status?.arGapNote) {
     console.log(`\nNote: ${status.arGapNote}`);

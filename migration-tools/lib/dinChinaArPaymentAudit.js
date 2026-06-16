@@ -4,6 +4,7 @@ import {
   loadLegacyFinalSales,
   sumGlLines,
 } from './dinChinaFinancialAuditShared.js';
+import { buildArPaymentPartyReclassPlan } from './dinChinaArPaymentPartyReclass.js';
 
 export async function auditArPayments(supabase, ctx) {
   const { companyId, accounts } = ctx;
@@ -40,7 +41,19 @@ export async function auditArPayments(supabase, ctx) {
     .not('payment_id', 'is', null);
 
   const paymentJeCount = (paymentJes || []).length;
-  const paymentIssues = [];
+
+  const phase4Plan = await buildArPaymentPartyReclassPlan(supabase, ctx);
+  const paymentIssues = (phase4Plan.repairs || []).map((r) => ({
+    kind: 'ar_credit_on_control_not_party',
+    paymentRef: r.paymentRef,
+    invoiceNo: r.invoiceNo,
+    customerName: r.customerName,
+    partyAccountCode: r.partyAccountCode,
+    amount: r.amount,
+    journalEntryNo: r.journalEntryNo,
+    lineId: r.lineId,
+  }));
+
   const customerRollups = new Map();
 
   for (const sale of sales) {
@@ -53,6 +66,10 @@ export async function auditArPayments(supabase, ctx) {
     });
   }
 
+  const partyGlGapCustomers = (phase4Plan.customerProjections || []).filter(
+    (c) => Math.abs(c.gapBefore) > 0.02,
+  );
+
   return {
     salesTotal,
     paidTotal,
@@ -63,9 +80,14 @@ export async function auditArPayments(supabase, ctx) {
     arExpectedVsActualGap,
     paymentJeCount,
     paymentIssues,
+    phase4Plan,
+    partyReclassEligible: phase4Plan.eligibleCount,
+    partyReclassAmount: phase4Plan.totalReclassAmount,
+    partyGlGapCustomerCount: partyGlGapCustomers.length,
     examples: {
-      paymentIssues: paymentIssues.slice(0, 5),
+      paymentIssues: paymentIssues.slice(0, 20),
       customers: [...customerRollups.values()].slice(0, 10),
+      partyGlProjections: (phase4Plan.customerProjections || []).slice(0, 15),
     },
   };
 }

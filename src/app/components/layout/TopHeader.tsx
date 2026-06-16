@@ -47,7 +47,7 @@ import { dispatchGlobalRefresh } from '@/app/lib/dataInvalidationBus';
 export const TopHeader = () => {
   const { toggleSidebar, openDrawer, setCurrentView, setMobileNavOpen } = useNavigation();
   const { businessSettings } = useSettings();
-  const { signOut, user, companyId, branchId } = useSupabase();
+  const { signOut, user, companyId, branchId, erpFullName, userRole } = useSupabase();
   const { hasPermission } = useCheckPermission();
   const globalFilter = useGlobalFilter();
   const { dateRangeType, setDateRangeType, setCustomDateRange, getDateRangeLabel, setBranchId: setGlobalBranchId, customStartDate, customEndDate, startDateObj, endDateObj } = globalFilter;
@@ -140,10 +140,17 @@ export const TopHeader = () => {
     setShowChangePassword(true);
   };
 
-  // Get user display info
-  const userDisplayName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Admin';
+  // Get user display info from ERP profile (falls back to auth metadata)
+  const userDisplayName =
+    erpFullName ||
+    user?.user_metadata?.full_name ||
+    user?.email?.split('@')[0] ||
+    'Admin';
   const userEmail = user?.email || 'admin@dinbridal.com';
   const userInitial = userDisplayName.charAt(0).toUpperCase();
+  const userRoleLabel = userRole
+    ? userRole.charAt(0).toUpperCase() + userRole.slice(1).replace(/_/g, ' ')
+    : 'User';
 
   return (
     <header className="h-14 md:h-16 bg-gray-900/95 backdrop-blur-md border-b border-gray-800 flex items-center justify-between px-4 md:px-6 sticky top-0 z-50 shadow-sm">
@@ -462,7 +469,7 @@ export const TopHeader = () => {
               </div>
               <div className="hidden xl:flex flex-col items-start">
                 <span className="text-sm font-semibold text-foreground leading-tight">{userDisplayName}</span>
-                <span className="text-xs text-muted-foreground leading-tight">Super Admin</span>
+                <span className="text-xs text-muted-foreground leading-tight">{userRoleLabel}</span>
               </div>
               <ChevronDown size={16} className="text-muted-foreground hidden xl:block" />
             </Button>

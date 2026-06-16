@@ -1,6 +1,6 @@
 # DIN CHINA Balance Sheet Issue Analysis
 
-**Generated:** 2026-06-15T18:32:47.924Z
+**Generated:** 2026-06-16T09:14:43.815Z
 
 ## Account snapshots
 
@@ -10,7 +10,7 @@
     "id": "51ef008a-00ca-48cd-94f8-4fdad79b7065",
     "code": "1100",
     "name": "Accounts Receivable",
-    "balance": -21416540
+    "balance": -20816540
   },
   "inventory1200": {
     "id": "250bbcfc-3f85-4614-879c-5be749399810",
@@ -54,9 +54,9 @@
 
 ## AR vs customer dues
 
-- Sum of sale due_amount: Rs 17792088
-- GL AR (1100) balance: Rs -21416540
-- Gap: Rs 39208628
+- Sum of sale due_amount: Rs 27548220
+- GL AR (1100) balance: Rs -20816540
+- Gap: Rs 48364760
 - Phase 6 sell returns (~Rs 1.06M) may explain part of any residual AR gap.
 
 ## Purchase / AP

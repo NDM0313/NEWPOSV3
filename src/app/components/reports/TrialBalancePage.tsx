@@ -406,7 +406,15 @@ export const TrialBalancePage: React.FC<{
                     </span>
                   </td>
                   <td className="p-3 text-white">
-                    <span style={{ paddingLeft: (row.presentationIndent || 0) * 16 }} className="inline-block">
+                    <span
+                      style={{ paddingLeft: (row.presentationIndent || 0) * 16 }}
+                      className="inline-block"
+                      title={
+                        (row.presentationIndent || 0) > 0
+                          ? 'Party GL sub-ledger — should match Ledger Statement closing after AR tie-out'
+                          : undefined
+                      }
+                    >
                       {row.account_name}
                     </span>
                   </td>

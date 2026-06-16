@@ -7,6 +7,10 @@ import {
   applyScreenshotDiscountBackfill,
 } from './dinChinaScreenshotDiscountBackfill.js';
 import {
+  buildArPaymentPartyReclassPlan,
+  applyArPaymentPartyReclass,
+} from './dinChinaArPaymentPartyReclass.js';
+import {
   roundMoney,
   num,
   parseLegacyTxnIdFromNotes,
@@ -68,6 +72,8 @@ export async function applyFinancialRepairs(supabase, ctx, audit, argv) {
   const approveReturns = argv.includes('--approve-return-import');
   const approveDiscountGl = argv.includes('--approve-discount-gl-repair');
   const approveScreenshotDiscount = argv.includes('--approve-screenshot-discount-backfill');
+  const approveArPartyReclass = argv.includes('--approve-ar-party-reclass');
+  const arPartyReclassFull = argv.includes('--approve-ar-party-reclass-full');
   const results = {
     appliedAt: new Date().toISOString(),
     phases: {},
@@ -85,6 +91,8 @@ export async function applyFinancialRepairs(supabase, ctx, audit, argv) {
       phase7Skipped: 0,
       phase75Updated: 0,
       phase75Skipped: 0,
+      phase4Updated: 0,
+      phase4Skipped: 0,
     },
   };
 
@@ -174,12 +182,34 @@ export async function applyFinancialRepairs(supabase, ctx, audit, argv) {
   }
 
   if (phases.has(4)) {
-    results.phases[4] = {
-      ok: false,
-      skipped: true,
-      note: 'Phase 4 AR/payment reclass not automated in this script — review taskD paymentIssues manually',
-    };
-    results.stats.phase4Skipped = 1;
+    if (!approveArPartyReclass) {
+      results.phases[4] = {
+        ok: false,
+        blocked: true,
+        blockers: ['Pass --approve-ar-party-reclass to enable Phase 4 AR payment party reclass'],
+      };
+      results.stats.phase4Skipped = 1;
+    } else {
+      const blockers = phaseBlockingErrors(audit.blockingErrors, 4);
+      if (blockers.length) {
+        results.phases[4] = { ok: false, blocked: true, blockers };
+      } else {
+        const plan =
+          audit.taskD?.phase4Plan || (await buildArPaymentPartyReclassPlan(supabase, ctx));
+        if (!plan.eligibleCount) {
+          results.phases[4] = { ok: true, skipped: true, note: 'No AR payment lines to reclass' };
+          results.stats.phase4Skipped = 1;
+        } else {
+          const phaseResult = await applyArPaymentPartyReclass(supabase, ctx, plan, {
+            positiveGapOnly: !arPartyReclassFull,
+          });
+          results.stats.phase4Updated = phaseResult.updated;
+          results.stats.phase4Skipped = phaseResult.skipped;
+          if (phaseResult.errors?.length) results.errors.push(...phaseResult.errors);
+          results.phases[4] = phaseResult;
+        }
+      }
+    }
   }
 
   if (phases.has(6)) {

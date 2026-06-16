@@ -92,6 +92,50 @@ export const userService = {
     return data;
   },
 
+  /** Load ERP profile for the signed-in auth user (id OR auth_user_id match). */
+  async getProfileForAuthUser(authUserId: string, companyId?: string | null): Promise<User | null> {
+    if (!authUserId) return null;
+    let query = supabase
+      .from('users')
+      .select('*')
+      .or(`id.eq.${authUserId},auth_user_id.eq.${authUserId}`)
+      .limit(1);
+    if (companyId) {
+      query = query.eq('company_id', companyId);
+    }
+    const { data, error } = await query.maybeSingle();
+    if (error) throw error;
+    return data as User | null;
+  },
+
+  /** Self-service profile update: full_name and phone only. */
+  async updateOwnProfile(
+    authUserId: string,
+    companyId: string | null,
+    payload: { full_name: string; phone?: string | null },
+  ): Promise<User> {
+    const erpUserId = await this.resolvePublicUserId(companyId, authUserId);
+    const updatePayload = {
+      full_name: payload.full_name.trim(),
+      phone: payload.phone?.trim() || null,
+      updated_at: new Date().toISOString(),
+    };
+    const { data, error } = await supabase
+      .from('users')
+      .update(updatePayload)
+      .eq('id', erpUserId)
+      .select()
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!data) {
+      throw new Error(
+        'Profile update was not applied (no matching row or insufficient permission).',
+      );
+    }
+    return data as User;
+  },
+
   // Generate next user code
   async generateUserCode(companyId: string): Promise<string> {
     try {

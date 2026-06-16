@@ -418,7 +418,7 @@ export function CustomersSuppliersReportPage({ startDate, endDate, branchId }: P
     <div className="space-y-4 customers-suppliers-report">
       <ReportBasisBanner
         basis="effective_party"
-        detail="Activity columns use the selected date range. Due (GL) = party GL follow-up MAX(0, signed) as at period end. Advance (GL) = credit/advance MAX(0, −signed) — e.g. supplier prepayment — same party GL basis as Contacts."
+        detail="Activity columns use the selected date range. Due (GL) = party journal balance at period end (matches Trial Balance party rows and Balance Sheet after AR tie-out). Compare closing to Ledger Statement for operational proof."
       />
 
       <div className="no-print rounded-lg border border-sky-500/25 bg-sky-950/30 overflow-hidden">

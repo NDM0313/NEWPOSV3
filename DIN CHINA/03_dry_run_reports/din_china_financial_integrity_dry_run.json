@@ -1,7 +1,7 @@
 {
-  "mode": "dry-run",
-  "applyRun": false,
-  "generatedAt": "2026-06-15T18:32:51.597Z",
+  "mode": "apply",
+  "applyRun": true,
+  "generatedAt": "2026-06-16T09:14:47.464Z",
   "companyId": "30bd8592-3384-4f34-899a-f3907e336485",
   "branch": {
     "id": "92f4184e-ee9b-4b6c-8e76-10ee1d166f55",
@@ -38,7 +38,7 @@
         "code": "1100",
         "name": "Accounts Receivable",
         "type": "asset",
-        "balance": -21416540,
+        "balance": -20816540,
         "is_group": false,
         "parent_id": null
       }
@@ -109,27 +109,32 @@
       "DC-0054",
       "DC-0046",
       "DC-0037",
-      "DC-0042",
       "DC-0017",
       "DC-0036",
+      "DC-0042",
       "DC-0078",
-      "DC-0007",
-      "DC-0074",
       "DC-0008",
-      "DC-0005",
-      "DC-0004",
-      "DC-0013",
+      "DC-0074",
       "DC-0006",
+      "DC-0005",
       "DC-0001",
+      "DC-0013",
+      "DC-0004",
       "DC-0015",
+      "DC-0009",
+      "DC-0018",
       "DC-0079",
       "DC-0003",
       "DC-0010",
       "DC-0014",
-      "DC-0009",
-      "DC-0018",
       "DC-0016",
+      "DC-0007",
+      "DC-0025",
       "DC-0020",
+      "DC-0033",
+      "DC-0024",
+      "DC-0029",
+      "DC-0030",
       "DC-0034",
       "DC-0032",
       "DC-0055",
@@ -145,12 +150,7 @@
       "DC-0052",
       "DC-0057",
       "DC-0023",
-      "DC-0033",
-      "DC-0024",
-      "DC-0025",
       "DC-0022",
-      "DC-0029",
-      "DC-0030",
       "DC-0070",
       "DC-0058",
       "DC-0088",
@@ -161,12 +161,12 @@
       "DC-0075",
       "DC-0081",
       "DC-0012",
-      "DC-0026",
-      "DC-0071",
       "DC-0077",
       "DC-0059",
       "DC-0082",
       "DC-0089",
+      "DC-0026",
+      "DC-0071",
       "DC-0061",
       "DC-0083",
       "DC-0066",
@@ -174,20 +174,20 @@
       "DC-0021",
       "DC-0035",
       "DC-0039",
-      "DC-0049",
-      "DC-0062",
       "DC-0067",
       "DC-0084",
+      "DC-0049",
+      "DC-0062",
+      "DC-0064",
+      "DC-0068",
       "DC-0060",
       "DC-0085",
       "DC-0090",
       "DC-0011",
-      "DC-0064",
-      "DC-0068",
-      "DC-0086",
-      "DC-0091",
       "DC-0065",
       "DC-0072",
+      "DC-0086",
+      "DC-0091",
       "DC-0031",
       "DC-0069",
       "DC-0092",
@@ -255,6 +255,11 @@
         "name": "VELVET SETECHABLE"
       },
       {
+        "productId": "c7dec26c-e1c2-4554-842e-72a10a224ae8",
+        "sku": "0005",
+        "name": "SHAMIZ RIYAN"
+      },
+      {
         "productId": "45e72f65-67aa-48b9-8e3b-2533f543e86b",
         "sku": "0003-3",
         "name": "TR"
@@ -263,11 +268,6 @@
         "productId": "abc23aaf-afab-425f-8549-0106f9647b20",
         "sku": "0018",
         "name": "COTTON WHITE"
-      },
-      {
-        "productId": "c7dec26c-e1c2-4554-842e-72a10a224ae8",
-        "sku": "0005",
-        "name": "SHAMIZ RIYAN"
       },
       {
         "productId": "fc9d1281-7aa9-4927-85ec-671024454f03",
@@ -325,16 +325,624 @@
   },
   "taskD": {
     "salesTotal": 49951100,
-    "paidTotal": 31608701,
-    "expectedArOutstanding": 17792088,
-    "expectedArSalesMinusPayments": 18342399,
+    "paidTotal": 22402880,
+    "expectedArOutstanding": 27548220,
+    "expectedArSalesMinusPayments": 27548220,
     "paymentRecordsTotal": 22402880,
-    "glAccountsReceivableBalance": -21416540,
-    "arExpectedVsActualGap": 39208628,
-    "paymentJeCount": 235,
-    "paymentIssues": [],
+    "glAccountsReceivableBalance": -20816540,
+    "arExpectedVsActualGap": 48364760,
+    "paymentJeCount": 237,
+    "paymentIssues": [
+      {
+        "kind": "ar_credit_on_control_not_party",
+        "paymentRef": "RCV-0004",
+        "invoiceNo": "DC-0006",
+        "customerName": "PARVAISE  MARDAN",
+        "partyAccountCode": "AR-B74D8B",
+        "amount": 80000,
+        "journalEntryNo": "RCV-0004",
+        "lineId": "8869a4fc-49c5-44e0-bd83-4a68d2987acd"
+      },
+      {
+        "kind": "ar_credit_on_control_not_party",
+        "paymentRef": "RCV-0005",
+        "invoiceNo": "DC-0007",
+        "customerName": "MURAD  RAMDAS",
+        "partyAccountCode": "AR-166142",
+        "amount": 70000,
+        "journalEntryNo": "RCV-0005",
+        "lineId": "6c4389d7-21ec-4233-96f8-feda6df81384"
+      },
+      {
+        "kind": "ar_credit_on_control_not_party",
+        "paymentRef": "RCV-0006",
+        "invoiceNo": "DC-0008",
+        "customerName": "HASSAN   MARDAN",
+        "partyAccountCode": "AR-ED1ABD",
+        "amount": 200000,
+        "journalEntryNo": "RCV-0006",
+        "lineId": "66867f5b-0d21-416f-a56b-3b355eec167d"
+      },
+      {
+        "kind": "ar_credit_on_control_not_party",
+        "paymentRef": "RCV-0011",
+        "invoiceNo": "DC-0008",
+        "customerName": "HASSAN   MARDAN",
+        "partyAccountCode": "AR-ED1ABD",
+        "amount": 200000,
+        "journalEntryNo": "RCV-0011",
+        "lineId": "45fccad2-2b60-4983-93a4-e6ed67ae15d8"
+      },
+      {
+        "kind": "ar_credit_on_control_not_party",
+        "paymentRef": "RCV-0017",
+        "invoiceNo": "DC-0007",
+        "customerName": "MURAD  RAMDAS",
+        "partyAccountCode": "AR-166142",
+        "amount": 70000,
+        "journalEntryNo": "RCV-0017",
+        "lineId": "e0b1dd07-870e-4629-9064-ab4fb1370a5c"
+      },
+      {
+        "kind": "ar_credit_on_control_not_party",
+        "paymentRef": "RCV-0024",
+        "invoiceNo": "DC-0008",
+        "customerName": "HASSAN   MARDAN",
+        "partyAccountCode": "AR-ED1ABD",
+        "amount": 300000,
+        "journalEntryNo": "RCV-0024",
+        "lineId": "ff3d3e26-9e1c-4a3d-848d-d04978c15a75"
+      },
+      {
+        "kind": "ar_credit_on_control_not_party",
+        "paymentRef": "RCV-0028",
+        "invoiceNo": "DC-0006",
+        "customerName": "PARVAISE  MARDAN",
+        "partyAccountCode": "AR-B74D8B",
+        "amount": 70000,
+        "journalEntryNo": "RCV-0028",
+        "lineId": "c1a3d5cb-6e3f-40d7-ad49-40b3c2ed2222"
+      },
+      {
+        "kind": "ar_credit_on_control_not_party",
+        "paymentRef": "RCV-0031",
+        "invoiceNo": "DC-0025",
+        "customerName": "Walk-In Customer",
+        "partyAccountCode": "AR-7C5754",
+        "amount": 13400,
+        "journalEntryNo": "RCV-0031",
+        "lineId": "6350371f-56e2-40bb-8aa3-a3674d774c20"
+      },
+      {
+        "kind": "ar_credit_on_control_not_party",
+        "paymentRef": "RCV-0032",
+        "invoiceNo": "DC-0025",
+        "customerName": "Walk-In Customer",
+        "partyAccountCode": "AR-7C5754",
+        "amount": 37000,
+        "journalEntryNo": "RCV-0032",
+        "lineId": "049e6f67-4ffd-4c5b-946a-30c033712d4d"
+      },
+      {
+        "kind": "ar_credit_on_control_not_party",
+        "paymentRef": "RCV-0034",
+        "invoiceNo": "DC-0007",
+        "customerName": "MURAD  RAMDAS",
+        "partyAccountCode": "AR-166142",
+        "amount": 70000,
+        "journalEntryNo": "RCV-0034",
+        "lineId": "27e0ccdc-6261-481d-8ab8-0872d822744e"
+      },
+      {
+        "kind": "ar_credit_on_control_not_party",
+        "paymentRef": "RCV-0038",
+        "invoiceNo": "DC-0008",
+        "customerName": "HASSAN   MARDAN",
+        "partyAccountCode": "AR-ED1ABD",
+        "amount": 200000,
+        "journalEntryNo": "RCV-0038",
+        "lineId": "d8cd7fad-a63f-49e1-878d-956e1607af1d"
+      },
+      {
+        "kind": "ar_credit_on_control_not_party",
+        "paymentRef": "RCV-0043",
+        "invoiceNo": "DC-0007",
+        "customerName": "MURAD  RAMDAS",
+        "partyAccountCode": "AR-166142",
+        "amount": 47140,
+        "journalEntryNo": "RCV-0043",
+        "lineId": "552a282c-af4c-42e1-a2b6-8df1113d2c07"
+      },
+      {
+        "kind": "ar_credit_on_control_not_party",
+        "paymentRef": "RCV-0052",
+        "invoiceNo": "DC-0006",
+        "customerName": "PARVAISE  MARDAN",
+        "partyAccountCode": "AR-B74D8B",
+        "amount": 45000,
+        "journalEntryNo": "RCV-0052",
+        "lineId": "8f2fef50-3634-4318-9917-54e5efd3c1e5"
+      },
+      {
+        "kind": "ar_credit_on_control_not_party",
+        "paymentRef": "RCV-0053",
+        "invoiceNo": "DC-0008",
+        "customerName": "HASSAN   MARDAN",
+        "partyAccountCode": "AR-ED1ABD",
+        "amount": 200000,
+        "journalEntryNo": "RCV-0053",
+        "lineId": "42ee18da-dd5b-49b7-8897-87a9ec5a937d"
+      },
+      {
+        "kind": "ar_credit_on_control_not_party",
+        "paymentRef": "RCV-0057",
+        "invoiceNo": "DC-0024",
+        "customerName": "MR ALMAS NOW",
+        "partyAccountCode": "AR-51A5ED",
+        "amount": 196500,
+        "journalEntryNo": "RCV-0057",
+        "lineId": "8ce7baad-2d18-460e-97f6-7a5e0b156a58"
+      },
+      {
+        "kind": "ar_credit_on_control_not_party",
+        "paymentRef": "RCV-0060",
+        "invoiceNo": "DC-0008",
+        "customerName": "HASSAN   MARDAN",
+        "partyAccountCode": "AR-ED1ABD",
+        "amount": 76839,
+        "journalEntryNo": "RCV-0060",
+        "lineId": "3830f099-3634-445e-bd09-c9f90647ccda"
+      },
+      {
+        "kind": "ar_credit_on_control_not_party",
+        "paymentRef": "RCV-0061",
+        "invoiceNo": "DC-0009",
+        "customerName": "HASSAN   MARDAN",
+        "partyAccountCode": "AR-ED1ABD",
+        "amount": 123161,
+        "journalEntryNo": "RCV-0061",
+        "lineId": "5283f1cf-d4d8-4547-b450-c34f3d052d21"
+      }
+    ],
+    "phase4Plan": {
+      "eligibleCount": 17,
+      "totalReclassAmount": 1999040,
+      "repairs": [
+        {
+          "lineId": "8869a4fc-49c5-44e0-bd83-4a68d2987acd",
+          "paymentRef": "RCV-0004",
+          "invoiceNo": "DC-0006",
+          "customerName": "PARVAISE  MARDAN",
+          "partyAccountCode": "AR-B74D8B",
+          "amount": 80000,
+          "fromAccountId": "51ef008a-00ca-48cd-94f8-4fdad79b7065",
+          "toAccountId": "0dfedf62-bba4-4afc-844c-a417cae13925",
+          "journalEntryNo": "RCV-0004",
+          "contactId": "b74d8b8e-7de4-4a5e-8931-bca7915570ed"
+        },
+        {
+          "lineId": "6c4389d7-21ec-4233-96f8-feda6df81384",
+          "paymentRef": "RCV-0005",
+          "invoiceNo": "DC-0007",
+          "customerName": "MURAD  RAMDAS",
+          "partyAccountCode": "AR-166142",
+          "amount": 70000,
+          "fromAccountId": "51ef008a-00ca-48cd-94f8-4fdad79b7065",
+          "toAccountId": "985c1389-92c7-4ca0-907e-ec3b5273dd46",
+          "journalEntryNo": "RCV-0005",
+          "contactId": "166142cd-98ee-4e0a-8827-0b666cb2e04d"
+        },
+        {
+          "lineId": "66867f5b-0d21-416f-a56b-3b355eec167d",
+          "paymentRef": "RCV-0006",
+          "invoiceNo": "DC-0008",
+          "customerName": "HASSAN   MARDAN",
+          "partyAccountCode": "AR-ED1ABD",
+          "amount": 200000,
+          "fromAccountId": "51ef008a-00ca-48cd-94f8-4fdad79b7065",
+          "toAccountId": "792df2e0-0b92-4b74-aeff-9c6446461209",
+          "journalEntryNo": "RCV-0006",
+          "contactId": "ed1abdc6-a701-488b-8a92-8efd1f9750a3"
+        },
+        {
+          "lineId": "45fccad2-2b60-4983-93a4-e6ed67ae15d8",
+          "paymentRef": "RCV-0011",
+          "invoiceNo": "DC-0008",
+          "customerName": "HASSAN   MARDAN",
+          "partyAccountCode": "AR-ED1ABD",
+          "amount": 200000,
+          "fromAccountId": "51ef008a-00ca-48cd-94f8-4fdad79b7065",
+          "toAccountId": "792df2e0-0b92-4b74-aeff-9c6446461209",
+          "journalEntryNo": "RCV-0011",
+          "contactId": "ed1abdc6-a701-488b-8a92-8efd1f9750a3"
+        },
+        {
+          "lineId": "e0b1dd07-870e-4629-9064-ab4fb1370a5c",
+          "paymentRef": "RCV-0017",
+          "invoiceNo": "DC-0007",
+          "customerName": "MURAD  RAMDAS",
+          "partyAccountCode": "AR-166142",
+          "amount": 70000,
+          "fromAccountId": "51ef008a-00ca-48cd-94f8-4fdad79b7065",
+          "toAccountId": "985c1389-92c7-4ca0-907e-ec3b5273dd46",
+          "journalEntryNo": "RCV-0017",
+          "contactId": "166142cd-98ee-4e0a-8827-0b666cb2e04d"
+        },
+        {
+          "lineId": "ff3d3e26-9e1c-4a3d-848d-d04978c15a75",
+          "paymentRef": "RCV-0024",
+          "invoiceNo": "DC-0008",
+          "customerName": "HASSAN   MARDAN",
+          "partyAccountCode": "AR-ED1ABD",
+          "amount": 300000,
+          "fromAccountId": "51ef008a-00ca-48cd-94f8-4fdad79b7065",
+          "toAccountId": "792df2e0-0b92-4b74-aeff-9c6446461209",
+          "journalEntryNo": "RCV-0024",
+          "contactId": "ed1abdc6-a701-488b-8a92-8efd1f9750a3"
+        },
+        {
+          "lineId": "c1a3d5cb-6e3f-40d7-ad49-40b3c2ed2222",
+          "paymentRef": "RCV-0028",
+          "invoiceNo": "DC-0006",
+          "customerName": "PARVAISE  MARDAN",
+          "partyAccountCode": "AR-B74D8B",
+          "amount": 70000,
+          "fromAccountId": "51ef008a-00ca-48cd-94f8-4fdad79b7065",
+          "toAccountId": "0dfedf62-bba4-4afc-844c-a417cae13925",
+          "journalEntryNo": "RCV-0028",
+          "contactId": "b74d8b8e-7de4-4a5e-8931-bca7915570ed"
+        },
+        {
+          "lineId": "6350371f-56e2-40bb-8aa3-a3674d774c20",
+          "paymentRef": "RCV-0031",
+          "invoiceNo": "DC-0025",
+          "customerName": "Walk-In Customer",
+          "partyAccountCode": "AR-7C5754",
+          "amount": 13400,
+          "fromAccountId": "51ef008a-00ca-48cd-94f8-4fdad79b7065",
+          "toAccountId": "e343a386-59cc-4da3-ae5b-0b1e9a87bc75",
+          "journalEntryNo": "RCV-0031",
+          "contactId": "7c575448-3382-4587-a1c6-f05847733058"
+        },
+        {
+          "lineId": "049e6f67-4ffd-4c5b-946a-30c033712d4d",
+          "paymentRef": "RCV-0032",
+          "invoiceNo": "DC-0025",
+          "customerName": "Walk-In Customer",
+          "partyAccountCode": "AR-7C5754",
+          "amount": 37000,
+          "fromAccountId": "51ef008a-00ca-48cd-94f8-4fdad79b7065",
+          "toAccountId": "e343a386-59cc-4da3-ae5b-0b1e9a87bc75",
+          "journalEntryNo": "RCV-0032",
+          "contactId": "7c575448-3382-4587-a1c6-f05847733058"
+        },
+        {
+          "lineId": "27e0ccdc-6261-481d-8ab8-0872d822744e",
+          "paymentRef": "RCV-0034",
+          "invoiceNo": "DC-0007",
+          "customerName": "MURAD  RAMDAS",
+          "partyAccountCode": "AR-166142",
+          "amount": 70000,
+          "fromAccountId": "51ef008a-00ca-48cd-94f8-4fdad79b7065",
+          "toAccountId": "985c1389-92c7-4ca0-907e-ec3b5273dd46",
+          "journalEntryNo": "RCV-0034",
+          "contactId": "166142cd-98ee-4e0a-8827-0b666cb2e04d"
+        },
+        {
+          "lineId": "d8cd7fad-a63f-49e1-878d-956e1607af1d",
+          "paymentRef": "RCV-0038",
+          "invoiceNo": "DC-0008",
+          "customerName": "HASSAN   MARDAN",
+          "partyAccountCode": "AR-ED1ABD",
+          "amount": 200000,
+          "fromAccountId": "51ef008a-00ca-48cd-94f8-4fdad79b7065",
+          "toAccountId": "792df2e0-0b92-4b74-aeff-9c6446461209",
+          "journalEntryNo": "RCV-0038",
+          "contactId": "ed1abdc6-a701-488b-8a92-8efd1f9750a3"
+        },
+        {
+          "lineId": "552a282c-af4c-42e1-a2b6-8df1113d2c07",
+          "paymentRef": "RCV-0043",
+          "invoiceNo": "DC-0007",
+          "customerName": "MURAD  RAMDAS",
+          "partyAccountCode": "AR-166142",
+          "amount": 47140,
+          "fromAccountId": "51ef008a-00ca-48cd-94f8-4fdad79b7065",
+          "toAccountId": "985c1389-92c7-4ca0-907e-ec3b5273dd46",
+          "journalEntryNo": "RCV-0043",
+          "contactId": "166142cd-98ee-4e0a-8827-0b666cb2e04d"
+        },
+        {
+          "lineId": "8f2fef50-3634-4318-9917-54e5efd3c1e5",
+          "paymentRef": "RCV-0052",
+          "invoiceNo": "DC-0006",
+          "customerName": "PARVAISE  MARDAN",
+          "partyAccountCode": "AR-B74D8B",
+          "amount": 45000,
+          "fromAccountId": "51ef008a-00ca-48cd-94f8-4fdad79b7065",
+          "toAccountId": "0dfedf62-bba4-4afc-844c-a417cae13925",
+          "journalEntryNo": "RCV-0052",
+          "contactId": "b74d8b8e-7de4-4a5e-8931-bca7915570ed"
+        },
+        {
+          "lineId": "42ee18da-dd5b-49b7-8897-87a9ec5a937d",
+          "paymentRef": "RCV-0053",
+          "invoiceNo": "DC-0008",
+          "customerName": "HASSAN   MARDAN",
+          "partyAccountCode": "AR-ED1ABD",
+          "amount": 200000,
+          "fromAccountId": "51ef008a-00ca-48cd-94f8-4fdad79b7065",
+          "toAccountId": "792df2e0-0b92-4b74-aeff-9c6446461209",
+          "journalEntryNo": "RCV-0053",
+          "contactId": "ed1abdc6-a701-488b-8a92-8efd1f9750a3"
+        },
+        {
+          "lineId": "8ce7baad-2d18-460e-97f6-7a5e0b156a58",
+          "paymentRef": "RCV-0057",
+          "invoiceNo": "DC-0024",
+          "customerName": "MR ALMAS NOW",
+          "partyAccountCode": "AR-51A5ED",
+          "amount": 196500,
+          "fromAccountId": "51ef008a-00ca-48cd-94f8-4fdad79b7065",
+          "toAccountId": "97b6b70b-df35-4afa-ae4e-6465d6207b67",
+          "journalEntryNo": "RCV-0057",
+          "contactId": "51a5ede0-6ae9-4a1a-8314-38ae5cb9f197"
+        },
+        {
+          "lineId": "3830f099-3634-445e-bd09-c9f90647ccda",
+          "paymentRef": "RCV-0060",
+          "invoiceNo": "DC-0008",
+          "customerName": "HASSAN   MARDAN",
+          "partyAccountCode": "AR-ED1ABD",
+          "amount": 76839,
+          "fromAccountId": "51ef008a-00ca-48cd-94f8-4fdad79b7065",
+          "toAccountId": "792df2e0-0b92-4b74-aeff-9c6446461209",
+          "journalEntryNo": "RCV-0060",
+          "contactId": "ed1abdc6-a701-488b-8a92-8efd1f9750a3"
+        },
+        {
+          "lineId": "5283f1cf-d4d8-4547-b450-c34f3d052d21",
+          "paymentRef": "RCV-0061",
+          "invoiceNo": "DC-0009",
+          "customerName": "HASSAN   MARDAN",
+          "partyAccountCode": "AR-ED1ABD",
+          "amount": 123161,
+          "fromAccountId": "51ef008a-00ca-48cd-94f8-4fdad79b7065",
+          "toAccountId": "792df2e0-0b92-4b74-aeff-9c6446461209",
+          "journalEntryNo": "RCV-0061",
+          "contactId": "ed1abdc6-a701-488b-8a92-8efd1f9750a3"
+        }
+      ],
+      "customerProjections": [
+        {
+          "contactId": "ed1abdc6-a701-488b-8a92-8efd1f9750a3",
+          "customerName": "HASSAN   MARDAN",
+          "partyAccountCode": "AR-ED1ABD",
+          "glBefore": 6009458,
+          "glAfter": 4709458,
+          "operationalDue": 5059563,
+          "gapBefore": 949895,
+          "gapAfter": -350105
+        },
+        {
+          "contactId": "166142cd-98ee-4e0a-8827-0b666cb2e04d",
+          "customerName": "MURAD  RAMDAS",
+          "partyAccountCode": "AR-166142",
+          "glBefore": 257140,
+          "glAfter": 0,
+          "operationalDue": 0,
+          "gapBefore": 257140,
+          "gapAfter": 0
+        },
+        {
+          "contactId": "51a5ede0-6ae9-4a1a-8314-38ae5cb9f197",
+          "customerName": "MR ALMAS NOW",
+          "partyAccountCode": "AR-51A5ED",
+          "glBefore": 196800,
+          "glAfter": 300,
+          "operationalDue": 300,
+          "gapBefore": 196500,
+          "gapAfter": 0
+        },
+        {
+          "contactId": "b74d8b8e-7de4-4a5e-8931-bca7915570ed",
+          "customerName": "PARVAISE  MARDAN",
+          "partyAccountCode": "AR-B74D8B",
+          "glBefore": 195286,
+          "glAfter": 286,
+          "operationalDue": 286,
+          "gapBefore": 195000,
+          "gapAfter": 0
+        },
+        {
+          "contactId": "7c575448-3382-4587-a1c6-f05847733058",
+          "customerName": "Walk-in Customer",
+          "partyAccountCode": "AR-7C5754",
+          "glBefore": 50400,
+          "glAfter": 0,
+          "operationalDue": 0,
+          "gapBefore": 50400,
+          "gapAfter": 0
+        }
+      ],
+      "strategyNote": "UPDATE journal_entry_lines.account_id from control 1100 to party AR-* when the linked sale document JE debited the party sub-ledger. Matches RAEES LHR repair (2026-06-16)."
+    },
+    "partyReclassEligible": 17,
+    "partyReclassAmount": 1999040,
+    "partyGlGapCustomerCount": 5,
     "examples": {
-      "paymentIssues": [],
+      "paymentIssues": [
+        {
+          "kind": "ar_credit_on_control_not_party",
+          "paymentRef": "RCV-0004",
+          "invoiceNo": "DC-0006",
+          "customerName": "PARVAISE  MARDAN",
+          "partyAccountCode": "AR-B74D8B",
+          "amount": 80000,
+          "journalEntryNo": "RCV-0004",
+          "lineId": "8869a4fc-49c5-44e0-bd83-4a68d2987acd"
+        },
+        {
+          "kind": "ar_credit_on_control_not_party",
+          "paymentRef": "RCV-0005",
+          "invoiceNo": "DC-0007",
+          "customerName": "MURAD  RAMDAS",
+          "partyAccountCode": "AR-166142",
+          "amount": 70000,
+          "journalEntryNo": "RCV-0005",
+          "lineId": "6c4389d7-21ec-4233-96f8-feda6df81384"
+        },
+        {
+          "kind": "ar_credit_on_control_not_party",
+          "paymentRef": "RCV-0006",
+          "invoiceNo": "DC-0008",
+          "customerName": "HASSAN   MARDAN",
+          "partyAccountCode": "AR-ED1ABD",
+          "amount": 200000,
+          "journalEntryNo": "RCV-0006",
+          "lineId": "66867f5b-0d21-416f-a56b-3b355eec167d"
+        },
+        {
+          "kind": "ar_credit_on_control_not_party",
+          "paymentRef": "RCV-0011",
+          "invoiceNo": "DC-0008",
+          "customerName": "HASSAN   MARDAN",
+          "partyAccountCode": "AR-ED1ABD",
+          "amount": 200000,
+          "journalEntryNo": "RCV-0011",
+          "lineId": "45fccad2-2b60-4983-93a4-e6ed67ae15d8"
+        },
+        {
+          "kind": "ar_credit_on_control_not_party",
+          "paymentRef": "RCV-0017",
+          "invoiceNo": "DC-0007",
+          "customerName": "MURAD  RAMDAS",
+          "partyAccountCode": "AR-166142",
+          "amount": 70000,
+          "journalEntryNo": "RCV-0017",
+          "lineId": "e0b1dd07-870e-4629-9064-ab4fb1370a5c"
+        },
+        {
+          "kind": "ar_credit_on_control_not_party",
+          "paymentRef": "RCV-0024",
+          "invoiceNo": "DC-0008",
+          "customerName": "HASSAN   MARDAN",
+          "partyAccountCode": "AR-ED1ABD",
+          "amount": 300000,
+          "journalEntryNo": "RCV-0024",
+          "lineId": "ff3d3e26-9e1c-4a3d-848d-d04978c15a75"
+        },
+        {
+          "kind": "ar_credit_on_control_not_party",
+          "paymentRef": "RCV-0028",
+          "invoiceNo": "DC-0006",
+          "customerName": "PARVAISE  MARDAN",
+          "partyAccountCode": "AR-B74D8B",
+          "amount": 70000,
+          "journalEntryNo": "RCV-0028",
+          "lineId": "c1a3d5cb-6e3f-40d7-ad49-40b3c2ed2222"
+        },
+        {
+          "kind": "ar_credit_on_control_not_party",
+          "paymentRef": "RCV-0031",
+          "invoiceNo": "DC-0025",
+          "customerName": "Walk-In Customer",
+          "partyAccountCode": "AR-7C5754",
+          "amount": 13400,
+          "journalEntryNo": "RCV-0031",
+          "lineId": "6350371f-56e2-40bb-8aa3-a3674d774c20"
+        },
+        {
+          "kind": "ar_credit_on_control_not_party",
+          "paymentRef": "RCV-0032",
+          "invoiceNo": "DC-0025",
+          "customerName": "Walk-In Customer",
+          "partyAccountCode": "AR-7C5754",
+          "amount": 37000,
+          "journalEntryNo": "RCV-0032",
+          "lineId": "049e6f67-4ffd-4c5b-946a-30c033712d4d"
+        },
+        {
+          "kind": "ar_credit_on_control_not_party",
+          "paymentRef": "RCV-0034",
+          "invoiceNo": "DC-0007",
+          "customerName": "MURAD  RAMDAS",
+          "partyAccountCode": "AR-166142",
+          "amount": 70000,
+          "journalEntryNo": "RCV-0034",
+          "lineId": "27e0ccdc-6261-481d-8ab8-0872d822744e"
+        },
+        {
+          "kind": "ar_credit_on_control_not_party",
+          "paymentRef": "RCV-0038",
+          "invoiceNo": "DC-0008",
+          "customerName": "HASSAN   MARDAN",
+          "partyAccountCode": "AR-ED1ABD",
+          "amount": 200000,
+          "journalEntryNo": "RCV-0038",
+          "lineId": "d8cd7fad-a63f-49e1-878d-956e1607af1d"
+        },
+        {
+          "kind": "ar_credit_on_control_not_party",
+          "paymentRef": "RCV-0043",
+          "invoiceNo": "DC-0007",
+          "customerName": "MURAD  RAMDAS",
+          "partyAccountCode": "AR-166142",
+          "amount": 47140,
+          "journalEntryNo": "RCV-0043",
+          "lineId": "552a282c-af4c-42e1-a2b6-8df1113d2c07"
+        },
+        {
+          "kind": "ar_credit_on_control_not_party",
+          "paymentRef": "RCV-0052",
+          "invoiceNo": "DC-0006",
+          "customerName": "PARVAISE  MARDAN",
+          "partyAccountCode": "AR-B74D8B",
+          "amount": 45000,
+          "journalEntryNo": "RCV-0052",
+          "lineId": "8f2fef50-3634-4318-9917-54e5efd3c1e5"
+        },
+        {
+          "kind": "ar_credit_on_control_not_party",
+          "paymentRef": "RCV-0053",
+          "invoiceNo": "DC-0008",
+          "customerName": "HASSAN   MARDAN",
+          "partyAccountCode": "AR-ED1ABD",
+          "amount": 200000,
+          "journalEntryNo": "RCV-0053",
+          "lineId": "42ee18da-dd5b-49b7-8897-87a9ec5a937d"
+        },
+        {
+          "kind": "ar_credit_on_control_not_party",
+          "paymentRef": "RCV-0057",
+          "invoiceNo": "DC-0024",
+          "customerName": "MR ALMAS NOW",
+          "partyAccountCode": "AR-51A5ED",
+          "amount": 196500,
+          "journalEntryNo": "RCV-0057",
+          "lineId": "8ce7baad-2d18-460e-97f6-7a5e0b156a58"
+        },
+        {
+          "kind": "ar_credit_on_control_not_party",
+          "paymentRef": "RCV-0060",
+          "invoiceNo": "DC-0008",
+          "customerName": "HASSAN   MARDAN",
+          "partyAccountCode": "AR-ED1ABD",
+          "amount": 76839,
+          "journalEntryNo": "RCV-0060",
+          "lineId": "3830f099-3634-445e-bd09-c9f90647ccda"
+        },
+        {
+          "kind": "ar_credit_on_control_not_party",
+          "paymentRef": "RCV-0061",
+          "invoiceNo": "DC-0009",
+          "customerName": "HASSAN   MARDAN",
+          "partyAccountCode": "AR-ED1ABD",
+          "amount": 123161,
+          "journalEntryNo": "RCV-0061",
+          "lineId": "5283f1cf-d4d8-4547-b450-c34f3d052d21"
+        }
+      ],
       "customers": [
         {
           "invoiceNo": "DC-0073",
@@ -373,40 +981,92 @@
           "due": 191026
         },
         {
+          "invoiceNo": "DC-0017",
+          "total": 463626,
+          "paid": 0,
+          "due": 463626
+        },
+        {
+          "invoiceNo": "DC-0036",
+          "total": 255864,
+          "paid": 0,
+          "due": 255864
+        },
+        {
           "invoiceNo": "DC-0042",
           "total": 204948,
           "paid": 0,
           "due": 204948
         },
         {
-          "invoiceNo": "DC-0017",
-          "total": 463626,
-          "paid": 463626,
-          "due": 0
-        },
-        {
-          "invoiceNo": "DC-0036",
-          "total": 255864,
-          "paid": 255864,
-          "due": 0
-        },
-        {
           "invoiceNo": "DC-0078",
           "total": 287700,
-          "paid": 287700,
-          "due": 0
+          "paid": 0,
+          "due": 287700
+        }
+      ],
+      "partyGlProjections": [
+        {
+          "contactId": "ed1abdc6-a701-488b-8a92-8efd1f9750a3",
+          "customerName": "HASSAN   MARDAN",
+          "partyAccountCode": "AR-ED1ABD",
+          "glBefore": 6009458,
+          "glAfter": 4709458,
+          "operationalDue": 5059563,
+          "gapBefore": 949895,
+          "gapAfter": -350105
+        },
+        {
+          "contactId": "166142cd-98ee-4e0a-8827-0b666cb2e04d",
+          "customerName": "MURAD  RAMDAS",
+          "partyAccountCode": "AR-166142",
+          "glBefore": 257140,
+          "glAfter": 0,
+          "operationalDue": 0,
+          "gapBefore": 257140,
+          "gapAfter": 0
+        },
+        {
+          "contactId": "51a5ede0-6ae9-4a1a-8314-38ae5cb9f197",
+          "customerName": "MR ALMAS NOW",
+          "partyAccountCode": "AR-51A5ED",
+          "glBefore": 196800,
+          "glAfter": 300,
+          "operationalDue": 300,
+          "gapBefore": 196500,
+          "gapAfter": 0
+        },
+        {
+          "contactId": "b74d8b8e-7de4-4a5e-8931-bca7915570ed",
+          "customerName": "PARVAISE  MARDAN",
+          "partyAccountCode": "AR-B74D8B",
+          "glBefore": 195286,
+          "glAfter": 286,
+          "operationalDue": 286,
+          "gapBefore": 195000,
+          "gapAfter": 0
+        },
+        {
+          "contactId": "7c575448-3382-4587-a1c6-f05847733058",
+          "customerName": "Walk-in Customer",
+          "partyAccountCode": "AR-7C5754",
+          "glBefore": 50400,
+          "glAfter": 0,
+          "operationalDue": 0,
+          "gapBefore": 50400,
+          "gapAfter": 0
         }
       ]
     }
   },
   "taskE": {
-    "generatedAt": "2026-06-15T18:32:47.924Z",
+    "generatedAt": "2026-06-16T09:14:43.815Z",
     "accountSnapshots": {
       "ar1100": {
         "id": "51ef008a-00ca-48cd-94f8-4fdad79b7065",
         "code": "1100",
         "name": "Accounts Receivable",
-        "balance": -21416540
+        "balance": -20816540
       },
       "inventory1200": {
         "id": "250bbcfc-3f85-4614-879c-5be749399810",
@@ -452,9 +1112,9 @@
       {
         "topic": "AR vs customer dues",
         "explanation": [
-          "Sum of sale due_amount: Rs 17792088",
-          "GL AR (1100) balance: Rs -21416540",
-          "Gap: Rs 39208628",
+          "Sum of sale due_amount: Rs 27548220",
+          "GL AR (1100) balance: Rs -20816540",
+          "Gap: Rs 48364760",
           "Phase 6 sell returns (~Rs 1.06M) may explain part of any residual AR gap."
         ]
       },
@@ -524,15 +1184,20 @@
       },
       {
         "phase": 4,
-        "name": "AR / payment party tie-out repair",
-        "description": "Reclass payment JEs to correct cash/bank or customer AR sub-ledger if mismatches found.",
-        "paymentIssueCount": 0,
-        "arGap": 39208628,
+        "name": "AR payment party reclass (1100 → AR-*)",
+        "description": "Relink sale receipt AR credits from control 1100 to customer party sub-ledger when the sale document JE debited AR-*.",
+        "eligibleCount": 17,
+        "expectedReclassTotal": 1999040,
+        "paymentIssueCount": 17,
+        "arGap": 48364760,
         "gates": [
-          "Only if Task D finds wrong account or party",
-          "No duplicate payment posting"
+          "Dry-run review required",
+          "Pass --apply --apply-phase 4 --approve-ar-party-reclass",
+          "Only moves AR credit lines on payment JEs (no sale total / payment amount changes)"
         ],
-        "blocked": false
+        "blocked": true,
+        "requiresUserApproval": true,
+        "note": "UPDATE journal_entry_lines.account_id from control 1100 to party AR-* when the linked sale document JE debited the party sub-ledger. Matches RAEES LHR repair (2026-06-16)."
       },
       {
         "phase": 5,
@@ -609,7 +1274,7 @@
       "phase1Eligible": 0,
       "phase2Eligible": 0,
       "phase3RequiresApproval": true,
-      "phase4PaymentIssues": 0
+      "phase4PaymentIssues": 17
     }
   },
   "taskG": {
@@ -720,7 +1385,7 @@
   },
   "phase75Plan": {
     "dryRunOnly": true,
-    "mapPath": "/Users/ndm/Documents/Development/CursorDev/NEWPOSV3/DIN CHINA/07_maps_json/din_china_screenshot_discount_backfill_map.json",
+    "mapPath": "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\DIN CHINA\\07_maps_json\\din_china_screenshot_discount_backfill_map.json",
     "mapSource": "old_erp_customers_suppliers_screenshot_2026",
     "discountAccount": {
       "id": "327829be-35fc-4700-bd60-7767e74a699c",
@@ -776,14 +1441,14 @@
         "saleBefore": {
           "total": 100000,
           "discount_amount": 35218,
-          "paid_amount": 0,
+          "paid_amount": 100000,
           "due_amount": 0,
           "payment_status": "paid"
         },
         "saleAfter": {
           "total": 100000,
           "discount_amount": 35218,
-          "paid_amount": 0,
+          "paid_amount": 100000,
           "due_amount": 0,
           "payment_status": "paid"
         },
@@ -847,16 +1512,271 @@
     "Purchase total mismatch -67514347.4 requires user approval before Phase 3"
   ],
   "auditStatus": {
-    "criticalBlockingErrors": [
+    "criticalBlockingErrors": [],
+    "phase2Blockers": [
       "12 products missing cost source — Phase 2 COGS repair blocked"
     ],
     "approvalRequired": [
       "Purchase total mismatch -67514347.4 requires user approval before Phase 3"
     ],
-    "arGapNote": "AR tie-out gap Rs 39208628 — Phase 4 review; Phase 6 returns (~Rs 1.06M) may explain part",
+    "arGapNote": "AR tie-out gap Rs 48364760 — Phase 4 review; Phase 6 returns (~Rs 1.06M) may explain part",
     "phase1Complete": true,
     "phase2Complete": false,
+    "phase4Ready": true,
+    "phase4Eligible": 17,
     "coreAuditPass": false,
-    "dryRunExitCode": 1
+    "dryRunExitCode": 0
+  },
+  "applyResult": {
+    "appliedAt": "2026-06-16T09:14:47.476Z",
+    "phases": {
+      "4": {
+        "updated": 17,
+        "skipped": 0,
+        "errors": [],
+        "rows": [
+          {
+            "lineId": "8869a4fc-49c5-44e0-bd83-4a68d2987acd",
+            "paymentRef": "RCV-0004",
+            "invoiceNo": "DC-0006",
+            "customerName": "PARVAISE  MARDAN",
+            "partyAccountCode": "AR-B74D8B",
+            "amount": 80000,
+            "fromAccountId": "51ef008a-00ca-48cd-94f8-4fdad79b7065",
+            "toAccountId": "0dfedf62-bba4-4afc-844c-a417cae13925",
+            "journalEntryNo": "RCV-0004",
+            "contactId": "b74d8b8e-7de4-4a5e-8931-bca7915570ed",
+            "status": "updated"
+          },
+          {
+            "lineId": "6c4389d7-21ec-4233-96f8-feda6df81384",
+            "paymentRef": "RCV-0005",
+            "invoiceNo": "DC-0007",
+            "customerName": "MURAD  RAMDAS",
+            "partyAccountCode": "AR-166142",
+            "amount": 70000,
+            "fromAccountId": "51ef008a-00ca-48cd-94f8-4fdad79b7065",
+            "toAccountId": "985c1389-92c7-4ca0-907e-ec3b5273dd46",
+            "journalEntryNo": "RCV-0005",
+            "contactId": "166142cd-98ee-4e0a-8827-0b666cb2e04d",
+            "status": "updated"
+          },
+          {
+            "lineId": "66867f5b-0d21-416f-a56b-3b355eec167d",
+            "paymentRef": "RCV-0006",
+            "invoiceNo": "DC-0008",
+            "customerName": "HASSAN   MARDAN",
+            "partyAccountCode": "AR-ED1ABD",
+            "amount": 200000,
+            "fromAccountId": "51ef008a-00ca-48cd-94f8-4fdad79b7065",
+            "toAccountId": "792df2e0-0b92-4b74-aeff-9c6446461209",
+            "journalEntryNo": "RCV-0006",
+            "contactId": "ed1abdc6-a701-488b-8a92-8efd1f9750a3",
+            "status": "updated"
+          },
+          {
+            "lineId": "45fccad2-2b60-4983-93a4-e6ed67ae15d8",
+            "paymentRef": "RCV-0011",
+            "invoiceNo": "DC-0008",
+            "customerName": "HASSAN   MARDAN",
+            "partyAccountCode": "AR-ED1ABD",
+            "amount": 200000,
+            "fromAccountId": "51ef008a-00ca-48cd-94f8-4fdad79b7065",
+            "toAccountId": "792df2e0-0b92-4b74-aeff-9c6446461209",
+            "journalEntryNo": "RCV-0011",
+            "contactId": "ed1abdc6-a701-488b-8a92-8efd1f9750a3",
+            "status": "updated"
+          },
+          {
+            "lineId": "e0b1dd07-870e-4629-9064-ab4fb1370a5c",
+            "paymentRef": "RCV-0017",
+            "invoiceNo": "DC-0007",
+            "customerName": "MURAD  RAMDAS",
+            "partyAccountCode": "AR-166142",
+            "amount": 70000,
+            "fromAccountId": "51ef008a-00ca-48cd-94f8-4fdad79b7065",
+            "toAccountId": "985c1389-92c7-4ca0-907e-ec3b5273dd46",
+            "journalEntryNo": "RCV-0017",
+            "contactId": "166142cd-98ee-4e0a-8827-0b666cb2e04d",
+            "status": "updated"
+          },
+          {
+            "lineId": "ff3d3e26-9e1c-4a3d-848d-d04978c15a75",
+            "paymentRef": "RCV-0024",
+            "invoiceNo": "DC-0008",
+            "customerName": "HASSAN   MARDAN",
+            "partyAccountCode": "AR-ED1ABD",
+            "amount": 300000,
+            "fromAccountId": "51ef008a-00ca-48cd-94f8-4fdad79b7065",
+            "toAccountId": "792df2e0-0b92-4b74-aeff-9c6446461209",
+            "journalEntryNo": "RCV-0024",
+            "contactId": "ed1abdc6-a701-488b-8a92-8efd1f9750a3",
+            "status": "updated"
+          },
+          {
+            "lineId": "c1a3d5cb-6e3f-40d7-ad49-40b3c2ed2222",
+            "paymentRef": "RCV-0028",
+            "invoiceNo": "DC-0006",
+            "customerName": "PARVAISE  MARDAN",
+            "partyAccountCode": "AR-B74D8B",
+            "amount": 70000,
+            "fromAccountId": "51ef008a-00ca-48cd-94f8-4fdad79b7065",
+            "toAccountId": "0dfedf62-bba4-4afc-844c-a417cae13925",
+            "journalEntryNo": "RCV-0028",
+            "contactId": "b74d8b8e-7de4-4a5e-8931-bca7915570ed",
+            "status": "updated"
+          },
+          {
+            "lineId": "6350371f-56e2-40bb-8aa3-a3674d774c20",
+            "paymentRef": "RCV-0031",
+            "invoiceNo": "DC-0025",
+            "customerName": "Walk-In Customer",
+            "partyAccountCode": "AR-7C5754",
+            "amount": 13400,
+            "fromAccountId": "51ef008a-00ca-48cd-94f8-4fdad79b7065",
+            "toAccountId": "e343a386-59cc-4da3-ae5b-0b1e9a87bc75",
+            "journalEntryNo": "RCV-0031",
+            "contactId": "7c575448-3382-4587-a1c6-f05847733058",
+            "status": "updated"
+          },
+          {
+            "lineId": "049e6f67-4ffd-4c5b-946a-30c033712d4d",
+            "paymentRef": "RCV-0032",
+            "invoiceNo": "DC-0025",
+            "customerName": "Walk-In Customer",
+            "partyAccountCode": "AR-7C5754",
+            "amount": 37000,
+            "fromAccountId": "51ef008a-00ca-48cd-94f8-4fdad79b7065",
+            "toAccountId": "e343a386-59cc-4da3-ae5b-0b1e9a87bc75",
+            "journalEntryNo": "RCV-0032",
+            "contactId": "7c575448-3382-4587-a1c6-f05847733058",
+            "status": "updated"
+          },
+          {
+            "lineId": "27e0ccdc-6261-481d-8ab8-0872d822744e",
+            "paymentRef": "RCV-0034",
+            "invoiceNo": "DC-0007",
+            "customerName": "MURAD  RAMDAS",
+            "partyAccountCode": "AR-166142",
+            "amount": 70000,
+            "fromAccountId": "51ef008a-00ca-48cd-94f8-4fdad79b7065",
+            "toAccountId": "985c1389-92c7-4ca0-907e-ec3b5273dd46",
+            "journalEntryNo": "RCV-0034",
+            "contactId": "166142cd-98ee-4e0a-8827-0b666cb2e04d",
+            "status": "updated"
+          },
+          {
+            "lineId": "d8cd7fad-a63f-49e1-878d-956e1607af1d",
+            "paymentRef": "RCV-0038",
+            "invoiceNo": "DC-0008",
+            "customerName": "HASSAN   MARDAN",
+            "partyAccountCode": "AR-ED1ABD",
+            "amount": 200000,
+            "fromAccountId": "51ef008a-00ca-48cd-94f8-4fdad79b7065",
+            "toAccountId": "792df2e0-0b92-4b74-aeff-9c6446461209",
+            "journalEntryNo": "RCV-0038",
+            "contactId": "ed1abdc6-a701-488b-8a92-8efd1f9750a3",
+            "status": "updated"
+          },
+          {
+            "lineId": "552a282c-af4c-42e1-a2b6-8df1113d2c07",
+            "paymentRef": "RCV-0043",
+            "invoiceNo": "DC-0007",
+            "customerName": "MURAD  RAMDAS",
+            "partyAccountCode": "AR-166142",
+            "amount": 47140,
+            "fromAccountId": "51ef008a-00ca-48cd-94f8-4fdad79b7065",
+            "toAccountId": "985c1389-92c7-4ca0-907e-ec3b5273dd46",
+            "journalEntryNo": "RCV-0043",
+            "contactId": "166142cd-98ee-4e0a-8827-0b666cb2e04d",
+            "status": "updated"
+          },
+          {
+            "lineId": "8f2fef50-3634-4318-9917-54e5efd3c1e5",
+            "paymentRef": "RCV-0052",
+            "invoiceNo": "DC-0006",
+            "customerName": "PARVAISE  MARDAN",
+            "partyAccountCode": "AR-B74D8B",
+            "amount": 45000,
+            "fromAccountId": "51ef008a-00ca-48cd-94f8-4fdad79b7065",
+            "toAccountId": "0dfedf62-bba4-4afc-844c-a417cae13925",
+            "journalEntryNo": "RCV-0052",
+            "contactId": "b74d8b8e-7de4-4a5e-8931-bca7915570ed",
+            "status": "updated"
+          },
+          {
+            "lineId": "42ee18da-dd5b-49b7-8897-87a9ec5a937d",
+            "paymentRef": "RCV-0053",
+            "invoiceNo": "DC-0008",
+            "customerName": "HASSAN   MARDAN",
+            "partyAccountCode": "AR-ED1ABD",
+            "amount": 200000,
+            "fromAccountId": "51ef008a-00ca-48cd-94f8-4fdad79b7065",
+            "toAccountId": "792df2e0-0b92-4b74-aeff-9c6446461209",
+            "journalEntryNo": "RCV-0053",
+            "contactId": "ed1abdc6-a701-488b-8a92-8efd1f9750a3",
+            "status": "updated"
+          },
+          {
+            "lineId": "8ce7baad-2d18-460e-97f6-7a5e0b156a58",
+            "paymentRef": "RCV-0057",
+            "invoiceNo": "DC-0024",
+            "customerName": "MR ALMAS NOW",
+            "partyAccountCode": "AR-51A5ED",
+            "amount": 196500,
+            "fromAccountId": "51ef008a-00ca-48cd-94f8-4fdad79b7065",
+            "toAccountId": "97b6b70b-df35-4afa-ae4e-6465d6207b67",
+            "journalEntryNo": "RCV-0057",
+            "contactId": "51a5ede0-6ae9-4a1a-8314-38ae5cb9f197",
+            "status": "updated"
+          },
+          {
+            "lineId": "3830f099-3634-445e-bd09-c9f90647ccda",
+            "paymentRef": "RCV-0060",
+            "invoiceNo": "DC-0008",
+            "customerName": "HASSAN   MARDAN",
+            "partyAccountCode": "AR-ED1ABD",
+            "amount": 76839,
+            "fromAccountId": "51ef008a-00ca-48cd-94f8-4fdad79b7065",
+            "toAccountId": "792df2e0-0b92-4b74-aeff-9c6446461209",
+            "journalEntryNo": "RCV-0060",
+            "contactId": "ed1abdc6-a701-488b-8a92-8efd1f9750a3",
+            "status": "updated"
+          },
+          {
+            "lineId": "5283f1cf-d4d8-4547-b450-c34f3d052d21",
+            "paymentRef": "RCV-0061",
+            "invoiceNo": "DC-0009",
+            "customerName": "HASSAN   MARDAN",
+            "partyAccountCode": "AR-ED1ABD",
+            "amount": 123161,
+            "fromAccountId": "51ef008a-00ca-48cd-94f8-4fdad79b7065",
+            "toAccountId": "792df2e0-0b92-4b74-aeff-9c6446461209",
+            "journalEntryNo": "RCV-0061",
+            "contactId": "ed1abdc6-a701-488b-8a92-8efd1f9750a3",
+            "status": "updated"
+          }
+        ],
+        "appliedCount": 17,
+        "ok": true
+      }
+    },
+    "errors": [],
+    "stats": {
+      "phase1Created": 0,
+      "phase1Skipped": 0,
+      "phase2Updated": 0,
+      "phase2Skipped": 0,
+      "phase3Skipped": 0,
+      "phase4Skipped": 0,
+      "phase6Created": 0,
+      "phase6Skipped": 0,
+      "phase7Updated": 0,
+      "phase7Skipped": 0,
+      "phase75Updated": 0,
+      "phase75Skipped": 0,
+      "phase4Updated": 17
+    },
+    "ok": true
   }
 }

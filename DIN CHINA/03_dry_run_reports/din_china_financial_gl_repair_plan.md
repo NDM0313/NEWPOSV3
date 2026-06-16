@@ -1,6 +1,6 @@
 # DIN CHINA Financial GL Repair Plan — Dry Run Only
 
-**Generated:** 2026-06-15T18:32:51.597Z
+**Generated:** 2026-06-16T09:14:47.464Z
 
 **Apply was NOT run.** This document is a preview only.
 
@@ -48,15 +48,18 @@ Adjust stale ERP purchase total (67,978,418.40) vs updated CSV (67,514,347.40).
   - Flag --approve-purchase-repair on apply (future)
 - Note: Manual approval required — adjust purchase header total via approved migration only
 
-### Phase 4 — AR / payment party tie-out repair
+### Phase 4 — AR payment party reclass (1100 → AR-*)
 
-Reclass payment JEs to correct cash/bank or customer AR sub-ledger if mismatches found.
+Relink sale receipt AR credits from control 1100 to customer party sub-ledger when the sale document JE debited AR-*.
 
-- Payment issues: 0
-- Blocked for apply: NO
+- Eligible: 17
+- Payment issues: 17
+- Blocked for apply: YES
 - Gates:
-  - Only if Task D finds wrong account or party
-  - No duplicate payment posting
+  - Dry-run review required
+  - Pass --apply --apply-phase 4 --approve-ar-party-reclass
+  - Only moves AR credit lines on payment JEs (no sale total / payment amount changes)
+- Note: UPDATE journal_entry_lines.account_id from control 1100 to party AR-* when the linked sale document JE debited the party sub-ledger. Matches RAEES LHR repair (2026-06-16).
 
 ### Phase 5 — Owner Equity Opening Clearing review
 

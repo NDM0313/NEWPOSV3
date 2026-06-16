@@ -1,6 +1,6 @@
 # DIN CHINA Purchase / Inventory GL Tie-Out — Dry Run
 
-**Generated:** 2026-06-15T18:32:51.597Z
+**Generated:** 2026-06-16T09:14:47.464Z
 
 ## Summary
 

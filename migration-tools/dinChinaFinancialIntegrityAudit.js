@@ -131,6 +131,7 @@ async function runAudit(supabase, ctx) {
   const auditStatus = classifyAuditErrors(blockingErrors, taskResults);
   const taskF = buildRepairPlan(ctx, taskResults, blockingErrors, {
     taskG,
+    phase4Plan: taskD.phase4Plan,
     phase6Plan,
     phase7Plan,
     phase75Plan,
@@ -293,16 +294,21 @@ async function main() {
 
 
   if (!apply) {
-    if (audit.auditStatus?.coreAuditPass) {
+    const st = audit.auditStatus;
+    if (st?.coreAuditPass) {
       console.log(
-        '\nDry-run PASS. Phases 1–2 complete. Phase 3 (purchase −464,071) needs your approval before apply.',
+        '\nDry-run PASS. Phases 1–2 complete. Phase 3 (purchase) needs your approval before apply.',
       );
-    } else if (audit.auditStatus?.criticalBlockingErrors?.length) {
+    } else if (st?.criticalBlockingErrors?.length) {
       console.log('\nDry-run FAILED. Fix critical blocking errors above, then re-run.');
+    } else if (st?.phase4Ready) {
+      console.log(
+        '\nDry-run PASS for Phase 4 (AR party reclass). Review reports in DIN CHINA/03_dry_run_reports/, then apply when approved.',
+      );
     } else {
       console.log('\nDry-run complete. Review pending items above.');
     }
-    process.exit(audit.auditStatus?.dryRunExitCode ?? 0);
+    process.exit(st?.dryRunExitCode ?? 0);
   }
 
 

@@ -1,6 +1,6 @@
 # DIN CHINA Sale Returns & Discount GL Tie-Out — Dry Run
 
-**Generated:** 2026-06-15T18:32:51.597Z
+**Generated:** 2026-06-16T09:14:47.464Z
 **Company:** 30bd8592-3384-4f34-899a-f3907e336485
 **Branch:** DIN CHINA (BL0002)
 
@@ -138,14 +138,14 @@ Original import excluded sell_return CN2025/0001 and related CN docs. Phase 6 im
     "saleBefore": {
       "total": 100000,
       "discount_amount": 35218,
-      "paid_amount": 0,
+      "paid_amount": 100000,
       "due_amount": 0,
       "payment_status": "paid"
     },
     "saleAfter": {
       "total": 100000,
       "discount_amount": 35218,
-      "paid_amount": 0,
+      "paid_amount": 100000,
       "due_amount": 0,
       "payment_status": "paid"
     },
