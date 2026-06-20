@@ -10,6 +10,8 @@ export const FEATURE_KEYS = {
   STUDIO_PRODUCTION_V2: 'studio_production_v2',
   STUDIO_PRODUCTION_V3: 'studio_production_v3',
   STUDIO_CUSTOMER_INVOICE_V1: 'studio_customer_invoice_v1',
+  /** Shadow unified ledger engine — default OFF; no row in DB = disabled */
+  UNIFIED_LEDGER_ENGINE: 'unified_ledger_engine',
 } as const;
 
 export type FeatureKey = (typeof FEATURE_KEYS)[keyof typeof FEATURE_KEYS];

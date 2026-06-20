@@ -112,6 +112,9 @@ const AccountingEditTracePage = lazy(() => import('./components/test/AccountingE
 const SimpleCanonicalStatementPage = lazy(() => import('./components/test/SimpleCanonicalStatementPage').then(m => ({ default: m.default })));
 const ArApTruthLabPage = lazy(() => import('./components/test/ArApTruthLabPage').then(m => ({ default: m.default })));
 const EffectivePartyLedgerPage = lazy(() => import('./components/accounting/EffectivePartyLedgerPage').then(m => ({ default: m.default })));
+const UnifiedLedgerTieOutPage = lazy(() =>
+  import('./components/admin/UnifiedLedgerTieOutPage').then((m) => ({ default: m.default }))
+);
 const StudioProductionV2Dashboard = lazy(() => import('./components/studio/StudioProductionV2Dashboard').then(m => ({ default: m.StudioProductionV2Dashboard })));
 const StudioProductionV2Pipeline = lazy(() => import('./components/studio/StudioProductionV2Pipeline').then(m => ({ default: m.StudioProductionV2Pipeline })));
 const StudioProductionV3Dashboard = lazy(() => import('./components/studio/StudioProductionV3Dashboard').then(m => ({ default: m.StudioProductionV3Dashboard })));
@@ -183,6 +186,16 @@ const AppContent = () => {
       <Layout>
         <Suspense fallback={<GlobalSuspenseFallback />}>
           <FinancialTraceRedirect />
+        </Suspense>
+        <GlobalDrawer />
+      </Layout>
+    );
+  }
+  if (pathname === '/admin/unified-ledger-tieout') {
+    return (
+      <Layout>
+        <Suspense fallback={<GlobalSuspenseFallback />}>
+          <UnifiedLedgerTieOutPage />
         </Suspense>
         <GlobalDrawer />
       </Layout>
