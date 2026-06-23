@@ -13,8 +13,8 @@ RECREATE="${RECREATE:-0}"
 CONTAINER="${SUPABASE_DB_CONTAINER:-supabase-db}"
 SOURCE_DB="${SOURCE_DB:-postgres}"
 
-if [[ ! "$CLONE_DB" =~ ^ledger_stage_[0-9]{8}$ ]]; then
-  echo "ERROR: CLONE_DB must match ledger_stage_YYYYMMDD (got: $CLONE_DB)" >&2
+if [[ ! "$CLONE_DB" =~ ^ledger_stage_[0-9]{8}(_prodcheck)?$ ]]; then
+  echo "ERROR: CLONE_DB must match ledger_stage_YYYYMMDD or ledger_stage_YYYYMMDD_prodcheck (got: $CLONE_DB)" >&2
   exit 1
 fi
 

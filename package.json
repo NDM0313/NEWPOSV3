@@ -46,6 +46,8 @@
     "remediation:branch-inventory": "node scripts/ledger-remediation/inventory-branch-manual-review.mjs",
     "remediation:branch-manifest": "node scripts/ledger-remediation/export-branch-manual-review-manifest.mjs",
     "remediation:apply-branch-manual": "node scripts/ledger-remediation/apply-manual-branch-assignment-clone.mjs",
+    "remediation:fresh-prodcheck": "bash scripts/ledger-remediation/run-fresh-clone-prodcheck.sh",
+    "remediation:export-prod-approval": "node scripts/ledger-remediation/export-production-remediation-approval-manifest.mjs",
     "test:bootstrap": "npx tsx --test src/app/config/moduleConfigSemantics.test.ts",
     "test:permissions": "npx tsx --test src/app/utils/checkPermission.test.ts erp-mobile-app/src/api/permissions.test.ts",
     "test:mobile:date": "npx tsx --test erp-mobile-app/src/lib/dateRangePresets.test.ts",
