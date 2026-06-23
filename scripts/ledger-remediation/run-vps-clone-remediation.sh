@@ -54,11 +54,13 @@ echo "Dry-run file: $DRY_RUN"
 
 PAY_SAFE=$(node -e "
 const j=require('$DRY_RUN');
-console.log(j.payment_contact?.safe_apply ?? j.payment_contact?.rows?.filter(r=>r.safe_apply).length ?? 0);
+const rows=j.sections?.payment_contact?.rows ?? j.payment_contact?.rows ?? j.rows ?? [];
+console.log(rows.filter(r=>r.issue_type==='payments_missing_contact_sale_linked'&&r.safe_apply).length);
 ")
 BR_SAFE=$(node -e "
 const j=require('$DRY_RUN');
-console.log(j.branch_attribution?.safe_apply ?? j.branch_attribution?.rows?.filter(r=>r.safe_apply).length ?? 0);
+const rows=j.sections?.branch_attribution?.rows ?? j.branch_attribution?.rows ?? j.rows ?? [];
+console.log(rows.filter(r=>r.issue_type==='branch_attribution_risk'&&r.safe_apply).length);
 ")
 echo "Payment safe_apply: $PAY_SAFE"
 echo "Branch safe_apply: $BR_SAFE"
