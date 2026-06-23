@@ -1,8 +1,8 @@
 # Single Core Ledger — Production Ready Pack
 
-**Status:** `PRODUCTION METADATA APPLY COMPLETE` — post-apply Gate A **PASS**; validate before Phase 1.5 prod migrations  
-**Branch:** `feature/single-core-ledger-phase-1-6-2-production-approval`  
-**Last updated:** 2026-06-23T19:33:37Z  
+**Status:** `PHASE 1.7 PACK COMPLETE` — smoke **PASS**; migration approval pack ready; validate before engine / Phase 2  
+**Branch:** `feature/single-core-ledger-phase-1-7-prod-migration-plan`  
+**Last updated:** 2026-06-23T19:43:00Z  
 **Master checklist:** use this file as the single entry point for post-apply status.
 
 ---
@@ -18,8 +18,10 @@
 | Pre-remediation DB backup | **COMPLETE** |
 | Production metadata apply | **EXECUTED** 2026-06-23T19:33:16Z — **82 rows** |
 | Post-apply validation (fresh clone) | **PASS** — payment gaps 0, branch risk 0, Gate A 3/3, tie-out 9/9 |
+| Production smoke test (1.7) | **PASS** 10/10 |
 | `unified_ledger_engine` | **OFF** |
-| Phase 1.5 prod migrations | **NOT APPLIED** (separate approval) |
+| Phase 1.5 prod migration pack | **READY** — guarded apply not executed in 1.7 |
+| Phase 1.5 post-migration Gate A | **PENDING** |
 | Phase 2 screen wiring | **NOT STARTED** (separate approval) |
 
 ---
@@ -134,6 +136,23 @@ See: [`SINGLE_CORE_LEDGER_PRODUCTION_REMEDIATION_APPROVAL_PLAN.md`](SINGLE_CORE_
 
 ---
 
+## Phase 1.7 — Smoke test + Phase 1.5 migration approval pack (complete)
+
+| Step | What | Status |
+|------|------|--------|
+| 1.7.1 | Production smoke test report | **PASS** 10/10 — [`SINGLE_CORE_LEDGER_PRODUCTION_SMOKE_TEST_REPORT.md`](SINGLE_CORE_LEDGER_PRODUCTION_SMOKE_TEST_REPORT.md) |
+| 1.7.2 | Phase 1.5 production migration plan | [`SINGLE_CORE_LEDGER_PHASE_1_5_PRODUCTION_MIGRATION_PLAN.md`](SINGLE_CORE_LEDGER_PHASE_1_5_PRODUCTION_MIGRATION_PLAN.md) |
+| 1.7.3 | Production Phase 1.5 guards + apply script | `production-phase-15-env-guard.mjs`, `apply-phase-15-production-docker-exec.sh` |
+| 1.7.4 | Post-metadata pre-migration backup | `/root/NEWPOSV3/backups/supabase_db_20260623_194317.dump` |
+| 1.7.5 | Guarded Phase 1.5 apply on `postgres` | **NOT EXECUTED** — await operator approval |
+| 1.7.6 | Post-migration Gate A + tie-out on prod/clone | **PENDING** — after apply approval |
+
+**Pre-flight note (2026-06-23):** Live `postgres` already has all 4 Phase 1.5 files in `schema_migrations` and **5/5** unified RPCs. Guarded apply is idempotent (`[SKIP]`). Post-migration validation on a fresh clone is still required before engine enablement or Phase 2.
+
+**Branch:** `feature/single-core-ledger-phase-1-7-prod-migration-plan`
+
+---
+
 ## What is blocked (next phases)
 
 | Action | Status |
@@ -173,11 +192,12 @@ Or selective reverse using `production-remediation-apply-before-*.json` from app
 
 ## Next recommended step
 
-1. Smoke test ERP login + DIN CHINA ledger on production  
-2. Obtain **separate approval** for Phase 1.5 production migrations on `postgres`  
-3. Do **not** enable `unified_ledger_engine` or start Phase 2 until Phase 1.5 prod + prod Gate A pass  
+1. ~~Smoke test ERP login + DIN CHINA ledger on production~~ **Done** — 10/10 PASS  
+2. Operator + finance sign Phase 1.5 migration plan §9 (if re-apply / formal validation needed)  
+3. Run post-migration Gate A + tie-out on fresh clone from post-metadata `postgres`  
+4. Do **not** enable `unified_ledger_engine` or start Phase 2 until post-migration validation passes  
 
-**Final status:** `PRODUCTION METADATA APPLY COMPLETE — validate before Phase 1.5 prod migrations`
+**Final status:** `PHASE 1.7 PACK COMPLETE — smoke PASS; migration approval ready; post-migration validation pending`
 
 ## Related documents
 
@@ -187,4 +207,5 @@ Or selective reverse using `production-remediation-apply-before-*.json` from app
 | [Finance sign-off pack](SINGLE_CORE_LEDGER_FINANCE_SIGNOFF_PACK.md) | Finance-readable scope and checklist |
 | [Fresh clone validation (1.6.2)](SINGLE_CORE_LEDGER_PHASE_1_6_2_FRESH_CLONE_VALIDATION_REPORT.md) | Prodcheck evidence |
 | [Phase 1.6.1 branch manual](SINGLE_CORE_LEDGER_PHASE_1_6_1_BRANCH_MANUAL_REVIEW.md) | 6 manual branch JEs |
-| [Migration master plan](SINGLE_CORE_LEDGER_MIGRATION_MASTER_EXECUTION_PLAN_v3.md) | Full program context |
+| [Smoke test report (1.7)](SINGLE_CORE_LEDGER_PRODUCTION_SMOKE_TEST_REPORT.md) | Production smoke 10/10 |
+| [Phase 1.5 production migration plan](SINGLE_CORE_LEDGER_PHASE_1_5_PRODUCTION_MIGRATION_PLAN.md) | Migration approval pack |
