@@ -25,40 +25,39 @@ function loadInventory(filePath) {
 
 function paymentIds(inv) {
   const ids = new Set();
-  for (const r of inv.rows || []) {
+  const sources = [
+    ...(inv.data?.payment_contact_rows || []),
+    ...(inv.data?.rows || []),
+    ...(inv.rows || []),
+    ...(inv.data?.sections?.payment_contact?.rows || []),
+    ...(inv.data?.payment_contact?.rows || []),
+  ];
+  for (const r of sources) {
     if (r.payment_id) ids.add(String(r.payment_id));
-    if (r.issue_type === 'payments_missing_contact_sale_linked' && r.payment_id) ids.add(String(r.payment_id));
-  }
-  if (inv.data?.sections?.payment_contact?.rows) {
-    for (const r of inv.data.sections.payment_contact.rows) {
-      if (r.payment_id) ids.add(String(r.payment_id));
-    }
-  }
-  if (inv.data?.payment_contact?.rows) {
-    for (const r of inv.data.payment_contact.rows) {
-      if (r.payment_id) ids.add(String(r.payment_id));
-    }
   }
   return ids;
 }
 
 function branchJeIds(inv) {
   const ids = new Set();
-  const source = inv.data?.rows || inv.rows || [];
-  for (const r of source) {
+  const sources = [
+    ...(inv.data?.branch_attribution_rows || []),
+    ...(inv.data?.rows || []),
+    ...(inv.rows || []),
+  ];
+  for (const r of sources) {
     const id = r.journal_entry_id || r.id;
     if (id) ids.add(String(id));
   }
   return ids;
 }
 
-function summaryCounts(data) {
-  const s = data.summary || {};
+function inventoryTotals(data) {
+  const t = data.totals || {};
   return {
-    payment_gaps: s.payments_missing_contact_sale_linked ?? s.payment_contact_gaps ?? null,
-    branch_risk: s.branch_attribution_risk ?? null,
-    total_rows: s.total_rows ?? (data.rows?.length ?? null),
-    payment_rows: data.sections?.payment_contact?.rows?.length ?? data.payment_contact?.safe_apply ?? null,
+    payment_gaps: t.payment_contact_count ?? null,
+    branch_risk: t.branch_attribution_count ?? data.diagnostics_summary?.branch_attribution_risk_total ?? null,
+    manual_review: t.manual_review ?? null,
   };
 }
 
@@ -88,33 +87,12 @@ function main() {
   const freshPayments = paymentIds(fresh);
   const paymentDiff = setDiff(baselinePayments, freshPayments);
 
-  const baselineBranch = branchJeIds(
-    baseline.data.rows
-      ? { data: baseline.data, rows: baseline.data.rows }
-      : { rows: [], data: baseline.data }
-  );
-  const freshBranchInv = findLatest('branch-manual-review-inventory-');
-  let freshBranch = new Set();
-  if (freshBranchInv) {
-    const bi = JSON.parse(fs.readFileSync(freshBranchInv, 'utf8'));
-    freshBranch = branchJeIds({ data: bi, rows: bi.rows });
-  }
-
-  const baselineBranchInv = fs
-    .readdirSync(path.join(repoRoot, 'reports', 'single-core-ledger'))
-    .filter((f) => f.startsWith('branch-manual-review-inventory-') && f.endsWith('.json'))
-    .sort()
-    .reverse()[1];
-  let baselineBranch = new Set();
-  if (baselineBranchInv) {
-    const bi = JSON.parse(
-      fs.readFileSync(path.join(repoRoot, 'reports', 'single-core-ledger', baselineBranchInv), 'utf8')
-    );
-    baselineBranch = branchJeIds({ data: bi, rows: bi.rows });
-  } else if (freshBranchInv) {
-    baselineBranch = freshBranch;
-  }
+  const baselineBranch = branchJeIds(baseline);
+  const freshBranch = branchJeIds(fresh);
   const branchDiff = setDiff(baselineBranch, freshBranch);
+
+  const baselineTotals = inventoryTotals(baseline.data);
+  const freshTotals = inventoryTotals(fresh.data);
 
   const paymentCountDelta = freshPayments.size - baselinePayments.size;
   const branchCountDelta = freshBranch.size - baselineBranch.size;
@@ -144,10 +122,12 @@ function main() {
     baseline_counts: {
       payment_ids: baselinePayments.size,
       branch_je_ids: baselineBranch.size,
+      totals: baselineTotals,
     },
     fresh_counts: {
       payment_ids: freshPayments.size,
       branch_je_ids: freshBranch.size,
+      totals: freshTotals,
     },
     deltas: {
       payment_count: paymentCountDelta,

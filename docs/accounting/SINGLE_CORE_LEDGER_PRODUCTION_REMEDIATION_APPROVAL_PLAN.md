@@ -1,118 +1,132 @@
 # Single Core Ledger — Production Remediation Approval Plan
 
-**Status:** PROPOSAL ONLY — no production execution  
-**Prerequisite:** Gate A pass on fresh `ledger_stage_YYYYMMDD` clone (achieved on `ledger_stage_20260623` @ 2026-06-23)  
-**Branch:** `feature/single-core-ledger-phase-1-6-1-branch-resolution`
+**Status:** PROPOSAL ONLY — awaiting finance sign-off; **fresh clone validated** @ 2026-06-23  
+**Prerequisite:** Fresh clone Gate A on `ledger_stage_20260623_prodcheck` — **PASSED**  
+**Branch:** `feature/single-core-ledger-phase-1-6-2-production-approval`
+
+See also: [`SINGLE_CORE_LEDGER_PHASE_1_6_2_FRESH_CLONE_VALIDATION_REPORT.md`](SINGLE_CORE_LEDGER_PHASE_1_6_2_FRESH_CLONE_VALIDATION_REPORT.md)
 
 ---
 
 ## 1. Scope
 
-Apply **metadata-only** repairs validated on clone:
+Apply **metadata-only** repairs validated on **fresh** production snapshot:
 
-| Repair | Table | Column | Clone validated | Prod estimate |
-|--------|-------|--------|-----------------|---------------|
-| Payment contact backfill | `payments` | `contact_id` | **74 rows** | Re-count on fresh clone |
-| Branch attribution (auto safe_apply) | `journal_entries` | `branch_id` | **2 rows** (Phase 1.6) | Re-count |
-| Branch manual assignment (operator) | `journal_entries` | `branch_id` | **6 rows** (Phase 1.6.1) | Same manifest after fresh clone |
+| Repair | Table | Column | Fresh clone validated | Prod estimate |
+|--------|-------|--------|----------------------|---------------|
+| Payment contact backfill | `payments` | `contact_id` | **74** | **74** |
+| Branch attribution (auto) | `journal_entries` | `branch_id` | **2** | **2** |
+| Branch manual assignment | `journal_entries` | `branch_id` | **6** | **6** |
+| **Total** | | | **82** | **82** |
 
-**Out of scope:** AR/AP reclass, opening balance edits, void/reverse, GL line changes, `unified_ledger_engine` enablement, Phase 2 UI, Phase 1.5 production migrations.
-
----
-
-## 2. Exact row manifest
-
-Production apply must use manifests from a **fresh** `ledger_stage_YYYYMMDD` clone of current production:
-
-1. Create fresh clone from production dump
-2. Re-run Phase 1.6 dry-run + apply (payment contact)
-3. Re-run Phase 1.6.1 inventory + finance manifest review
-4. Attach approved JSON SHA256 manifests to change ticket
-
-### Payment contact (Phase 1.6 — validated)
-
-- **74 rows** — `payments.contact_id ← sales.customer_id` where sale-linked and NULL
-- Audit: `party_repair_audit` reason `payment_contact_backfill`
-
-### Branch manual assignment (Phase 1.6.1 — validated on clone)
-
-| Company | entry_no | approved_branch | operator note summary |
-|---------|----------|-----------------|----------------------|
-| DIN BRIDAL | JE-0204, JE-0170 | HQ — Main Branch | Walk-in manual_receipt → Main Branch |
-| DIN CHINA | JE-0309, JE-0287 | BL0002 — DIN CHINA | Sole active branch |
-| DIN CHINA | FT-000287, FT-000309 | BL0002 — DIN CHINA | Company bank transfer → sole branch (finance override) |
-
-Manifest SHA256 (clone): see `reports/single-core-ledger/branch-manual-review-approved-2026-06-23T15-48-29-720Z.json`
-
-**Rollback reference:** `party_repair_audit` + `branch-manual-apply-before-*.json`
+**Out of scope:** AR/AP reclass, opening balance, void/reverse, GL lines, `unified_ledger_engine`, Phase 2 UI, Phase 1.5 prod migrations.
 
 ---
 
-## 3. CLI plan (future — separate Phase 1.6.2 prod apply)
+## 2. Production approval manifest
 
-| Step | Command |
-|------|---------|
-| Backup | `ssh dincouture-vps "cd /root/NEWPOSV3 && bash deploy/backup-supabase-db.sh 7"` |
-| Fresh clone | `bash scripts/single-core-ledger/create-vps-ledger-clone.sh` |
-| Phase 1.6 payment apply | `REMEDIATION_APPLY_CONFIRM=1 node scripts/ledger-remediation/apply-payment-contact-backfill-clone.mjs ...` |
-| Phase 1.6.1 branch apply | `REMEDIATION_APPLY_CONFIRM=1 node scripts/ledger-remediation/apply-manual-branch-assignment-clone.mjs --approved-manifest ... --expected-count 6` |
-| Re-validate | `bash scripts/ledger-remediation/run-gate-a-clone-only.sh` |
-| Production | Requires `PRODUCTION_REMEDIATION_APPROVED=1` + backup timestamp gate (not implemented) |
+| Artifact | Value |
+|----------|-------|
+| JSON | `reports/single-core-ledger/production-remediation-approval-2026-06-23T18-13-59-582Z.json` |
+| CSV | `reports/single-core-ledger/production-remediation-approval-2026-06-23T18-13-59-582Z.csv` |
+| SHA256 | `fee33637fb7b344dd45c307227398a4eaf37b03472813abe28f26f109d5acbbd` |
+| Dry-run SHA256 | `2533569453ace47b42e9da4004e9279b780930ad07d0c6af88631893d58e16d4` |
+| Branch manifest SHA256 | `d06a4928bcf3c36d4c1b7394f183ff53cd9173105b97327cac3fc3d9173ebb55` |
+| Fresh-clone comparison | `reports/single-core-ledger/fresh-clone-comparison-2026-06-23T18-13-49-433Z.json` |
+| Comparison recommendation | **APPROVE_MANIFEST** (74 payment / 8 branch / 0 delta) |
 
----
-
-## 4. Rollback
-
-1. **DB restore:** `pg_restore` / Supabase restore from backup taken immediately before apply
-2. **Selective reverse** from audit JSON:
-   ```sql
-   UPDATE payments SET contact_id = NULL WHERE id IN (...);
-   UPDATE journal_entries SET branch_id = NULL WHERE id IN (...);
-   ```
+Finance must sign CSV `finance_approval` column before production apply.
 
 ---
 
-## 5. Risk assessment
+## 3. Backup plan (required before prod apply)
 
-| Factor | Level | Notes |
-|--------|-------|-------|
-| Data mutation | Medium | Row-level UPDATE only; predicates require NULL target column |
-| GL impact | Low | Amounts unchanged; metadata branch assignment only |
-| Downtime | Low | No schema migration; recommend off-peak + backup |
-| Reversibility | High | before/after JSON + party_repair_audit |
-| Stale clone risk | High | Must re-run on fresh clone before prod |
+```bash
+ssh dincouture-vps "cd /root/NEWPOSV3 && bash deploy/backup-supabase-db.sh 7"
+```
+
+| Step | Action |
+|------|--------|
+| 1 | Run backup script |
+| 2 | Verify dump exists: `/root/NEWPOSV3/backups/supabase_db_YYYYMMDD_HHMMSS.dump` |
+| 3 | Optional: `pg_restore --list` on dump file |
+| 4 | Record path as `PRODUCTION_BACKUP_ID` |
+| 5 | **Abort prod apply if backup fails** |
 
 ---
 
-## 6. Explicit confirmations required before prod
+## 4. Production metadata apply (future — not executed in Phase 1.6.2)
 
-- [x] Gate A passed on clone (`ledger_stage_20260623` — 3/3 strict, tie-out PASS)
-- [ ] Fresh clone from **current** production data re-validates same row counts
-- [ ] Written approval from finance owner for payment + branch manifests
-- [ ] DIN BRIDAL HQ branch assignment confirmed for JE-0204 / JE-0170
-- [ ] DIN CHINA FT-* transfer branch assignment confirmed (BL0002 override)
-- [ ] DB backup completed and verified restorable
+Script: [`scripts/ledger-remediation/apply-production-remediation.mjs`](scripts/ledger-remediation/apply-production-remediation.mjs)
+
+```bash
+export PRODUCTION_REMEDIATION_TARGET=1
+export PRODUCTION_REMEDIATION_APPROVED=1
+export PRODUCTION_BACKUP_ID=/root/NEWPOSV3/backups/supabase_db_YYYYMMDD_HHMMSS.dump
+export DATABASE_URL="postgresql://postgres:***@172.19.0.15:5432/postgres"
+
+node scripts/ledger-remediation/apply-production-remediation.mjs \
+  --approval-manifest reports/single-core-ledger/production-remediation-approval-2026-06-23T18-13-59-582Z.json \
+  --expected-count 82
+```
+
+Guards: see [`production-remediation-env-guard.mjs`](scripts/ledger-remediation/production-remediation-env-guard.mjs)
+
+---
+
+## 5. Rollback
+
+**Option A — Full restore:** Restore `postgres` from pre-apply backup dump.
+
+**Option B — Selective reverse:** From `production-remediation-apply-before-*.json`:
+
+```sql
+UPDATE payments SET contact_id = NULL WHERE id IN (...);
+UPDATE journal_entries SET branch_id = NULL WHERE id IN (...);
+```
+
+---
+
+## 6. Post-production validation (after future prod apply)
+
+1. Read-only inventory on production (no unified RPC required for payment/branch counts)
+2. Smoke test ERP login + DIN CHINA ledger
+3. Fresh clone from post-prod postgres → full Gate A
+4. Confirm `unified_ledger_engine` still OFF
+5. **Do not** start Phase 1.5 migrations or Phase 2 until post-prod validation passes
+
+---
+
+## 7. Phase boundaries
+
+| Phase | Requires separate approval |
+|-------|---------------------------|
+| Production metadata (this plan) | Finance + backup + manifest SHA256 |
+| Phase 1.5 migrations on `postgres` | **Yes** — after prod metadata validated |
+| Phase 2 screen wiring | **Yes** — after Phase 1.5 prod + prod Gate A |
+| `unified_ledger_engine` ON | **Yes** — explicit per-company rollout |
+
+---
+
+## 8. Explicit confirmations
+
+- [x] Fresh clone Gate A passed (`ledger_stage_20260623_prodcheck`)
+- [x] Pre-apply counts match baseline (74 payment / 8 branch)
+- [ ] Finance sign-off on production approval CSV
+- [ ] DB backup completed and `PRODUCTION_BACKUP_ID` recorded
+- [ ] Production metadata apply executed (future phase)
 - [ ] `unified_ledger_engine` remains **OFF**
-- [ ] Phase 1.5 migrations to production are a **separate** approval
-- [ ] Phase 2 screen wiring **not started**
-- [ ] Production DB **not touched** until above confirmed
+- [ ] Phase 1.5 prod migrations **not applied**
+- [ ] Phase 2 **not started**
 
 ---
 
-## 7. Audit paths
-
-- `reports/single-core-ledger/remediation-dry-run-*.json`
-- `reports/single-core-ledger/branch-manual-review-approved-*.json`
-- `reports/single-core-ledger/branch-manual-apply-audit-*.json`
-- `party_repair_audit` table
-
----
-
-## 8. Approval record
+## 9. Approval record
 
 | Field | Value |
 |-------|-------|
-| Approved by | _pending production approval_ |
-| Clone Gate A date | 2026-06-23T15:50:06Z |
-| Branch manifest SHA256 | `4e75c8b7cdfa0bf121f68793d8517593f72944a0ea47e755b05ebce44c0f0c4c` |
+| Approved by | _pending_ |
+| Fresh clone validation | 2026-06-23T18:10:32Z |
+| Manifest SHA256 | `fee33637fb7b344dd45c307227398a4eaf37b03472813abe28f26f109d5acbbd` |
 | Backup ID | _pending_ |
+| Production apply executed | _no_ |

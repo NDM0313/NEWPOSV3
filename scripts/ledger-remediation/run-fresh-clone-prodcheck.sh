@@ -2,7 +2,7 @@
 # Phase 1.6.2 — fresh clone prodcheck: clone → Phase 1.5 → 1.6 → 1.6.1 → Gate A → approval manifest
 set -euo pipefail
 
-REPO_DIR="${REPO_DIR:-/root/NEWPOSV3-phase-15-validate}"
+REPO_DIR="${REPO_DIR:-/root/NEWPOSV3-phase-162-prodcheck}"
 BRANCH="${BRANCH:-feature/single-core-ledger-phase-1-6-2-production-approval}"
 SUPABASE_ENV="${SUPABASE_ENV:-/root/supabase/docker/.env}"
 CLONE_DB="${CLONE_DB:-ledger_stage_$(date +%Y%m%d)_prodcheck}"
@@ -17,6 +17,11 @@ cd "$REPO_DIR"
 git fetch origin "$BRANCH" 2>/dev/null || true
 git checkout "$BRANCH" 2>/dev/null || git checkout -b "$BRANCH" "origin/$BRANCH"
 git pull --ff-only origin "$BRANCH" 2>/dev/null || true
+
+if [[ ! -d node_modules/pg ]]; then
+  echo "Installing npm dependencies (pg) …"
+  npm install --omit=dev 2>/dev/null || npm install
+fi
 
 POSTGRES_PASSWORD=$(grep -m1 '^POSTGRES_PASSWORD=' "$SUPABASE_ENV" | cut -d= -f2- | tr -d '\r"')
 export UNIFIED_LEDGER_STAGING=1 UNIFIED_LEDGER_VPS_CLONE=1 UNIFIED_LEDGER_PG_ONLY=1 UNIFIED_LEDGER_TIEOUT_STAGING=1
@@ -36,7 +41,10 @@ node scripts/ledger-remediation/dry-run-single-core-remediation-summary.mjs
 PRE_DRY_RUN=$(ls -t reports/single-core-ledger/remediation-dry-run-*.json | head -1)
 
 echo "--- Step 4: Compare with baseline ---"
-BASELINE="${BASELINE_INVENTORY:-$(ls -t reports/single-core-ledger/remediation-inventory-2026-06-23*.json 2>/dev/null | head -1 || echo "")}"
+BASELINE="${BASELINE_INVENTORY:-}"
+if [[ -z "$BASELINE" ]]; then
+  BASELINE=$(ls -t "$REPO_DIR"/reports/single-core-ledger/remediation-inventory-2026-06-23*.json 2>/dev/null | head -1 || echo "")
+fi
 if [[ -n "$BASELINE" && -f "$BASELINE" ]]; then
   node scripts/ledger-remediation/compare-fresh-clone-baseline.mjs \
     --baseline-inventory "$BASELINE" \

@@ -80,12 +80,24 @@ function main() {
     });
   }
 
-  const branchAuto =
+  const branchAutoRows = (
     dryRun.sections?.branch_attribution?.rows ??
     dryRun.branch_attribution?.rows ??
-    (dryRun.rows || []).filter((r) => r.issue_type === 'branch_attribution_risk' && r.safe_apply);
+    (dryRun.rows || []).filter((r) => r.issue_type === 'branch_attribution_risk' && r.safe_apply)
+  ).filter((r) => r.safe_apply === true);
 
-  for (const r of branchAuto) {
+  const manualJeIds = new Set();
+  if (branchApprovedPath && fs.existsSync(branchApprovedPath)) {
+    const branchManifest = JSON.parse(fs.readFileSync(branchApprovedPath, 'utf8'));
+    for (const r of branchManifest.rows || []) {
+      if (String(r.operator_decision || '').toLowerCase() === 'approve') {
+        manualJeIds.add(String(r.journal_entry_id));
+      }
+    }
+  }
+
+  for (const r of branchAutoRows) {
+    if (manualJeIds.has(String(r.journal_entry_id))) continue;
     rows.push({
       repair_type: 'branch_auto',
       entity_type: 'journal_entry',
