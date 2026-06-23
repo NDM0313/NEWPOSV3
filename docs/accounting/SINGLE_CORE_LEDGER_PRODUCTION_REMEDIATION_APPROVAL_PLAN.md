@@ -1,10 +1,10 @@
 # Single Core Ledger — Production Remediation Approval Plan
 
-**Status:** PROPOSAL ONLY — awaiting finance sign-off; **fresh clone validated** @ 2026-06-23  
+**Status:** **PRE-APPLY READY** — finance approved, backup recorded; production metadata apply **not executed**  
 **Prerequisite:** Fresh clone Gate A on `ledger_stage_20260623_prodcheck` — **PASSED**  
 **Branch:** `feature/single-core-ledger-phase-1-6-2-production-approval`
 
-See also: [`SINGLE_CORE_LEDGER_PHASE_1_6_2_FRESH_CLONE_VALIDATION_REPORT.md`](SINGLE_CORE_LEDGER_PHASE_1_6_2_FRESH_CLONE_VALIDATION_REPORT.md)
+See also: [`SINGLE_CORE_LEDGER_PHASE_1_6_2_FRESH_CLONE_VALIDATION_REPORT.md`](SINGLE_CORE_LEDGER_PHASE_1_6_2_FRESH_CLONE_VALIDATION_REPORT.md), [`SINGLE_CORE_LEDGER_PRODUCTION_READY.md`](SINGLE_CORE_LEDGER_PRODUCTION_READY.md)
 
 ---
 
@@ -52,15 +52,17 @@ Finance must sign CSV `finance_approval` column before production apply.
 | Payment rows | **74** |
 | Branch auto rows | **2** |
 | Branch manual rows | **6** |
-| Approval status | **Pending** (finance CSV) |
+| Approval status | **Complete** — 82 approved, 0 rejected (2026-06-23) |
+| Finance CSV | [`finance-signoff-production-remediation-2026-06-23.csv`](../reports/single-core-ledger/finance-signoff-production-remediation-2026-06-23.csv) |
 | Pre-remediation backup | **Completed** — see [Backup record](#backup-record) |
 
-**Next steps (after finance sign-off):**
+**Next steps:**
 
-1. Finance fills `finance_approval` / `finance_note` in the finance CSV  
-2. ~~Run DB backup on VPS~~ **Done** — `PRODUCTION_BACKUP_ID` recorded below  
-3. Obtain explicit production apply approval  
-4. Run guarded production metadata apply (`apply-production-remediation.mjs`)
+1. ~~Finance fills `finance_approval` / `finance_note` in the finance CSV~~ **Done** (82 approved)  
+2. ~~Run DB backup on VPS~~ **Done** — `PRODUCTION_BACKUP_ID` recorded  
+3. **Obtain explicit production apply approval** (operator go-ahead)  
+4. Run guarded production metadata apply (`apply-production-remediation.mjs`)  
+5. Post-production validation (inventory, smoke test, fresh clone Gate A)
 
 **Still true:**
 
@@ -115,9 +117,7 @@ ssh dincouture-vps "cd /root/NEWPOSV3 && bash deploy/backup-supabase-db.sh 7"
 
 ---
 
----
-
-## 4. Production metadata apply (future — not executed in Phase 1.6.2)
+## 4. Production metadata apply (future — not executed)
 
 Script: [`scripts/ledger-remediation/apply-production-remediation.mjs`](scripts/ledger-remediation/apply-production-remediation.mjs)
 
@@ -174,7 +174,7 @@ UPDATE journal_entries SET branch_id = NULL WHERE id IN (...);
 
 - [x] Fresh clone Gate A passed (`ledger_stage_20260623_prodcheck`)
 - [x] Pre-apply counts match baseline (74 payment / 8 branch)
-- [ ] Finance sign-off on production approval CSV
+- [x] Finance sign-off on production approval CSV (82 approved, 0 rejected @ 2026-06-23)
 - [x] DB backup completed and `PRODUCTION_BACKUP_ID` recorded
 - [ ] Production metadata apply executed (future phase)
 - [ ] `unified_ledger_engine` remains **OFF**
@@ -187,7 +187,11 @@ UPDATE journal_entries SET branch_id = NULL WHERE id IN (...);
 
 | Field | Value |
 |-------|-------|
-| Approved by | _pending_ |
+| Approved by | Operations (bulk approve all 82 rows) |
+| Finance approval date | 2026-06-23 |
+| Approved rows | **82** |
+| Rejected rows | **0** |
+| Finance CSV | `reports/single-core-ledger/finance-signoff-production-remediation-2026-06-23.csv` |
 | Fresh clone validation | 2026-06-23T18:10:32Z |
 | Manifest SHA256 | `fee33637fb7b344dd45c307227398a4eaf37b03472813abe28f26f109d5acbbd` |
 | Backup ID | `/root/NEWPOSV3/backups/supabase_db_20260623_192408.dump` (2026-06-23T19:24:08Z) |
