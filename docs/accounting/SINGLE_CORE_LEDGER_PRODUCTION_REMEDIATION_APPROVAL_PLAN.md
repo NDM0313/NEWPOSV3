@@ -39,6 +39,39 @@ Finance must sign CSV `finance_approval` column before production apply.
 
 ---
 
+## Finance sign-off pack
+
+| Item | Path / value |
+|------|----------------|
+| Finance sign-off document | [`docs/accounting/SINGLE_CORE_LEDGER_FINANCE_SIGNOFF_PACK.md`](SINGLE_CORE_LEDGER_FINANCE_SIGNOFF_PACK.md) |
+| Finance review CSV | [`reports/single-core-ledger/finance-signoff-production-remediation-2026-06-23.csv`](../reports/single-core-ledger/finance-signoff-production-remediation-2026-06-23.csv) |
+| Production manifest JSON | [`reports/single-core-ledger/production-remediation-approval-2026-06-23T18-13-59-582Z.json`](../reports/single-core-ledger/production-remediation-approval-2026-06-23T18-13-59-582Z.json) |
+| Production manifest CSV | [`reports/single-core-ledger/production-remediation-approval-2026-06-23T18-13-59-582Z.csv`](../reports/single-core-ledger/production-remediation-approval-2026-06-23T18-13-59-582Z.csv) |
+| Manifest SHA256 | `fee33637fb7b344dd45c307227398a4eaf37b03472813abe28f26f109d5acbbd` |
+| Total rows | **82** |
+| Payment rows | **74** |
+| Branch auto rows | **2** |
+| Branch manual rows | **6** |
+| Approval status | **Pending** |
+
+**Next steps (after finance sign-off):**
+
+1. Finance fills `finance_approval` / `finance_note` in the finance CSV  
+2. Run DB backup on VPS  
+3. Record `PRODUCTION_BACKUP_ID` in the approval plan  
+4. Obtain explicit production apply approval  
+5. Run guarded production metadata apply (`apply-production-remediation.mjs`)
+
+**Still true:**
+
+- Production DB **not touched**  
+- Production apply **not executed**  
+- `unified_ledger_engine` **OFF**  
+- Phase 1.5 production migrations — **separate approval**  
+- Phase 2 screen switch — **separate approval**
+
+---
+
 ## 3. Backup plan (required before prod apply)
 
 ```bash
