@@ -57,7 +57,8 @@ async function main() {
   );
 
   if (!paymentRows.length) {
-    fail('No safe_apply payment contact rows in dry-run file');
+    console.log('No safe_apply payment contact rows — nothing to apply (idempotent skip).');
+    process.exit(0);
   }
 
   const runAt = new Date().toISOString();

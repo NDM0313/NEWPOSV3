@@ -4,11 +4,11 @@
 
 | Field | Value |
 |-------|-------|
-| Run timestamp (UTC) | 2026-06-23T15:36:21.773Z |
+| Run timestamp (UTC) | 2026-06-23T15:50:07.207Z |
 | companies_count | 1 |
 | pilot_only | false |
-| JSON output path | `/root/NEWPOSV3-phase-15-validate/reports/single-core-ledger/tieout-2026-06-23T15-36-21-773Z.json` |
-| JSON SHA256 | `9b9f9050ce5c8d87289e0fb65e95583fb082e48e1c5299de535bdb6abb560777` |
+| JSON output path | `/root/NEWPOSV3-phase-15-validate/reports/single-core-ledger/tieout-2026-06-23T15-50-07-207Z.json` |
+| JSON SHA256 | `d44a7d08fd308d22e975e99fe2c096ca9b057ec6aeb6a44a6234663192082709` |
 | Overall status | **PASS** |
 
 ## Pass / fail summary
@@ -38,28 +38,28 @@
   },
   "Main Branch / HQ": {
     "trial_balance": {
-      "total_debit": 375476071.02,
-      "total_credit": 375476071.02,
+      "total_debit": 390534071.02,
+      "total_credit": 390534071.02,
       "difference": 0,
       "account_count": 49,
       "balanced": true
     },
     "cash_bank": {
-      "row_count": 400,
+      "row_count": 405,
       "liquidity_account_count": 14,
       "period_opening_balance": 0
     }
   },
   "BL0002": {
     "trial_balance": {
-      "total_debit": 375476071.02,
-      "total_credit": 375476071.02,
+      "total_debit": 390534071.02,
+      "total_credit": 390534071.02,
       "difference": 0,
       "account_count": 49,
       "balanced": true
     },
     "cash_bank": {
-      "row_count": 400,
+      "row_count": 405,
       "liquidity_account_count": 14,
       "period_opening_balance": 0
     }

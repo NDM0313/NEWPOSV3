@@ -2,7 +2,21 @@
 
 **Branch:** `feature/single-core-ledger-phase-1-5-systemwide`  
 **Date:** 2026-06-23  
-**Staging validation:** **Phase 1.6 clone remediation applied** — payment contact **0 gaps**; branch **6 manual-review** JEs remain
+**Staging validation:** **Phase 1.6.1 Gate A FULL PASS** on clone — strict **3/3**, branch_attribution_risk **0**, tie-out PASS
+
+---
+
+## Phase 1.6.1 branch manual resolution (2026-06-23)
+
+| Step | Result |
+|------|--------|
+| Branch inventory | 6 manual-review JEs |
+| Operator manifest | 6 approved (finance decisions) |
+| Clone branch apply | **6/6** JEs updated |
+| Post-apply diagnostics | strict_pass **3/3**; branch_attribution_risk **0** |
+| Pilot tie-out | **PASS** 9/9 |
+
+**Gate A:** **ACHIEVED** on clone. Production still blocked pending fresh clone + written approval.
 
 ---
 

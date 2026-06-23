@@ -49,7 +49,14 @@ export function parseRemediationArgs() {
     expectedIdx >= 0 && process.argv[expectedIdx + 1] != null
       ? Number(process.argv[expectedIdx + 1])
       : null;
-  return { dryRunFile, expectedSafeCount };
+  const manifestIdx = process.argv.indexOf('--approved-manifest');
+  const approvedManifest = manifestIdx >= 0 ? process.argv[manifestIdx + 1] : null;
+  const expectedCountIdx = process.argv.indexOf('--expected-count');
+  const expectedCount =
+    expectedCountIdx >= 0 && process.argv[expectedCountIdx + 1] != null
+      ? Number(process.argv[expectedCountIdx + 1])
+      : null;
+  return { dryRunFile, expectedSafeCount, approvedManifest, expectedCount };
 }
 
 function countSafeApply(rows = []) {
@@ -132,4 +139,75 @@ export function verifyDryRunFile(dryRunFilePath, expectedSafeCount, opts = {}) {
     throw new Error(`Expected safe_apply ${expectedSafeCount} (${scope}) but dry-run has ${safeCount}`);
   }
   return { parsed, fileHash: manifestHash || bodyHash, safeCount };
+}
+
+/**
+ * Verify operator-approved branch manifest for Phase 1.6.1 apply.
+ * @param {{ requireApply?: boolean }} opts
+ */
+export function assertManualBranchManifest(opts = {}) {
+  const { requireApply = false } = opts;
+  const { approvedManifest, expectedCount } = parseRemediationArgs();
+
+  const target = assertRemediationTarget({ inventoryOnly: true });
+  const cloneDb = getCloneDatabaseName();
+
+  if (!CLONE_DB_PATTERN.test(cloneDb)) {
+    throw new Error(`Clone DB must match ledger_stage_YYYYMMDD (got: ${cloneDb})`);
+  }
+
+  if (requireApply && process.env.REMEDIATION_APPLY_CONFIRM !== '1') {
+    throw new Error('REMEDIATION_APPLY_CONFIRM=1 is required for manual branch apply.');
+  }
+
+  if (!approvedManifest || !fs.existsSync(approvedManifest)) {
+    throw new Error(`Approved manifest not found: ${approvedManifest ?? 'n/a'}`);
+  }
+
+  const parsed = JSON.parse(fs.readFileSync(approvedManifest, 'utf8'));
+  const fileHash = sha256File(approvedManifest);
+  const manifestHash = parsed.manifest?.sha256 ?? null;
+  const bodyOnly = { ...parsed };
+  delete bodyOnly.manifest;
+  const bodyHash = sha256Text(JSON.stringify(bodyOnly, null, 2));
+  if (manifestHash && manifestHash !== bodyHash) {
+    throw new Error(
+      `Manifest SHA256 mismatch (manifest=${manifestHash.slice(0, 12)}… body=${bodyHash.slice(0, 12)}…)`
+    );
+  }
+
+  const rows = parsed.rows || [];
+  const approvedRows = rows.filter(
+    (r) => String(r.operator_decision || '').trim().toLowerCase() === 'approve'
+  );
+
+  for (const row of approvedRows) {
+    const decision = String(row.operator_decision || '').trim().toLowerCase();
+    if (decision === 'approve' && !row.approved_branch_id) {
+      throw new Error(`Row ${row.entry_no || row.journal_entry_id} approve missing approved_branch_id`);
+    }
+    const fs2 = String(row.final_status || '');
+    if (fs2 === 'exception_candidate' && decision === 'approve') {
+      if (!row.approved_branch_id || !String(row.operator_note || '').trim()) {
+        throw new Error(
+          `Row ${row.entry_no} exception_candidate requires approved_branch_id and operator_note for finance override`
+        );
+      }
+    }
+  }
+
+  const approvedCount = approvedRows.length;
+  if (expectedCount != null && Number(expectedCount) !== approvedCount) {
+    throw new Error(`Expected ${expectedCount} approved rows but manifest has ${approvedCount}`);
+  }
+
+  return {
+    ...target,
+    cloneDb,
+    manifestPath: approvedManifest,
+    manifestHash: manifestHash || bodyHash,
+    approvedRows,
+    expectedCount: expectedCount ?? approvedCount,
+    parsed,
+  };
 }

@@ -3,6 +3,8 @@
 **Branch:** `feature/single-core-ledger-phase-1-6-remediation`  
 **Status:** Clone apply complete — **Gate A partial** (payment contact cleared; 6 branch JEs manual_review)
 
+**Phase 1.6.1 update (2026-06-23):** Manual branch assignments applied on clone — **Gate A FULL PASS** (3/3 strict, branch_attribution_risk 0). See [`SINGLE_CORE_LEDGER_PHASE_1_6_1_BRANCH_MANUAL_REVIEW.md`](SINGLE_CORE_LEDGER_PHASE_1_6_1_BRANCH_MANUAL_REVIEW.md).
+
 ---
 
 ## Clone run results (2026-06-23, `ledger_stage_20260623`)
@@ -119,6 +121,8 @@ UNIFIED_LEDGER_TIEOUT_STAGING=1 node scripts/run-unified-ledger-tieout.mjs --wri
 ```
 
 **Gate A target:** 3/3 strict pass OR documented manual_review exceptions (transfer JEs).
+
+**Phase 1.6.1 result:** **ACHIEVED** — diagnostics PASS 3/3 @ `2026-06-23T15:50:06Z`; pilot tie-out PASS 9/9.
 
 ---
 
