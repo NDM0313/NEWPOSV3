@@ -1,9 +1,9 @@
 # Single Core Ledger — Production Ready Pack
 
-**Status:** `PRE-APPLY READY` — finance approved, backup recorded; **production metadata apply not executed**  
+**Status:** `PRODUCTION METADATA APPLY COMPLETE` — post-apply Gate A **PASS**; validate before Phase 1.5 prod migrations  
 **Branch:** `feature/single-core-ledger-phase-1-6-2-production-approval`  
-**Last updated:** 2026-06-23  
-**Master checklist:** use this file as the single entry point before production apply.
+**Last updated:** 2026-06-23T19:33:37Z  
+**Master checklist:** use this file as the single entry point for post-apply status.
 
 ---
 
@@ -16,7 +16,8 @@
 | Baseline comparison | **APPROVE_MANIFEST** (0 delta) |
 | Finance sign-off (82 rows) | **COMPLETE** — 82 approved, 0 rejected |
 | Pre-remediation DB backup | **COMPLETE** |
-| Production metadata apply | **NOT EXECUTED** |
+| Production metadata apply | **EXECUTED** 2026-06-23T19:33:16Z — **82 rows** |
+| Post-apply validation (fresh clone) | **PASS** — payment gaps 0, branch risk 0, Gate A 3/3, tie-out 9/9 |
 | `unified_ledger_engine` | **OFF** |
 | Phase 1.5 prod migrations | **NOT APPLIED** (separate approval) |
 | Phase 2 screen wiring | **NOT STARTED** (separate approval) |
@@ -82,6 +83,36 @@ See: [`SINGLE_CORE_LEDGER_PHASE_1_6_2_FRESH_CLONE_VALIDATION_REPORT.md`](SINGLE_
 
 See: [`SINGLE_CORE_LEDGER_PRODUCTION_REMEDIATION_APPROVAL_PLAN.md`](SINGLE_CORE_LEDGER_PRODUCTION_REMEDIATION_APPROVAL_PLAN.md) § Backup record
 
+### Production metadata apply (complete)
+
+| Step | What | Result |
+|------|------|--------|
+| P.1 | Guarded apply on live `postgres` | **82 rows** updated |
+| P.2 | Payment `contact_id` | **74** |
+| P.3 | Branch `branch_id` (auto + manual) | **8** (2 + 6) |
+| P.4 | GL amounts / journal lines | **Unchanged** |
+| P.5 | Skipped rows | **0** |
+
+| Artifact | Path |
+|----------|------|
+| Audit JSON | `reports/single-core-ledger/production-remediation-apply-audit-2026-06-23T19-33-16-625Z.json` |
+| Before JSON | `reports/single-core-ledger/production-remediation-apply-before-2026-06-23T19-33-16-625Z.json` |
+| After JSON | `reports/single-core-ledger/production-remediation-apply-after-2026-06-23T19-33-16-625Z.json` |
+| Pre-apply backup | `/root/NEWPOSV3/backups/supabase_db_20260623_192408.dump` |
+| Apply timestamp (UTC) | `2026-06-23T19:33:16.625Z` |
+
+### Post-apply validation (complete)
+
+| Check | Result |
+|-------|--------|
+| Fresh clone from post-apply `postgres` | `ledger_stage_20260623_prodcheck` (recreated) |
+| Payment contact gaps | **0** |
+| Branch attribution risk | **0** |
+| Gate A strict diagnostics | **PASS** 3/3 |
+| Tie-out | **PASS** 9/9 |
+| Post-apply inventory | `remediation-inventory-2026-06-23T19-33-37-224Z.json` |
+| Post-apply diagnostics | `diagnostics-2026-06-23T19-33-37-532Z.json` |
+
 ---
 
 ## Production remediation manifest
@@ -103,38 +134,14 @@ See: [`SINGLE_CORE_LEDGER_PRODUCTION_REMEDIATION_APPROVAL_PLAN.md`](SINGLE_CORE_
 
 ---
 
-## What is blocked (do not do without new approval)
+## What is blocked (next phases)
 
-| Action | Blocked until |
-|--------|----------------|
-| Production metadata apply | Explicit operator go-ahead + env guards |
-| Phase 1.5 migrations on `postgres` | Post-apply validation pass |
-| `unified_ledger_engine` ON | Phase 2 rollout approval |
-| Phase 2 UI wiring | Phase 1.5 prod + prod Gate A |
-| Merge PR to `main` | Production apply + validation |
-| Deploy | Separate release decision |
-
----
-
-## Next step — production metadata apply (operator only)
-
-**Prerequisites met:** finance ✓, backup ✓, manifest SHA256 ✓, fresh clone Gate A ✓
-
-```bash
-# On VPS — ONLY after explicit operator approval
-export PRODUCTION_REMEDIATION_TARGET=1
-export PRODUCTION_REMEDIATION_APPROVED=1
-export PRODUCTION_BACKUP_ID=/root/NEWPOSV3/backups/supabase_db_20260623_192408.dump
-export DATABASE_URL="postgresql://postgres:***@172.19.0.15:5432/postgres"
-
-cd /root/NEWPOSV3
-git checkout feature/single-core-ledger-phase-1-6-2-production-approval
-node scripts/ledger-remediation/apply-production-remediation.mjs \
-  --approval-manifest reports/single-core-ledger/production-remediation-approval-2026-06-23T18-13-59-582Z.json \
-  --expected-count 82
-```
-
-**After apply:** run post-production validation (§6 of approval plan) — inventory, smoke test, fresh clone Gate A. Do **not** enable unified engine or Phase 1.5 migrations until validation passes.
+| Action | Status |
+|--------|--------|
+| Phase 1.5 migrations on `postgres` | **Separate approval required** |
+| `unified_ledger_engine` ON | **Blocked** |
+| Phase 2 UI wiring | **Blocked** |
+| Merge PR / deploy | **Ops decision** |
 
 ---
 
@@ -158,10 +165,19 @@ Or selective reverse using `production-remediation-apply-before-*.json` from app
 | Rejected rows | **0** |
 | Manifest SHA256 | `fee33637fb7b344dd45c307227398a4eaf37b03472813abe28f26f109d5acbbd` |
 | Backup ID | `/root/NEWPOSV3/backups/supabase_db_20260623_192408.dump` |
-| Production apply executed | **No** |
+| Production apply executed | **Yes** — 2026-06-23T19:33:16.625Z |
+| Applied rows | **82** (74 payment + 8 branch) |
 | `unified_ledger_engine` | **OFF** |
 
 ---
+
+## Next recommended step
+
+1. Smoke test ERP login + DIN CHINA ledger on production  
+2. Obtain **separate approval** for Phase 1.5 production migrations on `postgres`  
+3. Do **not** enable `unified_ledger_engine` or start Phase 2 until Phase 1.5 prod + prod Gate A pass  
+
+**Final status:** `PRODUCTION METADATA APPLY COMPLETE — validate before Phase 1.5 prod migrations`
 
 ## Related documents
 
@@ -172,7 +188,3 @@ Or selective reverse using `production-remediation-apply-before-*.json` from app
 | [Fresh clone validation (1.6.2)](SINGLE_CORE_LEDGER_PHASE_1_6_2_FRESH_CLONE_VALIDATION_REPORT.md) | Prodcheck evidence |
 | [Phase 1.6.1 branch manual](SINGLE_CORE_LEDGER_PHASE_1_6_1_BRANCH_MANUAL_REVIEW.md) | 6 manual branch JEs |
 | [Migration master plan](SINGLE_CORE_LEDGER_MIGRATION_MASTER_EXECUTION_PLAN_v3.md) | Full program context |
-
----
-
-**Final status:** `PRODUCTION PRE-APPLY READY — explicit operator approval required to run metadata apply`

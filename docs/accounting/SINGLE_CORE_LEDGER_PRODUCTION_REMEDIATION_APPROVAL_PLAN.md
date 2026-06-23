@@ -1,6 +1,6 @@
 # Single Core Ledger — Production Remediation Approval Plan
 
-**Status:** **PRE-APPLY READY** — finance approved, backup recorded; production metadata apply **not executed**  
+**Status:** **PRODUCTION METADATA APPLY COMPLETE** — post-apply Gate A PASS @ 2026-06-23T19:33:37Z  
 **Prerequisite:** Fresh clone Gate A on `ledger_stage_20260623_prodcheck` — **PASSED**  
 **Branch:** `feature/single-core-ledger-phase-1-6-2-production-approval`
 
@@ -59,15 +59,17 @@ Finance must sign CSV `finance_approval` column before production apply.
 **Next steps:**
 
 1. ~~Finance fills `finance_approval` / `finance_note` in the finance CSV~~ **Done** (82 approved)  
-2. ~~Run DB backup on VPS~~ **Done** — `PRODUCTION_BACKUP_ID` recorded  
-3. **Obtain explicit production apply approval** (operator go-ahead)  
-4. Run guarded production metadata apply (`apply-production-remediation.mjs`)  
-5. Post-production validation (inventory, smoke test, fresh clone Gate A)
+2. ~~Run DB backup on VPS~~ **Done**  
+3. ~~Run guarded production metadata apply~~ **Done** (2026-06-23T19:33:16Z)  
+4. ~~Post-production validation (fresh clone Gate A)~~ **PASS**  
+5. Smoke test ERP on production (manual)  
+6. **Separate approval** for Phase 1.5 production migrations  
+7. Do **not** enable `unified_ledger_engine` or Phase 2 until Phase 1.5 prod validated
 
 **Still true:**
 
-- Production DB **not touched**  
-- Production apply **not executed**  
+- Production DB **metadata updated** (82 rows — `contact_id` / `branch_id` only)  
+- Production apply **executed** 2026-06-23T19:33:16Z  
 - `unified_ledger_engine` **OFF**  
 - Phase 1.5 production migrations — **separate approval**  
 - Phase 2 screen switch — **separate approval**
@@ -117,7 +119,47 @@ ssh dincouture-vps "cd /root/NEWPOSV3 && bash deploy/backup-supabase-db.sh 7"
 
 ---
 
-## 4. Production metadata apply (future — not executed)
+## 4. Production metadata apply (executed)
+
+**Executed:** 2026-06-23T19:33:16.625Z on live `postgres` (metadata only).
+
+| Metric | Value |
+|--------|-------|
+| Total rows applied | **82** |
+| Payment `contact_id` | **74** |
+| Branch `branch_id` (auto) | **2** |
+| Branch `branch_id` (manual) | **6** |
+| Skipped | **0** |
+| GL amounts changed | **No** |
+| Journal lines changed | **No** |
+
+| Artifact | Path |
+|----------|------|
+| Audit JSON | `reports/single-core-ledger/production-remediation-apply-audit-2026-06-23T19-33-16-625Z.json` |
+| Before JSON | `reports/single-core-ledger/production-remediation-apply-before-2026-06-23T19-33-16-625Z.json` |
+| After JSON | `reports/single-core-ledger/production-remediation-apply-after-2026-06-23T19-33-16-625Z.json` |
+
+Script: [`scripts/ledger-remediation/apply-production-remediation.mjs`](scripts/ledger-remediation/apply-production-remediation.mjs)
+
+Guards: [`production-remediation-env-guard.mjs`](scripts/ledger-remediation/production-remediation-env-guard.mjs)
+
+### Post-apply validation (2026-06-23T19:33:37Z)
+
+Fresh clone `ledger_stage_20260623_prodcheck` from post-apply production:
+
+| Check | Result |
+|-------|--------|
+| Payment contact gaps | **0** |
+| Branch attribution risk | **0** |
+| Gate A strict | **PASS** 3/3 |
+| Tie-out | **PASS** 9/9 |
+| `unified_ledger_engine` | **OFF** |
+
+Reports: `remediation-inventory-2026-06-23T19-33-37-224Z.json`, `diagnostics-2026-06-23T19-33-37-532Z.json`
+
+---
+
+## 4b. Production metadata apply (reference command — already executed)
 
 Script: [`scripts/ledger-remediation/apply-production-remediation.mjs`](scripts/ledger-remediation/apply-production-remediation.mjs)
 
@@ -176,7 +218,8 @@ UPDATE journal_entries SET branch_id = NULL WHERE id IN (...);
 - [x] Pre-apply counts match baseline (74 payment / 8 branch)
 - [x] Finance sign-off on production approval CSV (82 approved, 0 rejected @ 2026-06-23)
 - [x] DB backup completed and `PRODUCTION_BACKUP_ID` recorded
-- [ ] Production metadata apply executed (future phase)
+- [x] Production metadata apply executed (2026-06-23T19:33:16Z — 82 rows)
+- [x] Post-apply fresh-clone Gate A passed
 - [ ] `unified_ledger_engine` remains **OFF**
 - [ ] Phase 1.5 prod migrations **not applied**
 - [ ] Phase 2 **not started**
@@ -195,4 +238,6 @@ UPDATE journal_entries SET branch_id = NULL WHERE id IN (...);
 | Fresh clone validation | 2026-06-23T18:10:32Z |
 | Manifest SHA256 | `fee33637fb7b344dd45c307227398a4eaf37b03472813abe28f26f109d5acbbd` |
 | Backup ID | `/root/NEWPOSV3/backups/supabase_db_20260623_192408.dump` (2026-06-23T19:24:08Z) |
-| Production apply executed | _no_ |
+| Production apply executed | **Yes** — 2026-06-23T19:33:16.625Z (82 rows) |
+| Apply audit | `production-remediation-apply-audit-2026-06-23T19-33-16-625Z.json` |
+| Post-apply Gate A | **PASS** 3/3 @ 2026-06-23T19:33:37Z |
