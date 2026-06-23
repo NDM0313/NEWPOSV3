@@ -60,9 +60,13 @@ echo "Branch safe_apply: $BR_SAFE"
 echo ""
 echo "--- Bundle 3: clone apply ---"
 export REMEDIATION_APPLY_CONFIRM=1
-node scripts/ledger-remediation/apply-payment-contact-backfill-clone.mjs \
-  --dry-run-file "$DRY_RUN" \
-  --expected-safe-count "$PAY_SAFE"
+if [[ "$PAY_SAFE" -gt 0 ]]; then
+  node scripts/ledger-remediation/apply-payment-contact-backfill-clone.mjs \
+    --dry-run-file "$DRY_RUN" \
+    --expected-safe-count "$PAY_SAFE"
+else
+  echo "Skipping payment apply (0 safe_apply rows — already backfilled or none)"
+fi
 
 if [[ "$BR_SAFE" -gt 0 ]]; then
   node scripts/ledger-remediation/apply-branch-attribution-clone.mjs \

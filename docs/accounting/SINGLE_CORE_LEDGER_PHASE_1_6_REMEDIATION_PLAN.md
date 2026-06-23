@@ -1,8 +1,29 @@
 # Single Core Ledger — Phase 1.6 Remediation Plan
 
 **Branch:** `feature/single-core-ledger-phase-1-6-remediation`  
-**Status:** In progress — clone validation  
-**Clone target:** `ledger_stage_20260623` (VPS isolated; production `postgres` untouched)
+**Status:** Clone apply complete — **Gate A partial** (payment contact cleared; 6 branch JEs manual_review)
+
+---
+
+## Clone run results (2026-06-23, `ledger_stage_20260623`)
+
+| Phase | Before | After apply | Notes |
+|-------|-------:|------------:|-------|
+| Payment contact gaps | 74 | **0** | 74 `safe_apply` backfilled |
+| Branch attribution risk | 8 | **6** | 2 `safe_apply` JEs fixed; 6 manual_review |
+| Dry-run safe_apply | 74 + 2 | 0 + 0 | Re-run on already-remediated clone |
+| Diagnostics strict_pass | 1/3 | **1/3** | DIN COUTURE only; branch blocker remains |
+| Pilot tie-out | PASS | **PASS** | 6/6 DIN CHINA |
+
+**Dry-run SHA256 (pre-apply):** see `reports/single-core-ledger/remediation-dry-run-2026-06-23T*.json` on VPS validation repo.
+
+### Remaining manual_review branch JEs (Gate A exception list)
+
+| Company | entry_no | reference_type | Reason |
+|---------|----------|----------------|--------|
+| DIN CHINA | FT-000287, FT-000309 | transfer | No deterministic linked-document branch |
+| DIN CHINA | JE-0287, JE-0309 | manual_receipt | Linked payment branch ambiguous |
+| DIN BRIDAL | (4 rows) | mixed | Same classes — see inventory JSON |
 
 ---
 
