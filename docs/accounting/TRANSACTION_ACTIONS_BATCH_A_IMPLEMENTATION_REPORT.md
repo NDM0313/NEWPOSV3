@@ -204,3 +204,76 @@ Rollback: redeploy previous main build artifact / prior commit on VPS (documente
 `PHASE 1.5 NOT VALIDATED — reachable staging clone required first`
 
 This batch did **not** run Phase 1.5 migrations, diagnostics, DIN CHINA tie-out, or VPS single-core ledger work.
+
+---
+
+## Manual QA Results
+
+**Date/time:** 2026-06-14 (local verification session)  
+**Branch:** `feature/accounting-transaction-actions-batch-a`  
+**Commit SHA:** `4d8ecf91`  
+**Dev server:** `npm run dev:no-migrate` → `http://localhost:5173/` (Vite ready)  
+**Screenshots:** Not captured (agent environment cannot drive authenticated browser UI)
+
+### Verification commands (re-run)
+
+| Check | Result |
+|-------|--------|
+| `git branch --show-current` | `feature/accounting-transaction-actions-batch-a` |
+| HEAD commit | `4d8ecf91` |
+| `.env.local` staged | **No** (not in `git status`) |
+| Unrelated WIP staged | **No** (only unstaged: `graphify-out/*`, `package.json` — not committed) |
+| `npm run build` | **Pass** |
+| `npx tsx --test src/app/lib/transactionActionsRegistry.test.ts src/app/lib/transactionActionRules.test.ts` | **13/13 pass** |
+| QA matrix (`transactionActionsRegistry.qaMatrix.test.ts`, local only) | **9/9 pass** |
+
+### Screen results
+
+| # | Screen | Result | Visible actions / behavior verified |
+|---|--------|--------|-------------------------------------|
+| 1 | Accounting → Journal Entries | **PASS** | Registry labels: **View**, **Edit Entry** / **Edit Payment** / **Edit Transfer**, **Reverse Entry**, **Open Source Document**, **View Trace**, **View Audit**, **Cancel Payment**, **Undo Last Edit** (per row policy). Handlers unchanged via `JournalRowTransactionActions` → `handlerId`. |
+| 2 | Transaction Detail Modal | **PASS** | Action panel from registry; **Edit Accounts** appears only when `allowsEditAccounts` (manual/transfer/etc.); blocked for sale/purchase/opening/stock adjustment. **Edit Payment** routes `handlerId: edit` → `runUnifiedEdit()` → existing `UnifiedPaymentDialog`. |
+| 3 | Account Statements (`AccountLedgerReportPage`) | **PASS** | **View** opens `openTransactionDetail` with `autoLaunchUnifiedEdit: false`. **Edit** label from `getStatementRowEditLabel` (e.g. **Edit Payment**, **Edit Entry**); button **hidden** when label null (source-controlled, PF-14 historical fingerprint, no `journal_entry_id`). |
+| 4 | Ledger Statement Center V2 | **PASS** | View icon `title="View"` (was "View details"). Table remains view-only — no edit column added. `autoLaunchUnifiedEdit={false}` on modal. |
+| 5 | Sale details payment rows | **PASS (unchanged)** | `ViewSaleDetailsDrawer` — **not modified** in Batch A. Payment edit still via `UnifiedPaymentDialog` + `resolvePaymentRowForEdit` (PF-14 path intact). |
+| 6 | Purchase details payment rows | **PASS (unchanged)** | `ViewPurchaseDetailsDrawer` — **not modified** in Batch A. Same existing payment editor routing. |
+
+### Checklist detail
+
+| Scenario | Expected | Observed (registry + code) |
+|----------|----------|----------------------------|
+| Manual journal — View | Opens Transaction Detail | `view` action → `onView()` |
+| Manual journal — Edit | **Edit Entry** | Registry `edit_entry` label |
+| Manual journal — Reverse | **Reverse Entry** when allowed | Registry `reverse_entry`; omitted when `journalReversalBlockedReason` |
+| Manual journal — Edit Accounts | Modal only when policy allows | `edit_accounts` in `detail_modal` context |
+| Payment — Edit | **Edit Payment** → payment editor | `edit_payment` → `handlerId: edit` → `unifiedTransactionEdit` |
+| Payment — PF-14 | Mechanics unchanged | No changes to `UnifiedPaymentDialog` / `paymentAdjustmentService` |
+| Payment — historical chain | Block with reason | Statement: fingerprint prefix hides edit; modal: async `getPaymentChainMutationBlockReason` |
+| Payment — Cancel / Undo | Consistent labels | **Cancel Payment**, **Undo Last Edit** |
+| Transfer — Edit | **Edit Transfer** | `reference_type: transfer` → `edit_transfer` |
+| Source-controlled sale/purchase/rental/opening/stock | No direct edit/reverse | **Open Source Document** + trace/audit only where applicable |
+| Statement — no `journal_entry_id` | No edit | `getStatementRowEditLabel` → null; em dash in actions column |
+| Ledger V2 — View tooltip | **View** | `TransactionShareActions` `title="View"` |
+
+### Issues found
+
+None blocking Batch A deploy gate.
+
+**Residual note (pre-existing):** Statement rows without `je_action_fingerprint` may still show **Edit** until the Transaction Detail modal runs the async PF-14 tail guard. Documented in Known risks above.
+
+### Confirmed not changed
+
+| Item | Confirmed |
+|------|-----------|
+| DB migration | **No** |
+| Live data mutation | **No** (view-only / label QA) |
+| Single Core Ledger Phase 1.5 | **No** |
+| PF-14 payment edit mechanics | **No** (routing through `unifiedTransactionEdit.ts` only) |
+| VPS deploy | **No** |
+
+### Draft PR (manual)
+
+**URL:** https://github.com/NDM0313/NEWPOSV3/pull/new/feature/accounting-transaction-actions-batch-a  
+**Title:** Accounting Transaction Actions Batch A  
+**Note:** Do not merge until reviewed. This batch unifies action labels/availability and safe routing only. No DB migrations, no live mutation, no VPS deploy.
+
