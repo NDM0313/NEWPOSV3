@@ -254,7 +254,7 @@ BEGIN
     SELECT f.*
     FROM for_party f
     WHERE public._unified_ledger_basis_includes_row(
-      p_basis, f.ref_type, f.action_fp, f.pay_voided_at, f.linked_sale_status
+      p_basis, f.ref_type, f.action_fp, f.pay_voided_at, f.linked_sale_status::text
     )
   ),
   opening_calc AS (
@@ -374,7 +374,7 @@ BEGIN
     SELECT j.*
     FROM je_lines j
     WHERE public._unified_ledger_basis_includes_row(
-      COALESCE(p_basis, 'official_gl'), j.ref_type, j.action_fp, j.pay_voided_at, j.linked_sale_status
+      COALESCE(p_basis, 'official_gl'), j.ref_type, j.action_fp, j.pay_voided_at, j.linked_sale_status::text
     )
   ),
   opening_calc AS (
@@ -490,7 +490,7 @@ BEGIN
     SELECT j.*
     FROM je_lines j
     WHERE public._unified_ledger_basis_includes_row(
-      COALESCE(p_basis, 'official_gl'), j.ref_type, j.action_fp, j.pay_voided_at, j.linked_sale_status
+      COALESCE(p_basis, 'official_gl'), j.ref_type, j.action_fp, j.pay_voided_at, j.linked_sale_status::text
     )
   ),
   opening_calc AS (
@@ -597,7 +597,7 @@ BEGIN
     SELECT j.*
     FROM je_lines j
     WHERE public._unified_ledger_basis_includes_row(
-      COALESCE(p_basis, 'official_gl'), j.ref_type, j.action_fp, j.pay_voided_at, j.linked_sale_status
+      COALESCE(p_basis, 'official_gl'), j.ref_type, j.action_fp, j.pay_voided_at, j.linked_sale_status::text
     )
   ),
   per_account AS (

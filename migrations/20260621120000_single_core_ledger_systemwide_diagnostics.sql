@@ -43,7 +43,7 @@ SELECT
     SELECT COUNT(*)
     FROM sales s
     WHERE s.company_id = c.id
-      AND LOWER(TRIM(COALESCE(s.status, ''))) IN ('final', 'finalized')
+      AND LOWER(TRIM(s.status::text)) IN ('final', 'finalized')
       AND NOT EXISTS (
         SELECT 1 FROM journal_entries je
         WHERE je.company_id = s.company_id
@@ -56,7 +56,7 @@ SELECT
     SELECT COUNT(*)
     FROM purchases pu
     WHERE pu.company_id = c.id
-      AND LOWER(TRIM(COALESCE(pu.status, ''))) IN ('final', 'finalized', 'received')
+      AND LOWER(TRIM(pu.status::text)) IN ('final', 'finalized', 'received')
       AND NOT EXISTS (
         SELECT 1 FROM journal_entries je
         WHERE je.company_id = pu.company_id

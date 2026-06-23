@@ -5,7 +5,7 @@
       "label": "DIN CHINA",
       "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
       "branches": [
-        { "label": "Main Branch / HQ", "match": { "code": "BL0001" } },
+        { "label": "Main Branch / HQ", "match": { "name": "DIN CHINA" } },
         { "label": "BL0002", "match": { "code": "BL0002" } }
       ],
       "golden_contact_patterns": [

@@ -23,6 +23,15 @@ import {
   printMaskedTarget,
   pgClientOptions,
 } from './single-core-ledger/staging-env-guard.mjs';
+import {
+  withPgClient,
+  fetchCompaniesPg,
+  fetchBranchesPg,
+  fetchContactsForPatternsPg,
+  legacyGlBalancePg,
+  unifiedBalancePg,
+  pilotRpcChecksPg,
+} from './single-core-ledger/pg-rpc-client.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
@@ -74,8 +83,7 @@ async function fetchBranches(supabase, companyId) {
   return data || [];
 }
 
-async function resolvePilotBranches(supabase, companyId, branchMatchers) {
-  const branches = await fetchBranches(supabase, companyId);
+async function resolvePilotBranchesFromList(branches, branchMatchers) {
   const resolved = [{ branchId: null, branchLabel: 'All branches' }];
   for (const m of branchMatchers || []) {
     const match = branches.find((b) => {
@@ -92,6 +100,11 @@ async function resolvePilotBranches(supabase, companyId, branchMatchers) {
     }
   }
   return resolved;
+}
+
+async function resolvePilotBranches(supabase, companyId, branchMatchers) {
+  const branches = await fetchBranches(supabase, companyId);
+  return resolvePilotBranchesFromList(branches, branchMatchers);
 }
 
 async function fetchContactsForPatterns(supabase, companyId, patterns) {
@@ -295,10 +308,21 @@ async function main() {
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
+  const connectionString =
+    process.env.DATABASE_ADMIN_URL ||
+    process.env.DATABASE_URL ||
+    process.env.DATABASE_POOLER_URL;
+  const pgOnly =
+    process.env.UNIFIED_LEDGER_PG_ONLY === '1' ||
+    target.targetType === 'vps_isolated_clone' ||
+    (!supabaseUrl || !supabaseKey);
   const runAt = new Date().toISOString();
 
-  if (!supabaseUrl || !supabaseKey) {
+  if (!pgOnly && (!supabaseUrl || !supabaseKey)) {
     fail('Missing staging Supabase URL or SUPABASE_SERVICE_ROLE_KEY in .env.local');
+  }
+  if (pgOnly && !connectionString) {
+    fail('PG-only tie-out requires DATABASE_URL to staging/clone.');
   }
 
   const pilots = fs.existsSync(pilotPath)
@@ -306,83 +330,117 @@ async function main() {
     : [];
   const pilotIds = pilots.map((p) => p.company_id);
 
-  const supabase = createClient(supabaseUrl, supabaseKey);
-  const companies = await fetchCompanies(supabase, pilotIds);
   const comparisons = [];
   const pilotSection = [];
   let pilotRpc = {};
+  let companies = [];
 
-  for (const co of companies) {
-    const pilot = pilots.find((p) => p.company_id === co.id);
-    const branchScopes = pilot
-      ? await resolvePilotBranches(supabase, co.id, pilot.branches)
-      : [{ branchId: null, branchLabel: 'All branches' }];
+  const runCompanyLoop = async (api) => {
+    companies = await api.fetchCompanies(pilotIds);
+    for (const co of companies) {
+      const pilot = pilots.find((p) => p.company_id === co.id);
+      const branchScopes = pilot
+        ? await api.resolvePilotBranches(co.id, pilot.branches)
+        : [{ branchId: null, branchLabel: 'All branches' }];
 
-    const contacts = pilot?.golden_contact_patterns?.length
-      ? await fetchContactsForPatterns(supabase, co.id, pilot.golden_contact_patterns)
-      : [];
+      const contacts = pilot?.golden_contact_patterns?.length
+        ? await api.fetchContacts(co.id, pilot.golden_contact_patterns)
+        : [];
 
-    const coPilotRows = [];
+      const coPilotRows = [];
 
-    if (pilot) {
-      pilotRpc = {};
-      for (const scope of branchScopes) {
-        pilotRpc[scope.branchLabel] = await pilotRpcChecks(supabase, co.id, scope.branchId);
-      }
-    }
-
-    for (const scope of branchScopes) {
-      for (const ct of contacts) {
-        for (const basis of BASES) {
-          const [legacy, unified] = await Promise.all([
-            legacyGlBalance(supabase, co.id, ct.partyType, ct.contactId, scope.branchId),
-            unifiedBalance(supabase, co.id, ct.partyType, ct.contactId, scope.branchId, basis),
-          ]);
-
-          const difference = round2((legacy.balance || 0) - (unified.balance || 0));
-          const row = {
-            company_id: co.id,
-            company_name: co.name,
-            branch_id: scope.branchId,
-            branch_label: scope.branchLabel,
-            branch_code: scope.branchCode ?? null,
-            contact_id: ct.contactId,
-            contact_name: ct.contactName,
-            contact_code: ct.contactCode,
-            party_type: ct.partyType,
-            pattern_label: ct.patternLabel,
-            basis,
-            old_source: 'legacy_gl_rpc',
-            new_engine: 'get_unified_party_ledger',
-            old_balance: legacy.balance,
-            new_balance: unified.balance,
-            difference,
-            old_row_count: legacy.rowCount,
-            new_row_count: unified.rowCount,
-            legacy_error: legacy.error ?? null,
-            unified_error: unified.error ?? null,
-            pass: Math.abs(difference) <= 0.01 && !legacy.error && !unified.error,
-            hybrid_note:
-              ct.partyType === 'customer'
-                ? 'hybrid_frontend_equivalent: use /admin/unified-ledger-tieout UI'
-                : null,
-            operational_open_items_note: 'operational_open_items: Phase 2 RPC pending',
-          };
-          comparisons.push(row);
-          if (pilot) coPilotRows.push(row);
+      if (pilot) {
+        pilotRpc = {};
+        for (const scope of branchScopes) {
+          pilotRpc[scope.branchLabel] = await api.pilotRpcChecks(co.id, scope.branchId);
         }
       }
-    }
 
-    if (pilot) {
-      pilotSection.push({
-        label: pilot.label,
-        company_id: co.id,
-        branch_scopes: branchScopes.map((b) => b.branchLabel),
-        comparisons: coPilotRows,
-      });
+      for (const scope of branchScopes) {
+        for (const ct of contacts) {
+          for (const basis of BASES) {
+            const [legacy, unified] = await Promise.all([
+              api.legacyGlBalance(co.id, ct.partyType, ct.contactId, scope.branchId),
+              api.unifiedBalance(co.id, ct.partyType, ct.contactId, scope.branchId, basis),
+            ]);
+
+            const difference = round2((legacy.balance || 0) - (unified.balance || 0));
+            const row = {
+              company_id: co.id,
+              company_name: co.name,
+              branch_id: scope.branchId,
+              branch_label: scope.branchLabel,
+              branch_code: scope.branchCode ?? null,
+              contact_id: ct.contactId,
+              contact_name: ct.contactName,
+              contact_code: ct.contactCode,
+              party_type: ct.partyType,
+              pattern_label: ct.patternLabel,
+              basis,
+              old_source: 'legacy_gl_rpc',
+              new_engine: 'get_unified_party_ledger',
+              old_balance: legacy.balance,
+              new_balance: unified.balance,
+              difference,
+              old_row_count: legacy.rowCount,
+              new_row_count: unified.rowCount,
+              legacy_error: legacy.error ?? null,
+              unified_error: unified.error ?? null,
+              pass: Math.abs(difference) <= 0.01 && !legacy.error && !unified.error,
+              hybrid_note:
+                ct.partyType === 'customer'
+                  ? 'hybrid_frontend_equivalent: use /admin/unified-ledger-tieout UI'
+                  : null,
+              operational_open_items_note: 'operational_open_items: Phase 2 RPC pending',
+            };
+            comparisons.push(row);
+            if (pilot) coPilotRows.push(row);
+          }
+        }
+      }
+
+      if (pilot) {
+        pilotSection.push({
+          label: pilot.label,
+          company_id: co.id,
+          branch_scopes: branchScopes.map((b) => b.branchLabel),
+          comparisons: coPilotRows,
+        });
+      }
     }
+  };
+
+  if (pgOnly) {
+    await withPgClient(connectionString, async (client) => {
+      await runCompanyLoop({
+        fetchCompanies: (ids) => fetchCompaniesPg(client, ids),
+        resolvePilotBranches: async (companyId, matchers) => {
+          const branches = await fetchBranchesPg(client, companyId);
+          return resolvePilotBranchesFromList(branches, matchers);
+        },
+        fetchContacts: (companyId, patterns) => fetchContactsForPatternsPg(client, companyId, patterns),
+        legacyGlBalance: (companyId, partyType, contactId, branchId) =>
+          legacyGlBalancePg(client, companyId, partyType, contactId, branchId),
+        unifiedBalance: (companyId, partyType, contactId, branchId, basis) =>
+          unifiedBalancePg(client, companyId, partyType, contactId, branchId, basis),
+        pilotRpcChecks: (companyId, branchId) => pilotRpcChecksPg(client, companyId, branchId),
+      });
+    });
+  } else {
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    await runCompanyLoop({
+      fetchCompanies: (ids) => fetchCompanies(supabase, ids),
+      resolvePilotBranches: (companyId, matchers) => resolvePilotBranches(supabase, companyId, matchers),
+      fetchContacts: (companyId, patterns) => fetchContactsForPatterns(supabase, companyId, patterns),
+      legacyGlBalance: (companyId, partyType, contactId, branchId) =>
+        legacyGlBalance(supabase, companyId, partyType, contactId, branchId),
+      unifiedBalance: (companyId, partyType, contactId, branchId, basis) =>
+        unifiedBalance(supabase, companyId, partyType, contactId, branchId, basis),
+      pilotRpcChecks: (companyId, branchId) => pilotRpcChecks(supabase, companyId, branchId),
+    });
   }
+
+  /* removed duplicate loop — see runCompanyLoop above */
 
   const passCount = comparisons.filter((c) => c.pass).length;
   const failCount = comparisons.length - passCount;
@@ -392,6 +450,7 @@ async function main() {
 
   const envelope = {
     run_at: runAt,
+    run_mode: pgOnly ? 'pg' : 'supabase',
     staging_guard: 'UNIFIED_LEDGER_STAGING=1',
     tieout_guard: 'UNIFIED_LEDGER_TIEOUT_STAGING=1',
     pilot_only: pilotOnly,

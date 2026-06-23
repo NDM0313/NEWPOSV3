@@ -171,7 +171,7 @@ BEGIN
       f.ref_type,
       f.action_fp,
       f.pay_voided_at,
-      f.linked_sale_status
+      f.linked_sale_status::text
     )
   ),
   opening_calc AS (
@@ -300,7 +300,7 @@ AS $BODY$
       j.ref_type,
       j.action_fp,
       j.pay_voided_at,
-      j.linked_sale_status
+      j.linked_sale_status::text
     )
   ),
   opening_calc AS (

@@ -1,129 +1,89 @@
 # Single Core Ledger — Phase 1.5 Systemwide Verification Report
 
 **Branch:** `feature/single-core-ledger-phase-1-5-systemwide`  
-**Date:** 2026-06-20  
-**Staging validation:** **NETWORK_BLOCKED** (code complete; live staging run pending reachable clone)
+**Date:** 2026-06-23  
+**Staging validation:** **EXECUTED on VPS clone** — **Gate: NOT VALIDATED** (diagnostics strict fail)
 
 ---
 
 ## Executive summary
 
-Phase 1.5 implementation and staging CLI tooling are **complete on the feature branch**. Staging validation could **not** finish because the documented Supabase Cloud staging project (`wrwljqzckmnmuphwhslt.supabase.co`) returns **DNS ENOTFOUND** from this environment. Per safety rules, **VPS** (`supabase.dincouture.pk` / `72.62.254.176`) was **rejected** by the staging guard.
+Phase 1.5 migrations and CLI validation ran successfully on an **isolated VPS clone** (`ledger_stage_20260623`). **DIN CHINA pilot tie-out passes** (legacy GL vs unified party ledger, all three bases). **Systemwide diagnostics fail** strict gate for 2/3 companies due to payment contact and branch attribution data quality — blocking Phase 1.5 sign-off.
 
 | Check | Result |
 |-------|--------|
 | Unit tests (`npm run test:unified-ledger`) | **19/19 pass** |
-| Migrations applied on staging | **Not run** (no DB) |
-| Systemwide diagnostics | **NETWORK_BLOCKED** |
-| DIN CHINA pilot tie-out | **Not run** |
-| Feature flag OFF | **Confirmed in code** |
-| VPS deploy | **No** |
-| Live mutation | **No** |
-| Main merge | **No** |
+| Staging clone | **VPS `ledger_stage_20260623`** |
+| Migrations on clone | **4/4 applied** |
+| RPC verification | **5/5 functions** |
+| Systemwide diagnostics | **FAIL** (1 pass, 2 fail / 3 companies) |
+| DIN CHINA pilot tie-out | **PASS** (6/6, diff 0) |
+| All-company tie-out | **Not run** |
+| Feature flag OFF | **Confirmed** |
+| Live `postgres` DB | **Untouched** |
+
+---
+
+## Staging target (masked)
+
+| Field | Value |
+|-------|-------|
+| Target type | VPS isolated clone |
+| DB host | `172.19.0.15` (docker internal) |
+| Database | `ledger_stage_20260623` |
+| Production DB | `postgres` — not used |
+| Guards | `UNIFIED_LEDGER_STAGING=1`, `UNIFIED_LEDGER_VPS_CLONE=1`, `UNIFIED_LEDGER_PG_ONLY=1` |
 
 ---
 
 ## Commands run
 
-```text
-git branch --show-current          → feature/single-core-ledger-phase-1-5-systemwide
-npm run test:unified-ledger        → 19 pass
-node scripts/apply-unified-ledger-phase-15-migrations.mjs  → ENOTFOUND (db host)
-node scripts/run-single-core-ledger-diagnostics.mjs --write-report  → NETWORK_BLOCKED
-node scripts/run-unified-ledger-tieout.mjs --pilot-only --write-report  → not reached (no API)
+```bash
+npm run test:unified-ledger
+CLONE_DB=ledger_stage_20260623 bash scripts/single-core-ledger/create-vps-ledger-clone.sh
+CLONE_DB=ledger_stage_20260623 bash scripts/single-core-ledger/apply-phase-15-docker-exec.sh
+UNIFIED_LEDGER_STAGING=1 UNIFIED_LEDGER_VPS_CLONE=1 UNIFIED_LEDGER_PG_ONLY=1 \
+  node scripts/run-single-core-ledger-diagnostics.mjs --write-report
+UNIFIED_LEDGER_STAGING=1 UNIFIED_LEDGER_VPS_CLONE=1 UNIFIED_LEDGER_PG_ONLY=1 \
+  UNIFIED_LEDGER_TIEOUT_STAGING=1 node scripts/run-unified-ledger-tieout.mjs --pilot-only --write-report
 ```
 
-**Masked staging target attempted:**
+---
 
-| Field | Value |
-|-------|-------|
-| DB host | `db.wrwljqzckmnmuphwhslt.supabase.co` (ENOTFOUND) |
-| Database | `postgres` |
-| Supabase host | `wrwljqzckmnmuphwhslt.supabase.co` (ENOTFOUND) |
-| Staging guard | `UNIFIED_LEDGER_STAGING=1` |
+## Artifacts
+
+| Artifact | Path | SHA256 (prefix) |
+|----------|------|-----------------|
+| Diagnostics JSON | `reports/single-core-ledger/diagnostics-2026-06-23T14-20-34-284Z.json` | `b07fd3de…` |
+| Tie-out JSON | `reports/single-core-ledger/tieout-2026-06-23T14-20-51-991Z.json` | `144c6d65…` |
+| Resume report | `docs/accounting/SINGLE_CORE_LEDGER_RESUME_REPORT.md` | — |
 
 ---
 
-## Auth helpers used (no invented helpers)
+## DIN CHINA pilot results
 
-| Helper | Usage |
-|--------|--------|
-| `get_user_company_id()` | `_unified_ledger_assert_caller_access` company scope |
-| `get_user_role()` | Admin/owner/manager/accountant bypass |
-| `has_branch_access()` | Branch-scoped non-admin access |
-
----
-
-## Staging run artifacts
-
-| Artifact | Path | Status |
-|----------|------|--------|
-| Diagnostics JSON | `reports/single-core-ledger/diagnostics-network-blocked-2026-06-20.json` | NETWORK_BLOCKED |
-| Tie-out JSON | _(not produced)_ | Blocked |
-| Diagnostic report | `docs/accounting/SINGLE_CORE_LEDGER_DIAGNOSTIC_REPORT.md` | Updated |
-| Tie-out report | `docs/accounting/SINGLE_CORE_LEDGER_ALL_COMPANY_TIEOUT_REPORT.md` | Blocked template |
+- company_id: `30bd8592-3384-4f34-899a-f3907e336485`
+- Bases: `official_gl`, `effective_party`, `audit_full_history` — all **PASS** vs `legacy_gl_rpc`
+- JALIL: old/new balance **216,300** (15 rows each)
+- Trial balance: **balanced** (All branches + BL0002)
+- Cash/bank RPC: returns rows; liquidity accounts enumerated
 
 ---
 
-## DIN CHINA pilot (not executed)
+## Blockers before Gate A
 
-- company_id: `30bd8592-3384-4f34-899a-f3907e336485` (pilot config only)
-- Branches: All branches, BL0001/HQ, BL0002 — pending tie-out
-- Bases: official_gl, effective_party, audit_full_history — pending
-- Trial balance / cash/bank RPC smoke — pending
+1. `payments_missing_contact_sale_linked` (DIN CHINA 70, DIN BRIDAL 4)
+2. `branch_attribution_risk` (8 total across companies)
+3. BL0001/HQ branch scope not exercised in pilot RPC checks
+
+See `SINGLE_CORE_LEDGER_RESUME_REPORT.md` for next steps.
 
 ---
 
-## Safety confirmations
+## Safety
 
 | Rule | Status |
 |------|--------|
-| No VPS deploy | ✅ |
-| No live ERP mutation | ✅ |
-| No main merge | ✅ |
-| Feature flag OFF (`unified_ledger_engine`) | ✅ |
-| Old engines retained | ✅ |
-| No production screen replacement | ✅ |
-| No service_role in frontend | ✅ |
-| VPS DB rejected by staging guard | ✅ |
-
----
-
-## Open risks
-
-1. **No reachable staging clone** in current environment — blocks Phase 1.5 sign-off.
-2. Documented Cloud project may be paused/deleted — needs operator restore or new clone URL.
-3. `branch_attribution_risk` / tie-out diffs unknown until staging runs.
-
----
-
-## Phase 2 recommendation
-
-**Do not start Phase 2** until:
-
-1. Operator provides **reachable staging clone** (not VPS production).
-2. Migrations `20260620140000` → `20260621151000` applied on that clone.
-3. Diagnostics return `companies_count > 0`.
-4. DIN CHINA pilot tie-out executed with row-level diffs documented.
-5. Trial balance balanced (or differences explained).
-
-**Operator remediation:**
-
-```powershell
-# .env.local — staging only (not VPS)
-UNIFIED_LEDGER_STAGING=1
-UNIFIED_LEDGER_TIEOUT_STAGING=1
-DATABASE_URL=<reachable-staging-postgres>
-VITE_SUPABASE_URL=<reachable-staging-supabase>
-SUPABASE_SERVICE_ROLE_KEY=<staging-service-role>
-
-node scripts/apply-unified-ledger-phase-15-migrations.mjs
-node scripts/run-single-core-ledger-diagnostics.mjs --write-report
-node scripts/run-unified-ledger-tieout.mjs --pilot-only --write-report
-```
-
----
-
-## Files in Phase 1.5 scope (committed on feature branch)
-
-See git commit `feat(accounting): add phase 1.5 systemwide unified ledger foundation` for exact file list.
+| VPS production DB changed | **No** |
+| `unified_ledger_engine` ON | **No** |
+| Main merge | **No** |
