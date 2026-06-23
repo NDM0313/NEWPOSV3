@@ -12,7 +12,7 @@ import {
 
 export { loadEnvLocal, printMaskedTarget, pgClientOptions };
 
-const CLONE_DB_PATTERN = /^ledger_stage_[0-9]{8}$/;
+const CLONE_DB_PATTERN = /^ledger_stage_[0-9]{8}(_prodcheck)?$/;
 const PRODUCTION_DB_NAME = 'postgres';
 
 export function getCloneDatabaseName() {
@@ -29,7 +29,9 @@ export function getCloneDatabaseName() {
       /* fall through */
     }
   }
-  return process.env.CLONE_DB || 'ledger_stage_20260623';
+  const envClone = process.env.CLONE_DB || '';
+  if (envClone && CLONE_DB_PATTERN.test(envClone)) return envClone;
+  return 'ledger_stage_20260623';
 }
 
 export function sha256File(filePath) {

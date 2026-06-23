@@ -13,7 +13,7 @@ const BLOCKED_API_HOST_PATTERNS = [
 ];
 
 const PRODUCTION_DB_NAME = 'postgres';
-const CLONE_DB_PATTERN = /^ledger_stage_[0-9]{8}$/;
+const CLONE_DB_PATTERN = /^ledger_stage_[0-9]{8}(_prodcheck)?$/;
 
 const ALLOWED_DB_HOST_PATTERNS = [
   /supabase\.co/i,

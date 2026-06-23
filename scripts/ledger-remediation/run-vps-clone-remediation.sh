@@ -8,7 +8,7 @@ set -euo pipefail
 
 CLONE_DB="${CLONE_DB:-ledger_stage_20260623}"
 REPO_DIR="${REPO_DIR:-/root/NEWPOSV3-phase-15-validate}"
-BRANCH="${BRANCH:-feature/single-core-ledger-phase-1-6-remediation}"
+BRANCH="${BRANCH:-feature/single-core-ledger-phase-1-6-2-production-approval}"
 SUPABASE_ENV="${SUPABASE_ENV:-/root/supabase/docker/.env}"
 
 echo "=== Phase 1.6 — VPS clone remediation ==="
