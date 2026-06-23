@@ -49,19 +49,11 @@ node scripts/ledger-remediation/inventory-diagnostic-failures.mjs
 echo ""
 echo "--- Bundle 2: dry-run summary ---"
 node scripts/ledger-remediation/dry-run-single-core-remediation-summary.mjs
-DRY_RUN=$(ls -t reports/single-core-ledger/remediation-dry-run-*.json | head -1)
+DRY_RUN="$REPO_DIR/$(ls -t "$REPO_DIR/reports/single-core-ledger/remediation-dry-run-"*.json | xargs -n1 basename | head -1)"
 echo "Dry-run file: $DRY_RUN"
 
-PAY_SAFE=$(node -e "
-const j=require('$DRY_RUN');
-const rows=j.sections?.payment_contact?.rows ?? j.payment_contact?.rows ?? j.rows ?? [];
-console.log(rows.filter(r=>r.issue_type==='payments_missing_contact_sale_linked'&&r.safe_apply).length);
-")
-BR_SAFE=$(node -e "
-const j=require('$DRY_RUN');
-const rows=j.sections?.branch_attribution?.rows ?? j.branch_attribution?.rows ?? j.rows ?? [];
-console.log(rows.filter(r=>r.issue_type==='branch_attribution_risk'&&r.safe_apply).length);
-")
+PAY_SAFE=$(node -e "const j=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')); const rows=j.sections?.payment_contact?.rows??j.payment_contact?.rows??[]; console.log(rows.filter(r=>r.safe_apply).length);" "$DRY_RUN")
+BR_SAFE=$(node -e "const j=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')); const rows=j.sections?.branch_attribution?.rows??j.branch_attribution?.rows??[]; console.log(rows.filter(r=>r.safe_apply).length);" "$DRY_RUN")
 echo "Payment safe_apply: $PAY_SAFE"
 echo "Branch safe_apply: $BR_SAFE"
 
