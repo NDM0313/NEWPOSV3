@@ -30,9 +30,9 @@ Phase 1.5 migrations and CLI validation ran successfully on an **isolated VPS cl
 | Staging clone | **VPS `ledger_stage_20260623`** |
 | Migrations on clone | **4/4 applied** |
 | RPC verification | **5/5 functions** |
-| Systemwide diagnostics | **FAIL** (1 pass, 2 fail / 3 companies) |
-| DIN CHINA pilot tie-out | **PASS** (6/6, diff 0) |
-| All-company tie-out | **Not run** |
+| Systemwide diagnostics | **FAIL** (1 pass, 2 fail) — payment contact **0**; branch risk **6** |
+| DIN CHINA pilot tie-out | **PASS** (9/9 comparisons, diff 0) |
+| All-company tie-out | **PASS** (pilot-scoped 9/9) |
 | Feature flag OFF | **Confirmed** |
 | Live `postgres` DB | **Untouched** |
 
@@ -86,11 +86,13 @@ UNIFIED_LEDGER_STAGING=1 UNIFIED_LEDGER_VPS_CLONE=1 UNIFIED_LEDGER_PG_ONLY=1 \
 
 ## Blockers before Gate A
 
-1. `payments_missing_contact_sale_linked` (DIN CHINA 70, DIN BRIDAL 4)
-2. `branch_attribution_risk` (8 total across companies)
+1. ~~`payments_missing_contact_sale_linked`~~ — **cleared** on clone (74 backfilled; metric **0** all companies)
+2. `branch_attribution_risk` — **6 remaining** (manual_review: transfers FT-000287/FT-000309, manual_receipt JEs)
 3. BL0001/HQ branch scope not exercised in pilot RPC checks
 
-See `SINGLE_CORE_LEDGER_RESUME_REPORT.md` for next steps.
+**Gate status:** **PARTIAL** — payment contact blocker cleared; branch manual-review sign-off required for full 3/3 strict pass.
+
+See `SINGLE_CORE_LEDGER_PHASE_1_6_REMEDIATION_PLAN.md` for exception list.
 
 ---
 

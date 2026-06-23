@@ -6,17 +6,17 @@
 
 | Field | Value |
 |-------|-------|
-| Run timestamp (UTC) | 2026-06-23T14:20:34.284Z |
+| Run timestamp (UTC) | 2026-06-23T15:36:21.017Z |
 | companies_count | 3 |
-| JSON output path | `/root/NEWPOSV3-phase-15-validate/reports/single-core-ledger/diagnostics-2026-06-23T14-20-34-284Z.json` |
-| JSON SHA256 | `b07fd3deb18924111b9b284ddd84cc7639dc56daa99bc6c659edc82a4fc848cd` |
+| JSON output path | `/root/NEWPOSV3-phase-15-validate/reports/single-core-ledger/diagnostics-2026-06-23T15-36-21-017Z.json` |
+| JSON SHA256 | `5857dc63f0f5c126d7c0a9d532acae69a9cfca20603f0583accc9abbe944dd79` |
 | Overall status | **FAIL** |
 
 ## Pass / fail summary
 
 - strict_pass_count: 1
 - strict_fail_count: 2
-- branch_attribution_risk_total: 8
+- branch_attribution_risk_total: 6
 - warnings_unposted_sales: 0
 - warnings_unposted_purchases: 0
 
@@ -31,7 +31,7 @@
   "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
   "company_name": "DIN CHINA",
   "company_is_active": true,
-  "payments_missing_contact_sale_linked": 70,
+  "payments_missing_contact_sale_linked": 0,
   "payments_wrong_party_attribution": 0,
   "branch_attribution_risk": 4,
   "unposted_final_sales": 0,
@@ -41,12 +41,6 @@
   "opening_balance_null_branch_je_count": 11,
   "strict_pass": false,
   "issues": [
-    {
-      "field": "payments_missing_contact_sale_linked",
-      "count": 70,
-      "fix_class": "payment_contact_backfill",
-      "severity": "strict"
-    },
     {
       "field": "branch_attribution_risk",
       "count": 4,
@@ -108,10 +102,10 @@
 
 ## Per-company diagnostics (all companies)
 
-- **DIN BRIDAL**: strict_pass=false, issues=[{"field":"payments_missing_contact_sale_linked","count":4,"fix_class":"payment_contact_backfill","severity":"strict"},{"field":"branch_attribution_risk","count":4,"fix_class":"branch_attribution_review","severity":"strict"},{"field":"opening_balance_null_branch_je_count","count":173,"fix_class":"opening_balance_branch_review","severity":"info"}]
-- **DIN CHINA**: strict_pass=false, issues=[{"field":"payments_missing_contact_sale_linked","count":70,"fix_class":"payment_contact_backfill","severity":"strict"},{"field":"branch_attribution_risk","count":4,"fix_class":"branch_attribution_review","severity":"strict"},{"field":"opening_balance_null_branch_je_count","count":11,"fix_class":"opening_balance_branch_review","severity":"info"}]
+- **DIN BRIDAL**: strict_pass=false, issues=[{"field":"branch_attribution_risk","count":2,"fix_class":"branch_attribution_review","severity":"strict"},{"field":"opening_balance_null_branch_je_count","count":173,"fix_class":"opening_balance_branch_review","severity":"info"}]
+- **DIN CHINA**: strict_pass=false, issues=[{"field":"branch_attribution_risk","count":4,"fix_class":"branch_attribution_review","severity":"strict"},{"field":"opening_balance_null_branch_je_count","count":11,"fix_class":"opening_balance_branch_review","severity":"info"}]
 - **DIN COUTURE**: strict_pass=true, issues=[{"field":"opening_balance_null_branch_je_count","count":72,"fix_class":"opening_balance_branch_review","severity":"info"}]
 ## Unresolved differences (strict fail companies)
 
-- **DIN BRIDAL** (`597a5292-14c8-4cd8-96bd-c61b5a0d8c92`): branch_risk=4, missing_contact=4, wrong_party=0
-- **DIN CHINA** (`30bd8592-3384-4f34-899a-f3907e336485`): branch_risk=4, missing_contact=70, wrong_party=0
+- **DIN BRIDAL** (`597a5292-14c8-4cd8-96bd-c61b5a0d8c92`): branch_risk=2, missing_contact=0, wrong_party=0
+- **DIN CHINA** (`30bd8592-3384-4f34-899a-f3907e336485`): branch_risk=4, missing_contact=0, wrong_party=0
