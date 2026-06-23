@@ -2,7 +2,7 @@
 
 **Branch:** `feature/accounting-transaction-actions-batch-a`  
 **Commit before fix:** `c4ea5ec3`  
-**Hotfix commit:** _(filled after commit)_  
+**Hotfix commit:** `4d024603`  
 **Date:** 2026-06-23
 
 ---
@@ -140,4 +140,24 @@ docs/accounting/TRANSACTION_ACTIONS_BATCH_A_1_HOTFIX_REPORT.md
 
 ## Deploy (post-commit)
 
-_(Updated after VPS deploy)_
+**Deployed:** 2026-06-23 ~11:30 UTC  
+**Method:** Isolated clone `/root/NEWPOSV3-batch-a-deploy` (main `/root/NEWPOSV3` still dirty — untouched)  
+**Hotfix commit deployed:** `4d024603ef8deb7f2faa887bfb4e13ffeaf5da13`  
+**Rollback tag:** `deploy-erp:rollback-before-batch-a1-20260623112903`  
+**Previous deploy:** `76b60f72` (Batch A)
+
+| Check | Result |
+|-------|--------|
+| `erp-frontend` | **Up (healthy)** |
+| `curl -fsSI https://erp.dincouture.pk/` | **HTTP/2 200** |
+| `last-modified` | 2026-06-23 11:30:00 GMT (new build) |
+| Rollback needed | **No** |
+
+**Rollback command:**
+
+```bash
+ssh dincouture-vps 'docker tag deploy-erp:rollback-before-batch-a1-20260623112903 deploy-erp && cd /root/NEWPOSV3 && docker compose -f deploy/docker-compose.prod.yml --env-file .env.production up -d --force-recreate erp'
+```
+
+**Hotfix commit:** `4d024603`
+
