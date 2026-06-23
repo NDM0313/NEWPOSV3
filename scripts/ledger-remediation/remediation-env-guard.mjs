@@ -121,12 +121,15 @@ export function verifyDryRunFile(dryRunFilePath, expectedSafeCount, opts = {}) {
   const parsed = JSON.parse(fs.readFileSync(dryRunFilePath, 'utf8'));
   const fileHash = sha256File(dryRunFilePath);
   const manifestHash = parsed.manifest?.sha256 ?? null;
-  if (manifestHash && manifestHash !== fileHash) {
-    throw new Error(`Dry-run SHA256 mismatch`);
+  const bodyOnly = { ...parsed };
+  delete bodyOnly.manifest;
+  const bodyHash = sha256Text(JSON.stringify(bodyOnly, null, 2));
+  if (manifestHash && manifestHash !== bodyHash) {
+    throw new Error(`Dry-run SHA256 mismatch (manifest=${manifestHash.slice(0, 12)}… body=${bodyHash.slice(0, 12)}…)`);
   }
   const safeCount = scopedSafeCount(parsed, scope === 'all' ? 'payment_contact' : scope);
   if (expectedSafeCount != null && Number(expectedSafeCount) !== Number(safeCount)) {
     throw new Error(`Expected safe_apply ${expectedSafeCount} (${scope}) but dry-run has ${safeCount}`);
   }
-  return { parsed, fileHash, safeCount };
+  return { parsed, fileHash: manifestHash || bodyHash, safeCount };
 }
