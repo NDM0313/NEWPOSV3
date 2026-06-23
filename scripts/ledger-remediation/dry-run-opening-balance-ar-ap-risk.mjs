@@ -83,4 +83,13 @@ async function main() {
   console.log(JSON.stringify(result, null, 2));
 }
 
-main().catch((e) => fail(e.message));
+import { fileURLToPath } from 'url';
+import path from 'path';
+
+const isDirectRun =
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isDirectRun) {
+  main().catch((e) => fail(e.message));
+}
