@@ -9,7 +9,7 @@ import {
   printMaskedTarget,
   loadEnvLocal,
   pgClientOptions,
-} from '../../single-core-ledger/staging-env-guard.mjs';
+} from '../single-core-ledger/staging-env-guard.mjs';
 
 export { loadEnvLocal, printMaskedTarget, pgClientOptions };
 
