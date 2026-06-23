@@ -2,7 +2,21 @@
 
 **Branch:** `feature/single-core-ledger-phase-1-5-systemwide`  
 **Date:** 2026-06-23  
-**Staging validation:** **EXECUTED on VPS clone** — **Gate: NOT VALIDATED** (diagnostics strict fail)
+**Staging validation:** **Phase 1.6 clone remediation applied** — payment contact **0 gaps**; branch **6 manual-review** JEs remain
+
+---
+
+## Phase 1.6 clone remediation (2026-06-23)
+
+| Step | Result |
+|------|--------|
+| Inventory | 74 payment gaps, 8 branch risk |
+| Dry-run safe_apply | 74 payment + 2 branch |
+| Clone apply | 74 payments + 2 JEs updated |
+| Post-apply diagnostics | strict_pass **1/3** (DIN COUTURE); missing_contact **0** all cos |
+| Pilot tie-out | **PASS** 6/6 |
+
+**Gate:** Payment contact blocker **cleared**. Branch transfers (FT-000287, FT-000309) remain for manual-review sign-off.
 
 ---
 
