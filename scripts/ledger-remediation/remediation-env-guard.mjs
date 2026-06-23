@@ -1,6 +1,5 @@
 /**
  * Remediation-specific guards extending staging-env-guard.
- * Clone-only apply: ledger_stage_YYYYMMDD, dry-run SHA256, REMEDIATION_APPLY_CONFIRM.
  */
 import crypto from 'crypto';
 import fs from 'fs';
@@ -38,11 +37,57 @@ export function sha256File(filePath) {
   return crypto.createHash('sha256').update(text, 'utf8').digest('hex');
 }
 
+export function sha256Text(text) {
+  return crypto.createHash('sha256').update(text, 'utf8').digest('hex');
+}
+
+export function parseRemediationArgs() {
+  const dryRunFileIdx = process.argv.indexOf('--dry-run-file');
+  const dryRunFile = dryRunFileIdx >= 0 ? process.argv[dryRunFileIdx + 1] : null;
+  const expectedIdx = process.argv.indexOf('--expected-safe-count');
+  const expectedSafeCount =
+    expectedIdx >= 0 && process.argv[expectedIdx + 1] != null
+      ? Number(process.argv[expectedIdx + 1])
+      : null;
+  return { dryRunFile, expectedSafeCount };
+}
+
+function countSafeApply(rows = []) {
+  return rows.filter((r) => r.safe_apply).length;
+}
+
+function scopedSafeCount(parsed, scope) {
+  if (scope === 'payment_contact') {
+    return (
+      parsed.payment_contact?.safe_apply ??
+      countSafeApply(parsed.sections?.payment_contact?.rows) ??
+      countSafeApply(
+        (parsed.rows || []).filter((r) => r.issue_type === 'payments_missing_contact_sale_linked')
+      )
+    );
+  }
+  if (scope === 'branch_attribution') {
+    return (
+      parsed.branch_attribution?.safe_apply ??
+      countSafeApply(parsed.sections?.branch_attribution?.rows) ??
+      countSafeApply(
+        (parsed.rows || []).filter((r) => r.issue_type === 'branch_attribution_risk')
+      )
+    );
+  }
+  return parsed.summary?.safe_apply_total ?? countSafeApply(parsed.rows);
+}
+
 /**
- * @param {{ inventoryOnly?: boolean, requireApply?: boolean }} opts
+ * @param {{ inventoryOnly?: boolean, requireApply?: boolean, dryRunFile?: string|null, expectedSafeCount?: number|null }} opts
  */
 export function assertRemediationTarget(opts = {}) {
-  const { inventoryOnly = false, requireApply = false } = opts;
+  const {
+    inventoryOnly = false,
+    requireApply = false,
+    dryRunFile = null,
+    expectedSafeCount = null,
+  } = opts;
 
   const target = assertStagingTarget();
   const cloneDb = getCloneDatabaseName();
@@ -63,57 +108,58 @@ export function assertRemediationTarget(opts = {}) {
     throw new Error('REMEDIATION_APPLY_CONFIRM=1 is required for clone apply scripts.');
   }
 
+  if (requireApply) {
+    if (!dryRunFile) {
+      throw new Error('--dry-run-file <path> is required for apply scripts.');
+    }
+    if (!fs.existsSync(dryRunFile)) {
+      throw new Error(`Dry-run file not found: ${dryRunFile}`);
+    }
+    const fileHash = sha256File(dryRunFile);
+    let manifest;
+    try {
+      manifest = JSON.parse(fs.readFileSync(dryRunFile, 'utf8'));
+    } catch (e) {
+      throw new Error(`Dry-run file is not valid JSON: ${e.message}`);
+    }
+    const embedded = manifest.manifest?.sha256;
+    if (embedded && embedded !== fileHash) {
+      throw new Error(`Dry-run SHA256 mismatch (file=${fileHash}, manifest=${embedded})`);
+    }
+    if (expectedSafeCount != null) {
+      const paymentExpected = scopedSafeCount(manifest, 'payment_contact');
+      const branchExpected = scopedSafeCount(manifest, 'branch_attribution');
+      const branchRows = (manifest.sections?.branch_attribution?.rows || manifest.branch_attribution?.rows || []).filter(
+        (r) => r.issue_type === 'branch_attribution_risk' && r.safe_apply
+      );
+      const isBranchApply = branchRows.length > 0 && expectedSafeCount === branchRows.length;
+      const actual = isBranchApply ? branchExpected : paymentExpected;
+      if (Number(actual) !== Number(expectedSafeCount)) {
+        throw new Error(
+          `safe_apply count mismatch: dry-run has ${actual}, --expected-safe-count=${expectedSafeCount}`
+        );
+      }
+    }
+    return { ...target, cloneDb, dryRunFile, fileHash, manifest };
+  }
+
   return { ...target, cloneDb, inventoryOnly, requireApply };
 }
 
-/**
- * @param {string} dryRunFilePath
- * @param {number} [expectedSafeCount]
- * @param {{ scope?: 'payment_contact'|'branch_attribution'|'all' }} [opts]
- */
 export function verifyDryRunFile(dryRunFilePath, expectedSafeCount, opts = {}) {
   const scope = opts.scope ?? 'all';
   if (!dryRunFilePath || !fs.existsSync(dryRunFilePath)) {
     throw new Error(`Dry-run file not found: ${dryRunFilePath ?? 'n/a'}`);
   }
-
-  const raw = fs.readFileSync(dryRunFilePath, 'utf8');
-  let parsed;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (e) {
-    throw new Error(`Dry-run file is not valid JSON: ${e.message}`);
-  }
-
+  const parsed = JSON.parse(fs.readFileSync(dryRunFilePath, 'utf8'));
   const fileHash = sha256File(dryRunFilePath);
   const manifestHash = parsed.manifest?.sha256 ?? null;
   if (manifestHash && manifestHash !== fileHash) {
-    throw new Error(
-      `Dry-run SHA256 mismatch: file=${fileHash.slice(0, 16)}… manifest=${manifestHash.slice(0, 16)}…`
-    );
+    throw new Error(`Dry-run SHA256 mismatch`);
   }
-
-  let safeCount;
-  if (scope === 'payment_contact') {
-    safeCount =
-      parsed.payment_contact?.safe_apply ??
-      (parsed.payment_contact?.rows ?? []).filter((r) => r.safe_apply).length;
-  } else if (scope === 'branch_attribution') {
-    safeCount =
-      parsed.branch_attribution?.safe_apply ??
-      (parsed.branch_attribution?.rows ?? []).filter((r) => r.safe_apply).length;
-  } else {
-    safeCount =
-      parsed.summary?.safe_apply_total ??
-      parsed.totals?.safe_apply ??
-      (parsed.rows || []).filter((r) => r.safe_apply).length;
-  }
-
+  const safeCount = scopedSafeCount(parsed, scope === 'all' ? 'payment_contact' : scope);
   if (expectedSafeCount != null && Number(expectedSafeCount) !== Number(safeCount)) {
-    throw new Error(
-      `Expected safe_apply count ${expectedSafeCount} (${scope}) but dry-run has ${safeCount}. Abort apply.`
-    );
+    throw new Error(`Expected safe_apply ${expectedSafeCount} (${scope}) but dry-run has ${safeCount}`);
   }
-
   return { parsed, fileHash, safeCount };
 }

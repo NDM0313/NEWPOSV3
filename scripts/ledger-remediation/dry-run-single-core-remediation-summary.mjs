@@ -87,6 +87,16 @@ async function main() {
     staging_guard: 'UNIFIED_LEDGER_STAGING=1',
     clone_database: target.database,
     diagnostics_summary: diagnostics?.summary,
+    payment_contact: {
+      rows: paymentRows,
+      count: paymentRows.length,
+      safe_apply: paymentRows.filter((r) => r.safe_apply).length,
+    },
+    branch_attribution: {
+      rows: branchRows,
+      count: branchRows.length,
+      safe_apply: branchRows.filter((r) => r.safe_apply).length,
+    },
     sections: {
       payment_contact: { rows: paymentRows, count: paymentRows.length },
       branch_attribution: { rows: branchRows, count: branchRows.length },

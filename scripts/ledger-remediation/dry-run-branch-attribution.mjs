@@ -10,14 +10,16 @@ import {
   fail,
   withPgClient,
 } from './lib/pg-remediation-client.mjs';
-import { runBranchAttributionDryRun as fetchBranchRiskRows } from './lib/branch-resolution.mjs';
+import { runBranchAttributionDryRun as runBranchAttributionDryRunRows } from './lib/branch-resolution.mjs';
 
 loadEnvLocal(repoRoot);
 const companyId = parseArg('--company-id');
 
 export async function runBranchAttributionDryRun(connectionString, cid = null) {
-  return withPgClient(connectionString, (client) => fetchBranchRiskRows(client, cid));
+  return withPgClient(connectionString, (client) => runBranchAttributionDryRunRows(client, cid));
 }
+
+export { runBranchAttributionDryRun as runBranchDryRun };
 
 async function main() {
   let target;

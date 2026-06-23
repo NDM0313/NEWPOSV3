@@ -1,117 +1,95 @@
 # Single Core Ledger — Production Remediation Approval Plan
 
-**Status:** PROPOSAL ONLY — **no production execution**  
-**Prerequisite:** Gate A PASS on VPS clone (`ledger_stage_20260623` or fresh re-clone)  
+**Status:** PROPOSAL ONLY — no production execution  
+**Prerequisite:** Gate A pass on fresh `ledger_stage_YYYYMMDD` clone after Phase 1.6 apply  
 **Branch:** `feature/single-core-ledger-phase-1-6-remediation`
 
 ---
 
-## Purpose
+## 1. Scope
 
-This document defines the **approval checklist and rollback plan** for applying Phase 1.6 metadata repairs to production **after** clone validation. It does **not** authorize production changes by itself.
+Apply **metadata-only** repairs validated on clone:
 
----
+| Repair | Table | Column | Expected rows |
+|--------|-------|--------|---------------|
+| Payment contact backfill | `payments` | `contact_id` | ~74 |
+| Branch attribution | `journal_entries` | `branch_id` | 0–8 (likely 4–6 safe + 2 transfer manual) |
 
-## 1. Exact rows (from clone dry-run manifest)
-
-Production apply must use a **fresh dry-run** against current production data (read-only) or a new `ledger_stage_YYYYMMDD` dump. The approved row set is the `safe_apply: true` subset from:
-
-- `reports/single-core-ledger/remediation-dry-run-<timestamp>.json`
-- SHA256 in `manifest.sha256` — apply scripts reject stale files
-
-**Expected counts (from Phase 1.5 clone baseline):**
-
-| Repair | Expected safe_apply rows |
-|--------|--------------------------|
-| Payment contact backfill | ~74 (70 DIN CHINA + 4 DIN BRIDAL) |
-| Branch attribution | 0–4 auto-safe; 2 transfer JEs manual review |
-
-Payment IDs and JE IDs are listed in the clone dry-run JSON/CSV — export and attach to approval ticket.
+**Out of scope:** AR/AP reclass, opening balance edits, void/reverse, GL line changes, `unified_ledger_engine` enablement, Phase 2 UI.
 
 ---
 
-## 2. CLI plan (future — not implemented until Gate A)
+## 2. Exact row manifest
 
-1. **Backup production** (mandatory):
-   ```bash
-   ssh dincouture-vps "cd /root/NEWPOSV3 && bash deploy/backup-supabase-db.sh 7"
-   ```
-2. **Fresh clone** from current prod: `ledger_stage_YYYYMMDD`
-3. **Re-run dry-run** on fresh clone; compare SHA256 row set to this approval doc
-4. **Written sign-off** from finance owner on safe_apply manifest
-5. **Production apply** (future scripts): reuse clone apply with additional gates:
-   - `PRODUCTION_REMEDIATION_APPROVED=1`
-   - Backup timestamp recorded in env
-   - Explicit `--dry-run-file` + `--expected-safe-count`
+Production apply must use the **same SHA256 manifest** as the final clone dry-run JSON:
 
-**Not in Phase 1.6:** `apply-*-production.mjs` scripts are deferred until Gate A on clone.
+1. Create fresh clone: `ledger_stage_YYYYMMDD` from current production dump
+2. Re-run `npm run remediation:dry-run` on fresh clone
+3. Finance reviews `safe_apply` vs `manual_review` in CSV
+4. Export payment IDs and JE IDs from approved dry-run JSON — attach to change ticket
+
+**Rollback reference:** `party_repair_audit` rows with `reason_code` in (`payment_contact_backfill`, `branch_attribution_metadata`) + `remediation-apply-before-*.json`.
 
 ---
 
-## 3. Backup and rollback
+## 3. CLI plan (future — not implemented in Phase 1.6)
 
-### Backup
+| Step | Command |
+|------|---------|
+| Backup | `ssh dincouture-vps "cd /root/NEWPOSV3 && bash deploy/backup-supabase-db.sh 7"` |
+| Fresh clone dry-run | Same env as clone validation against `ledger_stage_YYYYMMDD` |
+| Apply | Clone scripts today; prod requires `PRODUCTION_REMEDIATION_APPROVED=1` + backup timestamp gate (Phase 1.6.1) |
+| Re-validate | Diagnostics + pilot tie-out + all-company tie-out |
 
-```bash
-ssh dincouture-vps "cd /root/NEWPOSV3 && bash deploy/backup-supabase-db.sh 7"
-```
+---
 
-### Rollback options
+## 4. Rollback
 
-1. **Full restore:** `pg_restore` / Supabase restore from backup timestamp
-2. **Row-level reverse** using `party_repair_audit` + apply-before JSON:
+1. **DB restore:** `pg_restore` / Supabase restore from backup taken immediately before apply
+2. **Selective reverse** from audit JSON:
    ```sql
-   -- Example: reverse payment contact backfill
-   UPDATE payments p SET contact_id = NULLIF(a.old_value, '')::uuid
-   FROM party_repair_audit a
-   WHERE a.table_name = 'payments' AND a.column_name = 'contact_id'
-     AND a.row_id = p.id AND a.reason_code = 'BACKFILL_SALE_CUSTOMER';
+   UPDATE payments SET contact_id = NULL WHERE id IN (...);  -- from before snapshot
+   UPDATE journal_entries SET branch_id = NULL WHERE id IN (...);
    ```
 
-Audit paths: `reports/single-core-ledger/remediation-apply-audit-*.json`
+---
+
+## 5. Risk assessment
+
+| Factor | Level | Notes |
+|--------|-------|-------|
+| Data mutation | Medium | Row-level UPDATE only; predicates require NULL target column |
+| GL impact | Low | Amounts unchanged; aligns persisted metadata with operational documents |
+| Downtime | Low | No schema migration; recommend off-peak + backup |
+| Reversibility | High | `party_repair_audit` + before JSON |
 
 ---
 
-## 4. Risk assessment
+## 6. Explicit confirmations required before prod
 
-| Factor | Assessment |
-|--------|------------|
-| Risk level | **Medium** — metadata only; no GL line amount changes if predicates correct |
-| Downtime | None expected (row-level UPDATEs); recommend off-peak + backup first |
-| GL impact | Payment contact aligns persisted metadata with runtime sale resolver; tie-out re-run required |
-| Wrong customer poison | Excluded via `safe_apply` — wrong-party rows remain manual review |
-
----
-
-## 5. Explicit confirmations required before prod
-
-- [ ] Gate A **PASS** on clone (diagnostics 3/3 strict OR documented manual-review exceptions signed off)
-- [ ] DIN CHINA pilot tie-out **PASS** (6/6)
-- [ ] All-company tie-out **PASS** (document pilot-scope limitations if any)
+- [ ] Gate A passed on clone with current production data snapshot
+- [ ] Written approval from finance owner for `safe_apply` row list
+- [ ] Transfer JEs (`FT-000287`, `FT-000309`) branch assignment signed off or documented exception
+- [ ] DB backup completed and verified restorable
 - [ ] `unified_ledger_engine` remains **OFF**
+- [ ] Phase 1.5 migrations to production are a **separate** approval after Gate A
 - [ ] Phase 2 screen wiring **not started**
-- [ ] Phase 1.5 migrations to prod are a **separate** approval after Gate A
-- [ ] Fresh dry-run SHA256 matches approved manifest
-- [ ] Backup completed and verified
 
 ---
 
-## 6. Approval record (fill on sign-off)
+## 7. Audit paths
+
+- `reports/single-core-ledger/remediation-dry-run-*.json` (SHA256 manifest)
+- `reports/single-core-ledger/remediation-apply-audit-*.json`
+- `party_repair_audit` table (per-row before/after)
+
+---
+
+## 8. Approval record
 
 | Field | Value |
 |-------|-------|
-| Approver | _pending_ |
+| Approved by | _pending_ |
 | Date | _pending_ |
-| Dry-run SHA256 | _pending_ |
-| Payment safe_apply count | _pending_ |
-| Branch safe_apply count | _pending_ |
-| Backup timestamp | _pending_ |
-| Manual-review exceptions | FT-000287, FT-000309 (transfers) — branch TBD |
-
----
-
-## 7. Related documents
-
-- [`SINGLE_CORE_LEDGER_PHASE_1_6_REMEDIATION_PLAN.md`](./SINGLE_CORE_LEDGER_PHASE_1_6_REMEDIATION_PLAN.md)
-- [`SINGLE_CORE_LEDGER_PHASE_1_5_SYSTEMWIDE_VERIFICATION_REPORT.md`](./SINGLE_CORE_LEDGER_PHASE_1_5_SYSTEMWIDE_VERIFICATION_REPORT.md)
-- [`SINGLE_CORE_LEDGER_DIAGNOSTIC_REPORT.md`](./SINGLE_CORE_LEDGER_DIAGNOSTIC_REPORT.md)
+| Dry-run SHA256 | _from final clone run_ |
+| Backup ID | _pending_ |
