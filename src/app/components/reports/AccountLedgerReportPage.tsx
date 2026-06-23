@@ -37,6 +37,10 @@ import {
 } from '@/app/lib/accountFlowPresentation';
 import { ledgerTransactionOpenEventDetail } from '@/app/lib/ledgerTransactionOpenRef';
 import {
+  getStatementRowEditLabel,
+  statementRowEditDisabledReason,
+} from '@/app/lib/transactionActionsRegistry';
+import {
   collectRepairedControl1100SourceLineIds,
   isGlCorrectionReferenceType,
   partyEffectiveRowAuditLabel,
@@ -2087,16 +2091,19 @@ export const AccountLedgerReportPage: React.FC<{
                             <Eye className="h-3.5 w-3.5" />
                             View
                           </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 gap-1 text-sky-400 hover:text-sky-300"
-                            onClick={() => openStatementTransaction(e.journal_entry_id, true)}
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                            {e.payment_id ? 'Edit payment' : 'Edit'}
-                          </Button>
+                          {getStatementRowEditLabel(e) ? (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 gap-1 text-sky-400 hover:text-sky-300"
+                              title={statementRowEditDisabledReason(e) || undefined}
+                              onClick={() => openStatementTransaction(e.journal_entry_id, true)}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                              {getStatementRowEditLabel(e)}
+                            </Button>
+                          ) : null}
                         </div>
                       ) : (
                         <span className="text-xs text-gray-500">—</span>

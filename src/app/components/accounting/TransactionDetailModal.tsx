@@ -40,11 +40,9 @@ import {
 import { journalReversalBlockedReason } from '@/app/lib/journalEntryEditPolicy';
 import { resolvePaymentIdForMutation } from '@/app/lib/paymentRowEditRouting';
 import { getPaymentChainMutationBlockReason, fetchPaymentChainState } from '@/app/services/paymentChainMutationGuard';
-import {
-  getTransactionActions,
-  isTransactionActionPanelEnabled,
-  type TransactionActionId,
-} from '@/app/lib/transactionActionRules';
+import { isTransactionActionPanelEnabled } from '@/app/lib/transactionActionRules';
+import type { TransactionActionId } from '@/app/lib/transactionActionRules';
+import { getTransactionActions } from '@/app/lib/transactionActionsRegistry';
 import { canApplyDeveloperRepair } from '@/app/lib/developerAccountingAccess';
 import {
   getStaleCorrectionReversalCandidates,
@@ -1146,8 +1144,11 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     await openJournalSourceDocumentFromEntry(entry as AccountingEntry, { openDrawer, setCurrentView });
   };
 
-  const handleDetailModalAction = (actionId: TransactionActionId) => {
+  const handleDetailModalAction = (actionId: TransactionActionId | 'edit_accounts') => {
     switch (actionId) {
+      case 'edit_accounts':
+        void handleLoadAccountsForEdit();
+        break;
       case 'edit':
         void run('Opening editor...', () => runUnifiedEdit());
         break;
@@ -1443,30 +1444,6 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                         disabled={actionLocked}
                         variant="modal"
                       />
-                      {transaction.id && !transaction.is_void && !editingAccounts && (() => {
-                        const rt = String(transaction.reference_type || '').toLowerCase();
-                        const allowEdit =
-                          !rt.startsWith('sale') &&
-                          !rt.startsWith('purchase') &&
-                          rt !== 'shipment' &&
-                          !rt.startsWith('opening_balance') &&
-                          rt !== 'commission_batch' &&
-                          rt !== 'stock_adjustment';
-                        if (!allowEdit) return null;
-                        return (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            className="gap-1 border-blue-500/40 text-blue-300"
-                            disabled={actionLocked}
-                            onClick={() => void handleLoadAccountsForEdit()}
-                          >
-                            <ArrowLeftRight size={14} />
-                            Edit Accounts
-                          </Button>
-                        );
-                      })()}
                     </>
                   ) : (
                     <>
