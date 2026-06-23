@@ -110,7 +110,7 @@ Complete after CSV review:
 Approved by:
 Date:
 Manifest SHA256: fee33637fb7b344dd45c307227398a4eaf37b03472813abe28f26f109d5acbbd
-Backup ID:
+Backup ID: /root/NEWPOSV3/backups/supabase_db_20260623_192408.dump (recorded 2026-06-23T19:24:08Z)
 Notes:
 ```
 

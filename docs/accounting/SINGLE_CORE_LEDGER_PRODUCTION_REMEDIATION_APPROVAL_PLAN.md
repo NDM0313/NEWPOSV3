@@ -52,15 +52,15 @@ Finance must sign CSV `finance_approval` column before production apply.
 | Payment rows | **74** |
 | Branch auto rows | **2** |
 | Branch manual rows | **6** |
-| Approval status | **Pending** |
+| Approval status | **Pending** (finance CSV) |
+| Pre-remediation backup | **Completed** — see [Backup record](#backup-record) |
 
 **Next steps (after finance sign-off):**
 
 1. Finance fills `finance_approval` / `finance_note` in the finance CSV  
-2. Run DB backup on VPS  
-3. Record `PRODUCTION_BACKUP_ID` in the approval plan  
-4. Obtain explicit production apply approval  
-5. Run guarded production metadata apply (`apply-production-remediation.mjs`)
+2. ~~Run DB backup on VPS~~ **Done** — `PRODUCTION_BACKUP_ID` recorded below  
+3. Obtain explicit production apply approval  
+4. Run guarded production metadata apply (`apply-production-remediation.mjs`)
 
 **Still true:**
 
@@ -72,19 +72,48 @@ Finance must sign CSV `finance_approval` column before production apply.
 
 ---
 
-## 3. Backup plan (required before prod apply)
+## Backup record
+
+Pre-remediation backup taken **before** any production metadata apply (read-only `pg_dump`; production data unchanged).
+
+| Field | Value |
+|-------|-------|
+| Backup path (`PRODUCTION_BACKUP_ID`) | `/root/NEWPOSV3/backups/supabase_db_20260623_192408.dump` |
+| Created (UTC) | 2026-06-23T19:24:08Z |
+| Size | ~11 MB |
+| Verified | `pg_restore --list` OK (3489 TOC entries) |
+| Host | `dincouture-vps` / container `supabase-db` |
+| Retention | 7 days (script default) |
+
+**Command used:**
 
 ```bash
 ssh dincouture-vps "cd /root/NEWPOSV3 && bash deploy/backup-supabase-db.sh 7"
 ```
 
-| Step | Action |
-|------|--------|
-| 1 | Run backup script |
-| 2 | Verify dump exists: `/root/NEWPOSV3/backups/supabase_db_YYYYMMDD_HHMMSS.dump` |
-| 3 | Optional: `pg_restore --list` on dump file |
-| 4 | Record path as `PRODUCTION_BACKUP_ID` |
-| 5 | **Abort prod apply if backup fails** |
+Production metadata apply must reference this path as `PRODUCTION_BACKUP_ID`. **Apply not executed.**
+
+---
+
+## 3. Backup plan (required before prod apply)
+
+**Status:** Pre-remediation backup **completed** — see [Backup record](#backup-record) above.
+
+| Step | Action | Status |
+|------|--------|--------|
+| 1 | Run backup script | Done (2026-06-23T19:24:08Z) |
+| 2 | Verify dump exists | `/root/NEWPOSV3/backups/supabase_db_20260623_192408.dump` (~11 MB) |
+| 3 | Optional: `pg_restore --list` | OK (3489 TOC entries) |
+| 4 | Record path as `PRODUCTION_BACKUP_ID` | Recorded in §9 |
+| 5 | **Abort prod apply if backup fails** | N/A — backup succeeded |
+
+Re-run if needed:
+
+```bash
+ssh dincouture-vps "cd /root/NEWPOSV3 && bash deploy/backup-supabase-db.sh 7"
+```
+
+---
 
 ---
 
@@ -95,7 +124,7 @@ Script: [`scripts/ledger-remediation/apply-production-remediation.mjs`](scripts/
 ```bash
 export PRODUCTION_REMEDIATION_TARGET=1
 export PRODUCTION_REMEDIATION_APPROVED=1
-export PRODUCTION_BACKUP_ID=/root/NEWPOSV3/backups/supabase_db_YYYYMMDD_HHMMSS.dump
+export PRODUCTION_BACKUP_ID=/root/NEWPOSV3/backups/supabase_db_20260623_192408.dump
 export DATABASE_URL="postgresql://postgres:***@172.19.0.15:5432/postgres"
 
 node scripts/ledger-remediation/apply-production-remediation.mjs \
@@ -146,7 +175,7 @@ UPDATE journal_entries SET branch_id = NULL WHERE id IN (...);
 - [x] Fresh clone Gate A passed (`ledger_stage_20260623_prodcheck`)
 - [x] Pre-apply counts match baseline (74 payment / 8 branch)
 - [ ] Finance sign-off on production approval CSV
-- [ ] DB backup completed and `PRODUCTION_BACKUP_ID` recorded
+- [x] DB backup completed and `PRODUCTION_BACKUP_ID` recorded
 - [ ] Production metadata apply executed (future phase)
 - [ ] `unified_ledger_engine` remains **OFF**
 - [ ] Phase 1.5 prod migrations **not applied**
@@ -161,5 +190,5 @@ UPDATE journal_entries SET branch_id = NULL WHERE id IN (...);
 | Approved by | _pending_ |
 | Fresh clone validation | 2026-06-23T18:10:32Z |
 | Manifest SHA256 | `fee33637fb7b344dd45c307227398a4eaf37b03472813abe28f26f109d5acbbd` |
-| Backup ID | _pending_ |
+| Backup ID | `/root/NEWPOSV3/backups/supabase_db_20260623_192408.dump` (2026-06-23T19:24:08Z) |
 | Production apply executed | _no_ |
