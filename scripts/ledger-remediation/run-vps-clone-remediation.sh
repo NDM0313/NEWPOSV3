@@ -23,10 +23,8 @@ if [[ ! -f "$SUPABASE_ENV" ]]; then
 fi
 
 set +u
-# shellcheck disable=SC1090
-source "$SUPABASE_ENV"
+POSTGRES_PASSWORD=$(grep -m1 '^POSTGRES_PASSWORD=' "$SUPABASE_ENV" | cut -d= -f2- | tr -d '\r"')
 set -u
-POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-}"
 if [[ -z "$POSTGRES_PASSWORD" ]]; then
   echo "ERROR: POSTGRES_PASSWORD not set" >&2
   exit 1
@@ -42,7 +40,7 @@ export UNIFIED_LEDGER_VPS_CLONE=1
 export UNIFIED_LEDGER_PG_ONLY=1
 export UNIFIED_LEDGER_TIEOUT_STAGING=1
 export CLONE_DB="$CLONE_DB"
-export DATABASE_URL="postgresql://postgres:${POSTGRES_PASSWORD}@127.0.0.1:5432/${CLONE_DB}"
+export DATABASE_URL="postgresql://postgres:${POSTGRES_PASSWORD}@172.19.0.15:5432/${CLONE_DB}"
 
 echo ""
 echo "--- Bundle 1: inventory ---"
