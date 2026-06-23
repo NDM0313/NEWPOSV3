@@ -10,7 +10,7 @@ import {
   fail,
   withPgClient,
 } from './lib/pg-remediation-client.mjs';
-import { fetchBranchRiskRows } from './lib/branch-resolution.mjs';
+import { runBranchAttributionDryRun as fetchBranchRiskRows } from './lib/branch-resolution.mjs';
 
 loadEnvLocal(repoRoot);
 const companyId = parseArg('--company-id');
