@@ -2722,10 +2722,41 @@ export const AccountingDashboard = () => {
                 </button>
               </div>
             </div>
+            <div className="flex flex-wrap items-end gap-4 pt-1">
+              <div className="space-y-1">
+                <Label htmlFor="account-statement-from" className="text-xs text-gray-400">
+                  From
+                </Label>
+                <DatePicker
+                  value={accountStatementStart}
+                  onChange={(v) => setAccountStatementStart(v)}
+                  maxDate={accountStatementEnd ? new Date(accountStatementEnd + 'T12:00:00') : undefined}
+                  className="w-[11.5rem]"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="account-statement-to" className="text-xs text-gray-400">
+                  To
+                </Label>
+                <DatePicker
+                  value={accountStatementEnd}
+                  onChange={(v) => setAccountStatementEnd(v)}
+                  minDate={accountStatementStart ? new Date(accountStatementStart + 'T12:00:00') : undefined}
+                  className="w-[11.5rem]"
+                />
+              </div>
+              <p className="text-xs text-gray-500 pb-2">
+                Standard and Advanced use these dates. Global filter updates the defaults. Statements include{' '}
+                <strong className="text-gray-400 font-medium">all branches</strong> — use the Branch column on each row.
+              </p>
+            </div>
             {accountStatementsViewMode === 'standard' ? (
               <LedgerStatementCenterV2Page
                 embedded
                 moduleContext="accounting"
+                periodStart={accountStatementStart}
+                periodEnd={accountStatementEnd}
+                periodLabel={`${accountStatementStart} → ${accountStatementEnd}`}
                 initialLedgerEntity={accountStatementV2Entity}
                 onInitialLedgerConsumed={() => {
                   setAccountStatementV2Initial(null);
@@ -2733,45 +2764,15 @@ export const AccountingDashboard = () => {
                 }}
               />
             ) : (
-              <>
-                <div className="flex flex-wrap items-end gap-4 pt-1">
-                  <div className="space-y-1">
-                    <Label htmlFor="account-statement-from" className="text-xs text-gray-400">
-                      From
-                    </Label>
-                    <DatePicker
-                      value={accountStatementStart}
-                      onChange={(v) => setAccountStatementStart(v)}
-                      maxDate={accountStatementEnd ? new Date(accountStatementEnd + 'T12:00:00') : undefined}
-                      className="w-[11.5rem]"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label htmlFor="account-statement-to" className="text-xs text-gray-400">
-                      To
-                    </Label>
-                    <DatePicker
-                      value={accountStatementEnd}
-                      onChange={(v) => setAccountStatementEnd(v)}
-                      minDate={accountStatementStart ? new Date(accountStatementStart + 'T12:00:00') : undefined}
-                      className="w-[11.5rem]"
-                    />
-                  </div>
-                  <p className="text-xs text-gray-500 pb-2">
-                    Global filter updates the default dates above. Statements include{' '}
-                    <strong className="text-gray-400 font-medium">all branches</strong> — use the Branch column on each row.
-                  </p>
-                </div>
-                <Suspense fallback={<ReportTabSuspenseFallback label="Loading account statement…" />}>
-                  <AccountLedgerReportPage
-                    startDate={accountStatementStart}
-                    endDate={accountStatementEnd}
-                    branchId={branchId}
-                    branchScopeLabel={accountStatementBranchLabel}
-                    initialAccountId={accountStatementPreselectId}
-                  />
-                </Suspense>
-              </>
+              <Suspense fallback={<ReportTabSuspenseFallback label="Loading account statement…" />}>
+                <AccountLedgerReportPage
+                  startDate={accountStatementStart}
+                  endDate={accountStatementEnd}
+                  branchId={branchId}
+                  branchScopeLabel={accountStatementBranchLabel}
+                  initialAccountId={accountStatementPreselectId}
+                />
+              </Suspense>
             )}
           </div>
         )}

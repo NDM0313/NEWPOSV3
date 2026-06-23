@@ -65,16 +65,32 @@ export function LedgerStatementCenterV2Page({
   initialLedgerEntity = null,
   onInitialLedgerConsumed,
   moduleContext = 'reports',
+  /** When embedded in Accounting → Account Statements, use the tab period (same as Advanced). */
+  periodStart,
+  periodEnd,
+  periodLabel,
 }: {
   embedded?: boolean;
   initialLedgerEntity?: LedgerStatementV2Initial | null;
   onInitialLedgerConsumed?: () => void;
   /** Global filter module label when embedded in Accounting vs Reports. */
   moduleContext?: 'accounting' | 'reports';
+  periodStart?: string;
+  periodEnd?: string;
+  /** Human-readable period when tab dates override the global header filter. */
+  periodLabel?: string;
 }) {
   const { companyId, userRole } = useSupabase();
   const globalFilter = useGlobalFilter();
-  const { startDate: fromDate, endDate: toDate, getDateRangeLabel, setCurrentModule } = globalFilter;
+  const {
+    startDate: globalFromDate,
+    endDate: globalToDate,
+    getDateRangeLabel,
+    setCurrentModule,
+  } = globalFilter;
+  const fromDate = periodStart?.trim() || globalFromDate;
+  const toDate = periodEnd?.trim() || globalToDate;
+  const usesLocalPeriod = Boolean(periodStart?.trim() && periodEnd?.trim());
   const showDiagnosticTools = canAccessDeveloperIntegrityLab(userRole);
   const { formatCurrency } = useFormatCurrency();
   const { formatDate } = useFormatDate();
@@ -317,8 +333,8 @@ export function LedgerStatementCenterV2Page({
     [rows, openingAll, statementType, allRows.length],
   );
 
-  const dateRangeLabel = getDateRangeLabel();
-  const periodLabel = formatLedgerPeriodLabel(fromDate, toDate, formatDate);
+  const dateRangeLabel = periodLabel?.trim() || getDateRangeLabel();
+  const periodDisplayLabel = formatLedgerPeriodLabel(fromDate, toDate, formatDate);
   const reportPdfTitle = LEDGER_PDF_TITLES[statementType];
   const generatedAt = new Date().toLocaleString('en-GB');
   const ledgerPrint = reportExport.ledgerPrintOptions;
@@ -384,7 +400,7 @@ export function LedgerStatementCenterV2Page({
         brand={reportExport.brand}
         title={reportPdfTitle}
         partyName={entityLabel}
-        periodLabel={periodLabel}
+        periodLabel={periodDisplayLabel}
         branchScopeLabel="All branches (GL scope)"
         generatedAt={generatedAt}
         openingBalance={printOpening}
@@ -420,7 +436,7 @@ export function LedgerStatementCenterV2Page({
     summary,
     reportPdfTitle,
     entityLabel,
-    periodLabel,
+    periodDisplayLabel,
     generatedAt,
     printOpening,
     rows,
@@ -535,6 +551,7 @@ export function LedgerStatementCenterV2Page({
         onEntityChange={handleEntityChange}
         entitiesLoading={entitiesLoading}
         dateRangeLabel={dateRangeLabel}
+        periodSource={usesLocalPeriod ? 'tab' : 'header'}
         transactionType={transactionType}
         onTransactionTypeChange={setTransactionType}
         search={search}
@@ -556,7 +573,7 @@ export function LedgerStatementCenterV2Page({
                 businessName: reportExport.brand.name,
                 reportTitle: reportPdfTitle,
                 partyLabel: entityLabel,
-                periodLabel,
+                periodLabel: periodDisplayLabel,
                 branchScopeLabel: 'All branches (GL scope)',
                 openingBalance: summary.openingBalance,
                 totalDebit: summary.totalDebit,
@@ -568,7 +585,7 @@ export function LedgerStatementCenterV2Page({
               reportExport.shareViaWhatsApp({
                 title: reportPdfTitle,
                 reference: entityLabel,
-                period: periodLabel,
+                period: periodDisplayLabel,
                 message,
               });
             }}
