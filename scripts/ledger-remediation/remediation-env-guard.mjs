@@ -58,28 +58,24 @@ function countSafeApply(rows = []) {
 
 function scopedSafeCount(parsed, scope) {
   if (scope === 'payment_contact') {
-    return (
-      parsed.payment_contact?.safe_apply ??
-      countSafeApply(parsed.sections?.payment_contact?.rows) ??
-      countSafeApply(
-        (parsed.rows || []).filter((r) => r.issue_type === 'payments_missing_contact_sale_linked')
-      )
-    );
+    const rows =
+      parsed.sections?.payment_contact?.rows ??
+      parsed.payment_contact?.rows ??
+      (parsed.rows || []).filter((r) => r.issue_type === 'payments_missing_contact_sale_linked');
+    return parsed.payment_contact?.safe_apply ?? countSafeApply(rows);
   }
   if (scope === 'branch_attribution') {
-    return (
-      parsed.branch_attribution?.safe_apply ??
-      countSafeApply(parsed.sections?.branch_attribution?.rows) ??
-      countSafeApply(
-        (parsed.rows || []).filter((r) => r.issue_type === 'branch_attribution_risk')
-      )
-    );
+    const rows =
+      parsed.sections?.branch_attribution?.rows ??
+      parsed.branch_attribution?.rows ??
+      (parsed.rows || []).filter((r) => r.issue_type === 'branch_attribution_risk');
+    return parsed.branch_attribution?.safe_apply ?? countSafeApply(rows);
   }
   return parsed.summary?.safe_apply_total ?? countSafeApply(parsed.rows);
 }
 
 /**
- * @param {{ inventoryOnly?: boolean, requireApply?: boolean, dryRunFile?: string|null, expectedSafeCount?: number|null }} opts
+ * @param {{ inventoryOnly?: boolean, requireApply?: boolean, dryRunFile?: string|null, expectedSafeCount?: number|null, dryRunScope?: 'payment_contact'|'branch_attribution'|'all' }} opts
  */
 export function assertRemediationTarget(opts = {}) {
   const {
@@ -87,6 +83,7 @@ export function assertRemediationTarget(opts = {}) {
     requireApply = false,
     dryRunFile = null,
     expectedSafeCount = null,
+    dryRunScope = 'payment_contact',
   } = opts;
 
   const target = assertStagingTarget();
@@ -109,38 +106,8 @@ export function assertRemediationTarget(opts = {}) {
   }
 
   if (requireApply) {
-    if (!dryRunFile) {
-      throw new Error('--dry-run-file <path> is required for apply scripts.');
-    }
-    if (!fs.existsSync(dryRunFile)) {
-      throw new Error(`Dry-run file not found: ${dryRunFile}`);
-    }
-    const fileHash = sha256File(dryRunFile);
-    let manifest;
-    try {
-      manifest = JSON.parse(fs.readFileSync(dryRunFile, 'utf8'));
-    } catch (e) {
-      throw new Error(`Dry-run file is not valid JSON: ${e.message}`);
-    }
-    const embedded = manifest.manifest?.sha256;
-    if (embedded && embedded !== fileHash) {
-      throw new Error(`Dry-run SHA256 mismatch (file=${fileHash}, manifest=${embedded})`);
-    }
-    if (expectedSafeCount != null) {
-      const paymentExpected = scopedSafeCount(manifest, 'payment_contact');
-      const branchExpected = scopedSafeCount(manifest, 'branch_attribution');
-      const branchRows = (manifest.sections?.branch_attribution?.rows || manifest.branch_attribution?.rows || []).filter(
-        (r) => r.issue_type === 'branch_attribution_risk' && r.safe_apply
-      );
-      const isBranchApply = branchRows.length > 0 && expectedSafeCount === branchRows.length;
-      const actual = isBranchApply ? branchExpected : paymentExpected;
-      if (Number(actual) !== Number(expectedSafeCount)) {
-        throw new Error(
-          `safe_apply count mismatch: dry-run has ${actual}, --expected-safe-count=${expectedSafeCount}`
-        );
-      }
-    }
-    return { ...target, cloneDb, dryRunFile, fileHash, manifest };
+    const verified = verifyDryRunFile(dryRunFile, expectedSafeCount, { scope: dryRunScope });
+    return { ...target, cloneDb, dryRunFile, ...verified, manifest: verified.parsed };
   }
 
   return { ...target, cloneDb, inventoryOnly, requireApply };

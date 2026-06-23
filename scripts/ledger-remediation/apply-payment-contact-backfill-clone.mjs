@@ -41,6 +41,7 @@ async function main() {
       requireApply: true,
       dryRunFile,
       expectedSafeCount,
+      dryRunScope: 'payment_contact',
     });
   } catch (e) {
     fail(e.message);

@@ -40,6 +40,7 @@ async function main() {
       requireApply: true,
       dryRunFile,
       expectedSafeCount: expectedSafeCount ?? undefined,
+      dryRunScope: 'branch_attribution',
     });
   } catch (e) {
     fail(e.message);
