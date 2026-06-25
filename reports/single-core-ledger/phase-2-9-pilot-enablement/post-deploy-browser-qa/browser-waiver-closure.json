@@ -1,0 +1,30 @@
+{
+  "phase": "2.9A-4",
+  "signOffState": "PHASE 2.9A BROWSER WAIVERS PASS WITH LIMITED WAIVERS — review before Stage 1",
+  "timestampUtc": "2026-06-25T13:48:00.000Z",
+  "previewCommit": "20f72a90",
+  "previewUrl": "http://localhost:3002",
+  "productionDbMutation": "NONE",
+  "flagEnablement": "NONE",
+  "stage1Sql": "NOT_RUN",
+  "stage2Sql": "NOT_RUN",
+  "checks": {
+    "previewContainerUp": true,
+    "bundleStringsFound": true,
+    "loginPageReachable": true,
+    "corsLocalhost3002": true,
+    "flagsOffPostQa": true,
+    "mrJalilRpc216300": true,
+    "adminInteractiveQa": false,
+    "staffInteractiveQa": false,
+    "networkHarCaptured": false,
+    "previewJsonDownloaded": false,
+    "exportParityLive": false
+  },
+  "mrJalil": {
+    "contactId": "fe7ec33d-fd6d-4aa6-8d21-416e383b4c93",
+    "expectedClosingPkr": 216300,
+    "rpcLastRowRunningBalancePkr": 216300,
+    "liveUiVerified": false
+  }
+}

@@ -1,103 +1,73 @@
 {
   "reportType": "admin_compare_delta_after_fix",
-  "generatedAt": "2026-06-25T15:06:00Z",
-  "status": "PHASE_2_9A_ADMIN_COMPARE_DELTA_FIXED",
-  "previewBuildBefore": "20f72a90",
-  "previewBuildAfter": "5b520cef",
+  "generatedAt": "2026-06-25T16:45:00Z",
+  "status": "PHASE_2_9A_6_GATE_CONFIRMATION",
+  "gateSignoff": "PHASE_2_9A_STILL_BLOCKED_PARTY_PILOT_LEDGER_V2_GATE_NOT_PASSED",
+  "previewBuildAfter": "312716e7+",
+  "documentationCommit": "cb4957c7",
   "previewRedeployed": true,
   "previewContainer": "erp-frontend-preview",
   "previewPort": 3003,
   "tunnel": "ssh -N -L 3002:127.0.0.1:3003 dincouture-vps",
-  "flags": { "unified_ledger_engine": "OFF", "din_china_unified_ledger_rows": 0 },
+  "flags": {
+    "unified_ledger_engine": "OFF",
+    "unified_ledger_pilot": "OFF",
+    "unified_ledger_screen_ledger_v2": "OFF",
+    "din_china_unified_ledger_rows": 0
+  },
   "stage1Sql": "NOT_RUN",
   "stage2Sql": "NOT_RUN",
+  "stage1FlagScope": {
+    "enableOnly": "unified_ledger_pilot",
+    "doNotEnableInStage1": [
+      "unified_ledger_engine",
+      "unified_ledger_screen_ledger_v2",
+      "unified_ledger_screen_roznamcha"
+    ]
+  },
+  "cashBankWaiver": {
+    "stage1Blocker": false,
+    "remediationTrack": "Phase 2.9A-CB",
+    "doc": "docs/accounting/SINGLE_CORE_LEDGER_PHASE_2_9A_CB_CASH_BANK_PARITY_PLAN.md"
+  },
   "commits": [
-    {
-      "sha": "4880a966",
-      "summary": "Party/Pilot/Account compare — running_balance, line keys, hybrid default, date normalize"
-    },
-    {
-      "sha": "5b520cef",
-      "summary": "Cash/Bank JE row keys; TB legacy cumulative through as-of"
-    }
+    { "sha": "4880a966", "summary": "Party/Pilot/Account compare fixes" },
+    { "sha": "3419c8ac", "summary": "Cash/Bank economic row keys" },
+    { "sha": "fd70df53", "summary": "TB official_gl + strict branch" },
+    { "sha": "312716e7", "summary": "Cash/Bank row-parity PASS semantics" },
+    { "sha": "cb4957c7", "summary": "Cash/Bank waiver documentation" }
   ],
   "tests": {
-    "testUnifiedLedger": "126/126 PASS",
+    "testUnifiedLedger": "136/136 PASS",
     "build": "PASS"
   },
-  "rootCauses": [
-    "closingBalanceFromLegacyRows_read_balance_not_running_balance",
-    "row_key_journal_entry_id_vs_journal_line_id",
-    "legacyToCompareSummary_missing_je_reference_type",
-    "pilot_batch_useHybridOldEngine_false",
-    "asymmetric_date_scope_dateTo_today_empty_from",
-    "cashbank_roznamcha_entity_id_vs_unified_line_id",
-    "tb_period_slice_vs_unified_cumulative_as_of",
-    "tb_effective_party_on_unified_only"
-  ],
-  "fixes": [
-    "unifiedLedgerCompareDiff_running_balance_and_row_keys",
-    "normalizeCompareDateRange_lifetime_when_from_empty",
-    "pilot_batch_hybrid_default_true",
-    "getCustomerArGlJournalLedger_journal_line_id_mapping",
-    "roznamchaCashBankCompareMappers_journal_entry_id_keys",
-    "legacyTrialBalanceCompareDateFrom_1900-01-01_through_as_of"
-  ],
-  "bundleVerify": {
-    "http200": true,
-    "strings": [
-      "Unified engine preview",
-      "Load MR JALIL",
-      "phase2-compare-ledger-v2",
-      "unified-ledger-tieout"
-    ],
-    "allFound": true
+  "gateConfirmation": {
+    "gate1_party_mr_jalil": "OPEN",
+    "gate2_pilot_batch_9_9": "OPEN",
+    "gate3_ledger_v2_browser": "OPEN",
+    "gate4_flags_off": "PASS",
+    "mrJalilRpcReadonlyPkr": 216300.0
   },
-  "expectedAfterRedeploy": {
+  "expectedOnPreviewAfterOperatorQa": {
     "party": {
       "contact": "MR JALIL",
       "contactId": "fe7ec33d-fd6d-4aa6-8d21-416e383b4c93",
-      "companyId": "30bd8592-3384-4f34-899a-f3907e336485",
       "oldBalance": 216300,
       "newBalance": 216300,
       "pass": true,
-      "basis": "effective_party",
-      "dateScope": "empty From = lifetime (both null)"
+      "basis": "effective_party"
     },
     "pilotBatch": {
-      "matrix": "3 bases x 3 branch scopes",
-      "expectedPass": "9/9",
-      "contact": "MR JALIL",
-      "beforePass": "0/9",
-      "afterPass": "9/9"
-    },
-    "account": {
-      "accountCode": "1202",
-      "accountName": "WALI T/T",
-      "note": "old closing matches new within tolerance after running_balance fix"
-    },
-    "trialBalance": {
-      "operatorBasis": "official_gl recommended for parity",
-      "legacyScope": "1900-01-01 through as-of end date",
-      "note": "effective_party may still show AR subledger presentation deltas — waiver candidate"
+      "expectedPass": "9/9"
     },
     "cashBank": {
-      "beforeRowDiff": "195 missing + 216 extra (0 key overlap)",
-      "afterRowDiff": "~195 matched on journalEntryId; ~21 unified-only possible",
-      "closingDiffNote": "~788k gap may shrink; verify on fixed preview"
+      "stage1Blocker": false,
+      "note": "Waived — closing delta informational only"
     }
   },
-  "operatorChecklist": [
-    "Tunnel: ssh -N -L 3002:127.0.0.1:3003 dincouture-vps",
-    "Open /admin/unified-ledger-tieout — leave From empty for Party/Pilot",
-    "Party: MR JALIL — expect 216,300 / 216,300 PASS",
-    "Pilot Batch — expect 9/9 PASS",
-    "TB tab — use official_gl basis for GL parity check",
-    "Cash/Bank — re-export compare JSON; expect matched rows not 100% false missing/extra"
-  ],
-  "stage1Blocked": true,
-  "stage1BlockedReason": "Operator interactive browser QA on redeployed preview @ 5b520cef",
-  "productionMutations": false,
-  "featureFlagWrites": false,
-  "migrationsRun": false
+  "bundleVerify": {
+    "http200": true,
+    "tunnelLocalhost3002": true
+  },
+  "detailJson": "phase-2.9a-6-gate-confirmation.json"
 }

@@ -1,7 +1,7 @@
 # Admin Compare Center — Delta Investigation (Phase 2.9A)
 
 **Date:** 2026-06-25  
-**Status:** `PHASE 2.9A CASH/BANK WAIVER DOCUMENTED — Ledger V2 Stage 1 gate excludes Cash/Bank compare`  
+**Status:** `PHASE 2.9A STILL BLOCKED — Party/Pilot/Ledger V2 gate not passed (Cash/Bank waived)`  
 **Preview container:** `erp-frontend-preview` @ branch `feature/single-core-ledger-phase-2-9a3-preview-deploy-plan`  
 **Latest compare commits:** `4880a966` … `b506773e` (economic keys, TB `official_gl`, Cash/Bank row-parity PASS semantics)  
 **Flags / Stage 1 / Stage 2:** NOT RUN — unchanged  
@@ -212,3 +212,21 @@ After fix: expect ~195 matched rows; ~21 extra unified-only rows may remain (bas
 - DIN CHINA `30bd8592-3384-4f34-899a-f3907e336485`, MR JALIL `fe7ec33d-fd6d-4aa6-8d21-416e383b4c93`, BL0002 branch scope in pilot matrix
 - Phase 1.8 tie-out: lifetime dates null, hybrid `getCustomerLedger`
 - Cash/Bank waiver plan: [`SINGLE_CORE_LEDGER_PHASE_2_9A_CB_CASH_BANK_PARITY_PLAN.md`](../../../../docs/accounting/SINGLE_CORE_LEDGER_PHASE_2_9A_CB_CASH_BANK_PARITY_PLAN.md)
+
+---
+
+## Phase 2.9A-6 — Ledger V2 Stage 1 gate confirmation (2026-06-25)
+
+**Evidence:** [`phase-2.9a-6-gate-confirmation.json`](phase-2.9a-6-gate-confirmation.json), [`browser-qa-notes.md`](browser-qa-notes.md)
+
+| Gate | Result | Notes |
+|------|--------|-------|
+| 1 Party / MR JALIL | **OPEN** | Browser Admin Compare required; RPC read-only **216,300 PASS** |
+| 2 Pilot Batch 9/9 | **OPEN** | Operator run on preview `312716e7+` |
+| 3 Ledger V2 browser QA | **OPEN** | `QA_BROWSER_PASSWORD` + `run-phase-29a4-browser-qa.mjs` |
+| 4 Flags OFF | **PASS** | 0 rows `unified_ledger%` |
+| Cash/Bank | **WAIVED** | Not Stage 1 blocker → Phase 2.9A-CB |
+
+**Stage 1 SQL (when approved):** enables **`unified_ledger_pilot` only** — not `unified_ledger_engine` or `unified_ledger_screen_ledger_v2` (those are Stage 2 per pilot plan §7).
+
+**Sign-off:** `PHASE 2.9A STILL BLOCKED — Party/Pilot/Ledger V2 gate not passed`

@@ -1,8 +1,8 @@
 # Single Core Ledger Phase 2.9 — DIN CHINA Single-Screen Pilot Flag Enablement Plan
 
-**Status:** `PHASE 2.9A CASH/BANK WAIVER DOCUMENTED — Stage 1 gated on Party/Pilot/Ledger V2 only`  
+**Status:** `PHASE 2.9A STILL BLOCKED — Party/Pilot/Ledger V2 gate not passed (Cash/Bank waived)`  
 **Mode:** PLAN + OPS CHECK — no `feature_flags` writes, no deploy, no merge  
-**Branch:** `feature/single-core-ledger-phase-2-9a3-preview-deploy-plan` @ `b506773e`  
+**Branch:** `feature/single-core-ledger-phase-2-9a3-preview-deploy-plan` @ `cb4957c7`  
 **Base:** `feature/single-core-ledger-phase-2-8-preview-qa-signoff` @ `807fdbcd`  
 **Last updated:** 2026-06-25  
 
@@ -421,7 +421,7 @@ Even after successful pilot flags:
 
 ## 17. Final status
 
-**`PHASE 2.9A CASH/BANK WAIVER DOCUMENTED — still waiting for Party/Pilot/Ledger V2 confirmation`**
+**`PHASE 2.9A STILL BLOCKED — Party/Pilot/Ledger V2 gate not passed (Cash/Bank waived)`**
 
 ### Stage 1 may proceed only if (Cash/Bank **not** included)
 
@@ -433,10 +433,26 @@ Even after successful pilot flags:
 | DIN CHINA `unified_ledger%` flags OFF | **Yes** | **PASS** (0 rows / OFF) |
 | Trial Balance compare | Use **`official_gl`** | Operator guidance — not a Stage 1 flag step |
 | **Cash/Bank Admin Compare** | **No — documented waiver** | Fails on closing scope; row parity on fixed bundle; see §17.1 |
-| Stage 1 SQL | After gates above | **NOT RUN** |
-| Stage 2 SQL | After Stage 1 soak | **NOT RUN** |
+| Stage 1 SQL | After gates above | **NOT RUN** — enables **`unified_ledger_pilot` only** (§7) |
+| Stage 2 SQL | After Stage 1 soak | **NOT RUN** — enables `unified_ledger_engine` + `unified_ledger_screen_ledger_v2` |
 
-**Do not enable** Cash/Bank or Roznamcha pilot flags in Stage 1. Stage 1 enables **Ledger V2 screen flag only** per §10.
+**Do not enable** Cash/Bank or Roznamcha pilot flags in Stage 1. **Stage 1 enables `unified_ledger_pilot` only** per §7 (preview badge validation — not engine or screen flags).
+
+### 17.2 Phase 2.9A-6 gate confirmation (2026-06-25)
+
+**Evidence:** [`phase-2.9a-6-gate-confirmation.json`](../reports/single-core-ledger/phase-2-9-pilot-enablement/post-deploy-browser-qa/phase-2.9a-6-gate-confirmation.json)
+
+| Gate | Required | Result |
+|------|----------|--------|
+| Party / MR JALIL PASS | Yes | **OPEN** (browser) |
+| Pilot Batch 9/9 PASS | Yes | **OPEN** (browser) |
+| Ledger V2 browser QA | Yes | **OPEN** (browser) |
+| Flags OFF | Yes | **PASS** (read-only SQL) |
+| Cash/Bank compare | No | **WAIVED** |
+
+**Sign-off:** `PHASE 2.9A STILL BLOCKED — Party/Pilot/Ledger V2 gate not passed`
+
+When all browser gates PASS → **`PHASE 2.9A LEDGER V2 GATE PASS WITH CASH/BANK WAIVER — ready for Stage 1 ops approval ticket`** → execute §7 Stage 1 SQL (`unified_ledger_pilot` only).
 
 ### 17.1 Cash/Bank waiver (not Stage 1 blocker)
 
