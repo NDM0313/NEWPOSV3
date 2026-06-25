@@ -3,6 +3,7 @@
  */
 
 import { isUnifiedLedgerKillSwitchActive } from '@/app/lib/unifiedLedgerEngineState';
+import { normalizeCompareDateRange } from '@/app/components/admin/unified-ledger-compare/compareFilters';
 import {
   balancePasses,
   diffTrialBalanceAccounts,
@@ -23,12 +24,13 @@ export async function compareTrialBalanceTieOut(params: {
   dateTo: string;
   basis: UnifiedLedgerBasis;
 }): Promise<TrialBalanceCompareResult> {
+  const dates = normalizeCompareDateRange(params.dateFrom, params.dateTo);
   const scope: LedgerCompareScope = {
     companyId: params.companyId,
     branchId: params.branchId ?? null,
-    dateFrom: params.dateFrom,
-    dateTo: params.dateTo,
-    asOfDate: params.dateTo,
+    dateFrom: dates.dateFrom,
+    dateTo: dates.dateTo,
+    asOfDate: dates.dateTo ?? params.dateTo,
     basis: params.basis,
   };
 
@@ -38,13 +40,13 @@ export async function compareTrialBalanceTieOut(params: {
     loadLegacyTrialBalanceForTieOut({
       companyId: params.companyId,
       branchId: params.branchId,
-      dateFrom: params.dateFrom,
-      dateTo: params.dateTo,
+      dateFrom: dates.dateFrom ?? params.dateFrom,
+      dateTo: dates.dateTo ?? params.dateTo,
     }),
     getUnifiedTrialBalance({
       companyId: params.companyId,
       branchId: params.branchId,
-      asOfDate: params.dateTo,
+      asOfDate: dates.dateTo ?? params.dateTo,
       basis: params.basis,
       shadowForce: true,
     }),

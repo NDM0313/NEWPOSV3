@@ -1,0 +1,62 @@
+{
+  "reportType": "admin_compare_delta_after_fix",
+  "generatedAt": "2026-06-25T00:00:00Z",
+  "status": "PHASE_2_9A_ADMIN_COMPARE_DELTA_FIXED",
+  "previewBuildBefore": "20f72a90",
+  "previewRedeployRequired": true,
+  "flags": { "unified_ledger_engine": "OFF", "din_china_unified_ledger_rows": 0 },
+  "stage1Sql": "NOT_RUN",
+  "stage2Sql": "NOT_RUN",
+  "tests": {
+    "testUnifiedLedger": "124/124 PASS",
+    "build": "PASS"
+  },
+  "rootCauses": [
+    "closingBalanceFromLegacyRows_read_balance_not_running_balance",
+    "row_key_journal_entry_id_vs_journal_line_id",
+    "legacyToCompareSummary_missing_je_reference_type",
+    "pilot_batch_useHybridOldEngine_false",
+    "asymmetric_date_scope_dateTo_today_empty_from"
+  ],
+  "fixes": [
+    "unifiedLedgerCompareDiff_running_balance_and_row_keys",
+    "normalizeCompareDateRange_lifetime_when_from_empty",
+    "pilot_batch_hybrid_default_true",
+    "getCustomerArGlJournalLedger_journal_line_id_mapping"
+  ],
+  "expectedAfterRedeploy": {
+    "party": {
+      "contact": "MR JALIL",
+      "contactId": "fe7ec33d-fd6d-4aa6-8d21-416e383b4c93",
+      "companyId": "30bd8592-3384-4f34-899a-f3907e336485",
+      "oldBalance": 216300,
+      "newBalance": 216300,
+      "pass": true,
+      "basis": "effective_party",
+      "branchScope": "BL0002 or all per filter"
+    },
+    "pilotBatch": {
+      "matrix": "3 bases x 3 branch scopes",
+      "expectedPass": "9/9",
+      "contact": "MR JALIL",
+      "beforePass": "0/9",
+      "afterPass": "9/9"
+    },
+    "account": {
+      "accountCode": "1202",
+      "accountName": "WALI T/T",
+      "note": "old closing should match new within 0.01 after running_balance fix"
+    },
+    "trialBalance": {
+      "note": "May retain scope deltas; verify after redeploy; not blocking pilot batch golden"
+    },
+    "cashBank": {
+      "note": "Row-key normalization applied; verify liquidity filter parity after redeploy"
+    }
+  },
+  "stage1Blocked": true,
+  "stage1BlockedReason": "Operator browser QA on fixed preview build pending",
+  "productionMutations": false,
+  "featureFlagWrites": false,
+  "migrationsRun": false
+}

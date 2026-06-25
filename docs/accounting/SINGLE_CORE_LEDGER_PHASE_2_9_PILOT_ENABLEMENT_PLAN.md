@@ -1,6 +1,6 @@
 # Single Core Ledger Phase 2.9 — DIN CHINA Single-Screen Pilot Flag Enablement Plan
 
-**Status:** `PHASE 2.9A LIVE WAIVER CHECKS PASS WITH LIMITED WAIVERS — review before Stage 1`  
+**Status:** `PHASE 2.9A ADMIN COMPARE DELTA FIXED — continue operator browser QA before Stage 1`  
 **Mode:** PLAN + OPS CHECK — no `feature_flags` writes, no deploy, no merge  
 **Branch:** `feature/single-core-ledger-phase-2-9-pilot-enablement-plan` @ `fe1b9c15`  
 **Base:** `feature/single-core-ledger-phase-2-8-preview-qa-signoff` @ `807fdbcd`  
@@ -421,27 +421,39 @@ Even after successful pilot flags:
 
 ## 17. Final status
 
-**`PHASE 2.9A LIVE WAIVER CHECKS PASS WITH LIMITED WAIVERS — review before Stage 1`**
+**`PHASE 2.9A BROWSER WAIVERS PASS WITH LIMITED WAIVERS — review before Stage 1`**
 
 | Gate | Result |
 |------|--------|
-| Production flags OFF (DIN CHINA) | **PASS** |
+| Production flags OFF (DIN CHINA) | **PASS** (post-QA read-only) |
 | MR JALIL 216,300 (read-only RPC) | **PASS** |
-| Preview UI on `erp.dincouture.pk` | **NOT DEPLOYED** |
-| Live browser waiver clearance | **OPEN** — deploy preview build + ops session |
+| Preview container + bundle | **PASS** (`20f72a90`, all four strings) |
+| Preview login page (tunnel) | **PASS** |
+| Live admin browser checklist | **OPEN** — operator session + password |
+| Staff visibility live | **WAIVED** — no DIN CHINA staff user; unit tests PASS |
 | Stage 1 SQL | **NOT RUN** |
 | Stage 2 SQL | **NOT RUN** |
 
-**Recommendation:** Run Phase 2.9A-3 parallel preview deploy → ops browser session on :3002 → re-sign **PASS** → Stage 1 ticket.
+**Recommendation:** Operator completes interactive checklist on http://localhost:3002 → re-sign full **PASS** → Stage 1 ticket.
 
-### Phase 2.9A-3 preview deploy plan (2026-06-25)
+### Phase 2.9A-3 preview deploy (executed 2026-06-25)
+
+**Status:** `PHASE 2.9A-3 PREVIEW DEPLOY COMPLETE`  
+**Container:** `erp-frontend-preview` on VPS **:3003** (tunnel local :3002)  
+**Evidence:** [`post-deploy-browser-qa/bundle-verify.txt`](../../reports/single-core-ledger/phase-2-9-pilot-enablement/post-deploy-browser-qa/bundle-verify.txt)
+
+### Phase 2.9A-4 browser waiver QA (2026-06-25)
+
+**Evidence:** [`post-deploy-browser-qa/browser-waiver-closure.md`](../../reports/single-core-ledger/phase-2-9-pilot-enablement/post-deploy-browser-qa/browser-waiver-closure.md)  
+**Automation:** [`run-phase-29a4-browser-qa.mjs`](../../scripts/single-core-ledger/run-phase-29a4-browser-qa.mjs) (requires `QA_BROWSER_PASSWORD`)
+
+### Phase 2.9A-3 preview deploy plan (reference)
 
 **Doc:** [`SINGLE_CORE_LEDGER_PHASE_2_9A3_PREVIEW_DEPLOY_PLAN.md`](SINGLE_CORE_LEDGER_PHASE_2_9A3_PREVIEW_DEPLOY_PLAN.md)  
-**Status:** `PHASE 2.9A-3 DEPLOY PLAN READY — waiting for ops approval to deploy preview-capable build`
 
 | Item | Value |
 |------|-------|
-| Target | `erp-frontend-preview` port **3002** (SSH tunnel) |
+| Target | `erp-frontend-preview` port **3003** on VPS (tunnel local **3002**) |
 | Production ERP | **Unchanged** |
 | Flags | **OFF** — no DB writes in deploy |
 | Script | [`deploy-phase-29a3-preview-frontend-vps.sh`](../../scripts/single-core-ledger/deploy-phase-29a3-preview-frontend-vps.sh) |
@@ -450,10 +462,11 @@ Even after successful pilot flags:
 
 ## Execution sequence (after plan approval)
 
-1. Merge 2.9A-3 plan PR from `feature/single-core-ledger-phase-2-9a3-preview-deploy-plan`
-2. Ops approves parallel preview deploy → run `deploy-phase-29a3-preview-frontend-vps.sh`
-3. Bundle verify + browser waiver on http://localhost:3002
-4. Re-sign **PHASE 2.9A LIVE WAIVER CHECKS PASS**
-5. Ops approves Stage 1 SQL → execute → §10 soak
-6. Ops approves Stage 2 SQL → execute → §10 soak
-7. **Stop before Stage 1 SQL without explicit ops ticket**
+1. ~~Preview deploy + bundle verify~~ **Done**
+2. ~~2.9A-4 browser QA (automated smoke + DB)~~ **Done (limited waivers)**
+3. Operator: full interactive admin + staff session → **2.9A PASS**
+4. **Admin Compare delta fix (2026-06-25):** compare-only patch — see [`admin-compare-delta-investigation.md`](../../reports/single-core-ledger/phase-2-9-pilot-enablement/post-deploy-browser-qa/admin-compare-delta-investigation.md). Root cause: old closing read `.balance` not `running_balance`; JE vs line row keys; pilot batch hybrid off; asymmetric dates. **124/124** tests PASS. Preview redeploy required for live verification.
+5. Stage 1 SQL — **still blocked** until operator confirms Party + Pilot Batch `9/9` on fixed preview.
+4. Ops approves Stage 1 SQL → execute → §10 soak
+5. Ops approves Stage 2 SQL → execute → §10 soak
+6. **Stop before Stage 1 SQL without explicit ops ticket**

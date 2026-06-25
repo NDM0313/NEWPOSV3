@@ -79,7 +79,7 @@ export async function runDinChinaPilotBatchCompare(params?: {
         basis,
         dateFrom: params?.dateFrom ?? null,
         dateTo: params?.dateTo ?? null,
-        useHybridOldEngine: params?.useHybridOldEngine ?? false,
+        useHybridOldEngine: params?.useHybridOldEngine ?? true,
       });
       rows.push(row);
     }

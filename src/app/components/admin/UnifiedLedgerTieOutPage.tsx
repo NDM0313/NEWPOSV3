@@ -21,7 +21,6 @@ import type { UnifiedLedgerCompareTabId } from '@/app/lib/unifiedLedgerCompareTy
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/app/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
-import { getTodayYYYYMMDD } from '@/app/components/ui/utils';
 import { BASIS_OPTIONS, type CompareFilterState } from '@/app/components/admin/unified-ledger-compare/compareFilters';
 import { PartyLedgerCompareTab } from '@/app/components/admin/unified-ledger-compare/PartyLedgerCompareTab';
 import { PilotBatchCompareTab } from '@/app/components/admin/unified-ledger-compare/PilotBatchCompareTab';
@@ -48,7 +47,7 @@ export default function UnifiedLedgerTieOutPage() {
   const [basis, setBasis] = useState<UnifiedLedgerBasis>('effective_party');
   const [branchId, setBranchId] = useState<string | null>(null);
   const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState(getTodayYYYYMMDD());
+  const [dateTo, setDateTo] = useState('');
   const [branches, setBranches] = useState<BranchOption[]>([]);
   const [contacts, setContacts] = useState<ContactOption[]>([]);
   const [flagSync, setFlagSync] = useState(0);
@@ -166,6 +165,10 @@ export default function UnifiedLedgerTieOutPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 rounded-xl border border-gray-800 bg-gray-900/40 p-4">
+        <p className="text-xs text-gray-500 lg:col-span-5">
+          Leave <strong>From</strong> empty for lifetime golden compare (Phase 1.8 — both dates sent as null).
+          Set From + To for period-scoped compare.
+        </p>
         <label className="text-sm space-y-1">
           Basis
           <select

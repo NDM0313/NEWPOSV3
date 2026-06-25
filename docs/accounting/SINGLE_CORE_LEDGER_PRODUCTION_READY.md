@@ -1,7 +1,7 @@
 # Single Core Ledger — Production Ready Pack
 
-**Status:** `PHASE 2.9A-3 DEPLOY PLAN READY` — parallel preview on :3002; engine still OFF  
-**Branch:** `feature/single-core-ledger-phase-2-9a3-preview-deploy-plan`  
+**Status:** `PHASE 2.9A ADMIN COMPARE DELTA FIXED — continue operator browser QA before Stage 1`  
+**Branch:** `feature/single-core-ledger-phase-2-9a3-preview-deploy-plan` (compare fix pending preview redeploy)  
 **Last updated:** 2026-06-25  
 **Master checklist:** use this file as the single entry point for post-apply status.
 
@@ -34,7 +34,9 @@
 | Phase 2.9 DIN CHINA pilot plan | **PLAN READY** — see [`SINGLE_CORE_LEDGER_PHASE_2_9_PILOT_ENABLEMENT_PLAN.md`](SINGLE_CORE_LEDGER_PHASE_2_9_PILOT_ENABLEMENT_PLAN.md) |
 | Phase 2.9A live waiver ops check | **PASS WITH LIMITED WAIVERS** — see [`pre-flag/live-waiver-checks.md`](../reports/single-core-ledger/phase-2-9-pilot-enablement/pre-flag/live-waiver-checks.md) |
 | Phase 2.9A-2 browser waiver closure | **BLOCKED on prod** — preview UI not deployed; see [`browser-waiver-closure/`](../reports/single-core-ledger/phase-2-9-pilot-enablement/pre-flag/browser-waiver-closure/) |
-| Phase 2.9A-3 preview deploy plan | **PLAN READY** — see [`SINGLE_CORE_LEDGER_PHASE_2_9A3_PREVIEW_DEPLOY_PLAN.md`](SINGLE_CORE_LEDGER_PHASE_2_9A3_PREVIEW_DEPLOY_PLAN.md) |
+| Phase 2.9A-3 preview deploy | **EXECUTED** — `erp-frontend-preview` on VPS :3003; tunnel `localhost:3002` |
+| Phase 2.9A-4 browser waiver QA | **LIMITED WAIVERS** — smoke + RPC PASS; admin/staff UI session pending |
+| Phase 2.9A Admin Compare delta | **FIXED (compare-only)** — redeploy preview for live verify; see [`admin-compare-delta-investigation.md`](../reports/single-core-ledger/phase-2-9-pilot-enablement/post-deploy-browser-qa/admin-compare-delta-investigation.md) |
 | Phase 2 screen wiring | **COMPLETE** — all planned preview toggles shipped; engine enablement separate |
 
 ---
@@ -237,13 +239,13 @@ Or selective reverse using `production-remediation-apply-before-*.json` from app
 3. ~~Phase 2.9 pilot enablement plan~~ **Done** — Ledger V2 / DIN CHINA staged flag plan + rollback runbook  
 4. ~~Phase 2.9A ops check (read-only)~~ **Done** — flags OFF + MR JALIL 216,300 RPC PASS  
 5. ~~Phase 2.9A-2 browser check~~ **Done** — prod ERP lacks preview UI; deploy required before live session  
-6. ~~Phase 2.9A-3 preview deploy plan~~ **Done** — parallel `erp-frontend-preview` :3002 + SSH tunnel; no flags  
-7. **Ops:** Run [`deploy-phase-29a3-preview-frontend-vps.sh`](../../scripts/single-core-ledger/deploy-phase-29a3-preview-frontend-vps.sh) after approval  
-8. **Ops:** Browser waiver session on http://localhost:3002 → sign **2.9A PASS**  
+6. ~~Phase 2.9A-3 preview deploy~~ **Done** — `erp-frontend-preview` on VPS :3003; Kong CORS for localhost:3002  
+7. ~~Phase 2.9A-4 browser waiver QA~~ **Done (limited waivers)** — smoke PASS; operator login session + staff user pending  
+8. **Ops:** Complete interactive checklist → full **2.9A PASS** sign-off  
 9. **Ops:** Approve Stage 1 then Stage 2 flag SQL — **separate ticket**  
 10. Do **not** enable flags or merge to `main` without ops approval  
 
-**Final status:** `PHASE 2.9A-3 DEPLOY PLAN READY — waiting for ops approval to deploy preview-capable build`
+**Final status:** `PHASE 2.9A ADMIN COMPARE DELTA FIXED — continue operator browser QA before Stage 1`
 
 ## Related documents
 

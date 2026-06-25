@@ -3,6 +3,7 @@
  */
 
 import { isUnifiedLedgerKillSwitchActive } from '@/app/lib/unifiedLedgerEngineState';
+import { normalizeCompareDateRange } from '@/app/components/admin/unified-ledger-compare/compareFilters';
 import {
   balancePasses,
   closingBalanceFromLegacyRows,
@@ -28,11 +29,12 @@ export async function compareAccountLedgerTieOut(params: {
   dateTo?: string | null;
   basis: UnifiedLedgerBasis;
 }): Promise<LedgerRowCompareResult> {
+  const dates = normalizeCompareDateRange(params.dateFrom, params.dateTo);
   const scope: LedgerCompareScope = {
     companyId: params.companyId,
     branchId: params.branchId ?? null,
-    dateFrom: params.dateFrom ?? null,
-    dateTo: params.dateTo ?? null,
+    dateFrom: dates.dateFrom,
+    dateTo: dates.dateTo,
     basis: params.basis,
   };
 
@@ -43,15 +45,15 @@ export async function compareAccountLedgerTieOut(params: {
       companyId: params.companyId,
       accountId: params.accountId,
       branchId: params.branchId,
-      dateFrom: params.dateFrom,
-      dateTo: params.dateTo,
+      dateFrom: dates.dateFrom,
+      dateTo: dates.dateTo,
     }),
     getUnifiedAccountLedger({
       companyId: params.companyId,
       accountId: params.accountId,
       branchId: params.branchId,
-      dateFrom: params.dateFrom,
-      dateTo: params.dateTo,
+      dateFrom: dates.dateFrom,
+      dateTo: dates.dateTo,
       basis: params.basis,
       shadowForce: true,
     }),

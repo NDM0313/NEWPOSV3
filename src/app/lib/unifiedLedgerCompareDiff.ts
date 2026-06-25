@@ -22,9 +22,16 @@ export function balancePasses(difference: number, tolerance = DEFAULT_COMPARE_TO
 }
 
 export function legacyAccountRowKey(e: AccountLedgerEntry): string {
-  const lineId = String((e as { id?: string }).id || '');
+  const lineId = String(e.journal_line_id || (e as { id?: string }).id || '').trim();
   if (lineId) return lineId;
-  return String(e.journal_entry_id || `${e.date}-${e.reference_number}`);
+  const jeId = String(e.journal_entry_id || '').trim();
+  if (jeId) return jeId;
+  return `${e.date}|${e.reference_number}|${round2(Number(e.debit) || 0)}|${round2(Number(e.credit) || 0)}`;
+}
+
+/** Party / account legacy rows — prefer journal line id (matches unified RPC line keys). */
+export function legacyPartyCompareRowKey(e: AccountLedgerEntry): string {
+  return legacyAccountRowKey(e);
 }
 
 export function unifiedLedgerRowKey(r: UnifiedLedgerRow): string {
@@ -32,14 +39,16 @@ export function unifiedLedgerRowKey(r: UnifiedLedgerRow): string {
 }
 
 export function legacyToCompareSummary(e: AccountLedgerEntry): CompareRowSummary {
+  const refType =
+    (e as { reference_type?: string | null }).reference_type ?? e.je_reference_type ?? null;
   return {
     journalEntryId: String(e.journal_entry_id || ''),
     entryNo: e.entry_no ?? e.reference_number ?? null,
     entryDate: String(e.date || ''),
-    referenceType: e.reference_type ?? null,
+    referenceType: refType,
     debit: round2(Number(e.debit) || 0),
     credit: round2(Number(e.credit) || 0),
-    description: String(e.description || e.narration || '—'),
+    description: String(e.description || (e as { narration?: string }).narration || '—'),
   };
 }
 
@@ -227,5 +236,6 @@ export function compareTrialBalancePayloads(args: {
 
 export function closingBalanceFromLegacyRows(rows: AccountLedgerEntry[]): number {
   if (!rows.length) return 0;
-  return round2(Number(rows[rows.length - 1].balance) || 0);
+  const last = rows[rows.length - 1];
+  return round2(Number(last.running_balance ?? (last as { balance?: number }).balance) || 0);
 }

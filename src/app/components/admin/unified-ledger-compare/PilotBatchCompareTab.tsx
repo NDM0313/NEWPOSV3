@@ -26,7 +26,7 @@ export function PilotBatchCompareTab(props: {
       const r = await runDinChinaPilotBatchCompare({
         dateFrom: props.filters.dateFrom || null,
         dateTo: props.filters.dateTo || null,
-        useHybridOldEngine: false,
+        useHybridOldEngine: true,
       });
       setResult(r);
     } catch (e: unknown) {
