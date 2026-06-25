@@ -124,6 +124,41 @@ These are **out of pilot-batch golden scope** (MR JALIL party 9/9). TB/Cash fixe
 
 ---
 
+## Appendix — Operator exports 2026-06-25 (Cash/Bank + TB JSON)
+
+### Cash/Bank (`phase2-compare-cashbank-*.json`)
+
+| Field | Value |
+|-------|-------|
+| Scope | DIN CHINA branch `92f4184e…`, `2025-12-01` → `2026-06-25`, `effective_party` |
+| Old closing | -7,752,614 |
+| New closing | -8,540,887 |
+| Difference | 788,273 (real, not key noise) |
+| Row diff | 195 missing + 216 extra, **0 amount mismatches** |
+
+**Diagnosis:** 194/195 missing rows have an exact economic twin in extra (same `journalEntryId`, date, debit, credit). Root cause: roznamcha keyed on entity id (`pay:…`) while unified keyed on `journalEntryLineId`. **Fix:** compare mappers now key both sides on `journalEntryId` when present (`4880a966+`).
+
+After fix: expect ~195 matched rows; ~21 extra unified-only rows may remain (basis/liquidity); closing diff ~788k may shrink but not necessarily zero.
+
+### Trial Balance (`phase2-compare-tb-*.json`)
+
+| Field | Value |
+|-------|-------|
+| Scope | Same branch, `2025-12-01` → `2026-06-25`, `effective_party` |
+| Old totals | D 124.8M / C 124.8M (balanced period slice) |
+| New totals | D 390.5M / C 390.5M (cumulative as-of) |
+| Account diffs | 33 mismatches + 6 extra_in_new |
+
+**Diagnosis (two stacked issues):**
+
+1. **Period vs as-of:** Legacy `getTrialBalance` summed only Dec 2025–Jun 2026 activity; unified RPC sums **all lines through as-of 2026-06-25**. Compare service now loads legacy from `1900-01-01` → as-of to match unified semantics.
+
+2. **Basis asymmetry:** Legacy TB is always **official GL**; unified ran with **`effective_party`** (hides voided/correction rows). MR JALIL `AR-FE7EC3`: old -1,900,000 (period credit-normal) vs new +216,300 (effective cumulative) — not a party-tab bug; different lens + scope.
+
+**Operator guidance:** Re-run TB compare with **`official_gl`** basis after preview redeploy. Residual AR subledger presentation deltas may still warrant waiver (legacy flat TB vs unified party-effective).
+
+---
+
 ## References
 
 - Golden constants: `src/app/lib/unifiedLedgerGoldenFixtures.ts`

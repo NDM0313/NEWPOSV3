@@ -11,6 +11,7 @@ import {
   compareTrialBalancePayloads,
 } from '@/app/lib/unifiedLedgerCompareDiff';
 import type { LedgerCompareScope, TrialBalanceCompareResult } from '@/app/lib/unifiedLedgerCompareTypes';
+import { legacyTrialBalanceCompareDateFrom } from '@/app/lib/trialBalanceUnifiedPreviewScope';
 import {
   getUnifiedTrialBalance,
   loadLegacyTrialBalanceForTieOut,
@@ -25,12 +26,14 @@ export async function compareTrialBalanceTieOut(params: {
   basis: UnifiedLedgerBasis;
 }): Promise<TrialBalanceCompareResult> {
   const dates = normalizeCompareDateRange(params.dateFrom, params.dateTo);
+  const asOfDate = dates.dateTo ?? params.dateTo;
+  const legacyFrom = legacyTrialBalanceCompareDateFrom(dates.dateFrom);
   const scope: LedgerCompareScope = {
     companyId: params.companyId,
     branchId: params.branchId ?? null,
-    dateFrom: dates.dateFrom,
-    dateTo: dates.dateTo,
-    asOfDate: dates.dateTo ?? params.dateTo,
+    dateFrom: legacyFrom,
+    dateTo: asOfDate,
+    asOfDate,
     basis: params.basis,
   };
 
@@ -40,13 +43,13 @@ export async function compareTrialBalanceTieOut(params: {
     loadLegacyTrialBalanceForTieOut({
       companyId: params.companyId,
       branchId: params.branchId,
-      dateFrom: dates.dateFrom ?? params.dateFrom,
-      dateTo: dates.dateTo ?? params.dateTo,
+      dateFrom: legacyFrom,
+      dateTo: asOfDate,
     }),
     getUnifiedTrialBalance({
       companyId: params.companyId,
       branchId: params.branchId,
-      asOfDate: dates.dateTo ?? params.dateTo,
+      asOfDate,
       basis: params.basis,
       shadowForce: true,
     }),

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { diffLedgerRows } from './unifiedLedgerCompareDiff';
 import {
   roznamchaRowKey,
   roznamchaToCompareSummary,
@@ -9,7 +10,11 @@ import {
 import type { RoznamchaRowWithBalance } from '@/app/services/roznamchaService';
 import type { UnifiedLedgerRow } from '@/app/services/unifiedLedgerService';
 
-test('roznamchaRowKey uses entity id', () => {
+test('roznamchaRowKey prefers sourceJournalEntryId over entity id', () => {
+  assert.equal(
+    roznamchaRowKey({ id: 'pay:abc', sourceJournalEntryId: 'je-99' } as RoznamchaRowWithBalance),
+    'je-99'
+  );
   assert.equal(roznamchaRowKey({ id: 'pay:abc' } as RoznamchaRowWithBalance), 'pay:abc');
 });
 
@@ -29,13 +34,13 @@ test('roznamchaToCompareSummary maps cash in/out to debit/credit', () => {
   assert.equal(s.entryDate, '2026-01-15');
 });
 
-test('unifiedCashBankRowKey prefers journal line id', () => {
+test('unifiedCashBankRowKey prefers journal entry id for roznamcha parity', () => {
   assert.equal(
     unifiedCashBankRowKey({
       journalEntryLineId: 'jel-1',
       journalEntryId: 'je-1',
     } as UnifiedLedgerRow),
-    'jel-1'
+    'je-1'
   );
 });
 
@@ -53,4 +58,39 @@ test('unifiedCashBankToCompareSummary maps unified row fields', () => {
   } as UnifiedLedgerRow);
   assert.equal(s.debit, 500);
   assert.equal(s.entryNo, 'JE-100');
+});
+
+test('diffLedgerRows matches roznamcha JE key to unified journalEntryId', () => {
+  const result = diffLedgerRows({
+    oldRows: [
+      {
+        id: 'pay:81',
+        sourceJournalEntryId: '11278e1d-7832-458d-8863-641697cffc5d',
+        date: '2025-12-01',
+        ref: 'RCV-0050',
+        details: 'LAL MOHAMMAD',
+        cashIn: 170000,
+        cashOut: 0,
+        type: 'Customer Payment',
+      } as RoznamchaRowWithBalance,
+    ],
+    newRows: [
+      {
+        journalEntryId: '11278e1d-7832-458d-8863-641697cffc5d',
+        journalEntryLineId: 'jel-cash-line',
+        entryDate: '2025-12-01',
+        entryNo: 'RCV-0050',
+        referenceType: 'payment',
+        description: 'Receipt',
+        debit: 170000,
+        credit: 0,
+      } as UnifiedLedgerRow,
+    ],
+    oldKey: roznamchaRowKey,
+    newKey: unifiedCashBankRowKey,
+    oldToSummary: roznamchaToCompareSummary,
+    newToSummary: unifiedCashBankToCompareSummary,
+  });
+  assert.equal(result.missingInNew.length, 0);
+  assert.equal(result.extraInNew.length, 0);
 });

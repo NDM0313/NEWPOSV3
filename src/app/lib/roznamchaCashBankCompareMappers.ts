@@ -8,6 +8,9 @@ import type { RoznamchaRowWithBalance } from '@/app/services/roznamchaService';
 import type { UnifiedLedgerRow } from '@/app/services/unifiedLedgerService';
 
 export function roznamchaRowKey(r: RoznamchaRowWithBalance): string {
+  // Roznamcha entity ids (pay:…) never match unified journal line ids; JE id aligns both sides.
+  const jeId = String(r.sourceJournalEntryId || '').trim();
+  if (jeId) return jeId;
   return r.id;
 }
 
@@ -26,7 +29,10 @@ export function roznamchaToCompareSummary(r: RoznamchaRowWithBalance): CompareRo
 }
 
 export function unifiedCashBankRowKey(r: UnifiedLedgerRow): string {
-  return r.journalEntryLineId || r.journalEntryId;
+  // Cash/bank roznamcha rows are JE-scoped; line id would not match roznamcha entity id.
+  const jeId = String(r.journalEntryId || '').trim();
+  if (jeId) return jeId;
+  return r.journalEntryLineId || '';
 }
 
 export function unifiedCashBankToCompareSummary(r: UnifiedLedgerRow): CompareRowSummary {
