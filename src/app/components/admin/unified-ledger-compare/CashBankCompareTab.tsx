@@ -3,7 +3,7 @@ import { Button } from '@/app/components/ui/button';
 import { LoadingSpinner } from '@/app/components/shared/LoadingSpinner';
 import { compareCashBankLedgerTieOut } from '@/app/services/unifiedLedgerCashBankCompareService';
 import type { LedgerRowCompareResult } from '@/app/lib/unifiedLedgerCompareTypes';
-import { CompareDiffTable, CompareSummaryCards, downloadCompareJson } from './CompareSummaryCards';
+import { CompareDiffTable, CompareSummaryCards, CompareAmountMismatchTable, downloadCompareJson } from './CompareSummaryCards';
 import type { CompareFilterState } from './compareFilters';
 
 export function CashBankCompareTab(props: {
@@ -47,8 +47,9 @@ export function CashBankCompareTab(props: {
         (shadow only). Both sides use <strong className="text-amber-200">official_gl</strong> — roznamcha has no
         effective_party lens; the global Basis filter does not apply here. Compare supplements roznamcha with{' '}
         <code className="text-amber-300">manual_receipt</code> GL legs for row parity.{' '}
-        <strong className="text-amber-200">PASS</strong> = row parity + period movement match (like TB account
-        diffs); closing totals may differ when roznamcha opening scope differs from unified GL.
+        <strong className="text-amber-200">PASS</strong> = row parity (0 missing, 0 extra, 0 amount
+        mismatches); closing totals and period net may differ when roznamcha opening scope or transfer
+        Dr/Cr orientation differs from unified GL.
       </p>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 rounded-xl border border-gray-800 bg-gray-900/40 p-4">
         <label className="text-sm space-y-1">
@@ -91,6 +92,10 @@ export function CashBankCompareTab(props: {
           />
           <CompareDiffTable title={`Missing in new (${result.missingInNew.length})`} rows={result.missingInNew} />
           <CompareDiffTable title={`Extra in new (${result.extraInNew.length})`} rows={result.extraInNew} />
+          <CompareAmountMismatchTable
+            title={`Amount mismatches (${result.amountMismatches.length})`}
+            rows={result.amountMismatches}
+          />
           <Button
             size="sm"
             variant="outline"

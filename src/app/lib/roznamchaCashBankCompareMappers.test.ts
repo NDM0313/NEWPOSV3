@@ -254,9 +254,42 @@ test('evaluateCashBankComparePass passes on row parity even when native closings
     unifiedClosing: -8540887,
   });
   assert.equal(result.rowParityPass, true);
-  assert.equal(result.periodMovementPass, true);
   assert.equal(result.pass, true);
   assert.equal(result.difference, round2(90313 - -8540887));
+});
+
+test('evaluateCashBankComparePass passes on transfer Dr/Cr flip row parity', () => {
+  const legacyRows = [
+    {
+      id: 'xfer:1',
+      ref: 'TR-001',
+      date: '2026-02-01',
+      cashIn: 5000,
+      cashOut: 0,
+      sourceJournalEntryId: 'je-xfer',
+    },
+  ] as RoznamchaRowWithBalance[];
+  const unifiedRows = [
+    {
+      journalEntryId: 'je-xfer',
+      entryNo: 'TR-001',
+      entryDate: '2026-02-01',
+      debit: 0,
+      credit: 5000,
+      referenceType: 'transfer',
+      runningBalance: 0,
+    },
+  ] as UnifiedLedgerRow[];
+  const result = evaluateCashBankComparePass({
+    legacyRows,
+    unifiedRows,
+    legacyClosing: 100,
+    unifiedClosing: -4900,
+  });
+  assert.equal(result.rowParityPass, true);
+  assert.equal(result.amountMismatches.length, 0);
+  assert.equal(result.periodMovementPass, false);
+  assert.equal(result.pass, true);
 });
 
 test('evaluateCashBankComparePass passes when manual_receipt supplement aligns rows', () => {
