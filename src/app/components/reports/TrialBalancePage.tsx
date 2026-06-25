@@ -26,6 +26,18 @@ import {
   mergeTrialBalanceSearchResults,
   searchTrialBalanceJournalAccounts,
 } from '@/app/lib/trialBalanceJournalSearch';
+import { canAccessTrialBalanceUnifiedPreview } from '@/app/lib/trialBalanceUnifiedPreviewAccess';
+import {
+  compareTrialBalanceUnifiedPreview,
+  DEFAULT_TRIAL_BALANCE_PREVIEW_BASIS,
+  type TrialBalanceUnifiedPreviewDiff,
+} from '@/app/lib/trialBalanceUnifiedPreviewDiff';
+import { loadTrialBalanceUnifiedPreview } from '@/app/services/trialBalanceUnifiedPreviewService';
+import { useUnifiedLedgerEngineState } from '@/app/hooks/useUnifiedLedgerEngineState';
+import { UNIFIED_LEDGER_SCREEN_IDS } from '@/app/lib/unifiedLedgerScreenFlags';
+import type { UnifiedLedgerBasis } from '@/app/lib/unifiedLedgerBasisFilter';
+import { TrialBalanceUnifiedPreviewPanel } from '@/app/components/reports/TrialBalanceUnifiedPreviewPanel';
+import { DIN_CHINA_COMPANY_ID } from '@/app/lib/unifiedLedgerGoldenFixtures';
 
 const toExport = (
   r: TrialBalanceResult,
@@ -66,7 +78,7 @@ export const TrialBalancePage: React.FC<{
   endDate: string;
   branchId?: string;
 }> = ({ startDate, endDate, branchId }) => {
-  const { companyId } = useSupabase();
+  const { companyId, userRole } = useSupabase();
   const financialPrint = useFinancialReportPrint(companyId);
   const { setCurrentView } = useNavigation();
   const { formatCurrency } = useFormatCurrency();
@@ -80,6 +92,19 @@ export const TrialBalancePage: React.FC<{
   const [journalSearchEnabled, setJournalSearchEnabled] = useState(false);
   const [journalAccountIds, setJournalAccountIds] = useState<Set<string> | null>(null);
   const [journalSearchLoading, setJournalSearchLoading] = useState(false);
+
+  const showUnifiedPreviewTools = canAccessTrialBalanceUnifiedPreview(userRole);
+  const [unifiedPreviewEnabled, setUnifiedPreviewEnabled] = useState(false);
+  const [previewBasis, setPreviewBasis] = useState<UnifiedLedgerBasis>(DEFAULT_TRIAL_BALANCE_PREVIEW_BASIS);
+  const [previewResult, setPreviewResult] = useState<Awaited<ReturnType<typeof loadTrialBalanceUnifiedPreview>> | null>(null);
+  const [previewDiff, setPreviewDiff] = useState<TrialBalanceUnifiedPreviewDiff | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+
+  const { state: engineState } = useUnifiedLedgerEngineState(companyId, {
+    screenId: UNIFIED_LEDGER_SCREEN_IDS.TRIAL_BALANCE,
+    screenPreview: unifiedPreviewEnabled,
+  });
 
   useEffect(() => {
     if (!companyId || !startDate || !endDate) {
@@ -145,6 +170,82 @@ export const TrialBalancePage: React.FC<{
   const filteredTotals = useMemo(() => computeTrialBalanceTotals(filteredRows), [filteredRows]);
 
   const isSearchActive = searchTerm.trim().length > 0;
+  const periodDiffersFromAsOf = startDate !== endDate;
+
+  const loadUnifiedPreview = useCallback(async () => {
+    if (!companyId || !unifiedPreviewEnabled || !data) {
+      setPreviewResult(null);
+      setPreviewDiff(null);
+      return;
+    }
+    if (engineState.killSwitchActive) {
+      setPreviewResult(null);
+      setPreviewDiff(null);
+      setPreviewError('Unified preview disabled — kill switch active.');
+      return;
+    }
+
+    setPreviewLoading(true);
+    setPreviewError(null);
+    try {
+      const preview = await loadTrialBalanceUnifiedPreview({
+        companyId,
+        startDate,
+        endDate,
+        branchId,
+        basis: previewBasis,
+      });
+      setPreviewResult(preview);
+      if (preview.blockedByKillSwitch) {
+        setPreviewDiff(null);
+        setPreviewError(preview.blockReason ?? 'Unified preview blocked.');
+        return;
+      }
+      setPreviewDiff(
+        compareTrialBalanceUnifiedPreview({
+          legacy: data,
+          unifiedAccounts: preview.accounts,
+          unifiedTotalDebit: preview.totalDebit,
+          unifiedTotalCredit: preview.totalCredit,
+          unifiedDifference: preview.difference,
+        })
+      );
+    } catch (err) {
+      console.error(err);
+      setPreviewResult(null);
+      setPreviewDiff(null);
+      setPreviewError('Unified preview failed to load');
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [
+    companyId,
+    unifiedPreviewEnabled,
+    data,
+    engineState.killSwitchActive,
+    startDate,
+    endDate,
+    branchId,
+    previewBasis,
+  ]);
+
+  useEffect(() => {
+    if (!unifiedPreviewEnabled) {
+      setPreviewResult(null);
+      setPreviewDiff(null);
+      setPreviewError(null);
+      return;
+    }
+    void loadUnifiedPreview();
+  }, [unifiedPreviewEnabled, loadUnifiedPreview]);
+
+  const handleLoadDinChinaPeriodHint = useCallback(() => {
+    if (companyId !== DIN_CHINA_COMPANY_ID) {
+      toast.message('DIN CHINA preset applies when logged into DIN CHINA tenant.');
+      return;
+    }
+    toast.message('Use Reports header dates for DIN CHINA validation period. Preview compares legacy period vs unified as-of end date.');
+  }, [companyId]);
 
   /** Debit−Credit; negative on receivable-type assets usually indicates mis-posting or legacy journals. */
   const creditHeavyAssetRows = useMemo(() => {
@@ -238,6 +339,49 @@ export const TrialBalancePage: React.FC<{
   return (
     <div className="space-y-4">
       <ReportBasisBanner basis="official_gl" />
+
+      {showUnifiedPreviewTools ? (
+        <div className="flex flex-wrap items-center gap-3 no-print">
+          <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer w-fit">
+            <input
+              type="checkbox"
+              checked={unifiedPreviewEnabled}
+              disabled={engineState.killSwitchActive}
+              onChange={(e) => setUnifiedPreviewEnabled(e.target.checked)}
+              className="rounded border-gray-600 disabled:opacity-50"
+            />
+            Unified engine preview (compare only)
+          </label>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="text-xs"
+            onClick={handleLoadDinChinaPeriodHint}
+          >
+            Load DIN CHINA period
+          </Button>
+        </div>
+      ) : null}
+
+      {unifiedPreviewEnabled && showUnifiedPreviewTools ? (
+        <TrialBalanceUnifiedPreviewPanel
+          startDate={startDate}
+          endDate={endDate}
+          branchLabel={branchLabel}
+          previewResult={previewResult}
+          diff={previewDiff}
+          loading={previewLoading}
+          error={previewError}
+          engineState={engineState}
+          previewBasis={previewBasis}
+          onPreviewBasisChange={setPreviewBasis}
+          searchActive={isSearchActive || journalSearchEnabled}
+          arApMode={arApMode}
+          periodDiffersFromAsOf={periodDiffersFromAsOf}
+        />
+      ) : null}
+
       {creditHeavyAssetRows.length > 0 && (
         <div className="rounded-xl border border-amber-500/35 bg-amber-500/[0.08] p-4 text-base text-amber-100/95 flex gap-3">
           <AlertTriangle className="w-5 h-5 shrink-0 text-amber-400 mt-0.5" />
