@@ -1,8 +1,8 @@
 # Single Core Ledger — Production Ready Pack
 
-**Status:** `PHASE 1.8 VALIDATION PASS` — ready for Phase 2 planning; engine still OFF  
-**Branch:** `feature/single-core-ledger-phase-1-8-post-migration-validation`  
-**Last updated:** 2026-06-25T09:21:42Z  
+**Status:** `PHASE 2 PLAN READY` — waiting for approval to implement preview-only wiring; engine still OFF  
+**Branch:** `feature/single-core-ledger-phase-2-rollout-plan`  
+**Last updated:** 2026-06-25  
 **Master checklist:** use this file as the single entry point for post-apply status.
 
 ---
@@ -22,7 +22,8 @@
 | `unified_ledger_engine` | **OFF** |
 | Phase 1.5 prod migration pack | **READY** — guarded apply not executed in 1.7 |
 | Phase 1.5 post-migration Gate A (1.8) | **PASS** 3/3 on `ledger_stage_20260625_prodcheck` |
-| Phase 2 screen wiring | **NOT STARTED** (separate approval) |
+| Phase 2 rollout plan | **READY** — implementation blocked until approval |
+| Phase 2 screen wiring | **NOT STARTED** (blocked until plan approved) |
 
 ---
 
@@ -167,6 +168,17 @@ See: [`SINGLE_CORE_LEDGER_PHASE_1_8_POST_MIGRATION_VALIDATION_REPORT.md`](SINGLE
 
 **Branch:** `feature/single-core-ledger-phase-1-8-post-migration-validation`
 
+### Phase 2 — Screen wiring + controlled rollout (plan ready)
+
+| Step | What | Status |
+|------|------|--------|
+| 2.0.1 | Rollout plan document | [`SINGLE_CORE_LEDGER_PHASE_2_ROLLOUT_PLAN.md`](SINGLE_CORE_LEDGER_PHASE_2_ROLLOUT_PLAN.md) |
+| 2.0.2 | Screen inventory + wiring order | Defined — 15 screens, PRs 2.1–2.10 |
+| 2.0.3 | Feature flag + pilot design | Documented — engine OFF by default |
+| 2.1+ | Preview wiring implementation | **BLOCKED** until plan approved |
+
+**Branch:** `feature/single-core-ledger-phase-2-rollout-plan`
+
 ---
 
 ## What is blocked (next phases)
@@ -175,7 +187,7 @@ See: [`SINGLE_CORE_LEDGER_PHASE_1_8_POST_MIGRATION_VALIDATION_REPORT.md`](SINGLE
 |--------|--------|
 | Phase 1.5 migrations on `postgres` | **Present** (4/4) — validated @ 1.8 |
 | `unified_ledger_engine` ON | **Blocked** |
-| Phase 2 UI wiring | **Blocked** — planning may proceed; implementation blocked |
+| Phase 2 UI wiring | **Blocked** — plan ready; implementation awaits approval |
 | Merge PR / deploy | **Ops decision** |
 
 ---
@@ -208,11 +220,11 @@ Or selective reverse using `production-remediation-apply-before-*.json` from app
 
 ## Next recommended step
 
-1. ~~Run post-migration Gate A + tie-out on fresh clone~~ **Done** @ 1.8 — PASS  
-2. Begin **Phase 2 planning** with explicit approval; keep `unified_ledger_engine` **OFF**  
-3. Do **not** merge or deploy without separate ops approval  
+1. ~~Begin Phase 2 planning~~ **Done** — rollout plan ready  
+2. Approve Phase 2 plan; begin PR 2.1 (flags + banners only, engine OFF)  
+3. Do **not** enable `unified_ledger_engine` or merge/deploy without ops approval  
 
-**Final status:** `PHASE 1.8 VALIDATION PASS — ready for Phase 2 planning, engine still OFF`
+**Final status:** `PHASE 2 PLAN READY — waiting for approval to implement preview-only wiring`
 
 ## Related documents
 
@@ -225,3 +237,4 @@ Or selective reverse using `production-remediation-apply-before-*.json` from app
 | [Smoke test report (1.7)](SINGLE_CORE_LEDGER_PRODUCTION_SMOKE_TEST_REPORT.md) | Production smoke 10/10 |
 | [Phase 1.5 production migration plan](SINGLE_CORE_LEDGER_PHASE_1_5_PRODUCTION_MIGRATION_PLAN.md) | Migration approval pack |
 | [Phase 1.8 post-migration validation](SINGLE_CORE_LEDGER_PHASE_1_8_POST_MIGRATION_VALIDATION_REPORT.md) | Gate A + tie-out PASS |
+| [Phase 2 rollout plan](SINGLE_CORE_LEDGER_PHASE_2_ROLLOUT_PLAN.md) | Screen wiring + controlled engine rollout |
