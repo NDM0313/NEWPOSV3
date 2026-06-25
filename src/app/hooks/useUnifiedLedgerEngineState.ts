@@ -58,6 +58,7 @@ export function useUnifiedLedgerEngineState(
     companyId,
     options.screenId,
     options.adminTieOut,
+    options.screenPreview,
     options.shadowForce,
     refreshKey,
   ]);

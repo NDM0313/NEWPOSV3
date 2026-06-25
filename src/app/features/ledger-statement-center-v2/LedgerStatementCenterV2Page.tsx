@@ -19,6 +19,23 @@ import { prefetchLedgerRowTransaction } from '@/app/services/ledgerStatementCent
 import { shareLedgerRowViaWhatsApp } from '@/app/services/ledgerStatementCenterV2WhatsApp';
 import { compareGlWithDocumentsV2 } from '@/app/services/ledgerStatementCenterV2Diagnostic';
 import { canAccessDeveloperIntegrityLab } from '@/app/lib/developerAccountingAccess';
+import { canAccessLedgerV2UnifiedPreview } from '@/app/lib/ledgerV2UnifiedPreviewAccess';
+import { useUnifiedLedgerEngineState } from '@/app/hooks/useUnifiedLedgerEngineState';
+import { UNIFIED_LEDGER_SCREEN_IDS } from '@/app/lib/unifiedLedgerScreenFlags';
+import type { UnifiedLedgerBasis } from '@/app/lib/unifiedLedgerBasisFilter';
+import {
+  MR_JALIL_CONTACT_ID,
+  MR_JALIL_CONTACT_NAME,
+} from '@/app/lib/unifiedLedgerGoldenFixtures';
+import {
+  compareLedgerV2UnifiedPreview,
+  defaultUnifiedBasisForV2Type,
+  type LedgerV2UnifiedPreviewDiff,
+} from '@/app/lib/ledgerStatementV2UnifiedPreviewDiff';
+import {
+  loadLedgerV2UnifiedPreview,
+  type LedgerV2UnifiedPreviewResult,
+} from '@/app/services/ledgerStatementCenterV2UnifiedPreviewService';
 import { TransactionDetailModal } from '@/app/components/accounting/TransactionDetailModal';
 import { ReportActions } from '@/app/components/reports/ReportActions';
 import { ReportBasisBanner } from '@/app/components/accounting/ReportBasisBanner';
@@ -36,6 +53,7 @@ import { LedgerSummaryCards } from './LedgerSummaryCards';
 import { LedgerTable } from './LedgerTable';
 import { AttachmentPreviewDialog } from './AttachmentPreviewDialog';
 import { LedgerDocumentComparisonPanel } from './LedgerDocumentComparisonPanel';
+import { LedgerV2UnifiedPreviewPanel } from './LedgerV2UnifiedPreviewPanel';
 import { LedgerRowLoadingOverlay } from './LedgerRowLoadingOverlay';
 import type {
   LedgerDocumentComparisonResult,
@@ -92,6 +110,7 @@ export function LedgerStatementCenterV2Page({
   const toDate = periodEnd?.trim() || globalToDate;
   const usesLocalPeriod = Boolean(periodStart?.trim() && periodEnd?.trim());
   const showDiagnosticTools = canAccessDeveloperIntegrityLab(userRole);
+  const showUnifiedPreviewTools = canAccessLedgerV2UnifiedPreview(userRole);
   const { formatCurrency } = useFormatCurrency();
   const { formatDate } = useFormatDate();
   const reportExport = useReportExport({ companyId, documentType: 'ledger', reportKind: 'ledger' });
@@ -125,7 +144,94 @@ export function LedgerStatementCenterV2Page({
   const [showDocComparison, setShowDocComparison] = useState(false);
   const [docComparison, setDocComparison] = useState<LedgerDocumentComparisonResult | null>(null);
   const [docComparisonLoading, setDocComparisonLoading] = useState(false);
+  const [unifiedPreviewEnabled, setUnifiedPreviewEnabled] = useState(false);
+  const [previewBasis, setPreviewBasis] = useState<UnifiedLedgerBasis>('effective_party');
+  const [previewResult, setPreviewResult] = useState<LedgerV2UnifiedPreviewResult | null>(null);
+  const [previewDiff, setPreviewDiff] = useState<LedgerV2UnifiedPreviewDiff | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
 
+  const { state: engineState } = useUnifiedLedgerEngineState(companyId, {
+    screenId: UNIFIED_LEDGER_SCREEN_IDS.LEDGER_V2,
+    screenPreview: unifiedPreviewEnabled,
+  });
+
+  useEffect(() => {
+    setPreviewBasis(defaultUnifiedBasisForV2Type(statementType));
+  }, [statementType]);
+
+  const loadUnifiedPreview = useCallback(async () => {
+    if (!companyId || !entityId || !result || !unifiedPreviewEnabled) {
+      setPreviewResult(null);
+      setPreviewDiff(null);
+      return;
+    }
+    if (engineState.killSwitchActive) {
+      setPreviewResult(null);
+      setPreviewDiff(null);
+      setPreviewError('Unified preview disabled — kill switch active.');
+      return;
+    }
+
+    setPreviewLoading(true);
+    setPreviewError(null);
+    try {
+      const preview = await loadLedgerV2UnifiedPreview({
+        companyId,
+        statementType,
+        entityId,
+        fromDate,
+        toDate,
+        basis: previewBasis,
+      });
+      setPreviewResult(preview);
+      setPreviewDiff(
+        compareLedgerV2UnifiedPreview({
+          legacyRows: result.rows,
+          previewRows: preview.rows,
+          statementType,
+          entityId,
+        }),
+      );
+    } catch (err) {
+      console.error(err);
+      setPreviewResult(null);
+      setPreviewDiff(null);
+      setPreviewError('Unified preview failed to load');
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [
+    companyId,
+    entityId,
+    result,
+    unifiedPreviewEnabled,
+    engineState.killSwitchActive,
+    statementType,
+    fromDate,
+    toDate,
+    previewBasis,
+  ]);
+
+  useEffect(() => {
+    if (!unifiedPreviewEnabled) {
+      setPreviewResult(null);
+      setPreviewDiff(null);
+      setPreviewError(null);
+      return;
+    }
+    void loadUnifiedPreview();
+  }, [unifiedPreviewEnabled, loadUnifiedPreview]);
+
+  const handleLoadMrJalilGolden = useCallback(() => {
+    setStatementType('customer');
+    setEntityId(MR_JALIL_CONTACT_ID);
+    pendingInitialEntityRef.current = {
+      entityId: MR_JALIL_CONTACT_ID,
+      statementType: 'customer',
+      entityLabel: MR_JALIL_CONTACT_NAME,
+    };
+  }, []);
   const printRef = useRef<HTMLDivElement>(null);
   const mergedPrintRef = reportExport.printRef;
 
@@ -543,6 +649,30 @@ export function LedgerStatementCenterV2Page({
         </label>
       ) : null}
 
+      {showUnifiedPreviewTools ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer w-fit">
+            <input
+              type="checkbox"
+              checked={unifiedPreviewEnabled}
+              disabled={engineState.killSwitchActive}
+              onChange={(e) => setUnifiedPreviewEnabled(e.target.checked)}
+              className="rounded border-gray-600 disabled:opacity-50"
+            />
+            Unified engine preview (compare only)
+          </label>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="text-xs"
+            onClick={handleLoadMrJalilGolden}
+          >
+            Load MR JALIL
+          </Button>
+        </div>
+      ) : null}
+
       <LedgerFilterBar
         statementType={statementType}
         onStatementTypeChange={setStatementType}
@@ -596,6 +726,26 @@ export function LedgerStatementCenterV2Page({
 
           {showDocComparison && showDiagnosticTools ? (
             <LedgerDocumentComparisonPanel comparison={docComparison} loading={docComparisonLoading} />
+          ) : null}
+
+          {unifiedPreviewEnabled && showUnifiedPreviewTools ? (
+            <LedgerV2UnifiedPreviewPanel
+              statementType={statementType}
+              entityLabel={entityLabel || entityId}
+              previewResult={previewResult}
+              diff={previewDiff}
+              loading={previewLoading}
+              error={previewError}
+              engineState={engineState}
+              previewBasis={previewBasis}
+              onPreviewBasisChange={setPreviewBasis}
+              displayFiltersActive={transactionType !== 'all' || Boolean(search.trim())}
+              legacyEngineLabel={
+                statementType === 'customer'
+                  ? 'Legacy V2 (hybrid customer loader)'
+                  : 'Legacy V2 (posted GL)'
+              }
+            />
           ) : null}
 
           <div ref={printRef}>
