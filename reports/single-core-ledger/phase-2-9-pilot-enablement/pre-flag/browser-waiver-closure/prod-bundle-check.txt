@@ -1,0 +1,12 @@
+bundle=assets/index-DmXmyuH_.js
+bundle_bytes=1321284
+checked_at=2026-06-25T12:55:00Z
+host=https://erp.dincouture.pk
+
+missing:Unified engine preview
+missing:phase2-compare-ledger-v2
+found:unified-ledger-tieout
+missing:Load MR JALIL
+missing:ledger_v2
+
+conclusion=Production ERP bundle does not include Ledger V2 unified preview UI (Phases 2.3–2.7). Admin Compare route string present (Phase 2.2). Browser waiver checks 1–11 require preview-capable deploy before they can pass on erp.dincouture.pk.

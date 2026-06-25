@@ -1,6 +1,6 @@
 # Single Core Ledger Phase 2.9 — DIN CHINA Single-Screen Pilot Flag Enablement Plan
 
-**Status:** `PHASE 2.9A LIVE WAIVER CHECKS PASS WITH WAIVERS — review before Stage 1`  
+**Status:** `PHASE 2.9A LIVE WAIVER CHECKS PASS WITH LIMITED WAIVERS — review before Stage 1`  
 **Mode:** PLAN + OPS CHECK — no `feature_flags` writes, no deploy, no merge  
 **Branch:** `feature/single-core-ledger-phase-2-9-pilot-enablement-plan` @ `fe1b9c15`  
 **Base:** `feature/single-core-ledger-phase-2-8-preview-qa-signoff` @ `807fdbcd`  
@@ -104,6 +104,19 @@ Clear these **before** any flag enablement (live session on DIN CHINA):
 | Kill-switch rebuild | Set `VITE_UNIFIED_LEDGER_ENGINE_KILLED=true`, rebuild, confirm toggle disabled |
 
 Until waivers cleared: **do not execute flag steps**.
+
+### Phase 2.9A-2 browser waiver closure (2026-06-25T12:55:00Z)
+
+**Report:** [`browser-waiver-closure/browser-waiver-closure.md`](../../reports/single-core-ledger/phase-2-9-pilot-enablement/pre-flag/browser-waiver-closure/browser-waiver-closure.md)
+
+| Finding | Result |
+|---------|--------|
+| Production ERP preview UI deployed | **NO** — Ledger V2 preview strings missing from `erp.dincouture.pk` bundle |
+| Admin Compare route in bundle | **YES** (`unified-ledger-tieout`) |
+| Authenticated browser session | **NOT RUN** |
+| Live checks 1–11 on production | **BLOCKED** until preview deploy |
+
+---
 
 ### Phase 2.9A ops check results (2026-06-25T12:47:00Z)
 
@@ -408,17 +421,18 @@ Even after successful pilot flags:
 
 ## 17. Final status
 
-**`PHASE 2.9A LIVE WAIVER CHECKS PASS WITH WAIVERS — review before Stage 1`**
+**`PHASE 2.9A LIVE WAIVER CHECKS PASS WITH LIMITED WAIVERS — review before Stage 1`**
 
 | Gate | Result |
 |------|--------|
 | Production flags OFF (DIN CHINA) | **PASS** |
 | MR JALIL 216,300 (read-only RPC) | **PASS** |
-| Live browser waiver clearance | **OPEN** |
+| Preview UI on `erp.dincouture.pk` | **NOT DEPLOYED** |
+| Live browser waiver clearance | **OPEN** — deploy preview build + ops session |
 | Stage 1 SQL | **NOT RUN** |
 | Stage 2 SQL | **NOT RUN** |
 
-**Recommendation:** Ops completes live browser session on DIN CHINA (admin + staff) on preview-capable build, then re-sign **2.9A PASS** before Stage 1 `unified_ledger_pilot` ticket.
+**Recommendation:** Deploy preview stack (no flags required for UI test) → ops browser session → re-sign **PASS** → Stage 1 ticket.
 
 ---
 

@@ -1,10 +1,10 @@
 # Phase 2.9A — DIN CHINA Live Waiver Clearance (Ops Check)
 
-**Sign-off state:** `PHASE 2.9A LIVE WAIVER CHECKS PASS WITH WAIVERS — review before Stage 1`  
-**Timestamp (UTC):** 2026-06-25T12:47:00Z  
-**Branch / commit:** `feature/single-core-ledger-phase-2-9-pilot-enablement-plan` @ `fe1b9c15`  
-**Tester:** Cursor agent (ops check mode — read-only production SQL + local unit tests)  
-**Environment:** Production DB via `ssh dincouture-vps` → `supabase-db` (read-only); ERP UI `https://erp.dincouture.pk` (not authenticated in this session)  
+**Sign-off state:** `PHASE 2.9A LIVE WAIVER CHECKS PASS WITH LIMITED WAIVERS — review before Stage 1`  
+**Timestamp (UTC):** 2026-06-25T12:55:00Z (2.9A-2 browser check)  
+**Branch / commit:** `feature/single-core-ledger-phase-2-9-pilot-enablement-plan` @ `3c42d381`+  
+**Tester:** Cursor agent (2.9A read-only SQL + 2.9A-2 production bundle analysis)  
+**Environment:** Production DB read-only; `https://erp.dincouture.pk` bundle checked — **preview UI not deployed**  
 **Production DB mutation:** **NONE**  
 **Flag enablement:** **NONE**
 
@@ -44,6 +44,22 @@ Evidence: [`query-din-china-company.sql`](query-din-china-company.sql), [`pre-fl
 
 ---
 
+## Phase 2.9A-2 browser waiver closure (2026-06-25)
+
+**Report:** [`browser-waiver-closure/browser-waiver-closure.md`](browser-waiver-closure/browser-waiver-closure.md)
+
+**Deployment blocker:** Production bundle `assets/index-DmXmyuH_.js` lacks Ledger V2 preview strings (`Unified engine preview`, `Load MR JALIL`, `phase2-compare-ledger-v2`). Admin Compare route present.
+
+| 2.8 waiver | After 2.9A-2 |
+|------------|--------------|
+| Live DIN CHINA walkthrough | **OPEN** — deploy preview build, then authenticated session |
+| Network HAR | **OPEN** — see [`network-notes.md`](browser-waiver-closure/network-notes.md) |
+| Preview JSON download | **OPEN** |
+| Kill-switch rebuild | **OPEN** — see [`kill-switch-notes.md`](browser-waiver-closure/kill-switch-notes.md) |
+| Staff visibility | **OPEN** — see [`staff-visibility-notes.md`](browser-waiver-closure/staff-visibility-notes.md) |
+
+---
+
 ## Phase 2.8 waiver clearance status
 
 | 2.8 waiver | 2.9A status |
@@ -65,9 +81,9 @@ Evidence: [`query-din-china-company.sql`](query-din-china-company.sql), [`pre-fl
 
 ## Recommendation
 
-1. **Do not run Stage 1 SQL yet** — complete remaining **live browser** waivers on DIN CHINA as admin/developer (and staff negative check) on a build that includes Phase 2.3–2.7 preview UI (staging or approved preview deploy to `erp.dincouture.pk`).
-2. **Production DB gate is clear:** all unified ledger flags OFF; MR JALIL unified RPC golden **PASS** read-only.
-3. After ops live session fills waivers §2–14, re-sign as **2.9A PASS** and open Stage 1 ticket for `unified_ledger_pilot` only.
+1. **Do not run Stage 1 SQL yet** — deploy preview-capable build to staging/ERP, then ops authenticated browser session (admin + staff).
+2. **Production DB gate remains clear** (2.9A): flags OFF; MR JALIL RPC **216,300** PASS.
+3. After preview deploy + live browser evidence in `browser-waiver-closure/`, re-sign **2.9A PASS** then Stage 1 `unified_ledger_pilot` ticket.
 
 ---
 
