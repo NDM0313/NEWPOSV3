@@ -1,8 +1,8 @@
 # Single Core Ledger Phase 2.9 — DIN CHINA Single-Screen Pilot Flag Enablement Plan
 
-**Status:** `PHASE 2.9 PILOT PLAN READY — waiting for ops approval to run live waiver checks`  
-**Mode:** PLAN ONLY — no implementation, no `feature_flags` writes, no deploy, no merge  
-**Branch:** `feature/single-core-ledger-phase-2-9-pilot-enablement-plan`  
+**Status:** `PHASE 2.9A LIVE WAIVER CHECKS PASS WITH WAIVERS — review before Stage 1`  
+**Mode:** PLAN + OPS CHECK — no `feature_flags` writes, no deploy, no merge  
+**Branch:** `feature/single-core-ledger-phase-2-9-pilot-enablement-plan` @ `fe1b9c15`  
 **Base:** `feature/single-core-ledger-phase-2-8-preview-qa-signoff` @ `807fdbcd`  
 **Last updated:** 2026-06-25  
 
@@ -103,7 +103,27 @@ Clear these **before** any flag enablement (live session on DIN CHINA):
 | Preview JSON download | Download `phase2-compare-*.json` from Ledger V2 panel |
 | Kill-switch rebuild | Set `VITE_UNIFIED_LEDGER_ENGINE_KILLED=true`, rebuild, confirm toggle disabled |
 
-Until waivers cleared: **do not execute flag steps** — plan remains ready only.
+Until waivers cleared: **do not execute flag steps**.
+
+### Phase 2.9A ops check results (2026-06-25T12:47:00Z)
+
+**Report:** [`reports/single-core-ledger/phase-2-9-pilot-enablement/pre-flag/live-waiver-checks.md`](../../reports/single-core-ledger/phase-2-9-pilot-enablement/pre-flag/live-waiver-checks.md)
+
+| 2.8 waiver | 2.9A status |
+|------------|-------------|
+| Live DIN CHINA walkthrough | **Open** — browser session required |
+| Network HAR (toggle OFF) | **Open** |
+| Preview JSON download | **Open** |
+| Kill-switch rebuild | **Open** (DB kill flag absent; env rebuild not run) |
+
+**Completed without mutation:**
+
+| Check | Result |
+|-------|--------|
+| DIN CHINA `feature_flags` all `unified_ledger%` OFF | **PASS** (0 rows) |
+| MR JALIL unified closing via read-only RPC | **PASS** — PKR **216,300.00** |
+| `npm run test:unified-ledger` | **PASS** 112/112 |
+| Stage 1 / Stage 2 SQL | **NOT RUN** |
 
 ---
 
@@ -260,15 +280,15 @@ Set `VITE_UNIFIED_LEDGER_ENGINE_KILLED=true` in production env → rebuild/redep
 
 Run on **DIN CHINA** as **admin/developer** (clears 2.8 waivers):
 
-- [ ] All flags OFF — confirm SQL baseline
-- [ ] Ledger V2: toggle visible, default OFF; banner legacy
-- [ ] Network: no `get_unified_party_ledger` / `get_unified_account_ledger` with toggle OFF
-- [ ] Enable preview toggle → MR JALIL shortcut → unified closing **216,300** (±0.01)
-- [ ] Preview JSON export downloads; labeled non-official
-- [ ] Export PDF/Excel with preview ON matches preview OFF totals
-- [ ] Kill env test OR document DB kill switch dry-run on staging
-- [ ] Staff account: zero preview toggles on all 5 screens
-- [ ] Record evidence under `reports/single-core-ledger/phase-2-9-pilot-enablement/pre-flag/`
+- [x] All flags OFF — confirm SQL baseline (**PASS** 2026-06-25 — [`pre-flag-flags.json`](../../reports/single-core-ledger/phase-2-9-pilot-enablement/pre-flag/pre-flag-flags.json))
+- [ ] Ledger V2: toggle visible, default OFF; banner legacy (**WAIVED** — live browser)
+- [ ] Network: no `get_unified_party_ledger` / `get_unified_account_ledger` with toggle OFF (**WAIVED** — HAR)
+- [x] Enable preview toggle → MR JALIL → unified closing **216,300** (±0.01) (**PASS** read-only RPC — [`mr-jalil-rpc-verification.json`](../../reports/single-core-ledger/phase-2-9-pilot-enablement/pre-flag/mr-jalil-rpc-verification.json))
+- [ ] Preview JSON export downloads; labeled non-official (**WAIVED**)
+- [ ] Export PDF/Excel with preview ON matches preview OFF totals (**WAIVED**)
+- [ ] Kill env test OR document DB kill switch dry-run on staging (**PARTIAL** — kill flag absent)
+- [ ] Staff account: zero preview toggles on all 5 screens (**WAIVED**)
+- [x] Record evidence under `reports/single-core-ledger/phase-2-9-pilot-enablement/pre-flag/` (**DONE**)
 
 ---
 
@@ -351,7 +371,9 @@ Immediate rollback (Level 1–4) if any:
 
 | Artifact | Path |
 |----------|------|
-| Pre-flag `feature_flags` SQL output | `phase-2-9-pilot-enablement/pre-flag-flags.json` |
+| Pre-flag `feature_flags` SQL output | [`pre-flag/pre-flag-flags.json`](../../reports/single-core-ledger/phase-2-9-pilot-enablement/pre-flag/pre-flag-flags.json) |
+| Phase 2.9A live waiver report | [`pre-flag/live-waiver-checks.md`](../../reports/single-core-ledger/phase-2-9-pilot-enablement/pre-flag/live-waiver-checks.md) |
+| MR JALIL RPC verification | [`pre-flag/mr-jalil-rpc-verification.json`](../../reports/single-core-ledger/phase-2-9-pilot-enablement/pre-flag/mr-jalil-rpc-verification.json) |
 | Post-stage SQL output | `post-stage-1-flags.json`, `post-stage-2-flags.json` |
 | Ledger V2 screenshots (banner mode) | `ledger-v2-banner-legacy.png`, `ledger-v2-banner-unified.png` |
 | MR JALIL compare JSON | `phase2-compare-ledger-v2-mr-jalil-*.json` |
@@ -386,15 +408,17 @@ Even after successful pilot flags:
 
 ## 17. Final status
 
-**`PHASE 2.9 PILOT PLAN READY — waiting for ops approval to run live waiver checks`**
+**`PHASE 2.9A LIVE WAIVER CHECKS PASS WITH WAIVERS — review before Stage 1`**
 
-Rationale:
+| Gate | Result |
+|------|--------|
+| Production flags OFF (DIN CHINA) | **PASS** |
+| MR JALIL 216,300 (read-only RPC) | **PASS** |
+| Live browser waiver clearance | **OPEN** |
+| Stage 1 SQL | **NOT RUN** |
+| Stage 2 SQL | **NOT RUN** |
 
-- Safest user screen selected (Ledger V2); Admin-only (Option C) rejected as non-pilot
-- Staged flag SQL, rollback levels, and resolver behavior documented against actual code
-- Current implementation limits blast radius: flags affect banners/mode, not main loader
-- 2.8 waivers mapped to pre-flag live QA; MR JALIL 216,300 gate included
-- No DB mutation, deploy, or merge in planning phase
+**Recommendation:** Ops completes live browser session on DIN CHINA (admin + staff) on preview-capable build, then re-sign **2.9A PASS** before Stage 1 `unified_ledger_pilot` ticket.
 
 ---
 

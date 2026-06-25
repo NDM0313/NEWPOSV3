@@ -1,7 +1,7 @@
 # Single Core Ledger — Production Ready Pack
 
-**Status:** `PHASE 2.9 PILOT PLAN READY` — DIN CHINA Ledger V2 pilot plan; engine still OFF  
-**Branch:** `feature/single-core-ledger-phase-2-9-pilot-enablement-plan`  
+**Status:** `PHASE 2.9A LIVE WAIVER CHECKS PASS WITH WAIVERS` — DB gates clear; browser waivers open  
+**Branch:** `feature/single-core-ledger-phase-2-9-pilot-enablement-plan` @ `fe1b9c15`  
 **Last updated:** 2026-06-25  
 **Master checklist:** use this file as the single entry point for post-apply status.
 
@@ -32,6 +32,7 @@
 | Phase 2.7 Party Ledger preview | **COMPLETE** — see [`SINGLE_CORE_LEDGER_PHASE_2_7_PARTY_LEDGER_PREVIEW_REPORT.md`](SINGLE_CORE_LEDGER_PHASE_2_7_PARTY_LEDGER_PREVIEW_REPORT.md) |
 | Phase 2.8 Preview QA sign-off | **SIGNED OFF WITH WAIVERS** — see [`SINGLE_CORE_LEDGER_PHASE_2_8_PREVIEW_QA_SIGNOFF.md`](SINGLE_CORE_LEDGER_PHASE_2_8_PREVIEW_QA_SIGNOFF.md) |
 | Phase 2.9 DIN CHINA pilot plan | **PLAN READY** — see [`SINGLE_CORE_LEDGER_PHASE_2_9_PILOT_ENABLEMENT_PLAN.md`](SINGLE_CORE_LEDGER_PHASE_2_9_PILOT_ENABLEMENT_PLAN.md) |
+| Phase 2.9A live waiver ops check | **PASS WITH WAIVERS** — see [`pre-flag/live-waiver-checks.md`](../reports/single-core-ledger/phase-2-9-pilot-enablement/pre-flag/live-waiver-checks.md) |
 | Phase 2 screen wiring | **COMPLETE** — all planned preview toggles shipped; engine enablement separate |
 
 ---
@@ -232,11 +233,12 @@ Or selective reverse using `production-remediation-apply-before-*.json` from app
 1. ~~Phase 2 preview wiring (2.1–2.7)~~ **Done** — all six preview surfaces shipped  
 2. ~~Phase 2.8 full preview QA pack~~ **Done** — 112/112 tests, build PASS; live UI waivers documented  
 3. ~~Phase 2.9 pilot enablement plan~~ **Done** — Ledger V2 / DIN CHINA staged flag plan + rollback runbook  
-4. **Ops:** Clear 2.8 waivers via live DIN CHINA walkthrough (§9 of 2.9 plan)  
-5. **Ops:** Approve Stage 1 then Stage 2 flag SQL — **separate ticket**; no auto-enable  
-6. Do **not** enable flags, merge to `main`, or deploy unified-default without ops approval  
+4. ~~Phase 2.9A ops check (read-only)~~ **Done** — flags OFF + MR JALIL 216,300 RPC PASS; browser waivers **open**  
+5. **Ops:** Complete live DIN CHINA browser waiver session (admin + staff) on preview build  
+6. **Ops:** Approve Stage 1 then Stage 2 flag SQL — **separate ticket**; no auto-enable  
+7. Do **not** enable flags, merge to `main`, or deploy unified-default without ops approval  
 
-**Final status:** `PHASE 2.9 PILOT PLAN READY — waiting for ops approval to run live waiver checks`
+**Final status:** `PHASE 2.9A LIVE WAIVER CHECKS PASS WITH WAIVERS — review before Stage 1`
 
 ## Related documents
 
