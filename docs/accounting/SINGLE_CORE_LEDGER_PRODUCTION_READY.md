@@ -1,7 +1,7 @@
 # Single Core Ledger — Production Ready Pack
 
-**Status:** `PHASE 2.6 COMPLETE` — Roznamcha preview toggle; engine still OFF  
-**Branch:** `feature/single-core-ledger-phase-2-6-roznamcha-preview`  
+**Status:** `PHASE 2.7 COMPLETE` — Party Ledger preview toggle; engine still OFF  
+**Branch:** `feature/single-core-ledger-phase-2-7-party-ledger-preview`  
 **Last updated:** 2026-06-14  
 **Master checklist:** use this file as the single entry point for post-apply status.
 
@@ -29,7 +29,8 @@
 | Phase 2.4 Account Statement preview | **COMPLETE** — see [`SINGLE_CORE_LEDGER_PHASE_2_4_ACCOUNT_STATEMENT_PREVIEW_REPORT.md`](SINGLE_CORE_LEDGER_PHASE_2_4_ACCOUNT_STATEMENT_PREVIEW_REPORT.md) |
 | Phase 2.5 Trial Balance preview | **COMPLETE** — see [`SINGLE_CORE_LEDGER_PHASE_2_5_TRIAL_BALANCE_PREVIEW_REPORT.md`](SINGLE_CORE_LEDGER_PHASE_2_5_TRIAL_BALANCE_PREVIEW_REPORT.md) |
 | Phase 2.6 Roznamcha preview | **COMPLETE** — see [`SINGLE_CORE_LEDGER_PHASE_2_6_ROZNAMCHA_PREVIEW_REPORT.md`](SINGLE_CORE_LEDGER_PHASE_2_6_ROZNAMCHA_PREVIEW_REPORT.md) |
-| Phase 2 screen wiring | **IN PROGRESS** (PR 2.7+ Party Ledger preview) |
+| Phase 2.7 Party Ledger preview | **COMPLETE** — see [`SINGLE_CORE_LEDGER_PHASE_2_7_PARTY_LEDGER_PREVIEW_REPORT.md`](SINGLE_CORE_LEDGER_PHASE_2_7_PARTY_LEDGER_PREVIEW_REPORT.md) |
+| Phase 2 screen wiring | **COMPLETE** — all planned preview toggles shipped; engine enablement separate |
 
 ---
 

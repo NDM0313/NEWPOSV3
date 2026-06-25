@@ -6,11 +6,14 @@ import {
   getUnifiedPartyLedger,
   loadLegacyPartyLedgerForTieOut,
   type UnifiedLedgerBasis,
-  type UnifiedLedgerRow,
   type UnifiedPartyType,
 } from '@/app/services/unifiedLedgerService';
 import type { AccountLedgerEntry } from '@/app/services/accountingService';
 import { isJe0168ClassReversal } from '@/app/lib/unifiedLedgerBasisFilter';
+import {
+  unifiedPartyRowKey,
+  unifiedPartyToTieOutSummary,
+} from '@/app/lib/partyLedgerUnifiedCompareMappers';
 
 export type TieOutRowKey = {
   journalEntryId: string;
@@ -59,10 +62,6 @@ function legacyRowKey(e: AccountLedgerEntry): string {
   return String(e.journal_entry_id || e.id || `${e.date}-${e.reference_number}`);
 }
 
-function unifiedRowKey(r: UnifiedLedgerRow): string {
-  return r.journalEntryLineId || r.journalEntryId;
-}
-
 function legacyToSummary(e: AccountLedgerEntry): TieOutRowSummary {
   return {
     journalEntryId: String(e.journal_entry_id || ''),
@@ -72,18 +71,6 @@ function legacyToSummary(e: AccountLedgerEntry): TieOutRowSummary {
     debit: round2(Number(e.debit) || 0),
     credit: round2(Number(e.credit) || 0),
     description: String(e.description || e.narration || '—'),
-  };
-}
-
-function unifiedToSummary(r: UnifiedLedgerRow): TieOutRowSummary {
-  return {
-    journalEntryId: r.journalEntryId,
-    entryNo: r.entryNo,
-    entryDate: r.entryDate,
-    referenceType: r.referenceType,
-    debit: r.debit,
-    credit: r.credit,
-    description: r.description,
   };
 }
 
@@ -121,15 +108,15 @@ export async function comparePartyLedgerTieOut(params: {
   ]);
 
   const oldKeys = new Set(legacy.rows.map(legacyRowKey));
-  const newKeys = new Set(unified.rows.map(unifiedRowKey));
+  const newKeys = new Set(unified.rows.map(unifiedPartyRowKey));
 
   const missingInNew = legacy.rows
     .filter((e) => !newKeys.has(legacyRowKey(e)) && Boolean(e.journal_entry_id))
     .map(legacyToSummary);
 
   const extraInNew = unified.rows
-    .filter((r) => !oldKeys.has(unifiedRowKey(r)))
-    .map(unifiedToSummary);
+    .filter((r) => !oldKeys.has(unifiedPartyRowKey(r)))
+    .map(unifiedPartyToTieOutSummary);
 
   const oldBalance =
     legacy.rows.length > 0
