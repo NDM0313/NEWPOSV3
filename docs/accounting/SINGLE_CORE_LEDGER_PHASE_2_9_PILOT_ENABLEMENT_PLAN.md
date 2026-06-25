@@ -432,15 +432,28 @@ Even after successful pilot flags:
 | Stage 1 SQL | **NOT RUN** |
 | Stage 2 SQL | **NOT RUN** |
 
-**Recommendation:** Deploy preview stack (no flags required for UI test) → ops browser session → re-sign **PASS** → Stage 1 ticket.
+**Recommendation:** Run Phase 2.9A-3 parallel preview deploy → ops browser session on :3002 → re-sign **PASS** → Stage 1 ticket.
+
+### Phase 2.9A-3 preview deploy plan (2026-06-25)
+
+**Doc:** [`SINGLE_CORE_LEDGER_PHASE_2_9A3_PREVIEW_DEPLOY_PLAN.md`](SINGLE_CORE_LEDGER_PHASE_2_9A3_PREVIEW_DEPLOY_PLAN.md)  
+**Status:** `PHASE 2.9A-3 DEPLOY PLAN READY — waiting for ops approval to deploy preview-capable build`
+
+| Item | Value |
+|------|-------|
+| Target | `erp-frontend-preview` port **3002** (SSH tunnel) |
+| Production ERP | **Unchanged** |
+| Flags | **OFF** — no DB writes in deploy |
+| Script | [`deploy-phase-29a3-preview-frontend-vps.sh`](../../scripts/single-core-ledger/deploy-phase-29a3-preview-frontend-vps.sh) |
 
 ---
 
 ## Execution sequence (after plan approval)
 
-1. Merge plan PR from `feature/single-core-ledger-phase-2-9-pilot-enablement-plan`
-2. Ops clears 2.8 waivers via §9 live QA on DIN CHINA
-3. Ops approves Stage 1 SQL → execute → §10 soak
-4. Ops approves Stage 2 SQL → execute → §10 soak
-5. Fill this doc with execution results; update [`SINGLE_CORE_LEDGER_PRODUCTION_READY.md`](SINGLE_CORE_LEDGER_PRODUCTION_READY.md)
-6. **Stop before Stage 1 SQL without explicit ops ticket**
+1. Merge 2.9A-3 plan PR from `feature/single-core-ledger-phase-2-9a3-preview-deploy-plan`
+2. Ops approves parallel preview deploy → run `deploy-phase-29a3-preview-frontend-vps.sh`
+3. Bundle verify + browser waiver on http://localhost:3002
+4. Re-sign **PHASE 2.9A LIVE WAIVER CHECKS PASS**
+5. Ops approves Stage 1 SQL → execute → §10 soak
+6. Ops approves Stage 2 SQL → execute → §10 soak
+7. **Stop before Stage 1 SQL without explicit ops ticket**
