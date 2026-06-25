@@ -22,6 +22,18 @@ import {
 } from '@/app/services/effectivePartyLedgerService';
 import { contactService } from '@/app/services/contactService';
 import { ReportBasisBanner } from '@/app/components/accounting/ReportBasisBanner';
+import { canAccessPartyLedgerUnifiedPreview } from '@/app/lib/partyLedgerUnifiedPreviewAccess';
+import {
+  comparePartyLedgerUnifiedPreview,
+  defaultUnifiedBasisForPartyLedger,
+  type PartyLedgerUnifiedPreviewDiff,
+} from '@/app/lib/partyLedgerUnifiedPreviewDiff';
+import { loadPartyLedgerUnifiedPreview } from '@/app/services/partyLedgerUnifiedPreviewService';
+import { useUnifiedLedgerEngineState } from '@/app/hooks/useUnifiedLedgerEngineState';
+import { UNIFIED_LEDGER_SCREEN_IDS } from '@/app/lib/unifiedLedgerScreenFlags';
+import type { UnifiedLedgerBasis } from '@/app/lib/unifiedLedgerBasisFilter';
+import { PartyLedgerUnifiedPreviewPanel } from '@/app/components/accounting/PartyLedgerUnifiedPreviewPanel';
+import { MR_JALIL_CONTACT_ID } from '@/app/lib/unifiedLedgerGoldenFixtures';
 
 interface EffectivePartyLedgerPageProps {
   contactId?: string;
@@ -45,7 +57,7 @@ export const EffectivePartyLedgerPage: React.FC<EffectivePartyLedgerPageProps> =
   contactType: initialContactType,
   onClose,
 }) => {
-  const { companyId, branchId } = useSupabase();
+  const { companyId, branchId, userRole } = useSupabase();
   const { formatCurrency } = useFormatCurrency();
 
   const [mode, setMode] = useState<LedgerMode>('effective');
@@ -66,6 +78,19 @@ export const EffectivePartyLedgerPage: React.FC<EffectivePartyLedgerPageProps> =
   const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({
     from: startOfYear(subYears(new Date(), 1)),
     to: endOfYear(new Date()),
+  });
+
+  const showUnifiedPreviewTools = canAccessPartyLedgerUnifiedPreview(userRole);
+  const [unifiedPreviewEnabled, setUnifiedPreviewEnabled] = useState(false);
+  const [previewBasis, setPreviewBasis] = useState<UnifiedLedgerBasis>('effective_party');
+  const [previewResult, setPreviewResult] = useState<Awaited<ReturnType<typeof loadPartyLedgerUnifiedPreview>> | null>(null);
+  const [previewDiff, setPreviewDiff] = useState<PartyLedgerUnifiedPreviewDiff | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+
+  const { state: engineState } = useUnifiedLedgerEngineState(companyId, {
+    screenId: UNIFIED_LEDGER_SCREEN_IDS.PARTY_LEDGER,
+    screenPreview: unifiedPreviewEnabled,
   });
 
   const prevInitialContactId = useRef<string | undefined>(initialContactId);
@@ -118,6 +143,96 @@ export const EffectivePartyLedgerPage: React.FC<EffectivePartyLedgerPageProps> =
       setLoading(false);
     }
   }, [companyId, contactId, partyType, dateRange, branchId]);
+
+  const dateFrom = dateRange.from ? format(dateRange.from, 'yyyy-MM-dd') : '2020-01-01';
+  const dateTo = dateRange.to ? format(dateRange.to, 'yyyy-MM-dd') : '2099-12-31';
+
+  useEffect(() => {
+    setPreviewBasis(defaultUnifiedBasisForPartyLedger(mode, showReversals));
+  }, [mode, showReversals]);
+
+  const loadUnifiedPreview = useCallback(async () => {
+    if (!companyId || !unifiedPreviewEnabled || !result || !contactId) {
+      setPreviewResult(null);
+      setPreviewDiff(null);
+      return;
+    }
+    if (engineState.killSwitchActive) {
+      setPreviewResult(null);
+      setPreviewDiff(null);
+      setPreviewError('Unified preview disabled — kill switch active.');
+      return;
+    }
+
+    setPreviewLoading(true);
+    setPreviewError(null);
+    try {
+      const preview = await loadPartyLedgerUnifiedPreview({
+        companyId,
+        contactId,
+        partyType,
+        dateFrom,
+        dateTo,
+        mode,
+        showReversals,
+        basis: previewBasis,
+      });
+      setPreviewResult(preview);
+      if (preview.blockedByKillSwitch) {
+        setPreviewDiff(null);
+        setPreviewError(preview.blockReason ?? 'Unified preview blocked.');
+        return;
+      }
+      setPreviewDiff(
+        comparePartyLedgerUnifiedPreview({
+          legacy: result,
+          unifiedRows: preview.unifiedRows,
+          unifiedClosingBalance: preview.closingBalance,
+          unifiedOpeningBalance: preview.openingBalance,
+          contactId,
+        })
+      );
+    } catch (err) {
+      console.error(err);
+      setPreviewResult(null);
+      setPreviewDiff(null);
+      setPreviewError('Unified preview failed to load');
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [
+    companyId,
+    unifiedPreviewEnabled,
+    result,
+    contactId,
+    partyType,
+    dateFrom,
+    dateTo,
+    mode,
+    showReversals,
+    previewBasis,
+    engineState.killSwitchActive,
+  ]);
+
+  useEffect(() => {
+    if (!unifiedPreviewEnabled) {
+      setPreviewResult(null);
+      setPreviewDiff(null);
+      setPreviewError(null);
+      return;
+    }
+    void loadUnifiedPreview();
+  }, [unifiedPreviewEnabled, loadUnifiedPreview]);
+
+  const handleLoadMrJalil = useCallback(() => {
+    setContactId(MR_JALIL_CONTACT_ID);
+    setContactName('MR JALIL');
+    setPartyType('customer');
+    setContactSearchOpen(false);
+  }, []);
+
+  const displayFiltersActive =
+    searchTerm.trim().length > 0 || typeFilter !== 'all' || (mode === 'effective' && showReversals);
 
   useEffect(() => {
     if (contactId) loadData();
@@ -208,6 +323,50 @@ export const EffectivePartyLedgerPage: React.FC<EffectivePartyLedgerPageProps> =
             detail="Mutation-collapse ledger — latest effective result per payment/document (not the same JE-line filter as Account Statements)."
           />
         </div>
+
+        {showUnifiedPreviewTools ? (
+          <div className="px-6 pb-2 flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer w-fit">
+              <input
+                type="checkbox"
+                checked={unifiedPreviewEnabled}
+                disabled={engineState.killSwitchActive || !contactId}
+                onChange={(e) => setUnifiedPreviewEnabled(e.target.checked)}
+                className="rounded border-gray-600 disabled:opacity-50"
+              />
+              Unified engine preview (compare only)
+            </label>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="text-xs"
+              onClick={handleLoadMrJalil}
+            >
+              Load MR JALIL
+            </Button>
+          </div>
+        ) : null}
+
+        {unifiedPreviewEnabled && showUnifiedPreviewTools && contactId ? (
+          <PartyLedgerUnifiedPreviewPanel
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            partyType={partyType}
+            contactName={contactName}
+            mode={mode}
+            showReversals={showReversals}
+            previewResult={previewResult}
+            diff={previewDiff}
+            loading={previewLoading}
+            error={previewError}
+            engineState={engineState}
+            previewBasis={previewBasis}
+            onPreviewBasisChange={setPreviewBasis}
+            displayFiltersActive={displayFiltersActive}
+          />
+        ) : null}
+
         <div className="px-6 py-4 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <Button variant="ghost" size="icon" onClick={onClose} className="text-gray-400 hover:text-white">
