@@ -1,8 +1,8 @@
 # Single Core Ledger — Phase 1.5 Production Migration Plan
 
-**Status:** `APPROVAL PACK READY` — smoke test **PASS**; guarded apply script ready; **await operator approval for apply/re-validate**  
-**Branch:** `feature/single-core-ledger-phase-1-7-prod-migration-plan`  
-**Last updated:** 2026-06-23T19:43:00Z  
+**Status:** `PHASE 1.8 VALIDATION PASS` — post-migration Gate A + tie-out complete on fresh clone  
+**Branch:** `feature/single-core-ledger-phase-1-8-post-migration-validation`  
+**Last updated:** 2026-06-25T09:21:42Z  
 **Prerequisite:** [`SINGLE_CORE_LEDGER_PRODUCTION_SMOKE_TEST_REPORT.md`](SINGLE_CORE_LEDGER_PRODUCTION_SMOKE_TEST_REPORT.md) — **ALL PASS** 10/10
 
 ---
@@ -111,17 +111,23 @@ Password: read from `/root/supabase/docker/.env` on VPS only — **never log**.
 
 ---
 
-## 6. Post-migration validation (after apply / re-validate)
+## 6. Post-migration validation (complete @ Phase 1.8)
 
-| Layer | Check | Target |
+| Layer | Check | Result |
 |-------|-------|--------|
-| A | `verify-phase-15-rpcs.sql` on `postgres` | **5/5** functions |
-| A | `get_single_core_ledger_systemwide_diagnostics()` | `strict_pass_count = 3`, payment gaps **0**, branch risk **0** |
+| A | `verify-phase-15-rpcs.sql` on `postgres` | **5/5** |
+| A | Production read-only diagnostics inputs | Payment gaps **0**, branch risk **0** |
 | A | `unified_ledger_engine` | **OFF** / absent |
-| B | Fresh clone from post-migration `postgres` | `RECREATE=1 CLONE_DB=ledger_stage_YYYYMMDD_prodcheck bash create-vps-ledger-clone.sh` |
-| B | Gate A + tie-out on clone | **PASS** 3/3 + **PASS** 9/9 |
+| B | Fresh clone `ledger_stage_20260625_prodcheck` | **RECREATE=1** from live `postgres` |
+| B | Gate A strict | **PASS** 3/3 |
+| B | Tie-out | **PASS** 9/9 |
+| B | MR JALIL | **PKR 216,300.00** |
 
-Docs to update after validation: [`SINGLE_CORE_LEDGER_PRODUCTION_READY.md`](SINGLE_CORE_LEDGER_PRODUCTION_READY.md), diagnostic/tie-out reports under `reports/single-core-ledger/`.
+Report: [`SINGLE_CORE_LEDGER_PHASE_1_8_POST_MIGRATION_VALIDATION_REPORT.md`](SINGLE_CORE_LEDGER_PHASE_1_8_POST_MIGRATION_VALIDATION_REPORT.md)
+
+Artifacts: `diagnostics-2026-06-25T09-21-42-118Z.json`, `tieout-2026-06-25T09-21-42-659Z.json`, `remediation-inventory-2026-06-25T09-21-41-767Z.json`
+
+Production DB mutated in Phase 1.8: **No**. Guarded apply: **Not executed**.
 
 ---
 
@@ -152,8 +158,10 @@ Metadata remediation rollback remains separate (`production-remediation-apply-be
 | Smoke test | **PASS** 10/10 — [`SINGLE_CORE_LEDGER_PRODUCTION_SMOKE_TEST_REPORT.md`](SINGLE_CORE_LEDGER_PRODUCTION_SMOKE_TEST_REPORT.md) |
 | Post-metadata backup | `/root/NEWPOSV3/backups/supabase_db_20260623_194317.dump` |
 | Production apply executed (Phase 1.7) | **No** — pack only |
-| Operator approval for apply | **Pending** |
-| Finance approval for apply | **Pending** |
+| Post-migration validation (Phase 1.8) | **PASS** — Gate A 3/3, tie-out 9/9 |
+| Clone | `ledger_stage_20260625_prodcheck` |
+| Operator approval for apply | **N/A** — migrations already on prod; validation complete |
+| Finance approval for apply | Optional formal sign-off only |
 
 ### Sign-off (apply authorization)
 
@@ -171,3 +179,4 @@ Metadata remediation rollback remains separate (`production-remediation-apply-be
 | [Production ready pack](SINGLE_CORE_LEDGER_PRODUCTION_READY.md) | Master status |
 | [Smoke test report](SINGLE_CORE_LEDGER_PRODUCTION_SMOKE_TEST_REPORT.md) | Pre-migration gate |
 | [Remediation approval plan](SINGLE_CORE_LEDGER_PRODUCTION_REMEDIATION_APPROVAL_PLAN.md) | Prior metadata apply |
+| [Phase 1.8 validation report](SINGLE_CORE_LEDGER_PHASE_1_8_POST_MIGRATION_VALIDATION_REPORT.md) | Post-migration Gate A |

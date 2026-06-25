@@ -1,8 +1,8 @@
 # Single Core Ledger — Production Ready Pack
 
-**Status:** `PHASE 1.7 PACK COMPLETE` — smoke **PASS**; migration approval pack ready; validate before engine / Phase 2  
-**Branch:** `feature/single-core-ledger-phase-1-7-prod-migration-plan`  
-**Last updated:** 2026-06-23T19:43:00Z  
+**Status:** `PHASE 1.8 VALIDATION PASS` — ready for Phase 2 planning; engine still OFF  
+**Branch:** `feature/single-core-ledger-phase-1-8-post-migration-validation`  
+**Last updated:** 2026-06-25T09:21:42Z  
 **Master checklist:** use this file as the single entry point for post-apply status.
 
 ---
@@ -11,7 +11,7 @@
 
 | Gate | Status |
 |------|--------|
-| Fresh clone Gate A (`ledger_stage_20260623_prodcheck`) | **PASS** 3/3 |
+| Fresh clone Gate A (`ledger_stage_20260625_prodcheck`) | **PASS** 3/3 |
 | Tie-out (all companies) | **PASS** 9/9 |
 | Baseline comparison | **APPROVE_MANIFEST** (0 delta) |
 | Finance sign-off (82 rows) | **COMPLETE** — 82 approved, 0 rejected |
@@ -21,7 +21,7 @@
 | Production smoke test (1.7) | **PASS** 10/10 |
 | `unified_ledger_engine` | **OFF** |
 | Phase 1.5 prod migration pack | **READY** — guarded apply not executed in 1.7 |
-| Phase 1.5 post-migration Gate A | **PENDING** |
+| Phase 1.5 post-migration Gate A (1.8) | **PASS** 3/3 on `ledger_stage_20260625_prodcheck` |
 | Phase 2 screen wiring | **NOT STARTED** (separate approval) |
 
 ---
@@ -145,11 +145,27 @@ See: [`SINGLE_CORE_LEDGER_PRODUCTION_REMEDIATION_APPROVAL_PLAN.md`](SINGLE_CORE_
 | 1.7.3 | Production Phase 1.5 guards + apply script | `production-phase-15-env-guard.mjs`, `apply-phase-15-production-docker-exec.sh` |
 | 1.7.4 | Post-metadata pre-migration backup | `/root/NEWPOSV3/backups/supabase_db_20260623_194317.dump` |
 | 1.7.5 | Guarded Phase 1.5 apply on `postgres` | **NOT EXECUTED** — await operator approval |
-| 1.7.6 | Post-migration Gate A + tie-out on prod/clone | **PENDING** — after apply approval |
+| 1.7.6 | Post-migration Gate A + tie-out on prod/clone | **PASS** @ 1.8 — `ledger_stage_20260625_prodcheck` |
 
-**Pre-flight note (2026-06-23):** Live `postgres` already has all 4 Phase 1.5 files in `schema_migrations` and **5/5** unified RPCs. Guarded apply is idempotent (`[SKIP]`). Post-migration validation on a fresh clone is still required before engine enablement or Phase 2.
+**Pre-flight note (2026-06-23):** Live `postgres` already has all 4 Phase 1.5 files in `schema_migrations` and **5/5** unified RPCs. Guarded apply is idempotent (`[SKIP]`).
 
 **Branch:** `feature/single-core-ledger-phase-1-7-prod-migration-plan`
+
+### Phase 1.8 — Formal post-migration revalidation (complete)
+
+| Step | What | Status |
+|------|------|--------|
+| 1.8.1 | Production read-only verify | **PASS** — 4/4 migrations, 5/5 RPCs, engine OFF |
+| 1.8.2 | Fresh clone from live `postgres` | `ledger_stage_20260625_prodcheck` |
+| 1.8.3 | Read-only inventory | Payment gaps **0**, branch risk **0** |
+| 1.8.4 | Gate A strict diagnostics | **PASS** 3/3 |
+| 1.8.5 | Tie-out (pilot + all-company) | **PASS** 9/9 |
+| 1.8.6 | MR JALIL balance | **PKR 216,300.00** |
+| 1.8.7 | Production DB mutation | **None** |
+
+See: [`SINGLE_CORE_LEDGER_PHASE_1_8_POST_MIGRATION_VALIDATION_REPORT.md`](SINGLE_CORE_LEDGER_PHASE_1_8_POST_MIGRATION_VALIDATION_REPORT.md)
+
+**Branch:** `feature/single-core-ledger-phase-1-8-post-migration-validation`
 
 ---
 
@@ -157,9 +173,9 @@ See: [`SINGLE_CORE_LEDGER_PRODUCTION_REMEDIATION_APPROVAL_PLAN.md`](SINGLE_CORE_
 
 | Action | Status |
 |--------|--------|
-| Phase 1.5 migrations on `postgres` | **Separate approval required** |
+| Phase 1.5 migrations on `postgres` | **Present** (4/4) — validated @ 1.8 |
 | `unified_ledger_engine` ON | **Blocked** |
-| Phase 2 UI wiring | **Blocked** |
+| Phase 2 UI wiring | **Blocked** — planning may proceed; implementation blocked |
 | Merge PR / deploy | **Ops decision** |
 
 ---
@@ -192,12 +208,11 @@ Or selective reverse using `production-remediation-apply-before-*.json` from app
 
 ## Next recommended step
 
-1. ~~Smoke test ERP login + DIN CHINA ledger on production~~ **Done** — 10/10 PASS  
-2. Operator + finance sign Phase 1.5 migration plan §9 (if re-apply / formal validation needed)  
-3. Run post-migration Gate A + tie-out on fresh clone from post-metadata `postgres`  
-4. Do **not** enable `unified_ledger_engine` or start Phase 2 until post-migration validation passes  
+1. ~~Run post-migration Gate A + tie-out on fresh clone~~ **Done** @ 1.8 — PASS  
+2. Begin **Phase 2 planning** with explicit approval; keep `unified_ledger_engine` **OFF**  
+3. Do **not** merge or deploy without separate ops approval  
 
-**Final status:** `PHASE 1.7 PACK COMPLETE — smoke PASS; migration approval ready; post-migration validation pending`
+**Final status:** `PHASE 1.8 VALIDATION PASS — ready for Phase 2 planning, engine still OFF`
 
 ## Related documents
 
@@ -209,3 +224,4 @@ Or selective reverse using `production-remediation-apply-before-*.json` from app
 | [Phase 1.6.1 branch manual](SINGLE_CORE_LEDGER_PHASE_1_6_1_BRANCH_MANUAL_REVIEW.md) | 6 manual branch JEs |
 | [Smoke test report (1.7)](SINGLE_CORE_LEDGER_PRODUCTION_SMOKE_TEST_REPORT.md) | Production smoke 10/10 |
 | [Phase 1.5 production migration plan](SINGLE_CORE_LEDGER_PHASE_1_5_PRODUCTION_MIGRATION_PLAN.md) | Migration approval pack |
+| [Phase 1.8 post-migration validation](SINGLE_CORE_LEDGER_PHASE_1_8_POST_MIGRATION_VALIDATION_REPORT.md) | Gate A + tie-out PASS |
