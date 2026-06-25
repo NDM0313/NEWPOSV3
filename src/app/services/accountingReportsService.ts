@@ -23,6 +23,7 @@ import {
   type BalanceSheetAssetGroup,
   type BalanceSheetLiabilityGroup,
 } from '@/app/lib/accountHierarchy';
+import { unifiedLedgerBranchIncludesRow } from '@/app/lib/unifiedLedgerBranchFilter';
 
 /** Branch-scoped reports include JEs with NULL branch_id (company-wide openings and legacy rows). */
 function journalEntryMatchesBranchFilter(
@@ -372,7 +373,7 @@ export const accountingReportsService = {
     startDate: string,
     endDate: string,
     branchId?: string,
-    options?: { arApMode?: TrialBalanceArApMode }
+    options?: { arApMode?: TrialBalanceArApMode; branchFilterMode?: 'legacy' | 'strict' }
   ): Promise<TrialBalanceResult> {
     assertGlTruthQueryTable('accountingReportsService.getTrialBalance', 'accounts');
     assertGlTruthQueryTable('accountingReportsService.getTrialBalance', 'journal_entry_lines');
@@ -400,7 +401,7 @@ export const accountingReportsService = {
         account_id,
         debit,
         credit,
-        journal_entry:journal_entries(entry_date, company_id, branch_id, is_void)
+        journal_entry:journal_entries(entry_date, company_id, branch_id, is_void, reference_type)
       `;
     let lines: any[] = [];
     let error: { message?: string } | null = null;
@@ -442,7 +443,14 @@ export const accountingReportsService = {
       if ((je as any).is_void === true) return;
       const ed = (je.entry_date || '').slice(0, 10);
       if (ed < start || ed > end) return;
-      if (!journalEntryMatchesBranchFilter(je.branch_id, branchId)) return;
+      const branchOk =
+        options?.branchFilterMode === 'strict'
+          ? unifiedLedgerBranchIncludesRow(branchId, {
+              branchId: je.branch_id,
+              referenceType: (je as { reference_type?: string }).reference_type,
+            })
+          : journalEntryMatchesBranchFilter(je.branch_id, branchId);
+      if (!branchOk) return;
       const accId = line.account_id;
       if (!byAccount[accId]) byAccount[accId] = { debit: 0, credit: 0 };
       byAccount[accId].debit += Number(line.debit) || 0;

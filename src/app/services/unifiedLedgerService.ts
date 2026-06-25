@@ -562,11 +562,14 @@ export async function loadLegacyTrialBalanceForTieOut(params: {
     params.companyId,
     params.dateFrom,
     params.dateTo,
-    params.branchId ?? undefined
+    params.branchId ?? undefined,
+    { branchFilterMode: params.branchId ? 'strict' : 'legacy' }
   );
   return {
     result,
-    engineName: 'accountingReportsService.getTrialBalance',
+    engineName: params.branchId
+      ? 'accountingReportsService.getTrialBalance (strict branch)'
+      : 'accountingReportsService.getTrialBalance',
     durationMs: performance.now() - t0,
   };
 }

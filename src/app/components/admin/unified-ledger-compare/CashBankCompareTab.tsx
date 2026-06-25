@@ -44,7 +44,8 @@ export function CashBankCompareTab(props: {
     <div className="space-y-4">
       <p className="text-sm text-gray-400">
         Compare legacy roznamcha vs <code className="text-amber-300">get_unified_cash_bank_ledger</code>{' '}
-        (shadow only).
+        (shadow only). Both sides use <strong className="text-amber-200">official_gl</strong> — roznamcha has no
+        effective_party lens; the global Basis filter does not apply here.
       </p>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 rounded-xl border border-gray-800 bg-gray-900/40 p-4">
         <label className="text-sm space-y-1">

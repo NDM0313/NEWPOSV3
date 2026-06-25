@@ -4,6 +4,7 @@ import {
   cashBankAmountsEquivalent,
   cashBankEconomicRowKey,
   diffCashBankLedgerRows,
+  normalizeCashBankEntryNo,
   roznamchaRowKey,
   roznamchaToCompareSummary,
   unifiedCashBankRowKey,
@@ -11,6 +12,41 @@ import {
 } from './roznamchaCashBankCompareMappers';
 import type { RoznamchaRowWithBalance } from '@/app/services/roznamchaService';
 import type { UnifiedLedgerRow } from '@/app/services/unifiedLedgerService';
+
+test('normalizeCashBankEntryNo maps EP2026 slash refs to EXP dash', () => {
+  assert.equal(normalizeCashBankEntryNo('EP2026/0009'), 'EXP-0009');
+  assert.equal(normalizeCashBankEntryNo('EXP-0009'), 'EXP-0009');
+});
+
+test('diffCashBankLedgerRows matches expense when roznamcha uses EP2026 ref', () => {
+  const result = diffCashBankLedgerRows({
+    oldRows: [
+      {
+        id: 'exp:9',
+        ref: 'EP2026/0009',
+        date: '2026-02-13',
+        details: 'Shop Expense',
+        cashIn: 0,
+        cashOut: 300000,
+        type: 'Shop Expense',
+        sourceJournalEntryId: 'bbdd549f-2b35-462c-9354-6df1bf05386a',
+      } as RoznamchaRowWithBalance,
+    ],
+    newRows: [
+      {
+        journalEntryId: 'bbdd549f-2b35-462c-9354-6df1bf05386a',
+        entryNo: 'EXP-0009',
+        entryDate: '2026-02-13',
+        referenceType: 'expense',
+        debit: 0,
+        credit: 300000,
+        description: 'expense',
+      } as UnifiedLedgerRow,
+    ],
+  });
+  assert.equal(result.missingInNew.length, 0);
+  assert.equal(result.extraInNew.length, 0);
+});
 
 test('cashBankEconomicRowKey uses ref date and magnitude', () => {
   assert.equal(cashBankEconomicRowKey('RCV-0001', '2025-11-03', 150000, 0), 'econ:RCV-0001|2025-11-03|150000');

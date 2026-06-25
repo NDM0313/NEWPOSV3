@@ -7,6 +7,14 @@ import type { CompareRowSummary } from '@/app/lib/unifiedLedgerCompareTypes';
 import type { RoznamchaRowWithBalance } from '@/app/services/roznamchaService';
 import type { UnifiedLedgerRow } from '@/app/services/unifiedLedgerService';
 
+/** Normalize roznamcha expense refs (EP2026/0009) to unified style (EXP-0009). */
+export function normalizeCashBankEntryNo(entryNo: string | null | undefined): string {
+  const raw = String(entryNo || '').trim().toUpperCase();
+  const expSlash = raw.match(/^EP\d{4}\/(\d+)$/);
+  if (expSlash) return `EXP-${expSlash[1].padStart(4, '0')}`;
+  return raw;
+}
+
 /** Ref + date + liquidity magnitude — roznamcha and unified often link different JE ids for same receipt. */
 export function cashBankEconomicRowKey(
   entryNo: string | null | undefined,
@@ -14,7 +22,7 @@ export function cashBankEconomicRowKey(
   debit: number,
   credit: number
 ): string {
-  const ref = String(entryNo || '').trim().toUpperCase();
+  const ref = normalizeCashBankEntryNo(entryNo);
   const date = String(entryDate || '').slice(0, 10);
   const mag = round2(Math.max(Number(debit) || 0, Number(credit) || 0));
   if (ref && date && mag > 0) return `econ:${ref}|${date}|${mag}`;
