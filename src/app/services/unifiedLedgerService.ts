@@ -10,6 +10,7 @@ import {
   isUnifiedLedgerEngineEnabled,
   UNIFIED_LEDGER_ENGINE_DEFAULT,
 } from '@/app/lib/unifiedLedgerFeatureFlag';
+import { isUnifiedLedgerKillSwitchActive } from '@/app/lib/unifiedLedgerEngineState';
 import {
   unifiedLedgerBasisIncludesRow,
   type UnifiedLedgerBasis,
@@ -138,6 +139,10 @@ async function shouldUseUnifiedRpc(
   companyId: string,
   shadowForce?: boolean
 ): Promise<{ useRpc: boolean; flagEnabled: boolean }> {
+  const killSwitchActive = await isUnifiedLedgerKillSwitchActive(companyId);
+  if (killSwitchActive) {
+    return { useRpc: shadowForce === true, flagEnabled: false };
+  }
   const flagEnabled = await isUnifiedLedgerEngineEnabled(companyId);
   const useRpc = shadowForce === true || flagEnabled;
   return { useRpc, flagEnabled };

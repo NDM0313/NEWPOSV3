@@ -1,8 +1,8 @@
 # Single Core Ledger — Production Ready Pack
 
-**Status:** `PHASE 2 PLAN READY` — waiting for approval to implement preview-only wiring; engine still OFF  
-**Branch:** `feature/single-core-ledger-phase-2-rollout-plan`  
-**Last updated:** 2026-06-25  
+**Status:** `PHASE 2.1 COMPLETE` — flags + banners infrastructure; engine still OFF  
+**Branch:** `feature/single-core-ledger-phase-2-1-flags-banners`  
+**Last updated:** 2026-06-14  
 **Master checklist:** use this file as the single entry point for post-apply status.
 
 ---
@@ -22,8 +22,9 @@
 | `unified_ledger_engine` | **OFF** |
 | Phase 1.5 prod migration pack | **READY** — guarded apply not executed in 1.7 |
 | Phase 1.5 post-migration Gate A (1.8) | **PASS** 3/3 on `ledger_stage_20260625_prodcheck` |
-| Phase 2 rollout plan | **READY** — implementation blocked until approval |
-| Phase 2 screen wiring | **NOT STARTED** (blocked until plan approved) |
+| Phase 2 rollout plan | **READY** — plan on rollout branch |
+| Phase 2.1 flags + banners | **COMPLETE** — see [`SINGLE_CORE_LEDGER_PHASE_2_1_FLAGS_BANNERS_REPORT.md`](SINGLE_CORE_LEDGER_PHASE_2_1_FLAGS_BANNERS_REPORT.md) |
+| Phase 2 screen wiring | **NOT STARTED** (PR 2.2+) |
 
 ---
 

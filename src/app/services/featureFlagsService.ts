@@ -5,13 +5,24 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { UNIFIED_LEDGER_FLAG_KEYS } from '@/app/lib/unifiedLedgerFlagKeys';
 
 export const FEATURE_KEYS = {
   STUDIO_PRODUCTION_V2: 'studio_production_v2',
   STUDIO_PRODUCTION_V3: 'studio_production_v3',
   STUDIO_CUSTOMER_INVOICE_V1: 'studio_customer_invoice_v1',
   /** Shadow unified ledger engine — default OFF; no row in DB = disabled */
-  UNIFIED_LEDGER_ENGINE: 'unified_ledger_engine',
+  UNIFIED_LEDGER_ENGINE: UNIFIED_LEDGER_FLAG_KEYS.ENGINE,
+  /** Pilot preview UI — default OFF; read only in Phase 2.1 */
+  UNIFIED_LEDGER_PILOT: UNIFIED_LEDGER_FLAG_KEYS.PILOT,
+  /** Ops kill switch — when ON, force legacy everywhere */
+  UNIFIED_LEDGER_KILL_SWITCH: UNIFIED_LEDGER_FLAG_KEYS.KILL_SWITCH,
+  /** Per-screen rollout gates (scaffold — default OFF) */
+  UNIFIED_LEDGER_SCREEN_LEDGER_V2: UNIFIED_LEDGER_FLAG_KEYS.SCREEN_LEDGER_V2,
+  UNIFIED_LEDGER_SCREEN_ACCOUNT_STATEMENT: UNIFIED_LEDGER_FLAG_KEYS.SCREEN_ACCOUNT_STATEMENT,
+  UNIFIED_LEDGER_SCREEN_TRIAL_BALANCE: UNIFIED_LEDGER_FLAG_KEYS.SCREEN_TRIAL_BALANCE,
+  UNIFIED_LEDGER_SCREEN_ROZNAMCHA: UNIFIED_LEDGER_FLAG_KEYS.SCREEN_ROZNAMCHA,
+  UNIFIED_LEDGER_SCREEN_PARTY_LEDGER: UNIFIED_LEDGER_FLAG_KEYS.SCREEN_PARTY_LEDGER,
 } as const;
 
 export type FeatureKey = (typeof FEATURE_KEYS)[keyof typeof FEATURE_KEYS];

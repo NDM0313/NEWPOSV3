@@ -1,6 +1,6 @@
 /**
  * Unified Core Ledger Engine — feature flag (default OFF).
- * Runtime: DB feature_flags row + optional localStorage dev override.
+ * Runtime: central resolver + optional localStorage dev override.
  * Production ledger screens must NOT depend on this until explicit enablement.
  */
 
@@ -42,18 +42,8 @@ export function setUnifiedLedgerLocalOverride(value: boolean | null): void {
  * Tie-out UI may pass shadowForce to bypass this.
  */
 export async function isUnifiedLedgerEngineEnabled(companyId: string): Promise<boolean> {
-  const local = getUnifiedLedgerLocalOverride();
-  if (local !== null) return local;
-
-  if (!companyId) return UNIFIED_LEDGER_ENGINE_DEFAULT;
-
-  try {
-    const { featureFlagsService } = await import('@/app/services/featureFlagsService');
-    const enabled = await featureFlagsService.isEnabled(companyId, UNIFIED_LEDGER_FEATURE_KEY);
-    return enabled === true;
-  } catch {
-    return UNIFIED_LEDGER_ENGINE_DEFAULT;
-  }
+  const { isUnifiedLedgerCompanyEngineEnabled } = await import('@/app/lib/unifiedLedgerEngineState');
+  return isUnifiedLedgerCompanyEngineEnabled(companyId);
 }
 
 /** Synchronous check for tests / SSR — uses local override only. */
