@@ -3,6 +3,7 @@
  */
 
 import { isUnifiedLedgerKillSwitchActive } from '@/app/lib/unifiedLedgerEngineState';
+import { APP_BUILD_COMMIT } from '@/app/lib/developerMode';
 import { normalizeCompareDateRange } from '@/app/components/admin/unified-ledger-compare/compareFilters';
 import type { UnifiedLedgerBasis } from '@/app/lib/unifiedLedgerBasisFilter';
 import type { LedgerCompareScope, LedgerRowCompareResult } from '@/app/lib/unifiedLedgerCompareTypes';
@@ -85,5 +86,6 @@ export async function compareCashBankLedgerTieOut(params: {
     shadowForce: true,
     killSwitchActive,
     rpcError: unified.meta.rpcError,
+    buildCommit: APP_BUILD_COMMIT,
   };
 }

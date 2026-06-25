@@ -23,6 +23,8 @@ export type LedgerCompareMeta = {
   shadowForce: true;
   killSwitchActive: boolean;
   rpcError?: string;
+  /** Baked at build — verify export matches expected preview commit. */
+  buildCommit?: string;
 };
 
 export type CompareRowSummary = {

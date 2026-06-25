@@ -96,6 +96,9 @@ export function CashBankCompareTab(props: {
             title={`Amount mismatches (${result.amountMismatches.length})`}
             rows={result.amountMismatches}
           />
+          {result.buildCommit && (
+            <p className="text-xs text-gray-600 font-mono">Build: {result.buildCommit}</p>
+          )}
           <Button
             size="sm"
             variant="outline"

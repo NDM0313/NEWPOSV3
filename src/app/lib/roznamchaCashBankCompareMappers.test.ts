@@ -317,3 +317,29 @@ test('evaluateCashBankComparePass passes when manual_receipt supplement aligns r
   assert.equal(result.pass, true);
   assert.equal(result.extraInNew.length, 0);
 });
+
+test('DIN CHINA RCV-0092 matches on economic key not payment id vs journal line id', () => {
+  const legacyRow = {
+    id: 'pay:127',
+    ref: 'RCV-0092',
+    date: '2026-01-02',
+    cashIn: 200000,
+    cashOut: 0,
+    sourceJournalEntryId: '51958c11-3022-46a8-856b-360720f5b6a3',
+    type: 'Customer Payment',
+  } as RoznamchaRowWithBalance;
+  const unifiedRow = {
+    journalEntryId: '51958c11-3022-46a8-856b-360720f5b6a3',
+    journalEntryLineId: 'jel-rcv-0092-line',
+    entryNo: 'RCV-0092',
+    entryDate: '2026-01-02',
+    debit: 200000,
+    credit: 0,
+    referenceType: 'payment',
+  } as UnifiedLedgerRow;
+  assert.notEqual(legacyRow.id, unifiedCashBankRowKey(unifiedRow));
+  assert.equal(roznamchaRowKey(legacyRow), unifiedCashBankRowKey(unifiedRow));
+  const result = diffCashBankLedgerRows({ oldRows: [legacyRow], newRows: [unifiedRow] });
+  assert.equal(result.missingInNew.length, 0);
+  assert.equal(result.extraInNew.length, 0);
+});
