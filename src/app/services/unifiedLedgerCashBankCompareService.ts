@@ -3,53 +3,19 @@
  */
 
 import { isUnifiedLedgerKillSwitchActive } from '@/app/lib/unifiedLedgerEngineState';
+import { balancePasses, diffLedgerRows, round2 } from '@/app/lib/unifiedLedgerCompareDiff';
+import type { LedgerCompareScope, LedgerRowCompareResult } from '@/app/lib/unifiedLedgerCompareTypes';
 import {
-  balancePasses,
-  diffLedgerRows,
-  round2,
-} from '@/app/lib/unifiedLedgerCompareDiff';
-import type { CompareRowSummary, LedgerCompareScope, LedgerRowCompareResult } from '@/app/lib/unifiedLedgerCompareTypes';
-import type { RoznamchaRowWithBalance } from '@/app/services/roznamchaService';
+  roznamchaRowKey,
+  roznamchaToCompareSummary,
+  unifiedCashBankRowKey,
+  unifiedCashBankToCompareSummary,
+} from '@/app/lib/roznamchaCashBankCompareMappers';
 import {
   getUnifiedCashBankLedger,
   loadLegacyCashBankForTieOut,
   type UnifiedLedgerBasis,
-  type UnifiedLedgerRow,
 } from '@/app/services/unifiedLedgerService';
-
-function roznamchaRowKey(r: RoznamchaRowWithBalance): string {
-  return r.id;
-}
-
-function roznamchaToSummary(r: RoznamchaRowWithBalance): CompareRowSummary {
-  const debit = round2(r.cashIn || 0);
-  const credit = round2(r.cashOut || 0);
-  return {
-    journalEntryId: r.sourceJournalEntryId || r.id,
-    entryNo: r.ref || null,
-    entryDate: r.date,
-    referenceType: r.type || null,
-    debit,
-    credit,
-    description: r.details || r.referenceDisplay || '—',
-  };
-}
-
-function unifiedRowKey(r: UnifiedLedgerRow): string {
-  return r.journalEntryLineId || r.journalEntryId;
-}
-
-function unifiedToSummary(r: UnifiedLedgerRow): CompareRowSummary {
-  return {
-    journalEntryId: r.journalEntryId,
-    entryNo: r.entryNo,
-    entryDate: r.entryDate,
-    referenceType: r.referenceType,
-    debit: r.debit,
-    credit: r.credit,
-    description: r.description,
-  };
-}
 
 export async function compareCashBankLedgerTieOut(params: {
   companyId: string;
@@ -93,9 +59,9 @@ export async function compareCashBankLedgerTieOut(params: {
     oldRows: legacy.rows,
     newRows: unified.rows,
     oldKey: roznamchaRowKey,
-    newKey: unifiedRowKey,
-    oldToSummary: roznamchaToSummary,
-    newToSummary: unifiedToSummary,
+    newKey: unifiedCashBankRowKey,
+    oldToSummary: roznamchaToCompareSummary,
+    newToSummary: unifiedCashBankToCompareSummary,
   });
 
   const oldBalance = round2(legacy.closingBalance);
