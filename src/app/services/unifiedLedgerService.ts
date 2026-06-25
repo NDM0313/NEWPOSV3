@@ -6,6 +6,8 @@
 
 import { supabase } from '@/lib/supabase';
 import { accountingService, type AccountLedgerEntry } from '@/app/services/accountingService';
+import { accountingReportsService, type TrialBalanceResult } from '@/app/services/accountingReportsService';
+import { getRoznamcha, type AccountFilter, type RoznamchaRowWithBalance } from '@/app/services/roznamchaService';
 import {
   isUnifiedLedgerEngineEnabled,
   UNIFIED_LEDGER_ENGINE_DEFAULT,
@@ -523,6 +525,83 @@ export async function loadLegacyPartyLedgerForTieOut(params: {
     to
   );
   return { rows, engineName: 'getWorkerPartyGlJournalLedger', durationMs: performance.now() - t0 };
+}
+
+/** Load legacy account ledger for admin tie-out only. */
+export async function loadLegacyAccountLedgerForTieOut(params: {
+  companyId: string;
+  accountId: string;
+  branchId?: string | null;
+  dateFrom?: string | null;
+  dateTo?: string | null;
+}): Promise<{ rows: AccountLedgerEntry[]; engineName: string; durationMs: number }> {
+  const t0 = performance.now();
+  const rows = await accountingService.getAccountLedger(
+    params.accountId,
+    params.companyId,
+    params.dateFrom ?? undefined,
+    params.dateTo ?? undefined,
+    params.branchId ?? undefined
+  );
+  return {
+    rows,
+    engineName: 'accountingService.getAccountLedger',
+    durationMs: performance.now() - t0,
+  };
+}
+
+/** Load legacy trial balance for admin tie-out only. */
+export async function loadLegacyTrialBalanceForTieOut(params: {
+  companyId: string;
+  branchId?: string | null;
+  dateFrom: string;
+  dateTo: string;
+}): Promise<{ result: TrialBalanceResult; engineName: string; durationMs: number }> {
+  const t0 = performance.now();
+  const result = await accountingReportsService.getTrialBalance(
+    params.companyId,
+    params.dateFrom,
+    params.dateTo,
+    params.branchId ?? undefined
+  );
+  return {
+    result,
+    engineName: 'accountingReportsService.getTrialBalance',
+    durationMs: performance.now() - t0,
+  };
+}
+
+/** Load legacy cash/bank roznamcha rows for admin tie-out only. */
+export async function loadLegacyCashBankForTieOut(params: {
+  companyId: string;
+  branchId?: string | null;
+  dateFrom: string;
+  dateTo: string;
+  liquidity?: 'cash' | 'bank' | 'wallet' | 'all';
+}): Promise<{
+  rows: RoznamchaRowWithBalance[];
+  closingBalance: number;
+  engineName: string;
+  durationMs: number;
+}> {
+  const t0 = performance.now();
+  const liquidity = params.liquidity ?? 'all';
+  const accountFilter: AccountFilter =
+    liquidity === 'all' ? 'all' : liquidity;
+  const roz = await getRoznamcha(
+    params.companyId,
+    params.branchId ?? null,
+    params.dateFrom,
+    params.dateTo,
+    accountFilter,
+    false
+  );
+  return {
+    rows: roz.rows,
+    closingBalance: roz.summary.closingBalance,
+    engineName: `roznamchaService.getRoznamcha (${accountFilter})`,
+    durationMs: performance.now() - t0,
+  };
 }
 
 export function unifiedBasisLabel(basis: UnifiedLedgerBasis): string {

@@ -103,6 +103,16 @@ export default function AccountingDeveloperCenterPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              window.location.href = '/admin/unified-ledger-tieout';
+            }}
+          >
+            Unified Ledger Compare
+          </Button>
           <Button type="button" size="sm" variant="outline" onClick={exitToErp} className="gap-1.5">
             <ArrowLeft className="w-4 h-4" />
             Back to ERP
