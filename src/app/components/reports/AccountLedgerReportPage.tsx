@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Loader2, FileText, FileSpreadsheet, Filter, RotateCcw, Eye, Pencil } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { useSupabase } from '@/app/context/SupabaseContext';
@@ -45,6 +45,22 @@ import {
   shouldIncludePartyEffectiveRow,
 } from '@/app/lib/reportVisibilityContract';
 import { resolveGlCorrectionDisplayRef } from '@/app/lib/glCorrectionDisplayRef';
+import { canAccessAccountStatementUnifiedPreview } from '@/app/lib/accountStatementUnifiedPreviewAccess';
+import { resolveAccountStatementPreviewTarget } from '@/app/lib/accountStatementUnifiedPreviewTarget';
+import {
+  compareAccountStatementUnifiedPreview,
+  defaultUnifiedBasisForAccountStatement,
+  type AccountStatementUnifiedPreviewDiff,
+} from '@/app/lib/accountStatementUnifiedPreviewDiff';
+import { loadAccountStatementUnifiedPreview } from '@/app/services/accountStatementUnifiedPreviewService';
+import { useUnifiedLedgerEngineState } from '@/app/hooks/useUnifiedLedgerEngineState';
+import { UNIFIED_LEDGER_SCREEN_IDS } from '@/app/lib/unifiedLedgerScreenFlags';
+import type { UnifiedLedgerBasis } from '@/app/lib/unifiedLedgerBasisFilter';
+import {
+  MR_JALIL_CONTACT_ID,
+  MR_JALIL_CONTACT_NAME,
+} from '@/app/lib/unifiedLedgerGoldenFixtures';
+import { AccountStatementUnifiedPreviewPanel } from '@/app/components/reports/AccountStatementUnifiedPreviewPanel';
 
 /** AR / AP running balance sign: highlight “inverted” party positions so refunds / prepaids are obvious. */
 const PARTY_BAL_EPS = 0.005;
@@ -391,7 +407,7 @@ export const AccountLedgerReportPage: React.FC<{
   /** Pre-select this account when opened from Chart of Accounts ⋮ → Statement. */
   initialAccountId?: string | null;
 }> = ({ startDate, endDate, branchId, branchScopeLabel, initialAccountId }) => {
-  const { companyId } = useSupabase();
+  const { companyId, userRole } = useSupabase();
   const { formatCurrency } = useFormatCurrency();
   const { formatTime } = useFormatDate();
   const [accounts, setAccounts] = useState<
@@ -443,6 +459,18 @@ export const AccountLedgerReportPage: React.FC<{
   const [loadingAccounts, setLoadingAccounts] = useState(true);
   const [statementLoadedOnce, setStatementLoadedOnce] = useState(false);
   const [journalRefreshTick, setJournalRefreshTick] = useState(0);
+  const showUnifiedPreviewTools = canAccessAccountStatementUnifiedPreview(userRole);
+  const [unifiedPreviewEnabled, setUnifiedPreviewEnabled] = useState(false);
+  const [previewBasis, setPreviewBasis] = useState<UnifiedLedgerBasis>('effective_party');
+  const [previewResult, setPreviewResult] = useState<Awaited<ReturnType<typeof loadAccountStatementUnifiedPreview>> | null>(null);
+  const [previewDiff, setPreviewDiff] = useState<AccountStatementUnifiedPreviewDiff | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+
+  const { state: engineState } = useUnifiedLedgerEngineState(companyId, {
+    screenId: UNIFIED_LEDGER_SCREEN_IDS.ACCOUNT_STATEMENT,
+    screenPreview: unifiedPreviewEnabled,
+  });
 
   useEffect(() => {
     const bump = () => setJournalRefreshTick((n) => n + 1);
@@ -934,6 +962,115 @@ export const AccountLedgerReportPage: React.FC<{
       ? workers.find((w) => w.id === applied.selectedWorkerId)?.name || ''
       : contacts.find((c) => c.id === applied.selectedContactId)?.name || '';
 
+  const previewTarget = useMemo(
+    () =>
+      resolveAccountStatementPreviewTarget({
+        statementType: applied.statementType,
+        selectedContactId: applied.selectedContactId,
+        selectedWorkerId: applied.selectedWorkerId,
+        selectedAccountId: applied.selectedAccountId,
+        accounts,
+      }),
+    [applied, accounts]
+  );
+
+  useEffect(() => {
+    if (previewTarget.kind !== 'none') {
+      setPreviewBasis(defaultUnifiedBasisForAccountStatement(previewTarget, viewMode));
+    }
+  }, [previewTarget, viewMode]);
+
+  const loadUnifiedPreview = useCallback(async () => {
+    if (!companyId || !unifiedPreviewEnabled) {
+      setPreviewResult(null);
+      setPreviewDiff(null);
+      return;
+    }
+    if (previewTarget.kind === 'none') {
+      setPreviewResult(null);
+      setPreviewDiff(null);
+      setPreviewError(previewTarget.reason);
+      return;
+    }
+    if (engineState.killSwitchActive) {
+      setPreviewResult(null);
+      setPreviewDiff(null);
+      setPreviewError('Unified preview disabled — kill switch active.');
+      return;
+    }
+
+    setPreviewLoading(true);
+    setPreviewError(null);
+    try {
+      const preview = await loadAccountStatementUnifiedPreview({
+        companyId,
+        target: previewTarget,
+        startDate,
+        endDate,
+        basis: previewBasis,
+      });
+      setPreviewResult(preview);
+      const partyId =
+        previewTarget.kind === 'party'
+          ? previewTarget.partyId
+          : applied.statementType === 'customer'
+            ? applied.selectedContactId
+            : undefined;
+      setPreviewDiff(
+        compareAccountStatementUnifiedPreview({
+          legacyEntries: entries,
+          previewEntries: preview.rows,
+          previewUnifiedRows: preview.unifiedRows,
+          statementType: applied.statementType,
+          partyId,
+        })
+      );
+    } catch (err) {
+      console.error(err);
+      setPreviewResult(null);
+      setPreviewDiff(null);
+      setPreviewError('Unified preview failed to load');
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [
+    companyId,
+    unifiedPreviewEnabled,
+    entries,
+    previewTarget,
+    engineState.killSwitchActive,
+    startDate,
+    endDate,
+    previewBasis,
+    applied.statementType,
+    applied.selectedContactId,
+  ]);
+
+  useEffect(() => {
+    if (!unifiedPreviewEnabled) {
+      setPreviewResult(null);
+      setPreviewDiff(null);
+      setPreviewError(null);
+      return;
+    }
+    void loadUnifiedPreview();
+  }, [unifiedPreviewEnabled, loadUnifiedPreview]);
+
+  const handleLoadMrJalilGolden = useCallback(() => {
+    setStatementType('customer');
+    setSelectedContactType('customer');
+    setSelectedContactId(MR_JALIL_CONTACT_ID);
+    setSelectedAccountId('');
+    setApplied((prev) => ({
+      ...prev,
+      statementType: 'customer',
+      selectedContactType: 'customer',
+      selectedContactId: MR_JALIL_CONTACT_ID,
+      selectedAccountId: '',
+      selectedWorkerId: '',
+    }));
+  }, []);
+
   /** Default statement order: calendar date, then time-of-day (created_at), then stable id. */
   const sortedEntries = useMemo(() => {
     const base = [...entries].filter((e) => {
@@ -1401,6 +1538,33 @@ export const AccountLedgerReportPage: React.FC<{
   const openingBalanceAttention = partyBalanceAttention(applied.statementType, summary.openingBalance);
   const closingBalanceAttention = partyBalanceAttention(applied.statementType, summary.closingBalance);
 
+  const displayFiltersActive = useMemo(
+    () =>
+      Boolean(applied.searchTerm.trim()) ||
+      applied.polarity !== 'all' ||
+      applied.sourceModuleFilter !== 'all' ||
+      applied.transactionTypeFilter !== 'all' ||
+      applied.includeReversals ||
+      applied.includeAdjustments ||
+      !applied.includeManualEntries ||
+      (applied.statementType === 'account_contact' && Boolean(applied.selectedContactId)) ||
+      sortedEntries.length !== entries.length ||
+      presentedEntries.length !== sortedEntries.length,
+    [applied, entries.length, sortedEntries.length, presentedEntries.length]
+  );
+
+  const previewEntityLabel = useMemo(() => {
+    if (applied.statementType === 'worker') return selectedPartyName || applied.selectedWorkerId;
+    if (applied.statementType === 'customer' || applied.statementType === 'supplier') {
+      return selectedPartyName || applied.selectedContactId;
+    }
+    const acc = accountById.get(applied.selectedAccountId);
+    return acc ? `${acc.code || ''} ${acc.name}`.trim() : applied.selectedAccountId;
+  }, [applied, selectedPartyName, accountById]);
+
+  const previewLegacyLabel =
+    previewTarget.kind === 'none' ? 'Legacy Account Statement' : previewTarget.legacyLabel;
+
   const sourceModules = useMemo(
     () => ['all', ...Array.from(new Set(entries.map((e) => normalizeLower(e.source_module)).filter(Boolean)))],
     [entries]
@@ -1782,6 +1946,48 @@ export const AccountLedgerReportPage: React.FC<{
           }
         />
       )}
+
+      {showUnifiedPreviewTools ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer w-fit">
+            <input
+              type="checkbox"
+              checked={unifiedPreviewEnabled}
+              disabled={engineState.killSwitchActive}
+              onChange={(e) => setUnifiedPreviewEnabled(e.target.checked)}
+              className="rounded border-gray-600 disabled:opacity-50"
+            />
+            Unified engine preview (compare only)
+          </label>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="text-xs"
+            onClick={handleLoadMrJalilGolden}
+          >
+            Load MR JALIL
+          </Button>
+        </div>
+      ) : null}
+
+      {unifiedPreviewEnabled && showUnifiedPreviewTools ? (
+        <AccountStatementUnifiedPreviewPanel
+          statementType={applied.statementType}
+          entityLabel={previewEntityLabel}
+          previewTarget={previewTarget}
+          previewResult={previewResult}
+          diff={previewDiff}
+          loading={previewLoading}
+          error={previewError}
+          engineState={engineState}
+          previewBasis={previewBasis}
+          onPreviewBasisChange={setPreviewBasis}
+          displayFiltersActive={displayFiltersActive}
+          legacyEngineLabel={previewLegacyLabel}
+          viewMode={viewMode}
+        />
+      ) : null}
 
       {isArControlSelected && (
         <div className="rounded-lg border border-amber-700/50 bg-amber-950/30 px-4 py-3 text-sm text-amber-100 space-y-1">
