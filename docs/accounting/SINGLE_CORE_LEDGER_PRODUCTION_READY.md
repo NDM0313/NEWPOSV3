@@ -1,7 +1,7 @@
 # Single Core Ledger — Production Ready Pack
 
-**Status:** `PHASE 2.1 COMPLETE` — flags + banners infrastructure; engine still OFF  
-**Branch:** `feature/single-core-ledger-phase-2-1-flags-banners`  
+**Status:** `PHASE 2.2 COMPLETE` — admin compare center; engine still OFF  
+**Branch:** `feature/single-core-ledger-phase-2-2-admin-compare`  
 **Last updated:** 2026-06-14  
 **Master checklist:** use this file as the single entry point for post-apply status.
 
@@ -24,7 +24,8 @@
 | Phase 1.5 post-migration Gate A (1.8) | **PASS** 3/3 on `ledger_stage_20260625_prodcheck` |
 | Phase 2 rollout plan | **READY** — plan on rollout branch |
 | Phase 2.1 flags + banners | **COMPLETE** — see [`SINGLE_CORE_LEDGER_PHASE_2_1_FLAGS_BANNERS_REPORT.md`](SINGLE_CORE_LEDGER_PHASE_2_1_FLAGS_BANNERS_REPORT.md) |
-| Phase 2 screen wiring | **NOT STARTED** (PR 2.2+) |
+| Phase 2.2 admin compare | **COMPLETE** — see [`SINGLE_CORE_LEDGER_PHASE_2_2_ADMIN_COMPARE_REPORT.md`](SINGLE_CORE_LEDGER_PHASE_2_2_ADMIN_COMPARE_REPORT.md) |
+| Phase 2 screen wiring | **NOT STARTED** (PR 2.3+) |
 
 ---
 
