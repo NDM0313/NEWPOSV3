@@ -39,6 +39,19 @@ import {
 } from '@/app/services/roznamchaService';
 import { accountService } from '@/app/services/accountService';
 import { ReportBasisBanner } from '@/app/components/accounting/ReportBasisBanner';
+import { canAccessRoznamchaUnifiedPreview } from '@/app/lib/roznamchaUnifiedPreviewAccess';
+import {
+  compareRoznamchaUnifiedPreview,
+  defaultUnifiedBasisForRoznamcha,
+  type RoznamchaUnifiedPreviewDiff,
+} from '@/app/lib/roznamchaUnifiedPreviewDiff';
+import { loadRoznamchaUnifiedPreview } from '@/app/services/roznamchaUnifiedPreviewService';
+import { useUnifiedLedgerEngineState } from '@/app/hooks/useUnifiedLedgerEngineState';
+import { UNIFIED_LEDGER_SCREEN_IDS } from '@/app/lib/unifiedLedgerScreenFlags';
+import type { UnifiedLedgerBasis } from '@/app/lib/unifiedLedgerBasisFilter';
+import { RoznamchaUnifiedPreviewPanel } from '@/app/components/reports/RoznamchaUnifiedPreviewPanel';
+import { DIN_CHINA_COMPANY_ID } from '@/app/lib/unifiedLedgerGoldenFixtures';
+import { toast } from 'sonner';
 
 const ROZNAMCHA_CACHE_TTL_MS = 30_000;
 const roznamchaResultCache = new Map<string, { at: number; data: RoznamchaResult }>();
@@ -116,7 +129,7 @@ export interface RoznamchaReportProps {
 }
 
 export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaReportProps = {}) => {
-  const { companyId, branchId: contextBranchId } = useSupabase();
+  const { companyId, branchId: contextBranchId, userRole } = useSupabase();
   const reportExport = useReportExport({ companyId, documentType: 'ledger', reportKind: 'roznamcha' });
   const { formatCurrency } = useFormatCurrency();
   const [printOrientation, setPrintOrientation] = useState<PdfPreviewOrientation>('landscape');
@@ -137,6 +150,19 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
   /** When Accounting uses global header dates, still allow a local start/end (or single day) here */
   const [overrideGlobalDates, setOverrideGlobalDates] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+
+  const showUnifiedPreviewTools = canAccessRoznamchaUnifiedPreview(userRole);
+  const [unifiedPreviewEnabled, setUnifiedPreviewEnabled] = useState(false);
+  const [previewBasis, setPreviewBasis] = useState<UnifiedLedgerBasis>('effective_party');
+  const [previewResult, setPreviewResult] = useState<Awaited<ReturnType<typeof loadRoznamchaUnifiedPreview>> | null>(null);
+  const [previewDiff, setPreviewDiff] = useState<RoznamchaUnifiedPreviewDiff | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+
+  const { state: engineState } = useUnifiedLedgerEngineState(companyId, {
+    screenId: UNIFIED_LEDGER_SCREEN_IDS.ROZNAMCHA,
+    screenPreview: unifiedPreviewEnabled,
+  });
 
   useEffect(() => {
     if (!companyId) {
@@ -251,6 +277,100 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
 
   const effectiveBranchId = contextBranchId === 'all' ? null : (contextBranchId || null);
 
+  useEffect(() => {
+    if (!includeVoidedReversed) {
+      setPreviewBasis(defaultUnifiedBasisForRoznamcha(false));
+    } else {
+      setPreviewBasis(defaultUnifiedBasisForRoznamcha(true));
+    }
+  }, [includeVoidedReversed]);
+
+  const loadUnifiedPreview = useCallback(async () => {
+    if (!companyId || !unifiedPreviewEnabled || !data || !dateFrom || !dateTo) {
+      setPreviewResult(null);
+      setPreviewDiff(null);
+      return;
+    }
+    if (engineState.killSwitchActive) {
+      setPreviewResult(null);
+      setPreviewDiff(null);
+      setPreviewError('Unified preview disabled — kill switch active.');
+      return;
+    }
+
+    const ledgerId = paymentLedgerAccountId.trim() ? paymentLedgerAccountId.trim() : null;
+    setPreviewLoading(true);
+    setPreviewError(null);
+    try {
+      const preview = await loadRoznamchaUnifiedPreview({
+        companyId,
+        branchId: effectiveBranchId,
+        dateFrom,
+        dateTo,
+        accountFilter,
+        includeVoidedReversed,
+        paymentLedgerAccountId: ledgerId,
+        paymentAccountOptions,
+        basis: previewBasis,
+      });
+      setPreviewResult(preview);
+      if (preview.blockedByKillSwitch) {
+        setPreviewDiff(null);
+        setPreviewError(preview.blockReason ?? 'Unified preview blocked.');
+        return;
+      }
+      setPreviewDiff(
+        compareRoznamchaUnifiedPreview({
+          legacy: data,
+          unifiedRows: preview.unifiedRows,
+          unifiedClosingBalance: preview.closingBalance,
+          unifiedOpeningBalance: preview.openingBalance,
+        })
+      );
+    } catch (err) {
+      console.error(err);
+      setPreviewResult(null);
+      setPreviewDiff(null);
+      setPreviewError('Unified preview failed to load');
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [
+    companyId,
+    unifiedPreviewEnabled,
+    data,
+    dateFrom,
+    dateTo,
+    effectiveBranchId,
+    accountFilter,
+    includeVoidedReversed,
+    paymentLedgerAccountId,
+    paymentAccountOptions,
+    previewBasis,
+    engineState.killSwitchActive,
+  ]);
+
+  useEffect(() => {
+    if (!unifiedPreviewEnabled) {
+      setPreviewResult(null);
+      setPreviewDiff(null);
+      setPreviewError(null);
+      return;
+    }
+    void loadUnifiedPreview();
+  }, [unifiedPreviewEnabled, loadUnifiedPreview]);
+
+  const handleLoadDinChinaPeriodHint = useCallback(() => {
+    if (companyId !== DIN_CHINA_COMPANY_ID) {
+      toast.message('DIN CHINA preset applies when logged into DIN CHINA tenant.');
+      return;
+    }
+    toast.message('Use Roznamcha date range for DIN CHINA validation period. Preview compares legacy vs unified cash/bank ledger.');
+  }, [companyId]);
+
+  const displayFiltersActive = searchTerm.trim().length > 0 || dateSort !== 'asc' || pageSize !== 50;
+  const paymentAccountFilterActive = Boolean(paymentLedgerAccountId.trim());
+
   const load = useCallback(async () => {
     if (!companyId || !dateFrom || !dateTo) {
       setData(null);
@@ -357,6 +477,50 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
         basis={includeVoidedReversed ? 'audit_full' : 'effective_party'}
         detail="Operational cash book — payments and rental_payments only (not full GL). Toggle voided rows for audit view."
       />
+
+      {showUnifiedPreviewTools ? (
+        <div className="flex flex-wrap items-center gap-3 no-print">
+          <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer w-fit">
+            <input
+              type="checkbox"
+              checked={unifiedPreviewEnabled}
+              disabled={engineState.killSwitchActive}
+              onChange={(e) => setUnifiedPreviewEnabled(e.target.checked)}
+              className="rounded border-gray-600 disabled:opacity-50"
+            />
+            Unified engine preview (compare only)
+          </label>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="text-xs"
+            onClick={handleLoadDinChinaPeriodHint}
+          >
+            Load DIN CHINA period
+          </Button>
+        </div>
+      ) : null}
+
+      {unifiedPreviewEnabled && showUnifiedPreviewTools ? (
+        <RoznamchaUnifiedPreviewPanel
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          branchLabel={selectedBranchLabel}
+          accountFilter={accountFilter}
+          includeVoidedReversed={includeVoidedReversed}
+          paymentAccountFilterActive={paymentAccountFilterActive}
+          previewResult={previewResult}
+          diff={previewDiff}
+          loading={previewLoading}
+          error={previewError}
+          engineState={engineState}
+          previewBasis={previewBasis}
+          onPreviewBasisChange={setPreviewBasis}
+          displayFiltersActive={displayFiltersActive}
+        />
+      ) : null}
+
       <p className="text-xs text-gray-500 border border-gray-800/80 rounded-lg px-3 py-2 bg-gray-950/40 max-w-3xl">
         Cash / bank / wallet receive &amp; pay only — from <strong className="text-gray-400">payments</strong> and{' '}
         <strong className="text-gray-400">rental_payments</strong> (not rental journal vouchers). One row per actual
