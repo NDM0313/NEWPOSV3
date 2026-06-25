@@ -4,7 +4,9 @@ import {
   cashBankAmountsEquivalent,
   cashBankEconomicRowKey,
   diffCashBankLedgerRows,
+  evaluateCashBankComparePass,
   normalizeCashBankEntryNo,
+  supplementRoznamchaForCashBankCompare,
   roznamchaRowKey,
   roznamchaToCompareSummary,
   unifiedCashBankRowKey,
@@ -184,4 +186,66 @@ test('unifiedCashBankToCompareSummary maps unified row fields', () => {
   } as UnifiedLedgerRow);
   assert.equal(s.debit, 500);
   assert.equal(s.entryNo, 'JE-100');
+});
+
+test('supplementRoznamchaForCashBankCompare adds manual_receipt unified rows', () => {
+  const legacy = [
+    {
+      id: 'pay:1',
+      ref: 'RCV-1',
+      date: '2026-01-01',
+      cashIn: 100,
+      cashOut: 0,
+      sourceJournalEntryId: 'je-1',
+    } as RoznamchaRowWithBalance,
+  ];
+  const unified = [
+    {
+      journalEntryId: 'je-1',
+      entryNo: 'RCV-1',
+      entryDate: '2026-01-01',
+      debit: 100,
+      credit: 0,
+      referenceType: 'payment',
+    },
+    {
+      journalEntryId: 'je-mr',
+      journalEntryLineId: 'jel-mr',
+      entryNo: 'JE-0287',
+      entryDate: '2026-04-24',
+      debit: 13000000,
+      credit: 0,
+      referenceType: 'manual_receipt',
+      description: 'manual',
+      runningBalance: 0,
+    },
+  ] as UnifiedLedgerRow[];
+  const supplemented = supplementRoznamchaForCashBankCompare(legacy, unified);
+  assert.equal(supplemented.length, 2);
+});
+
+test('evaluateCashBankComparePass passes when manual_receipt supplement aligns closing', () => {
+  const legacyRows = [] as RoznamchaRowWithBalance[];
+  const unifiedRows = [
+    {
+      journalEntryId: 'je-mr',
+      journalEntryLineId: 'jel-mr',
+      entryNo: 'JE-0287',
+      entryDate: '2026-04-24',
+      debit: 1000,
+      credit: 0,
+      referenceType: 'manual_receipt',
+      description: 'manual',
+      runningBalance: 1000,
+    },
+  ] as UnifiedLedgerRow[];
+  const result = evaluateCashBankComparePass({
+    legacyRows,
+    unifiedRows,
+    unifiedOpening: 0,
+    unifiedClosing: 1000,
+  });
+  assert.equal(result.manualReceiptSupplementCount, 1);
+  assert.equal(result.pass, true);
+  assert.equal(result.extraInNew.length, 0);
 });

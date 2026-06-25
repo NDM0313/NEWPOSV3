@@ -5,9 +5,8 @@
 import { isUnifiedLedgerKillSwitchActive } from '@/app/lib/unifiedLedgerEngineState';
 import { normalizeCompareDateRange } from '@/app/components/admin/unified-ledger-compare/compareFilters';
 import type { UnifiedLedgerBasis } from '@/app/lib/unifiedLedgerBasisFilter';
-import { balancePasses, round2 } from '@/app/lib/unifiedLedgerCompareDiff';
 import type { LedgerCompareScope, LedgerRowCompareResult } from '@/app/lib/unifiedLedgerCompareTypes';
-import { diffCashBankLedgerRows } from '@/app/lib/roznamchaCashBankCompareMappers';
+import { evaluateCashBankComparePass } from '@/app/lib/roznamchaCashBankCompareMappers';
 import {
   getUnifiedCashBankLedger,
   loadLegacyCashBankForTieOut,
@@ -56,29 +55,30 @@ export async function compareCashBankLedgerTieOut(params: {
     }),
   ]);
 
-  const { missingInNew, extraInNew, amountMismatches } = diffCashBankLedgerRows({
-    oldRows: legacy.rows,
-    newRows: unified.rows,
+  const evaluated = evaluateCashBankComparePass({
+    legacyRows: legacy.rows,
+    unifiedRows: unified.rows,
+    unifiedOpening: unified.meta.periodOpeningBalance,
+    unifiedClosing: unified.closingBalance,
   });
-
-  const oldBalance = round2(legacy.closingBalance);
-  const newBalance = unified.closingBalance;
-  const difference = round2(oldBalance - newBalance);
 
   return {
     kind: 'cash_bank',
     scope,
-    oldBalance,
-    newBalance,
-    difference,
-    pass: balancePasses(difference),
+    oldBalance: evaluated.oldBalance,
+    newBalance: evaluated.newBalance,
+    difference: evaluated.difference,
+    pass: evaluated.pass,
     oldRowCount: legacy.rows.length,
     newRowCount: unified.rows.length,
-    missingInNew,
-    extraInNew,
-    amountMismatches,
+    missingInNew: evaluated.missingInNew,
+    extraInNew: evaluated.extraInNew,
+    amountMismatches: evaluated.amountMismatches,
     basis: compareBasis,
-    oldEngineName: legacy.engineName,
+    oldEngineName:
+      evaluated.manualReceiptSupplementCount > 0
+        ? `${legacy.engineName} + ${evaluated.manualReceiptSupplementCount} manual_receipt GL supplement`
+        : legacy.engineName,
     newEngineName: 'get_unified_cash_bank_ledger (shadow RPC)',
     oldQueryMs: legacy.durationMs,
     newQueryMs: unified.meta.queryDurationMs,

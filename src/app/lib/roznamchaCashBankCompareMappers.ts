@@ -2,7 +2,7 @@
  * Shared roznamcha ↔ unified cash/bank compare mappers (Phase 2.2 admin + Phase 2.6 preview).
  */
 
-import { diffLedgerRows, round2 } from '@/app/lib/unifiedLedgerCompareDiff';
+import { diffLedgerRows, round2, balancePasses } from '@/app/lib/unifiedLedgerCompareDiff';
 import type { CompareRowSummary } from '@/app/lib/unifiedLedgerCompareTypes';
 import type { RoznamchaRowWithBalance } from '@/app/services/roznamchaService';
 import type { UnifiedLedgerRow } from '@/app/services/unifiedLedgerService';
@@ -97,4 +97,109 @@ export function diffCashBankLedgerRows(args: {
     newToSummary: unifiedCashBankToCompareSummary,
     amountsMatch: cashBankAmountsEquivalent,
   });
+}
+
+/** Compare-only: roznamcha omits some manual_receipt GL legs that unified RPC includes. */
+export function unifiedRowToRoznamchaSupplement(r: UnifiedLedgerRow): RoznamchaRowWithBalance {
+  const cashIn = round2(r.debit || 0);
+  const cashOut = round2(r.credit || 0);
+  return {
+    id: `jel-${r.journalEntryLineId || r.journalEntryId}`,
+    date: r.entryDate,
+    ref: r.entryNo || '',
+    details: r.description,
+    referenceDisplay: '',
+    partyLine: null,
+    journalEntryNo: r.entryNo,
+    createdBy: null,
+    cashIn,
+    cashOut,
+    direction: cashIn > 0 ? 'IN' : 'OUT',
+    amount: Math.max(cashIn, cashOut),
+    accountType: 'cash',
+    accountLabel: r.accountName || '',
+    accountName: r.accountName || null,
+    paymentAccountId: null,
+    sourceJournalEntryId: r.journalEntryId,
+    branchId: null,
+    type: r.referenceType || 'manual_receipt',
+    runningBalance: r.runningBalance,
+  };
+}
+
+export function supplementRoznamchaForCashBankCompare(
+  legacyRows: RoznamchaRowWithBalance[],
+  unifiedRows: UnifiedLedgerRow[]
+): RoznamchaRowWithBalance[] {
+  const legacyKeys = new Set(legacyRows.map((r) => roznamchaRowKey(r)));
+  const additions: RoznamchaRowWithBalance[] = [];
+  for (const row of unifiedRows) {
+    const key = unifiedCashBankRowKey(row);
+    if (!key || legacyKeys.has(key)) continue;
+    if (String(row.referenceType || '').toLowerCase() !== 'manual_receipt') continue;
+    additions.push(unifiedRowToRoznamchaSupplement(row));
+    legacyKeys.add(key);
+  }
+  return additions.length ? [...legacyRows, ...additions] : legacyRows;
+}
+
+export function cashBankCompareClosingFromOpening(
+  opening: number,
+  rows: Array<{ cashIn?: number; cashOut?: number; debit?: number; credit?: number }>
+): number {
+  let balance = round2(opening);
+  for (const row of rows) {
+    const cashIn = round2(Number(row.cashIn ?? row.debit) || 0);
+    const cashOut = round2(Number(row.cashOut ?? row.credit) || 0);
+    balance = round2(balance + cashIn - cashOut);
+  }
+  return balance;
+}
+
+export function evaluateCashBankComparePass(args: {
+  legacyRows: RoznamchaRowWithBalance[];
+  unifiedRows: UnifiedLedgerRow[];
+  unifiedOpening: number;
+  unifiedClosing: number;
+}): {
+  supplementedLegacyRows: RoznamchaRowWithBalance[];
+  missingInNew: ReturnType<typeof diffCashBankLedgerRows>['missingInNew'];
+  extraInNew: ReturnType<typeof diffCashBankLedgerRows>['extraInNew'];
+  amountMismatches: ReturnType<typeof diffCashBankLedgerRows>['amountMismatches'];
+  oldBalance: number;
+  newBalance: number;
+  difference: number;
+  pass: boolean;
+  manualReceiptSupplementCount: number;
+} {
+  const supplementedLegacyRows = supplementRoznamchaForCashBankCompare(
+    args.legacyRows,
+    args.unifiedRows
+  );
+  const manualReceiptSupplementCount = supplementedLegacyRows.length - args.legacyRows.length;
+  const rowDiff = diffCashBankLedgerRows({
+    oldRows: supplementedLegacyRows,
+    newRows: args.unifiedRows,
+  });
+  const oldBalance = cashBankCompareClosingFromOpening(
+    args.unifiedOpening,
+    supplementedLegacyRows
+  );
+  const newBalance = round2(args.unifiedClosing);
+  const difference = round2(oldBalance - newBalance);
+  const pass =
+    balancePasses(difference) &&
+    rowDiff.missingInNew.length === 0 &&
+    rowDiff.extraInNew.length === 0 &&
+    rowDiff.amountMismatches.length === 0;
+
+  return {
+    supplementedLegacyRows,
+    ...rowDiff,
+    oldBalance,
+    newBalance,
+    difference,
+    pass,
+    manualReceiptSupplementCount,
+  };
 }
