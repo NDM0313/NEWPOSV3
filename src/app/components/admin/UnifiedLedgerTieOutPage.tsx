@@ -15,13 +15,16 @@ import {
 import type { UnifiedLedgerBasis, UnifiedPartyType } from '@/app/services/unifiedLedgerService';
 import {
   getUnifiedLedgerLocalOverride,
-  isUnifiedLedgerEngineEnabledSync,
   setUnifiedLedgerLocalOverride,
 } from '@/app/lib/unifiedLedgerFeatureFlag';
+import { unifiedBasisToReportBasis } from '@/app/lib/unifiedLedgerBasisUi';
+import { UnifiedLedgerEngineBanner } from '@/app/components/accounting/UnifiedLedgerEngineBanner';
+import { UnifiedLedgerPreviewBadge } from '@/app/components/accounting/UnifiedLedgerPreviewBadge';
+import { ReportBasisBanner } from '@/app/components/accounting/ReportBasisBanner';
+import { useUnifiedLedgerEngineState } from '@/app/hooks/useUnifiedLedgerEngineState';
 import { unifiedBasisLabel } from '@/app/services/unifiedLedgerService';
 import { supabase } from '@/lib/supabase';
 import { LoadingSpinner } from '@/app/components/shared/LoadingSpinner';
-import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
 import { getTodayYYYYMMDD } from '@/app/components/ui/utils';
 
@@ -49,8 +52,13 @@ export default function UnifiedLedgerTieOutPage() {
   const [error, setError] = useState<string | null>(null);
   const [flagSync, setFlagSync] = useState(0);
 
-  const flagEnabled = useMemo(() => isUnifiedLedgerEngineEnabledSync(), [flagSync]);
   const localOverride = useMemo(() => getUnifiedLedgerLocalOverride(), [flagSync]);
+  const { state: engineState, refresh: refreshEngineState } = useUnifiedLedgerEngineState(
+    companyId,
+    { adminTieOut: true, shadowForce: true }
+  );
+
+  const reportBasis = useMemo(() => unifiedBasisToReportBasis(basis), [basis]);
 
   useEffect(() => {
     if (!companyId) return;
@@ -116,15 +124,30 @@ export default function UnifiedLedgerTieOutPage() {
   return (
     <div className="min-h-screen bg-[#0B0F19] text-white p-4 md:p-8 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Unified Ledger Tie-Out (Shadow)</h1>
+        <h1 className="text-2xl font-bold flex flex-wrap items-center gap-2">
+          Unified Ledger Tie-Out (Shadow)
+          <UnifiedLedgerPreviewBadge mode={engineState.mode} />
+        </h1>
         <p className="text-gray-400 text-sm mt-1">
           Compare legacy engine vs <code className="text-amber-300">get_unified_party_ledger</code>.
-          Production screens unchanged. Feature flag:{' '}
-          <Badge variant="outline">{flagEnabled ? 'ON' : 'OFF'}</Badge>
+          Production screens unchanged.
           {localOverride !== null && (
-            <span className="ml-2 text-xs text-amber-400">localStorage override: {String(localOverride)}</span>
+            <span className="ml-2 text-xs text-amber-400">
+              localStorage override: {String(localOverride)}
+            </span>
           )}
         </p>
+      </div>
+
+      <div className="space-y-2">
+        <UnifiedLedgerEngineBanner mode={engineState.mode} />
+        <ReportBasisBanner basis={reportBasis} detail={`RPC lens: ${unifiedBasisLabel(basis)}`} />
+      </div>
+
+      <div className="rounded-lg border border-gray-800 bg-gray-900/30 px-3 py-2 text-xs text-gray-500 grid md:grid-cols-3 gap-2">
+        <span>Kill switch: {engineState.killSwitchActive ? 'ON' : 'OFF'}</span>
+        <span>Company engine: {engineState.companyEngineEnabled ? 'ON' : 'OFF'}</span>
+        <span>Pilot: {engineState.pilotEnabled ? 'ON' : 'OFF'}</span>
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -134,6 +157,7 @@ export default function UnifiedLedgerTieOutPage() {
           onClick={() => {
             setUnifiedLedgerLocalOverride(null);
             setFlagSync((n) => n + 1);
+            refreshEngineState();
           }}
         >
           Clear flag override
@@ -144,6 +168,7 @@ export default function UnifiedLedgerTieOutPage() {
           onClick={() => {
             setUnifiedLedgerLocalOverride(true);
             setFlagSync((n) => n + 1);
+            refreshEngineState();
           }}
         >
           Dev: force flag ON
@@ -154,6 +179,7 @@ export default function UnifiedLedgerTieOutPage() {
           onClick={() => {
             setUnifiedLedgerLocalOverride(false);
             setFlagSync((n) => n + 1);
+            refreshEngineState();
           }}
         >
           Dev: force flag OFF
