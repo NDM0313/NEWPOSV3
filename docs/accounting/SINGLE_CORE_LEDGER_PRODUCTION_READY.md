@@ -39,7 +39,8 @@
 | Phase 2.9A Admin Compare delta | **FIXED** (Party/Pilot/TB compare); Cash/Bank **waived** for Stage 1 — see [`admin-compare-delta-investigation.md`](../reports/single-core-ledger/phase-2-9-pilot-enablement/post-deploy-browser-qa/admin-compare-delta-investigation.md) |
 | Phase 2.9A-CB Cash/Bank parity | **PLANNED** — not Stage 1 blocker — [`SINGLE_CORE_LEDGER_PHASE_2_9A_CB_CASH_BANK_PARITY_PLAN.md`](SINGLE_CORE_LEDGER_PHASE_2_9A_CB_CASH_BANK_PARITY_PLAN.md) |
 | Phase 2.9A Stage 1 gate | **BLOCKED** — Gate 4 PASS; Gates 1–3 OPEN (browser); Cash/Bank **waived** |
-| Phase 2.9A-6 gate confirmation | **2026-06-25** — see [`phase-2.9a-6-gate-confirmation.json`](../reports/single-core-ledger/phase-2-9-pilot-enablement/post-deploy-browser-qa/phase-2.9a-6-gate-confirmation.json) |
+| Phase 2.9A-6 gate confirmation | **Gate 4 PASS**; Gates 1–3 **SKIP** (browser) |
+| Phase 2.9A-7 operator gate sign-off | **2026-06-25** — [`phase-2.9a-7-gate-signoff.json`](../reports/single-core-ledger/phase-2-9-pilot-enablement/post-deploy-browser-qa/phase-2.9a-7-gate-signoff.json) |
 | Phase 2 screen wiring | **COMPLETE** — all planned preview toggles shipped; engine enablement separate |
 
 ---
@@ -244,7 +245,7 @@ Or selective reverse using `production-remediation-apply-before-*.json` from app
 5. ~~Phase 2.9A-2 browser check~~ **Done** — prod ERP lacks preview UI; deploy required before live session  
 6. ~~Phase 2.9A-3 preview deploy~~ **Done** — `erp-frontend-preview` on VPS :3003; Kong CORS for localhost:3002  
 7. ~~Phase 2.9A-4 browser waiver QA~~ **Done (limited waivers)** — smoke PASS; operator login session + staff user pending  
-8. **Ops:** Confirm Party + Pilot Batch 9/9 + Ledger V2 browser QA on preview → **2.9A PASS** (Cash/Bank waived)  
+8. **Ops:** Run `run-phase-29a7-operator-gate-signoff.mjs` with `QA_BROWSER_PASSWORD` → Gates 1–3 PASS → status **A**  
 9. **Ops:** Approve Stage 1 then Stage 2 flag SQL — **separate ticket** (Stage 1: `unified_ledger_pilot` only; Stage 2: engine + `screen_ledger_v2`)  
 10. Do **not** enable flags or merge to `main` without ops approval  
 11. **Future:** Phase 2.9A-CB Cash/Bank roznamcha parity — after Stage 1 decision  

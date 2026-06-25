@@ -229,4 +229,17 @@ After fix: expect ~195 matched rows; ~21 extra unified-only rows may remain (bas
 
 **Stage 1 SQL (when approved):** enables **`unified_ledger_pilot` only** — not `unified_ledger_engine` or `unified_ledger_screen_ledger_v2` (those are Stage 2 per pilot plan §7).
 
-**Sign-off:** `PHASE 2.9A STILL BLOCKED — Party/Pilot/Ledger V2 gate not passed`
+**Sign-off:** `PHASE 2.9A STILL BLOCKED — Party/Pilot/Ledger V2 gate not passed (Cash/Bank waived)`
+
+### Phase 2.9A-7 operator browser sign-off (2026-06-25)
+
+**Evidence:** [`phase-2.9a-7-gate-signoff.json`](phase-2.9a-7-gate-signoff.json)
+
+| Gate | Result |
+|------|--------|
+| 1 Party / MR JALIL | **SKIP** — `QA_BROWSER_PASSWORD` required |
+| 2 Pilot Batch 9/9 | **SKIP** |
+| 3 Ledger V2 | **SKIP** |
+| 4 Flags OFF | **PASS** |
+
+**Script:** `scripts/single-core-ledger/run-phase-29a7-operator-gate-signoff.mjs`

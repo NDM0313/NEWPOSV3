@@ -1,97 +1,31 @@
 {
-  "reportType": "phase_2_9a_6_ledger_v2_stage1_gate_confirmation",
-  "generatedAt": "2026-06-25T16:45:00Z",
+  "reportType": "phase_2_9a_6_gate_confirmation",
+  "generatedAt": "2026-06-25T16:51:42Z",
   "status": "PHASE_2_9A_STILL_BLOCKED_PARTY_PILOT_LEDGER_V2_GATE_NOT_PASSED",
+  "supersededBy": "phase-2.9a-7-gate-signoff.json",
   "branch": "feature/single-core-ledger-phase-2-9a3-preview-deploy-plan",
-  "documentationCommit": "cb4957c7",
+  "documentationCommit": "7e8fef33",
   "previewContainer": "erp-frontend-preview",
   "previewPort": 3003,
   "tunnel": "ssh -N -L 3002:127.0.0.1:3003 dincouture-vps",
-  "previewUrl": "http://localhost:3002/admin/unified-ledger-tieout",
   "tunnelReachable": true,
-  "tunnelHttpStatus": 200,
   "cashBankStage1Blocker": false,
   "cashBankWaiver": "Cash/Bank waived for Stage 1; remediation deferred to Phase 2.9A-CB",
   "stage1Sql": "NOT_RUN",
   "stage2Sql": "NOT_RUN",
   "flagEnablement": "NONE",
-  "productionDbMutation": "NONE",
   "stage1FlagCorrection": {
     "stage1EnablesOnly": "unified_ledger_pilot",
-    "stage1MustNotEnable": [
-      "unified_ledger_engine",
-      "unified_ledger_screen_ledger_v2",
-      "unified_ledger_screen_roznamcha",
-      "unified_ledger_screen_trial_balance",
-      "unified_ledger_screen_account_statement",
-      "unified_ledger_screen_party_ledger"
-    ],
-    "stage2Enables": ["unified_ledger_engine", "unified_ledger_screen_ledger_v2"],
-    "reference": "docs/accounting/SINGLE_CORE_LEDGER_PHASE_2_9_PILOT_ENABLEMENT_PLAN.md §7"
-  },
-  "tests": {
-    "testUnifiedLedger": "136/136 PASS",
-    "build": "PASS"
+    "stage2Enables": ["unified_ledger_engine", "unified_ledger_screen_ledger_v2"]
   },
   "gates": {
-    "gate1_party_mr_jalil": {
-      "required": true,
-      "method": "Admin Compare Party tab on preview (browser)",
-      "basis": "effective_party",
-      "branch": "DIN CHINA BL0002",
-      "contact": "MR JALIL",
-      "dateScope": "empty From = lifetime (both null)",
-      "expectedBalancePkr": 216300,
-      "result": "OPEN",
-      "notes": "Interactive browser session required; read-only RPC PASS 216300.00 supports unified side"
-    },
-    "gate2_pilot_batch": {
-      "required": true,
-      "method": "Admin Compare Pilot Batch tab on preview (browser)",
-      "expected": "9 compared, 9 PASS",
-      "result": "OPEN",
-      "notes": "Operator must run on fixed preview bundle (312716e7+); compare fixes in branch"
-    },
-    "gate3_ledger_v2_browser_qa": {
-      "required": true,
-      "method": "Ledger V2 preview on preview container (browser)",
-      "result": "OPEN",
-      "notes": "QA_BROWSER_PASSWORD not set; run run-phase-29a4-browser-qa.mjs after operator login",
-      "checklistPartial": {
-        "previewContainerUp": "PASS",
-        "tunnelLocalhost3002": "PASS",
-        "mrJalilRpcReadonly": "PASS",
-        "adminLogin": "OPEN",
-        "ledgerV2Interactive": "OPEN",
-        "staffVisibility": "WAIVED"
-      }
-    },
-    "gate4_flags_readonly": {
-      "required": true,
-      "method": "production supabase-db read-only SQL",
-      "companyId": "30bd8592-3384-4f34-899a-f3907e336485",
-      "sql": "scripts/single-core-ledger/phase-29a6-gate-flags.sql",
-      "rows": [],
-      "result": "PASS",
-      "notes": "0 rows unified_ledger% — all OFF"
-    }
+    "gate1_party_mr_jalil": "SKIP",
+    "gate2_pilot_batch_9_9": "SKIP",
+    "gate3_ledger_v2_browser": "SKIP",
+    "gate4_flags_off": "PASS"
   },
-  "readOnlyRpc": {
-    "mrJalil": {
-      "rpc": "get_unified_party_ledger",
-      "basis": "effective_party",
-      "closingBalancePkr": 216300.0,
-      "rowCount": 15,
-      "expectedPkr": 216300,
-      "tolerancePkr": 0.01,
-      "result": "PASS",
-      "sql": "scripts/single-core-ledger/phase-29a6-gate-mr-jalil.sql"
-    }
-  },
-  "operatorNext": [
-    "Set QA_BROWSER_PASSWORD and run node scripts/single-core-ledger/run-phase-29a4-browser-qa.mjs",
-    "Admin Compare: Party MR JALIL PASS + Pilot Batch 9/9 PASS on preview",
-    "Re-export phase2-compare JSON with buildCommit >= 312716e7 and basis official_gl for Cash/Bank (informational only)",
-    "Open Stage 1 ops ticket — SQL enables unified_ledger_pilot ONLY"
-  ]
+  "phase29a7": {
+    "operatorScript": "scripts/single-core-ledger/run-phase-29a7-operator-gate-signoff.mjs",
+    "detailJson": "phase-2.9a-7-gate-signoff.json"
+  }
 }

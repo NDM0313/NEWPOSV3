@@ -438,21 +438,23 @@ Even after successful pilot flags:
 
 **Do not enable** Cash/Bank or Roznamcha pilot flags in Stage 1. **Stage 1 enables `unified_ledger_pilot` only** per §7 (preview badge validation — not engine or screen flags).
 
-### 17.2 Phase 2.9A-6 gate confirmation (2026-06-25)
+### 17.2 Phase 2.9A-6 / 2.9A-7 gate confirmation (2026-06-25)
 
-**Evidence:** [`phase-2.9a-6-gate-confirmation.json`](../reports/single-core-ledger/phase-2-9-pilot-enablement/post-deploy-browser-qa/phase-2.9a-6-gate-confirmation.json)
+**Latest evidence:** [`phase-2.9a-7-gate-signoff.json`](../reports/single-core-ledger/phase-2-9-pilot-enablement/post-deploy-browser-qa/phase-2.9a-7-gate-signoff.json)
 
-| Gate | Required | Result |
-|------|----------|--------|
-| Party / MR JALIL PASS | Yes | **OPEN** (browser) |
-| Pilot Batch 9/9 PASS | Yes | **OPEN** (browser) |
-| Ledger V2 browser QA | Yes | **OPEN** (browser) |
+| Gate | Required | Result (2.9A-7) |
+|------|----------|-----------------|
+| Party / MR JALIL PASS | Yes | **SKIP** — operator browser |
+| Pilot Batch 9/9 PASS | Yes | **SKIP** — operator browser |
+| Ledger V2 browser QA | Yes | **SKIP** — operator browser |
 | Flags OFF | Yes | **PASS** (read-only SQL) |
 | Cash/Bank compare | No | **WAIVED** |
 
+**Operator script:** `node scripts/single-core-ledger/run-phase-29a7-operator-gate-signoff.mjs` (requires `QA_BROWSER_PASSWORD`)
+
 **Sign-off:** `PHASE 2.9A STILL BLOCKED — Party/Pilot/Ledger V2 gate not passed`
 
-When all browser gates PASS → **`PHASE 2.9A LEDGER V2 GATE PASS WITH CASH/BANK WAIVER — ready for Stage 1 ops approval ticket`** → execute §7 Stage 1 SQL (`unified_ledger_pilot` only).
+When browser gates PASS → **`PHASE 2.9A LEDGER V2 GATE PASS WITH CASH/BANK WAIVER — ready for Stage 1 ops approval ticket`** → execute §7 Stage 1 SQL (`unified_ledger_pilot` only).
 
 ### 17.1 Cash/Bank waiver (not Stage 1 blocker)
 
