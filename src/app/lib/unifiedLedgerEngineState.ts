@@ -36,6 +36,8 @@ export type ResolveUnifiedLedgerEngineStateOptions = {
   screenId?: UnifiedLedgerScreenId;
   /** Admin tie-out / shadow compare surface — shows preview mode when not killed. */
   adminTieOut?: boolean;
+  /** Ledger V2 preview toggle — preview banner when ON and not killed; no shadowForce under kill. */
+  screenPreview?: boolean;
   shadowForce?: boolean;
 };
 
@@ -79,10 +81,12 @@ function resolveMode(args: {
   companyEngineEnabled: boolean;
   screenFlagEnabled: boolean;
   adminTieOut: boolean;
+  screenPreview: boolean;
   hasScreenId: boolean;
 }): UnifiedLedgerEngineMode {
   if (args.killSwitchActive) return 'killed';
   if (args.adminTieOut) return 'preview';
+  if (args.screenPreview) return 'preview';
   if (args.companyEngineEnabled && args.hasScreenId && args.screenFlagEnabled) return 'unified';
   if (!args.companyEngineEnabled) return 'legacy';
   if (args.companyEngineEnabled && args.hasScreenId && !args.screenFlagEnabled) return 'legacy';
@@ -122,11 +126,13 @@ export async function resolveUnifiedLedgerEngineState(
   }
 
   const adminTieOut = options.adminTieOut === true;
+  const screenPreview = options.screenPreview === true;
   const mode = resolveMode({
     killSwitchActive,
     companyEngineEnabled,
     screenFlagEnabled,
     adminTieOut,
+    screenPreview,
     hasScreenId: Boolean(options.screenId),
   });
 

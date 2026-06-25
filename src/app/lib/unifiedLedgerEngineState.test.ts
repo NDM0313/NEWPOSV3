@@ -75,6 +75,27 @@ test('admin tie-out shows preview when not killed', async () => {
   assert.equal(state.rpcAllowed, true);
 });
 
+test('screen preview shows preview mode when not killed', async () => {
+  const state = await resolveUnifiedLedgerEngineState(
+    'c1',
+    { screenId: UNIFIED_LEDGER_SCREEN_IDS.LEDGER_V2, screenPreview: true },
+    mockReader({})
+  );
+  assert.equal(state.mode, 'preview');
+  assert.equal(state.rpcAllowed, false);
+});
+
+test('screen preview under kill stays killed without rpcAllowed', async () => {
+  process.env[ENV_KEY] = 'true';
+  const state = await resolveUnifiedLedgerEngineState(
+    'c1',
+    { screenId: UNIFIED_LEDGER_SCREEN_IDS.LEDGER_V2, screenPreview: true },
+    mockReader({})
+  );
+  assert.equal(state.mode, 'killed');
+  assert.equal(state.rpcAllowed, false);
+});
+
 test('per-screen flag without company engine stays legacy', async () => {
   const state = await resolveUnifiedLedgerEngineState(
     'c1',
