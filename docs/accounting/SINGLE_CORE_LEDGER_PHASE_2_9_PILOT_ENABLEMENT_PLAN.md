@@ -1,8 +1,8 @@
 # Single Core Ledger Phase 2.9 — DIN CHINA Single-Screen Pilot Flag Enablement Plan
 
-**Status:** `PHASE 2.9A ADMIN COMPARE DELTA FIXED — continue operator browser QA before Stage 1`  
+**Status:** `PHASE 2.9A CASH/BANK WAIVER DOCUMENTED — Stage 1 gated on Party/Pilot/Ledger V2 only`  
 **Mode:** PLAN + OPS CHECK — no `feature_flags` writes, no deploy, no merge  
-**Branch:** `feature/single-core-ledger-phase-2-9-pilot-enablement-plan` @ `fe1b9c15`  
+**Branch:** `feature/single-core-ledger-phase-2-9a3-preview-deploy-plan` @ `b506773e`  
 **Base:** `feature/single-core-ledger-phase-2-8-preview-qa-signoff` @ `807fdbcd`  
 **Last updated:** 2026-06-25  
 
@@ -421,6 +421,33 @@ Even after successful pilot flags:
 
 ## 17. Final status
 
+**`PHASE 2.9A CASH/BANK WAIVER DOCUMENTED — still waiting for Party/Pilot/Ledger V2 confirmation`**
+
+### Stage 1 may proceed only if (Cash/Bank **not** included)
+
+| Gate | Required for Stage 1 | Status |
+|------|----------------------|--------|
+| Party / MR JALIL Admin Compare PASS | **Yes** | Operator sign-off pending on fixed preview |
+| Pilot Batch 9/9 PASS | **Yes** | Operator sign-off pending on fixed preview |
+| Ledger V2 browser QA PASS | **Yes** | Interactive checklist OPEN — see `browser-qa-notes.md` |
+| DIN CHINA `unified_ledger%` flags OFF | **Yes** | **PASS** (0 rows / OFF) |
+| Trial Balance compare | Use **`official_gl`** | Operator guidance — not a Stage 1 flag step |
+| **Cash/Bank Admin Compare** | **No — documented waiver** | Fails on closing scope; row parity on fixed bundle; see §17.1 |
+| Stage 1 SQL | After gates above | **NOT RUN** |
+| Stage 2 SQL | After Stage 1 soak | **NOT RUN** |
+
+**Do not enable** Cash/Bank or Roznamcha pilot flags in Stage 1. Stage 1 enables **Ledger V2 screen flag only** per §10.
+
+### 17.1 Cash/Bank waiver (not Stage 1 blocker)
+
+- Admin Compare Cash/Bank tab is **not** the Stage 1 pilot screen.
+- Production Cash/Bank and Roznamcha screens remain **legacy roznamcha** loaders.
+- Observed old/new balance and row-count deltas reflect **roznamcha cashbook vs unified GL** semantics, not Ledger V2 loader parity.
+- Remediation tracked separately: [`SINGLE_CORE_LEDGER_PHASE_2_9A_CB_CASH_BANK_PARITY_PLAN.md`](SINGLE_CORE_LEDGER_PHASE_2_9A_CB_CASH_BANK_PARITY_PLAN.md)
+- Evidence: [`admin-compare-delta-investigation.md`](../reports/single-core-ledger/phase-2-9-pilot-enablement/post-deploy-browser-qa/admin-compare-delta-investigation.md) § Cash/Bank waiver
+
+### Prior final status (2026-06-25 early)
+
 **`PHASE 2.9A BROWSER WAIVERS PASS WITH LIMITED WAIVERS — review before Stage 1`**
 
 | Gate | Result |
@@ -434,7 +461,7 @@ Even after successful pilot flags:
 | Stage 1 SQL | **NOT RUN** |
 | Stage 2 SQL | **NOT RUN** |
 
-**Recommendation:** Operator completes interactive checklist on http://localhost:3002 → re-sign full **PASS** → Stage 1 ticket.
+**Recommendation:** Operator completes interactive checklist on http://localhost:3002 → re-sign full **PASS** → Stage 1 ticket (Cash/Bank excluded per §17.1).
 
 ### Phase 2.9A-3 preview deploy (executed 2026-06-25, redeployed compare fix)
 
@@ -466,7 +493,8 @@ Even after successful pilot flags:
 2. ~~2.9A-4 browser QA (automated smoke + DB)~~ **Done (limited waivers)**
 3. Operator: full interactive admin + staff session → **2.9A PASS**
 4. **Admin Compare delta fix (2026-06-25):** commits `4880a966` + `5b520cef` — see [`admin-compare-delta-investigation.md`](../../reports/single-core-ledger/phase-2-9-pilot-enablement/post-deploy-browser-qa/admin-compare-delta-investigation.md). **126/126** tests PASS. Preview **redeployed** @ `5b520cef` on :3003.
-5. Operator: Party + Pilot Batch on fixed preview → **2.9A PASS** → Stage 1 ticket
+5. Operator: Party + Pilot Batch + Ledger V2 on fixed preview → **2.9A PASS** (Cash/Bank waived) → Stage 1 ticket
 6. Ops approves Stage 1 SQL → execute → §10 soak
 7. Ops approves Stage 2 SQL → execute → §10 soak
 8. **Stop before Stage 1 SQL without explicit ops ticket**
+9. Cash/Bank parity → **Phase 2.9A-CB** (future, post–Stage 1) — [`SINGLE_CORE_LEDGER_PHASE_2_9A_CB_CASH_BANK_PARITY_PLAN.md`](SINGLE_CORE_LEDGER_PHASE_2_9A_CB_CASH_BANK_PARITY_PLAN.md)

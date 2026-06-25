@@ -1,9 +1,9 @@
 # Admin Compare Center — Delta Investigation (Phase 2.9A)
 
 **Date:** 2026-06-25  
-**Status:** `PHASE 2.9A ADMIN COMPARE DELTA FIXED — continue operator browser QA before Stage 1`  
-**Preview container:** `erp-frontend-preview` @ branch `feature/single-core-ledger-phase-2-9a3-preview-deploy-plan` (pre-fix build `20f72a90`)  
-**Fix commit:** compare-only patch on same branch (pending redeploy approval)  
+**Status:** `PHASE 2.9A CASH/BANK WAIVER DOCUMENTED — Ledger V2 Stage 1 gate excludes Cash/Bank compare`  
+**Preview container:** `erp-frontend-preview` @ branch `feature/single-core-ledger-phase-2-9a3-preview-deploy-plan`  
+**Latest compare commits:** `4880a966` … `b506773e` (economic keys, TB `official_gl`, Cash/Bank row-parity PASS semantics)  
 **Flags / Stage 1 / Stage 2:** NOT RUN — unchanged  
 
 ---
@@ -111,7 +111,47 @@ These are **out of pilot-batch golden scope** (MR JALIL party 9/9). TB/Cash fixe
 
 ---
 
-## Stage 1 gate
+## Stage 1 gate (Ledger V2 — Cash/Bank excluded)
+
+| Gate | Status |
+|------|--------|
+| Feature flags OFF | YES — unchanged |
+| Party / MR JALIL compare | **Required** — operator sign-off on fixed preview |
+| Pilot Batch 9/9 | **Required** — operator sign-off on fixed preview |
+| Ledger V2 browser QA | **Required** — interactive checklist (see `browser-qa-notes.md`) |
+| Trial Balance compare | Use **`official_gl`** basis for GL parity |
+| **Cash/Bank compare** | **Waiver — not Stage 1 blocker** (see below) |
+| Stage 1 SQL | **Blocked** until core gates above signed PASS |
+| Stage 2 SQL | NOT RUN |
+| Production ERP | Untouched |
+
+**Recommendation:** Operator confirms Party + Pilot Batch + Ledger V2 on preview (`312716e7+`) → open Stage 1 ops approval ticket. **Do not** block Stage 1 on Cash/Bank Admin Compare.
+
+---
+
+## Cash/Bank waiver — not Stage 1 blocker
+
+| Point | Detail |
+|-------|--------|
+| **Pilot screen** | Stage 1 target is **Ledger Statement V2 only** — not Cash/Bank or Roznamcha |
+| **Loader behavior** | Stage 1 does **not** switch any default screen loader; legacy roznamcha/cashbook paths stay in production |
+| **Production screens** | Cash/Bank and Roznamcha reports remain **`roznamchaService.getRoznamcha`** |
+| **Admin Compare tab** | Shadow diagnostic (`get_unified_cash_bank_ledger` + `shadowForce: true`) — compare-only, not user-facing pilot |
+| **Observed delta** | Native roznamcha closing vs unified GL closing may differ (e.g. DIN CHINA ~−4.08M on All/Bank) while row parity is clean on current preview bundle |
+| **Semantics** | Operational roznamcha cashbook vs unified GL liquidity ledger — **separate remediation track** |
+| **Flags** | **Do not** enable Cash/Bank, Roznamcha, or any non–Ledger-V2 pilot flag in Stage 1 |
+| **Future work** | [`SINGLE_CORE_LEDGER_PHASE_2_9A_CB_CASH_BANK_PARITY_PLAN.md`](../../../../docs/accounting/SINGLE_CORE_LEDGER_PHASE_2_9A_CB_CASH_BANK_PARITY_PLAN.md) |
+
+### Operator Cash/Bank summary (2026-06-25)
+
+- Old engine: `roznamchaService.getRoznamcha` (+ compare-only `manual_receipt` supplement when on fixed bundle)
+- New engine: `get_unified_cash_bank_ledger` (`official_gl` in compare service)
+- Row counts and native closings still differ; **not** treated as Ledger V2 Stage 1 failure
+- Stale-bundle exports (`basis: audit_full_history`, 138 missing + 151 extra with identical RCV refs) indicate wrong JS bundle — use tunnel `localhost:3002 → VPS :3003` and hard refresh; expect `basis: official_gl` and `buildCommit` ≥ `312716e7` in export
+
+---
+
+## Stage 1 gate (historical — pre-waiver)
 
 | Gate | Status |
 |------|--------|
@@ -120,7 +160,7 @@ These are **out of pilot-batch golden scope** (MR JALIL party 9/9). TB/Cash fixe
 | Stage 2 SQL | NOT RUN |
 | Production ERP | Untouched |
 
-**Recommendation:** Redeploy `erp-frontend-preview` with compare fix → operator re-runs Party + Pilot Batch tabs → if `9/9` PASS, proceed to interactive Stage 1 readiness review.
+**Recommendation (superseded):** Redeploy `erp-frontend-preview` with compare fix → operator re-runs Party + Pilot Batch tabs → if `9/9` PASS, proceed to interactive Stage 1 readiness review.
 
 ### Redeploy executed (2026-06-25T15:05Z)
 
@@ -171,3 +211,4 @@ After fix: expect ~195 matched rows; ~21 extra unified-only rows may remain (bas
 - Golden constants: `src/app/lib/unifiedLedgerGoldenFixtures.ts`
 - DIN CHINA `30bd8592-3384-4f34-899a-f3907e336485`, MR JALIL `fe7ec33d-fd6d-4aa6-8d21-416e383b4c93`, BL0002 branch scope in pilot matrix
 - Phase 1.8 tie-out: lifetime dates null, hybrid `getCustomerLedger`
+- Cash/Bank waiver plan: [`SINGLE_CORE_LEDGER_PHASE_2_9A_CB_CASH_BANK_PARITY_PLAN.md`](../../../../docs/accounting/SINGLE_CORE_LEDGER_PHASE_2_9A_CB_CASH_BANK_PARITY_PLAN.md)
