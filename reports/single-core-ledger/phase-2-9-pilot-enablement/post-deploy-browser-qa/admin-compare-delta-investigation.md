@@ -122,6 +122,13 @@ These are **out of pilot-batch golden scope** (MR JALIL party 9/9). TB/Cash fixe
 
 **Recommendation:** Redeploy `erp-frontend-preview` with compare fix → operator re-runs Party + Pilot Batch tabs → if `9/9` PASS, proceed to interactive Stage 1 readiness review.
 
+### Redeploy executed (2026-06-25T15:05Z)
+
+- Preview @ **`5b520cef`** on VPS **:3003**
+- Bundle strings: all **FOUND**
+- DIN CHINA `unified_ledger%` flags: **0 rows / OFF**
+- Evidence: [`compare-fix-redeploy-notes.md`](compare-fix-redeploy-notes.md), [`admin-compare-delta-after.json`](admin-compare-delta-after.json)
+
 ---
 
 ## Appendix — Operator exports 2026-06-25 (Cash/Bank + TB JSON)

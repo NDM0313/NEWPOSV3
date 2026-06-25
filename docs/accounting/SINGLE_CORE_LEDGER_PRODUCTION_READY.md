@@ -1,7 +1,7 @@
 # Single Core Ledger — Production Ready Pack
 
 **Status:** `PHASE 2.9A ADMIN COMPARE DELTA FIXED — continue operator browser QA before Stage 1`  
-**Branch:** `feature/single-core-ledger-phase-2-9a3-preview-deploy-plan` (compare fix pending preview redeploy)  
+**Branch:** `feature/single-core-ledger-phase-2-9a3-preview-deploy-plan` @ `5b520cef` (preview redeployed)  
 **Last updated:** 2026-06-25  
 **Master checklist:** use this file as the single entry point for post-apply status.
 
@@ -34,9 +34,9 @@
 | Phase 2.9 DIN CHINA pilot plan | **PLAN READY** — see [`SINGLE_CORE_LEDGER_PHASE_2_9_PILOT_ENABLEMENT_PLAN.md`](SINGLE_CORE_LEDGER_PHASE_2_9_PILOT_ENABLEMENT_PLAN.md) |
 | Phase 2.9A live waiver ops check | **PASS WITH LIMITED WAIVERS** — see [`pre-flag/live-waiver-checks.md`](../reports/single-core-ledger/phase-2-9-pilot-enablement/pre-flag/live-waiver-checks.md) |
 | Phase 2.9A-2 browser waiver closure | **BLOCKED on prod** — preview UI not deployed; see [`browser-waiver-closure/`](../reports/single-core-ledger/phase-2-9-pilot-enablement/pre-flag/browser-waiver-closure/) |
-| Phase 2.9A-3 preview deploy | **EXECUTED** — `erp-frontend-preview` on VPS :3003; tunnel `localhost:3002` |
+| Phase 2.9A-3 preview deploy | **REdeployed** @ `5b520cef` — `erp-frontend-preview` on VPS :3003 |
 | Phase 2.9A-4 browser waiver QA | **LIMITED WAIVERS** — smoke + RPC PASS; admin/staff UI session pending |
-| Phase 2.9A Admin Compare delta | **FIXED (compare-only)** — redeploy preview for live verify; see [`admin-compare-delta-investigation.md`](../reports/single-core-ledger/phase-2-9-pilot-enablement/post-deploy-browser-qa/admin-compare-delta-investigation.md) |
+| Phase 2.9A Admin Compare delta | **FIXED + REDEPLOYED** @ `5b520cef` — operator browser QA; see [`admin-compare-delta-investigation.md`](../reports/single-core-ledger/phase-2-9-pilot-enablement/post-deploy-browser-qa/admin-compare-delta-investigation.md) |
 | Phase 2 screen wiring | **COMPLETE** — all planned preview toggles shipped; engine enablement separate |
 
 ---

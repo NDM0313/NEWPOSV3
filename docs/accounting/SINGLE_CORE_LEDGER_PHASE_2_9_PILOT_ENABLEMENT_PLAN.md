@@ -436,11 +436,11 @@ Even after successful pilot flags:
 
 **Recommendation:** Operator completes interactive checklist on http://localhost:3002 → re-sign full **PASS** → Stage 1 ticket.
 
-### Phase 2.9A-3 preview deploy (executed 2026-06-25)
+### Phase 2.9A-3 preview deploy (executed 2026-06-25, redeployed compare fix)
 
-**Status:** `PHASE 2.9A-3 PREVIEW DEPLOY COMPLETE`  
+**Status:** `PHASE 2.9A-3 PREVIEW REDEPLOYED @ 5b520cef`  
 **Container:** `erp-frontend-preview` on VPS **:3003** (tunnel local :3002)  
-**Evidence:** [`post-deploy-browser-qa/bundle-verify.txt`](../../reports/single-core-ledger/phase-2-9-pilot-enablement/post-deploy-browser-qa/bundle-verify.txt)
+**Evidence:** [`post-deploy-browser-qa/bundle-verify.txt`](../../reports/single-core-ledger/phase-2-9-pilot-enablement/post-deploy-browser-qa/bundle-verify.txt), [`compare-fix-redeploy-notes.md`](../../reports/single-core-ledger/phase-2-9-pilot-enablement/post-deploy-browser-qa/compare-fix-redeploy-notes.md)
 
 ### Phase 2.9A-4 browser waiver QA (2026-06-25)
 
@@ -465,8 +465,8 @@ Even after successful pilot flags:
 1. ~~Preview deploy + bundle verify~~ **Done**
 2. ~~2.9A-4 browser QA (automated smoke + DB)~~ **Done (limited waivers)**
 3. Operator: full interactive admin + staff session → **2.9A PASS**
-4. **Admin Compare delta fix (2026-06-25):** compare-only patch — see [`admin-compare-delta-investigation.md`](../../reports/single-core-ledger/phase-2-9-pilot-enablement/post-deploy-browser-qa/admin-compare-delta-investigation.md). Root cause: old closing read `.balance` not `running_balance`; JE vs line row keys; pilot batch hybrid off; asymmetric dates. **124/124** tests PASS. Preview redeploy required for live verification.
-5. Stage 1 SQL — **still blocked** until operator confirms Party + Pilot Batch `9/9` on fixed preview.
-4. Ops approves Stage 1 SQL → execute → §10 soak
-5. Ops approves Stage 2 SQL → execute → §10 soak
-6. **Stop before Stage 1 SQL without explicit ops ticket**
+4. **Admin Compare delta fix (2026-06-25):** commits `4880a966` + `5b520cef` — see [`admin-compare-delta-investigation.md`](../../reports/single-core-ledger/phase-2-9-pilot-enablement/post-deploy-browser-qa/admin-compare-delta-investigation.md). **126/126** tests PASS. Preview **redeployed** @ `5b520cef` on :3003.
+5. Operator: Party + Pilot Batch on fixed preview → **2.9A PASS** → Stage 1 ticket
+6. Ops approves Stage 1 SQL → execute → §10 soak
+7. Ops approves Stage 2 SQL → execute → §10 soak
+8. **Stop before Stage 1 SQL without explicit ops ticket**

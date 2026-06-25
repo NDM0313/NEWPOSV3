@@ -1,14 +1,28 @@
 {
   "reportType": "admin_compare_delta_after_fix",
-  "generatedAt": "2026-06-25T00:00:00Z",
+  "generatedAt": "2026-06-25T15:06:00Z",
   "status": "PHASE_2_9A_ADMIN_COMPARE_DELTA_FIXED",
   "previewBuildBefore": "20f72a90",
-  "previewRedeployRequired": true,
+  "previewBuildAfter": "5b520cef",
+  "previewRedeployed": true,
+  "previewContainer": "erp-frontend-preview",
+  "previewPort": 3003,
+  "tunnel": "ssh -N -L 3002:127.0.0.1:3003 dincouture-vps",
   "flags": { "unified_ledger_engine": "OFF", "din_china_unified_ledger_rows": 0 },
   "stage1Sql": "NOT_RUN",
   "stage2Sql": "NOT_RUN",
+  "commits": [
+    {
+      "sha": "4880a966",
+      "summary": "Party/Pilot/Account compare — running_balance, line keys, hybrid default, date normalize"
+    },
+    {
+      "sha": "5b520cef",
+      "summary": "Cash/Bank JE row keys; TB legacy cumulative through as-of"
+    }
+  ],
   "tests": {
-    "testUnifiedLedger": "124/124 PASS",
+    "testUnifiedLedger": "126/126 PASS",
     "build": "PASS"
   },
   "rootCauses": [
@@ -16,14 +30,29 @@
     "row_key_journal_entry_id_vs_journal_line_id",
     "legacyToCompareSummary_missing_je_reference_type",
     "pilot_batch_useHybridOldEngine_false",
-    "asymmetric_date_scope_dateTo_today_empty_from"
+    "asymmetric_date_scope_dateTo_today_empty_from",
+    "cashbank_roznamcha_entity_id_vs_unified_line_id",
+    "tb_period_slice_vs_unified_cumulative_as_of",
+    "tb_effective_party_on_unified_only"
   ],
   "fixes": [
     "unifiedLedgerCompareDiff_running_balance_and_row_keys",
     "normalizeCompareDateRange_lifetime_when_from_empty",
     "pilot_batch_hybrid_default_true",
-    "getCustomerArGlJournalLedger_journal_line_id_mapping"
+    "getCustomerArGlJournalLedger_journal_line_id_mapping",
+    "roznamchaCashBankCompareMappers_journal_entry_id_keys",
+    "legacyTrialBalanceCompareDateFrom_1900-01-01_through_as_of"
   ],
+  "bundleVerify": {
+    "http200": true,
+    "strings": [
+      "Unified engine preview",
+      "Load MR JALIL",
+      "phase2-compare-ledger-v2",
+      "unified-ledger-tieout"
+    ],
+    "allFound": true
+  },
   "expectedAfterRedeploy": {
     "party": {
       "contact": "MR JALIL",
@@ -33,7 +62,7 @@
       "newBalance": 216300,
       "pass": true,
       "basis": "effective_party",
-      "branchScope": "BL0002 or all per filter"
+      "dateScope": "empty From = lifetime (both null)"
     },
     "pilotBatch": {
       "matrix": "3 bases x 3 branch scopes",
@@ -45,17 +74,29 @@
     "account": {
       "accountCode": "1202",
       "accountName": "WALI T/T",
-      "note": "old closing should match new within 0.01 after running_balance fix"
+      "note": "old closing matches new within tolerance after running_balance fix"
     },
     "trialBalance": {
-      "note": "May retain scope deltas; verify after redeploy; not blocking pilot batch golden"
+      "operatorBasis": "official_gl recommended for parity",
+      "legacyScope": "1900-01-01 through as-of end date",
+      "note": "effective_party may still show AR subledger presentation deltas — waiver candidate"
     },
     "cashBank": {
-      "note": "Row-key normalization applied; verify liquidity filter parity after redeploy"
+      "beforeRowDiff": "195 missing + 216 extra (0 key overlap)",
+      "afterRowDiff": "~195 matched on journalEntryId; ~21 unified-only possible",
+      "closingDiffNote": "~788k gap may shrink; verify on fixed preview"
     }
   },
+  "operatorChecklist": [
+    "Tunnel: ssh -N -L 3002:127.0.0.1:3003 dincouture-vps",
+    "Open /admin/unified-ledger-tieout — leave From empty for Party/Pilot",
+    "Party: MR JALIL — expect 216,300 / 216,300 PASS",
+    "Pilot Batch — expect 9/9 PASS",
+    "TB tab — use official_gl basis for GL parity check",
+    "Cash/Bank — re-export compare JSON; expect matched rows not 100% false missing/extra"
+  ],
   "stage1Blocked": true,
-  "stage1BlockedReason": "Operator browser QA on fixed preview build pending",
+  "stage1BlockedReason": "Operator interactive browser QA on redeployed preview @ 5b520cef",
   "productionMutations": false,
   "featureFlagWrites": false,
   "migrationsRun": false
