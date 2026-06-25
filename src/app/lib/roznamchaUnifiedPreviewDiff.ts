@@ -3,14 +3,9 @@
  */
 
 import type { UnifiedLedgerBasis } from '@/app/lib/unifiedLedgerBasisFilter';
-import { balancePasses, diffLedgerRows, round2 } from '@/app/lib/unifiedLedgerCompareDiff';
+import { balancePasses, round2 } from '@/app/lib/unifiedLedgerCompareDiff';
 import type { CompareRowMismatch, CompareRowSummary } from '@/app/lib/unifiedLedgerCompareTypes';
-import {
-  roznamchaRowKey,
-  roznamchaToCompareSummary,
-  unifiedCashBankRowKey,
-  unifiedCashBankToCompareSummary,
-} from '@/app/lib/roznamchaCashBankCompareMappers';
+import { diffCashBankLedgerRows } from '@/app/lib/roznamchaCashBankCompareMappers';
 import type { RoznamchaResult } from '@/app/services/roznamchaService';
 import type { UnifiedLedgerRow } from '@/app/services/unifiedLedgerService';
 import { defaultUnifiedBasisForRoznamcha } from '@/app/lib/roznamchaUnifiedPreviewScope';
@@ -71,13 +66,9 @@ export function compareRoznamchaUnifiedPreview(args: {
     balancePasses(cashInDelta) &&
     balancePasses(cashOutDelta);
 
-  const rowDiff = diffLedgerRows({
+  const rowDiff = diffCashBankLedgerRows({
     oldRows: args.legacy.rows,
     newRows: args.unifiedRows,
-    oldKey: roznamchaRowKey,
-    newKey: unifiedCashBankRowKey,
-    oldToSummary: roznamchaToCompareSummary,
-    newToSummary: unifiedCashBankToCompareSummary,
   });
 
   const hasRowDiffs =

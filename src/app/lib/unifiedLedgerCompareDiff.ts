@@ -71,6 +71,7 @@ export function diffLedgerRows<TOld, TNew>(args: {
   newKey: (row: TNew) => string;
   oldToSummary: (row: TOld) => CompareRowSummary;
   newToSummary: (row: TNew) => CompareRowSummary;
+  amountsMatch?: (old: CompareRowSummary, neu: CompareRowSummary) => boolean;
 }): {
   missingInNew: CompareRowSummary[];
   extraInNew: CompareRowSummary[];
@@ -91,6 +92,10 @@ export function diffLedgerRows<TOld, TNew>(args: {
   const missingInNew: CompareRowSummary[] = [];
   const extraInNew: CompareRowSummary[] = [];
   const amountMismatches: CompareRowMismatch[] = [];
+  const amountsMatch =
+    args.amountsMatch ??
+    ((old, neu) =>
+      round2(old.debit) === round2(neu.debit) && round2(old.credit) === round2(neu.credit));
 
   for (const [key, oldSummary] of oldMap) {
     const newSummary = newMap.get(key);
@@ -98,10 +103,7 @@ export function diffLedgerRows<TOld, TNew>(args: {
       missingInNew.push(oldSummary);
       continue;
     }
-    if (
-      round2(oldSummary.debit) !== round2(newSummary.debit) ||
-      round2(oldSummary.credit) !== round2(newSummary.credit)
-    ) {
+    if (!amountsMatch(oldSummary, newSummary)) {
       amountMismatches.push({ key, old: oldSummary, new: newSummary });
     }
   }

@@ -4,14 +4,9 @@
 
 import { isUnifiedLedgerKillSwitchActive } from '@/app/lib/unifiedLedgerEngineState';
 import { normalizeCompareDateRange } from '@/app/components/admin/unified-ledger-compare/compareFilters';
-import { balancePasses, diffLedgerRows, round2 } from '@/app/lib/unifiedLedgerCompareDiff';
+import { balancePasses, round2 } from '@/app/lib/unifiedLedgerCompareDiff';
 import type { LedgerCompareScope, LedgerRowCompareResult } from '@/app/lib/unifiedLedgerCompareTypes';
-import {
-  roznamchaRowKey,
-  roznamchaToCompareSummary,
-  unifiedCashBankRowKey,
-  unifiedCashBankToCompareSummary,
-} from '@/app/lib/roznamchaCashBankCompareMappers';
+import { diffCashBankLedgerRows } from '@/app/lib/roznamchaCashBankCompareMappers';
 import {
   getUnifiedCashBankLedger,
   loadLegacyCashBankForTieOut,
@@ -57,13 +52,9 @@ export async function compareCashBankLedgerTieOut(params: {
     }),
   ]);
 
-  const { missingInNew, extraInNew, amountMismatches } = diffLedgerRows({
+  const { missingInNew, extraInNew, amountMismatches } = diffCashBankLedgerRows({
     oldRows: legacy.rows,
     newRows: unified.rows,
-    oldKey: roznamchaRowKey,
-    newKey: unifiedCashBankRowKey,
-    oldToSummary: roznamchaToCompareSummary,
-    newToSummary: unifiedCashBankToCompareSummary,
   });
 
   const oldBalance = round2(legacy.closingBalance);

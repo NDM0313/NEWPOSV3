@@ -11,12 +11,15 @@ import {
   compareTrialBalancePayloads,
 } from '@/app/lib/unifiedLedgerCompareDiff';
 import type { LedgerCompareScope, TrialBalanceCompareResult } from '@/app/lib/unifiedLedgerCompareTypes';
+import type { UnifiedLedgerBasis } from '@/app/lib/unifiedLedgerBasisFilter';
 import { legacyTrialBalanceCompareDateFrom } from '@/app/lib/trialBalanceUnifiedPreviewScope';
 import {
   getUnifiedTrialBalance,
   loadLegacyTrialBalanceForTieOut,
-  type UnifiedLedgerBasis,
 } from '@/app/services/unifiedLedgerService';
+
+/** Admin TB compare — legacy getTrialBalance is always official GL (no basis lens). */
+export const TRIAL_BALANCE_COMPARE_BASIS: UnifiedLedgerBasis = 'official_gl';
 
 export async function compareTrialBalanceTieOut(params: {
   companyId: string;
@@ -28,13 +31,14 @@ export async function compareTrialBalanceTieOut(params: {
   const dates = normalizeCompareDateRange(params.dateFrom, params.dateTo);
   const asOfDate = dates.dateTo ?? params.dateTo;
   const legacyFrom = legacyTrialBalanceCompareDateFrom(dates.dateFrom);
+  const compareBasis = TRIAL_BALANCE_COMPARE_BASIS;
   const scope: LedgerCompareScope = {
     companyId: params.companyId,
     branchId: params.branchId ?? null,
     dateFrom: legacyFrom,
     dateTo: asOfDate,
     asOfDate,
-    basis: params.basis,
+    basis: compareBasis,
   };
 
   const killSwitchActive = await isUnifiedLedgerKillSwitchActive(params.companyId);
@@ -50,7 +54,7 @@ export async function compareTrialBalanceTieOut(params: {
       companyId: params.companyId,
       branchId: params.branchId,
       asOfDate,
-      basis: params.basis,
+      basis: compareBasis,
       shadowForce: true,
     }),
   ]);
@@ -81,7 +85,7 @@ export async function compareTrialBalanceTieOut(params: {
     oldAccountCount: legacy.result.rows.length,
     newAccountCount: unified.accountCount,
     accountDiffs,
-    basis: params.basis,
+    basis: compareBasis,
     oldEngineName: legacy.engineName,
     newEngineName: 'get_unified_trial_balance (shadow RPC)',
     oldQueryMs: legacy.durationMs,
