@@ -1,7 +1,7 @@
 # Single Core Ledger — Production Ready Pack
 
-**Status:** `PHASE 2.4 COMPLETE` — Account Statement preview toggle; engine still OFF  
-**Branch:** `feature/single-core-ledger-phase-2-4-account-statement-preview`  
+**Status:** `PHASE 2.5 COMPLETE` — Trial Balance preview toggle; engine still OFF  
+**Branch:** `feature/single-core-ledger-phase-2-5-trial-balance-preview`  
 **Last updated:** 2026-06-14  
 **Master checklist:** use this file as the single entry point for post-apply status.
 
@@ -27,7 +27,8 @@
 | Phase 2.2 admin compare | **COMPLETE** — see [`SINGLE_CORE_LEDGER_PHASE_2_2_ADMIN_COMPARE_REPORT.md`](SINGLE_CORE_LEDGER_PHASE_2_2_ADMIN_COMPARE_REPORT.md) |
 | Phase 2.3 Ledger V2 preview | **COMPLETE** — see [`SINGLE_CORE_LEDGER_PHASE_2_3_LEDGER_V2_PREVIEW_REPORT.md`](SINGLE_CORE_LEDGER_PHASE_2_3_LEDGER_V2_PREVIEW_REPORT.md) |
 | Phase 2.4 Account Statement preview | **COMPLETE** — see [`SINGLE_CORE_LEDGER_PHASE_2_4_ACCOUNT_STATEMENT_PREVIEW_REPORT.md`](SINGLE_CORE_LEDGER_PHASE_2_4_ACCOUNT_STATEMENT_PREVIEW_REPORT.md) |
-| Phase 2 screen wiring | **IN PROGRESS** (PR 2.5+ Trial Balance preview) |
+| Phase 2.5 Trial Balance preview | **COMPLETE** — see [`SINGLE_CORE_LEDGER_PHASE_2_5_TRIAL_BALANCE_PREVIEW_REPORT.md`](SINGLE_CORE_LEDGER_PHASE_2_5_TRIAL_BALANCE_PREVIEW_REPORT.md) |
+| Phase 2 screen wiring | **IN PROGRESS** (PR 2.6+ Roznamcha preview) |
 
 ---
 
