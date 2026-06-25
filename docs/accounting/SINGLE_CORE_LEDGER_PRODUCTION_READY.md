@@ -1,8 +1,8 @@
 # Single Core Ledger — Production Ready Pack
 
-**Status:** `PHASE 2.7 COMPLETE` — Party Ledger preview toggle; engine still OFF  
-**Branch:** `feature/single-core-ledger-phase-2-7-party-ledger-preview`  
-**Last updated:** 2026-06-14  
+**Status:** `PHASE 2.8 QA SIGNED OFF WITH WAIVERS` — full preview QA pack; engine still OFF  
+**Branch:** `feature/single-core-ledger-phase-2-8-preview-qa-signoff`  
+**Last updated:** 2026-06-25  
 **Master checklist:** use this file as the single entry point for post-apply status.
 
 ---
@@ -30,6 +30,7 @@
 | Phase 2.5 Trial Balance preview | **COMPLETE** — see [`SINGLE_CORE_LEDGER_PHASE_2_5_TRIAL_BALANCE_PREVIEW_REPORT.md`](SINGLE_CORE_LEDGER_PHASE_2_5_TRIAL_BALANCE_PREVIEW_REPORT.md) |
 | Phase 2.6 Roznamcha preview | **COMPLETE** — see [`SINGLE_CORE_LEDGER_PHASE_2_6_ROZNAMCHA_PREVIEW_REPORT.md`](SINGLE_CORE_LEDGER_PHASE_2_6_ROZNAMCHA_PREVIEW_REPORT.md) |
 | Phase 2.7 Party Ledger preview | **COMPLETE** — see [`SINGLE_CORE_LEDGER_PHASE_2_7_PARTY_LEDGER_PREVIEW_REPORT.md`](SINGLE_CORE_LEDGER_PHASE_2_7_PARTY_LEDGER_PREVIEW_REPORT.md) |
+| Phase 2.8 Preview QA sign-off | **SIGNED OFF WITH WAIVERS** — see [`SINGLE_CORE_LEDGER_PHASE_2_8_PREVIEW_QA_SIGNOFF.md`](SINGLE_CORE_LEDGER_PHASE_2_8_PREVIEW_QA_SIGNOFF.md) |
 | Phase 2 screen wiring | **COMPLETE** — all planned preview toggles shipped; engine enablement separate |
 
 ---
@@ -227,11 +228,13 @@ Or selective reverse using `production-remediation-apply-before-*.json` from app
 
 ## Next recommended step
 
-1. ~~Begin Phase 2 planning~~ **Done** — rollout plan ready  
-2. Approve Phase 2 plan; begin PR 2.1 (flags + banners only, engine OFF)  
-3. Do **not** enable `unified_ledger_engine` or merge/deploy without ops approval  
+1. ~~Phase 2 preview wiring (2.1–2.7)~~ **Done** — all six preview surfaces shipped  
+2. ~~Phase 2.8 full preview QA pack~~ **Done** — 112/112 tests, build PASS; live UI waivers documented  
+3. Optional: ops live DIN CHINA walkthrough to clear 2.8 waivers  
+4. **Phase 2.9+** — pilot flag enablement plan (single company, single screen, rollback runbook) — **separate ops approval**  
+5. Do **not** enable `unified_ledger_engine` or merge/deploy unified-default without ops approval  
 
-**Final status:** `PHASE 2 PLAN READY — waiting for approval to implement preview-only wiring`
+**Final status:** `PHASE 2.8 QA SIGNED OFF WITH WAIVERS — ready for pilot flag discussion`
 
 ## Related documents
 
@@ -245,3 +248,4 @@ Or selective reverse using `production-remediation-apply-before-*.json` from app
 | [Phase 1.5 production migration plan](SINGLE_CORE_LEDGER_PHASE_1_5_PRODUCTION_MIGRATION_PLAN.md) | Migration approval pack |
 | [Phase 1.8 post-migration validation](SINGLE_CORE_LEDGER_PHASE_1_8_POST_MIGRATION_VALIDATION_REPORT.md) | Gate A + tie-out PASS |
 | [Phase 2 rollout plan](SINGLE_CORE_LEDGER_PHASE_2_ROLLOUT_PLAN.md) | Screen wiring + controlled engine rollout |
+| [Phase 2.8 preview QA sign-off](SINGLE_CORE_LEDGER_PHASE_2_8_PREVIEW_QA_SIGNOFF.md) | Cross-screen QA + parity evidence |
