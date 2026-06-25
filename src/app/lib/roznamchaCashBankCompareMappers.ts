@@ -156,10 +156,16 @@ export function cashBankCompareClosingFromOpening(
   return balance;
 }
 
+export function cashBankPeriodNetMovement(
+  rows: Array<{ cashIn?: number; cashOut?: number; debit?: number; credit?: number }>
+): number {
+  return cashBankCompareClosingFromOpening(0, rows);
+}
+
 export function evaluateCashBankComparePass(args: {
   legacyRows: RoznamchaRowWithBalance[];
   unifiedRows: UnifiedLedgerRow[];
-  unifiedOpening: number;
+  legacyClosing: number;
   unifiedClosing: number;
 }): {
   supplementedLegacyRows: RoznamchaRowWithBalance[];
@@ -170,6 +176,8 @@ export function evaluateCashBankComparePass(args: {
   newBalance: number;
   difference: number;
   pass: boolean;
+  rowParityPass: boolean;
+  periodMovementPass: boolean;
   manualReceiptSupplementCount: number;
 } {
   const supplementedLegacyRows = supplementRoznamchaForCashBankCompare(
@@ -181,17 +189,17 @@ export function evaluateCashBankComparePass(args: {
     oldRows: supplementedLegacyRows,
     newRows: args.unifiedRows,
   });
-  const oldBalance = cashBankCompareClosingFromOpening(
-    args.unifiedOpening,
-    supplementedLegacyRows
-  );
-  const newBalance = round2(args.unifiedClosing);
-  const difference = round2(oldBalance - newBalance);
-  const pass =
-    balancePasses(difference) &&
+  const rowParityPass =
     rowDiff.missingInNew.length === 0 &&
     rowDiff.extraInNew.length === 0 &&
     rowDiff.amountMismatches.length === 0;
+  const periodMovementPass = balancePasses(
+    cashBankPeriodNetMovement(supplementedLegacyRows) - cashBankPeriodNetMovement(args.unifiedRows)
+  );
+  const oldBalance = round2(args.legacyClosing);
+  const newBalance = round2(args.unifiedClosing);
+  const difference = round2(oldBalance - newBalance);
+  const pass = rowParityPass && periodMovementPass;
 
   return {
     supplementedLegacyRows,
@@ -200,6 +208,8 @@ export function evaluateCashBankComparePass(args: {
     newBalance,
     difference,
     pass,
+    rowParityPass,
+    periodMovementPass,
     manualReceiptSupplementCount,
   };
 }

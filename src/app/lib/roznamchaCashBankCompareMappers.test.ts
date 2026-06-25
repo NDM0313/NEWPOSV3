@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { round2 } from '@/app/lib/unifiedLedgerCompareDiff';
 import {
   cashBankAmountsEquivalent,
   cashBankEconomicRowKey,
@@ -224,7 +225,41 @@ test('supplementRoznamchaForCashBankCompare adds manual_receipt unified rows', (
   assert.equal(supplemented.length, 2);
 });
 
-test('evaluateCashBankComparePass passes when manual_receipt supplement aligns closing', () => {
+test('evaluateCashBankComparePass passes on row parity even when native closings differ', () => {
+  const legacyRows = [
+    {
+      id: 'pay:1',
+      ref: 'RCV-1',
+      date: '2026-01-01',
+      cashIn: 1000,
+      cashOut: 0,
+      sourceJournalEntryId: 'je-1',
+    },
+  ] as RoznamchaRowWithBalance[];
+  const unifiedRows = [
+    {
+      journalEntryId: 'je-1',
+      entryNo: 'RCV-1',
+      entryDate: '2026-01-01',
+      debit: 1000,
+      credit: 0,
+      referenceType: 'payment',
+      runningBalance: 5000,
+    },
+  ] as UnifiedLedgerRow[];
+  const result = evaluateCashBankComparePass({
+    legacyRows,
+    unifiedRows,
+    legacyClosing: 90313,
+    unifiedClosing: -8540887,
+  });
+  assert.equal(result.rowParityPass, true);
+  assert.equal(result.periodMovementPass, true);
+  assert.equal(result.pass, true);
+  assert.equal(result.difference, round2(90313 - -8540887));
+});
+
+test('evaluateCashBankComparePass passes when manual_receipt supplement aligns rows', () => {
   const legacyRows = [] as RoznamchaRowWithBalance[];
   const unifiedRows = [
     {
@@ -242,7 +277,7 @@ test('evaluateCashBankComparePass passes when manual_receipt supplement aligns c
   const result = evaluateCashBankComparePass({
     legacyRows,
     unifiedRows,
-    unifiedOpening: 0,
+    legacyClosing: 0,
     unifiedClosing: 1000,
   });
   assert.equal(result.manualReceiptSupplementCount, 1);

@@ -58,7 +58,7 @@ export async function compareCashBankLedgerTieOut(params: {
   const evaluated = evaluateCashBankComparePass({
     legacyRows: legacy.rows,
     unifiedRows: unified.rows,
-    unifiedOpening: unified.meta.periodOpeningBalance,
+    legacyClosing: legacy.closingBalance,
     unifiedClosing: unified.closingBalance,
   });
 

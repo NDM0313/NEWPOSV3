@@ -46,8 +46,9 @@ export function CashBankCompareTab(props: {
         Compare legacy roznamcha vs <code className="text-amber-300">get_unified_cash_bank_ledger</code>{' '}
         (shadow only). Both sides use <strong className="text-amber-200">official_gl</strong> — roznamcha has no
         effective_party lens; the global Basis filter does not apply here. Compare supplements roznamcha with{' '}
-        <code className="text-amber-300">manual_receipt</code> GL legs missing from payment roznamcha and aligns
-        opening to unified for closing parity.
+        <code className="text-amber-300">manual_receipt</code> GL legs for row parity.{' '}
+        <strong className="text-amber-200">PASS</strong> = row parity + period movement match (like TB account
+        diffs); closing totals may differ when roznamcha opening scope differs from unified GL.
       </p>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 rounded-xl border border-gray-800 bg-gray-900/40 p-4">
         <label className="text-sm space-y-1">
