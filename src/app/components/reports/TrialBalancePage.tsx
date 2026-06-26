@@ -413,14 +413,17 @@ export const TrialBalancePage: React.FC<{
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
+      <div className="flex items-center justify-center py-12" data-trial-balance-main-loader={mainLoaderSource}>
         <Loader2 className="h-8 w-8 animate-spin text-blue-400" />
       </div>
     );
   }
   if (!data) {
     return (
-      <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-6 text-center text-gray-400">
+      <div
+        className="rounded-xl border border-gray-800 bg-gray-900/50 p-6 text-center text-gray-400"
+        data-trial-balance-main-loader={mainLoaderSource}
+      >
         <p className="font-medium">{fetchError || 'No data for the selected period'}</p>
         <p className="text-sm text-gray-500 mt-1">
           {fetchError ? 'Check your connection and try again.' : 'Adjust the date range or ensure journal entries exist.'}

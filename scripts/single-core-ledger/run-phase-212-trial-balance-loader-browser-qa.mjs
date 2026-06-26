@@ -48,8 +48,26 @@ async function setWideRange(page) {
 async function openTrialBalance(page) {
   await setWideRange(page);
   await page.goto(`${BASE}/?view=reports&financial=trial-balance`, { waitUntil: 'networkidle', timeout: 120000 });
-  await page.waitForTimeout(6000);
-  await page.locator('[data-trial-balance-main-loader]').first().waitFor({ timeout: 120000 });
+  await page.waitForTimeout(4000);
+  const financialTab = page.getByRole('button', { name: /^Financial$/ });
+  if (await financialTab.isVisible().catch(() => false)) {
+    await financialTab.click();
+    await page.waitForTimeout(2000);
+  }
+  const tbTab = page.getByRole('button', { name: /^Trial Balance$/ });
+  if (await tbTab.isVisible().catch(() => false)) {
+    await tbTab.click();
+    await page.waitForTimeout(2000);
+  }
+  await page.waitForFunction(
+    () => {
+      if (document.querySelector('[data-trial-balance-main-loader]')) return true;
+      return /Total Debit:/i.test(document.body.innerText);
+    },
+    null,
+    { timeout: 180000 },
+  );
+  await page.waitForTimeout(3000);
 }
 
 async function readTrialBalanceTotals(page) {
