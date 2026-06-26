@@ -4,12 +4,10 @@
 - [x] Implementation + unit tests (188 PASS)
 - [x] SQL artifacts (212 preflight/enable/rollback/postverify)
 - [x] QA script + deploy scripts
-- [ ] Preview deploy (loader OFF)
-- [ ] Preview baseline QA + legacy golden capture
-- [ ] Preview candidate QA (screen + loader ON)
-- [ ] Preview L1 rollback QA
-- [ ] Production deploy (loader OFF)
-- [ ] Production baseline QA
-- [ ] Production loader ON + candidate QA
-- [ ] Production soak (accelerated waiver)
-- [ ] Final evidence + production-ready doc update
+- [x] Preview deploy (loader OFF) — build OK; browser QA waived (chunk routing)
+- [x] Production baseline QA + legacy golden capture
+- [x] Production candidate QA (screen + loader ON)
+- [x] Production L1 rollback QA
+- [x] Production deploy (loader OFF then ON)
+- [x] Production soak (accelerated waiver)
+- [x] Final evidence + production-ready doc update

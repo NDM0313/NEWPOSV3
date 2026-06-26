@@ -1,7 +1,7 @@
 # Single Core Ledger — Production Ready Pack
 
-**Status:** `PHASE 2.11 ACCOUNT STATEMENT LOADER PASS WITH WAIVERS — monitor before expansion`  
-**Branch:** local working tree (Phase 2.11 implementation)  
+**Status:** `PHASE 2.12 TRIAL BALANCE LOADER PASS WITH WAIVERS — monitor before expansion`  
+**Branch:** `feature/single-core-ledger-phase-2-9a3-preview-deploy-plan`  
 **Last updated:** 2026-06-26  
 **Master checklist:** use this file as the single entry point for post-apply status.
 
@@ -72,6 +72,10 @@
 | Phase 2.11 Account Statement loader plan | **LIVE** — [`SINGLE_CORE_LEDGER_PHASE_2_11_ACCOUNT_STATEMENT_LOADER_ROLLOUT_PLAN.md`](SINGLE_CORE_LEDGER_PHASE_2_11_ACCOUNT_STATEMENT_LOADER_ROLLOUT_PLAN.md) |
 | Phase 2.11 production loader ON | **DONE** @ 2026-06-26T14:59:46Z — Account Statement unified main |
 | Phase 2.11 production QA | **PASS** — [`phase-2-11-account-statement-loader/`](../reports/single-core-ledger/phase-2-11-account-statement-loader/) |
+| Phase 2.12 Trial Balance loader plan | **LIVE** — [`SINGLE_CORE_LEDGER_PHASE_2_12_TRIAL_BALANCE_LOADER_ROLLOUT_PLAN.md`](SINGLE_CORE_LEDGER_PHASE_2_12_TRIAL_BALANCE_LOADER_ROLLOUT_PLAN.md) |
+| Phase 2.12 production loader ON | **DONE** @ 2026-06-26T16:27:00Z — Trial Balance unified main |
+| Phase 2.12 production QA | **PASS WITH WAIVERS** — [`phase-2-12-trial-balance-loader/`](../reports/single-core-ledger/phase-2-12-trial-balance-loader/) |
+| DIN CHINA `unified_ledger_loader_trial_balance` | **ON** @ 2026-06-26T16:27:00Z — Trial Balance unified main live |
 | Phase 2.9A-6 gate confirmation | **Gate 4 PASS**; Gates 1–3 **PASS** (browser 2026-06-25) |
 | Phase 2.9A-7 operator gate sign-off | **PASS** 2026-06-25T17:19:46Z — [`phase-2.9a-7-gate-signoff.json`](../reports/single-core-ledger/phase-2-9-pilot-enablement/post-deploy-browser-qa/phase-2.9a-7-gate-signoff.json) |
 | Phase 2 screen wiring | **COMPLETE** — all planned preview toggles shipped; engine enablement separate |

@@ -11,7 +11,7 @@ import { chromium } from 'playwright';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const EVIDENCE = path.join(ROOT, 'reports/single-core-ledger/phase-2-12-trial-balance-loader');
 const MODE = (process.argv[2] || 'baseline').toLowerCase();
-const BASE = process.env.QA_BROWSER_BASE_URL || 'http://localhost:3002';
+const BASE = process.env.QA_BROWSER_BASE_URL || 'http://localhost:3012';
 const EMAIL = process.env.QA_BROWSER_EMAIL || 'din@yahoo.com';
 const PASSWORD = process.env.QA_BROWSER_PASSWORD || '';
 const MR_JALIL = 216300;
@@ -30,6 +30,19 @@ function parsePkr(text) {
 
 async function login(page) {
   await page.goto(BASE, { waitUntil: 'networkidle', timeout: 120000 });
+  await page.evaluate(async () => {
+    if ('serviceWorker' in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map((r) => r.unregister()));
+    }
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+    }
+    localStorage.clear();
+    sessionStorage.clear();
+  });
+  await page.reload({ waitUntil: 'networkidle' });
   await page.fill('input[type="email"], input[name="email"]', EMAIL);
   await page.fill('input[type="password"]', PASSWORD);
   await page.click('button[type="submit"]');
@@ -40,34 +53,32 @@ async function setWideRange(page) {
   const today = new Date().toISOString().slice(0, 10);
   await page.evaluate(({ todayIso }) => {
     localStorage.setItem('erp-global-filters', JSON.stringify({
-      dateRangeType: 'customRange', customStartDate: '2000-01-01', customEndDate: todayIso, branchId: null,
+      dateRangeType: 'customRange', customStartDate: '2000-01-01', customEndDate: todayIso, branchId: 'all',
     }));
   }, { todayIso: today });
+  await page.reload({ waitUntil: 'networkidle', timeout: 120000 });
+  await page.waitForTimeout(2000);
+  const branchTrigger = page.locator('[data-testid="branch-selector"], button:has-text("Branch")').first();
+  if (await branchTrigger.isVisible().catch(() => false)) {
+    await branchTrigger.click().catch(() => {});
+    const allBranches = page.getByRole('option', { name: /All Branches/i });
+    if (await allBranches.isVisible().catch(() => false)) {
+      await allBranches.click();
+      await page.waitForTimeout(1500);
+    }
+  }
 }
 
 async function openTrialBalance(page) {
   await setWideRange(page);
-  await page.goto(`${BASE}/?view=reports&financial=trial-balance`, { waitUntil: 'networkidle', timeout: 120000 });
-  await page.waitForTimeout(4000);
-  const financialTab = page.getByRole('button', { name: /^Financial$/ });
-  if (await financialTab.isVisible().catch(() => false)) {
-    await financialTab.click();
-    await page.waitForTimeout(2000);
-  }
-  const tbTab = page.getByRole('button', { name: /^Trial Balance$/ });
-  if (await tbTab.isVisible().catch(() => false)) {
-    await tbTab.click();
-    await page.waitForTimeout(2000);
-  }
-  await page.waitForFunction(
-    () => {
-      if (document.querySelector('[data-trial-balance-main-loader]')) return true;
-      return /Total Debit:/i.test(document.body.innerText);
-    },
-    null,
-    { timeout: 180000 },
-  );
+  await page.goto(`${BASE}/?view=reports`, { waitUntil: 'networkidle', timeout: 120000 });
   await page.waitForTimeout(3000);
+  await page.getByRole('button', { name: /^Financial$/ }).click({ timeout: 60000 });
+  await page.waitForTimeout(2000);
+  await page.getByRole('button', { name: /^Trial Balance$/ }).click({ timeout: 60000 });
+  await page.waitForTimeout(2000);
+  await page.locator('[data-trial-balance-main-loader]').first().waitFor({ timeout: 180000 });
+  await page.waitForTimeout(5000);
 }
 
 async function readTrialBalanceTotals(page) {
@@ -130,10 +141,33 @@ async function verifyAccountStatementUnified(page) {
   log('Account Statement MR JALIL 216300', Math.abs(closing - MR_JALIL) <= TOL ? 'PASS' : 'FAIL', `closing=${closing}`);
 }
 
+async function readStatCardValue(page, label) {
+  const cards = page.locator('div.rounded-lg.border').filter({ has: page.getByText(label, { exact: true }) });
+  const count = await cards.count().catch(() => 0);
+  let best = NaN;
+  for (let i = 0; i < count; i += 1) {
+    const card = cards.nth(i);
+    if (!(await card.isVisible({ timeout: 2000 }).catch(() => false))) continue;
+    const valueText = await card
+      .locator('.text-lg.font-mono, .text-lg.font-semibold, .text-base.font-semibold, .tabular-nums')
+      .first()
+      .textContent({ timeout: 5000 })
+      .catch(() => null);
+    const n = parsePkr(valueText || '');
+    if (Number.isFinite(n) && (Number.isNaN(best) || Math.abs(n) > Math.abs(best))) best = n;
+  }
+  return best;
+}
+
 async function verifyPilotBatch(page) {
   await page.goto(`${BASE}/admin/unified-ledger-tieout`, { waitUntil: 'networkidle', timeout: 120000 });
   await page.waitForTimeout(4000);
   await page.getByRole('tab', { name: /Pilot Batch/i }).click({ timeout: 60000 });
+  await page.waitForTimeout(500);
+  const runBtn = page.getByRole('button', { name: /Run DIN CHINA 9\/9 batch/i });
+  if (await runBtn.isVisible().catch(() => false)) {
+    await runBtn.click();
+  }
   await page.waitForFunction(
     () => {
       const labels = [...document.querySelectorAll('.text-xs.text-gray-500')];
@@ -141,22 +175,26 @@ async function verifyPilotBatch(page) {
       if (!comparedLabel) return false;
       const val = comparedLabel.parentElement?.querySelector('.text-lg.font-mono');
       const n = Number(String(val?.textContent || '').replace(/,/g, ''));
-      return Number.isFinite(n) && n > 0;
+      return Number.isFinite(n) && n >= 9;
     },
     null,
     { timeout: 180000 },
   );
-  const body = await page.innerText('body');
-  const passM = body.match(/Pass\s*\n?\s*(\d+)/i) || body.match(/Passed[\s:]*(\d+)/i);
-  const failM = body.match(/Fail\s*\n?\s*(\d+)/i) || body.match(/Failed[\s:]*(\d+)/i);
-  const pass = passM ? Number(passM[1]) : NaN;
-  const fail = failM ? Number(failM[1]) : NaN;
-  log('Admin Compare Pilot Batch 9/9', pass === 9 && fail === 0 ? 'PASS' : 'FAIL', `pass=${pass} fail=${fail}`);
+  const compared = await readStatCardValue(page, 'Compared');
+  const passCount = await readStatCardValue(page, 'Pass');
+  const failCount = await readStatCardValue(page, 'Fail');
+  log('Admin Compare Pilot Batch 9/9', compared === 9 && passCount === 9 && failCount === 0 ? 'PASS' : 'FAIL', `compared=${compared} pass=${passCount} fail=${failCount}`);
 }
 
 async function runTrialBalanceChecks(page, expectedLoader) {
-  await openTrialBalance(page);
-  const mainLoader = await page.locator('[data-trial-balance-main-loader]').first().getAttribute('data-trial-balance-main-loader');
+  try {
+    await openTrialBalance(page);
+  } catch (err) {
+    fs.mkdirSync(path.join(EVIDENCE, 'screenshots'), { recursive: true });
+    await page.screenshot({ path: path.join(EVIDENCE, 'screenshots', `212-${MODE}-trial-balance-nav-fail.png`), fullPage: true });
+    throw err;
+  }
+  const mainLoader = await page.locator('[data-trial-balance-main-loader]').first().getAttribute('data-trial-balance-main-loader', { timeout: 60000 });
   log(`Trial Balance main loader (${MODE})`, mainLoader === expectedLoader ? 'PASS' : 'FAIL', `expected=${expectedLoader} actual=${mainLoader}`);
 
   const totals = await readTrialBalanceTotals(page);
