@@ -1,0 +1,21 @@
+{
+  "capturedAt": "2026-06-26T19:15:00Z",
+  "companyId": "30bd8592-3384-4f34-899a-f3907e336485",
+  "companyName": "DIN CHINA",
+  "flags": {
+    "unified_ledger_engine": true,
+    "unified_ledger_pilot": true,
+    "unified_ledger_loader_ledger_v2": true,
+    "unified_ledger_loader_account_statement": true,
+    "unified_ledger_loader_trial_balance": true,
+    "unified_ledger_loader_party_ledger": true,
+    "unified_ledger_loader_roznamcha": false,
+    "unified_ledger_screen_ledger_v2": true,
+    "unified_ledger_screen_account_statement": true,
+    "unified_ledger_screen_trial_balance": true,
+    "unified_ledger_screen_party_ledger": true,
+    "unified_ledger_screen_roznamcha": false
+  },
+  "phase214RollbackVerified": true,
+  "otherCompanyFlagsTouched": false
+}
