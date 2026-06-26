@@ -1,8 +1,9 @@
 # Phase 2.15 — Cash/Bank Parity & Roznamcha Recovery
 
-**Status:** `PHASE 2.15 CASH/BANK PARITY PASS — ROZNAMCHA LOADER LIVE FOR DIN CHINA`  
+**Status:** `PHASE 2.15X FINAL CLOSEOUT PASS — DIN CHINA unified reporting live and monitored`  
 **Company:** DIN CHINA `30bd8592-3384-4f34-899a-f3907e336485`  
-**Date:** 2026-06-26
+**Date:** 2026-06-26  
+**Commit:** `b8b093f7`
 
 ---
 
@@ -61,4 +62,12 @@ legacy cash_out = payments only (67,042,426)
 ## Blocked / deferred
 
 - Admin Compare Cash/Bank raw RPC vs legacy — remains shadow diagnostic with existing waiver
-- Future: optional `roznamcha_payment` RPC mode (migration) if pure GL path desired without composite
+- Optional `roznamcha_payment` RPC mode (migration) if pure GL path desired without composite
+- **Other companies:** expansion requires separate finance sign-off — do not enable flags without approval
+
+## Closeout (2.15X)
+
+- Commit `b8b093f7` pushed to `feature/single-core-ledger-phase-2-9a3-preview-deploy-plan`
+- Evidence: `reports/single-core-ledger/phase-2-15-cash-bank-parity/phase-215x-final-closeout.md`
+- Monitoring: `phase-215x-24h-monitoring-checklist.md`
+- Automation waivers: `phase-215x-waiver-note.md` (LV2 Playwright NaN, Admin Compare timing)

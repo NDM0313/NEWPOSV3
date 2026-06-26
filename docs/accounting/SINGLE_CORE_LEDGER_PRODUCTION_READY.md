@@ -1,7 +1,7 @@
 # Single Core Ledger — Production Ready Pack
 
-**Status:** `PHASE 2.15 CASH/BANK PARITY PASS — ROZNAMCHA LOADER LIVE FOR DIN CHINA` (Party Ledger loader ON @ `a7a4b727`)  
-**Branch:** `feature/single-core-ledger-phase-2-9a3-preview-deploy-plan`  
+**Status:** `PHASE 2.15X FINAL CLOSEOUT PASS — DIN CHINA unified reporting live and monitored`  
+**Branch:** `feature/single-core-ledger-phase-2-9a3-preview-deploy-plan` @ `b8b093f7`  
 **Last updated:** 2026-06-26  
 **Master checklist:** use this file as the single entry point for post-apply status.
 
@@ -312,11 +312,12 @@ Or selective reverse using `production-remediation-apply-before-*.json` from app
 13. ~~Phase 2.10 loader swap planning~~ **Done** — plan Status A; see [`SINGLE_CORE_LEDGER_PHASE_2_10_LEDGER_V2_LOADER_SWAP_PLAN.md`](SINGLE_CORE_LEDGER_PHASE_2_10_LEDGER_V2_LOADER_SWAP_PLAN.md)  
 14. ~~Phase 2.10G production loader ON~~ **Done** @ 2026-06-26T13:56:26Z — unified main live for DIN CHINA Ledger V2 only  
 15. ~~Phase 2.11 Account Statement loader ON~~ **Done** @ 2026-06-26T14:59:46Z — unified main live for DIN CHINA Account Statement only  
-16. Do **not** enable Roznamcha / Party Ledger / CashBank loaders or other company flags without explicit ops ticket  
-17. Do **not** expand loader ON to other companies without separate finance sign-off  
-18. **Next (ops choice):** Roznamcha loader, Party Ledger loader, or Cash/Bank parity (2.9A-CB) — see closeout monitoring doc  
+16. ~~Phase 2.13 Party Ledger loader ON~~ **Done** @ 2026-06-26 — `a7a4b727`
+17. ~~Phase 2.15 Roznamcha parity + loader ON~~ **Done** @ 2026-06-26 — `b8b093f7` — see [`SINGLE_CORE_LEDGER_PHASE_2_15_CASH_BANK_PARITY_AND_ROZNAMCHA_RECOVERY_PLAN.md`](SINGLE_CORE_LEDGER_PHASE_2_15_CASH_BANK_PARITY_AND_ROZNAMCHA_RECOVERY_PLAN.md)
+18. Do **not** expand loader ON to other companies without separate finance sign-off
+19. **Monitoring:** [`phase-215x-24h-monitoring-checklist.md`](../reports/single-core-ledger/phase-2-15-cash-bank-parity/phase-215x-24h-monitoring-checklist.md)
 
-**Final status:** `PHASE 2.12X CLOSEOUT PASS — ready to choose next rollout screen`
+**Final status:** `PHASE 2.15X FINAL CLOSEOUT PASS — DIN CHINA unified reporting live and monitored`
 
 ### Accelerated soak waiver (Phase 2.9B-X — 2026-06-25) — historical
 
