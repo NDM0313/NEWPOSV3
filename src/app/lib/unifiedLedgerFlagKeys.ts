@@ -11,6 +11,8 @@ export const UNIFIED_LEDGER_FLAG_KEYS = {
   LOADER_LEDGER_V2: 'unified_ledger_loader_ledger_v2',
   /** Phase 2.11 — only this flag switches Account Statement default main loader. */
   LOADER_ACCOUNT_STATEMENT: 'unified_ledger_loader_account_statement',
+  /** Phase 2.12 — only this flag switches Trial Balance default main loader. */
+  LOADER_TRIAL_BALANCE: 'unified_ledger_loader_trial_balance',
   SCREEN_LEDGER_V2: 'unified_ledger_screen_ledger_v2',
   SCREEN_ACCOUNT_STATEMENT: 'unified_ledger_screen_account_statement',
   SCREEN_TRIAL_BALANCE: 'unified_ledger_screen_trial_balance',

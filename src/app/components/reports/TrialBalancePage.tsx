@@ -38,6 +38,14 @@ import { UNIFIED_LEDGER_SCREEN_IDS } from '@/app/lib/unifiedLedgerScreenFlags';
 import type { UnifiedLedgerBasis } from '@/app/lib/unifiedLedgerBasisFilter';
 import { TrialBalanceUnifiedPreviewPanel } from '@/app/components/reports/TrialBalanceUnifiedPreviewPanel';
 import { DIN_CHINA_COMPANY_ID } from '@/app/lib/unifiedLedgerGoldenFixtures';
+import {
+  resolveTrialBalancePreviewCompareSource,
+  buildTrialBalancePreviewCompareArgs,
+} from '@/app/lib/resolveTrialBalancePreviewCompareSource';
+import { loadTrialBalanceLegacyShadowPreview } from '@/app/services/trialBalanceLegacyShadowPreviewService';
+import { loadTrialBalanceUnifiedMain } from '@/app/services/trialBalanceUnifiedMainService';
+import { loadTrialBalanceLegacyMain } from '@/app/services/trialBalanceLegacyMainService';
+import type { UnifiedTrialBalanceAccount } from '@/app/services/unifiedLedgerService';
 
 const toExport = (
   r: TrialBalanceResult,
@@ -100,6 +108,13 @@ export const TrialBalancePage: React.FC<{
   const [previewDiff, setPreviewDiff] = useState<TrialBalanceUnifiedPreviewDiff | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [mainLoaderSource, setMainLoaderSource] = useState<'legacy' | 'unified'>('legacy');
+  const [mainUnifiedAccounts, setMainUnifiedAccounts] = useState<UnifiedTrialBalanceAccount[]>([]);
+
+  const previewCompareSource = useMemo(
+    () => resolveTrialBalancePreviewCompareSource(mainLoaderSource),
+    [mainLoaderSource],
+  );
 
   const { state: engineState } = useUnifiedLedgerEngineState(companyId, {
     screenId: UNIFIED_LEDGER_SCREEN_IDS.TRIAL_BALANCE,
@@ -113,17 +128,51 @@ export const TrialBalancePage: React.FC<{
     }
     setLoading(true);
     setFetchError(null);
-    accountingReportsService
-      .getTrialBalance(companyId, startDate, endDate, branchId, { arApMode })
-      .then(setData)
-      .catch((err) => {
+    (async () => {
+      try {
+        const { resolveTrialBalanceMainLoaderSource, effectiveTrialBalanceMainLoaderSource } =
+          await import('@/app/lib/resolveTrialBalanceMainLoaderSource');
+        const resolved = await resolveTrialBalanceMainLoaderSource(companyId);
+        const mainSource = effectiveTrialBalanceMainLoaderSource(resolved);
+        setMainLoaderSource(mainSource);
+
+        if (mainSource === 'unified') {
+          const unified = await loadTrialBalanceUnifiedMain({
+            companyId,
+            startDate,
+            endDate,
+            branchId,
+            basis: previewBasis,
+          });
+          setMainUnifiedAccounts(unified.accounts);
+          setData({
+            rows: unified.rows,
+            totalDebit: unified.totalDebit,
+            totalCredit: unified.totalCredit,
+            difference: unified.difference,
+          });
+        } else {
+          setMainUnifiedAccounts([]);
+          const legacy = await loadTrialBalanceLegacyMain({
+            companyId,
+            startDate,
+            endDate,
+            branchId,
+            arApMode,
+          });
+          setData(legacy);
+        }
+      } catch (err) {
         const msg = err instanceof Error ? err.message : 'Failed to load trial balance';
         setFetchError(msg);
         toast.error(msg);
         setData(null);
-      })
-      .finally(() => setLoading(false));
-  }, [companyId, startDate, endDate, branchId, arApMode, fetchRetryKey]);
+        setMainUnifiedAccounts([]);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [companyId, startDate, endDate, branchId, arApMode, fetchRetryKey, previewBasis]);
 
   useEffect(() => {
     if (!journalSearchEnabled || !searchTerm.trim() || !companyId) {
@@ -188,33 +237,80 @@ export const TrialBalancePage: React.FC<{
     setPreviewLoading(true);
     setPreviewError(null);
     try {
-      const preview = await loadTrialBalanceUnifiedPreview({
-        companyId,
-        startDate,
-        endDate,
-        branchId,
-        basis: previewBasis,
-      });
-      setPreviewResult(preview);
-      if (preview.blockedByKillSwitch) {
-        setPreviewDiff(null);
-        setPreviewError(preview.blockReason ?? 'Unified preview blocked.');
-        return;
+      const compareSource = resolveTrialBalancePreviewCompareSource(mainLoaderSource);
+
+      if (compareSource === 'legacy_shadow') {
+        const shadow = await loadTrialBalanceLegacyShadowPreview({
+          companyId,
+          startDate,
+          endDate,
+          branchId,
+          arApMode,
+        });
+        setPreviewResult({
+          rows: shadow.rows,
+          accounts: [],
+          totalDebit: shadow.totalDebit,
+          totalCredit: shadow.totalCredit,
+          difference: shadow.difference,
+          basis: previewBasis,
+          rpcScope: { branchId: branchId ?? null, asOfDate: endDate, legacyPeriodFrom: startDate, legacyPeriodTo: endDate },
+          meta: {
+            engine: 'legacy_gl',
+            basis: previewBasis,
+            featureFlagEnabled: true,
+            shadowForce: true,
+            queryDurationMs: 0,
+            rowCount: shadow.rows.length,
+            periodOpeningBalance: 0,
+            message: 'Legacy shadow compare — main table uses unified loader.',
+          },
+        });
+        const compareArgs = buildTrialBalancePreviewCompareArgs({
+          compareSource,
+          mainData: data,
+          mainAccounts: mainUnifiedAccounts,
+          shadowData: shadow,
+          shadowAccounts: [],
+        });
+        setPreviewDiff(compareTrialBalanceUnifiedPreview(compareArgs));
+      } else {
+        const preview = await loadTrialBalanceUnifiedPreview({
+          companyId,
+          startDate,
+          endDate,
+          branchId,
+          basis: previewBasis,
+        });
+        setPreviewResult(preview);
+        if (preview.blockedByKillSwitch) {
+          setPreviewDiff(null);
+          setPreviewError(preview.blockReason ?? 'Unified preview blocked.');
+          return;
+        }
+        const compareArgs = buildTrialBalancePreviewCompareArgs({
+          compareSource,
+          mainData: data,
+          mainAccounts: mainUnifiedAccounts,
+          shadowData: {
+            rows: preview.rows,
+            totalDebit: preview.totalDebit,
+            totalCredit: preview.totalCredit,
+            difference: preview.difference,
+          },
+          shadowAccounts: preview.accounts,
+        });
+        setPreviewDiff(compareTrialBalanceUnifiedPreview(compareArgs));
       }
-      setPreviewDiff(
-        compareTrialBalanceUnifiedPreview({
-          legacy: data,
-          unifiedAccounts: preview.accounts,
-          unifiedTotalDebit: preview.totalDebit,
-          unifiedTotalCredit: preview.totalCredit,
-          unifiedDifference: preview.difference,
-        })
-      );
     } catch (err) {
       console.error(err);
       setPreviewResult(null);
       setPreviewDiff(null);
-      setPreviewError('Unified preview failed to load');
+      setPreviewError(
+        previewCompareSource === 'legacy_shadow'
+          ? 'Legacy shadow compare failed to load'
+          : 'Unified preview failed to load',
+      );
     } finally {
       setPreviewLoading(false);
     }
@@ -222,11 +318,15 @@ export const TrialBalancePage: React.FC<{
     companyId,
     unifiedPreviewEnabled,
     data,
+    mainUnifiedAccounts,
     engineState.killSwitchActive,
     startDate,
     endDate,
     branchId,
     previewBasis,
+    arApMode,
+    mainLoaderSource,
+    previewCompareSource,
   ]);
 
   useEffect(() => {
@@ -237,7 +337,7 @@ export const TrialBalancePage: React.FC<{
       return;
     }
     void loadUnifiedPreview();
-  }, [unifiedPreviewEnabled, loadUnifiedPreview]);
+  }, [unifiedPreviewEnabled, loadUnifiedPreview, mainLoaderSource]);
 
   const handleLoadDinChinaPeriodHint = useCallback(() => {
     if (companyId !== DIN_CHINA_COMPANY_ID) {
@@ -337,7 +437,7 @@ export const TrialBalancePage: React.FC<{
   const displayTotals = isSearchActive ? filteredTotals : data;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-trial-balance-main-loader={mainLoaderSource}>
       <ReportBasisBanner basis="official_gl" />
 
       {showUnifiedPreviewTools ? (
@@ -379,6 +479,7 @@ export const TrialBalancePage: React.FC<{
           searchActive={isSearchActive || journalSearchEnabled}
           arApMode={arApMode}
           periodDiffersFromAsOf={periodDiffersFromAsOf}
+          previewCompareSource={previewCompareSource}
         />
       ) : null}
 
