@@ -1,12 +1,10 @@
 /**
- * Ledger Statement V2 — unified engine shadow preview loader (Phase 2.3).
- * Parallel fetch only — never switches the main table unless loader flag ON (Phase 2.10).
+ * Shared unified RPC fetch for Ledger V2 preview (shadow) and main loader (Phase 2.10).
  */
 
 import type { LedgerStatementV2Row, LedgerStatementV2Type } from '@/app/features/ledger-statement-center-v2/types';
 import { defaultUnifiedBasisForV2Type } from '@/app/lib/ledgerStatementV2UnifiedPreviewDiff';
 import type { UnifiedLedgerBasis } from '@/app/lib/unifiedLedgerBasisFilter';
-import { isUnifiedLedgerKillSwitchActive } from '@/app/lib/unifiedLedgerEngineState';
 import { mapUnifiedRowsToLedgerV2 } from '@/app/lib/ledgerStatementV2UnifiedMapper';
 import {
   getUnifiedAccountLedger,
@@ -14,19 +12,13 @@ import {
   type UnifiedLedgerMeta,
   type UnifiedPartyType,
 } from '@/app/services/unifiedLedgerService';
+import { STATEMENT_ALL_BRANCHES_SCOPE } from '@/app/services/ledgerStatementCenterV2Scopes';
 
-export type { LedgerV2UnifiedPreviewDiff } from '@/app/lib/ledgerStatementV2UnifiedPreviewDiff';
-export {
-  compareLedgerV2UnifiedPreview,
-  defaultUnifiedBasisForV2Type,
-} from '@/app/lib/ledgerStatementV2UnifiedPreviewDiff';
-
-export type LedgerV2UnifiedPreviewResult = {
+export type LedgerV2UnifiedFetchResult = {
   rows: LedgerStatementV2Row[];
   closingBalance: number;
   meta: UnifiedLedgerMeta;
   basis: UnifiedLedgerBasis;
-  blockedByKillSwitch?: boolean;
 };
 
 function partyTypeFromStatementType(
@@ -36,40 +28,18 @@ function partyTypeFromStatementType(
   return statementType;
 }
 
-function blockedByKillResult(basis: UnifiedLedgerBasis): LedgerV2UnifiedPreviewResult {
-  return {
-    rows: [],
-    closingBalance: 0,
-    basis,
-    blockedByKillSwitch: true,
-    meta: {
-      engine: 'disabled',
-      basis,
-      featureFlagEnabled: false,
-      shadowForce: true,
-      queryDurationMs: 0,
-      rowCount: 0,
-      periodOpeningBalance: 0,
-      message: 'Unified preview blocked — kill switch active on Ledger V2.',
-    },
-  };
-}
-
-export async function loadLedgerV2UnifiedPreview(params: {
+export async function fetchLedgerV2UnifiedRpc(params: {
   companyId: string;
   statementType: LedgerStatementV2Type;
   entityId: string;
   fromDate: string;
   toDate: string;
   basis?: UnifiedLedgerBasis;
-}): Promise<LedgerV2UnifiedPreviewResult> {
+  /** true = preview/shadow compare; false = production main loader when flags allow */
+  shadowForce: boolean;
+}): Promise<LedgerV2UnifiedFetchResult> {
   const basis = params.basis ?? defaultUnifiedBasisForV2Type(params.statementType);
-  const killSwitchActive = await isUnifiedLedgerKillSwitchActive(params.companyId);
-  if (killSwitchActive) {
-    return blockedByKillResult(basis);
-  }
-
-  const branchId = null;
+  const branchId = STATEMENT_ALL_BRANCHES_SCOPE ?? null;
   const dateFrom = params.fromDate || null;
   const dateTo = params.toDate || null;
 
@@ -81,7 +51,7 @@ export async function loadLedgerV2UnifiedPreview(params: {
       dateFrom,
       dateTo,
       basis,
-      shadowForce: true,
+      shadowForce: params.shadowForce,
     });
     return {
       rows: mapUnifiedRowsToLedgerV2(unified.rows),
@@ -93,7 +63,21 @@ export async function loadLedgerV2UnifiedPreview(params: {
 
   const partyType = partyTypeFromStatementType(params.statementType);
   if (!partyType) {
-    return blockedByKillResult(basis);
+    return {
+      rows: [],
+      closingBalance: 0,
+      basis,
+      meta: {
+        engine: 'disabled',
+        basis,
+        featureFlagEnabled: false,
+        shadowForce: params.shadowForce,
+        queryDurationMs: 0,
+        rowCount: 0,
+        periodOpeningBalance: 0,
+        message: 'Unsupported statement type for unified party ledger.',
+      },
+    };
   }
 
   const unified = await getUnifiedPartyLedger({
@@ -104,7 +88,7 @@ export async function loadLedgerV2UnifiedPreview(params: {
     dateFrom,
     dateTo,
     basis,
-    shadowForce: true,
+    shadowForce: params.shadowForce,
   });
 
   return {

@@ -33,9 +33,15 @@ import {
   type LedgerV2UnifiedPreviewDiff,
 } from '@/app/lib/ledgerStatementV2UnifiedPreviewDiff';
 import {
+  buildLedgerV2PreviewCompareRows,
+  resolveLedgerV2PreviewCompareSource,
+  type LedgerV2PreviewCompareSource,
+} from '@/app/lib/resolveLedgerV2PreviewCompareSource';
+import {
   loadLedgerV2UnifiedPreview,
   type LedgerV2UnifiedPreviewResult,
 } from '@/app/services/ledgerStatementCenterV2UnifiedPreviewService';
+import { loadLedgerV2LegacyShadowPreview } from '@/app/services/ledgerStatementCenterV2LegacyShadowPreviewService';
 import { TransactionDetailModal } from '@/app/components/accounting/TransactionDetailModal';
 import { ReportActions } from '@/app/components/reports/ReportActions';
 import { ReportBasisBanner } from '@/app/components/accounting/ReportBasisBanner';
@@ -150,6 +156,12 @@ export function LedgerStatementCenterV2Page({
   const [previewDiff, setPreviewDiff] = useState<LedgerV2UnifiedPreviewDiff | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [mainLoaderSource, setMainLoaderSource] = useState<'legacy' | 'unified'>('legacy');
+
+  const previewCompareSource: LedgerV2PreviewCompareSource = useMemo(
+    () => resolveLedgerV2PreviewCompareSource(mainLoaderSource),
+    [mainLoaderSource],
+  );
 
   const { state: engineState } = useUnifiedLedgerEngineState(companyId, {
     screenId: UNIFIED_LEDGER_SCREEN_IDS.LEDGER_V2,
@@ -160,7 +172,7 @@ export function LedgerStatementCenterV2Page({
     setPreviewBasis(defaultUnifiedBasisForV2Type(statementType));
   }, [statementType]);
 
-  const loadUnifiedPreview = useCallback(async () => {
+  const loadPreviewCompare = useCallback(async () => {
     if (!companyId || !entityId || !result || !unifiedPreviewEnabled) {
       setPreviewResult(null);
       setPreviewDiff(null);
@@ -176,28 +188,78 @@ export function LedgerStatementCenterV2Page({
     setPreviewLoading(true);
     setPreviewError(null);
     try {
-      const preview = await loadLedgerV2UnifiedPreview({
-        companyId,
-        statementType,
-        entityId,
-        fromDate,
-        toDate,
-        basis: previewBasis,
-      });
-      setPreviewResult(preview);
-      setPreviewDiff(
-        compareLedgerV2UnifiedPreview({
-          legacyRows: result.rows,
-          previewRows: preview.rows,
+      const compareSource = resolveLedgerV2PreviewCompareSource(mainLoaderSource);
+
+      if (compareSource === 'legacy_shadow') {
+        const shadow = await loadLedgerV2LegacyShadowPreview({
+          companyId,
           statementType,
           entityId,
-        }),
-      );
+          fromDate,
+          toDate,
+          entityLabel: result.entityLabel || entityId,
+        });
+        setPreviewResult({
+          rows: shadow.rows,
+          closingBalance: shadow.closingBalance,
+          basis: previewBasis,
+          meta: {
+            engine: 'legacy_gl',
+            basis: previewBasis,
+            featureFlagEnabled: true,
+            shadowForce: true,
+            queryDurationMs: 0,
+            rowCount: shadow.rows.length,
+            periodOpeningBalance: 0,
+            message: 'Legacy shadow compare — main table uses unified loader.',
+          },
+        });
+        const { legacyRows, previewRows } = buildLedgerV2PreviewCompareRows({
+          compareSource,
+          mainRows: result.rows,
+          shadowRows: shadow.rows,
+        });
+        setPreviewDiff(
+          compareLedgerV2UnifiedPreview({
+            legacyRows,
+            previewRows,
+            statementType,
+            entityId,
+          }),
+        );
+      } else {
+        const preview = await loadLedgerV2UnifiedPreview({
+          companyId,
+          statementType,
+          entityId,
+          fromDate,
+          toDate,
+          basis: previewBasis,
+        });
+        setPreviewResult(preview);
+        const { legacyRows, previewRows } = buildLedgerV2PreviewCompareRows({
+          compareSource,
+          mainRows: result.rows,
+          shadowRows: preview.rows,
+        });
+        setPreviewDiff(
+          compareLedgerV2UnifiedPreview({
+            legacyRows,
+            previewRows,
+            statementType,
+            entityId,
+          }),
+        );
+      }
     } catch (err) {
       console.error(err);
       setPreviewResult(null);
       setPreviewDiff(null);
-      setPreviewError('Unified preview failed to load');
+      setPreviewError(
+        previewCompareSource === 'legacy_shadow'
+          ? 'Legacy shadow compare failed to load'
+          : 'Unified preview failed to load',
+      );
     } finally {
       setPreviewLoading(false);
     }
@@ -207,6 +269,8 @@ export function LedgerStatementCenterV2Page({
     result,
     unifiedPreviewEnabled,
     engineState.killSwitchActive,
+    mainLoaderSource,
+    previewCompareSource,
     statementType,
     fromDate,
     toDate,
@@ -220,8 +284,8 @@ export function LedgerStatementCenterV2Page({
       setPreviewError(null);
       return;
     }
-    void loadUnifiedPreview();
-  }, [unifiedPreviewEnabled, loadUnifiedPreview]);
+    void loadPreviewCompare();
+  }, [unifiedPreviewEnabled, loadPreviewCompare, mainLoaderSource]);
 
   const handleLoadMrJalilGolden = useCallback(() => {
     setStatementType('customer');
@@ -295,19 +359,36 @@ export function LedgerStatementCenterV2Page({
 
     setLoading(true);
     try {
-      const data = await getLedgerStatementV2(
-        companyId,
-        {
-          statementType,
-          entityId,
-          fromDate,
-          toDate,
-          branchId: 'all',
-          transactionType: 'all',
-          search: '',
-        },
-        entityLabel || entityId,
+      const statementFilters = {
+        statementType,
+        entityId,
+        fromDate,
+        toDate,
+        branchId: 'all' as const,
+        transactionType: 'all' as const,
+        search: '',
+      };
+      const { resolveLedgerV2MainLoaderSource, effectiveLedgerV2MainLoaderSource } = await import(
+        '@/app/lib/resolveLedgerV2MainLoaderSource'
       );
+      const resolved = await resolveLedgerV2MainLoaderSource(companyId);
+      const mainSource = effectiveLedgerV2MainLoaderSource(resolved);
+      setMainLoaderSource(mainSource);
+
+      const data =
+        mainSource === 'unified'
+          ? await (
+              await import('@/app/services/ledgerStatementCenterV2UnifiedMainService')
+            ).getLedgerStatementV2UnifiedMain(
+              companyId,
+              statementFilters,
+              entityLabel || entityId,
+            )
+          : await getLedgerStatementV2(
+              companyId,
+              statementFilters,
+              entityLabel || entityId,
+            );
       setResult(data);
       setDocComparison(null);
       if (showDocComparison && showDiagnosticTools) {
@@ -589,6 +670,7 @@ export function LedgerStatementCenterV2Page({
 
   return (
     <div
+      data-ledger-v2-main-loader={mainLoaderSource}
       className={
         embedded
           ? 'text-white space-y-5'
@@ -740,6 +822,7 @@ export function LedgerStatementCenterV2Page({
               previewBasis={previewBasis}
               onPreviewBasisChange={setPreviewBasis}
               displayFiltersActive={transactionType !== 'all' || Boolean(search.trim())}
+              compareSource={previewCompareSource}
               legacyEngineLabel={
                 statementType === 'customer'
                   ? 'Legacy V2 (hybrid customer loader)'

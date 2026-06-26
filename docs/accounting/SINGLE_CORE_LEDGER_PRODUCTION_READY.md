@@ -1,8 +1,8 @@
 # Single Core Ledger — Production Ready Pack
 
-**Status:** `PHASE 2.9A STILL BLOCKED — Party/Pilot/Ledger V2 gate not passed (Cash/Bank waived)`  
-**Branch:** `feature/single-core-ledger-phase-2-9a3-preview-deploy-plan` @ `cb4957c7`  
-**Last updated:** 2026-06-25  
+**Status:** `PHASE 2.10E PRODUCTION DEPLOY PLAN READY — awaiting deploy approval`  
+**Branch:** `feature/single-core-ledger-phase-2-9a3-preview-deploy-plan` @ `14cf08b3`  
+**Last updated:** 2026-06-26  
 **Master checklist:** use this file as the single entry point for post-apply status.
 
 ---
@@ -38,9 +38,28 @@
 | Phase 2.9A-4 browser waiver QA | **LIMITED WAIVERS** — smoke + RPC PASS; Ledger V2 interactive session pending |
 | Phase 2.9A Admin Compare delta | **FIXED** (Party/Pilot/TB compare); Cash/Bank **waived** for Stage 1 — see [`admin-compare-delta-investigation.md`](../reports/single-core-ledger/phase-2-9-pilot-enablement/post-deploy-browser-qa/admin-compare-delta-investigation.md) |
 | Phase 2.9A-CB Cash/Bank parity | **PLANNED** — not Stage 1 blocker — [`SINGLE_CORE_LEDGER_PHASE_2_9A_CB_CASH_BANK_PARITY_PLAN.md`](SINGLE_CORE_LEDGER_PHASE_2_9A_CB_CASH_BANK_PARITY_PLAN.md) |
-| Phase 2.9A Stage 1 gate | **BLOCKED** — Gate 4 PASS; Gates 1–3 OPEN (browser); Cash/Bank **waived** |
-| Phase 2.9A-6 gate confirmation | **Gate 4 PASS**; Gates 1–3 **SKIP** (browser) |
-| Phase 2.9A-7 operator gate sign-off | **2026-06-25** — [`phase-2.9a-7-gate-signoff.json`](../reports/single-core-ledger/phase-2-9-pilot-enablement/post-deploy-browser-qa/phase-2.9a-7-gate-signoff.json) |
+| Phase 2.9A Stage 1 gate | **PASS** — Gates 1–4 PASS on preview tunnel (2026-06-25) |
+| Phase 2.9B Stage 1 pilot flag | **ENABLED** — `unified_ledger_pilot` only @ 2026-06-25T17:28:52Z |
+| Phase 2.9B 24h soak | **ACCELERATED WAIVER** — T0 + accelerated final PASS @ 2026-06-25T17:54:04Z — [`stage-1-accelerated-soak-waiver.md`](../reports/single-core-ledger/phase-2-9-pilot-enablement/post-stage-1/stage-1-accelerated-soak-waiver.md) |
+| Phase 2.9C Stage 2 engine + screen | **ENABLED** — pilot + engine + `screen_ledger_v2` @ 2026-06-25T18:05:23Z — [`stage-2-execution-notes.md`](../reports/single-core-ledger/phase-2-9-pilot-enablement/post-stage-2/stage-2-execution-notes.md) |
+| Phase 2.9C Stage 2 soak | **ACCELERATED WAIVER PASS** @ 2026-06-25T18:39:31Z — [`stage-2-accelerated-soak-waiver.md`](../reports/single-core-ledger/phase-2-9-pilot-enablement/post-stage-2/stage-2-accelerated-soak-waiver.md) |
+| Phase 2.10 Ledger V2 loader swap plan | **IMPLEMENTED (2.10A–C)** — [`SINGLE_CORE_LEDGER_PHASE_2_10_LEDGER_V2_LOADER_SWAP_PLAN.md`](SINGLE_CORE_LEDGER_PHASE_2_10_LEDGER_V2_LOADER_SWAP_PLAN.md) |
+| Phase 2.10A implementation pack | **READY** — code/tests/SQL artifacts |
+| Phase 2.10B preview baseline QA | **PASS** — [`baseline-loader-qa.md`](../reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/baseline-loader-qa.md) @ 2026-06-26 |
+| Phase 2.10B export spot-check | **SIGNED** — [`export-spot-check-baseline.md`](../reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/export-spot-check-baseline.md) |
+| Phase 2.10 preview deploy | **DONE** — `erp-frontend-preview` :3003 only — [`preview-deploy-notes.md`](../reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/preview-deploy-notes.md) |
+| Phase 2.10C candidate loader QA | **PASS** (shadow waiver fixed in 2.10C-FIX) — [`candidate-loader-qa-rerun.md`](../reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/candidate-loader-qa-rerun.md) |
+| Phase 2.10C-FIX shadow invert | **PASS** — [`shadow-invert-fix-notes.md`](../reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/shadow-invert-fix-notes.md) @ 2026-06-26 |
+| Phase 2.10C-FIX candidate export rerun | **SIGNED** — [`candidate-export-spot-check-rerun.md`](../reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/candidate-export-spot-check-rerun.md) |
+| Phase 2.10C-FIX L1 rollback rerun | **PASS** — [`rollback-loader-qa-rerun.md`](../reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/rollback-loader-qa-rerun.md) |
+| Phase 2.10D controlled loader soak | **PASS WITH WAIVERS** — [`controlled-soak-final.md`](../reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/controlled-soak-final.md) @ 2026-06-26 |
+| Phase 2.10D soak export check | **SIGNED** — [`controlled-soak-export-check.md`](../reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/controlled-soak-export-check.md) |
+| Phase 2.10E production deploy plan | **READY** — [`production-deploy-plan.md`](../reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/production-deploy-plan.md) @ 2026-06-26 |
+| Phase 2.10E pre-deploy flags | **loader OFF** — [`production-predeploy-flags.json`](../reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/production-predeploy-flags.json) |
+| Phase 2.10 production baseline QA | **PENDING** — [`production-baseline-qa.md`](../reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/production-baseline-qa.md) |
+| Phase 2.10 loader flag SQL | **OFF (pre-deploy)** — L1 rollback @ 2026-06-26T13:24:53Z; re-enable only after prod baseline QA |
+| Phase 2.9A-6 gate confirmation | **Gate 4 PASS**; Gates 1–3 **PASS** (browser 2026-06-25) |
+| Phase 2.9A-7 operator gate sign-off | **PASS** 2026-06-25T17:19:46Z — [`phase-2.9a-7-gate-signoff.json`](../reports/single-core-ledger/phase-2-9-pilot-enablement/post-deploy-browser-qa/phase-2.9a-7-gate-signoff.json) |
 | Phase 2 screen wiring | **COMPLETE** — all planned preview toggles shipped; engine enablement separate |
 
 ---
@@ -245,26 +264,28 @@ Or selective reverse using `production-remediation-apply-before-*.json` from app
 5. ~~Phase 2.9A-2 browser check~~ **Done** — prod ERP lacks preview UI; deploy required before live session  
 6. ~~Phase 2.9A-3 preview deploy~~ **Done** — `erp-frontend-preview` on VPS :3003; Kong CORS for localhost:3002  
 7. ~~Phase 2.9A-4 browser waiver QA~~ **Done (limited waivers)** — smoke PASS; operator login session + staff user pending  
-8. **Ops:** Run `run-phase-29a7-operator-gate-signoff.mjs` with `QA_BROWSER_PASSWORD` → Gates 1–3 PASS → status **A**  
-9. **Ops:** Approve Stage 1 then Stage 2 flag SQL — **separate ticket** (Stage 1: `unified_ledger_pilot` only; Stage 2: engine + `screen_ledger_v2`)  
-10. Do **not** enable flags or merge to `main` without ops approval  
-11. **Future:** Phase 2.9A-CB Cash/Bank roznamcha parity — after Stage 1 decision  
+8. ~~Ops: Run `run-phase-29a7-operator-gate-signoff.mjs`~~ **Done** — Gates 1–4 PASS @ 2026-06-25T17:19:46Z  
+9. ~~Ops: Stage 1 `unified_ledger_pilot` SQL~~ **Done** @ 2026-06-25T17:28:52Z — see [`stage-1-execution-notes.md`](../reports/single-core-ledger/phase-2-9-pilot-enablement/post-stage-1/stage-1-execution-notes.md)  
+10. ~~Soak: 24h DIN CHINA monitoring~~ **Accelerated waiver PASS** @ 2026-06-25T17:54:04Z — see [`stage-1-accelerated-soak-waiver.md`](../reports/single-core-ledger/phase-2-9-pilot-enablement/post-stage-1/stage-1-accelerated-soak-waiver.md)  
+11. ~~Ops: Stage 2 flag SQL~~ **Done** @ 2026-06-25T18:05:23Z — `unified_ledger_engine` + `screen_ledger_v2` only — see [`stage-2-execution-notes.md`](../reports/single-core-ledger/phase-2-9-pilot-enablement/post-stage-2/stage-2-execution-notes.md)  
+12. ~~Ops: Stage 2 soak monitoring~~ **Done (accelerated waiver)** @ 2026-06-25T18:39:31Z  
+13. ~~Phase 2.10 loader swap planning~~ **Done** — plan Status A; see [`SINGLE_CORE_LEDGER_PHASE_2_10_LEDGER_V2_LOADER_SWAP_PLAN.md`](SINGLE_CORE_LEDGER_PHASE_2_10_LEDGER_V2_LOADER_SWAP_PLAN.md)  
+14. **Ops:** Loader swap **implementation + flag SQL blocked** until checklist gates (export sign-off, preview QA on loader build)  
+15. Do **not** enable Roznamcha/CashBank or other screen flags without explicit scope  
+16. **Future:** Phase 2.9A-CB Cash/Bank roznamcha parity  
 
-**Final status:** `PHASE 2.9A STILL BLOCKED — Party/Pilot/Ledger V2 gate not passed (Cash/Bank waived)`
+**Final status:** `PHASE 2.10E PRODUCTION DEPLOY PLAN READY — awaiting deploy approval`
 
-### Stage 1 gate summary (Phase 2.9A-6 — 2026-06-25)
+### Accelerated soak waiver (Phase 2.9B-X — 2026-06-25)
 
-| Gate | Status |
-|------|--------|
-| Party / MR JALIL compare PASS | **OPEN** (browser) |
-| Pilot Batch 9/9 PASS | **OPEN** (browser) |
-| Ledger V2 browser QA PASS | **OPEN** (browser) |
-| DIN CHINA flags OFF | **PASS** (read-only SQL) |
-| Cash/Bank Admin Compare | **WAIVED** (Phase 2.9A-CB) |
+The originally planned 24h soak is shortened by ops waiver because Stage 1 enabled only the informational `unified_ledger_pilot` flag. `unified_ledger_engine` and all screen flags remain OFF/absent. No loader behavior changed. T0 and accelerated final checks passed. Stage 2 remains a separate ops approval ticket and may only enable `unified_ledger_engine` + `unified_ledger_screen_ledger_v2` for DIN CHINA.
 
-**Stage 1 SQL (when approved):** `unified_ledger_pilot` only — **not** engine or screen flags.
-
-When browser gates PASS → **`PHASE 2.9A LEDGER V2 GATE PASS WITH CASH/BANK WAIVER — ready for Stage 1 ops approval ticket`**
+| Check | Result |
+|-------|--------|
+| T0 soak (0h) | **PASS** @ 2026-06-25T17:42:10Z |
+| Accelerated flags + browser | **PASS** @ 2026-06-25T17:54:04Z |
+| Regressions | **None** |
+| Stage 2 SQL | **NOT RUN** |
 
 ## Related documents
 
@@ -280,5 +301,6 @@ When browser gates PASS → **`PHASE 2.9A LEDGER V2 GATE PASS WITH CASH/BANK WAI
 | [Phase 2 rollout plan](SINGLE_CORE_LEDGER_PHASE_2_ROLLOUT_PLAN.md) | Screen wiring + controlled engine rollout |
 | [Phase 2.8 preview QA sign-off](SINGLE_CORE_LEDGER_PHASE_2_8_PREVIEW_QA_SIGNOFF.md) | Cross-screen QA + parity evidence |
 | [Phase 2.9 pilot enablement plan](SINGLE_CORE_LEDGER_PHASE_2_9_PILOT_ENABLEMENT_PLAN.md) | DIN CHINA Ledger V2 staged flags + rollback |
+| [Phase 2.10 Ledger V2 loader swap plan](SINGLE_CORE_LEDGER_PHASE_2_10_LEDGER_V2_LOADER_SWAP_PLAN.md) | Stage 3 default loader swap — planning only |
 | [Phase 2.9A-CB Cash/Bank parity plan](SINGLE_CORE_LEDGER_PHASE_2_9A_CB_CASH_BANK_PARITY_PLAN.md) | Roznamcha vs unified GL — future remediation, not Stage 1 |
 | [Phase 2.9A-3 preview deploy plan](SINGLE_CORE_LEDGER_PHASE_2_9A3_PREVIEW_DEPLOY_PLAN.md) | Parallel :3002 preview container for browser QA |
