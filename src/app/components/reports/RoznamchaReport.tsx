@@ -30,13 +30,24 @@ import { Switch } from '../ui/switch';
 import { Label } from '../ui/label';
 import { formatRoznamchaRowDateTimeDisplay } from '@/app/utils/transactionEventDateTime';
 import {
-  getRoznamcha,
   roznamchaJournalSubtitle,
   roznamchaRefDisplay,
   type AccountFilter,
   type RoznamchaResult,
   type RoznamchaRowWithBalance,
 } from '@/app/services/roznamchaService';
+import { loadRoznamchaLegacyMain } from '@/app/services/roznamchaLegacyMainService';
+import { loadRoznamchaUnifiedMain } from '@/app/services/roznamchaUnifiedMainService';
+import { loadRoznamchaLegacyShadowPreview } from '@/app/services/roznamchaLegacyShadowPreviewService';
+import {
+  resolveRoznamchaMainLoaderSource,
+  effectiveRoznamchaMainLoaderSource,
+} from '@/app/lib/resolveRoznamchaMainLoaderSource';
+import {
+  resolveRoznamchaPreviewCompareSource,
+  buildRoznamchaPreviewCompareArgs,
+} from '@/app/lib/resolveRoznamchaPreviewCompareSource';
+import type { UnifiedLedgerRow } from '@/app/services/unifiedLedgerService';
 import { accountService } from '@/app/services/accountService';
 import { ReportBasisBanner } from '@/app/components/accounting/ReportBasisBanner';
 import { canAccessRoznamchaUnifiedPreview } from '@/app/lib/roznamchaUnifiedPreviewAccess';
@@ -46,6 +57,7 @@ import {
   type RoznamchaUnifiedPreviewDiff,
 } from '@/app/lib/roznamchaUnifiedPreviewDiff';
 import { loadRoznamchaUnifiedPreview } from '@/app/services/roznamchaUnifiedPreviewService';
+import { buildRoznamchaPreviewRpcScope } from '@/app/lib/roznamchaUnifiedPreviewScope';
 import { useUnifiedLedgerEngineState } from '@/app/hooks/useUnifiedLedgerEngineState';
 import { UNIFIED_LEDGER_SCREEN_IDS } from '@/app/lib/unifiedLedgerScreenFlags';
 import type { UnifiedLedgerBasis } from '@/app/lib/unifiedLedgerBasisFilter';
@@ -145,6 +157,12 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
   const [dateSort, setDateSort] = useState<'asc' | 'desc'>('asc');
   const [pageSize, setPageSize] = useState(50);
   const [data, setData] = useState<RoznamchaResult | null>(null);
+  const [mainLoaderSource, setMainLoaderSource] = useState<'legacy' | 'unified'>('legacy');
+  const [mainUnifiedRows, setMainUnifiedRows] = useState<UnifiedLedgerRow[]>([]);
+  const previewCompareSource = useMemo(
+    () => resolveRoznamchaPreviewCompareSource(mainLoaderSource),
+    [mainLoaderSource],
+  );
   const [loading, setLoading] = useState(!!companyId);
   const [currentPage, setCurrentPage] = useState(1);
   /** When Accounting uses global header dates, still allow a local start/end (or single day) here */
@@ -302,36 +320,105 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
     setPreviewLoading(true);
     setPreviewError(null);
     try {
-      const preview = await loadRoznamchaUnifiedPreview({
-        companyId,
-        branchId: effectiveBranchId,
-        dateFrom,
-        dateTo,
-        accountFilter,
-        includeVoidedReversed,
-        paymentLedgerAccountId: ledgerId,
-        paymentAccountOptions,
-        basis: previewBasis,
-      });
-      setPreviewResult(preview);
-      if (preview.blockedByKillSwitch) {
-        setPreviewDiff(null);
-        setPreviewError(preview.blockReason ?? 'Unified preview blocked.');
-        return;
+      const compareSource = resolveRoznamchaPreviewCompareSource(mainLoaderSource);
+
+      if (compareSource === 'legacy_shadow') {
+        const shadow = await loadRoznamchaLegacyShadowPreview({
+          companyId,
+          branchId: effectiveBranchId,
+          dateFrom,
+          dateTo,
+          accountFilter,
+          includeVoidedReversed,
+          paymentLedgerAccountId: ledgerId,
+        });
+        setPreviewResult({
+          rows: [],
+          unifiedRows: [],
+          closingBalance: shadow.closingBalance,
+          openingBalance: shadow.openingBalance,
+          meta: {
+            engine: 'legacy_gl',
+            basis: previewBasis,
+            featureFlagEnabled: true,
+            shadowForce: true,
+            queryDurationMs: 0,
+            rowCount: shadow.legacy.rows.length,
+            periodOpeningBalance: shadow.openingBalance,
+            message: 'Legacy shadow compare — main table uses unified loader.',
+          },
+          basis: previewBasis,
+          rpcScope: buildRoznamchaPreviewRpcScope({
+            branchId: effectiveBranchId,
+            dateFrom,
+            dateTo,
+            accountFilter,
+            includeVoidedReversed,
+          }),
+          paymentAccountFilterApplied: Boolean(ledgerId),
+        });
+        const compareArgs = buildRoznamchaPreviewCompareArgs({
+          compareSource,
+          mainResult: data,
+          mainUnifiedRows,
+          shadowLegacy: shadow.legacy,
+          shadowUnifiedRows: [],
+          shadowClosingBalance: shadow.closingBalance,
+          shadowOpeningBalance: shadow.openingBalance,
+        });
+        setPreviewDiff(
+          compareRoznamchaUnifiedPreview({
+            legacy: compareArgs.legacy,
+            unifiedRows: compareArgs.unifiedRows,
+            unifiedClosingBalance: compareArgs.unifiedClosingBalance,
+            unifiedOpeningBalance: compareArgs.unifiedOpeningBalance,
+          }),
+        );
+      } else {
+        const preview = await loadRoznamchaUnifiedPreview({
+          companyId,
+          branchId: effectiveBranchId,
+          dateFrom,
+          dateTo,
+          accountFilter,
+          includeVoidedReversed,
+          paymentLedgerAccountId: ledgerId,
+          paymentAccountOptions,
+          basis: previewBasis,
+        });
+        setPreviewResult(preview);
+        if (preview.blockedByKillSwitch) {
+          setPreviewDiff(null);
+          setPreviewError(preview.blockReason ?? 'Unified preview blocked.');
+          return;
+        }
+        const compareArgs = buildRoznamchaPreviewCompareArgs({
+          compareSource,
+          mainResult: data,
+          mainUnifiedRows,
+          shadowLegacy: data,
+          shadowUnifiedRows: preview.unifiedRows,
+          shadowClosingBalance: preview.closingBalance,
+          shadowOpeningBalance: preview.openingBalance,
+        });
+        setPreviewDiff(
+          compareRoznamchaUnifiedPreview({
+            legacy: compareArgs.legacy,
+            unifiedRows: compareArgs.unifiedRows,
+            unifiedClosingBalance: compareArgs.unifiedClosingBalance,
+            unifiedOpeningBalance: compareArgs.unifiedOpeningBalance,
+          }),
+        );
       }
-      setPreviewDiff(
-        compareRoznamchaUnifiedPreview({
-          legacy: data,
-          unifiedRows: preview.unifiedRows,
-          unifiedClosingBalance: preview.closingBalance,
-          unifiedOpeningBalance: preview.openingBalance,
-        })
-      );
     } catch (err) {
       console.error(err);
       setPreviewResult(null);
       setPreviewDiff(null);
-      setPreviewError('Unified preview failed to load');
+      setPreviewError(
+        previewCompareSource === 'legacy_shadow'
+          ? 'Legacy shadow compare failed to load'
+          : 'Unified preview failed to load',
+      );
     } finally {
       setPreviewLoading(false);
     }
@@ -348,6 +435,9 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
     paymentAccountOptions,
     previewBasis,
     engineState.killSwitchActive,
+    mainLoaderSource,
+    mainUnifiedRows,
+    previewCompareSource,
   ]);
 
   useEffect(() => {
@@ -358,7 +448,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
       return;
     }
     void loadUnifiedPreview();
-  }, [unifiedPreviewEnabled, loadUnifiedPreview]);
+  }, [unifiedPreviewEnabled, loadUnifiedPreview, mainLoaderSource]);
 
   const handleLoadDinChinaPeriodHint = useCallback(() => {
     if (companyId !== DIN_CHINA_COMPANY_ID) {
@@ -387,31 +477,64 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
       includeVoidedReversed,
       ledgerId
     );
-    const cached = roznamchaResultCache.get(cacheKey);
-    if (cached && Date.now() - cached.at < ROZNAMCHA_CACHE_TTL_MS) {
-      setData(cached.data);
-      setLoading(false);
-      return;
-    }
     setLoading(true);
     try {
-      const result = await getRoznamcha(
-        companyId,
-        effectiveBranchId,
-        dateFrom,
-        dateTo,
-        accountFilter,
-        includeVoidedReversed,
-        ledgerId
-      );
-      roznamchaResultCache.set(cacheKey, { at: Date.now(), data: result });
-      setData(result);
+      const resolved = await resolveRoznamchaMainLoaderSource(companyId);
+      const mainSource = effectiveRoznamchaMainLoaderSource(resolved);
+      setMainLoaderSource(mainSource);
+
+      if (mainSource === 'unified') {
+        setMainUnifiedRows([]);
+        const unified = await loadRoznamchaUnifiedMain({
+          companyId,
+          branchId: effectiveBranchId,
+          dateFrom,
+          dateTo,
+          accountFilter,
+          includeVoidedReversed,
+          paymentLedgerAccountId: ledgerId,
+          paymentAccountOptions,
+          basis: previewBasis,
+        });
+        setMainUnifiedRows(unified.unifiedRows);
+        setData(unified);
+      } else {
+        const cached = roznamchaResultCache.get(cacheKey);
+        if (cached && Date.now() - cached.at < ROZNAMCHA_CACHE_TTL_MS) {
+          setMainUnifiedRows([]);
+          setData(cached.data);
+          return;
+        }
+        setMainUnifiedRows([]);
+        const result = await loadRoznamchaLegacyMain({
+          companyId,
+          branchId: effectiveBranchId,
+          dateFrom,
+          dateTo,
+          accountFilter,
+          includeVoidedReversed,
+          paymentLedgerAccountId: ledgerId,
+        });
+        roznamchaResultCache.set(cacheKey, { at: Date.now(), data: result });
+        setData(result);
+      }
     } catch {
-      if (!cached) setData(null);
+      setData(null);
+      setMainUnifiedRows([]);
     } finally {
       setLoading(false);
     }
-  }, [companyId, effectiveBranchId, dateFrom, dateTo, accountFilter, includeVoidedReversed, paymentLedgerAccountId]);
+  }, [
+    companyId,
+    effectiveBranchId,
+    dateFrom,
+    dateTo,
+    accountFilter,
+    includeVoidedReversed,
+    paymentLedgerAccountId,
+    paymentAccountOptions,
+    previewBasis,
+  ]);
 
   useEffect(() => {
     load();
@@ -472,7 +595,11 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
   };
 
   return (
-    <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
+    <div
+      className="space-y-6 animate-in slide-in-from-bottom-2 duration-300"
+      data-roznamcha-main-loader={mainLoaderSource}
+      data-roznamcha-preview-compare-source={unifiedPreviewEnabled ? previewCompareSource : undefined}
+    >
       <ReportBasisBanner
         basis={includeVoidedReversed ? 'audit_full' : 'effective_party'}
         detail="Operational cash book — payments and rental_payments only (not full GL). Toggle voided rows for audit view."
@@ -518,6 +645,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
           previewBasis={previewBasis}
           onPreviewBasisChange={setPreviewBasis}
           displayFiltersActive={displayFiltersActive}
+          previewCompareSource={previewCompareSource}
         />
       ) : null}
 

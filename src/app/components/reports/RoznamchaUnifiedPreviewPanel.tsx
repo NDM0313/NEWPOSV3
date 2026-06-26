@@ -17,6 +17,10 @@ import {
 import { Button } from '@/app/components/ui/button';
 import type { RoznamchaUnifiedPreviewDiff } from '@/app/lib/roznamchaUnifiedPreviewDiff';
 import type { RoznamchaUnifiedPreviewResult } from '@/app/services/roznamchaUnifiedPreviewService';
+import {
+  roznamchaPreviewCompareLabels,
+  type RoznamchaPreviewCompareSource,
+} from '@/app/lib/resolveRoznamchaPreviewCompareSource';
 import { UNIFIED_LEDGER_SCREEN_IDS } from '@/app/lib/unifiedLedgerScreenFlags';
 import type { AccountFilter } from '@/app/services/roznamchaService';
 import type { RoznamchaPreviewRow } from '@/app/lib/roznamchaUnifiedMapper';
@@ -43,6 +47,7 @@ export function RoznamchaUnifiedPreviewPanel({
   previewBasis,
   onPreviewBasisChange,
   displayFiltersActive,
+  previewCompareSource = 'unified_compare',
 }: {
   dateFrom: string;
   dateTo: string;
@@ -58,9 +63,19 @@ export function RoznamchaUnifiedPreviewPanel({
   previewBasis: UnifiedLedgerBasis;
   onPreviewBasisChange: (basis: UnifiedLedgerBasis) => void;
   displayFiltersActive: boolean;
+  previewCompareSource?: RoznamchaPreviewCompareSource;
 }) {
   const [tableExpanded, setTableExpanded] = useState(false);
   const { formatCurrency } = useFormatCurrency();
+
+  const compareLabels = useMemo(
+    () =>
+      roznamchaPreviewCompareLabels(previewCompareSource, {
+        legacyEngineLabel: 'Legacy getRoznamcha (on-screen)',
+        unifiedBasisLabel: UNIFIED_LEDGER_BASIS_LABELS[previewBasis],
+      }),
+    [previewCompareSource, previewBasis],
+  );
 
   const exportPayload = useMemo(
     () => ({
@@ -95,10 +110,13 @@ export function RoznamchaUnifiedPreviewPanel({
   );
 
   return (
-    <div className="rounded-xl border border-amber-500/30 bg-amber-500/[0.04] p-4 space-y-4 no-print">
+    <div
+      className="rounded-xl border border-amber-500/30 bg-amber-500/[0.04] p-4 space-y-4 no-print"
+      data-roznamcha-preview-compare-source={previewCompareSource}
+    >
       <div className="flex flex-wrap items-center gap-2 justify-between">
         <div className="flex flex-wrap items-center gap-2">
-          <h3 className="text-sm font-semibold text-amber-100">Unified engine preview (compare only)</h3>
+          <h3 className="text-sm font-semibold text-amber-100">{compareLabels.panelTitle}</h3>
           <UnifiedLedgerPreviewBadge mode={engineState.mode} />
           {engineState.pilotEnabled ? (
             <span className="text-xs text-gray-500 border border-gray-700 rounded px-1.5 py-0.5">pilot flag ON</span>
@@ -184,7 +202,7 @@ export function RoznamchaUnifiedPreviewPanel({
         </p>
       ) : null}
 
-      {loading ? <p className="text-sm text-gray-400">Loading unified preview…</p> : null}
+      {loading ? <p className="text-sm text-gray-400">{compareLabels.loadingText}</p> : null}
       {error ? <p className="text-sm text-red-400">{error}</p> : null}
 
       {diff ? (
@@ -195,8 +213,8 @@ export function RoznamchaUnifiedPreviewPanel({
           pass={diff.pass}
           oldRowCount={diff.oldRowCount}
           newRowCount={diff.newRowCount}
-          oldEngineName="Legacy getRoznamcha (on-screen)"
-          newEngineName={`Unified RPC (${UNIFIED_LEDGER_BASIS_LABELS[previewBasis]})`}
+          oldEngineName={compareLabels.oldEngineName}
+          newEngineName={compareLabels.newEngineName}
           newQueryMs={previewResult?.meta.queryDurationMs}
           extra={
             <div className="text-sm text-gray-400 grid md:grid-cols-2 gap-2">
@@ -219,8 +237,8 @@ export function RoznamchaUnifiedPreviewPanel({
 
       {diff && (diff.missingInNew.length > 0 || diff.extraInNew.length > 0) ? (
         <div className="grid md:grid-cols-2 gap-3">
-          <CompareDiffTable title="Missing in unified preview" rows={diff.missingInNew} />
-          <CompareDiffTable title="Extra in unified preview" rows={diff.extraInNew} />
+          <CompareDiffTable title={compareLabels.missingInNewTitle} rows={diff.missingInNew} />
+          <CompareDiffTable title={compareLabels.extraInNewTitle} rows={diff.extraInNew} />
         </div>
       ) : null}
 
@@ -264,7 +282,7 @@ export function RoznamchaUnifiedPreviewPanel({
             onClick={() => setTableExpanded((v) => !v)}
           >
             {tableExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-            Unified preview table (not official)
+            {compareLabels.previewTableLabel}
           </button>
           {tableExpanded ? (
             <div className="relative rounded-xl border border-dashed border-amber-500/40 overflow-hidden">

@@ -1,6 +1,6 @@
 # Single Core Ledger — Production Ready Pack
 
-**Status:** `PHASE 2.13 PARTY LEDGER LOADER ON PASS — unified main live for DIN CHINA`  
+**Status:** `PHASE 2.14 ROZNAMCHA LOADER FAILED — rolled back to legacy` (Party Ledger loader ON @ `a7a4b727`)  
 **Branch:** `feature/single-core-ledger-phase-2-9a3-preview-deploy-plan`  
 **Last updated:** 2026-06-26  
 **Master checklist:** use this file as the single entry point for post-apply status.
@@ -16,8 +16,8 @@
 | Ledger V2 screen + loader | **ON** — unified main live @ 2026-06-26 |
 | Account Statement screen + loader | **ON** — unified main live @ 2026-06-26 |
 | Trial Balance screen + loader | **ON** — unified main live @ 2026-06-26 |
-| Party Ledger screen + loader | **ON** — unified main live @ 2026-06-26 |
-| Roznamcha / Cash-Bank | **OFF / absent** |
+| Party Ledger screen + loader | **ON** — unified main live @ 2026-06-26 (`a7a4b727`) |
+| Roznamcha screen + loader | **OFF** — loader swap rolled back 2026-06-26 (golden parity gate failed) |
 | Other company loaders | **none** |
 | MR JALIL golden (Ledger V2 + Account Statement) | **PKR 216,300** |
 | Trial Balance golden (All Branches) | **PKR 407,957,271.02** debit = credit |
