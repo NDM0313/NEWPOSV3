@@ -1,5 +1,7 @@
 # Phase 2.12 — Trial Balance unified loader rollout plan
 
+> **Closeout (2.12X):** LIVE for DIN CHINA @ 2026-06-26. See [`phase-212-closeout-monitoring.md`](../../reports/single-core-ledger/phase-2-12-trial-balance-loader/phase-212-closeout-monitoring.md).
+
 **Company:** DIN CHINA only (`30bd8592-3384-4f34-899a-f3907e336485`)  
 **Scope:** Trial Balance main loader swap only  
 **No migrations. No GL mutation.**

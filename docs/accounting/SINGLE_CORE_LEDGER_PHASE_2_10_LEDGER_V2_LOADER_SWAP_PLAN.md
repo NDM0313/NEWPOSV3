@@ -1,7 +1,8 @@
 # Single Core Ledger Phase 2.10 — Ledger V2 Default Loader Swap Plan
 
-**Status:** `PHASE 2.10E PRODUCTION DEPLOY PLAN READY — awaiting deploy approval`  
-**Mode:** 2.10E planning complete — pre-deploy L1 rollback applied; loader **OFF**; production frontend **not deployed**  
+**Status:** `PHASE 2.10G PRODUCTION LOADER ON PASS — Ledger V2 unified main live for DIN CHINA`  
+**Closeout (2.12X):** Unchanged; Ledger V2 loader remains ON alongside Account Statement + Trial Balance. See closeout monitoring doc.  
+**Mode:** Production `phase-212-prod`; loader **ON** for DIN CHINA  
 **Prerequisite:** Phase 2.10B baseline QA PASS @ 2026-06-26  
 **Company:** DIN CHINA (`30bd8592-3384-4f34-899a-f3907e336485`) only  
 **Screen:** Ledger Statement V2 only  
@@ -346,4 +347,76 @@ See [`risk-register.md`](../reports/single-core-ledger/phase-2-10-ledger-v2-load
 
 **Status:** **A** — `PHASE 2.10E PRODUCTION DEPLOY PLAN READY — awaiting deploy approval`
 
-**Not done:** Production deploy, merge to main, production loader re-enable.
+**Not done:** Merge to main, production loader re-enable (separate approval ticket).
+
+### Phase 2.10F production frontend deploy + baseline (2026-06-26)
+
+| Evidence | Path |
+|----------|------|
+| Deploy notes | `reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/production-deploy-notes.md` |
+| Bundle verify | `reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/production-bundle-verify.md` |
+| Flags before baseline | `reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/production-flags-before-baseline.json` |
+| Baseline QA | `reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/production-baseline-qa.md` |
+| Baseline export | `reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/production-baseline-export-check.md` |
+| Staff waiver | `reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/production-staff-waiver.md` |
+| Deploy script | `scripts/single-core-ledger/deploy-phase-210f-production-frontend-vps.sh` |
+
+**Deploy:** `3e3f6190` / `phase-210c-fix-prod` on `erp.dincouture.pk`. Frontend-only (no migrations). Rollback tag: `erp-frontend:rollback-before-210f-20260626133735`.
+
+**Baseline QA:** **PASS** — legacy main, MR JALIL PKR 216,300, `unified_compare` preview, exports signed, Pilot 9/9.
+
+**Waiver:** Staff visibility (no credentials).
+
+**Loader flag:** **OFF** — not enabled in this step.
+
+**Next step (ops):** Separate production loader ON approval → `phase-210d-enable-loader-soak.sql` (production description) → candidate QA + soak on `erp.dincouture.pk`.
+
+### Phase 2.10G production loader ON + QA + soak (2026-06-26)
+
+| Evidence | Path |
+|----------|------|
+| Flags before loader ON | `reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/production-loader-on-flags-before.json` |
+| Enable SQL | `scripts/single-core-ledger/phase-210g-enable-loader-production.sql` |
+| Flags after loader ON | `reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/production-loader-on-flags-after.json` |
+| Production loader ON QA | `reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/production-loader-on-qa.md` |
+| Export verification | `reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/production-loader-on-export-check.md` |
+| Non-golden spot-check | `reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/production-non-golden-spot-check.md` |
+| Staff visibility | `reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/production-staff-visibility-check.md` |
+| Soak T0 | `reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/production-loader-soak-t0.md` |
+| Soak mid | `reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/production-loader-soak-mid.md` |
+| Soak final | `reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/production-loader-soak-final.md` |
+| Screenshots | `reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/screenshots/210g-production-loader-on-*` |
+
+**Loader ON timestamp:** 2026-06-26T13:56:26.805825Z (DIN CHINA only).
+
+**Current flag state (post-closeout verify):**
+
+| Flag | State |
+|------|-------|
+| `unified_ledger_pilot` | ON |
+| `unified_ledger_engine` | ON |
+| `unified_ledger_screen_ledger_v2` | ON |
+| `unified_ledger_loader_ledger_v2` | **ON** |
+| All other `unified_ledger%` | OFF/absent |
+
+**Production QA:** **PASS** @ `https://erp.dincouture.pk` — `data-ledger-v2-main-loader="unified"`, MR JALIL PKR 216,300, unified main-loader RPC on load, preview `legacy_shadow` when toggle ON, Admin Compare Party MR JALIL PASS, Pilot Batch 9/9.
+
+**Export result:** **SIGNED** — on-screen / PDF / Excel / CSV all PKR 216,300 from unified main `result.rows`.
+
+**Soak result:** **PASS** (accelerated waiver — T0 / mid / final @ ~90s intervals; ops-approved pattern from 2.10D). Loader flag remained ON; no rollback.
+
+**Waivers:**
+
+- Staff visibility — no DIN CHINA staff credentials ([`production-staff-visibility-check.md`](../reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/production-staff-visibility-check.md))
+- Non-golden party spot-check — dropdown selection limitation ([`production-non-golden-spot-check.md`](../reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/production-non-golden-spot-check.md))
+- Accelerated soak timeline vs full 2h wall-clock (pre-approved ops pattern)
+
+**Rollback status:** **Not executed.** L1 rollback SQL remains ready: `scripts/single-core-ledger/phase-210-rollback-loader-ledger-v2.sql`.
+
+**Next blocked items:**
+
+- Do **not** enable Account Statement, Trial Balance, Roznamcha, Party Ledger, Cash/Bank, or other screen flags without separate scope.
+- Do **not** expand loader ON to other companies without new ops ticket.
+- Cash/Bank parity (Phase 2.9A-CB) remains future work — **not started**.
+
+**Final status:** **A** — `PHASE 2.10G PRODUCTION LOADER ON PASS — Ledger V2 unified main live for DIN CHINA`

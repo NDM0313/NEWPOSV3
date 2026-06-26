@@ -1,9 +1,29 @@
 # Single Core Ledger — Production Ready Pack
 
-**Status:** `PHASE 2.12 TRIAL BALANCE LOADER PASS WITH WAIVERS — monitor before expansion`  
+**Status:** `PHASE 2.12X CLOSEOUT PASS — ready to choose next rollout screen`  
 **Branch:** `feature/single-core-ledger-phase-2-9a3-preview-deploy-plan`  
 **Last updated:** 2026-06-26  
 **Master checklist:** use this file as the single entry point for post-apply status.
+
+---
+
+## Live DIN CHINA unified ledger state (authoritative)
+
+| Item | State |
+|------|-------|
+| `unified_ledger_pilot` | **ON** |
+| `unified_ledger_engine` | **ON** (DIN CHINA) |
+| Ledger V2 screen + loader | **ON** — unified main live @ 2026-06-26 |
+| Account Statement screen + loader | **ON** — unified main live @ 2026-06-26 |
+| Trial Balance screen + loader | **ON** — unified main live @ 2026-06-26 |
+| Roznamcha / Party Ledger / Cash-Bank | **OFF / absent** |
+| Other company loaders | **none** |
+| MR JALIL golden (Ledger V2 + Account Statement) | **PKR 216,300** |
+| Trial Balance golden (All Branches) | **PKR 407,957,271.02** debit = credit |
+
+Closeout pack: [`phase-212-closeout-monitoring.md`](../reports/single-core-ledger/phase-2-12-trial-balance-loader/phase-212-closeout-monitoring.md)
+
+> Historical phase completion reports (2.1–2.8) describe point-in-time ship state (“engine OFF at preview ship”). **This section is the live production truth** after 2.10G / 2.11 / 2.12.
 
 ---
 
@@ -21,7 +41,7 @@
 | DIN CHINA `unified_ledger_loader_account_statement` | **ON** @ 2026-06-26T14:59:46Z — Account Statement unified main live |
 | Post-apply validation (fresh clone) | **PASS** — payment gaps 0, branch risk 0, Gate A 3/3, tie-out 9/9 |
 | Production smoke test (1.7) | **PASS** 10/10 |
-| `unified_ledger_engine` | **OFF** |
+| `unified_ledger_engine` (DIN CHINA) | **ON** @ 2026-06-25T18:05:23Z |
 | Phase 1.5 prod migration pack | **READY** — guarded apply not executed in 1.7 |
 | Phase 1.5 post-migration Gate A (1.8) | **PASS** 3/3 on `ledger_stage_20260625_prodcheck` |
 | Phase 2 rollout plan | **READY** — plan on rollout branch |
@@ -75,6 +95,7 @@
 | Phase 2.12 Trial Balance loader plan | **LIVE** — [`SINGLE_CORE_LEDGER_PHASE_2_12_TRIAL_BALANCE_LOADER_ROLLOUT_PLAN.md`](SINGLE_CORE_LEDGER_PHASE_2_12_TRIAL_BALANCE_LOADER_ROLLOUT_PLAN.md) |
 | Phase 2.12 production loader ON | **DONE** @ 2026-06-26T16:27:00Z — Trial Balance unified main |
 | Phase 2.12 production QA | **PASS WITH WAIVERS** — [`phase-2-12-trial-balance-loader/`](../reports/single-core-ledger/phase-2-12-trial-balance-loader/) |
+| Phase 2.12X closeout | **PASS** — [`phase-212-closeout-monitoring.md`](../reports/single-core-ledger/phase-2-12-trial-balance-loader/phase-212-closeout-monitoring.md) @ 2026-06-26 |
 | DIN CHINA `unified_ledger_loader_trial_balance` | **ON** @ 2026-06-26T16:27:00Z — Trial Balance unified main live |
 | Phase 2.9A-6 gate confirmation | **Gate 4 PASS**; Gates 1–3 **PASS** (browser 2026-06-25) |
 | Phase 2.9A-7 operator gate sign-off | **PASS** 2026-06-25T17:19:46Z — [`phase-2.9a-7-gate-signoff.json`](../reports/single-core-ledger/phase-2-9-pilot-enablement/post-deploy-browser-qa/phase-2.9a-7-gate-signoff.json) |
@@ -269,7 +290,7 @@ Or selective reverse using `production-remediation-apply-before-*.json` from app
 | Backup ID | `/root/NEWPOSV3/backups/supabase_db_20260623_192408.dump` |
 | Production apply executed | **Yes** — 2026-06-23T19:33:16.625Z |
 | Applied rows | **82** (74 payment + 8 branch) |
-| `unified_ledger_engine` | **OFF** |
+| `unified_ledger_engine` (at metadata apply) | was **OFF** — now **ON** for DIN CHINA only (Stage 2.9C) |
 
 ---
 
@@ -290,15 +311,15 @@ Or selective reverse using `production-remediation-apply-before-*.json` from app
 13. ~~Phase 2.10 loader swap planning~~ **Done** — plan Status A; see [`SINGLE_CORE_LEDGER_PHASE_2_10_LEDGER_V2_LOADER_SWAP_PLAN.md`](SINGLE_CORE_LEDGER_PHASE_2_10_LEDGER_V2_LOADER_SWAP_PLAN.md)  
 14. ~~Phase 2.10G production loader ON~~ **Done** @ 2026-06-26T13:56:26Z — unified main live for DIN CHINA Ledger V2 only  
 15. ~~Phase 2.11 Account Statement loader ON~~ **Done** @ 2026-06-26T14:59:46Z — unified main live for DIN CHINA Account Statement only  
-16. Do **not** enable Trial Balance/Roznamcha/Party Ledger/CashBank or other screen flags without explicit scope  
-17. Do **not** expand loader ON to other companies without separate ops ticket  
-18. **Future:** Phase 2.9A-CB Cash/Bank roznamcha parity  
+16. Do **not** enable Roznamcha / Party Ledger / CashBank loaders or other company flags without explicit ops ticket  
+17. Do **not** expand loader ON to other companies without separate finance sign-off  
+18. **Next (ops choice):** Roznamcha loader, Party Ledger loader, or Cash/Bank parity (2.9A-CB) — see closeout monitoring doc  
 
-**Final status:** `PHASE 2.11 ACCOUNT STATEMENT LOADER PASS WITH WAIVERS — monitor before expansion`
+**Final status:** `PHASE 2.12X CLOSEOUT PASS — ready to choose next rollout screen`
 
-### Accelerated soak waiver (Phase 2.9B-X — 2026-06-25)
+### Accelerated soak waiver (Phase 2.9B-X — 2026-06-25) — historical
 
-The originally planned 24h soak is shortened by ops waiver because Stage 1 enabled only the informational `unified_ledger_pilot` flag. `unified_ledger_engine` and all screen flags remain OFF/absent. No loader behavior changed. T0 and accelerated final checks passed. Stage 2 remains a separate ops approval ticket and may only enable `unified_ledger_engine` + `unified_ledger_screen_ledger_v2` for DIN CHINA.
+Stage 1 originally enabled only `unified_ledger_pilot`. Stage 2 subsequently enabled `unified_ledger_engine` + `screen_ledger_v2` (2026-06-25). Loaders for Ledger V2, Account Statement, and Trial Balance were enabled in 2.10G / 2.11 / 2.12 (2026-06-26).
 
 | Check | Result |
 |-------|--------|

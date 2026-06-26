@@ -1,6 +1,8 @@
 # Phase 2.11 — Account Statement Loader Rollout Plan
 
-**Status:** `PHASE 2.11 ACCOUNT STATEMENT LOADER PASS WITH WAIVERS — monitor before expansion`
+**Status:** `PHASE 2.11 ACCOUNT STATEMENT LOADER PASS WITH WAIVERS — live for DIN CHINA`
+
+> **Closeout (2.12X):** Account Statement loader remains ON. See [`phase-212-closeout-monitoring.md`](../../reports/single-core-ledger/phase-2-12-trial-balance-loader/phase-212-closeout-monitoring.md).
 
 **Prerequisite:** Phase 2.10G Ledger V2 unified main loader live @ 2026-06-26
 
