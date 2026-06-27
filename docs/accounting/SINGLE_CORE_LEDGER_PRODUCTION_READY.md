@@ -1,7 +1,8 @@
 # Single Core Ledger — Production Ready Pack
 
-**Status:** `PR REVIEW READY — OPERATOR MERGE APPROVAL REQUIRED`  
-**Branch:** `feature/single-core-ledger-phase-2-9a3-preview-deploy-plan`  
+**Status:** `MAIN MERGE COMPLETE — DIN CHINA SINGLE CORE LEDGER CLOSED`  
+**Branch:** `main` (merged from `feature/single-core-ledger-phase-2-9a3-preview-deploy-plan` @ `b92e6955`)  
+**PR:** https://github.com/NDM0313/NEWPOSV3/pull/21  
 **Last updated:** 2026-06-27  
 **Master checklist:** use this file as the single entry point for post-apply status.
 
@@ -27,7 +28,8 @@
 | Phase 2.17 release governance | **COMPLETE** — [`phase-2-17-release-governance/`](../reports/single-core-ledger/phase-2-17-release-governance/) |
 | Phase 2.17X PR/main merge preflight | **COMPLETE** — [`pr-main-merge-preflight.md`](../reports/single-core-ledger/phase-2-17-release-governance/pr-main-merge-preflight.md) |
 | Phase 2.17Y PR governance | **COMPLETE** — [`pr-governance-final.md`](../reports/single-core-ledger/phase-2-17-release-governance/pr-governance-final.md) |
-| Post-PR final closure | **PR REVIEW READY** — [`final-post-pr-closure-report.md`](../reports/single-core-ledger/phase-2-18-main-merge-closure/final-post-pr-closure-report.md) |
+| Phase 2.18 main merge closure | **COMPLETE** — [`main-merge-complete-report.md`](../reports/single-core-ledger/phase-2-18-main-merge-closure/main-merge-complete-report.md) |
+| Post-PR final closure | **COMPLETE** — [`final-post-pr-closure-report.md`](../reports/single-core-ledger/phase-2-18-main-merge-closure/final-post-pr-closure-report.md) |
 | Future company expansion | **Requires separate finance sign-off** — [`SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md`](SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md) |
 
 Closeout pack: [`phase-212-closeout-monitoring.md`](../reports/single-core-ledger/phase-2-12-trial-balance-loader/phase-212-closeout-monitoring.md)
