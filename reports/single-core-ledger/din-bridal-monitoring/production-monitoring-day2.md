@@ -17,7 +17,7 @@
 - [PASS] Account Statement loader unified — actual=unified
 - [PASS] Account Statement MR REHAN ALI — closing=530000
 - [PASS] Trial Balance loader unified — actual=unified
-- [PASS] Trial Balance debit = credit — debit=21919575 credit=219195575
+- [PASS] Trial Balance debit = credit — debit=21919575 credit=21919575
 - [PASS] Trial Balance golden total — debit=21919575
 - [PASS] Party Ledger loader unified — actual=unified
 - [PASS] Party Ledger MR REHAN ALI — closing=530000
