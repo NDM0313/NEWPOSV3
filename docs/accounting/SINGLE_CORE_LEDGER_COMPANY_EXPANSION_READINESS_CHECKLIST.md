@@ -1,5 +1,7 @@
 # Single Core Ledger — Company Expansion Readiness Checklist
 
+> **DIN CHINA is closed.** This checklist gates **other companies only**. Do not enable flags without finance sign-off per company.
+
 **Purpose:** Gate future unified-ledger rollout to companies **other than** DIN CHINA.  
 **Status:** Template only — **no company flags enabled by this document.**
 

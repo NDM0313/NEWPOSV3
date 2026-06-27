@@ -1,7 +1,9 @@
 # Single Core Ledger Phase 2 — Screen Wiring + Controlled Engine Rollout Plan
 
-**Status:** `PHASE 2 PLAN READY` — waiting for approval to implement preview-only wiring  
-**Mode:** PLAN ONLY — no code wiring, no DB mutation, no flag enablement, no merge/deploy  
+> **Historical note:** Plan written 2026-06-25 when engine was OFF by default. DIN CHINA preview wiring and five unified main loaders are **live**; broader program phases remain in [`master-remaining-roadmap.md`](../reports/single-core-ledger/master-roadmap-after-din-china-closure/master-remaining-roadmap.md).
+
+**Status:** `HISTORICAL PLAN — DIN CHINA SCREENS LIVE; remaining screens optional future`  
+**Mode:** PLAN — superseded for DIN CHINA by Phases 2.10–2.15 execution  
 **Branch:** `feature/single-core-ledger-phase-2-rollout-plan`  
 **Base:** `feature/single-core-ledger-phase-1-8-post-migration-validation` @ `4c4bc8e3`  
 **Last updated:** 2026-06-25

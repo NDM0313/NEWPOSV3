@@ -47,8 +47,9 @@
 | PR / main merge / archive | Governance merge to `main` | **Complete** | [`main-merge-complete-report.md`](../phase-2-18-main-merge-closure/main-merge-complete-report.md) | Low — code drift | Done | None |
 | Phase 2.16 monitoring | Production browser + flags audit | **Complete** (authoritative) | [`final-production-verify.md`](../phase-2-16-monitoring/final-production-verify.md) | Medium — stale truth if never re-run | Ops for re-run | Re-run only when `QA_BROWSER_PASSWORD` available |
 | Rollback pack readiness | L1 rollback SQL per loader | **Complete** (artifacts) | [`SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md`](../../../docs/accounting/SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md) | High on future rollout | N/A | Keep scripts; do not execute without incident |
-| Master roadmap + docs reconciliation | Align status wording across docs | **Pending** | This file | Confusion, wrong operator actions | Engineering | Fix stale “PR READY” / “BLOCKED” headers in phase docs |
-| Phase 2.9A-CB / Admin Compare Cash/Bank cleanup | Shadow diagnostic parity; raw RPC vs legacy roznamcha semantics | **Optional** | [`SINGLE_CORE_LEDGER_PHASE_2_9A_CB_CASH_BANK_PARITY_PLAN.md`](../../../docs/accounting/SINGLE_CORE_LEDGER_PHASE_2_9A_CB_CASH_BANK_PARITY_PLAN.md) | Low for DIN CHINA production — loaders already live | Engineering + ops waiver if closing delta accepted | Discovery + compare hygiene only; no flags |
+| Master roadmap + docs reconciliation (R1/R1B) | Align status wording across docs | **Complete** | [`r2-final-resolution-report.md`](../r2-cash-bank-admin-compare-diagnostic/r2-final-resolution-report.md) | — | Engineering | — |
+| Phase 2.9A-CB / Admin Compare Cash/Bank cleanup (R2) | Shadow diagnostic labeling; raw GL vs roznamcha semantics | **Complete** | [`r2-final-resolution-report.md`](../r2-cash-bank-admin-compare-diagnostic/r2-final-resolution-report.md) | Low — production uses parity assembler | None for diagnostic | — |
+| Docs inconsistency cleanup | Stale headers in 2.9 plan, production ready footer | **Complete** | R1B pass @ 2026-06-27 | — | Engineering | — |
 | Other-company expansion planning | Per-company sign-off + golden capture plan | **Pending** | [`company-expansion-readiness.md`](../phase-2-16-monitoring/company-expansion-readiness.md) | High if skipped before rollout | **Finance sign-off** | Select target company; capture fixtures |
 | Company-specific golden fixtures | Non–DIN CHINA golden JSON per company | **Pending** | [`SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md`](../../../docs/accounting/SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md) | High — wrong enablement | Finance + operator | Legacy-loader capture before any flag |
 | Per-company staged pilot/engine/screen/loader enablement | Repeat 2.9→2.15 pattern per company | **Blocked** | Expansion checklist + DIN CHINA phase reports | Critical — money/report errors | Finance + operator per step | Blocked until R3 complete |
@@ -57,7 +58,6 @@
 | `roznamcha_payment` RPC mode | Optional unified GL path for roznamcha rows | **Optional** | [`SINGLE_CORE_LEDGER_PHASE_2_15_CASH_BANK_PARITY_AND_ROZNAMCHA_RECOVERY_PLAN.md`](../../../docs/accounting/SINGLE_CORE_LEDGER_PHASE_2_15_CASH_BANK_PARITY_AND_ROZNAMCHA_RECOVERY_PLAN.md) | Low short-term — DIN CHINA roznamcha loader live with parity filter | **Migration approval** | Design-only until approved |
 | Legacy engine retirement / cleanup | Deprecate `getCustomerLedger`, `roznamchaService`, etc. | **Blocked** (long-term) | [`SINGLE_CORE_LEDGER_MIGRATION_MASTER_EXECUTION_PLAN_v3.md`](../../../docs/accounting/SINGLE_CORE_LEDGER_MIGRATION_MASTER_EXECUTION_PLAN_v3.md) §14, [`PHASE8_LEGACY_RETIREMENT_MAP.md`](../../../docs/accounting/PHASE8_LEGACY_RETIREMENT_MAP.md) | High if premature | Finance + engineering after all target companies stable | Do not delete legacy paths yet |
 | Remaining screen wiring (BS, P&L, Cash Flow, Day Book, COA balances, mobile) | Phase 2 rollout plan screens beyond five loaders | **Optional / future** | [`SINGLE_CORE_LEDGER_PHASE_2_ROLLOUT_PLAN.md`](../../../docs/accounting/SINGLE_CORE_LEDGER_PHASE_2_ROLLOUT_PLAN.md) | Medium — screen-by-screen drift | Per-screen approval | Out of DIN CHINA closure scope |
-| Docs inconsistency cleanup | Stale headers in 2.9 plan, production ready footer | **Pending** | [`SINGLE_CORE_LEDGER_PRODUCTION_READY.md`](../../../docs/accounting/SINGLE_CORE_LEDGER_PRODUCTION_READY.md) | Operator confusion | Engineering | Update status lines only |
 
 ---
 
@@ -68,11 +68,14 @@
 - PR #21 merge and Phase 2.18 archive on `main`
 
 ### Pending (program continues — planning / hygiene)
-- **R1** Master roadmap + docs reconciliation
 - **R3** Other-company pre-expansion audit + golden fixture capture (planning only until finance approves)
+- **R4** Per-company staged rollout framework (docs/runbook operationalization)
+
+### Complete (2026-06-27)
+- **R1/R1B** Master roadmap + docs reconciliation
+- **R2** Cash/Bank Admin Compare diagnostic semantics (safe UI fix)
 
 ### Optional (no production impact if deferred)
-- **R2** Cash/Bank / Admin Compare diagnostic cleanup
 - **R6** Monitoring + rollback automation hardening
 - **R7** `roznamcha_payment` RPC design
 - Remaining Phase 2 screen wiring (BS, P&L, Cash Flow, mobile parity)
@@ -192,9 +195,9 @@
 
 ## Recommended next phase
 
-**R1 — Master roadmap + docs reconciliation** (this document satisfies the roadmap artifact; follow with targeted status-line fixes in `SINGLE_CORE_LEDGER_PRODUCTION_READY.md` and stale phase plan headers).
+**R3 — Other-company pre-expansion audit + golden fixture capture** — planning/read-only only; **blocked on finance sign-off** before any flag enablement.
 
-After R1, unless finance selects a company: **R2** (optional diagnostics) or **R6** (monitoring hardening) — both are safe with no flag changes.
+Alternatively: **R6 — Monitoring + rollback automation hardening** (optional, no production risk).
 
 **Do not start R5** without finance sign-off and R3 golden fixtures.
 

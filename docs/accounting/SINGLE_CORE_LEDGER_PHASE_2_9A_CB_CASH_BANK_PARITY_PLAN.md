@@ -1,8 +1,10 @@
 # Phase 2.9A-CB — Cash/Bank / Roznamcha Parity Remediation
 
-**Status:** `PLANNED — not in Stage 1 scope`  
-**Mode:** Future remediation track — **no feature flags**, **no Stage 1/2 SQL**, **no production loader changes** until separately approved  
-**Last updated:** 2026-06-25  
+> **Historical note:** Written during Stage 1 pilot planning (2026-06-25). DIN CHINA rollout is **closed on `main`**; five unified loaders including Roznamcha are live. This plan describes optional **Admin Compare diagnostic** semantics — not a production blocker.
+
+**Status:** `R2 CLOSED — diagnostic semantics clarified (shadow compare only)`  
+**Mode:** Shadow / Admin Compare diagnostic — **no production loader changes**  
+**Last updated:** 2026-06-27  
 **Parent:** [`SINGLE_CORE_LEDGER_PHASE_2_9_PILOT_ENABLEMENT_PLAN.md`](SINGLE_CORE_LEDGER_PHASE_2_9_PILOT_ENABLEMENT_PLAN.md)  
 **Evidence:** [`admin-compare-delta-investigation.md`](../reports/single-core-ledger/phase-2-9-pilot-enablement/post-deploy-browser-qa/admin-compare-delta-investigation.md)
 
@@ -15,8 +17,8 @@
 | **Stage 1 pilot screen** | Ledger Statement V2 only (`unified_ledger_screen_ledger_v2`) |
 | **Cash/Bank / Roznamcha** | Not the selected pilot screen |
 | **Stage 1 behavior** | Does **not** switch any default loader — banners/resolver only |
-| **Production Roznamcha** | Remains legacy `roznamchaService.getRoznamcha` |
-| **Admin Compare Cash/Bank** | Shadow diagnostic only (`shadowForce: true`) |
+| **Production Roznamcha (DIN CHINA)** | Unified main via parity assembler @ 2026-06-26 — Phase 2.16 golden PASS |
+| **Admin Compare Cash/Bank** | Shadow diagnostic only (`shadowForce: true`) — compares legacy roznamcha vs **raw** unified GL RPC; closing delta expected |
 
 Cash/Bank Admin Compare failures are **operational roznamcha cashbook vs unified GL cash/bank ledger semantics**, not a blocker for enabling Ledger V2 flags under Stage 1.
 

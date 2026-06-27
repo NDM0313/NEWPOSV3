@@ -1,5 +1,7 @@
 # Single Core Ledger Migration: Master Execution Plan v3
 
+> **Program status (2026-06-27):** DIN CHINA unified main loaders are **closed on `main`**. Phases 0–2.18 executed for DIN CHINA. Master plan Phases 4–5 (multi-company enablement, legacy retirement) remain **future work** with separate approvals — see [`master-remaining-roadmap.md`](../reports/single-core-ledger/master-roadmap-after-din-china-closure/master-remaining-roadmap.md).
+
 **Date:** June 20, 2026  
 **Project:** DIN Collection ERP  
 **Purpose:** Convert the fragmented ledger/reporting logic into one journal-line based core while preserving three controlled reporting lenses: official accounting, clean operational view, and full audit history.

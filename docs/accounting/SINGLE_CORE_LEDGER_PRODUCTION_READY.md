@@ -33,6 +33,8 @@
 | Phase 2.18 main merge closure | **COMPLETE** — [`main-merge-complete-report.md`](../reports/single-core-ledger/phase-2-18-main-merge-closure/main-merge-complete-report.md) |
 | Phase 2.18 final archive | **COMPLETE** — [`final-archive-and-monitoring-report.md`](../reports/single-core-ledger/phase-2-18-main-merge-closure/final-archive-and-monitoring-report.md) |
 | Master remaining roadmap | **ACTIVE** — [`master-remaining-roadmap.md`](../reports/single-core-ledger/master-roadmap-after-din-china-closure/master-remaining-roadmap.md) |
+| R1B docs reconciliation | **COMPLETE** — stale phase headers clarified |
+| R2 Cash/Bank Admin Compare diagnostic | **CLOSED** — safe UI labeling — [`r2-final-resolution-report.md`](../reports/single-core-ledger/r2-cash-bank-admin-compare-diagnostic/r2-final-resolution-report.md) |
 | Post-PR final closure | **COMPLETE** — [`final-post-pr-closure-report.md`](../reports/single-core-ledger/phase-2-18-main-merge-closure/final-post-pr-closure-report.md) |
 | Future company expansion | **Requires separate finance sign-off** — [`SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md`](SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md) |
 
@@ -289,7 +291,7 @@ See: [`SINGLE_CORE_LEDGER_PHASE_1_8_POST_MIGRATION_VALIDATION_REPORT.md`](SINGLE
 | PR / merge to `main` (PR #21) | **COMPLETE** @ 2026-06-27 |
 | Master remaining roadmap | **ACTIVE** — [`master-remaining-roadmap.md`](../reports/single-core-ledger/master-roadmap-after-din-china-closure/master-remaining-roadmap.md) |
 | Other-company unified loader expansion | **Blocked** until separate finance sign-off — [`SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md`](SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md) |
-| Phase 2.9A-CB / Admin Compare Cash/Bank diagnostic cleanup | **Optional** — shadow diagnostic only |
+| Phase 2.9A-CB / Admin Compare Cash/Bank diagnostic cleanup | **CLOSED** — shadow compare semantics clarified; not a production blocker |
 | `roznamcha_payment` RPC mode | **Optional future** — requires separate migration approval |
 | Legacy engine retirement (master plan Phase 5) | **Blocked long-term** — after all target companies stable |
 | Remaining Phase 2 screens (BS, P&L, Cash Flow, mobile) | **Optional future** — see Phase 2 rollout plan |

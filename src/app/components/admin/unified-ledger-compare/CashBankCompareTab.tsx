@@ -6,6 +6,32 @@ import type { LedgerRowCompareResult } from '@/app/lib/unifiedLedgerCompareTypes
 import { CompareDiffTable, CompareSummaryCards, CompareAmountMismatchTable, downloadCompareJson } from './CompareSummaryCards';
 import type { CompareFilterState } from './compareFilters';
 
+function CashBankDiagnosticBanner() {
+  return (
+    <div className="rounded-xl border border-amber-500/30 bg-amber-500/[0.06] p-4 space-y-2 text-sm text-gray-300">
+      <p className="font-semibold text-amber-200">Shadow diagnostic only — not production Roznamcha parity</p>
+      <p>
+        This tab compares <strong className="text-white">legacy roznamcha cashbook rows</strong> against the{' '}
+        <strong className="text-white">raw unified GL cash/bank RPC</strong> (
+        <code className="text-amber-300">get_unified_cash_bank_ledger</code>). That pairing is{' '}
+        <strong className="text-amber-200">semantically expected to differ</strong> on closing totals and row grain.
+      </p>
+      <p>
+        Live DIN CHINA Roznamcha uses the{' '}
+        <strong className="text-white">payment + journal composite</strong> parity assembler (
+        <code className="text-amber-300">assembleRoznamchaUnifiedParityMain</code>) — not raw GL as the main
+        loader. Phase 2.16 golden totals remain authoritative for production.
+      </p>
+      <p className="text-xs text-gray-400">
+        <strong className="text-amber-200">PASS</strong> on this tab means <strong>row parity</strong> (0 missing, 0
+        extra, 0 amount mismatches after economic-key matching and optional <code>manual_receipt</code> supplement).
+        Closing balance and period-net cards are <strong>informational</strong> and may differ when opening scope,
+        transfer Dr/Cr orientation, or payment-composite vs raw GL semantics diverge.
+      </p>
+    </div>
+  );
+}
+
 export function CashBankCompareTab(props: {
   companyId: string | null;
   filters: CompareFilterState;
@@ -40,16 +66,14 @@ export function CashBankCompareTab(props: {
     }
   }, [companyId, filters, liquidity]);
 
+  const diag = result?.cashBankDiagnostic;
+
   return (
     <div className="space-y-4">
-      <p className="text-sm text-gray-400">
-        Compare legacy roznamcha vs <code className="text-amber-300">get_unified_cash_bank_ledger</code>{' '}
-        (shadow only). Both sides use <strong className="text-amber-200">official_gl</strong> — roznamcha has no
-        effective_party lens; the global Basis filter does not apply here. Compare supplements roznamcha with{' '}
-        <code className="text-amber-300">manual_receipt</code> GL legs for row parity.{' '}
-        <strong className="text-amber-200">PASS</strong> = row parity (0 missing, 0 extra, 0 amount
-        mismatches); closing totals and period net may differ when roznamcha opening scope or transfer
-        Dr/Cr orientation differs from unified GL.
+      <CashBankDiagnosticBanner />
+      <p className="text-xs text-gray-500">
+        Both sides use <strong className="text-gray-400">official_gl</strong>. Roznamcha has no effective_party lens;
+        the global Basis filter does not apply here.
       </p>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 rounded-xl border border-gray-800 bg-gray-900/40 p-4">
         <label className="text-sm space-y-1">
@@ -67,7 +91,7 @@ export function CashBankCompareTab(props: {
         </label>
         <div className="flex items-end">
           <Button onClick={runCompare} disabled={loading}>
-            {loading ? 'Comparing…' : 'Run cash/bank compare'}
+            {loading ? 'Comparing…' : 'Run cash/bank diagnostic compare'}
           </Button>
         </div>
       </div>
@@ -78,6 +102,28 @@ export function CashBankCompareTab(props: {
 
       {result && (
         <div className="space-y-4">
+          {diag && (
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+              <div
+                className={`rounded-lg border p-3 ${diag.rowParityPass ? 'border-emerald-500/40 bg-emerald-500/10' : 'border-red-500/40 bg-red-500/10'}`}
+              >
+                <div className="text-xs text-gray-500">Row parity (gate)</div>
+                <div className="text-lg font-mono mt-1">{diag.rowParityPass ? 'PASS' : 'FAIL'}</div>
+              </div>
+              <div
+                className={`rounded-lg border p-3 ${diag.periodMovementPass ? 'border-gray-700 bg-gray-900/50' : 'border-amber-500/40 bg-amber-500/10'}`}
+              >
+                <div className="text-xs text-gray-500">Period net (informational)</div>
+                <div className="text-lg font-mono mt-1">{diag.periodMovementPass ? 'Aligned' : 'Differs'}</div>
+              </div>
+              {diag.manualReceiptSupplementCount > 0 && (
+                <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-3">
+                  <div className="text-xs text-gray-500">manual_receipt supplement rows</div>
+                  <div className="text-lg font-mono mt-1">{diag.manualReceiptSupplementCount}</div>
+                </div>
+              )}
+            </div>
+          )}
           <CompareSummaryCards
             oldBalance={result.oldBalance}
             newBalance={result.newBalance}
@@ -89,6 +135,12 @@ export function CashBankCompareTab(props: {
             newEngineName={result.newEngineName}
             oldQueryMs={result.oldQueryMs}
             newQueryMs={result.newQueryMs}
+            extra={
+              <p className="text-xs text-gray-500">
+                Balance cards: legacy roznamcha closing vs raw unified GL closing —{' '}
+                <strong className="text-gray-400">informational only</strong>; overall PASS follows row parity.
+              </p>
+            }
           />
           <CompareDiffTable title={`Missing in new (${result.missingInNew.length})`} rows={result.missingInNew} />
           <CompareDiffTable title={`Extra in new (${result.extraInNew.length})`} rows={result.extraInNew} />
@@ -103,7 +155,7 @@ export function CashBankCompareTab(props: {
             size="sm"
             variant="outline"
             onClick={() =>
-              downloadCompareJson(`phase2-compare-cashbank-${Date.now()}.json`, result)
+              downloadCompareJson(`phase2-compare-cashbank-diagnostic-${Date.now()}.json`, result)
             }
           >
             Export JSON

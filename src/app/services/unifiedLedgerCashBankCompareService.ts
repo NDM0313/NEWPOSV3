@@ -80,12 +80,19 @@ export async function compareCashBankLedgerTieOut(params: {
       evaluated.manualReceiptSupplementCount > 0
         ? `${legacy.engineName} + ${evaluated.manualReceiptSupplementCount} manual_receipt GL supplement`
         : legacy.engineName,
-    newEngineName: 'get_unified_cash_bank_ledger (shadow RPC)',
+    newEngineName:
+      'Raw GL diagnostic — get_unified_cash_bank_ledger (shadow; not Roznamcha parity)',
     oldQueryMs: legacy.durationMs,
     newQueryMs: unified.meta.queryDurationMs,
     shadowForce: true,
     killSwitchActive,
     rpcError: unified.meta.rpcError,
     buildCommit: APP_BUILD_COMMIT,
+    cashBankDiagnostic: {
+      rowParityPass: evaluated.rowParityPass,
+      periodMovementPass: evaluated.periodMovementPass,
+      manualReceiptSupplementCount: evaluated.manualReceiptSupplementCount,
+      compareSemantics: 'legacy_roznamcha_vs_raw_unified_gl_diagnostic',
+    },
   };
 }

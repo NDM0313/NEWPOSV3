@@ -42,17 +42,20 @@
       "id": "rollback-pack",
       "name": "Per-loader L1 rollback SQL artifacts",
       "evidence": "scripts/single-core-ledger/phase-21x-rollback-*.sql"
+    },
+    {
+      "id": "R1-R1B",
+      "name": "Master roadmap + docs reconciliation",
+      "evidence": "reports/single-core-ledger/master-roadmap-after-din-china-closure/master-remaining-roadmap.md"
+    },
+    {
+      "id": "R2",
+      "name": "Cash/Bank Admin Compare diagnostic resolution",
+      "status": "CLOSED_SAFE_DIAGNOSTIC_FIX",
+      "evidence": "reports/single-core-ledger/r2-cash-bank-admin-compare-diagnostic/r2-final-resolution-report.md"
     }
   ],
   "pending_phases": [
-    {
-      "id": "R1",
-      "name": "Master roadmap + docs reconciliation",
-      "required": true,
-      "finance_sign_off": false,
-      "operator_approval": false,
-      "production_db": false
-    },
     {
       "id": "R3",
       "name": "Other-company pre-expansion audit + golden fixture capture",
@@ -84,11 +87,6 @@
   ],
   "optional_phases": [
     {
-      "id": "R2",
-      "name": "Cash/Bank / Admin Compare diagnostic cleanup",
-      "production_impact": "none_if_shadow_only"
-    },
-    {
       "id": "R6",
       "name": "Monitoring + rollback automation hardening",
       "production_impact": "none_if_read_only"
@@ -105,9 +103,9 @@
     }
   ],
   "recommended_next_phase": {
-    "id": "R1",
-    "name": "Master roadmap + docs reconciliation",
-    "note": "Roadmap artifact created; complete stale doc header cleanup in production ready pack and phase plans"
+    "id": "R3",
+    "name": "Other-company pre-expansion audit + golden fixture capture",
+    "note": "Planning/read-only only until finance sign-off; alternative R6 monitoring hardening"
   },
   "approvals_required": {
     "other_company_expansion": "finance_sign_off_per_company",

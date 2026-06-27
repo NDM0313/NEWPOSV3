@@ -50,6 +50,15 @@ export type LedgerCompareBalance = {
   pass: boolean;
 };
 
+export type CashBankCompareDiagnosticMeta = {
+  /** Row-level gate — closing totals may differ by design. */
+  rowParityPass: boolean;
+  periodMovementPass: boolean;
+  manualReceiptSupplementCount: number;
+  /** Explains why raw GL RPC is not Roznamcha production parity. */
+  compareSemantics: 'legacy_roznamcha_vs_raw_unified_gl_diagnostic';
+};
+
 export type LedgerRowCompareResult = LedgerCompareBalance &
   LedgerCompareMeta & {
     kind: 'party' | 'account' | 'cash_bank';
@@ -60,6 +69,8 @@ export type LedgerRowCompareResult = LedgerCompareBalance &
     amountMismatches: CompareRowMismatch[];
     basis: UnifiedLedgerBasis;
     scope: LedgerCompareScope;
+    /** Present when kind === cash_bank — Admin Compare diagnostic semantics only. */
+    cashBankDiagnostic?: CashBankCompareDiagnosticMeta;
   };
 
 export type TrialBalanceAccountDiff = {

@@ -1,7 +1,9 @@
 # Single Core Ledger Phase 2.9 — DIN CHINA Single-Screen Pilot Flag Enablement Plan
 
-**Status:** `PHASE 2.9A STILL BLOCKED — Party/Pilot/Ledger V2 gate not passed (Cash/Bank waived)`  
-**Mode:** PLAN + OPS CHECK — no `feature_flags` writes, no deploy, no merge  
+> **Historical note:** Header status below reflects **2026-06-25 pre-pilot** planning. DIN CHINA pilot, engine, and all five unified main loaders are **complete and closed on `main`** as of Phase 2.18. See [`SINGLE_CORE_LEDGER_PRODUCTION_READY.md`](SINGLE_CORE_LEDGER_PRODUCTION_READY.md).
+
+**Status:** `HISTORICAL — DIN CHINA PILOT COMPLETE (see production ready pack)`  
+**Mode:** Historical plan + evidence — flags were enabled in controlled stages 2026-06-25–2026-06-26  
 **Branch:** `feature/single-core-ledger-phase-2-9a3-preview-deploy-plan` @ `cb4957c7`  
 **Base:** `feature/single-core-ledger-phase-2-8-preview-qa-signoff` @ `807fdbcd`  
 **Last updated:** 2026-06-25  
