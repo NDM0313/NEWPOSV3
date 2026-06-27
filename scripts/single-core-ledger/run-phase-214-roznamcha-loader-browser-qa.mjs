@@ -7,6 +7,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import {
+  DEFAULT_TOL,
+  MR_JALIL_GOLDEN,
+  TB_GOLDEN,
+  parsePkr,
+  readClosingBalance,
+  readLedgerV2MrJalilClosing,
+  readPilotBatchSummary,
+  waitForPilotBatchStats,
+  withinTol,
+} from './unifiedLedgerBrowserQaHelpers.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const EVIDENCE = path.join(ROOT, 'reports/single-core-ledger/phase-2-14-roznamcha-loader');
@@ -14,19 +25,14 @@ const MODE = (process.argv[2] || 'baseline').toLowerCase();
 const BASE = process.env.QA_BROWSER_BASE_URL || 'https://erp.dincouture.pk';
 const EMAIL = process.env.QA_BROWSER_EMAIL || 'din@yahoo.com';
 const PASSWORD = process.env.QA_BROWSER_PASSWORD || '';
-const MR_JALIL = 216300;
-const TB_GOLDEN = 407957271.02;
-const TOL = 0.01;
+const MR_JALIL = MR_JALIL_GOLDEN;
+const TB_GOLDEN_VAL = TB_GOLDEN;
+const TOL = DEFAULT_TOL;
 const checks = [];
 
 function log(check, result, notes = '') {
   checks.push({ check, result, notes });
   console.log(`[${result}] ${check}${notes ? ` — ${notes}` : ''}`);
-}
-
-function parsePkr(text) {
-  const m = String(text).replace(/,/g, '').match(/-?\d+(?:\.\d+)?/);
-  return m ? Number(m[0]) : NaN;
 }
 
 async function login(page) {
@@ -85,17 +91,20 @@ async function readRoznamchaSummary(page) {
   };
 }
 
-async function readClosingBalance(page) {
-  const labels = page.getByText('Closing Balance', { exact: true });
-  const count = await labels.count();
-  let best = NaN;
-  for (let i = 0; i < count; i += 1) {
-    const card = labels.nth(i).locator('..');
-    const txt = await card.textContent().catch(() => '');
-    const n = parsePkr(txt || '');
-    if (Number.isFinite(n) && (Number.isNaN(best) || Math.abs(n) > Math.abs(best))) best = n;
+async function verifyLedgerV2Unified(page) {
+  await page.goto(`${BASE}/reports/ledger-statement-center-v2`, { waitUntil: 'networkidle', timeout: 120000 });
+  await page.waitForTimeout(3000);
+  const tabBtn = page.locator('button').filter({ hasText: /^Account Statements$/ });
+  if (await tabBtn.count()) await tabBtn.first().click();
+  await page.getByRole('button', { name: /load mr jalil/i }).click({ timeout: 120000 });
+  const loader = await page.locator('[data-ledger-v2-main-loader]').first().getAttribute('data-ledger-v2-main-loader');
+  const closing = await readLedgerV2MrJalilClosing(page);
+  log('Ledger V2 main loader still unified', loader === 'unified' ? 'PASS' : 'FAIL', `actual=${loader}`);
+  log('Ledger V2 MR JALIL 216300', withinTol(closing, MR_JALIL) ? 'PASS' : 'FAIL', `closing=${closing}`);
+  if (!withinTol(closing, MR_JALIL)) {
+    fs.mkdirSync(path.join(EVIDENCE, 'screenshots'), { recursive: true });
+    await page.screenshot({ path: path.join(EVIDENCE, 'screenshots', '214-lv2-mr-jalil-parse-failure.png'), fullPage: true });
   }
-  return best;
 }
 
 async function readPartyLedgerClosing(page) {
@@ -108,19 +117,6 @@ async function readPartyLedgerClosing(page) {
   const body = await page.innerText('body');
   const m = body.match(/Current Receivable[\s\n\r]+(?:Rs\.?\s*)?([\d,]+\.?\d*)/i);
   return m ? parsePkr(m[1]) : NaN;
-}
-
-async function verifyLedgerV2Unified(page) {
-  await page.goto(`${BASE}/reports/ledger-statement-center-v2`, { waitUntil: 'networkidle', timeout: 120000 });
-  await page.waitForTimeout(3000);
-  const tabBtn = page.locator('button').filter({ hasText: /^Account Statements$/ });
-  if (await tabBtn.count()) await tabBtn.first().click();
-  await page.getByRole('button', { name: /load mr jalil/i }).click({ timeout: 120000 });
-  await page.waitForTimeout(8000);
-  const loader = await page.locator('[data-ledger-v2-main-loader]').first().getAttribute('data-ledger-v2-main-loader');
-  const closing = await readClosingBalance(page);
-  log('Ledger V2 main loader still unified', loader === 'unified' ? 'PASS' : 'FAIL', `actual=${loader}`);
-  log('Ledger V2 MR JALIL 216300', Math.abs(closing - MR_JALIL) <= TOL ? 'PASS' : 'FAIL', `closing=${closing}`);
 }
 
 async function verifyAccountStatementUnified(page) {
@@ -137,7 +133,7 @@ async function verifyAccountStatementUnified(page) {
   const loader = await page.locator('[data-account-statement-main-loader]').first().getAttribute('data-account-statement-main-loader');
   const closing = await readClosingBalance(page);
   log('Account Statement main loader still unified', loader === 'unified' ? 'PASS' : 'FAIL', `actual=${loader}`);
-  log('Account Statement MR JALIL 216300', Math.abs(closing - MR_JALIL) <= TOL ? 'PASS' : 'FAIL', `closing=${closing}`);
+  log('Account Statement MR JALIL 216300', withinTol(closing, MR_JALIL) ? 'PASS' : 'FAIL', `closing=${closing}`);
 }
 
 async function verifyPartyLedgerUnified(page) {
@@ -150,7 +146,7 @@ async function verifyPartyLedgerUnified(page) {
   const loader = await page.locator('[data-party-ledger-main-loader]').first().getAttribute('data-party-ledger-main-loader');
   const closing = await readPartyLedgerClosing(page);
   log('Party Ledger main loader still unified', loader === 'unified' ? 'PASS' : 'FAIL', `actual=${loader}`);
-  log('Party Ledger MR JALIL 216300', Math.abs(closing - MR_JALIL) <= TOL ? 'PASS' : 'FAIL', `closing=${closing}`);
+  log('Party Ledger MR JALIL 216300', withinTol(closing, MR_JALIL) ? 'PASS' : 'FAIL', `closing=${closing}`);
 }
 
 async function verifyTrialBalanceUnified(page) {
@@ -170,7 +166,7 @@ async function verifyTrialBalanceUnified(page) {
   const totalCredit = creditM ? parsePkr(creditM[1]) : NaN;
   log('Trial Balance main loader still unified', loader === 'unified' ? 'PASS' : 'FAIL', `actual=${loader}`);
   log('Trial Balance debit = credit golden',
-    Math.abs(totalDebit - TB_GOLDEN) <= TOL && Math.abs(totalCredit - TB_GOLDEN) <= TOL ? 'PASS' : 'FAIL',
+    withinTol(totalDebit, TB_GOLDEN_VAL) && withinTol(totalCredit, TB_GOLDEN_VAL) ? 'PASS' : 'FAIL',
     `debit=${totalDebit} credit=${totalCredit}`);
 }
 
@@ -181,26 +177,14 @@ async function verifyPilotBatch(page) {
   await page.waitForTimeout(500);
   const runBtn = page.getByRole('button', { name: /Run DIN CHINA 9\/9 batch/i });
   if (await runBtn.isVisible().catch(() => false)) await runBtn.click();
-  await page.waitForFunction(
-    () => {
-      const labels = [...document.querySelectorAll('.text-xs.text-gray-500')];
-      const comparedLabel = labels.find((el) => el.textContent?.trim() === 'Compared');
-      if (!comparedLabel) return false;
-      const val = comparedLabel.parentElement?.querySelector('.text-lg.font-mono');
-      const n = Number(String(val?.textContent || '').replace(/,/g, ''));
-      return Number.isFinite(n) && n >= 9;
-    },
-    null,
-    { timeout: 180000 },
-  );
-  const body = await page.innerText('body');
-  const comparedM = body.match(/Compared[\s\n\r]+([\d,]+)/i);
-  const passM = body.match(/Pass[\s\n\r]+([\d,]+)/i);
-  const failM = body.match(/Fail[\s\n\r]+([\d,]+)/i);
-  const compared = comparedM ? Number(comparedM[1].replace(/,/g, '')) : NaN;
-  const passCount = passM ? Number(passM[1].replace(/,/g, '')) : NaN;
-  const failCount = failM ? Number(failM[1].replace(/,/g, '')) : NaN;
-  log('Admin Compare Pilot Batch 9/9', compared === 9 && passCount === 9 && failCount === 0 ? 'PASS' : 'FAIL', `compared=${compared} pass=${passCount} fail=${failCount}`);
+  await waitForPilotBatchStats(page, 9);
+  const batch = await readPilotBatchSummary(page);
+  log('Admin Compare Pilot Batch 9/9', batch.compared === 9 && batch.passCount === 9 && batch.failCount === 0 ? 'PASS' : 'FAIL',
+    `compared=${batch.compared} pass=${batch.passCount} fail=${batch.failCount}`);
+  if (batch.compared !== 9 || batch.passCount !== 9) {
+    fs.mkdirSync(path.join(EVIDENCE, 'screenshots'), { recursive: true });
+    await page.screenshot({ path: path.join(EVIDENCE, 'screenshots', '214-admin-compare-pilot-batch.png'), fullPage: true });
+  }
 }
 
 async function runRoznamchaChecks(page, expectedLoader) {

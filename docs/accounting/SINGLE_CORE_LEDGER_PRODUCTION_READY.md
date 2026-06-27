@@ -1,8 +1,8 @@
 # Single Core Ledger — Production Ready Pack
 
-**Status:** `PHASE 2.15X FINAL CLOSEOUT PASS — DIN CHINA unified reporting live and monitored`  
-**Branch:** `feature/single-core-ledger-phase-2-9a3-preview-deploy-plan` @ `b8b093f7`  
-**Last updated:** 2026-06-26  
+**Status:** `PHASE 2.16 MONITORING PASS — DIN CHINA unified reporting live, monitored, automation hardened`  
+**Branch:** `feature/single-core-ledger-phase-2-9a3-preview-deploy-plan`  
+**Last updated:** 2026-06-27  
 **Master checklist:** use this file as the single entry point for post-apply status.
 
 ---
@@ -18,11 +18,17 @@
 | Trial Balance screen + loader | **ON** — unified main live @ 2026-06-26 |
 | Party Ledger screen + loader | **ON** — unified main live @ 2026-06-26 (`a7a4b727`) |
 | Roznamcha screen + loader | **ON** — unified main live @ 2026-06-26 (Phase 2.15 parity fix) |
-| Other company loaders | **none** |
-| MR JALIL golden (Ledger V2 + Account Statement) | **PKR 216,300** |
+| Other company loaders | **none** (verified Phase 2.16 @ 2026-06-27) |
+| MR JALIL golden (Ledger V2 + Account Statement + Party Ledger) | **PKR 216,300** |
 | Trial Balance golden (All Branches) | **PKR 407,957,271.02** debit = credit |
+| Roznamcha golden (Cash In / Out / Closing) | **136,158,012 / 67,042,426 / 69,115,586** |
+| Phase 2.15X closeout | **COMPLETE** — Roznamcha parity fix live |
+| Phase 2.16 monitoring + automation | **PASS** — [`phase-2-16-monitoring/`](../reports/single-core-ledger/phase-2-16-monitoring/) |
+| Future company expansion | **Requires separate finance sign-off** — [`SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md`](SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md) |
 
 Closeout pack: [`phase-212-closeout-monitoring.md`](../reports/single-core-ledger/phase-2-12-trial-balance-loader/phase-212-closeout-monitoring.md)
+
+> Phase 2.15X automation waivers (LV2 Playwright NaN, Admin Compare timing) were **resolved in Phase 2.16** via shared Playwright helpers. See [`automation-hardening-report.md`](../reports/single-core-ledger/phase-2-16-monitoring/automation-hardening-report.md).
 
 > Historical phase completion reports (2.1–2.8) describe point-in-time ship state (“engine OFF at preview ship”). **This section is the live production truth** after 2.10G / 2.11 / 2.12.
 
@@ -314,10 +320,12 @@ Or selective reverse using `production-remediation-apply-before-*.json` from app
 15. ~~Phase 2.11 Account Statement loader ON~~ **Done** @ 2026-06-26T14:59:46Z — unified main live for DIN CHINA Account Statement only  
 16. ~~Phase 2.13 Party Ledger loader ON~~ **Done** @ 2026-06-26 — `a7a4b727`
 17. ~~Phase 2.15 Roznamcha parity + loader ON~~ **Done** @ 2026-06-26 — `b8b093f7` — see [`SINGLE_CORE_LEDGER_PHASE_2_15_CASH_BANK_PARITY_AND_ROZNAMCHA_RECOVERY_PLAN.md`](SINGLE_CORE_LEDGER_PHASE_2_15_CASH_BANK_PARITY_AND_ROZNAMCHA_RECOVERY_PLAN.md)
-18. Do **not** expand loader ON to other companies without separate finance sign-off
-19. **Monitoring:** [`phase-215x-24h-monitoring-checklist.md`](../reports/single-core-ledger/phase-2-15-cash-bank-parity/phase-215x-24h-monitoring-checklist.md)
+18. ~~Phase 2.15X closeout + 24h monitoring pack~~ **Done** @ 2026-06-26
+19. ~~Phase 2.16 production monitoring + automation hardening~~ **Done** @ 2026-06-27 — see [`phase-2-16-monitoring/`](../reports/single-core-ledger/phase-2-16-monitoring/)
+20. Do **not** expand loader ON to other companies without separate finance sign-off — [`SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md`](SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md)
+21. **Monitoring:** [`final-production-verify.md`](../reports/single-core-ledger/phase-2-16-monitoring/final-production-verify.md)
 
-**Final status:** `PHASE 2.15X FINAL CLOSEOUT PASS — DIN CHINA unified reporting live and monitored`
+**Final status:** `PHASE 2.16 MONITORING PASS — DIN CHINA UNIFIED LEDGER STABLE`
 
 ### Accelerated soak waiver (Phase 2.9B-X — 2026-06-25) — historical
 

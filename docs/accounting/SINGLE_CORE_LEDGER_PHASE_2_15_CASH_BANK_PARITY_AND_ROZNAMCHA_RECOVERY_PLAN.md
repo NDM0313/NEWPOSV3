@@ -1,9 +1,9 @@
 # Phase 2.15 — Cash/Bank Parity & Roznamcha Recovery
 
-**Status:** `PHASE 2.15X FINAL CLOSEOUT PASS — DIN CHINA unified reporting live and monitored`  
+**Status:** `PHASE 2.16 MONITORING PASS — DIN CHINA unified reporting live, monitored, automation hardened`  
 **Company:** DIN CHINA `30bd8592-3384-4f34-899a-f3907e336485`  
-**Date:** 2026-06-26  
-**Commit:** `b8b093f7`
+**Date:** 2026-06-27  
+**Commit:** `b8b093f7` (parity fix) + Phase 2.16 monitoring pack
 
 ---
 
@@ -70,4 +70,13 @@ legacy cash_out = payments only (67,042,426)
 - Commit `b8b093f7` pushed to `feature/single-core-ledger-phase-2-9a3-preview-deploy-plan`
 - Evidence: `reports/single-core-ledger/phase-2-15-cash-bank-parity/phase-215x-final-closeout.md`
 - Monitoring: `phase-215x-24h-monitoring-checklist.md`
-- Automation waivers: `phase-215x-waiver-note.md` (LV2 Playwright NaN, Admin Compare timing)
+- Automation waivers: `phase-215x-waiver-note.md` (LV2 Playwright NaN, Admin Compare timing) — **resolved in Phase 2.16**
+
+## Phase 2.16 — Monitoring and automation hardening
+
+- **Status:** `PHASE 2.16 MONITORING PASS — DIN CHINA UNIFIED LEDGER STABLE`
+- Production verification: all five unified main loaders ON; golden totals unchanged
+- Automation fixes: shared Playwright helpers (`unifiedLedgerBrowserQaHelpers.mjs`); LV2 MR JALIL and Admin Compare 9/9 stable
+- No flags changed; no other company expansion
+- Evidence: `reports/single-core-ledger/phase-2-16-monitoring/`
+- Expansion readiness: [`SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md`](SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md)
