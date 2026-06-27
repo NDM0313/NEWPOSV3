@@ -1,14 +1,15 @@
 # Single Core Ledger — Master Remaining Roadmap (post–DIN CHINA closure)
 
-**Generated:** 2026-06-27T17:26:05Z  
-**Main commit:** `91d00cf7` (latest) — completion evidence at `5ac71545`; see [`r5-post-completion-commit-reconciliation.md`](../r5-din-bridal-execution/r5-post-completion-commit-reconciliation.md)  
+**Generated:** 2026-06-27T17:45:00Z  
+**Main commit:** `bd813ec2`  
+**Program scope:** OLD ERP / DIN Collection ERP — **not** the FX / multi-currency app  
 **Program scope:** OLD ERP / DIN Collection ERP — **not** the FX / multi-currency app
 
 ---
 
 ## Scope statement
 
-**DIN CHINA rollout is closed on `main`.** **DIN BRIDAL R5 rollout is complete** (12/12 flags, 5/5 loaders live @ 2026-06-27). Five unified main loaders are live for both companies; Phase 2.16 / R5 monitoring remains authoritative.
+**DIN CHINA rollout is closed on `main`.** **DIN BRIDAL R5 rollout is complete** (12/12 flags, 5/5 loaders live @ 2026-06-27). **Migration closure is complete** — Phase 1.5 applied on production; no approved pending migrations.
 
 **The broader Single Core Ledger program is not complete.** Remaining work includes optional diagnostics, other-company expansion (blocked until finance sign-off), monitoring hardening, optional RPC design, and long-term legacy engine retirement. None of these may start without the approvals listed per phase.
 
@@ -55,7 +56,8 @@
 | Per-company staged pilot/engine/screen/loader enablement | Repeat 2.9→2.15 pattern per company | **Blocked for unapproved companies** | Expansion checklist + DIN CHINA/DIN BRIDAL phase reports | Critical — money/report errors | Finance + operator per step | DIN BRIDAL complete; next company needs separate sign-off |
 | First non-DIN company pilot rollout | Full staged enablement for one company | **R5 COMPLETE — DIN BRIDAL live** @ 2026-06-27 | [`r5-soak-complete-report.md`](../r5-din-bridal-execution/r5-soak-complete-report.md) | — | — | Next company needs separate sign-off |
 | Monitoring / accelerated waiver workflow | Extend Phase 2.16 script + waiver templates | **Optional** | [`run-phase-216-monitoring-verify.mjs`](../../../scripts/single-core-ledger/run-phase-216-monitoring-verify.mjs) | Medium on future rollouts | Ops | Parameterize company/golden constants |
-| `roznamcha_payment` RPC mode | Optional unified GL path for roznamcha rows | **Design-only (R7)** | [`SINGLE_CORE_LEDGER_PHASE_2_15_CASH_BANK_PARITY_AND_ROZNAMCHA_RECOVERY_PLAN.md`](../../../docs/accounting/SINGLE_CORE_LEDGER_PHASE_2_15_CASH_BANK_PARITY_AND_ROZNAMCHA_RECOVERY_PLAN.md) | Low short-term — DIN CHINA/DIN BRIDAL roznamcha loaders live with parity filter | **Migration approval** | Do not apply R7 migration without separate approval |
+| Phase 1.5 unified ledger RPC migrations | Shadow + diagnostics + RPCs + indexes on production | **Complete** | [`migration-closure-final-report.md`](../migration-closure/migration-closure-final-report.md) | High if skipped | Done (applied 2026-06-23) | None — closure verified 2026-06-27 |
+| `roznamcha_payment` RPC mode (R7) | Optional unified GL path for roznamcha rows | **Design-only** | [`SINGLE_CORE_LEDGER_R7_ROZNAMCHA_PAYMENT_RPC_DESIGN.md`](../../../docs/accounting/SINGLE_CORE_LEDGER_R7_ROZNAMCHA_PAYMENT_RPC_DESIGN.md) | Low short-term | **Migration approval** | Do not apply without separate approval |
 | Legacy engine retirement / cleanup | Deprecate `getCustomerLedger`, `roznamchaService`, etc. | **Blocked** (long-term) | [`SINGLE_CORE_LEDGER_MIGRATION_MASTER_EXECUTION_PLAN_v3.md`](../../../docs/accounting/SINGLE_CORE_LEDGER_MIGRATION_MASTER_EXECUTION_PLAN_v3.md) §14, [`PHASE8_LEGACY_RETIREMENT_MAP.md`](../../../docs/accounting/PHASE8_LEGACY_RETIREMENT_MAP.md) | High if premature | Finance + engineering after all target companies stable | Do not delete legacy paths yet |
 | Remaining screen wiring (BS, P&L, Cash Flow, Day Book, COA balances, mobile) | Phase 2 rollout plan screens beyond five loaders | **Optional / future** | [`SINGLE_CORE_LEDGER_PHASE_2_ROLLOUT_PLAN.md`](../../../docs/accounting/SINGLE_CORE_LEDGER_PHASE_2_ROLLOUT_PLAN.md) | Medium — screen-by-screen drift | Per-screen approval | Out of DIN CHINA closure scope |
 
@@ -71,7 +73,7 @@
 - **Next company pilot** (e.g. DIN COUTURE) — blocked until separate finance sign-off + golden capture validation
 
 ### Complete (2026-06-27)
-- **R5** DIN BRIDAL first non-DIN company pilot — unified loaders live — [`r5-soak-complete-report.md`](../r5-din-bridal-execution/r5-soak-complete-report.md)
+- **Migration closure** — Phase 1.5 applied; no approved pending migrations — [`migration-closure-final-report.md`](../migration-closure/migration-closure-final-report.md)
 - **R5 post-completion archive** — commit reconciliation + monitoring baseline — [`r5-post-completion-commit-reconciliation.md`](../r5-din-bridal-execution/r5-post-completion-commit-reconciliation.md)
 - **R3** Other-company pre-expansion audit + candidate golden baselines — [`r3-audit-complete-report.md`](../r3-pre-expansion-audit/r3-audit-complete-report.md)
 - **R4** Per-company staged rollout runbook — [`SINGLE_CORE_LEDGER_PER_COMPANY_ROLLOUT_RUNBOOK.md`](../../../docs/accounting/SINGLE_CORE_LEDGER_PER_COMPANY_ROLLOUT_RUNBOOK.md)

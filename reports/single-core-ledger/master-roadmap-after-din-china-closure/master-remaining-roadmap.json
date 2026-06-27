@@ -1,8 +1,15 @@
 {
-  "generated_at": "2026-06-27T17:26:05Z",
-  "current_main_commit": "91d00cf7",
-  "completion_evidence_commit": "5ac71545",
+  "generated_at": "2026-06-27T17:45:00Z",
+  "current_main_commit": "bd813ec2",
   "commit_reconciliation": "reports/single-core-ledger/r5-din-bridal-execution/r5-post-completion-commit-reconciliation.md",
+  "migration_closure": {
+    "status": "MIGRATION_CLOSURE_COMPLETE_NO_APPROVED_PENDING_MIGRATIONS",
+    "completed_at": "2026-06-27",
+    "evidence": "reports/single-core-ledger/migration-closure/migration-closure-final-report.md",
+    "phase_15_applied": "4/4",
+    "unified_rpcs": "5/5",
+    "migrations_applied_this_run": 0
+  },
   "din_china_status": "CLOSED_ON_MAIN",
   "program_status": "DIN_CHINA_COMPLETE_R5_DIN_BRIDAL_COMPLETE",
   "production_url": "https://erp.dincouture.pk",
@@ -39,7 +46,7 @@
     {
       "id": "R7",
       "name": "roznamcha_payment RPC migration",
-      "blocker": "Design-only — separate migration approval required"
+      "blocker": "Design-only — separate migration approval required; no migration file in repo"
     },
     {
       "id": "R8",

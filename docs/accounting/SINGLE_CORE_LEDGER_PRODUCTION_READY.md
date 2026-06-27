@@ -41,6 +41,7 @@
 | R5 first non-DIN pilot preflight | **COMPLETE** — [`r5-preflight-status.md`](../reports/single-core-ledger/r5-pilot-preflight/r5-preflight-status.md) |
 | R5 DIN BRIDAL controlled rollout execution | **COMPLETE — unified loaders live** @ 2026-06-27 — [`r5-soak-complete-report.md`](../reports/single-core-ledger/r5-din-bridal-execution/r5-soak-complete-report.md) |
 | R5 DIN BRIDAL post-completion archive | **COMPLETE** @ 2026-06-27 — [`r5-post-completion-commit-reconciliation.md`](../reports/single-core-ledger/r5-din-bridal-execution/r5-post-completion-commit-reconciliation.md), [`production-monitoring-post-completion.md`](../reports/single-core-ledger/din-bridal-monitoring/production-monitoring-post-completion.md) |
+| Migration closure + DB readiness | **COMPLETE** @ 2026-06-27 — no approved pending migrations; Phase 1.5 4/4 applied — [`migration-closure-final-report.md`](../reports/single-core-ledger/migration-closure/migration-closure-final-report.md) |
 | Post-PR final closure | **COMPLETE** — [`final-post-pr-closure-report.md`](../reports/single-core-ledger/phase-2-18-main-merge-closure/final-post-pr-closure-report.md) |
 | Future company expansion | **Requires separate finance sign-off** — [`SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md`](SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md) |
 
@@ -69,7 +70,7 @@ Closeout pack: [`phase-212-closeout-monitoring.md`](../reports/single-core-ledge
 | Post-apply validation (fresh clone) | **PASS** — payment gaps 0, branch risk 0, Gate A 3/3, tie-out 9/9 |
 | Production smoke test (1.7) | **PASS** 10/10 |
 | `unified_ledger_engine` (DIN CHINA) | **ON** @ 2026-06-25T18:05:23Z |
-| Phase 1.5 prod migration pack | **READY** — guarded apply not executed in 1.7 |
+| Phase 1.5 prod migration pack | **APPLIED on production** — 4/4 in `schema_migrations`, 5/5 RPCs @ 2026-06-23 — migration closure complete @ 2026-06-27 |
 | Phase 1.5 post-migration Gate A (1.8) | **PASS** 3/3 on `ledger_stage_20260625_prodcheck` |
 | Phase 2 rollout plan | **READY** — plan on rollout branch |
 | Phase 2.1 flags + banners | **COMPLETE** — see [`SINGLE_CORE_LEDGER_PHASE_2_1_FLAGS_BANNERS_REPORT.md`](SINGLE_CORE_LEDGER_PHASE_2_1_FLAGS_BANNERS_REPORT.md) |
@@ -298,8 +299,8 @@ See: [`SINGLE_CORE_LEDGER_PHASE_1_8_POST_MIGRATION_VALIDATION_REPORT.md`](SINGLE
 | Master remaining roadmap | **ACTIVE** — [`master-remaining-roadmap.md`](../reports/single-core-ledger/master-roadmap-after-din-china-closure/master-remaining-roadmap.md) |
 | Other-company unified loader expansion | **Blocked** until separate finance sign-off — [`SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md`](SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md) |
 | Phase 2.9A-CB / Admin Compare Cash/Bank diagnostic cleanup | **CLOSED** — shadow compare semantics clarified; not a production blocker |
-| `roznamcha_payment` RPC mode | **Optional future** — requires separate migration approval |
-| Legacy engine retirement (master plan Phase 5) | **Blocked long-term** — after all target companies stable |
+| `roznamcha_payment` RPC mode (R7) | **Design-only** — no migration applied; requires separate approval — [`SINGLE_CORE_LEDGER_R7_ROZNAMCHA_PAYMENT_RPC_DESIGN.md`](SINGLE_CORE_LEDGER_R7_ROZNAMCHA_PAYMENT_RPC_DESIGN.md) |
+| Legacy engine retirement (R8) | **Blocked** until all approved companies stable on unified loaders |
 | Remaining Phase 2 screens (BS, P&L, Cash Flow, mobile) | **Optional future** — see Phase 2 rollout plan |
 
 **Not blocked (live production):** `unified_ledger_engine` and all five DIN CHINA unified main loaders are **ON** — see authoritative section at top.
