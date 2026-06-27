@@ -2,11 +2,13 @@
 
 **Status:** `THREE-COMPANY UNIFIED LEDGER BASELINE COMPLETE`  
 **Program:** DIN CHINA, DIN BRIDAL, and DIN COUTURE unified loaders live and stable on `main`. Migration closure complete. R7 design-only; R8 blocked. Next-company expansion requires separate finance sign-off — [`master-remaining-roadmap.md`](../reports/single-core-ledger/master-roadmap-after-din-china-closure/master-remaining-roadmap.md)  
-**Branch:** `main` @ `0a818da2` (three-company baseline archive)  
+**Branch:** `main` @ `50547061` (monitoring automation); credential hardening in progress  
 **PR:** https://github.com/NDM0313/NEWPOSV3/pull/21  
 **Last updated:** 2026-06-14  
 **Archive:** Three-company operational baseline — [`final-program-archive-report.md`](../reports/single-core-ledger/final-program-archive/final-program-archive-report.md)  
-**Post-baseline:** Operational monitoring automation — [`monitoring-runbook.md`](../reports/single-core-ledger/operational-monitoring/monitoring-runbook.md)  
+**Post-baseline:** Operational monitoring — [`monitoring-runbook.md`](../reports/single-core-ledger/operational-monitoring/monitoring-runbook.md)  
+**Credential hardening:** [`credential-hardening-report.md`](../reports/single-core-ledger/operational-monitoring/credential-hardening-report.md)  
+**Commit reconciliation:** `0a818da2` baseline · `50547061` monitoring automation + successful rerun  
 **Master checklist:** use this file as the single entry point for post-apply status.
 
 ---
@@ -23,9 +25,10 @@
 - **Migration closure:** complete — no approved pending migrations  
 - **R7 roznamcha_payment RPC:** design-only  
 - **R8 legacy engine retirement:** blocked  
-- **Recommended ongoing operation:** periodic monitoring for `din-china`, `din-bridal`, `din-couture` — `npm run monitor:three-company-unified-ledger`  
+- **Recommended ongoing operation:** `npm run monitor:three-company-unified-ledger` with per-company `QA_BROWSER_PASSWORD_*` env vars  
+- **Credential precedence hardened:** generic `QA_BROWSER_EMAIL` never used for three-company run; generic password requires `ALLOW_GENERIC_MONITORING_CREDENTIAL_FALLBACK=true`  
 - **Operational monitoring runbook:** [`monitoring-runbook.md`](../reports/single-core-ledger/operational-monitoring/monitoring-runbook.md)  
-- **Post-baseline remaining phases audit:** [`post-baseline-remaining-phases-final-report.md`](../reports/single-core-ledger/post-baseline-remaining-phases/post-baseline-remaining-phases-final-report.md)  
+- **Latest monitoring:** [`latest-three-company-monitoring.json`](../reports/single-core-ledger/operational-monitoring/latest-three-company-monitoring.json)  
 - Evidence: [`three-company-monitoring-baseline.md`](../reports/single-core-ledger/final-program-archive/three-company-monitoring-baseline.md)
 
 ---
@@ -66,6 +69,8 @@
 | DIN COUTURE next-company rollout | **COMPLETE — unified loaders live** @ 2026-06-27 — [`final-execution-report.md`](../reports/single-core-ledger/next-company-rollout/din-couture/final-execution-report.md) |
 | Three-company operational baseline | **COMPLETE** @ 2026-06-14 — [`final-program-archive-report.md`](../reports/single-core-ledger/final-program-archive/final-program-archive-report.md) |
 | Post-baseline monitoring automation + runbook | **COMPLETE** @ 2026-06-14 — [`monitoring-runbook.md`](../reports/single-core-ledger/operational-monitoring/monitoring-runbook.md) |
+| Monitoring credential hardening | **COMPLETE** @ 2026-06-14 — [`credential-hardening-report.md`](../reports/single-core-ledger/operational-monitoring/credential-hardening-report.md) |
+
 | Post-baseline remaining phase audit | **COMPLETE** @ 2026-06-14 — [`post-baseline-remaining-phases/`](../reports/single-core-ledger/post-baseline-remaining-phases/) |
 
 Closeout pack: [`phase-212-closeout-monitoring.md`](../reports/single-core-ledger/phase-2-12-trial-balance-loader/phase-212-closeout-monitoring.md)

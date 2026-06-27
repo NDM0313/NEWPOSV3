@@ -1,36 +1,36 @@
 {
   "title": "three-company-unified-ledger-operational-monitoring-runbook",
   "generated_at": "2026-06-14T00:00:00Z",
+  "commit_reconciliation": {
+    "0a818da2": "three-company baseline archive",
+    "50547061": "monitoring automation + successful rerun evidence"
+  },
   "production_url": "https://erp.dincouture.pk",
   "profiles": ["din-china", "din-bridal", "din-couture"],
+  "credential_policy": {
+    "per_company_preferred": true,
+    "email_env_keys": {
+      "din-china": "QA_BROWSER_EMAIL_CHINA",
+      "din-bridal": "QA_BROWSER_EMAIL_BRIDAL",
+      "din-couture": "QA_BROWSER_EMAIL_COUTURE"
+    },
+    "password_env_keys": {
+      "din-china": "QA_BROWSER_PASSWORD_CHINA",
+      "din-bridal": "QA_BROWSER_PASSWORD_BRIDAL",
+      "din-couture": "QA_BROWSER_PASSWORD_COUTURE"
+    },
+    "generic_email_for_three_company_run": "blocked",
+    "generic_password_fallback_env": "ALLOW_GENERIC_MONITORING_CREDENTIAL_FALLBACK",
+    "golden_party_timeout_hint": "credential_binding_not_accounting"
+  },
   "commands": {
-    "single_profile": "MONITORING_PROFILE=<profile> node scripts/single-core-ledger/run-unified-ledger-monitoring-verify.mjs",
-    "all_profiles": "npm run monitor:three-company-unified-ledger"
+    "all_profiles_recommended": "npm run monitor:three-company-unified-ledger",
+    "single_profile": "MONITORING_PROFILE=<profile> node scripts/single-core-ledger/run-unified-ledger-monitoring-verify.mjs"
   },
-  "golden_values": {
-    "din-china": {
-      "party": "MR JALIL",
-      "closing_pkr": 216300,
-      "trial_balance_pkr": 407957271.02,
-      "roznamcha": [136158012, 67042426, 69115586]
-    },
-    "din-bridal": {
-      "party": "MR REHAN ALI",
-      "closing_pkr": 530000,
-      "trial_balance_pkr": 21919575,
-      "roznamcha": [1836350, 917780, 918570]
-    },
-    "din-couture": {
-      "party": "DHARIA",
-      "closing_pkr": 4488088,
-      "trial_balance_pkr": 49747104,
-      "roznamcha": [85000, 34500, 50500]
-    }
-  },
+  "latest_evidence": "reports/single-core-ledger/operational-monitoring/latest-three-company-monitoring.json",
   "policies": {
     "no_auto_fix": true,
     "no_migrations_in_monitoring": true,
     "credentials_env_only": true
-  },
-  "output_dir": "reports/single-core-ledger/operational-monitoring"
+  }
 }

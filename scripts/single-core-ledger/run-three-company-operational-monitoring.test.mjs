@@ -3,11 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import {
-  resolveProfileEmail,
-  buildTimestampSlug,
-  parseMonitoringOutput,
-} from './run-three-company-operational-monitoring.mjs';
+import { resolveProfileEmail } from './monitoringCredentials.mjs';
+import { buildTimestampSlug, parseMonitoringOutput } from './monitoringRunnerHelpers.mjs';
 
 const PROFILES = JSON.parse(
   fs.readFileSync(
@@ -16,22 +13,15 @@ const PROFILES = JSON.parse(
   ),
 );
 
-test('resolveProfileEmail uses defaults for three live companies', () => {
-  assert.equal(resolveProfileEmail('din-china', PROFILES, {}), 'din@yahoo.com');
-  assert.equal(resolveProfileEmail('din-bridal', PROFILES, {}), 'ndm313@yahoo.com');
-  assert.equal(resolveProfileEmail('din-couture', PROFILES, {}), 'zhd@dincouture.pk');
-});
-
-test('resolveProfileEmail ignores generic QA_BROWSER_EMAIL for din-bridal', () => {
-  assert.equal(
-    resolveProfileEmail('din-bridal', PROFILES, { QA_BROWSER_EMAIL: 'din@yahoo.com' }),
-    'ndm313@yahoo.com',
-  );
+test('resolveProfileEmail uses built-in defaults and ignores generic QA_BROWSER_EMAIL', () => {
+  assert.equal(resolveProfileEmail('din-china', PROFILES, {}).email, 'din@yahoo.com');
+  assert.equal(resolveProfileEmail('din-bridal', PROFILES, { QA_BROWSER_EMAIL: 'din@yahoo.com' }).email, 'ndm313@yahoo.com');
+  assert.equal(resolveProfileEmail('din-couture', PROFILES, {}).email, 'zhd@dincouture.pk');
 });
 
 test('resolveProfileEmail respects per-profile env overrides', () => {
   assert.equal(
-    resolveProfileEmail('din-bridal', PROFILES, { QA_BROWSER_EMAIL_BRIDAL: 'ops@example.com' }),
+    resolveProfileEmail('din-bridal', PROFILES, { QA_BROWSER_EMAIL_BRIDAL: 'ops@example.com' }).email,
     'ops@example.com',
   );
 });

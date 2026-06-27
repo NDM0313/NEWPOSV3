@@ -2,7 +2,8 @@
 
 **Program:** OLD ERP Single Core Ledger  
 **Production:** https://erp.dincouture.pk  
-**Last updated:** 2026-06-14
+**Last updated:** 2026-06-14  
+**Commit reconciliation:** `0a818da2` = three-company baseline archive · `50547061` = post-baseline monitoring automation + successful rerun evidence · credential hardening = this run
 
 ---
 
@@ -12,41 +13,80 @@ Periodic read-only verification that DIN CHINA, DIN BRIDAL, and DIN COUTURE unif
 
 ---
 
-## Prerequisites
+## Credential policy (hardened)
 
-- `QA_BROWSER_PASSWORD` set in environment (**never commit**, **never log**)
-- Optional per-company login overrides:
-  - `QA_BROWSER_EMAIL_CHINA` (default: `din@yahoo.com`)
-  - `QA_BROWSER_EMAIL_BRIDAL` (default: `ndm313@yahoo.com`)
-  - `QA_BROWSER_EMAIL_COUTURE` (default: `zhd@dincouture.pk`)
-- Network access to production ERP and VPS SSH for read-only flag SQL
+**Preferred:** per-company env vars (never commit, never log password values):
+
+| Profile | Email env | Password env |
+|---------|-----------|--------------|
+| din-china | `QA_BROWSER_EMAIL_CHINA` | `QA_BROWSER_PASSWORD_CHINA` |
+| din-bridal | `QA_BROWSER_EMAIL_BRIDAL` | `QA_BROWSER_PASSWORD_BRIDAL` |
+| din-couture | `QA_BROWSER_EMAIL_COUTURE` | `QA_BROWSER_PASSWORD_COUTURE` |
+
+**Rules:**
+
+- Do **not** store credentials in the repo or paste passwords into reports.
+- **Do not** use generic `QA_BROWSER_EMAIL` for `npm run monitor:three-company-unified-ledger` — it is ignored; built-in default emails apply per profile unless per-company email vars are set.
+- Generic `QA_BROWSER_PASSWORD` is **not** reused across all three profiles unless you explicitly set `ALLOW_GENERIC_MONITORING_CREDENTIAL_FALLBACK=true`.
+- If per-company password vars are missing and generic fallback is not allowed, the runner **stops** with a clear missing-credential message.
+- Per-company env vars **always win** over generic vars when set.
+- Golden party selection timeout → likely **wrong credential binding** (user belongs to another company), not an accounting regression.
+
+---
+
+## Recommended PowerShell setup (all three profiles)
+
+```powershell
+$env:QA_BROWSER_EMAIL_CHINA = "<din-china-user>"
+$env:QA_BROWSER_PASSWORD_CHINA = "<password>"
+$env:QA_BROWSER_EMAIL_BRIDAL = "<din-bridal-user>"
+$env:QA_BROWSER_PASSWORD_BRIDAL = "<password>"
+$env:QA_BROWSER_EMAIL_COUTURE = "<din-couture-user>"
+$env:QA_BROWSER_PASSWORD_COUTURE = "<password>"
+
+npm run monitor:three-company-unified-ledger
+```
+
+Built-in default emails (if per-company email not set): `din@yahoo.com` · `ndm313@yahoo.com` · `zhd@dincouture.pk`
+
+---
+
+## Temporary shared password (explicit opt-in only)
+
+```powershell
+$env:QA_BROWSER_PASSWORD = "<password>"
+$env:ALLOW_GENERIC_MONITORING_CREDENTIAL_FALLBACK = "true"
+npm run monitor:three-company-unified-ledger
+```
 
 ---
 
 ## Run one profile manually
 
 ```powershell
-$env:QA_BROWSER_PASSWORD="<from-secret-store>"
-$env:MONITORING_PROFILE="din-china"   # or din-bridal, din-couture
-$env:QA_BROWSER_EMAIL="din@yahoo.com" # optional override
+$env:MONITORING_PROFILE = "din-bridal"
+$env:QA_BROWSER_EMAIL_BRIDAL = "<din-bridal-user>"
+$env:QA_BROWSER_PASSWORD_BRIDAL = "<password>"
 node scripts/single-core-ledger/run-unified-ledger-monitoring-verify.mjs
 ```
+
+Single-profile runs may use generic `QA_BROWSER_EMAIL` / `QA_BROWSER_PASSWORD` when `MONITORING_PROFILE` is set explicitly.
 
 Exit code `0` = PASS; non-zero = investigate (do not auto-fix production).
 
 ---
 
-## Run all three profiles (recommended)
+## Output
 
-```powershell
-$env:QA_BROWSER_PASSWORD="<from-secret-store>"
-npm run monitor:three-company-unified-ledger
-```
-
-Writes timestamped reports to:
+Timestamped reports:
 
 - `reports/single-core-ledger/operational-monitoring/three-company-monitoring-<timestamp>.md`
 - `reports/single-core-ledger/operational-monitoring/three-company-monitoring-<timestamp>.json`
+
+Latest symlinks:
+
+- `latest-three-company-monitoring.md`
+- `latest-three-company-monitoring.json`
 
 ---
 
@@ -84,27 +124,17 @@ Writes timestamped reports to:
 Get-Content scripts/single-core-ledger/three-company-loader-guard-pipe.sql | ssh dincouture-vps "docker exec -i supabase-db psql -U postgres -d postgres -t -A"
 ```
 
-Expect only DIN CHINA, DIN BRIDAL, DIN COUTURE with 5 loaders each. **Other-company loaders must be 0.**
+Expect only DIN CHINA, DIN BRIDAL, DIN COUTURE with 5 loaders each.
 
 ---
 
 ## Failure actions
 
 1. **Do not auto-fix** flags, GL, or balances  
-2. **Do not run migrations** without separate approval  
-3. Capture monitoring JSON/MD and open investigation report  
-4. Use L1 rollback SQL only with finance + ops incident approval  
-5. Re-run single profile after any approved fix
-
----
-
-## Rollback references
-
-| Company | Scripts |
-|---------|---------|
-| DIN CHINA | `scripts/single-core-ledger/phase-21x-rollback-*.sql` |
-| DIN BRIDAL | `scripts/single-core-ledger/din-bridal/db-rollback-*.sql` |
-| DIN COUTURE | `scripts/single-core-ledger/din-couture/dc-rollback-*.sql` |
+2. **Do not run migrations**  
+3. Check credential binding before assuming accounting regression  
+4. Capture monitoring JSON/MD and open investigation  
+5. L1 rollback SQL only with finance + ops incident approval
 
 ---
 
@@ -112,15 +142,8 @@ Expect only DIN CHINA, DIN BRIDAL, DIN COUTURE with 5 loaders each. **Other-comp
 
 | Policy | Rule |
 |--------|------|
-| Credentials | Env only; never in git, reports, or screenshots |
-| Auto-fix | **Forbidden** for production accounting data |
-| Migrations | **Forbidden** in monitoring runs |
-| R7 / R8 | **Forbidden** without separate approval |
-| Next company | **Forbidden** without finance sign-off |
-
----
-
-## Baseline references
-
-- [`three-company-monitoring-baseline.json`](../final-program-archive/three-company-monitoring-baseline.json)
-- [`final-program-archive-report.md`](../final-program-archive/final-program-archive-report.md)
+| Credentials | Env only; never in git |
+| Auto-fix | Forbidden |
+| Migrations | Forbidden in monitoring runs |
+| R7 / R8 | Forbidden without approval |
+| Next company | Forbidden without finance sign-off |

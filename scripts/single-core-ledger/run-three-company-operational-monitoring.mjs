@@ -1,68 +1,42 @@
 #!/usr/bin/env node
 /**
  * Run read-only production monitoring for all three approved unified-ledger companies.
- * Does not mutate flags, GL, or accounting data. Requires QA_BROWSER_PASSWORD in env.
+ * Does not mutate flags, GL, or accounting data.
  *
- * Usage:
- *   QA_BROWSER_PASSWORD=*** node scripts/single-core-ledger/run-three-company-operational-monitoring.mjs
+ * Per-company credentials (preferred):
+ *   QA_BROWSER_EMAIL_CHINA / QA_BROWSER_PASSWORD_CHINA
+ *   QA_BROWSER_EMAIL_BRIDAL / QA_BROWSER_PASSWORD_BRIDAL
+ *   QA_BROWSER_EMAIL_COUTURE / QA_BROWSER_PASSWORD_COUTURE
  *
- * Optional per-company login overrides (never logged):
- *   QA_BROWSER_EMAIL_CHINA, QA_BROWSER_EMAIL_BRIDAL, QA_BROWSER_EMAIL_COUTURE
+ * Generic QA_BROWSER_PASSWORD is NOT reused across profiles unless:
+ *   ALLOW_GENERIC_MONITORING_CREDENTIAL_FALLBACK=true
+ *
+ * Generic QA_BROWSER_EMAIL is never used for multi-profile runs.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync, execSync } from 'node:child_process';
+import {
+  validateThreeCompanyCredentials,
+  formatCredentialSourceLog,
+  redactSecrets,
+  isGenericFallbackAllowed,
+  EMAIL_ENV_KEYS,
+  PASSWORD_ENV_KEYS,
+} from './monitoringCredentials.mjs';
+import { buildTimestampSlug, parseMonitoringOutput } from './monitoringRunnerHelpers.mjs';
+
+export { resolveProfileEmail } from './monitoringCredentials.mjs';
+export { buildTimestampSlug, parseMonitoringOutput } from './monitoringRunnerHelpers.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const PROFILES_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), 'monitoring-company-profiles.json');
 const MONITOR_SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'run-unified-ledger-monitoring-verify.mjs');
 const FLAG_GUARD_SQL = path.join(path.dirname(fileURLToPath(import.meta.url)), 'three-company-loader-guard-pipe.sql');
 const OUT_DIR = path.join(ROOT, 'reports/single-core-ledger/operational-monitoring');
-
-const PROFILE_ORDER = ['din-china', 'din-bridal', 'din-couture'];
-
-const DEFAULT_EMAILS = {
-  'din-china': 'din@yahoo.com',
-  'din-bridal': 'ndm313@yahoo.com',
-  'din-couture': 'zhd@dincouture.pk',
-};
-
-const EMAIL_ENV_KEYS = {
-  'din-china': 'QA_BROWSER_EMAIL_CHINA',
-  'din-bridal': 'QA_BROWSER_EMAIL_BRIDAL',
-  'din-couture': 'QA_BROWSER_EMAIL_COUTURE',
-};
-
-export function resolveProfileEmail(profileId, profilesRaw, env = process.env) {
-  const envKey = EMAIL_ENV_KEYS[profileId];
-  if (envKey && env[envKey]) return env[envKey];
-  const fromProfile = profilesRaw.profiles[profileId]?.login_email_default;
-  if (fromProfile && fromProfile !== 'PENDING_OPERATOR') return fromProfile;
-  return DEFAULT_EMAILS[profileId];
-}
-
-export function buildTimestampSlug(date = new Date()) {
-  return date.toISOString().replace(/[:.]/g, '-');
-}
-
-export function parseMonitoringOutput(text) {
-  const lines = text.split('\n').filter(Boolean);
-  const checks = [];
-  let phaseResult = null;
-  for (const line of lines) {
-    const m = line.match(/^\[(PASS|FAIL|WAIVED)\] (.+?)(?: — (.+))?$/);
-    if (m) checks.push({ result: m[1], check: m[2], notes: m[3] || '' });
-    const phase = line.match(/Phase 2\.16 monitoring: (PASS|FAIL)/);
-    if (phase) phaseResult = phase[1];
-  }
-  return { checks, phaseResult };
-}
-
-function redactSecrets(text, password) {
-  if (!password) return text;
-  return text.split(password).join('***');
-}
+const LATEST_MD = path.join(OUT_DIR, 'latest-three-company-monitoring.md');
+const LATEST_JSON = path.join(OUT_DIR, 'latest-three-company-monitoring.json');
 
 function runReadOnlyFlagGuard() {
   if (!fs.existsSync(FLAG_GUARD_SQL)) {
@@ -90,26 +64,31 @@ function runReadOnlyFlagGuard() {
   }
 }
 
-function runProfile(profileId, email, password) {
+function runProfile(creds) {
+  const emailKey = EMAIL_ENV_KEYS[creds.profileId];
+  const passwordKey = PASSWORD_ENV_KEYS[creds.profileId];
   const env = {
     ...process.env,
-    MONITORING_PROFILE: profileId,
-    QA_BROWSER_EMAIL: email,
-    QA_BROWSER_PASSWORD: password,
+    MONITORING_PROFILE: creds.profileId,
+    [emailKey]: creds.email,
+    [passwordKey]: creds.password,
   };
+  delete env.QA_BROWSER_EMAIL;
   const result = spawnSync(process.execPath, [MONITOR_SCRIPT], {
     cwd: ROOT,
     env,
     encoding: 'utf8',
     maxBuffer: 16 * 1024 * 1024,
   });
-  const stdout = redactSecrets(result.stdout || '', password);
-  const stderr = redactSecrets(result.stderr || '', password);
+  const stdout = redactSecrets(result.stdout || '', creds.password);
+  const stderr = redactSecrets(result.stderr || '', creds.password);
   const parsed = parseMonitoringOutput(stdout);
   const pass = result.status === 0 && parsed.phaseResult === 'PASS';
   return {
-    profileId,
-    email,
+    profileId: creds.profileId,
+    email: creds.email,
+    emailSource: creds.emailSource,
+    passwordSource: creds.passwordSource,
     exitCode: result.status ?? 1,
     pass,
     ...parsed,
@@ -118,30 +97,44 @@ function runProfile(profileId, email, password) {
   };
 }
 
+function writeLatest(payload, mdPath, jsonPath) {
+  fs.writeFileSync(jsonPath, JSON.stringify(payload, null, 2));
+  fs.writeFileSync(LATEST_JSON, JSON.stringify(payload, null, 2));
+  const md = fs.readFileSync(mdPath, 'utf8');
+  fs.writeFileSync(LATEST_MD, md);
+}
+
 function main() {
-  const password = process.env.QA_BROWSER_PASSWORD || '';
-  if (!password) {
-    console.error('Set QA_BROWSER_PASSWORD before running three-company operational monitoring.');
+  const profilesRaw = JSON.parse(fs.readFileSync(PROFILES_PATH, 'utf8'));
+  const validation = validateThreeCompanyCredentials(profilesRaw);
+  if (!validation.ok) {
+    console.error('Three-company monitoring credential validation failed:');
+    for (const m of validation.missing) {
+      console.error(`  - ${m.profileId}: ${m.message}`);
+    }
+    console.error(validation.hint);
     process.exit(1);
   }
 
-  const profilesRaw = JSON.parse(fs.readFileSync(PROFILES_PATH, 'utf8'));
   const timestamp = buildTimestampSlug();
   fs.mkdirSync(OUT_DIR, { recursive: true });
 
   console.log('=== Three-company operational monitoring (read-only) ===');
+  if (isGenericFallbackAllowed()) {
+    console.log('[INFO] ALLOW_GENERIC_MONITORING_CREDENTIAL_FALLBACK=true — shared QA_BROWSER_PASSWORD permitted');
+  }
+
   const flagGuard = runReadOnlyFlagGuard();
   console.log(`[${flagGuard.ok ? 'PASS' : 'FAIL'}] read-only loader guard`);
 
   const profileResults = [];
-  for (const profileId of PROFILE_ORDER) {
-    const email = resolveProfileEmail(profileId, profilesRaw);
-    console.log(`\n--- Running profile: ${profileId} (${email}) ---`);
-    const r = runProfile(profileId, email, password);
+  for (const creds of validation.profiles) {
+    console.log(`\n--- Running profile: ${creds.profileId} (${creds.email}) — ${formatCredentialSourceLog(creds)} ---`);
+    const r = runProfile(creds);
     profileResults.push(r);
-    console.log(`[${r.pass ? 'PASS' : 'FAIL'}] ${profileId} Phase 2.16`);
+    console.log(`[${r.pass ? 'PASS' : 'FAIL'}] ${creds.profileId} Phase 2.16`);
     if (!r.pass) {
-      console.error(r.stderr || r.stdout.split('\n').slice(-5).join('\n'));
+      console.error(r.stderr || r.stdout.split('\n').slice(-8).join('\n'));
     }
   }
 
@@ -151,6 +144,8 @@ function main() {
     generated_at: new Date().toISOString(),
     timestamp_slug: timestamp,
     overall: allPass ? 'PASS' : 'FAIL',
+    credential_policy: 'per-company-preferred',
+    generic_fallback_allowed: isGenericFallbackAllowed(),
     flag_guard: flagGuard,
     profiles: profileResults.map(({ stdout, stderr, ...rest }) => rest),
     migrations_run: false,
@@ -166,6 +161,7 @@ function main() {
     '',
     `**Generated:** ${payload.generated_at}`,
     `**Overall:** ${payload.overall}`,
+    `**Credential policy:** per-company preferred; generic fallback=${payload.generic_fallback_allowed}`,
     '',
     '## Read-only flag guard',
     '',
@@ -180,6 +176,8 @@ function main() {
       '',
       `- **Result:** ${r.pass ? 'PASS' : 'FAIL'}`,
       `- **Login email:** ${r.email}`,
+      `- **Email source:** ${r.emailSource}`,
+      `- **Password source:** ${r.passwordSource}`,
       `- **Checks:** ${r.checks.filter((c) => c.result === 'PASS').length}/${r.checks.length} PASS`,
       '',
     ].join('\n')),
@@ -187,6 +185,7 @@ function main() {
     `**JSON:** \`${path.relative(ROOT, jsonPath).replace(/\\/g, '/')}\``,
   ].join('\n');
   fs.writeFileSync(mdPath, md);
+  writeLatest(payload, mdPath, jsonPath);
 
   console.log(`\nWrote ${path.relative(ROOT, mdPath)}`);
   console.log(`Three-company monitoring: ${allPass ? 'PASS' : 'FAIL'}`);

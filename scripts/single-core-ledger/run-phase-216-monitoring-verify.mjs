@@ -10,6 +10,11 @@ import { execSync } from 'node:child_process';
 import { chromium } from 'playwright';
 import { loadMonitoringProfile } from './loadMonitoringProfile.mjs';
 import {
+  resolveSingleProfileMonitoringCredentials,
+  goldenPartyCredentialBindingHint,
+  formatCredentialSourceLog,
+} from './monitoringCredentials.mjs';
+import {
   parsePkr,
   readClosingBalance,
   readLedgerV2MrJalilClosing,
@@ -23,6 +28,11 @@ import {
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const profile = loadMonitoringProfile(process.env.MONITORING_PROFILE);
+const creds = resolveSingleProfileMonitoringCredentials(profile.profileId, process.env);
+if (!creds.ok) {
+  console.error(creds.message);
+  process.exit(1);
+}
 const EVIDENCE = profile.evidenceDir;
 const MR_JALIL_GOLDEN = profile.golden.mrJalilClosing;
 const TB_GOLDEN = profile.golden.trialBalanceTotal;
@@ -30,8 +40,8 @@ const ROZNAMCHA_GOLDEN = profile.golden.roznamcha;
 const GOLDEN_PARTY = profile.goldenPartyName;
 const GOLDEN_PARTY_SEARCH = profile.goldenPartySearch;
 const BASE = process.env.QA_BROWSER_BASE_URL || profile.productionUrl;
-const EMAIL = process.env.QA_BROWSER_EMAIL || profile.loginEmailDefault;
-const PASSWORD = process.env.QA_BROWSER_PASSWORD || '';
+const EMAIL = creds.email;
+const PASSWORD = creds.password;
 const checks = [];
 const consoleErrors = [];
 
@@ -104,21 +114,25 @@ async function readRoznamchaSummary(page) {
 }
 
 async function selectGoldenPartyAccountStatement(page) {
-  await page.getByRole('button', { name: /^Account Statements$/ }).click({ timeout: 60000 });
-  await page.getByRole('button', { name: /Advanced \(effective \/ audit\)/i }).click({ timeout: 30000 });
-  if (profile.profileId === 'din-china') {
-    await page.getByRole('button', { name: /load mr jalil/i }).click({ timeout: 120000 });
-  } else {
-    await page.locator('div:has(> label:text-is("Statement Type")) select').selectOption('customer');
-    await page.waitForTimeout(2000);
-    const contactCombobox = page.locator('div').filter({ has: page.getByText('Contact', { exact: true }) }).locator('[role="combobox"]').first();
-    await contactCombobox.click({ timeout: 30000 });
-    const searchInput = page.locator('[cmdk-input], input[placeholder*="Search"]').last();
-    await searchInput.fill(GOLDEN_PARTY_SEARCH);
-    await page.waitForTimeout(2000);
-    await page.locator('[cmdk-item]').filter({ hasText: GOLDEN_PARTY }).first().click({ timeout: 30000 });
+  try {
+    await page.getByRole('button', { name: /^Account Statements$/ }).click({ timeout: 60000 });
+    await page.getByRole('button', { name: /Advanced \(effective \/ audit\)/i }).click({ timeout: 30000 });
+    if (profile.profileId === 'din-china') {
+      await page.getByRole('button', { name: /load mr jalil/i }).click({ timeout: 120000 });
+    } else {
+      await page.locator('div:has(> label:text-is("Statement Type")) select').selectOption('customer');
+      await page.waitForTimeout(2000);
+      const contactCombobox = page.locator('div').filter({ has: page.getByText('Contact', { exact: true }) }).locator('[role="combobox"]').first();
+      await contactCombobox.click({ timeout: 30000 });
+      const searchInput = page.locator('[cmdk-input], input[placeholder*="Search"]').last();
+      await searchInput.fill(GOLDEN_PARTY_SEARCH);
+      await page.waitForTimeout(2000);
+      await page.locator('[cmdk-item]').filter({ hasText: GOLDEN_PARTY }).first().click({ timeout: 30000 });
+    }
+    await page.waitForTimeout(8000);
+  } catch (err) {
+    throw new Error(goldenPartyCredentialBindingHint(profile.profileId, GOLDEN_PARTY, EMAIL), { cause: err });
   }
-  await page.waitForTimeout(8000);
 }
 
 async function selectGoldenPartyPartyLedger(page) {
@@ -169,10 +183,7 @@ async function loadProductionFlags() {
 }
 
 async function main() {
-  if (!PASSWORD) {
-    console.error('Set QA_BROWSER_PASSWORD');
-    process.exit(1);
-  }
+  console.log(`Monitoring profile=${profile.profileId} company=${profile.company} login=${EMAIL} ${formatCredentialSourceLog(creds)}`);
   fs.mkdirSync(EVIDENCE, { recursive: true });
 
   const flagOut = await loadProductionFlags();

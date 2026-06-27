@@ -34,5 +34,7 @@
   "din_couture_flags_on": 12,
   "other_company_loaders_on": 0,
   "monitoring": "PASS",
-  "monitoring_evidence": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-27T14-14-14-851Z.json"
+  "monitoring_evidence": "reports/single-core-ledger/operational-monitoring/latest-three-company-monitoring.json",
+  "credential_hardening_complete": true,
+  "credential_hardening_evidence": "reports/single-core-ledger/operational-monitoring/credential-hardening-report.md"
 }

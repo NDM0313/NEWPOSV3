@@ -1,8 +1,11 @@
 {
   "generated_at": "2026-06-14T00:00:00Z",
-  "current_main_commit": "0a818da2",
-  "latest_main_commit": "0a818da25eb1d1e72343a0398eb6124e4ab36bef",
-  "program_status": "POST_BASELINE_PARTIAL_COMPLETE_BLOCKED_ITEMS_REMAIN",
+  "current_main_commit": "50547061",
+  "commit_reconciliation": {
+    "0a818da2": "three-company baseline archive",
+    "50547061": "monitoring automation + successful rerun evidence"
+  },
+  "program_status": "POST_BASELINE_CREDENTIAL_HARDENING_COMPLETE",
   "production_url": "https://erp.dincouture.pk",
   "three_company_baseline": {
     "status": "THREE_COMPANY_UNIFIED_LEDGER_BASELINE_COMPLETE",
@@ -12,52 +15,35 @@
     "status": "COMPLETE",
     "monitor_command": "npm run monitor:three-company-unified-ledger",
     "runbook": "reports/single-core-ledger/operational-monitoring/monitoring-runbook.md",
-    "evidence": "reports/single-core-ledger/post-baseline-remaining-phases/post-baseline-remaining-phases-final-report.md"
+    "credential_hardening": "reports/single-core-ledger/operational-monitoring/credential-hardening-report.md",
+    "latest_monitoring": "reports/single-core-ledger/operational-monitoring/latest-three-company-monitoring.json"
+  },
+  "credential_policy": {
+    "per_company_password_required_or_explicit_generic_fallback": true,
+    "generic_email_blocked_for_three_company_run": true
   },
   "migration_closure": {
-    "status": "MIGRATION_CLOSURE_COMPLETE_NO_APPROVED_PENDING_MIGRATIONS",
-    "evidence": "reports/single-core-ledger/migration-closure/migration-closure-final-report.md"
+    "status": "MIGRATION_CLOSURE_COMPLETE_NO_APPROVED_PENDING_MIGRATIONS"
   },
   "din_china_status": "COMPLETE_AND_STABLE",
-  "din_bridal_r5_complete": {
-    "status": "R5_COMPLETE_DIN_BRIDAL_UNIFIED_LOADERS_LIVE",
-    "unified_flags_on": 12,
-    "loaders_on": 5
-  },
-  "din_couture_rollout_complete": {
-    "status": "DIN_COUTURE_COMPLETE_UNIFIED_LOADERS_LIVE",
-    "unified_flags_on": 12,
-    "loaders_on": 5
-  },
-  "recommended_next_phase": {
-    "id": "operational-monitoring",
-    "command": "npm run monitor:three-company-unified-ledger",
-    "note": "No flag/migration/company expansion without separate approval"
-  },
+  "din_bridal_status": "COMPLETE_AND_STABLE",
+  "din_couture_status": "COMPLETE_AND_STABLE",
   "blocked_phases": [
-    { "id": "R7", "status": "DESIGN_ONLY", "blocker": "Separate migration approval required" },
-    { "id": "R8", "status": "BLOCKED", "blocker": "Stability period + separate approval" },
-    { "id": "next-company", "status": "BLOCKED", "blocker": "Separate finance sign-off" },
-    { "id": "remaining-screens", "status": "OPTIONAL_FUTURE", "blocker": "BS/P&L/CF/mobile per-screen program" }
+    { "id": "R7", "status": "DESIGN_ONLY" },
+    { "id": "R8", "status": "BLOCKED" },
+    { "id": "next-company", "status": "BLOCKED" }
   ],
-  "operational_monitoring": {
-    "profiles": ["din-china", "din-bridal", "din-couture"],
+  "recommended_next_phase": {
     "command": "npm run monitor:three-company-unified-ledger",
-    "runbook": "reports/single-core-ledger/operational-monitoring/monitoring-runbook.json",
-    "latest_pass": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-27T14-14-14-851Z.json"
+    "credential_setup": "QA_BROWSER_PASSWORD_CHINA|BRIDAL|COUTURE per monitoring-runbook.md"
   },
   "constraints": {
-    "din_china_unified_flags_on": 12,
-    "din_china_loaders_on": 5,
-    "din_bridal_unified_flags_on": 12,
-    "din_bridal_loaders_on": 5,
-    "din_couture_unified_flags_on": 12,
-    "din_couture_loaders_on": 5,
+    "din_china_flags_on": 12,
+    "din_bridal_flags_on": 12,
+    "din_couture_flags_on": 12,
     "other_company_loaders_on": 0,
     "migrations_run": false,
     "gl_mutations": false,
-    "fx_app_touched": false,
-    "credentials_committed": false,
     "no_default_production_flag_action": true
   }
 }

@@ -8,11 +8,13 @@
 
 ## Scope statement
 
-**DIN CHINA complete and stable.** **DIN BRIDAL complete and stable.** **DIN COUTURE complete and stable.** **Migration closure complete.** **Three-company monitoring baseline complete.** **Operational monitoring automation and runbook complete.**
+**DIN CHINA complete and stable.** **DIN BRIDAL complete and stable.** **DIN COUTURE complete and stable.** **Migration closure complete.** **Three-company monitoring baseline complete.** **Operational monitoring automation and runbook complete.** **Credential precedence hardened** (per-company env vars; generic fallback opt-in only).
 
-R7 roznamcha_payment RPC remains **design-only and blocked** until separate approval. R8 legacy engine retirement remains **blocked**. Remaining screens (BS, P&L, Cash Flow, mobile) classified **optional future**. Next-company expansion requires **separate finance sign-off**. **No further production flag/migration action is approved by default.**
+R7 roznamcha_payment RPC remains **design-only and blocked** until separate approval. R8 legacy engine retirement remains **blocked**. **No new company rollout approved.** **No further production flag/migration action by default.**
 
-Recommended ongoing operation: `npm run monitor:three-company-unified-ledger` on a schedule.
+Recommended ongoing ops: `npm run monitor:three-company-unified-ledger` with `QA_BROWSER_PASSWORD_*` per company (or explicit `ALLOW_GENERIC_MONITORING_CREDENTIAL_FALLBACK=true`).
+
+**Commit reconciliation:** `0a818da2` = three-company baseline archive · `50547061` = monitoring automation + successful rerun evidence · latest = credential hardening run.
 
 ---
 
