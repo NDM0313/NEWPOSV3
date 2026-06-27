@@ -1,8 +1,8 @@
 {
   "generated_at": "2026-06-27T12:00:00Z",
-  "current_main_commit": "11878c66",
+  "current_main_commit": "56912254",
   "din_china_status": "CLOSED_ON_MAIN",
-  "program_status": "DIN_CHINA_COMPLETE_R5A_PREP_COMPLETE_R5_BLOCKED",
+  "program_status": "DIN_CHINA_COMPLETE_R5_FINANCE_SIGNOFF_RECORDED_BLOCKED_CREDENTIALS",
   "production_url": "https://erp.dincouture.pk",
   "company": "DIN CHINA",
   "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
@@ -82,7 +82,8 @@
       "slug": "din-bridal",
       "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
       "golden_fixture_path": "reports/single-core-ledger/din-bridal/golden-fixtures.json",
-      "status": "R5A_PREP_COMPLETE_UNVALIDATED_BROWSER"
+      "status": "FINANCE_SIGNOFF_RECORDED_BLOCKED_CREDENTIALS",
+      "finance_sign_off_ref": "reports/single-core-ledger/din-bridal/finance-signoff-unified-ledger-rollout-2026-06-27.md"
     },
     {
       "slug": "din-couture",
@@ -95,7 +96,7 @@
     {
       "id": "R5",
       "name": "First non-DIN company pilot rollout",
-      "blocker": "Finance sign-off + legacy browser golden capture for DIN BRIDAL"
+      "blocker": "QA_BROWSER_EMAIL and QA_BROWSER_PASSWORD required for golden capture; finance sign-off recorded 2026-06-27"
     },
     {
       "id": "R8",
@@ -118,7 +119,7 @@
   "recommended_next_phase": {
     "id": "R5",
     "name": "First non-DIN company pilot rollout",
-    "note": "BLOCKED until finance sign-off — DIN BRIDAL target selected; R5a prep complete"
+    "note": "BLOCKED on credentials — finance sign-off recorded; set QA_BROWSER_EMAIL/PASSWORD then golden capture + staged SQL"
   },
   "approvals_required": {
     "other_company_expansion": "finance_sign_off_per_company",

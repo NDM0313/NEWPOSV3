@@ -1,15 +1,15 @@
 # R5 DIN BRIDAL — Final execution report
 
-**Status:** `R5 BLOCKED — FINANCE SIGN-OFF REQUIRED`  
-**Run:** R5 DIN BRIDAL UNBLOCK + CONTROLLED ROLLOUT EXECUTION  
+**Status:** `R5 BLOCKED — DIN BRIDAL GOLDEN CAPTURE CREDENTIALS REQUIRED`  
+**Run:** R5 DIN BRIDAL FINANCE SIGN-OFF ARTIFACT + CONTROLLED ROLLOUT EXECUTION  
 **Date:** 2026-06-27  
-**Main commit:** `bad6fcea` (prior blocked attempt: `e12a4811`)
+**Main commit:** `56912254`
 
 ---
 
 ## Summary
 
-Unblock attempt **stopped at Step 2**. Finance sign-off artifact was not provided (prompt still contained placeholder path). Browser credentials remain unset. **No SQL executed. No flags changed.** Read-only production audit PASS (DIN BRIDAL 0 flags, DIN CHINA 12 ON).
+Finance sign-off artifact created and validated (**Nadeem Khan**, staged DIN BRIDAL rollout). Read-only production audit **PASS**. Execution **stopped at Step 4** — `QA_BROWSER_EMAIL` and `QA_BROWSER_PASSWORD` not set in environment. **No golden capture. No SQL. No flags changed.**
 
 ---
 
@@ -18,11 +18,11 @@ Unblock attempt **stopped at Step 2**. Finance sign-off artifact was not provide
 | Step | Result |
 |------|--------|
 | 1 Repo verification | PASS |
-| 2 Finance sign-off | **FAIL — STOP** |
-| 3 Operator approval | Text present in run prompt; not sufficient alone |
-| 4 Credentials | **FAIL** (`QA_BROWSER_EMAIL` / `QA_BROWSER_PASSWORD` missing) |
+| 2 Create finance sign-off | PASS |
+| 3 Validate finance sign-off | PASS |
+| 4 Credentials | **FAIL — STOP** |
 | 5 Read-only audit | PASS |
-| 6–17 | **NOT RUN** |
+| 6–17 | **NOT RUN** (blocked at Step 4) |
 
 ---
 
@@ -30,15 +30,12 @@ Unblock attempt **stopped at Step 2**. Finance sign-off artifact was not provide
 
 | Item | Status |
 |------|--------|
-| Artifact path provided | **No** — placeholder only |
-| Valid unified-ledger rollout sign-off | **Missing** |
-| Remediation CSV (2026-06-23) | **Not sufficient** |
+| Artifact | `reports/single-core-ledger/din-bridal/finance-signoff-unified-ledger-rollout-2026-06-27.md` |
+| Approver | Nadeem Khan |
+| Staged rollout | Authorized |
+| Bulk / other-company / migrations | Prohibited |
 
----
-
-## Operator approval
-
-Approval statement was included in the run prompt template. Execution still requires validated finance sign-off artifact and live credentials before any flag SQL.
+`golden-fixtures.json` updated with `finance_sign_off_ref`.
 
 ---
 
@@ -46,48 +43,50 @@ Approval statement was included in the run prompt template. Execution still requ
 
 | Item | Status |
 |------|--------|
-| Golden capture | Not run |
+| Golden capture | Not run (credentials) |
 | SQL executed | None |
 | Loaders enabled | None |
 | DIN BRIDAL flags | 0 (unchanged) |
+| DIN CHINA flags | 12 ON (unchanged) |
 
 ---
 
-## Tests / deploy
+## Tests / monitoring / deploy
 
 | Item | Status |
 |------|--------|
-| Pre-enable tests/build | Skipped (blocked before Step 7) |
-| Deploy | Skipped — no changes |
+| Pre-enable tests/build | Skipped |
+| Monitoring | Not run |
+| Soak | N/A |
+| Deploy | Skipped — docs/evidence only |
 
 ---
 
 ## Constraints honored
 
-All hard constraints honored — no flags, migrations, GL mutations, FX changes, or cross-company enablement.
+All hard constraints honored — no flags, migrations, GL mutations, FX changes, DIN CHINA changes, or cross-company enablement.
 
 ---
 
 ## Related evidence
 
-- [`r5-unblock-pre-execution-audit.md`](r5-unblock-pre-execution-audit.md)
-- [`r5-unblock-pre-execution-audit.json`](r5-unblock-pre-execution-audit.json)
+- [`finance-signoff-unified-ledger-rollout-2026-06-27.md`](../din-bridal/finance-signoff-unified-ledger-rollout-2026-06-27.md)
+- [`r5-finance-approved-pre-execution-audit.md`](r5-finance-approved-pre-execution-audit.md)
+- [`r5-finance-approved-pre-execution-audit.json`](r5-finance-approved-pre-execution-audit.json)
 - [`r5-final-execution-manifest.json`](r5-final-execution-manifest.json)
 
 ---
 
 ## Exact next action
 
-Provide **all three** before re-run:
+Set DIN BRIDAL ERP credentials locally and re-run from Step 6:
 
-1. Real finance sign-off file path, e.g.  
-   `reports/single-core-ledger/din-bridal/finance-signoff-unified-ledger-rollout-YYYY-MM-DD.csv`  
-   Must explicitly authorize DIN BRIDAL **staged** unified ledger rollout (pilot → engine → screens → loaders one-by-one).
+```powershell
+$env:QA_BROWSER_EMAIL = "<DIN_BRIDAL_user@domain>"
+$env:QA_BROWSER_PASSWORD = "<password>"
+node scripts/single-core-ledger/run-r5-golden-capture-din-bridal.mjs
+npm run test:unified-ledger
+npm run build
+```
 
-2. Set environment (do not commit):
-   ```powershell
-   $env:QA_BROWSER_EMAIL = "<DIN_BRIDAL_user@domain>"
-   $env:QA_BROWSER_PASSWORD = "<password>"
-   ```
-
-3. Re-run this unblock prompt with the real sign-off path filled in.
+Then execute staged flag SQL one file at a time per playbook.
