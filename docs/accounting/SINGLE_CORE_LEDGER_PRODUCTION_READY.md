@@ -1,6 +1,6 @@
 # Single Core Ledger — Production Ready Pack
 
-**Status:** `PHASE 2.17X PR/MAIN MERGE PREFLIGHT READY — DIN CHINA rollout complete; operator PR/merge only`  
+**Status:** `PHASE 2.17Y PR GOVERNANCE READY — DIN CHINA rollout complete; operator PR to main required`  
 **Branch:** `feature/single-core-ledger-phase-2-9a3-preview-deploy-plan`  
 **Last updated:** 2026-06-27  
 **Master checklist:** use this file as the single entry point for post-apply status.
@@ -26,6 +26,7 @@
 | Phase 2.16 monitoring + automation | **PASS** — [`phase-2-16-monitoring/`](../reports/single-core-ledger/phase-2-16-monitoring/) |
 | Phase 2.17 release governance | **COMPLETE** — [`phase-2-17-release-governance/`](../reports/single-core-ledger/phase-2-17-release-governance/) |
 | Phase 2.17X PR/main merge preflight | **COMPLETE** — [`pr-main-merge-preflight.md`](../reports/single-core-ledger/phase-2-17-release-governance/pr-main-merge-preflight.md) |
+| Phase 2.17Y PR governance | **READY** — [`pr-governance-final.md`](../reports/single-core-ledger/phase-2-17-release-governance/pr-governance-final.md) |
 | Future company expansion | **Requires separate finance sign-off** — [`SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md`](SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md) |
 
 Closeout pack: [`phase-212-closeout-monitoring.md`](../reports/single-core-ledger/phase-2-12-trial-balance-loader/phase-212-closeout-monitoring.md)
@@ -335,11 +336,12 @@ Or selective reverse using `production-remediation-apply-before-*.json` from app
 19. ~~Phase 2.16 production monitoring + automation hardening~~ **Done** @ 2026-06-27 — see [`phase-2-16-monitoring/`](../reports/single-core-ledger/phase-2-16-monitoring/)
 20. ~~Phase 2.17 release governance (PR/merge pack)~~ **Done** @ 2026-06-27 — see [`phase-2-17-release-governance/`](../reports/single-core-ledger/phase-2-17-release-governance/)
 21. ~~Phase 2.17X PR/main merge preflight cleanup~~ **Done** @ 2026-06-27 — stale doc wording clarified
-22. Do **not** expand loader ON to other companies without separate finance sign-off — [`SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md`](SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md)
-23. **Main merge / PR:** operator governance only — create/review PR; **do not auto-merge** without approval
-24. **Monitoring:** [`final-production-verify.md`](../reports/single-core-ledger/phase-2-16-monitoring/final-production-verify.md) (Phase 2.16 remains production truth)
+22. ~~Phase 2.17Y PR/main merge governance~~ **Ready** @ 2026-06-27 — create PR to `main`; operator merge approval required — [`pr-governance-final.md`](../reports/single-core-ledger/phase-2-17-release-governance/pr-governance-final.md)
+23. Do **not** expand loader ON to other companies without separate finance sign-off — [`SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md`](SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md)
+24. **Main merge / PR:** operator creates PR → `main`, reviews, approves manually — **not** a new accounting rollout
+25. **Monitoring:** [`final-production-verify.md`](../reports/single-core-ledger/phase-2-16-monitoring/final-production-verify.md) (Phase 2.16 remains production truth)
 
-**Final status:** `PHASE 2.17X PR/MAIN MERGE PREFLIGHT READY — DIN CHINA UNIFIED LEDGER STABLE`
+**Final status:** `PHASE 2.17Y PR GOVERNANCE READY — OPERATOR MERGE APPROVAL REQUIRED`
 
 ### Accelerated soak waiver (Phase 2.9B-X — 2026-06-25) — historical
 
