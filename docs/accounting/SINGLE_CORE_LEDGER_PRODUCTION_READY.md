@@ -1,6 +1,7 @@
 # Single Core Ledger — Production Ready Pack
 
 **Status:** `MAIN MERGE COMPLETE — DIN CHINA SINGLE CORE LEDGER CLOSED`  
+**Program:** DIN CHINA rollout is closed on `main`. Broader Single Core Ledger future phases remain separate and require their own approvals — [`master-remaining-roadmap.md`](../reports/single-core-ledger/master-roadmap-after-din-china-closure/master-remaining-roadmap.md)  
 **Branch:** `main` (merged from `feature/single-core-ledger-phase-2-9a3-preview-deploy-plan` @ `b92e6955`)  
 **PR:** https://github.com/NDM0313/NEWPOSV3/pull/21  
 **Last updated:** 2026-06-27  
@@ -31,6 +32,7 @@
 | Phase 2.17Y PR governance | **COMPLETE** — [`pr-governance-final.md`](../reports/single-core-ledger/phase-2-17-release-governance/pr-governance-final.md) |
 | Phase 2.18 main merge closure | **COMPLETE** — [`main-merge-complete-report.md`](../reports/single-core-ledger/phase-2-18-main-merge-closure/main-merge-complete-report.md) |
 | Phase 2.18 final archive | **COMPLETE** — [`final-archive-and-monitoring-report.md`](../reports/single-core-ledger/phase-2-18-main-merge-closure/final-archive-and-monitoring-report.md) |
+| Master remaining roadmap | **ACTIVE** — [`master-remaining-roadmap.md`](../reports/single-core-ledger/master-roadmap-after-din-china-closure/master-remaining-roadmap.md) |
 | Post-PR final closure | **COMPLETE** — [`final-post-pr-closure-report.md`](../reports/single-core-ledger/phase-2-18-main-merge-closure/final-post-pr-closure-report.md) |
 | Future company expansion | **Requires separate finance sign-off** — [`SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md`](SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md) |
 
@@ -278,15 +280,19 @@ See: [`SINGLE_CORE_LEDGER_PHASE_1_8_POST_MIGRATION_VALIDATION_REPORT.md`](SINGLE
 
 ## What remains blocked / optional next phases
 
+> **DIN CHINA is closed.** Items below are **program-level** future work — not DIN CHINA rollout blockers.
+
 | Action | Status |
 |--------|--------|
 | DIN CHINA unified rollout (five loaders) | **COMPLETE and stable** — Phase 2.16 PASS |
-| Phase 2.17 release governance | **COMPLETE** — ready for PR/main merge governance |
-| PR / merge to `main` | **Operator action** — review and approve; **not** a new accounting rollout or flag enablement |
+| Phase 2.17 release governance | **COMPLETE** |
+| PR / merge to `main` (PR #21) | **COMPLETE** @ 2026-06-27 |
+| Master remaining roadmap | **ACTIVE** — [`master-remaining-roadmap.md`](../reports/single-core-ledger/master-roadmap-after-din-china-closure/master-remaining-roadmap.md) |
 | Other-company unified loader expansion | **Blocked** until separate finance sign-off — [`SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md`](SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md) |
-| Phase 2.18 Admin Compare Cash/Bank raw RPC cleanup | **Optional** — diagnostic only |
-| Phase 2.19 other-company expansion planning | **Optional** — requires finance sign-off |
+| Phase 2.9A-CB / Admin Compare Cash/Bank diagnostic cleanup | **Optional** — shadow diagnostic only |
 | `roznamcha_payment` RPC mode | **Optional future** — requires separate migration approval |
+| Legacy engine retirement (master plan Phase 5) | **Blocked long-term** — after all target companies stable |
+| Remaining Phase 2 screens (BS, P&L, Cash Flow, mobile) | **Optional future** — see Phase 2 rollout plan |
 
 **Not blocked (live production):** `unified_ledger_engine` and all five DIN CHINA unified main loaders are **ON** — see authoritative section at top.
 
@@ -342,12 +348,13 @@ Or selective reverse using `production-remediation-apply-before-*.json` from app
 20. ~~Phase 2.17 release governance (PR/merge pack)~~ **Done** @ 2026-06-27 — see [`phase-2-17-release-governance/`](../reports/single-core-ledger/phase-2-17-release-governance/)
 21. ~~Phase 2.17X PR/main merge preflight cleanup~~ **Done** @ 2026-06-27 — stale doc wording clarified
 22. ~~Phase 2.17Y PR/main merge governance~~ **Done** @ 2026-06-27 — [`pr-governance-final.md`](../reports/single-core-ledger/phase-2-17-release-governance/pr-governance-final.md)
-23. ~~Phase 2.18 main merge closure pack~~ **PR READY** @ 2026-06-27 — [`final-closure-report.md`](../reports/single-core-ledger/phase-2-18-main-merge-closure/final-closure-report.md) — **merge pending operator approval**
-24. Do **not** expand loader ON to other companies without separate finance sign-off — [`SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md`](SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md)
-25. **Main merge / PR:** create PR → `main` per [`manual-pr-operator-instructions.md`](../reports/single-core-ledger/phase-2-18-main-merge-closure/manual-pr-operator-instructions.md); review; approve manually — **not** a new accounting rollout
-26. **Monitoring:** [`final-production-verify.md`](../reports/single-core-ledger/phase-2-16-monitoring/final-production-verify.md) (Phase 2.16 remains production truth until post-merge re-run)
+23. ~~Phase 2.18 main merge closure pack~~ **COMPLETE** @ 2026-06-27 — PR #21 merged; [`main-merge-complete-report.md`](../reports/single-core-ledger/phase-2-18-main-merge-closure/main-merge-complete-report.md)
+24. ~~Phase 2.18 final archive~~ **COMPLETE** @ 2026-06-27 — [`final-archive-and-monitoring-report.md`](../reports/single-core-ledger/phase-2-18-main-merge-closure/final-archive-and-monitoring-report.md)
+25. **Program next:** [`master-remaining-roadmap.md`](../reports/single-core-ledger/master-roadmap-after-din-china-closure/master-remaining-roadmap.md) — R1 docs reconciliation; optional R2/R6; R3–R5 blocked on finance sign-off
+26. Do **not** expand loader ON to other companies without separate finance sign-off — [`SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md`](SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md)
+27. **Monitoring:** [`final-production-verify.md`](../reports/single-core-ledger/phase-2-16-monitoring/final-production-verify.md) (Phase 2.16 remains production truth until optional re-run)
 
-**Final status:** `PR REVIEW READY — OPERATOR MERGE APPROVAL REQUIRED`
+**Final status:** `MAIN MERGE COMPLETE — DIN CHINA SINGLE CORE LEDGER CLOSED` (program continues — see master remaining roadmap)
 
 ### Accelerated soak waiver (Phase 2.9B-X — 2026-06-25) — historical
 
@@ -377,5 +384,6 @@ Stage 1 originally enabled only `unified_ledger_pilot`. Stage 2 subsequently ena
 | [Phase 2.8 preview QA sign-off](SINGLE_CORE_LEDGER_PHASE_2_8_PREVIEW_QA_SIGNOFF.md) | Cross-screen QA + parity evidence |
 | [Phase 2.9 pilot enablement plan](SINGLE_CORE_LEDGER_PHASE_2_9_PILOT_ENABLEMENT_PLAN.md) | DIN CHINA Ledger V2 staged flags + rollback |
 | [Phase 2.10 Ledger V2 loader swap plan](SINGLE_CORE_LEDGER_PHASE_2_10_LEDGER_V2_LOADER_SWAP_PLAN.md) | Stage 3 default loader swap — **LIVE for DIN CHINA** |
-| [Phase 2.9A-CB Cash/Bank parity plan](SINGLE_CORE_LEDGER_PHASE_2_9A_CB_CASH_BANK_PARITY_PLAN.md) | Roznamcha vs unified GL — future remediation, not Stage 1 |
+| [Phase 2.9A-CB Cash/Bank parity plan](SINGLE_CORE_LEDGER_PHASE_2_9A_CB_CASH_BANK_PARITY_PLAN.md) | Roznamcha vs unified GL — optional diagnostic track |
+| [Master remaining roadmap](../reports/single-core-ledger/master-roadmap-after-din-china-closure/master-remaining-roadmap.md) | Post–DIN CHINA program phases (pending/optional/blocked) |
 | [Phase 2.9A-3 preview deploy plan](SINGLE_CORE_LEDGER_PHASE_2_9A3_PREVIEW_DEPLOY_PLAN.md) | Parallel :3002 preview container for browser QA |

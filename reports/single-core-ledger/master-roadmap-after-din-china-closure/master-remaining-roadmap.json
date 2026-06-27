@@ -1,0 +1,145 @@
+{
+  "generated_at": "2026-06-27T09:22:12Z",
+  "current_main_commit": "50fa8644",
+  "din_china_status": "CLOSED_ON_MAIN",
+  "program_status": "DIN_CHINA_COMPLETE_PROGRAM_CONTINUES",
+  "production_url": "https://erp.dincouture.pk",
+  "company": "DIN CHINA",
+  "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+  "pr_url": "https://github.com/NDM0313/NEWPOSV3/pull/21",
+  "pr_merged": true,
+  "rollout_commit": "b92e6955",
+  "closure_commit": "cdd3c21b",
+  "archive_commit": "50fa8644",
+  "production_monitoring_authoritative": "reports/single-core-ledger/phase-2-16-monitoring/final-production-verify.md",
+  "completed_phases": [
+    {
+      "id": "din-china-loaders",
+      "name": "DIN CHINA five unified main loaders",
+      "evidence": "reports/single-core-ledger/phase-2-16-monitoring/final-production-verify.md"
+    },
+    {
+      "id": "phase-2-16-monitoring",
+      "name": "Phase 2.16 production monitoring PASS",
+      "evidence": "reports/single-core-ledger/phase-2-16-monitoring/final-production-verify.md"
+    },
+    {
+      "id": "phase-2-17-governance",
+      "name": "Phase 2.17 release governance",
+      "evidence": "reports/single-core-ledger/phase-2-17-release-governance/final-release-governance.md"
+    },
+    {
+      "id": "pr-21-main-merge",
+      "name": "PR #21 merge to main",
+      "evidence": "reports/single-core-ledger/phase-2-18-main-merge-closure/main-merge-complete-report.md"
+    },
+    {
+      "id": "phase-2-18-archive",
+      "name": "Phase 2.18 main merge archive",
+      "evidence": "reports/single-core-ledger/phase-2-18-main-merge-closure/final-archive-and-monitoring-report.md"
+    },
+    {
+      "id": "rollback-pack",
+      "name": "Per-loader L1 rollback SQL artifacts",
+      "evidence": "scripts/single-core-ledger/phase-21x-rollback-*.sql"
+    }
+  ],
+  "pending_phases": [
+    {
+      "id": "R1",
+      "name": "Master roadmap + docs reconciliation",
+      "required": true,
+      "finance_sign_off": false,
+      "operator_approval": false,
+      "production_db": false
+    },
+    {
+      "id": "R3",
+      "name": "Other-company pre-expansion audit + golden fixture capture",
+      "required": true,
+      "finance_sign_off": true,
+      "operator_approval": true,
+      "production_db": "read_only"
+    },
+    {
+      "id": "R4",
+      "name": "Per-company staged rollout framework",
+      "required": true,
+      "finance_sign_off": false,
+      "operator_approval": true,
+      "production_db": false
+    }
+  ],
+  "blocked_phases": [
+    {
+      "id": "R5",
+      "name": "First non-DIN company pilot rollout",
+      "blocker": "Finance sign-off + R3 golden fixtures required"
+    },
+    {
+      "id": "R8",
+      "name": "Legacy engine retirement / cleanup",
+      "blocker": "All target companies stable on unified loaders + master plan Phase 5 gates"
+    }
+  ],
+  "optional_phases": [
+    {
+      "id": "R2",
+      "name": "Cash/Bank / Admin Compare diagnostic cleanup",
+      "production_impact": "none_if_shadow_only"
+    },
+    {
+      "id": "R6",
+      "name": "Monitoring + rollback automation hardening",
+      "production_impact": "none_if_read_only"
+    },
+    {
+      "id": "R7",
+      "name": "Optional roznamcha_payment RPC design",
+      "production_impact": "none_until_migration_approved"
+    },
+    {
+      "id": "remaining-screens",
+      "name": "Phase 2 remaining screen wiring (BS, P&L, Cash Flow, mobile)",
+      "evidence": "docs/accounting/SINGLE_CORE_LEDGER_PHASE_2_ROLLOUT_PLAN.md"
+    }
+  ],
+  "recommended_next_phase": {
+    "id": "R1",
+    "name": "Master roadmap + docs reconciliation",
+    "note": "Roadmap artifact created; complete stale doc header cleanup in production ready pack and phase plans"
+  },
+  "approvals_required": {
+    "other_company_expansion": "finance_sign_off_per_company",
+    "flag_enablement": "operator_approval_per_step",
+    "migrations": "explicit_migration_approval",
+    "legacy_retirement": "finance_and_engineering_after_multi_company_stable"
+  },
+  "constraints": {
+    "flags_changed": false,
+    "migrations_run": false,
+    "sql_executed": false,
+    "gl_mutations": false,
+    "other_company_expansion": false,
+    "fx_app_touched": false
+  },
+  "din_china_golden_values": {
+    "mr_jalil_closing_pkr": 216300,
+    "trial_balance_debit_credit_pkr": 407957271.02,
+    "roznamcha_cash_in_pkr": 136158012,
+    "roznamcha_cash_out_pkr": 67042426,
+    "roznamcha_closing_pkr": 69115586
+  },
+  "docs_reviewed": [
+    "docs/accounting/SINGLE_CORE_LEDGER_PRODUCTION_READY.md",
+    "docs/accounting/SINGLE_CORE_LEDGER_MIGRATION_MASTER_EXECUTION_PLAN_v3.md",
+    "docs/accounting/SINGLE_CORE_LEDGER_MIGRATION.md",
+    "docs/accounting/SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md",
+    "reports/single-core-ledger/phase-2-18-main-merge-closure/final-archive-and-monitoring-report.md",
+    "reports/single-core-ledger/phase-2-18-main-merge-closure/main-merge-complete-report.md",
+    "reports/single-core-ledger/phase-2-16-monitoring/final-production-verify.md",
+    "reports/single-core-ledger/phase-2-18-main-merge-closure/main-merge-complete-manifest.json",
+    "reports/single-core-ledger/phase-2-18-main-merge-closure/final-archive-and-monitoring-manifest.json"
+  ],
+  "docs_missing": []
+}
