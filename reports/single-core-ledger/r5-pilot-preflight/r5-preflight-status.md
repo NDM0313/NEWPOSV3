@@ -1,9 +1,9 @@
-# R5 — First non-DIN company pilot (preflight)
+# R5 — First non-DIN company pilot (preflight + execution)
 
-**Status:** `R5a PREP COMPLETE — R5 EXECUTION BLOCKED ON FINANCE SIGN-OFF`  
+**Status:** `R5 BLOCKED — FINANCE SIGN-OFF REQUIRED`  
 **Date:** 2026-06-27  
 **Target company:** DIN BRIDAL  
-**Prerequisite:** R3 audit complete — [`r3-audit-complete-report.md`](../r3-pre-expansion-audit/r3-audit-complete-report.md)
+**Latest run:** [`r5-final-execution-report.md`](../r5-din-bridal-execution/r5-final-execution-report.md)
 
 ---
 
@@ -12,25 +12,27 @@
 | Item | Evidence |
 |------|----------|
 | Parameterized SQL toolkit | `scripts/single-core-ledger/din-bridal/r5-*.sql` |
-| Company config | `scripts/single-core-ledger/r5-company-config.json` |
-| Golden capture script | `scripts/single-core-ledger/run-r5-golden-capture-din-bridal.mjs` |
 | Execution playbook | [`r5-din-bridal-execution-playbook.md`](r5-din-bridal-execution-playbook.md) |
-| R5a completion report | [`r5a-completion-report.md`](r5a-completion-report.md) |
 
 ---
 
-## Still blocked (R5 execution)
+## R5 execution attempt (2026-06-27)
+
+**Stopped at Step 2.** No flags changed.
 
 | Blocker | Detail |
 |---------|--------|
-| Finance sign-off | No signed artifact |
-| Legacy browser goldens | Capture skipped — need `QA_BROWSER_EMAIL` (DIN BRIDAL user) + `QA_BROWSER_PASSWORD` |
-| Flag SQL | **Not executed** — 0 DIN BRIDAL unified flags ON |
+| Finance sign-off | No DIN BRIDAL unified-ledger rollout artifact |
+| Operator approval | Not provided for this run |
+| Browser credentials | `QA_BROWSER_EMAIL` / `QA_BROWSER_PASSWORD` missing |
+
+Pre-execution safety audit: **PASS** (read-only) — DIN BRIDAL 0 flags, DIN CHINA 12 ON.
 
 ---
 
 ## Operator next action
 
-1. Obtain finance sign-off
-2. Run golden capture with DIN BRIDAL login
-3. Follow [`r5-din-bridal-execution-playbook.md`](r5-din-bridal-execution-playbook.md)
+1. Provide finance sign-off artifact (not remediation CSV alone)
+2. Confirm operator approval for staged rollout
+3. Set DIN BRIDAL `QA_BROWSER_EMAIL` + `QA_BROWSER_PASSWORD`
+4. Re-run R5 gated execution prompt
