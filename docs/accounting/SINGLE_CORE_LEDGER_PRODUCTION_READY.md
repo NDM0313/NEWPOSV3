@@ -1,6 +1,6 @@
 # Single Core Ledger — Production Ready Pack
 
-**Status:** `PHASE 2.16 MONITORING PASS — DIN CHINA unified reporting live, monitored, automation hardened`  
+**Status:** `PHASE 2.17 RELEASE GOVERNANCE COMPLETE — DIN CHINA rollout ready for PR/main merge`  
 **Branch:** `feature/single-core-ledger-phase-2-9a3-preview-deploy-plan`  
 **Last updated:** 2026-06-27  
 **Master checklist:** use this file as the single entry point for post-apply status.
@@ -24,6 +24,7 @@
 | Roznamcha golden (Cash In / Out / Closing) | **136,158,012 / 67,042,426 / 69,115,586** |
 | Phase 2.15X closeout | **COMPLETE** — Roznamcha parity fix live |
 | Phase 2.16 monitoring + automation | **PASS** — [`phase-2-16-monitoring/`](../reports/single-core-ledger/phase-2-16-monitoring/) |
+| Phase 2.17 release governance | **COMPLETE** — [`phase-2-17-release-governance/`](../reports/single-core-ledger/phase-2-17-release-governance/) |
 | Future company expansion | **Requires separate finance sign-off** — [`SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md`](SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md) |
 
 Closeout pack: [`phase-212-closeout-monitoring.md`](../reports/single-core-ledger/phase-2-12-trial-balance-loader/phase-212-closeout-monitoring.md)
@@ -322,10 +323,12 @@ Or selective reverse using `production-remediation-apply-before-*.json` from app
 17. ~~Phase 2.15 Roznamcha parity + loader ON~~ **Done** @ 2026-06-26 — `b8b093f7` — see [`SINGLE_CORE_LEDGER_PHASE_2_15_CASH_BANK_PARITY_AND_ROZNAMCHA_RECOVERY_PLAN.md`](SINGLE_CORE_LEDGER_PHASE_2_15_CASH_BANK_PARITY_AND_ROZNAMCHA_RECOVERY_PLAN.md)
 18. ~~Phase 2.15X closeout + 24h monitoring pack~~ **Done** @ 2026-06-26
 19. ~~Phase 2.16 production monitoring + automation hardening~~ **Done** @ 2026-06-27 — see [`phase-2-16-monitoring/`](../reports/single-core-ledger/phase-2-16-monitoring/)
-20. Do **not** expand loader ON to other companies without separate finance sign-off — [`SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md`](SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md)
-21. **Monitoring:** [`final-production-verify.md`](../reports/single-core-ledger/phase-2-16-monitoring/final-production-verify.md)
+20. ~~Phase 2.17 release governance (PR/merge pack)~~ **Done** @ 2026-06-27 — see [`phase-2-17-release-governance/`](../reports/single-core-ledger/phase-2-17-release-governance/)
+21. Do **not** expand loader ON to other companies without separate finance sign-off — [`SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md`](SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md)
+22. **Main merge / PR:** governance only — operator review and approve; not a new accounting rollout
+23. **Monitoring:** [`final-production-verify.md`](../reports/single-core-ledger/phase-2-16-monitoring/final-production-verify.md) (Phase 2.16 remains production truth)
 
-**Final status:** `PHASE 2.16 MONITORING PASS — DIN CHINA UNIFIED LEDGER STABLE`
+**Final status:** `PHASE 2.17 RELEASE GOVERNANCE COMPLETE — DIN CHINA UNIFIED LEDGER STABLE`
 
 ### Accelerated soak waiver (Phase 2.9B-X — 2026-06-25) — historical
 
