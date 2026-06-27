@@ -33,7 +33,10 @@ const EMAIL = process.env.QA_BROWSER_EMAIL || config.login_email_default;
 const PASSWORD = process.env.QA_BROWSER_PASSWORD || '';
 const PARTY_NAME = config.golden_party.name;
 const PARTY_SEARCH = config.golden_party.search_pattern;
+const PARTY_ID = config.golden_party.party_id;
 const COMPANY_ID = config.company_id;
+const DIN_BRIDAL_TB_FINGERPRINT = 21_919_575;
+const FIXTURE_MD_PATH = path.join(ROOT, 'reports/single-core-ledger/din-bridal/golden-fixtures.md');
 
 const checks = [];
 
@@ -93,19 +96,38 @@ async function readRoznamchaSummary(page) {
   };
 }
 
+async function pickGoldenContactInSearchableSelect(page, placeholderPattern = /Select contact|Search and select|Loading/i) {
+  const combobox = page.locator('[role="combobox"]').filter({ hasText: placeholderPattern }).first();
+  await combobox.click({ timeout: 15000 });
+  const searchInput = page.locator('[cmdk-input], input[placeholder*="Search"]').last();
+  await searchInput.waitFor({ state: 'visible', timeout: 15000 });
+  await searchInput.fill(PARTY_SEARCH);
+  await page.waitForTimeout(2000);
+  const item = page.locator('[cmdk-item], [role="option"]').filter({ hasText: PARTY_NAME }).first();
+  if (await item.count()) {
+    await item.click({ timeout: 30000 });
+  } else {
+    await page.getByText(PARTY_NAME, { exact: false }).first().click({ timeout: 30000 });
+  }
+  await page.waitForTimeout(3000);
+}
+
+async function pickGoldenContactOnPartyLedger(page) {
+  const partyBtn = page.getByRole('button', { name: /Select party/i });
+  await partyBtn.click({ timeout: 15000 });
+  const searchInput = page.getByPlaceholder(/Search contacts/i).first();
+  await searchInput.waitFor({ state: 'visible', timeout: 15000 });
+  await searchInput.fill(PARTY_SEARCH);
+  await page.waitForTimeout(2000);
+  await page.getByText(PARTY_NAME, { exact: false }).first().click({ timeout: 30000 });
+  await page.waitForTimeout(3000);
+}
+
 async function selectGoldenPartyOnPartyLedger(page) {
   await setWideRange(page);
   await page.goto(`${BASE}/?view=party-ledger`, { waitUntil: 'networkidle', timeout: 120000 });
-  const searchBtn = page.getByRole('button', { name: /search|select contact|choose/i }).first();
-  if (await searchBtn.isVisible().catch(() => false)) {
-    await searchBtn.click().catch(() => {});
-  }
-  const searchInput = page.getByPlaceholder(/search/i).first();
-  if (await searchInput.isVisible().catch(() => false)) {
-    await searchInput.fill(PARTY_SEARCH);
-    await page.waitForTimeout(1500);
-    await page.getByText(PARTY_NAME, { exact: false }).first().click({ timeout: 30000 }).catch(() => {});
-  }
+  await pickGoldenContactOnPartyLedger(page);
+  await page.locator('[data-party-ledger-main-loader]').first().waitFor({ timeout: 180000 });
   await page.waitForTimeout(5000);
   const plLoader = await page.locator('[data-party-ledger-main-loader]').first().getAttribute('data-party-ledger-main-loader');
   const bodyPl = await page.innerText('body');
@@ -118,12 +140,19 @@ async function captureAccountStatement(page) {
   await setWideRange(page);
   await page.goto(`${BASE}/?view=accounting`, { waitUntil: 'networkidle', timeout: 120000 });
   await page.getByRole('button', { name: /^Account Statements$/ }).click({ timeout: 60000 });
-  const jalilBtn = page.getByRole('button', { name: /load mr jalil/i });
-  if (await jalilBtn.isVisible().catch(() => false)) {
-    log('company context', 'FAIL', 'DIN CHINA golden button visible — use DIN BRIDAL login email');
-    return { loader: null, closing: NaN };
-  }
-  await page.waitForTimeout(5000);
+  await page.getByRole('button', { name: /Advanced \(effective \/ audit\)/i }).click({ timeout: 60000 });
+  await page.getByText('Statement Type', { exact: true }).waitFor({ timeout: 120000 });
+  await page.locator('div:has(> label:text-is("Statement Type")) select').selectOption('customer');
+  await page.waitForTimeout(3000);
+  const contactCombobox = page.locator('div').filter({ has: page.getByText('Contact', { exact: true }) }).locator('[role="combobox"]').first();
+  await contactCombobox.click({ timeout: 30000 });
+  const searchInput = page.locator('[cmdk-input], input[placeholder*="Search"]').last();
+  await searchInput.waitFor({ state: 'visible', timeout: 15000 });
+  await searchInput.fill(PARTY_SEARCH);
+  await page.waitForTimeout(2000);
+  await page.locator('[cmdk-item]').filter({ hasText: PARTY_NAME }).first().click({ timeout: 30000 });
+  await page.locator('[data-account-statement-main-loader]').first().waitFor({ timeout: 180000 });
+  await page.waitForTimeout(8000);
   const loader = await page.locator('[data-account-statement-main-loader]').first().getAttribute('data-account-statement-main-loader');
   const closing = await readClosingBalance(page);
   return { loader, closing };
@@ -134,11 +163,18 @@ async function captureLedgerV2(page) {
   await page.goto(`${BASE}/reports/ledger-statement-center-v2`, { waitUntil: 'networkidle', timeout: 120000 });
   const tabBtn = page.locator('button').filter({ hasText: /^Account Statements$/ });
   if (await tabBtn.count()) await tabBtn.first().click();
-  const jalilBtn = page.getByRole('button', { name: /load mr jalil/i });
-  if (await jalilBtn.isVisible().catch(() => false)) {
-    return { loader: null, closing: NaN };
-  }
-  await page.waitForTimeout(5000);
+  await page.getByText('Statement type', { exact: true }).waitFor({ timeout: 120000 });
+  await page.locator('div:has(> label:text-is("Statement type")) select').selectOption('customer');
+  await page.waitForTimeout(3000);
+  const entityCombobox = page.locator('div').filter({ has: page.getByText('Party / account', { exact: true }) }).locator('[role="combobox"]').first();
+  await entityCombobox.click({ timeout: 30000 });
+  const searchInput = page.locator('[cmdk-input], input[placeholder*="Search"]').last();
+  await searchInput.waitFor({ state: 'visible', timeout: 15000 });
+  await searchInput.fill(PARTY_SEARCH);
+  await page.waitForTimeout(2000);
+  await page.locator('[cmdk-item]').filter({ hasText: PARTY_NAME }).first().click({ timeout: 30000 });
+  await page.locator('[data-ledger-v2-main-loader]').first().waitFor({ timeout: 180000 });
+  await page.waitForTimeout(8000);
   const loader = await page.locator('[data-ledger-v2-main-loader]').first().getAttribute('data-ledger-v2-main-loader');
   const closing = await readLedgerV2MrJalilClosing(page).catch(() => readClosingBalance(page));
   return { loader, closing };
@@ -184,11 +220,19 @@ async function main() {
   fs.mkdirSync(path.join(EVIDENCE, 'screenshots'), { recursive: true });
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
-  const captured = { capturedAt: new Date().toISOString(), company: config.company, company_id: COMPANY_ID, party: PARTY_NAME };
+  const captured = {
+    capturedAt: new Date().toISOString(),
+    company: config.company,
+    company_id: COMPANY_ID,
+    party: PARTY_NAME,
+    party_id: PARTY_ID,
+    date_range: { start: '2000-01-01', end: new Date().toISOString().slice(0, 10) },
+    branch_scope: 'all',
+  };
 
   try {
     await login(page);
-    log('login', 'PASS', EMAIL);
+    log('login', 'PASS', 'credentials present');
 
     const body = await page.innerText('body');
     if (/DIN CHINA/i.test(body) && !/DIN BRIDAL/i.test(body)) {
@@ -211,6 +255,11 @@ async function main() {
     const tb = await captureTrialBalance(page);
     captured.trial_balance = tb;
     log('Trial Balance debit=credit', withinTol(tb.debit, tb.credit) ? 'PASS' : 'FAIL', `debit=${tb.debit} credit=${tb.credit}`);
+    log(
+      'DIN BRIDAL TB fingerprint',
+      withinTol(tb.debit, DIN_BRIDAL_TB_FINGERPRINT) ? 'PASS' : 'FAIL',
+      `debit=${tb.debit} expected~${DIN_BRIDAL_TB_FINGERPRINT}`,
+    );
 
     const rz = await readRoznamchaSummary(page);
     captured.roznamcha = rz;
@@ -218,22 +267,39 @@ async function main() {
     log('Roznamcha totals', Number.isFinite(rz.closing) ? 'PASS' : 'SKIP', `in=${rz.cashIn} out=${rz.cashOut} close=${rz.closing}`);
     await page.screenshot({ path: path.join(EVIDENCE, 'screenshots/roznamcha.png'), fullPage: true });
 
+    log('Party Ledger closing', Number.isFinite(pl.closing) ? 'PASS' : 'FAIL', `closing=${pl.closing}`);
+    log('Account Statement closing', Number.isFinite(as.closing) ? 'PASS' : 'FAIL', `closing=${as.closing}`);
+    log('Ledger V2 closing', Number.isFinite(lv2.closing) ? 'PASS' : 'FAIL', `closing=${lv2.closing}`);
+
     fs.writeFileSync(path.join(EVIDENCE, 'golden-capture-raw.json'), JSON.stringify(captured, null, 2));
 
     const existing = JSON.parse(fs.readFileSync(FIXTURE_PATH, 'utf8'));
-    const rpcProxy = { ...existing.fixtures };
+    const rpcProxy = { ...(existing.rpc_proxy_baseline || existing.fixtures) };
     const browserPartyClosing = Number.isFinite(pl.closing) ? pl.closing : null;
+    const browserAsClosing = Number.isFinite(as.closing) ? as.closing : null;
+    const browserLv2Closing = Number.isFinite(lv2.closing) ? lv2.closing : null;
+    const captureComplete =
+      browserPartyClosing != null &&
+      browserAsClosing != null &&
+      browserLv2Closing != null &&
+      Number.isFinite(tb.debit) &&
+      Number.isFinite(rz.closing);
     const updated = {
       ...existing,
-      capture_method: browserPartyClosing != null ? 'legacy_browser_partial' : 'rpc_shadow_only',
+      capture_method: captureComplete ? 'legacy_browser' : 'legacy_browser_partial',
       browser_capture_at: captured.capturedAt,
       browser_capture_evidence: 'reports/single-core-ledger/din-bridal-monitoring/golden-capture/',
+      status: captureComplete ? 'GOLDEN_CAPTURE_COMPLETE' : 'GOLDEN_CAPTURE_PARTIAL',
+      date_range: captured.date_range,
+      branch_scope: captured.branch_scope,
       fixtures: {
         ...existing.fixtures,
         ...(browserPartyClosing != null ? {
           golden_party_closing_pkr: browserPartyClosing,
           party_ledger_golden_party_closing_pkr: browserPartyClosing,
         } : {}),
+        ...(browserAsClosing != null ? { account_statement_golden_party_closing_pkr: browserAsClosing } : {}),
+        ...(browserLv2Closing != null ? { ledger_v2_golden_party_closing_pkr: browserLv2Closing } : {}),
         ...(Number.isFinite(tb.debit) ? {
           trial_balance_debit_pkr: tb.debit,
           trial_balance_credit_pkr: tb.credit,
@@ -244,20 +310,44 @@ async function main() {
       },
       rpc_proxy_baseline: rpcProxy,
       notes: [
-        ...(existing.notes || []),
-        browserPartyClosing != null
-          ? `Browser capture ${captured.capturedAt} — party ledger closing updated from legacy UI.`
-          : 'Browser capture incomplete — MR REHAN ALI party selection may need manual QA; RPC proxies retained.',
+        ...(existing.notes || []).filter((n) => !String(n).startsWith('Browser capture')),
+        captureComplete
+          ? `Browser capture ${captured.capturedAt} — legacy UI goldens for ${PARTY_NAME}.`
+          : `Browser capture ${captured.capturedAt} — partial; verify party/contact selection.`,
       ],
     };
     fs.writeFileSync(FIXTURE_PATH, JSON.stringify(updated, null, 2));
+
+    const fixtureMd = [
+      '# DIN BRIDAL golden fixtures',
+      '',
+      `**Company:** ${config.company} (\`${COMPANY_ID}\`)`,
+      `**Golden party:** ${PARTY_NAME} (\`${PARTY_ID}\`)`,
+      `**Captured:** ${captured.capturedAt}`,
+      `**Date range:** ${captured.date_range.start} → ${captured.date_range.end}`,
+      `**Branch scope:** ${captured.branch_scope}`,
+      `**Finance sign-off:** ${existing.finance_sign_off_ref}`,
+      '',
+      '## Fixture values (PKR)',
+      '',
+      '| Screen | Value |',
+      '|--------|-------|',
+      `| Party / Ledger V2 / Account Statement closing | ${browserPartyClosing ?? browserLv2Closing ?? browserAsClosing ?? 'pending'} |`,
+      `| Trial Balance debit = credit | ${tb.debit ?? 'pending'} |`,
+      `| Roznamcha Cash In | ${rz.cashIn ?? 'pending'} |`,
+      `| Roznamcha Cash Out | ${rz.cashOut ?? 'pending'} |`,
+      `| Roznamcha Closing | ${rz.closing ?? 'pending'} |`,
+      '',
+      `**Status:** ${updated.status}`,
+    ].join('\n');
+    fs.writeFileSync(FIXTURE_MD_PATH, fixtureMd);
 
     const md = [
       '# DIN BRIDAL golden capture',
       '',
       `**Date:** ${captured.capturedAt}`,
-      `**Email:** ${EMAIL}`,
       `**Party:** ${PARTY_NAME}`,
+      `**Company id:** ${COMPANY_ID}`,
       '',
       ...checks.map((c) => `- [${c.result}] ${c.check}${c.notes ? ` — ${c.notes}` : ''}`),
       '',
@@ -268,7 +358,7 @@ async function main() {
     ].join('\n');
     fs.writeFileSync(path.join(EVIDENCE, 'golden-capture-report.md'), md);
 
-    const ok = checks.filter((c) => c.result === 'FAIL').length === 0;
+    const ok = captureComplete && checks.filter((c) => c.result === 'FAIL').length === 0;
     console.log(`\nR5a golden capture: ${ok ? 'PASS' : 'PARTIAL'}`);
     process.exit(ok ? 0 : 1);
   } finally {

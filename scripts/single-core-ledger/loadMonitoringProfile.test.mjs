@@ -21,8 +21,13 @@ test('loadMonitoringProfile _template requires finance gate for non-default use'
   assert.throws(() => loadMonitoringProfile('_template'), /requires finance sign-off/);
 });
 
-test('loadMonitoringProfile din-bridal requires finance sign-off', () => {
-  assert.throws(() => loadMonitoringProfile('din-bridal'), /requires finance sign-off/);
+test('loadMonitoringProfile din-bridal after finance sign-off', () => {
+  const p = loadMonitoringProfile('din-bridal');
+  assert.equal(p.company, 'DIN BRIDAL');
+  assert.equal(p.goldenPartyName, 'MR REHAN ALI');
+  assert.equal(p.golden.mrJalilClosing, 530_000);
+  assert.equal(p.expectedUnifiedFlagsOn.length, 12);
+  assert.equal(p.skipAdminPilotBatch, true);
 });
 
 test('loadMonitoringProfile din-couture requires finance sign-off', () => {

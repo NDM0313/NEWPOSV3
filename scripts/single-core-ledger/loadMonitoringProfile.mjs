@@ -39,6 +39,12 @@ export function loadMonitoringProfile(profileId) {
     goldenFixturePath: profile.golden_fixture_path
       ? path.join(ROOT, profile.golden_fixture_path)
       : null,
+    goldenPartyName: profile.golden_party_name || 'MR JALIL',
+    goldenPartySearch: profile.golden_party_search || 'JALIL',
+    skipAdminPilotBatch: profile.skip_admin_pilot_batch === true,
+    flagVerifySql: id === 'din-bridal'
+      ? path.join(path.dirname(fileURLToPath(import.meta.url)), 'din-bridal/r5-monitoring-flags-pipe.sql')
+      : path.join(path.dirname(fileURLToPath(import.meta.url)), 'phase-215x-final-flags.sql'),
     evidenceDir: path.join(
       ROOT,
       'reports/single-core-ledger',

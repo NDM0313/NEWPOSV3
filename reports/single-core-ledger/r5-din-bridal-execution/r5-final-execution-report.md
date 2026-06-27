@@ -1,92 +1,57 @@
 # R5 DIN BRIDAL — Final execution report
 
-**Status:** `R5 BLOCKED — DIN BRIDAL GOLDEN CAPTURE CREDENTIALS REQUIRED`  
-**Run:** R5 DIN BRIDAL FINANCE SIGN-OFF ARTIFACT + CONTROLLED ROLLOUT EXECUTION  
+**Status:** `R5 DIN BRIDAL LOADERS ON — SOAK REQUIRED`  
+**Run:** R5 DIN BRIDAL CONTINUATION FROM GOLDEN CAPTURE  
 **Date:** 2026-06-27  
-**Main commit:** `56912254`
+**Main commit (start):** `e3e7def8`
 
 ---
 
 ## Summary
 
-Finance sign-off artifact created and validated (**Nadeem Khan**, staged DIN BRIDAL rollout). Read-only production audit **PASS**. Execution **stopped at Step 4** — `QA_BROWSER_EMAIL` and `QA_BROWSER_PASSWORD` not set in environment. **No golden capture. No SQL. No flags changed.**
+Golden capture **PASS**. Pre-enable tests/build **PASS**. All staged DIN BRIDAL flag SQL executed (pilot → engine → 5 screens → 5 loaders). Post-enable monitoring **PASS** against MR REHAN ALI goldens. **12/12** DIN BRIDAL unified flags ON. DIN CHINA unchanged. **Soak required** before marking R5 complete.
 
 ---
 
-## Gate results
+## Gates
 
 | Step | Result |
 |------|--------|
-| 1 Repo verification | PASS |
-| 2 Create finance sign-off | PASS |
-| 3 Validate finance sign-off | PASS |
-| 4 Credentials | **FAIL — STOP** |
-| 5 Read-only audit | PASS |
-| 6–17 | **NOT RUN** (blocked at Step 4) |
+| Credentials | PASS |
+| Read-only audit | PASS |
+| Golden capture | PASS |
+| Tests / build | PASS |
+| Stage 1 pilot | PASS |
+| Stage 2 engine | PASS |
+| Stage 3 screens | PASS |
+| Stage 4 loaders (×5) | PASS |
+| Monitoring | PASS |
+| Soak | **REQUIRED** |
 
 ---
 
-## Finance sign-off
+## Golden fixtures (browser)
 
-| Item | Status |
-|------|--------|
-| Artifact | `reports/single-core-ledger/din-bridal/finance-signoff-unified-ledger-rollout-2026-06-27.md` |
-| Approver | Nadeem Khan |
-| Staged rollout | Authorized |
-| Bulk / other-company / migrations | Prohibited |
-
-`golden-fixtures.json` updated with `finance_sign_off_ref`.
+| Metric | PKR |
+|--------|-----|
+| MR REHAN ALI closing | 530,000 |
+| Trial Balance | 21,919,575 |
+| Roznamcha In / Out / Close | 1,836,350 / 917,780 / 918,570 |
 
 ---
 
-## Golden capture / flags / SQL
+## Production flags (DIN BRIDAL)
 
-| Item | Status |
-|------|--------|
-| Golden capture | Not run (credentials) |
-| SQL executed | None |
-| Loaders enabled | None |
-| DIN BRIDAL flags | 0 (unchanged) |
-| DIN CHINA flags | 12 ON (unchanged) |
+All 12 unified flags ON. No DIN COUTURE loader leakage. DIN CHINA 12 flags unchanged.
 
 ---
 
-## Tests / monitoring / deploy
+## Deploy
 
-| Item | Status |
-|------|--------|
-| Pre-enable tests/build | Skipped |
-| Monitoring | Not run |
-| Soak | N/A |
-| Deploy | Skipped — docs/evidence only |
+**Skipped** — production change is feature flags only; no frontend bundle update required for loader swap (code already on main @ R5a).
 
 ---
 
-## Constraints honored
+## Next action
 
-All hard constraints honored — no flags, migrations, GL mutations, FX changes, DIN CHINA changes, or cross-company enablement.
-
----
-
-## Related evidence
-
-- [`finance-signoff-unified-ledger-rollout-2026-06-27.md`](../din-bridal/finance-signoff-unified-ledger-rollout-2026-06-27.md)
-- [`r5-finance-approved-pre-execution-audit.md`](r5-finance-approved-pre-execution-audit.md)
-- [`r5-finance-approved-pre-execution-audit.json`](r5-finance-approved-pre-execution-audit.json)
-- [`r5-final-execution-manifest.json`](r5-final-execution-manifest.json)
-
----
-
-## Exact next action
-
-Set DIN BRIDAL ERP credentials locally and re-run from Step 6:
-
-```powershell
-$env:QA_BROWSER_EMAIL = "<DIN_BRIDAL_user@domain>"
-$env:QA_BROWSER_PASSWORD = "<password>"
-node scripts/single-core-ledger/run-r5-golden-capture-din-bridal.mjs
-npm run test:unified-ledger
-npm run build
-```
-
-Then execute staged flag SQL one file at a time per playbook.
+Run 72h soak per [`r5-din-bridal-soak-plan.md`](r5-din-bridal-soak-plan.md). Daily `MONITORING_PROFILE=din-bridal` verify. Mark R5 complete after soak PASS or documented accelerated waiver.

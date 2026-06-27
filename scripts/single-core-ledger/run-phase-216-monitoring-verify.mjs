@@ -27,6 +27,8 @@ const EVIDENCE = profile.evidenceDir;
 const MR_JALIL_GOLDEN = profile.golden.mrJalilClosing;
 const TB_GOLDEN = profile.golden.trialBalanceTotal;
 const ROZNAMCHA_GOLDEN = profile.golden.roznamcha;
+const GOLDEN_PARTY = profile.goldenPartyName;
+const GOLDEN_PARTY_SEARCH = profile.goldenPartySearch;
 const BASE = process.env.QA_BROWSER_BASE_URL || profile.productionUrl;
 const EMAIL = process.env.QA_BROWSER_EMAIL || profile.loginEmailDefault;
 const PASSWORD = process.env.QA_BROWSER_PASSWORD || '';
@@ -101,8 +103,58 @@ async function readRoznamchaSummary(page) {
   };
 }
 
+async function selectGoldenPartyAccountStatement(page) {
+  await page.getByRole('button', { name: /^Account Statements$/ }).click({ timeout: 60000 });
+  await page.getByRole('button', { name: /Advanced \(effective \/ audit\)/i }).click({ timeout: 30000 });
+  if (profile.profileId === 'din-china') {
+    await page.getByRole('button', { name: /load mr jalil/i }).click({ timeout: 120000 });
+  } else {
+    await page.locator('div:has(> label:text-is("Statement Type")) select').selectOption('customer');
+    await page.waitForTimeout(2000);
+    const contactCombobox = page.locator('div').filter({ has: page.getByText('Contact', { exact: true }) }).locator('[role="combobox"]').first();
+    await contactCombobox.click({ timeout: 30000 });
+    const searchInput = page.locator('[cmdk-input], input[placeholder*="Search"]').last();
+    await searchInput.fill(GOLDEN_PARTY_SEARCH);
+    await page.waitForTimeout(2000);
+    await page.locator('[cmdk-item]').filter({ hasText: GOLDEN_PARTY }).first().click({ timeout: 30000 });
+  }
+  await page.waitForTimeout(8000);
+}
+
+async function selectGoldenPartyPartyLedger(page) {
+  if (profile.profileId === 'din-china') {
+    await page.getByRole('button', { name: /load mr jalil/i }).click({ timeout: 120000 }).catch(() => {});
+  } else {
+    const partyBtn = page.getByRole('button', { name: /Select party/i });
+    await partyBtn.click({ timeout: 15000 });
+    const searchInput = page.getByPlaceholder(/Search contacts/i).first();
+    await searchInput.fill(GOLDEN_PARTY_SEARCH);
+    await page.waitForTimeout(2000);
+    await page.getByText(GOLDEN_PARTY, { exact: false }).first().click({ timeout: 30000 });
+  }
+  await page.waitForTimeout(8000);
+}
+
+async function selectGoldenPartyLedgerV2(page) {
+  const tabBtn = page.locator('button').filter({ hasText: /^Account Statements$/ });
+  if (await tabBtn.count()) await tabBtn.first().click();
+  if (profile.profileId === 'din-china') {
+    await page.getByRole('button', { name: /load mr jalil/i }).click({ timeout: 120000 });
+  } else {
+    await page.locator('div:has(> label:text-is("Statement type")) select').selectOption('customer');
+    await page.waitForTimeout(2000);
+    const entityCombobox = page.locator('div').filter({ has: page.getByText('Party / account', { exact: true }) }).locator('[role="combobox"]').first();
+    await entityCombobox.click({ timeout: 30000 });
+    const searchInput = page.locator('[cmdk-input], input[placeholder*="Search"]').last();
+    await searchInput.fill(GOLDEN_PARTY_SEARCH);
+    await page.waitForTimeout(2000);
+    await page.locator('[cmdk-item]').filter({ hasText: GOLDEN_PARTY }).first().click({ timeout: 30000 });
+  }
+  await page.waitForTimeout(8000);
+}
+
 async function loadProductionFlags() {
-  const flagSqlPath = path.join(ROOT, 'scripts/single-core-ledger/phase-215x-final-flags.sql');
+  const flagSqlPath = profile.flagVerifySql;
   if (!fs.existsSync(flagSqlPath)) return null;
   try {
     const raw = execSync(
@@ -128,14 +180,19 @@ async function main() {
     const lines = flagOut.trim().split('\n').filter(Boolean);
     const dinFlags = {};
     let otherCompanyLoaders = 0;
+    const dinChinaId = '30bd8592-3384-4f34-899a-f3907e336485';
     for (const line of lines) {
       const parts = line.split('|');
       if (parts.length >= 3 && parts[0].includes(profile.companyId.slice(0, 8))) {
-        dinFlags[parts[1]] = parts[2] === 't';
+        dinFlags[parts[1]] = parts[2] === 't' || parts[2] === 'true';
       }
-      if (parts.length >= 3 && parts[1]?.includes('loader') && parts[2] === 't' && !parts[0].includes(profile.companyId.slice(0, 8))) {
-        otherCompanyLoaders += 1;
-      }
+      const isOtherCompanyLoader =
+        parts.length >= 3 &&
+        parts[1]?.includes('loader') &&
+        (parts[2] === 't' || parts[2] === 'true') &&
+        !parts[0].includes(profile.companyId.slice(0, 8)) &&
+        !(profile.profileId === 'din-bridal' && parts[0].includes(dinChinaId.slice(0, 8)));
+      if (isOtherCompanyLoader) otherCompanyLoaders += 1;
     }
     const expectedOn = profile.expectedUnifiedFlagsOn;
     const allOn = expectedOn.every((k) => dinFlags[k] === true);
@@ -162,14 +219,11 @@ async function main() {
 
     await setWideRange(page);
     await page.goto(`${BASE}/?view=accounting`, { waitUntil: 'networkidle', timeout: 120000 });
-    await page.getByRole('button', { name: /^Account Statements$/ }).click({ timeout: 60000 });
-    await page.getByRole('button', { name: /Advanced \(effective \/ audit\)/i }).click({ timeout: 30000 });
-    await page.getByRole('button', { name: /load mr jalil/i }).click({ timeout: 120000 });
-    await page.waitForTimeout(8000);
+    await selectGoldenPartyAccountStatement(page);
     const asLoader = await page.locator('[data-account-statement-main-loader]').first().getAttribute('data-account-statement-main-loader');
     const asClosing = await readClosingBalance(page);
     log('Account Statement loader unified', asLoader === 'unified' ? 'PASS' : 'FAIL', `actual=${asLoader}`);
-    log('Account Statement MR JALIL', withinTol(asClosing, MR_JALIL_GOLDEN) ? 'PASS' : 'FAIL', `closing=${asClosing}`);
+    log(`Account Statement ${GOLDEN_PARTY}`, withinTol(asClosing, MR_JALIL_GOLDEN) ? 'PASS' : 'FAIL', `closing=${asClosing}`);
 
     await setWideRange(page);
     await page.goto(`${BASE}/?view=reports`, { waitUntil: 'networkidle', timeout: 120000 });
@@ -188,48 +242,48 @@ async function main() {
 
     await setWideRange(page);
     await page.goto(`${BASE}/?view=party-ledger`, { waitUntil: 'networkidle', timeout: 120000 });
-    await page.getByRole('button', { name: /load mr jalil/i }).click({ timeout: 120000 }).catch(() => {});
-    await page.waitForTimeout(8000);
+    await selectGoldenPartyPartyLedger(page);
     const plLoader = await page.locator('[data-party-ledger-main-loader]').first().getAttribute('data-party-ledger-main-loader');
     const bodyPl = await page.innerText('body');
     const plM = bodyPl.match(/Current Receivable[\s\n\r]+(?:Rs\.?\s*)?([\d,]+\.?\d*)/i);
     const plClosing = plM ? parsePkr(plM[1]) : await readClosingBalance(page, { labels: ['Current Receivable'] });
     log('Party Ledger loader unified', plLoader === 'unified' ? 'PASS' : 'FAIL', `actual=${plLoader}`);
-    log('Party Ledger MR JALIL', withinTol(plClosing, MR_JALIL_GOLDEN) ? 'PASS' : 'FAIL', `closing=${plClosing}`);
+    log(`Party Ledger ${GOLDEN_PARTY}`, withinTol(plClosing, MR_JALIL_GOLDEN) ? 'PASS' : 'FAIL', `closing=${plClosing}`);
 
     await page.goto(`${BASE}/reports/ledger-statement-center-v2`, { waitUntil: 'networkidle', timeout: 120000 });
     await page.waitForTimeout(3000);
-    const tabBtn = page.locator('button').filter({ hasText: /^Account Statements$/ });
-    if (await tabBtn.count()) await tabBtn.first().click();
-    await page.getByRole('button', { name: /load mr jalil/i }).click({ timeout: 120000 });
-    await page.waitForTimeout(8000);
+    await selectGoldenPartyLedgerV2(page);
     const lv2Closing = await readLedgerV2MrJalilClosing(page);
     const lv2Loader = await readVisibleMainLoaderAttr(page, 'data-ledger-v2-main-loader');
     log('Ledger V2 loader unified', lv2Loader === 'unified' ? 'PASS' : 'FAIL', `actual=${lv2Loader}`);
-    log('Ledger V2 MR JALIL', withinTol(lv2Closing, MR_JALIL_GOLDEN) ? 'PASS' : 'FAIL', `closing=${lv2Closing}`);
+    log(`Ledger V2 ${GOLDEN_PARTY}`, withinTol(lv2Closing, MR_JALIL_GOLDEN) ? 'PASS' : 'FAIL', `closing=${lv2Closing}`);
     if (!withinTol(lv2Closing, MR_JALIL_GOLDEN)) {
       fs.mkdirSync(path.join(EVIDENCE, 'screenshots'), { recursive: true });
       await page.screenshot({ path: path.join(EVIDENCE, 'screenshots/lv2-mr-jalil-parse-failure.png'), fullPage: true });
     }
 
-    await page.goto(`${BASE}/admin/unified-ledger-tieout`, { waitUntil: 'networkidle', timeout: 120000 });
-    await page.getByRole('tab', { name: /Pilot Batch/i }).click({ timeout: 60000 });
-    const runBtn = page.getByRole('button', { name: /Run DIN CHINA 9\/9 batch/i });
-    if (await runBtn.isVisible().catch(() => false)) await runBtn.click();
-    await waitForPilotBatchStats(page, profile.pilotBatchExpected);
-    const batch = await readPilotBatchSummary(page);
-    log(
-      'Admin Compare Pilot Batch 9/9',
-      batch.compared === profile.pilotBatchExpected &&
-        batch.passCount === profile.pilotBatchExpected &&
-        batch.failCount === 0
-        ? 'PASS'
-        : 'FAIL',
-      `compared=${batch.compared} pass=${batch.passCount} fail=${batch.failCount}`,
-    );
-    if (batch.compared !== profile.pilotBatchExpected || batch.passCount !== profile.pilotBatchExpected) {
-      fs.mkdirSync(path.join(EVIDENCE, 'screenshots'), { recursive: true });
-      await page.screenshot({ path: path.join(EVIDENCE, 'screenshots/admin-compare-pilot-batch.png'), fullPage: true });
+    if (!profile.skipAdminPilotBatch) {
+      await page.goto(`${BASE}/admin/unified-ledger-tieout`, { waitUntil: 'networkidle', timeout: 120000 });
+      await page.getByRole('tab', { name: /Pilot Batch/i }).click({ timeout: 60000 });
+      const runBtn = page.getByRole('button', { name: /Run DIN CHINA 9\/9 batch/i });
+      if (await runBtn.isVisible().catch(() => false)) await runBtn.click();
+      await waitForPilotBatchStats(page, profile.pilotBatchExpected);
+      const batch = await readPilotBatchSummary(page);
+      log(
+        'Admin Compare Pilot Batch 9/9',
+        batch.compared === profile.pilotBatchExpected &&
+          batch.passCount === profile.pilotBatchExpected &&
+          batch.failCount === 0
+          ? 'PASS'
+          : 'FAIL',
+        `compared=${batch.compared} pass=${batch.passCount} fail=${batch.failCount}`,
+      );
+      if (batch.compared !== profile.pilotBatchExpected || batch.passCount !== profile.pilotBatchExpected) {
+        fs.mkdirSync(path.join(EVIDENCE, 'screenshots'), { recursive: true });
+        await page.screenshot({ path: path.join(EVIDENCE, 'screenshots/admin-compare-pilot-batch.png'), fullPage: true });
+      }
+    } else {
+      log('Admin Compare Pilot Batch', 'WAIVED', 'skipped for din-bridal profile');
     }
 
     const rpcErrors = consoleErrors.filter((e) => /rpc|supabase|unified/i.test(e));

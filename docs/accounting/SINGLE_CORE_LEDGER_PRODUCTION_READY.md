@@ -39,7 +39,7 @@
 | R4 per-company rollout runbook | **ACTIVE** — [`SINGLE_CORE_LEDGER_PER_COMPANY_ROLLOUT_RUNBOOK.md`](SINGLE_CORE_LEDGER_PER_COMPANY_ROLLOUT_RUNBOOK.md) |
 | R3 other-company pre-expansion audit | **AUDIT COMPLETE — R5 blocked on finance sign-off** — [`r3-audit-complete-report.md`](../reports/single-core-ledger/r3-pre-expansion-audit/r3-audit-complete-report.md) |
 | R5 first non-DIN pilot preflight | **PREFLIGHT READY — blocked on finance sign-off** — [`r5-preflight-status.md`](../reports/single-core-ledger/r5-pilot-preflight/r5-preflight-status.md) |
-| R5 DIN BRIDAL controlled rollout execution | **BLOCKED — golden capture credentials required** (finance sign-off recorded 2026-06-27) — [`r5-final-execution-report.md`](../reports/single-core-ledger/r5-din-bridal-execution/r5-final-execution-report.md) |
+| R5 DIN BRIDAL controlled rollout execution | **LOADERS ON — soak required** — [`r5-final-execution-report.md`](../reports/single-core-ledger/r5-din-bridal-execution/r5-final-execution-report.md) |
 | Post-PR final closure | **COMPLETE** — [`final-post-pr-closure-report.md`](../reports/single-core-ledger/phase-2-18-main-merge-closure/final-post-pr-closure-report.md) |
 | Future company expansion | **Requires separate finance sign-off** — [`SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md`](SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md) |
 

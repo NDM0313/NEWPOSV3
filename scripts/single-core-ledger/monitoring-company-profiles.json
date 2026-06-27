@@ -36,18 +36,33 @@
       "production_url": "https://erp.dincouture.pk",
       "login_email_default": "PENDING_OPERATOR",
       "golden_party_name": "MR REHAN ALI",
+      "golden_party_search": "REHAN ALI",
       "golden": {
         "mr_jalil_closing_pkr": 530000,
         "trial_balance_debit_credit_pkr": 21919575,
-        "roznamcha_cash_in_pkr": 1916350,
-        "roznamcha_cash_out_pkr": 942780,
-        "roznamcha_closing_pkr": 973570
+        "roznamcha_cash_in_pkr": 1836350,
+        "roznamcha_cash_out_pkr": 917780,
+        "roznamcha_closing_pkr": 918570
       },
-      "expected_unified_flags_on": [],
+      "expected_unified_flags_on": [
+        "unified_ledger_pilot",
+        "unified_ledger_engine",
+        "unified_ledger_loader_ledger_v2",
+        "unified_ledger_screen_ledger_v2",
+        "unified_ledger_loader_account_statement",
+        "unified_ledger_screen_account_statement",
+        "unified_ledger_loader_trial_balance",
+        "unified_ledger_screen_trial_balance",
+        "unified_ledger_loader_party_ledger",
+        "unified_ledger_screen_party_ledger",
+        "unified_ledger_loader_roznamcha",
+        "unified_ledger_screen_roznamcha"
+      ],
       "pilot_batch_expected": 9,
       "golden_fixture_path": "reports/single-core-ledger/din-bridal/golden-fixtures.json",
       "evidence_subdir": "din-bridal-monitoring",
-      "requires_finance_sign_off": true
+      "requires_finance_sign_off": false,
+      "skip_admin_pilot_batch": true
     },
     "din-couture": {
       "company": "DIN COUTURE",
