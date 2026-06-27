@@ -1,17 +1,18 @@
 # Single Core Ledger — Master Remaining Roadmap (post–DIN CHINA closure)
 
-**Generated:** 2026-06-27T17:45:00Z  
-**Main commit:** `bd813ec2`  
-**Program scope:** OLD ERP / DIN Collection ERP — **not** the FX / multi-currency app  
+**Generated:** 2026-06-14T00:00:00Z  
+**Main commit:** `d227d221`  
 **Program scope:** OLD ERP / DIN Collection ERP — **not** the FX / multi-currency app
 
 ---
 
 ## Scope statement
 
-**DIN CHINA rollout is closed on `main`.** **DIN BRIDAL R5 complete.** **DIN COUTURE rollout complete** (12/12 flags, 5/5 loaders live @ 2026-06-27). Migration closure complete.
+**DIN CHINA complete and stable.** **DIN BRIDAL complete and stable.** **DIN COUTURE complete and stable.** **Migration closure complete.** **Three-company operational baseline complete.**
 
-**The broader Single Core Ledger program is not complete.** Remaining work includes optional diagnostics, other-company expansion (blocked until finance sign-off), monitoring hardening, optional RPC design, and long-term legacy engine retirement. None of these may start without the approvals listed per phase.
+R7 roznamcha_payment RPC remains **design-only**. R8 legacy engine retirement remains **blocked**. Next-company expansion requires **separate finance sign-off**. Recommended ongoing operation: periodic monitoring for `din-china`, `din-bridal`, `din-couture`.
+
+**The broader Single Core Ledger program is not fully closed** — optional diagnostics, R7/R8, and additional screen wiring remain separate and require their own approvals.
 
 ---
 
@@ -75,6 +76,9 @@
 ### Blocked (removed)
 - ~~DIN COUTURE browser credentials~~ — resolved; rollout complete
 
+### Complete (2026-06-14)
+- **Three-company operational baseline** — flags + monitoring PASS — [`final-program-archive-report.md`](../final-program-archive/final-program-archive-report.md)
+
 ### Complete (2026-06-27)
 - **Migration closure** — Phase 1.5 applied; no approved pending migrations — [`migration-closure-final-report.md`](../migration-closure/migration-closure-final-report.md)
 - **R5 post-completion archive** — commit reconciliation + monitoring baseline — [`r5-post-completion-commit-reconciliation.md`](../r5-din-bridal-execution/r5-post-completion-commit-reconciliation.md)
@@ -91,9 +95,9 @@
 - Remaining Phase 2 screen wiring (BS, P&L, Cash Flow, mobile parity)
 
 ### Blocked (explicit gate)
-- **R4** Per-company staged rollout framework execution — blocked until finance sign-off per company
-- **R5** First non-DIN company pilot — blocked until R3 + finance sign-off
-- **R8** Legacy engine retirement — blocked until all target companies stable on unified loaders
+- **Next-company expansion** — blocked until separate finance sign-off
+- **R7** roznamcha_payment RPC migration — design-only; separate approval required
+- **R8** Legacy engine retirement — blocked until all approved companies stable for required operational period
 
 ---
 

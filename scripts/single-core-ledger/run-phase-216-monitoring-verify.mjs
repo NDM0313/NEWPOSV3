@@ -182,10 +182,12 @@ async function main() {
     let otherCompanyLoaders = 0;
     const dinChinaId = '30bd8592-3384-4f34-899a-f3907e336485';
     const dinBridalId = '597a5292-14c8-4cd8-96bd-c61b5a0d8c92';
-    const approvedLoaderCompanies = new Set([dinChinaId.slice(0, 8), dinBridalId.slice(0, 8)]);
-    if (profile.profileId === 'din-couture') {
-      approvedLoaderCompanies.add(profile.companyId.slice(0, 8));
-    }
+    const dinCoutureId = '2ab65903-62a3-4bcf-bced-076b681e9b74';
+    const approvedLoaderCompanies = new Set([
+      dinChinaId.slice(0, 8),
+      dinBridalId.slice(0, 8),
+      dinCoutureId.slice(0, 8),
+    ]);
     for (const line of lines) {
       const parts = line.split('|');
       if (parts.length >= 3 && parts[0].includes(profile.companyId.slice(0, 8))) {

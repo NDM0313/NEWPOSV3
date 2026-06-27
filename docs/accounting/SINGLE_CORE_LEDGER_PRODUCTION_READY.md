@@ -1,12 +1,29 @@
 # Single Core Ledger — Production Ready Pack
 
-**Status:** `MAIN MERGE COMPLETE — DIN CHINA SINGLE CORE LEDGER CLOSED`  
-**Program:** DIN CHINA rollout is closed on `main`. Broader Single Core Ledger future phases remain separate and require their own approvals — [`master-remaining-roadmap.md`](../reports/single-core-ledger/master-roadmap-after-din-china-closure/master-remaining-roadmap.md)  
-**Branch:** `main` (merged from `feature/single-core-ledger-phase-2-9a3-preview-deploy-plan` @ `b92e6955`)  
+**Status:** `THREE-COMPANY UNIFIED LEDGER BASELINE COMPLETE`  
+**Program:** DIN CHINA, DIN BRIDAL, and DIN COUTURE unified loaders live and stable on `main`. Migration closure complete. R7 design-only; R8 blocked. Next-company expansion requires separate finance sign-off — [`master-remaining-roadmap.md`](../reports/single-core-ledger/master-roadmap-after-din-china-closure/master-remaining-roadmap.md)  
+**Branch:** `main` @ `d227d221` (DIN COUTURE completion); three-company archive baseline in progress  
 **PR:** https://github.com/NDM0313/NEWPOSV3/pull/21  
-**Last updated:** 2026-06-27  
-**Archive:** Final archive/monitoring hygiene complete; future work requires separate approval — [`final-archive-and-monitoring-report.md`](../reports/single-core-ledger/phase-2-18-main-merge-closure/final-archive-and-monitoring-report.md)  
+**Last updated:** 2026-06-14  
+**Archive:** Three-company operational baseline — [`final-program-archive-report.md`](../reports/single-core-ledger/final-program-archive/final-program-archive-report.md)  
 **Master checklist:** use this file as the single entry point for post-apply status.
+
+---
+
+## Live three-company unified ledger state (authoritative)
+
+| Company | Flags | Loaders | Golden party | Monitoring baseline |
+|---------|-------|---------|--------------|---------------------|
+| DIN CHINA | 12/12 ON | 5/5 ON | MR JALIL — PKR 216,300 | PASS |
+| DIN BRIDAL | 12/12 ON | 5/5 ON | MR REHAN ALI — PKR 530,000 | PASS |
+| DIN COUTURE | 12/12 ON | 5/5 ON | DHARIA — PKR 4,488,088 | PASS |
+
+- **Other company loaders (unapproved):** none  
+- **Migration closure:** complete — no approved pending migrations  
+- **R7 roznamcha_payment RPC:** design-only  
+- **R8 legacy engine retirement:** blocked  
+- **Recommended ongoing operation:** periodic monitoring for `din-china`, `din-bridal`, `din-couture`  
+- Evidence: [`three-company-monitoring-baseline.md`](../reports/single-core-ledger/final-program-archive/three-company-monitoring-baseline.md)
 
 ---
 
@@ -44,6 +61,7 @@
 | Migration closure + DB readiness | **COMPLETE** @ 2026-06-27 — no approved pending migrations; Phase 1.5 4/4 applied — [`migration-closure-final-report.md`](../reports/single-core-ledger/migration-closure/migration-closure-final-report.md) |
 | Post-PR final closure | **COMPLETE** — [`final-post-pr-closure-report.md`](../reports/single-core-ledger/phase-2-18-main-merge-closure/final-post-pr-closure-report.md) |
 | DIN COUTURE next-company rollout | **COMPLETE — unified loaders live** @ 2026-06-27 — [`final-execution-report.md`](../reports/single-core-ledger/next-company-rollout/din-couture/final-execution-report.md) |
+| Three-company operational baseline | **COMPLETE** @ 2026-06-14 — [`final-program-archive-report.md`](../reports/single-core-ledger/final-program-archive/final-program-archive-report.md) |
 
 Closeout pack: [`phase-212-closeout-monitoring.md`](../reports/single-core-ledger/phase-2-12-trial-balance-loader/phase-212-closeout-monitoring.md)
 

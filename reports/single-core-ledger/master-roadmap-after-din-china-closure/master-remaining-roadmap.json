@@ -1,7 +1,17 @@
 {
-  "generated_at": "2026-06-27T17:45:00Z",
-  "current_main_commit": "bd813ec2",
-  "commit_reconciliation": "reports/single-core-ledger/r5-din-bridal-execution/r5-post-completion-commit-reconciliation.md",
+  "generated_at": "2026-06-14T00:00:00Z",
+  "current_main_commit": "d227d221",
+  "latest_main_commit": "d227d2210866599762ab4a5ed02298a8651add70",
+  "program_status": "THREE_COMPANY_UNIFIED_LEDGER_BASELINE_COMPLETE",
+  "production_url": "https://erp.dincouture.pk",
+  "commit_reconciliation": "reports/single-core-ledger/final-program-archive/commit-reconciliation.json",
+  "three_company_baseline": {
+    "status": "THREE_COMPANY_UNIFIED_LEDGER_BASELINE_COMPLETE",
+    "completed_at": "2026-06-14",
+    "evidence": "reports/single-core-ledger/final-program-archive/final-program-archive-report.md",
+    "flag_baseline": "reports/single-core-ledger/final-program-archive/three-company-flag-baseline.json",
+    "monitoring_baseline": "reports/single-core-ledger/final-program-archive/three-company-monitoring-baseline.json"
+  },
   "migration_closure": {
     "status": "MIGRATION_CLOSURE_COMPLETE_NO_APPROVED_PENDING_MIGRATIONS",
     "completed_at": "2026-06-27",
@@ -10,37 +20,31 @@
     "unified_rpcs": "5/5",
     "migrations_applied_this_run": 0
   },
-  "din_china_status": "CLOSED_ON_MAIN",
+  "din_china_status": "COMPLETE_AND_STABLE",
+  "din_bridal_r5_complete": {
+    "status": "R5_COMPLETE_DIN_BRIDAL_UNIFIED_LOADERS_LIVE",
+    "completed_at": "2026-06-27",
+    "evidence": "reports/single-core-ledger/r5-din-bridal-execution/r5-soak-complete-report.md",
+    "unified_flags_on": 12,
+    "loaders_on": 5
+  },
   "din_couture_rollout_complete": {
     "status": "DIN_COUTURE_COMPLETE_UNIFIED_LOADERS_LIVE",
     "completed_at": "2026-06-27",
     "evidence": "reports/single-core-ledger/next-company-rollout/din-couture/final-execution-report.md",
-    "accelerated_waiver": "reports/single-core-ledger/next-company-rollout/din-couture/din-couture-accelerated-soak-waiver.md",
     "unified_flags_on": 12,
     "loaders_on": 5
   },
   "recommended_next_phase": {
     "id": "operational-monitoring",
     "name": "Periodic golden verify for DIN CHINA, DIN BRIDAL, DIN COUTURE",
-    "note": "No further company expansion without separate finance sign-off"
+    "note": "No further company expansion without separate finance sign-off; R7 design-only; R8 blocked"
   },
-  "program_status": "DIN_CHINA_DIN_BRIDAL_DIN_COUTURE_UNIFIED_LOADERS_LIVE",
-  "production_url": "https://erp.dincouture.pk",
   "company": "DIN CHINA",
   "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
   "pr_url": "https://github.com/NDM0313/NEWPOSV3/pull/21",
   "pr_merged": true,
-  "production_monitoring_authoritative": "reports/single-core-ledger/phase-2-16-monitoring/final-production-verify.md",
-  "din_bridal_r5_complete": {
-    "status": "R5_COMPLETE_DIN_BRIDAL_UNIFIED_LOADERS_LIVE",
-    "completed_at": "2026-06-27",
-    "evidence": "reports/single-core-ledger/r5-din-bridal-execution/r5-soak-complete-report.md",
-    "post_completion_archive": "reports/single-core-ledger/r5-din-bridal-execution/r5-post-completion-commit-reconciliation.md",
-    "operational_monitoring_baseline": "reports/single-core-ledger/din-bridal-monitoring/production-monitoring-post-completion.md",
-    "accelerated_waiver": "reports/single-core-ledger/r5-din-bridal-execution/r5-accelerated-soak-waiver.md",
-    "unified_flags_on": 12,
-    "loaders_on": 5
-  },
+  "production_monitoring_authoritative": "reports/single-core-ledger/final-program-archive/three-company-monitoring-baseline.json",
   "expansion_candidates": [
     {
       "slug": "din-bridal",
@@ -51,49 +55,51 @@
     {
       "slug": "din-couture",
       "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
-      "status": "R5_COMPLETE_UNIFIED_LOADERS_LIVE",
+      "status": "DIN_COUTURE_COMPLETE_UNIFIED_LOADERS_LIVE",
       "golden_fixture_path": "reports/single-core-ledger/din-couture/golden-fixtures.json",
-      "evidence": "reports/single-core-ledger/next-company-rollout/din-couture/final-execution-report.md",
-      "accelerated_waiver": "reports/single-core-ledger/next-company-rollout/din-couture/din-couture-accelerated-soak-waiver.md"
+      "evidence": "reports/single-core-ledger/next-company-rollout/din-couture/final-execution-report.md"
     }
   ],
   "blocked_phases": [
     {
       "id": "R7",
       "name": "roznamcha_payment RPC migration",
-      "blocker": "Design-only — separate migration approval required; no migration file in repo"
+      "status": "DESIGN_ONLY",
+      "blocker": "Separate migration approval required; no migration file in repo"
     },
     {
       "id": "R8",
       "name": "Legacy engine retirement / cleanup",
-      "blocker": "All target companies stable on unified loaders + master plan Phase 5 gates"
+      "status": "BLOCKED",
+      "blocker": "All approved companies stable for required operational period + separate approval"
+    },
+    {
+      "id": "next-company",
+      "name": "Next company unified ledger rollout",
+      "status": "BLOCKED",
+      "blocker": "Separate finance sign-off required"
     }
   ],
   "operational_monitoring": {
     "profiles": ["din-china", "din-bridal", "din-couture"],
     "command_template": "MONITORING_PROFILE=<profile> node scripts/single-core-ledger/run-unified-ledger-monitoring-verify.mjs",
     "baselines": {
+      "three_company": "reports/single-core-ledger/final-program-archive/three-company-monitoring-baseline.json",
       "din-bridal": "reports/single-core-ledger/din-bridal-monitoring/production-monitoring-post-completion.json",
       "din-couture": "reports/single-core-ledger/din-couture-monitoring/production-monitoring-final.json"
     }
   },
-  "din_couture_rollout_complete": {
-    "status": "DIN_COUTURE_COMPLETE_UNIFIED_LOADERS_LIVE",
-    "completed_at": "2026-06-27",
-    "evidence": "reports/single-core-ledger/next-company-rollout/din-couture/final-execution-report.md",
-    "accelerated_waiver": "reports/single-core-ledger/next-company-rollout/din-couture/din-couture-accelerated-soak-waiver.md",
-    "unified_flags_on": 12,
-    "loaders_on": 5
-  },
   "constraints": {
-    "din_bridal_flags_live": true,
-    "din_couture_flags_live": true,
     "din_china_unified_flags_on": 12,
+    "din_china_loaders_on": 5,
     "din_bridal_unified_flags_on": 12,
+    "din_bridal_loaders_on": 5,
     "din_couture_unified_flags_on": 12,
+    "din_couture_loaders_on": 5,
     "other_company_loaders_on": 0,
     "migrations_run": false,
     "gl_mutations": false,
-    "fx_app_touched": false
+    "fx_app_touched": false,
+    "credentials_committed": false
   }
 }
