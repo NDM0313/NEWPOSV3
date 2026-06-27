@@ -27,7 +27,7 @@
 | Phase 2.17 release governance | **COMPLETE** — [`phase-2-17-release-governance/`](../reports/single-core-ledger/phase-2-17-release-governance/) |
 | Phase 2.17X PR/main merge preflight | **COMPLETE** — [`pr-main-merge-preflight.md`](../reports/single-core-ledger/phase-2-17-release-governance/pr-main-merge-preflight.md) |
 | Phase 2.17Y PR governance | **COMPLETE** — [`pr-governance-final.md`](../reports/single-core-ledger/phase-2-17-release-governance/pr-governance-final.md) |
-| Phase 2.18 main merge closure | **PR READY** — [`phase-2-18-main-merge-closure/`](../reports/single-core-ledger/phase-2-18-main-merge-closure/) |
+| Phase 2.18 main merge closure | **PR READY** — [`final-closure-report.md`](../reports/single-core-ledger/phase-2-18-main-merge-closure/final-closure-report.md) |
 | Future company expansion | **Requires separate finance sign-off** — [`SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md`](SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md) |
 
 Closeout pack: [`phase-212-closeout-monitoring.md`](../reports/single-core-ledger/phase-2-12-trial-balance-loader/phase-212-closeout-monitoring.md)
@@ -338,7 +338,7 @@ Or selective reverse using `production-remediation-apply-before-*.json` from app
 20. ~~Phase 2.17 release governance (PR/merge pack)~~ **Done** @ 2026-06-27 — see [`phase-2-17-release-governance/`](../reports/single-core-ledger/phase-2-17-release-governance/)
 21. ~~Phase 2.17X PR/main merge preflight cleanup~~ **Done** @ 2026-06-27 — stale doc wording clarified
 22. ~~Phase 2.17Y PR/main merge governance~~ **Done** @ 2026-06-27 — [`pr-governance-final.md`](../reports/single-core-ledger/phase-2-17-release-governance/pr-governance-final.md)
-23. ~~Phase 2.18 main merge closure pack~~ **PR READY** @ 2026-06-27 — [`phase-2-18-main-merge-closure/`](../reports/single-core-ledger/phase-2-18-main-merge-closure/) — **merge pending operator approval**
+23. ~~Phase 2.18 main merge closure pack~~ **PR READY** @ 2026-06-27 — [`final-closure-report.md`](../reports/single-core-ledger/phase-2-18-main-merge-closure/final-closure-report.md) — **merge pending operator approval**
 24. Do **not** expand loader ON to other companies without separate finance sign-off — [`SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md`](SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md)
 25. **Main merge / PR:** create PR → `main` per [`manual-pr-operator-instructions.md`](../reports/single-core-ledger/phase-2-18-main-merge-closure/manual-pr-operator-instructions.md); review; approve manually — **not** a new accounting rollout
 26. **Monitoring:** [`final-production-verify.md`](../reports/single-core-ledger/phase-2-16-monitoring/final-production-verify.md) (Phase 2.16 remains production truth until post-merge re-run)

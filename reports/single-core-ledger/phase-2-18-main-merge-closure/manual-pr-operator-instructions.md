@@ -3,7 +3,7 @@
 **Date:** 2026-06-27  
 **Rollout branch:** `feature/single-core-ledger-phase-2-9a3-preview-deploy-plan`  
 **Target base:** `main`  
-**Latest rollout commit:** `8091ee34` (update to latest on branch before creating PR if newer commits exist)
+**Latest rollout commit:** `181a0d80` (pushed 2026-06-27)
 
 ---
 
@@ -11,7 +11,7 @@
 
 | Item | Value |
 |------|-------|
-| Open PR → `main` | **None** (verified 2026-06-27) |
+| Open PR → `main` | **None** (verified 2026-06-27T13:23:42Z) |
 | Stale PR #20 | https://github.com/NDM0313/NEWPOSV3/pull/20 — **do not use** (base is not `main`) |
 | GitHub CLI | Not available in automation environment |
 
@@ -41,6 +41,7 @@ accounting: finalize DIN CHINA single core ledger rollout governance
 
 ## Step 2 — Review (before merge)
 
+- [ ] Read [`final-pr-ready-review.md`](final-pr-ready-review.md)
 - [ ] Read [`final-pr-diff-review.md`](final-pr-diff-review.md)
 - [ ] Confirm [`final-gates.md`](final-gates.md) — tests 240/240, build PASS
 - [ ] Confirm **no SQL will run** as part of merge
