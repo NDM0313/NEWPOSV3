@@ -37,7 +37,8 @@
 | R2 Cash/Bank Admin Compare diagnostic | **CLOSED** — safe UI labeling — [`r2-final-resolution-report.md`](../reports/single-core-ledger/r2-cash-bank-admin-compare-diagnostic/r2-final-resolution-report.md) |
 | R6 monitoring hardening | **COMPLETE** — [`r6-completion-report.md`](../reports/single-core-ledger/r6-monitoring-hardening/r6-completion-report.md) |
 | R4 per-company rollout runbook | **ACTIVE** — [`SINGLE_CORE_LEDGER_PER_COMPANY_ROLLOUT_RUNBOOK.md`](SINGLE_CORE_LEDGER_PER_COMPANY_ROLLOUT_RUNBOOK.md) |
-| R3 other-company pre-expansion | **PLANNING ONLY — blocked on finance sign-off** — [`r3-preflight-status.md`](../reports/single-core-ledger/r3-pre-expansion-audit/r3-preflight-status.md) |
+| R3 other-company pre-expansion audit | **AUDIT COMPLETE — R5 blocked on finance sign-off** — [`r3-audit-complete-report.md`](../reports/single-core-ledger/r3-pre-expansion-audit/r3-audit-complete-report.md) |
+| R5 first non-DIN pilot preflight | **PREFLIGHT READY — blocked on finance sign-off** — [`r5-preflight-status.md`](../reports/single-core-ledger/r5-pilot-preflight/r5-preflight-status.md) |
 | Post-PR final closure | **COMPLETE** — [`final-post-pr-closure-report.md`](../reports/single-core-ledger/phase-2-18-main-merge-closure/final-post-pr-closure-report.md) |
 | Future company expansion | **Requires separate finance sign-off** — [`SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md`](SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md) |
 

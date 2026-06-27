@@ -1,0 +1,29 @@
+{
+  "company": "DIN BRIDAL",
+  "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+  "captured_from": "R3 read-only production audit (shadow unified RPC / GL) @ 2026-06-27",
+  "capture_method": "scripts/single-core-ledger/r3-readonly-golden-baseline.sql on production VPS",
+  "finance_sign_off_ref": null,
+  "status": "CANDIDATE_BASELINE — requires finance sign-off before R5 enablement",
+  "golden_party": {
+    "name": "MR REHAN ALI",
+    "party_id": "cee98d04-0a04-4692-857c-18df75bcb466",
+    "account_code": "AR-CUS0042"
+  },
+  "fixtures": {
+    "golden_party_closing_pkr": 530000,
+    "ledger_v2_golden_party_closing_pkr": 530000,
+    "account_statement_golden_party_closing_pkr": 530000,
+    "party_ledger_golden_party_closing_pkr": 530000,
+    "trial_balance_debit_pkr": 21919575,
+    "trial_balance_credit_pkr": 21919575,
+    "roznamcha_cash_in_pkr": 1916350,
+    "roznamcha_cash_out_pkr": 942780,
+    "roznamcha_closing_pkr_proxy": 973570
+  },
+  "notes": [
+    "Party and TB values from get_unified_* RPC (official_gl, all branches).",
+    "Roznamcha figures are raw GL liquidity movement proxies — NOT parity-assembler roznamcha UI totals.",
+    "Legacy browser capture required and finance sign-off mandatory before any flag enablement (R5)."
+  ]
+}

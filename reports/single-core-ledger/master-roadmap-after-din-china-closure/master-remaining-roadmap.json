@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-06-27T09:22:12Z",
-  "current_main_commit": "50fa8644",
+  "generated_at": "2026-06-27T12:00:00Z",
+  "current_main_commit": "56481d17",
   "din_china_status": "CLOSED_ON_MAIN",
-  "program_status": "DIN_CHINA_COMPLETE_PROGRAM_CONTINUES",
+  "program_status": "DIN_CHINA_COMPLETE_R3_AUDIT_COMPLETE_R5_BLOCKED",
   "production_url": "https://erp.dincouture.pk",
   "company": "DIN CHINA",
   "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
@@ -53,31 +53,43 @@
       "name": "Cash/Bank Admin Compare diagnostic resolution",
       "status": "CLOSED_SAFE_DIAGNOSTIC_FIX",
       "evidence": "reports/single-core-ledger/r2-cash-bank-admin-compare-diagnostic/r2-final-resolution-report.md"
-    }
-  ],
-  "pending_phases": [
+    },
     {
-      "id": "R3",
-      "name": "Other-company pre-expansion audit + golden fixture capture",
-      "required": true,
-      "finance_sign_off": true,
-      "operator_approval": true,
-      "production_db": "read_only"
+      "id": "R6",
+      "name": "Monitoring + rollback automation hardening",
+      "evidence": "reports/single-core-ledger/r6-monitoring-hardening/r6-completion-report.md"
     },
     {
       "id": "R4",
-      "name": "Per-company staged rollout framework",
-      "required": true,
-      "finance_sign_off": false,
-      "operator_approval": true,
-      "production_db": false
+      "name": "Per-company staged rollout runbook",
+      "evidence": "docs/accounting/SINGLE_CORE_LEDGER_PER_COMPANY_ROLLOUT_RUNBOOK.md"
+    },
+    {
+      "id": "R3",
+      "name": "Other-company pre-expansion read-only audit + candidate golden baselines",
+      "status": "AUDIT_COMPLETE",
+      "evidence": "reports/single-core-ledger/r3-pre-expansion-audit/r3-audit-complete-report.md"
+    }
+  ],
+  "expansion_candidates": [
+    {
+      "slug": "din-bridal",
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "golden_fixture_path": "reports/single-core-ledger/din-bridal/golden-fixtures.json",
+      "status": "CANDIDATE_BASELINE_UNVALIDATED"
+    },
+    {
+      "slug": "din-couture",
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "golden_fixture_path": "reports/single-core-ledger/din-couture/golden-fixtures.json",
+      "status": "CANDIDATE_BASELINE_UNVALIDATED"
     }
   ],
   "blocked_phases": [
     {
       "id": "R5",
       "name": "First non-DIN company pilot rollout",
-      "blocker": "Finance sign-off + R3 golden fixtures required"
+      "blocker": "Finance sign-off + target company selection + legacy browser roznamcha capture"
     },
     {
       "id": "R8",
@@ -86,11 +98,6 @@
     }
   ],
   "optional_phases": [
-    {
-      "id": "R6",
-      "name": "Monitoring + rollback automation hardening",
-      "production_impact": "none_if_read_only"
-    },
     {
       "id": "R7",
       "name": "Optional roznamcha_payment RPC design",
@@ -103,9 +110,9 @@
     }
   ],
   "recommended_next_phase": {
-    "id": "R3",
-    "name": "Other-company pre-expansion audit + golden fixture capture",
-    "note": "Planning/read-only only until finance sign-off; alternative R6 monitoring hardening"
+    "id": "R5",
+    "name": "First non-DIN company pilot rollout",
+    "note": "BLOCKED until finance sign-off and operator selects DIN BRIDAL or DIN COUTURE"
   },
   "approvals_required": {
     "other_company_expansion": "finance_sign_off_per_company",
@@ -121,6 +128,10 @@
     "other_company_expansion": false,
     "fx_app_touched": false
   },
+  "r3_audit_gates": {
+    "other_company_loader_flags_enabled": 0,
+    "din_china_unified_flags_on": 12
+  },
   "din_china_golden_values": {
     "mr_jalil_closing_pkr": 216300,
     "trial_balance_debit_credit_pkr": 407957271.02,
@@ -133,11 +144,7 @@
     "docs/accounting/SINGLE_CORE_LEDGER_MIGRATION_MASTER_EXECUTION_PLAN_v3.md",
     "docs/accounting/SINGLE_CORE_LEDGER_MIGRATION.md",
     "docs/accounting/SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md",
-    "reports/single-core-ledger/phase-2-18-main-merge-closure/final-archive-and-monitoring-report.md",
-    "reports/single-core-ledger/phase-2-18-main-merge-closure/main-merge-complete-report.md",
-    "reports/single-core-ledger/phase-2-16-monitoring/final-production-verify.md",
-    "reports/single-core-ledger/phase-2-18-main-merge-closure/main-merge-complete-manifest.json",
-    "reports/single-core-ledger/phase-2-18-main-merge-closure/final-archive-and-monitoring-manifest.json"
+    "reports/single-core-ledger/r3-pre-expansion-audit/r3-audit-complete-report.md"
   ],
   "docs_missing": []
 }

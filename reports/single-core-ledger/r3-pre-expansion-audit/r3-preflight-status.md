@@ -1,48 +1,50 @@
-# R3 — Pre-expansion audit (preflight)
+# R3 — Pre-expansion audit
 
-**Status:** `PLANNING_ONLY — BLOCKED ON FINANCE SIGN-OFF`  
+**Status:** `AUDIT_COMPLETE — R5 BLOCKED ON FINANCE SIGN-OFF`  
 **Date:** 2026-06-27
 
 ---
 
 ## Scope
 
-Prepare other-company unified ledger expansion **without** enabling flags, running migrations, or executing production SQL.
+Other-company unified ledger expansion planning — **read-only audit complete**. No flags enabled, no migrations, no production writes.
 
 ---
 
-## Blocker
+## Completed (R3 audit pass)
 
-**No target company selected. No finance sign-off artifact provided.**
-
-R3 full execution (golden capture on production, profile activation) requires:
-
-1. Named target company + `company_id`
-2. Signed finance approval per [`SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md`](../../../docs/accounting/SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md)
-3. Operator approval for read-only production browser sessions
-
----
-
-## Completed in this preflight pass
-
-| Item | Status |
-|------|--------|
-| Per-company runbook (R4) | [`SINGLE_CORE_LEDGER_PER_COMPANY_ROLLOUT_RUNBOOK.md`](../../../docs/accounting/SINGLE_CORE_LEDGER_PER_COMPANY_ROLLOUT_RUNBOOK.md) |
-| DIN CHINA golden JSON reference | [`din-china/golden-fixtures.json`](../din-china/golden-fixtures.json) |
-| Monitoring profile template | `scripts/single-core-ledger/monitoring-company-profiles.json` (`_template`) |
-| Company template path | `reports/single-core-ledger/_company-template/golden-fixtures.template.json` |
+| Item | Status | Evidence |
+|------|--------|----------|
+| Production company inventory | **Done** | 3 companies — DIN BRIDAL, DIN CHINA, DIN COUTURE |
+| Flag audit (other-company loaders = 0) | **PASS** | [`r3-audit-complete-report.md`](r3-audit-complete-report.md) |
+| Candidate golden baselines (shadow RPC) | **Done** | [`din-bridal/golden-fixtures.json`](../din-bridal/golden-fixtures.json), [`din-couture/golden-fixtures.json`](../din-couture/golden-fixtures.json) |
+| Read-only audit scripts | **Done** | `scripts/single-core-ledger/r3-readonly-*.sql` |
+| Manifest | **Done** | [`r3-audit-manifest.json`](r3-audit-manifest.json) |
+| Per-company runbook (R4) | **Active** | [`SINGLE_CORE_LEDGER_PER_COMPANY_ROLLOUT_RUNBOOK.md`](../../../docs/accounting/SINGLE_CORE_LEDGER_PER_COMPANY_ROLLOUT_RUNBOOK.md) |
+| DIN CHINA reference golden | **Closed** | [`din-china/golden-fixtures.json`](../din-china/golden-fixtures.json) |
 
 ---
 
-## Operator next action (when ready)
+## Still blocked (R5)
 
-1. Select company; obtain finance sign-off
-2. Capture legacy golden fixtures → `reports/single-core-ledger/<slug>/golden-fixtures.json`
-3. Copy `_template` profile in `monitoring-company-profiles.json` → `<slug>` with real values
-4. Follow R4 runbook staged enablement — **not before sign-off**
+| Blocker | Detail |
+|---------|--------|
+| Finance sign-off | No signed artifact for DIN BRIDAL or DIN COUTURE |
+| Target company | Operator has not selected first pilot company |
+| Legacy browser goldens | Roznamcha parity totals need UI capture before enablement |
+| Monitoring profiles | `_template` only — not activated for expansion companies |
+
+---
+
+## Operator next action
+
+1. Select **DIN BRIDAL** or **DIN COUTURE** (or defer expansion)
+2. Obtain finance sign-off per expansion checklist
+3. Capture legacy browser goldens (especially roznamcha)
+4. Activate monitoring profile + follow R4 runbook for staged R5 enablement
 
 ---
 
 ## DIN CHINA
 
-**Closed on `main`.** No R3 work required for DIN CHINA.
+**Closed on `main`.** No further R3 work for DIN CHINA.

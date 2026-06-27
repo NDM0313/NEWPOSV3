@@ -30,6 +30,44 @@
       "golden_fixture_path": "reports/single-core-ledger/din-china/golden-fixtures.json",
       "evidence_subdir": "phase-2-16-monitoring"
     },
+    "din-bridal": {
+      "company": "DIN BRIDAL",
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "production_url": "https://erp.dincouture.pk",
+      "login_email_default": "PENDING_OPERATOR",
+      "golden_party_name": "MR REHAN ALI",
+      "golden": {
+        "mr_jalil_closing_pkr": 530000,
+        "trial_balance_debit_credit_pkr": 21919575,
+        "roznamcha_cash_in_pkr": 1916350,
+        "roznamcha_cash_out_pkr": 942780,
+        "roznamcha_closing_pkr": 973570
+      },
+      "expected_unified_flags_on": [],
+      "pilot_batch_expected": 9,
+      "golden_fixture_path": "reports/single-core-ledger/din-bridal/golden-fixtures.json",
+      "evidence_subdir": "din-bridal-monitoring",
+      "requires_finance_sign_off": true
+    },
+    "din-couture": {
+      "company": "DIN COUTURE",
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "production_url": "https://erp.dincouture.pk",
+      "login_email_default": "PENDING_OPERATOR",
+      "golden_party_name": "DHARIA",
+      "golden": {
+        "mr_jalil_closing_pkr": 4488088,
+        "trial_balance_debit_credit_pkr": 49747104,
+        "roznamcha_cash_in_pkr": 85000,
+        "roznamcha_cash_out_pkr": 34500,
+        "roznamcha_closing_pkr": 50500
+      },
+      "expected_unified_flags_on": [],
+      "pilot_batch_expected": 9,
+      "golden_fixture_path": "reports/single-core-ledger/din-couture/golden-fixtures.json",
+      "evidence_subdir": "din-couture-monitoring",
+      "requires_finance_sign_off": true
+    },
     "_template": {
       "company": "REPLACE_COMPANY_NAME",
       "company_id": "REPLACE_UUID",
