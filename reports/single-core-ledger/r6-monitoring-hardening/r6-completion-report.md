@@ -43,7 +43,7 @@ Script: `scripts/single-core-ledger/deploy-phase-r6-production-frontend-vps.sh`
 - **No** flag SQL, migrations, or GL mutations
 - **Read-only** flag verification before/after build
 
-Deploy evidence: see `r6-production-deploy-notes.md` after VPS run.
+Deploy evidence: [`r6-production-deploy-notes.md`](r6-production-deploy-notes.md) — **SUCCESS** @ `542301fc`, all 12 DIN CHINA flags ON, 0 other-company loaders.
 
 ---
 
