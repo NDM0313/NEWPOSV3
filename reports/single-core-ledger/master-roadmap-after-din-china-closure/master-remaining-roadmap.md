@@ -53,7 +53,7 @@
 | Other-company expansion planning | Per-company sign-off + golden capture plan | **Audit complete — R5 blocked** | [`r3-audit-complete-report.md`](../r3-pre-expansion-audit/r3-audit-complete-report.md) | High if skipped before rollout | **Finance sign-off** | Select target company; legacy browser roznamcha capture |
 | Company-specific golden fixtures | Non–DIN CHINA golden JSON per company | **Candidate baselines captured** | [`din-bridal/golden-fixtures.json`](../din-bridal/golden-fixtures.json), [`din-couture/golden-fixtures.json`](../din-couture/golden-fixtures.json) | High — wrong enablement | Finance + operator | Finance validate shadow RPC baselines before R5 |
 | Per-company staged pilot/engine/screen/loader enablement | Repeat 2.9→2.15 pattern per company | **Blocked** | Expansion checklist + DIN CHINA phase reports | Critical — money/report errors | Finance + operator per step | Blocked until R3 complete |
-| First non-DIN company pilot rollout | Full staged enablement for one company | **Blocked** | N/A until company chosen | Critical | Finance + operator | Do not enable flags |
+| First non-DIN company pilot rollout | Full staged enablement for one company | **R5a prep complete — execution blocked** | [`r5a-completion-report.md`](../r5-pilot-preflight/r5a-completion-report.md) | Critical | Finance + operator | Finance sign-off + browser golden capture |
 | Monitoring / accelerated waiver workflow | Extend Phase 2.16 script + waiver templates | **Optional** | [`run-phase-216-monitoring-verify.mjs`](../../../scripts/single-core-ledger/run-phase-216-monitoring-verify.mjs) | Medium on future rollouts | Ops | Parameterize company/golden constants |
 | `roznamcha_payment` RPC mode | Optional unified GL path for roznamcha rows | **Optional** | [`SINGLE_CORE_LEDGER_PHASE_2_15_CASH_BANK_PARITY_AND_ROZNAMCHA_RECOVERY_PLAN.md`](../../../docs/accounting/SINGLE_CORE_LEDGER_PHASE_2_15_CASH_BANK_PARITY_AND_ROZNAMCHA_RECOVERY_PLAN.md) | Low short-term — DIN CHINA roznamcha loader live with parity filter | **Migration approval** | Design-only until approved |
 | Legacy engine retirement / cleanup | Deprecate `getCustomerLedger`, `roznamchaService`, etc. | **Blocked** (long-term) | [`SINGLE_CORE_LEDGER_MIGRATION_MASTER_EXECUTION_PLAN_v3.md`](../../../docs/accounting/SINGLE_CORE_LEDGER_MIGRATION_MASTER_EXECUTION_PLAN_v3.md) §14, [`PHASE8_LEGACY_RETIREMENT_MAP.md`](../../../docs/accounting/PHASE8_LEGACY_RETIREMENT_MAP.md) | High if premature | Finance + engineering after all target companies stable | Do not delete legacy paths yet |
@@ -71,6 +71,7 @@
 - **R5** First non-DIN company pilot — blocked until finance sign-off + target company selection
 
 ### Complete (2026-06-27)
+- **R5a** DIN BRIDAL autonomous prep (SQL toolkit, golden capture script, playbook) — [`r5a-completion-report.md`](../r5-pilot-preflight/r5a-completion-report.md)
 - **R3** Other-company pre-expansion audit + candidate golden baselines — [`r3-audit-complete-report.md`](../r3-pre-expansion-audit/r3-audit-complete-report.md)
 - **R4** Per-company staged rollout runbook — [`SINGLE_CORE_LEDGER_PER_COMPANY_ROLLOUT_RUNBOOK.md`](../../../docs/accounting/SINGLE_CORE_LEDGER_PER_COMPANY_ROLLOUT_RUNBOOK.md)
 

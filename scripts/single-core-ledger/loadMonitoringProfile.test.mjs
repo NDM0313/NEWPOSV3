@@ -20,3 +20,11 @@ test('loadMonitoringProfile rejects unknown profile', () => {
 test('loadMonitoringProfile _template requires finance gate for non-default use', () => {
   assert.throws(() => loadMonitoringProfile('_template'), /requires finance sign-off/);
 });
+
+test('loadMonitoringProfile din-bridal requires finance sign-off', () => {
+  assert.throws(() => loadMonitoringProfile('din-bridal'), /requires finance sign-off/);
+});
+
+test('loadMonitoringProfile din-couture requires finance sign-off', () => {
+  assert.throws(() => loadMonitoringProfile('din-couture'), /requires finance sign-off/);
+});
