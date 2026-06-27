@@ -1,16 +1,15 @@
 #!/usr/bin/env node
 /**
- * Phase 2.16 — DIN CHINA production monitoring verification (read-only).
+ * Phase 2.16 / R6 — production monitoring verification (read-only).
+ * Profile: MONITORING_PROFILE=din-china (default) via monitoring-company-profiles.json
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
 import { chromium } from 'playwright';
+import { loadMonitoringProfile } from './loadMonitoringProfile.mjs';
 import {
-  MR_JALIL_GOLDEN,
-  ROZNAMCHA_GOLDEN,
-  TB_GOLDEN,
   parsePkr,
   readClosingBalance,
   readLedgerV2MrJalilClosing,
@@ -23,9 +22,13 @@ import {
 } from './unifiedLedgerBrowserQaHelpers.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const EVIDENCE = path.join(ROOT, 'reports/single-core-ledger/phase-2-16-monitoring');
-const BASE = process.env.QA_BROWSER_BASE_URL || 'https://erp.dincouture.pk';
-const EMAIL = process.env.QA_BROWSER_EMAIL || 'din@yahoo.com';
+const profile = loadMonitoringProfile(process.env.MONITORING_PROFILE);
+const EVIDENCE = profile.evidenceDir;
+const MR_JALIL_GOLDEN = profile.golden.mrJalilClosing;
+const TB_GOLDEN = profile.golden.trialBalanceTotal;
+const ROZNAMCHA_GOLDEN = profile.golden.roznamcha;
+const BASE = process.env.QA_BROWSER_BASE_URL || profile.productionUrl;
+const EMAIL = process.env.QA_BROWSER_EMAIL || profile.loginEmailDefault;
 const PASSWORD = process.env.QA_BROWSER_PASSWORD || '';
 const checks = [];
 const consoleErrors = [];
@@ -127,23 +130,16 @@ async function main() {
     let otherCompanyLoaders = 0;
     for (const line of lines) {
       const parts = line.split('|');
-      if (parts.length >= 3 && parts[0].includes('-')) {
+      if (parts.length >= 3 && parts[0].includes(profile.companyId.slice(0, 8))) {
         dinFlags[parts[1]] = parts[2] === 't';
       }
-      if (parts.length >= 3 && parts[1]?.includes('loader') && parts[2] === 't' && !parts[0].includes('30bd8592')) {
+      if (parts.length >= 3 && parts[1]?.includes('loader') && parts[2] === 't' && !parts[0].includes(profile.companyId.slice(0, 8))) {
         otherCompanyLoaders += 1;
       }
     }
-    const expectedOn = [
-      'unified_ledger_pilot', 'unified_ledger_engine',
-      'unified_ledger_loader_ledger_v2', 'unified_ledger_screen_ledger_v2',
-      'unified_ledger_loader_account_statement', 'unified_ledger_screen_account_statement',
-      'unified_ledger_loader_trial_balance', 'unified_ledger_screen_trial_balance',
-      'unified_ledger_loader_party_ledger', 'unified_ledger_screen_party_ledger',
-      'unified_ledger_loader_roznamcha', 'unified_ledger_screen_roznamcha',
-    ];
+    const expectedOn = profile.expectedUnifiedFlagsOn;
     const allOn = expectedOn.every((k) => dinFlags[k] === true);
-    log('DIN CHINA expected flags ON', allOn ? 'PASS' : 'FAIL', `keys=${expectedOn.filter((k) => dinFlags[k]).length}/${expectedOn.length}`);
+    log(`${profile.company} expected flags ON`, allOn ? 'PASS' : 'FAIL', `keys=${expectedOn.filter((k) => dinFlags[k]).length}/${expectedOn.length}`);
     log('no other company loaders ON', otherCompanyLoaders === 0 ? 'PASS' : 'FAIL', `count=${otherCompanyLoaders}`);
     fs.writeFileSync(
       path.join(EVIDENCE, 'production-flags-day1.json'),
@@ -220,11 +216,18 @@ async function main() {
     await page.getByRole('tab', { name: /Pilot Batch/i }).click({ timeout: 60000 });
     const runBtn = page.getByRole('button', { name: /Run DIN CHINA 9\/9 batch/i });
     if (await runBtn.isVisible().catch(() => false)) await runBtn.click();
-    await waitForPilotBatchStats(page, 9);
+    await waitForPilotBatchStats(page, profile.pilotBatchExpected);
     const batch = await readPilotBatchSummary(page);
-    log('Admin Compare Pilot Batch 9/9', batch.compared === 9 && batch.passCount === 9 && batch.failCount === 0 ? 'PASS' : 'FAIL',
-      `compared=${batch.compared} pass=${batch.passCount} fail=${batch.failCount}`);
-    if (batch.compared !== 9 || batch.passCount !== 9) {
+    log(
+      'Admin Compare Pilot Batch 9/9',
+      batch.compared === profile.pilotBatchExpected &&
+        batch.passCount === profile.pilotBatchExpected &&
+        batch.failCount === 0
+        ? 'PASS'
+        : 'FAIL',
+      `compared=${batch.compared} pass=${batch.passCount} fail=${batch.failCount}`,
+    );
+    if (batch.compared !== profile.pilotBatchExpected || batch.passCount !== profile.pilotBatchExpected) {
       fs.mkdirSync(path.join(EVIDENCE, 'screenshots'), { recursive: true });
       await page.screenshot({ path: path.join(EVIDENCE, 'screenshots/admin-compare-pilot-batch.png'), fullPage: true });
     }
@@ -238,8 +241,9 @@ async function main() {
     const overallPass = checks.every((c) => c.result === 'PASS' || c.result === 'WAIVED');
 
     const md = [
-      '# Phase 2.16 — Production monitoring day 1',
+      `# ${profile.company} production monitoring`,
       '',
+      `**Profile:** ${profile.profileId}`,
       `**Date:** ${new Date().toISOString()}`,
       `**URL:** ${BASE}`,
       `**Core gates:** ${corePass ? 'PASS' : 'FAIL'}`,

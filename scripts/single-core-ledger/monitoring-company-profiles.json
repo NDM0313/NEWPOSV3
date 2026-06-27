@@ -1,0 +1,53 @@
+{
+  "profiles": {
+    "din-china": {
+      "company": "DIN CHINA",
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "production_url": "https://erp.dincouture.pk",
+      "login_email_default": "din@yahoo.com",
+      "golden": {
+        "mr_jalil_closing_pkr": 216300,
+        "trial_balance_debit_credit_pkr": 407957271.02,
+        "roznamcha_cash_in_pkr": 136158012,
+        "roznamcha_cash_out_pkr": 67042426,
+        "roznamcha_closing_pkr": 69115586
+      },
+      "expected_unified_flags_on": [
+        "unified_ledger_pilot",
+        "unified_ledger_engine",
+        "unified_ledger_loader_ledger_v2",
+        "unified_ledger_screen_ledger_v2",
+        "unified_ledger_loader_account_statement",
+        "unified_ledger_screen_account_statement",
+        "unified_ledger_loader_trial_balance",
+        "unified_ledger_screen_trial_balance",
+        "unified_ledger_loader_party_ledger",
+        "unified_ledger_screen_party_ledger",
+        "unified_ledger_loader_roznamcha",
+        "unified_ledger_screen_roznamcha"
+      ],
+      "pilot_batch_expected": 9,
+      "golden_fixture_path": "reports/single-core-ledger/din-china/golden-fixtures.json",
+      "evidence_subdir": "phase-2-16-monitoring"
+    },
+    "_template": {
+      "company": "REPLACE_COMPANY_NAME",
+      "company_id": "REPLACE_UUID",
+      "production_url": "https://erp.dincouture.pk",
+      "login_email_default": "REPLACE_LOGIN",
+      "golden": {
+        "mr_jalil_closing_pkr": null,
+        "trial_balance_debit_credit_pkr": null,
+        "roznamcha_cash_in_pkr": null,
+        "roznamcha_cash_out_pkr": null,
+        "roznamcha_closing_pkr": null
+      },
+      "expected_unified_flags_on": [],
+      "pilot_batch_expected": 9,
+      "golden_fixture_path": "reports/single-core-ledger/REPLACE_SLUG/golden-fixtures.json",
+      "evidence_subdir": "REPLACE_SLUG-monitoring",
+      "requires_finance_sign_off": true
+    }
+  },
+  "default_profile": "din-china"
+}
