@@ -1,0 +1,36 @@
+{
+  "title": "three-company-unified-ledger-operational-monitoring-runbook",
+  "generated_at": "2026-06-14T00:00:00Z",
+  "production_url": "https://erp.dincouture.pk",
+  "profiles": ["din-china", "din-bridal", "din-couture"],
+  "commands": {
+    "single_profile": "MONITORING_PROFILE=<profile> node scripts/single-core-ledger/run-unified-ledger-monitoring-verify.mjs",
+    "all_profiles": "npm run monitor:three-company-unified-ledger"
+  },
+  "golden_values": {
+    "din-china": {
+      "party": "MR JALIL",
+      "closing_pkr": 216300,
+      "trial_balance_pkr": 407957271.02,
+      "roznamcha": [136158012, 67042426, 69115586]
+    },
+    "din-bridal": {
+      "party": "MR REHAN ALI",
+      "closing_pkr": 530000,
+      "trial_balance_pkr": 21919575,
+      "roznamcha": [1836350, 917780, 918570]
+    },
+    "din-couture": {
+      "party": "DHARIA",
+      "closing_pkr": 4488088,
+      "trial_balance_pkr": 49747104,
+      "roznamcha": [85000, 34500, 50500]
+    }
+  },
+  "policies": {
+    "no_auto_fix": true,
+    "no_migrations_in_monitoring": true,
+    "credentials_env_only": true
+  },
+  "output_dir": "reports/single-core-ledger/operational-monitoring"
+}

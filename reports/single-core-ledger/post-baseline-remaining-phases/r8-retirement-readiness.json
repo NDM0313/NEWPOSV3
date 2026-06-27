@@ -1,0 +1,21 @@
+{
+  "id": "R8",
+  "status": "BLOCKED",
+  "generated_at": "2026-06-14T00:00:00Z",
+  "r8_started_this_run": false,
+  "legacy_map": "docs/accounting/PHASE8_LEGACY_RETIREMENT_MAP.md",
+  "companies_live": ["DIN CHINA", "DIN BRIDAL", "DIN COUTURE"],
+  "blockers": [
+    "operational_stability_period",
+    "finance_sign_off",
+    "engineering_sign_off",
+    "consumer_audit_complete",
+    "rollback_strategy_verified"
+  ],
+  "legacy_fallback_required": true,
+  "rollback_references": {
+    "din_china": "scripts/single-core-ledger/phase-21x-rollback-*.sql",
+    "din_bridal": "scripts/single-core-ledger/din-bridal/db-rollback-*.sql",
+    "din_couture": "scripts/single-core-ledger/din-couture/dc-rollback-*.sql"
+  }
+}

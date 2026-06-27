@@ -1,18 +1,18 @@
 # Single Core Ledger — Master Remaining Roadmap (post–DIN CHINA closure)
 
 **Generated:** 2026-06-14T00:00:00Z  
-**Main commit:** `d227d221`  
+**Main commit:** `0a818da2`  
 **Program scope:** OLD ERP / DIN Collection ERP — **not** the FX / multi-currency app
 
 ---
 
 ## Scope statement
 
-**DIN CHINA complete and stable.** **DIN BRIDAL complete and stable.** **DIN COUTURE complete and stable.** **Migration closure complete.** **Three-company operational baseline complete.**
+**DIN CHINA complete and stable.** **DIN BRIDAL complete and stable.** **DIN COUTURE complete and stable.** **Migration closure complete.** **Three-company monitoring baseline complete.** **Operational monitoring automation and runbook complete.**
 
-R7 roznamcha_payment RPC remains **design-only**. R8 legacy engine retirement remains **blocked**. Next-company expansion requires **separate finance sign-off**. Recommended ongoing operation: periodic monitoring for `din-china`, `din-bridal`, `din-couture`.
+R7 roznamcha_payment RPC remains **design-only and blocked** until separate approval. R8 legacy engine retirement remains **blocked**. Remaining screens (BS, P&L, Cash Flow, mobile) classified **optional future**. Next-company expansion requires **separate finance sign-off**. **No further production flag/migration action is approved by default.**
 
-**The broader Single Core Ledger program is not fully closed** — optional diagnostics, R7/R8, and additional screen wiring remain separate and require their own approvals.
+Recommended ongoing operation: `npm run monitor:three-company-unified-ledger` on a schedule.
 
 ---
 
@@ -75,6 +75,10 @@ R7 roznamcha_payment RPC remains **design-only**. R8 legacy engine retirement re
 
 ### Blocked (removed)
 - ~~DIN COUTURE browser credentials~~ — resolved; rollout complete
+
+### Complete (2026-06-14)
+- **Post-baseline remaining phase audit** — matrix, screen audit, R7/R8 packs — [`post-baseline-remaining-phases-final-report.md`](../post-baseline-remaining-phases/post-baseline-remaining-phases-final-report.md)
+- **Operational monitoring automation** — `npm run monitor:three-company-unified-ledger` — [`monitoring-runbook.md`](../operational-monitoring/monitoring-runbook.md)
 
 ### Complete (2026-06-14)
 - **Three-company operational baseline** — flags + monitoring PASS — [`final-program-archive-report.md`](../final-program-archive/final-program-archive-report.md)

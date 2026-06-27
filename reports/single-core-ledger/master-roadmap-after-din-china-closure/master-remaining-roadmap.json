@@ -1,93 +1,50 @@
 {
   "generated_at": "2026-06-14T00:00:00Z",
-  "current_main_commit": "d227d221",
-  "latest_main_commit": "d227d2210866599762ab4a5ed02298a8651add70",
-  "program_status": "THREE_COMPANY_UNIFIED_LEDGER_BASELINE_COMPLETE",
+  "current_main_commit": "0a818da2",
+  "latest_main_commit": "0a818da25eb1d1e72343a0398eb6124e4ab36bef",
+  "program_status": "POST_BASELINE_PARTIAL_COMPLETE_BLOCKED_ITEMS_REMAIN",
   "production_url": "https://erp.dincouture.pk",
-  "commit_reconciliation": "reports/single-core-ledger/final-program-archive/commit-reconciliation.json",
   "three_company_baseline": {
     "status": "THREE_COMPANY_UNIFIED_LEDGER_BASELINE_COMPLETE",
-    "completed_at": "2026-06-14",
-    "evidence": "reports/single-core-ledger/final-program-archive/final-program-archive-report.md",
-    "flag_baseline": "reports/single-core-ledger/final-program-archive/three-company-flag-baseline.json",
-    "monitoring_baseline": "reports/single-core-ledger/final-program-archive/three-company-monitoring-baseline.json"
+    "evidence": "reports/single-core-ledger/final-program-archive/final-program-archive-report.md"
+  },
+  "post_baseline_automation": {
+    "status": "COMPLETE",
+    "monitor_command": "npm run monitor:three-company-unified-ledger",
+    "runbook": "reports/single-core-ledger/operational-monitoring/monitoring-runbook.md",
+    "evidence": "reports/single-core-ledger/post-baseline-remaining-phases/post-baseline-remaining-phases-final-report.md"
   },
   "migration_closure": {
     "status": "MIGRATION_CLOSURE_COMPLETE_NO_APPROVED_PENDING_MIGRATIONS",
-    "completed_at": "2026-06-27",
-    "evidence": "reports/single-core-ledger/migration-closure/migration-closure-final-report.md",
-    "phase_15_applied": "4/4",
-    "unified_rpcs": "5/5",
-    "migrations_applied_this_run": 0
+    "evidence": "reports/single-core-ledger/migration-closure/migration-closure-final-report.md"
   },
   "din_china_status": "COMPLETE_AND_STABLE",
   "din_bridal_r5_complete": {
     "status": "R5_COMPLETE_DIN_BRIDAL_UNIFIED_LOADERS_LIVE",
-    "completed_at": "2026-06-27",
-    "evidence": "reports/single-core-ledger/r5-din-bridal-execution/r5-soak-complete-report.md",
     "unified_flags_on": 12,
     "loaders_on": 5
   },
   "din_couture_rollout_complete": {
     "status": "DIN_COUTURE_COMPLETE_UNIFIED_LOADERS_LIVE",
-    "completed_at": "2026-06-27",
-    "evidence": "reports/single-core-ledger/next-company-rollout/din-couture/final-execution-report.md",
     "unified_flags_on": 12,
     "loaders_on": 5
   },
   "recommended_next_phase": {
     "id": "operational-monitoring",
-    "name": "Periodic golden verify for DIN CHINA, DIN BRIDAL, DIN COUTURE",
-    "note": "No further company expansion without separate finance sign-off; R7 design-only; R8 blocked"
+    "command": "npm run monitor:three-company-unified-ledger",
+    "note": "No flag/migration/company expansion without separate approval"
   },
-  "company": "DIN CHINA",
-  "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
-  "pr_url": "https://github.com/NDM0313/NEWPOSV3/pull/21",
-  "pr_merged": true,
-  "production_monitoring_authoritative": "reports/single-core-ledger/final-program-archive/three-company-monitoring-baseline.json",
-  "expansion_candidates": [
-    {
-      "slug": "din-bridal",
-      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
-      "status": "R5_COMPLETE_UNIFIED_LOADERS_LIVE",
-      "golden_fixture_path": "reports/single-core-ledger/din-bridal/golden-fixtures.json"
-    },
-    {
-      "slug": "din-couture",
-      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
-      "status": "DIN_COUTURE_COMPLETE_UNIFIED_LOADERS_LIVE",
-      "golden_fixture_path": "reports/single-core-ledger/din-couture/golden-fixtures.json",
-      "evidence": "reports/single-core-ledger/next-company-rollout/din-couture/final-execution-report.md"
-    }
-  ],
   "blocked_phases": [
-    {
-      "id": "R7",
-      "name": "roznamcha_payment RPC migration",
-      "status": "DESIGN_ONLY",
-      "blocker": "Separate migration approval required; no migration file in repo"
-    },
-    {
-      "id": "R8",
-      "name": "Legacy engine retirement / cleanup",
-      "status": "BLOCKED",
-      "blocker": "All approved companies stable for required operational period + separate approval"
-    },
-    {
-      "id": "next-company",
-      "name": "Next company unified ledger rollout",
-      "status": "BLOCKED",
-      "blocker": "Separate finance sign-off required"
-    }
+    { "id": "R7", "status": "DESIGN_ONLY", "blocker": "Separate migration approval required" },
+    { "id": "R8", "status": "BLOCKED", "blocker": "Stability period + separate approval" },
+    { "id": "next-company", "status": "BLOCKED", "blocker": "Separate finance sign-off" },
+    { "id": "remaining-screens", "status": "OPTIONAL_FUTURE", "blocker": "BS/P&L/CF/mobile per-screen program" }
   ],
   "operational_monitoring": {
     "profiles": ["din-china", "din-bridal", "din-couture"],
-    "command_template": "MONITORING_PROFILE=<profile> node scripts/single-core-ledger/run-unified-ledger-monitoring-verify.mjs",
-    "baselines": {
-      "three_company": "reports/single-core-ledger/final-program-archive/three-company-monitoring-baseline.json",
-      "din-bridal": "reports/single-core-ledger/din-bridal-monitoring/production-monitoring-post-completion.json",
-      "din-couture": "reports/single-core-ledger/din-couture-monitoring/production-monitoring-final.json"
-    }
+    "command": "npm run monitor:three-company-unified-ledger",
+    "runbook": "reports/single-core-ledger/operational-monitoring/monitoring-runbook.json",
+    "latest_pass": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-27T14-14-14-851Z.json"
   },
   "constraints": {
     "din_china_unified_flags_on": 12,
@@ -100,6 +57,7 @@
     "migrations_run": false,
     "gl_mutations": false,
     "fx_app_touched": false,
-    "credentials_committed": false
+    "credentials_committed": false,
+    "no_default_production_flag_action": true
   }
 }
