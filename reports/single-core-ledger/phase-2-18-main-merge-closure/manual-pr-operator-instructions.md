@@ -11,7 +11,8 @@
 
 | Item | Value |
 |------|-------|
-| Open PR → `main` | **None** (verified 2026-06-27T13:23:42Z) |
+| Open PR → `main` | **None** (verified 2026-06-27T13:45:43Z) |
+| Consolidated closure | [`final-main-merge-closure-report.md`](final-main-merge-closure-report.md) |
 | Stale PR #20 | https://github.com/NDM0313/NEWPOSV3/pull/20 — **do not use** (base is not `main`) |
 | GitHub CLI | Not available in automation environment |
 

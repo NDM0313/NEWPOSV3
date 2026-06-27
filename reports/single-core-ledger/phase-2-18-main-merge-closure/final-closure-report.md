@@ -8,9 +8,15 @@
 
 ## Status
 
-### PHASE 2.18 PR READY — OPERATOR MERGE APPROVAL REQUIRED
+### FINAL PR READY — OPERATOR MERGE APPROVAL REQUIRED
 
-The DIN CHINA Single Core Ledger rollout is **complete and stable in production**. GitHub PR to `main` has **not** been created or merged. Operator must create PR, review, and approve merge manually.
+The DIN CHINA Single Core Ledger rollout is **complete and stable in production**. GitHub PR to `main` has **not** been created or merged.
+
+| Item | Value |
+|------|-------|
+| PR URL | **None** — manual creation required |
+| Latest verification | 2026-06-27T13:45:43Z |
+| Consolidated report | [`final-main-merge-closure-report.md`](final-main-merge-closure-report.md) |
 
 ---
 

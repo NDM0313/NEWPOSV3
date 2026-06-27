@@ -1,6 +1,6 @@
 # Single Core Ledger — Production Ready Pack
 
-**Status:** `PHASE 2.18 PR READY — OPERATOR MERGE APPROVAL REQUIRED`  
+**Status:** `FINAL PR READY — OPERATOR MERGE APPROVAL REQUIRED`  
 **Branch:** `feature/single-core-ledger-phase-2-9a3-preview-deploy-plan`  
 **Last updated:** 2026-06-27  
 **Master checklist:** use this file as the single entry point for post-apply status.
@@ -27,7 +27,7 @@
 | Phase 2.17 release governance | **COMPLETE** — [`phase-2-17-release-governance/`](../reports/single-core-ledger/phase-2-17-release-governance/) |
 | Phase 2.17X PR/main merge preflight | **COMPLETE** — [`pr-main-merge-preflight.md`](../reports/single-core-ledger/phase-2-17-release-governance/pr-main-merge-preflight.md) |
 | Phase 2.17Y PR governance | **COMPLETE** — [`pr-governance-final.md`](../reports/single-core-ledger/phase-2-17-release-governance/pr-governance-final.md) |
-| Phase 2.18 main merge closure | **PR READY** — [`final-closure-report.md`](../reports/single-core-ledger/phase-2-18-main-merge-closure/final-closure-report.md) |
+| Final main merge closure | **PR READY** — [`final-main-merge-closure-report.md`](../reports/single-core-ledger/phase-2-18-main-merge-closure/final-main-merge-closure-report.md) |
 | Future company expansion | **Requires separate finance sign-off** — [`SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md`](SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md) |
 
 Closeout pack: [`phase-212-closeout-monitoring.md`](../reports/single-core-ledger/phase-2-12-trial-balance-loader/phase-212-closeout-monitoring.md)
@@ -343,7 +343,7 @@ Or selective reverse using `production-remediation-apply-before-*.json` from app
 25. **Main merge / PR:** create PR → `main` per [`manual-pr-operator-instructions.md`](../reports/single-core-ledger/phase-2-18-main-merge-closure/manual-pr-operator-instructions.md); review; approve manually — **not** a new accounting rollout
 26. **Monitoring:** [`final-production-verify.md`](../reports/single-core-ledger/phase-2-16-monitoring/final-production-verify.md) (Phase 2.16 remains production truth until post-merge re-run)
 
-**Final status:** `PHASE 2.18 PR READY — OPERATOR MERGE APPROVAL REQUIRED`
+**Final status:** `FINAL PR READY — OPERATOR MERGE APPROVAL REQUIRED`
 
 ### Accelerated soak waiver (Phase 2.9B-X — 2026-06-25) — historical
 
