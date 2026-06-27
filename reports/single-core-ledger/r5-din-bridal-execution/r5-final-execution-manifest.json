@@ -4,7 +4,7 @@
   "run": "R5-DIN-BRIDAL-unblock-controlled-rollout",
   "target_company": "DIN BRIDAL",
   "target_company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
-  "main_commit": "e12a4811",
+  "main_commit": "bad6fcea",
   "generated_at": "2026-06-27T11:00:00Z",
   "finance_signoff_present": false,
   "finance_signoff_path": null,

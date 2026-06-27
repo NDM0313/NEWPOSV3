@@ -3,7 +3,7 @@
 **Status:** `R5 BLOCKED — FINANCE SIGN-OFF REQUIRED`  
 **Run:** R5 DIN BRIDAL UNBLOCK + CONTROLLED ROLLOUT EXECUTION  
 **Date:** 2026-06-27  
-**Main commit:** `e12a4811`
+**Main commit:** `bad6fcea` (prior blocked attempt: `e12a4811`)
 
 ---
 
