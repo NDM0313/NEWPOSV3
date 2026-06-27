@@ -1,15 +1,18 @@
 {
   "company": "DIN COUTURE",
   "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
-  "captured_from": "R3 read-only production audit (shadow unified RPC / GL) @ 2026-06-27",
-  "capture_method": "scripts/single-core-ledger/r3-readonly-golden-baseline.sql on production VPS",
-  "finance_sign_off_ref": null,
-  "status": "CANDIDATE_BASELINE — requires finance sign-off before R5 enablement",
+  "finance_sign_off_ref": "reports/single-core-ledger/din-couture/finance-signoff-unified-ledger-rollout-2026-06-27.md",
+  "status": "PENDING_GOLDEN_CAPTURE",
   "golden_party": {
     "name": "DHARIA",
     "party_id": "04831980-546b-4ff2-bc9d-2e75a43eb51c",
-    "account_code": "AR-CUS0010"
+    "account_code": "AR-CUS0010",
+    "search_pattern": "DHARIA"
   },
+  "branch_scope": "all",
+  "branches": [
+    { "id": "df93b9e4-feea-4b8b-8103-e630c185261b", "name": "SHOP A13" }
+  ],
   "fixtures": {
     "golden_party_closing_pkr": 4488088,
     "ledger_v2_golden_party_closing_pkr": 4488088,
@@ -19,11 +22,13 @@
     "trial_balance_credit_pkr": 49747104,
     "roznamcha_cash_in_pkr": 85000,
     "roznamcha_cash_out_pkr": 34500,
-    "roznamcha_closing_pkr_proxy": 50500
+    "roznamcha_closing_pkr": 50500
+  },
+  "rpc_proxy_baseline": {
+    "note": "R3 shadow RPC baseline — superseded by browser capture before enablement"
   },
   "notes": [
-    "Party and TB values from get_unified_* RPC (official_gl, all branches).",
-    "Roznamcha figures are raw GL liquidity movement proxies — NOT parity-assembler roznamcha UI totals.",
-    "Legacy browser capture required and finance sign-off mandatory before any flag enablement (R5)."
+    "Finance sign-off recorded 2026-06-27.",
+    "Browser legacy capture required before flag enablement."
   ]
 }

@@ -1,0 +1,24 @@
+{
+  "status": "DIN_COUTURE_ROLLOUT_BLOCKED_BROWSER_CREDENTIALS_REQUIRED",
+  "generated_at": "2026-06-27T18:30:00Z",
+  "latest_main_commit_at_start": "4fb5f25a",
+  "target_company": "DIN COUTURE",
+  "target_company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+  "finance_sign_off": {
+    "status": "PASS",
+    "path": "reports/single-core-ledger/din-couture/finance-signoff-unified-ledger-rollout-2026-06-27.md"
+  },
+  "golden_capture": { "status": "FAIL", "reason": "QA user bound to DIN BRIDAL; DHARIA not visible" },
+  "flags_changed": false,
+  "sql_executed": false,
+  "loaders_enabled": [],
+  "monitoring": null,
+  "soak_status": "NOT_STARTED",
+  "din_china_regression": "PASS_UNCHANGED",
+  "din_bridal_regression": "PASS_UNCHANGED",
+  "other_company_loaders_on": 0,
+  "tests_build": "245/245 PASS (pre-enable)",
+  "deploy_status": "skipped_blocked",
+  "constraints_honored": true,
+  "next_action": "Set QA_BROWSER_EMAIL/PASSWORD for DIN COUTURE user; re-run golden capture; resume Stage 1 pilot"
+}

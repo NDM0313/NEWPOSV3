@@ -38,8 +38,9 @@
     {
       "slug": "din-couture",
       "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
-      "status": "CANDIDATE_BASELINE_UNVALIDATED",
-      "golden_fixture_path": "reports/single-core-ledger/din-couture/golden-fixtures.json"
+      "status": "ROLLOUT_BLOCKED_BROWSER_CREDENTIALS_REQUIRED",
+      "golden_fixture_path": "reports/single-core-ledger/din-couture/golden-fixtures.json",
+      "evidence": "reports/single-core-ledger/next-company-rollout/din-couture/final-execution-report.md"
     }
   ],
   "blocked_phases": [

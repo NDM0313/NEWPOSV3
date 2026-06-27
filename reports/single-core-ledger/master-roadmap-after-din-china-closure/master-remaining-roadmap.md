@@ -69,8 +69,11 @@
 - DIN CHINA five unified main loaders
 - PR #21 merge and Phase 2.18 archive on `main`
 
+### Blocked (2026-06-27)
+- **DIN COUTURE rollout** — finance sign-off ready; blocked on DIN COUTURE browser user credentials — [`final-execution-report.md`](../next-company-rollout/din-couture/final-execution-report.md)
+
 ### Pending (program continues — blocked on finance for next company)
-- **Next company pilot** (e.g. DIN COUTURE) — blocked until separate finance sign-off + golden capture validation
+- **Next company pilot resume** — set `QA_BROWSER_EMAIL`/`PASSWORD` for DIN COUTURE user; re-run golden capture; then Stage 1 pilot only
 
 ### Complete (2026-06-27)
 - **Migration closure** — Phase 1.5 applied; no approved pending migrations — [`migration-closure-final-report.md`](../migration-closure/migration-closure-final-report.md)

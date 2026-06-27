@@ -181,6 +181,11 @@ async function main() {
     const dinFlags = {};
     let otherCompanyLoaders = 0;
     const dinChinaId = '30bd8592-3384-4f34-899a-f3907e336485';
+    const dinBridalId = '597a5292-14c8-4cd8-96bd-c61b5a0d8c92';
+    const approvedLoaderCompanies = new Set([dinChinaId.slice(0, 8), dinBridalId.slice(0, 8)]);
+    if (profile.profileId === 'din-couture') {
+      approvedLoaderCompanies.add(profile.companyId.slice(0, 8));
+    }
     for (const line of lines) {
       const parts = line.split('|');
       if (parts.length >= 3 && parts[0].includes(profile.companyId.slice(0, 8))) {
@@ -191,7 +196,7 @@ async function main() {
         parts[1]?.includes('loader') &&
         (parts[2] === 't' || parts[2] === 'true') &&
         !parts[0].includes(profile.companyId.slice(0, 8)) &&
-        !(profile.profileId === 'din-bridal' && parts[0].includes(dinChinaId.slice(0, 8)));
+        ![...approvedLoaderCompanies].some((prefix) => parts[0].includes(prefix));
       if (isOtherCompanyLoader) otherCompanyLoaders += 1;
     }
     const expectedOn = profile.expectedUnifiedFlagsOn;
@@ -283,7 +288,7 @@ async function main() {
         await page.screenshot({ path: path.join(EVIDENCE, 'screenshots/admin-compare-pilot-batch.png'), fullPage: true });
       }
     } else {
-      log('Admin Compare Pilot Batch', 'WAIVED', 'skipped for din-bridal profile');
+      log('Admin Compare Pilot Batch', 'WAIVED', `skipped for ${profile.profileId} profile`);
     }
 
     const rpcErrors = consoleErrors.filter((e) => /rpc|supabase|unified/i.test(e));

@@ -42,8 +42,8 @@ export function loadMonitoringProfile(profileId) {
     goldenPartyName: profile.golden_party_name || 'MR JALIL',
     goldenPartySearch: profile.golden_party_search || 'JALIL',
     skipAdminPilotBatch: profile.skip_admin_pilot_batch === true,
-    flagVerifySql: id === 'din-bridal'
-      ? path.join(path.dirname(fileURLToPath(import.meta.url)), 'din-bridal/r5-monitoring-flags-pipe.sql')
+    flagVerifySql: ['din-bridal', 'din-couture'].includes(id)
+      ? path.join(path.dirname(fileURLToPath(import.meta.url)), `${id === 'din-bridal' ? 'din-bridal/r5' : 'din-couture/dc'}-monitoring-flags-pipe.sql`)
       : path.join(path.dirname(fileURLToPath(import.meta.url)), 'phase-215x-final-flags.sql'),
     evidenceDir: path.join(
       ROOT,

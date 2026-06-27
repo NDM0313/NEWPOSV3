@@ -30,6 +30,8 @@ test('loadMonitoringProfile din-bridal after finance sign-off', () => {
   assert.equal(p.skipAdminPilotBatch, true);
 });
 
-test('loadMonitoringProfile din-couture requires finance sign-off', () => {
-  assert.throws(() => loadMonitoringProfile('din-couture'), /requires finance sign-off/);
+test('loadMonitoringProfile din-couture after finance sign-off', () => {
+  const p = loadMonitoringProfile('din-couture');
+  assert.equal(p.company, 'DIN COUTURE');
+  assert.equal(p.goldenPartySearch, 'DHARIA');
 });

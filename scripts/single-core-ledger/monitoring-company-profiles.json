@@ -70,6 +70,7 @@
       "production_url": "https://erp.dincouture.pk",
       "login_email_default": "PENDING_OPERATOR",
       "golden_party_name": "DHARIA",
+      "golden_party_search": "DHARIA",
       "golden": {
         "mr_jalil_closing_pkr": 4488088,
         "trial_balance_debit_credit_pkr": 49747104,
@@ -81,7 +82,9 @@
       "pilot_batch_expected": 9,
       "golden_fixture_path": "reports/single-core-ledger/din-couture/golden-fixtures.json",
       "evidence_subdir": "din-couture-monitoring",
-      "requires_finance_sign_off": true
+      "requires_finance_sign_off": false,
+      "skip_admin_pilot_batch": true,
+      "rollout_status": "BLOCKED_BROWSER_CREDENTIALS_REQUIRED"
     },
     "_template": {
       "company": "REPLACE_COMPANY_NAME",

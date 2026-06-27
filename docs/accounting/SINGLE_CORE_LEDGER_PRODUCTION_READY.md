@@ -43,7 +43,7 @@
 | R5 DIN BRIDAL post-completion archive | **COMPLETE** @ 2026-06-27 — [`r5-post-completion-commit-reconciliation.md`](../reports/single-core-ledger/r5-din-bridal-execution/r5-post-completion-commit-reconciliation.md), [`production-monitoring-post-completion.md`](../reports/single-core-ledger/din-bridal-monitoring/production-monitoring-post-completion.md) |
 | Migration closure + DB readiness | **COMPLETE** @ 2026-06-27 — no approved pending migrations; Phase 1.5 4/4 applied — [`migration-closure-final-report.md`](../reports/single-core-ledger/migration-closure/migration-closure-final-report.md) |
 | Post-PR final closure | **COMPLETE** — [`final-post-pr-closure-report.md`](../reports/single-core-ledger/phase-2-18-main-merge-closure/final-post-pr-closure-report.md) |
-| Future company expansion | **Requires separate finance sign-off** — [`SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md`](SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md) |
+| DIN COUTURE next-company rollout | **BLOCKED — DIN COUTURE browser credentials required** @ 2026-06-27 — [`final-execution-report.md`](../reports/single-core-ledger/next-company-rollout/din-couture/final-execution-report.md) |
 
 Closeout pack: [`phase-212-closeout-monitoring.md`](../reports/single-core-ledger/phase-2-12-trial-balance-loader/phase-212-closeout-monitoring.md)
 
