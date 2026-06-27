@@ -37,9 +37,10 @@
 | R2 Cash/Bank Admin Compare diagnostic | **CLOSED** — safe UI labeling — [`r2-final-resolution-report.md`](../reports/single-core-ledger/r2-cash-bank-admin-compare-diagnostic/r2-final-resolution-report.md) |
 | R6 monitoring hardening | **COMPLETE** — [`r6-completion-report.md`](../reports/single-core-ledger/r6-monitoring-hardening/r6-completion-report.md) |
 | R4 per-company rollout runbook | **ACTIVE** — [`SINGLE_CORE_LEDGER_PER_COMPANY_ROLLOUT_RUNBOOK.md`](SINGLE_CORE_LEDGER_PER_COMPANY_ROLLOUT_RUNBOOK.md) |
-| R3 other-company pre-expansion audit | **AUDIT COMPLETE — R5 blocked on finance sign-off** — [`r3-audit-complete-report.md`](../reports/single-core-ledger/r3-pre-expansion-audit/r3-audit-complete-report.md) |
-| R5 first non-DIN pilot preflight | **PREFLIGHT READY — blocked on finance sign-off** — [`r5-preflight-status.md`](../reports/single-core-ledger/r5-pilot-preflight/r5-preflight-status.md) |
+| R3 other-company pre-expansion audit | **AUDIT COMPLETE** — [`r3-audit-complete-report.md`](../reports/single-core-ledger/r3-pre-expansion-audit/r3-audit-complete-report.md) |
+| R5 first non-DIN pilot preflight | **COMPLETE** — [`r5-preflight-status.md`](../reports/single-core-ledger/r5-pilot-preflight/r5-preflight-status.md) |
 | R5 DIN BRIDAL controlled rollout execution | **COMPLETE — unified loaders live** @ 2026-06-27 — [`r5-soak-complete-report.md`](../reports/single-core-ledger/r5-din-bridal-execution/r5-soak-complete-report.md) |
+| R5 DIN BRIDAL post-completion archive | **COMPLETE** @ 2026-06-27 — [`r5-post-completion-commit-reconciliation.md`](../reports/single-core-ledger/r5-din-bridal-execution/r5-post-completion-commit-reconciliation.md), [`production-monitoring-post-completion.md`](../reports/single-core-ledger/din-bridal-monitoring/production-monitoring-post-completion.md) |
 | Post-PR final closure | **COMPLETE** — [`final-post-pr-closure-report.md`](../reports/single-core-ledger/phase-2-18-main-merge-closure/final-post-pr-closure-report.md) |
 | Future company expansion | **Requires separate finance sign-off** — [`SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md`](SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md) |
 
@@ -357,7 +358,7 @@ Or selective reverse using `production-remediation-apply-before-*.json` from app
 22. ~~Phase 2.17Y PR/main merge governance~~ **Done** @ 2026-06-27 — [`pr-governance-final.md`](../reports/single-core-ledger/phase-2-17-release-governance/pr-governance-final.md)
 23. ~~Phase 2.18 main merge closure pack~~ **COMPLETE** @ 2026-06-27 — PR #21 merged; [`main-merge-complete-report.md`](../reports/single-core-ledger/phase-2-18-main-merge-closure/main-merge-complete-report.md)
 24. ~~Phase 2.18 final archive~~ **COMPLETE** @ 2026-06-27 — [`final-archive-and-monitoring-report.md`](../reports/single-core-ledger/phase-2-18-main-merge-closure/final-archive-and-monitoring-report.md)
-25. **Program next:** [`master-remaining-roadmap.md`](../reports/single-core-ledger/master-roadmap-after-din-china-closure/master-remaining-roadmap.md) — R1 docs reconciliation; optional R2/R6; R3–R5 blocked on finance sign-off
+25. **Program next:** [`master-remaining-roadmap.md`](../reports/single-core-ledger/master-roadmap-after-din-china-closure/master-remaining-roadmap.md) — DIN CHINA + DIN BRIDAL complete; next company requires separate finance sign-off; R7 design-only; R8 legacy retirement blocked until all approved companies stable; periodic `MONITORING_PROFILE=din-bridal` golden verify recommended
 26. Do **not** expand loader ON to other companies without separate finance sign-off — [`SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md`](SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md)
 27. **Monitoring:** [`final-production-verify.md`](../reports/single-core-ledger/phase-2-16-monitoring/final-production-verify.md) (Phase 2.16 remains production truth until optional re-run)
 

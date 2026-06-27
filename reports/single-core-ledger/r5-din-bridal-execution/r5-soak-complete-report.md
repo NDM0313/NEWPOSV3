@@ -2,7 +2,8 @@
 
 **Status:** `R5 COMPLETE — DIN BRIDAL UNIFIED LOADERS LIVE`  
 **Date:** 2026-06-27  
-**Main commit (completion):** `5ac71545`
+**Main commit (evidence at soak completion):** `5ac71545`  
+**Latest main commit (post-completion archive):** `91d00cf7` — see [`r5-post-completion-commit-reconciliation.md`](r5-post-completion-commit-reconciliation.md)
 
 ---
 

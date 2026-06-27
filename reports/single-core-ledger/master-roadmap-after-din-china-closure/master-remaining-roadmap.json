@@ -1,6 +1,8 @@
 {
-  "generated_at": "2026-06-27T12:30:00Z",
-  "current_main_commit": "5ac71545",
+  "generated_at": "2026-06-27T17:26:05Z",
+  "current_main_commit": "91d00cf7",
+  "completion_evidence_commit": "5ac71545",
+  "commit_reconciliation": "reports/single-core-ledger/r5-din-bridal-execution/r5-post-completion-commit-reconciliation.md",
   "din_china_status": "CLOSED_ON_MAIN",
   "program_status": "DIN_CHINA_COMPLETE_R5_DIN_BRIDAL_COMPLETE",
   "production_url": "https://erp.dincouture.pk",
@@ -13,6 +15,8 @@
     "status": "R5_COMPLETE_DIN_BRIDAL_UNIFIED_LOADERS_LIVE",
     "completed_at": "2026-06-27",
     "evidence": "reports/single-core-ledger/r5-din-bridal-execution/r5-soak-complete-report.md",
+    "post_completion_archive": "reports/single-core-ledger/r5-din-bridal-execution/r5-post-completion-commit-reconciliation.md",
+    "operational_monitoring_baseline": "reports/single-core-ledger/din-bridal-monitoring/production-monitoring-post-completion.md",
     "accelerated_waiver": "reports/single-core-ledger/r5-din-bridal-execution/r5-accelerated-soak-waiver.md",
     "unified_flags_on": 12,
     "loaders_on": 5
@@ -33,11 +37,21 @@
   ],
   "blocked_phases": [
     {
+      "id": "R7",
+      "name": "roznamcha_payment RPC migration",
+      "blocker": "Design-only — separate migration approval required"
+    },
+    {
       "id": "R8",
       "name": "Legacy engine retirement / cleanup",
       "blocker": "All target companies stable on unified loaders + master plan Phase 5 gates"
     }
   ],
+  "operational_monitoring": {
+    "recommended_profile": "din-bridal",
+    "command": "MONITORING_PROFILE=din-bridal node scripts/single-core-ledger/run-unified-ledger-monitoring-verify.mjs",
+    "baseline": "reports/single-core-ledger/din-bridal-monitoring/production-monitoring-post-completion.json"
+  },
   "recommended_next_phase": {
     "id": "din-couture-expansion",
     "name": "Next company unified rollout (requires finance sign-off)",

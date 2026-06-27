@@ -1,0 +1,35 @@
+{
+  "run": "R5-DIN-BRIDAL-post-completion-archive",
+  "generated_at": "2026-06-27T17:26:05Z",
+  "status": "RECONCILED",
+  "origin_main_latest": {
+    "full": "91d00cf7ffb4fabf0b87a71e6e9227c240f2ca96",
+    "short": "91d00cf7",
+    "message": "docs(accounting): complete DIN BRIDAL unified ledger rollout with waiver"
+  },
+  "completion_evidence_commit": {
+    "short": "5ac71545",
+    "message": "docs(accounting): fix day2 monitoring TB credit typo",
+    "role": "pre_final_soak_evidence_frozen_at_this_sha"
+  },
+  "stage4_loader_audit_commit": {
+    "short": "aeb4058b",
+    "role": "loaders_enabled_evidence"
+  },
+  "reconciliation_notes": [
+    "5ac71545 was the SHA live when final monitoring and flag audit evidence were captured",
+    "91d00cf7 is the authoritative latest main commit after completion archive push",
+    "Delta 5ac71545..91d00cf7 is docs/evidence only — no runtime or migration files"
+  ],
+  "artifacts_with_5ac71545": [
+    "reports/single-core-ledger/r5-din-bridal-execution/r5-final-execution-manifest.json",
+    "reports/single-core-ledger/r5-din-bridal-execution/r5-soak-complete-manifest.json",
+    "reports/single-core-ledger/r5-din-bridal-execution/r5-soak-complete-report.md",
+    "reports/single-core-ledger/r5-din-bridal-execution/r5-final-flag-audit.json",
+    "reports/single-core-ledger/r5-din-bridal-execution/r5-final-flag-audit.md"
+  ],
+  "credentials_committed": false,
+  "migrations_run": false,
+  "gl_mutations": false,
+  "fx_app_touched": false
+}
