@@ -2,8 +2,8 @@
 
 **Program:** OLD ERP Single Core Ledger  
 **Production:** https://erp.dincouture.pk  
-**Last updated:** 2026-06-14  
-**Commit reconciliation:** `0a818da2` baseline · `50547061` monitoring automation · `9586e611` credential hardening
+**Last updated:** 2026-06-27  
+**Commit reconciliation:** `0a818da2` baseline · `50547061` monitoring automation · `9586e611` credential hardening · post-rotation closure @ 2026-06-27
 
 ---
 
@@ -15,7 +15,9 @@
 | [`windows-task-scheduler-guide.md`](windows-task-scheduler-guide.md) | Local Windows scheduling |
 | [`vps-cron-monitoring-guide.md`](vps-cron-monitoring-guide.md) | Future VPS cron (docs only) |
 | [`monitoring-incident-response-runbook.md`](monitoring-incident-response-runbook.md) | Incident decision tree |
-| [`password-rotation-closure.md`](password-rotation-closure.md) | **PASSWORD_ROTATION_REQUIRED** |
+| [`password-rotation-closure.md`](password-rotation-closure.md) | **PASSWORD_ROTATION_COMPLETE** |
+| [`password-rotation-final-closure-report.md`](password-rotation-final-closure-report.md) | Post-rotation monitoring PASS |
+| [`post-rotation-monitoring.json`](post-rotation-monitoring.json) | Latest post-rotation evidence |
 | [`ops-schedule-closure-report.md`](ops-schedule-closure-report.md) | Closure manifest |
 
 ---

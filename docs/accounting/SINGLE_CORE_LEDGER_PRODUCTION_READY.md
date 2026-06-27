@@ -2,9 +2,9 @@
 
 **Status:** `THREE-COMPANY UNIFIED LEDGER BASELINE COMPLETE`  
 **Program:** DIN CHINA, DIN BRIDAL, and DIN COUTURE unified loaders live and stable on `main`. Migration closure complete. R7 design-only; R8 blocked. Next-company expansion requires separate finance sign-off — [`master-remaining-roadmap.md`](../reports/single-core-ledger/master-roadmap-after-din-china-closure/master-remaining-roadmap.md)  
-**Branch:** `main` @ `9586e611` (monitoring credential hardening)  
+**Branch:** `main` @ post-rotation closure (2026-06-27)  
 **PR:** https://github.com/NDM0313/NEWPOSV3/pull/21  
-**Last updated:** 2026-06-14  
+**Last updated:** 2026-06-27  
 **Archive:** Three-company baseline — [`final-program-archive-report.md`](../reports/single-core-ledger/final-program-archive/final-program-archive-report.md)  
 **Ops monitoring:** [`ops-schedule-closure-report.md`](../reports/single-core-ledger/operational-monitoring/ops-schedule-closure-report.md)  
 **Commit reconciliation:** `0a818da2` baseline · `50547061` monitoring automation · `9586e611` credential hardening  
@@ -27,7 +27,7 @@
 - **Three-company unified ledger baseline:** complete  
 - **Monitoring credential hardening:** complete @ `9586e611`  
 - **Ops schedule pack + incident runbook:** complete — [`ops-schedule-closure-report.md`](../reports/single-core-ledger/operational-monitoring/ops-schedule-closure-report.md)  
-- **Password rotation:** **REQUIRED** — [`password-rotation-closure.md`](../reports/single-core-ledger/operational-monitoring/password-rotation-closure.md)  
+- **Password rotation:** **COMPLETE** — post-rotation monitoring PASS — [`password-rotation-final-closure-report.md`](../reports/single-core-ledger/operational-monitoring/password-rotation-final-closure-report.md)
 - **Ongoing command:** `npm run monitor:three-company-unified-ledger` with per-company `QA_BROWSER_PASSWORD_*`  
 - Evidence: [`three-company-monitoring-baseline.md`](../reports/single-core-ledger/final-program-archive/three-company-monitoring-baseline.md)
 
@@ -70,7 +70,8 @@
 | Three-company operational baseline | **COMPLETE** @ 2026-06-14 — [`final-program-archive-report.md`](../reports/single-core-ledger/final-program-archive/final-program-archive-report.md) |
 | Post-baseline monitoring automation + runbook | **COMPLETE** @ 2026-06-14 — [`monitoring-runbook.md`](../reports/single-core-ledger/operational-monitoring/monitoring-runbook.md) |
 | Monitoring credential hardening | **COMPLETE** @ 2026-06-14 — [`credential-hardening-report.md`](../reports/single-core-ledger/operational-monitoring/credential-hardening-report.md) |
-| Operational monitoring ops schedule closure | **COMPLETE** — password rotation **REQUIRED** — [`ops-schedule-closure-report.md`](../reports/single-core-ledger/operational-monitoring/ops-schedule-closure-report.md) |
+| Operational monitoring ops schedule closure | **COMPLETE** — password rotation **COMPLETE** — [`ops-schedule-closure-report.md`](../reports/single-core-ledger/operational-monitoring/ops-schedule-closure-report.md) |
+| Post-rotation monitoring verification | **PASS** @ 2026-06-27 — [`post-rotation-monitoring.json`](../reports/single-core-ledger/operational-monitoring/post-rotation-monitoring.json) |
 
 | Post-baseline remaining phase audit | **COMPLETE** @ 2026-06-14 — [`post-baseline-remaining-phases/`](../reports/single-core-ledger/post-baseline-remaining-phases/) |
 

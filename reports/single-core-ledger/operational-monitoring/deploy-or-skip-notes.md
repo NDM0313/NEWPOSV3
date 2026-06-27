@@ -1,9 +1,9 @@
-# Deploy / skip notes — operational monitoring
+# Deploy / skip notes — post-rotation closure
 
 **Decision:** **SKIP DEPLOY**
 
-Ops schedule closure, incident runbooks, and scheduling guides are **docs/reports only**. No `src/` ERP runtime changes. No VPS cron changes. No frontend deploy.
-
-Credential hardening scripts (`monitoringCredentials.mjs`) do not require production bundle deploy.
+Post-rotation closure, password rotation final report, and updated ops docs are **reports/docs only**. No `src/` ERP runtime changes. No VPS cron changes. No frontend deploy.
 
 **Reason:** No ERP runtime bundle change.
+
+**Verification:** `npm run test:unified-ledger` 256/256 PASS · `npm run build` PASS

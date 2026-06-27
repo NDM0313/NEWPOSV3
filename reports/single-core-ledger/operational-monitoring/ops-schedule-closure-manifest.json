@@ -1,13 +1,15 @@
 {
-  "status": "OPERATIONAL_MONITORING_OPS_CLOSURE_COMPLETE_PASSWORD_ROTATION_REQUIRED",
+  "status": "OPERATIONAL_MONITORING_OPS_CLOSURE_COMPLETE_PASSWORD_ROTATION_COMPLETE",
   "generated_at": "2026-06-14T00:00:00Z",
+  "updated_at": "2026-06-27T15:52:33.399Z",
   "latest_main_commit_at_start": "9586e611",
   "monitoring_result": "PASS",
   "monitoring_evidence": "reports/single-core-ledger/operational-monitoring/latest-three-company-monitoring.json",
   "password_rotation": {
     "rotation_required": true,
-    "rotation_completed": false,
-    "post_rotation_monitoring_status": "pending"
+    "rotation_completed": true,
+    "post_rotation_monitoring_status": "PASS",
+    "evidence": "reports/single-core-ledger/operational-monitoring/password-rotation-final-closure-report.json"
   },
   "docs_created": [
     "scheduled-monitoring-ops-pack.md",

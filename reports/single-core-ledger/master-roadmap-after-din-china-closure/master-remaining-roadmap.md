@@ -78,9 +78,11 @@ R7 **design-only** · R8 **blocked** · next-company **blocked** until finance s
 ### Blocked (removed)
 - ~~DIN COUTURE browser credentials~~ — resolved; rollout complete
 
+### Complete (2026-06-27)
+- **Password rotation + post-rotation monitoring** — per-company credentials PASS — [`password-rotation-final-closure-report.md`](../operational-monitoring/password-rotation-final-closure-report.md)
+
 ### Complete (2026-06-14)
 - **Operational monitoring ops schedule closure** — schedule pack, Windows guide, incident runbook — [`ops-schedule-closure-report.md`](../operational-monitoring/ops-schedule-closure-report.md)
-- **Password rotation** — **REQUIRED** — [`password-rotation-closure.md`](../operational-monitoring/password-rotation-closure.md)
 
 ### Complete (2026-06-14)
 - **Operational monitoring automation** — `npm run monitor:three-company-unified-ledger` — [`monitoring-runbook.md`](../operational-monitoring/monitoring-runbook.md)

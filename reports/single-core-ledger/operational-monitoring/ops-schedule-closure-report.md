@@ -1,15 +1,15 @@
 # Operational monitoring schedule — closure report
 
-**Status:** `OPERATIONAL MONITORING OPS CLOSURE COMPLETE — PASSWORD ROTATION REQUIRED`  
+**Status:** `OPERATIONAL MONITORING OPS CLOSURE COMPLETE — PASSWORD ROTATION COMPLETE`  
 **Run:** OPERATIONAL MONITORING SCHEDULE + INCIDENT RUNBOOK + PASSWORD ROTATION CLOSURE  
-**Generated:** 2026-06-14T00:00:00Z  
+**Generated:** 2026-06-14T00:00:00Z (updated 2026-06-27 post-rotation)  
 **Latest main at start:** `9586e611`
 
 ---
 
 ## Summary
 
-Three-company unified ledger operational readiness is documented: scheduled monitoring pack, Windows Task Scheduler guide, VPS cron guidance (docs only), incident response runbook, and password rotation closure. Final monitoring **PASS**. QA password rotation is **required** but not performed in this run.
+Three-company unified ledger operational readiness is documented: scheduled monitoring pack, Windows Task Scheduler guide, VPS cron guidance (docs only), incident response runbook, and password rotation closure. QA password rotation **complete**; post-rotation monitoring **PASS** with per-company credentials only.
 
 ---
 
@@ -43,9 +43,11 @@ Three-company unified ledger operational readiness is documented: scheduled moni
 
 | Field | Value |
 |-------|-------|
-| `rotation_required` | true |
-| `rotation_completed` | false |
-| `post_rotation_monitoring_status` | pending |
+| `rotation_required` | true (historical) |
+| `rotation_completed` | **true** |
+| `post_rotation_monitoring_status` | **PASS** |
+
+**Evidence:** [`password-rotation-final-closure-report.md`](password-rotation-final-closure-report.md) · [`post-rotation-monitoring.json`](post-rotation-monitoring.json)
 
 ---
 
@@ -77,7 +79,6 @@ No migrations · no R7 · no R8 · no new company · no GL mutation · no loader
 
 ## Exact next action
 
-1. **Rotate** QA passwords for din-china / din-bridal / din-couture monitoring users; update local env only  
-2. **Schedule** daily monitoring per [`windows-task-scheduler-guide.md`](windows-task-scheduler-guide.md)  
-3. **Run** `npm run monitor:three-company-unified-ledger` after rotation  
-4. Do **not** start R7, R8, or next company without separate approval
+1. **Schedule** daily monitoring per [`windows-task-scheduler-guide.md`](windows-task-scheduler-guide.md) with per-company credentials  
+2. **Run** `npm run monitor:three-company-unified-ledger` on schedule  
+3. Do **not** start R7, R8, or next company without separate approval
