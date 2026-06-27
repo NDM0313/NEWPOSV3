@@ -1,6 +1,6 @@
 # Single Core Ledger — Production Ready Pack
 
-**Status:** `PHASE 2.17 RELEASE GOVERNANCE COMPLETE — DIN CHINA rollout ready for PR/main merge`  
+**Status:** `PHASE 2.17X PR/MAIN MERGE PREFLIGHT READY — DIN CHINA rollout complete; operator PR/merge only`  
 **Branch:** `feature/single-core-ledger-phase-2-9a3-preview-deploy-plan`  
 **Last updated:** 2026-06-27  
 **Master checklist:** use this file as the single entry point for post-apply status.
@@ -25,6 +25,7 @@
 | Phase 2.15X closeout | **COMPLETE** — Roznamcha parity fix live |
 | Phase 2.16 monitoring + automation | **PASS** — [`phase-2-16-monitoring/`](../reports/single-core-ledger/phase-2-16-monitoring/) |
 | Phase 2.17 release governance | **COMPLETE** — [`phase-2-17-release-governance/`](../reports/single-core-ledger/phase-2-17-release-governance/) |
+| Phase 2.17X PR/main merge preflight | **COMPLETE** — [`pr-main-merge-preflight.md`](../reports/single-core-ledger/phase-2-17-release-governance/pr-main-merge-preflight.md) |
 | Future company expansion | **Requires separate finance sign-off** — [`SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md`](SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md) |
 
 Closeout pack: [`phase-212-closeout-monitoring.md`](../reports/single-core-ledger/phase-2-12-trial-balance-loader/phase-212-closeout-monitoring.md)
@@ -36,6 +37,8 @@ Closeout pack: [`phase-212-closeout-monitoring.md`](../reports/single-core-ledge
 ---
 
 ## Executive summary
+
+> **Historical timeline only.** Rows below record point-in-time gate status during rollout. **Live production truth is the top “Live DIN CHINA unified ledger state” section** and Phase 2.17 final status at the bottom. Do not treat “BLOCKED” or “await approval” rows here as current blockers unless the live section says otherwise.
 
 | Gate | Status |
 |------|--------|
@@ -63,9 +66,9 @@ Closeout pack: [`phase-212-closeout-monitoring.md`](../reports/single-core-ledge
 | Phase 2.8 Preview QA sign-off | **SIGNED OFF WITH WAIVERS** — see [`SINGLE_CORE_LEDGER_PHASE_2_8_PREVIEW_QA_SIGNOFF.md`](SINGLE_CORE_LEDGER_PHASE_2_8_PREVIEW_QA_SIGNOFF.md) |
 | Phase 2.9 DIN CHINA pilot plan | **PLAN READY** — see [`SINGLE_CORE_LEDGER_PHASE_2_9_PILOT_ENABLEMENT_PLAN.md`](SINGLE_CORE_LEDGER_PHASE_2_9_PILOT_ENABLEMENT_PLAN.md) |
 | Phase 2.9A live waiver ops check | **PASS WITH LIMITED WAIVERS** — see [`pre-flag/live-waiver-checks.md`](../reports/single-core-ledger/phase-2-9-pilot-enablement/pre-flag/live-waiver-checks.md) |
-| Phase 2.9A-2 browser waiver closure | **BLOCKED on prod** — preview UI not deployed; see [`browser-waiver-closure/`](../reports/single-core-ledger/phase-2-9-pilot-enablement/pre-flag/browser-waiver-closure/) |
+| Phase 2.9A-2 browser waiver closure | **COMPLETE (historical)** — was blocked pre-preview deploy; closed in 2.9A-3+ — see [`browser-waiver-closure/`](../reports/single-core-ledger/phase-2-9-pilot-enablement/pre-flag/browser-waiver-closure/) |
 | Phase 2.9A-3 preview deploy | **REdeployed** @ `312716e7+` — `erp-frontend-preview` on VPS :3003 |
-| Phase 2.9A-4 browser waiver QA | **LIMITED WAIVERS** — smoke + RPC PASS; Ledger V2 interactive session pending |
+| Phase 2.9A-4 browser waiver QA | **COMPLETE (historical waivers closed)** — smoke + RPC PASS; superseded by Stage 1/2 pilot QA |
 | Phase 2.9A Admin Compare delta | **FIXED** (Party/Pilot/TB compare); Cash/Bank **waived** for Stage 1 — see [`admin-compare-delta-investigation.md`](../reports/single-core-ledger/phase-2-9-pilot-enablement/post-deploy-browser-qa/admin-compare-delta-investigation.md) |
 | Phase 2.9A-CB Cash/Bank parity | **PLANNED** — not Stage 1 blocker — [`SINGLE_CORE_LEDGER_PHASE_2_9A_CB_CASH_BANK_PARITY_PLAN.md`](SINGLE_CORE_LEDGER_PHASE_2_9A_CB_CASH_BANK_PARITY_PLAN.md) |
 | Phase 2.9A Stage 1 gate | **PASS** — Gates 1–4 PASS on preview tunnel (2026-06-25) |
@@ -252,27 +255,34 @@ See: [`SINGLE_CORE_LEDGER_PHASE_1_8_POST_MIGRATION_VALIDATION_REPORT.md`](SINGLE
 
 **Branch:** `feature/single-core-ledger-phase-1-8-post-migration-validation`
 
-### Phase 2 — Screen wiring + controlled rollout (plan ready)
+### Phase 2 — Screen wiring + controlled rollout (complete — historical)
+
+> Historical section retained for timeline only. Preview wiring shipped in Phases 2.1–2.7; DIN CHINA engine + all five unified loaders are **live** as of Phase 2.15–2.16.
 
 | Step | What | Status |
 |------|------|--------|
 | 2.0.1 | Rollout plan document | [`SINGLE_CORE_LEDGER_PHASE_2_ROLLOUT_PLAN.md`](SINGLE_CORE_LEDGER_PHASE_2_ROLLOUT_PLAN.md) |
 | 2.0.2 | Screen inventory + wiring order | Defined — 15 screens, PRs 2.1–2.10 |
-| 2.0.3 | Feature flag + pilot design | Documented — engine OFF by default |
-| 2.1+ | Preview wiring implementation | **BLOCKED** until plan approved |
+| 2.0.3 | Feature flag + pilot design | Documented — engine OFF by default at plan time |
+| 2.1+ | Preview wiring implementation | **COMPLETE** — shipped Phases 2.1–2.7; DIN CHINA loaders live 2.10–2.15 |
 
-**Branch:** `feature/single-core-ledger-phase-2-rollout-plan`
+**Branch (historical):** `feature/single-core-ledger-phase-2-rollout-plan`
 
 ---
 
-## What is blocked (next phases)
+## What remains blocked / optional next phases
 
 | Action | Status |
 |--------|--------|
-| Phase 1.5 migrations on `postgres` | **Present** (4/4) — validated @ 1.8 |
-| `unified_ledger_engine` ON | **Blocked** |
-| Phase 2 UI wiring | **Blocked** — plan ready; implementation awaits approval |
-| Merge PR / deploy | **Ops decision** |
+| DIN CHINA unified rollout (five loaders) | **COMPLETE and stable** — Phase 2.16 PASS |
+| Phase 2.17 release governance | **COMPLETE** — ready for PR/main merge governance |
+| PR / merge to `main` | **Operator action** — review and approve; **not** a new accounting rollout or flag enablement |
+| Other-company unified loader expansion | **Blocked** until separate finance sign-off — [`SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md`](SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md) |
+| Phase 2.18 Admin Compare Cash/Bank raw RPC cleanup | **Optional** — diagnostic only |
+| Phase 2.19 other-company expansion planning | **Optional** — requires finance sign-off |
+| `roznamcha_payment` RPC mode | **Optional future** — requires separate migration approval |
+
+**Not blocked (live production):** `unified_ledger_engine` and all five DIN CHINA unified main loaders are **ON** — see authoritative section at top.
 
 ---
 
@@ -324,22 +334,25 @@ Or selective reverse using `production-remediation-apply-before-*.json` from app
 18. ~~Phase 2.15X closeout + 24h monitoring pack~~ **Done** @ 2026-06-26
 19. ~~Phase 2.16 production monitoring + automation hardening~~ **Done** @ 2026-06-27 — see [`phase-2-16-monitoring/`](../reports/single-core-ledger/phase-2-16-monitoring/)
 20. ~~Phase 2.17 release governance (PR/merge pack)~~ **Done** @ 2026-06-27 — see [`phase-2-17-release-governance/`](../reports/single-core-ledger/phase-2-17-release-governance/)
-21. Do **not** expand loader ON to other companies without separate finance sign-off — [`SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md`](SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md)
-22. **Main merge / PR:** governance only — operator review and approve; not a new accounting rollout
-23. **Monitoring:** [`final-production-verify.md`](../reports/single-core-ledger/phase-2-16-monitoring/final-production-verify.md) (Phase 2.16 remains production truth)
+21. ~~Phase 2.17X PR/main merge preflight cleanup~~ **Done** @ 2026-06-27 — stale doc wording clarified
+22. Do **not** expand loader ON to other companies without separate finance sign-off — [`SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md`](SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md)
+23. **Main merge / PR:** operator governance only — create/review PR; **do not auto-merge** without approval
+24. **Monitoring:** [`final-production-verify.md`](../reports/single-core-ledger/phase-2-16-monitoring/final-production-verify.md) (Phase 2.16 remains production truth)
 
-**Final status:** `PHASE 2.17 RELEASE GOVERNANCE COMPLETE — DIN CHINA UNIFIED LEDGER STABLE`
+**Final status:** `PHASE 2.17X PR/MAIN MERGE PREFLIGHT READY — DIN CHINA UNIFIED LEDGER STABLE`
 
 ### Accelerated soak waiver (Phase 2.9B-X — 2026-06-25) — historical
 
-Stage 1 originally enabled only `unified_ledger_pilot`. Stage 2 subsequently enabled `unified_ledger_engine` + `screen_ledger_v2` (2026-06-25). Loaders for Ledger V2, Account Statement, and Trial Balance were enabled in 2.10G / 2.11 / 2.12 (2026-06-26).
+> Historical note only. Stage 2 SQL **was run** @ 2026-06-25 (engine + screen_ledger_v2). All five DIN CHINA loaders subsequently enabled 2026-06-26.
+
+Stage 1 originally enabled only `unified_ledger_pilot`. Stage 2 subsequently enabled `unified_ledger_engine` + `screen_ledger_v2` (2026-06-25). Loaders for Ledger V2, Account Statement, Trial Balance, Party Ledger, and Roznamcha were enabled in 2.10G / 2.11 / 2.12 / 2.13 / 2.15 (2026-06-26).
 
 | Check | Result |
 |-------|--------|
 | T0 soak (0h) | **PASS** @ 2026-06-25T17:42:10Z |
 | Accelerated flags + browser | **PASS** @ 2026-06-25T17:54:04Z |
 | Regressions | **None** |
-| Stage 2 SQL | **NOT RUN** |
+| Stage 2 SQL | **RUN** @ 2026-06-25T18:05:23Z (historical row below referred to pre-Stage-2 checkpoint) |
 
 ## Related documents
 
