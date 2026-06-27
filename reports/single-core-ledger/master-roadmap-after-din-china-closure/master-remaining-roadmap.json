@@ -11,7 +11,20 @@
     "migrations_applied_this_run": 0
   },
   "din_china_status": "CLOSED_ON_MAIN",
-  "program_status": "DIN_CHINA_COMPLETE_R5_DIN_BRIDAL_COMPLETE",
+  "din_couture_rollout_complete": {
+    "status": "DIN_COUTURE_COMPLETE_UNIFIED_LOADERS_LIVE",
+    "completed_at": "2026-06-27",
+    "evidence": "reports/single-core-ledger/next-company-rollout/din-couture/final-execution-report.md",
+    "accelerated_waiver": "reports/single-core-ledger/next-company-rollout/din-couture/din-couture-accelerated-soak-waiver.md",
+    "unified_flags_on": 12,
+    "loaders_on": 5
+  },
+  "recommended_next_phase": {
+    "id": "operational-monitoring",
+    "name": "Periodic golden verify for DIN CHINA, DIN BRIDAL, DIN COUTURE",
+    "note": "No further company expansion without separate finance sign-off"
+  },
+  "program_status": "DIN_CHINA_DIN_BRIDAL_DIN_COUTURE_UNIFIED_LOADERS_LIVE",
   "production_url": "https://erp.dincouture.pk",
   "company": "DIN CHINA",
   "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
@@ -38,9 +51,10 @@
     {
       "slug": "din-couture",
       "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
-      "status": "ROLLOUT_BLOCKED_BROWSER_CREDENTIALS_REQUIRED",
+      "status": "R5_COMPLETE_UNIFIED_LOADERS_LIVE",
       "golden_fixture_path": "reports/single-core-ledger/din-couture/golden-fixtures.json",
-      "evidence": "reports/single-core-ledger/next-company-rollout/din-couture/final-execution-report.md"
+      "evidence": "reports/single-core-ledger/next-company-rollout/din-couture/final-execution-report.md",
+      "accelerated_waiver": "reports/single-core-ledger/next-company-rollout/din-couture/din-couture-accelerated-soak-waiver.md"
     }
   ],
   "blocked_phases": [
@@ -56,18 +70,27 @@
     }
   ],
   "operational_monitoring": {
-    "recommended_profile": "din-bridal",
-    "command": "MONITORING_PROFILE=din-bridal node scripts/single-core-ledger/run-unified-ledger-monitoring-verify.mjs",
-    "baseline": "reports/single-core-ledger/din-bridal-monitoring/production-monitoring-post-completion.json"
+    "profiles": ["din-china", "din-bridal", "din-couture"],
+    "command_template": "MONITORING_PROFILE=<profile> node scripts/single-core-ledger/run-unified-ledger-monitoring-verify.mjs",
+    "baselines": {
+      "din-bridal": "reports/single-core-ledger/din-bridal-monitoring/production-monitoring-post-completion.json",
+      "din-couture": "reports/single-core-ledger/din-couture-monitoring/production-monitoring-final.json"
+    }
   },
-  "recommended_next_phase": {
-    "id": "din-couture-expansion",
-    "name": "Next company unified rollout (requires finance sign-off)",
-    "note": "DIN COUTURE or other candidate — separate finance sign-off before any flag SQL"
+  "din_couture_rollout_complete": {
+    "status": "DIN_COUTURE_COMPLETE_UNIFIED_LOADERS_LIVE",
+    "completed_at": "2026-06-27",
+    "evidence": "reports/single-core-ledger/next-company-rollout/din-couture/final-execution-report.md",
+    "accelerated_waiver": "reports/single-core-ledger/next-company-rollout/din-couture/din-couture-accelerated-soak-waiver.md",
+    "unified_flags_on": 12,
+    "loaders_on": 5
   },
   "constraints": {
     "din_bridal_flags_live": true,
+    "din_couture_flags_live": true,
     "din_china_unified_flags_on": 12,
+    "din_bridal_unified_flags_on": 12,
+    "din_couture_unified_flags_on": 12,
     "other_company_loaders_on": 0,
     "migrations_run": false,
     "gl_mutations": false,

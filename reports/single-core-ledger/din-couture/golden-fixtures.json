@@ -2,7 +2,7 @@
   "company": "DIN COUTURE",
   "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
   "finance_sign_off_ref": "reports/single-core-ledger/din-couture/finance-signoff-unified-ledger-rollout-2026-06-27.md",
-  "status": "PENDING_GOLDEN_CAPTURE",
+  "status": "GOLDEN_CAPTURE_COMPLETE",
   "golden_party": {
     "name": "DHARIA",
     "party_id": "04831980-546b-4ff2-bc9d-2e75a43eb51c",
@@ -11,7 +11,10 @@
   },
   "branch_scope": "all",
   "branches": [
-    { "id": "df93b9e4-feea-4b8b-8103-e630c185261b", "name": "SHOP A13" }
+    {
+      "id": "df93b9e4-feea-4b8b-8103-e630c185261b",
+      "name": "SHOP A13"
+    }
   ],
   "fixtures": {
     "golden_party_closing_pkr": 4488088,
@@ -29,6 +32,14 @@
   },
   "notes": [
     "Finance sign-off recorded 2026-06-27.",
-    "Browser legacy capture required before flag enablement."
-  ]
+    "Browser legacy capture required before flag enablement.",
+    "Browser capture 2026-06-27T13:12:05.217Z — legacy UI goldens for DHARIA."
+  ],
+  "capture_method": "legacy_browser",
+  "browser_capture_at": "2026-06-27T13:12:05.217Z",
+  "browser_capture_evidence": "reports/single-core-ledger/din-couture-monitoring/golden-capture/",
+  "date_range": {
+    "start": "2000-01-01",
+    "end": "2026-06-27"
+  }
 }

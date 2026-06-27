@@ -1,54 +1,46 @@
-# DIN COUTURE — Final execution report (blocked)
+# DIN COUTURE — Final execution report
 
-**Run:** NEXT COMPANY UNIFIED LEDGER CONTROLLED ROLLOUT — FULL EXECUTION PHASE  
+**Status:** `DIN COUTURE COMPLETE — UNIFIED LOADERS LIVE`  
 **Date:** 2026-06-27  
-**Status:** `DIN COUTURE ROLLOUT BLOCKED — BROWSER CREDENTIALS REQUIRED`
+**Company id:** `2ab65903-62a3-4bcf-bced-076b681e9b74`
 
 ---
 
 ## Summary
 
-Finance sign-off and rollout toolkit are ready. Pre-execution read-only audit PASS. **Rollout stopped before Stage 1** because browser credentials are not bound to DIN COUTURE — golden capture failed when selecting party DHARIA.
+Resumed from blocked credentials gate after DIN COUTURE user golden capture PASS. Staged rollout complete with accelerated soak waiver. 12/12 flags ON, 5/5 loaders ON. Final monitoring PASS.
 
 ---
 
-## Completed gates
+## Evidence index
 
-| Gate | Result |
-|------|--------|
-| Repo on main @ `4fb5f25a` | PASS |
-| Migration closure / no pending migrations | PASS |
-| DIN CHINA / DIN BRIDAL unchanged | PASS |
-| Company discovery (single DIN COUTURE) | PASS |
-| Finance sign-off (Nadeem Khan) | PASS |
-| Toolkit validation | PASS |
-| Pre-execution safety audit | PASS |
-| Pre-enable tests | 245/245 PASS |
+| Item | Path |
+|------|------|
+| Finance sign-off | [`finance-signoff-unified-ledger-rollout-2026-06-27.md`](../../din-couture/finance-signoff-unified-ledger-rollout-2026-06-27.md) |
+| Golden fixtures | [`golden-fixtures.json`](../../din-couture/golden-fixtures.json) |
+| Accelerated waiver | [`din-couture-accelerated-soak-waiver.md`](din-couture-accelerated-soak-waiver.md) |
+| Final monitoring | [`production-monitoring-final.md`](../../din-couture-monitoring/production-monitoring-final.md) |
+| Soak complete | [`din-couture-soak-complete-report.md`](din-couture-soak-complete-report.md) |
 
 ---
 
-## Failed gates
+## Final state
 
-| Gate | Result |
-|------|--------|
-| DIN COUTURE browser credentials | **FAIL** — user bound to DIN BRIDAL |
-| Golden capture | **FAIL** — see `golden-capture-failure.md` |
-
----
-
-## Not executed
-
-- Stage 1–4 flag SQL
-- Monitoring
-- Soak / waiver
-- Deploy
+| Company | Flags | Loaders |
+|---------|-------|---------|
+| DIN COUTURE | 12/12 ON | 5/5 ON |
+| DIN CHINA | 12/12 ON | 5/5 ON (unchanged) |
+| DIN BRIDAL | 12/12 ON | 5/5 ON (unchanged) |
+| Other | 0 loaders | PASS |
 
 ---
 
-## Exact next action
+## Rollback references
 
-1. Provision or specify **DIN COUTURE ERP user** credentials locally.
-2. Re-run: `node scripts/single-core-ledger/run-golden-capture-din-couture.mjs`
-3. On golden capture PASS + tests/build PASS → resume staged rollout from Stage 1 pilot only.
+`scripts/single-core-ledger/din-couture/dc-rollback-*.sql` (per stage)
 
-Do not enable flags until golden capture passes with DIN COUTURE user.
+---
+
+## Next action
+
+Periodic monitoring: `MONITORING_PROFILE=din-couture node scripts/single-core-ledger/run-unified-ledger-monitoring-verify.mjs`. No further company expansion without separate finance sign-off.

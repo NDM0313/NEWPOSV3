@@ -78,13 +78,26 @@
         "roznamcha_cash_out_pkr": 34500,
         "roznamcha_closing_pkr": 50500
       },
-      "expected_unified_flags_on": [],
+      "expected_unified_flags_on": [
+        "unified_ledger_pilot",
+        "unified_ledger_engine",
+        "unified_ledger_loader_ledger_v2",
+        "unified_ledger_screen_ledger_v2",
+        "unified_ledger_loader_account_statement",
+        "unified_ledger_screen_account_statement",
+        "unified_ledger_loader_trial_balance",
+        "unified_ledger_screen_trial_balance",
+        "unified_ledger_loader_party_ledger",
+        "unified_ledger_screen_party_ledger",
+        "unified_ledger_loader_roznamcha",
+        "unified_ledger_screen_roznamcha"
+      ],
       "pilot_batch_expected": 9,
       "golden_fixture_path": "reports/single-core-ledger/din-couture/golden-fixtures.json",
       "evidence_subdir": "din-couture-monitoring",
       "requires_finance_sign_off": false,
       "skip_admin_pilot_batch": true,
-      "rollout_status": "BLOCKED_BROWSER_CREDENTIALS_REQUIRED"
+      "rollout_status": "UNIFIED_LOADERS_LIVE"
     },
     "_template": {
       "company": "REPLACE_COMPANY_NAME",

@@ -9,7 +9,7 @@
 
 ## Scope statement
 
-**DIN CHINA rollout is closed on `main`.** **DIN BRIDAL R5 rollout is complete** (12/12 flags, 5/5 loaders live @ 2026-06-27). **Migration closure is complete** — Phase 1.5 applied on production; no approved pending migrations.
+**DIN CHINA rollout is closed on `main`.** **DIN BRIDAL R5 complete.** **DIN COUTURE rollout complete** (12/12 flags, 5/5 loaders live @ 2026-06-27). Migration closure complete.
 
 **The broader Single Core Ledger program is not complete.** Remaining work includes optional diagnostics, other-company expansion (blocked until finance sign-off), monitoring hardening, optional RPC design, and long-term legacy engine retirement. None of these may start without the approvals listed per phase.
 
@@ -69,11 +69,11 @@
 - DIN CHINA five unified main loaders
 - PR #21 merge and Phase 2.18 archive on `main`
 
-### Blocked (2026-06-27)
-- **DIN COUTURE rollout** — finance sign-off ready; blocked on DIN COUTURE browser user credentials — [`final-execution-report.md`](../next-company-rollout/din-couture/final-execution-report.md)
+### Complete (2026-06-27)
+- **DIN COUTURE rollout** — unified loaders live with accelerated waiver — [`final-execution-report.md`](../next-company-rollout/din-couture/final-execution-report.md)
 
-### Pending (program continues — blocked on finance for next company)
-- **Next company pilot resume** — set `QA_BROWSER_EMAIL`/`PASSWORD` for DIN COUTURE user; re-run golden capture; then Stage 1 pilot only
+### Blocked (removed)
+- ~~DIN COUTURE browser credentials~~ — resolved; rollout complete
 
 ### Complete (2026-06-27)
 - **Migration closure** — Phase 1.5 applied; no approved pending migrations — [`migration-closure-final-report.md`](../migration-closure/migration-closure-final-report.md)
