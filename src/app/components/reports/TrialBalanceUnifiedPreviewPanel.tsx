@@ -17,6 +17,10 @@ import { Button } from '@/app/components/ui/button';
 import type { TrialBalanceUnifiedPreviewDiff } from '@/app/lib/trialBalanceUnifiedPreviewDiff';
 import type { TrialBalanceUnifiedPreviewResult } from '@/app/services/trialBalanceUnifiedPreviewService';
 import { UNIFIED_LEDGER_SCREEN_IDS } from '@/app/lib/unifiedLedgerScreenFlags';
+import {
+  trialBalancePreviewCompareLabels,
+  type TrialBalancePreviewCompareSource,
+} from '@/app/lib/resolveTrialBalancePreviewCompareSource';
 import type { TrialBalanceArApMode } from '@/app/services/accountingReportsService';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 
@@ -40,6 +44,7 @@ export function TrialBalanceUnifiedPreviewPanel({
   searchActive,
   arApMode,
   periodDiffersFromAsOf,
+  previewCompareSource = 'unified_compare',
 }: {
   startDate: string;
   endDate: string;
@@ -54,9 +59,19 @@ export function TrialBalanceUnifiedPreviewPanel({
   searchActive: boolean;
   arApMode: TrialBalanceArApMode;
   periodDiffersFromAsOf: boolean;
+  previewCompareSource?: TrialBalancePreviewCompareSource;
 }) {
   const [tableExpanded, setTableExpanded] = useState(false);
   const { formatCurrency } = useFormatCurrency();
+
+  const compareLabels = useMemo(
+    () =>
+      trialBalancePreviewCompareLabels(previewCompareSource, {
+        legacyEngineLabel: 'Legacy Trial Balance (accountingReportsService.getTrialBalance)',
+        unifiedBasisLabel: UNIFIED_LEDGER_BASIS_LABELS[previewBasis],
+      }),
+    [previewCompareSource, previewBasis],
+  );
 
   const exportPayload = useMemo(
     () => ({
@@ -79,10 +94,13 @@ export function TrialBalanceUnifiedPreviewPanel({
   );
 
   return (
-    <div className="rounded-xl border border-amber-500/30 bg-amber-500/[0.04] p-4 space-y-4">
+    <div
+      className="rounded-xl border border-amber-500/30 bg-amber-500/[0.04] p-4 space-y-4"
+      data-trial-balance-preview-compare-source={previewCompareSource}
+    >
       <div className="flex flex-wrap items-center gap-2 justify-between">
         <div className="flex flex-wrap items-center gap-2">
-          <h3 className="text-sm font-semibold text-amber-100">Unified engine preview (compare only)</h3>
+          <h3 className="text-sm font-semibold text-amber-100">{compareLabels.panelTitle}</h3>
           <UnifiedLedgerPreviewBadge mode={engineState.mode} />
           {engineState.pilotEnabled ? (
             <span className="text-xs text-gray-500 border border-gray-700 rounded px-1.5 py-0.5">pilot flag ON</span>
@@ -175,7 +193,7 @@ export function TrialBalanceUnifiedPreviewPanel({
         </p>
       ) : null}
 
-      {loading ? <p className="text-sm text-gray-400">Loading unified preview…</p> : null}
+      {loading ? <p className="text-sm text-gray-400">{compareLabels.loadingText}</p> : null}
       {error ? <p className="text-sm text-red-400">{error}</p> : null}
 
       {diff ? (
@@ -251,7 +269,7 @@ export function TrialBalanceUnifiedPreviewPanel({
             onClick={() => setTableExpanded((v) => !v)}
           >
             {tableExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-            Unified preview table (not official)
+            {compareLabels.previewTableLabel}
           </button>
           {tableExpanded ? (
             <div className="relative rounded-xl border border-dashed border-amber-500/40 overflow-hidden">

@@ -51,6 +51,7 @@ export async function compareCompanyContactTieOut(params: {
   tolerance?: number;
 }): Promise<CompanyTieOutRow> {
   const tolerance = params.tolerance ?? 0.01;
+  const useHybrid = params.useHybridOldEngine ?? true;
   const cmp = await comparePartyLedgerTieOut({
     companyId: params.scope.companyId,
     partyType: params.contact.partyType,
@@ -59,7 +60,7 @@ export async function compareCompanyContactTieOut(params: {
     dateFrom: params.dateFrom,
     dateTo: params.dateTo,
     basis: params.basis,
-    useHybridOldEngine: params.useHybridOldEngine,
+    useHybridOldEngine: useHybrid,
   });
 
   const diff = round2(Math.abs(cmp.difference));
@@ -73,7 +74,7 @@ export async function compareCompanyContactTieOut(params: {
     contactCode: params.contact.contactCode,
     partyType: params.contact.partyType,
     basis: params.basis,
-    legacyEngine: toLegacyLabel(params.useHybridOldEngine === true),
+    legacyEngine: toLegacyLabel(useHybrid),
     oldBalance: cmp.oldBalance,
     newBalance: cmp.newBalance,
     difference: cmp.difference,

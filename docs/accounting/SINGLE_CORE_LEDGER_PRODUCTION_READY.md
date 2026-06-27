@@ -1,13 +1,46 @@
 # Single Core Ledger — Production Ready Pack
 
-**Status:** `PHASE 2.9A LIVE WAIVER CHECKS PASS WITH LIMITED WAIVERS` — DB gates clear; preview UI not on prod ERP  
-**Branch:** `feature/single-core-ledger-phase-2-9-pilot-enablement-plan` @ `fe1b9c15`  
-**Last updated:** 2026-06-25  
+**Status:** `PR REVIEW READY — OPERATOR MERGE APPROVAL REQUIRED`  
+**Branch:** `feature/single-core-ledger-phase-2-9a3-preview-deploy-plan`  
+**Last updated:** 2026-06-27  
 **Master checklist:** use this file as the single entry point for post-apply status.
 
 ---
 
+## Live DIN CHINA unified ledger state (authoritative)
+
+| Item | State |
+|------|-------|
+| `unified_ledger_pilot` | **ON** |
+| `unified_ledger_engine` | **ON** (DIN CHINA) |
+| Ledger V2 screen + loader | **ON** — unified main live @ 2026-06-26 |
+| Account Statement screen + loader | **ON** — unified main live @ 2026-06-26 |
+| Trial Balance screen + loader | **ON** — unified main live @ 2026-06-26 |
+| Party Ledger screen + loader | **ON** — unified main live @ 2026-06-26 (`a7a4b727`) |
+| Roznamcha screen + loader | **ON** — unified main live @ 2026-06-26 (Phase 2.15 parity fix) |
+| Other company loaders | **none** (verified Phase 2.16 @ 2026-06-27) |
+| MR JALIL golden (Ledger V2 + Account Statement + Party Ledger) | **PKR 216,300** |
+| Trial Balance golden (All Branches) | **PKR 407,957,271.02** debit = credit |
+| Roznamcha golden (Cash In / Out / Closing) | **136,158,012 / 67,042,426 / 69,115,586** |
+| Phase 2.15X closeout | **COMPLETE** — Roznamcha parity fix live |
+| Phase 2.16 monitoring + automation | **PASS** — [`phase-2-16-monitoring/`](../reports/single-core-ledger/phase-2-16-monitoring/) |
+| Phase 2.17 release governance | **COMPLETE** — [`phase-2-17-release-governance/`](../reports/single-core-ledger/phase-2-17-release-governance/) |
+| Phase 2.17X PR/main merge preflight | **COMPLETE** — [`pr-main-merge-preflight.md`](../reports/single-core-ledger/phase-2-17-release-governance/pr-main-merge-preflight.md) |
+| Phase 2.17Y PR governance | **COMPLETE** — [`pr-governance-final.md`](../reports/single-core-ledger/phase-2-17-release-governance/pr-governance-final.md) |
+| Post-PR final closure | **PR REVIEW READY** — [`final-post-pr-closure-report.md`](../reports/single-core-ledger/phase-2-18-main-merge-closure/final-post-pr-closure-report.md) |
+| Future company expansion | **Requires separate finance sign-off** — [`SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md`](SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md) |
+
+Closeout pack: [`phase-212-closeout-monitoring.md`](../reports/single-core-ledger/phase-2-12-trial-balance-loader/phase-212-closeout-monitoring.md)
+
+> Phase 2.15X automation waivers (LV2 Playwright NaN, Admin Compare timing) were **resolved in Phase 2.16** via shared Playwright helpers. See [`automation-hardening-report.md`](../reports/single-core-ledger/phase-2-16-monitoring/automation-hardening-report.md).
+
+> Historical phase completion reports (2.1–2.8) describe point-in-time ship state (“engine OFF at preview ship”). **This section is the live production truth** after 2.10G / 2.11 / 2.12.
+
+---
+
 ## Executive summary
+
+> **Historical timeline only.** Rows below record point-in-time gate status during rollout. **Live production truth is the top “Live DIN CHINA unified ledger state” section** and Phase 2.17 final status at the bottom. Do not treat “BLOCKED” or “await approval” rows here as current blockers unless the live section says otherwise.
 
 | Gate | Status |
 |------|--------|
@@ -17,9 +50,11 @@
 | Finance sign-off (82 rows) | **COMPLETE** — 82 approved, 0 rejected |
 | Pre-remediation DB backup | **COMPLETE** |
 | Production metadata apply | **EXECUTED** 2026-06-23T19:33:16Z — **82 rows** |
+| DIN CHINA `unified_ledger_loader_ledger_v2` | **ON** @ 2026-06-26T13:56:26Z — Ledger V2 unified main live |
+| DIN CHINA `unified_ledger_loader_account_statement` | **ON** @ 2026-06-26T14:59:46Z — Account Statement unified main live |
 | Post-apply validation (fresh clone) | **PASS** — payment gaps 0, branch risk 0, Gate A 3/3, tie-out 9/9 |
 | Production smoke test (1.7) | **PASS** 10/10 |
-| `unified_ledger_engine` | **OFF** |
+| `unified_ledger_engine` (DIN CHINA) | **ON** @ 2026-06-25T18:05:23Z |
 | Phase 1.5 prod migration pack | **READY** — guarded apply not executed in 1.7 |
 | Phase 1.5 post-migration Gate A (1.8) | **PASS** 3/3 on `ledger_stage_20260625_prodcheck` |
 | Phase 2 rollout plan | **READY** — plan on rollout branch |
@@ -33,7 +68,50 @@
 | Phase 2.8 Preview QA sign-off | **SIGNED OFF WITH WAIVERS** — see [`SINGLE_CORE_LEDGER_PHASE_2_8_PREVIEW_QA_SIGNOFF.md`](SINGLE_CORE_LEDGER_PHASE_2_8_PREVIEW_QA_SIGNOFF.md) |
 | Phase 2.9 DIN CHINA pilot plan | **PLAN READY** — see [`SINGLE_CORE_LEDGER_PHASE_2_9_PILOT_ENABLEMENT_PLAN.md`](SINGLE_CORE_LEDGER_PHASE_2_9_PILOT_ENABLEMENT_PLAN.md) |
 | Phase 2.9A live waiver ops check | **PASS WITH LIMITED WAIVERS** — see [`pre-flag/live-waiver-checks.md`](../reports/single-core-ledger/phase-2-9-pilot-enablement/pre-flag/live-waiver-checks.md) |
-| Phase 2.9A-2 browser waiver closure | **BLOCKED on prod** — preview UI not deployed; see [`browser-waiver-closure/`](../reports/single-core-ledger/phase-2-9-pilot-enablement/pre-flag/browser-waiver-closure/) |
+| Phase 2.9A-2 browser waiver closure | **COMPLETE (historical)** — was blocked pre-preview deploy; closed in 2.9A-3+ — see [`browser-waiver-closure/`](../reports/single-core-ledger/phase-2-9-pilot-enablement/pre-flag/browser-waiver-closure/) |
+| Phase 2.9A-3 preview deploy | **REdeployed** @ `312716e7+` — `erp-frontend-preview` on VPS :3003 |
+| Phase 2.9A-4 browser waiver QA | **COMPLETE (historical waivers closed)** — smoke + RPC PASS; superseded by Stage 1/2 pilot QA |
+| Phase 2.9A Admin Compare delta | **FIXED** (Party/Pilot/TB compare); Cash/Bank **waived** for Stage 1 — see [`admin-compare-delta-investigation.md`](../reports/single-core-ledger/phase-2-9-pilot-enablement/post-deploy-browser-qa/admin-compare-delta-investigation.md) |
+| Phase 2.9A-CB Cash/Bank parity | **PLANNED** — not Stage 1 blocker — [`SINGLE_CORE_LEDGER_PHASE_2_9A_CB_CASH_BANK_PARITY_PLAN.md`](SINGLE_CORE_LEDGER_PHASE_2_9A_CB_CASH_BANK_PARITY_PLAN.md) |
+| Phase 2.9A Stage 1 gate | **PASS** — Gates 1–4 PASS on preview tunnel (2026-06-25) |
+| Phase 2.9B Stage 1 pilot flag | **ENABLED** — `unified_ledger_pilot` only @ 2026-06-25T17:28:52Z |
+| Phase 2.9B 24h soak | **ACCELERATED WAIVER** — T0 + accelerated final PASS @ 2026-06-25T17:54:04Z — [`stage-1-accelerated-soak-waiver.md`](../reports/single-core-ledger/phase-2-9-pilot-enablement/post-stage-1/stage-1-accelerated-soak-waiver.md) |
+| Phase 2.9C Stage 2 engine + screen | **ENABLED** — pilot + engine + `screen_ledger_v2` @ 2026-06-25T18:05:23Z — [`stage-2-execution-notes.md`](../reports/single-core-ledger/phase-2-9-pilot-enablement/post-stage-2/stage-2-execution-notes.md) |
+| Phase 2.9C Stage 2 soak | **ACCELERATED WAIVER PASS** @ 2026-06-25T18:39:31Z — [`stage-2-accelerated-soak-waiver.md`](../reports/single-core-ledger/phase-2-9-pilot-enablement/post-stage-2/stage-2-accelerated-soak-waiver.md) |
+| Phase 2.10 Ledger V2 loader swap plan | **IMPLEMENTED (2.10A–C)** — [`SINGLE_CORE_LEDGER_PHASE_2_10_LEDGER_V2_LOADER_SWAP_PLAN.md`](SINGLE_CORE_LEDGER_PHASE_2_10_LEDGER_V2_LOADER_SWAP_PLAN.md) |
+| Phase 2.10A implementation pack | **READY** — code/tests/SQL artifacts |
+| Phase 2.10B preview baseline QA | **PASS** — [`baseline-loader-qa.md`](../reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/baseline-loader-qa.md) @ 2026-06-26 |
+| Phase 2.10B export spot-check | **SIGNED** — [`export-spot-check-baseline.md`](../reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/export-spot-check-baseline.md) |
+| Phase 2.10 preview deploy | **DONE** — `erp-frontend-preview` :3003 only — [`preview-deploy-notes.md`](../reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/preview-deploy-notes.md) |
+| Phase 2.10C candidate loader QA | **PASS** (shadow waiver fixed in 2.10C-FIX) — [`candidate-loader-qa-rerun.md`](../reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/candidate-loader-qa-rerun.md) |
+| Phase 2.10C-FIX shadow invert | **PASS** — [`shadow-invert-fix-notes.md`](../reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/shadow-invert-fix-notes.md) @ 2026-06-26 |
+| Phase 2.10C-FIX candidate export rerun | **SIGNED** — [`candidate-export-spot-check-rerun.md`](../reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/candidate-export-spot-check-rerun.md) |
+| Phase 2.10C-FIX L1 rollback rerun | **PASS** — [`rollback-loader-qa-rerun.md`](../reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/rollback-loader-qa-rerun.md) |
+| Phase 2.10D controlled loader soak | **PASS WITH WAIVERS** — [`controlled-soak-final.md`](../reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/controlled-soak-final.md) @ 2026-06-26 |
+| Phase 2.10D soak export check | **SIGNED** — [`controlled-soak-export-check.md`](../reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/controlled-soak-export-check.md) |
+| Phase 2.10E production deploy plan | **DONE** — [`production-deploy-plan.md`](../reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/production-deploy-plan.md) |
+| Phase 2.10F production frontend deploy | **DONE** — [`production-deploy-notes.md`](../reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/production-deploy-notes.md) @ `3e3f6190` |
+| Phase 2.10F production bundle verify | **PASS** — [`production-bundle-verify.md`](../reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/production-bundle-verify.md) |
+| Phase 2.10F production baseline QA | **PASS** — [`production-baseline-qa.md`](../reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/production-baseline-qa.md) |
+| Phase 2.10F baseline export | **SIGNED** — [`production-baseline-export-check.md`](../reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/production-baseline-export-check.md) |
+| Phase 2.10F staff waiver | **RECORDED** — [`production-staff-waiver.md`](../reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/production-staff-waiver.md) |
+| Phase 2.10G production loader ON | **DONE** @ 2026-06-26T13:56:26Z — [`production-loader-on-flags-after.json`](../reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/production-loader-on-flags-after.json) |
+| Phase 2.10G production loader ON QA | **PASS** — [`production-loader-on-qa.md`](../reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/production-loader-on-qa.md) |
+| Phase 2.10G production export | **SIGNED** — [`production-loader-on-export-check.md`](../reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/production-loader-on-export-check.md) |
+| Phase 2.10G production soak | **PASS** (accelerated waiver) — [`production-loader-soak-final.md`](../reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/production-loader-soak-final.md) |
+| Phase 2.10G staff visibility | **WAIVED** — [`production-staff-visibility-check.md`](../reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/production-staff-visibility-check.md) |
+| Phase 2.10G non-golden spot-check | **WAIVED** — [`production-non-golden-spot-check.md`](../reports/single-core-ledger/phase-2-10-ledger-v2-loader-swap/production-non-golden-spot-check.md) |
+| Phase 2.10 loader flag SQL | **ON** (DIN CHINA Ledger V2) — `unified_ledger_loader_ledger_v2` |
+| Phase 2.11 Account Statement loader plan | **LIVE** — [`SINGLE_CORE_LEDGER_PHASE_2_11_ACCOUNT_STATEMENT_LOADER_ROLLOUT_PLAN.md`](SINGLE_CORE_LEDGER_PHASE_2_11_ACCOUNT_STATEMENT_LOADER_ROLLOUT_PLAN.md) |
+| Phase 2.11 production loader ON | **DONE** @ 2026-06-26T14:59:46Z — Account Statement unified main |
+| Phase 2.11 production QA | **PASS** — [`phase-2-11-account-statement-loader/`](../reports/single-core-ledger/phase-2-11-account-statement-loader/) |
+| Phase 2.12 Trial Balance loader plan | **LIVE** — [`SINGLE_CORE_LEDGER_PHASE_2_12_TRIAL_BALANCE_LOADER_ROLLOUT_PLAN.md`](SINGLE_CORE_LEDGER_PHASE_2_12_TRIAL_BALANCE_LOADER_ROLLOUT_PLAN.md) |
+| Phase 2.12 production loader ON | **DONE** @ 2026-06-26T16:27:00Z — Trial Balance unified main |
+| Phase 2.12 production QA | **PASS WITH WAIVERS** — [`phase-2-12-trial-balance-loader/`](../reports/single-core-ledger/phase-2-12-trial-balance-loader/) |
+| Phase 2.12X closeout | **PASS** — [`phase-212-closeout-monitoring.md`](../reports/single-core-ledger/phase-2-12-trial-balance-loader/phase-212-closeout-monitoring.md) @ 2026-06-26 |
+| DIN CHINA `unified_ledger_loader_trial_balance` | **ON** @ 2026-06-26T16:27:00Z — Trial Balance unified main live |
+| Phase 2.9A-6 gate confirmation | **Gate 4 PASS**; Gates 1–3 **PASS** (browser 2026-06-25) |
+| Phase 2.9A-7 operator gate sign-off | **PASS** 2026-06-25T17:19:46Z — [`phase-2.9a-7-gate-signoff.json`](../reports/single-core-ledger/phase-2-9-pilot-enablement/post-deploy-browser-qa/phase-2.9a-7-gate-signoff.json) |
 | Phase 2 screen wiring | **COMPLETE** — all planned preview toggles shipped; engine enablement separate |
 
 ---
@@ -179,27 +257,34 @@ See: [`SINGLE_CORE_LEDGER_PHASE_1_8_POST_MIGRATION_VALIDATION_REPORT.md`](SINGLE
 
 **Branch:** `feature/single-core-ledger-phase-1-8-post-migration-validation`
 
-### Phase 2 — Screen wiring + controlled rollout (plan ready)
+### Phase 2 — Screen wiring + controlled rollout (complete — historical)
+
+> Historical section retained for timeline only. Preview wiring shipped in Phases 2.1–2.7; DIN CHINA engine + all five unified loaders are **live** as of Phase 2.15–2.16.
 
 | Step | What | Status |
 |------|------|--------|
 | 2.0.1 | Rollout plan document | [`SINGLE_CORE_LEDGER_PHASE_2_ROLLOUT_PLAN.md`](SINGLE_CORE_LEDGER_PHASE_2_ROLLOUT_PLAN.md) |
 | 2.0.2 | Screen inventory + wiring order | Defined — 15 screens, PRs 2.1–2.10 |
-| 2.0.3 | Feature flag + pilot design | Documented — engine OFF by default |
-| 2.1+ | Preview wiring implementation | **BLOCKED** until plan approved |
+| 2.0.3 | Feature flag + pilot design | Documented — engine OFF by default at plan time |
+| 2.1+ | Preview wiring implementation | **COMPLETE** — shipped Phases 2.1–2.7; DIN CHINA loaders live 2.10–2.15 |
 
-**Branch:** `feature/single-core-ledger-phase-2-rollout-plan`
+**Branch (historical):** `feature/single-core-ledger-phase-2-rollout-plan`
 
 ---
 
-## What is blocked (next phases)
+## What remains blocked / optional next phases
 
 | Action | Status |
 |--------|--------|
-| Phase 1.5 migrations on `postgres` | **Present** (4/4) — validated @ 1.8 |
-| `unified_ledger_engine` ON | **Blocked** |
-| Phase 2 UI wiring | **Blocked** — plan ready; implementation awaits approval |
-| Merge PR / deploy | **Ops decision** |
+| DIN CHINA unified rollout (five loaders) | **COMPLETE and stable** — Phase 2.16 PASS |
+| Phase 2.17 release governance | **COMPLETE** — ready for PR/main merge governance |
+| PR / merge to `main` | **Operator action** — review and approve; **not** a new accounting rollout or flag enablement |
+| Other-company unified loader expansion | **Blocked** until separate finance sign-off — [`SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md`](SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md) |
+| Phase 2.18 Admin Compare Cash/Bank raw RPC cleanup | **Optional** — diagnostic only |
+| Phase 2.19 other-company expansion planning | **Optional** — requires finance sign-off |
+| `roznamcha_payment` RPC mode | **Optional future** — requires separate migration approval |
+
+**Not blocked (live production):** `unified_ledger_engine` and all five DIN CHINA unified main loaders are **ON** — see authoritative section at top.
 
 ---
 
@@ -225,7 +310,7 @@ Or selective reverse using `production-remediation-apply-before-*.json` from app
 | Backup ID | `/root/NEWPOSV3/backups/supabase_db_20260623_192408.dump` |
 | Production apply executed | **Yes** — 2026-06-23T19:33:16.625Z |
 | Applied rows | **82** (74 payment + 8 branch) |
-| `unified_ledger_engine` | **OFF** |
+| `unified_ledger_engine` (at metadata apply) | was **OFF** — now **ON** for DIN CHINA only (Stage 2.9C) |
 
 ---
 
@@ -236,11 +321,42 @@ Or selective reverse using `production-remediation-apply-before-*.json` from app
 3. ~~Phase 2.9 pilot enablement plan~~ **Done** — Ledger V2 / DIN CHINA staged flag plan + rollback runbook  
 4. ~~Phase 2.9A ops check (read-only)~~ **Done** — flags OFF + MR JALIL 216,300 RPC PASS  
 5. ~~Phase 2.9A-2 browser check~~ **Done** — prod ERP lacks preview UI; deploy required before live session  
-6. **Ops:** Deploy preview-capable build (staging/ERP) — **no flags** — then authenticated browser waiver session  
-7. **Ops:** Approve Stage 1 then Stage 2 flag SQL — **separate ticket**; no auto-enable  
-8. Do **not** enable flags, merge to `main`, or deploy unified-default without ops approval  
+6. ~~Phase 2.9A-3 preview deploy~~ **Done** — `erp-frontend-preview` on VPS :3003; Kong CORS for localhost:3002  
+7. ~~Phase 2.9A-4 browser waiver QA~~ **Done (limited waivers)** — smoke PASS; operator login session + staff user pending  
+8. ~~Ops: Run `run-phase-29a7-operator-gate-signoff.mjs`~~ **Done** — Gates 1–4 PASS @ 2026-06-25T17:19:46Z  
+9. ~~Ops: Stage 1 `unified_ledger_pilot` SQL~~ **Done** @ 2026-06-25T17:28:52Z — see [`stage-1-execution-notes.md`](../reports/single-core-ledger/phase-2-9-pilot-enablement/post-stage-1/stage-1-execution-notes.md)  
+10. ~~Soak: 24h DIN CHINA monitoring~~ **Accelerated waiver PASS** @ 2026-06-25T17:54:04Z — see [`stage-1-accelerated-soak-waiver.md`](../reports/single-core-ledger/phase-2-9-pilot-enablement/post-stage-1/stage-1-accelerated-soak-waiver.md)  
+11. ~~Ops: Stage 2 flag SQL~~ **Done** @ 2026-06-25T18:05:23Z — `unified_ledger_engine` + `screen_ledger_v2` only — see [`stage-2-execution-notes.md`](../reports/single-core-ledger/phase-2-9-pilot-enablement/post-stage-2/stage-2-execution-notes.md)  
+12. ~~Ops: Stage 2 soak monitoring~~ **Done (accelerated waiver)** @ 2026-06-25T18:39:31Z  
+13. ~~Phase 2.10 loader swap planning~~ **Done** — plan Status A; see [`SINGLE_CORE_LEDGER_PHASE_2_10_LEDGER_V2_LOADER_SWAP_PLAN.md`](SINGLE_CORE_LEDGER_PHASE_2_10_LEDGER_V2_LOADER_SWAP_PLAN.md)  
+14. ~~Phase 2.10G production loader ON~~ **Done** @ 2026-06-26T13:56:26Z — unified main live for DIN CHINA Ledger V2 only  
+15. ~~Phase 2.11 Account Statement loader ON~~ **Done** @ 2026-06-26T14:59:46Z — unified main live for DIN CHINA Account Statement only  
+16. ~~Phase 2.13 Party Ledger loader ON~~ **Done** @ 2026-06-26 — `a7a4b727`
+17. ~~Phase 2.15 Roznamcha parity + loader ON~~ **Done** @ 2026-06-26 — `b8b093f7` — see [`SINGLE_CORE_LEDGER_PHASE_2_15_CASH_BANK_PARITY_AND_ROZNAMCHA_RECOVERY_PLAN.md`](SINGLE_CORE_LEDGER_PHASE_2_15_CASH_BANK_PARITY_AND_ROZNAMCHA_RECOVERY_PLAN.md)
+18. ~~Phase 2.15X closeout + 24h monitoring pack~~ **Done** @ 2026-06-26
+19. ~~Phase 2.16 production monitoring + automation hardening~~ **Done** @ 2026-06-27 — see [`phase-2-16-monitoring/`](../reports/single-core-ledger/phase-2-16-monitoring/)
+20. ~~Phase 2.17 release governance (PR/merge pack)~~ **Done** @ 2026-06-27 — see [`phase-2-17-release-governance/`](../reports/single-core-ledger/phase-2-17-release-governance/)
+21. ~~Phase 2.17X PR/main merge preflight cleanup~~ **Done** @ 2026-06-27 — stale doc wording clarified
+22. ~~Phase 2.17Y PR/main merge governance~~ **Done** @ 2026-06-27 — [`pr-governance-final.md`](../reports/single-core-ledger/phase-2-17-release-governance/pr-governance-final.md)
+23. ~~Phase 2.18 main merge closure pack~~ **PR READY** @ 2026-06-27 — [`final-closure-report.md`](../reports/single-core-ledger/phase-2-18-main-merge-closure/final-closure-report.md) — **merge pending operator approval**
+24. Do **not** expand loader ON to other companies without separate finance sign-off — [`SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md`](SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md)
+25. **Main merge / PR:** create PR → `main` per [`manual-pr-operator-instructions.md`](../reports/single-core-ledger/phase-2-18-main-merge-closure/manual-pr-operator-instructions.md); review; approve manually — **not** a new accounting rollout
+26. **Monitoring:** [`final-production-verify.md`](../reports/single-core-ledger/phase-2-16-monitoring/final-production-verify.md) (Phase 2.16 remains production truth until post-merge re-run)
 
-**Final status:** `PHASE 2.9A LIVE WAIVER CHECKS PASS WITH LIMITED WAIVERS — review before Stage 1`
+**Final status:** `PR REVIEW READY — OPERATOR MERGE APPROVAL REQUIRED`
+
+### Accelerated soak waiver (Phase 2.9B-X — 2026-06-25) — historical
+
+> Historical note only. Stage 2 SQL **was run** @ 2026-06-25 (engine + screen_ledger_v2). All five DIN CHINA loaders subsequently enabled 2026-06-26.
+
+Stage 1 originally enabled only `unified_ledger_pilot`. Stage 2 subsequently enabled `unified_ledger_engine` + `screen_ledger_v2` (2026-06-25). Loaders for Ledger V2, Account Statement, Trial Balance, Party Ledger, and Roznamcha were enabled in 2.10G / 2.11 / 2.12 / 2.13 / 2.15 (2026-06-26).
+
+| Check | Result |
+|-------|--------|
+| T0 soak (0h) | **PASS** @ 2026-06-25T17:42:10Z |
+| Accelerated flags + browser | **PASS** @ 2026-06-25T17:54:04Z |
+| Regressions | **None** |
+| Stage 2 SQL | **RUN** @ 2026-06-25T18:05:23Z (historical row below referred to pre-Stage-2 checkpoint) |
 
 ## Related documents
 
@@ -256,3 +372,6 @@ Or selective reverse using `production-remediation-apply-before-*.json` from app
 | [Phase 2 rollout plan](SINGLE_CORE_LEDGER_PHASE_2_ROLLOUT_PLAN.md) | Screen wiring + controlled engine rollout |
 | [Phase 2.8 preview QA sign-off](SINGLE_CORE_LEDGER_PHASE_2_8_PREVIEW_QA_SIGNOFF.md) | Cross-screen QA + parity evidence |
 | [Phase 2.9 pilot enablement plan](SINGLE_CORE_LEDGER_PHASE_2_9_PILOT_ENABLEMENT_PLAN.md) | DIN CHINA Ledger V2 staged flags + rollback |
+| [Phase 2.10 Ledger V2 loader swap plan](SINGLE_CORE_LEDGER_PHASE_2_10_LEDGER_V2_LOADER_SWAP_PLAN.md) | Stage 3 default loader swap — **LIVE for DIN CHINA** |
+| [Phase 2.9A-CB Cash/Bank parity plan](SINGLE_CORE_LEDGER_PHASE_2_9A_CB_CASH_BANK_PARITY_PLAN.md) | Roznamcha vs unified GL — future remediation, not Stage 1 |
+| [Phase 2.9A-3 preview deploy plan](SINGLE_CORE_LEDGER_PHASE_2_9A3_PREVIEW_DEPLOY_PLAN.md) | Parallel :3002 preview container for browser QA |

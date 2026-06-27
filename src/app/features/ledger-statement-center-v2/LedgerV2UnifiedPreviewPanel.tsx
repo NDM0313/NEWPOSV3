@@ -20,6 +20,10 @@ import { Button } from '@/app/components/ui/button';
 import type {
   LedgerV2UnifiedPreviewDiff,
 } from '@/app/lib/ledgerStatementV2UnifiedPreviewDiff';
+import {
+  ledgerV2PreviewCompareLabels,
+  type LedgerV2PreviewCompareSource,
+} from '@/app/lib/resolveLedgerV2PreviewCompareSource';
 import type { LedgerV2UnifiedPreviewResult } from '@/app/services/ledgerStatementCenterV2UnifiedPreviewService';
 import { UNIFIED_LEDGER_SCREEN_IDS } from '@/app/lib/unifiedLedgerScreenFlags';
 
@@ -41,6 +45,7 @@ export function LedgerV2UnifiedPreviewPanel({
   onPreviewBasisChange,
   displayFiltersActive,
   legacyEngineLabel,
+  compareSource,
 }: {
   statementType: LedgerStatementV2Type;
   entityLabel: string;
@@ -53,8 +58,18 @@ export function LedgerV2UnifiedPreviewPanel({
   onPreviewBasisChange: (basis: UnifiedLedgerBasis) => void;
   displayFiltersActive: boolean;
   legacyEngineLabel: string;
+  compareSource: LedgerV2PreviewCompareSource;
 }) {
   const [tableExpanded, setTableExpanded] = useState(false);
+
+  const compareLabels = useMemo(
+    () =>
+      ledgerV2PreviewCompareLabels(compareSource, {
+        legacyEngineLabel,
+        unifiedBasisLabel: UNIFIED_LEDGER_BASIS_LABELS[previewBasis],
+      }),
+    [compareSource, legacyEngineLabel, previewBasis],
+  );
 
   const exportPayload = useMemo(
     () => ({
@@ -76,10 +91,13 @@ export function LedgerV2UnifiedPreviewPanel({
   const noopRow = (_row: LedgerStatementV2Row) => {};
 
   return (
-    <div className="rounded-xl border border-amber-500/30 bg-amber-500/[0.04] p-4 space-y-4">
+    <div
+      className="rounded-xl border border-amber-500/30 bg-amber-500/[0.04] p-4 space-y-4"
+      data-ledger-v2-preview-compare-source={compareSource}
+    >
       <div className="flex flex-wrap items-center gap-2 justify-between">
         <div className="flex flex-wrap items-center gap-2">
-          <h3 className="text-sm font-semibold text-amber-100">Unified engine preview (compare only)</h3>
+          <h3 className="text-sm font-semibold text-amber-100">{compareLabels.panelTitle}</h3>
           <UnifiedLedgerPreviewBadge mode={engineState.mode} />
           {engineState.pilotEnabled ? (
             <span className="text-xs text-gray-500 border border-gray-700 rounded px-1.5 py-0.5">pilot flag ON</span>
@@ -127,27 +145,37 @@ export function LedgerV2UnifiedPreviewPanel({
       ) : null}
 
       <div className="flex flex-wrap items-center gap-3 text-sm">
-        <span className="text-gray-400">Preview basis lens:</span>
-        <select
-          value={previewBasis}
-          onChange={(e) => onPreviewBasisChange(e.target.value as UnifiedLedgerBasis)}
-          className="rounded border border-gray-700 bg-gray-900 px-2 py-1 text-sm text-white"
-          disabled={engineState.killSwitchActive}
-        >
-          {PREVIEW_BASIS_OPTIONS.map((b) => (
-            <option key={b} value={b}>
-              {unifiedBasisBannerLabel(b)} ({UNIFIED_LEDGER_BASIS_LABELS[b]})
-            </option>
-          ))}
-        </select>
+        {compareSource === 'unified_compare' ? (
+          <>
+            <span className="text-gray-400">Preview basis lens:</span>
+            <select
+              value={previewBasis}
+              onChange={(e) => onPreviewBasisChange(e.target.value as UnifiedLedgerBasis)}
+              className="rounded border border-gray-700 bg-gray-900 px-2 py-1 text-sm text-white"
+              disabled={engineState.killSwitchActive}
+            >
+              {PREVIEW_BASIS_OPTIONS.map((b) => (
+                <option key={b} value={b}>
+                  {unifiedBasisBannerLabel(b)} ({UNIFIED_LEDGER_BASIS_LABELS[b]})
+                </option>
+              ))}
+            </select>
+          </>
+        ) : (
+          <span className="text-gray-400">
+            Compare source: legacy shadow loader (main table is unified).
+          </span>
+        )}
       </div>
 
       <ReportBasisBanner
         basis={statementType === 'account' ? 'official_gl' : 'effective_party'}
         detail={
-          statementType === 'account'
-            ? 'Account preview uses official GL lens. Main table remains legacy GL loader.'
-            : 'Party preview uses effective-party lens. Legacy customer path may use hybrid loader — compare shows on-screen legacy vs unified.'
+          compareSource === 'legacy_shadow'
+            ? 'Legacy shadow uses the posted GL / hybrid legacy loader. Unified main table remains authoritative for exports.'
+            : statementType === 'account'
+              ? 'Account preview uses official GL lens. Main table remains legacy GL loader.'
+              : 'Party preview uses effective-party lens. Legacy customer path may use hybrid loader — compare shows on-screen legacy vs unified.'
         }
       />
 
@@ -158,7 +186,7 @@ export function LedgerV2UnifiedPreviewPanel({
       ) : null}
 
       {loading ? (
-        <p className="text-sm text-gray-400">Loading unified preview…</p>
+        <p className="text-sm text-gray-400">{compareLabels.loadingText}</p>
       ) : null}
       {error ? <p className="text-sm text-red-400">{error}</p> : null}
 
@@ -170,8 +198,8 @@ export function LedgerV2UnifiedPreviewPanel({
           pass={diff.pass}
           oldRowCount={diff.oldRowCount}
           newRowCount={diff.newRowCount}
-          oldEngineName={legacyEngineLabel}
-          newEngineName={`Unified RPC (${UNIFIED_LEDGER_BASIS_LABELS[previewBasis]})`}
+          oldEngineName={compareLabels.oldEngineName}
+          newEngineName={compareLabels.newEngineName}
           oldQueryMs={undefined}
           newQueryMs={previewResult?.meta.queryDurationMs}
           extra={
@@ -186,8 +214,8 @@ export function LedgerV2UnifiedPreviewPanel({
 
       {diff && (diff.missingInNew.length > 0 || diff.extraInNew.length > 0) ? (
         <div className="grid md:grid-cols-2 gap-3">
-          <CompareDiffTable title="Missing in unified preview" rows={diff.missingInNew} />
-          <CompareDiffTable title="Extra in unified preview" rows={diff.extraInNew} />
+          <CompareDiffTable title={compareLabels.missingInNewTitle} rows={diff.missingInNew} />
+          <CompareDiffTable title={compareLabels.extraInNewTitle} rows={diff.extraInNew} />
         </div>
       ) : null}
 
@@ -199,7 +227,7 @@ export function LedgerV2UnifiedPreviewPanel({
             onClick={() => setTableExpanded((v) => !v)}
           >
             {tableExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-            Unified preview table (not official)
+            {compareLabels.previewTableLabel}
           </button>
           {tableExpanded ? (
             <div className="relative rounded-xl border border-dashed border-amber-500/40 p-1">

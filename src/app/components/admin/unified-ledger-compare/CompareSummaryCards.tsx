@@ -1,5 +1,5 @@
 import React from 'react';
-import type { CompareRowSummary } from '@/app/lib/unifiedLedgerCompareTypes';
+import type { CompareRowSummary, CompareRowMismatch } from '@/app/lib/unifiedLedgerCompareTypes';
 import type { TieOutRowSummary } from '@/app/services/unifiedLedgerTieOutService';
 
 export function CompareSummaryCards({
@@ -127,6 +127,53 @@ export function CompareDiffTable({
                 <td className="p-2">{r.referenceType || '—'}</td>
                 <td className="p-2 text-right">{r.debit.toFixed(2)}</td>
                 <td className="p-2 text-right">{r.credit.toFixed(2)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+export function CompareAmountMismatchTable({
+  title,
+  rows,
+}: {
+  title: string;
+  rows: CompareRowMismatch[];
+}) {
+  if (!rows.length) {
+    return (
+      <div className="rounded-lg border border-gray-800 p-3 text-sm text-gray-500">
+        {title}: none
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-lg border border-gray-800 overflow-hidden">
+      <div className="px-3 py-2 bg-gray-900/80 text-sm font-medium">{title}</div>
+      <div className="overflow-x-auto max-h-64">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-gray-500 border-b border-gray-800">
+              <th className="text-left p-2">Key</th>
+              <th className="text-left p-2">Entry</th>
+              <th className="text-right p-2">Old Dr/Cr</th>
+              <th className="text-right p-2">New Dr/Cr</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.slice(0, 50).map((m) => (
+              <tr key={m.key} className="border-b border-gray-800/50">
+                <td className="p-2 font-mono">{m.key.slice(0, 24)}</td>
+                <td className="p-2">{m.old.entryNo || m.old.journalEntryId.slice(0, 8)}</td>
+                <td className="p-2 text-right">
+                  {m.old.debit.toFixed(2)} / {m.old.credit.toFixed(2)}
+                </td>
+                <td className="p-2 text-right">
+                  {m.new.debit.toFixed(2)} / {m.new.credit.toFixed(2)}
+                </td>
               </tr>
             ))}
           </tbody>

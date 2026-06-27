@@ -43,6 +43,8 @@ export function TrialBalanceCompareTab(props: {
       <p className="text-sm text-gray-400">
         Compare legacy <code className="text-amber-300">getTrialBalance</code> vs{' '}
         <code className="text-amber-300">get_unified_trial_balance</code> (shadow only).
+        Both sides use <strong className="text-amber-200">official_gl</strong> — legacy TB has no
+        effective_party lens; the global Basis filter does not apply here.
       </p>
       <Button onClick={runCompare} disabled={loading}>
         {loading ? 'Comparing…' : 'Run trial balance compare'}

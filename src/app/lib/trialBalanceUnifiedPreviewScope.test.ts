@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   buildTrialBalancePreviewRpcScope,
+  legacyTrialBalanceCompareDateFrom,
   normalizeTrialBalancePreviewBranch,
   trialBalancePreviewAsOfDate,
 } from './trialBalanceUnifiedPreviewScope';
@@ -14,6 +15,10 @@ test('normalizeTrialBalancePreviewBranch maps undefined and all to null', () => 
 
 test('trialBalancePreviewAsOfDate uses end date', () => {
   assert.equal(trialBalancePreviewAsOfDate('2026-03-31'), '2026-03-31');
+});
+
+test('legacyTrialBalanceCompareDateFrom uses lifetime start for as-of parity', () => {
+  assert.equal(legacyTrialBalanceCompareDateFrom('2025-12-01'), '1900-01-01');
 });
 
 test('buildTrialBalancePreviewRpcScope passes branch null and asOfDate endDate', () => {

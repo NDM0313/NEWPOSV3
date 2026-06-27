@@ -3,19 +3,18 @@
  */
 
 import { isUnifiedLedgerKillSwitchActive } from '@/app/lib/unifiedLedgerEngineState';
-import { balancePasses, diffLedgerRows, round2 } from '@/app/lib/unifiedLedgerCompareDiff';
+import { APP_BUILD_COMMIT } from '@/app/lib/developerMode';
+import { normalizeCompareDateRange } from '@/app/components/admin/unified-ledger-compare/compareFilters';
+import type { UnifiedLedgerBasis } from '@/app/lib/unifiedLedgerBasisFilter';
 import type { LedgerCompareScope, LedgerRowCompareResult } from '@/app/lib/unifiedLedgerCompareTypes';
-import {
-  roznamchaRowKey,
-  roznamchaToCompareSummary,
-  unifiedCashBankRowKey,
-  unifiedCashBankToCompareSummary,
-} from '@/app/lib/roznamchaCashBankCompareMappers';
+import { evaluateCashBankComparePass } from '@/app/lib/roznamchaCashBankCompareMappers';
 import {
   getUnifiedCashBankLedger,
   loadLegacyCashBankForTieOut,
-  type UnifiedLedgerBasis,
 } from '@/app/services/unifiedLedgerService';
+
+/** Admin cash/bank compare — roznamcha has no basis lens; match unified official_gl. */
+export const CASH_BANK_COMPARE_BASIS: UnifiedLedgerBasis = 'official_gl';
 
 export async function compareCashBankLedgerTieOut(params: {
   companyId: string;
@@ -25,12 +24,14 @@ export async function compareCashBankLedgerTieOut(params: {
   basis: UnifiedLedgerBasis;
   liquidity?: 'cash' | 'bank' | 'wallet' | 'all';
 }): Promise<LedgerRowCompareResult> {
+  const dates = normalizeCompareDateRange(params.dateFrom, params.dateTo);
+  const compareBasis = CASH_BANK_COMPARE_BASIS;
   const scope: LedgerCompareScope = {
     companyId: params.companyId,
     branchId: params.branchId ?? null,
-    dateFrom: params.dateFrom,
-    dateTo: params.dateTo,
-    basis: params.basis,
+    dateFrom: dates.dateFrom ?? params.dateFrom,
+    dateTo: dates.dateTo ?? params.dateTo,
+    basis: compareBasis,
   };
 
   const killSwitchActive = await isUnifiedLedgerKillSwitchActive(params.companyId);
@@ -40,53 +41,51 @@ export async function compareCashBankLedgerTieOut(params: {
     loadLegacyCashBankForTieOut({
       companyId: params.companyId,
       branchId: params.branchId,
-      dateFrom: params.dateFrom,
-      dateTo: params.dateTo,
+      dateFrom: dates.dateFrom ?? params.dateFrom,
+      dateTo: dates.dateTo ?? params.dateTo,
       liquidity,
     }),
     getUnifiedCashBankLedger({
       companyId: params.companyId,
       branchId: params.branchId,
-      dateFrom: params.dateFrom,
-      dateTo: params.dateTo,
-      basis: params.basis,
+      dateFrom: dates.dateFrom,
+      dateTo: dates.dateTo,
+      basis: compareBasis,
       liquidity,
       shadowForce: true,
     }),
   ]);
 
-  const { missingInNew, extraInNew, amountMismatches } = diffLedgerRows({
-    oldRows: legacy.rows,
-    newRows: unified.rows,
-    oldKey: roznamchaRowKey,
-    newKey: unifiedCashBankRowKey,
-    oldToSummary: roznamchaToCompareSummary,
-    newToSummary: unifiedCashBankToCompareSummary,
+  const evaluated = evaluateCashBankComparePass({
+    legacyRows: legacy.rows,
+    unifiedRows: unified.rows,
+    legacyClosing: legacy.closingBalance,
+    unifiedClosing: unified.closingBalance,
   });
-
-  const oldBalance = round2(legacy.closingBalance);
-  const newBalance = unified.closingBalance;
-  const difference = round2(oldBalance - newBalance);
 
   return {
     kind: 'cash_bank',
     scope,
-    oldBalance,
-    newBalance,
-    difference,
-    pass: balancePasses(difference),
+    oldBalance: evaluated.oldBalance,
+    newBalance: evaluated.newBalance,
+    difference: evaluated.difference,
+    pass: evaluated.pass,
     oldRowCount: legacy.rows.length,
     newRowCount: unified.rows.length,
-    missingInNew,
-    extraInNew,
-    amountMismatches,
-    basis: params.basis,
-    oldEngineName: legacy.engineName,
+    missingInNew: evaluated.missingInNew,
+    extraInNew: evaluated.extraInNew,
+    amountMismatches: evaluated.amountMismatches,
+    basis: compareBasis,
+    oldEngineName:
+      evaluated.manualReceiptSupplementCount > 0
+        ? `${legacy.engineName} + ${evaluated.manualReceiptSupplementCount} manual_receipt GL supplement`
+        : legacy.engineName,
     newEngineName: 'get_unified_cash_bank_ledger (shadow RPC)',
     oldQueryMs: legacy.durationMs,
     newQueryMs: unified.meta.queryDurationMs,
     shadowForce: true,
     killSwitchActive,
     rpcError: unified.meta.rpcError,
+    buildCommit: APP_BUILD_COMMIT,
   };
 }

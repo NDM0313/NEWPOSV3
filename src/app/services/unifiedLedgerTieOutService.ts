@@ -2,18 +2,25 @@
  * Unified Core Ledger — developer tie-out comparison (shadow only).
  */
 
+import { normalizeCompareDateRange } from '@/app/components/admin/unified-ledger-compare/compareFilters';
+import {
+  closingBalanceFromLegacyRows,
+  diffLedgerRows,
+  legacyPartyCompareRowKey,
+  legacyToCompareSummary,
+  round2,
+} from '@/app/lib/unifiedLedgerCompareDiff';
+import { isJe0168ClassReversal } from '@/app/lib/unifiedLedgerBasisFilter';
+import {
+  unifiedPartyRowKey,
+  unifiedPartyToTieOutSummary,
+} from '@/app/lib/partyLedgerUnifiedCompareMappers';
 import {
   getUnifiedPartyLedger,
   loadLegacyPartyLedgerForTieOut,
   type UnifiedLedgerBasis,
   type UnifiedPartyType,
 } from '@/app/services/unifiedLedgerService';
-import type { AccountLedgerEntry } from '@/app/services/accountingService';
-import { isJe0168ClassReversal } from '@/app/lib/unifiedLedgerBasisFilter';
-import {
-  unifiedPartyRowKey,
-  unifiedPartyToTieOutSummary,
-} from '@/app/lib/partyLedgerUnifiedCompareMappers';
 
 export type TieOutRowKey = {
   journalEntryId: string;
@@ -54,26 +61,6 @@ export type TieOutRowSummary = {
   description: string;
 };
 
-function round2(n: number): number {
-  return Math.round((Number(n) || 0) * 100) / 100;
-}
-
-function legacyRowKey(e: AccountLedgerEntry): string {
-  return String(e.journal_entry_id || e.id || `${e.date}-${e.reference_number}`);
-}
-
-function legacyToSummary(e: AccountLedgerEntry): TieOutRowSummary {
-  return {
-    journalEntryId: String(e.journal_entry_id || ''),
-    entryNo: e.entry_no ?? e.reference_number ?? null,
-    entryDate: String(e.date || ''),
-    referenceType: e.reference_type ?? null,
-    debit: round2(Number(e.debit) || 0),
-    credit: round2(Number(e.credit) || 0),
-    description: String(e.description || e.narration || '—'),
-  };
-}
-
 export async function comparePartyLedgerTieOut(params: {
   companyId: string;
   partyType: UnifiedPartyType;
@@ -85,14 +72,16 @@ export async function comparePartyLedgerTieOut(params: {
   /** Compare Account Statements hybrid vs unified (default: GL RPC path) */
   useHybridOldEngine?: boolean;
 }): Promise<TieOutCompareResult> {
+  const dates = normalizeCompareDateRange(params.dateFrom, params.dateTo);
+
   const [legacy, unified] = await Promise.all([
     loadLegacyPartyLedgerForTieOut({
       companyId: params.companyId,
       partyType: params.partyType,
       contactId: params.contactId,
       branchId: params.branchId,
-      dateFrom: params.dateFrom,
-      dateTo: params.dateTo,
+      dateFrom: dates.dateFrom,
+      dateTo: dates.dateTo,
       useHybridCustomerLedger: params.useHybridOldEngine,
     }),
     getUnifiedPartyLedger({
@@ -100,31 +89,25 @@ export async function comparePartyLedgerTieOut(params: {
       partyType: params.partyType,
       contactId: params.contactId,
       branchId: params.branchId,
-      dateFrom: params.dateFrom,
+      dateFrom: dates.dateFrom,
       dateTo: params.dateTo,
       basis: params.basis,
       shadowForce: true,
     }),
   ]);
 
-  const oldKeys = new Set(legacy.rows.map(legacyRowKey));
-  const newKeys = new Set(unified.rows.map(unifiedPartyRowKey));
+  const rowDiff = diffLedgerRows({
+    oldRows: legacy.rows,
+    newRows: unified.rows,
+    oldKey: legacyPartyCompareRowKey,
+    newKey: unifiedPartyRowKey,
+    oldToSummary: legacyToCompareSummary,
+    newToSummary: unifiedPartyToTieOutSummary,
+  });
 
-  const missingInNew = legacy.rows
-    .filter((e) => !newKeys.has(legacyRowKey(e)) && Boolean(e.journal_entry_id))
-    .map(legacyToSummary);
-
-  const extraInNew = unified.rows
-    .filter((r) => !oldKeys.has(unifiedPartyRowKey(r)))
-    .map(unifiedPartyToTieOutSummary);
-
-  const oldBalance =
-    legacy.rows.length > 0
-      ? round2(Number(legacy.rows[legacy.rows.length - 1].balance) || 0)
-      : 0;
-
+  const oldBalance = closingBalanceFromLegacyRows(legacy.rows);
   const correctionReversalInOld = legacy.rows.filter((e) =>
-    isJe0168ClassReversal(e.reference_type)
+    isJe0168ClassReversal(e.je_reference_type ?? (e as { reference_type?: string }).reference_type)
   ).length;
   const correctionReversalInNew = unified.rows.filter((r) =>
     isJe0168ClassReversal(r.referenceType)
@@ -136,12 +119,12 @@ export async function comparePartyLedgerTieOut(params: {
     difference: round2(oldBalance - unified.closingBalance),
     oldRowCount: legacy.rows.length,
     newRowCount: unified.rows.length,
-    missingInNew,
-    extraInNew,
+    missingInNew: rowDiff.missingInNew,
+    extraInNew: rowDiff.extraInNew,
     basis: params.basis,
     branchId: params.branchId ?? null,
-    dateFrom: params.dateFrom ?? null,
-    dateTo: params.dateTo ?? null,
+    dateFrom: dates.dateFrom,
+    dateTo: dates.dateTo,
     contactId: params.contactId,
     partyType: params.partyType,
     oldEngineName: legacy.engineName,

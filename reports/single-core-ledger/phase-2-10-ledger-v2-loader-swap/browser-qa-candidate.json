@@ -1,0 +1,141 @@
+{
+  "timestamp": "2026-06-26T13:13:40.184Z",
+  "mode": "candidate",
+  "pass": true,
+  "checks": [
+    {
+      "check": "admin login",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "admin preview toggle visible",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "preview toggle default OFF",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "no unified RPC before main load (toggle OFF)",
+      "result": "PASS",
+      "notes": "0 calls"
+    },
+    {
+      "check": "unified main-loader RPC on MR JALIL load (toggle OFF)",
+      "result": "PASS",
+      "notes": "1 calls"
+    },
+    {
+      "check": "main loader attr (candidate)",
+      "result": "PASS",
+      "notes": "expected=unified actual=unified"
+    },
+    {
+      "check": "MR JALIL closing 216300",
+      "result": "PASS",
+      "notes": "closing=216300"
+    },
+    {
+      "check": "preview legacy shadow compare (toggle ON)",
+      "result": "PASS",
+      "notes": "source=legacy_shadow"
+    },
+    {
+      "check": "export PDF closing 216300",
+      "result": "PASS",
+      "notes": "pdf=216300"
+    },
+    {
+      "check": "export Excel closing 216300",
+      "result": "PASS",
+      "notes": "excel=216300"
+    },
+    {
+      "check": "export CSV closing 216300",
+      "result": "PASS",
+      "notes": "csv=216300"
+    },
+    {
+      "check": "export matches on-screen main table",
+      "result": "PASS",
+      "notes": "screen=216300"
+    },
+    {
+      "check": "export spot-check signed",
+      "result": "PASS",
+      "notes": "unified main result.rows authority"
+    },
+    {
+      "check": "non-golden party spot-check",
+      "result": "PARTIAL",
+      "notes": "Customer"
+    },
+    {
+      "check": "non-golden party spot-check",
+      "result": "WAIVED",
+      "notes": "No alternate party selected from dropdown"
+    },
+    {
+      "check": "admin compare center loads",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "admin Pilot ON",
+      "result": "PASS",
+      "notes": "Pilot: ON"
+    },
+    {
+      "check": "admin company engine ON",
+      "result": "PASS",
+      "notes": "Company engine: ON"
+    },
+    {
+      "check": "party MR JALIL compare",
+      "result": "PASS",
+      "notes": "old=216300 new=216300"
+    },
+    {
+      "check": "pilot batch 9/9",
+      "result": "PASS",
+      "notes": "compared=9 pass=9 fail=0"
+    },
+    {
+      "check": "staff preview toggles hidden",
+      "result": "WAIVED",
+      "notes": "No staff credentials"
+    }
+  ],
+  "regressions": [],
+  "ledger": {
+    "mainLoader": "unified",
+    "closingOk": true,
+    "toggleVisible": true,
+    "offCalls": 0,
+    "mainLoadCalls": 1,
+    "previewGoldenPass": true,
+    "previewCompareSource": "legacy_shadow",
+    "previewShadowOk": true,
+    "onScreenClosing": 216300
+  },
+  "admin": {
+    "pilotOn": true,
+    "engineOn": true,
+    "partyOk": true,
+    "batchOk": true
+  },
+  "exports": {
+    "pdfClosing": 216300,
+    "excelClosing": 216300,
+    "csvClosing": 216300,
+    "signed": true,
+    "onScreenClosing": 216300
+  },
+  "staff": {
+    "waived": true,
+    "togglesVisible": null
+  }
+}

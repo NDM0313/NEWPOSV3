@@ -1,6 +1,6 @@
 /**
  * Ledger Statement V2 — unified engine shadow preview loader (Phase 2.3).
- * Parallel fetch only — never imported by getLedgerStatementV2.
+ * Parallel fetch only — never switches the main table unless loader flag ON (Phase 2.10).
  */
 
 import type { LedgerStatementV2Row, LedgerStatementV2Type } from '@/app/features/ledger-statement-center-v2/types';
@@ -14,7 +14,6 @@ import {
   type UnifiedLedgerMeta,
   type UnifiedPartyType,
 } from '@/app/services/unifiedLedgerService';
-import { STATEMENT_ALL_BRANCHES_SCOPE } from '@/app/services/ledgerStatementCenterV2Service';
 
 export type { LedgerV2UnifiedPreviewDiff } from '@/app/lib/ledgerStatementV2UnifiedPreviewDiff';
 export {
@@ -31,7 +30,7 @@ export type LedgerV2UnifiedPreviewResult = {
 };
 
 function partyTypeFromStatementType(
-  statementType: LedgerStatementV2Type
+  statementType: LedgerStatementV2Type,
 ): UnifiedPartyType | null {
   if (statementType === 'account') return null;
   return statementType;
@@ -47,7 +46,7 @@ function blockedByKillResult(basis: UnifiedLedgerBasis): LedgerV2UnifiedPreviewR
       engine: 'disabled',
       basis,
       featureFlagEnabled: false,
-      shadowForce: false,
+      shadowForce: true,
       queryDurationMs: 0,
       rowCount: 0,
       periodOpeningBalance: 0,
@@ -70,7 +69,7 @@ export async function loadLedgerV2UnifiedPreview(params: {
     return blockedByKillResult(basis);
   }
 
-  const branchId = STATEMENT_ALL_BRANCHES_SCOPE ?? null;
+  const branchId = null;
   const dateFrom = params.fromDate || null;
   const dateTo = params.toDate || null;
 

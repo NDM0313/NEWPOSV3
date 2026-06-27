@@ -16,10 +16,21 @@ import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { CalendarDateRangePicker } from '@/app/components/ui/CalendarDateRangePicker';
 import { format, startOfYear, endOfYear, subYears } from 'date-fns';
 import {
-  loadEffectivePartyLedger,
   type EffectiveLedgerRow,
   type EffectiveLedgerResult,
 } from '@/app/services/effectivePartyLedgerService';
+import { loadPartyLedgerLegacyMain } from '@/app/services/partyLedgerLegacyMainService';
+import { loadPartyLedgerUnifiedMain } from '@/app/services/partyLedgerUnifiedMainService';
+import { loadPartyLedgerLegacyShadowPreview } from '@/app/services/partyLedgerLegacyShadowPreviewService';
+import {
+  resolvePartyLedgerMainLoaderSource,
+  effectivePartyLedgerMainLoaderSource,
+} from '@/app/lib/resolvePartyLedgerMainLoaderSource';
+import {
+  resolvePartyLedgerPreviewCompareSource,
+  buildPartyLedgerPreviewCompareArgs,
+} from '@/app/lib/resolvePartyLedgerPreviewCompareSource';
+import type { UnifiedLedgerRow } from '@/app/services/unifiedLedgerService';
 import { contactService } from '@/app/services/contactService';
 import { ReportBasisBanner } from '@/app/components/accounting/ReportBasisBanner';
 import { canAccessPartyLedgerUnifiedPreview } from '@/app/lib/partyLedgerUnifiedPreviewAccess';
@@ -70,6 +81,12 @@ export const EffectivePartyLedgerPage: React.FC<EffectivePartyLedgerPageProps> =
 
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<EffectiveLedgerResult | null>(null);
+  const [mainLoaderSource, setMainLoaderSource] = useState<'legacy' | 'unified'>('legacy');
+  const [mainUnifiedRows, setMainUnifiedRows] = useState<UnifiedLedgerRow[]>([]);
+  const previewCompareSource = useMemo(
+    () => resolvePartyLedgerPreviewCompareSource(mainLoaderSource),
+    [mainLoaderSource],
+  );
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [showReversals, setShowReversals] = useState(false);
@@ -128,21 +145,55 @@ export const EffectivePartyLedgerPage: React.FC<EffectivePartyLedgerPageProps> =
     if (!companyId || !contactId) return;
     setLoading(true);
     try {
-      const r = await loadEffectivePartyLedger({
-        companyId,
-        contactId,
-        partyType,
-        fromDate: dateRange.from ? format(dateRange.from, 'yyyy-MM-dd') : '2020-01-01',
-        toDate: dateRange.to ? format(dateRange.to, 'yyyy-MM-dd') : '2099-12-31',
-        branchId,
-      });
-      setResult(r);
+      const resolved = await resolvePartyLedgerMainLoaderSource(companyId);
+      const mainSource = effectivePartyLedgerMainLoaderSource(resolved);
+      setMainLoaderSource(mainSource);
+
+      const fromDate = dateRange.from ? format(dateRange.from, 'yyyy-MM-dd') : '2020-01-01';
+      const toDate = dateRange.to ? format(dateRange.to, 'yyyy-MM-dd') : '2099-12-31';
+
+      if (mainSource === 'unified') {
+        const unified = await loadPartyLedgerUnifiedMain({
+          companyId,
+          contactId,
+          partyType,
+          dateFrom: fromDate,
+          dateTo: toDate,
+          mode,
+          showReversals,
+          partyName: contactName || 'Party',
+          basis: previewBasis,
+        });
+        setMainUnifiedRows(unified.unifiedRows);
+        setResult(unified);
+      } else {
+        setMainUnifiedRows([]);
+        const legacy = await loadPartyLedgerLegacyMain({
+          companyId,
+          contactId,
+          partyType,
+          fromDate,
+          toDate,
+          branchId,
+        });
+        setResult(legacy);
+      }
     } catch (err) {
       console.error('[EffectivePartyLedger] load error:', err);
     } finally {
       setLoading(false);
     }
-  }, [companyId, contactId, partyType, dateRange, branchId]);
+  }, [
+    companyId,
+    contactId,
+    partyType,
+    dateRange,
+    branchId,
+    mode,
+    showReversals,
+    previewBasis,
+    contactName,
+  ]);
 
   const dateFrom = dateRange.from ? format(dateRange.from, 'yyyy-MM-dd') : '2020-01-01';
   const dateTo = dateRange.to ? format(dateRange.to, 'yyyy-MM-dd') : '2099-12-31';
@@ -167,36 +218,106 @@ export const EffectivePartyLedgerPage: React.FC<EffectivePartyLedgerPageProps> =
     setPreviewLoading(true);
     setPreviewError(null);
     try {
-      const preview = await loadPartyLedgerUnifiedPreview({
-        companyId,
-        contactId,
-        partyType,
-        dateFrom,
-        dateTo,
-        mode,
-        showReversals,
-        basis: previewBasis,
-      });
-      setPreviewResult(preview);
-      if (preview.blockedByKillSwitch) {
-        setPreviewDiff(null);
-        setPreviewError(preview.blockReason ?? 'Unified preview blocked.');
-        return;
-      }
-      setPreviewDiff(
-        comparePartyLedgerUnifiedPreview({
-          legacy: result,
-          unifiedRows: preview.unifiedRows,
-          unifiedClosingBalance: preview.closingBalance,
-          unifiedOpeningBalance: preview.openingBalance,
+      const compareSource = resolvePartyLedgerPreviewCompareSource(mainLoaderSource);
+
+      if (compareSource === 'legacy_shadow') {
+        const shadow = await loadPartyLedgerLegacyShadowPreview({
+          companyId,
           contactId,
-        })
-      );
+          partyType,
+          fromDate: dateFrom,
+          toDate: dateTo,
+          branchId,
+          partyName: contactName || 'Party',
+        });
+        setPreviewResult({
+          rows: [],
+          unifiedRows: [],
+          closingBalance: shadow.closingBalance,
+          openingBalance: shadow.openingBalance,
+          meta: {
+            engine: 'legacy_gl',
+            basis: previewBasis,
+            featureFlagEnabled: true,
+            shadowForce: true,
+            queryDurationMs: 0,
+            rowCount: shadow.legacy.rows.length,
+            periodOpeningBalance: shadow.openingBalance,
+            message: 'Legacy shadow compare — main table uses unified loader.',
+          },
+          basis: previewBasis,
+          rpcScope: {
+            contactId,
+            partyType,
+            branchId: null,
+            dateFrom,
+            dateTo,
+            basis: previewBasis,
+          },
+        });
+        const compareArgs = buildPartyLedgerPreviewCompareArgs({
+          compareSource,
+          mainResult: result,
+          mainUnifiedRows,
+          shadowLegacy: shadow.legacy,
+          shadowUnifiedRows: [],
+          shadowClosingBalance: shadow.closingBalance,
+          shadowOpeningBalance: shadow.openingBalance,
+        });
+        setPreviewDiff(
+          comparePartyLedgerUnifiedPreview({
+            legacy: compareArgs.legacy,
+            unifiedRows: compareArgs.unifiedRows,
+            unifiedClosingBalance: compareArgs.unifiedClosingBalance,
+            unifiedOpeningBalance: compareArgs.unifiedOpeningBalance,
+            contactId,
+          }),
+        );
+      } else {
+        const preview = await loadPartyLedgerUnifiedPreview({
+          companyId,
+          contactId,
+          partyType,
+          dateFrom,
+          dateTo,
+          mode,
+          showReversals,
+          basis: previewBasis,
+        });
+        setPreviewResult(preview);
+        if (preview.blockedByKillSwitch) {
+          setPreviewDiff(null);
+          setPreviewError(preview.blockReason ?? 'Unified preview blocked.');
+          return;
+        }
+        const compareArgs = buildPartyLedgerPreviewCompareArgs({
+          compareSource,
+          mainResult: result,
+          mainUnifiedRows,
+          shadowLegacy: result,
+          shadowUnifiedRows: preview.unifiedRows,
+          shadowClosingBalance: preview.closingBalance,
+          shadowOpeningBalance: preview.openingBalance,
+        });
+        setPreviewDiff(
+          comparePartyLedgerUnifiedPreview({
+            legacy: compareArgs.legacy,
+            unifiedRows: compareArgs.unifiedRows,
+            unifiedClosingBalance: compareArgs.unifiedClosingBalance,
+            unifiedOpeningBalance: compareArgs.unifiedOpeningBalance,
+            contactId,
+          }),
+        );
+      }
     } catch (err) {
       console.error(err);
       setPreviewResult(null);
       setPreviewDiff(null);
-      setPreviewError('Unified preview failed to load');
+      setPreviewError(
+        previewCompareSource === 'legacy_shadow'
+          ? 'Legacy shadow compare failed to load'
+          : 'Unified preview failed to load',
+      );
     } finally {
       setPreviewLoading(false);
     }
@@ -212,6 +333,11 @@ export const EffectivePartyLedgerPage: React.FC<EffectivePartyLedgerPageProps> =
     showReversals,
     previewBasis,
     engineState.killSwitchActive,
+    mainLoaderSource,
+    mainUnifiedRows,
+    branchId,
+    contactName,
+    previewCompareSource,
   ]);
 
   useEffect(() => {
@@ -222,7 +348,7 @@ export const EffectivePartyLedgerPage: React.FC<EffectivePartyLedgerPageProps> =
       return;
     }
     void loadUnifiedPreview();
-  }, [unifiedPreviewEnabled, loadUnifiedPreview]);
+  }, [unifiedPreviewEnabled, loadUnifiedPreview, mainLoaderSource]);
 
   const handleLoadMrJalil = useCallback(() => {
     setContactId(MR_JALIL_CONTACT_ID);
@@ -314,7 +440,11 @@ export const EffectivePartyLedgerPage: React.FC<EffectivePartyLedgerPageProps> =
   const summary = result?.summary;
 
   return (
-    <div className="h-full flex flex-col bg-[#0f1729]">
+    <div
+      className="h-full flex flex-col bg-[#0f1729]"
+      data-party-ledger-main-loader={mainLoaderSource}
+      data-party-ledger-preview-compare-source={unifiedPreviewEnabled ? previewCompareSource : undefined}
+    >
       {/* Header */}
       <div className="sticky top-0 z-20 bg-[#111827] border-b border-gray-800">
         <div className="px-6 pt-3">
@@ -364,6 +494,7 @@ export const EffectivePartyLedgerPage: React.FC<EffectivePartyLedgerPageProps> =
             previewBasis={previewBasis}
             onPreviewBasisChange={setPreviewBasis}
             displayFiltersActive={displayFiltersActive}
+            previewCompareSource={previewCompareSource}
           />
         ) : null}
 

@@ -3854,8 +3854,10 @@ export const accountingService = {
           running_balance: Number(r.running_balance ?? 0),
           source_module: glStatementSourceModuleFromReferenceType(refType),
           journal_entry_id: String(r.journal_entry_id ?? ''),
-          payment_id: r.payment_id != null ? String(r.payment_id) : undefined,
+          journal_line_id:
+            r.journal_entry_line_id != null ? String(r.journal_entry_line_id) : undefined,
           je_reference_type: refType || undefined,
+          payment_id: r.payment_id != null ? String(r.payment_id) : undefined,
           branch_id: r.branch_id != null ? String(r.branch_id) : undefined,
           branch_name: r.branch_name != null ? String(r.branch_name) : undefined,
           account_name: String(r.account_name ?? ''),
@@ -4407,8 +4409,8 @@ export const accountingService = {
     if (!row) return { ok: false, error: 'Journal not found' };
     if ((row as { is_void?: boolean }).is_void) return { ok: false, error: 'Void journal cannot be edited' };
     const rt = String((row as { reference_type?: string }).reference_type || '').toLowerCase();
-    if (rt !== 'journal' && rt !== 'manual') {
-      return { ok: false, error: 'Only manual (journal) entries can be edited here; use Edit source for posted documents.' };
+    if (rt !== 'journal' && rt !== 'manual' && rt !== 'transfer') {
+      return { ok: false, error: 'Only manual (journal/transfer) entries can be edited here; use Edit source for posted documents.' };
     }
 
     if (patch.entry_date !== undefined || patch.description !== undefined || patch.created_at !== undefined) {

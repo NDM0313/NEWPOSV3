@@ -1,8 +1,8 @@
 # Single Core Ledger Phase 2.9 — DIN CHINA Single-Screen Pilot Flag Enablement Plan
 
-**Status:** `PHASE 2.9A LIVE WAIVER CHECKS PASS WITH LIMITED WAIVERS — review before Stage 1`  
+**Status:** `PHASE 2.9A STILL BLOCKED — Party/Pilot/Ledger V2 gate not passed (Cash/Bank waived)`  
 **Mode:** PLAN + OPS CHECK — no `feature_flags` writes, no deploy, no merge  
-**Branch:** `feature/single-core-ledger-phase-2-9-pilot-enablement-plan` @ `fe1b9c15`  
+**Branch:** `feature/single-core-ledger-phase-2-9a3-preview-deploy-plan` @ `cb4957c7`  
 **Base:** `feature/single-core-ledger-phase-2-8-preview-qa-signoff` @ `807fdbcd`  
 **Last updated:** 2026-06-25  
 
@@ -421,26 +421,98 @@ Even after successful pilot flags:
 
 ## 17. Final status
 
-**`PHASE 2.9A LIVE WAIVER CHECKS PASS WITH LIMITED WAIVERS — review before Stage 1`**
+**`PHASE 2.9A STILL BLOCKED — Party/Pilot/Ledger V2 gate not passed (Cash/Bank waived)`**
+
+### Stage 1 may proceed only if (Cash/Bank **not** included)
+
+| Gate | Required for Stage 1 | Status |
+|------|----------------------|--------|
+| Party / MR JALIL Admin Compare PASS | **Yes** | Operator sign-off pending on fixed preview |
+| Pilot Batch 9/9 PASS | **Yes** | Operator sign-off pending on fixed preview |
+| Ledger V2 browser QA PASS | **Yes** | Interactive checklist OPEN — see `browser-qa-notes.md` |
+| DIN CHINA `unified_ledger%` flags OFF | **Yes** | **PASS** (0 rows / OFF) |
+| Trial Balance compare | Use **`official_gl`** | Operator guidance — not a Stage 1 flag step |
+| **Cash/Bank Admin Compare** | **No — documented waiver** | Fails on closing scope; row parity on fixed bundle; see §17.1 |
+| Stage 1 SQL | After gates above | **NOT RUN** — enables **`unified_ledger_pilot` only** (§7) |
+| Stage 2 SQL | After Stage 1 soak | **NOT RUN** — enables `unified_ledger_engine` + `unified_ledger_screen_ledger_v2` |
+
+**Do not enable** Cash/Bank or Roznamcha pilot flags in Stage 1. **Stage 1 enables `unified_ledger_pilot` only** per §7 (preview badge validation — not engine or screen flags).
+
+### 17.2 Phase 2.9A-6 / 2.9A-7 gate confirmation (2026-06-25)
+
+**Latest evidence:** [`phase-2.9a-7-gate-signoff.json`](../reports/single-core-ledger/phase-2-9-pilot-enablement/post-deploy-browser-qa/phase-2.9a-7-gate-signoff.json)
+
+| Gate | Required | Result (2.9A-7) |
+|------|----------|-----------------|
+| Party / MR JALIL PASS | Yes | **SKIP** — operator browser |
+| Pilot Batch 9/9 PASS | Yes | **SKIP** — operator browser |
+| Ledger V2 browser QA | Yes | **SKIP** — operator browser |
+| Flags OFF | Yes | **PASS** (read-only SQL) |
+| Cash/Bank compare | No | **WAIVED** |
+
+**Operator script:** `node scripts/single-core-ledger/run-phase-29a7-operator-gate-signoff.mjs` (requires `QA_BROWSER_PASSWORD`)
+
+**Sign-off:** `PHASE 2.9A STILL BLOCKED — Party/Pilot/Ledger V2 gate not passed`
+
+When browser gates PASS → **`PHASE 2.9A LEDGER V2 GATE PASS WITH CASH/BANK WAIVER — ready for Stage 1 ops approval ticket`** → execute §7 Stage 1 SQL (`unified_ledger_pilot` only).
+
+### 17.1 Cash/Bank waiver (not Stage 1 blocker)
+
+- Admin Compare Cash/Bank tab is **not** the Stage 1 pilot screen.
+- Production Cash/Bank and Roznamcha screens remain **legacy roznamcha** loaders.
+- Observed old/new balance and row-count deltas reflect **roznamcha cashbook vs unified GL** semantics, not Ledger V2 loader parity.
+- Remediation tracked separately: [`SINGLE_CORE_LEDGER_PHASE_2_9A_CB_CASH_BANK_PARITY_PLAN.md`](SINGLE_CORE_LEDGER_PHASE_2_9A_CB_CASH_BANK_PARITY_PLAN.md)
+- Evidence: [`admin-compare-delta-investigation.md`](../reports/single-core-ledger/phase-2-9-pilot-enablement/post-deploy-browser-qa/admin-compare-delta-investigation.md) § Cash/Bank waiver
+
+### Prior final status (2026-06-25 early)
+
+**`PHASE 2.9A BROWSER WAIVERS PASS WITH LIMITED WAIVERS — review before Stage 1`**
 
 | Gate | Result |
 |------|--------|
-| Production flags OFF (DIN CHINA) | **PASS** |
+| Production flags OFF (DIN CHINA) | **PASS** (post-QA read-only) |
 | MR JALIL 216,300 (read-only RPC) | **PASS** |
-| Preview UI on `erp.dincouture.pk` | **NOT DEPLOYED** |
-| Live browser waiver clearance | **OPEN** — deploy preview build + ops session |
+| Preview container + bundle | **PASS** (`20f72a90`, all four strings) |
+| Preview login page (tunnel) | **PASS** |
+| Live admin browser checklist | **OPEN** — operator session + password |
+| Staff visibility live | **WAIVED** — no DIN CHINA staff user; unit tests PASS |
 | Stage 1 SQL | **NOT RUN** |
 | Stage 2 SQL | **NOT RUN** |
 
-**Recommendation:** Deploy preview stack (no flags required for UI test) → ops browser session → re-sign **PASS** → Stage 1 ticket.
+**Recommendation:** Operator completes interactive checklist on http://localhost:3002 → re-sign full **PASS** → Stage 1 ticket (Cash/Bank excluded per §17.1).
+
+### Phase 2.9A-3 preview deploy (executed 2026-06-25, redeployed compare fix)
+
+**Status:** `PHASE 2.9A-3 PREVIEW REDEPLOYED @ 5b520cef`  
+**Container:** `erp-frontend-preview` on VPS **:3003** (tunnel local :3002)  
+**Evidence:** [`post-deploy-browser-qa/bundle-verify.txt`](../../reports/single-core-ledger/phase-2-9-pilot-enablement/post-deploy-browser-qa/bundle-verify.txt), [`compare-fix-redeploy-notes.md`](../../reports/single-core-ledger/phase-2-9-pilot-enablement/post-deploy-browser-qa/compare-fix-redeploy-notes.md)
+
+### Phase 2.9A-4 browser waiver QA (2026-06-25)
+
+**Evidence:** [`post-deploy-browser-qa/browser-waiver-closure.md`](../../reports/single-core-ledger/phase-2-9-pilot-enablement/post-deploy-browser-qa/browser-waiver-closure.md)  
+**Automation:** [`run-phase-29a4-browser-qa.mjs`](../../scripts/single-core-ledger/run-phase-29a4-browser-qa.mjs) (requires `QA_BROWSER_PASSWORD`)
+
+### Phase 2.9A-3 preview deploy plan (reference)
+
+**Doc:** [`SINGLE_CORE_LEDGER_PHASE_2_9A3_PREVIEW_DEPLOY_PLAN.md`](SINGLE_CORE_LEDGER_PHASE_2_9A3_PREVIEW_DEPLOY_PLAN.md)  
+
+| Item | Value |
+|------|-------|
+| Target | `erp-frontend-preview` port **3003** on VPS (tunnel local **3002**) |
+| Production ERP | **Unchanged** |
+| Flags | **OFF** — no DB writes in deploy |
+| Script | [`deploy-phase-29a3-preview-frontend-vps.sh`](../../scripts/single-core-ledger/deploy-phase-29a3-preview-frontend-vps.sh) |
 
 ---
 
 ## Execution sequence (after plan approval)
 
-1. Merge plan PR from `feature/single-core-ledger-phase-2-9-pilot-enablement-plan`
-2. Ops clears 2.8 waivers via §9 live QA on DIN CHINA
-3. Ops approves Stage 1 SQL → execute → §10 soak
-4. Ops approves Stage 2 SQL → execute → §10 soak
-5. Fill this doc with execution results; update [`SINGLE_CORE_LEDGER_PRODUCTION_READY.md`](SINGLE_CORE_LEDGER_PRODUCTION_READY.md)
-6. **Stop before Stage 1 SQL without explicit ops ticket**
+1. ~~Preview deploy + bundle verify~~ **Done**
+2. ~~2.9A-4 browser QA (automated smoke + DB)~~ **Done (limited waivers)**
+3. Operator: full interactive admin + staff session → **2.9A PASS**
+4. **Admin Compare delta fix (2026-06-25):** commits `4880a966` + `5b520cef` — see [`admin-compare-delta-investigation.md`](../../reports/single-core-ledger/phase-2-9-pilot-enablement/post-deploy-browser-qa/admin-compare-delta-investigation.md). **126/126** tests PASS. Preview **redeployed** @ `5b520cef` on :3003.
+5. Operator: Party + Pilot Batch + Ledger V2 on fixed preview → **2.9A PASS** (Cash/Bank waived) → Stage 1 ticket
+6. Ops approves Stage 1 SQL → execute → §10 soak
+7. Ops approves Stage 2 SQL → execute → §10 soak
+8. **Stop before Stage 1 SQL without explicit ops ticket**
+9. Cash/Bank parity → **Phase 2.9A-CB** (future, post–Stage 1) — [`SINGLE_CORE_LEDGER_PHASE_2_9A_CB_CASH_BANK_PARITY_PLAN.md`](SINGLE_CORE_LEDGER_PHASE_2_9A_CB_CASH_BANK_PARITY_PLAN.md)

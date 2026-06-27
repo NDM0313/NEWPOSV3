@@ -61,6 +61,13 @@ import {
   MR_JALIL_CONTACT_NAME,
 } from '@/app/lib/unifiedLedgerGoldenFixtures';
 import { AccountStatementUnifiedPreviewPanel } from '@/app/components/reports/AccountStatementUnifiedPreviewPanel';
+import {
+  resolveAccountStatementPreviewCompareSource,
+  buildAccountStatementPreviewCompareRows,
+} from '@/app/lib/resolveAccountStatementPreviewCompareSource';
+import { loadAccountStatementLegacyShadowPreview } from '@/app/services/accountStatementLegacyShadowPreviewService';
+import { loadAccountStatementUnifiedMain } from '@/app/services/accountStatementUnifiedMainService';
+import { loadAccountStatementLegacyMain } from '@/app/services/accountStatementLegacyMainService';
 
 /** AR / AP running balance sign: highlight “inverted” party positions so refunds / prepaids are obvious. */
 const PARTY_BAL_EPS = 0.005;
@@ -466,6 +473,12 @@ export const AccountLedgerReportPage: React.FC<{
   const [previewDiff, setPreviewDiff] = useState<AccountStatementUnifiedPreviewDiff | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [mainLoaderSource, setMainLoaderSource] = useState<'legacy' | 'unified'>('legacy');
+
+  const previewCompareSource = useMemo(
+    () => resolveAccountStatementPreviewCompareSource(mainLoaderSource),
+    [mainLoaderSource],
+  );
 
   const { state: engineState } = useUnifiedLedgerEngineState(companyId, {
     screenId: UNIFIED_LEDGER_SCREEN_IDS.ACCOUNT_STATEMENT,
@@ -623,112 +636,53 @@ export const AccountLedgerReportPage: React.FC<{
     setLoading(true);
     (async () => {
       try {
+        const legacyParams = {
+          companyId,
+          statementType: applied.statementType,
+          selectedContactId: applied.selectedContactId,
+          selectedWorkerId: applied.selectedWorkerId,
+          selectedAccountId: applied.selectedAccountId,
+          accounts,
+          startDate,
+          endDate,
+        };
+
+        const { resolveAccountStatementMainLoaderSource, effectiveAccountStatementMainLoaderSource } =
+          await import('@/app/lib/resolveAccountStatementMainLoaderSource');
+        const resolved = await resolveAccountStatementMainLoaderSource(companyId);
+        const mainSource = effectiveAccountStatementMainLoaderSource(resolved);
+        setMainLoaderSource(mainSource);
+
         let loaded: AccountLedgerEntry[] = [];
-        if (applied.statementType === 'customer') {
-          if (!applied.selectedContactId) {
+        if (mainSource === 'unified') {
+          const target = resolveAccountStatementPreviewTarget({
+            statementType: applied.statementType,
+            selectedContactId: applied.selectedContactId,
+            selectedWorkerId: applied.selectedWorkerId,
+            selectedAccountId: applied.selectedAccountId,
+            accounts,
+          });
+          if (target.kind === 'none') {
             setEntries([]);
             return;
           }
-          loaded = await accountingService.getCustomerLedger(
-            applied.selectedContactId,
+          const basis = defaultUnifiedBasisForAccountStatement(target, viewMode);
+          const unified = await loadAccountStatementUnifiedMain({
             companyId,
-            STATEMENT_ALL_BRANCHES_SCOPE,
+            target,
             startDate,
-            endDate
-          );
-        } else if (applied.statementType === 'supplier') {
-          if (!applied.selectedContactId) {
-            setEntries([]);
-            return;
-          }
-          loaded = await accountingService.getSupplierApGlJournalLedger(
-            applied.selectedContactId,
-            companyId,
-            STATEMENT_ALL_BRANCHES_SCOPE,
-            startDate,
-            endDate
-          );
-        } else if (applied.statementType === 'worker') {
-          if (!applied.selectedWorkerId) {
-            setEntries([]);
-            return;
-          }
-          loaded = await accountingService.getWorkerPartyGlJournalLedger(
-            applied.selectedWorkerId,
-            companyId,
-            STATEMENT_ALL_BRANCHES_SCOPE,
-            startDate,
-            endDate
-          );
+            endDate,
+            basis,
+          });
+          loaded = unified.rows;
         } else {
-          if (!applied.selectedAccountId) {
-            setEntries([]);
-            return;
-          }
-          const accRow = accounts.find((x) => x.id === applied.selectedAccountId);
-          let lc = accRow?.linked_contact_id ? String(accRow.linked_contact_id).trim() : '';
-          const accountsByIdMap = new Map(accounts.map((a) => [a.id, a]));
-          const ancestorId = accRow ? nearestPartyControlAncestorId(accRow, accountsByIdMap as any) : null;
-          const ctrl = ancestorId ? accountsByIdMap.get(ancestorId) : undefined;
-          const ctrlCode = String(ctrl?.code || '').trim();
-
-          if (!lc && accRow?.name && companyId) {
-            if (ctrlCode === '2000') {
-              const resolved = await contactService.resolveSupplierContactIdFromSubledgerAccountName(
-                companyId,
-                accRow.name
-              );
-              if (resolved) lc = resolved;
-            } else if (ctrlCode === '1100') {
-              const resolved = await contactService.resolveCustomerContactIdFromSubledgerAccountName(
-                companyId,
-                accRow.name
-              );
-              if (resolved) lc = resolved;
-            }
-          }
-
-          if (lc && ctrl && (ctrlCode === '1100' || ctrlCode === '2000' || ctrlCode === '2010' || ctrlCode === '1180')) {
-            if (ctrlCode === '2000') {
-              loaded = await accountingService.getSupplierApGlJournalLedger(
-                lc,
-                companyId,
-                STATEMENT_ALL_BRANCHES_SCOPE,
-                startDate,
-                endDate
-              );
-            } else if (ctrlCode === '1100') {
-              loaded = await accountingService.getCustomerLedger(
-                lc,
-                companyId,
-                STATEMENT_ALL_BRANCHES_SCOPE,
-                startDate,
-                endDate,
-                undefined,
-                'default'
-              );
-            } else {
-              loaded = await accountingService.getWorkerPartyGlJournalLedger(
-                lc,
-                companyId,
-                STATEMENT_ALL_BRANCHES_SCOPE,
-                startDate,
-                endDate
-              );
-            }
-          } else {
-            loaded = await accountingService.getAccountLedger(
-              applied.selectedAccountId,
-              companyId,
-              startDate,
-              endDate,
-              STATEMENT_ALL_BRANCHES_SCOPE
-            );
-          }
+          loaded = await loadAccountStatementLegacyMain(legacyParams);
         }
+
         setEntries(loaded || []);
         if (isDebugErpEnabled()) {
           console.log('[STATEMENT_FILTER_TRACE] fetch', {
+            mainLoaderSource: mainSource,
             statementType: applied.statementType,
             contactType: applied.selectedContactType,
             selectedContactId: applied.selectedContactId,
@@ -748,7 +702,7 @@ export const AccountLedgerReportPage: React.FC<{
         setLoading(false);
       }
     })();
-  }, [companyId, applied, startDate, endDate, accounts, journalRefreshTick]);
+  }, [companyId, applied, startDate, endDate, accounts, journalRefreshTick, viewMode]);
 
   useEffect(() => {
     const paymentIds = [...new Set(entries.map((e) => e.payment_id).filter(Boolean))] as string[];
@@ -1002,34 +956,93 @@ export const AccountLedgerReportPage: React.FC<{
     setPreviewLoading(true);
     setPreviewError(null);
     try {
-      const preview = await loadAccountStatementUnifiedPreview({
-        companyId,
-        target: previewTarget,
-        startDate,
-        endDate,
-        basis: previewBasis,
-      });
-      setPreviewResult(preview);
-      const partyId =
-        previewTarget.kind === 'party'
-          ? previewTarget.partyId
-          : applied.statementType === 'customer'
-            ? applied.selectedContactId
-            : undefined;
-      setPreviewDiff(
-        compareAccountStatementUnifiedPreview({
-          legacyEntries: entries,
-          previewEntries: preview.rows,
-          previewUnifiedRows: preview.unifiedRows,
+      const compareSource = resolveAccountStatementPreviewCompareSource(mainLoaderSource);
+
+      if (compareSource === 'legacy_shadow') {
+        const shadow = await loadAccountStatementLegacyShadowPreview({
+          companyId,
           statementType: applied.statementType,
-          partyId,
-        })
-      );
+          selectedContactId: applied.selectedContactId,
+          selectedWorkerId: applied.selectedWorkerId,
+          selectedAccountId: applied.selectedAccountId,
+          accounts,
+          startDate,
+          endDate,
+        });
+        setPreviewResult({
+          rows: shadow.rows,
+          unifiedRows: [],
+          closingBalance: shadow.closingBalance,
+          meta: {
+            engine: 'legacy_gl',
+            basis: previewBasis,
+            featureFlagEnabled: true,
+            shadowForce: true,
+            queryDurationMs: 0,
+            rowCount: shadow.rows.length,
+            periodOpeningBalance: 0,
+            message: 'Legacy shadow compare — main table uses unified loader.',
+          },
+          basis: previewBasis,
+        });
+        const { legacyEntries, previewEntries } = buildAccountStatementPreviewCompareRows({
+          compareSource,
+          mainEntries: entries,
+          shadowEntries: shadow.rows,
+        });
+        const partyId =
+          previewTarget.kind === 'party'
+            ? previewTarget.partyId
+            : applied.statementType === 'customer'
+              ? applied.selectedContactId
+              : undefined;
+        setPreviewDiff(
+          compareAccountStatementUnifiedPreview({
+            legacyEntries,
+            previewEntries,
+            statementType: applied.statementType,
+            partyId,
+          }),
+        );
+      } else {
+        const preview = await loadAccountStatementUnifiedPreview({
+          companyId,
+          target: previewTarget,
+          startDate,
+          endDate,
+          basis: previewBasis,
+        });
+        setPreviewResult(preview);
+        const { legacyEntries, previewEntries } = buildAccountStatementPreviewCompareRows({
+          compareSource,
+          mainEntries: entries,
+          shadowEntries: preview.rows,
+        });
+        const partyId =
+          previewTarget.kind === 'party'
+            ? previewTarget.partyId
+            : applied.statementType === 'customer'
+              ? applied.selectedContactId
+              : undefined;
+        setPreviewDiff(
+          compareAccountStatementUnifiedPreview({
+            legacyEntries,
+            previewEntries,
+            previewUnifiedRows: preview.unifiedRows,
+            statementType: applied.statementType,
+            partyId,
+          }),
+        );
+      }
     } catch (err) {
       console.error(err);
       setPreviewResult(null);
       setPreviewDiff(null);
-      setPreviewError('Unified preview failed to load');
+      setPreviewError(
+        previewCompareSource === 'legacy_shadow'
+          ? 'Legacy shadow compare failed to load'
+          : 'Unified preview failed to load',
+      );
     } finally {
       setPreviewLoading(false);
     }
@@ -1044,6 +1057,11 @@ export const AccountLedgerReportPage: React.FC<{
     previewBasis,
     applied.statementType,
     applied.selectedContactId,
+    applied.selectedWorkerId,
+    applied.selectedAccountId,
+    accounts,
+    mainLoaderSource,
+    previewCompareSource,
   ]);
 
   useEffect(() => {
@@ -1054,7 +1072,7 @@ export const AccountLedgerReportPage: React.FC<{
       return;
     }
     void loadUnifiedPreview();
-  }, [unifiedPreviewEnabled, loadUnifiedPreview]);
+  }, [unifiedPreviewEnabled, loadUnifiedPreview, mainLoaderSource]);
 
   const handleLoadMrJalilGolden = useCallback(() => {
     setStatementType('customer');
@@ -1753,7 +1771,7 @@ export const AccountLedgerReportPage: React.FC<{
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-account-statement-main-loader={mainLoaderSource}>
       <div className="rounded-xl border border-gray-800 bg-gray-900/60 p-4 space-y-3">
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
           <div>
@@ -1986,6 +2004,7 @@ export const AccountLedgerReportPage: React.FC<{
           displayFiltersActive={displayFiltersActive}
           legacyEngineLabel={previewLegacyLabel}
           viewMode={viewMode}
+          previewCompareSource={previewCompareSource}
         />
       ) : null}
 

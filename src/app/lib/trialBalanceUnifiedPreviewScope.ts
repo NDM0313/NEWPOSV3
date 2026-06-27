@@ -12,6 +12,13 @@ export function trialBalancePreviewAsOfDate(endDate: string): string {
   return endDate;
 }
 
+/** Legacy TB for unified as-of compare must be cumulative through as-of, not period-sliced. */
+export const LEGACY_TRIAL_BALANCE_COMPARE_FROM = '1900-01-01';
+
+export function legacyTrialBalanceCompareDateFrom(_periodFrom?: string | null): string {
+  return LEGACY_TRIAL_BALANCE_COMPARE_FROM;
+}
+
 export function buildTrialBalancePreviewRpcScope(params: {
   startDate: string;
   endDate: string;
