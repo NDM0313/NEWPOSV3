@@ -1,0 +1,18 @@
+{
+  "status": "R5_SOAK_IN_PROGRESS",
+  "updated_at": "2026-06-27T11:43:30Z",
+  "main_commit": "aeb4058b",
+  "loaders_live_since": "2026-06-27T11:17:14Z",
+  "soak_required_hours": 72,
+  "checkpoint_at": "2026-06-27T11:43:30Z",
+  "elapsed_hours": 0.44,
+  "remaining_hours": 71.56,
+  "earliest_completion_at": "2026-06-30T11:17:14Z",
+  "accelerated_waiver": false,
+  "flag_audit_pass": true,
+  "monitoring_day2_pass": true,
+  "din_bridal_flags_on": 12,
+  "din_china_regression_pass": true,
+  "other_company_loaders_on": 0,
+  "next_monitoring_recommended": "2026-06-28T11:00:00Z"
+}
