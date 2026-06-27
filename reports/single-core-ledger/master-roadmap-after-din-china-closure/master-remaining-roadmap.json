@@ -1,8 +1,8 @@
 {
   "generated_at": "2026-06-27T12:00:00Z",
-  "current_main_commit": "56481d17",
+  "current_main_commit": "11878c66",
   "din_china_status": "CLOSED_ON_MAIN",
-  "program_status": "DIN_CHINA_COMPLETE_R3_AUDIT_COMPLETE_R5_BLOCKED",
+  "program_status": "DIN_CHINA_COMPLETE_R5A_PREP_COMPLETE_R5_BLOCKED",
   "production_url": "https://erp.dincouture.pk",
   "company": "DIN CHINA",
   "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
@@ -69,6 +69,12 @@
       "name": "Other-company pre-expansion read-only audit + candidate golden baselines",
       "status": "AUDIT_COMPLETE",
       "evidence": "reports/single-core-ledger/r3-pre-expansion-audit/r3-audit-complete-report.md"
+    },
+    {
+      "id": "R5a",
+      "name": "DIN BRIDAL autonomous rollout prep (SQL toolkit, golden capture script, playbook)",
+      "status": "COMPLETE",
+      "evidence": "reports/single-core-ledger/r5-pilot-preflight/r5a-completion-report.md"
     }
   ],
   "expansion_candidates": [
@@ -76,7 +82,7 @@
       "slug": "din-bridal",
       "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
       "golden_fixture_path": "reports/single-core-ledger/din-bridal/golden-fixtures.json",
-      "status": "CANDIDATE_BASELINE_UNVALIDATED"
+      "status": "R5A_PREP_COMPLETE_UNVALIDATED_BROWSER"
     },
     {
       "slug": "din-couture",
@@ -89,7 +95,7 @@
     {
       "id": "R5",
       "name": "First non-DIN company pilot rollout",
-      "blocker": "Finance sign-off + target company selection + legacy browser roznamcha capture"
+      "blocker": "Finance sign-off + legacy browser golden capture for DIN BRIDAL"
     },
     {
       "id": "R8",
@@ -112,7 +118,7 @@
   "recommended_next_phase": {
     "id": "R5",
     "name": "First non-DIN company pilot rollout",
-    "note": "BLOCKED until finance sign-off and operator selects DIN BRIDAL or DIN COUTURE"
+    "note": "BLOCKED until finance sign-off — DIN BRIDAL target selected; R5a prep complete"
   },
   "approvals_required": {
     "other_company_expansion": "finance_sign_off_per_company",

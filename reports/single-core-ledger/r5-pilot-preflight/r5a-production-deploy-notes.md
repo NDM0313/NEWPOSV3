@@ -11,22 +11,33 @@
 | Field | Value |
 |-------|-------|
 | BUILD_LABEL | `phase-r5a-prod` |
-| git HEAD (post-pull) | _filled after deploy_ |
-| DIN CHINA unified flags ON | Must be **12** |
-| DIN BRIDAL unified flags ON | Must be **0** |
-| Other-company loaders | Must be **0** |
+| git HEAD (post-pull) | `11878c66` |
+| Rollback tag | `erp-frontend:rollback-before-r5a-20260627101510` |
+| DIN CHINA unified flags ON | **12** (PASS) |
+| DIN BRIDAL unified flags ON | **0** (PASS) |
+| Other-company loaders | **0** (PASS) |
+| ERP URL | https://erp.dincouture.pk |
 
 ---
 
 ## Post-deploy verification
 
-- [ ] `r5-company-config.json` on VPS
-- [ ] `din-bridal/r5-preflight-flags.sql` on VPS
-- [ ] Flag audit PASS
-- [ ] ERP @ https://erp.dincouture.pk healthy
+- [x] `r5-company-config.json` on VPS
+- [x] `din-bridal/r5-preflight-flags.sql` on VPS
+- [x] Flag audit PASS
+- [x] `erp-frontend` container recreated and started
 
 ---
 
 ## Rollback
 
-Docker tag `erp-frontend:rollback-before-r5a-*` created at deploy start.
+```bash
+docker tag erp-frontend:rollback-before-r5a-20260627101510 erp-frontend:latest
+docker compose -f deploy/docker-compose.prod.yml --env-file .env.production up -d --force-recreate erp
+```
+
+---
+
+## Notes
+
+R5 flag enablement **not executed**. Finance sign-off still required before `din-bridal/r5-enable-*.sql`.
