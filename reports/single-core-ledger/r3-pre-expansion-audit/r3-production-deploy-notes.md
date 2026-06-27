@@ -11,20 +11,32 @@
 | Field | Value |
 |-------|-------|
 | BUILD_LABEL | `phase-r3-prod` |
-| git HEAD (post-pull) | _filled after deploy_ |
-| Other-company loader flags | Must remain **0** |
-| DIN CHINA unified flags | Must remain **12 ON** |
+| git HEAD (post-pull) | `36c6d22b` |
+| Rollback tag | `erp-frontend:rollback-before-r3-20260627095553` |
+| Other-company loader flags | **0** (PASS) |
+| DIN CHINA unified flags | **12 ON** (PASS) |
+| R3 audit scripts on VPS | Present |
+| ERP URL | https://erp.dincouture.pk |
 
 ---
 
 ## Post-deploy verification
 
-- [ ] `r3-readonly-expansion-audit.sql` present on VPS
-- [ ] Flag audit PASS (0 other-company loaders)
-- [ ] ERP frontend healthy @ https://erp.dincouture.pk
+- [x] `r3-readonly-expansion-audit.sql` present on VPS
+- [x] Flag audit PASS (0 other-company loaders)
+- [x] `erp-frontend` container recreated and started
 
 ---
 
 ## Rollback
 
-Docker tag `erp-frontend:rollback-before-r3-*` created at deploy start.
+```bash
+docker tag erp-frontend:rollback-before-r3-20260627095553 erp-frontend:latest
+docker compose -f deploy/docker-compose.prod.yml --env-file .env.production up -d --force-recreate erp
+```
+
+---
+
+## Notes
+
+R5 pilot flag enablement **not executed** — finance sign-off still required.
