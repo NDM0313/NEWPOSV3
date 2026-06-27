@@ -4,6 +4,7 @@
 **Branch:** `main` (merged from `feature/single-core-ledger-phase-2-9a3-preview-deploy-plan` @ `b92e6955`)  
 **PR:** https://github.com/NDM0313/NEWPOSV3/pull/21  
 **Last updated:** 2026-06-27  
+**Archive:** Final archive/monitoring hygiene complete; future work requires separate approval — [`final-archive-and-monitoring-report.md`](../reports/single-core-ledger/phase-2-18-main-merge-closure/final-archive-and-monitoring-report.md)  
 **Master checklist:** use this file as the single entry point for post-apply status.
 
 ---
@@ -29,6 +30,7 @@
 | Phase 2.17X PR/main merge preflight | **COMPLETE** — [`pr-main-merge-preflight.md`](../reports/single-core-ledger/phase-2-17-release-governance/pr-main-merge-preflight.md) |
 | Phase 2.17Y PR governance | **COMPLETE** — [`pr-governance-final.md`](../reports/single-core-ledger/phase-2-17-release-governance/pr-governance-final.md) |
 | Phase 2.18 main merge closure | **COMPLETE** — [`main-merge-complete-report.md`](../reports/single-core-ledger/phase-2-18-main-merge-closure/main-merge-complete-report.md) |
+| Phase 2.18 final archive | **COMPLETE** — [`final-archive-and-monitoring-report.md`](../reports/single-core-ledger/phase-2-18-main-merge-closure/final-archive-and-monitoring-report.md) |
 | Post-PR final closure | **COMPLETE** — [`final-post-pr-closure-report.md`](../reports/single-core-ledger/phase-2-18-main-merge-closure/final-post-pr-closure-report.md) |
 | Future company expansion | **Requires separate finance sign-off** — [`SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md`](SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md) |
 
