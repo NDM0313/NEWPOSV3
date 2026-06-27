@@ -3,7 +3,20 @@
 **Program:** OLD ERP Single Core Ledger  
 **Production:** https://erp.dincouture.pk  
 **Last updated:** 2026-06-14  
-**Commit reconciliation:** `0a818da2` = three-company baseline archive · `50547061` = post-baseline monitoring automation + successful rerun evidence · credential hardening = this run
+**Commit reconciliation:** `0a818da2` baseline · `50547061` monitoring automation · `9586e611` credential hardening
+
+---
+
+## Ops schedule pack (closure)
+
+| Doc | Purpose |
+|-----|---------|
+| [`scheduled-monitoring-ops-pack.md`](scheduled-monitoring-ops-pack.md) | Daily/weekly frequency, PASS criteria, escalation |
+| [`windows-task-scheduler-guide.md`](windows-task-scheduler-guide.md) | Local Windows scheduling |
+| [`vps-cron-monitoring-guide.md`](vps-cron-monitoring-guide.md) | Future VPS cron (docs only) |
+| [`monitoring-incident-response-runbook.md`](monitoring-incident-response-runbook.md) | Incident decision tree |
+| [`password-rotation-closure.md`](password-rotation-closure.md) | **PASSWORD_ROTATION_REQUIRED** |
+| [`ops-schedule-closure-report.md`](ops-schedule-closure-report.md) | Closure manifest |
 
 ---
 

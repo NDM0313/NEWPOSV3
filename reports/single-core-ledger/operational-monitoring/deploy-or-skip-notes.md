@@ -2,6 +2,8 @@
 
 **Decision:** **SKIP DEPLOY**
 
-Monitoring credential hardening changes only `scripts/single-core-ledger/*` and docs/reports. No `src/` ERP runtime bundle changes. No VPS frontend deploy required.
+Ops schedule closure, incident runbooks, and scheduling guides are **docs/reports only**. No `src/` ERP runtime changes. No VPS cron changes. No frontend deploy.
 
-If future runs change `src/` accounting UI, deploy only after explicit approval and `npm run build` PASS.
+Credential hardening scripts (`monitoringCredentials.mjs`) do not require production bundle deploy.
+
+**Reason:** No ERP runtime bundle change.

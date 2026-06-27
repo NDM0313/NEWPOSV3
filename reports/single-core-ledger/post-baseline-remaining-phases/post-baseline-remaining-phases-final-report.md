@@ -88,6 +88,14 @@ No migrations · no R7 · no R8 · no new company · read-only flags · no GL mu
 
 ---
 
+## Monitoring automation
+
+Three-company wrapper with credential hardening complete @ `9586e611`. Ops schedule closure complete — **password rotation required** before long-term scheduling.
+
+See [`ops-schedule-closure-report.md`](../operational-monitoring/ops-schedule-closure-report.md).
+
+---
+
 ## Exact next action
 
 1. Schedule `npm run monitor:three-company-unified-ledger` periodically  

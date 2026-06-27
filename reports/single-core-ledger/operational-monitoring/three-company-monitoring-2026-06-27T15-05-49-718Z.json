@@ -1,10 +1,10 @@
 {
   "run": "THREE_COMPANY_OPERATIONAL_MONITORING",
-  "generated_at": "2026-06-27T15:22:00.526Z",
-  "timestamp_slug": "2026-06-27T15-11-22-477Z",
+  "generated_at": "2026-06-27T15:16:10.275Z",
+  "timestamp_slug": "2026-06-27T15-05-49-718Z",
   "overall": "PASS",
   "credential_policy": "per-company-preferred",
-  "generic_fallback_allowed": true,
+  "generic_fallback_allowed": false,
   "flag_guard": {
     "ok": true,
     "rows": [
@@ -28,8 +28,8 @@
     {
       "profileId": "din-china",
       "email": "din@yahoo.com",
-      "emailSource": "profile-default",
-      "passwordSource": "generic-fallback-explicit",
+      "emailSource": "per-company",
+      "passwordSource": "per-company",
       "exitCode": 0,
       "pass": true,
       "checks": [
@@ -134,8 +134,8 @@
     {
       "profileId": "din-bridal",
       "email": "ndm313@yahoo.com",
-      "emailSource": "built-in-default",
-      "passwordSource": "generic-fallback-explicit",
+      "emailSource": "per-company",
+      "passwordSource": "per-company",
       "exitCode": 0,
       "pass": true,
       "checks": [
@@ -240,8 +240,8 @@
     {
       "profileId": "din-couture",
       "email": "zhd@dincouture.pk",
-      "emailSource": "built-in-default",
-      "passwordSource": "generic-fallback-explicit",
+      "emailSource": "per-company",
+      "passwordSource": "per-company",
       "exitCode": 0,
       "pass": true,
       "checks": [

@@ -1,49 +1,34 @@
 {
   "generated_at": "2026-06-14T00:00:00Z",
-  "current_main_commit": "50547061",
-  "commit_reconciliation": {
-    "0a818da2": "three-company baseline archive",
-    "50547061": "monitoring automation + successful rerun evidence"
-  },
-  "program_status": "POST_BASELINE_CREDENTIAL_HARDENING_COMPLETE",
-  "production_url": "https://erp.dincouture.pk",
-  "three_company_baseline": {
-    "status": "THREE_COMPANY_UNIFIED_LEDGER_BASELINE_COMPLETE",
-    "evidence": "reports/single-core-ledger/final-program-archive/final-program-archive-report.md"
-  },
-  "post_baseline_automation": {
+  "current_main_commit": "9586e611",
+  "program_status": "OPERATIONAL_MONITORING_OPS_CLOSURE_PASSWORD_ROTATION_REQUIRED",
+  "three_company_baseline": "COMPLETE",
+  "credential_hardening": "COMPLETE",
+  "ops_schedule_closure": {
     "status": "COMPLETE",
-    "monitor_command": "npm run monitor:three-company-unified-ledger",
-    "runbook": "reports/single-core-ledger/operational-monitoring/monitoring-runbook.md",
-    "credential_hardening": "reports/single-core-ledger/operational-monitoring/credential-hardening-report.md",
-    "latest_monitoring": "reports/single-core-ledger/operational-monitoring/latest-three-company-monitoring.json"
+    "evidence": "reports/single-core-ledger/operational-monitoring/ops-schedule-closure-report.md",
+    "scheduled_pack": "reports/single-core-ledger/operational-monitoring/scheduled-monitoring-ops-pack.json",
+    "incident_runbook": "reports/single-core-ledger/operational-monitoring/monitoring-incident-response-runbook.json"
   },
-  "credential_policy": {
-    "per_company_password_required_or_explicit_generic_fallback": true,
-    "generic_email_blocked_for_three_company_run": true
+  "password_rotation": {
+    "rotation_required": true,
+    "rotation_completed": false,
+    "evidence": "reports/single-core-ledger/operational-monitoring/password-rotation-closure.json"
   },
-  "migration_closure": {
-    "status": "MIGRATION_CLOSURE_COMPLETE_NO_APPROVED_PENDING_MIGRATIONS"
+  "recommended_next_phase": {
+    "command": "npm run monitor:three-company-unified-ledger",
+    "schedule": "daily_business_hours",
+    "guide": "reports/single-core-ledger/operational-monitoring/windows-task-scheduler-guide.md"
   },
-  "din_china_status": "COMPLETE_AND_STABLE",
-  "din_bridal_status": "COMPLETE_AND_STABLE",
-  "din_couture_status": "COMPLETE_AND_STABLE",
   "blocked_phases": [
     { "id": "R7", "status": "DESIGN_ONLY" },
     { "id": "R8", "status": "BLOCKED" },
     { "id": "next-company", "status": "BLOCKED" }
   ],
-  "recommended_next_phase": {
-    "command": "npm run monitor:three-company-unified-ledger",
-    "credential_setup": "QA_BROWSER_PASSWORD_CHINA|BRIDAL|COUTURE per monitoring-runbook.md"
-  },
+  "latest_monitoring": "reports/single-core-ledger/operational-monitoring/latest-three-company-monitoring.json",
   "constraints": {
-    "din_china_flags_on": 12,
-    "din_bridal_flags_on": 12,
-    "din_couture_flags_on": 12,
-    "other_company_loaders_on": 0,
     "migrations_run": false,
     "gl_mutations": false,
-    "no_default_production_flag_action": true
+    "credentials_committed": false
   }
 }

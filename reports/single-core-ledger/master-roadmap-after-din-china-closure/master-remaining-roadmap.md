@@ -1,20 +1,20 @@
 # Single Core Ledger — Master Remaining Roadmap (post–DIN CHINA closure)
 
 **Generated:** 2026-06-14T00:00:00Z  
-**Main commit:** `0a818da2`  
+**Main commit:** `9586e611`  
 **Program scope:** OLD ERP / DIN Collection ERP — **not** the FX / multi-currency app
 
 ---
 
 ## Scope statement
 
-**DIN CHINA complete and stable.** **DIN BRIDAL complete and stable.** **DIN COUTURE complete and stable.** **Migration closure complete.** **Three-company monitoring baseline complete.** **Operational monitoring automation and runbook complete.** **Credential precedence hardened** (per-company env vars; generic fallback opt-in only).
+**Three-company unified ledger baseline complete.** **Monitoring credential hardening complete.** **Ops schedule pack complete.** **Incident response runbook complete.** **Password rotation REQUIRED** (not completed in automation run).
 
-R7 roznamcha_payment RPC remains **design-only and blocked** until separate approval. R8 legacy engine retirement remains **blocked**. **No new company rollout approved.** **No further production flag/migration action by default.**
+R7 **design-only** · R8 **blocked** · next-company **blocked** until finance sign-off.
 
-Recommended ongoing ops: `npm run monitor:three-company-unified-ledger` with `QA_BROWSER_PASSWORD_*` per company (or explicit `ALLOW_GENERIC_MONITORING_CREDENTIAL_FALLBACK=true`).
+**Ongoing ops:** `npm run monitor:three-company-unified-ledger` with per-company `QA_BROWSER_PASSWORD_*` — see [`scheduled-monitoring-ops-pack.md`](../operational-monitoring/scheduled-monitoring-ops-pack.md).
 
-**Commit reconciliation:** `0a818da2` = three-company baseline archive · `50547061` = monitoring automation + successful rerun evidence · latest = credential hardening run.
+**Commit reconciliation:** `0a818da2` baseline · `50547061` monitoring automation · `9586e611` credential hardening · ops schedule closure = this run.
 
 ---
 
@@ -79,7 +79,10 @@ Recommended ongoing ops: `npm run monitor:three-company-unified-ledger` with `QA
 - ~~DIN COUTURE browser credentials~~ — resolved; rollout complete
 
 ### Complete (2026-06-14)
-- **Post-baseline remaining phase audit** — matrix, screen audit, R7/R8 packs — [`post-baseline-remaining-phases-final-report.md`](../post-baseline-remaining-phases/post-baseline-remaining-phases-final-report.md)
+- **Operational monitoring ops schedule closure** — schedule pack, Windows guide, incident runbook — [`ops-schedule-closure-report.md`](../operational-monitoring/ops-schedule-closure-report.md)
+- **Password rotation** — **REQUIRED** — [`password-rotation-closure.md`](../operational-monitoring/password-rotation-closure.md)
+
+### Complete (2026-06-14)
 - **Operational monitoring automation** — `npm run monitor:three-company-unified-ledger` — [`monitoring-runbook.md`](../operational-monitoring/monitoring-runbook.md)
 
 ### Complete (2026-06-14)
