@@ -1,18 +1,10 @@
 {
-  "status": "R5_SOAK_IN_PROGRESS",
-  "updated_at": "2026-06-27T11:43:30Z",
-  "main_commit": "aeb4058b",
+  "status": "R5_COMPLETE_DIN_BRIDAL_UNIFIED_LOADERS_LIVE",
+  "updated_at": "2026-06-27T12:30:00Z",
+  "completion_path": "accelerated_soak_waiver",
+  "accelerated_waiver_path": "reports/single-core-ledger/r5-din-bridal-execution/r5-accelerated-soak-waiver.md",
   "loaders_live_since": "2026-06-27T11:17:14Z",
-  "soak_required_hours": 72,
-  "checkpoint_at": "2026-06-27T11:43:30Z",
-  "elapsed_hours": 0.44,
-  "remaining_hours": 71.56,
-  "earliest_completion_at": "2026-06-30T11:17:14Z",
-  "accelerated_waiver": false,
-  "flag_audit_pass": true,
-  "monitoring_day2_pass": true,
+  "final_monitoring_pass": true,
   "din_bridal_flags_on": 12,
-  "din_china_regression_pass": true,
-  "other_company_loaders_on": 0,
-  "next_monitoring_recommended": "2026-06-28T11:00:00Z"
+  "din_bridal_loaders_on": 5
 }
