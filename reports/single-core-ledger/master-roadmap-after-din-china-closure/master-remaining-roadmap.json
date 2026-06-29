@@ -18,7 +18,7 @@
   "migration_closure": "COMPLETE",
   "pending_approved_migrations": false,
   "phases_classified_not_auto_approved": true,
-  "safe_next_step": "Phase 3D finance golden capture OR Phase 3B Cash Flow preview (operator choice)",
+  "safe_next_step": "Finance reviews Phase 3D candidate goldens OR Phase 3B Cash Flow preview (operator choice)",
   "ops_schedule_closure": {
     "status": "COMPLETE",
     "evidence": "reports/single-core-ledger/operational-monitoring/ops-schedule-closure-report.md"
@@ -48,10 +48,23 @@
     "financeGoldenRequired": true,
     "evidence": "reports/single-core-ledger/phase-3a-bs-pl-preview/"
   },
+  "phase_3d_bs_pl_candidate_golden_capture": {
+    "status": "COMPLETE",
+    "candidateOnly": true,
+    "financeApproved": false,
+    "completedAt": "2026-06-29",
+    "companies": ["DIN CHINA", "DIN BRIDAL", "DIN COUTURE"],
+    "allZeroDiff": true,
+    "loaderSwapApproved": false,
+    "migrationsRun": false,
+    "flagsToggled": false,
+    "glMutations": false,
+    "evidence": "reports/single-core-ledger/phase-3d-bs-pl-golden-capture/"
+  },
   "recommended_next_phase": {
-    "mode": "PHASE_3D_FINANCE_GOLDEN_OR_PHASE_3B",
-    "action": "Finance golden capture for BS/P&L OR Phase 3B Cash Flow preview (operator choice)",
-    "evidence": "reports/single-core-ledger/phase-3a-bs-pl-preview/finance-golden-capture-plan.md",
+    "mode": "PHASE_3D_FINANCE_REVIEW_OR_PHASE_3B",
+    "action": "Finance reviews BS/P&L candidate goldens OR Phase 3B Cash Flow preview (operator choice)",
+    "evidence": "reports/single-core-ledger/phase-3d-bs-pl-golden-capture/finance-review-pack.md",
     "command": "npm run monitor:three-company-unified-ledger",
     "credential_policy": "per-company only"
   },

@@ -1,0 +1,127 @@
+{
+  "phase": "3D",
+  "capturedAt": "2026-06-29T10:50:03.438Z",
+  "approvalStatus": "CANDIDATE_ONLY — NOT FINANCE APPROVED",
+  "companies": {
+    "din-china": {
+      "company": "DIN CHINA",
+      "approvalStatus": "CANDIDATE_ONLY — NOT FINANCE APPROVED",
+      "asOfDate": "2026-06-29",
+      "branchScope": "All branches",
+      "previewBasis": "official_gl",
+      "legacy": {
+        "totalAssets": 89754088.52,
+        "totalLiabilities": 2061978.400000006,
+        "totalEquity": 87692110.12,
+        "liabilitiesAndEquity": 89754088.52000001,
+        "difference": 0
+      },
+      "unifiedPreview": {
+        "totalAssets": 89754088.52,
+        "totalLiabilities": 2061978.4,
+        "totalEquity": 87692110.12,
+        "liabilitiesAndEquity": 89754088.52,
+        "difference": 0
+      },
+      "compareDeltas": {
+        "assetsDelta": 0,
+        "liabilitiesDelta": 0,
+        "equityDelta": 0,
+        "liabilitiesAndEquityDelta": 0,
+        "differenceDelta": 0
+      },
+      "comparePass": true,
+      "zeroDiff": true,
+      "netIncomeInPreview": 8465731.87,
+      "retainedEarningsWarning": false,
+      "needsAccountingRuleConfirmation": true,
+      "accountingRuleNotes": [
+        "PREVIEW_ONLY — not finance-approved golden totals.",
+        "Net income folded into equity per legacy BS-FIX / PF-04 rules.",
+        "NEEDS_ACCOUNTING_RULE_CONFIRMATION — compare with finance before loader swap."
+      ],
+      "screenshot": "screenshots/din-china-balance-sheet-preview.png",
+      "export": "exports/din-china-balance-sheet-preview.json"
+    },
+    "din-bridal": {
+      "company": "DIN BRIDAL",
+      "approvalStatus": "CANDIDATE_ONLY — NOT FINANCE APPROVED",
+      "asOfDate": "2026-06-29",
+      "branchScope": "All branches",
+      "previewBasis": "official_gl",
+      "legacy": {
+        "totalAssets": 13521792,
+        "totalLiabilities": -547191,
+        "totalEquity": 14068983,
+        "liabilitiesAndEquity": 13521792,
+        "difference": 0
+      },
+      "unifiedPreview": {
+        "totalAssets": 13521792,
+        "totalLiabilities": -547191,
+        "totalEquity": 14068983,
+        "liabilitiesAndEquity": 13521792,
+        "difference": 0
+      },
+      "compareDeltas": {
+        "assetsDelta": 0,
+        "liabilitiesDelta": 0,
+        "equityDelta": 0,
+        "liabilitiesAndEquityDelta": 0,
+        "differenceDelta": 0
+      },
+      "comparePass": true,
+      "zeroDiff": true,
+      "netIncomeInPreview": 139992,
+      "retainedEarningsWarning": false,
+      "needsAccountingRuleConfirmation": true,
+      "accountingRuleNotes": [
+        "PREVIEW_ONLY — not finance-approved golden totals.",
+        "Net income folded into equity per legacy BS-FIX / PF-04 rules.",
+        "NEEDS_ACCOUNTING_RULE_CONFIRMATION — compare with finance before loader swap."
+      ],
+      "screenshot": "screenshots/din-bridal-balance-sheet-preview.png",
+      "export": "exports/din-bridal-balance-sheet-preview.json"
+    },
+    "din-couture": {
+      "company": "DIN COUTURE",
+      "approvalStatus": "CANDIDATE_ONLY — NOT FINANCE APPROVED",
+      "asOfDate": "2026-06-29",
+      "branchScope": "All branches",
+      "previewBasis": "official_gl",
+      "legacy": {
+        "totalAssets": 22667273,
+        "totalLiabilities": 26908831,
+        "totalEquity": -4241558,
+        "liabilitiesAndEquity": 22667273,
+        "difference": 0
+      },
+      "unifiedPreview": {
+        "totalAssets": 22667273,
+        "totalLiabilities": 26908831,
+        "totalEquity": -4241558,
+        "liabilitiesAndEquity": 22667273,
+        "difference": 0
+      },
+      "compareDeltas": {
+        "assetsDelta": 0,
+        "liabilitiesDelta": 0,
+        "equityDelta": 0,
+        "liabilitiesAndEquityDelta": 0,
+        "differenceDelta": 0
+      },
+      "comparePass": true,
+      "zeroDiff": true,
+      "netIncomeInPreview": -16750,
+      "retainedEarningsWarning": false,
+      "needsAccountingRuleConfirmation": true,
+      "accountingRuleNotes": [
+        "PREVIEW_ONLY — not finance-approved golden totals.",
+        "Net income folded into equity per legacy BS-FIX / PF-04 rules.",
+        "NEEDS_ACCOUNTING_RULE_CONFIRMATION — compare with finance before loader swap."
+      ],
+      "screenshot": "screenshots/din-couture-balance-sheet-preview.png",
+      "export": "exports/din-couture-balance-sheet-preview.json"
+    }
+  }
+}

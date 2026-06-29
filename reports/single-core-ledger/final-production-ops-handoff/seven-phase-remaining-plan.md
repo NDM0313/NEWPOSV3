@@ -38,8 +38,23 @@
 | **Evidence** | [`phase-3a-bs-pl-preview/`](../phase-3a-bs-pl-preview/) |
 | **Default runtime** | **UNCHANGED** — legacy `getBalanceSheet` / `getProfitLoss` remain main |
 | **Loader swap** | **NOT APPROVED** |
-| **Finance golden** | **NEEDS_GOLDEN_CAPTURE** before adoption |
+| **Finance golden** | Candidate capture complete — finance sign-off pending |
 | **Deploy** | **DONE** @ 2026-06-29 — [`production-deploy-notes.md`](../phase-3a-bs-pl-preview/production-deploy-notes.md) |
+
+---
+
+## Phase 3D — BS / P&L candidate golden capture
+
+| Field | Value |
+|-------|-------|
+| **Status** | `COMPLETE — CANDIDATE_ONLY` |
+| **Action** | Production preview compare evidence for DIN CHINA · DIN BRIDAL · DIN COUTURE |
+| **Evidence** | [`phase-3d-bs-pl-golden-capture/`](../phase-3d-bs-pl-golden-capture/) |
+| **Values** | **CANDIDATE_ONLY — NOT FINANCE APPROVED** |
+| **Loader swap** | **NOT APPROVED** |
+| **Migrations / flags / GL** | **NONE** |
+| **R7 / R8 / next company** | **BLOCKED** |
+| **Next** | Finance reviews [`finance-review-pack.md`](../phase-3d-bs-pl-golden-capture/finance-review-pack.md) |
 
 ---
 

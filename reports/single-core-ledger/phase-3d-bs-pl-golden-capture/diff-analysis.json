@@ -1,0 +1,85 @@
+{
+  "phase": "3D",
+  "capturedAt": "2026-06-29T10:50:03.438Z",
+  "rows": [
+    {
+      "company": "DIN CHINA",
+      "report": "Balance Sheet",
+      "zeroDiff": true,
+      "legacySummary": "Assets 89754088.52; L+E 89754088.52000001",
+      "previewSummary": "Assets 89754088.52; L+E 89754088.52",
+      "maxDelta": 0,
+      "ruleConfirmations": [
+        "NEEDS_ACCOUNTING_RULE_CONFIRMATION — compare with finance before loader swap."
+      ],
+      "financeCanReviewNow": true,
+      "codeChangeNeededBeforeApproval": false
+    },
+    {
+      "company": "DIN CHINA",
+      "report": "Profit & Loss",
+      "zeroDiff": true,
+      "legacySummary": "Revenue 49040015; Net 8465731.869999997",
+      "previewSummary": "Revenue 49040015; Net 8465731.87",
+      "maxDelta": 0,
+      "ruleConfirmations": [
+        "NEEDS_RULE_CONFIRMATION — finance must approve COGS mapping before loader swap."
+      ],
+      "financeCanReviewNow": true,
+      "codeChangeNeededBeforeApproval": false
+    },
+    {
+      "company": "DIN BRIDAL",
+      "report": "Balance Sheet",
+      "zeroDiff": true,
+      "legacySummary": "Assets 13521792; L+E 13521792",
+      "previewSummary": "Assets 13521792; L+E 13521792",
+      "maxDelta": 0,
+      "ruleConfirmations": [
+        "NEEDS_ACCOUNTING_RULE_CONFIRMATION — compare with finance before loader swap."
+      ],
+      "financeCanReviewNow": true,
+      "codeChangeNeededBeforeApproval": false
+    },
+    {
+      "company": "DIN BRIDAL",
+      "report": "Profit & Loss",
+      "zeroDiff": true,
+      "legacySummary": "Revenue 354500; Net 119992",
+      "previewSummary": "Revenue 354500; Net 119992",
+      "maxDelta": 0,
+      "ruleConfirmations": [
+        "NEEDS_RULE_CONFIRMATION — finance must approve COGS mapping before loader swap."
+      ],
+      "financeCanReviewNow": true,
+      "codeChangeNeededBeforeApproval": false
+    },
+    {
+      "company": "DIN COUTURE",
+      "report": "Balance Sheet",
+      "zeroDiff": true,
+      "legacySummary": "Assets 22667273; L+E 22667273",
+      "previewSummary": "Assets 22667273; L+E 22667273",
+      "maxDelta": 0,
+      "ruleConfirmations": [
+        "NEEDS_ACCOUNTING_RULE_CONFIRMATION — compare with finance before loader swap."
+      ],
+      "financeCanReviewNow": true,
+      "codeChangeNeededBeforeApproval": false
+    },
+    {
+      "company": "DIN COUTURE",
+      "report": "Profit & Loss",
+      "zeroDiff": true,
+      "legacySummary": "Revenue 26250; Net -16750",
+      "previewSummary": "Revenue 26250; Net -16750",
+      "maxDelta": 0,
+      "ruleConfirmations": [
+        "NEEDS_RULE_CONFIRMATION — finance must approve COGS mapping before loader swap."
+      ],
+      "financeCanReviewNow": true,
+      "codeChangeNeededBeforeApproval": false
+    }
+  ],
+  "allZeroDiff": true
+}

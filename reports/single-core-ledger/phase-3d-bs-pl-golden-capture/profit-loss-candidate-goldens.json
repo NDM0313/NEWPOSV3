@@ -1,0 +1,133 @@
+{
+  "phase": "3D",
+  "capturedAt": "2026-06-29T10:50:03.438Z",
+  "approvalStatus": "CANDIDATE_ONLY — NOT FINANCE APPROVED",
+  "companies": {
+    "din-china": {
+      "company": "DIN CHINA",
+      "approvalStatus": "CANDIDATE_ONLY — NOT FINANCE APPROVED",
+      "period": {
+        "startDate": "2000-01-01",
+        "endDate": "2026-06-29"
+      },
+      "branchScope": "All branches",
+      "previewBasis": "official_gl",
+      "legacy": {
+        "revenue": 49040015,
+        "costOfSales": 39299479.13,
+        "grossProfit": 9740535.869999997,
+        "expenses": 1274804,
+        "netProfit": 8465731.869999997
+      },
+      "unifiedPreview": {
+        "revenue": 49040015,
+        "costOfSales": 39299479.13,
+        "grossProfit": 9740535.87,
+        "expenses": 1274804,
+        "netProfit": 8465731.87
+      },
+      "compareDeltas": {
+        "revenueDelta": 0,
+        "costDelta": 0,
+        "grossProfitDelta": 0,
+        "expensesDelta": 0,
+        "netProfitDelta": 0
+      },
+      "comparePass": true,
+      "zeroDiff": true,
+      "cogsHeuristicWarning": true,
+      "needsRuleConfirmation": true,
+      "accountingRuleNotes": [
+        "PREVIEW_ONLY — not finance-approved golden totals.",
+        "COGS split uses COST_OF_PRODUCTION_CODES + type heuristics (mirrors legacy).",
+        "NEEDS_RULE_CONFIRMATION — finance must approve COGS mapping before loader swap."
+      ],
+      "screenshot": "screenshots/din-china-profit-loss-preview.png",
+      "export": "exports/din-china-profit-loss-preview.json"
+    },
+    "din-bridal": {
+      "company": "DIN BRIDAL",
+      "approvalStatus": "CANDIDATE_ONLY — NOT FINANCE APPROVED",
+      "period": {
+        "startDate": "2000-01-01",
+        "endDate": "2026-06-29"
+      },
+      "branchScope": "All branches",
+      "previewBasis": "official_gl",
+      "legacy": {
+        "revenue": 354500,
+        "costOfSales": 49028,
+        "grossProfit": 305472,
+        "expenses": 185480,
+        "netProfit": 119992
+      },
+      "unifiedPreview": {
+        "revenue": 354500,
+        "costOfSales": 49028,
+        "grossProfit": 305472,
+        "expenses": 185480,
+        "netProfit": 119992
+      },
+      "compareDeltas": {
+        "revenueDelta": 0,
+        "costDelta": 0,
+        "grossProfitDelta": 0,
+        "expensesDelta": 0,
+        "netProfitDelta": 0
+      },
+      "comparePass": true,
+      "zeroDiff": true,
+      "cogsHeuristicWarning": true,
+      "needsRuleConfirmation": true,
+      "accountingRuleNotes": [
+        "PREVIEW_ONLY — not finance-approved golden totals.",
+        "COGS split uses COST_OF_PRODUCTION_CODES + type heuristics (mirrors legacy).",
+        "NEEDS_RULE_CONFIRMATION — finance must approve COGS mapping before loader swap."
+      ],
+      "screenshot": "screenshots/din-bridal-profit-loss-preview.png",
+      "export": "exports/din-bridal-profit-loss-preview.json"
+    },
+    "din-couture": {
+      "company": "DIN COUTURE",
+      "approvalStatus": "CANDIDATE_ONLY — NOT FINANCE APPROVED",
+      "period": {
+        "startDate": "2000-01-01",
+        "endDate": "2026-06-29"
+      },
+      "branchScope": "All branches",
+      "previewBasis": "official_gl",
+      "legacy": {
+        "revenue": 26250,
+        "costOfSales": 35000,
+        "grossProfit": -8750,
+        "expenses": 8000,
+        "netProfit": -16750
+      },
+      "unifiedPreview": {
+        "revenue": 26250,
+        "costOfSales": 35000,
+        "grossProfit": -8750,
+        "expenses": 8000,
+        "netProfit": -16750
+      },
+      "compareDeltas": {
+        "revenueDelta": 0,
+        "costDelta": 0,
+        "grossProfitDelta": 0,
+        "expensesDelta": 0,
+        "netProfitDelta": 0
+      },
+      "comparePass": true,
+      "zeroDiff": true,
+      "cogsHeuristicWarning": true,
+      "needsRuleConfirmation": true,
+      "accountingRuleNotes": [
+        "PREVIEW_ONLY — not finance-approved golden totals.",
+        "COGS split uses COST_OF_PRODUCTION_CODES + type heuristics (mirrors legacy).",
+        "NEEDS_RULE_CONFIRMATION — finance must approve COGS mapping before loader swap."
+      ],
+      "screenshot": "screenshots/din-couture-profit-loss-preview.png",
+      "export": "exports/din-couture-profit-loss-preview.json"
+    }
+  }
+}

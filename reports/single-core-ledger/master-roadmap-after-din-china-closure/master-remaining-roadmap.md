@@ -106,7 +106,8 @@ R7 **design-only** · R8 **blocked** · next-company **blocked** until separate 
 - **R2** Cash/Bank Admin Compare diagnostic semantics (safe UI fix)
 
 ### Complete (2026-06-29)
-- **Phase 3A BS/P&L unified preview — production deploy** — preview-only UI live at https://erp.dincouture.pk; legacy default unchanged; loader swap not approved; finance golden still required — [`phase-3a-bs-pl-preview/`](../phase-3a-bs-pl-preview/)
+- **Phase 3A BS/P&L unified preview — production deploy** — preview-only UI live at https://erp.dincouture.pk; legacy default unchanged; loader swap not approved — [`phase-3a-bs-pl-preview/`](../phase-3a-bs-pl-preview/)
+- **Phase 3D BS/P&L candidate golden capture** — DIN CHINA · DIN BRIDAL · DIN COUTURE; values **candidate-only, not finance approved**; no migrations/flags/GL mutations; loader swap not approved — [`phase-3d-bs-pl-golden-capture/`](../phase-3d-bs-pl-golden-capture/)
 - **Phase 3 remaining optional screens audit** — BS / P&L / Cash Flow / mobile — [`remaining-optional-screens-audit/`](../remaining-optional-screens-audit/)
 
 ### Optional (no production impact if deferred)

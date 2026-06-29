@@ -1,6 +1,8 @@
 # Finance golden capture plan — BS / P&L
 
-**Status:** NEEDS_GOLDEN_CAPTURE — **do not invent numbers**
+**Status:** CANDIDATE_CAPTURE_COMPLETE — **values not finance approved**
+
+Phase 3D candidate golden capture completed @ 2026-06-29 — see [`phase-3d-bs-pl-golden-capture/`](../phase-3d-bs-pl-golden-capture/). All captured values are **CANDIDATE_ONLY — NOT FINANCE APPROVED**. Loader swap remains not approved. No migrations, flags, or GL/data mutations. R7/R8/next company remain blocked.
 
 ## Companies
 
