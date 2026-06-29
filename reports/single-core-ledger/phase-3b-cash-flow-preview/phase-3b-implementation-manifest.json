@@ -1,0 +1,27 @@
+{
+  "run": "PHASE_3B_IMPLEMENTATION",
+  "generated_at": "2026-06-29T14:00:00.000Z",
+  "status": "IMPLEMENTED_PREVIEW_ONLY",
+  "base_commit": "51f308c6",
+  "runtime_default_unchanged": true,
+  "loader_swap_approved": false,
+  "migrations_run": false,
+  "flags_toggled": false,
+  "gl_mutations": false,
+  "deploy": "NOT_RUN",
+  "files_added": [
+    "src/app/lib/accounting/cashFlowUnifiedPreviewMapper.ts",
+    "src/app/lib/accounting/cashFlowUnifiedPreviewDiff.ts",
+    "src/app/lib/accounting/cashFlowUnifiedPreviewAccess.ts",
+    "src/app/services/cashFlowUnifiedPreviewService.ts",
+    "src/app/components/accounting/CashFlowUnifiedPreviewPanel.tsx",
+    "src/app/lib/accounting/cashFlowUnifiedPreviewMapper.test.ts",
+    "src/app/lib/accounting/cashFlowUnifiedPreviewDiff.test.ts",
+    "src/app/lib/accounting/cashFlowUnifiedPreviewAccess.test.ts"
+  ],
+  "files_modified": [
+    "src/app/components/reports/CashFlowReportPage.tsx",
+    "package.json"
+  ],
+  "tests_unified_ledger": "272/272 PASS"
+}

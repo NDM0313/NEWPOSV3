@@ -38,6 +38,8 @@
 
 **Phase 3D-SIGNOFF finance pack:** **PREPARED** @ 2026-06-29. [`finance-signoff-pack.md`](../phase-3d-bs-pl-golden-capture/finance-signoff-pack.md) ready for finance review. Finance status **PENDING**. Loader swap **BLOCKED**. R7/R8/next company remain blocked.
 
+**Phase 3B Cash Flow preview:** **IMPLEMENTED** (preview-only, not deployed). Legacy Cash Flow default unchanged. BS/P&L finance status remains **PENDING**. Deploy requires operator approval.
+
 ---
 
 ## What requires operator approval to start next?

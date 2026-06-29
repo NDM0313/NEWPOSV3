@@ -59,6 +59,16 @@ import {
   CASH_FLOW_PRINT_COLUMNS,
 } from './shared/buildCashFlowPrintPreview';
 import { exportToCSV } from '@/app/utils/exportUtils';
+import { canAccessCashFlowUnifiedPreview } from '@/app/lib/accounting/cashFlowUnifiedPreviewAccess';
+import {
+  compareCashFlowUnifiedPreview,
+  type CashFlowUnifiedPreviewDiff,
+} from '@/app/lib/accounting/cashFlowUnifiedPreviewDiff';
+import type { UnifiedLedgerBasis } from '@/app/lib/unifiedLedgerBasisFilter';
+import { useUnifiedLedgerEngineState } from '@/app/hooks/useUnifiedLedgerEngineState';
+import { loadCashFlowUnifiedPreview } from '@/app/services/cashFlowUnifiedPreviewService';
+import type { CashFlowUnifiedPreviewLoadResult } from '@/app/services/cashFlowUnifiedPreviewService';
+import { CashFlowUnifiedPreviewPanel } from '@/app/components/accounting/CashFlowUnifiedPreviewPanel';
 
 export interface CashFlowReportPageProps {
   globalStartDate?: string | null;
@@ -83,7 +93,7 @@ function auditBadgeClass(): string {
 }
 
 export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowReportPageProps) {
-  const { companyId, branchId: contextBranchId } = useSupabase();
+  const { companyId, branchId: contextBranchId, userRole } = useSupabase();
   const reportExport = useReportExport({ companyId, documentType: 'ledger', reportKind: 'cash_flow' });
   const [printOrientation, setPrintOrientation] = useState<PdfPreviewOrientation>('landscape');
   const { company } = useSettings();
@@ -105,6 +115,18 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
   const [glSummary, setGlSummary] = useState<GlCashFlowStatementSummary | null>(null);
   const [loading, setLoading] = useState(!!companyId);
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  const showUnifiedPreviewTools = canAccessCashFlowUnifiedPreview(userRole);
+  const [unifiedPreviewEnabled, setUnifiedPreviewEnabled] = useState(false);
+  const [previewBasis, setPreviewBasis] = useState<UnifiedLedgerBasis>('effective_party');
+  const [previewLoadResult, setPreviewLoadResult] = useState<CashFlowUnifiedPreviewLoadResult | null>(null);
+  const [previewDiff, setPreviewDiff] = useState<CashFlowUnifiedPreviewDiff | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+
+  const { state: engineState } = useUnifiedLedgerEngineState(companyId, {
+    screenPreview: unifiedPreviewEnabled,
+  });
 
   useEffect(() => {
     if (!companyId) {
@@ -231,6 +253,71 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
   useEffect(() => {
     load();
   }, [load]);
+
+  const loadUnifiedPreview = useCallback(async () => {
+    if (!companyId || !data || !unifiedPreviewEnabled || !dateFrom || !dateTo) {
+      setPreviewLoadResult(null);
+      setPreviewDiff(null);
+      setPreviewError(null);
+      return;
+    }
+    setPreviewLoading(true);
+    setPreviewError(null);
+    try {
+      const result = await loadCashFlowUnifiedPreview({
+        companyId,
+        branchId: effectiveBranchId,
+        dateFrom,
+        dateTo,
+        accountFilter,
+        paymentLedgerAccountId: paymentLedgerAccountId.trim() || null,
+        paymentAccountOptions,
+        auditMode,
+        sourceModuleFilter,
+        basis: previewBasis,
+      });
+      setPreviewLoadResult(result);
+      if (result.roznamchaPreview.blockedByKillSwitch) {
+        setPreviewDiff(null);
+        setPreviewError(result.roznamchaPreview.blockReason ?? 'Unified preview blocked.');
+        return;
+      }
+      if (result.preview) {
+        setPreviewDiff(compareCashFlowUnifiedPreview({ legacy: data, preview: result.preview }));
+      } else {
+        setPreviewDiff(null);
+      }
+    } catch {
+      setPreviewLoadResult(null);
+      setPreviewDiff(null);
+      setPreviewError('Unified preview failed to load');
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [
+    companyId,
+    data,
+    unifiedPreviewEnabled,
+    dateFrom,
+    dateTo,
+    effectiveBranchId,
+    accountFilter,
+    paymentLedgerAccountId,
+    paymentAccountOptions,
+    auditMode,
+    sourceModuleFilter,
+    previewBasis,
+  ]);
+
+  useEffect(() => {
+    if (!unifiedPreviewEnabled) {
+      setPreviewLoadResult(null);
+      setPreviewDiff(null);
+      setPreviewError(null);
+      return;
+    }
+    void loadUnifiedPreview();
+  }, [unifiedPreviewEnabled, loadUnifiedPreview]);
 
   const filteredRows = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
@@ -396,6 +483,47 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
         basis={auditMode ? 'audit_full' : 'effective_party'}
         detail="Operational grid: cash/bank movement rows. Normal hides voided and reversal trails; Audit shows them with badges."
       />
+
+      {showUnifiedPreviewTools ? (
+        <div className="flex flex-wrap items-center gap-3 no-print">
+          <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer w-fit">
+            <input
+              type="checkbox"
+              checked={unifiedPreviewEnabled}
+              disabled={engineState.killSwitchActive}
+              onChange={(e) => setUnifiedPreviewEnabled(e.target.checked)}
+              className="rounded border-gray-600 disabled:opacity-50"
+            />
+            Unified Roznamcha preview (Cash Flow compare only)
+          </label>
+          {unifiedPreviewEnabled ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="border-gray-700"
+              onClick={() => void loadUnifiedPreview()}
+            >
+              Refresh preview
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+      {unifiedPreviewEnabled && showUnifiedPreviewTools ? (
+        <CashFlowUnifiedPreviewPanel
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          branchLabel={branchLabel}
+          auditMode={auditMode}
+          loadResult={previewLoadResult}
+          diff={previewDiff}
+          loading={previewLoading}
+          error={previewError}
+          engineState={engineState}
+          previewBasis={previewBasis}
+          onPreviewBasisChange={setPreviewBasis}
+        />
+      ) : null}
 
       <div className="no-print">
         <ReportActions

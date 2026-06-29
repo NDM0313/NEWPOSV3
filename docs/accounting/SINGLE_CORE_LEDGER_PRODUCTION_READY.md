@@ -12,6 +12,7 @@
 **Phase 3A BS/P&L preview-only:** [`phase-3a-bs-pl-preview/`](../reports/single-core-ledger/phase-3a-bs-pl-preview/) — **deployed to production** @ 2026-06-29 (`4a5dc304`); legacy BS/P&L default behavior unchanged; loader swap not approved; R7/R8/next company remain blocked  
 **Phase 3D BS/P&L candidate golden capture:** [`phase-3d-bs-pl-golden-capture/`](../reports/single-core-ledger/phase-3d-bs-pl-golden-capture/) — **completed** @ 2026-06-29; values are **candidate-only, not finance approved**; no migrations, flags, or GL/data mutations; loader swap remains not approved  
 **Phase 3D-SIGNOFF finance sign-off pack:** [`finance-signoff-pack.md`](../reports/single-core-ledger/phase-3d-bs-pl-golden-capture/finance-signoff-pack.md) — **prepared** @ 2026-06-29; finance status **PENDING**; BS/P&L loader swap **BLOCKED**  
+**Phase 3B Cash Flow preview-only:** [`phase-3b-cash-flow-preview/`](../reports/single-core-ledger/phase-3b-cash-flow-preview/) — **implemented** @ 2026-06-29 (preview-only); legacy default unchanged; deploy not run; finance golden required before loader swap  
 **Ops monitoring:** [`ops-schedule-closure-report.md`](../reports/single-core-ledger/operational-monitoring/ops-schedule-closure-report.md)  
 **Commit reconciliation:** `0a818da2` baseline · `50547061` monitoring automation · `9586e611` credential hardening  
 **Master checklist:** use this file as the single entry point for post-apply status.
@@ -39,6 +40,7 @@
 - **Phase 3A BS/P&L preview-only:** **DEPLOYED** — https://erp.dincouture.pk @ `4a5dc304` — legacy main unchanged — [`phase-3a-bs-pl-preview/`](../reports/single-core-ledger/phase-3a-bs-pl-preview/)
 - **Phase 3D BS/P&L candidate golden capture:** **COMPLETE** — DIN CHINA · DIN BRIDAL · DIN COUTURE — all section totals zero-diff in preview compare; **CANDIDATE_ONLY — NOT FINANCE APPROVED** — [`phase-3d-bs-pl-golden-capture/`](../reports/single-core-ledger/phase-3d-bs-pl-golden-capture/)
 - **Phase 3D-SIGNOFF finance pack:** **PREPARED** — [`finance-signoff-pack.md`](../reports/single-core-ledger/phase-3d-bs-pl-golden-capture/finance-signoff-pack.md) — finance status **PENDING**; loader swap **BLOCKED**; R7/R8/next company remain blocked
+- **Phase 3B Cash Flow preview-only:** **IMPLEMENTED** (not deployed) — [`phase-3b-cash-flow-preview/`](../reports/single-core-ledger/phase-3b-cash-flow-preview/) — legacy Cash Flow default unchanged; finance golden required; deploy pending operator approval
 - **Ongoing command:** `npm run monitor:three-company-unified-ledger` with per-company `QA_BROWSER_PASSWORD_*` only — continue scheduled monitoring only
 - Evidence: [`three-company-monitoring-baseline.md`](../reports/single-core-ledger/final-program-archive/three-company-monitoring-baseline.md)
 

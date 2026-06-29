@@ -69,6 +69,17 @@
     "evidence": "reports/single-core-ledger/phase-3d-bs-pl-golden-capture/finance-signoff-pack.md",
     "loader_swap_gate": "reports/single-core-ledger/phase-3d-bs-pl-golden-capture/bs-pl-loader-swap-gate.md"
   },
+  "phase_3b_cash_flow_preview": {
+    "status": "IMPLEMENTED",
+    "previewOnly": true,
+    "deployedToProduction": false,
+    "implementedAt": "2026-06-29",
+    "defaultRuntimeChanged": false,
+    "loaderSwapApproved": false,
+    "financeGoldenRequired": true,
+    "bs_pl_finance_status": "PENDING",
+    "evidence": "reports/single-core-ledger/phase-3b-cash-flow-preview/"
+  },
   "recommended_next_phase": {
     "mode": "PHASE_3D_FINANCE_REVIEW_OR_PHASE_3B",
     "action": "Finance reviews BS/P&L sign-off pack OR Phase 3B Cash Flow preview (operator choice)",

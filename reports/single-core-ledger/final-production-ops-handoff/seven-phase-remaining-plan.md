@@ -72,6 +72,21 @@
 
 ---
 
+## Phase 3B — Cash Flow unified preview (preview-only)
+
+| Field | Value |
+|-------|-------|
+| **Status** | `IMPLEMENTED — NOT DEPLOYED` |
+| **Action** | Admin/developer unified Roznamcha preview compare on Cash Flow page |
+| **Evidence** | [`phase-3b-cash-flow-preview/`](../phase-3b-cash-flow-preview/) |
+| **Default runtime** | **UNCHANGED** — legacy `getCashFlowReport` remains main |
+| **Loader swap** | **NOT APPROVED** |
+| **Finance golden** | **NEEDS_GOLDEN_CAPTURE** before adoption |
+| **BS/P&L finance** | **PENDING** (unchanged) |
+| **Deploy** | **NOT RUN** — operator approval required |
+
+---
+
 ## Phase 3 — Remaining optional screen audit
 
 | Field | Value |
