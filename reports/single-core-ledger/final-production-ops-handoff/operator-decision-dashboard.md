@@ -30,9 +30,17 @@
 | Item | Class | Doc |
 |------|-------|-----|
 | Continue monitoring | ONGOING_OPS | [`daily-monitoring-checklist.md`](daily-monitoring-checklist.md) |
-| Local cleanup dry-run | SAFE_LOCAL_CLEANUP | [`office-pc-local-change-inventory.md`](office-pc-local-change-inventory.md) |
-| Remaining screens audit (read-only) | SAFE_AUDIT_ONLY | [`remaining-screens-audit.md`](../post-baseline-remaining-phases/remaining-screens-audit.md) |
 | Docs/register updates | SAFE_DOCS_ONLY | This handoff pack |
+
+**Phase 3 optional screens audit:** **COMPLETE** — [`remaining-optional-screens-audit/`](../remaining-optional-screens-audit/). No runtime/accounting behavior changed. Implementation is not automatically approved. R7/R8/next-company still blocked. Finance golden approval required before final numbers are adopted.
+
+---
+
+## What requires operator approval to start next?
+
+| Item | Class | Doc |
+|------|-------|-----|
+| Phase 3A — BS + P&L preview-only parity | OPTIONAL_FUTURE | [`next-implementation-plan.md`](../remaining-optional-screens-audit/next-implementation-plan.md) |
 
 ---
 

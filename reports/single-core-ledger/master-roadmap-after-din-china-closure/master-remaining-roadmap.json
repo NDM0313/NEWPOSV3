@@ -18,7 +18,7 @@
   "migration_closure": "COMPLETE",
   "pending_approved_migrations": false,
   "phases_classified_not_auto_approved": true,
-  "safe_next_step": "OFFICE PC LOCAL CLEANUP REVIEW — DRY RUN ONLY",
+  "safe_next_step": "PHASE_3A — BS + P&L preview-only (operator approval required)",
   "ops_schedule_closure": {
     "status": "COMPLETE",
     "evidence": "reports/single-core-ledger/operational-monitoring/ops-schedule-closure-report.md"
@@ -28,8 +28,18 @@
     "post_rotation_monitoring_status": "PASS",
     "evidence": "reports/single-core-ledger/operational-monitoring/password-rotation-final-closure-manifest.json"
   },
+  "remaining_optional_screens_audit": {
+    "status": "COMPLETE",
+    "completed_at": "2026-06-29",
+    "evidence": "reports/single-core-ledger/remaining-optional-screens-audit/",
+    "runtime_changed": false,
+    "implementation_auto_approved": false,
+    "finance_golden_required": true
+  },
   "recommended_next_phase": {
-    "mode": "PRODUCTION_OPS_MONITORING_ONLY",
+    "mode": "PHASE_3A_OPERATOR_APPROVAL",
+    "action": "Balance Sheet + P&L parity design / preview-only",
+    "evidence": "reports/single-core-ledger/remaining-optional-screens-audit/next-implementation-plan.md",
     "command": "npm run monitor:three-company-unified-ledger",
     "credential_policy": "per-company only"
   },

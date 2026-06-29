@@ -41,8 +41,8 @@
 | T10 | Office PC local change inventory | **SAFE_LOCAL_CLEANUP** | [`office-pc-local-change-inventory.md`](office-pc-local-change-inventory.md) |
 | T11 | Seven-phase remaining plan | **SAFE_DOCS_ONLY** | [`seven-phase-remaining-plan.md`](seven-phase-remaining-plan.md) |
 | T12 | Operator decision dashboard | **SAFE_DOCS_ONLY** | [`operator-decision-dashboard.md`](operator-decision-dashboard.md) |
-| T13 | BS / P&L / Cash Flow / Day Book / COA unified loader audit | **SAFE_AUDIT_ONLY** | [`remaining-screens-audit.md`](../post-baseline-remaining-phases/remaining-screens-audit.md) |
-| T14 | Mobile unified parity audit | **SAFE_AUDIT_ONLY** | Master roadmap Phase 2.mobile |
+| T13 | BS / P&L / Cash Flow / mobile optional screen audit | **COMPLETE** | [`remaining-optional-screens-audit/`](../remaining-optional-screens-audit/) — no runtime change; implementation not auto-approved |
+| T14 | Mobile unified parity audit (deep) | **OPTIONAL_FUTURE** | Phase 3C in [`next-implementation-plan.md`](../remaining-optional-screens-audit/next-implementation-plan.md) |
 | T15 | Safe report/UI labeling fixes (no loader/GL change) | **OPTIONAL_FUTURE** | R2 pattern — diagnostic labeling only |
 | T16 | R6 monitoring automation hardening | **OPTIONAL_FUTURE** | [`r6-completion-report.md`](../r6-monitoring-hardening/r6-completion-report.md) |
 | T17 | Balance Sheet unified loader | **OPTIONAL_FUTURE** | Per-screen design + golden capture |

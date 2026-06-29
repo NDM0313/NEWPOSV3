@@ -105,6 +105,9 @@ R7 **design-only** · R8 **blocked** · next-company **blocked** until separate 
 - **R1/R1B** Master roadmap + docs reconciliation
 - **R2** Cash/Bank Admin Compare diagnostic semantics (safe UI fix)
 
+### Complete (2026-06-29)
+- **Phase 3 remaining optional screens audit** — BS / P&L / Cash Flow / mobile — [`remaining-optional-screens-audit/`](../remaining-optional-screens-audit/) — no runtime/accounting behavior changed; implementation not automatically approved; R7/R8/next-company still blocked; finance golden approval required before final numbers are adopted
+
 ### Optional (no production impact if deferred)
 - **R6** Monitoring + rollback automation hardening
 - **R7** `roznamcha_payment` RPC design

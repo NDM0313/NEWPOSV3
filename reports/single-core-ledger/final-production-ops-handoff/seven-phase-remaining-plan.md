@@ -32,10 +32,12 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | `SAFE_AUDIT_ONLY` |
-| **Action** | Balance Sheet, P&L, Cash Flow, Day Book, mobile parity — audit docs only |
-| **Evidence** | [`remaining-screens-audit.md`](../post-baseline-remaining-phases/remaining-screens-audit.md) |
-| **Constraint** | No flags, no migrations, no GL mutations |
+| **Status** | `COMPLETE` |
+| **Action** | Balance Sheet, P&L, Cash Flow, mobile parity — audit docs only |
+| **Evidence** | [`remaining-optional-screens-audit/`](../remaining-optional-screens-audit/) (supersedes [`remaining-screens-audit.md`](../post-baseline-remaining-phases/remaining-screens-audit.md) for Phase 3 scope) |
+| **Constraint** | No flags, no migrations, no GL mutations — **verified** |
+| **Note** | Remaining optional screens audit **completed** @ 2026-06-29. No runtime/accounting behavior changed. Implementation is not automatically approved. R7/R8/next-company still blocked. Finance golden approval required before final numbers are adopted. |
+| **Next (if approved)** | Phase 3A — [`next-implementation-plan.md`](../remaining-optional-screens-audit/next-implementation-plan.md) |
 
 ---
 

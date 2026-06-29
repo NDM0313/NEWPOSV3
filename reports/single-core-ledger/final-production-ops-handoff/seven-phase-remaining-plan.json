@@ -22,9 +22,15 @@
     {
       "phase": 3,
       "name": "Remaining optional screen audit",
-      "status": "SAFE_AUDIT_ONLY",
-      "action": "BS, P&L, Cash Flow, mobile parity audit only",
-      "auto_approved": true
+      "status": "COMPLETE",
+      "action": "BS, P&L, Cash Flow, mobile parity audit — docs only",
+      "evidence": "reports/single-core-ledger/remaining-optional-screens-audit/",
+      "runtime_changed": false,
+      "implementation_auto_approved": false,
+      "r7_r8_next_company_blocked": true,
+      "finance_golden_required": true,
+      "next_if_approved": "Phase 3A — next-implementation-plan.md",
+      "auto_approved": false
     },
     {
       "phase": 4,
