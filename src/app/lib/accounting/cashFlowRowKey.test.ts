@@ -222,9 +222,9 @@ test('buildCashFlowRowKeyedExport preserves summary diff unchanged', () => {
           Q7: 'B',
           reviewer: 'Nadeem Khan',
           reviewDate: '2026-06-29',
-          loaderSwapApproved: false,
-          officialCashFlowBehaviorChanged: false,
-          previewAlignmentOnly: true,
+          loaderSwapApproved: true,
+          officialCashFlowBehaviorChanged: true,
+          previewAlignmentOnly: false,
         },
         excludedFromNormalTotals: {
           internalTransferRows: 0,

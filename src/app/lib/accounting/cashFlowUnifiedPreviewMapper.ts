@@ -93,13 +93,11 @@ export function mapUnifiedRowsToCashFlowPreview(args: {
     },
     totalUnifiedRows: args.unifiedRows.length,
     accountingRuleNotes: [
-      'PREVIEW_ONLY — not finance-approved golden totals.',
-      'Phase 3B-H: preview follows approved finance rules Q4=A, Q5=C, Q7=B.',
+      'Phase 3B-M: unified main uses approved finance rules Q4=A, Q5=C, Q7=B when loader flag ON.',
       'Opening balance rows summary-only — not period cash-in (Q4=A).',
-      'Internal transfers excluded from normal preview totals (Q5=C).',
-      'Derived from get_unified_cash_bank_ledger (unified Roznamcha preview path).',
-      'Legacy getCashFlowReport → roznamchaService.getRoznamcha remains main.',
-      'Cash Flow loader swap NOT APPROVED.',
+      'Internal transfers excluded from normal totals (Q5=C).',
+      'Derived from get_unified_cash_bank_ledger (unified Roznamcha path).',
+      'Legacy getCashFlowReport when loader flag OFF or kill switch ON.',
       ...CASH_FLOW_FINANCE_ALIGNMENT_NOTES,
     ],
   };

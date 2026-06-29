@@ -24,7 +24,9 @@
         "unified_ledger_loader_party_ledger",
         "unified_ledger_screen_party_ledger",
         "unified_ledger_loader_roznamcha",
-        "unified_ledger_screen_roznamcha"
+        "unified_ledger_screen_roznamcha",
+        "unified_ledger_loader_cash_flow",
+        "unified_ledger_screen_cash_flow"
       ],
       "pilot_batch_expected": 9,
       "golden_fixture_path": "reports/single-core-ledger/din-china/golden-fixtures.json",
@@ -56,7 +58,9 @@
         "unified_ledger_loader_party_ledger",
         "unified_ledger_screen_party_ledger",
         "unified_ledger_loader_roznamcha",
-        "unified_ledger_screen_roznamcha"
+        "unified_ledger_screen_roznamcha",
+        "unified_ledger_loader_cash_flow",
+        "unified_ledger_screen_cash_flow"
       ],
       "pilot_batch_expected": 9,
       "golden_fixture_path": "reports/single-core-ledger/din-bridal/golden-fixtures.json",
@@ -90,7 +94,9 @@
         "unified_ledger_loader_party_ledger",
         "unified_ledger_screen_party_ledger",
         "unified_ledger_loader_roznamcha",
-        "unified_ledger_screen_roznamcha"
+        "unified_ledger_screen_roznamcha",
+        "unified_ledger_loader_cash_flow",
+        "unified_ledger_screen_cash_flow"
       ],
       "pilot_batch_expected": 9,
       "golden_fixture_path": "reports/single-core-ledger/din-couture/golden-fixtures.json",

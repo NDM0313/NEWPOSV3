@@ -4,15 +4,15 @@
  */
 
 export const CASH_FLOW_APPROVED_FINANCE_RULES = {
-  phase: '3B-H',
+  phase: '3B-M',
   Q4: 'A' as const,
   Q5: 'C' as const,
   Q7: 'B' as const,
   reviewer: 'Nadeem Khan',
   reviewDate: '2026-06-29',
-  loaderSwapApproved: false,
-  officialCashFlowBehaviorChanged: false,
-  previewAlignmentOnly: true,
+  loaderSwapApproved: true,
+  officialCashFlowBehaviorChanged: true,
+  previewAlignmentOnly: false,
 };
 
 export type CashFlowFinanceAlignmentClass =
@@ -70,8 +70,7 @@ export function financeAlignmentExportLabel(alignment: CashFlowFinanceAlignmentC
 }
 
 export const CASH_FLOW_FINANCE_ALIGNMENT_NOTES = [
-  'Phase 3B-H preview alignment — Q4=A opening summary-only; Q5=C transfers excluded from normal totals.',
-  'Q7=B — preview aligned to approved finance rules; legacy getCashFlowReport remains official.',
-  'Cash Flow loader swap NOT APPROVED.',
-  'NEEDS_FINANCE_GOLDEN_RE_CAPTURE after deploy before loader consideration.',
+  'Phase 3B-M — unified main loader uses Q4=A opening summary-only; Q5=C transfers excluded from normal totals.',
+  'Q7=B — finance-aligned basis active when unified_ledger_loader_cash_flow is ON.',
+  'Legacy getCashFlowReport remains available when loader flag OFF or kill switch ON.',
 ] as const;

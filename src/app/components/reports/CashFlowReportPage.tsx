@@ -69,6 +69,13 @@ import { useUnifiedLedgerEngineState } from '@/app/hooks/useUnifiedLedgerEngineS
 import { loadCashFlowUnifiedPreview } from '@/app/services/cashFlowUnifiedPreviewService';
 import type { CashFlowUnifiedPreviewLoadResult } from '@/app/services/cashFlowUnifiedPreviewService';
 import { CashFlowUnifiedPreviewPanel } from '@/app/components/accounting/CashFlowUnifiedPreviewPanel';
+import {
+  effectiveCashFlowMainLoaderSource,
+  resolveCashFlowMainLoaderSource,
+} from '@/app/lib/resolveCashFlowMainLoaderSource';
+import { loadCashFlowUnifiedMain } from '@/app/services/cashFlowUnifiedMainService';
+import { UNIFIED_LEDGER_SCREEN_IDS } from '@/app/lib/unifiedLedgerScreenFlags';
+import { CASH_FLOW_APPROVED_FINANCE_RULES } from '@/app/lib/accounting/cashFlowPreviewFinanceAlignment';
 
 export interface CashFlowReportPageProps {
   globalStartDate?: string | null;
@@ -115,6 +122,7 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
   const [glSummary, setGlSummary] = useState<GlCashFlowStatementSummary | null>(null);
   const [loading, setLoading] = useState(!!companyId);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [mainLoaderSource, setMainLoaderSource] = useState<'legacy' | 'unified'>('legacy');
 
   const showUnifiedPreviewTools = canAccessCashFlowUnifiedPreview(userRole);
   const [unifiedPreviewEnabled, setUnifiedPreviewEnabled] = useState(false);
@@ -125,6 +133,7 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
   const [previewError, setPreviewError] = useState<string | null>(null);
 
   const { state: engineState } = useUnifiedLedgerEngineState(companyId, {
+    screenId: UNIFIED_LEDGER_SCREEN_IDS.CASH_FLOW,
     screenPreview: unifiedPreviewEnabled,
   });
 
@@ -214,24 +223,50 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
     setLoadError(null);
     try {
       const branchArg = effectiveBranchId ?? undefined;
-      const [result, gl] = await Promise.all([
-        getCashFlowReport({
-          companyId,
-          branchId: effectiveBranchId,
-          dateFrom,
-          dateTo,
-          accountFilter,
-          paymentLedgerAccountId: paymentLedgerAccountId.trim() || null,
-          auditMode,
-          sourceModuleFilter,
-        }),
-        accountingReportsService.getCashFlowStatement(companyId, dateFrom, dateTo, branchArg, {
-          auditMode,
-          basis: auditMode ? 'official_gl' : 'effective_party',
-        }),
-      ]);
-      setData(result);
-      setGlSummary(gl);
+      const resolved = await resolveCashFlowMainLoaderSource(companyId);
+      const mainSource = effectiveCashFlowMainLoaderSource(resolved);
+      setMainLoaderSource(mainSource);
+
+      const glPromise = accountingReportsService.getCashFlowStatement(companyId, dateFrom, dateTo, branchArg, {
+        auditMode,
+        basis: auditMode ? 'official_gl' : 'effective_party',
+      });
+
+      if (mainSource === 'unified') {
+        const [unified, gl] = await Promise.all([
+          loadCashFlowUnifiedMain({
+            companyId,
+            branchId: effectiveBranchId,
+            dateFrom,
+            dateTo,
+            accountFilter,
+            paymentLedgerAccountId: paymentLedgerAccountId.trim() || null,
+            paymentAccountOptions,
+            auditMode,
+            sourceModuleFilter,
+            basis: previewBasis,
+          }),
+          glPromise,
+        ]);
+        setData(unified);
+        setGlSummary(gl);
+      } else {
+        const [result, gl] = await Promise.all([
+          getCashFlowReport({
+            companyId,
+            branchId: effectiveBranchId,
+            dateFrom,
+            dateTo,
+            accountFilter,
+            paymentLedgerAccountId: paymentLedgerAccountId.trim() || null,
+            auditMode,
+            sourceModuleFilter,
+          }),
+          glPromise,
+        ]);
+        setData(result);
+        setGlSummary(gl);
+      }
     } catch (err) {
       setData(null);
       setGlSummary(null);
@@ -248,6 +283,8 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
     paymentLedgerAccountId,
     auditMode,
     sourceModuleFilter,
+    paymentAccountOptions,
+    previewBasis,
   ]);
 
   useEffect(() => {
@@ -264,6 +301,41 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
     setPreviewLoading(true);
     setPreviewError(null);
     try {
+      if (mainLoaderSource === 'unified') {
+        const [legacy, previewResult] = await Promise.all([
+          getCashFlowReport({
+            companyId,
+            branchId: effectiveBranchId,
+            dateFrom,
+            dateTo,
+            accountFilter,
+            paymentLedgerAccountId: paymentLedgerAccountId.trim() || null,
+            auditMode,
+            sourceModuleFilter,
+          }),
+          loadCashFlowUnifiedPreview({
+            companyId,
+            branchId: effectiveBranchId,
+            dateFrom,
+            dateTo,
+            accountFilter,
+            paymentLedgerAccountId: paymentLedgerAccountId.trim() || null,
+            paymentAccountOptions,
+            auditMode,
+            sourceModuleFilter,
+            basis: previewBasis,
+          }),
+        ]);
+        setPreviewLoadResult(previewResult);
+        if (previewResult.preview) {
+          setPreviewDiff(compareCashFlowUnifiedPreview({ legacy, preview: previewResult.preview }));
+        } else {
+          setPreviewDiff(null);
+          setPreviewError(previewResult.roznamchaPreview.blockReason ?? 'Unified preview blocked.');
+        }
+        return;
+      }
+
       const result = await loadCashFlowUnifiedPreview({
         companyId,
         branchId: effectiveBranchId,
@@ -307,6 +379,7 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
     auditMode,
     sourceModuleFilter,
     previewBasis,
+    mainLoaderSource,
   ]);
 
   useEffect(() => {
@@ -478,10 +551,14 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
   };
 
   return (
-    <div className="space-y-6 min-w-0">
+    <div className="space-y-6 min-w-0" data-cash-flow-main-loader={mainLoaderSource}>
       <ReportBasisBanner
         basis={auditMode ? 'audit_full' : 'effective_party'}
-        detail="Operational grid: cash/bank movement rows. Normal hides voided and reversal trails; Audit shows them with badges."
+        detail={
+          mainLoaderSource === 'unified'
+            ? `Unified Cash Flow main loader (Q4=${CASH_FLOW_APPROVED_FINANCE_RULES.Q4} · Q5=${CASH_FLOW_APPROVED_FINANCE_RULES.Q5} · Q7=${CASH_FLOW_APPROVED_FINANCE_RULES.Q7}). Operational grid: cash/bank movement rows.`
+            : 'Operational grid: cash/bank movement rows. Normal hides voided and reversal trails; Audit shows them with badges.'
+        }
       />
 
       {showUnifiedPreviewTools ? (
@@ -494,7 +571,7 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
               onChange={(e) => setUnifiedPreviewEnabled(e.target.checked)}
               className="rounded border-gray-600 disabled:opacity-50"
             />
-            Unified Roznamcha preview (Cash Flow compare only)
+            Unified Roznamcha preview (Cash Flow {mainLoaderSource === 'unified' ? 'legacy shadow compare' : 'compare only'})
           </label>
           {unifiedPreviewEnabled ? (
             <Button

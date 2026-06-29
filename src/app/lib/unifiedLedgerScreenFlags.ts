@@ -9,6 +9,7 @@ export const UNIFIED_LEDGER_SCREEN_IDS = {
   TRIAL_BALANCE: 'trial_balance',
   ROZNAMCHA: 'roznamcha',
   PARTY_LEDGER: 'party_ledger',
+  CASH_FLOW: 'cash_flow',
 } as const;
 
 export type UnifiedLedgerScreenId =
@@ -21,6 +22,7 @@ export const UNIFIED_LEDGER_SCREEN_FLAG_KEYS: Record<UnifiedLedgerScreenId, stri
   trial_balance: 'unified_ledger_screen_trial_balance',
   roznamcha: 'unified_ledger_screen_roznamcha',
   party_ledger: 'unified_ledger_screen_party_ledger',
+  cash_flow: 'unified_ledger_screen_cash_flow',
 };
 
 export function unifiedLedgerScreenFlagKey(screenId: UnifiedLedgerScreenId): string {

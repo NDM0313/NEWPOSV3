@@ -17,9 +17,12 @@ export const UNIFIED_LEDGER_FLAG_KEYS = {
   LOADER_PARTY_LEDGER: 'unified_ledger_loader_party_ledger',
   /** Phase 2.14 — only this flag switches Roznamcha default main loader. */
   LOADER_ROZNAMCHA: 'unified_ledger_loader_roznamcha',
+  /** Phase 3B-M — only this flag switches Cash Flow default main loader. */
+  LOADER_CASH_FLOW: 'unified_ledger_loader_cash_flow',
   SCREEN_LEDGER_V2: 'unified_ledger_screen_ledger_v2',
   SCREEN_ACCOUNT_STATEMENT: 'unified_ledger_screen_account_statement',
   SCREEN_TRIAL_BALANCE: 'unified_ledger_screen_trial_balance',
   SCREEN_ROZNAMCHA: 'unified_ledger_screen_roznamcha',
   SCREEN_PARTY_LEDGER: 'unified_ledger_screen_party_ledger',
+  SCREEN_CASH_FLOW: 'unified_ledger_screen_cash_flow',
 } as const;

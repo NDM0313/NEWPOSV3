@@ -37,7 +37,7 @@ test('approved finance rules Q4=A Q5=C Q7=B recorded', () => {
   assert.equal(CASH_FLOW_APPROVED_FINANCE_RULES.Q4, 'A');
   assert.equal(CASH_FLOW_APPROVED_FINANCE_RULES.Q5, 'C');
   assert.equal(CASH_FLOW_APPROVED_FINANCE_RULES.Q7, 'B');
-  assert.equal(CASH_FLOW_APPROVED_FINANCE_RULES.loaderSwapApproved, false);
+  assert.equal(CASH_FLOW_APPROVED_FINANCE_RULES.loaderSwapApproved, true);
 });
 
 test('internal transfer rows excluded from normal preview period totals', () => {

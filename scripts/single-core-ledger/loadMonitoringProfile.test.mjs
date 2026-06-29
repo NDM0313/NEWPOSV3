@@ -9,7 +9,7 @@ test('loadMonitoringProfile din-china defaults', () => {
   assert.equal(p.golden.mrJalilClosing, 216_300);
   assert.equal(p.golden.trialBalanceTotal, 407_957_271.02);
   assert.equal(p.golden.roznamcha.cashIn, 136_158_012);
-  assert.equal(p.expectedUnifiedFlagsOn.length, 12);
+  assert.equal(p.expectedUnifiedFlagsOn.length, 14);
   assert.equal(p.pilotBatchExpected, 9);
 });
 
@@ -26,7 +26,7 @@ test('loadMonitoringProfile din-bridal after finance sign-off', () => {
   assert.equal(p.company, 'DIN BRIDAL');
   assert.equal(p.goldenPartyName, 'MR REHAN ALI');
   assert.equal(p.golden.mrJalilClosing, 530_000);
-  assert.equal(p.expectedUnifiedFlagsOn.length, 12);
+  assert.equal(p.expectedUnifiedFlagsOn.length, 14);
   assert.equal(p.skipAdminPilotBatch, true);
 });
 
