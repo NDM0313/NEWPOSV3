@@ -159,6 +159,18 @@
       "evidence": "reports/single-core-ledger/phase-3b-l-cash-flow-loader-swap-readiness/"
     },
     {
+      "phase": "3B-M",
+      "name": "Cash Flow controlled loader swap",
+      "status": "EXECUTED",
+      "completedAt": "2026-06-29",
+      "loaderSwapApproved": true,
+      "operatorApprovalReceived": true,
+      "codeCommit": "36543345",
+      "financeRules": { "Q4": "A", "Q5": "C", "Q7": "B" },
+      "glMutations": false,
+      "evidence": "reports/single-core-ledger/phase-3b-m-cash-flow-loader-swap/"
+    },
+    {
       "phase": 3,
       "name": "Remaining optional screen audit",
       "status": "COMPLETE",

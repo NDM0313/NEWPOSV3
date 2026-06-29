@@ -54,7 +54,9 @@
 
 **Phase 3B-J Cash Flow residual delta bridge:** **COMPLETE** @ 2026-06-29. Option **B** selected.
 
-**Phase 3B-L Cash Flow loader-swap readiness:** **PREPARED** @ 2026-06-29. Planning complete. Loader swap **NOT APPROVED**. Operator written approval required before Phase 3B-M.
+**Phase 3B-L Cash Flow loader-swap readiness:** **PREPARED** @ 2026-06-29. Planning complete.
+
+**Phase 3B-M Cash Flow controlled loader swap:** **EXECUTED** @ 2026-06-29 (`36543345`). Unified Cash Flow main live for DIN CHINA · DIN BRIDAL · DIN COUTURE. Finance basis Q4=A Q5=C Q7=B. No GL/data mutations. BS/P&L finance **PENDING**. R7/R8/next company remain blocked.
 
 ---
 
@@ -62,7 +64,6 @@
 
 | Item | Class | Doc |
 |------|-------|-----|
-| Phase 3B-M Cash Flow controlled loader swap | OPERATOR_GATE | [`operator-loader-swap-approval-template.md`](../phase-3b-l-cash-flow-loader-swap-readiness/operator-loader-swap-approval-template.md) |
 | Phase 3D — finance golden capture for BS/P&L | FINANCE_GATE | [`finance-golden-capture-plan.md`](../phase-3a-bs-pl-preview/finance-golden-capture-plan.md) |
 
 ---

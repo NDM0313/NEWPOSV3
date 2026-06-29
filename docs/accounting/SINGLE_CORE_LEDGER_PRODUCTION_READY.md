@@ -22,6 +22,7 @@
 **Phase 3B-J Cash Flow residual delta bridge:** [`phase-3b-j-cash-flow-residual-delta-bridge/`](../reports/single-core-ledger/phase-3b-j-cash-flow-residual-delta-bridge/) — **prepared** @ 2026-06-29; Option B selected; DIN CHINA/DIN BRIDAL deltas accepted as expected rule differences; no deploy, migrations, flags, or GL/data mutations  
 **Phase 3B-K Cash Flow finance basis sign-off pack:** [`phase-3b-k-cash-flow-finance-signoff/`](../reports/single-core-ledger/phase-3b-k-cash-flow-finance-signoff/) — **complete** @ 2026-06-29; aligned preview approved as finance basis candidate; official legacy unchanged; loader swap remains not approved  
 **Phase 3B-L Cash Flow loader-swap readiness pack:** [`phase-3b-l-cash-flow-loader-swap-readiness/`](../reports/single-core-ledger/phase-3b-l-cash-flow-loader-swap-readiness/) — **prepared** @ 2026-06-29; planning only; operator approval required before Phase 3B-M; no deploy, flags, or GL/data mutations  
+**Phase 3B-M Cash Flow controlled loader swap:** [`phase-3b-m-cash-flow-loader-swap/`](../reports/single-core-ledger/phase-3b-m-cash-flow-loader-swap/) — **EXECUTED** @ 2026-06-29 (`36543345`); unified Cash Flow main live for DIN CHINA · DIN BRIDAL · DIN COUTURE; finance basis Q4=A Q5=C Q7=B; no GL/data mutations; BS/P&L finance **PENDING**; R7/R8/next company remain blocked  
 **Ops monitoring:** [`ops-schedule-closure-report.md`](../reports/single-core-ledger/operational-monitoring/ops-schedule-closure-report.md)  
 **Commit reconciliation:** `0a818da2` baseline · `50547061` monitoring automation · `9586e611` credential hardening  
 **Master checklist:** use this file as the single entry point for post-apply status.
@@ -32,9 +33,9 @@
 
 | Company | Flags | Loaders | Golden party | Monitoring baseline |
 |---------|-------|---------|--------------|---------------------|
-| DIN CHINA | 12/12 ON | 5/5 ON | MR JALIL — PKR 216,300 | PASS |
-| DIN BRIDAL | 12/12 ON | 5/5 ON | MR REHAN ALI — PKR 530,000 | PASS |
-| DIN COUTURE | 12/12 ON | 5/5 ON | DHARIA — PKR 4,488,088 | PASS |
+| DIN CHINA | 14/14 ON | 6/6 ON (incl. Cash Flow) | MR JALIL — PKR 216,300 | PASS |
+| DIN BRIDAL | 14/14 ON | 6/6 ON (incl. Cash Flow) | MR REHAN ALI — PKR 530,000 | PASS |
+| DIN COUTURE | 14/14 ON | 6/6 ON (incl. Cash Flow) | DHARIA — PKR 4,488,088 | PASS |
 
 - **Other company loaders (unapproved):** none  
 - **Migration closure:** complete — no approved pending migrations  
@@ -58,7 +59,8 @@
 - **Phase 3B-I aligned Cash Flow candidate golden capture:** **COMPLETE** — DIN CHINA · DIN BRIDAL · DIN COUTURE — **CANDIDATE_ONLY — NOT FINANCE APPROVED**; DIN COUTURE zero-diff · DIN CHINA/DIN BRIDAL non-zero-diff — [`phase-3b-i-cash-flow-aligned-golden-capture/`](../reports/single-core-ledger/phase-3b-i-cash-flow-aligned-golden-capture/)
 - **Phase 3B-J Cash Flow residual delta bridge:** **PREPARED** — Option B selected; official legacy unchanged; loader swap blocked — [`phase-3b-j-cash-flow-residual-delta-bridge/`](../reports/single-core-ledger/phase-3b-j-cash-flow-residual-delta-bridge/)
 - **Phase 3B-K Cash Flow finance basis sign-off:** **COMPLETE** — aligned preview APPROVED_AS_ALIGNED_BASIS_CANDIDATE; loader swap requires separate operator approval — [`phase-3b-k-cash-flow-finance-signoff/`](../reports/single-core-ledger/phase-3b-k-cash-flow-finance-signoff/)
-- **Phase 3B-L Cash Flow loader-swap readiness:** **PREPARED** — planning only; loader swap NOT APPROVED; Phase 3B-M gated — [`phase-3b-l-cash-flow-loader-swap-readiness/`](../reports/single-core-ledger/phase-3b-l-cash-flow-loader-swap-readiness/)
+- **Phase 3B-L Cash Flow loader-swap readiness:** **PREPARED** — planning only; Phase 3B-M gated — [`phase-3b-l-cash-flow-loader-swap-readiness/`](../reports/single-core-ledger/phase-3b-l-cash-flow-loader-swap-readiness/)
+- **Phase 3B-M Cash Flow controlled loader swap:** **EXECUTED** — https://erp.dincouture.pk @ `36543345` — unified Cash Flow main live (Q4=A Q5=C Q7=B); no GL/data mutations; BS/P&L finance **PENDING** — [`phase-3b-m-cash-flow-loader-swap/`](../reports/single-core-ledger/phase-3b-m-cash-flow-loader-swap/)
 - **Ongoing command:** `npm run monitor:three-company-unified-ledger` with per-company `QA_BROWSER_PASSWORD_*` only — continue scheduled monitoring only
 - Evidence: [`three-company-monitoring-baseline.md`](../reports/single-core-ledger/final-program-archive/three-company-monitoring-baseline.md)
 
