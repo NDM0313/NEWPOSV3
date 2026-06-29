@@ -32,7 +32,7 @@
 | Continue monitoring | ONGOING_OPS | [`daily-monitoring-checklist.md`](daily-monitoring-checklist.md) |
 | Docs/register updates | SAFE_DOCS_ONLY | This handoff pack |
 
-**Phase 3 optional screens audit:** **COMPLETE** — [`remaining-optional-screens-audit/`](../remaining-optional-screens-audit/). No runtime/accounting behavior changed. Implementation is not automatically approved. R7/R8/next-company still blocked. Finance golden approval required before final numbers are adopted.
+**Phase 3A BS/P&L preview-only:** **IMPLEMENTED** — [`phase-3a-bs-pl-preview/`](../phase-3a-bs-pl-preview/). Runtime default behavior unchanged. Loader swap not approved. Finance golden approval required before final BS/P&L unified adoption.
 
 ---
 
@@ -40,7 +40,9 @@
 
 | Item | Class | Doc |
 |------|-------|-----|
-| Phase 3A — BS + P&L preview-only parity | OPTIONAL_FUTURE | [`next-implementation-plan.md`](../remaining-optional-screens-audit/next-implementation-plan.md) |
+| Deploy Phase 3A preview UI to production | DEPLOY_GATE | [`deploy-or-skip-notes.md`](../phase-3a-bs-pl-preview/deploy-or-skip-notes.md) |
+| Phase 3D — finance golden capture for BS/P&L | FINANCE_GATE | [`finance-golden-capture-plan.md`](../phase-3a-bs-pl-preview/finance-golden-capture-plan.md) |
+| Phase 3B — Cash Flow preview | OPTIONAL_FUTURE | [`next-implementation-plan.md`](../remaining-optional-screens-audit/next-implementation-plan.md) |
 
 ---
 

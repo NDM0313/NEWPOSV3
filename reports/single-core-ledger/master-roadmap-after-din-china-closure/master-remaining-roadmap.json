@@ -18,7 +18,7 @@
   "migration_closure": "COMPLETE",
   "pending_approved_migrations": false,
   "phases_classified_not_auto_approved": true,
-  "safe_next_step": "PHASE_3A — BS + P&L preview-only (operator approval required)",
+  "safe_next_step": "Deploy Phase 3A preview UI (operator approval) OR Phase 3D finance golden capture",
   "ops_schedule_closure": {
     "status": "COMPLETE",
     "evidence": "reports/single-core-ledger/operational-monitoring/ops-schedule-closure-report.md"
@@ -36,10 +36,18 @@
     "implementation_auto_approved": false,
     "finance_golden_required": true
   },
+  "phase_3a_bs_pl_preview": {
+    "status": "COMPLETE",
+    "previewOnly": true,
+    "defaultRuntimeChanged": false,
+    "loaderSwapApproved": false,
+    "evidence": "reports/single-core-ledger/phase-3a-bs-pl-preview/",
+    "deploy": "NOT_RUN_OPERATOR_APPROVAL_REQUIRED"
+  },
   "recommended_next_phase": {
-    "mode": "PHASE_3A_OPERATOR_APPROVAL",
-    "action": "Balance Sheet + P&L parity design / preview-only",
-    "evidence": "reports/single-core-ledger/remaining-optional-screens-audit/next-implementation-plan.md",
+    "mode": "PHASE_3D_FINANCE_GOLDEN_OR_DEPLOY_3A",
+    "action": "Finance golden capture for BS/P&L OR operator-approved deploy of preview UI",
+    "evidence": "reports/single-core-ledger/phase-3a-bs-pl-preview/finance-golden-capture-plan.md",
     "command": "npm run monitor:three-company-unified-ledger",
     "credential_policy": "per-company only"
   },

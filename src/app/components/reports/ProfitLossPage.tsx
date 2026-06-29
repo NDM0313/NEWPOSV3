@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Loader2, GitCompare } from 'lucide-react';
 import { FinancialReportPrintShell } from './shared/FinancialReportPrintShell';
 import { useSupabase } from '@/app/context/SupabaseContext';
@@ -10,6 +10,17 @@ import { ReportBasisBanner } from '@/app/components/accounting/ReportBasisBanner
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/components/ui/select';
 import { Button } from '@/app/components/ui/button';
 import { toast } from 'sonner';
+import { canAccessBsPlUnifiedPreview } from '@/app/lib/accounting/bsPlUnifiedPreviewAccess';
+import {
+  compareProfitLossUnifiedPreview,
+  DEFAULT_BS_PL_PREVIEW_BASIS,
+  type ProfitLossUnifiedPreviewDiff,
+} from '@/app/lib/accounting/bsPlUnifiedPreviewDiff';
+import type { UnifiedLedgerBasis } from '@/app/lib/unifiedLedgerBasisFilter';
+import { useUnifiedLedgerEngineState } from '@/app/hooks/useUnifiedLedgerEngineState';
+import { loadProfitLossUnifiedPreview } from '@/app/services/bsPlUnifiedPreviewService';
+import type { ProfitLossUnifiedPreviewLoadResult } from '@/app/services/bsPlUnifiedPreviewService';
+import { ProfitLossUnifiedPreviewPanel } from '@/app/components/accounting/ProfitLossUnifiedPreviewPanel';
 
 const toExport = (
   r: ProfitLossResult,
@@ -64,13 +75,25 @@ export const ProfitLossPage: React.FC<{
   endDate: string;
   branchId?: string;
 }> = ({ startDate, endDate, branchId }) => {
-  const { companyId } = useSupabase();
+  const { companyId, userRole } = useSupabase();
   const { formatCurrency } = useFormatCurrency();
   const [data, setData] = useState<ProfitLossResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [fetchRetryKey, setFetchRetryKey] = useState(0);
   const [comparePeriod, setComparePeriod] = useState<'none' | 'prior-month' | 'prior-quarter'>('none');
+
+  const showUnifiedPreviewTools = canAccessBsPlUnifiedPreview(userRole);
+  const [unifiedPreviewEnabled, setUnifiedPreviewEnabled] = useState(false);
+  const [previewBasis, setPreviewBasis] = useState<UnifiedLedgerBasis>(DEFAULT_BS_PL_PREVIEW_BASIS);
+  const [previewLoadResult, setPreviewLoadResult] = useState<ProfitLossUnifiedPreviewLoadResult | null>(null);
+  const [previewDiff, setPreviewDiff] = useState<ProfitLossUnifiedPreviewDiff | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+
+  const { state: engineState } = useUnifiedLedgerEngineState(companyId, {
+    screenPreview: unifiedPreviewEnabled,
+  });
 
   const compareOptions = useMemo(() => {
     if (comparePeriod === 'none') return undefined;
@@ -96,6 +119,54 @@ export const ProfitLossPage: React.FC<{
       })
       .finally(() => setLoading(false));
   }, [companyId, startDate, endDate, branchId, compareOptions?.compareStart, compareOptions?.compareEnd, fetchRetryKey]);
+
+  const loadUnifiedPreview = useCallback(async () => {
+    if (!companyId || !data || !unifiedPreviewEnabled) {
+      setPreviewLoadResult(null);
+      setPreviewDiff(null);
+      setPreviewError(null);
+      return;
+    }
+    setPreviewLoading(true);
+    setPreviewError(null);
+    try {
+      const result = await loadProfitLossUnifiedPreview({
+        companyId,
+        startDate: data.startDate,
+        endDate: data.endDate,
+        branchId,
+        basis: previewBasis,
+      });
+      setPreviewLoadResult(result);
+      if (result.tbPreview.blockedByKillSwitch) {
+        setPreviewDiff(null);
+        setPreviewError(result.tbPreview.blockReason ?? 'Unified preview blocked.');
+        return;
+      }
+      if (result.preview) {
+        setPreviewDiff(compareProfitLossUnifiedPreview({ legacy: data, preview: result.preview }));
+      } else {
+        setPreviewDiff(null);
+      }
+    } catch (err) {
+      console.error(err);
+      setPreviewLoadResult(null);
+      setPreviewDiff(null);
+      setPreviewError('Unified preview failed to load');
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [companyId, data, unifiedPreviewEnabled, branchId, previewBasis]);
+
+  useEffect(() => {
+    if (!unifiedPreviewEnabled) {
+      setPreviewLoadResult(null);
+      setPreviewDiff(null);
+      setPreviewError(null);
+      return;
+    }
+    void loadUnifiedPreview();
+  }, [unifiedPreviewEnabled, loadUnifiedPreview]);
 
   const exportPeriodLabel = `${data?.startDate ?? startDate} to ${data?.endDate ?? endDate}`;
   const branchLabel = branchId && branchId !== 'all' ? 'Branch scope' : 'All branches';
@@ -144,6 +215,39 @@ export const ProfitLossPage: React.FC<{
         basis="official_gl"
         detail='Reports Overview "operational flow" uses documents — do not compare without reading both labels.'
       />
+      {showUnifiedPreviewTools ? (
+        <div className="flex flex-wrap items-center gap-3 no-print">
+          <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer w-fit">
+            <input
+              type="checkbox"
+              checked={unifiedPreviewEnabled}
+              disabled={engineState.killSwitchActive}
+              onChange={(e) => setUnifiedPreviewEnabled(e.target.checked)}
+              className="rounded border-gray-600 disabled:opacity-50"
+            />
+            Unified TB preview (P&L compare only)
+          </label>
+          {unifiedPreviewEnabled ? (
+            <Button type="button" variant="outline" size="sm" className="border-gray-700" onClick={() => void loadUnifiedPreview()}>
+              Refresh preview
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+      {unifiedPreviewEnabled && showUnifiedPreviewTools ? (
+        <ProfitLossUnifiedPreviewPanel
+          startDate={data.startDate}
+          endDate={data.endDate}
+          branchLabel={branchLabel}
+          loadResult={previewLoadResult}
+          diff={previewDiff}
+          loading={previewLoading}
+          error={previewError}
+          engineState={engineState}
+          previewBasis={previewBasis}
+          onPreviewBasisChange={setPreviewBasis}
+        />
+      ) : null}
       <FinancialReportPrintShell
         companyId={companyId}
         actionsTitle="Profit & Loss (GL)"

@@ -30,7 +30,7 @@
     { "id": "T10", "task": "Office PC local cleanup review", "class": "SAFE_LOCAL_CLEANUP" },
     { "id": "T11", "task": "Seven-phase plan", "class": "SAFE_DOCS_ONLY" },
     { "id": "T12", "task": "Operator decision dashboard", "class": "SAFE_DOCS_ONLY" },
-    { "id": "T13", "task": "Remaining optional screens audit (BS/P&L/CF/mobile)", "class": "COMPLETE", "evidence": "reports/single-core-ledger/remaining-optional-screens-audit/" },
+    { "id": "T13", "task": "Phase 3A BS/P&L preview-only", "class": "COMPLETE", "evidence": "reports/single-core-ledger/phase-3a-bs-pl-preview/" },
     { "id": "T14", "task": "Mobile parity deep audit (Phase 3C)", "class": "OPTIONAL_FUTURE" },
     { "id": "T15", "task": "Safe report/UI fixes", "class": "OPTIONAL_FUTURE" },
     { "id": "T16", "task": "R6 monitoring hardening", "class": "OPTIONAL_FUTURE" },

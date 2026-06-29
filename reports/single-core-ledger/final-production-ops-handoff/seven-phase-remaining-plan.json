@@ -20,6 +20,15 @@
       "auto_approved": false
     },
     {
+      "phase": "3A",
+      "name": "BS/P&L unified preview",
+      "status": "COMPLETE",
+      "previewOnly": true,
+      "defaultRuntimeChanged": false,
+      "loaderSwapApproved": false,
+      "evidence": "reports/single-core-ledger/phase-3a-bs-pl-preview/"
+    },
+    {
       "phase": 3,
       "name": "Remaining optional screen audit",
       "status": "COMPLETE",

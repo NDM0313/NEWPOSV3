@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Loader2, Calendar, Users, AlertTriangle, ShieldAlert, ChevronRight } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { FinancialReportPrintShell } from './shared/FinancialReportPrintShell';
@@ -22,6 +22,17 @@ import { ReportBasisBanner } from '@/app/components/accounting/ReportBasisBanner
 import { useNavigation } from '@/app/context/NavigationContext';
 import { supabase } from '@/lib/supabase';
 import { cn } from '@/app/components/ui/utils';
+import { canAccessBsPlUnifiedPreview } from '@/app/lib/accounting/bsPlUnifiedPreviewAccess';
+import {
+  compareBalanceSheetUnifiedPreview,
+  DEFAULT_BS_PL_PREVIEW_BASIS,
+  type BalanceSheetUnifiedPreviewDiff,
+} from '@/app/lib/accounting/bsPlUnifiedPreviewDiff';
+import type { UnifiedLedgerBasis } from '@/app/lib/unifiedLedgerBasisFilter';
+import { useUnifiedLedgerEngineState } from '@/app/hooks/useUnifiedLedgerEngineState';
+import { loadBalanceSheetUnifiedPreview } from '@/app/services/bsPlUnifiedPreviewService';
+import type { BalanceSheetUnifiedPreviewLoadResult } from '@/app/services/bsPlUnifiedPreviewService';
+import { BalanceSheetUnifiedPreviewPanel } from '@/app/components/accounting/BalanceSheetUnifiedPreviewPanel';
 
 // Group account items into standard Balance Sheet subgroups with subtotals
 type GroupKey = string;
@@ -251,7 +262,7 @@ export const BalanceSheetPage: React.FC<{
   asOfDate?: string;
   branchId?: string;
 }> = ({ asOfDate: initialAsOfDate, branchId }) => {
-  const { companyId } = useSupabase();
+  const { companyId, userRole } = useSupabase();
   const { formatCurrency } = useFormatCurrency();
   const { openLedgerStatementV2 } = useNavigation();
   const defaultDate = initialAsOfDate || new Date().toISOString().slice(0, 10);
@@ -266,6 +277,65 @@ export const BalanceSheetPage: React.FC<{
   const [partyKind, setPartyKind] = useState<'ar' | 'ap' | null>(null);
   const [partyLoading, setPartyLoading] = useState(false);
   const [partyBreakdown, setPartyBreakdown] = useState<ControlAccountBreakdownResult | null>(null);
+
+  const showUnifiedPreviewTools = canAccessBsPlUnifiedPreview(userRole);
+  const [unifiedPreviewEnabled, setUnifiedPreviewEnabled] = useState(false);
+  const [previewBasis, setPreviewBasis] = useState<UnifiedLedgerBasis>(DEFAULT_BS_PL_PREVIEW_BASIS);
+  const [previewLoadResult, setPreviewLoadResult] = useState<BalanceSheetUnifiedPreviewLoadResult | null>(null);
+  const [previewDiff, setPreviewDiff] = useState<BalanceSheetUnifiedPreviewDiff | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+
+  const { state: engineState } = useUnifiedLedgerEngineState(companyId, {
+    screenPreview: unifiedPreviewEnabled,
+  });
+
+  const loadUnifiedPreview = useCallback(async () => {
+    if (!companyId || !data || !unifiedPreviewEnabled) {
+      setPreviewLoadResult(null);
+      setPreviewDiff(null);
+      setPreviewError(null);
+      return;
+    }
+    setPreviewLoading(true);
+    setPreviewError(null);
+    try {
+      const result = await loadBalanceSheetUnifiedPreview({
+        companyId,
+        asOfDate: data.asOfDate,
+        branchId,
+        basis: previewBasis,
+      });
+      setPreviewLoadResult(result);
+      if (result.tbPreview.blockedByKillSwitch) {
+        setPreviewDiff(null);
+        setPreviewError(result.tbPreview.blockReason ?? 'Unified preview blocked.');
+        return;
+      }
+      if (result.preview) {
+        setPreviewDiff(compareBalanceSheetUnifiedPreview({ legacy: data, preview: result.preview }));
+      } else {
+        setPreviewDiff(null);
+      }
+    } catch (err) {
+      console.error(err);
+      setPreviewLoadResult(null);
+      setPreviewDiff(null);
+      setPreviewError('Unified preview failed to load');
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [companyId, data, unifiedPreviewEnabled, branchId, previewBasis]);
+
+  useEffect(() => {
+    if (!unifiedPreviewEnabled) {
+      setPreviewLoadResult(null);
+      setPreviewDiff(null);
+      setPreviewError(null);
+      return;
+    }
+    void loadUnifiedPreview();
+  }, [unifiedPreviewEnabled, loadUnifiedPreview]);
 
   useEffect(() => {
     if (!companyId || !asOfDate) {
@@ -390,6 +460,38 @@ export const BalanceSheetPage: React.FC<{
         basis="official_gl"
         detail="Point-in-time balance sheet from posted accounts. Party “Parties” drill-down is Party GL attribution, not operational due."
       />
+      {showUnifiedPreviewTools ? (
+        <div className="flex flex-wrap items-center gap-3 no-print">
+          <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer w-fit">
+            <input
+              type="checkbox"
+              checked={unifiedPreviewEnabled}
+              disabled={engineState.killSwitchActive}
+              onChange={(e) => setUnifiedPreviewEnabled(e.target.checked)}
+              className="rounded border-gray-600 disabled:opacity-50"
+            />
+            Unified TB preview (Balance Sheet compare only)
+          </label>
+          {unifiedPreviewEnabled ? (
+            <Button type="button" variant="outline" size="sm" className="border-gray-700" onClick={() => void loadUnifiedPreview()}>
+              Refresh preview
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+      {unifiedPreviewEnabled && showUnifiedPreviewTools ? (
+        <BalanceSheetUnifiedPreviewPanel
+          asOfDate={data.asOfDate}
+          branchLabel={branchLabel}
+          loadResult={previewLoadResult}
+          diff={previewDiff}
+          loading={previewLoading}
+          error={previewError}
+          engineState={engineState}
+          previewBasis={previewBasis}
+          onPreviewBasisChange={setPreviewBasis}
+        />
+      ) : null}
       <FinancialReportPrintShell
         companyId={companyId}
         actionsTitle="Balance Sheet (GL)"

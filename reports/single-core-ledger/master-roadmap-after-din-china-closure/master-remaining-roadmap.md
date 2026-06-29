@@ -106,7 +106,8 @@ R7 **design-only** · R8 **blocked** · next-company **blocked** until separate 
 - **R2** Cash/Bank Admin Compare diagnostic semantics (safe UI fix)
 
 ### Complete (2026-06-29)
-- **Phase 3 remaining optional screens audit** — BS / P&L / Cash Flow / mobile — [`remaining-optional-screens-audit/`](../remaining-optional-screens-audit/) — no runtime/accounting behavior changed; implementation not automatically approved; R7/R8/next-company still blocked; finance golden approval required before final numbers are adopted
+- **Phase 3A BS/P&L unified preview** — preview-only compare panels; default legacy unchanged; loader swap not approved — [`phase-3a-bs-pl-preview/`](../phase-3a-bs-pl-preview/)
+- **Phase 3 remaining optional screens audit** — BS / P&L / Cash Flow / mobile — [`remaining-optional-screens-audit/`](../remaining-optional-screens-audit/)
 
 ### Optional (no production impact if deferred)
 - **R6** Monitoring + rollback automation hardening

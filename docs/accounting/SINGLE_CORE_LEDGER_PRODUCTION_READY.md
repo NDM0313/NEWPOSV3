@@ -8,7 +8,8 @@
 **Archive:** Three-company baseline — [`final-program-archive-report.md`](../reports/single-core-ledger/final-program-archive/final-program-archive-report.md)  
 **Ops handoff:** [`final-production-ops-handoff.md`](../reports/single-core-ledger/final-production-ops-handoff/final-production-ops-handoff.md)  
 **Remaining tasks:** [`remaining-tasks-master-register.md`](../reports/single-core-ledger/final-production-ops-handoff/remaining-tasks-master-register.md) · [`seven-phase-remaining-plan.md`](../reports/single-core-ledger/final-production-ops-handoff/seven-phase-remaining-plan.md) · [`operator-decision-dashboard.md`](../reports/single-core-ledger/final-production-ops-handoff/operator-decision-dashboard.md)  
-**Remaining optional screens audit (Phase 3):** [`remaining-optional-screens-audit/`](../reports/single-core-ledger/remaining-optional-screens-audit/) — **completed** @ 2026-06-29; no runtime/accounting behavior changed; implementation not automatically approved; R7/R8/next-company still blocked; finance golden approval required before final numbers are adopted  
+**Remaining optional screens audit (Phase 3):** [`remaining-optional-screens-audit/`](../reports/single-core-ledger/remaining-optional-screens-audit/) — completed @ 2026-06-29  
+**Phase 3A BS/P&L preview-only:** [`phase-3a-bs-pl-preview/`](../reports/single-core-ledger/phase-3a-bs-pl-preview/) — **implemented** @ 2026-06-29; runtime default behavior unchanged; loader swap not approved; finance golden approval required before final BS/P&L unified adoption  
 **Ops monitoring:** [`ops-schedule-closure-report.md`](../reports/single-core-ledger/operational-monitoring/ops-schedule-closure-report.md)  
 **Commit reconciliation:** `0a818da2` baseline · `50547061` monitoring automation · `9586e611` credential hardening  
 **Master checklist:** use this file as the single entry point for post-apply status.
@@ -33,8 +34,7 @@
 - **Final production ops handoff:** **COMPLETE** — program in production ops mode — [`final-production-ops-handoff-manifest.json`](../reports/single-core-ledger/final-production-ops-handoff/final-production-ops-handoff-manifest.json)
 - **Password rotation:** **COMPLETE** — post-rotation monitoring **PASS** — per-company credentials verified; generic fallback disabled — [`password-rotation-final-closure-manifest.json`](../reports/single-core-ledger/operational-monitoring/password-rotation-final-closure-manifest.json)
 - **Production ops mode continues.** Remaining phases are **classified, not automatically approved**. R7/R8/next company remain blocked until separate approval.
-- **Phase 3 optional screens audit:** **COMPLETE** — BS / P&L / Cash Flow / mobile — [`remaining-optional-screens-audit/`](../reports/single-core-ledger/remaining-optional-screens-audit/); no runtime/accounting behavior changed; implementation not automatically approved
-- **Safe next step (if operator approves):** Phase 3A — Balance Sheet + P&L parity design / preview-only — [`next-implementation-plan.md`](../reports/single-core-ledger/remaining-optional-screens-audit/next-implementation-plan.md)
+- **Phase 3A BS/P&L preview-only:** **IMPLEMENTED** — admin/developer compare panels; legacy main unchanged — [`phase-3a-bs-pl-preview/`](../reports/single-core-ledger/phase-3a-bs-pl-preview/); deploy requires operator approval
 - **Ongoing command:** `npm run monitor:three-company-unified-ledger` with per-company `QA_BROWSER_PASSWORD_*` only — continue scheduled monitoring only
 - Evidence: [`three-company-monitoring-baseline.md`](../reports/single-core-ledger/final-program-archive/three-company-monitoring-baseline.md)
 
