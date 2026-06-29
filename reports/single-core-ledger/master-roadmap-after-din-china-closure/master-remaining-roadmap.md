@@ -14,7 +14,11 @@ R7 **design-only** · R8 **blocked** · next-company **blocked** until separate 
 
 **Ongoing ops:** `npm run monitor:three-company-unified-ledger` with per-company `QA_BROWSER_PASSWORD_*` only — see [`scheduled-monitoring-ops-pack.md`](../operational-monitoring/scheduled-monitoring-ops-pack.md) and [`final-production-ops-handoff.md`](../final-production-ops-handoff/final-production-ops-handoff.md).
 
-**Commit reconciliation:** `6b701ed1` password rotation closure · final production ops handoff @ 2026-06-29.
+**Remaining work clarity:** [`remaining-tasks-master-register.md`](../final-production-ops-handoff/remaining-tasks-master-register.md) · [`seven-phase-remaining-plan.md`](../final-production-ops-handoff/seven-phase-remaining-plan.md) · [`operator-decision-dashboard.md`](../final-production-ops-handoff/operator-decision-dashboard.md)
+
+**Production ops mode continues.** Remaining phases are classified, not automatically approved. **Safe next step:** local cleanup review dry-run — [`office-pc-local-change-inventory.md`](../final-production-ops-handoff/office-pc-local-change-inventory.md).
+
+**Commit reconciliation:** `fdb68235` final production ops handoff · remaining tasks register @ 2026-06-29.
 
 ---
 

@@ -1,0 +1,58 @@
+{
+  "run": "SEVEN_PHASE_REMAINING_PLAN",
+  "generated_at": "2026-06-29T14:00:00.000Z",
+  "program_mode": "PRODUCTION_OPS",
+  "phases": [
+    {
+      "phase": 1,
+      "name": "Production ops monitoring",
+      "status": "ONGOING_OPS",
+      "action": "daily/weekly monitoring only",
+      "command": "npm run monitor:three-company-unified-ledger",
+      "auto_approved": true
+    },
+    {
+      "phase": 2,
+      "name": "Office PC local cleanup",
+      "status": "SAFE_LOCAL_CLEANUP",
+      "action": "review unrelated files; do not delete unless approved",
+      "inventory": "office-pc-local-change-inventory.json",
+      "auto_approved": false
+    },
+    {
+      "phase": 3,
+      "name": "Remaining optional screen audit",
+      "status": "SAFE_AUDIT_ONLY",
+      "action": "BS, P&L, Cash Flow, mobile parity audit only",
+      "auto_approved": true
+    },
+    {
+      "phase": 4,
+      "name": "Safe report/UI fixes",
+      "status": "OPTIONAL_FUTURE",
+      "action": "only if no migration/no GL mutation/no loader behavior change",
+      "auto_approved": false
+    },
+    {
+      "phase": 5,
+      "name": "Next company rollout",
+      "status": "BLOCKED_NEEDS_FINANCE_SIGNOFF",
+      "action": "finance sign-off + golden capture required",
+      "auto_approved": false
+    },
+    {
+      "phase": 6,
+      "name": "R7 roznamcha_payment RPC",
+      "status": "BLOCKED_NEEDS_MIGRATION_APPROVAL",
+      "action": "design review + finance + migration + clone + backup",
+      "auto_approved": false
+    },
+    {
+      "phase": 7,
+      "name": "R8 legacy engine retirement",
+      "status": "BLOCKED_R8",
+      "action": "stability period + separate approval + rollback strategy",
+      "auto_approved": false
+    }
+  ]
+}
