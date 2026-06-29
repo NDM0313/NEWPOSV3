@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-27T15:52:33.399Z",
-  "current_main_commit": "4e834f3a",
-  "program_status": "OPERATIONAL_MONITORING_OPS_CLOSURE_PASSWORD_ROTATION_COMPLETE",
+  "generated_at": "2026-06-29T07:52:41.845Z",
+  "current_main_commit": "5a7fbe6f",
+  "program_status": "PASSWORD_ROTATION_COMPLETE_POST_MONITORING_PASS",
   "three_company_baseline": "COMPLETE",
   "credential_hardening": "COMPLETE",
   "ops_schedule_closure": {
@@ -14,12 +14,16 @@
     "rotation_required": true,
     "rotation_completed": true,
     "post_rotation_monitoring_status": "PASS",
-    "evidence": "reports/single-core-ledger/operational-monitoring/password-rotation-final-closure-report.json"
+    "post_rotation_monitoring_path": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-29T07-42-30-177Z.md",
+    "credential_policy": "per-company",
+    "generic_fallback_allowed": false,
+    "evidence": "reports/single-core-ledger/operational-monitoring/password-rotation-final-closure-manifest.json"
   },
   "recommended_next_phase": {
     "command": "npm run monitor:three-company-unified-ledger",
     "schedule": "daily_business_hours",
-    "guide": "reports/single-core-ledger/operational-monitoring/windows-task-scheduler-guide.md"
+    "guide": "reports/single-core-ledger/operational-monitoring/windows-task-scheduler-guide.md",
+    "credential_policy": "per-company only"
   },
   "blocked_phases": [
     { "id": "R7", "status": "DESIGN_ONLY" },
@@ -30,6 +34,11 @@
   "constraints": {
     "migrations_run": false,
     "gl_mutations": false,
-    "credentials_committed": false
+    "credentials_committed": false,
+    "passwords_printed": false,
+    "r7_applied": false,
+    "r8_started": false,
+    "fx_app_touched": false,
+    "other_company_enabled": false
   }
 }

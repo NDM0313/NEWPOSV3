@@ -2,8 +2,8 @@
 
 **Program:** OLD ERP Single Core Ledger  
 **Production:** https://erp.dincouture.pk  
-**Last updated:** 2026-06-27  
-**Commit reconciliation:** `0a818da2` baseline · `50547061` monitoring automation · `9586e611` credential hardening · post-rotation closure @ 2026-06-27
+**Last updated:** 2026-06-29  
+**Commit reconciliation:** `0a818da2` baseline · `50547061` monitoring automation · `9586e611` credential hardening · password rotation COMPLETE · post-rotation monitoring PASS @ 2026-06-29 (office PC)
 
 ---
 
@@ -16,8 +16,8 @@
 | [`vps-cron-monitoring-guide.md`](vps-cron-monitoring-guide.md) | Future VPS cron (docs only) |
 | [`monitoring-incident-response-runbook.md`](monitoring-incident-response-runbook.md) | Incident decision tree |
 | [`password-rotation-closure.md`](password-rotation-closure.md) | **PASSWORD_ROTATION_COMPLETE** |
-| [`password-rotation-final-closure-report.md`](password-rotation-final-closure-report.md) | Post-rotation monitoring PASS |
-| [`post-rotation-monitoring.json`](post-rotation-monitoring.json) | Latest post-rotation evidence |
+| [`password-rotation-final-closure-manifest.json`](password-rotation-final-closure-manifest.json) | Final closure manifest |
+| [`three-company-monitoring-2026-06-29T07-42-30-177Z.json`](three-company-monitoring-2026-06-29T07-42-30-177Z.json) | Office PC post-rotation evidence |
 | [`ops-schedule-closure-report.md`](ops-schedule-closure-report.md) | Closure manifest |
 
 ---

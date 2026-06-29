@@ -1,29 +1,29 @@
 # Operational monitoring schedule — closure report
 
 **Status:** `OPERATIONAL MONITORING OPS CLOSURE COMPLETE — PASSWORD ROTATION COMPLETE`  
-**Run:** OPERATIONAL MONITORING SCHEDULE + INCIDENT RUNBOOK + PASSWORD ROTATION CLOSURE  
-**Generated:** 2026-06-14T00:00:00Z (updated 2026-06-27 post-rotation)  
-**Latest main at start:** `9586e611`
+**Run:** PASSWORD ROTATION FINAL DOCS CLOSURE AFTER POST-ROTATION MONITORING PASS  
+**Generated:** 2026-06-14T00:00:00Z (updated 2026-06-29 office PC verification)  
+**Latest main at start:** `5a7fbe6f`
 
 ---
 
 ## Summary
 
-Three-company unified ledger operational readiness is documented: scheduled monitoring pack, Windows Task Scheduler guide, VPS cron guidance (docs only), incident response runbook, and password rotation closure. QA password rotation **complete**; post-rotation monitoring **PASS** with per-company credentials only.
+Three-company unified ledger operational readiness is documented: scheduled monitoring pack, Windows Task Scheduler guide, VPS cron guidance (docs only), incident response runbook, and password rotation closure. **Password rotation COMPLETE.** **Post-rotation monitoring PASS.** Per-company credentials verified on office PC. Generic fallback disabled for final closure run.
 
 ---
 
 ## Monitoring result
 
-| Profile | Result |
-|---------|--------|
-| din-china | PASS |
-| din-bridal | PASS |
-| din-couture | PASS |
+| Profile | Result | Credential source |
+|---------|--------|-------------------|
+| din-china | PASS | per-company email/password |
+| din-bridal | PASS | per-company email/password |
+| din-couture | PASS | per-company email/password |
 | Other-company loaders | 0 |
 | Cross-company leakage | false |
 
-**Evidence:** [`latest-three-company-monitoring.json`](latest-three-company-monitoring.json) (updated @ closure run)
+**Evidence:** [`three-company-monitoring-2026-06-29T07-42-30-177Z.json`](three-company-monitoring-2026-06-29T07-42-30-177Z.json) · [`latest-three-company-monitoring.json`](latest-three-company-monitoring.json)
 
 ---
 
@@ -46,8 +46,10 @@ Three-company unified ledger operational readiness is documented: scheduled moni
 | `rotation_required` | true (historical) |
 | `rotation_completed` | **true** |
 | `post_rotation_monitoring_status` | **PASS** |
+| `credential_policy` | per-company |
+| `generic_fallback_allowed` | **false** |
 
-**Evidence:** [`password-rotation-final-closure-report.md`](password-rotation-final-closure-report.md) · [`post-rotation-monitoring.json`](post-rotation-monitoring.json)
+**Evidence:** [`password-rotation-final-closure-manifest.json`](password-rotation-final-closure-manifest.json)
 
 ---
 
@@ -65,9 +67,9 @@ Three-company unified ledger operational readiness is documented: scheduled moni
 
 | Check | Result |
 |-------|--------|
-| `npm run test:unified-ledger` | See manifest |
-| `npm run build` | See manifest |
-| Deploy | SKIPPED — docs only |
+| `npm run test:unified-ledger` | 256/256 PASS |
+| `npm run build` | PASS |
+| Deploy | SKIPPED — docs/reports only |
 
 ---
 

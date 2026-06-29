@@ -8,13 +8,13 @@
 
 ## Scope statement
 
-**Three-company unified ledger baseline complete.** **Monitoring credential hardening complete.** **Ops schedule pack complete.** **Incident response runbook complete.** **Password rotation REQUIRED** (not completed in automation run).
+**Three-company unified ledger baseline complete.** **Monitoring credential hardening complete.** **Ops schedule pack complete.** **Incident response runbook complete.** **Password rotation COMPLETE.** **Post-rotation monitoring PASS.** Per-company credentials verified. Generic fallback disabled for final closure run.
 
-R7 **design-only** · R8 **blocked** · next-company **blocked** until finance sign-off.
+R7 **design-only** · R8 **blocked** · next-company **blocked** until separate finance sign-off.
 
-**Ongoing ops:** `npm run monitor:three-company-unified-ledger` with per-company `QA_BROWSER_PASSWORD_*` — see [`scheduled-monitoring-ops-pack.md`](../operational-monitoring/scheduled-monitoring-ops-pack.md).
+**Ongoing ops:** `npm run monitor:three-company-unified-ledger` with per-company `QA_BROWSER_PASSWORD_*` only — see [`scheduled-monitoring-ops-pack.md`](../operational-monitoring/scheduled-monitoring-ops-pack.md).
 
-**Commit reconciliation:** `0a818da2` baseline · `50547061` monitoring automation · `9586e611` credential hardening · ops schedule closure = this run.
+**Commit reconciliation:** `0a818da2` baseline · `50547061` monitoring automation · `9586e611` credential hardening · password rotation COMPLETE @ 2026-06-29 (office PC).
 
 ---
 
@@ -78,8 +78,8 @@ R7 **design-only** · R8 **blocked** · next-company **blocked** until finance s
 ### Blocked (removed)
 - ~~DIN COUTURE browser credentials~~ — resolved; rollout complete
 
-### Complete (2026-06-27)
-- **Password rotation + post-rotation monitoring** — per-company credentials PASS — [`password-rotation-final-closure-report.md`](../operational-monitoring/password-rotation-final-closure-report.md)
+### Complete (2026-06-29)
+- **Password rotation + post-rotation monitoring** — office PC per-company credentials PASS; generic fallback disabled — [`password-rotation-final-closure-manifest.json`](../operational-monitoring/password-rotation-final-closure-manifest.json)
 
 ### Complete (2026-06-14)
 - **Operational monitoring ops schedule closure** — schedule pack, Windows guide, incident runbook — [`ops-schedule-closure-report.md`](../operational-monitoring/ops-schedule-closure-report.md)

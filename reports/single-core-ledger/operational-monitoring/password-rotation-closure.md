@@ -1,14 +1,14 @@
 # Password rotation closure — QA browser monitoring users
 
-**Run:** POST-ROTATION MONITORING VERIFICATION + PASSWORD ROTATION FINAL CLOSURE  
-**Generated:** 2026-06-27T15:52:33.399Z  
+**Run:** PASSWORD ROTATION FINAL DOCS CLOSURE AFTER POST-ROTATION MONITORING PASS  
+**Generated:** 2026-06-29T07:52:41.845Z  
 **Status:** `PASSWORD_ROTATION_COMPLETE`
 
 ---
 
 ## Background
 
-Browser QA passwords for production monitoring were used in manual chat and screenshot workflows during rollout. Passwords were rotated in production auth; local env vars updated (not committed). Post-rotation monitoring **PASS**.
+Browser QA passwords for production monitoring were rotated in production auth. Local per-company env vars updated on the office PC (not committed). Post-rotation three-company monitoring **PASS** with per-company credentials only — generic fallback disabled.
 
 ---
 
@@ -29,8 +29,15 @@ Browser QA passwords for production monitoring were used in manual chat and scre
 | `rotation_required` | true (historical) |
 | `rotation_completed` | **true** |
 | `post_rotation_monitoring_status` | **PASS** |
+| `post_rotation_monitoring_path` | [`three-company-monitoring-2026-06-29T07-42-30-177Z.md`](three-company-monitoring-2026-06-29T07-42-30-177Z.md) |
+| `credential_policy` | per-company |
+| `generic_fallback_allowed` | **false** |
+| `credentials_committed` | false |
+| `passwords_printed` | false |
+| `migrations_run` | false |
+| `gl_mutations` | false |
 
-**Evidence:** [`post-rotation-monitoring.json`](post-rotation-monitoring.json) · [`password-rotation-final-closure-report.md`](password-rotation-final-closure-report.md)
+**Evidence:** [`latest-three-company-monitoring.json`](latest-three-company-monitoring.json) · [`password-rotation-final-closure-manifest.json`](password-rotation-final-closure-manifest.json)
 
 ---
 
@@ -39,7 +46,7 @@ Browser QA passwords for production monitoring were used in manual chat and scre
 - [x] DIN CHINA password rotated  
 - [x] DIN BRIDAL password rotated  
 - [x] DIN COUTURE password rotated  
-- [x] Local env / Credential Manager updated  
+- [x] Local env / Credential Manager updated (office PC verified)  
 - [x] `npm run monitor:three-company-unified-ledger` PASS (per-company credentials, no generic fallback)  
 - [x] Old passwords invalidated  
 
@@ -49,6 +56,7 @@ Browser QA passwords for production monitoring were used in manual chat and scre
 
 - Never commit passwords to git, docs, reports, or logs  
 - Use per-company env vars only for scheduled monitoring  
+- Correct command: `npm run monitor:three-company-unified-ledger` (not `ledgejr` typo)  
 - Rotate again if credentials are exposed — rerun monitoring and update this manifest  
 
 ---
