@@ -51,6 +51,21 @@
       "evidence": "reports/single-core-ledger/phase-3b-e-cash-flow-delta-investigation/"
     },
     {
+      "phase": "3B-F",
+      "name": "Cash Flow row-keyed export / deeper diff tooling",
+      "status": "IMPLEMENTED",
+      "completedAt": "2026-06-29",
+      "diagnosticOnly": true,
+      "officialTotalsChanged": false,
+      "deployedToProduction": false,
+      "deployPendingOperatorApproval": true,
+      "loaderSwapApproved": false,
+      "financeRuleConfirmationRequired": ["DIN CHINA", "DIN BRIDAL"],
+      "bsPlFinanceStatus": "PENDING",
+      "r7R8NextCompanyBlocked": true,
+      "evidence": "reports/single-core-ledger/phase-3b-f-cash-flow-row-export/"
+    },
+    {
       "phase": "3B-D",
       "name": "Cash Flow candidate golden capture",
       "status": "COMPLETE_CANDIDATE_ONLY",

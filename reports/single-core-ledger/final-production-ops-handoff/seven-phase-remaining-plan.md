@@ -120,6 +120,22 @@
 
 ---
 
+## Phase 3B-F — Cash Flow row-keyed export / deeper diff tooling
+
+| Field | Value |
+|-------|-------|
+| **Status** | `IMPLEMENTED` |
+| **Action** | Preview-only row-keyed JSON export + thematic diff buckets + local comparison script |
+| **Evidence** | [`phase-3b-f-cash-flow-row-export/`](../phase-3b-f-cash-flow-row-export/) |
+| **Diagnostic-only** | **YES** — no official totals changed |
+| **Deploy** | **NOT RUN** — operator approval required |
+| **Loader swap** | **NOT APPROVED** |
+| **Finance rule confirmation** | **REQUIRED** — DIN CHINA / DIN BRIDAL |
+| **BS/P&L finance** | **PENDING** |
+| **R7 / R8 / next company** | **BLOCKED** |
+
+---
+
 ## Phase 3 — Remaining optional screen audit
 
 | Field | Value |

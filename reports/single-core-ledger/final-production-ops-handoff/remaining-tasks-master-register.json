@@ -34,6 +34,7 @@
     { "id": "T14B", "task": "Phase 3B Cash Flow preview-only", "class": "COMPLETE_DEPLOYED", "evidence": "reports/single-core-ledger/phase-3b-cash-flow-preview/", "productionCommit": "99f2e3b3" },
     { "id": "T14D", "task": "Phase 3B-D Cash Flow candidate golden capture", "class": "COMPLETE_CANDIDATE_ONLY", "evidence": "reports/single-core-ledger/phase-3b-d-cash-flow-golden-capture/" },
     { "id": "T14E", "task": "Phase 3B-E Cash Flow delta investigation", "class": "COMPLETE", "evidence": "reports/single-core-ledger/phase-3b-e-cash-flow-delta-investigation/" },
+    { "id": "T14F", "task": "Phase 3B-F Cash Flow row-keyed export / deeper diff tooling", "class": "COMPLETE_DEPLOY_PENDING", "evidence": "reports/single-core-ledger/phase-3b-f-cash-flow-row-export/", "diagnosticOnly": true, "loaderSwapApproved": false },
     { "id": "T14", "task": "Mobile parity deep audit (Phase 3C)", "class": "OPTIONAL_FUTURE" },
     { "id": "T15", "task": "Safe report/UI fixes", "class": "OPTIONAL_FUTURE" },
     { "id": "T16", "task": "R6 monitoring hardening", "class": "OPTIONAL_FUTURE" },

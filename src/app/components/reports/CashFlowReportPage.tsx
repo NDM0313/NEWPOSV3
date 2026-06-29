@@ -511,10 +511,12 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
       ) : null}
       {unifiedPreviewEnabled && showUnifiedPreviewTools ? (
         <CashFlowUnifiedPreviewPanel
+          companyId={companyId}
           dateFrom={dateFrom}
           dateTo={dateTo}
           branchLabel={branchLabel}
           auditMode={auditMode}
+          legacyReport={data}
           loadResult={previewLoadResult}
           diff={previewDiff}
           loading={previewLoading}

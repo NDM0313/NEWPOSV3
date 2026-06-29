@@ -11,7 +11,9 @@ import { ReportBasisBanner } from '@/app/components/accounting/ReportBasisBanner
 import { downloadCompareJson } from '@/app/components/admin/unified-ledger-compare/CompareSummaryCards';
 import { Button } from '@/app/components/ui/button';
 import type { CashFlowUnifiedPreviewDiff } from '@/app/lib/accounting/cashFlowUnifiedPreviewDiff';
+import type { CashFlowReportResult } from '@/app/services/cashFlowReportService';
 import type { CashFlowUnifiedPreviewLoadResult } from '@/app/services/cashFlowUnifiedPreviewService';
+import { buildCashFlowRowKeyedExport } from '@/app/lib/accounting/cashFlowRowKeyedExport';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 
 const PREVIEW_BASIS_OPTIONS: UnifiedLedgerBasis[] = [
@@ -21,10 +23,12 @@ const PREVIEW_BASIS_OPTIONS: UnifiedLedgerBasis[] = [
 ];
 
 export function CashFlowUnifiedPreviewPanel({
+  companyId,
   dateFrom,
   dateTo,
   branchLabel,
   auditMode,
+  legacyReport,
   loadResult,
   diff,
   loading,
@@ -33,10 +37,12 @@ export function CashFlowUnifiedPreviewPanel({
   previewBasis,
   onPreviewBasisChange,
 }: {
+  companyId: string | null;
   dateFrom: string;
   dateTo: string;
   branchLabel: string;
   auditMode: boolean;
+  legacyReport: CashFlowReportResult | null;
   loadResult: CashFlowUnifiedPreviewLoadResult | null;
   diff: CashFlowUnifiedPreviewDiff | null;
   loading: boolean;
@@ -47,25 +53,30 @@ export function CashFlowUnifiedPreviewPanel({
 }) {
   const { formatCurrency } = useFormatCurrency();
 
-  const exportPayload = useMemo(
-    () => ({
-      phase: '3B',
-      screen: 'cash_flow',
+  const exportPayload = useMemo(() => {
+    if (!legacyReport || !diff) return null;
+    return buildCashFlowRowKeyedExport({
+      companyId,
       dateFrom,
       dateTo,
       branchLabel,
       auditMode,
       previewBasis,
-      engineState,
+      legacy: legacyReport,
+      loadResult,
       diff,
-      preview: loadResult?.preview ?? null,
-      roznamchaMeta: loadResult?.roznamchaPreview?.meta ?? null,
-      accountingRuleNotes: loadResult?.preview?.accountingRuleNotes ?? [],
-      exportedAt: new Date().toISOString(),
-      note: 'PREVIEW_ONLY — legacy Cash Flow table remains authoritative. NEEDS_FINANCE_GOLDEN_APPROVAL.',
-    }),
-    [dateFrom, dateTo, branchLabel, auditMode, previewBasis, engineState, diff, loadResult]
-  );
+    });
+  }, [
+    companyId,
+    dateFrom,
+    dateTo,
+    branchLabel,
+    auditMode,
+    previewBasis,
+    legacyReport,
+    loadResult,
+    diff,
+  ]);
 
   return (
     <div
@@ -84,10 +95,13 @@ export function CashFlowUnifiedPreviewPanel({
           type="button"
           variant="outline"
           size="sm"
-          onClick={() => downloadCompareJson(`phase3b-compare-cash-flow-${Date.now()}.json`, exportPayload)}
-          disabled={!diff}
+          onClick={() =>
+            exportPayload &&
+            downloadCompareJson(`phase3bf-cash-flow-row-export-${Date.now()}.json`, exportPayload)
+          }
+          disabled={!exportPayload}
         >
-          Export compare JSON
+          Export row-keyed JSON
         </Button>
       </div>
 
@@ -186,6 +200,15 @@ export function CashFlowUnifiedPreviewPanel({
             <li>Net movement Δ {formatCurrency(diff.netMovementDelta)}</li>
             <li>Closing Δ {formatCurrency(diff.closingDelta)}</li>
             <li>Row count Δ {diff.rowCountDelta} (legacy {diff.legacyRowCount} · preview {diff.previewRowCount})</li>
+            {exportPayload?.rowKeyedDiff ? (
+              <li>
+                Row matches: exact {exportPayload.rowKeyedDiff.exactMatches.length} · strong{' '}
+                {exportPayload.rowKeyedDiff.strongMatches.length} · weak{' '}
+                {exportPayload.rowKeyedDiff.weakMatches.length} · legacy-only{' '}
+                {exportPayload.rowKeyedDiff.legacyOnly.length} · preview-only{' '}
+                {exportPayload.rowKeyedDiff.previewOnly.length}
+              </li>
+            ) : null}
           </ul>
           <p className="mt-2 text-xs text-gray-400">NEEDS_FINANCE_GOLDEN_APPROVAL before any loader swap.</p>
         </div>

@@ -1,0 +1,13 @@
+{
+  "run": "PHASE_3B_F_ROW_KEY_CONTRACT",
+  "version": "1",
+  "keyConfidences": ["EXACT_KEY", "STRONG_KEY", "WEAK_KEY", "BUCKET_ONLY", "UNMATCHABLE_NEEDS_EXPORT_FIELD"],
+  "rowSides": ["cash_in", "cash_out", "transfer_in", "transfer_out", "opening", "reversal", "void", "unknown"],
+  "matchTiers": ["exact", "strong", "weak", "unmatched"],
+  "implementation": [
+    "src/app/lib/accounting/cashFlowRowKey.ts",
+    "src/app/lib/accounting/cashFlowRowNormalizer.ts",
+    "src/app/lib/accounting/cashFlowRowDiffBuckets.ts",
+    "src/app/lib/accounting/cashFlowRowKeyedExport.ts"
+  ]
+}

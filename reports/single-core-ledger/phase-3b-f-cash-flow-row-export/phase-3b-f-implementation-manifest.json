@@ -1,0 +1,26 @@
+{
+  "run": "PHASE_3B_F_IMPLEMENTATION",
+  "phase": "3B-F",
+  "status": "IMPLEMENTED",
+  "diagnosticOnly": true,
+  "officialTotalsChanged": false,
+  "cashFlowLoaderSwap": "BLOCKED",
+  "deploy": "NOT_RUN_OPERATOR_APPROVAL_REQUIRED",
+  "tests": { "suite": "test:unified-ledger", "passed": 280, "failed": 0 },
+  "build": "PASS",
+  "sourceFiles": [
+    "src/app/lib/accounting/cashFlowRowKey.ts",
+    "src/app/lib/accounting/cashFlowRowNormalizer.ts",
+    "src/app/lib/accounting/cashFlowRowDiffBuckets.ts",
+    "src/app/lib/accounting/cashFlowRowKeyedExport.ts",
+    "src/app/lib/accounting/cashFlowRowKey.test.ts",
+    "src/app/components/accounting/CashFlowUnifiedPreviewPanel.tsx",
+    "src/app/components/reports/CashFlowReportPage.tsx",
+    "scripts/single-core-ledger/phase-3b-f/export-cash-flow-row-diff.mjs"
+  ],
+  "financeRuleConfirmation": "REQUIRED_DIN_CHINA_DIN_BRIDAL",
+  "bsPlFinance": "PENDING",
+  "r7": "DESIGN_ONLY",
+  "r8": "BLOCKED",
+  "nextCompany": "BLOCKED"
+}
