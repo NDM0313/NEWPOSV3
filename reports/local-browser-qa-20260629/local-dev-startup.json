@@ -1,0 +1,8 @@
+{
+  "generated": "2026-06-29",
+  "devUrl": "http://localhost:5173",
+  "appLoads": true,
+  "consoleErrors": false,
+  "authSessionInitial": "authenticated_din_china",
+  "authSessionAfterWizardTest": "authenticated_no_business"
+}
