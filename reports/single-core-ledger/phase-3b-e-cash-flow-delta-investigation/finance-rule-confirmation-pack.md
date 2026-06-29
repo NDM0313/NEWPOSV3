@@ -49,4 +49,16 @@ Phase 3B-F deployed to production @ `5433ac2c`. Row-keyed exports captured for D
 
 Evidence: [`production-row-export-capture.md`](../phase-3b-f-cash-flow-row-export/production-row-export-capture.md) · [`diff-reports/`](../phase-3b-f-cash-flow-row-export/diff-reports/)
 
+## Phase 3B-G finance rule decision pack @ 2026-06-29
+
+**Status:** PREPARED — all decisions **PENDING** until explicit finance/operator written approval.
+
+Finance-readable decision form with options for **Q4**, **Q5**, **Q7**:
+
+- [`cash-flow-finance-decision-form.md`](../phase-3b-g-cash-flow-finance-rule-decision/cash-flow-finance-decision-form.md)
+- Company summaries: DIN CHINA · DIN BRIDAL · DIN COUTURE
+- Outcome matrix: maps choices to future Phase 3B-H or keep-legacy paths
+
+**Cash Flow loader swap remains BLOCKED.** Do not mark APPROVED without reviewer + date on decision form.
+
 BS/P&L finance remains **PENDING**. R7/R8/next company remain blocked.

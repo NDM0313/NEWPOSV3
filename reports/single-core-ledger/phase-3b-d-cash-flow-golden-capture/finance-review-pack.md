@@ -12,4 +12,6 @@
 
 **Phase 3B-E follow-up:** [`finance-rule-confirmation-pack.md`](../phase-3b-e-cash-flow-delta-investigation/finance-rule-confirmation-pack.md) — delta root causes documented; DIN CHINA transfer-leg treatment + DIN BRIDAL opening_balance_account rows.
 
-**Phase 3B-F tooling:** [`phase-3b-f-cash-flow-row-export/`](../phase-3b-f-cash-flow-row-export/) — row-keyed export / deeper diff tooling **implemented**; diagnostic-only; no official totals changed; Cash Flow loader swap remains blocked; finance rule confirmation still required for DIN CHINA/DIN BRIDAL; BS/P&L finance **PENDING**; R7/R8/next company remain blocked.
+**Phase 3B-F tooling:** [`phase-3b-f-cash-flow-row-export/`](../phase-3b-f-cash-flow-row-export/) — row-keyed export deployed @ `5433ac2c`; diagnostic-only; row exports captured.
+
+**Phase 3B-G decision pack:** [`phase-3b-g-cash-flow-finance-rule-decision/`](../phase-3b-g-cash-flow-finance-rule-decision/) — finance rule decision form **prepared**; status **PENDING**; Cash Flow loader swap remains blocked; BS/P&L finance **PENDING**; R7/R8/next company remain blocked.

@@ -18,7 +18,7 @@
   "migration_closure": "COMPLETE",
   "pending_approved_migrations": false,
   "phases_classified_not_auto_approved": true,
-  "safe_next_step": "Operator approves Phase 3B-F deploy; export row-keyed JSON for DIN CHINA/DIN BRIDAL; finance reviews rule confirmation pack OR continue scheduled monitoring only",
+  "safe_next_step": "Finance/operator completes Phase 3B-G decision form (Q4/Q5/Q7) OR continue scheduled monitoring only",
   "ops_schedule_closure": {
     "status": "COMPLETE",
     "evidence": "reports/single-core-ledger/operational-monitoring/ops-schedule-closure-report.md"
@@ -114,12 +114,13 @@
     "evidence": "reports/single-core-ledger/phase-3b-e-cash-flow-delta-investigation/"
   },
   "phase_3b_f_cash_flow_row_export": {
-    "status": "IMPLEMENTED",
+    "status": "DEPLOYED",
     "completedAt": "2026-06-29",
+    "productionCommit": "5433ac2c",
+    "evidenceCommit": "14e12671",
     "diagnosticOnly": true,
     "officialTotalsChanged": false,
-    "deployedToProduction": false,
-    "deployPendingOperatorApproval": true,
+    "deployedToProduction": true,
     "loaderSwapApproved": false,
     "financeRuleConfirmationRequired": ["DIN CHINA", "DIN BRIDAL"],
     "bs_pl_finance_status": "PENDING",
@@ -128,9 +129,21 @@
     "glMutations": false,
     "evidence": "reports/single-core-ledger/phase-3b-f-cash-flow-row-export/"
   },
+  "phase_3b_g_cash_flow_finance_decision_pack": {
+    "status": "PREPARED",
+    "preparedAt": "2026-06-29",
+    "financeStatus": "PENDING",
+    "loaderSwapApproved": false,
+    "requiredDecisions": ["Q4", "Q5", "Q7"],
+    "runtimeChanged": false,
+    "migrationsRun": false,
+    "flagsToggled": false,
+    "glMutations": false,
+    "evidence": "reports/single-core-ledger/phase-3b-g-cash-flow-finance-rule-decision/"
+  },
   "recommended_next_phase": {
-    "mode": "PHASE_3B_F_DEPLOY_AND_FINANCE_RULE_REVIEW",
-    "action": "Operator approves Phase 3B-F deploy; export row-keyed JSON for DIN CHINA/DIN BRIDAL; finance reviews rule confirmation pack; loader swap remains blocked until finance approval",
+    "mode": "PHASE_3B_G_FINANCE_DECISION",
+    "action": "Finance/operator selects Q4/Q5/Q7 options in writing on decision form; no loader swap or behavior change until approved",
     "evidence": "reports/single-core-ledger/phase-3d-bs-pl-golden-capture/finance-signoff-pack.md",
     "command": "npm run monitor:three-company-unified-ledger",
     "credential_policy": "per-company only"

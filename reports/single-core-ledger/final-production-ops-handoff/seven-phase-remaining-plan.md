@@ -124,13 +124,26 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | `IMPLEMENTED` |
-| **Action** | Preview-only row-keyed JSON export + thematic diff buckets + local comparison script |
+| **Status** | `DEPLOYED` |
+| **Production commit** | `5433ac2c` |
+| **Action** | Preview-only row-keyed JSON export + thematic diff buckets |
 | **Evidence** | [`phase-3b-f-cash-flow-row-export/`](../phase-3b-f-cash-flow-row-export/) |
 | **Diagnostic-only** | **YES** — no official totals changed |
-| **Deploy** | **NOT RUN** — operator approval required |
 | **Loader swap** | **NOT APPROVED** |
-| **Finance rule confirmation** | **REQUIRED** — DIN CHINA / DIN BRIDAL |
+
+---
+
+## Phase 3B-G — Cash Flow finance rule decision pack
+
+| Field | Value |
+|-------|-------|
+| **Status** | `PREPARED` |
+| **Action** | Finance-readable Q4/Q5/Q7 decision form + company summaries + outcome matrix |
+| **Evidence** | [`phase-3b-g-cash-flow-finance-rule-decision/`](../phase-3b-g-cash-flow-finance-rule-decision/) |
+| **Finance status** | **PENDING** — no approval without explicit written sign-off |
+| **Runtime changes** | **NONE** |
+| **Loader swap** | **BLOCKED** |
+| **Required decisions** | Q4 (DIN BRIDAL opening) · Q5 (DIN CHINA transfers) · Q7 (delta treatment) |
 | **BS/P&L finance** | **PENDING** |
 | **R7 / R8 / next company** | **BLOCKED** |
 
