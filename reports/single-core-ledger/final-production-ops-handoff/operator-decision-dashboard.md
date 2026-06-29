@@ -50,7 +50,9 @@
 
 **Phase 3B-H Cash Flow preview alignment:** **DEPLOYED TO PRODUCTION** @ 2026-06-29 (`d2401b1f`). Preview follows Q4=A, Q5=C, Q7=B; legacy official unchanged. Loader swap **NOT APPROVED**. No migrations, flags, or GL/data mutations.
 
-**Phase 3B-I aligned Cash Flow candidate golden capture:** **COMPLETE** @ 2026-06-29. Values **candidate-only, not finance approved**. DIN COUTURE zero-diff; DIN CHINA/DIN BRIDAL non-zero-diff. Loader swap blocked.
+**Phase 3B-I aligned Cash Flow candidate golden capture:** **COMPLETE** @ 2026-06-29. Values **candidate-only, not finance approved**. DIN COUTURE zero-diff; DIN CHINA/DIN BRIDAL non-zero-diff.
+
+**Phase 3B-J Cash Flow residual delta bridge:** **PREPARED** @ 2026-06-29. Explains non-zero residual after approved Q4/Q5 rules. Finance basis decision required (Option A/B/C/D). No data changed. Loader swap **NOT APPROVED**.
 
 ---
 
@@ -58,7 +60,7 @@
 
 | Item | Class | Doc |
 |------|-------|-----|
-| Aligned Cash Flow finance sign-off (after 3B-I review) | FINANCE_GATE | [`finance-review-pack.md`](../phase-3b-i-cash-flow-aligned-golden-capture/finance-review-pack.md) |
+| Finance basis decision (Option A/B/C/D) | FINANCE_GATE | [`finance-basis-decision-pack.md`](../phase-3b-j-cash-flow-residual-delta-bridge/finance-basis-decision-pack.md) |
 | Phase 3D — finance golden capture for BS/P&L | FINANCE_GATE | [`finance-golden-capture-plan.md`](../phase-3a-bs-pl-preview/finance-golden-capture-plan.md) |
 
 ---

@@ -172,6 +172,19 @@
 | **Zero-diff** | DIN COUTURE |
 | **Non-zero-diff** | DIN CHINA · DIN BRIDAL |
 | **Loader swap** | **BLOCKED** |
+
+---
+
+## Phase 3B-J — Cash Flow residual delta bridge
+
+| Field | Value |
+|-------|-------|
+| **Status** | `PREPARED` |
+| **Evidence** | [`phase-3b-j-cash-flow-residual-delta-bridge/`](../phase-3b-j-cash-flow-residual-delta-bridge/) |
+| **Purpose** | Explain DIN CHINA/DIN BRIDAL non-zero residual after Q4/Q5 alignment |
+| **Finance basis decision** | **PENDING** — Option A/B/C/D |
+| **Deploy** | **NOT RUN** |
+| **Loader swap** | **BLOCKED** |
 | **BS/P&L finance** | **PENDING** |
 | **R7 / R8 / next company** | **BLOCKED** |
 

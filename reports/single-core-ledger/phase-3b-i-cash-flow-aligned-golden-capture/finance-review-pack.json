@@ -11,6 +11,12 @@
   },
   "reviewer": "Nadeem Khan",
   "reviewDate": "2026-06-29",
+  "phase3BJBridge": {
+    "status": "PREPARED",
+    "evidence": "reports/single-core-ledger/phase-3b-j-cash-flow-residual-delta-bridge/residual-delta-bridge.md",
+    "basisDecisionPack": "reports/single-core-ledger/phase-3b-j-cash-flow-residual-delta-bridge/finance-basis-decision-pack.md",
+    "selectedBasisOption": "PENDING"
+  },
   "rows": [
     {
       "company": "DIN CHINA",
@@ -19,7 +25,7 @@
       "financeStatus": "PENDING",
       "reviewer": "Nadeem Khan",
       "reviewDate": "2026-06-29",
-      "notes": "CANDIDATE_ONLY — NOT FINANCE APPROVED. Cash Flow loader swap NOT APPROVED."
+      "notes": "CANDIDATE_ONLY — NON-ZERO-DIFF after Q4/Q5 alignment. Residual bridge explains Q5 transfer exclusion vs legacy. Select Option A/B/C/D from basis decision pack. Loader swap NOT APPROVED."
     },
     {
       "company": "DIN BRIDAL",
@@ -28,7 +34,7 @@
       "financeStatus": "PENDING",
       "reviewer": "Nadeem Khan",
       "reviewDate": "2026-06-29",
-      "notes": "CANDIDATE_ONLY — NOT FINANCE APPROVED. Cash Flow loader swap NOT APPROVED."
+      "notes": "CANDIDATE_ONLY — NON-ZERO-DIFF after Q4/Q5 alignment. Residual bridge explains Q4 opening exclusion vs legacy. Select Option A/B/C/D from basis decision pack. Loader swap NOT APPROVED."
     },
     {
       "company": "DIN COUTURE",
@@ -37,7 +43,8 @@
       "financeStatus": "PENDING",
       "reviewer": "Nadeem Khan",
       "reviewDate": "2026-06-29",
-      "notes": "CANDIDATE_ONLY — NOT FINANCE APPROVED. Cash Flow loader swap NOT APPROVED."
+      "notes": "CANDIDATE_ONLY — ZERO-DIFF but NOT FINANCE APPROVED. Zero-diff does not authorize loader swap. Select Option A/B/C/D from basis decision pack."
     }
-  ]
+  ],
+  "nextAction": "Operator selects finance basis Option A, B, C, or D in writing before Cash Flow finance sign-off or loader swap"
 }

@@ -124,6 +124,20 @@
       "evidence": "reports/single-core-ledger/phase-3b-i-cash-flow-aligned-golden-capture/"
     },
     {
+      "phase": "3B-J",
+      "name": "Cash Flow residual delta bridge",
+      "status": "PREPARED",
+      "completedAt": "2026-06-29",
+      "financeBasisDecision": "PENDING",
+      "selectedOption": "PENDING",
+      "loaderSwapApproved": false,
+      "officialLegacyUnchanged": true,
+      "deployed": false,
+      "migrationsRun": false,
+      "glMutations": false,
+      "evidence": "reports/single-core-ledger/phase-3b-j-cash-flow-residual-delta-bridge/"
+    },
+    {
       "phase": 3,
       "name": "Remaining optional screen audit",
       "status": "COMPLETE",
