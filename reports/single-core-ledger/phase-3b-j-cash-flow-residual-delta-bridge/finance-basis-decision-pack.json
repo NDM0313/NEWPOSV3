@@ -2,8 +2,8 @@
   "phase": "3B-J",
   "run": "finance-basis-decision-pack",
   "generated_at": "2026-06-29T15:30:00.000Z",
-  "defaultSelectedOption": "PENDING",
-  "financeStatus": "PENDING",
+  "defaultSelectedOption": "B",
+  "financeStatus": "APPROVED_FOR_SIGNOFF_PACK",
   "loaderSwapApproved": false,
   "officialLegacyUnchanged": true,
   "reviewer": "",
@@ -62,6 +62,13 @@
     "din-bridal": { "closingDelta": 857850, "nonZeroDiff": true, "optionBAcceptableIfDeltasExpected": true },
     "din-couture": { "closingDelta": 0, "zeroDiff": true, "optionBSupportsReview": true }
   },
-  "selectedOption": "PENDING",
+  "selectedOption": "B",
+  "financeStatus": "APPROVED_FOR_SIGNOFF_PACK",
+  "reviewer": "Nadeem Khan",
+  "reviewDate": "2026-06-29",
+  "loaderSwapApproved": false,
+  "officialLegacyCashFlowChanged": false,
+  "writtenApprovalText": "Option B approved: aligned Cash Flow preview is accepted as finance basis candidate under Q4=A, Q5=C, Q7=B. DIN CHINA and DIN BRIDAL deltas are accepted as expected rule differences vs legacy. Official legacy Cash Flow remains unchanged. Cash Flow loader swap is NOT APPROVED.",
+  "signoffPack": "reports/single-core-ledger/phase-3b-k-cash-flow-finance-signoff/cash-flow-finance-signoff-pack.md",
   "operatorWrittenApprovalRequired": true
 }

@@ -126,16 +126,25 @@
     {
       "phase": "3B-J",
       "name": "Cash Flow residual delta bridge",
-      "status": "PREPARED",
+      "status": "COMPLETE",
       "completedAt": "2026-06-29",
-      "financeBasisDecision": "PENDING",
-      "selectedOption": "PENDING",
+      "selectedBasisOption": "B",
+      "financeStatus": "APPROVED_FOR_SIGNOFF_PACK",
+      "loaderSwapApproved": false,
+      "evidence": "reports/single-core-ledger/phase-3b-j-cash-flow-residual-delta-bridge/"
+    },
+    {
+      "phase": "3B-K",
+      "name": "Cash Flow finance basis sign-off",
+      "status": "COMPLETE",
+      "completedAt": "2026-06-29",
+      "selectedBasisOption": "B",
+      "reviewer": "Nadeem Khan",
+      "companyFinanceStatus": "APPROVED_AS_ALIGNED_BASIS_CANDIDATE",
       "loaderSwapApproved": false,
       "officialLegacyUnchanged": true,
       "deployed": false,
-      "migrationsRun": false,
-      "glMutations": false,
-      "evidence": "reports/single-core-ledger/phase-3b-j-cash-flow-residual-delta-bridge/"
+      "evidence": "reports/single-core-ledger/phase-3b-k-cash-flow-finance-signoff/"
     },
     {
       "phase": 3,

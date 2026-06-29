@@ -72,15 +72,19 @@ Phase 3B-I captured aligned preview totals under approved rules Q4=A, Q5=C, Q7=B
 
 ---
 
-## Decision record (to be completed by operator/finance)
+## Decision record — **RECORDED** @ 2026-06-29
 
 | Field | Value |
 |-------|-------|
-| **Selected option** | PENDING |
-| **Reviewer** | |
-| **Review date** | |
+| **Selected option** | **B** |
+| **Finance status** | APPROVED_FOR_SIGNOFF_PACK |
+| **Reviewer** | Nadeem Khan |
+| **Review date** | 2026-06-29 |
 | **Loader swap approved** | false |
-| **Written approval text** | (required) |
+| **Official legacy changed** | false |
+| **Written approval text** | Option B approved: aligned Cash Flow preview is accepted as finance basis candidate under Q4=A, Q5=C, Q7=B. DIN CHINA and DIN BRIDAL deltas are accepted as expected rule differences vs legacy. Official legacy Cash Flow remains unchanged. Cash Flow loader swap is NOT APPROVED. |
+
+**Sign-off pack:** [`phase-3b-k-cash-flow-finance-signoff/`](../phase-3b-k-cash-flow-finance-signoff/)
 
 ---
 

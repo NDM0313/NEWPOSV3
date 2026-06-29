@@ -18,7 +18,7 @@
   "migration_closure": "COMPLETE",
   "pending_approved_migrations": false,
   "phases_classified_not_auto_approved": true,
-  "safe_next_step": "Operator selects finance basis Option A/B/C/D in writing (Phase 3B-J); then separate Cash Flow sign-off pack if Option B; loader swap remains blocked",
+  "safe_next_step": "Separate Cash Flow loader-swap readiness/planning phase if operator approves; loader swap execution requires explicit operator approval",
   "ops_schedule_closure": {
     "status": "COMPLETE",
     "evidence": "reports/single-core-ledger/operational-monitoring/ops-schedule-closure-report.md"
@@ -163,21 +163,31 @@
     "evidence": "reports/single-core-ledger/phase-3b-i-cash-flow-aligned-golden-capture/"
   },
   "phase_3b_j_cash_flow_residual_delta_bridge": {
-    "status": "PREPARED",
+    "status": "COMPLETE",
     "completedAt": "2026-06-29",
-    "financeBasisDecisionRequired": true,
-    "selectedBasisOption": "PENDING",
+    "selectedBasisOption": "B",
+    "financeStatus": "APPROVED_FOR_SIGNOFF_PACK",
+    "loaderSwapApproved": false,
+    "officialLegacyUnchanged": true,
+    "evidence": "reports/single-core-ledger/phase-3b-j-cash-flow-residual-delta-bridge/"
+  },
+  "phase_3b_k_cash_flow_finance_signoff": {
+    "status": "COMPLETE",
+    "completedAt": "2026-06-29",
+    "selectedBasisOption": "B",
+    "reviewer": "Nadeem Khan",
+    "companyFinanceStatus": "APPROVED_AS_ALIGNED_BASIS_CANDIDATE",
     "loaderSwapApproved": false,
     "officialLegacyUnchanged": true,
     "deployed": false,
     "migrationsRun": false,
     "glMutations": false,
-    "evidence": "reports/single-core-ledger/phase-3b-j-cash-flow-residual-delta-bridge/"
+    "evidence": "reports/single-core-ledger/phase-3b-k-cash-flow-finance-signoff/"
   },
   "recommended_next_phase": {
-    "mode": "PHASE_3B_J_FINANCE_BASIS_DECISION",
-    "action": "Operator selects Option A/B/C/D in writing; Option B leads to separate Cash Flow sign-off pack; loader swap remains blocked",
-    "evidence": "reports/single-core-ledger/phase-3b-j-cash-flow-residual-delta-bridge/finance-basis-decision-pack.md",
+    "mode": "CASH_FLOW_LOADER_SWAP_READINESS_PLANNING",
+    "action": "Separate loader-swap readiness/planning phase only if operator approves; execution requires explicit operator approval",
+    "evidence": "reports/single-core-ledger/phase-3b-k-cash-flow-finance-signoff/cash-flow-loader-swap-gate-checklist.md",
     "command": "npm run monitor:three-company-unified-ledger",
     "credential_policy": "per-company only"
   },

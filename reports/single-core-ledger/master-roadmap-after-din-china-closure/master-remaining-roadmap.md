@@ -114,7 +114,8 @@ R7 **design-only** · R8 **blocked** · next-company **blocked** until separate 
 - **Phase 3B-G Cash Flow finance rule decision pack** — **RECORDED** Q4=A, Q5=C, Q7=B @ 2026-06-29 — [`phase-3b-g-cash-flow-finance-rule-decision/`](../phase-3b-g-cash-flow-finance-rule-decision/)
 - **Phase 3B-H Cash Flow preview alignment** — **DEPLOYED** @ `d2401b1f`; preview-only; official legacy unchanged; loader swap blocked; no migrations/flags/GL mutations — [`phase-3b-h-cash-flow-preview-alignment/`](../phase-3b-h-cash-flow-preview-alignment/)
 - **Phase 3B-I aligned Cash Flow candidate golden capture** — **COMPLETE**; candidate-only values; DIN COUTURE zero-diff · DIN CHINA/DIN BRIDAL non-zero-diff; loader swap blocked — [`phase-3b-i-cash-flow-aligned-golden-capture/`](../phase-3b-i-cash-flow-aligned-golden-capture/)
-- **Phase 3B-J Cash Flow residual delta bridge** — **PREPARED**; DIN CHINA/DIN BRIDAL non-zero after approved rules; finance basis decision required; no deploy — [`phase-3b-j-cash-flow-residual-delta-bridge/`](../phase-3b-j-cash-flow-residual-delta-bridge/)
+- **Phase 3B-J Cash Flow residual delta bridge** — **PREPARED**; Option B selected — [`phase-3b-j-cash-flow-residual-delta-bridge/`](../phase-3b-j-cash-flow-residual-delta-bridge/)
+- **Phase 3B-K Cash Flow finance basis sign-off** — **COMPLETE**; aligned preview approved as basis candidate; loader swap blocked — [`phase-3b-k-cash-flow-finance-signoff/`](../phase-3b-k-cash-flow-finance-signoff/)
 - **Phase 3 remaining optional screens audit** — BS / P&L / Cash Flow / mobile — [`remaining-optional-screens-audit/`](../remaining-optional-screens-audit/)
 
 ### Optional (no production impact if deferred)

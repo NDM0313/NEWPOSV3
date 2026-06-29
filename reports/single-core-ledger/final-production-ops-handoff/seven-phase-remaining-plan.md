@@ -179,12 +179,23 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | `PREPARED` |
+| **Status** | `COMPLETE` |
+| **Selected option** | **B** |
 | **Evidence** | [`phase-3b-j-cash-flow-residual-delta-bridge/`](../phase-3b-j-cash-flow-residual-delta-bridge/) |
-| **Purpose** | Explain DIN CHINA/DIN BRIDAL non-zero residual after Q4/Q5 alignment |
-| **Finance basis decision** | **PENDING** — Option A/B/C/D |
-| **Deploy** | **NOT RUN** |
-| **Loader swap** | **BLOCKED** |
+
+---
+
+## Phase 3B-K — Cash Flow finance basis sign-off
+
+| Field | Value |
+|-------|-------|
+| **Status** | `COMPLETE` |
+| **Selected option** | **B** |
+| **Reviewer** | Nadeem Khan @ 2026-06-29 |
+| **Company finance status** | APPROVED_AS_ALIGNED_BASIS_CANDIDATE (all three) |
+| **Evidence** | [`phase-3b-k-cash-flow-finance-signoff/`](../phase-3b-k-cash-flow-finance-signoff/) |
+| **Official legacy** | **UNCHANGED** |
+| **Loader swap** | **BLOCKED** — separate operator approval required |
 | **BS/P&L finance** | **PENDING** |
 | **R7 / R8 / next company** | **BLOCKED** |
 
