@@ -3,17 +3,17 @@
 | Item | Decision |
 |------|----------|
 | Runtime preview diagnostic UI | **CHANGED** |
-| Deploy | **NOT RUN — operator approval required** |
-| Reason | `CashFlowUnifiedPreviewPanel` export wiring + row-keyed JSON |
+| Deploy | **COMPLETE** @ 2026-06-29 (`5433ac2c`) |
+| Evidence | [`production-deploy-notes.md`](production-deploy-notes.md) · [`post-deploy-smoke.md`](post-deploy-smoke.md) · [`production-row-export-capture.md`](production-row-export-capture.md) |
 
-## Operator action
+## Completed post-deploy
 
-Approve deploy of Phase 3B-F to production, then:
+1. Smoke: **PASS** — preview OFF by default; Export row-keyed JSON visible when preview ON
+2. Row-keyed exports captured for **DIN CHINA** and **DIN BRIDAL**
+3. Diff reports in `diff-reports/din-china/` and `diff-reports/din-bridal/`
+4. Finance rule confirmation pack updated with bucket evidence
 
-1. Smoke: Cash Flow page loads; preview OFF by default; export only when preview ON + role allowed.
-2. Export row-keyed JSON for DIN CHINA and DIN BRIDAL.
-3. Update finance rule confirmation pack with bucket evidence.
+## Still blocked
 
-## Skip deploy if
-
-Operator chooses to validate on staging/local only first.
+- Cash Flow loader swap until finance approval
+- BS/P&L finance **PENDING**; R7/R8/next company **BLOCKED**

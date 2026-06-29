@@ -44,7 +44,7 @@
 
 **Phase 3B-E Cash Flow delta investigation:** **COMPLETE** @ 2026-06-29. Root cause: different data engines + transfer-leg treatment (DIN CHINA) + opening_balance_account rows (DIN BRIDAL). Finance rule confirmation **PENDING**. Loader swap blocked. No runtime changes.
 
-**Phase 3B-F Cash Flow row-keyed export / deeper diff tooling:** **IMPLEMENTED** @ 2026-06-29. Diagnostic/export-only; legacy Cash Flow official unchanged; no official totals changed. Cash Flow loader swap remains blocked. Finance rule confirmation still required for DIN CHINA/DIN BRIDAL. BS/P&L finance **PENDING**. R7/R8/next company remain blocked. **Deploy NOT RUN** — operator approval required for preview diagnostic UI.
+**Phase 3B-F Cash Flow row-keyed export / deeper diff tooling:** **DEPLOYED** @ 2026-06-29 (`5433ac2c`). Diagnostic/export-only; DIN CHINA/DIN BRIDAL row exports captured. Finance rule confirmation **PENDING**. Loader swap blocked.
 
 ---
 
@@ -53,7 +53,6 @@
 | Item | Class | Doc |
 |------|-------|-----|
 | Phase 3D — finance golden capture for BS/P&L | FINANCE_GATE | [`finance-golden-capture-plan.md`](../phase-3a-bs-pl-preview/finance-golden-capture-plan.md) |
-| Phase 3B-F — deploy preview row-keyed export UI | OPERATOR_GATE | [`deploy-or-skip-notes.md`](../phase-3b-f-cash-flow-row-export/deploy-or-skip-notes.md) |
 | Phase 3B-E — Cash Flow finance rule review | FINANCE_GATE | [`finance-rule-confirmation-pack.md`](../phase-3b-e-cash-flow-delta-investigation/finance-rule-confirmation-pack.md) |
 
 ---

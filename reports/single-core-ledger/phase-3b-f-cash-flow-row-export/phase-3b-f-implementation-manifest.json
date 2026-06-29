@@ -5,7 +5,11 @@
   "diagnosticOnly": true,
   "officialTotalsChanged": false,
   "cashFlowLoaderSwap": "BLOCKED",
-  "deploy": "NOT_RUN_OPERATOR_APPROVAL_REQUIRED",
+  "deploy": "COMPLETE",
+  "deployedCommit": "5433ac2c",
+  "productionUrl": "https://erp.dincouture.pk",
+  "postDeploySmoke": "PASS",
+  "rowExportCapture": "PASS",
   "tests": { "suite": "test:unified-ledger", "passed": 280, "failed": 0 },
   "build": "PASS",
   "sourceFiles": [

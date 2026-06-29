@@ -22,6 +22,31 @@
 | DIN BRIDAL | PKR -55,000 | NEEDS_RULE_CONFIRMATION |
 | DIN COUTURE | 0 | PENDING |
 
-## Phase 3B-F tooling (diagnostic-only)
+## Phase 3B-F tooling (diagnostic-only) — production evidence @ 2026-06-29
 
-Phase 3B-F Cash Flow row-keyed export / deeper diff tooling is **implemented**. It is diagnostic-only; no official totals changed. Cash Flow loader swap remains blocked. Use row-keyed export + [`export-cash-flow-row-diff.mjs`](../../../scripts/single-core-ledger/phase-3b-f/export-cash-flow-row-diff.mjs) to answer Q4–Q7 with bucket evidence after operator deploys preview export UI. BS/P&L finance remains **PENDING**. R7/R8/next company remain blocked.
+Phase 3B-F deployed to production @ `5433ac2c`. Row-keyed exports captured for DIN CHINA and DIN BRIDAL. **Diagnostic-only** — no official totals changed. Loader swap **BLOCKED**.
+
+### DIN CHINA bucket evidence (closing Δ PKR 45,675,273)
+
+| Bucket | Rows | Net impact | Question |
+|--------|------|------------|----------|
+| Transfer leg | 80 | PKR -56,889,891 | **Q5** |
+| Legacy-only | 223 | PKR -42,779,869 | Q7 |
+| Preview-only | 305 | PKR -88,455,142 | Q7 |
+| Row matches | exact 89 · weak 11 | — | — |
+
+**Finance action:** Confirm Q5 — should internal transfers be gross (both legs), net, or excluded in official Cash Flow?
+
+### DIN BRIDAL bucket evidence (closing Δ PKR -55,000)
+
+| Bucket | Rows | Net impact | Question |
+|--------|------|------------|----------|
+| Legacy-only | 1 | PKR 25,000 | Q4/Q7 |
+| Preview-only | 3 | PKR 80,000 | Q4/Q7 |
+| Row matches | exact 2 · strong 48 | — | — |
+
+**Finance action:** Confirm Q4 — `opening_balance_account` / JE mapping treatment for Jun 2026 rows.
+
+Evidence: [`production-row-export-capture.md`](../phase-3b-f-cash-flow-row-export/production-row-export-capture.md) · [`diff-reports/`](../phase-3b-f-cash-flow-row-export/diff-reports/)
+
+BS/P&L finance remains **PENDING**. R7/R8/next company remain blocked.

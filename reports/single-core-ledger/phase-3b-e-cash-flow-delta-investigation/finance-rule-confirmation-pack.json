@@ -73,5 +73,21 @@
     { "company": "DIN CHINA", "closingDelta": 45675273, "financeStatus": "NEEDS_RULE_CONFIRMATION" },
     { "company": "DIN BRIDAL", "closingDelta": -55000, "financeStatus": "NEEDS_RULE_CONFIRMATION" },
     { "company": "DIN COUTURE", "closingDelta": 0, "financeStatus": "PENDING" }
-  ]
+  ],
+  "phase3bFProductionEvidence": {
+    "deployedCommit": "5433ac2c",
+    "capturedAt": "2026-06-29T13:40:31.324Z",
+    "evidence": "reports/single-core-ledger/phase-3b-f-cash-flow-row-export/production-row-export-capture.json",
+    "dinChina": {
+      "matchCounts": { "exact": 89, "strong": 0, "weak": 11, "legacyOnly": 223, "previewOnly": 305 },
+      "transferLegBucketNetImpact": -56889891,
+      "ruleQuestions": ["Q5", "Q7"]
+    },
+    "dinBridal": {
+      "matchCounts": { "exact": 2, "strong": 48, "weak": 0, "legacyOnly": 1, "previewOnly": 3 },
+      "legacyOnlyNetImpact": 25000,
+      "previewOnlyNetImpact": 80000,
+      "ruleQuestions": ["Q4", "Q7"]
+    }
+  }
 }

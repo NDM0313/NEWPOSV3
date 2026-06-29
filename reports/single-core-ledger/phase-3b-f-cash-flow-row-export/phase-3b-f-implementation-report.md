@@ -36,7 +36,9 @@ Phase 3B-F adds preview-only Cash Flow diagnostic export with stable row keys, n
 
 ## Deploy
 
-**DEPLOY NOT RUN** — operator approval required (preview diagnostic UI changed).
+**DEPLOYED** @ 2026-06-29 — `5433ac2c` — https://erp.dincouture.pk
+
+Evidence: [`production-deploy-notes.md`](production-deploy-notes.md) · [`post-deploy-smoke.md`](post-deploy-smoke.md) · [`production-row-export-capture.md`](production-row-export-capture.md)
 
 ## Finance
 
