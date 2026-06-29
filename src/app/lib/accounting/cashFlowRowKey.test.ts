@@ -214,6 +214,24 @@ test('buildCashFlowRowKeyedExport preserves summary diff unchanged', () => {
         sourceModuleFilter: 'all',
         auditMode: false,
         accountingRuleNotes: [],
+        financeAlignmentApplied: true,
+        financeRules: {
+          phase: '3B-H',
+          Q4: 'A',
+          Q5: 'C',
+          Q7: 'B',
+          reviewer: 'Nadeem Khan',
+          reviewDate: '2026-06-29',
+          loaderSwapApproved: false,
+          officialCashFlowBehaviorChanged: false,
+          previewAlignmentOnly: true,
+        },
+        excludedFromNormalTotals: {
+          internalTransferRows: 0,
+          openingBalanceRows: 0,
+          auditDetailRows: 0,
+        },
+        totalUnifiedRows: 1,
       },
       roznamchaPreview: {
         rows: [],
@@ -266,7 +284,7 @@ test('buildCashFlowRowKeyedExport preserves summary diff unchanged', () => {
       needsFinanceGoldenApproval: true,
     },
   });
-  assert.equal(payload.phase, '3B-F');
+  assert.equal(payload.phase, '3B-H');
   assert.equal(payload.diff?.legacyCashIn, 100);
   assert.equal(payload.legacyRowsNormalized.length, 1);
   assert.equal(payload.previewRowsNormalized.length, 1);

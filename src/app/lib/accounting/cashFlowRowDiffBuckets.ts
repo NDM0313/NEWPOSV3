@@ -166,6 +166,18 @@ export function buildCashFlowRowKeyedDiff(
     (r) => r.transferClass !== 'not_transfer' || r.rowSide.startsWith('transfer')
   );
   const openingBal = [...legacyOnly, ...previewOnly].filter((r) => r.openingBalance);
+  const excludedTransferNormal = previewRows.filter(
+    (r) => r.financeAlignmentClass === 'internal_transfer_excluded_normal'
+  );
+  const excludedOpeningNormal = previewRows.filter(
+    (r) => r.financeAlignmentClass === 'opening_summary_only'
+  );
+  const auditDetailExcluded = previewRows.filter(
+    (r) =>
+      r.financeAlignmentExportLabel === 'internal_transfer_excluded_normal' ||
+      r.financeAlignmentExportLabel === 'opening_summary_only' ||
+      r.financeAlignmentExportLabel === 'audit_detail_only'
+  );
   const reversalVoid = [...legacyOnly, ...previewOnly].filter(
     (r) => r.visibility === 'reversal' || r.visibility === 'void' || r.visibility === 'correction'
   );
@@ -177,6 +189,24 @@ export function buildCashFlowRowKeyedDiff(
     bucketSummary('preview_only', 'Preview-only rows', previewOnly, 'Q7'),
     bucketSummary('transfer_leg', 'Transfer leg bucket', transferLeg, 'Q5'),
     bucketSummary('opening_balance', 'Opening balance bucket', openingBal, 'Q4'),
+    bucketSummary(
+      'finance_excluded_transfer_normal',
+      'Q5=C — internal transfers excluded from normal preview',
+      excludedTransferNormal,
+      'Q5'
+    ),
+    bucketSummary(
+      'finance_excluded_opening_normal',
+      'Q4=A — opening rows summary-only (excluded from period cash-in)',
+      excludedOpeningNormal,
+      'Q4'
+    ),
+    bucketSummary(
+      'finance_audit_detail_only',
+      'Audit/detail excluded rows (not in normal period totals)',
+      auditDetailExcluded,
+      null
+    ),
     bucketSummary('reversal_void', 'Reversal/void/correction bucket', reversalVoid, 'Q3'),
     bucketSummary('source_transfers', 'Source module — transfers', bySource('transfers'), 'Q5'),
     bucketSummary('source_sales', 'Source module — sales_receipts', bySource('sales_receipts'), 'Q6'),

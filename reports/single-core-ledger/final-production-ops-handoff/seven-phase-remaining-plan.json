@@ -96,6 +96,19 @@
       "evidence": "reports/single-core-ledger/phase-3b-d-cash-flow-golden-capture/"
     },
     {
+      "phase": "3B-H",
+      "name": "Cash Flow preview alignment",
+      "status": "IMPLEMENTED",
+      "completedAt": "2026-06-29",
+      "financeDecisions": { "Q4": "A", "Q5": "C", "Q7": "B" },
+      "previewAlignmentOnly": true,
+      "officialLegacyUnchanged": true,
+      "deployedToProduction": false,
+      "loaderSwapApproved": false,
+      "recaptureRequired": "3B-I",
+      "evidence": "reports/single-core-ledger/phase-3b-h-cash-flow-preview-alignment/"
+    },
+    {
       "phase": 3,
       "name": "Remaining optional screen audit",
       "status": "COMPLETE",

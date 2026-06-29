@@ -90,6 +90,9 @@ export function CashFlowUnifiedPreviewPanel({
           <span className="text-xs text-amber-200/80 border border-amber-700/50 rounded px-1.5 py-0.5">
             PREVIEW_ONLY
           </span>
+          <span className="text-xs text-emerald-200/90 border border-emerald-700/50 rounded px-1.5 py-0.5">
+            Q4=A · Q5=C · Q7=B
+          </span>
         </div>
         <Button
           type="button"
@@ -127,8 +130,16 @@ export function CashFlowUnifiedPreviewPanel({
 
       <ReportBasisBanner
         basis={previewBasis}
-        detail={`${unifiedBasisBannerLabel(previewBasis)} — derived from unified cash/bank ledger. Legacy getCashFlowReport → roznamchaService remains main.`}
+        detail={`${unifiedBasisBannerLabel(previewBasis)} — preview aligned to finance rules Q4=A (opening summary-only), Q5=C (transfers excluded from normal totals). Legacy getCashFlowReport remains official.`}
       />
+
+      {loadResult?.preview?.financeAlignmentApplied ? (
+        <p className="text-xs text-emerald-300/90">
+          Finance alignment active: {loadResult.preview.excludedFromNormalTotals.internalTransferRows}{' '}
+          transfer row(s) and {loadResult.preview.excludedFromNormalTotals.openingBalanceRows} opening row(s)
+          excluded from normal preview period totals. Loader swap NOT APPROVED.
+        </p>
+      ) : null}
 
       {auditMode ? (
         <p className="text-xs text-blue-300/80">
@@ -210,7 +221,9 @@ export function CashFlowUnifiedPreviewPanel({
               </li>
             ) : null}
           </ul>
-          <p className="mt-2 text-xs text-gray-400">NEEDS_FINANCE_GOLDEN_APPROVAL before any loader swap.</p>
+          <p className="mt-2 text-xs text-gray-400">
+            NEEDS_FINANCE_GOLDEN_RE_CAPTURE after deploy. Loader swap NOT APPROVED.
+          </p>
         </div>
       ) : null}
     </div>

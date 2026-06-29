@@ -46,7 +46,9 @@
 
 **Phase 3B-F Cash Flow row-keyed export / deeper diff tooling:** **DEPLOYED** @ 2026-06-29 (`5433ac2c`). Diagnostic/export-only; DIN CHINA/DIN BRIDAL row exports captured. Finance rule confirmation **PENDING**. Loader swap blocked.
 
-**Phase 3B-G Cash Flow finance rule decision pack:** **PREPARED** @ 2026-06-29. Decision form for Q4/Q5/Q7 ready. Finance status **PENDING** until explicit written approval. No runtime changes.
+**Phase 3B-G Cash Flow finance rule decision pack:** **RECORDED** @ 2026-06-29 — Q4=A, Q5=C, Q7=B (Nadeem Khan). Preview alignment only.
+
+**Phase 3B-H Cash Flow preview alignment:** **IMPLEMENTED** @ 2026-06-29. Preview follows approved rules; legacy official unchanged. Loader swap **NOT APPROVED**. Deploy + re-capture pending.
 
 ---
 
@@ -54,9 +56,9 @@
 
 | Item | Class | Doc |
 |------|-------|-----|
+| Phase 3B-H — deploy preview alignment UI | OPERATOR_GATE | [`deploy-or-skip-notes.md`](../phase-3b-h-cash-flow-preview-alignment/deploy-or-skip-notes.md) |
+| Phase 3B-I — aligned golden re-capture (after deploy) | FINANCE_GATE | [`finance-next-review-pack.md`](../phase-3b-h-cash-flow-preview-alignment/finance-next-review-pack.md) |
 | Phase 3D — finance golden capture for BS/P&L | FINANCE_GATE | [`finance-golden-capture-plan.md`](../phase-3a-bs-pl-preview/finance-golden-capture-plan.md) |
-| Phase 3B-G — Cash Flow finance rule decisions (Q4/Q5/Q7) | FINANCE_GATE | [`cash-flow-finance-decision-form.md`](../phase-3b-g-cash-flow-finance-rule-decision/cash-flow-finance-decision-form.md) |
-| Phase 3B-E — Cash Flow finance rule review (evidence) | FINANCE_GATE | [`finance-rule-confirmation-pack.md`](../phase-3b-e-cash-flow-delta-investigation/finance-rule-confirmation-pack.md) |
 
 ---
 

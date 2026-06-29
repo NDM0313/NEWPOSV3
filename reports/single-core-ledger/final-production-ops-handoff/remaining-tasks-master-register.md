@@ -48,7 +48,8 @@
 | T14D | Cash Flow candidate golden capture (Phase 3B-D) | **COMPLETE — CANDIDATE_ONLY** | [`phase-3b-d-cash-flow-golden-capture/`](../phase-3b-d-cash-flow-golden-capture/) — not finance approved |
 | T14E | Cash Flow delta investigation (Phase 3B-E) | **COMPLETE** | [`phase-3b-e-cash-flow-delta-investigation/`](../phase-3b-e-cash-flow-delta-investigation/) — rule confirmation pending |
 | T14F | Cash Flow row-keyed export / deeper diff (Phase 3B-F) | **COMPLETE — DEPLOYED** | [`phase-3b-f-cash-flow-row-export/`](../phase-3b-f-cash-flow-row-export/) — production @ `5433ac2c`; diagnostic-only; row exports captured |
-| T14G | Cash Flow finance rule decision pack (Phase 3B-G) | **PREPARED — PENDING** | [`phase-3b-g-cash-flow-finance-rule-decision/`](../phase-3b-g-cash-flow-finance-rule-decision/) — Q4/Q5/Q7 form; finance approval pending |
+| T14G | Cash Flow finance rule decision pack (Phase 3B-G) | **COMPLETE — RECORDED** | [`phase-3b-g-cash-flow-finance-rule-decision/`](../phase-3b-g-cash-flow-finance-rule-decision/) — Q4=A, Q5=C, Q7=B @ 2026-06-29 |
+| T14H | Cash Flow preview alignment (Phase 3B-H) | **COMPLETE — DEPLOY PENDING** | [`phase-3b-h-cash-flow-preview-alignment/`](../phase-3b-h-cash-flow-preview-alignment/) — preview-only; loader swap blocked |
 | T14 | Mobile unified parity audit (deep) | **OPTIONAL_FUTURE** | Phase 3C in [`next-implementation-plan.md`](../remaining-optional-screens-audit/next-implementation-plan.md) |
 | T15 | Safe report/UI labeling fixes (no loader/GL change) | **OPTIONAL_FUTURE** | R2 pattern — diagnostic labeling only |
 | T16 | R6 monitoring automation hardening | **OPTIONAL_FUTURE** | [`r6-completion-report.md`](../r6-monitoring-hardening/r6-completion-report.md) |

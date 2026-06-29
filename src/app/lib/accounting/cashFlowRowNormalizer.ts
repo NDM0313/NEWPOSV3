@@ -17,6 +17,11 @@ import {
   hashDescription,
   parseLegacyJournalLineId,
 } from '@/app/lib/accounting/cashFlowRowKey';
+import {
+  classifyPreviewFinanceAlignment,
+  financeAlignmentExportLabel,
+  type CashFlowFinanceAlignmentClass,
+} from '@/app/lib/accounting/cashFlowPreviewFinanceAlignment';
 
 export type NormalizedCashFlowDiagnosticRow = {
   side: 'legacy' | 'preview';
@@ -45,6 +50,8 @@ export type NormalizedCashFlowDiagnosticRow = {
   bucketClass: string;
   descriptionHash: string;
   rawPointer: string | null;
+  financeAlignmentClass: CashFlowFinanceAlignmentClass;
+  financeAlignmentExportLabel: string | null;
 };
 
 function round2(n: number): number {
@@ -74,6 +81,10 @@ export function normalizeLegacyCashFlowRow(
   const rowSide = classifyRowSide(keyInput);
   const cashIn = round2(row.cashIn);
   const cashOut = round2(row.cashOut);
+  const financeAlignmentClass = classifyPreviewFinanceAlignment({
+    referenceType: row.referenceType,
+    sourceModule: row.sourceModule,
+  });
 
   return {
     side: 'legacy',
@@ -102,6 +113,8 @@ export function normalizeLegacyCashFlowRow(
     bucketClass: row.sourceModule,
     descriptionHash: hashDescription(row.details),
     rawPointer: `legacy:${row.id}`,
+    financeAlignmentClass,
+    financeAlignmentExportLabel: financeAlignmentExportLabel(financeAlignmentClass),
   };
 }
 
@@ -133,6 +146,10 @@ export function normalizePreviewCashFlowRow(
   };
   const { stableRowKey, keyConfidence } = buildCashFlowStableRowKey(keyInput);
   const rowSide = classifyRowSide(keyInput);
+  const financeAlignmentClass = classifyPreviewFinanceAlignment({
+    referenceType: row.referenceType,
+    sourceModule,
+  });
 
   return {
     side: 'preview',
@@ -161,5 +178,7 @@ export function normalizePreviewCashFlowRow(
     bucketClass: sourceModule,
     descriptionHash: hashDescription(row.description),
     rawPointer: `preview:jel:${row.journalEntryLineId}`,
+    financeAlignmentClass,
+    financeAlignmentExportLabel: financeAlignmentExportLabel(financeAlignmentClass),
   };
 }

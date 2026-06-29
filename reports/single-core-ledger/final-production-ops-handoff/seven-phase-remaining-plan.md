@@ -149,6 +149,20 @@
 
 ---
 
+## Phase 3B-H — Cash Flow preview alignment
+
+| Field | Value |
+|-------|-------|
+| **Status** | `IMPLEMENTED` |
+| **Finance decisions** | Q4=A, Q5=C, Q7=B (preview alignment only) |
+| **Evidence** | [`phase-3b-h-cash-flow-preview-alignment/`](../phase-3b-h-cash-flow-preview-alignment/) |
+| **Official legacy** | **UNCHANGED** |
+| **Deploy** | **NOT RUN** — operator approval required |
+| **Re-capture** | Phase 3B-I after deploy |
+| **Loader swap** | **BLOCKED** |
+
+---
+
 ## Phase 3 — Remaining optional screen audit
 
 | Field | Value |

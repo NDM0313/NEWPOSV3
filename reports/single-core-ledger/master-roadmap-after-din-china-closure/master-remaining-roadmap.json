@@ -18,7 +18,7 @@
   "migration_closure": "COMPLETE",
   "pending_approved_migrations": false,
   "phases_classified_not_auto_approved": true,
-  "safe_next_step": "Finance/operator completes Phase 3B-G decision form (Q4/Q5/Q7) OR continue scheduled monitoring only",
+  "safe_next_step": "Operator approves Phase 3B-H deploy; then Phase 3B-I aligned golden re-capture OR continue scheduled monitoring only",
   "ops_schedule_closure": {
     "status": "COMPLETE",
     "evidence": "reports/single-core-ledger/operational-monitoring/ops-schedule-closure-report.md"
@@ -130,20 +130,28 @@
     "evidence": "reports/single-core-ledger/phase-3b-f-cash-flow-row-export/"
   },
   "phase_3b_g_cash_flow_finance_decision_pack": {
-    "status": "PREPARED",
+    "status": "RECORDED",
     "preparedAt": "2026-06-29",
-    "financeStatus": "PENDING",
+    "recordedAt": "2026-06-29",
+    "reviewer": "Nadeem Khan",
+    "financeDecisions": { "Q4": "A", "Q5": "C", "Q7": "B" },
     "loaderSwapApproved": false,
-    "requiredDecisions": ["Q4", "Q5", "Q7"],
-    "runtimeChanged": false,
-    "migrationsRun": false,
-    "flagsToggled": false,
-    "glMutations": false,
     "evidence": "reports/single-core-ledger/phase-3b-g-cash-flow-finance-rule-decision/"
   },
+  "phase_3b_h_cash_flow_preview_alignment": {
+    "status": "IMPLEMENTED",
+    "completedAt": "2026-06-29",
+    "financeDecisions": { "Q4": "A", "Q5": "C", "Q7": "B" },
+    "previewAlignmentOnly": true,
+    "officialLegacyUnchanged": true,
+    "deployedToProduction": false,
+    "loaderSwapApproved": false,
+    "captureStatus": "PENDING_DEPLOY",
+    "evidence": "reports/single-core-ledger/phase-3b-h-cash-flow-preview-alignment/"
+  },
   "recommended_next_phase": {
-    "mode": "PHASE_3B_G_FINANCE_DECISION",
-    "action": "Finance/operator selects Q4/Q5/Q7 options in writing on decision form; no loader swap or behavior change until approved",
+    "mode": "PHASE_3B_H_DEPLOY_AND_3B_I_RECAPTURE",
+    "action": "Operator approves Phase 3B-H deploy; run Phase 3B-I aligned golden re-capture; loader swap remains blocked",
     "evidence": "reports/single-core-ledger/phase-3d-bs-pl-golden-capture/finance-signoff-pack.md",
     "command": "npm run monitor:three-company-unified-ledger",
     "credential_policy": "per-company only"

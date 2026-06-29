@@ -111,7 +111,8 @@ R7 **design-only** · R8 **blocked** · next-company **blocked** until separate 
 - **Phase 3D-SIGNOFF finance sign-off pack** — prepared; finance status **PENDING**; loader swap **BLOCKED** — [`finance-signoff-pack.md`](../phase-3d-bs-pl-golden-capture/finance-signoff-pack.md)
 - **Phase 3B-E Cash Flow delta investigation** — DIN CHINA/DIN BRIDAL rule confirmation required; candidate-only values; loader swap blocked; BS/P&L finance **PENDING**; no runtime changes — [`phase-3b-e-cash-flow-delta-investigation/`](../phase-3b-e-cash-flow-delta-investigation/)
 - **Phase 3B-F Cash Flow row-keyed export / deeper diff tooling** — **deployed**; diagnostic-only; row exports captured — [`phase-3b-f-cash-flow-row-export/`](../phase-3b-f-cash-flow-row-export/)
-- **Phase 3B-G Cash Flow finance rule decision pack** — **prepared**; finance status **PENDING**; Q4/Q5/Q7 form ready; loader swap blocked; no runtime changes — [`phase-3b-g-cash-flow-finance-rule-decision/`](../phase-3b-g-cash-flow-finance-rule-decision/)
+- **Phase 3B-G Cash Flow finance rule decision pack** — **RECORDED** Q4=A, Q5=C, Q7=B @ 2026-06-29 — [`phase-3b-g-cash-flow-finance-rule-decision/`](../phase-3b-g-cash-flow-finance-rule-decision/)
+- **Phase 3B-H Cash Flow preview alignment** — **IMPLEMENTED**; preview-only; official legacy unchanged; loader swap blocked; re-capture after deploy — [`phase-3b-h-cash-flow-preview-alignment/`](../phase-3b-h-cash-flow-preview-alignment/)
 - **Phase 3 remaining optional screens audit** — BS / P&L / Cash Flow / mobile — [`remaining-optional-screens-audit/`](../remaining-optional-screens-audit/)
 
 ### Optional (no production impact if deferred)

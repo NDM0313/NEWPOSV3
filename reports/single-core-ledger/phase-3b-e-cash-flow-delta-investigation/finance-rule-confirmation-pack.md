@@ -1,6 +1,6 @@
 # Finance rule confirmation pack — Phase 3B-E
 
-**Default status:** PENDING for all questions  
+**Default status:** Q4/Q5/Q7 recorded for preview alignment @ 2026-06-29 (Nadeem Khan). Q1–Q3/Q6 remain PENDING.  
 **Loader swap:** NOT APPROVED  
 **BS/P&L finance:** PENDING
 
@@ -9,10 +9,10 @@
 | Q1 | Should Cash Flow follow legacy `getCashFlowReport` exactly? | PENDING | Recommended: **YES** (official) |
 | Q2 | Should Cash Flow follow unified effective_party basis? | PENDING | Not without finance sign-off |
 | Q3 | Void/reversal hidden in normal, audit only? | PENDING | Matches visibility contract |
-| Q4 | Opening balance from prior activity vs period rows only? | PENDING | DIN BRIDAL `opening_balance_account` |
-| Q5 | Internal transfers gross, net, or excluded? | PENDING | **Critical — DIN CHINA** |
+| Q4 | Opening balance from prior activity vs period rows only? | APPROVED (A) | Nadeem Khan @ 2026-06-29 — preview alignment only |
+| Q5 | Internal transfers gross, net, or excluded? | APPROVED (C) | Nadeem Khan @ 2026-06-29 — excluded from normal preview |
 | Q6 | Which source modules in normal Cash Flow? | PENDING | Current: all |
-| Q7 | Accept DIN CHINA/BRIDAL deltas or fix? | PENDING | Confirm rules before any fix phase |
+| Q7 | Accept DIN CHINA/BRIDAL deltas or fix? | APPROVED_FOR_PREVIEW_ALIGNMENT_ONLY (B) | Phase 3B-H implemented; legacy official |
 
 ## Company deltas (candidate only)
 
@@ -62,3 +62,7 @@ Finance-readable decision form with options for **Q4**, **Q5**, **Q7**:
 **Cash Flow loader swap remains BLOCKED.** Do not mark APPROVED without reviewer + date on decision form.
 
 BS/P&L finance remains **PENDING**. R7/R8/next company remain blocked.
+
+## Phase 3B-H preview alignment @ 2026-06-29
+
+Finance decisions Q4=A, Q5=C, Q7=B recorded for **preview alignment only**. Phase 3B-H implemented in code. Legacy official unchanged. Loader swap **NOT APPROVED**. Re-capture required after deploy — [`phase-3b-h-cash-flow-preview-alignment/`](../phase-3b-h-cash-flow-preview-alignment/)

@@ -1,11 +1,15 @@
 /**
- * Phase 3B-F — build row-keyed Cash Flow diagnostic export payload (preview-only).
+ * Phase 3B-F/3B-H — build row-keyed Cash Flow diagnostic export payload (preview-only).
  */
 
 import type { UnifiedLedgerBasis } from '@/app/lib/unifiedLedgerBasisFilter';
 import type { CashFlowUnifiedPreviewDiff } from '@/app/lib/accounting/cashFlowUnifiedPreviewDiff';
 import type { CashFlowReportResult } from '@/app/services/cashFlowReportService';
 import type { CashFlowUnifiedPreviewLoadResult } from '@/app/services/cashFlowUnifiedPreviewService';
+import {
+  CASH_FLOW_APPROVED_FINANCE_RULES,
+  CASH_FLOW_FINANCE_ALIGNMENT_NOTES,
+} from '@/app/lib/accounting/cashFlowPreviewFinanceAlignment';
 import {
   normalizeLegacyCashFlowRow,
   normalizePreviewCashFlowRow,
@@ -14,11 +18,13 @@ import { buildCashFlowRowKeyedDiff } from '@/app/lib/accounting/cashFlowRowDiffB
 import { redactExportSecrets } from '@/app/lib/accounting/cashFlowRowKey';
 
 export type CashFlowRowKeyedExportPayload = {
-  phase: '3B-F';
+  phase: '3B-H';
   screen: 'cash_flow';
   diagnosticOnly: true;
   previewOnly: true;
   needsFinanceGoldenApproval: true;
+  financeAlignmentApplied: true;
+  financeRules: typeof CASH_FLOW_APPROVED_FINANCE_RULES;
   companyId: string | null;
   dateFrom: string;
   dateTo: string;
@@ -57,11 +63,13 @@ export function buildCashFlowRowKeyedExport(args: {
   const rowKeyedDiff = buildCashFlowRowKeyedDiff(legacyRowsNormalized, previewRowsNormalized);
 
   const payload: CashFlowRowKeyedExportPayload = {
-    phase: '3B-F',
+    phase: '3B-H',
     screen: 'cash_flow',
     diagnosticOnly: true,
     previewOnly: true,
     needsFinanceGoldenApproval: true,
+    financeAlignmentApplied: true,
+    financeRules: CASH_FLOW_APPROVED_FINANCE_RULES,
     companyId: args.companyId,
     dateFrom: args.dateFrom,
     dateTo: args.dateTo,
@@ -76,11 +84,13 @@ export function buildCashFlowRowKeyedExport(args: {
     roznamchaMeta: args.loadResult?.roznamchaPreview?.meta ?? null,
     accountingRuleNotes: [
       ...(args.loadResult?.preview?.accountingRuleNotes ?? []),
-      'Phase 3B-F row-keyed diagnostic export — legacy Cash Flow remains authoritative.',
-      'NEEDS_FINANCE_GOLDEN_APPROVAL before any loader swap.',
+      'Phase 3B-H row-keyed export — Q4=A, Q5=C, Q7=B preview alignment.',
+      'Legacy Cash Flow remains authoritative.',
+      'Cash Flow loader swap NOT APPROVED.',
+      ...CASH_FLOW_FINANCE_ALIGNMENT_NOTES,
     ],
     exportedAt: new Date().toISOString(),
-    note: 'PREVIEW_ONLY diagnostic export — legacy Cash Flow table remains authoritative. NEEDS_FINANCE_GOLDEN_APPROVAL.',
+    note: 'PREVIEW_ONLY diagnostic export — legacy Cash Flow table remains authoritative. Q4=A Q5=C Q7=B. Loader swap NOT APPROVED.',
   };
 
   return redactExportSecrets(payload);

@@ -14,4 +14,6 @@
 
 **Phase 3B-F tooling:** [`phase-3b-f-cash-flow-row-export/`](../phase-3b-f-cash-flow-row-export/) — row-keyed export deployed @ `5433ac2c`; diagnostic-only; row exports captured.
 
-**Phase 3B-G decision pack:** [`phase-3b-g-cash-flow-finance-rule-decision/`](../phase-3b-g-cash-flow-finance-rule-decision/) — finance rule decision form **prepared**; status **PENDING**; Cash Flow loader swap remains blocked; BS/P&L finance **PENDING**; R7/R8/next company remain blocked.
+**Phase 3B-G decision pack:** [`phase-3b-g-cash-flow-finance-rule-decision/`](../phase-3b-g-cash-flow-finance-rule-decision/) — Q4=A, Q5=C, Q7=B recorded @ 2026-06-29.
+
+**Phase 3B-H preview alignment:** [`phase-3b-h-cash-flow-preview-alignment/`](../phase-3b-h-cash-flow-preview-alignment/) — implemented; preview-only; loader swap NOT APPROVED; re-capture after deploy.

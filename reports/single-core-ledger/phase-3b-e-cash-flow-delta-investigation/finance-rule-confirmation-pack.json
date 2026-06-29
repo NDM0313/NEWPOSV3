@@ -36,19 +36,21 @@
       "id": "Q4",
       "question": "Should opening balances be calculated from all prior activity or only period rows?",
       "defaultRecommendation": "Finance confirm — DIN BRIDAL opening_balance_account rows drove delta",
-      "status": "PENDING",
-      "reviewer": "",
-      "reviewDate": "",
-      "notes": ""
+      "status": "APPROVED",
+      "selectedOption": "A",
+      "reviewer": "Nadeem Khan",
+      "reviewDate": "2026-06-29",
+      "notes": "Preview alignment only — opening summary-only"
     },
     {
       "id": "Q5",
       "question": "Should internal transfers be shown gross, net, or excluded?",
       "defaultRecommendation": "CRITICAL for DIN CHINA — preview gross legs vs legacy transfer presentation",
-      "status": "PENDING",
-      "reviewer": "",
-      "reviewDate": "",
-      "notes": ""
+      "status": "APPROVED",
+      "selectedOption": "C",
+      "reviewer": "Nadeem Khan",
+      "reviewDate": "2026-06-29",
+      "notes": "Preview alignment only — excluded from normal totals"
     },
     {
       "id": "Q6",
@@ -63,10 +65,11 @@
       "id": "Q7",
       "question": "Should DIN CHINA and DIN BRIDAL deltas be accepted as rule differences or fixed?",
       "defaultRecommendation": "Rule confirmation first — do not accept as official without review",
-      "status": "PENDING",
-      "reviewer": "",
-      "reviewDate": "",
-      "notes": "DIN CHINA: large transfer-leg treatment. DIN BRIDAL: opening_balance_account + JE mapping."
+      "status": "APPROVED_FOR_PREVIEW_ALIGNMENT_ONLY",
+      "selectedOption": "B",
+      "reviewer": "Nadeem Khan",
+      "reviewDate": "2026-06-29",
+      "notes": "Phase 3B-H preview alignment; legacy official; loader swap NOT APPROVED"
     }
   ],
   "companySummary": [
@@ -91,17 +94,23 @@
     }
   },
   "phase3bGFinanceDecisionPack": {
-    "status": "PREPARED",
+    "status": "RECORDED",
     "preparedAt": "2026-06-29",
-    "financeStatus": "PENDING",
+    "recordedAt": "2026-06-29",
+    "reviewer": "Nadeem Khan",
+    "financeDecisions": { "Q4": "A", "Q5": "C", "Q7": "B" },
     "loaderSwapApproved": false,
     "decisionForm": "reports/single-core-ledger/phase-3b-g-cash-flow-finance-rule-decision/cash-flow-finance-decision-form.json",
-    "companySummaries": [
-      "reports/single-core-ledger/phase-3b-g-cash-flow-finance-rule-decision/din-china-finance-summary.json",
-      "reports/single-core-ledger/phase-3b-g-cash-flow-finance-rule-decision/din-bridal-finance-summary.json",
-      "reports/single-core-ledger/phase-3b-g-cash-flow-finance-rule-decision/din-couture-finance-summary.json"
-    ],
-    "outcomeMatrix": "reports/single-core-ledger/phase-3b-g-cash-flow-finance-rule-decision/decision-outcome-matrix.json",
-    "requiredDecisions": ["Q4", "Q5", "Q7"]
+    "outcomeMatrix": "reports/single-core-ledger/phase-3b-g-cash-flow-finance-rule-decision/decision-outcome-matrix.json"
+  },
+  "phase3bHPreviewAlignment": {
+    "status": "IMPLEMENTED",
+    "completedAt": "2026-06-29",
+    "previewAlignmentOnly": true,
+    "officialLegacyUnchanged": true,
+    "deployedToProduction": false,
+    "captureStatus": "PENDING_DEPLOY",
+    "loaderSwapApproved": false,
+    "evidence": "reports/single-core-ledger/phase-3b-h-cash-flow-preview-alignment/"
   }
 }

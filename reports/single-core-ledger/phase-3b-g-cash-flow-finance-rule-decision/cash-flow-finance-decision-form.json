@@ -1,57 +1,41 @@
 {
   "run": "PHASE_3B_G_CASH_FLOW_FINANCE_DECISION_FORM",
-  "generated_at": "2026-06-29T15:00:00.000Z",
+  "generated_at": "2026-06-29T16:00:00.000Z",
   "defaultStatus": "PENDING",
   "loaderSwapApproved": false,
   "officialCashFlow": "legacy_roznamcha",
+  "recordedByPhase3B_H": true,
   "decisions": [
     {
       "id": "Q4",
       "question": "Opening balance rows treatment",
-      "options": [
-        { "id": "A", "label": "Opening balance rows only in summary/opening, not as period cash-in rows" },
-        { "id": "B", "label": "Opening balance rows appear as cash-in rows in unified Cash Flow" },
-        { "id": "C", "label": "Company-specific handling required" }
-      ],
-      "selected_option": null,
-      "status": "PENDING",
-      "reviewer": "",
-      "review_date": "",
-      "notes": "",
+      "selected_option": "A",
+      "status": "APPROVED",
+      "reviewer": "Nadeem Khan",
+      "review_date": "2026-06-29",
+      "notes": "Preview alignment only — opening summary-only, not period cash-in",
       "loader_swap_approved": false,
       "primary_company": "DIN BRIDAL"
     },
     {
       "id": "Q5",
       "question": "Internal transfers treatment",
-      "options": [
-        { "id": "A", "label": "Show gross both legs" },
-        { "id": "B", "label": "Net internal transfers" },
-        { "id": "C", "label": "Exclude from normal Cash Flow; audit/detail only" },
-        { "id": "D", "label": "Keep legacy transfer presentation" }
-      ],
-      "selected_option": null,
-      "status": "PENDING",
-      "reviewer": "",
-      "review_date": "",
-      "notes": "",
+      "selected_option": "C",
+      "status": "APPROVED",
+      "reviewer": "Nadeem Khan",
+      "review_date": "2026-06-29",
+      "notes": "Preview alignment only — transfers excluded from normal totals",
       "loader_swap_approved": false,
       "primary_company": "DIN CHINA"
     },
     {
       "id": "Q7",
       "question": "Treatment of current deltas",
-      "options": [
-        { "id": "A", "label": "Accept as rule differences; keep legacy official" },
-        { "id": "B", "label": "Align preview to legacy (future Phase 3B-H)" },
-        { "id": "C", "label": "Align legacy to unified in future controlled phase" },
-        { "id": "D", "label": "Need more finance review" }
-      ],
-      "selected_option": null,
-      "status": "PENDING",
-      "reviewer": "",
-      "review_date": "",
-      "notes": "",
+      "selected_option": "B",
+      "status": "APPROVED_FOR_PREVIEW_ALIGNMENT_ONLY",
+      "reviewer": "Nadeem Khan",
+      "review_date": "2026-06-29",
+      "notes": "Phase 3B-H preview alignment implemented; legacy official unchanged; loader swap NOT APPROVED",
       "loader_swap_approved": false,
       "affected_companies": ["DIN CHINA", "DIN BRIDAL", "DIN COUTURE"]
     }

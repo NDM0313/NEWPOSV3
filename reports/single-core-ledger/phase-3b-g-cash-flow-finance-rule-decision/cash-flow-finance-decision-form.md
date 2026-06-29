@@ -1,10 +1,10 @@
 # Cash Flow finance decision form — Phase 3B-G
 
-**Status:** PENDING — awaiting explicit finance/operator written decisions  
-**Loader swap:** NOT APPROVED (default for all questions)  
-**Official Cash Flow:** Legacy roznamcha path (unchanged until finance approves otherwise)
+**Status:** RECORDED @ 2026-06-29 — preview alignment only (Phase 3B-H)  
+**Loader swap:** NOT APPROVED  
+**Official Cash Flow:** Legacy roznamcha path (unchanged)
 
-> **Instructions:** Finance/operator selects one option per question, records reviewer name and date, and sets status. Do **not** mark APPROVED without explicit written sign-off.
+> **Recorded by:** Nadeem Khan @ 2026-06-29. Approvals are for **preview alignment only** — not loader swap.
 
 ---
 
@@ -20,16 +20,12 @@
 
 | Field | Value |
 |-------|-------|
-| **Selected option** | _PENDING_ |
-| **Status** | PENDING |
-| **Reviewer** | — |
-| **Review date** | — |
-| **Notes** | — |
+| **Selected option** | **A** |
+| **Status** | APPROVED (preview alignment only) |
+| **Reviewer** | Nadeem Khan |
+| **Review date** | 2026-06-29 |
+| **Notes** | Opening summary-only — not period cash-in in normal preview |
 | **Loader swap approved** | false |
-
----
-
-## Q5 — Internal transfers
 
 **Context:** DIN CHINA — 80 transfer-leg rows, net impact PKR -56,889,891; primary driver of closing Δ PKR 45,675,273.
 
@@ -42,11 +38,11 @@
 
 | Field | Value |
 |-------|-------|
-| **Selected option** | _PENDING_ |
-| **Status** | PENDING |
-| **Reviewer** | — |
-| **Review date** | — |
-| **Notes** | — |
+| **Selected option** | **C** |
+| **Status** | APPROVED (preview alignment only) |
+| **Reviewer** | Nadeem Khan |
+| **Review date** | 2026-06-29 |
+| **Notes** | Internal transfers excluded from normal preview; audit/detail buckets only |
 | **Loader swap approved** | false |
 
 ---
@@ -64,11 +60,11 @@
 
 | Field | Value |
 |-------|-------|
-| **Selected option** | _PENDING_ |
-| **Status** | PENDING |
-| **Reviewer** | — |
-| **Review date** | — |
-| **Notes** | — |
+| **Selected option** | **B** |
+| **Status** | APPROVED_FOR_PREVIEW_ALIGNMENT_ONLY |
+| **Reviewer** | Nadeem Khan |
+| **Review date** | 2026-06-29 |
+| **Notes** | Phase 3B-H implemented; legacy official unchanged; loader swap NOT APPROVED |
 | **Loader swap approved** | false |
 
 ---
