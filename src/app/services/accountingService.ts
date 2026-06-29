@@ -742,72 +742,68 @@ export const accountingService = {
         [];
 
       if (purchaseIds.length > 0) {
-        const { data: purchases } = await supabase
-          .from('purchases')
-          .select('id')
-          .in('id', purchaseIds);
-        
-        if (purchases) {
-          existingPurchases = new Set(purchases.map((p: any) => p.id));
-        }
+        const purchases = await fetchInBatches(purchaseIds, async (chunk) => {
+          const { data, error } = await supabase.from('purchases').select('id').in('id', chunk);
+          if (error) throw error;
+          return data || [];
+        });
+        existingPurchases = new Set(purchases.map((p: any) => p.id));
       }
 
       if (saleIds.length > 0) {
-        const { data: sales } = await supabase
-          .from('sales')
-          .select('id')
-          .in('id', saleIds);
-        
-        if (sales) {
-          existingSales = new Set(sales.map((s: any) => s.id));
-        }
+        const sales = await fetchInBatches(saleIds, async (chunk) => {
+          const { data, error } = await supabase.from('sales').select('id').in('id', chunk);
+          if (error) throw error;
+          return data || [];
+        });
+        existingSales = new Set(sales.map((s: any) => s.id));
       }
 
       // For payments, check if the referenced purchase/sale exists (payment + payment_adjustment both use payment id)
       if (uniquePaymentIds.length > 0) {
-        const { data: payments } = await supabase
-          .from('payments')
-          .select('id, reference_type, reference_id, reference_number, attachments')
-          .in('id', uniquePaymentIds);
-        
-        if (payments) {
+        const payments = await fetchInBatches(uniquePaymentIds, async (chunk) => {
+          const { data, error } = await supabase
+            .from('payments')
+            .select('id, reference_type, reference_id, reference_number, attachments')
+            .in('id', chunk);
+          if (error) throw error;
+          return data || [];
+        });
+
+        if (payments.length > 0) {
           paymentsList = payments;
           const purchaseRefs = payments
             .filter((p: any) => p.reference_type === 'purchase' && p.reference_id)
             .map((p: any) => p.reference_id) as string[];
-          
+
           const saleRefs = payments
             .filter((p: any) => p.reference_type === 'sale' && p.reference_id)
             .map((p: any) => p.reference_id) as string[];
 
           // Check if referenced purchases exist
           if (purchaseRefs.length > 0) {
-            const { data: purchaseChecks } = await supabase
-              .from('purchases')
-              .select('id')
-              .in('id', purchaseRefs);
-            
-            if (purchaseChecks) {
-              const validPurchaseIds = new Set(purchaseChecks.map((p: any) => p.id));
-              payments
-                .filter((p: any) => p.reference_type === 'purchase' && validPurchaseIds.has(p.reference_id))
-                .forEach((p: any) => validPayments.add(p.id));
-            }
+            const purchaseChecks = await fetchInBatches(purchaseRefs, async (chunk) => {
+              const { data, error } = await supabase.from('purchases').select('id').in('id', chunk);
+              if (error) throw error;
+              return data || [];
+            });
+            const validPurchaseIds = new Set(purchaseChecks.map((p: any) => p.id));
+            payments
+              .filter((p: any) => p.reference_type === 'purchase' && validPurchaseIds.has(p.reference_id))
+              .forEach((p: any) => validPayments.add(p.id));
           }
 
           // Check if referenced sales exist
           if (saleRefs.length > 0) {
-            const { data: saleChecks } = await supabase
-              .from('sales')
-              .select('id')
-              .in('id', saleRefs);
-            
-            if (saleChecks) {
-              const validSaleIds = new Set(saleChecks.map((s: any) => s.id));
-              payments
-                .filter((p: any) => p.reference_type === 'sale' && validSaleIds.has(p.reference_id))
-                .forEach((p: any) => validPayments.add(p.id));
-            }
+            const saleChecks = await fetchInBatches(saleRefs, async (chunk) => {
+              const { data, error } = await supabase.from('sales').select('id').in('id', chunk);
+              if (error) throw error;
+              return data || [];
+            });
+            const validSaleIds = new Set(saleChecks.map((s: any) => s.id));
+            payments
+              .filter((p: any) => p.reference_type === 'sale' && validSaleIds.has(p.reference_id))
+              .forEach((p: any) => validPayments.add(p.id));
           }
 
           // Payments without reference_type or with other types are valid
@@ -1436,11 +1432,20 @@ export const accountingService = {
       .or('is_void.is.null,is_void.eq.false');
     if (error || !entries?.length) return false;
     const jeIds = entries.map((e: { id: string }) => e.id);
-    const { data: lines } = await supabase
-      .from('journal_entry_lines')
-      .select('journal_entry_id, account_id, debit, credit')
-      .in('journal_entry_id', jeIds);
-    if (!lines?.length) return false;
+    let lines: { journal_entry_id: string; account_id: string; debit: number; credit: number }[] = [];
+    try {
+      lines = await fetchInBatches(jeIds, async (chunk) => {
+        const { data, error: lineErr } = await supabase
+          .from('journal_entry_lines')
+          .select('journal_entry_id, account_id, debit, credit')
+          .in('journal_entry_id', chunk);
+        if (lineErr) throw lineErr;
+        return data || [];
+      });
+    } catch {
+      return false;
+    }
+    if (!lines.length) return false;
     const amountRounded = Math.round(amount * 100) / 100;
     const byJe = new Map<string, { debit: Map<string, number>; credit: Map<string, number> }>();
     for (const line of lines as { journal_entry_id: string; account_id: string; debit: number; credit: number }[]) {
@@ -2340,21 +2345,22 @@ export const accountingService = {
       
       const paymentRefsMap = new Map<string, { referenceNumber: string; bankTraceId: string }>();
       if (paymentIds.length > 0) {
-        const { data: payments } = await supabase
-          .from('payments')
-          .select('id, reference_number, notes')
-          .in('id', paymentIds);
-        
-        if (payments) {
-          payments.forEach((p: any) => {
-            if (p.reference_number) {
-              paymentRefsMap.set(p.id, {
-                referenceNumber: String(p.reference_number),
-                bankTraceId: extractBankTraceId(p.notes),
-              });
-            }
-          });
-        }
+        const payments = await fetchInBatches(paymentIds, async (chunk) => {
+          const { data, error } = await supabase
+            .from('payments')
+            .select('id, reference_number, notes')
+            .in('id', chunk);
+          if (error) throw error;
+          return data || [];
+        });
+        payments.forEach((p: any) => {
+          if (p.reference_number) {
+            paymentRefsMap.set(p.id, {
+              referenceNumber: String(p.reference_number),
+              bankTraceId: extractBankTraceId(p.notes),
+            });
+          }
+        });
       }
 
       const saleIds = [...new Set(
@@ -2383,8 +2389,15 @@ export const accountingService = {
       const rentalBranchByRefId = new Map<string, string>();
       const branchLabelById = new Map<string, string>();
       if (saleIds.length) {
-        const { data: sales } = await supabase.from('sales').select('id, invoice_no, order_no, draft_no, branch_id, status').in('id', saleIds);
-        (sales || []).forEach((s: any) => {
+        const sales = await fetchInBatches(saleIds, async (chunk) => {
+          const { data, error } = await supabase
+            .from('sales')
+            .select('id, invoice_no, order_no, draft_no, branch_id, status')
+            .in('id', chunk);
+          if (error) throw error;
+          return data || [];
+        });
+        sales.forEach((s: any) => {
           const doc = String(s.invoice_no || s.order_no || s.draft_no || '').trim();
           if (doc) saleDocMap.set(String(s.id), doc);
           if (s?.status) saleStatusById.set(String(s.id), String(s.status));
@@ -2392,8 +2405,15 @@ export const accountingService = {
         });
       }
       if (purchaseIds.length) {
-        const { data: purchases } = await supabase.from('purchases').select('id, po_no, order_no, draft_no, branch_id').in('id', purchaseIds);
-        (purchases || []).forEach((p: any) => {
+        const purchases = await fetchInBatches(purchaseIds, async (chunk) => {
+          const { data, error } = await supabase
+            .from('purchases')
+            .select('id, po_no, order_no, draft_no, branch_id')
+            .in('id', chunk);
+          if (error) throw error;
+          return data || [];
+        });
+        purchases.forEach((p: any) => {
           const doc = String(p.po_no || p.order_no || p.draft_no || '').trim();
           if (doc) purchaseDocMap.set(String(p.id), doc);
           if (p?.branch_id) purchaseBranchById.set(String(p.id), String(p.branch_id));
@@ -2418,12 +2438,16 @@ export const accountingService = {
       const paymentMetaById = new Map<string, { voided_at: string | null; sale_id: string | null }>();
       const paymentLinkedSaleIds: string[] = [];
       if (ledgerPaymentIds.length) {
-        const { data: payRows } = await supabase
-          .from('payments')
-          .select('id, voided_at, reference_type, reference_id')
-          .eq('company_id', companyId)
-          .in('id', ledgerPaymentIds);
-        (payRows || []).forEach((p: any) => {
+        const payRows = await fetchInBatches(ledgerPaymentIds, async (chunk) => {
+          const { data, error } = await supabase
+            .from('payments')
+            .select('id, voided_at, reference_type, reference_id')
+            .eq('company_id', companyId)
+            .in('id', chunk);
+          if (error) throw error;
+          return data || [];
+        });
+        payRows.forEach((p: any) => {
           const saleId =
             String(p.reference_type || '').toLowerCase() === 'sale' && p.reference_id
               ? String(p.reference_id)
@@ -2435,11 +2459,15 @@ export const accountingService = {
           if (saleId && !saleStatusById.has(saleId)) paymentLinkedSaleIds.push(saleId);
         });
         if (paymentLinkedSaleIds.length) {
-          const { data: extraSales } = await supabase
-            .from('sales')
-            .select('id, invoice_no, order_no, draft_no, branch_id, status')
-            .in('id', [...new Set(paymentLinkedSaleIds)]);
-          (extraSales || []).forEach((s: any) => {
+          const extraSales = await fetchInBatches([...new Set(paymentLinkedSaleIds)], async (chunk) => {
+            const { data, error } = await supabase
+              .from('sales')
+              .select('id, invoice_no, order_no, draft_no, branch_id, status')
+              .in('id', chunk);
+            if (error) throw error;
+            return data || [];
+          });
+          extraSales.forEach((s: any) => {
             const doc = String(s.invoice_no || s.order_no || s.draft_no || '').trim();
             if (doc) saleDocMap.set(String(s.id), doc);
             if (s?.status) saleStatusById.set(String(s.id), String(s.status));
@@ -2457,8 +2485,12 @@ export const accountingService = {
         ),
       ];
       if (rentalRefIds.length) {
-        const { data: rentalRows } = await supabase.from('rentals').select('id, branch_id').in('id', rentalRefIds);
-        (rentalRows || []).forEach((r: any) => {
+        const rentalRows = await fetchInBatches(rentalRefIds, async (chunk) => {
+          const { data, error } = await supabase.from('rentals').select('id, branch_id').in('id', chunk);
+          if (error) throw error;
+          return data || [];
+        });
+        rentalRows.forEach((r: any) => {
           if (r?.id && r.branch_id) rentalBranchByRefId.set(String(r.id), String(r.branch_id));
         });
       }
@@ -2470,8 +2502,12 @@ export const accountingService = {
         ]),
       ];
       if (docBranchIds.length) {
-        const { data: branchRows } = await supabase.from('branches').select('id, name, code').in('id', docBranchIds);
-        (branchRows || []).forEach((b: any) => {
+        const branchRows = await fetchInBatches(docBranchIds, async (chunk) => {
+          const { data, error } = await supabase.from('branches').select('id, name, code').in('id', chunk);
+          if (error) throw error;
+          return data || [];
+        });
+        branchRows.forEach((b: any) => {
           if (!b?.id) return;
           const label = b.code ? `${b.code} | ${b.name}` : String(b.name || '');
           branchLabelById.set(String(b.id), label);
@@ -2533,14 +2569,20 @@ export const accountingService = {
       const jeIds = [...new Set(filteredLines.map((l: any) => l.journal_entry?.id).filter(Boolean))] as string[];
       const counterAccountMap = new Map<string, string>();
       if (jeIds.length > 0) {
-        const { data: otherLines } = await supabase
-          .from('journal_entry_lines')
-          .select('journal_entry_id, account_id, account:accounts(name)')
-          .in('journal_entry_id', jeIds)
-          .neq('account_id', accountId);
-        for (const ol of otherLines || []) {
+        const otherLines = await fetchInBatches(jeIds, async (chunk) => {
+          const { data, error } = await supabase
+            .from('journal_entry_lines')
+            .select('journal_entry_id, account_id, account:accounts(name)')
+            .in('journal_entry_id', chunk)
+            .neq('account_id', accountId);
+          if (error) throw error;
+          return data || [];
+        });
+        for (const ol of otherLines) {
           const name = (ol as any).account?.name ?? 'Unknown';
-          const arr = counterAccountMap.get(ol.journal_entry_id) ? `${counterAccountMap.get(ol.journal_entry_id)}, ${name}` : name;
+          const arr = counterAccountMap.get(ol.journal_entry_id)
+            ? `${counterAccountMap.get(ol.journal_entry_id)}, ${name}`
+            : name;
           counterAccountMap.set(ol.journal_entry_id, arr);
         }
       }
@@ -2559,12 +2601,16 @@ export const accountingService = {
       ];
       const reversedEntryNoByJeId = new Map<string, string>();
       if (reversalTargetIds.length > 0) {
-        const { data: origJes } = await supabase
-          .from('journal_entries')
-          .select('id, entry_no')
-          .eq('company_id', companyId)
-          .in('id', reversalTargetIds);
-        (origJes || []).forEach((r: any) => {
+        const origJes = await fetchInBatches(reversalTargetIds, async (chunk) => {
+          const { data, error } = await supabase
+            .from('journal_entries')
+            .select('id, entry_no')
+            .eq('company_id', companyId)
+            .in('id', chunk);
+          if (error) throw error;
+          return data || [];
+        });
+        origJes.forEach((r: any) => {
           if (r?.id) reversedEntryNoByJeId.set(r.id, String(r.entry_no || '').trim() || r.id.slice(0, 8));
         });
       }

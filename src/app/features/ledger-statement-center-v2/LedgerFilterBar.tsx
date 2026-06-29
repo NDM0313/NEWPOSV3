@@ -20,6 +20,9 @@ export interface LedgerFilterBarProps {
   search: string;
   onSearchChange: (s: string) => void;
   loading: boolean;
+  showPartyDiscount?: boolean;
+  partyDiscountDisabled?: boolean;
+  onApplyPartyDiscount?: () => void;
 }
 
 const TYPE_OPTIONS: { value: LedgerStatementV2Type; label: string }[] = [
@@ -40,6 +43,7 @@ const TX_OPTIONS: { value: LedgerTransactionTypeFilter; label: string }[] = [
   { value: 'expense', label: 'Expense' },
   { value: 'journal', label: 'Journal entry' },
   { value: 'opening', label: 'Opening balance' },
+  { value: 'discount', label: 'Discount' },
 ];
 
 export function LedgerFilterBar(props: LedgerFilterBarProps) {
@@ -106,31 +110,43 @@ export function LedgerFilterBar(props: LedgerFilterBarProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div>
-          <label className="text-xs text-gray-500 uppercase tracking-wide mb-1.5 block">Transaction type</label>
-          <select
-            value={props.transactionType}
-            onChange={(e) => props.onTransactionTypeChange(e.target.value as LedgerTransactionTypeFilter)}
-            className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 flex-1 min-w-0">
+          <div>
+            <label className="text-xs text-gray-500 uppercase tracking-wide mb-1.5 block">Transaction type</label>
+            <select
+              value={props.transactionType}
+              onChange={(e) => props.onTransactionTypeChange(e.target.value as LedgerTransactionTypeFilter)}
+              className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+            >
+              {TX_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 uppercase tracking-wide mb-1.5 block">Search</label>
+            <input
+              type="search"
+              value={props.search}
+              onChange={(e) => props.onSearchChange(e.target.value)}
+              placeholder="Ref, amount, notes…"
+              className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-gray-600"
+            />
+          </div>
+        </div>
+        {props.showPartyDiscount ? (
+          <button
+            type="button"
+            onClick={props.onApplyPartyDiscount}
+            disabled={props.partyDiscountDisabled || props.loading}
+            className="shrink-0 px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white"
           >
-            {TX_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="text-xs text-gray-500 uppercase tracking-wide mb-1.5 block">Search</label>
-          <input
-            type="search"
-            value={props.search}
-            onChange={(e) => props.onSearchChange(e.target.value)}
-            placeholder="Ref, amount, notes…"
-            className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-gray-600"
-          />
-        </div>
+            {props.statementType === 'customer' ? 'Customer discount' : 'Supplier discount'}
+          </button>
+        ) : null}
       </div>
 
       {props.loading ? (
@@ -139,4 +155,3 @@ export function LedgerFilterBar(props: LedgerFilterBarProps) {
     </div>
   );
 }
-

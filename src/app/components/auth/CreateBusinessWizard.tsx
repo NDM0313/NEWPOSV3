@@ -3,7 +3,7 @@
  * Steps: Business Info → Financial → Inventory → Modules → Branch Setup
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -32,9 +32,14 @@ import {
   BarChart3,
   MapPin,
   Box,
+  KeyRound,
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { businessService } from '@/app/services/businessService';
+import {
+  resendSignupEmailOtp,
+  verifySignupEmailOtp,
+} from '@/app/services/authSignupService';
 import { isCreateBusinessAccountError } from '@/app/utils/authErrorMessages';
 import { suggestFiscalYearEnd } from '@/app/utils/fiscalDates';
 import {
@@ -102,6 +107,10 @@ function getDefaultFiscalYearStart(): string {
   return getFiscalYearStartFromMonth('7');
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+type WizardPhase = 'steps' | 'otp' | 'creating';
+
 interface CreateBusinessWizardProps {
   onSuccess: (email: string, password: string) => void;
   onCancel: () => void;
@@ -110,8 +119,11 @@ interface CreateBusinessWizardProps {
 export const CreateBusinessWizard: React.FC<CreateBusinessWizardProps> = ({ onSuccess, onCancel }) => {
   const defaultFiscalStart = useMemo(() => getDefaultFiscalYearStart(), []);
   const [step, setStep] = useState(1);
+  const [phase, setPhase] = useState<WizardPhase>('steps');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [otp, setOtp] = useState('');
+  const [resendIn, setResendIn] = useState(0);
 
   const [formData, setFormData] = useState({
     // Step 1
@@ -152,9 +164,17 @@ export const CreateBusinessWizard: React.FC<CreateBusinessWizardProps> = ({ onSu
 
   const validateStep = (s: number): string | null => {
     if (s === 1) {
-      if (!formData.businessName.trim()) return 'Business name is required';
-      if (!formData.ownerName.trim()) return 'Owner name is required';
-      if (!formData.email.trim()) return 'Email is required';
+      const businessName = formData.businessName.trim();
+      const ownerName = formData.ownerName.trim();
+      const email = formData.email.trim();
+      if (!businessName) return 'Business name is required';
+      if (!ownerName) return 'Owner name is required';
+      if (!email) return 'Email is required';
+      if (!EMAIL_RE.test(email)) return 'Enter a valid email address';
+      if (formData.phone.trim()) {
+        const digits = formData.phone.replace(/\D/g, '');
+        if (digits.length < 7) return 'Phone number looks too short';
+      }
       if (formData.password.length < 6) return 'Password must be at least 6 characters';
       if (formData.password !== formData.confirmPassword) return 'Passwords do not match';
     }
@@ -203,6 +223,54 @@ export const CreateBusinessWizard: React.FC<CreateBusinessWizardProps> = ({ onSu
     }));
   };
 
+  const startOtpCountdown = useCallback(() => {
+    setResendIn(60);
+  }, []);
+
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const t = window.setTimeout(() => setResendIn((n) => Math.max(0, n - 1)), 1000);
+    return () => window.clearTimeout(t);
+  }, [resendIn]);
+
+  const buildCreatePayload = () => {
+    const fiscalYearStart = getFiscalYearStartFromMonth(formData.fiscalMonth);
+    const fiscalYearEnd = formData.fiscalYearEnd || suggestFiscalYearEnd(fiscalYearStart);
+    return {
+      businessName: formData.businessName.trim(),
+      ownerName: formData.ownerName.trim(),
+      email: formData.email.trim(),
+      password: formData.password,
+      currency: formData.currency,
+      fiscalYearStart,
+      fiscalYearEnd,
+      branchName: formData.branchName.trim(),
+      branchCode: formData.branchCode.trim(),
+      branchCity: formData.branchCity.trim() || undefined,
+      branchState: formData.branchState.trim() || undefined,
+      phone: formData.phone.trim() || undefined,
+      address: formData.address.trim() || undefined,
+      country: formData.country.trim() || undefined,
+      timezone: formData.timezone || undefined,
+      businessType: formData.businessType,
+      modules: formData.modules,
+      accountingMethod: formData.accountingMethod,
+      taxMode: formData.taxMode,
+      defaultTaxRate: formData.defaultTaxRate,
+      costingMethod: formData.costingMethod as 'FIFO' | 'Weighted Average',
+      allowNegativeStock: formData.allowNegativeStock,
+      defaultUnit: formData.defaultUnit,
+      baseUnits: formData.baseUnits,
+    };
+  };
+
+  const finishBusinessCreation = async () => {
+    setPhase('creating');
+    const result = await businessService.completeBusinessCreationAfterAuth(buildCreatePayload());
+    if (!result.success) throw new Error(result.error || 'Failed to create business');
+    onSuccess(formData.email.trim(), formData.password);
+  };
+
   const handleSubmit = async () => {
     if (loading) return;
     const err = validateStep(5);
@@ -213,38 +281,55 @@ export const CreateBusinessWizard: React.FC<CreateBusinessWizardProps> = ({ onSu
     setError('');
     setLoading(true);
     try {
-      const fiscalYearStart = getFiscalYearStartFromMonth(formData.fiscalMonth);
-      const fiscalYearEnd = formData.fiscalYearEnd || suggestFiscalYearEnd(fiscalYearStart);
-      const result = await businessService.createBusiness({
-        businessName: formData.businessName,
-        ownerName: formData.ownerName,
-        email: formData.email,
-        password: formData.password,
-        currency: formData.currency,
-        fiscalYearStart,
-        fiscalYearEnd,
-        branchName: formData.branchName,
-        branchCode: formData.branchCode,
-        branchCity: formData.branchCity || undefined,
-        branchState: formData.branchState || undefined,
-        phone: formData.phone || undefined,
-        address: formData.address || undefined,
-        country: formData.country || undefined,
-        timezone: formData.timezone || undefined,
-        businessType: formData.businessType,
-        modules: formData.modules,
-        accountingMethod: formData.accountingMethod,
-        taxMode: formData.taxMode,
-        defaultTaxRate: formData.defaultTaxRate,
-        costingMethod: formData.costingMethod as 'FIFO' | 'Weighted Average',
-        allowNegativeStock: formData.allowNegativeStock,
-        defaultUnit: formData.defaultUnit,
-        baseUnits: formData.baseUnits,
-      });
+      const result = await businessService.createBusiness(buildCreatePayload());
+      if (result.needsEmailVerification) {
+        setPhase('otp');
+        startOtpCountdown();
+        return;
+      }
       if (!result.success) throw new Error(result.error || 'Failed to create business');
-      onSuccess(formData.email, formData.password);
-    } catch (err: any) {
-      setError(err.message || 'Failed to create business. Please try again.');
+      onSuccess(formData.email.trim(), formData.password);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to create business. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    if (loading || otp.length < 4) return;
+    setError('');
+    setLoading(true);
+    try {
+      const { error: otpError, sessionEstablished } = await verifySignupEmailOtp(
+        formData.email.trim(),
+        otp
+      );
+      if (otpError) {
+        setError(otpError);
+        return;
+      }
+      if (!sessionEstablished) {
+        setError('Could not establish session after verification. Try again or resend the code.');
+        return;
+      }
+      await finishBusinessCreation();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to create business. Please try again.');
+      setPhase('otp');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendOtp = async () => {
+    if (resendIn > 0 || loading) return;
+    setError('');
+    setLoading(true);
+    try {
+      const { error: resendError } = await resendSignupEmailOtp(formData.email.trim());
+      if (resendError) setError(resendError);
+      else startOtpCountdown();
     } finally {
       setLoading(false);
     }
@@ -259,6 +344,91 @@ export const CreateBusinessWizard: React.FC<CreateBusinessWizardProps> = ({ onSu
   ];
 
   const currentStepInfo = steps.find((s) => s.n === step);
+
+  if (phase === 'creating') {
+    return (
+      <div className="min-h-screen bg-[#111827] flex items-center justify-center p-8">
+        <div className="text-center space-y-4">
+          <Loader2 className="h-10 w-10 animate-spin text-blue-500 mx-auto" />
+          <p className="text-gray-400">Creating your business…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (phase === 'otp') {
+    return (
+      <div className="min-h-screen bg-[#111827] flex items-center justify-center p-8">
+        <div className="w-full max-w-md bg-gray-900 border border-gray-800 rounded-2xl p-8 space-y-6">
+          <div className="flex items-center gap-3 text-blue-400">
+            <KeyRound size={28} />
+            <div>
+              <h2 className="text-lg font-semibold text-white">Verify your email</h2>
+              <p className="text-sm text-gray-400 mt-1">
+                Enter the code sent to <span className="text-white font-medium">{formData.email.trim()}</span>
+              </p>
+            </div>
+          </div>
+          {error && (
+            <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-xl flex items-center gap-2 text-red-400">
+              <AlertCircle size={20} className="shrink-0" />
+              <span className="text-sm">{error}</span>
+            </div>
+          )}
+          <div>
+            <Label className="text-gray-400">Verification code</Label>
+            <Input
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={12}
+              value={otp}
+              onChange={(e) => setOtp(e.target.value.replace(/\s/g, ''))}
+              placeholder="6-digit code"
+              className="mt-1 bg-gray-800 border-gray-700 text-white text-center text-xl tracking-widest h-14"
+              disabled={loading}
+            />
+          </div>
+          <Button
+            type="button"
+            onClick={() => void handleVerifyOtp()}
+            disabled={loading || otp.length < 4}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+          >
+            {loading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Verifying…
+              </>
+            ) : (
+              'Verify & create business'
+            )}
+          </Button>
+          <div className="flex flex-col items-center gap-2">
+            <button
+              type="button"
+              disabled={resendIn > 0 || loading}
+              onClick={() => void handleResendOtp()}
+              className="text-sm text-blue-400 disabled:text-gray-600 disabled:cursor-not-allowed"
+            >
+              {resendIn > 0 ? `Resend code in ${resendIn}s` : 'Resend code'}
+            </button>
+            <button
+              type="button"
+              className="text-xs text-gray-500 hover:text-gray-300"
+              onClick={() => {
+                setPhase('steps');
+                setError('');
+                setOtp('');
+              }}
+            >
+              Back to wizard
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#111827] flex items-center justify-center p-8">

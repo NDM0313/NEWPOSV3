@@ -57,6 +57,7 @@ import { Button } from '@/app/components/ui/button';
 import { LedgerFilterBar } from './LedgerFilterBar';
 import { LedgerSummaryCards } from './LedgerSummaryCards';
 import { LedgerTable } from './LedgerTable';
+import { PartyLedgerDiscountModal } from './PartyLedgerDiscountModal';
 import { AttachmentPreviewDialog } from './AttachmentPreviewDialog';
 import { LedgerDocumentComparisonPanel } from './LedgerDocumentComparisonPanel';
 import { LedgerV2UnifiedPreviewPanel } from './LedgerV2UnifiedPreviewPanel';
@@ -104,7 +105,7 @@ export function LedgerStatementCenterV2Page({
   /** Human-readable period when tab dates override the global header filter. */
   periodLabel?: string;
 }) {
-  const { companyId, userRole } = useSupabase();
+  const { companyId, userRole, branchId, user } = useSupabase();
   const globalFilter = useGlobalFilter();
   const {
     startDate: globalFromDate,
@@ -157,6 +158,7 @@ export function LedgerStatementCenterV2Page({
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [mainLoaderSource, setMainLoaderSource] = useState<'legacy' | 'unified'>('legacy');
+  const [discountModalOpen, setDiscountModalOpen] = useState(false);
 
   const previewCompareSource: LedgerV2PreviewCompareSource = useMemo(
     () => resolveLedgerV2PreviewCompareSource(mainLoaderSource),
@@ -433,6 +435,22 @@ export function LedgerStatementCenterV2Page({
     if (!companyId || !entityId) return;
     void loadStatement();
   }, [companyId, entityId, statementType, fromDate, toDate, loadStatement]);
+
+  useEffect(() => {
+    const handler = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ ledgerType?: string; entityId?: string }>).detail;
+      if (!detail?.entityId || detail.entityId !== entityId) return;
+      const type = detail.ledgerType;
+      if (
+        (statementType === 'customer' && type === 'customer') ||
+        (statementType === 'supplier' && type === 'supplier')
+      ) {
+        void loadStatement();
+      }
+    };
+    window.addEventListener('ledgerUpdated', handler);
+    return () => window.removeEventListener('ledgerUpdated', handler);
+  }, [entityId, statementType, loadStatement]);
 
   const beginRowAction = useCallback((rowId: string): boolean => {
     if (rowActionLockRef.current) return false;
@@ -769,7 +787,29 @@ export function LedgerStatementCenterV2Page({
         search={search}
         onSearchChange={setSearch}
         loading={loading}
+        showPartyDiscount={statementType === 'customer' || statementType === 'supplier'}
+        partyDiscountDisabled={!entityId || loading}
+        onApplyPartyDiscount={() => setDiscountModalOpen(true)}
       />
+
+      {companyId && entityId && (statementType === 'customer' || statementType === 'supplier') ? (
+        <PartyLedgerDiscountModal
+          open={discountModalOpen}
+          onClose={() => setDiscountModalOpen(false)}
+          onSuccess={() => {
+            toast.success(
+              statementType === 'customer' ? 'Customer discount posted' : 'Supplier discount posted'
+            );
+            void loadStatement();
+          }}
+          companyId={companyId}
+          branchId={branchId}
+          createdBy={user?.id ?? null}
+          partyType={statementType}
+          contactId={entityId}
+          partyName={entityLabel || entityId}
+        />
+      ) : null}
 
       {result && (
         <>

@@ -5,6 +5,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { fetchInBatches } from '@/app/lib/chunkInQuery';
 import { accountingReportsService } from './accountingReportsService';
 
 export interface UnbalancedJe {
@@ -62,12 +63,21 @@ export async function getUnbalancedJournalEntries(companyId: string): Promise<Un
   if (jeError || !entries?.length) return [];
 
   const ids = (entries as any[]).map((e: any) => e.id);
-  const { data: lines, error: lineError } = await supabase
-    .from('journal_entry_lines')
-    .select('journal_entry_id, debit, credit')
-    .in('journal_entry_id', ids);
+  let lines: { journal_entry_id: string; debit: number; credit: number }[] = [];
+  try {
+    lines = await fetchInBatches(ids, async (chunk) => {
+      const { data, error } = await supabase
+        .from('journal_entry_lines')
+        .select('journal_entry_id, debit, credit')
+        .in('journal_entry_id', chunk);
+      if (error) throw error;
+      return data || [];
+    });
+  } catch {
+    return [];
+  }
 
-  if (lineError || !lines?.length) return [];
+  if (!lines.length) return [];
 
   const byJe: Record<string, { debit: number; credit: number }> = {};
   (lines as any[]).forEach((l: any) => {

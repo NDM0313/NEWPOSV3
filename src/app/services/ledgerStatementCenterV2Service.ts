@@ -87,6 +87,7 @@ function normalizeDocType(t: string): string {
 
 function mapGlReferenceType(refType?: string | null): LedgerStatementV2Row['sourceKind'] {
   const r = normalizeDocType(refType || '');
+  if (r.includes('party_discount')) return 'journal';
   if (r.includes('opening')) return 'opening';
   if (r.includes('sale_return') || (r.includes('return') && r.includes('sale'))) return 'return';
   if (r.includes('sale')) return 'sale';
@@ -121,6 +122,8 @@ function matchesTransactionFilter(row: LedgerStatementV2Row, filter: LedgerTrans
       return k === 'journal';
     case 'opening':
       return k === 'opening';
+    case 'discount':
+      return normalizeDocType(row.transactionType).includes('discount');
     default:
       return true;
   }
@@ -145,25 +148,32 @@ function matchesSearch(row: LedgerStatementV2Row, q: string): boolean {
 }
 
 export function glToRows(entries: AccountLedgerEntry[]): LedgerStatementV2Row[] {
-  return entries.map((e, idx) => ({
-    id: e.journal_entry_id || `${e.date}-${e.reference_number}-${idx}`,
-    date: e.date,
-    referenceNo: String(e.reference_number || e.entry_no || e.journal_entry_id || '—'),
-    transactionType: String(e.document_type || e.je_reference_type || 'Journal Entry'),
-    description: String(e.description || ''),
-    branch: String(e.branch_name || '—'),
-    debit: round2(Number(e.debit) || 0),
-    credit: round2(Number(e.credit) || 0),
-    runningBalance: round2(Number(e.running_balance) || 0),
-    paymentMethod: displaySettlementAccount(e),
-    createdBy: String(e.created_by || '—'),
-    hasAttachments: false,
-    sourceKind: mapGlReferenceType(e.je_reference_type || e.document_type),
-    sourceId: e.sale_id || e.payment_id || e.rental_id || undefined,
-    journalEntryId: e.journal_entry_id,
-    paymentId: e.payment_id || undefined,
-    glEntry: e,
-  }));
+  return entries.map((e, idx) => {
+    const refType = normalizeDocType(e.je_reference_type || e.document_type || '');
+    const transactionType =
+      refType.includes('party_discount')
+        ? 'Discount'
+        : String(e.document_type || e.je_reference_type || 'Journal Entry');
+    return {
+      id: e.journal_entry_id || `${e.date}-${e.reference_number}-${idx}`,
+      date: e.date,
+      referenceNo: String(e.reference_number || e.entry_no || e.journal_entry_id || '—'),
+      transactionType,
+      description: String(e.description || ''),
+      branch: String(e.branch_name || '—'),
+      debit: round2(Number(e.debit) || 0),
+      credit: round2(Number(e.credit) || 0),
+      runningBalance: round2(Number(e.running_balance) || 0),
+      paymentMethod: displaySettlementAccount(e),
+      createdBy: String(e.created_by || '—'),
+      hasAttachments: false,
+      sourceKind: mapGlReferenceType(e.je_reference_type || e.document_type),
+      sourceId: e.sale_id || e.payment_id || e.rental_id || undefined,
+      journalEntryId: e.journal_entry_id,
+      paymentId: e.payment_id || undefined,
+      glEntry: e,
+    };
+  });
 }
 
 export function applyLedgerV2DisplayFilters(

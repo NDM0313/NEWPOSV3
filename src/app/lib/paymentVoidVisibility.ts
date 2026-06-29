@@ -16,7 +16,7 @@ export async function filterLivePaymentsExcludingVoidedJournals<T extends Paymen
 
   const { supabase } = await import('@/lib/supabase');
   const voidedIds = new Set<string>();
-  const chunk = 200;
+  const chunk = 30;
   for (let i = 0; i < ids.length; i += chunk) {
     const slice = ids.slice(i, i + chunk);
     const { data, error } = await supabase

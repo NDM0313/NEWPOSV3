@@ -20,7 +20,8 @@ export type LedgerTransactionTypeFilter =
   | 'rental'
   | 'expense'
   | 'journal'
-  | 'opening';
+  | 'opening'
+  | 'discount';
 
 export interface LedgerStatementV2Filters {
   statementType: LedgerStatementV2Type;

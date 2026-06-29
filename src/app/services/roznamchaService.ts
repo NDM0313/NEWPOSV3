@@ -5,6 +5,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { fetchInBatches } from '@/app/lib/chunkInQuery';
 import { isLiquidityPaymentAccount, paymentMethodForLiquidityAccount } from '@/app/lib/liquidityPaymentAccount';
 import {
   buildExpenseCounterpartyByDirectionFromJeLines,
@@ -327,16 +328,20 @@ async function loadRentalPaymentJournalLinks(
       options.includeVoidedReversed ?? false
     );
     if (jeIds.length > 0) {
-      let supQ = supabase
-        .from('rental_payments')
-        .select('journal_entry_id, rentals!inner(company_id, branch_id)')
-        .eq('rentals.company_id', companyId)
-        .in('journal_entry_id', jeIds)
-        .not('journal_entry_id', 'is', null);
-      if (branchId) supQ = (supQ as any).eq('rentals.branch_id', branchId);
-      if (!options.includeVoidedReversed) supQ = supQ.is('voided_at', null);
-      const { data: supData } = await supQ;
-      (supData || []).forEach((rp: any) => {
+      const supRows = await fetchInBatches(jeIds, async (chunk) => {
+        let supQ = supabase
+          .from('rental_payments')
+          .select('journal_entry_id, rentals!inner(company_id, branch_id)')
+          .eq('rentals.company_id', companyId)
+          .in('journal_entry_id', chunk)
+          .not('journal_entry_id', 'is', null);
+        if (branchId) supQ = (supQ as any).eq('rentals.branch_id', branchId);
+        if (!options.includeVoidedReversed) supQ = supQ.is('voided_at', null);
+        const { data, error } = await supQ;
+        if (error) throw error;
+        return data || [];
+      });
+      supRows.forEach((rp: any) => {
         const jeId = String(rp.journal_entry_id || '').trim();
         if (jeId) out.add(jeId);
       });
@@ -377,11 +382,15 @@ async function loadLiquidityDebitAccountByJeId(
   const liquidityAccountByJeId = new Map<string, string>();
   if (jeIds.length === 0) return liquidityAccountByJeId;
 
-  const { data: jeLines } = await supabase
-    .from('journal_entry_lines')
-    .select('journal_entry_id, account_id, debit, credit, account:accounts(id, name, type, code)')
-    .in('journal_entry_id', jeIds);
-  (jeLines || []).forEach((line: any) => {
+  const jeLines = await fetchInBatches(jeIds, async (chunk) => {
+    const { data, error } = await supabase
+      .from('journal_entry_lines')
+      .select('journal_entry_id, account_id, debit, credit, account:accounts(id, name, type, code)')
+      .in('journal_entry_id', chunk);
+    if (error) throw error;
+    return data || [];
+  });
+  jeLines.forEach((line: any) => {
     const rawAcc = line.account;
     const acc = Array.isArray(rawAcc) ? rawAcc[0] : rawAcc;
     if (!acc || !isLiquidityPaymentAccount(acc)) return;
@@ -406,13 +415,17 @@ async function loadExpenseCounterpartyByJeId(jeIds: string[]): Promise<Map<strin
   const out = new Map<string, CounterpartyByDirection>();
   if (jeIds.length === 0) return out;
 
-  const { data: jeLines } = await supabase
-    .from('journal_entry_lines')
-    .select('journal_entry_id, debit, credit, account:accounts(name, type, code)')
-    .in('journal_entry_id', jeIds);
+  const jeLines = await fetchInBatches(jeIds, async (chunk) => {
+    const { data, error } = await supabase
+      .from('journal_entry_lines')
+      .select('journal_entry_id, debit, credit, account:accounts(name, type, code)')
+      .in('journal_entry_id', chunk);
+    if (error) throw error;
+    return data || [];
+  });
 
   const linesByJeId = new Map<string, RoznamchaJeLineRef[]>();
-  (jeLines || []).forEach((line: any) => {
+  jeLines.forEach((line: any) => {
     const jeId = String(line.journal_entry_id || '');
     if (!jeId) return;
     const rawAcc = line.account;
@@ -844,19 +857,27 @@ async function fetchPaymentRows(
           { data: [] as { id: string; expense_no: string; description?: string; vendor_name?: string; category?: string; expense_category_id?: string }[] }
         ),
     expensePaymentIds.length > 0
-      ? supabase
-          .from('journal_entries')
-          .select('payment_id, entry_no')
-          .in('payment_id', expensePaymentIds)
-          .eq('reference_type', 'expense')
-          .eq('company_id', companyId)
+      ? fetchInBatches(expensePaymentIds, async (chunk) => {
+          const { data, error } = await supabase
+            .from('journal_entries')
+            .select('payment_id, entry_no')
+            .in('payment_id', chunk)
+            .eq('reference_type', 'expense')
+            .eq('company_id', companyId);
+          if (error) throw error;
+          return data || [];
+        }).then((rows) => ({ data: rows as { payment_id: string; entry_no: string }[] }))
       : Promise.resolve({ data: [] as { payment_id: string; entry_no: string }[] }),
     allPaymentIds.length > 0
-      ? supabase
-          .from('journal_entries')
-          .select('id, payment_id, entry_no')
-          .eq('company_id', companyId)
-          .in('payment_id', allPaymentIds)
+      ? fetchInBatches(allPaymentIds, async (chunk) => {
+          const { data, error } = await supabase
+            .from('journal_entries')
+            .select('id, payment_id, entry_no')
+            .eq('company_id', companyId)
+            .in('payment_id', chunk);
+          if (error) throw error;
+          return data || [];
+        }).then((rows) => ({ data: rows as { id: string; payment_id: string; entry_no: string }[] }))
       : Promise.resolve({ data: [] as { id: string; payment_id: string; entry_no: string }[] }),
     contactIdsToFetch.length > 0
       ? supabase.from('contacts').select('id, name').in('id', contactIdsToFetch)
@@ -1304,14 +1325,18 @@ async function fetchRentalPaymentRows(
     return !primaryRows.some((r: any) => String(r.journal_entry_id || '') === jeId);
   });
   if (extraJeIds.length > 0) {
-    let supQ = supabase
-      .from('rental_payments')
-      .select(RENTAL_PAYMENT_ROW_SELECT)
-      .eq('rentals.company_id', companyId)
-      .in('journal_entry_id', extraJeIds);
-    if (!includeVoidedReversed) supQ = supQ.is('voided_at', null);
-    const { data: supData } = await supQ;
-    supplementalRows = (supData || []).filter((r: any) => !primaryIds.has(String(r.id)));
+    const fetched = await fetchInBatches(extraJeIds, async (chunk) => {
+      let supQ = supabase
+        .from('rental_payments')
+        .select(RENTAL_PAYMENT_ROW_SELECT)
+        .eq('rentals.company_id', companyId)
+        .in('journal_entry_id', chunk);
+      if (!includeVoidedReversed) supQ = supQ.is('voided_at', null);
+      const { data, error } = await supQ;
+      if (error) throw error;
+      return data || [];
+    });
+    supplementalRows = fetched.filter((r: any) => !primaryIds.has(String(r.id)));
   }
 
   const data = [...primaryRows, ...supplementalRows];
@@ -2120,20 +2145,24 @@ async function recoverOrphanRentalPaymentJeRows(
 
   const rpRefByJeId = new Map<string, string>();
   const rpIdByJeId = new Map<string, string>();
-  if (jeIds.length > 0) {
-    const { data: rpRows } = await supabase
-      .from('rental_payments')
-      .select('id, journal_entry_id, reference')
-      .in('journal_entry_id', jeIds)
-      .is('voided_at', null);
-    (rpRows || []).forEach((rp: any) => {
-      const jeId = String(rp?.journal_entry_id || '').trim();
-      const ref = String(rp?.reference || '').trim();
-      const rpId = String(rp?.id || '').trim();
-      if (jeId && ref) rpRefByJeId.set(jeId, ref);
-      if (jeId && rpId) rpIdByJeId.set(jeId, rpId);
-    });
-  }
+    if (jeIds.length > 0) {
+      const rpRows = await fetchInBatches(jeIds, async (chunk) => {
+        const { data, error } = await supabase
+          .from('rental_payments')
+          .select('id, journal_entry_id, reference')
+          .in('journal_entry_id', chunk)
+          .is('voided_at', null);
+        if (error) throw error;
+        return data || [];
+      });
+      rpRows.forEach((rp: any) => {
+        const jeId = String(rp?.journal_entry_id || '').trim();
+        const ref = String(rp?.reference || '').trim();
+        const rpId = String(rp?.id || '').trim();
+        if (jeId && ref) rpRefByJeId.set(jeId, ref);
+        if (jeId && rpId) rpIdByJeId.set(jeId, rpId);
+      });
+    }
 
   const userIds = [...new Set(entries.map((e) => e.created_by).filter(Boolean))] as string[];
   const nameByUserId = await resolveUserDisplayNames(userIds);

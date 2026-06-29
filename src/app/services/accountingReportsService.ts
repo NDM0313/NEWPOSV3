@@ -978,16 +978,26 @@ export const accountingReportsService = {
         endDate: end,
       };
     }
-    const { data: cashLines } = await supabase
-      .from('journal_entry_lines')
-      .select(`
+    const cashLineSelect = `
         id, journal_entry_id, account_id, debit, credit,
         journal_entry:journal_entries(entry_date, company_id, branch_id),
         account:accounts(id, type)
-      `)
-      .in('account_id', cashBankIds)
-      .in('journal_entry_id', entryIdsInRange);
-    if (!cashLines?.length) {
+      `;
+    let cashLines: any[] = [];
+    try {
+      cashLines = await fetchInBatches(entryIdsInRange, async (chunk) => {
+        const { data, error } = await supabase
+          .from('journal_entry_lines')
+          .select(cashLineSelect)
+          .in('account_id', cashBankIds)
+          .in('journal_entry_id', chunk);
+        if (error) throw error;
+        return data || [];
+      }, { chunkSize: 20 });
+    } catch {
+      cashLines = [];
+    }
+    if (!cashLines.length) {
       return {
         operating: { in: 0, out: 0, net: 0 },
         investing: { in: 0, out: 0, net: 0 },
@@ -998,10 +1008,19 @@ export const accountingReportsService = {
       };
     }
     const entryIds = [...new Set(cashLines.map((l: any) => l.journal_entry_id))];
-    const { data: allLines } = await supabase
-      .from('journal_entry_lines')
-      .select('journal_entry_id, account_id, debit, credit, account:accounts(type)')
-      .in('journal_entry_id', entryIds);
+    let allLines: any[] = [];
+    try {
+      allLines = await fetchInBatches(entryIds, async (chunk) => {
+        const { data, error } = await supabase
+          .from('journal_entry_lines')
+          .select('journal_entry_id, account_id, debit, credit, account:accounts(type)')
+          .in('journal_entry_id', chunk);
+        if (error) throw error;
+        return data || [];
+      });
+    } catch {
+      allLines = [];
+    }
     const entryAccountTypes: Record<string, string[]> = {};
     (allLines || []).forEach((line: any) => {
       const jeId = line.journal_entry_id;
