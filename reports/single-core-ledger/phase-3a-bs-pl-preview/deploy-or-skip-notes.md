@@ -1,22 +1,24 @@
 # Deploy decision — Phase 3A
 
-**Decision:** DEPLOY NOT RUN — requires operator approval because runtime UI preview code changed.
+**Decision:** **DEPLOYED** @ 2026-06-29 — operator approved Phase 3A-PROD
 
-## Rationale
+## Production deploy
 
-- New admin/developer-only preview panels on Balance Sheet and P&L pages
-- No change to default staff view or legacy totals
-- Safe to deploy when operator approves VPS/web deploy
-- Not auto-deployed per production ops mode
+- **URL:** https://erp.dincouture.pk
+- **Commit:** `4a5dc304`
+- **Method:** `deploy/vps-build-erp-only.sh` on `dincouture-vps`
+- **Evidence:** [`production-deploy-notes.md`](production-deploy-notes.md) · [`post-deploy-smoke.md`](post-deploy-smoke.md) · [`post-deploy-monitoring.md`](post-deploy-monitoring.md)
 
-## Pre-deploy checklist
+## Constraints honored
 
-- [ ] `npm run test:unified-ledger` PASS
-- [ ] `npm run build` PASS
-- [ ] Operator approves deploy
-- [ ] Post-deploy: verify preview toggle visible only for admin/developer
-- [ ] Post-deploy: verify staff BS/P&L unchanged
+- Phase 3A preview-only UI deployed to production.
+- Legacy BS/P&L default behavior unchanged.
+- Loader swap not approved.
+- Finance golden capture still required.
+- R7/R8/next company remain blocked.
+- No migrations and no GL/data mutations.
 
-## Monitoring
+## Post-deploy
 
-Continue `npm run monitor:three-company-unified-ledger` — five live loaders unchanged.
+- Three-company monitoring **PASS** after deploy
+- Operator: hard refresh when validating preview UI (service worker)

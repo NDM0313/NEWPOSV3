@@ -1,0 +1,12 @@
+{
+  "run": "PHASE_3A_PROD",
+  "capturedAt": "2026-06-29",
+  "branch": "main",
+  "deployCommit": "4a5dc304",
+  "operatorApproved": true,
+  "stagedAtStart": false,
+  "scope": "frontend_only",
+  "targetUrl": "https://erp.dincouture.pk",
+  "migrationsRun": false,
+  "flagChanges": false
+}

@@ -22,7 +22,9 @@
     {
       "phase": "3A",
       "name": "BS/P&L unified preview",
-      "status": "COMPLETE",
+      "status": "COMPLETE_DEPLOYED",
+      "productionUrl": "https://erp.dincouture.pk",
+      "productionCommit": "4a5dc304",
       "previewOnly": true,
       "defaultRuntimeChanged": false,
       "loaderSwapApproved": false,

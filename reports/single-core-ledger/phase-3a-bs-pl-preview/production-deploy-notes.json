@@ -1,0 +1,18 @@
+{
+  "run": "PHASE_3A_PROD",
+  "generatedAt": "2026-06-29",
+  "deployCommand": "ssh dincouture-vps \"cd /root/NEWPOSV3 && git fetch origin main && git pull origin main && bash deploy/vps-build-erp-only.sh\"",
+  "script": "deploy/vps-build-erp-only.sh",
+  "host": "dincouture-vps",
+  "repoPath": "/root/NEWPOSV3",
+  "targetUrl": "https://erp.dincouture.pk",
+  "container": "erp-frontend",
+  "deployedCommit": "4a5dc304",
+  "deployStartApprox": "2026-06-29T10:04:00Z",
+  "deployEndApprox": "2026-06-29T10:06:03Z",
+  "containerStatus": "healthy",
+  "migrationsRun": false,
+  "featureFlagsChanged": false,
+  "glMutations": false,
+  "productionBundle": "assets/ReportsDashboardEnhanced-BFx3Veew.js"
+}

@@ -1,0 +1,20 @@
+{
+  "run": "PHASE_3A_PROD_SMOKE",
+  "generatedAt": "2026-06-29",
+  "targetUrl": "https://erp.dincouture.pk",
+  "deployedCommit": "4a5dc304",
+  "overall": "PASS",
+  "checks": [
+    { "id": 1, "name": "app_loads", "result": "PASS", "httpStatus": 200 },
+    { "id": 2, "name": "admin_login", "result": "PASS", "via": "three_company_monitoring" },
+    { "id": 3, "name": "bs_legacy_default", "result": "PASS" },
+    { "id": 4, "name": "pl_legacy_default", "result": "PASS" },
+    { "id": 5, "name": "bs_preview_default_off", "result": "PASS" },
+    { "id": 6, "name": "pl_preview_default_off", "result": "PASS" },
+    { "id": 7, "name": "preview_compare_panel_assets", "result": "PASS" },
+    { "id": 8, "name": "preview_finance_pending_labels", "result": "PASS" },
+    { "id": 9, "name": "no_material_rpc_errors", "result": "PASS", "via": "monitoring" },
+    { "id": 10, "name": "role_gate_staff_hidden", "result": "PASS" }
+  ],
+  "productionBundle": "assets/ReportsDashboardEnhanced-BFx3Veew.js"
+}

@@ -1,6 +1,6 @@
 # Phase 3A implementation report
 
-**Status:** COMPLETE — preview-only  
+**Status:** COMPLETE — preview-only **deployed to production** @ 2026-06-29  
 **Generated:** 2026-06-29
 
 ## Summary
@@ -14,6 +14,8 @@ Developer/admin-only unified Trial Balance–derived preview compare added to Ba
 - Role-gated compare panels (admin/developer/integrity lab)
 - JSON export of compare evidence
 - 9 new unit tests (265 total unified-ledger suite)
+
+- Production deploy @ `4a5dc304` via `vps-build-erp-only.sh` — [`production-deploy-notes.md`](production-deploy-notes.md)
 
 ## Not delivered (by design)
 

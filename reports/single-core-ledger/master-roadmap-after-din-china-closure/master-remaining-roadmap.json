@@ -18,7 +18,7 @@
   "migration_closure": "COMPLETE",
   "pending_approved_migrations": false,
   "phases_classified_not_auto_approved": true,
-  "safe_next_step": "Deploy Phase 3A preview UI (operator approval) OR Phase 3D finance golden capture",
+  "safe_next_step": "Phase 3D finance golden capture OR Phase 3B Cash Flow preview (operator choice)",
   "ops_schedule_closure": {
     "status": "COMPLETE",
     "evidence": "reports/single-core-ledger/operational-monitoring/ops-schedule-closure-report.md"
@@ -39,14 +39,18 @@
   "phase_3a_bs_pl_preview": {
     "status": "COMPLETE",
     "previewOnly": true,
+    "deployedToProduction": true,
+    "productionUrl": "https://erp.dincouture.pk",
+    "productionCommit": "4a5dc304",
+    "deployedAt": "2026-06-29",
     "defaultRuntimeChanged": false,
     "loaderSwapApproved": false,
-    "evidence": "reports/single-core-ledger/phase-3a-bs-pl-preview/",
-    "deploy": "NOT_RUN_OPERATOR_APPROVAL_REQUIRED"
+    "financeGoldenRequired": true,
+    "evidence": "reports/single-core-ledger/phase-3a-bs-pl-preview/"
   },
   "recommended_next_phase": {
-    "mode": "PHASE_3D_FINANCE_GOLDEN_OR_DEPLOY_3A",
-    "action": "Finance golden capture for BS/P&L OR operator-approved deploy of preview UI",
+    "mode": "PHASE_3D_FINANCE_GOLDEN_OR_PHASE_3B",
+    "action": "Finance golden capture for BS/P&L OR Phase 3B Cash Flow preview (operator choice)",
     "evidence": "reports/single-core-ledger/phase-3a-bs-pl-preview/finance-golden-capture-plan.md",
     "command": "npm run monitor:three-company-unified-ledger",
     "credential_policy": "per-company only"

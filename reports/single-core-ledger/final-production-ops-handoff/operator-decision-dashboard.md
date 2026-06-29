@@ -32,7 +32,7 @@
 | Continue monitoring | ONGOING_OPS | [`daily-monitoring-checklist.md`](daily-monitoring-checklist.md) |
 | Docs/register updates | SAFE_DOCS_ONLY | This handoff pack |
 
-**Phase 3A BS/P&L preview-only:** **IMPLEMENTED** — [`phase-3a-bs-pl-preview/`](../phase-3a-bs-pl-preview/). Runtime default behavior unchanged. Loader swap not approved. Finance golden approval required before final BS/P&L unified adoption.
+**Phase 3A BS/P&L preview-only:** **DEPLOYED TO PRODUCTION** @ 2026-06-29 (`4a5dc304`). Legacy BS/P&L default behavior unchanged. Loader swap not approved. Finance golden capture still required. R7/R8/next company remain blocked. No migrations and no GL/data mutations.
 
 ---
 
@@ -40,7 +40,6 @@
 
 | Item | Class | Doc |
 |------|-------|-----|
-| Deploy Phase 3A preview UI to production | DEPLOY_GATE | [`deploy-or-skip-notes.md`](../phase-3a-bs-pl-preview/deploy-or-skip-notes.md) |
 | Phase 3D — finance golden capture for BS/P&L | FINANCE_GATE | [`finance-golden-capture-plan.md`](../phase-3a-bs-pl-preview/finance-golden-capture-plan.md) |
 | Phase 3B — Cash Flow preview | OPTIONAL_FUTURE | [`next-implementation-plan.md`](../remaining-optional-screens-audit/next-implementation-plan.md) |
 

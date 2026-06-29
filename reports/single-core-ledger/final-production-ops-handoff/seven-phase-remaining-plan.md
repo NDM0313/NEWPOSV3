@@ -32,13 +32,14 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | `COMPLETE` |
+| **Status** | `COMPLETE — DEPLOYED` |
+| **Production** | https://erp.dincouture.pk @ `4a5dc304` |
 | **Action** | Admin/developer unified TB preview compare on BS and P&L pages |
 | **Evidence** | [`phase-3a-bs-pl-preview/`](../phase-3a-bs-pl-preview/) |
 | **Default runtime** | **UNCHANGED** — legacy `getBalanceSheet` / `getProfitLoss` remain main |
 | **Loader swap** | **NOT APPROVED** |
 | **Finance golden** | **NEEDS_GOLDEN_CAPTURE** before adoption |
-| **Deploy** | Operator approval required — [`deploy-or-skip-notes.md`](../phase-3a-bs-pl-preview/deploy-or-skip-notes.md) |
+| **Deploy** | **DONE** @ 2026-06-29 — [`production-deploy-notes.md`](../phase-3a-bs-pl-preview/production-deploy-notes.md) |
 
 ---
 

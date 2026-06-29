@@ -1,6 +1,10 @@
 {
   "run": "PHASE_3A_BS_PL_PREVIEW",
   "status": "COMPLETE",
+  "deployedToProduction": true,
+  "productionDeployAt": "2026-06-29",
+  "productionUrl": "https://erp.dincouture.pk",
+  "productionCommit": "4a5dc304",
   "completedAt": "2026-06-29",
   "previewOnly": true,
   "defaultRuntimeChanged": false,
