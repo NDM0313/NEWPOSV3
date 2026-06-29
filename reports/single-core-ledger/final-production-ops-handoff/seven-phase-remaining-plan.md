@@ -192,12 +192,20 @@
 | **Status** | `COMPLETE` |
 | **Selected option** | **B** |
 | **Reviewer** | Nadeem Khan @ 2026-06-29 |
-| **Company finance status** | APPROVED_AS_ALIGNED_BASIS_CANDIDATE (all three) |
-| **Evidence** | [`phase-3b-k-cash-flow-finance-signoff/`](../phase-3b-k-cash-flow-finance-signoff/) |
-| **Official legacy** | **UNCHANGED** |
-| **Loader swap** | **BLOCKED** — separate operator approval required |
-| **BS/P&L finance** | **PENDING** |
-| **R7 / R8 / next company** | **BLOCKED** |
+| **Company finance status** | APPROVED_AS_ALIGNED_BASIS_CANDIDATE |
+| **Loader swap** | **BLOCKED** |
+
+---
+
+## Phase 3B-L — Cash Flow loader-swap readiness
+
+| Field | Value |
+|-------|-------|
+| **Status** | `PREPARED` |
+| **Evidence** | [`phase-3b-l-cash-flow-loader-swap-readiness/`](../phase-3b-l-cash-flow-loader-swap-readiness/) |
+| **Execution** | **NOT RUN** — planning only |
+| **Proposed next** | Phase 3B-M (operator approval required) |
+| **Loader swap** | **BLOCKED** |
 
 ---
 

@@ -18,7 +18,7 @@
   "migration_closure": "COMPLETE",
   "pending_approved_migrations": false,
   "phases_classified_not_auto_approved": true,
-  "safe_next_step": "Separate Cash Flow loader-swap readiness/planning phase if operator approves; loader swap execution requires explicit operator approval",
+  "safe_next_step": "Operator provides written approval for Phase 3B-M loader-swap execution; until then planning only — no flag toggle or deploy",
   "ops_schedule_closure": {
     "status": "COMPLETE",
     "evidence": "reports/single-core-ledger/operational-monitoring/ops-schedule-closure-report.md"
@@ -179,15 +179,23 @@
     "companyFinanceStatus": "APPROVED_AS_ALIGNED_BASIS_CANDIDATE",
     "loaderSwapApproved": false,
     "officialLegacyUnchanged": true,
-    "deployed": false,
-    "migrationsRun": false,
-    "glMutations": false,
     "evidence": "reports/single-core-ledger/phase-3b-k-cash-flow-finance-signoff/"
   },
+  "phase_3b_l_cash_flow_loader_swap_readiness": {
+    "status": "PREPARED",
+    "completedAt": "2026-06-29",
+    "planningOnly": true,
+    "loaderSwapApproved": false,
+    "operatorApprovalReceived": false,
+    "proposedNextPhase": "3B-M",
+    "officialLegacyUnchanged": true,
+    "deployed": false,
+    "evidence": "reports/single-core-ledger/phase-3b-l-cash-flow-loader-swap-readiness/"
+  },
   "recommended_next_phase": {
-    "mode": "CASH_FLOW_LOADER_SWAP_READINESS_PLANNING",
-    "action": "Separate loader-swap readiness/planning phase only if operator approves; execution requires explicit operator approval",
-    "evidence": "reports/single-core-ledger/phase-3b-k-cash-flow-finance-signoff/cash-flow-loader-swap-gate-checklist.md",
+    "mode": "PHASE_3B_M_LOADER_SWAP_EXECUTION",
+    "action": "Operator written approval required; then controlled loader swap implementation — not before",
+    "evidence": "reports/single-core-ledger/phase-3b-l-cash-flow-loader-swap-readiness/operator-loader-swap-approval-template.md",
     "command": "npm run monitor:three-company-unified-ledger",
     "credential_policy": "per-company only"
   },

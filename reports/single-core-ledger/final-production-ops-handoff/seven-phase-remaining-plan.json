@@ -147,6 +147,18 @@
       "evidence": "reports/single-core-ledger/phase-3b-k-cash-flow-finance-signoff/"
     },
     {
+      "phase": "3B-L",
+      "name": "Cash Flow loader-swap readiness",
+      "status": "PREPARED",
+      "completedAt": "2026-06-29",
+      "planningOnly": true,
+      "loaderSwapApproved": false,
+      "operatorApprovalReceived": false,
+      "proposedNextPhase": "3B-M",
+      "officialLegacyUnchanged": true,
+      "evidence": "reports/single-core-ledger/phase-3b-l-cash-flow-loader-swap-readiness/"
+    },
+    {
       "phase": 3,
       "name": "Remaining optional screen audit",
       "status": "COMPLETE",

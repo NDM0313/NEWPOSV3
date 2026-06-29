@@ -54,7 +54,7 @@
 
 **Phase 3B-J Cash Flow residual delta bridge:** **COMPLETE** @ 2026-06-29. Option **B** selected.
 
-**Phase 3B-K Cash Flow finance basis sign-off:** **COMPLETE** @ 2026-06-29. Aligned preview **APPROVED_AS_ALIGNED_BASIS_CANDIDATE** for all three companies. Official legacy unchanged. Loader swap **NOT APPROVED**.
+**Phase 3B-L Cash Flow loader-swap readiness:** **PREPARED** @ 2026-06-29. Planning complete. Loader swap **NOT APPROVED**. Operator written approval required before Phase 3B-M.
 
 ---
 
@@ -62,7 +62,7 @@
 
 | Item | Class | Doc |
 |------|-------|-----|
-| Cash Flow loader-swap readiness/planning (separate phase) | OPERATOR_GATE | [`cash-flow-loader-swap-gate-checklist.md`](../phase-3b-k-cash-flow-finance-signoff/cash-flow-loader-swap-gate-checklist.md) |
+| Phase 3B-M Cash Flow controlled loader swap | OPERATOR_GATE | [`operator-loader-swap-approval-template.md`](../phase-3b-l-cash-flow-loader-swap-readiness/operator-loader-swap-approval-template.md) |
 | Phase 3D — finance golden capture for BS/P&L | FINANCE_GATE | [`finance-golden-capture-plan.md`](../phase-3a-bs-pl-preview/finance-golden-capture-plan.md) |
 
 ---

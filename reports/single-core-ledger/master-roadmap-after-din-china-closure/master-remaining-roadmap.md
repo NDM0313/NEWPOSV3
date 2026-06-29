@@ -116,6 +116,7 @@ R7 **design-only** · R8 **blocked** · next-company **blocked** until separate 
 - **Phase 3B-I aligned Cash Flow candidate golden capture** — **COMPLETE**; candidate-only values; DIN COUTURE zero-diff · DIN CHINA/DIN BRIDAL non-zero-diff; loader swap blocked — [`phase-3b-i-cash-flow-aligned-golden-capture/`](../phase-3b-i-cash-flow-aligned-golden-capture/)
 - **Phase 3B-J Cash Flow residual delta bridge** — **PREPARED**; Option B selected — [`phase-3b-j-cash-flow-residual-delta-bridge/`](../phase-3b-j-cash-flow-residual-delta-bridge/)
 - **Phase 3B-K Cash Flow finance basis sign-off** — **COMPLETE**; aligned preview approved as basis candidate; loader swap blocked — [`phase-3b-k-cash-flow-finance-signoff/`](../phase-3b-k-cash-flow-finance-signoff/)
+- **Phase 3B-L Cash Flow loader-swap readiness** — **PREPARED**; planning only; operator approval required before 3B-M — [`phase-3b-l-cash-flow-loader-swap-readiness/`](../phase-3b-l-cash-flow-loader-swap-readiness/)
 - **Phase 3 remaining optional screens audit** — BS / P&L / Cash Flow / mobile — [`remaining-optional-screens-audit/`](../remaining-optional-screens-audit/)
 
 ### Optional (no production impact if deferred)

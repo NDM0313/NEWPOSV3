@@ -53,6 +53,7 @@
 | T14I | Aligned Cash Flow candidate golden capture (Phase 3B-I) | **COMPLETE — CANDIDATE_ONLY** | [`phase-3b-i-cash-flow-aligned-golden-capture/`](../phase-3b-i-cash-flow-aligned-golden-capture/) — not finance approved; loader swap blocked |
 | T14J | Cash Flow residual delta bridge (Phase 3B-J) | **COMPLETE** | [`phase-3b-j-cash-flow-residual-delta-bridge/`](../phase-3b-j-cash-flow-residual-delta-bridge/) — Option B selected |
 | T14K | Cash Flow finance basis sign-off (Phase 3B-K) | **COMPLETE** | [`phase-3b-k-cash-flow-finance-signoff/`](../phase-3b-k-cash-flow-finance-signoff/) — aligned basis candidate approved; loader swap blocked |
+| T14L | Cash Flow loader-swap readiness (Phase 3B-L) | **COMPLETE — PREPARED** | [`phase-3b-l-cash-flow-loader-swap-readiness/`](../phase-3b-l-cash-flow-loader-swap-readiness/) — planning only; 3B-M gated |
 | T14 | Mobile unified parity audit (deep) | **OPTIONAL_FUTURE** | Phase 3C in [`next-implementation-plan.md`](../remaining-optional-screens-audit/next-implementation-plan.md) |
 | T15 | Safe report/UI labeling fixes (no loader/GL change) | **OPTIONAL_FUTURE** | R2 pattern — diagnostic labeling only |
 | T16 | R6 monitoring automation hardening | **OPTIONAL_FUTURE** | [`r6-completion-report.md`](../r6-monitoring-hardening/r6-completion-report.md) |
