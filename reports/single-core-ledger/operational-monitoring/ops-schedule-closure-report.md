@@ -1,15 +1,15 @@
 # Operational monitoring schedule — closure report
 
-**Status:** `OPERATIONAL MONITORING OPS CLOSURE COMPLETE — PASSWORD ROTATION COMPLETE`  
-**Run:** PASSWORD ROTATION FINAL DOCS CLOSURE AFTER POST-ROTATION MONITORING PASS  
-**Generated:** 2026-06-14T00:00:00Z (updated 2026-06-29 office PC verification)  
-**Latest main at start:** `5a7fbe6f`
+**Status:** `OPERATIONAL MONITORING OPS CLOSURE COMPLETE — FINAL PRODUCTION OPS HANDOFF COMPLETE`  
+**Run:** FINAL PRODUCTION OPS HANDOFF + ARCHIVE LOCK  
+**Generated:** 2026-06-14T00:00:00Z (updated 2026-06-29 final handoff)  
+**Latest main at start:** `6b701ed1`
 
 ---
 
 ## Summary
 
-Three-company unified ledger operational readiness is documented: scheduled monitoring pack, Windows Task Scheduler guide, VPS cron guidance (docs only), incident response runbook, and password rotation closure. **Password rotation COMPLETE.** **Post-rotation monitoring PASS.** Per-company credentials verified on office PC. Generic fallback disabled for final closure run.
+Single Core Ledger is now in **production ops mode**. **Final production ops handoff complete.** Three-company unified ledger operational readiness is documented: scheduled monitoring pack, Windows Task Scheduler guide, VPS cron guidance (docs only), incident response runbook, and password rotation closure. **Password rotation COMPLETE.** **Post-rotation monitoring PASS.** Continue scheduled monitoring only. **No pending approved migration remains.**
 
 ---
 
@@ -35,6 +35,7 @@ Three-company unified ledger operational readiness is documented: scheduled moni
 | Windows Task Scheduler | [`windows-task-scheduler-guide.md`](windows-task-scheduler-guide.md) |
 | VPS cron (docs only) | [`vps-cron-monitoring-guide.md`](vps-cron-monitoring-guide.md) |
 | Password rotation | [`password-rotation-closure.md`](password-rotation-closure.md) |
+| Final production ops handoff | [`final-production-ops-handoff.md`](../final-production-ops-handoff/final-production-ops-handoff.md) |
 | Incident response | [`monitoring-incident-response-runbook.md`](monitoring-incident-response-runbook.md) |
 
 ---

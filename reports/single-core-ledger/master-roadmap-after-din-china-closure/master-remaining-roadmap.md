@@ -8,13 +8,13 @@
 
 ## Scope statement
 
-**Three-company unified ledger baseline complete.** **Monitoring credential hardening complete.** **Ops schedule pack complete.** **Incident response runbook complete.** **Password rotation COMPLETE.** **Post-rotation monitoring PASS.** Per-company credentials verified. Generic fallback disabled for final closure run.
+**Three-company unified ledger baseline complete.** **Single Core Ledger is now in production ops mode.** **Final production ops handoff complete.** **Monitoring credential hardening complete.** **Ops schedule pack complete.** **Incident response runbook complete.** **Password rotation COMPLETE.** **Post-rotation monitoring PASS.** Per-company credentials verified. Generic fallback disabled. Continue scheduled monitoring only.
 
-R7 **design-only** · R8 **blocked** · next-company **blocked** until separate finance sign-off.
+R7 **design-only** · R8 **blocked** · next-company **blocked** until separate finance sign-off. **No pending approved migration remains.**
 
-**Ongoing ops:** `npm run monitor:three-company-unified-ledger` with per-company `QA_BROWSER_PASSWORD_*` only — see [`scheduled-monitoring-ops-pack.md`](../operational-monitoring/scheduled-monitoring-ops-pack.md).
+**Ongoing ops:** `npm run monitor:three-company-unified-ledger` with per-company `QA_BROWSER_PASSWORD_*` only — see [`scheduled-monitoring-ops-pack.md`](../operational-monitoring/scheduled-monitoring-ops-pack.md) and [`final-production-ops-handoff.md`](../final-production-ops-handoff/final-production-ops-handoff.md).
 
-**Commit reconciliation:** `0a818da2` baseline · `50547061` monitoring automation · `9586e611` credential hardening · password rotation COMPLETE @ 2026-06-29 (office PC).
+**Commit reconciliation:** `6b701ed1` password rotation closure · final production ops handoff @ 2026-06-29.
 
 ---
 
@@ -79,6 +79,7 @@ R7 **design-only** · R8 **blocked** · next-company **blocked** until separate 
 - ~~DIN COUTURE browser credentials~~ — resolved; rollout complete
 
 ### Complete (2026-06-29)
+- **Final production ops handoff** — archive lock; production ops mode — [`final-production-ops-handoff-manifest.json`](../final-production-ops-handoff/final-production-ops-handoff-manifest.json)
 - **Password rotation + post-rotation monitoring** — office PC per-company credentials PASS; generic fallback disabled — [`password-rotation-final-closure-manifest.json`](../operational-monitoring/password-rotation-final-closure-manifest.json)
 
 ### Complete (2026-06-14)

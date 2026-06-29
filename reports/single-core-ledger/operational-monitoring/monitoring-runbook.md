@@ -2,8 +2,9 @@
 
 **Program:** OLD ERP Single Core Ledger  
 **Production:** https://erp.dincouture.pk  
-**Last updated:** 2026-06-29  
-**Commit reconciliation:** `0a818da2` baseline · `50547061` monitoring automation · `9586e611` credential hardening · password rotation COMPLETE · post-rotation monitoring PASS @ 2026-06-29 (office PC)
+**Last updated:** 2026-06-29 (final production ops handoff)  
+**Program mode:** Production ops — continue scheduled monitoring only  
+**Commit reconciliation:** `6b701ed1` password rotation closure · final ops handoff archived
 
 ---
 
@@ -18,7 +19,8 @@
 | [`password-rotation-closure.md`](password-rotation-closure.md) | **PASSWORD_ROTATION_COMPLETE** |
 | [`password-rotation-final-closure-manifest.json`](password-rotation-final-closure-manifest.json) | Final closure manifest |
 | [`three-company-monitoring-2026-06-29T07-42-30-177Z.json`](three-company-monitoring-2026-06-29T07-42-30-177Z.json) | Office PC post-rotation evidence |
-| [`ops-schedule-closure-report.md`](ops-schedule-closure-report.md) | Closure manifest |
+| [`final-production-ops-handoff.md`](../final-production-ops-handoff/final-production-ops-handoff.md) | **FINAL PRODUCTION OPS HANDOFF** — production ops mode |
+| [`daily-monitoring-checklist.md`](../final-production-ops-handoff/daily-monitoring-checklist.md) | Operator daily checklist |
 
 ---
 

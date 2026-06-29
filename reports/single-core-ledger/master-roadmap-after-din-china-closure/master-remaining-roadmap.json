@@ -1,14 +1,20 @@
 {
-  "generated_at": "2026-06-29T07:52:41.845Z",
-  "current_main_commit": "5a7fbe6f",
-  "program_status": "PASSWORD_ROTATION_COMPLETE_POST_MONITORING_PASS",
+  "generated_at": "2026-06-29T12:00:00.000Z",
+  "current_main_commit": "6b701ed1",
+  "program_status": "PRODUCTION_OPS_MODE",
+  "program_mode": "FINAL_PRODUCTION_OPS_HANDOFF_COMPLETE",
   "three_company_baseline": "COMPLETE",
+  "final_production_ops_handoff": {
+    "status": "COMPLETE",
+    "evidence": "reports/single-core-ledger/final-production-ops-handoff/final-production-ops-handoff-manifest.json",
+    "handoff_pack": "reports/single-core-ledger/final-production-ops-handoff/"
+  },
   "credential_hardening": "COMPLETE",
+  "migration_closure": "COMPLETE",
+  "pending_approved_migrations": false,
   "ops_schedule_closure": {
     "status": "COMPLETE",
-    "evidence": "reports/single-core-ledger/operational-monitoring/ops-schedule-closure-report.md",
-    "scheduled_pack": "reports/single-core-ledger/operational-monitoring/scheduled-monitoring-ops-pack.json",
-    "incident_runbook": "reports/single-core-ledger/operational-monitoring/monitoring-incident-response-runbook.json"
+    "evidence": "reports/single-core-ledger/operational-monitoring/ops-schedule-closure-report.md"
   },
   "password_rotation": {
     "rotation_required": true,
@@ -20,6 +26,7 @@
     "evidence": "reports/single-core-ledger/operational-monitoring/password-rotation-final-closure-manifest.json"
   },
   "recommended_next_phase": {
+    "mode": "PRODUCTION_OPS_MONITORING_ONLY",
     "command": "npm run monitor:three-company-unified-ledger",
     "schedule": "daily_business_hours",
     "guide": "reports/single-core-ledger/operational-monitoring/windows-task-scheduler-guide.md",

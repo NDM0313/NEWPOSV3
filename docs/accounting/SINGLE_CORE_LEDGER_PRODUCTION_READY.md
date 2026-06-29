@@ -1,11 +1,12 @@
 # Single Core Ledger — Production Ready Pack
 
-**Status:** `THREE-COMPANY UNIFIED LEDGER BASELINE COMPLETE`  
-**Program:** DIN CHINA, DIN BRIDAL, and DIN COUTURE unified loaders live and stable on `main`. Migration closure complete. R7 design-only; R8 blocked. Next-company expansion requires separate finance sign-off — [`master-remaining-roadmap.md`](../reports/single-core-ledger/master-roadmap-after-din-china-closure/master-remaining-roadmap.md)  
-**Branch:** `main` @ post-rotation closure (2026-06-29 office PC verification)  
+**Status:** `PRODUCTION OPS MODE` — three-company unified ledger baseline complete; final ops handoff archived  
+**Program:** DIN CHINA, DIN BRIDAL, and DIN COUTURE unified loaders live and stable on `main`. Migration closure complete — **no pending approved migrations**. R7 design-only; R8 blocked. Next-company expansion requires separate finance sign-off — [`master-remaining-roadmap.md`](../reports/single-core-ledger/master-roadmap-after-din-china-closure/master-remaining-roadmap.md)  
+**Branch:** `main` @ final production ops handoff (2026-06-29)  
 **PR:** https://github.com/NDM0313/NEWPOSV3/pull/21  
 **Last updated:** 2026-06-29  
 **Archive:** Three-company baseline — [`final-program-archive-report.md`](../reports/single-core-ledger/final-program-archive/final-program-archive-report.md)  
+**Ops handoff:** [`final-production-ops-handoff.md`](../reports/single-core-ledger/final-production-ops-handoff/final-production-ops-handoff.md)  
 **Ops monitoring:** [`ops-schedule-closure-report.md`](../reports/single-core-ledger/operational-monitoring/ops-schedule-closure-report.md)  
 **Commit reconciliation:** `0a818da2` baseline · `50547061` monitoring automation · `9586e611` credential hardening  
 **Master checklist:** use this file as the single entry point for post-apply status.
@@ -27,8 +28,9 @@
 - **Three-company unified ledger baseline:** complete  
 - **Monitoring credential hardening:** complete @ `9586e611`  
 - **Ops schedule pack + incident runbook:** complete — [`ops-schedule-closure-report.md`](../reports/single-core-ledger/operational-monitoring/ops-schedule-closure-report.md)  
+- **Final production ops handoff:** **COMPLETE** — program in production ops mode — [`final-production-ops-handoff-manifest.json`](../reports/single-core-ledger/final-production-ops-handoff/final-production-ops-handoff-manifest.json)
 - **Password rotation:** **COMPLETE** — post-rotation monitoring **PASS** — per-company credentials verified; generic fallback disabled — [`password-rotation-final-closure-manifest.json`](../reports/single-core-ledger/operational-monitoring/password-rotation-final-closure-manifest.json)
-- **Ongoing command:** `npm run monitor:three-company-unified-ledger` with per-company `QA_BROWSER_PASSWORD_*` only
+- **Ongoing command:** `npm run monitor:three-company-unified-ledger` with per-company `QA_BROWSER_PASSWORD_*` only — continue scheduled monitoring only
 - Evidence: [`three-company-monitoring-baseline.md`](../reports/single-core-ledger/final-program-archive/three-company-monitoring-baseline.md)
 
 ---
