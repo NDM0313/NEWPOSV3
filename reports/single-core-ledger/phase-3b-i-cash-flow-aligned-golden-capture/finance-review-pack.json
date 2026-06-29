@@ -1,0 +1,43 @@
+{
+  "phase": "3B-I",
+  "capturedAt": "2026-06-29T14:39:12.832Z",
+  "defaultFinanceStatus": "PENDING",
+  "loaderSwapApproved": false,
+  "officialLegacyCashFlowUnchanged": true,
+  "financeRules": {
+    "Q4": "A",
+    "Q5": "C",
+    "Q7": "B"
+  },
+  "reviewer": "Nadeem Khan",
+  "reviewDate": "2026-06-29",
+  "rows": [
+    {
+      "company": "DIN CHINA",
+      "report": "Cash Flow aligned preview",
+      "candidateValues": "Legacy closing PKR 37,134,386.00 · Aligned preview closing PKR -32,503,237.00 · Δ closing PKR 69,637,623.00",
+      "financeStatus": "PENDING",
+      "reviewer": "Nadeem Khan",
+      "reviewDate": "2026-06-29",
+      "notes": "CANDIDATE_ONLY — NOT FINANCE APPROVED. Cash Flow loader swap NOT APPROVED."
+    },
+    {
+      "company": "DIN BRIDAL",
+      "report": "Cash Flow aligned preview",
+      "candidateValues": "Legacy closing PKR 918,570.00 · Aligned preview closing PKR 60,720.00 · Δ closing PKR 857,850.00",
+      "financeStatus": "PENDING",
+      "reviewer": "Nadeem Khan",
+      "reviewDate": "2026-06-29",
+      "notes": "CANDIDATE_ONLY — NOT FINANCE APPROVED. Cash Flow loader swap NOT APPROVED."
+    },
+    {
+      "company": "DIN COUTURE",
+      "report": "Cash Flow aligned preview",
+      "candidateValues": "Legacy closing PKR 50,500.00 · Aligned preview closing PKR 50,500.00 · Δ closing PKR 0.00",
+      "financeStatus": "PENDING",
+      "reviewer": "Nadeem Khan",
+      "reviewDate": "2026-06-29",
+      "notes": "CANDIDATE_ONLY — NOT FINANCE APPROVED. Cash Flow loader swap NOT APPROVED."
+    }
+  ]
+}

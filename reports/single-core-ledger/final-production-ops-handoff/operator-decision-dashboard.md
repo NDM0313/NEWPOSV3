@@ -48,7 +48,9 @@
 
 **Phase 3B-G Cash Flow finance rule decision pack:** **RECORDED** @ 2026-06-29 — Q4=A, Q5=C, Q7=B (Nadeem Khan). Preview alignment only.
 
-**Phase 3B-H Cash Flow preview alignment:** **IMPLEMENTED** @ 2026-06-29. Preview follows approved rules; legacy official unchanged. Loader swap **NOT APPROVED**. Deploy + re-capture pending.
+**Phase 3B-H Cash Flow preview alignment:** **DEPLOYED TO PRODUCTION** @ 2026-06-29 (`d2401b1f`). Preview follows Q4=A, Q5=C, Q7=B; legacy official unchanged. Loader swap **NOT APPROVED**. No migrations, flags, or GL/data mutations.
+
+**Phase 3B-I aligned Cash Flow candidate golden capture:** **COMPLETE** @ 2026-06-29. Values **candidate-only, not finance approved**. DIN COUTURE zero-diff; DIN CHINA/DIN BRIDAL non-zero-diff. Loader swap blocked.
 
 ---
 
@@ -56,8 +58,7 @@
 
 | Item | Class | Doc |
 |------|-------|-----|
-| Phase 3B-H — deploy preview alignment UI | OPERATOR_GATE | [`deploy-or-skip-notes.md`](../phase-3b-h-cash-flow-preview-alignment/deploy-or-skip-notes.md) |
-| Phase 3B-I — aligned golden re-capture (after deploy) | FINANCE_GATE | [`finance-next-review-pack.md`](../phase-3b-h-cash-flow-preview-alignment/finance-next-review-pack.md) |
+| Aligned Cash Flow finance sign-off (after 3B-I review) | FINANCE_GATE | [`finance-review-pack.md`](../phase-3b-i-cash-flow-aligned-golden-capture/finance-review-pack.md) |
 | Phase 3D — finance golden capture for BS/P&L | FINANCE_GATE | [`finance-golden-capture-plan.md`](../phase-3a-bs-pl-preview/finance-golden-capture-plan.md) |
 
 ---

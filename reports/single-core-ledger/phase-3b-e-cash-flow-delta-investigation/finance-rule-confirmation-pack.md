@@ -65,4 +65,18 @@ BS/P&L finance remains **PENDING**. R7/R8/next company remain blocked.
 
 ## Phase 3B-H preview alignment @ 2026-06-29
 
-Finance decisions Q4=A, Q5=C, Q7=B recorded for **preview alignment only**. Phase 3B-H implemented in code. Legacy official unchanged. Loader swap **NOT APPROVED**. Re-capture required after deploy — [`phase-3b-h-cash-flow-preview-alignment/`](../phase-3b-h-cash-flow-preview-alignment/)
+Finance decisions Q4=A, Q5=C, Q7=B recorded for **preview alignment only**. Phase 3B-H **deployed to production** @ `d2401b1f`. Legacy official unchanged. Loader swap **NOT APPROVED**.
+
+## Phase 3B-I aligned candidate golden capture @ 2026-06-29
+
+**Status:** COMPLETE — **CANDIDATE_ONLY — NOT FINANCE APPROVED**
+
+| Company | Closing Δ (aligned preview vs legacy) | Compare | Transfer excluded | Opening excluded |
+|---------|--------------------------------------|---------|-------------------|------------------|
+| DIN CHINA | PKR 69,637,623 | NON-ZERO-DIFF | 169 transfer rows | 0 |
+| DIN BRIDAL | PKR 857,850 | NON-ZERO-DIFF | 0 | 2 opening rows |
+| DIN COUTURE | PKR 0 | ZERO-DIFF | 0 | 0 |
+
+Evidence: [`phase-3b-i-cash-flow-aligned-golden-capture/`](../phase-3b-i-cash-flow-aligned-golden-capture/)
+
+**Cash Flow loader swap remains BLOCKED.** BS/P&L finance remains **PENDING**. R7/R8/next company remain blocked.

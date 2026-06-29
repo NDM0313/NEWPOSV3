@@ -98,15 +98,30 @@
     {
       "phase": "3B-H",
       "name": "Cash Flow preview alignment",
-      "status": "IMPLEMENTED",
+      "status": "DEPLOYED",
       "completedAt": "2026-06-29",
+      "deployedCommit": "d2401b1f",
       "financeDecisions": { "Q4": "A", "Q5": "C", "Q7": "B" },
       "previewAlignmentOnly": true,
       "officialLegacyUnchanged": true,
-      "deployedToProduction": false,
+      "deployedToProduction": true,
       "loaderSwapApproved": false,
-      "recaptureRequired": "3B-I",
       "evidence": "reports/single-core-ledger/phase-3b-h-cash-flow-preview-alignment/"
+    },
+    {
+      "phase": "3B-I",
+      "name": "Aligned Cash Flow candidate golden capture",
+      "status": "COMPLETE",
+      "completedAt": "2026-06-29",
+      "approvalStatus": "CANDIDATE_ONLY",
+      "financeStatus": "PENDING",
+      "zeroDiffCompanies": ["DIN COUTURE"],
+      "nonZeroDiffCompanies": ["DIN CHINA", "DIN BRIDAL"],
+      "loaderSwapApproved": false,
+      "officialLegacyUnchanged": true,
+      "migrationsRun": false,
+      "glMutations": false,
+      "evidence": "reports/single-core-ledger/phase-3b-i-cash-flow-aligned-golden-capture/"
     },
     {
       "phase": 3,

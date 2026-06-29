@@ -153,13 +153,27 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | `IMPLEMENTED` |
+| **Status** | `DEPLOYED` @ `d2401b1f` |
 | **Finance decisions** | Q4=A, Q5=C, Q7=B (preview alignment only) |
 | **Evidence** | [`phase-3b-h-cash-flow-preview-alignment/`](../phase-3b-h-cash-flow-preview-alignment/) |
 | **Official legacy** | **UNCHANGED** |
-| **Deploy** | **NOT RUN** — operator approval required |
-| **Re-capture** | Phase 3B-I after deploy |
+| **Deploy** | **COMPLETE** — frontend-only @ 2026-06-29 |
 | **Loader swap** | **BLOCKED** |
+
+---
+
+## Phase 3B-I — Aligned Cash Flow candidate golden capture
+
+| Field | Value |
+|-------|-------|
+| **Status** | `COMPLETE` |
+| **Evidence** | [`phase-3b-i-cash-flow-aligned-golden-capture/`](../phase-3b-i-cash-flow-aligned-golden-capture/) |
+| **Finance status** | **PENDING** — candidate-only, not finance approved |
+| **Zero-diff** | DIN COUTURE |
+| **Non-zero-diff** | DIN CHINA · DIN BRIDAL |
+| **Loader swap** | **BLOCKED** |
+| **BS/P&L finance** | **PENDING** |
+| **R7 / R8 / next company** | **BLOCKED** |
 
 ---
 

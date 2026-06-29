@@ -18,7 +18,7 @@
   "migration_closure": "COMPLETE",
   "pending_approved_migrations": false,
   "phases_classified_not_auto_approved": true,
-  "safe_next_step": "Operator approves Phase 3B-H deploy; then Phase 3B-I aligned golden re-capture OR continue scheduled monitoring only",
+  "safe_next_step": "Finance reviews aligned Cash Flow candidate values (Phase 3B-I); separate sign-off pack if approved; loader swap remains blocked",
   "ops_schedule_closure": {
     "status": "COMPLETE",
     "evidence": "reports/single-core-ledger/operational-monitoring/ops-schedule-closure-report.md"
@@ -139,20 +139,33 @@
     "evidence": "reports/single-core-ledger/phase-3b-g-cash-flow-finance-rule-decision/"
   },
   "phase_3b_h_cash_flow_preview_alignment": {
-    "status": "IMPLEMENTED",
+    "status": "DEPLOYED",
     "completedAt": "2026-06-29",
+    "deployedCommit": "d2401b1f",
     "financeDecisions": { "Q4": "A", "Q5": "C", "Q7": "B" },
     "previewAlignmentOnly": true,
     "officialLegacyUnchanged": true,
-    "deployedToProduction": false,
+    "deployedToProduction": true,
     "loaderSwapApproved": false,
-    "captureStatus": "PENDING_DEPLOY",
     "evidence": "reports/single-core-ledger/phase-3b-h-cash-flow-preview-alignment/"
   },
+  "phase_3b_i_aligned_cash_flow_candidate_golden_capture": {
+    "status": "COMPLETE",
+    "completedAt": "2026-06-29",
+    "approvalStatus": "CANDIDATE_ONLY",
+    "financeStatus": "PENDING",
+    "zeroDiffCompanies": ["DIN COUTURE"],
+    "nonZeroDiffCompanies": ["DIN CHINA", "DIN BRIDAL"],
+    "loaderSwapApproved": false,
+    "officialLegacyUnchanged": true,
+    "migrationsRun": false,
+    "glMutations": false,
+    "evidence": "reports/single-core-ledger/phase-3b-i-cash-flow-aligned-golden-capture/"
+  },
   "recommended_next_phase": {
-    "mode": "PHASE_3B_H_DEPLOY_AND_3B_I_RECAPTURE",
-    "action": "Operator approves Phase 3B-H deploy; run Phase 3B-I aligned golden re-capture; loader swap remains blocked",
-    "evidence": "reports/single-core-ledger/phase-3d-bs-pl-golden-capture/finance-signoff-pack.md",
+    "mode": "PHASE_3B_I_FINANCE_REVIEW",
+    "action": "Finance reviews aligned Cash Flow candidate values; separate sign-off pack if approved; loader swap remains blocked",
+    "evidence": "reports/single-core-ledger/phase-3b-i-cash-flow-aligned-golden-capture/finance-review-pack.md",
     "command": "npm run monitor:three-company-unified-ledger",
     "credential_policy": "per-company only"
   },

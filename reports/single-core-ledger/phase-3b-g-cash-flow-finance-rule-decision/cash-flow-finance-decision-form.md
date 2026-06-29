@@ -79,3 +79,19 @@
 | Q6 | Source modules in normal Cash Flow? | PENDING |
 
 **Evidence:** [`din-china-finance-summary.md`](din-china-finance-summary.md) · [`din-bridal-finance-summary.md`](din-bridal-finance-summary.md) · [`decision-outcome-matrix.md`](decision-outcome-matrix.md)
+
+---
+
+## Phase 3B-I aligned candidate capture @ 2026-06-29
+
+Phase 3B-H deployed @ `d2401b1f`. Aligned preview candidate values re-captured for all three companies.
+
+| Company | Aligned preview closing | Legacy closing | Closing Δ | Compare |
+|---------|------------------------|----------------|-----------|---------|
+| DIN CHINA | PKR -32,503,237 | PKR 37,134,386 | PKR 69,637,623 | NON-ZERO-DIFF |
+| DIN BRIDAL | PKR 60,720 | PKR 918,570 | PKR 857,850 | NON-ZERO-DIFF |
+| DIN COUTURE | PKR 50,500 | PKR 50,500 | PKR 0 | ZERO-DIFF |
+
+**Finance status:** PENDING — candidate-only, not finance approved.  
+**Loader swap:** NOT APPROVED.  
+**Evidence:** [`phase-3b-i-cash-flow-aligned-golden-capture/`](../phase-3b-i-cash-flow-aligned-golden-capture/)

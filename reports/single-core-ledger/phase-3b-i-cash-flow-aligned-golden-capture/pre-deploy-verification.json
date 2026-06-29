@@ -1,0 +1,15 @@
+{
+  "phase": "3B-H-PROD",
+  "run": "pre-deploy-verification",
+  "generated_at": "2026-06-29T14:36:00.000Z",
+  "test_unified_ledger": { "pass": 287, "fail": 0, "total": 287, "result": "PASS" },
+  "build": { "result": "PASS" },
+  "migration_files_changed": false,
+  "sql_will_be_applied": false,
+  "feature_flags_will_change": false,
+  "credentials_printed": false,
+  "runtime_change_scope": "Cash Flow preview alignment / diagnostic UI only (Phase 3B-H)",
+  "official_legacy_cash_flow_unchanged": true,
+  "approved_finance_rules": { "Q4": "A", "Q5": "C", "Q7": "B" },
+  "loader_swap_approved": false
+}
