@@ -18,7 +18,7 @@
   "migration_closure": "COMPLETE",
   "pending_approved_migrations": false,
   "phases_classified_not_auto_approved": true,
-  "safe_next_step": "Finance/operator reviews Cash Flow candidate values (Phase 3B-D finance review pack) OR continue scheduled monitoring only",
+  "safe_next_step": "Finance/operator reviews Cash Flow rule confirmation pack (Phase 3B-E) OR continue scheduled monitoring only",
   "ops_schedule_closure": {
     "status": "COMPLETE",
     "evidence": "reports/single-core-ledger/operational-monitoring/ops-schedule-closure-report.md"
@@ -101,9 +101,21 @@
     "glMutations": false,
     "evidence": "reports/single-core-ledger/phase-3b-d-cash-flow-golden-capture/"
   },
+  "phase_3b_e_cash_flow_delta_investigation": {
+    "status": "COMPLETE",
+    "completedAt": "2026-06-29",
+    "candidateOnly": true,
+    "financeApproved": false,
+    "loaderSwapApproved": false,
+    "bs_pl_finance_status": "PENDING",
+    "nonZeroDiffCompanies": ["DIN CHINA", "DIN BRIDAL"],
+    "zeroDiffCompanies": ["DIN COUTURE"],
+    "recommendedNext": "D+E — deeper row export then finance approval",
+    "evidence": "reports/single-core-ledger/phase-3b-e-cash-flow-delta-investigation/"
+  },
   "recommended_next_phase": {
-    "mode": "PHASE_3B_D_FINANCE_REVIEW",
-    "action": "Finance/operator reviews Cash Flow candidate values. If approved, create separate approval/sign-off phase. BS/P&L finance status remains PENDING.",
+    "mode": "PHASE_3B_E_FINANCE_RULE_REVIEW",
+    "action": "Finance/operator reviews Cash Flow rule confirmation pack; choose legacy official (A) or separate preview fix (B) only after finance approval",
     "evidence": "reports/single-core-ledger/phase-3d-bs-pl-golden-capture/finance-signoff-pack.md",
     "command": "npm run monitor:three-company-unified-ledger",
     "credential_policy": "per-company only"

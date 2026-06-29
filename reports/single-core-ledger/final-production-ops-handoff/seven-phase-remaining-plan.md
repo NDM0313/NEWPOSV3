@@ -106,6 +106,20 @@
 
 ---
 
+## Phase 3B-E — Cash Flow delta investigation
+
+| Field | Value |
+|-------|-------|
+| **Status** | `COMPLETE` |
+| **Action** | Read-only rule map + row-bucket analysis for DIN CHINA / DIN BRIDAL deltas |
+| **Evidence** | [`phase-3b-e-cash-flow-delta-investigation/`](../phase-3b-e-cash-flow-delta-investigation/) |
+| **Recommendation** | **D + E** — deeper row export tooling, then finance approval before fix |
+| **Runtime changes** | **NONE** |
+| **Loader swap** | **NOT APPROVED** |
+| **BS/P&L finance** | **PENDING** |
+
+---
+
 ## Phase 3 — Remaining optional screen audit
 
 | Field | Value |

@@ -1,0 +1,77 @@
+{
+  "run": "PHASE_3B_E_FINANCE_RULE_CONFIRMATION",
+  "generated_at": "2026-06-29T13:10:00.000Z",
+  "defaultStatus": "PENDING",
+  "loaderSwapApproved": false,
+  "bsPlFinanceStatus": "PENDING",
+  "questions": [
+    {
+      "id": "Q1",
+      "question": "Should Cash Flow follow current legacy getCashFlowReport exactly?",
+      "defaultRecommendation": "YES — remain official until finance approves change",
+      "status": "PENDING",
+      "reviewer": "",
+      "reviewDate": "",
+      "notes": ""
+    },
+    {
+      "id": "Q2",
+      "question": "Should Cash Flow follow unified Roznamcha/effective_party basis?",
+      "defaultRecommendation": "NOT without explicit finance sign-off",
+      "status": "PENDING",
+      "reviewer": "",
+      "reviewDate": "",
+      "notes": ""
+    },
+    {
+      "id": "Q3",
+      "question": "Should correction/reversal/void rows be hidden in normal mode and shown only in audit?",
+      "defaultRecommendation": "YES — matches reportVisibilityContract",
+      "status": "PENDING",
+      "reviewer": "",
+      "reviewDate": "",
+      "notes": ""
+    },
+    {
+      "id": "Q4",
+      "question": "Should opening balances be calculated from all prior activity or only period rows?",
+      "defaultRecommendation": "Finance confirm — DIN BRIDAL opening_balance_account rows drove delta",
+      "status": "PENDING",
+      "reviewer": "",
+      "reviewDate": "",
+      "notes": ""
+    },
+    {
+      "id": "Q5",
+      "question": "Should internal transfers be shown gross, net, or excluded?",
+      "defaultRecommendation": "CRITICAL for DIN CHINA — preview gross legs vs legacy transfer presentation",
+      "status": "PENDING",
+      "reviewer": "",
+      "reviewDate": "",
+      "notes": ""
+    },
+    {
+      "id": "Q6",
+      "question": "Which source modules should be included in normal Cash Flow?",
+      "defaultRecommendation": "Current all-modules filter for both sides",
+      "status": "PENDING",
+      "reviewer": "",
+      "reviewDate": "",
+      "notes": ""
+    },
+    {
+      "id": "Q7",
+      "question": "Should DIN CHINA and DIN BRIDAL deltas be accepted as rule differences or fixed?",
+      "defaultRecommendation": "Rule confirmation first — do not accept as official without review",
+      "status": "PENDING",
+      "reviewer": "",
+      "reviewDate": "",
+      "notes": "DIN CHINA: large transfer-leg treatment. DIN BRIDAL: opening_balance_account + JE mapping."
+    }
+  ],
+  "companySummary": [
+    { "company": "DIN CHINA", "closingDelta": 45675273, "financeStatus": "NEEDS_RULE_CONFIRMATION" },
+    { "company": "DIN BRIDAL", "closingDelta": -55000, "financeStatus": "NEEDS_RULE_CONFIRMATION" },
+    { "company": "DIN COUTURE", "closingDelta": 0, "financeStatus": "PENDING" }
+  ]
+}

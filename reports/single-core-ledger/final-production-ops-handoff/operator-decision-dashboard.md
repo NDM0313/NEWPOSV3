@@ -40,7 +40,9 @@
 
 **Phase 3B Cash Flow preview:** **DEPLOYED TO PRODUCTION** @ 2026-06-29 (`99f2e3b3`). Legacy Cash Flow default behavior unchanged. Loader swap not approved. BS/P&L finance status remains **PENDING**. R7/R8/next company remain blocked. No migrations, no flags, and no GL/data mutations.
 
-**Phase 3B-D Cash Flow candidate golden capture:** **COMPLETE** @ 2026-06-29. DIN CHINA · DIN BRIDAL · DIN COUTURE — values **candidate-only, not finance approved**. DIN COUTURE zero-diff; DIN CHINA/DIN BRIDAL non-zero-diff. Cash Flow loader swap not approved.
+**Phase 3B-D Cash Flow candidate golden capture:** **COMPLETE** @ 2026-06-29. Values **candidate-only, not finance approved**. DIN COUTURE zero-diff; DIN CHINA/DIN BRIDAL non-zero-diff.
+
+**Phase 3B-E Cash Flow delta investigation:** **COMPLETE** @ 2026-06-29. Root cause: different data engines + transfer-leg treatment (DIN CHINA) + opening_balance_account rows (DIN BRIDAL). Finance rule confirmation **PENDING**. Loader swap blocked. No runtime changes.
 
 ---
 
@@ -49,7 +51,7 @@
 | Item | Class | Doc |
 |------|-------|-----|
 | Phase 3D — finance golden capture for BS/P&L | FINANCE_GATE | [`finance-golden-capture-plan.md`](../phase-3a-bs-pl-preview/finance-golden-capture-plan.md) |
-| Phase 3B-D — Cash Flow finance review | FINANCE_GATE | [`finance-review-pack.md`](../phase-3b-d-cash-flow-golden-capture/finance-review-pack.md) |
+| Phase 3B-E — Cash Flow finance rule review | FINANCE_GATE | [`finance-rule-confirmation-pack.md`](../phase-3b-e-cash-flow-delta-investigation/finance-rule-confirmation-pack.md) |
 
 ---
 

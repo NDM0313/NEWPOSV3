@@ -42,6 +42,15 @@
       "evidence": "reports/single-core-ledger/phase-3b-cash-flow-preview/"
     },
     {
+      "phase": "3B-E",
+      "name": "Cash Flow delta investigation",
+      "status": "COMPLETE",
+      "completedAt": "2026-06-29",
+      "recommendedNext": "D+E finance rule review",
+      "runtimeChanged": false,
+      "evidence": "reports/single-core-ledger/phase-3b-e-cash-flow-delta-investigation/"
+    },
+    {
       "phase": "3B-D",
       "name": "Cash Flow candidate golden capture",
       "status": "COMPLETE_CANDIDATE_ONLY",
