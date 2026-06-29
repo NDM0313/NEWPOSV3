@@ -1,8 +1,9 @@
 # Phase 3B implementation report — Cash Flow unified preview
 
-**Status:** IMPLEMENTED (preview-only)  
+**Status:** DEPLOYED (preview-only)  
 **Generated:** 2026-06-29T14:00:00.000Z  
-**Base commit:** `51f308c6`
+**Implementation commit:** `99f2e3b3`  
+**Production deploy:** 2026-06-29 @ `99f2e3b3` — https://erp.dincouture.pk
 
 ---
 
@@ -55,4 +56,14 @@ Cash Flow main loader still uses `roznamchaService`; unified Roznamcha main is n
 
 ## Deploy
 
-**NOT RUN** — operator approval required for production preview UI.
+**DEPLOYED** @ 2026-06-29 — operator approved Phase 3B-PROD via `deploy/vps-build-erp-only.sh`.
+
+- Phase 3B Cash Flow preview-only UI deployed to production.
+- Legacy Cash Flow default behavior unchanged.
+- Loader swap not approved.
+- Finance golden capture still required.
+- BS/P&L finance status remains **PENDING**.
+- R7/R8/next company remain blocked.
+- No migrations, no flags, and no GL/data mutations.
+
+Evidence: [`production-deploy-notes.md`](production-deploy-notes.md) · [`post-deploy-smoke.md`](post-deploy-smoke.md) · [`post-deploy-monitoring.md`](post-deploy-monitoring.md)

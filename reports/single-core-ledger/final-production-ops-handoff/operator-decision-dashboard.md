@@ -38,7 +38,7 @@
 
 **Phase 3D-SIGNOFF finance pack:** **PREPARED** @ 2026-06-29. [`finance-signoff-pack.md`](../phase-3d-bs-pl-golden-capture/finance-signoff-pack.md) ready for finance review. Finance status **PENDING**. Loader swap **BLOCKED**. R7/R8/next company remain blocked.
 
-**Phase 3B Cash Flow preview:** **IMPLEMENTED** (preview-only, not deployed). Legacy Cash Flow default unchanged. BS/P&L finance status remains **PENDING**. Deploy requires operator approval.
+**Phase 3B Cash Flow preview:** **DEPLOYED TO PRODUCTION** @ 2026-06-29 (`99f2e3b3`). Legacy Cash Flow default behavior unchanged. Loader swap not approved. Finance golden capture still required. BS/P&L finance status remains **PENDING**. R7/R8/next company remain blocked. No migrations, no flags, and no GL/data mutations.
 
 ---
 
@@ -47,7 +47,7 @@
 | Item | Class | Doc |
 |------|-------|-----|
 | Phase 3D — finance golden capture for BS/P&L | FINANCE_GATE | [`finance-golden-capture-plan.md`](../phase-3a-bs-pl-preview/finance-golden-capture-plan.md) |
-| Phase 3B — Cash Flow preview | OPTIONAL_FUTURE | [`next-implementation-plan.md`](../remaining-optional-screens-audit/next-implementation-plan.md) |
+| Phase 3B-D — Cash Flow candidate golden capture | FINANCE_GATE | [`finance-golden-capture-plan.md`](../phase-3b-cash-flow-preview/finance-golden-capture-plan.md) |
 
 ---
 

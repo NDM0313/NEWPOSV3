@@ -31,6 +31,22 @@
       "evidence": "reports/single-core-ledger/phase-3a-bs-pl-preview/"
     },
     {
+      "phase": "3B",
+      "name": "Cash Flow unified preview",
+      "status": "COMPLETE_DEPLOYED",
+      "productionUrl": "https://erp.dincouture.pk",
+      "productionCommit": "99f2e3b3",
+      "previewOnly": true,
+      "defaultRuntimeChanged": false,
+      "loaderSwapApproved": false,
+      "financeGoldenRequired": true,
+      "bsPlFinanceStatus": "PENDING",
+      "migrationsRun": false,
+      "flagsToggled": false,
+      "glMutations": false,
+      "evidence": "reports/single-core-ledger/phase-3b-cash-flow-preview/"
+    },
+    {
       "phase": 3,
       "name": "Remaining optional screen audit",
       "status": "COMPLETE",

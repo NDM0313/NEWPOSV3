@@ -1,14 +1,24 @@
 {
   "run": "PHASE_3B_IMPLEMENTATION",
   "generated_at": "2026-06-29T14:00:00.000Z",
-  "status": "IMPLEMENTED_PREVIEW_ONLY",
-  "base_commit": "51f308c6",
+  "status": "DEPLOYED_PREVIEW_ONLY",
+  "implementation_commit": "99f2e3b3",
+  "production_commit": "99f2e3b3",
+  "production_url": "https://erp.dincouture.pk",
+  "deployed_at": "2026-06-29",
   "runtime_default_unchanged": true,
   "loader_swap_approved": false,
+  "finance_golden_required": true,
+  "bs_pl_finance_status": "PENDING",
   "migrations_run": false,
   "flags_toggled": false,
   "gl_mutations": false,
-  "deploy": "NOT_RUN",
+  "deploy": "COMPLETE",
+  "deploy_evidence": [
+    "reports/single-core-ledger/phase-3b-cash-flow-preview/production-deploy-notes.md",
+    "reports/single-core-ledger/phase-3b-cash-flow-preview/post-deploy-smoke.md",
+    "reports/single-core-ledger/phase-3b-cash-flow-preview/post-deploy-monitoring.md"
+  ],
   "files_added": [
     "src/app/lib/accounting/cashFlowUnifiedPreviewMapper.ts",
     "src/app/lib/accounting/cashFlowUnifiedPreviewDiff.ts",

@@ -76,14 +76,15 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | `IMPLEMENTED — NOT DEPLOYED` |
+| **Status** | `DEPLOYED` |
 | **Action** | Admin/developer unified Roznamcha preview compare on Cash Flow page |
 | **Evidence** | [`phase-3b-cash-flow-preview/`](../phase-3b-cash-flow-preview/) |
+| **Production** | https://erp.dincouture.pk @ `99f2e3b3` |
 | **Default runtime** | **UNCHANGED** — legacy `getCashFlowReport` remains main |
 | **Loader swap** | **NOT APPROVED** |
 | **Finance golden** | **NEEDS_GOLDEN_CAPTURE** before adoption |
 | **BS/P&L finance** | **PENDING** (unchanged) |
-| **Deploy** | **NOT RUN** — operator approval required |
+| **Deploy** | **COMPLETE** @ 2026-06-29 — frontend only; no migrations, no flags, no GL/data mutations |
 
 ---
 

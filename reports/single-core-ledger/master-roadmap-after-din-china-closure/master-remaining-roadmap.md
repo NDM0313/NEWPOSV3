@@ -109,7 +109,7 @@ R7 **design-only** · R8 **blocked** · next-company **blocked** until separate 
 - **Phase 3A BS/P&L unified preview — production deploy** — preview-only UI live at https://erp.dincouture.pk; legacy default unchanged; loader swap not approved — [`phase-3a-bs-pl-preview/`](../phase-3a-bs-pl-preview/)
 - **Phase 3D BS/P&L candidate golden capture** — DIN CHINA · DIN BRIDAL · DIN COUTURE; values **candidate-only, not finance approved**; no migrations/flags/GL mutations; loader swap not approved — [`phase-3d-bs-pl-golden-capture/`](../phase-3d-bs-pl-golden-capture/)
 - **Phase 3D-SIGNOFF finance sign-off pack** — prepared; finance status **PENDING**; loader swap **BLOCKED** — [`finance-signoff-pack.md`](../phase-3d-bs-pl-golden-capture/finance-signoff-pack.md)
-- **Phase 3B Cash Flow unified preview** — preview-only implemented; legacy default unchanged; deploy not run — [`phase-3b-cash-flow-preview/`](../phase-3b-cash-flow-preview/)
+- **Phase 3B Cash Flow unified preview — production deploy** — preview-only UI live at https://erp.dincouture.pk; legacy Cash Flow default unchanged; loader swap not approved; finance golden capture still required; BS/P&L finance status **PENDING**; R7/R8/next company remain blocked; no migrations, no flags, and no GL/data mutations — [`phase-3b-cash-flow-preview/`](../phase-3b-cash-flow-preview/)
 - **Phase 3 remaining optional screens audit** — BS / P&L / Cash Flow / mobile — [`remaining-optional-screens-audit/`](../remaining-optional-screens-audit/)
 
 ### Optional (no production impact if deferred)

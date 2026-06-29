@@ -31,6 +31,7 @@
     { "id": "T11", "task": "Seven-phase plan", "class": "SAFE_DOCS_ONLY" },
     { "id": "T12", "task": "Operator decision dashboard", "class": "SAFE_DOCS_ONLY" },
     { "id": "T13", "task": "Phase 3A BS/P&L preview-only", "class": "COMPLETE_DEPLOYED", "evidence": "reports/single-core-ledger/phase-3a-bs-pl-preview/", "productionCommit": "4a5dc304" },
+    { "id": "T14B", "task": "Phase 3B Cash Flow preview-only", "class": "COMPLETE_DEPLOYED", "evidence": "reports/single-core-ledger/phase-3b-cash-flow-preview/", "productionCommit": "99f2e3b3" },
     { "id": "T14", "task": "Mobile parity deep audit (Phase 3C)", "class": "OPTIONAL_FUTURE" },
     { "id": "T15", "task": "Safe report/UI fixes", "class": "OPTIONAL_FUTURE" },
     { "id": "T16", "task": "R6 monitoring hardening", "class": "OPTIONAL_FUTURE" },

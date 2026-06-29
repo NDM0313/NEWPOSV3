@@ -18,7 +18,7 @@
   "migration_closure": "COMPLETE",
   "pending_approved_migrations": false,
   "phases_classified_not_auto_approved": true,
-  "safe_next_step": "Finance reviews Phase 3D sign-off pack OR Phase 3B Cash Flow preview (operator choice)",
+  "safe_next_step": "Phase 3B-D Cash Flow candidate golden capture (DIN CHINA, DIN BRIDAL, DIN COUTURE) OR continue scheduled monitoring only",
   "ops_schedule_closure": {
     "status": "COMPLETE",
     "evidence": "reports/single-core-ledger/operational-monitoring/ops-schedule-closure-report.md"
@@ -70,19 +70,25 @@
     "loader_swap_gate": "reports/single-core-ledger/phase-3d-bs-pl-golden-capture/bs-pl-loader-swap-gate.md"
   },
   "phase_3b_cash_flow_preview": {
-    "status": "IMPLEMENTED",
+    "status": "DEPLOYED",
     "previewOnly": true,
-    "deployedToProduction": false,
+    "deployedToProduction": true,
+    "productionUrl": "https://erp.dincouture.pk",
+    "productionCommit": "99f2e3b3",
+    "deployedAt": "2026-06-29",
     "implementedAt": "2026-06-29",
     "defaultRuntimeChanged": false,
     "loaderSwapApproved": false,
     "financeGoldenRequired": true,
     "bs_pl_finance_status": "PENDING",
+    "migrationsRun": false,
+    "flagsToggled": false,
+    "glMutations": false,
     "evidence": "reports/single-core-ledger/phase-3b-cash-flow-preview/"
   },
   "recommended_next_phase": {
-    "mode": "PHASE_3D_FINANCE_REVIEW_OR_PHASE_3B",
-    "action": "Finance reviews BS/P&L sign-off pack OR Phase 3B Cash Flow preview (operator choice)",
+    "mode": "PHASE_3B_D_CASH_FLOW_GOLDEN_CAPTURE",
+    "action": "Start Phase 3B-D Cash Flow candidate golden capture for DIN CHINA, DIN BRIDAL, and DIN COUTURE, or continue scheduled monitoring only if operator pauses",
     "evidence": "reports/single-core-ledger/phase-3d-bs-pl-golden-capture/finance-signoff-pack.md",
     "command": "npm run monitor:three-company-unified-ledger",
     "credential_policy": "per-company only"

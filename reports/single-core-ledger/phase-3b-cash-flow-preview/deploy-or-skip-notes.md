@@ -1,26 +1,25 @@
-# Deploy or skip notes — Phase 3B
+# Deploy decision — Phase 3B
 
-**Decision:** DEPLOY NOT RUN — operator approval required
+**Decision:** **DEPLOYED** @ 2026-06-29 — operator approved Phase 3B-PROD
 
----
+## Production deploy
 
-## Rationale
+- **URL:** https://erp.dincouture.pk
+- **Commit:** `99f2e3b3`
+- **Method:** `deploy/vps-build-erp-only.sh` on `dincouture-vps`
+- **Evidence:** [`production-deploy-notes.md`](production-deploy-notes.md) · [`post-deploy-smoke.md`](post-deploy-smoke.md) · [`post-deploy-monitoring.md`](post-deploy-monitoring.md)
 
-Runtime source files changed (Cash Flow page + preview panel). Per program rules, production deploy requires explicit operator approval after tests/build pass.
+## Constraints honored
 
----
+- Phase 3B Cash Flow preview-only UI deployed to production.
+- Legacy Cash Flow default behavior unchanged.
+- Loader swap not approved.
+- Finance golden capture still required.
+- BS/P&L finance status remains **PENDING**.
+- R7/R8/next company remain blocked.
+- No migrations, no flags, and no GL/data mutations.
 
-## Pre-deploy checklist (when approved)
+## Post-deploy
 
-- [ ] `npm run test:unified-ledger` PASS
-- [ ] `npm run build` PASS
-- [ ] `ssh dincouture-vps` + `deploy/vps-build-erp-only.sh`
-- [ ] Verify preview toggle on https://erp.dincouture.pk Cash Flow tab
-- [ ] Post-deploy `npm run monitor:three-company-unified-ledger` PASS
-- [ ] No migrations, no flags
-
----
-
-## Skip deploy (current)
-
-Office PC implementation complete; evidence committed to `main`. Production unchanged until operator approves deploy.
+- Three-company monitoring **PASS** after deploy
+- Operator: hard refresh when validating preview UI (service worker)

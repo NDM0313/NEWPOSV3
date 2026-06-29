@@ -44,7 +44,7 @@
 | T13 | BS / P&L preview-only (Phase 3A) | **COMPLETE — DEPLOYED** | [`phase-3a-bs-pl-preview/`](../phase-3a-bs-pl-preview/) — production @ `4a5dc304`; loader swap not approved |
 | T13D | BS / P&L candidate golden capture (Phase 3D) | **COMPLETE — CANDIDATE_ONLY** | [`phase-3d-bs-pl-golden-capture/`](../phase-3d-bs-pl-golden-capture/) — not finance approved; loader swap not approved |
 | T13S | BS / P&L finance sign-off pack (Phase 3D-SIGNOFF) | **PREPARED — PENDING** | [`finance-signoff-pack.md`](../phase-3d-bs-pl-golden-capture/finance-signoff-pack.md) — finance review; loader swap blocked |
-| T14B | Cash Flow unified preview (Phase 3B) | **IMPLEMENTED — NOT DEPLOYED** | [`phase-3b-cash-flow-preview/`](../phase-3b-cash-flow-preview/) — preview-only; finance golden required |
+| T14B | Cash Flow unified preview (Phase 3B) | **COMPLETE — DEPLOYED** | [`phase-3b-cash-flow-preview/`](../phase-3b-cash-flow-preview/) — production @ `99f2e3b3`; preview-only; loader swap not approved; finance golden required |
 | T14 | Mobile unified parity audit (deep) | **OPTIONAL_FUTURE** | Phase 3C in [`next-implementation-plan.md`](../remaining-optional-screens-audit/next-implementation-plan.md) |
 | T15 | Safe report/UI labeling fixes (no loader/GL change) | **OPTIONAL_FUTURE** | R2 pattern — diagnostic labeling only |
 | T16 | R6 monitoring automation hardening | **OPTIONAL_FUTURE** | [`r6-completion-report.md`](../r6-monitoring-hardening/r6-completion-report.md) |
