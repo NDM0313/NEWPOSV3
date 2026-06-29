@@ -88,6 +88,24 @@
 
 ---
 
+## Phase 3B-D — Cash Flow candidate golden capture
+
+| Field | Value |
+|-------|-------|
+| **Status** | `COMPLETE — CANDIDATE_ONLY` |
+| **Action** | Capture legacy vs unified preview compare from production Cash Flow panel |
+| **Evidence** | [`phase-3b-d-cash-flow-golden-capture/`](../phase-3b-d-cash-flow-golden-capture/) |
+| **Companies** | DIN CHINA · DIN BRIDAL · DIN COUTURE |
+| **Finance approval** | **NOT APPROVED** — default status PENDING |
+| **Loader swap** | **NOT APPROVED** |
+| **BS/P&L finance** | **PENDING** (unchanged) |
+| **Zero-diff** | DIN COUTURE |
+| **Non-zero-diff** | DIN CHINA · DIN BRIDAL — NEEDS_RULE_CONFIRMATION |
+| **Migrations / flags / GL** | **NONE** |
+| **R7 / R8 / next company** | **BLOCKED** |
+
+---
+
 ## Phase 3 — Remaining optional screen audit
 
 | Field | Value |

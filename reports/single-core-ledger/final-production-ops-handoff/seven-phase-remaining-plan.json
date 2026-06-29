@@ -39,12 +39,24 @@
       "previewOnly": true,
       "defaultRuntimeChanged": false,
       "loaderSwapApproved": false,
-      "financeGoldenRequired": true,
+      "evidence": "reports/single-core-ledger/phase-3b-cash-flow-preview/"
+    },
+    {
+      "phase": "3B-D",
+      "name": "Cash Flow candidate golden capture",
+      "status": "COMPLETE_CANDIDATE_ONLY",
+      "candidateOnly": true,
+      "financeApproved": false,
+      "completedAt": "2026-06-29",
+      "companies": ["DIN CHINA", "DIN BRIDAL", "DIN COUTURE"],
+      "zeroDiffCompanies": ["DIN COUTURE"],
+      "nonZeroDiffCompanies": ["DIN CHINA", "DIN BRIDAL"],
+      "loaderSwapApproved": false,
       "bsPlFinanceStatus": "PENDING",
       "migrationsRun": false,
       "flagsToggled": false,
       "glMutations": false,
-      "evidence": "reports/single-core-ledger/phase-3b-cash-flow-preview/"
+      "evidence": "reports/single-core-ledger/phase-3b-d-cash-flow-golden-capture/"
     },
     {
       "phase": 3,
