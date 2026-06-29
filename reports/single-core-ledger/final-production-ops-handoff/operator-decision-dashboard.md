@@ -34,7 +34,9 @@
 
 **Phase 3A BS/P&L preview-only:** **DEPLOYED TO PRODUCTION** @ 2026-06-29 (`4a5dc304`). Legacy BS/P&L default behavior unchanged. Loader swap not approved. R7/R8/next company remain blocked. No migrations and no GL/data mutations.
 
-**Phase 3D BS/P&L candidate golden capture:** **COMPLETE** @ 2026-06-29. DIN CHINA · DIN BRIDAL · DIN COUTURE — preview compare evidence captured. Values are **candidate-only, not finance approved**. Finance review pack pending. Loader swap not approved.
+**Phase 3D BS/P&L candidate golden capture:** **COMPLETE** @ 2026-06-29. DIN CHINA · DIN BRIDAL · DIN COUTURE — preview compare evidence captured. Values are **candidate-only, not finance approved**. Loader swap not approved.
+
+**Phase 3D-SIGNOFF finance pack:** **PREPARED** @ 2026-06-29. [`finance-signoff-pack.md`](../phase-3d-bs-pl-golden-capture/finance-signoff-pack.md) ready for finance review. Finance status **PENDING**. Loader swap **BLOCKED**. R7/R8/next company remain blocked.
 
 ---
 

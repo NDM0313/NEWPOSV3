@@ -54,7 +54,21 @@
 | **Loader swap** | **NOT APPROVED** |
 | **Migrations / flags / GL** | **NONE** |
 | **R7 / R8 / next company** | **BLOCKED** |
-| **Next** | Finance reviews [`finance-review-pack.md`](../phase-3d-bs-pl-golden-capture/finance-review-pack.md) |
+| **Next** | Finance reviews [`finance-signoff-pack.md`](../phase-3d-bs-pl-golden-capture/finance-signoff-pack.md) |
+
+---
+
+## Phase 3D-SIGNOFF — BS / P&L finance sign-off pack
+
+| Field | Value |
+|-------|-------|
+| **Status** | `PREPARED — PENDING` |
+| **Action** | Finance-readable sign-off pack with approval checklist |
+| **Evidence** | [`finance-signoff-pack.md`](../phase-3d-bs-pl-golden-capture/finance-signoff-pack.md) |
+| **Finance status** | **PENDING** (no explicit approval in this run) |
+| **Loader swap** | **BLOCKED** — see [`bs-pl-loader-swap-gate.md`](../phase-3d-bs-pl-golden-capture/bs-pl-loader-swap-gate.md) |
+| **Migrations / flags / GL** | **NONE** |
+| **R7 / R8 / next company** | **BLOCKED** |
 
 ---
 
