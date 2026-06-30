@@ -1,7 +1,7 @@
 # Full Single Core Ledger — remaining execution plan
 
 **Generated:** 2026-06-30  
-**Branch:** `main` @ `78db4d03`
+**Branch:** `main` @ `b9a59907` (completion attempt blocked — evidence pending commit)
 
 ## Completed / stable
 
@@ -9,12 +9,13 @@
 - Admin Compare 9/9 PASS (post-work monitoring 2026-06-30)
 - Party Discount JE-0003 retained; monitoring aligned
 - Hostinger SMTP + `autoconfirm=false` + sender **NDM ERP SYSTEM**
+- Create Business OTP **gate** validated (no immediate session); full E2E **blocked on OTP code**
 
 ## Remaining phases (approval-gated)
 
 | Phase | Status | Next action |
 |-------|--------|-------------|
-| Create Business OTP E2E | **BLOCKED** — OTP code | Operator sets `QA_CREATE_BUSINESS_OTP_CODE` |
+| Create Business OTP E2E | **BLOCKED** — `QA_CREATE_BUSINESS_OTP_CODE` empty | Operator sets code from inbox; re-run completion |
 | GL backlog C1–C3 | **Closed** — diagnostics 2026-06-30 | None |
 | GL backlog C4 DIN BRIDAL 1100 | **Open** — -136,500 | Business decision + dry-run approval |
 | Cash Flow 3B-M | **LIVE** | Rollback only with written approval |
@@ -25,7 +26,8 @@
 
 ## Evidence
 
-[`reports/remaining-tasks-start-20260630/`](../reports/remaining-tasks-start-20260630/)
+[`reports/remaining-tasks-start-20260630/`](../reports/remaining-tasks-start-20260630/)  
+[`reports/create-business-otp-e2e-completion-20260630/`](../reports/create-business-otp-e2e-completion-20260630/)
 
 ## Exact next recommended phase
 
