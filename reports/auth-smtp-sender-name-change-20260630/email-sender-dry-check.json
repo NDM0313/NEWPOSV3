@@ -1,0 +1,12 @@
+{
+  "generated_at": "2026-06-30T12:11:00.000Z",
+  "status": "PASS_INFRA",
+  "test_email_masked": "k***+sender-name-20260630@gmail.com",
+  "signup_http": 200,
+  "auth_audit": "user_confirmation_requested",
+  "company_created": false,
+  "test_user_id": "c0eeeddd-99ae-44fc-bd5b-9f1b20b7e0c1",
+  "cleanup": "DELETED",
+  "inbox_sender_display_verified": false,
+  "note": "GOTRUE_SMTP_SENDER_NAME=NDM ERP SYSTEM in container; operator may confirm inbox From/display name"
+}
