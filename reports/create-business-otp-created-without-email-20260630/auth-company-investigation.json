@@ -3,7 +3,7 @@
   "test_email_masked": "k***+1@gmail.com",
   "auth_user": {
     "id": "a5ed7b79-0e25-4a1b-8c48-69113fec6ade",
-    "email": "khan5955+1@gmail.com",
+    "email": "k***+1@gmail.com",
     "created_at": "2026-06-30T10:42:19.615922+00",
     "email_confirmed_at": "2026-06-30T10:42:19.633859+00",
     "confirmed_at": "2026-06-30T10:42:19.633859+00",
@@ -14,7 +14,7 @@
     "id": "845154ff-7c30-41b5-b69a-f1cd15c163a4",
     "name_db": "test",
     "name_ui_reported": "ERP Master",
-    "email": "khan5955+1@gmail.com",
+    "email": "k***+1@gmail.com",
     "created_at": "2026-06-30T10:42:20.104417+00"
   },
   "branch_id": "d5edb92f-1b3f-4917-b03a-7ec23247d0b0",

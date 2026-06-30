@@ -56,8 +56,8 @@ Party Ledger Discount + Create Business OTP deploy, QA, cleanup, and remaining t
 - Business creation runs after authenticated session (`completeBusinessCreationAfterAuth`).
 - Local UI QA: **partial** (wizard steps PASS; OTP verify blocked by email access)
 - Production entry point smoke: **PASS**
-- **OTP end-to-end (2026-06-30):** **BLOCKED** — retry used DIN CHINA production email (`d***@yahoo.com`); signup not attempted
-- Evidence: [`reports/create-business-otp-e2e-qa-20260630/`](../reports/create-business-otp-e2e-qa-20260630/), [`reports/create-business-otp-e2e-retry-20260630/`](../reports/create-business-otp-e2e-retry-20260630/)
+- **OTP end-to-end (2026-06-30):** **INVESTIGATED** — `k***+1@gmail.com` signed up without inbox OTP (`SIGNUP_AUTO_CONFIRM_ENABLED`); test records **cleaned up**
+- Evidence: [`reports/create-business-otp-e2e-qa-20260630/`](../reports/create-business-otp-e2e-qa-20260630/), [`reports/create-business-otp-e2e-retry-20260630/`](../reports/create-business-otp-e2e-retry-20260630/), [`reports/create-business-otp-created-without-email-20260630/`](../reports/create-business-otp-created-without-email-20260630/)
 
 ### C. Production frontend deploy
 
