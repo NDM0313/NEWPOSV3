@@ -57,7 +57,8 @@ Party Ledger Discount + Create Business OTP deploy, QA, cleanup, and remaining t
 - Local UI QA: **partial** (wizard steps PASS; OTP verify blocked by email access)
 - Production entry point smoke: **PASS**
 - **OTP end-to-end (2026-06-30):** **INVESTIGATED** — `k***+1@gmail.com` signed up without inbox OTP (`SIGNUP_AUTO_CONFIRM_ENABLED`); test records **cleaned up**
-- Evidence: [`reports/create-business-otp-e2e-qa-20260630/`](../reports/create-business-otp-e2e-qa-20260630/), [`reports/create-business-otp-e2e-retry-20260630/`](../reports/create-business-otp-e2e-retry-20260630/), [`reports/create-business-otp-created-without-email-20260630/`](../reports/create-business-otp-created-without-email-20260630/)
+- **OTP E2E after Hostinger + NDM sender (2026-06-30):** **PARTIAL / BLOCKED on OTP code** — wizard + OTP gate **PASS** (`autoconfirm=false`, no immediate session); inbox OTP not entered (`QA_CREATE_BUSINESS_OTP_CODE` unset); auth-only user **cleaned up**; business **not created**
+- Evidence: [`reports/create-business-otp-e2e-qa-20260630/`](../reports/create-business-otp-e2e-qa-20260630/), [`reports/create-business-otp-e2e-retry-20260630/`](../reports/create-business-otp-e2e-retry-20260630/), [`reports/create-business-otp-created-without-email-20260630/`](../reports/create-business-otp-created-without-email-20260630/), [`reports/auth-otp-hostinger-smtp-fix-20260630/`](../reports/auth-otp-hostinger-smtp-fix-20260630/), [`reports/auth-smtp-sender-name-change-20260630/`](../reports/auth-smtp-sender-name-change-20260630/), [`reports/create-business-otp-e2e-after-sender-name-20260630/`](../reports/create-business-otp-e2e-after-sender-name-20260630/)
 
 ### C. Production frontend deploy
 
@@ -120,10 +121,11 @@ Evidence:
 
 ### Priority 1 — Create Business OTP full QA
 
-- **Status:** **BLOCKED on infra** — production `GOTRUE_MAILER_AUTOCONFIRM=true` + fake SMTP bypasses OTP; test user `k***+1@gmail.com` cleaned up
-- **Before next signup:** set autoconfirm **false** + configure real SMTP (separate deploy/infra approval)
-- Forbidden OTP QA emails: `admin@test.com`, `din@yahoo.com`, `ndm313@yahoo.com`, `zhd@dincouture.pk`
-- Verify signup → OTP receive → verify → session poll → business creation → duplicate prevention.
+- **Status:** **PARTIAL PASS** — production auth fixed (`autoconfirm=false`, Hostinger SMTP, sender **NDM ERP SYSTEM**); wizard reaches OTP screen with **no immediate session**; **blocked** on operator OTP code entry for full business creation
+- **Test email:** `k***+1@gmail.com` (fix `.env` typo `@ygmail.com` → `@gmail.com`)
+- **Next:** set `QA_CREATE_BUSINESS_OTP_CODE` from inbox and re-run verify → `completeBusinessCreationAfterAuth` → cleanup bootstrap company
+- Forbidden OTP QA emails: `admin@test.com`, `din@yahoo.com`, `ndm313@yahoo.com`, `zhd@dincouture.pk`, `noreply@dincouture.pk`, `info@dincouture.pk`, `nadeem@dincouture.pk`
+- Verify signup → OTP receive (sender **NDM ERP SYSTEM**) → verify → business creation → duplicate prevention → cleanup.
 
 ### Priority 2 — Optional supplier-side Party Discount posting QA
 
@@ -204,7 +206,7 @@ Required before any repair:
 
 ## 6. Exact next office action
 
-1. **Fix production auth email:** `GOTRUE_MAILER_AUTOCONFIRM=false` + real SMTP — separate infra approval; then re-run OTP E2E with disposable inbox.
+1. **Complete OTP E2E:** set `QA_CREATE_BUSINESS_OTP_CODE` from disposable inbox and finish verify + business creation + cleanup.
 2. Do **not** post supplier `party_discount` JE without separate operator approval.
 
 ---
