@@ -153,20 +153,16 @@ Evidence:
 
 ### Priority 7 — Accounting / GL backlog requiring fresh diagnostics
 
-Do not repair/apply directly. Items to revalidate:
+**Fresh read-only diagnostics (2026-06-30):** [`reports/remaining-tasks-start-20260630/gl-backlog-readonly-diagnostics.md`](../reports/remaining-tasks-start-20260630/gl-backlog-readonly-diagnostics.md)
 
-- MURAD DC-0007 Rs 257,140
-- AZIZ JAMURAD 1100 mismatch
-- ABDUL WAJID partial mismatch
-- DIN BRIDAL control 1100 -136,500
+| Item | Status (2026-06-30) |
+|------|---------------------|
+| MURAD DC-0007 | **Closed** — paid in full; GL 0 |
+| AZIZ JAMURAD 1100 | **Closed** — GL/op 0 |
+| ABDUL WAJID | **Closed** — GL = operational 329,314 |
+| DIN BRIDAL control 1100 -136,500 | **Open** — business decision / repair approval needed |
 
-Required before any repair:
-
-- fresh diagnostic query
-- dry-run report
-- operator approval
-- audit evidence
-- then minimal repair only if approved
+Do not repair/apply without dry-run + operator approval.
 
 ### Priority 8 — Business/UI QA backlog
 
@@ -206,8 +202,13 @@ Required before any repair:
 
 ## 6. Exact next office action
 
-1. **Complete OTP E2E:** set `QA_CREATE_BUSINESS_OTP_CODE` from disposable inbox and finish verify + business creation + cleanup.
-2. Do **not** post supplier `party_discount` JE without separate operator approval.
+1. **Complete OTP E2E:** set `QA_CREATE_BUSINESS_OTP_CODE` from disposable inbox (`khan5955+1@gmail.com`) and finish verify + business creation + cleanup.
+2. **DIN BRIDAL 1100 (-136,500):** business decision — optional scoped dry-run after approval.
+3. **BS/P&L finance sign-off** — review approval pack; no loader swap until signed.
+4. Do **not** post supplier `party_discount` JE without separate operator approval.
+
+**Remaining tasks start evidence:** [`reports/remaining-tasks-start-20260630/`](../reports/remaining-tasks-start-20260630/)  
+**Master plan:** [`FULL_SINGLE_CORE_LEDGER_REMAINING_EXECUTION_PLAN_2026-06-30.md`](FULL_SINGLE_CORE_LEDGER_REMAINING_EXECUTION_PLAN_2026-06-30.md)
 
 ---
 
