@@ -57,8 +57,9 @@ Party Ledger Discount + Create Business OTP deploy, QA, cleanup, and remaining t
 - Local UI QA: **partial** (wizard steps PASS; OTP verify blocked by email access)
 - Production entry point smoke: **PASS**
 - **OTP end-to-end (2026-06-30):** **INVESTIGATED** — `k***+1@gmail.com` signed up without inbox OTP (`SIGNUP_AUTO_CONFIRM_ENABLED`); test records **cleaned up**
-- **OTP E2E completion attempt (2026-06-30):** **BLOCKED** — email typo fixed (`k***+1@gmail.com`); `QA_CREATE_BUSINESS_OTP_CODE` still empty; **no new signup** started
-- Evidence: [`reports/create-business-otp-e2e-completion-20260630/`](../reports/create-business-otp-e2e-completion-20260630/)
+- **OTP E2E Phase A (2026-06-30):** **PASS** — fresh OTP requested; sender **NDM ERP SYSTEM** in Gmail Spam; auth-only user retained
+- **OTP E2E Phase B (2026-06-30):** **COMPLETE** — email confirmed; business `OTP QA Business 2026-06-30` created after auth; bootstrap cleanup **done**
+- Evidence: [`reports/create-business-otp-phase-a-request-20260630/`](../reports/create-business-otp-phase-a-request-20260630/), [`reports/create-business-otp-phase-b-verify-20260630/`](../reports/create-business-otp-phase-b-verify-20260630/)
 
 ### C. Production frontend deploy
 
@@ -121,11 +122,12 @@ Evidence:
 
 ### Priority 1 — Create Business OTP full QA
 
-- **Status:** **BLOCKED** — email `k***+1@gmail.com` OK; `QA_CREATE_BUSINESS_OTP_CODE` **not set**; no signup this run
-- **Prior OTP gate:** PASS (`autoconfirm=false`, no immediate session, sender infra **NDM ERP SYSTEM**)
-- **Next:** set OTP code from inbox → re-run completion → verify business → bootstrap cleanup
-- Forbidden OTP QA emails: `admin@test.com`, `din@yahoo.com`, `ndm313@yahoo.com`, `zhd@dincouture.pk`, `noreply@dincouture.pk`, `info@dincouture.pk`, `nadeem@dincouture.pk`
-- Verify signup → OTP receive (sender **NDM ERP SYSTEM**) → verify → business creation → duplicate prevention → cleanup.
+- **Status:** **COMPLETE** (2026-06-30 Phase A + B)
+- **Test email:** `k***+1@gmail.com` (Gmail alias → `khan5955@gmail.com` inbox)
+- **Sender:** **NDM ERP SYSTEM** confirmed (delivered to Spam)
+- **No immediate session before verify:** confirmed (Phase A)
+- **Business created after verification:** yes; bootstrap-only cleanup complete
+- Evidence: [`reports/create-business-otp-phase-b-verify-20260630/`](../reports/create-business-otp-phase-b-verify-20260630/)
 
 ### Priority 2 — Optional supplier-side Party Discount posting QA
 
@@ -202,12 +204,12 @@ Do not repair/apply without dry-run + operator approval.
 
 ## 6. Exact next office action
 
-1. **Complete OTP E2E:** set `QA_CREATE_BUSINESS_OTP_CODE` from disposable inbox (`khan5955+1@gmail.com`) and finish verify + business creation + cleanup.
-2. **DIN BRIDAL 1100 (-136,500):** business decision — optional scoped dry-run after approval.
-3. **BS/P&L finance sign-off** — review approval pack; no loader swap until signed.
-4. Do **not** post supplier `party_discount` JE without separate operator approval.
+1. **DIN BRIDAL 1100 (-136,500):** prepare scoped dry-run approval pack — do not apply repair without operator sign-off.
+2. **BS/P&L finance sign-off** — review approval pack; no loader swap until signed.
+3. Do **not** post supplier `party_discount` JE without separate operator approval.
 
-**Remaining tasks start evidence:** [`reports/remaining-tasks-start-20260630/`](../reports/remaining-tasks-start-20260630/)  
+**OTP E2E evidence:** [`reports/create-business-otp-phase-b-verify-20260630/`](../reports/create-business-otp-phase-b-verify-20260630/)  
+**Remaining tasks start:** [`reports/remaining-tasks-start-20260630/`](../reports/remaining-tasks-start-20260630/)  
 **Master plan:** [`FULL_SINGLE_CORE_LEDGER_REMAINING_EXECUTION_PLAN_2026-06-30.md`](FULL_SINGLE_CORE_LEDGER_REMAINING_EXECUTION_PLAN_2026-06-30.md)
 
 ---
