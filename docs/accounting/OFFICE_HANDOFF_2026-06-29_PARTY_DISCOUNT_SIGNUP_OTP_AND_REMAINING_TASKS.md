@@ -9,8 +9,8 @@ Party Ledger Discount + Create Business OTP deploy, QA, cleanup, and remaining t
 | Item | Value |
 |------|--------|
 | Branch | `main` |
-| HEAD | `24023a0f` (posting QA + keep closure pending) |
-| origin/main | in sync after office resume / posting QA |
+| HEAD | `49ac9711` (R1B Admin Compare retained-JE baseline closed) |
+| origin/main | in sync |
 
 ### Latest pushed commits
 
@@ -45,6 +45,8 @@ Party Ledger Discount + Create Business OTP deploy, QA, cleanup, and remaining t
 - Production UI QA: **PASS** (DIN CHINA MR JALIL + MR DIN MOHAMMAD supplier modal)
 - **Production posting QA: COMPLETE** — JE-0003 retained (PKR 1 customer discount, `party_discount`)
 - MR JALIL monitoring golden updated to **PKR 216,299** after operator KEEP decision
+- DIN CHINA TB golden updated to **PKR 407,957,272.02** (+PKR 1 from JE-0003)
+- **Admin Compare 9/9:** closed via legacy hybrid `party_discount` matcher (`49ac9711`); full monitoring **PASS**
 - **No reversal approved** for JE-0003
 
 ### B. Create Business email OTP
@@ -99,14 +101,17 @@ Party Ledger Discount + Create Business OTP deploy, QA, cleanup, and remaining t
 
 ## 3. Monitoring status
 
-- Full `npm run monitor:three-company-unified-ledger` **PASS** from office (per-company `QA_BROWSER_PASSWORD_*`).
-- MR JALIL DIN CHINA golden closing: **PKR 216,299** (was 216,300; reflects retained JE-0003 PKR 1 discount).
+- Full `npm run monitor:three-company-unified-ledger` **PASS** (2026-06-30 post-R1B deploy `49ac9711`).
+- MR JALIL DIN CHINA golden closing: **PKR 216,299** (retained JE-0003 PKR 1 discount).
+- Admin Compare Pilot Batch **9/9 PASS** — legacy hybrid now includes `party_discount` by `reference_id`.
 - Read-only loader guard **PASS** — DIN CHINA / BRIDAL / COUTURE only; other companies 0 loaders.
-- **No deploy, migrations, feature flags, or unapproved GL mutations** in this phase.
+- **No migrations, feature flags, or unapproved GL mutations.**
 
 Evidence:
 - [`reports/party-discount-je-posting-qa-20260630/`](../reports/party-discount-je-posting-qa-20260630/)
 - [`reports/party-discount-je-keep-closure-20260630/`](../reports/party-discount-je-keep-closure-20260630/)
+- [`reports/party-discount-monitoring-drift-closure-20260630/`](../reports/party-discount-monitoring-drift-closure-20260630/)
+- [`reports/admin-compare-retained-je-baseline-closure-20260630/`](../reports/admin-compare-retained-je-baseline-closure-20260630/)
 
 ---
 
@@ -197,11 +202,10 @@ Required before any repair:
 
 ## 6. Exact next office action
 
-1. Pull latest `main` at office (`git pull origin main`).
-2. Run full three-company monitoring with `QA_BROWSER_PASSWORD_*` set.
-3. Run controlled browser QA for Party Discount and Create Business OTP (DIN CHINA credentials).
-4. Ask operator before any JE posting or test-business cleanup.
-5. Prepare next deploy/QA evidence only after office checks pass.
+1. Pull latest `main` at office (`git pull origin main` — at least `49ac9711`).
+2. **Create Business OTP E2E QA** using an operator-controlled email (inbox access required).
+3. Do **not** post supplier `party_discount` JE without separate operator approval.
+4. Cash Flow loader swap, R7/R8, 4th company — remain blocked without separate approval.
 
 ---
 
