@@ -1,0 +1,23 @@
+{
+  "generated_at": "2026-06-30T06:48:00.000Z",
+  "command": "npm run monitor:three-company-unified-ledger",
+  "overall": "BLOCKED_MISSING_QA_BROWSER_PASSWORDS",
+  "exit_code": 1,
+  "credential_check": {
+    "QA_BROWSER_PASSWORD_CHINA": "MISSING",
+    "QA_BROWSER_PASSWORD_BRIDAL": "MISSING",
+    "QA_BROWSER_PASSWORD_COUTURE": "MISSING",
+    "generic_fallback_allowed": false
+  },
+  "profiles": {
+    "din-china": { "result": "NOT_RUN", "reason": "Missing QA_BROWSER_PASSWORD_CHINA" },
+    "din-bridal": { "result": "NOT_RUN", "reason": "Missing QA_BROWSER_PASSWORD_BRIDAL" },
+    "din-couture": { "result": "NOT_RUN", "reason": "Missing QA_BROWSER_PASSWORD_COUTURE" }
+  },
+  "flag_guard": "NOT_RUN",
+  "migrations_run": null,
+  "gl_mutations": null,
+  "other_company_loaders_on": null,
+  "note": "Prior office PASS exists at 2026-06-29T16:11:13Z (session had per-company credentials). Current Cursor shell session does not have QA_BROWSER_PASSWORD_* set.",
+  "remediation": "Set QA_BROWSER_PASSWORD_CHINA, QA_BROWSER_PASSWORD_BRIDAL, QA_BROWSER_PASSWORD_COUTURE in PowerShell session per windows-task-scheduler-guide.md, then re-run monitoring."
+}
