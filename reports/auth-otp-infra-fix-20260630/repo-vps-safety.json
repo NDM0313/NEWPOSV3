@@ -1,0 +1,30 @@
+{
+  "generated_at": "2026-06-30T11:22:00.000Z",
+  "run_name": "PRODUCTION AUTH OTP INFRA FIX — DISABLE AUTOCONFIRM + REAL SMTP",
+  "local": {
+    "branch": "main",
+    "head": "3e41027e4e7060b99041987a2e2616975f11b841",
+    "origin_main": "3e41027e4e7060b99041987a2e2616975f11b841",
+    "in_sync_with_origin_main": true,
+    "dirty": true,
+    "dirty_note": "Unrelated report/graphify changes present; only auth-otp-infra-fix evidence staged for commit"
+  },
+  "vps": {
+    "host": "dincouture-vps",
+    "newposv3_head": "3e41027e4e7060b99041987a2e2616975f11b841",
+    "matches_local_head": true,
+    "containers": {
+      "supabase-auth": "Up (healthy)",
+      "supabase-kong": "Up (healthy)",
+      "erp-frontend": "Up (healthy)",
+      "supabase-db": "Up (healthy)"
+    }
+  },
+  "recent_commits": [
+    "3e41027e docs(accounting): redact otp investigation email from evidence",
+    "2aad6cd8 docs(accounting): investigate create business otp email verification gap",
+    "18d14157 docs(accounting): record create business otp e2e retry",
+    "a2a64496 docs(accounting): record create business otp e2e qa",
+    "01679b4b docs(accounting): close retained party discount admin compare baseline"
+  ]
+}

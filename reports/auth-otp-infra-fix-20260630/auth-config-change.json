@@ -1,0 +1,18 @@
+{
+  "generated_at": "2026-06-30T11:23:30.000Z",
+  "status": "NOT_APPLIED",
+  "reason": "BLOCKED_MISSING_SMTP_CONFIG",
+  "planned_changes": {
+    "ENABLE_EMAIL_AUTOCONFIRM": { "old": "true", "new": "false" },
+    "SMTP_HOST": { "old": "supabase-mail", "new": "(operator real SMTP host)" },
+    "SMTP_PORT": { "old": "2500", "new": "(operator port, e.g. 587)" },
+    "SMTP_USER": { "old": "fake_mail_user", "new": "(operator username)" },
+    "SMTP_PASS": { "old": "***MASKED***", "new": "(operator app password)" },
+    "SMTP_ADMIN_EMAIL": { "old": "admin@example.com", "new": "(operator sender email)" },
+    "SMTP_SENDER_NAME": { "old": "fake_sender", "new": "(operator display name)" }
+  },
+  "site_url_unchanged": "https://erp.dincouture.pk",
+  "container_restart": "supabase-auth only (not executed)",
+  "db_restart": false,
+  "frontend_restart": false
+}
