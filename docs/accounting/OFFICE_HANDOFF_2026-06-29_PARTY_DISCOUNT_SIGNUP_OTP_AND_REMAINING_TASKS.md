@@ -56,8 +56,8 @@ Party Ledger Discount + Create Business OTP deploy, QA, cleanup, and remaining t
 - Business creation runs after authenticated session (`completeBusinessCreationAfterAuth`).
 - Local UI QA: **partial** (wizard steps PASS; OTP verify blocked by email access)
 - Production entry point smoke: **PASS**
-- **OTP end-to-end (2026-06-30):** **BLOCKED** — no operator-controlled test email configured in office session; **no signup attempted**
-- Evidence: [`reports/create-business-otp-e2e-qa-20260630/`](../reports/create-business-otp-e2e-qa-20260630/)
+- **OTP end-to-end (2026-06-30):** **BLOCKED** — retry used DIN CHINA production email (`d***@yahoo.com`); signup not attempted
+- Evidence: [`reports/create-business-otp-e2e-qa-20260630/`](../reports/create-business-otp-e2e-qa-20260630/), [`reports/create-business-otp-e2e-retry-20260630/`](../reports/create-business-otp-e2e-retry-20260630/)
 
 ### C. Production frontend deploy
 
@@ -120,8 +120,8 @@ Evidence:
 
 ### Priority 1 — Create Business OTP full QA
 
-- **Status (2026-06-30):** **BLOCKED** — operator must provide inbox-accessible test email (not `admin@test.com`, not production company emails).
-- Set `QA_CREATE_BUSINESS_OTP_EMAIL` + password in office shell; complete OTP verify + business creation; cleanup if bootstrap-only.
+- **Status (2026-06-30 retry):** **BLOCKED** — configured email matched DIN CHINA production account; use **disposable inbox only**
+- Forbidden for OTP QA: `admin@test.com`, `din@yahoo.com`, `ndm313@yahoo.com`, `zhd@dincouture.pk`
 - Verify signup → OTP receive → verify → session poll → business creation → duplicate prevention.
 
 ### Priority 2 — Optional supplier-side Party Discount posting QA
@@ -203,8 +203,8 @@ Required before any repair:
 
 ## 6. Exact next office action
 
-1. Provide operator-controlled disposable test email + inbox access for Create Business OTP E2E.
-2. Re-run OTP E2E on https://erp.dincouture.pk (business name: `OTP QA Business 2026-06-30`); cleanup if bootstrap-only.
+1. Set `QA_CREATE_BUSINESS_OTP_EMAIL` to a **dedicated disposable inbox** (not DIN CHINA/BRIDAL/COUTURE production emails).
+2. Re-run OTP E2E; set `QA_CREATE_BUSINESS_OTP_CODE` when email arrives; cleanup if bootstrap-only.
 3. Do **not** post supplier `party_discount` JE without separate operator approval.
 4. Cash Flow loader swap (3B-M), BS/P&L swap, R7/R8, 4th company — remain blocked.
 
