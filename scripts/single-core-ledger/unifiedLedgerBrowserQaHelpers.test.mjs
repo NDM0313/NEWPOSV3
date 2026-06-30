@@ -9,8 +9,8 @@ import {
 } from './unifiedLedgerBrowserQaHelpers.mjs';
 
 test('parsePkr handles Rs. comma formatting', () => {
-  assert.equal(parsePkr('Rs. 216,300.00'), 216300);
-  assert.equal(parsePkr('216,300'), 216300);
+  assert.equal(parsePkr('Rs. 216,299.00'), 216299);
+  assert.equal(parsePkr('216,299'), 216299);
 });
 
 test('parsePkr handles negative balances', () => {
@@ -23,12 +23,12 @@ test('parsePkr returns NaN for empty or non-numeric', () => {
 });
 
 test('parsePkr ignores label text and picks first number', () => {
-  assert.equal(parsePkr('Closing balance Rs. 216,300'), 216300);
+  assert.equal(parsePkr('Closing balance Rs. 216,299'), 216299);
 });
 
 test('withinTol accepts MR JALIL golden', () => {
-  assert.equal(withinTol(216300, MR_JALIL_GOLDEN), true);
-  assert.equal(withinTol(216300.005, MR_JALIL_GOLDEN), true);
+  assert.equal(withinTol(216299, MR_JALIL_GOLDEN), true);
+  assert.equal(withinTol(216299.005, MR_JALIL_GOLDEN), true);
 });
 
 test('roznamcha golden components sum to closing', () => {

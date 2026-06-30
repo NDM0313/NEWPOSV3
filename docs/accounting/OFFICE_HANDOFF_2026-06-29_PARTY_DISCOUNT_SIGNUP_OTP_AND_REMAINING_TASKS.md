@@ -9,8 +9,8 @@ Party Ledger Discount + Create Business OTP deploy, QA, cleanup, and remaining t
 | Item | Value |
 |------|--------|
 | Branch | `main` |
-| HEAD | `1486e79d` |
-| origin/main | `1486e79d` (in sync) |
+| HEAD | `24023a0f` (posting QA + keep closure pending) |
+| origin/main | in sync after office resume / posting QA |
 
 ### Latest pushed commits
 
@@ -42,8 +42,10 @@ Party Ledger Discount + Create Business OTP deploy, QA, cleanup, and remaining t
   - **Customer discount:** Dr 5200 / Cr AR or customer account
   - **Supplier discount:** Dr AP or supplier account / Cr 5210
 - Local UI QA: **PASS**
-- Production UI smoke: **PARTIAL PASS** (customer modal on QA company; DIN CHINA parties need office credentials)
-- Actual JE posting: **NOT performed** on production
+- Production UI QA: **PASS** (DIN CHINA MR JALIL + MR DIN MOHAMMAD supplier modal)
+- **Production posting QA: COMPLETE** — JE-0003 retained (PKR 1 customer discount, `party_discount`)
+- MR JALIL monitoring golden updated to **PKR 216,299** after operator KEEP decision
+- **No reversal approved** for JE-0003
 
 ### B. Create Business email OTP
 
@@ -97,72 +99,31 @@ Party Ledger Discount + Create Business OTP deploy, QA, cleanup, and remaining t
 
 ## 3. Monitoring status
 
-- Full `npm run monitor:three-company-unified-ledger` was **blocked on Mac** because `QA_BROWSER_PASSWORD_CHINA` / `QA_BROWSER_PASSWORD_BRIDAL` / `QA_BROWSER_PASSWORD_COUTURE` are not set on Home MacBook.
-- Read-only loader guard **PASS**:
-  - DIN CHINA: 6 loaders
-  - DIN BRIDAL: 6 loaders
-  - DIN COUTURE: 6 loaders
-  - Other companies: 0
+- Full `npm run monitor:three-company-unified-ledger` **PASS** from office (per-company `QA_BROWSER_PASSWORD_*`).
+- MR JALIL DIN CHINA golden closing: **PKR 216,299** (was 216,300; reflects retained JE-0003 PKR 1 discount).
+- Read-only loader guard **PASS** — DIN CHINA / BRIDAL / COUTURE only; other companies 0 loaders.
+- **No deploy, migrations, feature flags, or unapproved GL mutations** in this phase.
 
-### Office next action (monitoring)
-
-Run full monitoring from office machine where `QA_BROWSER_PASSWORD_*` exists:
-
-```bash
-npm run monitor:three-company-unified-ledger
-```
-
-Save evidence under a new dated report folder.
+Evidence:
+- [`reports/party-discount-je-posting-qa-20260630/`](../reports/party-discount-je-posting-qa-20260630/)
+- [`reports/party-discount-je-keep-closure-20260630/`](../reports/party-discount-je-keep-closure-20260630/)
 
 ---
 
 ## 4. Remaining tasks for office
 
-### Priority 1 — Full monitoring from office
-
-- Run: `npm run monitor:three-company-unified-ledger`
-- Expected:
-  - din-china PASS
-  - din-bridal PASS
-  - din-couture PASS
-  - other-company loaders 0
-  - migrations_run false
-  - gl_mutations false
-- Save evidence under a new report folder.
-
-### Priority 2 — Controlled Party Ledger Discount JE posting QA
-
-**Do not post automatically.** Operator must approve:
-
-- Company: preferably DIN CHINA
-- Party: known customer/supplier (e.g. MR JALIL / MR DIN MOHAMMAD)
-- Amount: small test amount, e.g. PKR 1
-- Date
-- Rollback/reversal plan
-
-QA checks:
-
-- Post one customer discount only after approval
-- Verify JE direction (Dr 5200, Cr AR)
-- Verify `reference_type = party_discount`
-- Verify ledger statement reloads via `ledgerUpdated`
-- Verify Discount filter shows row
-- Verify Account Statement / Ledger V2 impact
-- Document rollback/reversal if required
-
-### Priority 3 — Create Business OTP full QA
+### Priority 1 — Create Business OTP full QA
 
 - Use an operator-controlled email with inbox access.
-- Verify:
-  - signup
-  - OTP receive
-  - OTP verify
-  - session poll
-  - business creation after auth
-  - duplicate prevention
+- Verify signup → OTP receive → verify → session poll → business creation → duplicate prevention.
 - Cleanup test business/user after QA if created.
 
-### Priority 4 — Cash Flow loader swap remains blocked
+### Priority 2 — Optional supplier-side Party Discount posting QA
+
+- Separate operator approval required (e.g. MR DIN MOHAMMAD, PKR 1).
+- **Not approved in JE-0003 phase.**
+
+### Priority 3 — Cash Flow loader swap remains blocked
 
 - Phase 3B-L readiness pack complete.
 - Phase 3B-M **NOT approved** for further execution without separate written operator approval.
@@ -170,12 +131,12 @@ QA checks:
 - Do not toggle `unified_ledger_loader_cash_flow`.
 - Do not create/enable Cash Flow loader flags without approved phase.
 
-### Priority 5 — BS/P&L loader swap
+### Priority 4 — BS/P&L loader swap
 
 - BS/P&L finance remains **PENDING**.
 - Do not approve or swap loader without separate finance/operator sign-off.
 
-### Priority 6 — R7/R8/4th company
+### Priority 5 — R7/R8/4th company
 
 - R7 roznamcha_payment RPC: design-only / blocked.
 - R8 legacy engine retirement: blocked.

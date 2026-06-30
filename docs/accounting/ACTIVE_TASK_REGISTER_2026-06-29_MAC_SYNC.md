@@ -1,7 +1,7 @@
 # Active Task Register — Mac Sync 2026-06-29
 
 **Generated:** Home MacBook post office merge  
-**Branch:** `main` @ `ae6c69d0` (1 commit ahead of `origin/main`)  
+**Branch:** `main` @ `24023a0f` (party discount posting QA + keep closure)  
 **Authoritative sources:** [`SINGLE_CORE_LEDGER_PRODUCTION_READY.md`](SINGLE_CORE_LEDGER_PRODUCTION_READY.md), [`remaining-tasks-master-register.md`](../reports/single-core-ledger/final-production-ops-handoff/remaining-tasks-master-register.md)
 
 ---
@@ -10,7 +10,7 @@
 
 | ID | Task | Status | Next step |
 |----|------|--------|-----------|
-| A1 | **Party Ledger Discount** (Ledger v2) | Code merged @ `ae6c69d0`; tests PASS | Browser QA → push approval → VPS deploy approval (separate) |
+| A1 | **Party Ledger Discount** (Ledger v2) | **Production posting QA COMPLETE** — JE-0003 kept; golden 216,299 | Optional supplier PKR 1 QA (separate approval) |
 | A2 | **Create Business email OTP** | Code merged @ `ae6c69d0`; tests PASS | Browser QA signup flow → push approval |
 | A3 | **Push to GitHub** | Local `main` +1 vs `origin/main` | Operator approval — see push-readiness report |
 

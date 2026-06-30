@@ -3,7 +3,7 @@
  * Parsing only — no business logic changes.
  */
 
-export const MR_JALIL_GOLDEN = 216_300;
+export const MR_JALIL_GOLDEN = 216_299;
 export const TB_GOLDEN = 407_957_271.02;
 export const ROZNAMCHA_GOLDEN = {
   cashIn: 136_158_012,

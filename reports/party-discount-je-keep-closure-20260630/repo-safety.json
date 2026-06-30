@@ -1,0 +1,12 @@
+{
+  "run_name": "KEEP PARTY DISCOUNT QA ENTRY + UPDATE MONITORING GOLDEN",
+  "generated_at": "2026-06-30T08:00:00.000Z",
+  "branch": "main",
+  "head": "24023a0f21ca8a824cbf7e6cd4f9fb76c1fa34d9",
+  "origin_main": "24023a0f21ca8a824cbf7e6cd4f9fb76c1fa34d9",
+  "posting_evidence_commit": "24023a0f",
+  "head_equals_origin_main": true,
+  "staged_files": [],
+  "credentials_staged": false,
+  "status": "PASS"
+}
