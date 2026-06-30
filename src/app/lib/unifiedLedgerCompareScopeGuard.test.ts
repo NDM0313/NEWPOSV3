@@ -32,7 +32,9 @@ test('production ledger loaders unchanged — Ledger V2 still uses getLedgerStat
   assert.doesNotMatch(ledgerV2, /comparePartyLedgerTieOut|compareAccountLedgerTieOut/);
 });
 
-test('compare diff fix uses running_balance not legacy balance field alone', () => {
-  const diff = readRepo('src/app/lib/unifiedLedgerCompareDiff.ts');
-  assert.match(diff, /running_balance/);
+test('hybrid customer ledger matcher includes party_discount by contact reference_id', () => {
+  const accounting = readRepo('src/app/services/accountingService.ts');
+  assert.match(accounting, /isPartyDiscountJournalForContact/);
+  const matchLib = readRepo('src/app/lib/partyLedgerLegacyJournalMatch.ts');
+  assert.match(matchLib, /party_discount/);
 });

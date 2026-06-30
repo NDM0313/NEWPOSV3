@@ -12,6 +12,7 @@ import {
   resolvePartyLedgerReference,
 } from '@/app/lib/partyLedgerReference';
 import { filterLivePaymentsExcludingVoidedJournals } from '@/app/lib/paymentVoidVisibility';
+import { isPartyDiscountJournalForContact } from '@/app/lib/partyLedgerLegacyJournalMatch';
 import { appendRentalPaymentMergeItems } from '@/app/lib/rentalPenaltyLedgerLines';
 import {
   mergeAttachmentLists,
@@ -267,6 +268,9 @@ function arJournalLineMatchesCustomer(
   if (entry.reference_type === 'rental' && entry.reference_id) {
     return rentalIdsForParty.has(String(entry.reference_id));
   }
+  if (isPartyDiscountJournalForContact(entry, customerId)) {
+    return true;
+  }
   return false;
 }
 
@@ -348,6 +352,7 @@ function supplierApJournalLineMatchesSupplier(
   if (rt === 'on_account' && rid && String(rid) === String(supplierId)) return true;
   if (rt === 'manual_payment' && rid && String(rid) === String(supplierId)) return true;
   if (rt === 'opening_balance_contact_ap' && rid && String(rid) === String(supplierId)) return true;
+  if (isPartyDiscountJournalForContact(entry, supplierId)) return true;
   return false;
 }
 
