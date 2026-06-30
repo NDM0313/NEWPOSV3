@@ -1,0 +1,14 @@
+{
+  "runName": "FINAL OFFICE TO HOME HANDOFF",
+  "timestampUtc": "2026-06-30T16:00:00.000Z",
+  "branch": "main",
+  "headCommit": "95a041d7fc206d23bc60aa16f60015fb2c24a293",
+  "originMain": "95a041d7fc206d23bc60aa16f60015fb2c24a293",
+  "requiredCommitsPresent": {
+    "6dac5ff6": true,
+    "e7f3fea9": true,
+    "95a041d7": true
+  },
+  "stagedCredentials": false,
+  "unrelatedDirtyFilesRemainUnstaged": true
+}

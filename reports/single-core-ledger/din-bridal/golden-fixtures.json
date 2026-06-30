@@ -15,28 +15,29 @@
     "ledger_v2_golden_party_closing_pkr": 530000,
     "account_statement_golden_party_closing_pkr": 530000,
     "party_ledger_golden_party_closing_pkr": 530000,
-    "trial_balance_debit_pkr": 21919575,
-    "trial_balance_credit_pkr": 21919575,
+    "trial_balance_debit_pkr": 22056075,
+    "trial_balance_credit_pkr": 22056075,
     "roznamcha_cash_in_pkr": 1836350,
     "roznamcha_cash_out_pkr": 917780,
     "roznamcha_closing_pkr_proxy": 973570,
     "roznamcha_closing_pkr": 918570
   },
   "notes": [
+    "TB totals refreshed 2026-06-30 after DIN BRIDAL 1100 Option C apply (JV-000209/210): +136,500 additive balanced correction JEs.",
     "Party and TB values from get_unified_* RPC (official_gl, all branches).",
     "Roznamcha figures are raw GL liquidity movement proxies — NOT parity-assembler roznamcha UI totals.",
     "Legacy browser capture required and finance sign-off mandatory before any flag enablement (R5).",
-    "Browser capture 2026-06-27T11:11:44.314Z — legacy UI goldens for MR REHAN ALI."
+    "Browser capture 2026-06-27T11:34:40.043Z — legacy UI goldens for MR REHAN ALI."
   ],
-  "browser_capture_at": "2026-06-27T11:11:44.314Z",
+  "browser_capture_at": "2026-06-27T11:34:40.043Z",
   "browser_capture_evidence": "reports/single-core-ledger/din-bridal-monitoring/golden-capture/",
   "rpc_proxy_baseline": {
     "golden_party_closing_pkr": 530000,
     "ledger_v2_golden_party_closing_pkr": 530000,
     "account_statement_golden_party_closing_pkr": 530000,
     "party_ledger_golden_party_closing_pkr": 530000,
-    "trial_balance_debit_pkr": 21919575,
-    "trial_balance_credit_pkr": 21919575,
+    "trial_balance_debit_pkr": 22056075,
+    "trial_balance_credit_pkr": 22056075,
     "roznamcha_cash_in_pkr": 1916350,
     "roznamcha_cash_out_pkr": 942780,
     "roznamcha_closing_pkr_proxy": 973570

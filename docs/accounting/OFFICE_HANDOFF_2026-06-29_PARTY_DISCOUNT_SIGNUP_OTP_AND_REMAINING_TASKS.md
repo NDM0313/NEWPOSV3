@@ -205,8 +205,9 @@ Do not repair/apply without dry-run + operator approval.
 ## 6. Exact next office action
 
 1. **BS/P&L finance sign-off** — review approval pack; no loader swap until signed.
-2. **DIN BRIDAL golden fixture refresh** — update `trial_balance_debit_pkr` / `trial_balance_credit_pkr` to **22,056,075** after Option C apply (was 21,919,575).
-3. Do **not** post supplier `party_discount` JE without separate operator approval.
+2. Do **not** post supplier `party_discount` JE without separate operator approval.
+
+**Final handoff:** [`OFFICE_TO_HOME_FINAL_HANDOFF_2026-06-30.md`](OFFICE_TO_HOME_FINAL_HANDOFF_2026-06-30.md)
 
 ### DIN BRIDAL 1100 Option C apply — **COMPLETE** (2026-06-30)
 
@@ -215,7 +216,8 @@ Do not repair/apply without dry-run + operator approval.
 - **Correction JEs:** JV-000209 (JE-0155 / AR-CUS0056 / PKR 78,750), JV-000210 (JE-0157 / AR-CUS0012 / PKR 57,750)
 - **Control 1100:** -136,500 → **0.00**
 - **AR-CUS0056:** 113,750 → 35,000 | **AR-CUS0012:** 72,750 → 15,000
-- **Monitoring:** pre-apply PASS; post-apply FAIL on TB golden total only (+136,500 expected from additive JEs)
+- **Monitoring:** pre-apply PASS; post-apply TB golden-only failure (expected); **post-golden-refresh PASS** (`2026-06-30T15-27-01-772Z`)
+- **TB golden:** refreshed to **22,056,075** (debit = credit)
 - **Tests/build:** 303/303 unified-ledger, 122/122 unit, build PASS
 - **Deploy:** NOT DEPLOYED
 
