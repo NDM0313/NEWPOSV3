@@ -1,0 +1,14 @@
+{
+  "verifiedAtUtc": "2026-06-30T15:08:00.000Z",
+  "control1100JeNet": { "before": -136500, "after": 0, "pass": true },
+  "trialBalance": {
+    "AR-CUS0056": { "before": 113750, "after": 35000, "alignsWithPartyLedgerPreApply": 35000 },
+    "AR-CUS0012": { "before": 72750, "after": 15000, "alignsWithPartyLedgerPreApply": 15000 }
+  },
+  "customerLedgerImpact": {
+    "Miss NAGHMANA RAJA": { "account": "AR-CUS0056", "creditMovementPkr": 78750 },
+    "ASIM": { "account": "AR-CUS0012", "creditMovementPkr": 57750 }
+  },
+  "unexpectedDrift": false,
+  "overall": "PASS"
+}

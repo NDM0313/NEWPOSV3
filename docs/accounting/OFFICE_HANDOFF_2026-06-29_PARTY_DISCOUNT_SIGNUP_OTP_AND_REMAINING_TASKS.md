@@ -204,9 +204,20 @@ Do not repair/apply without dry-run + operator approval.
 
 ## 6. Exact next office action
 
-1. **DIN BRIDAL 1100 (-136,500):** review dry-run pack [`reports/din-bridal-1100-dry-run-approval-20260630/`](../reports/din-bridal-1100-dry-run-approval-20260630/) — sign Option **C** apply template if approved; **do not apply without signed approval**.
-2. **BS/P&L finance sign-off** — review approval pack; no loader swap until signed.
+1. **BS/P&L finance sign-off** — review approval pack; no loader swap until signed.
+2. **DIN BRIDAL golden fixture refresh** — update `trial_balance_debit_pkr` / `trial_balance_credit_pkr` to **22,056,075** after Option C apply (was 21,919,575).
 3. Do **not** post supplier `party_discount` JE without separate operator approval.
+
+### DIN BRIDAL 1100 Option C apply — **COMPLETE** (2026-06-30)
+
+- **Evidence:** [`reports/din-bridal-1100-option-c-apply-20260630/`](../reports/din-bridal-1100-option-c-apply-20260630/)
+- **Dry-run pack:** [`reports/din-bridal-1100-dry-run-approval-20260630/`](../reports/din-bridal-1100-dry-run-approval-20260630/)
+- **Correction JEs:** JV-000209 (JE-0155 / AR-CUS0056 / PKR 78,750), JV-000210 (JE-0157 / AR-CUS0012 / PKR 57,750)
+- **Control 1100:** -136,500 → **0.00**
+- **AR-CUS0056:** 113,750 → 35,000 | **AR-CUS0012:** 72,750 → 15,000
+- **Monitoring:** pre-apply PASS; post-apply FAIL on TB golden total only (+136,500 expected from additive JEs)
+- **Tests/build:** 303/303 unified-ledger, 122/122 unit, build PASS
+- **Deploy:** NOT DEPLOYED
 
 **OTP E2E evidence:** [`reports/create-business-otp-phase-b-verify-20260630/`](../reports/create-business-otp-phase-b-verify-20260630/)  
 **Remaining tasks start:** [`reports/remaining-tasks-start-20260630/`](../reports/remaining-tasks-start-20260630/)  
