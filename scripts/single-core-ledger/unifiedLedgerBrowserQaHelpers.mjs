@@ -4,7 +4,7 @@
  */
 
 export const MR_JALIL_GOLDEN = 216_299;
-export const TB_GOLDEN = 407_957_271.02;
+export const TB_GOLDEN = 407_957_272.02;
 export const ROZNAMCHA_GOLDEN = {
   cashIn: 136_158_012,
   cashOut: 67_042_426,
