@@ -120,8 +120,9 @@ Evidence:
 
 ### Priority 1 — Create Business OTP full QA
 
-- **Status (2026-06-30 retry):** **BLOCKED** — configured email matched DIN CHINA production account; use **disposable inbox only**
-- Forbidden for OTP QA: `admin@test.com`, `din@yahoo.com`, `ndm313@yahoo.com`, `zhd@dincouture.pk`
+- **Status:** **BLOCKED on infra** — production `GOTRUE_MAILER_AUTOCONFIRM=true` + fake SMTP bypasses OTP; test user `k***+1@gmail.com` cleaned up
+- **Before next signup:** set autoconfirm **false** + configure real SMTP (separate deploy/infra approval)
+- Forbidden OTP QA emails: `admin@test.com`, `din@yahoo.com`, `ndm313@yahoo.com`, `zhd@dincouture.pk`
 - Verify signup → OTP receive → verify → session poll → business creation → duplicate prevention.
 
 ### Priority 2 — Optional supplier-side Party Discount posting QA
@@ -203,10 +204,8 @@ Required before any repair:
 
 ## 6. Exact next office action
 
-1. Set `QA_CREATE_BUSINESS_OTP_EMAIL` to a **dedicated disposable inbox** (not DIN CHINA/BRIDAL/COUTURE production emails).
-2. Re-run OTP E2E; set `QA_CREATE_BUSINESS_OTP_CODE` when email arrives; cleanup if bootstrap-only.
-3. Do **not** post supplier `party_discount` JE without separate operator approval.
-4. Cash Flow loader swap (3B-M), BS/P&L swap, R7/R8, 4th company — remain blocked.
+1. **Fix production auth email:** `GOTRUE_MAILER_AUTOCONFIRM=false` + real SMTP — separate infra approval; then re-run OTP E2E with disposable inbox.
+2. Do **not** post supplier `party_discount` JE without separate operator approval.
 
 ---
 
