@@ -1,0 +1,55 @@
+{
+  "generated_at": "2026-06-30T14:30:00.000Z",
+  "recommended_option": "C",
+  "options": [
+    {
+      "id": "A",
+      "name": "No repair / accept control balance",
+      "data_mutation": false,
+      "appropriate_when": "Never for this case — TB control 1100 permanently wrong",
+      "gl_impact": "Control 1100 stays -136,500",
+      "party_ledger_impact": "Miss NAGHMANA RAJA / ASIM overstated vs true receivable",
+      "report_impact": "TB/BS AR control misleading; party ledger inconsistent",
+      "rollback": "N/A",
+      "approval_required": false,
+      "recommended": false,
+      "safe": false
+    },
+    {
+      "id": "B",
+      "name": "Party relink only (contact_id on lines)",
+      "data_mutation": true,
+      "appropriate_when": "If only metadata missing — NOT this case (wrong account_id on JE lines)",
+      "gl_impact": "None unless account_id changed",
+      "party_ledger_impact": "Minimal",
+      "approval_required": true,
+      "recommended": false
+    },
+    {
+      "id": "C",
+      "name": "Reclass control 1100 to party AR (gl_correction pattern)",
+      "data_mutation": true,
+      "appropriate_when": "Sale reversal mis-posted to 1100; customer known",
+      "gl_impact": "Control 1100 → 0; AR-CUS0056 Cr offset 78,750; AR-CUS0012 Cr offset 57,750",
+      "party_ledger_impact": "Miss NAGHMANA RAJA -78,750; ASIM -57,750 (correct cancellation effect)",
+      "report_impact": "TB control 1100 clears; party ledgers align with cancelled sales",
+      "dry_run_preview": "Mirror JV-000204 pattern: Dr 1100 / Cr AR-CUS* per source line with action_fingerprint developer_repair:gl_correction:sale-reversal-1100-leakage:<line_id>",
+      "rollback": "Void correction JVs; restore source visibility",
+      "approval_required": true,
+      "recommended": true
+    },
+    {
+      "id": "D",
+      "name": "Manual clearing / offset JE",
+      "data_mutation": true,
+      "appropriate_when": "Only if business confirms amount is wrong entirely",
+      "gl_impact": "Broad Dr/Cr — risk of double-count",
+      "party_ledger_impact": "May not fix party mismatch",
+      "rollback": "Void clearing JE",
+      "approval_required": true,
+      "recommended": false,
+      "risk": "highest"
+    }
+  ],
+  "status": "BLOCKED_PENDING_OPERATOR_APPROVAL"
+}

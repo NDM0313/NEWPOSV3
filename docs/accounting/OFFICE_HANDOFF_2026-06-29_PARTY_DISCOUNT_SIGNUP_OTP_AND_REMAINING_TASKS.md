@@ -162,7 +162,7 @@ Evidence:
 | MURAD DC-0007 | **Closed** — paid in full; GL 0 |
 | AZIZ JAMURAD 1100 | **Closed** — GL/op 0 |
 | ABDUL WAJID | **Closed** — GL = operational 329,314 |
-| DIN BRIDAL control 1100 -136,500 | **Open** — business decision / repair approval needed |
+| DIN BRIDAL control 1100 -136,500 | **Dry-run pack ready** — sale reversal mis-post; Option C recommended; apply **BLOCKED** |
 
 Do not repair/apply without dry-run + operator approval.
 
@@ -204,7 +204,7 @@ Do not repair/apply without dry-run + operator approval.
 
 ## 6. Exact next office action
 
-1. **DIN BRIDAL 1100 (-136,500):** prepare scoped dry-run approval pack — do not apply repair without operator sign-off.
+1. **DIN BRIDAL 1100 (-136,500):** review dry-run pack [`reports/din-bridal-1100-dry-run-approval-20260630/`](../reports/din-bridal-1100-dry-run-approval-20260630/) — sign Option **C** apply template if approved; **do not apply without signed approval**.
 2. **BS/P&L finance sign-off** — review approval pack; no loader swap until signed.
 3. Do **not** post supplier `party_discount` JE without separate operator approval.
 

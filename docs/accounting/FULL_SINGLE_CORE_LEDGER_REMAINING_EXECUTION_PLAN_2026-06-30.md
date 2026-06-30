@@ -17,7 +17,7 @@
 |-------|--------|-------------|
 | Create Business OTP E2E | **COMPLETE** | — |
 | GL backlog C1–C3 | **Closed** | None |
-| GL backlog C4 DIN BRIDAL 1100 | **Open** — -136,500 | Scoped dry-run approval |
+| GL backlog C4 DIN BRIDAL 1100 | **Dry-run pack ready** — Option C | Signed apply approval required |
 | Cash Flow 3B-M | **LIVE** | Rollback only with written approval |
 | BS/P&L loader swap | **BLOCKED** | Finance sign-off pack |
 | Mobile parity | **PLAN** | APK QA when approved |
@@ -28,11 +28,12 @@
 
 [`reports/remaining-tasks-start-20260630/`](../reports/remaining-tasks-start-20260630/)  
 [`reports/create-business-otp-phase-a-request-20260630/`](../reports/create-business-otp-phase-a-request-20260630/)  
-[`reports/create-business-otp-phase-b-verify-20260630/`](../reports/create-business-otp-phase-b-verify-20260630/)
+[`reports/create-business-otp-phase-b-verify-20260630/`](../reports/create-business-otp-phase-b-verify-20260630/)  
+[`reports/din-bridal-1100-dry-run-approval-20260630/`](../reports/din-bridal-1100-dry-run-approval-20260630/)
 
 ## Exact next recommended phase
 
-1. **DIN BRIDAL 1100** scoped dry-run approval (do not auto-apply repair)  
+1. **DIN BRIDAL 1100 apply** — only after signed Option C approval (JE-0155/0157 reclass)  
 2. **BS/P&L finance approval** (no swap until signed)
 
 Do **not** auto-run loader swaps, GL repairs, supplier JE, mobile release, or R8 retirement.
