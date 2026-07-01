@@ -1,9 +1,7 @@
 # Office → Home final handoff — Single Core Ledger
 
-**Generated:** 2026-06-30  
-**Machine:** Office PC (OLD ERP / DIN Collection ERP)  
-**Production:** https://erp.dincouture.pk  
-**Branch:** `main` @ `95a041d7` (prior to this handoff commit)
+**Generated:** 2026-06-30 (updated 2026-07-01 — office resume BS/P&L pack)  
+**Branch:** `main` @ handoff commit `b9a630ef` (office resume pack pending new commit)
 
 ---
 
@@ -82,11 +80,13 @@
 
 | Task | Status |
 |------|--------|
-| **BS/P&L finance approval pack** | Next recommended — review; **no loader swap without signed approval** |
+| **BS/P&L finance approval pack** | **PREPARED** 2026-07-01 — review only; **loader swap BLOCKED** |
 | Cash Flow 3B-M | LIVE — rollback only with written approval |
 | Supplier Party Discount PKR 1 | **Not approved** — separate operator approval required |
 | Mobile parity plan | Plan only — APK QA when approved |
 | R8 legacy retirement | **BLOCKED** — 2–4 week stable run required |
+
+**BS/P&L pack:** [`reports/office-resume-bs-pl-approval-20260701/`](../reports/office-resume-bs-pl-approval-20260701/bs-pl-finance-approval-pack.md)
 
 ---
 
@@ -120,7 +120,11 @@ Monitoring credentials: load from `erp-mobile-app/.env` (`$env:MONITORING_*` lin
 
 ## 9. Exact next recommended action
 
-**Review BS/P&L finance approval pack.** Do **not** run BS/P&L loader swap without signed approval.
+**Wait for signed BS/P&L finance/operator approval.** Review [`bs-pl-finance-approval-pack.md`](../reports/office-resume-bs-pl-approval-20260701/bs-pl-finance-approval-pack.md). Do **not** run BS/P&L loader swap automatically.
+
+### Office resume (2026-07-01)
+
+Operator could not continue from home machine. Office resumed at `b9a630ef`; baseline verification PASS; BS/P&L approval pack prepared (docs-only, no deploy, no flags, no GL mutation).
 
 ---
 

@@ -204,8 +204,10 @@ Do not repair/apply without dry-run + operator approval.
 
 ## 6. Exact next office action
 
-1. **BS/P&L finance sign-off** — review approval pack; no loader swap until signed.
+1. **BS/P&L finance sign-off** — review [`reports/office-resume-bs-pl-approval-20260701/bs-pl-finance-approval-pack.md`](../reports/office-resume-bs-pl-approval-20260701/bs-pl-finance-approval-pack.md); sign template; **no loader swap until signed**.
 2. Do **not** post supplier `party_discount` JE without separate operator approval.
+
+**Office resume (2026-07-01):** Home machine skipped; office synced at `b9a630ef`; baseline PASS; BS/P&L pack prepared only.
 
 **Final handoff:** [`OFFICE_TO_HOME_FINAL_HANDOFF_2026-06-30.md`](OFFICE_TO_HOME_FINAL_HANDOFF_2026-06-30.md)
 
