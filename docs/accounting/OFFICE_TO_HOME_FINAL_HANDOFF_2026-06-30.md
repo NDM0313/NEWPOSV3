@@ -1,7 +1,7 @@
 # Office → Home final handoff — Single Core Ledger
 
-**Generated:** 2026-06-30 (updated 2026-07-01 — office resume BS/P&L pack)  
-**Branch:** `main` @ handoff commit `b9a630ef` (office resume pack pending new commit)
+**Generated:** 2026-06-30 (updated 2026-07-01 — DIN BRIDAL monitoring drift + mobile Admin QA)  
+**Branch:** `main` @ `7566d294` (drift diagnosis evidence pending push)
 
 ---
 
@@ -61,8 +61,10 @@
 | Pre-apply (Option C) | PASS | `2026-06-30T14-56-22-198Z` |
 | Post-apply (before golden refresh) | FAIL | din-bridal TB golden total only (+136,500 expected) |
 | Post-golden refresh (this run) | **PASS** | `2026-06-30T15-27-01-772Z` — all three companies |
+| 2026-07-01 mobile Admin QA day | **FAIL din-bridal only** | roznamcha + TB drift — `NEW_UNAPPROVED_DATA_DRIFT`; din-china/din-couture PASS |
 
-**DIN BRIDAL expected TB total (after refresh):** PKR **22,056,075** (debit = credit)
+**DIN BRIDAL expected TB total (after refresh):** PKR **22,056,075** (debit = credit)  
+**2026-07-01 actual (monitoring):** TB **22,215,400**; roznamcha cash in **1,916,350** (+80k vs golden) — see [`reports/din-bridal-monitoring-drift-mobile-role-readiness-20260701/`](../reports/din-bridal-monitoring-drift-mobile-role-readiness-20260701/)
 
 ---
 
@@ -83,7 +85,8 @@
 | **BS/P&L controlled loader swap** | **COMPLETE** — wiring `db499995`, deploy + flags 2026-07-01 |
 | Cash Flow 3B-M | LIVE — rollback only with written approval |
 | Supplier Party Discount PKR 1 | **Not approved** — separate operator approval required |
-| Mobile parity + APK | **PARTIAL_DEVICE_QA** — Admin manual PASS on Pixel 6 Pro; Manager/Salesman pending |
+| Mobile parity + APK | **PARTIAL_DEVICE_QA** — Admin manual PASS 21/21 on Pixel 6 Pro; Manager/Salesman pending; APK local only |
+| DIN BRIDAL monitoring drift | **OPEN** — not mobile APK failure; release gate blocked |
 | R8 legacy retirement | **BLOCKED** — 2–4 week stable run required |
 
 **BS/P&L pack:** [`reports/office-resume-bs-pl-approval-20260701/`](../reports/office-resume-bs-pl-approval-20260701/bs-pl-finance-approval-pack.md)

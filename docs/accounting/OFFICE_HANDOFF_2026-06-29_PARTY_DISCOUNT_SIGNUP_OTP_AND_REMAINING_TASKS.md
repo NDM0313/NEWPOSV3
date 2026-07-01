@@ -105,6 +105,7 @@ Party Ledger Discount + Create Business OTP deploy, QA, cleanup, and remaining t
 ## 3. Monitoring status
 
 - Full `npm run monitor:three-company-unified-ledger` **PASS** (2026-06-30 post-R1B deploy `49ac9711`).
+- **2026-07-01 update:** DIN BRIDAL **FAIL** (roznamcha cash in/closing + TB total drift); din-china and din-couture **PASS**. Classification: `NEW_UNAPPROVED_DATA_DRIFT` — not mobile APK regression. Evidence: [`reports/din-bridal-monitoring-drift-mobile-role-readiness-20260701/`](../reports/din-bridal-monitoring-drift-mobile-role-readiness-20260701/)
 - MR JALIL DIN CHINA golden closing: **PKR 216,299** (retained JE-0003 PKR 1 discount).
 - Admin Compare Pilot Batch **9/9 PASS** — legacy hybrid now includes `party_discount` by `reference_id`.
 - Read-only loader guard **PASS** — DIN CHINA / BRIDAL / COUTURE only; other companies 0 loaders.

@@ -24,6 +24,7 @@ git push origin pwa-apk-ios-safe-point
 | **6** | Unified financial reports parity (Capacitor code) | ✅ **2026-07-01** — code complete |
 | **6b** | Internal QA debug APK (no Play Store) | ✅ **2026-07-01** — `BUILT_INTERNAL_QA` |
 | **6c** | On-device QA | **PARTIAL** — Admin PASS (21/21); Manager/Salesman pending credentials |
+| **6d** | Release gate | **BLOCKED** — DIN BRIDAL monitoring drift + pending role QA; no Play Store |
 
 ## Quick Commands
 
