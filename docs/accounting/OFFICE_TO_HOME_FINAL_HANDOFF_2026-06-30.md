@@ -61,7 +61,8 @@
 | Pre-apply (Option C) | PASS | `2026-06-30T14-56-22-198Z` |
 | Post-apply (before golden refresh) | FAIL | din-bridal TB golden total only (+136,500 expected) |
 | Post-golden refresh (this run) | **PASS** | `2026-06-30T15-27-01-772Z` — all three companies |
-| 2026-07-01 mobile Admin QA day | **FAIL din-bridal only** | roznamcha + TB drift — `NEW_UNAPPROVED_DATA_DRIFT`; din-china/din-couture PASS |
+| 2026-07-01 mobile Admin QA day | **FAIL din-bridal only** (expected until golden refresh) | roznamcha + TB drift **fully audited** — RCV-0075/76/77, JE-0205/SL-0018 |
+| DIN BRIDAL July 1 GL audit | **COMPLETE** | Legitimate live activity; golden refresh **not executed** |
 
 **DIN BRIDAL expected TB total (after refresh):** PKR **22,056,075** (debit = credit)  
 **2026-07-01 actual (monitoring):** TB **22,215,400**; roznamcha cash in **1,916,350** (+80k vs golden) — see [`reports/din-bridal-monitoring-drift-mobile-role-readiness-20260701/`](../reports/din-bridal-monitoring-drift-mobile-role-readiness-20260701/)
@@ -86,7 +87,7 @@
 | Cash Flow 3B-M | LIVE — rollback only with written approval |
 | Supplier Party Discount PKR 1 | **Not approved** — separate operator approval required |
 | Mobile parity + APK | **PARTIAL_DEVICE_QA** — Admin manual PASS 21/21 on Pixel 6 Pro; Manager/Salesman pending; APK local only |
-| DIN BRIDAL monitoring drift | **OPEN** — not mobile APK failure; release gate blocked |
+| DIN BRIDAL monitoring drift | **AUDITED** — fixture refresh pending operator approval |
 | R8 legacy retirement | **BLOCKED** — 2–4 week stable run required |
 
 **BS/P&L pack:** [`reports/office-resume-bs-pl-approval-20260701/`](../reports/office-resume-bs-pl-approval-20260701/bs-pl-finance-approval-pack.md)

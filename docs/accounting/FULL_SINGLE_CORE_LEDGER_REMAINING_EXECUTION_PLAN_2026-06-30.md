@@ -1,7 +1,7 @@
 # Full Single Core Ledger — remaining execution plan
 
-**Generated:** 2026-06-30 (updated 2026-07-01 — mobile Admin QA + DIN BRIDAL monitoring drift diagnosis)  
-**Branch:** `main` @ `7566d294` (drift diagnosis evidence pending push)
+**Generated:** 2026-06-30 (updated 2026-07-01 — DIN BRIDAL July 1 GL activity audit complete)  
+**Branch:** `main` @ drift diagnosis `a3d6d6eb` (July 1 audit evidence pending push)
 
 ## Completed / stable
 
@@ -23,7 +23,7 @@
 | Cash Flow 3B-M | **LIVE** | Rollback only with written approval |
 | BS/P&L loader swap | **COMPLETE** | Runtime wiring + frontend deploy + flags enabled 2026-07-01 — see `reports/bs-pl-runtime-wiring-swap-20260701/` |
 | Mobile parity | **CODE COMPLETE** — APK **BUILT_INTERNAL_QA** on Pixel 6 Pro; **Admin manual QA PASS** (21/21); **PARTIAL_DEVICE_QA** (Manager/Salesman pending) 2026-07-01 | Manager/Salesman role QA; release blocked until monitoring drift resolved |
-| DIN BRIDAL monitoring drift | **FAIL** — roznamcha + TB `NEW_UNAPPROVED_DATA_DRIFT` (not mobile APK regression) 2026-07-01 | Operator confirms July 1 GL activity or separate golden refresh approval |
+| DIN BRIDAL monitoring drift | **AUDITED** — legitimate live activity (RCV-0075/76/77, JE-0205/SL-0018); fixture refresh pending operator approval | Operator approve fixture-only golden refresh |
 | R8 legacy retirement | **BLOCKED** | 2–4 week stable run |
 | Supplier party_discount QA | **Not approved** | Separate PKR 1 approval |
 
@@ -45,7 +45,8 @@
 [`reports/mobile-apk-internal-qa-build-20260701/`](../reports/mobile-apk-internal-qa-build-20260701/)  
 [`reports/mobile-apk-device-qa-20260701/`](../reports/mobile-apk-device-qa-20260701/)  
 [`reports/mobile-apk-manual-admin-qa-20260701/`](../reports/mobile-apk-manual-admin-qa-20260701/)  
-[`reports/din-bridal-monitoring-drift-mobile-role-readiness-20260701/`](../reports/din-bridal-monitoring-drift-mobile-role-readiness-20260701/)
+[`reports/din-bridal-monitoring-drift-mobile-role-readiness-20260701/`](../reports/din-bridal-monitoring-drift-mobile-role-readiness-20260701/)  
+[`reports/din-bridal-july1-gl-activity-audit-20260701/`](../reports/din-bridal-july1-gl-activity-audit-20260701/)
 
 ## BS/P&L controlled loader swap — COMPLETE (2026-07-01)
 
@@ -59,7 +60,7 @@
 | Post-flag capture | **6/6 ZERO_DIFF pass** |
 | Monitoring / tests / build | **PASS** (328/328 unified-ledger) |
 
-**Next:** Complete Manager/Salesman on-device QA when credentials available. **Release gate blocked** — DIN BRIDAL monitoring drift (`NEW_UNAPPROVED_DATA_DRIFT` on roznamcha + TB) must be understood before release approval pack. Play Store requires separate approval. No migrations, GL mutations, or feature flag changes in drift diagnosis run.
+**Next:** Operator approve **fixture-only** DIN BRIDAL golden refresh (TB 22,257,400; roznamcha cash in 1,958,350 at 12:43 baseline). Complete Manager/Salesman role QA when credentials available. Play Store requires separate approval. No GL mutations.
 
 ## Exact next recommended phase
 
