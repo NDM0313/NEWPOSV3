@@ -144,10 +144,8 @@ Evidence:
 
 ### Priority 4 — BS/P&L loader swap
 
-- Operator approval **RECORDED** 2026-07-01 (Nadeem Khan).
-- Final compare: all three companies **ZERO_DIFF_READY_FOR_SWAP**.
-- Swap execution **BLOCKED_CODE_NOT_WIRED** — runtime main-loader wiring missing; flags **not** enabled.
-- Evidence: [`reports/bs-pl-controlled-loader-swap-20260701/`](../reports/bs-pl-controlled-loader-swap-20260701/)
+- **COMPLETE** 2026-07-01 — runtime wiring, frontend deploy, flags enabled for DIN CHINA / DIN BRIDAL / DIN COUTURE.
+- Evidence: [`reports/bs-pl-runtime-wiring-swap-20260701/`](../reports/bs-pl-runtime-wiring-swap-20260701/)
 
 ### Priority 5 — R7/R8/4th company
 
@@ -206,10 +204,10 @@ Do not repair/apply without dry-run + operator approval.
 
 ## 6. Exact next office action
 
-1. **BS/P&L runtime wiring** — implement main-loader resolvers + page branches (mirror Cash Flow); then re-run controlled flag enable with approval on file.
+1. **Mobile parity plan** or **supplier Party Discount PKR 1 QA** — separate operator approval required.
 2. Do **not** post supplier `party_discount` JE without separate operator approval.
 
-**BS/P&L swap attempt (2026-07-01):** Approval confirmed; zero-diff compare PASS; **BLOCKED_CODE_NOT_WIRED** — no deploy, no flags, no GL mutation. Evidence: [`reports/bs-pl-controlled-loader-swap-20260701/`](../reports/bs-pl-controlled-loader-swap-20260701/)
+**BS/P&L swap:** **COMPLETE** 2026-07-01. Evidence: [`reports/bs-pl-runtime-wiring-swap-20260701/`](../reports/bs-pl-runtime-wiring-swap-20260701/)
 
 **Final handoff:** [`OFFICE_TO_HOME_FINAL_HANDOFF_2026-06-30.md`](OFFICE_TO_HOME_FINAL_HANDOFF_2026-06-30.md)
 

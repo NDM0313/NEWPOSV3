@@ -21,7 +21,7 @@
 | GL backlog C1–C3 | **Closed** | None |
 | GL backlog C4 DIN BRIDAL 1100 | **COMPLETE** — Option C applied + TB golden refreshed | None |
 | Cash Flow 3B-M | **LIVE** | Rollback only with written approval |
-| BS/P&L loader swap | **BLOCKED_CODE_NOT_WIRED** | Operator approval 2026-07-01; zero-diff compare PASS; runtime wiring missing — see `reports/bs-pl-controlled-loader-swap-20260701/` |
+| BS/P&L loader swap | **COMPLETE** | Runtime wiring + frontend deploy + flags enabled 2026-07-01 — see `reports/bs-pl-runtime-wiring-swap-20260701/` |
 | Mobile parity | **PLAN** | APK QA when approved |
 | R8 legacy retirement | **BLOCKED** | 2–4 week stable run |
 | Supplier party_discount QA | **Not approved** | Separate PKR 1 approval |
@@ -39,22 +39,21 @@
 [`reports/bs-pl-din-bridal-post-1100-recapture-20260701/`](../reports/bs-pl-din-bridal-post-1100-recapture-20260701/)  
 [`reports/bs-pl-controlled-loader-swap-20260701/`](../reports/bs-pl-controlled-loader-swap-20260701/)
 
-## BS/P&L controlled loader swap — 2026-07-01
+## BS/P&L controlled loader swap — COMPLETE (2026-07-01)
 
 | Item | Result |
 |------|--------|
-| Operator approval | **RECORDED** (Nadeem Khan, 2026-07-01) |
-| Final compare (3 companies × BS + P&L) | **ZERO_DIFF_READY_FOR_SWAP** |
-| Loader wiring | **CODE_NOT_WIRED_BLOCKED** |
-| Flags enabled | **no** |
-| Frontend deploy | **no** |
-| Monitoring / tests / build | **PASS** |
+| Runtime wiring | **COMPLETE** — commit `db499995` |
+| Frontend deploy | **COMPLETE** — `deploy/vps-build-erp-only.sh` @ `db499995` |
+| Flags enabled | **yes** — 4 keys × 3 companies |
+| Post-flag capture | **6/6 ZERO_DIFF pass** |
+| Monitoring / tests / build | **PASS** (328/328 unified-ledger) |
 
-**Next:** Implement BS/P&L main-loader resolvers + page wiring (mirror Cash Flow), deploy frontend, re-run swap with approval on file.
+**Next:** Mobile parity plan or supplier Party Discount PKR 1 QA (separate approval). R8 blocked 2–4 weeks.
 
 ## Exact next recommended phase
 
-1. **BS/P&L runtime wiring** — add flag keys, resolvers, page branches; then controlled flag enable
-2. **Mobile parity plan** or **supplier Party Discount PKR 1 QA** — only with separate approval after BS/P&L swap completes
+1. **Mobile parity plan** or **supplier Party Discount PKR 1 QA** — separate approval only
+2. **R8 legacy retirement** — blocked until 2–4 week stable run after BS/P&L swap
 
-Do **not** auto-run GL repairs, supplier JE, mobile release, or R8 retirement (2–4 week stable run still required).
+Do **not** auto-run GL repairs, supplier JE, or R8 retirement.

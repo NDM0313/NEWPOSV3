@@ -80,7 +80,7 @@
 
 | Task | Status |
 |------|--------|
-| **BS/P&L controlled loader swap** | **BLOCKED_CODE_NOT_WIRED** — operator approval recorded 2026-07-01; zero-diff compare PASS; flags **not** enabled |
+| **BS/P&L controlled loader swap** | **COMPLETE** — wiring `db499995`, deploy + flags 2026-07-01 |
 | Cash Flow 3B-M | LIVE — rollback only with written approval |
 | Supplier Party Discount PKR 1 | **Not approved** — separate operator approval required |
 | Mobile parity plan | Plan only — APK QA when approved |
@@ -120,13 +120,9 @@ Monitoring credentials: load from `erp-mobile-app/.env` (`$env:MONITORING_*` lin
 
 ## 9. Exact next recommended action
 
-**Implement BS/P&L main-loader runtime wiring** (flag keys + resolvers + `BalanceSheetPage` / `ProfitLossPage` branches), then re-run controlled swap. Operator approval for swap is **on file** (2026-07-01). Evidence: [`reports/bs-pl-controlled-loader-swap-20260701/`](../reports/bs-pl-controlled-loader-swap-20260701/).
+**BS/P&L loader swap COMPLETE** (2026-07-01). Evidence: [`reports/bs-pl-runtime-wiring-swap-20260701/`](../reports/bs-pl-runtime-wiring-swap-20260701/).
 
-After BS/P&L swap completes cleanly: mobile parity plan or supplier Party Discount PKR 1 QA (separate approval). **Do not** run R8 until 2–4 week stable run.
-
-### BS/P&L swap attempt (2026-07-01)
-
-Approval confirmed; baseline PASS; all six screens zero-diff; swap **not executed** — `CODE_NOT_WIRED_BLOCKED`. No deploy, no flags, no GL mutation.
+**Next:** Mobile parity plan or supplier Party Discount PKR 1 QA (separate approval). Do **not** run R8 until 2–4 week stable run.
 
 ---
 
