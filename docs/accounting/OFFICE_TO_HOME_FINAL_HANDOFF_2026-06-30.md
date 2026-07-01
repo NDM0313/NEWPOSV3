@@ -80,7 +80,7 @@
 
 | Task | Status |
 |------|--------|
-| **BS/P&L finance approval pack** | **PREPARED** — DIN BRIDAL post-1100 recapture **ZERO_DIFF** (2026-07-01); loader swap **BLOCKED** |
+| **BS/P&L controlled loader swap** | **BLOCKED_CODE_NOT_WIRED** — operator approval recorded 2026-07-01; zero-diff compare PASS; flags **not** enabled |
 | Cash Flow 3B-M | LIVE — rollback only with written approval |
 | Supplier Party Discount PKR 1 | **Not approved** — separate operator approval required |
 | Mobile parity plan | Plan only — APK QA when approved |
@@ -120,11 +120,13 @@ Monitoring credentials: load from `erp-mobile-app/.env` (`$env:MONITORING_*` lin
 
 ## 9. Exact next recommended action
 
-**Wait for signed BS/P&L finance/operator approval.** DIN BRIDAL post-1100 BS/P&L recapture is **ZERO_DIFF** (2026-07-01). Review [`bs-pl-finance-approval-pack.md`](../reports/office-resume-bs-pl-approval-20260701/bs-pl-finance-approval-pack.md). Do **not** run loader swap automatically.
+**Implement BS/P&L main-loader runtime wiring** (flag keys + resolvers + `BalanceSheetPage` / `ProfitLossPage` branches), then re-run controlled swap. Operator approval for swap is **on file** (2026-07-01). Evidence: [`reports/bs-pl-controlled-loader-swap-20260701/`](../reports/bs-pl-controlled-loader-swap-20260701/).
 
-### Office resume (2026-07-01)
+After BS/P&L swap completes cleanly: mobile parity plan or supplier Party Discount PKR 1 QA (separate approval). **Do not** run R8 until 2–4 week stable run.
 
-Operator could not continue from home machine. Office resumed at `b9a630ef`; baseline verification PASS; BS/P&L approval pack prepared (docs-only, no deploy, no flags, no GL mutation).
+### BS/P&L swap attempt (2026-07-01)
+
+Approval confirmed; baseline PASS; all six screens zero-diff; swap **not executed** — `CODE_NOT_WIRED_BLOCKED`. No deploy, no flags, no GL mutation.
 
 ---
 

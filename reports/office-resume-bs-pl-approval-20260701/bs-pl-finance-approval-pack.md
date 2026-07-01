@@ -2,7 +2,7 @@
 
 **Run:** OFFICE RESUME AFTER HOME SKIP — BS/P&L FINANCE APPROVAL PACK ONLY  
 **Date:** 2026-07-01  
-**Status:** `BLOCKED_PENDING_FINANCE_APPROVAL`  
+**Status:** `BLOCKED_CODE_NOT_WIRED` (operator approval recorded; swap not executed)  
 **Deploy:** NOT DEPLOYED | **Loader swap:** NOT EXECUTED | **GL mutations:** NONE
 
 ---
@@ -145,7 +145,8 @@ When approved and executed (separate phase):
 | Net Profit | PKR 119,992 | PKR 119,992 | 0 |
 
 **Fresh capture prerequisite:** **SATISFIED** for DIN BRIDAL.  
-**Loader swap status:** **BLOCKED** — finance rule confirmations + signed approval still required.
+**Operator approval:** **RECORDED** 2026-07-01 (Nadeem Khan).  
+**Loader swap status:** **BLOCKED_CODE_NOT_WIRED** — zero-diff compare PASS for all three companies; runtime main-loader wiring missing; flags **not** enabled. Evidence: [`reports/bs-pl-controlled-loader-swap-20260701/`](../bs-pl-controlled-loader-swap-20260701/)
 
 ---
 

@@ -21,7 +21,7 @@
 | GL backlog C1–C3 | **Closed** | None |
 | GL backlog C4 DIN BRIDAL 1100 | **COMPLETE** — Option C applied + TB golden refreshed | None |
 | Cash Flow 3B-M | **LIVE** | Rollback only with written approval |
-| BS/P&L loader swap | **BLOCKED** | Finance sign-off — pack prepared 2026-07-01 |
+| BS/P&L loader swap | **BLOCKED_CODE_NOT_WIRED** | Operator approval 2026-07-01; zero-diff compare PASS; runtime wiring missing — see `reports/bs-pl-controlled-loader-swap-20260701/` |
 | Mobile parity | **PLAN** | APK QA when approved |
 | R8 legacy retirement | **BLOCKED** | 2–4 week stable run |
 | Supplier party_discount QA | **Not approved** | Separate PKR 1 approval |
@@ -36,11 +36,25 @@
 [`reports/final-office-home-handoff-20260630/`](../reports/final-office-home-handoff-20260630/)  
 [`OFFICE_TO_HOME_FINAL_HANDOFF_2026-06-30.md`](OFFICE_TO_HOME_FINAL_HANDOFF_2026-06-30.md)  
 [`reports/office-resume-bs-pl-approval-20260701/`](../reports/office-resume-bs-pl-approval-20260701/)  
-[`reports/bs-pl-din-bridal-post-1100-recapture-20260701/`](../reports/bs-pl-din-bridal-post-1100-recapture-20260701/)
+[`reports/bs-pl-din-bridal-post-1100-recapture-20260701/`](../reports/bs-pl-din-bridal-post-1100-recapture-20260701/)  
+[`reports/bs-pl-controlled-loader-swap-20260701/`](../reports/bs-pl-controlled-loader-swap-20260701/)
+
+## BS/P&L controlled loader swap — 2026-07-01
+
+| Item | Result |
+|------|--------|
+| Operator approval | **RECORDED** (Nadeem Khan, 2026-07-01) |
+| Final compare (3 companies × BS + P&L) | **ZERO_DIFF_READY_FOR_SWAP** |
+| Loader wiring | **CODE_NOT_WIRED_BLOCKED** |
+| Flags enabled | **no** |
+| Frontend deploy | **no** |
+| Monitoring / tests / build | **PASS** |
+
+**Next:** Implement BS/P&L main-loader resolvers + page wiring (mirror Cash Flow), deploy frontend, re-run swap with approval on file.
 
 ## Exact next recommended phase
 
-1. **BS/P&L finance approval** — review pack; sign template; **no swap until signed**
-2. **DIN BRIDAL BS/P&L re-capture** — **DONE** 2026-07-01 (`ZERO_DIFF_READY_FOR_FINANCE_REVIEW`); sign template for loader swap
+1. **BS/P&L runtime wiring** — add flag keys, resolvers, page branches; then controlled flag enable
+2. **Mobile parity plan** or **supplier Party Discount PKR 1 QA** — only with separate approval after BS/P&L swap completes
 
-Do **not** auto-run loader swaps, GL repairs, supplier JE, mobile release, or R8 retirement.
+Do **not** auto-run GL repairs, supplier JE, mobile release, or R8 retirement (2–4 week stable run still required).

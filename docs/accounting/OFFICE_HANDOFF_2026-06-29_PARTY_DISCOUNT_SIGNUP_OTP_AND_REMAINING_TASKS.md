@@ -144,8 +144,10 @@ Evidence:
 
 ### Priority 4 — BS/P&L loader swap
 
-- BS/P&L finance remains **PENDING**.
-- Do not approve or swap loader without separate finance/operator sign-off.
+- Operator approval **RECORDED** 2026-07-01 (Nadeem Khan).
+- Final compare: all three companies **ZERO_DIFF_READY_FOR_SWAP**.
+- Swap execution **BLOCKED_CODE_NOT_WIRED** — runtime main-loader wiring missing; flags **not** enabled.
+- Evidence: [`reports/bs-pl-controlled-loader-swap-20260701/`](../reports/bs-pl-controlled-loader-swap-20260701/)
 
 ### Priority 5 — R7/R8/4th company
 
@@ -204,10 +206,10 @@ Do not repair/apply without dry-run + operator approval.
 
 ## 6. Exact next office action
 
-1. **BS/P&L finance sign-off** — DIN BRIDAL post-1100 recapture **ZERO_DIFF** (2026-07-01); sign template; **no loader swap until signed**.
+1. **BS/P&L runtime wiring** — implement main-loader resolvers + page branches (mirror Cash Flow); then re-run controlled flag enable with approval on file.
 2. Do **not** post supplier `party_discount` JE without separate operator approval.
 
-**Office resume (2026-07-01):** Home machine skipped; office synced at `b9a630ef`; baseline PASS; BS/P&L pack prepared only.
+**BS/P&L swap attempt (2026-07-01):** Approval confirmed; zero-diff compare PASS; **BLOCKED_CODE_NOT_WIRED** — no deploy, no flags, no GL mutation. Evidence: [`reports/bs-pl-controlled-loader-swap-20260701/`](../reports/bs-pl-controlled-loader-swap-20260701/)
 
 **Final handoff:** [`OFFICE_TO_HOME_FINAL_HANDOFF_2026-06-30.md`](OFFICE_TO_HOME_FINAL_HANDOFF_2026-06-30.md)
 
