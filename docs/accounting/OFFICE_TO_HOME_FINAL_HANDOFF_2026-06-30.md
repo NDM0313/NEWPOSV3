@@ -120,9 +120,9 @@ Monitoring credentials: load from `erp-mobile-app/.env` (`$env:MONITORING_*` lin
 
 ## 9. Exact next recommended action
 
-**BS/P&L loader swap COMPLETE** (2026-07-01). Stability closure: [`reports/post-bs-pl-swap-stability-mobile-readiness-20260701/`](../reports/post-bs-pl-swap-stability-mobile-readiness-20260701/).
+**BS/P&L loader swap COMPLETE** (2026-07-01). **Mobile reports parity CODE COMPLETE** (2026-07-01) — Capacitor only; APK not released.
 
-**Next:** Mobile parity implementation (operator approval required; see `NEXT_PROMPT_MOBILE_PARITY_IMPLEMENTATION.md`). Supplier Party Discount PKR 1 QA remains separate approval. Do **not** run R8 until 2–4 week stable run.
+**Next:** APK build/release requires separate operator approval. Supplier Party Discount PKR 1 QA remains separate approval. Do **not** run R8 until 2–4 week stable run.
 
 ---
 

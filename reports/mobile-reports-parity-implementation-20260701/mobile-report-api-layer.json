@@ -1,0 +1,1 @@
+{"run":"MOBILE_REPORTS_PARITY_IMPLEMENTATION","task":"mobile-report-api-layer","status":"PASS","loaders":["loadMobileBalanceSheet","loadMobileProfitLoss","loadMobileTrialBalance","loadMobileCashFlow"],"rpcs":["get_unified_trial_balance","get_unified_cash_bank_ledger","get_unified_account_ledger"],"no_mutations":true}

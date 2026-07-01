@@ -204,7 +204,8 @@ Do not repair/apply without dry-run + operator approval.
 
 ## 6. Exact next office action
 
-1. **Mobile parity plan** or **supplier Party Discount PKR 1 QA** — separate operator approval required.
+1. **APK build/release** — separate operator approval required (Capacitor unified reports code complete 2026-07-01).
+2. **Supplier Party Discount PKR 1 QA** — separate operator approval required.
 2. Do **not** post supplier `party_discount` JE without separate operator approval.
 
 **BS/P&L swap:** **COMPLETE** 2026-07-01. Evidence: [`reports/bs-pl-runtime-wiring-swap-20260701/`](../reports/bs-pl-runtime-wiring-swap-20260701/)

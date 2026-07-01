@@ -18,6 +18,10 @@ import {
   Briefcase,
   ListFilter,
   Truck,
+  Scale,
+  TrendingUp,
+  BarChart3,
+  Layers,
 } from 'lucide-react';
 import { getPaymentTransactions, type TransactionRow } from '../../../api/transactions';
 import { ReportHeader } from './_shared/ReportHeader';
@@ -43,6 +47,12 @@ export type LegacyReportKey =
   | 'wallet-summary'
   | 'payables'
   | 'receivables'
+  // unified financial statements
+  | 'balance-sheet'
+  | 'profit-loss'
+  | 'trial-balance'
+  | 'cash-flow'
+  | 'ledger-v2'
   // operational
   | 'sales-report'
   | 'studio-sales'
@@ -259,6 +269,48 @@ export function ReportsHub({
                   />
                 </>
               )}
+            </div>
+          </Section>
+        )}
+
+        {fullAccounting && (
+          <Section title="Financial statements">
+            <div className="grid grid-cols-2 gap-3">
+              <ReportTile
+                title="Balance Sheet"
+                description="Assets, liabilities & equity"
+                gradient="from-[#6366F1] to-[#4F46E5]"
+                icon={<Scale className="w-5 h-5 text-white" />}
+                onClick={() => onOpenReport('balance-sheet')}
+              />
+              <ReportTile
+                title="Profit & Loss"
+                description="Revenue, costs & net profit"
+                gradient="from-[#10B981] to-[#059669]"
+                icon={<TrendingUp className="w-5 h-5 text-white" />}
+                onClick={() => onOpenReport('profit-loss')}
+              />
+              <ReportTile
+                title="Trial Balance"
+                description="Debit / credit by account"
+                gradient="from-[#8B5CF6] to-[#6366F1]"
+                icon={<BarChart3 className="w-5 h-5 text-white" />}
+                onClick={() => onOpenReport('trial-balance')}
+              />
+              <ReportTile
+                title="Cash Flow"
+                description="Cash & bank movements"
+                gradient="from-[#0EA5E9] to-[#0284C7]"
+                icon={<Wallet className="w-5 h-5 text-white" />}
+                onClick={() => onOpenReport('cash-flow')}
+              />
+              <ReportTile
+                title="Ledger V2"
+                description="Unified GL account ledger"
+                gradient="from-[#475569] to-[#1E293B]"
+                icon={<Layers className="w-5 h-5 text-white" />}
+                onClick={() => onOpenReport('ledger-v2')}
+              />
             </div>
           </Section>
         )}

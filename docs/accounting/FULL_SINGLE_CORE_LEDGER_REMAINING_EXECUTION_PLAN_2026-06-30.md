@@ -22,7 +22,7 @@
 | GL backlog C4 DIN BRIDAL 1100 | **COMPLETE** — Option C applied + TB golden refreshed | None |
 | Cash Flow 3B-M | **LIVE** | Rollback only with written approval |
 | BS/P&L loader swap | **COMPLETE** | Runtime wiring + frontend deploy + flags enabled 2026-07-01 — see `reports/bs-pl-runtime-wiring-swap-20260701/` |
-| Mobile parity | **READINESS** — audit + plan prepared 2026-07-01; **no APK** without approval | Use `NEXT_PROMPT_MOBILE_PARITY_IMPLEMENTATION.md` when operator approves |
+| Mobile parity | **CODE COMPLETE** — Capacitor unified reports implemented 2026-07-01; **APK NOT built/released** | APK QA/build requires separate operator approval |
 | R8 legacy retirement | **BLOCKED** | 2–4 week stable run |
 | Supplier party_discount QA | **Not approved** | Separate PKR 1 approval |
 
@@ -39,7 +39,8 @@
 [`reports/bs-pl-din-bridal-post-1100-recapture-20260701/`](../reports/bs-pl-din-bridal-post-1100-recapture-20260701/)  
 [`reports/bs-pl-controlled-loader-swap-20260701/`](../reports/bs-pl-controlled-loader-swap-20260701/)  
 [`reports/bs-pl-runtime-wiring-swap-20260701/`](../reports/bs-pl-runtime-wiring-swap-20260701/)  
-[`reports/post-bs-pl-swap-stability-mobile-readiness-20260701/`](../reports/post-bs-pl-swap-stability-mobile-readiness-20260701/)
+[`reports/post-bs-pl-swap-stability-mobile-readiness-20260701/`](../reports/post-bs-pl-swap-stability-mobile-readiness-20260701/)  
+[`reports/mobile-reports-parity-implementation-20260701/`](../reports/mobile-reports-parity-implementation-20260701/)
 
 ## BS/P&L controlled loader swap — COMPLETE (2026-07-01)
 
