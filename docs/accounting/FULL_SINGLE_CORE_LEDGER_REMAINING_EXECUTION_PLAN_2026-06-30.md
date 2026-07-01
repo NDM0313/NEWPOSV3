@@ -1,7 +1,7 @@
 # Full Single Core Ledger — remaining execution plan
 
-**Generated:** 2026-06-30 (updated 2026-07-01 — DIN BRIDAL monitoring golden refresh complete)  
-**Branch:** `main` @ golden refresh evidence (pending push)
+**Generated:** 2026-06-30 (updated 2026-07-01 — Single Core Engine stability window **STARTED**)  
+**Branch:** `main` @ stability window baseline evidence (pending push)
 
 ## Completed / stable
 
@@ -12,6 +12,7 @@
 - **Create Business OTP E2E COMPLETE** (Phase A + B, bootstrap cleanup)
 - **DIN BRIDAL 1100 Option C apply COMPLETE** — control 1100 zero (JV-000209, JV-000210)
 - **DIN BRIDAL TB golden fixture refreshed** — 22,390,400 (July 1 live-activity refresh; monitoring PASS)
+- **Single Core Engine stability window STARTED** — 2026-07-01; day-0 monitoring PASS
 
 ## Remaining phases (approval-gated)
 
@@ -24,7 +25,7 @@
 | BS/P&L loader swap | **COMPLETE** | Runtime wiring + frontend deploy + flags enabled 2026-07-01 — see `reports/bs-pl-runtime-wiring-swap-20260701/` |
 | Mobile parity | **CODE COMPLETE** — APK **BUILT_INTERNAL_QA** on Pixel 6 Pro; **Admin manual QA PASS** (21/21); **PARTIAL_DEVICE_QA** (Manager/Salesman pending) 2026-07-01 | Manager/Salesman role QA; release gate **BLOCKED_PARTIAL_DEVICE_QA_PENDING_ROLES** |
 | DIN BRIDAL monitoring drift | **CLOSED** — legitimate live activity; fixture-only golden refresh **COMPLETE** (operator Nadeem Khan 2026-07-01) | None — monitoring PASS |
-| R8 legacy retirement | **BLOCKED** | 2–4 week stable run |
+| R8 legacy retirement | **BLOCKED** | Stability window 2–4 weeks from 2026-07-01; final approval required |
 | Supplier party_discount QA | **Not approved** | Separate PKR 1 approval |
 
 ## Evidence
@@ -47,7 +48,8 @@
 [`reports/mobile-apk-manual-admin-qa-20260701/`](../reports/mobile-apk-manual-admin-qa-20260701/)  
 [`reports/din-bridal-monitoring-drift-mobile-role-readiness-20260701/`](../reports/din-bridal-monitoring-drift-mobile-role-readiness-20260701/)  
 [`reports/din-bridal-july1-gl-activity-audit-20260701/`](../reports/din-bridal-july1-gl-activity-audit-20260701/)  
-[`reports/din-bridal-monitoring-golden-refresh-20260701/`](../reports/din-bridal-monitoring-golden-refresh-20260701/)
+[`reports/din-bridal-monitoring-golden-refresh-20260701/`](../reports/din-bridal-monitoring-golden-refresh-20260701/)  
+[`reports/single-core-engine-stability-window-20260701/`](../reports/single-core-engine-stability-window-20260701/)
 
 ## BS/P&L controlled loader swap — COMPLETE (2026-07-01)
 
@@ -74,10 +76,25 @@
 
 Fixture-only; no production data mutation. Post-refresh monitoring **PASS**.
 
+## Single Core Engine stability window — STARTED (2026-07-01)
+
+| Item | Value |
+|------|-------|
+| Start date | **2026-07-01** |
+| Duration | **2–4 weeks** (earliest R8 review ~2026-07-15) |
+| Day-0 monitoring | **PASS** — DIN CHINA / DIN BRIDAL / DIN COUTURE; Admin Compare 9/9 |
+| Day-0 tests/build | 328/328 unified · 122/122 unit · build PASS |
+| Production mutation | **none** |
+| R8 legacy retirement | **BLOCKED** until window complete + final approval |
+| 4th company rollout | **BLOCKED** — finance sign-off required |
+| Mobile release | **Separate track** — `BLOCKED_PARTIAL_DEVICE_QA_PENDING_ROLES` |
+
+Evidence: [`reports/single-core-engine-stability-window-20260701/`](../reports/single-core-engine-stability-window-20260701/)
+
 ## Exact next recommended phase
 
-1. **Manager/Salesman device QA** — or operator decision on Admin-only release pack (separate approval)
-2. **Supplier Party Discount PKR 1 QA** — separate approval only
-3. **R8 legacy retirement** — blocked until 2–4 week stable run after BS/P&L swap
+1. **Daily monitoring** during stability window — `npm run monitor:three-company-unified-ledger`
+2. **Manager/Salesman device QA** — mobile release separate track
+3. **R8 legacy retirement** — blocked until stability window complete + final approval
 
 Do **not** auto-run GL repairs, supplier JE, or R8 retirement.

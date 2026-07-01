@@ -1,0 +1,24 @@
+{
+  "run": "SINGLE_CORE_ENGINE_STABILITY_WINDOW_START",
+  "task": "rollback-readiness",
+  "generated_at": "2026-07-01T15:16:00.000Z",
+  "rollback_level_1_flags": {
+    "method": "Disable unified loader feature flags per company/screen",
+    "db_restore_required": false,
+    "documented_in": "docs/accounting/SINGLE_CORE_LEDGER_PHASE_2_9_PILOT_ENABLEMENT_PLAN.md"
+  },
+  "cash_flow_rollback": {
+    "status": "WRITTEN_APPROVAL_REQUIRED",
+    "note": "Cash Flow 3B-M live — rollback only with operator approval"
+  },
+  "bs_pl_rollback": {
+    "status": "WRITTEN_APPROVAL_REQUIRED",
+    "note": "BS/P&L swap complete 2026-07-01 — flag rollback only with approval"
+  },
+  "r8_retirement": {
+    "status": "NOT_APPROVED",
+    "note": "Do not retire legacy engine during stability window"
+  },
+  "monitoring_on_drift": "Audit live activity; fixture-only golden refresh with operator approval",
+  "kill_switch": "Env/DB unified ledger kill switch available for emergency L1 rollback"
+}
