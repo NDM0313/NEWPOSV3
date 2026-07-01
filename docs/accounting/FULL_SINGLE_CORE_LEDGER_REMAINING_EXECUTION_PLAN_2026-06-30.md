@@ -22,7 +22,7 @@
 | GL backlog C4 DIN BRIDAL 1100 | **COMPLETE** — Option C applied + TB golden refreshed | None |
 | Cash Flow 3B-M | **LIVE** | Rollback only with written approval |
 | BS/P&L loader swap | **COMPLETE** | Runtime wiring + frontend deploy + flags enabled 2026-07-01 — see `reports/bs-pl-runtime-wiring-swap-20260701/` |
-| Mobile parity | **CODE COMPLETE** — Capacitor unified reports 2026-07-01; **APK BUILT_INTERNAL_QA** (debug); **device QA BLOCKED** — no adb device 2026-07-01 | Connect Android device and complete on-device QA |
+| Mobile parity | **CODE COMPLETE** — Capacitor unified reports; **APK BUILT_INTERNAL_QA**; install on Pixel 6 Pro **OK**; **device UI QA BLOCKED** — operator unlock + manual navigation pending 2026-07-01 | Unlock device and complete Admin/Manager/Salesman on-device checklist |
 | R8 legacy retirement | **BLOCKED** | 2–4 week stable run |
 | Supplier party_discount QA | **Not approved** | Separate PKR 1 approval |
 
@@ -42,7 +42,8 @@
 [`reports/post-bs-pl-swap-stability-mobile-readiness-20260701/`](../reports/post-bs-pl-swap-stability-mobile-readiness-20260701/)  
 [`reports/mobile-reports-parity-implementation-20260701/`](../reports/mobile-reports-parity-implementation-20260701/)  
 [`reports/mobile-apk-internal-qa-build-20260701/`](../reports/mobile-apk-internal-qa-build-20260701/)  
-[`reports/mobile-apk-device-qa-20260701/`](../reports/mobile-apk-device-qa-20260701/)
+[`reports/mobile-apk-device-qa-20260701/`](../reports/mobile-apk-device-qa-20260701/)  
+[`reports/mobile-apk-device-qa-resume-success-20260701/`](../reports/mobile-apk-device-qa-resume-success-20260701/)
 
 ## BS/P&L controlled loader swap — COMPLETE (2026-07-01)
 
@@ -56,7 +57,7 @@
 | Post-flag capture | **6/6 ZERO_DIFF pass** |
 | Monitoring / tests / build | **PASS** (328/328 unified-ledger) |
 
-**Next:** Connect Android test device via USB (adb), install internal debug APK, complete Admin/Manager/Salesman device QA (`BLOCKED_DEVICE_QA` — no adb device 2026-07-01). Public release / Play Store requires separate operator approval. Supplier Party Discount PKR 1 QA remains separate approval. Do **not** run R8 until 2–4 week stable run.
+**Next:** Unlock Pixel 6 Pro, complete Admin on-device report QA + goldens; provide Manager/Salesman credentials for role QA. Public release / Play Store requires separate approval after device QA passes.
 
 ## Exact next recommended phase
 

@@ -204,7 +204,7 @@ Do not repair/apply without dry-run + operator approval.
 
 ## 6. Exact next office action
 
-1. **On-device QA** — **BLOCKED** (no adb device 2026-07-01). Connect Android device and install debug APK from `erp-mobile-app/releases/internal-qa/20260701/`
+1. **On-device QA** — APK installed Pixel 6 Pro; **unlock device** and complete Admin UI + golden checklist; Manager/Salesman pending credentials
 2. **Public release / Play Store** — separate operator approval required (only after device QA passes)
 3. **Supplier Party Discount PKR 1 QA** — separate operator approval required
 

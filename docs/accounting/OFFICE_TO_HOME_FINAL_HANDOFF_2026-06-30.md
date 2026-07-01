@@ -83,7 +83,7 @@
 | **BS/P&L controlled loader swap** | **COMPLETE** — wiring `db499995`, deploy + flags 2026-07-01 |
 | Cash Flow 3B-M | LIVE — rollback only with written approval |
 | Supplier Party Discount PKR 1 | **Not approved** — separate operator approval required |
-| Mobile parity + APK | **CODE COMPLETE** + **BUILT_INTERNAL_QA** (debug APK 2026-07-01) | **BLOCKED_DEVICE_QA** — no adb device; connect device and re-run QA |
+| Mobile parity + APK | **BUILT_INTERNAL_QA** — installed Pixel 6 Pro Android 16 | **BLOCKED_DEVICE_QA** — UI checklist pending operator unlock |
 | R8 legacy retirement | **BLOCKED** — 2–4 week stable run required |
 
 **BS/P&L pack:** [`reports/office-resume-bs-pl-approval-20260701/`](../reports/office-resume-bs-pl-approval-20260701/bs-pl-finance-approval-pack.md)
@@ -125,9 +125,9 @@ Monitoring credentials: load from `erp-mobile-app/.env` (`$env:MONITORING_*` lin
 **APK artifact (local only, not in git):** `erp-mobile-app/releases/internal-qa/20260701/dincouture-erp-internal-qa-20260701-debug.apk`  
 **SHA256:** `8B7FF35AF80B54E011EE4858DE74D9C74B1DCD062DEACA90C127C5B90251BE00`
 
-**Device QA:** **BLOCKED_DEVICE_QA** (2026-07-01) — `DEVICE_QA_BLOCKED_NO_ADB_DEVICE`. APK not installed on device this run.
+**Device QA:** Debug APK **installed** on Pixel 6 Pro (`24281FDEE0023P`, Android 16). Signature mismatch fixed (uninstall release → install debug). **BLOCKED_DEVICE_QA** — Admin UI/goldens pending operator unlock; Manager/Salesman pending credentials.
 
-**Next:** Connect Android test device, enable USB debugging, run `adb install -r erp-mobile-app/releases/internal-qa/20260701/dincouture-erp-internal-qa-20260701-debug.apk`, complete role QA checklists. Public release / Play Store upload requires separate operator approval. Supplier Party Discount PKR 1 QA remains separate approval. Do **not** run R8 until 2–4 week stable run.
+**Next:** Unlock device, complete Admin report checklist + golden totals. Then Manager/Salesman if credentials available. Public / Play Store requires separate approval. Supplier Party Discount PKR 1 QA separate. R8 blocked 2–4 weeks.
 
 ---
 
