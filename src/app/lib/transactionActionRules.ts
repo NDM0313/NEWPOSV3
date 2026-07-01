@@ -9,6 +9,7 @@ import {
   journalReversalBlockedReason,
   type SourceDocumentOpenTarget,
 } from '@/app/lib/journalEntryEditPolicy';
+import { isOrphanReceiptJournalEntry, ORPHAN_RECEIPT_HIDE_HELP } from '@/app/lib/orphanReceiptPolicy';
 import {
   inferTransactionKind,
   resolveUnifiedJournalEdit,
@@ -31,6 +32,7 @@ export type TransactionActionId =
   | 'edit'
   | 'cancel_payment'
   | 'cancel_entry'
+  | 'cancel_orphan'
   | 'void_stale_reversal'
   | 'undo_last_change'
   | 'open_source_document'
@@ -51,6 +53,8 @@ export interface TransactionAction {
 export interface TransactionActionRowInput extends JournalTransactionLike {
   payment_chain_member_count?: number | null;
   payment_obj?: unknown;
+  journal_line_count?: number | null;
+  is_orphan_receipt?: boolean;
 }
 
 const STUDIO_DOCUMENT_REFERENCE_PREFIX = 'studio_';
@@ -84,6 +88,8 @@ export function buildTransactionActionRowFromAccountingEntry(entry: AccountingEn
     payment_chain_member_count: entry.metadata?.paymentChainMemberCount,
     action_fingerprint: (entry.metadata as { actionFingerprint?: string } | undefined)?.actionFingerprint,
     description: entry.description,
+    journal_line_count: entry.metadata?.journalLineCount,
+    is_orphan_receipt: entry.metadata?.isOrphanReceipt,
   };
 }
 
@@ -222,6 +228,29 @@ export function getTransactionActions(
       disabled: !!options.paymentChainBlockReason,
       disabledReason: options.paymentChainBlockReason,
     });
+  }
+
+  const isOrphanReceipt =
+    row.is_orphan_receipt === true ||
+    isOrphanReceiptJournalEntry({
+      reference_type: row.reference_type,
+      payment_id: row.payment_id,
+      is_void: row.is_void,
+      journalLineCount: row.journal_line_count ?? undefined,
+    });
+
+  if (isOrphanReceipt && row.payment_id) {
+    actions.push({
+      id: 'cancel_orphan',
+      label: 'Delete / Hide orphan',
+      severity: 'destructive',
+      title: ORPHAN_RECEIPT_HIDE_HELP,
+    });
+    if (hasPaymentTraceTarget(row)) {
+      actions.push({ id: 'view_trace', label: 'View Trace', severity: 'secondary' });
+    }
+    actions.push({ id: 'view_audit', label: 'View Audit', severity: 'secondary' });
+    return actions;
   }
 
   if (isPayment && !isCorrectionReversal) {

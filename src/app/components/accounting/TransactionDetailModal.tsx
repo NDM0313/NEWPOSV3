@@ -70,6 +70,10 @@ import {
 import { activityLogService } from '@/app/services/activityLogService';
 import { stripJournalEditAuditSuffix, journalDescriptionForDisplay } from '@/app/utils/journalDescriptionDisplay';
 import { resolveRentalPaymentDisplay } from '@/app/lib/rentalPaymentRef';
+import {
+  isOrphanReceiptJournalEntry,
+  ORPHAN_RECEIPT_HIDE_HELP,
+} from '@/app/lib/orphanReceiptPolicy';
 
 function rowMethodToPaymentMethod(m: unknown): PaymentMethod {
   const x = String(m || '').toLowerCase();
@@ -581,54 +585,6 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     return Array.isArray(transaction.payment) ? transaction.payment[0] : transaction.payment;
   }, [transaction]);
 
-  const detailModalActions = useMemo(() => {
-    if (!transaction || !useTransactionActionPanel) return [];
-    const sourceOpen = getJournalEntrySourceDocumentOpenTarget({
-      id: String(transaction.id),
-      date: String(transaction.entry_date || ''),
-      description: String(transaction.description || ''),
-      amount: 0,
-      type: 'debit',
-      source: '',
-      metadata: {
-        referenceType: transaction.reference_type,
-        referenceId: transaction.reference_id,
-        paymentId: transaction.payment_id,
-      },
-    } as AccountingEntry);
-    return getTransactionActions(
-      {
-        reference_type: transaction.reference_type,
-        reference_id: transaction.reference_id,
-        payment_id: transaction.payment_id,
-        is_void: transaction.is_void,
-        payment_chain_is_historical: transaction.payment_chain_is_historical,
-        has_active_correction_reversal: txnHasActiveCorrectionReversal,
-        action_fingerprint: transaction.action_fingerprint,
-        description: transaction.description,
-        payment_chain_member_count: paymentChainMemberCount,
-        payment_obj: paymentForActions,
-      },
-      'detail_modal',
-      {
-        includeViewAction: false,
-        paymentChainBlockReason: paymentChainBlockReason,
-        sourceOpenTarget: sourceOpen,
-        allowStaleReversalVoid: canVoidStaleReversal,
-        staleReversalVoidEligible: staleReversalVoidEligible,
-      }
-    );
-  }, [
-    transaction,
-    useTransactionActionPanel,
-    txnHasActiveCorrectionReversal,
-    paymentChainMemberCount,
-    paymentChainBlockReason,
-    paymentForActions,
-    canVoidStaleReversal,
-    staleReversalVoidEligible,
-  ]);
-
   useEffect(() => {
     if (!companyId || !transaction?.id) {
       setStaleReversalVoidEligible(false);
@@ -914,6 +870,74 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     };
   }, [journalLines]);
 
+  const isOrphanReceipt = useMemo(() => {
+    if (!transaction) return false;
+    return isOrphanReceiptJournalEntry({
+      reference_type: transaction.reference_type,
+      payment_id: transaction.payment_id,
+      is_void: transaction.is_void,
+      journalLineCount: journalLines.length,
+    });
+  }, [transaction, journalLines.length]);
+
+  const orphanLinkedPaymentAmount = useMemo(() => {
+    if (!isOrphanReceipt) return 0;
+    const pay = Array.isArray(transaction?.payment) ? transaction?.payment[0] : transaction?.payment;
+    return Number(pay?.amount) || 0;
+  }, [isOrphanReceipt, transaction?.payment]);
+
+  const detailModalActions = useMemo(() => {
+    if (!transaction || !useTransactionActionPanel) return [];
+    const sourceOpen = getJournalEntrySourceDocumentOpenTarget({
+      id: String(transaction.id),
+      date: String(transaction.entry_date || ''),
+      description: String(transaction.description || ''),
+      amount: 0,
+      type: 'debit',
+      source: '',
+      metadata: {
+        referenceType: transaction.reference_type,
+        referenceId: transaction.reference_id,
+        paymentId: transaction.payment_id,
+      },
+    } as AccountingEntry);
+    return getTransactionActions(
+      {
+        reference_type: transaction.reference_type,
+        reference_id: transaction.reference_id,
+        payment_id: transaction.payment_id,
+        is_void: transaction.is_void,
+        payment_chain_is_historical: transaction.payment_chain_is_historical,
+        has_active_correction_reversal: txnHasActiveCorrectionReversal,
+        action_fingerprint: transaction.action_fingerprint,
+        description: transaction.description,
+        payment_chain_member_count: paymentChainMemberCount,
+        payment_obj: paymentForActions,
+        journal_line_count: journalLines.length,
+        is_orphan_receipt: isOrphanReceipt,
+      },
+      'detail_modal',
+      {
+        includeViewAction: false,
+        paymentChainBlockReason: paymentChainBlockReason,
+        sourceOpenTarget: sourceOpen,
+        allowStaleReversalVoid: canVoidStaleReversal,
+        staleReversalVoidEligible: staleReversalVoidEligible,
+      }
+    );
+  }, [
+    transaction,
+    useTransactionActionPanel,
+    txnHasActiveCorrectionReversal,
+    paymentChainMemberCount,
+    paymentChainBlockReason,
+    paymentForActions,
+    canVoidStaleReversal,
+    staleReversalVoidEligible,
+    journalLines.length,
+    isOrphanReceipt,
+  ]);
+
   const loadTransaction = async () => {
     if (!referenceNumber || !companyId) return;
 
@@ -1101,6 +1125,34 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     }
   };
 
+  const handleCancelOrphanReceipt = async () => {
+    if (!transaction || !companyId) return;
+    const paymentId =
+      transaction.payment_id ??
+      (Array.isArray(transaction.payment) ? transaction.payment[0]?.id : transaction.payment?.id);
+    if (!paymentId) {
+      toast.error('Orphan receipt has no linked payment id.');
+      return;
+    }
+    if (
+      !window.confirm(
+        'Hide this failed receipt attempt from normal reports? The payment record and audit history are kept; no GL lines were posted.',
+      )
+    ) {
+      return;
+    }
+    try {
+      const { cancelOrphanManualReceipt } = await import('@/app/services/orphanReceiptService');
+      await cancelOrphanManualReceipt({ companyId, paymentId: String(paymentId) });
+      toast.success('Orphan receipt hidden from operational views');
+      onClose();
+      dispatchAccountingEditCommitted();
+      await accounting.refreshEntries?.();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Could not hide orphan receipt');
+    }
+  };
+
   const handleUndoLastPaymentChange = async () => {
     if (!transaction || !companyId) return;
     const paymentId =
@@ -1154,6 +1206,9 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
       case 'cancel_payment':
       case 'cancel_entry':
         void run('Cancelling...', () => handleVoidJournal());
+        break;
+      case 'cancel_orphan':
+        void run('Hiding orphan...', () => handleCancelOrphanReceipt());
         break;
       case 'void_stale_reversal':
         void run('Removing...', () => handleVoidStaleReversal());
@@ -1378,6 +1433,19 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
           <div className="text-center py-12 text-gray-400">Loading transaction details...</div>
         ) : transaction ? (
           <div className="space-y-6">
+            {isOrphanReceipt ? (
+              <div className="rounded-lg border border-orange-600/45 bg-orange-950/35 px-3 py-2 text-sm text-orange-100/95 leading-relaxed space-y-1">
+                <p>
+                  <span className="font-semibold text-orange-200">Orphan / Posting failed — </span>
+                  Payment record exists
+                  {orphanLinkedPaymentAmount > 0
+                    ? ` (Rs ${orphanLinkedPaymentAmount.toLocaleString()})`
+                    : ''}{' '}
+                  but no posted double-entry lines were created.
+                </p>
+                <p className="text-xs text-orange-200/80">{ORPHAN_RECEIPT_HIDE_HELP}</p>
+              </div>
+            ) : null}
             {paymentChainBlockReason ? (
               <div className="rounded-lg border border-amber-600/45 bg-amber-950/35 px-3 py-2 text-sm text-amber-100/95 leading-relaxed">
                 <span className="font-semibold text-amber-200">Historical payment line — </span>

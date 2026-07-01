@@ -595,6 +595,28 @@ export const AccountingDashboard = () => {
     [accounting, runJournalMutation],
   );
 
+  const handleJournalCancelOrphan = useCallback(
+    (entryId: string) => {
+      if (!companyId) return;
+      runJournalMutation('Hiding orphan receipt...', async () => {
+        const entry = accounting.entries.find((e) => e.id === entryId);
+        const paymentId = entry?.metadata?.paymentId;
+        if (!paymentId) throw new Error('Orphan receipt has no linked payment id.');
+        if (
+          !window.confirm(
+            'Hide this failed receipt attempt from normal reports? The payment record and audit history are kept; no GL lines were posted.',
+          )
+        ) {
+          return;
+        }
+        const { cancelOrphanManualReceipt } = await import('@/app/services/orphanReceiptService');
+        await cancelOrphanManualReceipt({ companyId, paymentId });
+        await accounting.refreshEntries?.();
+      });
+    },
+    [accounting, companyId, runJournalMutation],
+  );
+
   useEffect(() => {
     setCurrentModule('accounting');
   }, [setCurrentModule]);
@@ -1622,10 +1644,16 @@ export const AccountingDashboard = () => {
                                       className={
                                         isReversal
                                           ? 'bg-amber-500/15 text-amber-200 border-amber-500/30 text-xs'
-                                          : 'bg-emerald-500/10 text-emerald-200 border-emerald-500/25 text-xs'
+                                          : entry.metadata?.isOrphanReceipt
+                                            ? 'bg-orange-500/15 text-orange-200 border-orange-500/30 text-xs'
+                                            : 'bg-emerald-500/10 text-emerald-200 border-emerald-500/25 text-xs'
                                       }
                                     >
-                                      {isReversal ? 'Reversal' : 'Posted'}
+                                      {isReversal
+                                        ? 'Reversal'
+                                        : entry.metadata?.isOrphanReceipt
+                                          ? 'Orphan / Posting failed'
+                                          : 'Posted'}
                                     </Badge>
                                     {entry.metadata?.paymentChainIsHistorical ? (
                                       <Badge className="bg-gray-700/80 text-gray-300 border-gray-600 text-[10px]">
@@ -1668,6 +1696,7 @@ export const AccountingDashboard = () => {
                                             chainMembers > 1 && !!entry.metadata?.paymentId,
                                           );
                                         }}
+                                        onCancelOrphan={handleJournalCancelOrphan}
                                         onCancelEntry={handleJournalCancelEntry}
                                         onViewTrace={() =>
                                           openJournalEntryDetail(entry, group.entries, { autoTrace: true })
@@ -1945,10 +1974,16 @@ export const AccountingDashboard = () => {
                                       className={
                                         isReversal
                                           ? 'bg-amber-500/15 text-amber-200 border-amber-500/30 text-xs'
-                                          : 'bg-emerald-500/10 text-emerald-200 border-emerald-500/25 text-xs'
+                                          : entry.metadata?.isOrphanReceipt
+                                            ? 'bg-orange-500/15 text-orange-200 border-orange-500/30 text-xs'
+                                            : 'bg-emerald-500/10 text-emerald-200 border-emerald-500/25 text-xs'
                                       }
                                     >
-                                      {isReversal ? 'Reversal' : 'Posted'}
+                                      {isReversal
+                                        ? 'Reversal'
+                                        : entry.metadata?.isOrphanReceipt
+                                          ? 'Orphan / Posting failed'
+                                          : 'Posted'}
                                     </Badge>
                                     {entry.metadata?.paymentChainIsHistorical ? (
                                       <Badge className="bg-gray-700/80 text-gray-300 border-gray-600 text-[10px]">
@@ -1992,6 +2027,7 @@ export const AccountingDashboard = () => {
                                             chainMembers > 1 && !!entry.metadata?.paymentId,
                                           );
                                         }}
+                                        onCancelOrphan={handleJournalCancelOrphan}
                                         onCancelEntry={handleJournalCancelEntry}
                                         onViewTrace={() => openJournalEntryDetail(entry, null, { autoTrace: true })}
                                         onViewAudit={() => openJournalEntryDetail(entry, null, { scrollAudit: true })}

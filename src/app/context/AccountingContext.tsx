@@ -36,6 +36,7 @@ import {
 import { logPaymentCreated } from '@/app/services/auditLogService';
 import { fetchInBatches } from '@/app/lib/chunkInQuery';
 import { mergeAttachmentLists, normalizeAttachmentList } from '@/app/utils/transactionAttachments';
+import { isOrphanReceiptJournalEntry } from '@/app/lib/orphanReceiptPolicy';
 
 /** Prefer source document branch (rental/sale/purchase) over session branch selector. */
 function resolvePostingBranchId(
@@ -221,6 +222,10 @@ export interface AccountingEntry {
     hasActiveCorrectionReversal?: boolean;
     /** Linked sales.status when JE references a sale document (sale / sale_reversal). */
     linkedSaleStatus?: string;
+    /** manual_receipt payment exists but no posted JE lines */
+    isOrphanReceipt?: boolean;
+    orphanReceiptStatus?: 'orphan_posting_failed';
+    linkedPaymentAmount?: number;
   };
 }
 
@@ -730,6 +735,21 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     metadata.journalEntryVoid = (journalEntry as { is_void?: boolean }).is_void === true;
     metadata.hasActiveCorrectionReversal =
       (journalEntry as { _has_active_correction_reversal?: boolean })._has_active_correction_reversal === true;
+    const linkedPaymentAmount = (journalEntry as { _payment_amount?: number })._payment_amount;
+    const orphanReceipt = isOrphanReceiptJournalEntry({
+      reference_type: journalEntry.reference_type,
+      payment_id: journalEntry.payment_id,
+      is_void: metadata.journalEntryVoid,
+      journalLineCount: activeLines.length,
+    });
+    if (orphanReceipt) {
+      metadata.isOrphanReceipt = true;
+      metadata.orphanReceiptStatus = 'orphan_posting_failed';
+      if (linkedPaymentAmount != null && linkedPaymentAmount > 0) {
+        metadata.linkedPaymentAmount = linkedPaymentAmount;
+        resolvedAmount = linkedPaymentAmount;
+      }
+    }
     const linkedSaleStatus = (journalEntry as { _linked_sale_status?: string })._linked_sale_status;
     if (linkedSaleStatus) metadata.linkedSaleStatus = linkedSaleStatus;
 

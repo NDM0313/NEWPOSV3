@@ -1126,9 +1126,10 @@ export const accountingService = {
         if (payKeyForOps) {
           const payRn = paymentRefNumberById.get(String(payKeyForOps));
           if (payRn) out._payment_reference_number = payRn;
+          const payRow = (paymentsList || []).find((p: any) => String(p.id) === String(payKeyForOps));
+          if (payRow?.amount != null) out._payment_amount = Number(payRow.amount) || 0;
           const linkedPayRt = paymentRefTypeByPaymentId.get(String(payKeyForOps));
           if (linkedPayRt === 'expense') {
-            const payRow = (paymentsList || []).find((p: any) => String(p.id) === String(payKeyForOps));
             if (payRow?.reference_id) {
               opExpenseNo = opExpenseNo || expenseNoById.get(String(payRow.reference_id));
             }
@@ -4328,7 +4329,33 @@ export const accountingService = {
       .from('journal_entry_lines')
       .insert(linesData);
 
-    if (linesError) throw linesError;
+    if (linesError) {
+      const nowIso = new Date().toISOString();
+      await supabase
+        .from('journal_entries')
+        .update({
+          is_void: true,
+          void_reason: 'posting_failed_rollback_no_lines',
+          voided_at: nowIso,
+        })
+        .eq('id', entryData.id)
+        .eq('company_id', entry.company_id);
+      throw linesError;
+    }
+
+    if (linesData.length < 2 || totalDebit <= 0 || totalCredit <= 0) {
+      const nowIso = new Date().toISOString();
+      await supabase
+        .from('journal_entries')
+        .update({
+          is_void: true,
+          void_reason: 'posting_failed_rollback_invalid_lines',
+          voided_at: nowIso,
+        })
+        .eq('id', entryData.id)
+        .eq('company_id', entry.company_id);
+      throw new Error('Journal entry must have at least two posted lines with non-zero totals.');
+    }
 
     // Header totals: DB trigger (migration 20260434) keeps these in sync; set explicitly so older DBs and
     // immediate reads after insert are correct.

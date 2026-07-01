@@ -21,6 +21,7 @@ export interface JournalRowTransactionActionsProps {
   onOpenSourceDocument: (entry: AccountingEntry) => void;
   onUndoLastChange: (paymentId: string) => void;
   onCancelPayment: (journalEntryId: string) => void;
+  onCancelOrphan?: (journalEntryId: string) => void;
   onCancelEntry: (journalEntryId: string) => void;
   onViewTrace: () => void;
   onViewAudit: () => void;
@@ -37,6 +38,7 @@ export function JournalRowTransactionActions({
   onOpenSourceDocument,
   onUndoLastChange,
   onCancelPayment,
+  onCancelOrphan,
   onCancelEntry,
   onViewTrace,
   onViewAudit,
@@ -74,6 +76,10 @@ export function JournalRowTransactionActions({
       }
       case 'cancel_payment':
         onCancelPayment(entry.id);
+        break;
+      case 'cancel_orphan':
+        if (onCancelOrphan) onCancelOrphan(entry.id);
+        else onCancelPayment(entry.id);
         break;
       case 'cancel_entry':
         onCancelEntry(entry.id);

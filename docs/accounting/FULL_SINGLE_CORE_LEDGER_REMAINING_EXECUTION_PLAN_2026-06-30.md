@@ -91,6 +91,21 @@ Fixture-only; no production data mutation. Post-refresh monitoring **PASS**.
 
 Evidence: [`reports/single-core-engine-stability-window-20260701/`](../reports/single-core-engine-stability-window-20260701/)
 
+## Stability Day 1 — web orphan receipt fix (2026-07-01)
+
+| Item | Status |
+|------|--------|
+| Issue | RCV-0081 / RCV-0082 — zero-line `manual_receipt` orphans from web retry |
+| Code fix | **COMPLETE** — atomic posting, duplicate guard, orphan UI + soft hide |
+| Production cleanup | **APPLIED** — soft void (no GL lines); audit reason recorded |
+| Pre-fix monitoring | **PASS** |
+| Post-fix monitoring | **FAIL** — DIN BRIDAL Roznamcha golden −90,000 PKR (orphan void removed phantom cash; TB still PASS) |
+| Migrations | **none** |
+| Feature flags | unchanged |
+| Frontend deploy | **deferred** — operator approval |
+
+Evidence: [`reports/web-payment-orphan-receipt-fix-stability-day1-20260701/`](../reports/web-payment-orphan-receipt-fix-stability-day1-20260701/)
+
 ## Exact next recommended phase
 
 1. **Daily monitoring** during stability window — `npm run monitor:three-company-unified-ledger`

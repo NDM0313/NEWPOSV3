@@ -151,8 +151,14 @@ Evidence:
 ### Priority 5 — R7/R8/4th company
 
 - R7 roznamcha_payment RPC: design-only / blocked.
-- R8 legacy engine retirement: blocked.
+- R8 legacy engine retirement: **blocked** (stability window active from 2026-07-01).
 - 4th company unified ledger rollout: needs separate finance sign-off.
+
+### Stability Day 1 — web orphan receipts (2026-07-01)
+
+- RCV-0081 / RCV-0082 soft-voided (zero-line `manual_receipt` orphans); code fix for atomic posting + duplicate guard.
+- No migrations; no new GL lines; soft hide only.
+- Evidence: [`reports/web-payment-orphan-receipt-fix-stability-day1-20260701/`](../reports/web-payment-orphan-receipt-fix-stability-day1-20260701/)
 
 ### Priority 7 — Accounting / GL backlog requiring fresh diagnostics
 

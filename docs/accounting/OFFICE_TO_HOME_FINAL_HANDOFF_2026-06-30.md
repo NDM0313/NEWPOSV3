@@ -135,6 +135,17 @@ Monitoring credentials: load from `erp-mobile-app/.env` (`$env:MONITORING_*` lin
 
 ---
 
+## 11. Stability Day 1 — web orphan receipt fix (2026-07-01)
+
+- **Issue:** RCV-0081 / RCV-0082 — duplicate failed web customer receipt retries (zero-line JE shells, Rs 45,000 each).
+- **Fix:** Code — atomic posting, duplicate guard, orphan detect/hide UI. Production — soft void both orphans (no GL lines).
+- **Delete semantics:** Hide from normal operational views; audit history preserved; not physical delete.
+- **Monitoring:** Pre-fix PASS; post-fix DIN BRIDAL Roznamcha golden −90k (phantom cash removed — expected after void).
+- **Deploy:** Frontend-only fix **not deployed** this run — awaiting operator approval.
+- **Evidence:** [`reports/web-payment-orphan-receipt-fix-stability-day1-20260701/`](../reports/web-payment-orphan-receipt-fix-stability-day1-20260701/)
+
+---
+
 ## 10. Key evidence paths
 
 | Run | Path |
@@ -144,6 +155,7 @@ Monitoring credentials: load from `erp-mobile-app/.env` (`$env:MONITORING_*` lin
 | DIN BRIDAL dry-run | [`reports/din-bridal-1100-dry-run-approval-20260630/`](../reports/din-bridal-1100-dry-run-approval-20260630/) |
 | OTP Phase B | [`reports/create-business-otp-phase-b-verify-20260630/`](../reports/create-business-otp-phase-b-verify-20260630/) |
 | Master remaining plan | [`FULL_SINGLE_CORE_LEDGER_REMAINING_EXECUTION_PLAN_2026-06-30.md`](FULL_SINGLE_CORE_LEDGER_REMAINING_EXECUTION_PLAN_2026-06-30.md) |
+| Web orphan receipt fix (stability day 1) | [`reports/web-payment-orphan-receipt-fix-stability-day1-20260701/`](../reports/web-payment-orphan-receipt-fix-stability-day1-20260701/) |
 | Office handoff (prior) | [`OFFICE_HANDOFF_2026-06-29_PARTY_DISCOUNT_SIGNUP_OTP_AND_REMAINING_TASKS.md`](OFFICE_HANDOFF_2026-06-29_PARTY_DISCOUNT_SIGNUP_OTP_AND_REMAINING_TASKS.md) |
 
 **Deploy status (BS/P&L):** **DEPLOYED** — frontend-only @ `db499995` via `deploy/vps-build-erp-only.sh` (2026-07-01). `origin/main` @ `42459bde`. No migrations; no GL mutations.

@@ -149,6 +149,29 @@ export async function createCustomerReceiptEntry(params: CreateCustomerReceiptPa
     created_by: uid,
   };
   if (attachments && attachments.length > 0) receiptPayload.attachments = attachments;
+
+  const { findRecentDuplicateManualReceipt, rollbackFailedCustomerReceiptAttempt } = await import(
+    '@/app/services/orphanReceiptService'
+  );
+  const duplicate = await findRecentDuplicateManualReceipt({
+    companyId,
+    customerId,
+    amount,
+    paymentDate,
+    paymentMethod: normalizePaymentMethod(paymentMethod),
+    paymentAccountId,
+  });
+  if (duplicate && !duplicate.isOrphan) {
+    throw new Error(
+      `Duplicate receipt already posted as ${duplicate.referenceNumber}. Open that receipt instead of creating a new one.`,
+    );
+  }
+  if (duplicate?.isOrphan) {
+    throw new Error(
+      `A failed receipt attempt ${duplicate.referenceNumber} already exists. Use Delete/Hide orphan on that row before retrying.`,
+    );
+  }
+
   const { data: paymentRow, error: payErr } = await supabase.from('payments').insert(receiptPayload).select('id').single();
   if (payErr) throw new Error(`Payment row failed: ${payErr.message}`);
   const paymentId = (paymentRow as { id: string }).id;
@@ -170,7 +193,20 @@ export async function createCustomerReceiptEntry(params: CreateCustomerReceiptPa
     { account_id: paymentAccountId, debit: amount, credit: 0, description: desc },
     { account_id: arId, debit: 0, credit: amount, description: desc },
   ];
-  const saved = await accountingService.createEntry(journalEntry, lines, paymentId);
+
+  let saved: Awaited<ReturnType<typeof accountingService.createEntry>>;
+  try {
+    saved = (await accountingService.createEntry(journalEntry, lines, paymentId)) as Awaited<
+      ReturnType<typeof accountingService.createEntry>
+    >;
+  } catch (postErr) {
+    try {
+      await rollbackFailedCustomerReceiptAttempt({ companyId, paymentId });
+    } catch (rollbackErr) {
+      console.warn('[AddEntryV2] Customer receipt rollback failed:', rollbackErr);
+    }
+    throw postErr;
+  }
 
   await applyManualReceiptAllocations({
     companyId,

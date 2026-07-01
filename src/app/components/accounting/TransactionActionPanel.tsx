@@ -19,6 +19,7 @@ const ACTION_ICONS: Partial<Record<TransactionActionId, React.ComponentType<{ cl
   view: Eye,
   edit: Edit,
   cancel_payment: RotateCcw,
+  cancel_orphan: RotateCcw,
   cancel_entry: RotateCcw,
   undo_last_change: Undo2,
   open_source_document: ExternalLink,
