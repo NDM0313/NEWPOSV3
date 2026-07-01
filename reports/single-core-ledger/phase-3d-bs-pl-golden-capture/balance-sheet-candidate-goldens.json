@@ -6,21 +6,21 @@
     "din-china": {
       "company": "DIN CHINA",
       "approvalStatus": "CANDIDATE_ONLY — NOT FINANCE APPROVED",
-      "asOfDate": "2026-06-29",
+      "asOfDate": "2026-07-01",
       "branchScope": "All branches",
       "previewBasis": "official_gl",
       "legacy": {
-        "totalAssets": 89754088.52,
+        "totalAssets": 89754087.52,
         "totalLiabilities": 2061978.400000006,
-        "totalEquity": 87692110.12,
-        "liabilitiesAndEquity": 89754088.52000001,
+        "totalEquity": 87692109.12,
+        "liabilitiesAndEquity": 89754087.52000001,
         "difference": 0
       },
       "unifiedPreview": {
-        "totalAssets": 89754088.52,
+        "totalAssets": 89754087.52,
         "totalLiabilities": 2061978.4,
-        "totalEquity": 87692110.12,
-        "liabilitiesAndEquity": 89754088.52,
+        "totalEquity": 87692109.12,
+        "liabilitiesAndEquity": 89754087.52,
         "difference": 0
       },
       "compareDeltas": {
@@ -32,7 +32,7 @@
       },
       "comparePass": true,
       "zeroDiff": true,
-      "netIncomeInPreview": 8465731.87,
+      "netIncomeInPreview": 8465730.87,
       "retainedEarningsWarning": false,
       "needsAccountingRuleConfirmation": true,
       "accountingRuleNotes": [
@@ -46,7 +46,7 @@
     "din-bridal": {
       "company": "DIN BRIDAL",
       "approvalStatus": "CANDIDATE_ONLY — NOT FINANCE APPROVED",
-      "asOfDate": "2026-06-29",
+      "asOfDate": "2026-07-01",
       "branchScope": "All branches",
       "previewBasis": "official_gl",
       "legacy": {
@@ -86,7 +86,7 @@
     "din-couture": {
       "company": "DIN COUTURE",
       "approvalStatus": "CANDIDATE_ONLY — NOT FINANCE APPROVED",
-      "asOfDate": "2026-06-29",
+      "asOfDate": "2026-07-01",
       "branchScope": "All branches",
       "previewBasis": "official_gl",
       "legacy": {

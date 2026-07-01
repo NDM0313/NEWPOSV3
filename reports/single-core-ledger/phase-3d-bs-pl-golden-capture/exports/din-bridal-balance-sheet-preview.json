@@ -1,7 +1,7 @@
 {
   "phase": "3A",
   "screen": "balance_sheet",
-  "asOfDate": "2026-06-29",
+  "asOfDate": "2026-07-01",
   "branchLabel": "All branches",
   "previewBasis": "official_gl",
   "engineState": {
@@ -38,7 +38,7 @@
   "preview": {
     "previewOnly": true,
     "needsFinanceGoldenApproval": true,
-    "asOfDate": "2026-06-29",
+    "asOfDate": "2026-07-01",
     "totalAssets": 13521792,
     "totalLiabilities": -547191,
     "totalEquity": 14068983,
@@ -60,7 +60,7 @@
     "basis": "official_gl",
     "featureFlagEnabled": true,
     "shadowForce": true,
-    "queryDurationMs": 601.8000000119209,
+    "queryDurationMs": 520.6999999997206,
     "rowCount": 109,
     "periodOpeningBalance": 0
   },
@@ -69,6 +69,6 @@
     "Net income folded into equity per legacy BS-FIX / PF-04 rules.",
     "NEEDS_ACCOUNTING_RULE_CONFIRMATION — compare with finance before loader swap."
   ],
-  "exportedAt": "2026-06-29T10:53:32.139Z",
+  "exportedAt": "2026-07-01T07:24:29.095Z",
   "note": "PREVIEW_ONLY — legacy Balance Sheet table remains authoritative. NEEDS_FINANCE_GOLDEN_APPROVAL."
 }

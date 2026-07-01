@@ -35,11 +35,12 @@
 [`reports/din-bridal-1100-option-c-apply-20260630/`](../reports/din-bridal-1100-option-c-apply-20260630/)  
 [`reports/final-office-home-handoff-20260630/`](../reports/final-office-home-handoff-20260630/)  
 [`OFFICE_TO_HOME_FINAL_HANDOFF_2026-06-30.md`](OFFICE_TO_HOME_FINAL_HANDOFF_2026-06-30.md)  
-[`reports/office-resume-bs-pl-approval-20260701/`](../reports/office-resume-bs-pl-approval-20260701/)
+[`reports/office-resume-bs-pl-approval-20260701/`](../reports/office-resume-bs-pl-approval-20260701/)  
+[`reports/bs-pl-din-bridal-post-1100-recapture-20260701/`](../reports/bs-pl-din-bridal-post-1100-recapture-20260701/)
 
 ## Exact next recommended phase
 
 1. **BS/P&L finance approval** — review pack; sign template; **no swap until signed**
-2. **DIN BRIDAL BS/P&L re-capture** recommended before DIN BRIDAL swap (post–1100 apply)
+2. **DIN BRIDAL BS/P&L re-capture** — **DONE** 2026-07-01 (`ZERO_DIFF_READY_FOR_FINANCE_REVIEW`); sign template for loader swap
 
 Do **not** auto-run loader swaps, GL repairs, supplier JE, mobile release, or R8 retirement.

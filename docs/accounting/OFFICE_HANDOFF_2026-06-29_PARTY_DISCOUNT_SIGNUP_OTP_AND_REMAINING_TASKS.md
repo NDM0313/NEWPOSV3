@@ -204,7 +204,7 @@ Do not repair/apply without dry-run + operator approval.
 
 ## 6. Exact next office action
 
-1. **BS/P&L finance sign-off** — review [`reports/office-resume-bs-pl-approval-20260701/bs-pl-finance-approval-pack.md`](../reports/office-resume-bs-pl-approval-20260701/bs-pl-finance-approval-pack.md); sign template; **no loader swap until signed**.
+1. **BS/P&L finance sign-off** — DIN BRIDAL post-1100 recapture **ZERO_DIFF** (2026-07-01); sign template; **no loader swap until signed**.
 2. Do **not** post supplier `party_discount` JE without separate operator approval.
 
 **Office resume (2026-07-01):** Home machine skipped; office synced at `b9a630ef`; baseline PASS; BS/P&L pack prepared only.

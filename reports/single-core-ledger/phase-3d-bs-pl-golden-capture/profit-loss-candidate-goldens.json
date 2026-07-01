@@ -8,7 +8,7 @@
       "approvalStatus": "CANDIDATE_ONLY — NOT FINANCE APPROVED",
       "period": {
         "startDate": "2000-01-01",
-        "endDate": "2026-06-29"
+        "endDate": "2026-07-01"
       },
       "branchScope": "All branches",
       "previewBasis": "official_gl",
@@ -16,15 +16,15 @@
         "revenue": 49040015,
         "costOfSales": 39299479.13,
         "grossProfit": 9740535.869999997,
-        "expenses": 1274804,
-        "netProfit": 8465731.869999997
+        "expenses": 1274805,
+        "netProfit": 8465730.869999997
       },
       "unifiedPreview": {
         "revenue": 49040015,
         "costOfSales": 39299479.13,
         "grossProfit": 9740535.87,
-        "expenses": 1274804,
-        "netProfit": 8465731.87
+        "expenses": 1274805,
+        "netProfit": 8465730.87
       },
       "compareDeltas": {
         "revenueDelta": 0,
@@ -50,7 +50,7 @@
       "approvalStatus": "CANDIDATE_ONLY — NOT FINANCE APPROVED",
       "period": {
         "startDate": "2000-01-01",
-        "endDate": "2026-06-29"
+        "endDate": "2026-07-01"
       },
       "branchScope": "All branches",
       "previewBasis": "official_gl",
@@ -92,7 +92,7 @@
       "approvalStatus": "CANDIDATE_ONLY — NOT FINANCE APPROVED",
       "period": {
         "startDate": "2000-01-01",
-        "endDate": "2026-06-29"
+        "endDate": "2026-07-01"
       },
       "branchScope": "All branches",
       "previewBasis": "official_gl",

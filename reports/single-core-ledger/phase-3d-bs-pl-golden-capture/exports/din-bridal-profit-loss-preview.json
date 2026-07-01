@@ -2,7 +2,7 @@
   "phase": "3A",
   "screen": "profit_loss",
   "startDate": "2000-01-01",
-  "endDate": "2026-06-29",
+  "endDate": "2026-07-01",
   "branchLabel": "All branches",
   "previewBasis": "official_gl",
   "engineState": {
@@ -38,7 +38,7 @@
     "previewOnly": true,
     "needsFinanceGoldenApproval": true,
     "startDate": "2000-01-01",
-    "endDate": "2026-06-29",
+    "endDate": "2026-07-01",
     "totalRevenue": 354500,
     "totalCostOfSales": 49028,
     "grossProfit": 305472,
@@ -58,7 +58,7 @@
     "basis": "official_gl",
     "featureFlagEnabled": true,
     "shadowForce": true,
-    "queryDurationMs": 607.3999999761581,
+    "queryDurationMs": 519.2000000001863,
     "rowCount": 109,
     "periodOpeningBalance": 0
   },
@@ -67,6 +67,6 @@
     "COGS split uses COST_OF_PRODUCTION_CODES + type heuristics (mirrors legacy).",
     "NEEDS_RULE_CONFIRMATION — finance must approve COGS mapping before loader swap."
   ],
-  "exportedAt": "2026-06-29T10:53:59.664Z",
+  "exportedAt": "2026-07-01T07:24:53.128Z",
   "note": "PREVIEW_ONLY — legacy P&L remains authoritative. COGS heuristic NEEDS_RULE_CONFIRMATION."
 }

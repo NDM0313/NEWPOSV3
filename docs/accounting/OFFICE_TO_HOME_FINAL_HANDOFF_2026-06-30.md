@@ -80,7 +80,7 @@
 
 | Task | Status |
 |------|--------|
-| **BS/P&L finance approval pack** | **PREPARED** 2026-07-01 — review only; **loader swap BLOCKED** |
+| **BS/P&L finance approval pack** | **PREPARED** — DIN BRIDAL post-1100 recapture **ZERO_DIFF** (2026-07-01); loader swap **BLOCKED** |
 | Cash Flow 3B-M | LIVE — rollback only with written approval |
 | Supplier Party Discount PKR 1 | **Not approved** — separate operator approval required |
 | Mobile parity plan | Plan only — APK QA when approved |
@@ -120,7 +120,7 @@ Monitoring credentials: load from `erp-mobile-app/.env` (`$env:MONITORING_*` lin
 
 ## 9. Exact next recommended action
 
-**Wait for signed BS/P&L finance/operator approval.** Review [`bs-pl-finance-approval-pack.md`](../reports/office-resume-bs-pl-approval-20260701/bs-pl-finance-approval-pack.md). Do **not** run BS/P&L loader swap automatically.
+**Wait for signed BS/P&L finance/operator approval.** DIN BRIDAL post-1100 BS/P&L recapture is **ZERO_DIFF** (2026-07-01). Review [`bs-pl-finance-approval-pack.md`](../reports/office-resume-bs-pl-approval-20260701/bs-pl-finance-approval-pack.md). Do **not** run loader swap automatically.
 
 ### Office resume (2026-07-01)
 

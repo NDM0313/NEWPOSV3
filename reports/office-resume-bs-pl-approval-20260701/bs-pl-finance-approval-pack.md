@@ -20,7 +20,7 @@ Legacy BS/P&L remain **authoritative** for all three companies. Unified preview 
 
 ## 2. Unified-ready vs live
 
-- **Unified-ready:** Preview mappers, diff logic, and Phase 3D candidate captures exist; 6/6 zero-diff at section totals (2026-06-29 capture).
+- **Unified-ready:** Preview mappers, diff logic, and Phase 3D candidate captures exist; **7/7 zero-diff** at section totals (2026-07-01 refresh includes DIN BRIDAL post-1100).
 - **Not live:** No `unified_ledger_loader_balance_sheet` or `unified_ledger_loader_profit_loss` flags enabled on any company.
 - **Swap would change:** Main data source on BS/P&L screens from legacy services to unified TB-derived preview loaders (same pattern as Cash Flow 3B-M).
 
@@ -55,8 +55,8 @@ When approved and executed (separate phase):
 
 | Risk | Detail |
 |------|--------|
-| **Stale capture** | Phase 3D goldens captured **before** 1100 Option C apply (JV-000209/210 on 2026-06-30) |
-| AR reclass | Control 1100 cleared; AR sub-ledgers realigned — BS section totals may still zero-diff but **fresh capture required** before swap |
+| **Post-1100 capture** | **DONE 2026-07-01** — `ZERO_DIFF_READY_FOR_FINANCE_REVIEW` after JV-000209/210 |
+| AR reclass | Control 1100 cleared; section totals unchanged vs pre-apply capture (AR sub-ledger reclass only) |
 | Negative liabilities | BS shows liabilities PKR -547,191 (legacy presentation) — finance must accept |
 | TB golden refreshed | Post-correction TB monitoring golden = 22,056,075 (separate from BS/P&L gate) |
 
@@ -74,9 +74,9 @@ When approved and executed (separate phase):
 
 | Item | Status |
 |------|--------|
-| Phase 3D section-total compare | 6/6 ZERO-DIFF (2026-06-29) |
+| Phase 3D section-total compare | 6/6 ZERO-DIFF (2026-07-01 refresh) |
 | Line-level BS/P&L compare | Not in Phase 2.16 monitoring gate |
-| Post–DIN BRIDAL 1100 BS/P&L re-capture | **NOT DONE** — required before DIN BRIDAL swap sign-off |
+| Post–DIN BRIDAL 1100 BS/P&L re-capture | **DONE** — `ZERO_DIFF_READY_FOR_FINANCE_REVIEW` ([`din-bridal-bs-pl-compare.md`](../bs-pl-din-bridal-post-1100-recapture-20260701/din-bridal-bs-pl-compare.md)) |
 | Finance approval manifest | PENDING |
 | Admin Compare BS/P&L batch | Not in current 9/9 pilot batch |
 
@@ -88,7 +88,7 @@ When approved and executed (separate phase):
 2. Confirm BS equity rollup rule (net income → equity).
 3. Confirm P&L COGS heuristic mapping matches business expectation.
 4. Accept DIN COUTURE negative equity and DIN BRIDAL negative-liability presentation if unchanged.
-5. **Re-capture DIN BRIDAL BS/P&L preview** after 1100 correction before approving DIN BRIDAL swap.
+5. ~~Re-capture DIN BRIDAL BS/P&L preview after 1100 correction~~ — **SATISFIED** (2026-07-01).
 6. Sign written approval template (see `future-bs-pl-loader-swap-approval-template.md`).
 
 ---
@@ -118,9 +118,34 @@ When approved and executed (separate phase):
 **KEEP BLOCKED** until:
 
 - Finance completes rule confirmations (BS equity rollup + P&L COGS).
-- DIN BRIDAL BS/P&L preview re-captured post–1100 correction.
 - Operator signs `future-bs-pl-loader-swap-approval-template.md`.
 - Separate loader-swap execution phase approved (not this docs-only run).
+
+---
+
+## 11. DIN BRIDAL post-1100 recapture — 2026-07-01
+
+**Classification:** `ZERO_DIFF_READY_FOR_FINANCE_REVIEW`  
+**Evidence:** [`reports/bs-pl-din-bridal-post-1100-recapture-20260701/`](../bs-pl-din-bridal-post-1100-recapture-20260701/)
+
+### Balance Sheet summary (as at 2026-07-01)
+
+| Metric | Legacy | Unified | Δ |
+|--------|--------|---------|---|
+| Total Assets | PKR 13,521,792 | PKR 13,521,792 | 0 |
+| Total Liabilities | PKR -547,191 | PKR -547,191 | 0 |
+| Total Equity | PKR 14,068,983 | PKR 14,068,983 | 0 |
+
+### P&L summary (2000-01-01 → 2026-07-01)
+
+| Metric | Legacy | Unified | Δ |
+|--------|--------|---------|---|
+| Revenue | PKR 354,500 | PKR 354,500 | 0 |
+| Cost of Sales | PKR 49,028 | PKR 49,028 | 0 |
+| Net Profit | PKR 119,992 | PKR 119,992 | 0 |
+
+**Fresh capture prerequisite:** **SATISFIED** for DIN BRIDAL.  
+**Loader swap status:** **BLOCKED** — finance rule confirmations + signed approval still required.
 
 ---
 
@@ -135,3 +160,4 @@ See: [`future-bs-pl-loader-swap-approval-template.md`](future-bs-pl-loader-swap-
 - Phase 3D capture: `reports/single-core-ledger/phase-3d-bs-pl-golden-capture/`
 - Prior draft: `reports/remaining-tasks-start-20260630/bs-pl-loader-swap-approval-pack.md`
 - Office resume pack: `reports/office-resume-bs-pl-approval-20260701/`
+- DIN BRIDAL post-1100 recapture: `reports/bs-pl-din-bridal-post-1100-recapture-20260701/`

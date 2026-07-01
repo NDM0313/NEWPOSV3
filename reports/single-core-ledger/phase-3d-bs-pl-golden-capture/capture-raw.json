@@ -2,7 +2,7 @@
   "phase": "3D",
   "run": "BS/P&L candidate golden capture",
   "productionUrl": "https://erp.dincouture.pk",
-  "capturedAt": "2026-06-29T10:50:03.438Z",
+  "capturedAt": "2026-07-01T07:21:16.778Z",
   "approvalStatus": "CANDIDATE_ONLY — NOT FINANCE APPROVED",
   "companies": {
     "din-china": {
@@ -20,7 +20,7 @@
       },
       "balanceSheet": {
         "status": "CAPTURED",
-        "asOfDate": "2026-06-29",
+        "asOfDate": "2026-07-01",
         "branchScope": "All Branches",
         "legacy": {
           "totalAssets": null,
@@ -63,7 +63,7 @@
       "profitLoss": {
         "status": "CAPTURED",
         "startDate": "2000-01-01",
-        "endDate": "2026-06-29",
+        "endDate": "2026-07-01",
         "branchScope": "All Branches",
         "legacy": {
           "totalAssets": null,
@@ -119,7 +119,7 @@
       },
       "balanceSheet": {
         "status": "CAPTURED",
-        "asOfDate": "2026-06-29",
+        "asOfDate": "2026-07-01",
         "branchScope": "All Branches",
         "legacy": {
           "totalAssets": null,
@@ -162,7 +162,7 @@
       "profitLoss": {
         "status": "CAPTURED",
         "startDate": "2000-01-01",
-        "endDate": "2026-06-29",
+        "endDate": "2026-07-01",
         "branchScope": "All Branches",
         "legacy": {
           "totalAssets": null,
@@ -218,7 +218,7 @@
       },
       "balanceSheet": {
         "status": "CAPTURED",
-        "asOfDate": "2026-06-29",
+        "asOfDate": "2026-07-01",
         "branchScope": "All Branches",
         "legacy": {
           "totalAssets": null,
@@ -261,7 +261,7 @@
       "profitLoss": {
         "status": "CAPTURED",
         "startDate": "2000-01-01",
-        "endDate": "2026-06-29",
+        "endDate": "2026-07-01",
         "branchScope": "All Branches",
         "legacy": {
           "totalAssets": null,
