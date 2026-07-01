@@ -204,8 +204,8 @@ Do not repair/apply without dry-run + operator approval.
 
 ## 6. Exact next office action
 
-1. **On-device QA** — internal debug APK built 2026-07-01 (`DEVICE_QA_PENDING`); install from `erp-mobile-app/releases/internal-qa/20260701/`
-2. **Public release / Play Store** — separate operator approval required
+1. **On-device QA** — **BLOCKED** (no adb device 2026-07-01). Connect Android device and install debug APK from `erp-mobile-app/releases/internal-qa/20260701/`
+2. **Public release / Play Store** — separate operator approval required (only after device QA passes)
 3. **Supplier Party Discount PKR 1 QA** — separate operator approval required
 
 **BS/P&L swap:** **COMPLETE** 2026-07-01. Evidence: [`reports/bs-pl-runtime-wiring-swap-20260701/`](../reports/bs-pl-runtime-wiring-swap-20260701/)
