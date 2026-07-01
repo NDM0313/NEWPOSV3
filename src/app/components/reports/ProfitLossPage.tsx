@@ -21,6 +21,16 @@ import { useUnifiedLedgerEngineState } from '@/app/hooks/useUnifiedLedgerEngineS
 import { loadProfitLossUnifiedPreview } from '@/app/services/bsPlUnifiedPreviewService';
 import type { ProfitLossUnifiedPreviewLoadResult } from '@/app/services/bsPlUnifiedPreviewService';
 import { ProfitLossUnifiedPreviewPanel } from '@/app/components/accounting/ProfitLossUnifiedPreviewPanel';
+import {
+  effectiveProfitLossMainLoaderSource,
+  resolveProfitLossMainLoaderSource,
+} from '@/app/lib/accounting/resolveProfitLossMainLoaderSource';
+import { resolveProfitLossPreviewCompareSource } from '@/app/lib/accounting/resolveProfitLossPreviewCompareSource';
+import { UNIFIED_LEDGER_SCREEN_IDS } from '@/app/lib/unifiedLedgerScreenFlags';
+import {
+  loadProfitLossUnifiedMain,
+  profitLossResultToPreviewShape,
+} from '@/app/services/bsPlUnifiedMainService';
 
 const toExport = (
   r: ProfitLossResult,
@@ -81,6 +91,7 @@ export const ProfitLossPage: React.FC<{
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [fetchRetryKey, setFetchRetryKey] = useState(0);
+  const [mainLoaderSource, setMainLoaderSource] = useState<'legacy' | 'unified'>('legacy');
   const [comparePeriod, setComparePeriod] = useState<'none' | 'prior-month' | 'prior-quarter'>('none');
 
   const showUnifiedPreviewTools = canAccessBsPlUnifiedPreview(userRole);
@@ -92,33 +103,14 @@ export const ProfitLossPage: React.FC<{
   const [previewError, setPreviewError] = useState<string | null>(null);
 
   const { state: engineState } = useUnifiedLedgerEngineState(companyId, {
+    screenId: UNIFIED_LEDGER_SCREEN_IDS.PROFIT_LOSS,
     screenPreview: unifiedPreviewEnabled,
   });
 
-  const compareOptions = useMemo(() => {
-    if (comparePeriod === 'none') return undefined;
-    return getCompareDates(startDate, endDate, comparePeriod === 'prior-quarter' ? 'prior-quarter' : 'prior-month');
-  }, [startDate, endDate, comparePeriod]);
-
-  useEffect(() => {
-    if (!companyId || !startDate || !endDate) {
-      if (!companyId) setLoading(true);
-      return;
-    }
-    setLoading(true);
-    setFetchError(null);
-    const options = compareOptions ? { compareStartDate: compareOptions.compareStart, compareEndDate: compareOptions.compareEnd } : undefined;
-    accountingReportsService
-      .getProfitLoss(companyId, startDate, endDate, branchId, options)
-      .then(setData)
-      .catch((err) => {
-        const msg = err instanceof Error ? err.message : 'Failed to load profit & loss';
-        setFetchError(msg);
-        toast.error(msg);
-        setData(null);
-      })
-      .finally(() => setLoading(false));
-  }, [companyId, startDate, endDate, branchId, compareOptions?.compareStart, compareOptions?.compareEnd, fetchRetryKey]);
+  const previewCompareSource = useMemo(
+    () => resolveProfitLossPreviewCompareSource(mainLoaderSource),
+    [mainLoaderSource],
+  );
 
   const loadUnifiedPreview = useCallback(async () => {
     if (!companyId || !data || !unifiedPreviewEnabled) {
@@ -130,6 +122,40 @@ export const ProfitLossPage: React.FC<{
     setPreviewLoading(true);
     setPreviewError(null);
     try {
+      if (previewCompareSource === 'legacy_shadow') {
+        const legacy = await accountingReportsService.getProfitLoss(
+          companyId,
+          data.startDate,
+          data.endDate,
+          branchId,
+        );
+        const previewShape = profitLossResultToPreviewShape(data);
+        setPreviewLoadResult({
+          preview: previewShape,
+          tbPreview: {
+            rows: [],
+            accounts: [],
+            totalDebit: 0,
+            totalCredit: 0,
+            difference: 0,
+            basis: previewBasis,
+            rpcScope: { branchId: null, asOfDate: data.endDate },
+            meta: {
+              engine: 'unified_shadow',
+              basis: previewBasis,
+              featureFlagEnabled: true,
+              shadowForce: false,
+              queryDurationMs: 0,
+              rowCount: 0,
+              periodOpeningBalance: 0,
+            },
+          },
+          basis: previewBasis,
+        });
+        setPreviewDiff(compareProfitLossUnifiedPreview({ legacy, preview: previewShape }));
+        return;
+      }
+
       const result = await loadProfitLossUnifiedPreview({
         companyId,
         startDate: data.startDate,
@@ -156,7 +182,7 @@ export const ProfitLossPage: React.FC<{
     } finally {
       setPreviewLoading(false);
     }
-  }, [companyId, data, unifiedPreviewEnabled, branchId, previewBasis]);
+  }, [companyId, data, unifiedPreviewEnabled, branchId, previewBasis, previewCompareSource]);
 
   useEffect(() => {
     if (!unifiedPreviewEnabled) {
@@ -167,6 +193,76 @@ export const ProfitLossPage: React.FC<{
     }
     void loadUnifiedPreview();
   }, [unifiedPreviewEnabled, loadUnifiedPreview]);
+
+  const compareOptions = useMemo(() => {
+    if (comparePeriod === 'none') return undefined;
+    return getCompareDates(startDate, endDate, comparePeriod === 'prior-quarter' ? 'prior-quarter' : 'prior-month');
+  }, [startDate, endDate, comparePeriod]);
+
+  useEffect(() => {
+    if (!companyId || !startDate || !endDate) {
+      if (!companyId) setLoading(true);
+      return;
+    }
+    setLoading(true);
+    setFetchError(null);
+    (async () => {
+      try {
+        const resolved = await resolveProfitLossMainLoaderSource(companyId);
+        const mainSource = effectiveProfitLossMainLoaderSource(resolved);
+        setMainLoaderSource(mainSource);
+
+        const compareArgs = compareOptions
+          ? { compareStartDate: compareOptions.compareStart, compareEndDate: compareOptions.compareEnd }
+          : {};
+
+        if (mainSource === 'unified') {
+          try {
+            const unified = await loadProfitLossUnifiedMain({
+              companyId,
+              startDate,
+              endDate,
+              branchId,
+              basis: previewBasis,
+              ...compareArgs,
+            });
+            setData(unified);
+            return;
+          } catch (unifiedErr) {
+            console.warn('Unified P&L main loader failed; falling back to legacy.', unifiedErr);
+          }
+        }
+
+        const legacy = await accountingReportsService.getProfitLoss(
+          companyId,
+          startDate,
+          endDate,
+          branchId,
+          compareArgs.compareStartDate && compareArgs.compareEndDate ? compareArgs : undefined,
+        );
+        setData(legacy);
+        if (mainSource === 'unified') {
+          setMainLoaderSource('legacy');
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Failed to load profit & loss';
+        setFetchError(msg);
+        toast.error(msg);
+        setData(null);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [
+    companyId,
+    startDate,
+    endDate,
+    branchId,
+    compareOptions?.compareStart,
+    compareOptions?.compareEnd,
+    fetchRetryKey,
+    previewBasis,
+  ]);
 
   const exportPeriodLabel = `${data?.startDate ?? startDate} to ${data?.endDate ?? endDate}`;
   const branchLabel = branchId && branchId !== 'all' ? 'Branch scope' : 'All branches';
@@ -210,7 +306,7 @@ export const ProfitLossPage: React.FC<{
   const comp = data.comparison;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-profit-loss-main-loader={mainLoaderSource}>
       <ReportBasisBanner
         basis="official_gl"
         detail='Reports Overview "operational flow" uses documents — do not compare without reading both labels.'

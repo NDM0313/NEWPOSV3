@@ -20,7 +20,7 @@ import type { TrialBalanceUnifiedPreviewResult } from '@/app/services/trialBalan
 
 const BS_LIFETIME_START = '1900-01-01';
 
-async function fetchActiveAccounts(companyId: string): Promise<BsPlAccountMeta[]> {
+export async function fetchActiveAccountsForBsPl(companyId: string): Promise<BsPlAccountMeta[]> {
   let { data: accounts, error } = await supabase
     .from('accounts')
     .select('id, code, name, type, parent_id, is_group')
@@ -71,7 +71,7 @@ export async function loadBalanceSheetUnifiedPreview(params: {
     return { preview: null, tbPreview, basis };
   }
 
-  const accounts = await fetchActiveAccounts(params.companyId);
+  const accounts = await fetchActiveAccountsForBsPl(params.companyId);
   const preview = mapTrialBalanceToBalanceSheetPreview({
     tb: tbPreview,
     accounts,

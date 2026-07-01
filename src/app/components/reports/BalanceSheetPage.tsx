@@ -33,6 +33,16 @@ import { useUnifiedLedgerEngineState } from '@/app/hooks/useUnifiedLedgerEngineS
 import { loadBalanceSheetUnifiedPreview } from '@/app/services/bsPlUnifiedPreviewService';
 import type { BalanceSheetUnifiedPreviewLoadResult } from '@/app/services/bsPlUnifiedPreviewService';
 import { BalanceSheetUnifiedPreviewPanel } from '@/app/components/accounting/BalanceSheetUnifiedPreviewPanel';
+import {
+  effectiveBalanceSheetMainLoaderSource,
+  resolveBalanceSheetMainLoaderSource,
+} from '@/app/lib/accounting/resolveBalanceSheetMainLoaderSource';
+import { resolveBalanceSheetPreviewCompareSource } from '@/app/lib/accounting/resolveBalanceSheetPreviewCompareSource';
+import { UNIFIED_LEDGER_SCREEN_IDS } from '@/app/lib/unifiedLedgerScreenFlags';
+import {
+  balanceSheetResultToPreviewShape,
+  loadBalanceSheetUnifiedMain,
+} from '@/app/services/bsPlUnifiedMainService';
 
 // Group account items into standard Balance Sheet subgroups with subtotals
 type GroupKey = string;
@@ -274,6 +284,7 @@ export const BalanceSheetPage: React.FC<{
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [fetchRetryKey, setFetchRetryKey] = useState(0);
+  const [mainLoaderSource, setMainLoaderSource] = useState<'legacy' | 'unified'>('legacy');
   const [partyKind, setPartyKind] = useState<'ar' | 'ap' | null>(null);
   const [partyLoading, setPartyLoading] = useState(false);
   const [partyBreakdown, setPartyBreakdown] = useState<ControlAccountBreakdownResult | null>(null);
@@ -287,8 +298,14 @@ export const BalanceSheetPage: React.FC<{
   const [previewError, setPreviewError] = useState<string | null>(null);
 
   const { state: engineState } = useUnifiedLedgerEngineState(companyId, {
+    screenId: UNIFIED_LEDGER_SCREEN_IDS.BALANCE_SHEET,
     screenPreview: unifiedPreviewEnabled,
   });
+
+  const previewCompareSource = useMemo(
+    () => resolveBalanceSheetPreviewCompareSource(mainLoaderSource),
+    [mainLoaderSource],
+  );
 
   const loadUnifiedPreview = useCallback(async () => {
     if (!companyId || !data || !unifiedPreviewEnabled) {
@@ -300,6 +317,35 @@ export const BalanceSheetPage: React.FC<{
     setPreviewLoading(true);
     setPreviewError(null);
     try {
+      if (previewCompareSource === 'legacy_shadow') {
+        const legacy = await accountingReportsService.getBalanceSheet(companyId, data.asOfDate, branchId);
+        const previewShape = balanceSheetResultToPreviewShape(data);
+        setPreviewLoadResult({
+          preview: previewShape,
+          tbPreview: {
+            rows: [],
+            accounts: [],
+            totalDebit: 0,
+            totalCredit: 0,
+            difference: 0,
+            basis: previewBasis,
+            rpcScope: { branchId: null, asOfDate: data.asOfDate },
+            meta: {
+              engine: 'unified_shadow',
+              basis: previewBasis,
+              featureFlagEnabled: true,
+              shadowForce: false,
+              queryDurationMs: 0,
+              rowCount: 0,
+              periodOpeningBalance: 0,
+            },
+          },
+          basis: previewBasis,
+        });
+        setPreviewDiff(compareBalanceSheetUnifiedPreview({ legacy, preview: previewShape }));
+        return;
+      }
+
       const result = await loadBalanceSheetUnifiedPreview({
         companyId,
         asOfDate: data.asOfDate,
@@ -325,7 +371,7 @@ export const BalanceSheetPage: React.FC<{
     } finally {
       setPreviewLoading(false);
     }
-  }, [companyId, data, unifiedPreviewEnabled, branchId, previewBasis]);
+  }, [companyId, data, unifiedPreviewEnabled, branchId, previewBasis, previewCompareSource]);
 
   useEffect(() => {
     if (!unifiedPreviewEnabled) {
@@ -344,17 +390,42 @@ export const BalanceSheetPage: React.FC<{
     }
     setLoading(true);
     setFetchError(null);
-    accountingReportsService
-      .getBalanceSheet(companyId, asOfDate, branchId)
-      .then(setData)
-      .catch((err) => {
+    (async () => {
+      try {
+        const resolved = await resolveBalanceSheetMainLoaderSource(companyId);
+        const mainSource = effectiveBalanceSheetMainLoaderSource(resolved);
+        setMainLoaderSource(mainSource);
+
+        if (mainSource === 'unified') {
+          try {
+            const unified = await loadBalanceSheetUnifiedMain({
+              companyId,
+              asOfDate,
+              branchId,
+              basis: previewBasis,
+            });
+            setData(unified);
+            return;
+          } catch (unifiedErr) {
+            console.warn('Unified Balance Sheet main loader failed; falling back to legacy.', unifiedErr);
+          }
+        }
+
+        const legacy = await accountingReportsService.getBalanceSheet(companyId, asOfDate, branchId);
+        setData(legacy);
+        if (mainSource === 'unified') {
+          setMainLoaderSource('legacy');
+        }
+      } catch (err) {
         const msg = err instanceof Error ? err.message : 'Failed to load balance sheet';
         setFetchError(msg);
         toast.error(msg);
         setData(null);
-      })
-      .finally(() => setLoading(false));
-  }, [companyId, asOfDate, branchId, fetchRetryKey]);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [companyId, asOfDate, branchId, fetchRetryKey, previewBasis]);
 
   const groupedAssets = useMemo(() => (data ? groupAssets(data.assets.items) : []), [data]);
   const groupedLiabilities = useMemo(() => (data ? groupLiabilities(data.liabilities.items) : []), [data]);
@@ -455,7 +526,7 @@ export const BalanceSheetPage: React.FC<{
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-balance-sheet-main-loader={mainLoaderSource}>
       <ReportBasisBanner
         basis="official_gl"
         detail="Point-in-time balance sheet from posted accounts. Party “Parties” drill-down is Party GL attribution, not operational due."

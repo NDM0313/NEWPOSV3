@@ -19,10 +19,16 @@ export const UNIFIED_LEDGER_FLAG_KEYS = {
   LOADER_ROZNAMCHA: 'unified_ledger_loader_roznamcha',
   /** Phase 3B-M — only this flag switches Cash Flow default main loader. */
   LOADER_CASH_FLOW: 'unified_ledger_loader_cash_flow',
+  /** Phase 3D — only this flag switches Balance Sheet default main loader. */
+  LOADER_BALANCE_SHEET: 'unified_ledger_loader_balance_sheet',
+  /** Phase 3D — only this flag switches Profit & Loss default main loader. */
+  LOADER_PROFIT_LOSS: 'unified_ledger_loader_profit_loss',
   SCREEN_LEDGER_V2: 'unified_ledger_screen_ledger_v2',
   SCREEN_ACCOUNT_STATEMENT: 'unified_ledger_screen_account_statement',
   SCREEN_TRIAL_BALANCE: 'unified_ledger_screen_trial_balance',
   SCREEN_ROZNAMCHA: 'unified_ledger_screen_roznamcha',
   SCREEN_PARTY_LEDGER: 'unified_ledger_screen_party_ledger',
   SCREEN_CASH_FLOW: 'unified_ledger_screen_cash_flow',
+  SCREEN_BALANCE_SHEET: 'unified_ledger_screen_balance_sheet',
+  SCREEN_PROFIT_LOSS: 'unified_ledger_screen_profit_loss',
 } as const;
