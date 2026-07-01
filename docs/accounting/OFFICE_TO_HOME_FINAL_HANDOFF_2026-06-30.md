@@ -1,7 +1,7 @@
 # Office → Home final handoff — Single Core Ledger
 
-**Generated:** 2026-06-30 (updated 2026-07-01 — DIN BRIDAL monitoring drift + mobile Admin QA)  
-**Branch:** `main` @ `7566d294` (drift diagnosis evidence pending push)
+**Generated:** 2026-06-30 (updated 2026-07-01 — DIN BRIDAL monitoring golden refresh complete)  
+**Branch:** `main` @ golden refresh evidence (pending push)
 
 ---
 
@@ -31,7 +31,7 @@
 - **Sender name** — **NDM ERP SYSTEM** (OTP delivered to Gmail Spam, verified)
 - **OTP QA Business 2026-06-30** — created after verification; bootstrap cleanup complete
 - **DIN BRIDAL 1100 Option C apply** — COMPLETE; control 1100 now zero
-- **DIN BRIDAL TB golden fixture refresh** — COMPLETE (this run)
+- **DIN BRIDAL TB golden fixture refresh** — COMPLETE (July 1 live-activity refresh to PKR 22,390,400)
 
 ---
 
@@ -61,11 +61,11 @@
 | Pre-apply (Option C) | PASS | `2026-06-30T14-56-22-198Z` |
 | Post-apply (before golden refresh) | FAIL | din-bridal TB golden total only (+136,500 expected) |
 | Post-golden refresh (this run) | **PASS** | `2026-06-30T15-27-01-772Z` — all three companies |
-| 2026-07-01 mobile Admin QA day | **FAIL din-bridal only** (expected until golden refresh) | roznamcha + TB drift **fully audited** — RCV-0075/76/77, JE-0205/SL-0018 |
-| DIN BRIDAL July 1 GL audit | **COMPLETE** | Legitimate live activity; golden refresh **not executed** |
+| 2026-07-01 mobile Admin QA day | **PASS** (post golden refresh) | roznamcha + TB drift audited; fixture refresh **COMPLETE** |
+| DIN BRIDAL July 1 GL audit | **COMPLETE** | Legitimate live activity |
+| DIN BRIDAL golden refresh | **COMPLETE** | Fixture-only; operator Nadeem Khan 2026-07-01 |
 
-**DIN BRIDAL expected TB total (after refresh):** PKR **22,056,075** (debit = credit)  
-**2026-07-01 actual (monitoring):** TB **22,215,400**; roznamcha cash in **1,916,350** (+80k vs golden) — see [`reports/din-bridal-monitoring-drift-mobile-role-readiness-20260701/`](../reports/din-bridal-monitoring-drift-mobile-role-readiness-20260701/)
+**DIN BRIDAL monitoring goldens (current):** TB **22,390,400**; roznamcha cash in **2,116,850**; cash out **917,780**; closing **1,199,070** — see [`reports/din-bridal-monitoring-golden-refresh-20260701/`](../reports/din-bridal-monitoring-golden-refresh-20260701/)
 
 ---
 
@@ -73,7 +73,7 @@
 
 | Command | Result |
 |---------|--------|
-| `npm run test:unified-ledger` | 303/303 PASS |
+| `npm run test:unified-ledger` | 328/328 PASS |
 | `npm run test:unit` | 122/122 PASS |
 | `npm run build` | PASS |
 
@@ -86,8 +86,8 @@
 | **BS/P&L controlled loader swap** | **COMPLETE** — wiring `db499995`, deploy + flags 2026-07-01 |
 | Cash Flow 3B-M | LIVE — rollback only with written approval |
 | Supplier Party Discount PKR 1 | **Not approved** — separate operator approval required |
-| Mobile parity + APK | **PARTIAL_DEVICE_QA** — Admin manual PASS 21/21 on Pixel 6 Pro; Manager/Salesman pending; APK local only |
-| DIN BRIDAL monitoring drift | **AUDITED** — fixture refresh pending operator approval |
+| Mobile parity + APK | **PARTIAL_DEVICE_QA** — Admin manual PASS 21/21; Manager/Salesman pending; monitoring **PASS** |
+| DIN BRIDAL monitoring drift | **CLOSED** — fixture-only golden refresh complete |
 | R8 legacy retirement | **BLOCKED** — 2–4 week stable run required |
 
 **BS/P&L pack:** [`reports/office-resume-bs-pl-approval-20260701/`](../reports/office-resume-bs-pl-approval-20260701/bs-pl-finance-approval-pack.md)

@@ -105,7 +105,7 @@ Party Ledger Discount + Create Business OTP deploy, QA, cleanup, and remaining t
 ## 3. Monitoring status
 
 - Full `npm run monitor:three-company-unified-ledger` **PASS** (2026-06-30 post-R1B deploy `49ac9711`).
-- **2026-07-01 update:** DIN BRIDAL monitoring **FAIL** (expected until golden refresh). **July 1 GL audit COMPLETE** — drift explained by RCV-0075 (+80k), JE-0205/SL-0018 (+79,325 TB), RCV-0076 (+42k); legitimate live activity. Evidence: [`reports/din-bridal-july1-gl-activity-audit-20260701/`](../reports/din-bridal-july1-gl-activity-audit-20260701/)
+- **2026-07-01 update:** DIN BRIDAL monitoring **PASS** after fixture-only golden refresh (operator Nadeem Khan). July 1 GL audit classified drift as legitimate live activity (RCV-0075/76/77/78/79/80, JE-0205/SL-0018, SL-0020/21). Evidence: [`reports/din-bridal-july1-gl-activity-audit-20260701/`](../reports/din-bridal-july1-gl-activity-audit-20260701/), [`reports/din-bridal-monitoring-golden-refresh-20260701/`](../reports/din-bridal-monitoring-golden-refresh-20260701/)
 - MR JALIL DIN CHINA golden closing: **PKR 216,299** (retained JE-0003 PKR 1 discount).
 - Admin Compare Pilot Batch **9/9 PASS** — legacy hybrid now includes `party_discount` by `reference_id`.
 - Read-only loader guard **PASS** — DIN CHINA / BRIDAL / COUTURE only; other companies 0 loaders.

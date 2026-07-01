@@ -1,7 +1,7 @@
 # Full Single Core Ledger — remaining execution plan
 
-**Generated:** 2026-06-30 (updated 2026-07-01 — DIN BRIDAL July 1 GL activity audit complete)  
-**Branch:** `main` @ drift diagnosis `a3d6d6eb` (July 1 audit evidence pending push)
+**Generated:** 2026-06-30 (updated 2026-07-01 — DIN BRIDAL monitoring golden refresh complete)  
+**Branch:** `main` @ golden refresh evidence (pending push)
 
 ## Completed / stable
 
@@ -11,7 +11,7 @@
 - Hostinger SMTP + `autoconfirm=false` + sender **NDM ERP SYSTEM**
 - **Create Business OTP E2E COMPLETE** (Phase A + B, bootstrap cleanup)
 - **DIN BRIDAL 1100 Option C apply COMPLETE** — control 1100 zero (JV-000209, JV-000210)
-- **DIN BRIDAL TB golden fixture refreshed** — 22,056,075 (post-apply monitoring PASS)
+- **DIN BRIDAL TB golden fixture refreshed** — 22,390,400 (July 1 live-activity refresh; monitoring PASS)
 
 ## Remaining phases (approval-gated)
 
@@ -22,8 +22,8 @@
 | GL backlog C4 DIN BRIDAL 1100 | **COMPLETE** — Option C applied + TB golden refreshed | None |
 | Cash Flow 3B-M | **LIVE** | Rollback only with written approval |
 | BS/P&L loader swap | **COMPLETE** | Runtime wiring + frontend deploy + flags enabled 2026-07-01 — see `reports/bs-pl-runtime-wiring-swap-20260701/` |
-| Mobile parity | **CODE COMPLETE** — APK **BUILT_INTERNAL_QA** on Pixel 6 Pro; **Admin manual QA PASS** (21/21); **PARTIAL_DEVICE_QA** (Manager/Salesman pending) 2026-07-01 | Manager/Salesman role QA; release blocked until monitoring drift resolved |
-| DIN BRIDAL monitoring drift | **AUDITED** — legitimate live activity (RCV-0075/76/77, JE-0205/SL-0018); fixture refresh pending operator approval | Operator approve fixture-only golden refresh |
+| Mobile parity | **CODE COMPLETE** — APK **BUILT_INTERNAL_QA** on Pixel 6 Pro; **Admin manual QA PASS** (21/21); **PARTIAL_DEVICE_QA** (Manager/Salesman pending) 2026-07-01 | Manager/Salesman role QA; release gate **BLOCKED_PARTIAL_DEVICE_QA_PENDING_ROLES** |
+| DIN BRIDAL monitoring drift | **CLOSED** — legitimate live activity; fixture-only golden refresh **COMPLETE** (operator Nadeem Khan 2026-07-01) | None — monitoring PASS |
 | R8 legacy retirement | **BLOCKED** | 2–4 week stable run |
 | Supplier party_discount QA | **Not approved** | Separate PKR 1 approval |
 
@@ -46,7 +46,8 @@
 [`reports/mobile-apk-device-qa-20260701/`](../reports/mobile-apk-device-qa-20260701/)  
 [`reports/mobile-apk-manual-admin-qa-20260701/`](../reports/mobile-apk-manual-admin-qa-20260701/)  
 [`reports/din-bridal-monitoring-drift-mobile-role-readiness-20260701/`](../reports/din-bridal-monitoring-drift-mobile-role-readiness-20260701/)  
-[`reports/din-bridal-july1-gl-activity-audit-20260701/`](../reports/din-bridal-july1-gl-activity-audit-20260701/)
+[`reports/din-bridal-july1-gl-activity-audit-20260701/`](../reports/din-bridal-july1-gl-activity-audit-20260701/)  
+[`reports/din-bridal-monitoring-golden-refresh-20260701/`](../reports/din-bridal-monitoring-golden-refresh-20260701/)
 
 ## BS/P&L controlled loader swap — COMPLETE (2026-07-01)
 
@@ -60,11 +61,23 @@
 | Post-flag capture | **6/6 ZERO_DIFF pass** |
 | Monitoring / tests / build | **PASS** (328/328 unified-ledger) |
 
-**Next:** Operator approve **fixture-only** DIN BRIDAL golden refresh (TB 22,257,400; roznamcha cash in 1,958,350 at 12:43 baseline). Complete Manager/Salesman role QA when credentials available. Play Store requires separate approval. No GL mutations.
+**Next:** Complete Manager/Salesman on-device role QA when credentials available. Play Store requires separate approval. No GL mutations.
+
+## DIN BRIDAL July 1 golden refresh — COMPLETE (2026-07-01)
+
+| Metric | New golden (PKR) |
+|--------|------------------|
+| Trial Balance total | **22,390,400** |
+| Roznamcha Cash In | **2,116,850** |
+| Roznamcha Cash Out | **917,780** |
+| Roznamcha Closing | **1,199,070** |
+
+Fixture-only; no production data mutation. Post-refresh monitoring **PASS**.
 
 ## Exact next recommended phase
 
-1. **Mobile parity plan** or **supplier Party Discount PKR 1 QA** — separate approval only
-2. **R8 legacy retirement** — blocked until 2–4 week stable run after BS/P&L swap
+1. **Manager/Salesman device QA** — or operator decision on Admin-only release pack (separate approval)
+2. **Supplier Party Discount PKR 1 QA** — separate approval only
+3. **R8 legacy retirement** — blocked until 2–4 week stable run after BS/P&L swap
 
 Do **not** auto-run GL repairs, supplier JE, or R8 retirement.
