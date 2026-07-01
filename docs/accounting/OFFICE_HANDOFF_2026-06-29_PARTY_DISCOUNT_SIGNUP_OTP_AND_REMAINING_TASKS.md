@@ -221,7 +221,8 @@ Do not repair/apply without dry-run + operator approval.
 - **Monitoring:** pre-apply PASS; post-apply TB golden-only failure (expected); **post-golden-refresh PASS** (`2026-06-30T15-27-01-772Z`)
 - **TB golden:** refreshed to **22,056,075** (debit = credit)
 - **Tests/build:** 303/303 unified-ledger, 122/122 unit, build PASS
-- **Deploy:** NOT DEPLOYED
+- **1100 apply deploy:** N/A (scoped GL correction only; no frontend deploy required)
+- **BS/P&L frontend deploy:** **COMPLETE** @ `db499995` (2026-07-01)
 
 **OTP E2E evidence:** [`reports/create-business-otp-phase-b-verify-20260630/`](../reports/create-business-otp-phase-b-verify-20260630/)  
 **Remaining tasks start:** [`reports/remaining-tasks-start-20260630/`](../reports/remaining-tasks-start-20260630/)  

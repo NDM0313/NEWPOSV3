@@ -1,7 +1,7 @@
 # Full Single Core Ledger — remaining execution plan
 
-**Generated:** 2026-06-30  
-**Branch:** `main` @ handoff commit pending push
+**Generated:** 2026-06-30 (updated 2026-07-01 — BS/P&L swap complete + stability closure)  
+**Branch:** `main` @ `42459bde`
 
 ## Completed / stable
 
@@ -22,7 +22,7 @@
 | GL backlog C4 DIN BRIDAL 1100 | **COMPLETE** — Option C applied + TB golden refreshed | None |
 | Cash Flow 3B-M | **LIVE** | Rollback only with written approval |
 | BS/P&L loader swap | **COMPLETE** | Runtime wiring + frontend deploy + flags enabled 2026-07-01 — see `reports/bs-pl-runtime-wiring-swap-20260701/` |
-| Mobile parity | **PLAN** | APK QA when approved |
+| Mobile parity | **READINESS** — audit + plan prepared 2026-07-01; **no APK** without approval | Use `NEXT_PROMPT_MOBILE_PARITY_IMPLEMENTATION.md` when operator approves |
 | R8 legacy retirement | **BLOCKED** | 2–4 week stable run |
 | Supplier party_discount QA | **Not approved** | Separate PKR 1 approval |
 
@@ -37,15 +37,19 @@
 [`OFFICE_TO_HOME_FINAL_HANDOFF_2026-06-30.md`](OFFICE_TO_HOME_FINAL_HANDOFF_2026-06-30.md)  
 [`reports/office-resume-bs-pl-approval-20260701/`](../reports/office-resume-bs-pl-approval-20260701/)  
 [`reports/bs-pl-din-bridal-post-1100-recapture-20260701/`](../reports/bs-pl-din-bridal-post-1100-recapture-20260701/)  
-[`reports/bs-pl-controlled-loader-swap-20260701/`](../reports/bs-pl-controlled-loader-swap-20260701/)
+[`reports/bs-pl-controlled-loader-swap-20260701/`](../reports/bs-pl-controlled-loader-swap-20260701/)  
+[`reports/bs-pl-runtime-wiring-swap-20260701/`](../reports/bs-pl-runtime-wiring-swap-20260701/)  
+[`reports/post-bs-pl-swap-stability-mobile-readiness-20260701/`](../reports/post-bs-pl-swap-stability-mobile-readiness-20260701/)
 
 ## BS/P&L controlled loader swap — COMPLETE (2026-07-01)
 
 | Item | Result |
 |------|--------|
 | Runtime wiring | **COMPLETE** — commit `db499995` |
+| Evidence commit | `98d2f4c8` (+ push verify `42459bde`) |
 | Frontend deploy | **COMPLETE** — `deploy/vps-build-erp-only.sh` @ `db499995` |
 | Flags enabled | **yes** — 4 keys × 3 companies |
+| Post-swap stability | **PASS** — [`post-bs-pl-swap-stability-mobile-readiness-20260701/`](../reports/post-bs-pl-swap-stability-mobile-readiness-20260701/) |
 | Post-flag capture | **6/6 ZERO_DIFF pass** |
 | Monitoring / tests / build | **PASS** (328/328 unified-ledger) |
 

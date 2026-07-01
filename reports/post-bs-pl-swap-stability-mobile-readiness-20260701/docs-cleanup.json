@@ -1,0 +1,20 @@
+{
+  "run": "POST_BS_PL_SWAP_STABILITY_MOBILE_READINESS",
+  "task": "docs-cleanup",
+  "generated_at": "2026-07-01T09:30:00.000Z",
+  "files_updated": [
+    "docs/accounting/FULL_SINGLE_CORE_LEDGER_REMAINING_EXECUTION_PLAN_2026-06-30.md",
+    "docs/accounting/OFFICE_TO_HOME_FINAL_HANDOFF_2026-06-30.md",
+    "docs/accounting/OFFICE_HANDOFF_2026-06-29_PARTY_DISCOUNT_SIGNUP_OTP_AND_REMAINING_TASKS.md"
+  ],
+  "changes": [
+    "BS/P&L loader swap status = COMPLETE",
+    "BS/P&L frontend deploy = COMPLETE @ db499995",
+    "Evidence commit 98d2f4c8 + origin/main 42459bde referenced",
+    "Removed stale NOT DEPLOYED for BS/P&L deploy (OFFICE_TO_HOME)",
+    "Clarified historical DIN BRIDAL 1100 section — no frontend deploy for GL apply",
+    "Mobile parity = READINESS with NEXT_PROMPT path",
+    "Retained: no migrations/GL mutations, supplier PKR 1 separate approval, R8 blocked, Cash Flow rollback approval"
+  ],
+  "status": "PASS"
+}

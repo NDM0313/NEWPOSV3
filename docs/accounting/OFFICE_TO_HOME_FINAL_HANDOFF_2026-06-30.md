@@ -120,9 +120,9 @@ Monitoring credentials: load from `erp-mobile-app/.env` (`$env:MONITORING_*` lin
 
 ## 9. Exact next recommended action
 
-**BS/P&L loader swap COMPLETE** (2026-07-01). Evidence: [`reports/bs-pl-runtime-wiring-swap-20260701/`](../reports/bs-pl-runtime-wiring-swap-20260701/).
+**BS/P&L loader swap COMPLETE** (2026-07-01). Stability closure: [`reports/post-bs-pl-swap-stability-mobile-readiness-20260701/`](../reports/post-bs-pl-swap-stability-mobile-readiness-20260701/).
 
-**Next:** Mobile parity plan or supplier Party Discount PKR 1 QA (separate approval). Do **not** run R8 until 2–4 week stable run.
+**Next:** Mobile parity implementation (operator approval required; see `NEXT_PROMPT_MOBILE_PARITY_IMPLEMENTATION.md`). Supplier Party Discount PKR 1 QA remains separate approval. Do **not** run R8 until 2–4 week stable run.
 
 ---
 
@@ -137,4 +137,4 @@ Monitoring credentials: load from `erp-mobile-app/.env` (`$env:MONITORING_*` lin
 | Master remaining plan | [`FULL_SINGLE_CORE_LEDGER_REMAINING_EXECUTION_PLAN_2026-06-30.md`](FULL_SINGLE_CORE_LEDGER_REMAINING_EXECUTION_PLAN_2026-06-30.md) |
 | Office handoff (prior) | [`OFFICE_HANDOFF_2026-06-29_PARTY_DISCOUNT_SIGNUP_OTP_AND_REMAINING_TASKS.md`](OFFICE_HANDOFF_2026-06-29_PARTY_DISCOUNT_SIGNUP_OTP_AND_REMAINING_TASKS.md) |
 
-**Deploy status:** NOT DEPLOYED
+**Deploy status (BS/P&L):** **DEPLOYED** — frontend-only @ `db499995` via `deploy/vps-build-erp-only.sh` (2026-07-01). `origin/main` @ `42459bde`. No migrations; no GL mutations.
