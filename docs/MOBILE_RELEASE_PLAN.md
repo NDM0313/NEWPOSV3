@@ -23,7 +23,7 @@ git push origin pwa-apk-ios-safe-point
 | **5** | PWA vs Native limits doc | ✅ |
 | **6** | Unified financial reports parity (Capacitor code) | ✅ **2026-07-01** — code complete |
 | **6b** | Internal QA debug APK (no Play Store) | ✅ **2026-07-01** — `BUILT_INTERNAL_QA` |
-| **6c** | On-device QA (Admin/Manager/Salesman) | ⛔ **BLOCKED** — APK installed Pixel 6 Pro; UI QA pending operator unlock |
+| **6c** | On-device QA | **PARTIAL** — Admin PASS (21/21); Manager/Salesman pending credentials |
 
 ## Quick Commands
 

@@ -1,0 +1,8 @@
+{
+  "run": "MOBILE_APK_MANUAL_ADMIN_QA",
+  "task": "role-qa-status",
+  "generated_at": "2026-07-01T12:05:00.000Z",
+  "admin": "ADMIN_QA_PASS",
+  "manager": "MANAGER_QA_PENDING_CREDENTIALS",
+  "salesman": "SALESMAN_QA_PENDING_CREDENTIALS"
+}

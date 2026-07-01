@@ -22,7 +22,7 @@
 | GL backlog C4 DIN BRIDAL 1100 | **COMPLETE** — Option C applied + TB golden refreshed | None |
 | Cash Flow 3B-M | **LIVE** | Rollback only with written approval |
 | BS/P&L loader swap | **COMPLETE** | Runtime wiring + frontend deploy + flags enabled 2026-07-01 — see `reports/bs-pl-runtime-wiring-swap-20260701/` |
-| Mobile parity | **CODE COMPLETE** — Capacitor unified reports; **APK BUILT_INTERNAL_QA**; install on Pixel 6 Pro **OK**; **device UI QA BLOCKED** — operator unlock + manual navigation pending 2026-07-01 | Unlock device and complete Admin/Manager/Salesman on-device checklist |
+| Mobile parity | **CODE COMPLETE** — APK **BUILT_INTERNAL_QA** on Pixel 6 Pro; **Admin manual QA PASS**; **PARTIAL_DEVICE_QA** (Manager/Salesman pending) 2026-07-01 | Manager/Salesman role QA; release approval pack only |
 | R8 legacy retirement | **BLOCKED** | 2–4 week stable run |
 | Supplier party_discount QA | **Not approved** | Separate PKR 1 approval |
 
@@ -43,7 +43,7 @@
 [`reports/mobile-reports-parity-implementation-20260701/`](../reports/mobile-reports-parity-implementation-20260701/)  
 [`reports/mobile-apk-internal-qa-build-20260701/`](../reports/mobile-apk-internal-qa-build-20260701/)  
 [`reports/mobile-apk-device-qa-20260701/`](../reports/mobile-apk-device-qa-20260701/)  
-[`reports/mobile-apk-device-qa-resume-success-20260701/`](../reports/mobile-apk-device-qa-resume-success-20260701/)
+[`reports/mobile-apk-manual-admin-qa-20260701/`](../reports/mobile-apk-manual-admin-qa-20260701/)
 
 ## BS/P&L controlled loader swap — COMPLETE (2026-07-01)
 
@@ -57,7 +57,7 @@
 | Post-flag capture | **6/6 ZERO_DIFF pass** |
 | Monitoring / tests / build | **PASS** (328/328 unified-ledger) |
 
-**Next:** Unlock Pixel 6 Pro, complete Admin on-device report QA + goldens; provide Manager/Salesman credentials for role QA. Public release / Play Store requires separate approval after device QA passes.
+**Next:** Complete Manager/Salesman on-device QA when credentials available. Prepare release approval pack only — Play Store requires separate approval. DIN BRIDAL monitoring golden drift (roznamcha/TB) is separate ops follow-up.
 
 ## Exact next recommended phase
 
