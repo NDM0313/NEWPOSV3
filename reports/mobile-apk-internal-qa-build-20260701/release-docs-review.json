@@ -1,0 +1,30 @@
+{
+  "run": "MOBILE_APK_INTERNAL_QA_BUILD",
+  "task": "release-docs-review",
+  "generated_at": "2026-07-01T10:40:00.000Z",
+  "app_id": "com.dincouture.erp",
+  "version_code": 39,
+  "version_name": "1.0.5",
+  "api_base": "https://erp.dincouture.pk",
+  "supabase_backend": "https://supabase.dincouture.pk",
+  "build_commands": {
+    "mobile_prod_build": "npm run build:mobile:prod",
+    "cap_sync_android_prod": "npm run cap:sync:android:prod",
+    "debug_apk_win": "npm run android:debug:win",
+    "gradle_direct": "cd android && gradlew.bat assembleDebug"
+  },
+  "apk_output_path": "erp-mobile-app/android/app/build/outputs/apk/debug/app-debug.apk",
+  "internal_qa_build_type": "debug",
+  "release_signing_configured": "optional via android/keystore.properties",
+  "rollback_policy": "prior APK artifacts under erp-mobile-app/releases/; do not commit APK to git",
+  "play_store_release": false,
+  "docs_reviewed": [
+    "docs/MOBILE_RELEASE_PLAN.md",
+    "docs/infra/MOBILE_APK_LOCKED_PATTERN.md",
+    "docs/ANDROID_APK_BUILD.md",
+    "docs/PWA_VS_NATIVE_LIMITS.md",
+    "erp-mobile-app/package.json",
+    "erp-mobile-app/capacitor.config.ts",
+    "erp-mobile-app/android/app/build.gradle"
+  ]
+}

@@ -446,6 +446,7 @@ export function AccountLedgerReport({
           setLedgerRefreshNonce((n) => n + 1);
         }}
         refreshing={manualLedgerRefresh && detailLoading}
+        rightExtras={<LoaderSourceBadge source={ledgerLoaderSource} />}
       >
         <DateRangeBar value={range} onChange={setRange} />
       </ReportHeader>

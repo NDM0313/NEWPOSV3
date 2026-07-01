@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { usePermissions } from '../../../context/PermissionContext';
 import { ReportHeader } from './_shared/ReportHeader';
-import { DateRangeBar, makeInitialRange, type DateRangeValue } from './_shared/DateRangeBar';
 import { ReportShell, ReportCard, ReportSectionTitle } from './_shared/ReportShell';
 import { formatAmount } from './_shared/format';
 import { LoaderSourceBadge } from './_shared/LoaderSourceBadge';

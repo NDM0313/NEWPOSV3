@@ -83,7 +83,7 @@
 | **BS/P&L controlled loader swap** | **COMPLETE** — wiring `db499995`, deploy + flags 2026-07-01 |
 | Cash Flow 3B-M | LIVE — rollback only with written approval |
 | Supplier Party Discount PKR 1 | **Not approved** — separate operator approval required |
-| Mobile parity plan | Plan only — APK QA when approved |
+| Mobile parity + APK | **CODE COMPLETE** + **BUILT_INTERNAL_QA** (debug APK 2026-07-01; not public/Play Store) | On-device QA pending |
 | R8 legacy retirement | **BLOCKED** — 2–4 week stable run required |
 
 **BS/P&L pack:** [`reports/office-resume-bs-pl-approval-20260701/`](../reports/office-resume-bs-pl-approval-20260701/bs-pl-finance-approval-pack.md)
@@ -120,9 +120,12 @@ Monitoring credentials: load from `erp-mobile-app/.env` (`$env:MONITORING_*` lin
 
 ## 9. Exact next recommended action
 
-**BS/P&L loader swap COMPLETE** (2026-07-01). **Mobile reports parity CODE COMPLETE** (2026-07-01) — Capacitor only; APK not released.
+**BS/P&L loader swap COMPLETE** (2026-07-01). **Mobile reports parity CODE COMPLETE** (2026-07-01). **Internal QA debug APK BUILT** 2026-07-01 — not public released; Play Store not released.
 
-**Next:** APK build/release requires separate operator approval. Supplier Party Discount PKR 1 QA remains separate approval. Do **not** run R8 until 2–4 week stable run.
+**APK artifact (local only, not in git):** `erp-mobile-app/releases/internal-qa/20260701/dincouture-erp-internal-qa-20260701-debug.apk`  
+**SHA256:** `8B7FF35AF80B54E011EE4858DE74D9C74B1DCD062DEACA90C127C5B90251BE00`
+
+**Next:** Install APK on Android test device and complete device QA checklist (`DEVICE_QA_PENDING`). Public release / Play Store upload requires separate operator approval. Supplier Party Discount PKR 1 QA remains separate approval. Do **not** run R8 until 2–4 week stable run.
 
 ---
 

@@ -21,7 +21,8 @@ git push origin pwa-apk-ios-safe-point
 | **3** | Android APK | ✅ |
 | **4** | iOS App | ✅ |
 | **5** | PWA vs Native limits doc | ✅ |
-| **6** | Unified financial reports parity (Capacitor code) | ✅ **2026-07-01** — code only; **APK not built/released** in this phase |
+| **6** | Unified financial reports parity (Capacitor code) | ✅ **2026-07-01** — code complete |
+| **6b** | Internal QA debug APK (no Play Store) | ✅ **2026-07-01** — `BUILT_INTERNAL_QA`; device QA pending |
 
 ## Quick Commands
 

@@ -1,0 +1,26 @@
+{
+  "run": "MOBILE_APK_INTERNAL_QA_BUILD",
+  "task": "docs-update",
+  "generated_at": "2026-07-01T10:45:00.000Z",
+  "files_updated": [
+    "docs/accounting/FULL_SINGLE_CORE_LEDGER_REMAINING_EXECUTION_PLAN_2026-06-30.md",
+    "docs/accounting/OFFICE_TO_HOME_FINAL_HANDOFF_2026-06-30.md",
+    "docs/accounting/OFFICE_HANDOFF_2026-06-29_PARTY_DISCOUNT_SIGNUP_OTP_AND_REMAINING_TASKS.md",
+    "docs/MOBILE_RELEASE_PLAN.md"
+  ],
+  "apk_status": "BUILT_INTERNAL_QA",
+  "device_qa_status": "DEVICE_QA_PENDING",
+  "play_store_released": false,
+  "public_released": false,
+  "migrations_run": false,
+  "gl_mutations": false,
+  "feature_flag_changes": false,
+  "apk_artifact_path": "erp-mobile-app/releases/internal-qa/20260701/dincouture-erp-internal-qa-20260701-debug.apk",
+  "apk_sha256": "8B7FF35AF80B54E011EE4858DE74D9C74B1DCD062DEACA90C127C5B90251BE00",
+  "next_actions": [
+    "on-device QA (install debug APK, complete checklist)",
+    "public release only with separate approval",
+    "supplier Party Discount PKR 1 QA separate",
+    "R8 blocked 2-4 weeks"
+  ]
+}
