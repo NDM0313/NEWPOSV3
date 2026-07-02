@@ -23,7 +23,7 @@
 | GL backlog C4 DIN BRIDAL 1100 | **COMPLETE** — Option C applied + TB golden refreshed | None |
 | Cash Flow 3B-M | **LIVE** | Rollback only with written approval |
 | BS/P&L loader swap | **COMPLETE** | Runtime wiring + frontend deploy + flags enabled 2026-07-01 — see `reports/bs-pl-runtime-wiring-swap-20260701/` |
-| Mobile parity | **CODE COMPLETE** — APK **BUILT_INTERNAL_QA** on Pixel 6 Pro; **Admin manual QA PASS** (21/21); **PARTIAL_DEVICE_QA** (Manager/Salesman pending) 2026-07-01 | Manager/Salesman role QA; release gate **BLOCKED_PARTIAL_DEVICE_QA_PENDING_ROLES** |
+| Mobile parity | **CODE COMPLETE** — APK **BUILT_INTERNAL_QA** on Pixel 6 Pro; **Admin manual QA PASS** (21/21); **PARTIAL_DEVICE_QA** — Manager/Salesman **BLOCKED_CREDENTIALS** 2026-07-02 | Manager/Salesman credentials + device; release gate **BLOCKED_PARTIAL_DEVICE_QA_PENDING_ROLES** |
 | DIN BRIDAL monitoring drift | **CLOSED** — legitimate live activity; fixture-only golden refresh **COMPLETE** (operator Nadeem Khan 2026-07-01) | None — monitoring PASS |
 | R8 legacy retirement | **BLOCKED** | Stability window 2–4 weeks from 2026-07-01; final approval required |
 | Supplier party_discount QA | **Not approved** | Separate PKR 1 approval |
@@ -312,7 +312,7 @@ Evidence: [`reports/single-core-engine-calendar-stability-20260702/`](../reports
 ## Exact next recommended phase
 
 1. **Daily monitoring** during stability window — `npm run monitor:three-company-unified-ledger`
-2. **Manager/Salesman device QA** — mobile release separate track
+2. **Manager/Salesman device QA** — **BLOCKED_CREDENTIALS** + no adb device (2026-07-02); evidence [`reports/mobile-manager-salesman-device-qa-20260702/`](../reports/mobile-manager-salesman-device-qa-20260702/)
 3. **R8 legacy retirement** — blocked until stability window complete + final approval
 
 Do **not** auto-run GL repairs, supplier JE, or R8 retirement.
