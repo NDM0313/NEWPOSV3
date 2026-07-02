@@ -23,7 +23,7 @@
 | GL backlog C4 DIN BRIDAL 1100 | **COMPLETE** — Option C applied + TB golden refreshed | None |
 | Cash Flow 3B-M | **LIVE** | Rollback only with written approval |
 | BS/P&L loader swap | **COMPLETE** | Runtime wiring + frontend deploy + flags enabled 2026-07-01 — see `reports/bs-pl-runtime-wiring-swap-20260701/` |
-| Mobile parity | **CODE COMPLETE** — APK **BUILT_INTERNAL_QA** on Pixel 6 Pro; **Admin manual QA PASS** (21/21); **PARTIAL_DEVICE_QA** — Manager/Salesman **BLOCKED_CREDENTIALS** 2026-07-02 | Manager/Salesman credentials + device; release gate **BLOCKED_PARTIAL_DEVICE_QA_PENDING_ROLES** |
+| Mobile parity | **CODE COMPLETE** — APK **BUILT_INTERNAL_QA**; Admin **PASS** 21/21; Manager/Salesman **BLOCKED** (no manager DB users; salesman accounts exist; passwords + adb device pending) | Unblock pack [`reports/mobile-role-qa-unblock-pack-20260702/`](../reports/mobile-role-qa-unblock-pack-20260702/) |
 | DIN BRIDAL monitoring drift | **CLOSED** — legitimate live activity; fixture-only golden refresh **COMPLETE** (operator Nadeem Khan 2026-07-01) | None — monitoring PASS |
 | R8 legacy retirement | **BLOCKED** | Stability window 2–4 weeks from 2026-07-01; final approval required |
 | Supplier party_discount QA | **Not approved** | Separate PKR 1 approval |

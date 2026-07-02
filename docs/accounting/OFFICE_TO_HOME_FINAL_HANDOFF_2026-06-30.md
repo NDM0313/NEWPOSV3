@@ -129,9 +129,9 @@ Monitoring credentials: load from `erp-mobile-app/.env` (`$env:MONITORING_*` lin
 **APK artifact (local only, not in git):** `erp-mobile-app/releases/internal-qa/20260701/dincouture-erp-internal-qa-20260701-debug.apk`  
 **SHA256:** `8B7FF35AF80B54E011EE4858DE74D9C74B1DCD062DEACA90C127C5B90251BE00`
 
-**Device QA:** **PARTIAL_DEVICE_QA** — Admin manual QA **PASS** (21/21, operator Nadeem Khan, all goldens match). Manager/Salesman **BLOCKED_CREDENTIALS** (2026-07-02) — no Manager/Salesman env in approved source; Pixel 6 Pro not connected via adb.
+**Device QA:** **PARTIAL_DEVICE_QA** — Admin **PASS** 21/21. Manager/Salesman **BLOCKED**: zero manager users in DB; 7 active salesman accounts exist but passwords not in approved source; Pixel 6 Pro not on adb (2026-07-02). Unblock pack: [`reports/mobile-role-qa-unblock-pack-20260702/`](../reports/mobile-role-qa-unblock-pack-20260702/).
 
-**Next:** Provide Manager/Salesman credentials out-of-band; connect Pixel 6 Pro; re-run role QA. Release approval pack only — no Play Store without separate approval. Supplier Party Discount PKR 1 separate. R8 blocked 2–4 weeks. Calendar Day 3 stability on 2026-07-03.
+**Next:** Operator approves Manager account path (Option B temp user or promote); provides Salesman password for chosen DIN BRIDAL account; connect Pixel 6 Pro via adb; re-run role QA. No Play Store. Calendar Day 3 on 2026-07-03. R8 blocked.
 
 ---
 
