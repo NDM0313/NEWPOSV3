@@ -23,7 +23,7 @@ git push origin pwa-apk-ios-safe-point
 | **5** | PWA vs Native limits doc | ✅ |
 | **6** | Unified financial reports parity (Capacitor code) | ✅ **2026-07-01** — code complete |
 | **6b** | Internal QA debug APK (no Play Store) | ✅ **2026-07-01** — `BUILT_INTERNAL_QA` |
-| **6c** | On-device QA | **PARTIAL** — Admin PASS (21/21); Manager **BLOCKED_NEEDS_EMAIL** (Option B approved, not created); Salesman blocked password |
+| **6c** | On-device QA | **PARTIAL** — Admin PASS; Manager apply **BLOCKED** (placeholder email 2026-07-02 apply run) |
 | **6d** | Release gate | **BLOCKED_PARTIAL_DEVICE_QA_PENDING_ROLES** — Manager email+password + Salesman password + Pixel adb |
 
 ## Quick Commands
