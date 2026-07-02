@@ -23,7 +23,7 @@
 | GL backlog C4 DIN BRIDAL 1100 | **COMPLETE** — Option C applied + TB golden refreshed | None |
 | Cash Flow 3B-M | **LIVE** | Rollback only with written approval |
 | BS/P&L loader swap | **COMPLETE** | Runtime wiring + frontend deploy + flags enabled 2026-07-01 — see `reports/bs-pl-runtime-wiring-swap-20260701/` |
-| Mobile parity | **CODE COMPLETE** — APK **BUILT_INTERNAL_QA**; Admin **PASS** 21/21; Manager/Salesman **BLOCKED** (no manager DB users; salesman accounts exist; passwords + adb device pending) | Unblock pack [`reports/mobile-role-qa-unblock-pack-20260702/`](../reports/mobile-role-qa-unblock-pack-20260702/) |
+| Mobile parity | **CODE COMPLETE** — Admin **PASS** 21/21; Manager temp QA **BLOCKED_NEEDS_EMAIL** (Option B approved 2026-07-02, not created); Salesman password pending | [`reports/create-temp-manager-qa-user-20260702/`](../reports/create-temp-manager-qa-user-20260702/) |
 | DIN BRIDAL monitoring drift | **CLOSED** — legitimate live activity; fixture-only golden refresh **COMPLETE** (operator Nadeem Khan 2026-07-01) | None — monitoring PASS |
 | R8 legacy retirement | **BLOCKED** | Stability window 2–4 weeks from 2026-07-01; final approval required |
 | Supplier party_discount QA | **Not approved** | Separate PKR 1 approval |
@@ -312,7 +312,7 @@ Evidence: [`reports/single-core-engine-calendar-stability-20260702/`](../reports
 ## Exact next recommended phase
 
 1. **Daily monitoring** during stability window — `npm run monitor:three-company-unified-ledger`
-2. **Manager/Salesman device QA** — **BLOCKED_CREDENTIALS** + no adb device (2026-07-02); evidence [`reports/mobile-manager-salesman-device-qa-20260702/`](../reports/mobile-manager-salesman-device-qa-20260702/)
+2. **Manager/Salesman device QA** — Manager Option B approved; creation **BLOCKED_NEEDS_EMAIL** + password ([`reports/create-temp-manager-qa-user-20260702/`](../reports/create-temp-manager-qa-user-20260702/)); Salesman password + Pixel adb pending
 3. **R8 legacy retirement** — blocked until stability window complete + final approval
 
 Do **not** auto-run GL repairs, supplier JE, or R8 retirement.
