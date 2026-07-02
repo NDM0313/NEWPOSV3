@@ -240,6 +240,31 @@ Evidence: [`reports/single-core-engine-stability-daily-20260706/`](../reports/si
 
 Evidence: [`reports/single-core-engine-stability-daily-20260707/`](../reports/single-core-engine-stability-daily-20260707/)
 
+## Stability Day 8 / next sample
+
+| Item | Status |
+|------|--------|
+| Classification | **STABILITY_SAMPLE_FAIL** |
+| Run local date/time | 2026-07-02 17:03:03 +05:00 |
+| Calendar days elapsed since 2026-07-01 | **1** |
+| Monitoring artifact | `three-company-monitoring-2026-07-02T12-03-36-782Z` |
+| DIN CHINA | FAIL (Playwright Roznamcha nav timeout; login/flags PASS) |
+| Admin Compare | not reached |
+| DIN BRIDAL | FAIL (timeout before Roznamcha) |
+| DIN COUTURE | FAIL (timeout before Roznamcha) |
+| migrations_run | false |
+| gl_mutations | false |
+| Feature flags | unchanged |
+| Production mutation | **none** |
+| Diagnosis | **monitoring bug** — transient UI automation flake; Day 7 PASS ~20 min earlier |
+| Tests | 328/328 unified · 124/124 unit |
+| R8 | **BLOCKED** |
+| R8 calendar note | Same-day repeated samples do **not** shorten the 2–4 week window |
+| Mobile release | separate track |
+| Supplier Party Discount | separate approval |
+
+Evidence: [`reports/single-core-engine-stability-daily-20260708/`](../reports/single-core-engine-stability-daily-20260708/)
+
 ## Exact next recommended phase
 
 1. **Daily monitoring** during stability window — `npm run monitor:three-company-unified-ledger`
