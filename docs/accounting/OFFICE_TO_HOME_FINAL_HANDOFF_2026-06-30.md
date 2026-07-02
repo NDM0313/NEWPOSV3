@@ -86,7 +86,7 @@
 | **BS/P&L controlled loader swap** | **COMPLETE** — wiring `db499995`, deploy + flags 2026-07-01 |
 | Cash Flow 3B-M | LIVE — rollback only with written approval |
 | Supplier Party Discount PKR 1 | **Not approved** — separate operator approval required |
-| Mobile parity + APK | **PARTIAL_DEVICE_QA** — Admin manual PASS 21/21; Manager/Salesman pending; monitoring **PASS** |
+| Mobile parity + APK | **PARTIAL_DEVICE_QA** — Admin PASS 21/21; Manager **N/A/waived** (Admin+Salesman only); Salesman pending; monitoring **PASS** |
 | DIN BRIDAL monitoring drift | **CLOSED** — fixture-only golden refresh complete |
 | R8 legacy retirement | **BLOCKED** — 2–4 week stable run required |
 
@@ -129,9 +129,11 @@ Monitoring credentials: load from `erp-mobile-app/.env` (`$env:MONITORING_*` lin
 **APK artifact (local only, not in git):** `erp-mobile-app/releases/internal-qa/20260701/dincouture-erp-internal-qa-20260701-debug.apk`  
 **SHA256:** `8B7FF35AF80B54E011EE4858DE74D9C74B1DCD062DEACA90C127C5B90251BE00`
 
-**Device QA:** **PARTIAL_DEVICE_QA** — Admin PASS 21/21. Manager apply run **blocked** — prompt contained placeholder email `<PUT_OPERATOR_CONTROLLED_EMAIL_HERE>`, not a real address ([`reports/create-temp-manager-qa-user-apply-20260702/`](../reports/create-temp-manager-qa-user-apply-20260702/)).
+**Device QA:** **PARTIAL_DEVICE_QA** — Admin PASS 21/21. Manager QA **N/A / waived** by operator Nadeem Khan (2026-07-03 Home Mac) — company uses Admin + Salesman only; no Manager user created. Salesman QA **pending** — Salesman password + Pixel 6 Pro required. Pixel **not available** at Home Mac (`DEVICE_NOT_AVAILABLE_HOME_MAC`). Mobile release gate: **BLOCKED_SALESMAN_DEVICE_QA_PENDING**.
 
-**Next:** Re-run apply with real `MANAGER_QA_EMAIL=you@yourdomain.com` and enter password at secure keyboard prompt. Then Pixel adb + Salesman password + role QA. No Play Store. Calendar Day 3 on 2026-07-03+. R8 blocked.
+Evidence: [`reports/home-mac-mobile-qa-status-manager-waived-no-device-20260703/`](../reports/home-mac-mobile-qa-status-manager-waived-no-device-20260703/)
+
+**Next:** Calendar Day 4 monitoring on 2026-07-04+. When Pixel 6 Pro available, connect via adb and provide Salesman password securely at QA time. No Play Store. R8 blocked.
 
 ---
 

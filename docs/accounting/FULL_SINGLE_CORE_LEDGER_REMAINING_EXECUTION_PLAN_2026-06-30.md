@@ -23,7 +23,7 @@
 | GL backlog C4 DIN BRIDAL 1100 | **COMPLETE** — Option C applied + TB golden refreshed | None |
 | Cash Flow 3B-M | **LIVE** | Rollback only with written approval |
 | BS/P&L loader swap | **COMPLETE** | Runtime wiring + frontend deploy + flags enabled 2026-07-01 — see `reports/bs-pl-runtime-wiring-swap-20260701/` |
-| Mobile parity | **CODE COMPLETE** — Admin PASS 21/21; Manager apply **BLOCKED_NEEDS_OPERATOR_EMAIL** (placeholder in apply run) | [`reports/create-temp-manager-qa-user-apply-20260702/`](../reports/create-temp-manager-qa-user-apply-20260702/) |
+| Mobile parity | **PARTIAL** — Admin PASS 21/21; Manager **N/A/waived** (Admin+Salesman only); Salesman **pending** (password + Pixel) | [`reports/home-mac-mobile-qa-status-manager-waived-no-device-20260703/`](../reports/home-mac-mobile-qa-status-manager-waived-no-device-20260703/) |
 | DIN BRIDAL monitoring drift | **CLOSED** — legitimate live activity; fixture-only golden refresh **COMPLETE** (operator Nadeem Khan 2026-07-01) | None — monitoring PASS |
 | R8 legacy retirement | **BLOCKED** | Stability window 2–4 weeks from 2026-07-01; final approval required |
 | Supplier party_discount QA | **Not approved** | Separate PKR 1 approval |
@@ -87,7 +87,7 @@ Fixture-only; no production data mutation. Post-refresh monitoring **PASS**.
 | Production mutation | **none** |
 | R8 legacy retirement | **BLOCKED** until window complete + final approval |
 | 4th company rollout | **BLOCKED** — finance sign-off required |
-| Mobile release | **Separate track** — `BLOCKED_PARTIAL_DEVICE_QA_PENDING_ROLES` |
+| Mobile release | **Separate track** — `BLOCKED_SALESMAN_DEVICE_QA_PENDING` |
 
 Evidence: [`reports/single-core-engine-stability-window-20260701/`](../reports/single-core-engine-stability-window-20260701/)
 
@@ -334,10 +334,26 @@ Evidence: [`reports/single-core-engine-calendar-stability-20260702/`](../reports
 
 Evidence: [`reports/single-core-engine-calendar-stability-20260703/`](../reports/single-core-engine-calendar-stability-20260703/)
 
+## Home Mac mobile QA scope — 2026-07-03
+
+| Item | Status |
+|------|--------|
+| Operator decision | Manager QA **N/A / waived** — company uses Admin + Salesman only |
+| Admin QA | **PASS 21/21** (unchanged) |
+| Manager QA | **N/A / waived** — no Manager user created |
+| Salesman QA | **pending** — Salesman password + Pixel 6 Pro required |
+| Device | **DEVICE_NOT_AVAILABLE_HOME_MAC** |
+| Mobile release gate | **BLOCKED_SALESMAN_DEVICE_QA_PENDING** |
+| Play Store | **NOT RELEASED** |
+| Calendar stability | separate track |
+| R8 | **BLOCKED** |
+
+Evidence: [`reports/home-mac-mobile-qa-status-manager-waived-no-device-20260703/`](../reports/home-mac-mobile-qa-status-manager-waived-no-device-20260703/)
+
 ## Exact next recommended phase
 
-1. **Daily monitoring** during stability window — `npm run monitor:three-company-unified-ledger`
-2. **Manager/Salesman device QA** — Manager apply blocked placeholder email ([`reports/create-temp-manager-qa-user-apply-20260702/`](../reports/create-temp-manager-qa-user-apply-20260702/)); re-run with real email + secure password
+1. **Daily monitoring** during stability window — `npm run monitor:three-company-unified-ledger` (Calendar Day 4 on 2026-07-04+)
+2. **Salesman device QA** — when Pixel 6 Pro available + Salesman password supplied securely at QA time
 3. **R8 legacy retirement** — blocked until stability window complete + final approval
 
 Do **not** auto-run GL repairs, supplier JE, or R8 retirement.

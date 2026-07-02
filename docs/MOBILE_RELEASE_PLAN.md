@@ -23,8 +23,23 @@ git push origin pwa-apk-ios-safe-point
 | **5** | PWA vs Native limits doc | ✅ |
 | **6** | Unified financial reports parity (Capacitor code) | ✅ **2026-07-01** — code complete |
 | **6b** | Internal QA debug APK (no Play Store) | ✅ **2026-07-01** — `BUILT_INTERNAL_QA` |
-| **6c** | On-device QA | **PARTIAL** — Admin PASS; Manager apply **BLOCKED** (placeholder email 2026-07-02 apply run) |
-| **6d** | Release gate | **BLOCKED_PARTIAL_DEVICE_QA_PENDING_ROLES** — Manager email+password + Salesman password + Pixel adb |
+| **6c** | On-device QA | **PARTIAL** — Admin PASS 21/21; Manager **N/A/waived** (Admin+Salesman only, operator 2026-07-03); Salesman **pending** |
+| **6d** | Release gate | **BLOCKED_SALESMAN_DEVICE_QA_PENDING** — Salesman password + Pixel 6 Pro adb (not available Home Mac 2026-07-03) |
+
+## Home Mac mobile QA scope — 2026-07-03
+
+**Operator (Nadeem Khan):** Company uses Admin + Salesman only — Manager QA **N/A / waived**. No Manager user will be created.
+
+| Track | Status |
+|-------|--------|
+| Admin QA | **PASS 21/21** |
+| Manager QA | **N/A / waived** |
+| Salesman QA | **pending** — password + Pixel device |
+| Device | **DEVICE_NOT_AVAILABLE_HOME_MAC** — Pixel 6 Pro not available |
+| Play Store | **NOT RELEASED** |
+| R8 | **BLOCKED** |
+
+Evidence: [`reports/home-mac-mobile-qa-status-manager-waived-no-device-20260703/`](../reports/home-mac-mobile-qa-status-manager-waived-no-device-20260703/)
 
 ## Quick Commands
 
