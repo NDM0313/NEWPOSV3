@@ -1,0 +1,11 @@
+{
+  "generated": "2026-07-03T01:40:51+05:00",
+  "stabilityWindowStart": "2026-07-01",
+  "calendarDay": 3,
+  "daysElapsed": 2,
+  "day2Pass": true,
+  "day3FullMonitoring": "BLOCKED_MISSING_QA_PASSWORDS",
+  "r8Blocked": true,
+  "mobileManagerQa": "pending",
+  "mobileSalesmanQa": "pending"
+}
