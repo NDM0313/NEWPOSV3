@@ -106,6 +106,17 @@ Evidence: [`reports/single-core-engine-stability-window-20260701/`](../reports/s
 
 Evidence: [`reports/web-payment-orphan-receipt-fix-stability-day1-20260701/`](../reports/web-payment-orphan-receipt-fix-stability-day1-20260701/)
 
+## Orphan fix deploy + Roznamcha refresh (2026-07-02)
+
+| Item | Status |
+|------|--------|
+| Frontend deploy | **COMPLETE** — `deploy/vps-build-erp-only.sh` @ `6da3387f` (orphan fix `dcf82d89`) |
+| DIN BRIDAL Roznamcha fixture refresh | **COMPLETE** — Cash In **2,026,850**, Closing **1,109,070** |
+| Post-refresh / final monitoring | **PASS** (all three companies) |
+| Production GL mutation this run | **none** (metadata-only orphan void was prior run) |
+
+Evidence: [`reports/web-payment-orphan-fix-deploy-roznamcha-refresh-20260701/`](../reports/web-payment-orphan-fix-deploy-roznamcha-refresh-20260701/)
+
 ## Exact next recommended phase
 
 1. **Daily monitoring** during stability window — `npm run monitor:three-company-unified-ledger`

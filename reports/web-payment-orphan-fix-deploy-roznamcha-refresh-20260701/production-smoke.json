@@ -1,0 +1,8 @@
+{
+  "run": "PRODUCTION_SMOKE",
+  "http_status": 200,
+  "container_healthy": true,
+  "vps_commit": "6da3387f",
+  "new_production_receipts": false,
+  "result": "PASS_INFRASTRUCTURE"
+}

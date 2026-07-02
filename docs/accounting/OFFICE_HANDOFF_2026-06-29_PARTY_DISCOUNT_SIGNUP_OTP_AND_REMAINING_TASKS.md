@@ -160,6 +160,13 @@ Evidence:
 - No migrations; no new GL lines; soft hide only.
 - Evidence: [`reports/web-payment-orphan-receipt-fix-stability-day1-20260701/`](../reports/web-payment-orphan-receipt-fix-stability-day1-20260701/)
 
+### Orphan fix deploy + Roznamcha refresh (2026-07-02)
+
+- Frontend deploy **COMPLETE** (`deploy/vps-build-erp-only.sh` @ `6da3387f`).
+- DIN BRIDAL Roznamcha fixture-only refresh: Cash In **2,026,850**, Closing **1,109,070**.
+- Monitoring **PASS** all three companies after refresh.
+- Evidence: [`reports/web-payment-orphan-fix-deploy-roznamcha-refresh-20260701/`](../reports/web-payment-orphan-fix-deploy-roznamcha-refresh-20260701/)
+
 ### Priority 7 — Accounting / GL backlog requiring fresh diagnostics
 
 **Fresh read-only diagnostics (2026-06-30):** [`reports/remaining-tasks-start-20260630/gl-backlog-readonly-diagnostics.md`](../reports/remaining-tasks-start-20260630/gl-backlog-readonly-diagnostics.md)

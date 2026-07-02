@@ -142,7 +142,16 @@ Monitoring credentials: load from `erp-mobile-app/.env` (`$env:MONITORING_*` lin
 - **Delete semantics:** Hide from normal operational views; audit history preserved; not physical delete.
 - **Monitoring:** Pre-fix PASS; post-fix DIN BRIDAL Roznamcha golden −90k (phantom cash removed — expected after void).
 - **Deploy:** Frontend-only fix **not deployed** this run — awaiting operator approval.
-- **Evidence:** [`reports/web-payment-orphan-receipt-fix-stability-day1-20260701/`](../reports/web-payment-orphan-receipt-fix-stability-day1-20260701/)
+- **Evidence:** [`reports/web-payment-orphan-fix-deploy-roznamcha-refresh-20260701/`](../reports/web-payment-orphan-fix-deploy-roznamcha-refresh-20260701/)
+
+---
+
+## 12. Orphan fix deployed + Roznamcha refresh (2026-07-02)
+
+- **Frontend deploy:** COMPLETE @ `6da3387f` via `deploy/vps-build-erp-only.sh`
+- **DIN BRIDAL Roznamcha goldens:** Cash In **2,026,850**, Cash Out **917,780**, Closing **1,109,070** (fixture-only; −90k from orphan void)
+- **Monitoring:** PASS all three companies after fixture refresh
+- **Delete semantics:** soft hide with audit — not physical delete
 
 ---
 
