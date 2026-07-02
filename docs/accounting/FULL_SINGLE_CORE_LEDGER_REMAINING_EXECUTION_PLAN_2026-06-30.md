@@ -117,6 +117,25 @@ Evidence: [`reports/web-payment-orphan-receipt-fix-stability-day1-20260701/`](..
 
 Evidence: [`reports/web-payment-orphan-fix-deploy-roznamcha-refresh-20260701/`](../reports/web-payment-orphan-fix-deploy-roznamcha-refresh-20260701/)
 
+## Stability Day 2 — daily check (2026-07-02)
+
+| Item | Status |
+|------|--------|
+| Classification | **STABILITY_DAY_PASS** |
+| Monitoring artifact | `three-company-monitoring-2026-07-02T08-12-08-313Z` |
+| DIN CHINA | PASS (Admin Compare 9/9) |
+| DIN BRIDAL | PASS |
+| DIN COUTURE | PASS |
+| migrations_run | false |
+| gl_mutations | false |
+| Feature flags | unchanged |
+| Production mutation | **none** |
+| Tests | 328/328 unified · 124/124 unit |
+| R8 | **BLOCKED** |
+| Mobile release | separate track |
+
+Evidence: [`reports/single-core-engine-stability-daily-20260702/`](../reports/single-core-engine-stability-daily-20260702/)
+
 ## Exact next recommended phase
 
 1. **Daily monitoring** during stability window — `npm run monitor:three-company-unified-ledger`
