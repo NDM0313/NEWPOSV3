@@ -17,6 +17,7 @@ import { useSettings } from '../../context/SettingsContext';
 import { useNavigation } from '../../context/NavigationContext';
 import { productService } from '../../services/productService';
 import { inventoryService, InventoryOverviewRow } from '../../services/inventoryService';
+import { openingBalanceJournalService } from '../../services/openingBalanceJournalService';
 import { comboService } from '../../services/comboService';
 import { toast } from 'sonner';
 import { FullStockLedgerView } from '../products/FullStockLedgerView';
@@ -261,6 +262,10 @@ export const InventoryDesignTestPage = () => {
           <p className="text-sm text-gray-400 mt-0.5">Track and manage your stock efficiently</p>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" className="gap-2 border-gray-700 text-gray-300" onClick={() => setCurrentView('stock-report')}>
+            <BarChart3 size={16} />
+            Stock Report
+          </Button>
           <Button variant="outline" className="gap-2 border-gray-700 text-gray-300" onClick={() => setCurrentView('inventory-analytics-test')}>
             <BarChart3 size={16} />
             Stock Analytics
@@ -657,7 +662,37 @@ export const InventoryDesignTestPage = () => {
               {importRows.length > 15 && <p className="text-xs text-gray-500 px-3 py-1">+ {importRows.length - 15} more</p>}
             </div>
           )}
-          <DialogFooter>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              className="border-gray-700 mr-auto"
+              disabled={!companyId || importing}
+              onClick={async () => {
+                if (!companyId) return;
+                setImporting(true);
+                try {
+                  const r = await openingBalanceJournalService.syncInventoryOpeningBalancesForCompany(companyId);
+                  const total = r.posted + r.kept;
+                  toast.success(
+                    total > 0
+                      ? `Synced ${total} opening GL entr${total === 1 ? 'y' : 'ies'} (Rs. ${r.totalValue.toLocaleString()}).`
+                      : 'No opening stock movements needed GL sync.'
+                  );
+                  if (r.skippedZeroCost > 0) {
+                    toast.warning(`${r.skippedZeroCost} movement(s) skipped — zero cost.`);
+                  }
+                  if (r.errors.length > 0) {
+                    toast.error(`${r.errors.length} sync error(s). Check console.`);
+                  }
+                } catch (err: unknown) {
+                  toast.error('GL sync failed: ' + (err instanceof Error ? err.message : 'Unknown error'));
+                } finally {
+                  setImporting(false);
+                }
+              }}
+            >
+              Sync opening GL
+            </Button>
             <Button variant="outline" className="border-gray-700" onClick={() => { setImportInventoryModalOpen(false); setImportRows([]); }}>Cancel</Button>
             <Button
               className="bg-blue-600 hover:bg-blue-500"
@@ -668,12 +703,29 @@ export const InventoryDesignTestPage = () => {
                 setImporting(true);
                 try {
                   const branchIdOrNull = branchId && branchId !== 'all' ? branchId : null;
-                  for (const row of valid) {
-                    if (row.productId) await inventoryService.insertOpeningBalanceMovement(companyId, branchIdOrNull, row.productId, row.quantity, 0);
-                  }
+                  const overviewByProductId = new Map(overviewRows.map(p => [p.productId, p]));
+                  const result = await inventoryService.bulkImportOpeningInventory(
+                    companyId,
+                    branchIdOrNull,
+                    valid.map(row => ({
+                      productId: row.productId!,
+                      quantity: row.quantity,
+                      unitCost: overviewByProductId.get(row.productId!)?.avgCost ?? 0,
+                    }))
+                  );
                   await loadOverview();
                   window.dispatchEvent(new CustomEvent('inventory-updated'));
-                  toast.success(`Imported ${valid.length} item(s).`);
+                  const glMsg =
+                    result.openingGlPosted + result.openingGlKept > 0
+                      ? ` · ${result.openingGlPosted + result.openingGlKept} opening GL entr${result.openingGlPosted + result.openingGlKept === 1 ? 'y' : 'ies'}`
+                      : '';
+                  toast.success(`Imported ${result.processed} item(s)${glMsg}.`);
+                  if (result.openingGlSkippedZeroCost > 0) {
+                    toast.warning(`${result.openingGlSkippedZeroCost} item(s) skipped GL — zero cost price.`);
+                  }
+                  if (result.failed > 0) {
+                    toast.error(`${result.failed} row(s) failed.`);
+                  }
                   setImportInventoryModalOpen(false);
                   setImportRows([]);
                 } catch (err: any) {

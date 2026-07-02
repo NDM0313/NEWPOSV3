@@ -1,0 +1,37 @@
+{
+  "generated_at": "2026-06-30T06:50:00.000Z",
+  "url": "https://erp.dincouture.pk/reports/ledger-statement-center-v2",
+  "overall": "BLOCKED_MISSING_QA_BROWSER_PASSWORDS",
+  "login": {
+    "attempted": false,
+    "reason": "QA_BROWSER_PASSWORD_CHINA not set in current shell; production DIN CHINA login requires operator credentials"
+  },
+  "customer_flow": {
+    "ledger_v2_loads": "NOT_RUN",
+    "party_mr_jalil": "NOT_RUN",
+    "customer_discount_button": "NOT_RUN",
+    "modal_opens": "NOT_RUN",
+    "validation_works": "NOT_RUN",
+    "discount_filter_visible": "NOT_RUN",
+    "closed_without_posting": "NOT_RUN",
+    "unified_preview_works": "NOT_RUN"
+  },
+  "supplier_flow": {
+    "party_mr_din_mohammad": "NOT_RUN",
+    "supplier_discount_button": "NOT_RUN",
+    "modal_opens": "NOT_RUN",
+    "validation_works": "NOT_RUN",
+    "closed_without_posting": "NOT_RUN"
+  },
+  "mutation_checks": {
+    "je_posted": false,
+    "party_discount_row_created": false,
+    "gl_mutation": false,
+    "existing_filters_statements": "NOT_VERIFIED"
+  },
+  "prior_evidence": {
+    "local_browser_qa_20260629": "PASS — MR JALIL customer + MR DIN MOHAMMAD supplier UI",
+    "production_smoke_20260629": "PARTIAL PASS — customer modal on QA company only"
+  },
+  "note": "Re-run after setting QA_BROWSER_PASSWORD_CHINA (din@yahoo.com) in session."
+}

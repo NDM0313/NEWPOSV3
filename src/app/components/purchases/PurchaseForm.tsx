@@ -40,7 +40,7 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Separator } from "../ui/separator";
 import { Badge } from "../ui/badge";
-import { CalendarDatePicker } from "../ui/CalendarDatePicker";
+import { DateTimePicker, dateToDateTimePickerValue, dateTimePickerValueToDate } from "../ui/DateTimePicker";
 import { SearchableSelect } from "../ui/searchable-select";
 import {
   Select,
@@ -2019,10 +2019,9 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                 <div className="flex flex-col w-[184px] absolute left-[798px] top-[77px] z-0">
                                     <Label className="text-gray-500 font-medium text-xs uppercase tracking-wide h-[14px] mb-1.5">Date</Label>
                                     <div className="[&>div>button]:bg-gray-900/50 [&>div>button]:border-gray-800 [&>div>button]:text-white [&>div>button]:text-xs [&>div>button]:h-10 [&>div>button]:min-h-[40px] [&>div>button]:px-2.5 [&>div>button]:py-1 [&>div>button]:rounded-lg [&>div>button]:border [&>div>button]:hover:bg-gray-800 [&>div>button]:w-full [&>div>button]:justify-start">
-                                        <CalendarDatePicker
-                                            value={purchaseDate}
-                                            onChange={(date) => setPurchaseDate(date || new Date())}
-                                            showTime={true}
+                                        <DateTimePicker
+                                            value={dateToDateTimePickerValue(purchaseDate)}
+                                            onChange={(v) => setPurchaseDate(dateTimePickerValueToDate(v) || new Date())}
                                             required
                                         />
                                     </div>

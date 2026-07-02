@@ -1,0 +1,33 @@
+{
+  "run": "PHASE_3B_G_DIN_CHINA_FINANCE_SUMMARY",
+  "company": "DIN CHINA",
+  "companyId": "30bd8592-3384-4f34-899a-f3907e336485",
+  "approvalStatus": "CANDIDATE_ONLY_NOT_FINANCE_APPROVED",
+  "financeStatus": "NEEDS_RULE_CONFIRMATION",
+  "period": { "from": "2000-01-01", "to": "2026-06-29" },
+  "totals": {
+    "legacyClosing": 37134386,
+    "previewClosing": -8540887,
+    "closingDelta": 45675273,
+    "legacyCashIn": 104176812,
+    "previewCashIn": 118313121,
+    "legacyCashOut": 67042426,
+    "previewCashOut": 126854008
+  },
+  "matchCounts": {
+    "exact": 89,
+    "strong": 0,
+    "weak": 11,
+    "legacyOnly": 223,
+    "previewOnly": 305
+  },
+  "transferLegBucket": {
+    "rowCount": 80,
+    "cashInTotal": 2000000,
+    "cashOutTotal": 58889891,
+    "netImpact": -56889891
+  },
+  "financeQuestions": ["Q5", "Q7"],
+  "loaderSwapApproved": false,
+  "evidence": "reports/single-core-ledger/phase-3b-f-cash-flow-row-export/diff-reports/din-china/sample-row-diff-report.json"
+}

@@ -1,0 +1,50 @@
+{
+  "run": "POST_BASELINE_REMAINING_SCREENS_AUDIT",
+  "generated_at": "2026-06-14T00:00:00Z",
+  "live_unified_main_loaders": [
+    "ledger_v2",
+    "account_statement",
+    "trial_balance",
+    "party_ledger",
+    "roznamcha"
+  ],
+  "screens": {
+    "ledger_v2": { "unified_main_loader": true, "recommendation": "complete" },
+    "account_statement": { "unified_main_loader": true, "recommendation": "complete" },
+    "trial_balance": { "unified_main_loader": true, "recommendation": "complete" },
+    "party_ledger": { "unified_main_loader": true, "recommendation": "complete" },
+    "roznamcha": { "unified_main_loader": true, "recommendation": "complete" },
+    "balance_sheet": {
+      "current_source": "accountingReportsService.getBalanceSheet",
+      "unified_preview": false,
+      "unified_main_loader": false,
+      "migration_needed": "design_and_flags",
+      "gl_mutation": false,
+      "risk": "high",
+      "recommendation": "optional_future"
+    },
+    "profit_loss": {
+      "current_source": "accountingReportsService.getProfitLoss",
+      "unified_preview": false,
+      "unified_main_loader": false,
+      "recommendation": "optional_future"
+    },
+    "cash_flow": {
+      "current_source": "cashFlowReportService",
+      "unified_preview": false,
+      "unified_main_loader": false,
+      "recommendation": "optional_future"
+    },
+    "day_book": {
+      "current_source": "legacy_je_queries",
+      "unified_main_loader": false,
+      "recommendation": "optional_future"
+    },
+    "mobile_parity": {
+      "unified_ledger_flags_in_mobile": false,
+      "recommendation": "optional_future"
+    }
+  },
+  "safe_fixes_applied_this_run": [],
+  "blocked_for_implementation": ["balance_sheet", "profit_loss", "cash_flow", "day_book", "mobile_parity"]
+}

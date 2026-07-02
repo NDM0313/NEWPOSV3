@@ -29,6 +29,8 @@ export interface EmployeeLedgerEntry {
 export const employeeService = {
   async getAvailableUsers(companyId: string) {
     try {
+      if (!companyId) return [];
+
       // 1. Get all users for the company
       const { data: users, error: usersError } = await supabase
         .from('users')
@@ -36,12 +38,15 @@ export const employeeService = {
         .eq('company_id', companyId);
 
       if (usersError) throw usersError;
-      if (!users) return [];
+      if (!users || users.length === 0) return [];
 
-      // 2. Get users who are already employees
+      const companyUserIds = users.map(u => u.id);
+
+      // 2. Get users in this company who are already employees
       const { data: employees, error: empError } = await supabase
         .from('employees')
-        .select('user_id');
+        .select('user_id')
+        .in('user_id', companyUserIds);
 
       if (empError) throw empError;
 
@@ -110,11 +115,17 @@ export const employeeService = {
     }
   },
 
-  async getAllEmployees() {
+  async getAllEmployees(companyId: string) {
     try {
+      if (!companyId) return [];
+
       const { data, error } = await supabase
         .from('employees')
-        .select('*, user:users(full_name, email)')
+        .select(`
+          *,
+          user:users!inner(full_name, email, role, company_id)
+        `)
+        .eq('user.company_id', companyId)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -198,10 +209,16 @@ export const employeeService = {
 
   async runMonthlySalaryCredit(companyId: string, createdBy?: string) {
     try {
-      // 1. Get all active employees
+      if (!companyId) return { success: true, message: 'No active employees found' };
+
+      // 1. Get active employees for this company only
       const { data: employees, error } = await supabase
         .from('employees')
-        .select('*')
+        .select(`
+          *,
+          user:users!inner(company_id)
+        `)
+        .eq('user.company_id', companyId)
         .eq('is_active', true);
 
       if (error) throw error;

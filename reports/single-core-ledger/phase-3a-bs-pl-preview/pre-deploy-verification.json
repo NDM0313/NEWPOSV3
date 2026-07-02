@@ -1,0 +1,11 @@
+{
+  "generatedAt": "2026-06-29",
+  "tests": { "command": "npm run test:unified-ledger", "pass": 265, "fail": 0 },
+  "build": { "command": "npm run build", "status": "PASS" },
+  "migrationsApplied": false,
+  "sqlApplied": false,
+  "featureFlagsChanged": false,
+  "credentialsPrinted": false,
+  "runtimeScope": "bs_pl_preview_ui_only",
+  "defaultBsPlUnchanged": true
+}

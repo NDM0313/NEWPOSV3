@@ -6,6 +6,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/app/componen
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
 import { Input } from '@/app/components/ui/input';
+import { DateTimePicker } from '@/app/components/ui/DateTimePicker';
+import {
+  formatLocalDateTimeYYYYMMDDHHmm,
+  parseLocalDateInput,
+  parseLocalDateTimeInput,
+  toLocalISOString,
+} from '@/app/utils/localDate';
 import { Label } from '@/app/components/ui/label';
 import { accountingService } from '@/app/services/accountingService';
 import { useSupabase } from '@/app/context/SupabaseContext';
@@ -13,8 +20,10 @@ import { useNavigation } from '@/app/context/NavigationContext';
 import { format } from 'date-fns';
 import { cn } from '@/app/components/ui/utils';
 import { getAttachmentOpenUrl } from '@/app/utils/paymentAttachmentUrl';
+import { normalizeAttachmentList } from '@/app/utils/transactionAttachments';
 import type { AccountingEntry, PaymentMethod } from '@/app/context/AccountingContext';
 import { toast } from 'sonner';
+import { safeSessionStorageSetItem } from '@/app/lib/safeBrowserStorage';
 import { getManualReceiptAllocationSummary, type ManualReceiptAllocationSummary } from '@/app/services/paymentAllocationService';
 import { UnifiedPaymentDialog, type PaymentDialogProps } from '@/app/components/shared/UnifiedPaymentDialog';
 import { getSaleDisplayNumber, getPurchaseDisplayNumber } from '@/app/lib/documentDisplayNumbers';
@@ -30,7 +39,28 @@ import {
 } from '@/app/lib/unifiedTransactionEdit';
 import { journalReversalBlockedReason } from '@/app/lib/journalEntryEditPolicy';
 import { resolvePaymentIdForMutation } from '@/app/lib/paymentRowEditRouting';
-import { getPaymentChainMutationBlockReason } from '@/app/services/paymentChainMutationGuard';
+import { getPaymentChainMutationBlockReason, fetchPaymentChainState } from '@/app/services/paymentChainMutationGuard';
+import {
+  getTransactionActions,
+  isTransactionActionPanelEnabled,
+  type TransactionActionId,
+} from '@/app/lib/transactionActionRules';
+import { canApplyDeveloperRepair } from '@/app/lib/developerAccountingAccess';
+import {
+  getStaleCorrectionReversalCandidates,
+  voidStaleCorrectionReversals,
+} from '@/app/services/accountingIntegrityService';
+import {
+  STALE_REVERSAL_VOID_LABEL,
+  staleCorrectionReversalVoidConfirmMessage,
+} from '@/app/lib/staleCorrectionReversalPolicy';
+import {
+  MANUAL_JE_CANCEL_LABEL,
+  manualJournalCancelConfirmMessage,
+} from '@/app/lib/manualJournalCancelPolicy';
+import { TransactionActionPanel } from '@/app/components/accounting/TransactionActionPanel';
+import { openJournalSourceDocumentFromEntry } from '@/app/lib/openJournalSourceDocument';
+import { getJournalEntrySourceDocumentOpenTarget } from '@/app/lib/journalEntryEditPolicy';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/app/components/ui/sheet';
 import {
   fetchPaymentDeepTrace,
@@ -40,6 +70,10 @@ import {
 import { activityLogService } from '@/app/services/activityLogService';
 import { stripJournalEditAuditSuffix, journalDescriptionForDisplay } from '@/app/utils/journalDescriptionDisplay';
 import { resolveRentalPaymentDisplay } from '@/app/lib/rentalPaymentRef';
+import {
+  isOrphanReceiptJournalEntry,
+  ORPHAN_RECEIPT_HIDE_HELP,
+} from '@/app/lib/orphanReceiptPolicy';
 
 function rowMethodToPaymentMethod(m: unknown): PaymentMethod {
   const x = String(m || '').toLowerCase();
@@ -52,11 +86,19 @@ interface TransactionDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   referenceNumber: string; // Can be journal_entry_id (UUID) or reference_no (string)
+  /** When opening from Account Ledger, prefer this exact journal row over entry_no heuristics. */
+  journalEntryIdHint?: string;
   /** PF-14.3B: When opening from grouped journal row, pass all entries in the document thread to show edit trail. */
   groupEntries?: AccountingEntry[];
   /** After load, open the same unified editor as the primary Edit action (journal / payment / source). */
   autoLaunchUnifiedEdit?: boolean;
   onAutoLaunchUnifiedEditConsumed?: () => void;
+  /** Open payment trace sheet once transaction is loaded. */
+  autoOpenPaymentTrace?: boolean;
+  onAutoOpenPaymentTraceConsumed?: () => void;
+  /** Scroll to activity / audit section once transaction is loaded. */
+  autoScrollToAudit?: boolean;
+  onAutoScrollToAuditConsumed?: () => void;
 }
 
 function mapRentalRowForPaymentDialog(row: Record<string, any>) {
@@ -199,26 +241,64 @@ async function enrichLedgerPaymentEditorFields(args: {
   };
 }
 
+function collectTransactionAttachmentUrls(
+  transaction: { attachments?: unknown } | null | undefined,
+  expenseReceiptUrl?: string | null,
+  sourceDocumentAttachments?: unknown
+): string[] {
+  const urls: string[] = [];
+  const jeAtt = transaction?.attachments;
+  if (Array.isArray(jeAtt)) {
+    for (const att of jeAtt) {
+      const u =
+        typeof att === 'string'
+          ? att
+          : (att as { url?: string; fileUrl?: string })?.url ||
+            (att as { url?: string; fileUrl?: string })?.fileUrl;
+      if (u) urls.push(String(u));
+    }
+  } else if (typeof jeAtt === 'string' && jeAtt.trim()) {
+    urls.push(jeAtt.trim());
+  }
+  const receipt = expenseReceiptUrl?.trim();
+  if (receipt) urls.push(receipt);
+  if (sourceDocumentAttachments) {
+    for (const att of normalizeAttachmentList(sourceDocumentAttachments)) {
+      if (att.url) urls.push(att.url);
+    }
+  }
+  return [...new Set(urls)];
+}
+
 export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
   isOpen,
   onClose,
   referenceNumber,
+  journalEntryIdHint,
   groupEntries,
   autoLaunchUnifiedEdit = false,
   onAutoLaunchUnifiedEditConsumed,
+  autoOpenPaymentTrace = false,
+  onAutoOpenPaymentTraceConsumed,
+  autoScrollToAudit = false,
+  onAutoScrollToAuditConsumed,
 }) => {
-  const { companyId, branchId } = useSupabase();
+  const { companyId, branchId, userRole } = useSupabase();
   const { openDrawer, setCurrentView } = useNavigation();
   const accounting = useAccounting();
   const { run, busy } = useSubmitLock();
+  const useTransactionActionPanel = isTransactionActionPanelEnabled();
+  const activitySectionRef = useRef<HTMLDivElement | null>(null);
   const [transaction, setTransaction] = useState<any>(null);
   /** Active PF-07 reversal child exists for loaded header — locks edit/reverse like Journal list. */
   const [txnHasActiveCorrectionReversal, setTxnHasActiveCorrectionReversal] = useState(false);
   const [loading, setLoading] = useState(false);
   const actionLocked = busy || loading;
   const [selectedAttachment, setSelectedAttachment] = useState<string | null>(null);
+  const [expenseReceiptUrl, setExpenseReceiptUrl] = useState<string | null>(null);
+  const [sourceDocumentAttachments, setSourceDocumentAttachments] = useState<unknown>(null);
   const [journalQuickEditOpen, setJournalQuickEditOpen] = useState(false);
-  const [editEntryDate, setEditEntryDate] = useState('');
+  const [editEntryDateTime, setEditEntryDateTime] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [savingJournalEdit, setSavingJournalEdit] = useState(false);
   /** Effective journal lines for payment (original + account-adjustment JEs merged) so Bank shows after Cash→Bank edit */
@@ -255,6 +335,8 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
   const [accountSearch, setAccountSearch] = useState<Record<string, string>>({});
   const [activityLogs, setActivityLogs] = useState<Awaited<ReturnType<typeof activityLogService.getEntityActivityLogs>>>([]);
   const [loadingActivityLogs, setLoadingActivityLogs] = useState(false);
+  const [staleReversalVoidEligible, setStaleReversalVoidEligible] = useState(false);
+  const canVoidStaleReversal = canApplyDeveloperRepair(userRole);
 
   const loadPaymentTrace = useCallback(async () => {
     if (!companyId || !transaction?.id) return;
@@ -306,21 +388,30 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
   );
 
   const [paymentChainBlockReason, setPaymentChainBlockReason] = useState<string | null>(null);
+  const [paymentChainMemberCount, setPaymentChainMemberCount] = useState(0);
 
   useEffect(() => {
     if (!companyId || !transaction?.id) {
       setPaymentChainBlockReason(null);
+      setPaymentChainMemberCount(groupEntries?.length ?? 0);
       return;
     }
     let cancelled = false;
     void (async () => {
       const r = await getPaymentChainMutationBlockReason(companyId, String(transaction.id));
       if (!cancelled) setPaymentChainBlockReason(r);
+      const paymentId = transaction.payment_id ?? transaction.payment?.id;
+      if (paymentId) {
+        const chain = await fetchPaymentChainState(companyId, String(paymentId));
+        if (!cancelled) setPaymentChainMemberCount(chain.memberCount);
+      } else if (!cancelled) {
+        setPaymentChainMemberCount(groupEntries?.length ?? 0);
+      }
     })();
     return () => {
       cancelled = true;
     };
-  }, [companyId, transaction?.id]);
+  }, [companyId, transaction?.id, transaction?.payment_id, transaction?.payment, groupEntries?.length]);
 
   useEffect(() => {
     autoLaunchConsumedRef.current = false;
@@ -330,7 +421,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     if (isOpen && referenceNumber && companyId) {
       loadTransaction();
     }
-  }, [isOpen, referenceNumber, companyId]);
+  }, [isOpen, referenceNumber, journalEntryIdHint, companyId]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -341,8 +432,96 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
       setRentalForPaymentDialog(null);
       setTxnHasActiveCorrectionReversal(false);
       setJournalQuickEditOpen(false);
+      setExpenseReceiptUrl(null);
+      setSourceDocumentAttachments(null);
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!transaction || !companyId) {
+      setExpenseReceiptUrl(null);
+      setSourceDocumentAttachments(null);
+      return;
+    }
+    const prt = String(transaction.reference_type || '').toLowerCase();
+    const refId = transaction.reference_id;
+    if ((prt === 'expense' || prt === 'extra_expense') && refId) {
+      let cancelled = false;
+      void (async () => {
+        try {
+          const { supabase } = await import('@/lib/supabase');
+          const { data } = await supabase
+            .from('expenses')
+            .select('receipt_url')
+            .eq('id', refId)
+            .eq('company_id', companyId)
+            .maybeSingle();
+          if (!cancelled) {
+            setExpenseReceiptUrl(data?.receipt_url ? String(data.receipt_url) : null);
+            setSourceDocumentAttachments(null);
+          }
+        } catch {
+          if (!cancelled) {
+            setExpenseReceiptUrl(null);
+            setSourceDocumentAttachments(null);
+          }
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }
+    if (
+      refId &&
+      (prt === 'sale' ||
+        prt === 'sale_adjustment' ||
+        prt === 'sale_reversal' ||
+        prt === 'purchase' ||
+        prt === 'purchase_adjustment' ||
+        prt === 'purchase_return')
+    ) {
+      let cancelled = false;
+      void (async () => {
+        try {
+          const { supabase } = await import('@/lib/supabase');
+          const table =
+            prt === 'sale' || prt === 'sale_adjustment' || prt === 'sale_reversal' ? 'sales' : 'purchases';
+          const { data } = await supabase
+            .from(table)
+            .select('attachments')
+            .eq('id', refId)
+            .eq('company_id', companyId)
+            .maybeSingle();
+          if (!cancelled) {
+            setExpenseReceiptUrl(null);
+            setSourceDocumentAttachments(data?.attachments ?? null);
+          }
+        } catch {
+          if (!cancelled) {
+            setExpenseReceiptUrl(null);
+            setSourceDocumentAttachments(null);
+          }
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }
+    setExpenseReceiptUrl(null);
+    setSourceDocumentAttachments(null);
+  }, [transaction?.id, transaction?.reference_type, transaction?.reference_id, companyId]);
+
+  const transactionAttachmentUrls = useMemo(
+    () => collectTransactionAttachmentUrls(transaction, expenseReceiptUrl, sourceDocumentAttachments),
+    [transaction, expenseReceiptUrl, sourceDocumentAttachments]
+  );
+
+  const openFirstTransactionAttachment = useCallback(async () => {
+    const url = transactionAttachmentUrls[0];
+    if (!url) return;
+    const openUrl = await getAttachmentOpenUrl(url);
+    setSelectedAttachment(openUrl);
+  }, [transactionAttachmentUrls]);
 
   useEffect(() => {
     if (!transaction || String(transaction.reference_type || '').toLowerCase() !== 'manual_receipt') {
@@ -393,17 +572,69 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
         payment_id: transaction.payment_id,
         is_void: transaction.is_void,
         payment_chain_is_historical: transaction.payment_chain_is_historical,
+        action_fingerprint: transaction.action_fingerprint,
+        description: transaction.description,
         hasActiveCorrectionReversal: txnHasActiveCorrectionReversal,
       },
       paymentForReversalPolicy
     );
   }, [transaction, paymentForReversalPolicy, txnHasActiveCorrectionReversal]);
 
+  const paymentForActions = useMemo(() => {
+    if (!transaction) return null;
+    return Array.isArray(transaction.payment) ? transaction.payment[0] : transaction.payment;
+  }, [transaction]);
+
+  useEffect(() => {
+    if (!companyId || !transaction?.id) {
+      setStaleReversalVoidEligible(false);
+      return;
+    }
+    const rt = String(transaction.reference_type || '').toLowerCase().trim();
+    if (rt !== 'correction_reversal' || transaction.is_void === true) {
+      setStaleReversalVoidEligible(false);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const candidates = await getStaleCorrectionReversalCandidates(companyId);
+        if (!cancelled) {
+          setStaleReversalVoidEligible(candidates.some((c) => c.id === String(transaction.id)));
+        }
+      } catch {
+        if (!cancelled) setStaleReversalVoidEligible(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, transaction?.id, transaction?.reference_type, transaction?.is_void]);
+
+  useEffect(() => {
+    if (!autoOpenPaymentTrace || !isOpen || loading || !transaction) return;
+    setPaymentTraceOpen(true);
+    onAutoOpenPaymentTraceConsumed?.();
+  }, [autoOpenPaymentTrace, isOpen, loading, transaction, onAutoOpenPaymentTraceConsumed]);
+
+  useEffect(() => {
+    if (!autoScrollToAudit || !isOpen || loading || !transaction) return;
+    activitySectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    onAutoScrollToAuditConsumed?.();
+  }, [autoScrollToAudit, isOpen, loading, transaction, onAutoScrollToAuditConsumed]);
+
   const openJournalQuickEdit = () => {
     if (!transaction) return;
-    setEditEntryDate(
-      transaction.entry_date ? format(new Date(transaction.entry_date), 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd')
-    );
+    const base = transaction.entry_date
+      ? parseLocalDateInput(String(transaction.entry_date).slice(0, 10))
+      : new Date();
+    if (transaction.created_at) {
+      const posted = new Date(transaction.created_at as string);
+      if (!Number.isNaN(posted.getTime())) {
+        base.setHours(posted.getHours(), posted.getMinutes(), 0, 0);
+      }
+    }
+    setEditEntryDateTime(formatLocalDateTimeYYYYMMDDHHmm(base));
     setEditDescription(String(transaction.description || ''));
     setJournalQuickEditOpen(true);
   };
@@ -412,8 +643,10 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     if (!companyId || !transaction?.id) return;
     setSavingJournalEdit(true);
     try {
+      const when = parseLocalDateTimeInput(editEntryDateTime);
       const res = await accountingService.updateManualJournalEntry(companyId, transaction.id, {
-        entry_date: editEntryDate,
+        entry_date: editEntryDateTime.split('T')[0] || format(when, 'yyyy-MM-dd'),
+        created_at: toLocalISOString(when),
         description: editDescription,
       });
       if (!res.ok) {
@@ -477,15 +710,28 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
             onClose();
             return;
           }
-          if (typeof window !== 'undefined') {
-            sessionStorage.setItem('pendingRentalDetailsId', resolution.sourceId);
-          }
+          safeSessionStorageSetItem('pendingRentalDetailsId', resolution.sourceId);
           setCurrentView('rentals');
           onClose();
           toast.info('Opening Rentals — use the booking drawer to edit.');
           return;
         }
         case 'payment_editor': {
+          if (resolution.context === 'rental') {
+            const rentalId =
+              resolution.sourceId ||
+              String(transaction.reference_id || '').trim() ||
+              String(pr?.reference_id || '').trim();
+            if (!rentalId) {
+              toast.error('Missing rental reference on payment.');
+              return;
+            }
+            const { rentalService } = await import('@/app/services/rentalService');
+            const row = await rentalService.getRental(rentalId);
+            setRentalForPaymentDialog(mapRentalRowForPaymentDialog(row as any));
+            setRentalPaymentEditorOpen(true);
+            return;
+          }
           const pid =
             (transaction.payment_id as string | undefined) ||
             (pr?.id ? resolvePaymentIdForMutation({ id: pr.id, parentPaymentId: (pr as any).parentPaymentId }) : '') ||
@@ -512,7 +758,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                 : prt === 'rental'
                   ? 'rental'
                   : 'customer'; // includes sale, sale_extra_expense, payment, payment_adjustment, etc.
-          if (resolution.context === 'rental' || prt === 'rental') {
+          if (prt === 'rental') {
             const rentalId = resolution.sourceId || prid;
             if (!rentalId) {
               toast.error('Missing rental reference on payment.');
@@ -624,11 +870,80 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     };
   }, [journalLines]);
 
+  const isOrphanReceipt = useMemo(() => {
+    if (!transaction) return false;
+    return isOrphanReceiptJournalEntry({
+      reference_type: transaction.reference_type,
+      payment_id: transaction.payment_id,
+      is_void: transaction.is_void,
+      journalLineCount: journalLines.length,
+    });
+  }, [transaction, journalLines.length]);
+
+  const orphanLinkedPaymentAmount = useMemo(() => {
+    if (!isOrphanReceipt) return 0;
+    const pay = Array.isArray(transaction?.payment) ? transaction?.payment[0] : transaction?.payment;
+    return Number(pay?.amount) || 0;
+  }, [isOrphanReceipt, transaction?.payment]);
+
+  const detailModalActions = useMemo(() => {
+    if (!transaction || !useTransactionActionPanel) return [];
+    const sourceOpen = getJournalEntrySourceDocumentOpenTarget({
+      id: String(transaction.id),
+      date: String(transaction.entry_date || ''),
+      description: String(transaction.description || ''),
+      amount: 0,
+      type: 'debit',
+      source: '',
+      metadata: {
+        referenceType: transaction.reference_type,
+        referenceId: transaction.reference_id,
+        paymentId: transaction.payment_id,
+      },
+    } as AccountingEntry);
+    return getTransactionActions(
+      {
+        reference_type: transaction.reference_type,
+        reference_id: transaction.reference_id,
+        payment_id: transaction.payment_id,
+        is_void: transaction.is_void,
+        payment_chain_is_historical: transaction.payment_chain_is_historical,
+        has_active_correction_reversal: txnHasActiveCorrectionReversal,
+        action_fingerprint: transaction.action_fingerprint,
+        description: transaction.description,
+        payment_chain_member_count: paymentChainMemberCount,
+        payment_obj: paymentForActions,
+        journal_line_count: journalLines.length,
+        is_orphan_receipt: isOrphanReceipt,
+      },
+      'detail_modal',
+      {
+        includeViewAction: false,
+        paymentChainBlockReason: paymentChainBlockReason,
+        sourceOpenTarget: sourceOpen,
+        allowStaleReversalVoid: canVoidStaleReversal,
+        staleReversalVoidEligible: staleReversalVoidEligible,
+      }
+    );
+  }, [
+    transaction,
+    useTransactionActionPanel,
+    txnHasActiveCorrectionReversal,
+    paymentChainMemberCount,
+    paymentChainBlockReason,
+    paymentForActions,
+    canVoidStaleReversal,
+    staleReversalVoidEligible,
+    journalLines.length,
+    isOrphanReceipt,
+  ]);
+
   const loadTransaction = async () => {
     if (!referenceNumber || !companyId) return;
 
     setLoading(true);
     setTxnHasActiveCorrectionReversal(false);
+    setExpenseReceiptUrl(null);
     try {
       // CRITICAL FIX: Prioritize entry_no lookup (JE-0058) over UUID lookup
       // UUID format: 8-4-4-4-12 hex characters
@@ -643,6 +958,14 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
       });
 
       let data = null;
+
+      const hintId = String(journalEntryIdHint || '').trim();
+      const hintIsUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(hintId);
+
+      // PRIORITY 0a: Ledger row hint — exact journal the user clicked
+      if (!data && hintIsUuid && companyId) {
+        data = await accountingService.getEntryById(hintId, companyId);
+      }
 
       // PRIORITY 0: Grouped journal row — load the clicked / primary entry by UUID
       if (groupEntries?.length && companyId) {
@@ -660,17 +983,12 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
         data = await accountingService.getEntryById(referenceNumber, companyId);
       }
 
-      // PRIORITY 2: If it looks like entry_no (JE-0058), use reference lookup
-      if (!data && looksLikeEntryNo) {
-        console.log('[TRANSACTION DETAIL] Looks like entry_no, using reference lookup first...');
-        data = await accountingService.getEntryByReference(referenceNumber, companyId);
-        console.log('[TRANSACTION DETAIL] Reference lookup result:', data ? 'FOUND' : 'NOT FOUND');
-      }
-      
-      // PRIORITY 3: Fallback to reference lookup (for any other format)
-      if (!data && !looksLikeEntryNo) {
-        console.log('[TRANSACTION DETAIL] Trying reference lookup as fallback...');
-        data = await accountingService.getEntryByReference(referenceNumber, companyId);
+      // PRIORITY 2: Reference lookup (REN-*-PAY, PAY/RCV, booking_no, entry_no, etc.)
+      if (!data) {
+        console.log('[TRANSACTION DETAIL] Using reference lookup...');
+        data = await accountingService.getEntryByReference(referenceNumber, companyId, {
+          journalEntryIdHint: hintIsUuid ? hintId : undefined,
+        });
         console.log('[TRANSACTION DETAIL] Reference lookup result:', data ? 'FOUND' : 'NOT FOUND');
       }
 
@@ -756,23 +1074,159 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     }
   };
 
-  // Void/Cancel: mark JE as void (excluded from GL, reports, balances)
-  const handleVoidJournal = async () => {
-    if (!transaction?.id || !companyId) return;
-    if (!window.confirm('Kya aap is entry ko VOID/CANCEL karna chahte hain? Ye GL, reports aur balances se hat jayegi. Is action ko undo nahi kiya ja sakta.')) return;
+  const handleVoidStaleReversal = async () => {
+    if (!transaction?.id || !companyId || !staleReversalVoidEligible) return;
+    const entryNo = transaction.entry_no ?? transaction.reference_number;
+    const amount = Math.max(
+      ...(effectiveLines.length ? effectiveLines : journalLines).map(
+        (l: { debit?: number; credit?: number }) => Math.max(Number(l.debit) || 0, Number(l.credit) || 0)
+      ),
+      0
+    );
+    if (!window.confirm(staleCorrectionReversalVoidConfirmMessage(entryNo, amount || null))) return;
     try {
-      const { supabase } = await import('@/lib/supabase');
-      const { error } = await supabase
-        .from('journal_entries')
-        .update({ is_void: true, void_reason: 'manual_void', voided_at: new Date().toISOString() })
-        .eq('id', transaction.id);
-      if (error) throw error;
-      toast.success('Entry void/cancel ho gayi hai — GL se remove ho gayi');
+      const res = await voidStaleCorrectionReversals(companyId, [String(transaction.id)]);
+      if (!res.success) throw new Error(res.error || 'Void failed');
+      toast.success('Reversal removed from live GL');
       await loadTransaction();
       dispatchAccountingEditCommitted();
       accounting.refreshEntries?.();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Remove from live GL failed');
+    }
+  };
+
+  // Void/Cancel: payment-linked JEs also void payments.voided_at (Roznamcha / statements / ledger).
+  const handleVoidJournal = async () => {
+    if (!transaction?.id || !companyId) return;
+    const paymentId =
+      transaction.payment_id ??
+      (Array.isArray(transaction.payment) ? transaction.payment[0]?.id : transaction.payment?.id);
+    if (!window.confirm(manualJournalCancelConfirmMessage(!!paymentId))) return;
+    try {
+      if (paymentId) {
+        const { voidPaymentAfterJournalReversal } = await import('@/app/services/paymentLifecycleService');
+        await voidPaymentAfterJournalReversal({ companyId, paymentId: String(paymentId) });
+      } else {
+        const { supabase } = await import('@/lib/supabase');
+        const { error } = await supabase
+          .from('journal_entries')
+          .update({ is_void: true, void_reason: 'manual_void', voided_at: new Date().toISOString() })
+          .eq('id', transaction.id);
+        if (error) throw error;
+      }
+      toast.success('Entry cancelled — removed from live reports');
+      await loadTransaction();
+      dispatchAccountingEditCommitted();
+      accounting.refreshEntries?.();
+      if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('rentalPaymentsChanged'));
     } catch (e: any) {
-      toast.error('Void failed: ' + (e?.message || 'Unknown error'));
+      toast.error('Cancel failed: ' + (e?.message || 'Unknown error'));
+    }
+  };
+
+  const handleCancelOrphanReceipt = async () => {
+    if (!transaction || !companyId) return;
+    const paymentId =
+      transaction.payment_id ??
+      (Array.isArray(transaction.payment) ? transaction.payment[0]?.id : transaction.payment?.id);
+    if (!paymentId) {
+      toast.error('Orphan receipt has no linked payment id.');
+      return;
+    }
+    if (
+      !window.confirm(
+        'Hide this failed receipt attempt from normal reports? The payment record and audit history are kept; no GL lines were posted.',
+      )
+    ) {
+      return;
+    }
+    try {
+      const { cancelOrphanManualReceipt } = await import('@/app/services/orphanReceiptService');
+      await cancelOrphanManualReceipt({ companyId, paymentId: String(paymentId) });
+      toast.success('Orphan receipt hidden from operational views');
+      onClose();
+      dispatchAccountingEditCommitted();
+      await accounting.refreshEntries?.();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Could not hide orphan receipt');
+    }
+  };
+
+  const handleUndoLastPaymentChange = async () => {
+    if (!transaction || !companyId) return;
+    const paymentId =
+      transaction.payment_id ??
+      (Array.isArray(transaction.payment) ? transaction.payment[0]?.id : transaction.payment?.id);
+    if (!paymentId) return;
+    if (
+      !window.confirm(
+        'Undo the last edit on this payment? This voids the latest adjustment and restores the previous state.',
+      )
+    ) {
+      return;
+    }
+    const ok = await accounting.undoLastPaymentMutation(String(paymentId));
+    if (ok) {
+      toast.success('Last change undone');
+      await loadTransaction();
+      dispatchAccountingEditCommitted();
+    } else {
+      toast.error('Could not undo last change');
+    }
+  };
+
+  const handleOpenSourceDocumentFromModal = async () => {
+    if (!transaction) return;
+    const entry = {
+      id: String(transaction.id),
+      date: String(transaction.entry_date || ''),
+      description: String(transaction.description || ''),
+      amount: 0,
+      type: 'debit' as const,
+      source: '',
+      metadata: {
+        referenceType: transaction.reference_type,
+        referenceId: transaction.reference_id,
+        paymentId: transaction.payment_id,
+      },
+    };
+    onClose();
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => resolve());
+    });
+    await openJournalSourceDocumentFromEntry(entry as AccountingEntry, { openDrawer, setCurrentView });
+  };
+
+  const handleDetailModalAction = (actionId: TransactionActionId) => {
+    switch (actionId) {
+      case 'edit':
+        void run('Opening editor...', () => runUnifiedEdit());
+        break;
+      case 'cancel_payment':
+      case 'cancel_entry':
+        void run('Cancelling...', () => handleVoidJournal());
+        break;
+      case 'cancel_orphan':
+        void run('Hiding orphan...', () => handleCancelOrphanReceipt());
+        break;
+      case 'void_stale_reversal':
+        void run('Removing...', () => handleVoidStaleReversal());
+        break;
+      case 'undo_last_change':
+        void run('Undoing...', () => handleUndoLastPaymentChange());
+        break;
+      case 'open_source_document':
+        void run('Opening...', () => handleOpenSourceDocumentFromModal());
+        break;
+      case 'view_trace':
+        setPaymentTraceOpen(true);
+        break;
+      case 'view_audit':
+        activitySectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        break;
+      default:
+        break;
     }
   };
 
@@ -947,7 +1401,19 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
           <DialogTitle className="text-white flex items-center justify-between">
             <div>
               <h2 className="text-xl font-bold">Transaction Details</h2>
-              <p className="text-sm text-gray-400 mt-1">Reference: {voucherDisplayRef}</p>
+              <p className="text-sm text-gray-400 mt-1 flex items-center gap-2 flex-wrap">
+                <span>Reference: {voucherDisplayRef}</span>
+                {transactionAttachmentUrls.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => void openFirstTransactionAttachment()}
+                    className="inline-flex items-center p-0.5 hover:bg-amber-500/10 rounded transition-colors"
+                    title="View attachment"
+                  >
+                    <Paperclip size={14} className="text-amber-400" />
+                  </button>
+                ) : null}
+              </p>
               {rentalPaymentVoucherRef && transaction?.entry_no && (
                 <p className="text-xs text-gray-500 mt-0.5">Journal: {transaction.entry_no}</p>
               )}
@@ -967,6 +1433,19 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
           <div className="text-center py-12 text-gray-400">Loading transaction details...</div>
         ) : transaction ? (
           <div className="space-y-6">
+            {isOrphanReceipt ? (
+              <div className="rounded-lg border border-orange-600/45 bg-orange-950/35 px-3 py-2 text-sm text-orange-100/95 leading-relaxed space-y-1">
+                <p>
+                  <span className="font-semibold text-orange-200">Orphan / Posting failed — </span>
+                  Payment record exists
+                  {orphanLinkedPaymentAmount > 0
+                    ? ` (Rs ${orphanLinkedPaymentAmount.toLocaleString()})`
+                    : ''}{' '}
+                  but no posted double-entry lines were created.
+                </p>
+                <p className="text-xs text-orange-200/80">{ORPHAN_RECEIPT_HIDE_HELP}</p>
+              </div>
+            ) : null}
             {paymentChainBlockReason ? (
               <div className="rounded-lg border border-amber-600/45 bg-amber-950/35 px-3 py-2 text-sm text-amber-100/95 leading-relaxed">
                 <span className="font-semibold text-amber-200">Historical payment line — </span>
@@ -1018,12 +1497,47 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
 
             {/* SECTION A: BASIC INFO */}
             <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                <h3 className="text-sm font-semibold text-gray-300 flex items-center gap-2">
+              <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-2 mb-3">
+                <h3 className="text-sm font-semibold text-gray-300 flex items-center gap-2 shrink-0">
                   <FileText size={16} />
                   Basic Information
                 </h3>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2 max-w-full min-w-0">
+                  {useTransactionActionPanel ? (
+                    <>
+                      <TransactionActionPanel
+                        actions={detailModalActions}
+                        onAction={handleDetailModalAction}
+                        disabled={actionLocked}
+                        variant="modal"
+                      />
+                      {transaction.id && !transaction.is_void && !editingAccounts && (() => {
+                        const rt = String(transaction.reference_type || '').toLowerCase();
+                        const allowEdit =
+                          !rt.startsWith('sale') &&
+                          !rt.startsWith('purchase') &&
+                          rt !== 'shipment' &&
+                          !rt.startsWith('opening_balance') &&
+                          rt !== 'commission_batch' &&
+                          rt !== 'stock_adjustment';
+                        if (!allowEdit) return null;
+                        return (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="gap-1 border-blue-500/40 text-blue-300"
+                            disabled={actionLocked}
+                            onClick={() => void handleLoadAccountsForEdit()}
+                          >
+                            <ArrowLeftRight size={14} />
+                            Edit Accounts
+                          </Button>
+                        );
+                      })()}
+                    </>
+                  ) : (
+                    <>
                   {(() => {
                     if (paymentChainBlockReason) return null;
                     if (!transactionForUnifiedPolicy) return null;
@@ -1053,7 +1567,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                       disabled={actionLocked}
                       onClick={() => setPaymentTraceOpen(true)}
                     >
-                      Full payment trace
+                      View Trace
                     </Button>
                   )}
                   {transaction.id &&
@@ -1073,21 +1587,40 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                         Reverse
                       </Button>
                     )}
-                  {/* Void/Cancel: completely remove from GL */}
                   {transaction.id && !transaction.is_void && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="gap-1 border-red-500/40 text-red-300"
-                      disabled={actionLocked}
-                      onClick={() => run('Voiding...', () => handleVoidJournal())}
-                    >
-                      <Trash2 size={14} />
-                      Void / Cancel
-                    </Button>
+                    <>
+                      {String(transaction.reference_type || '').toLowerCase() === 'correction_reversal' &&
+                      staleReversalVoidEligible &&
+                      canVoidStaleReversal ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="gap-1 border-rose-500/40 text-rose-300"
+                          disabled={actionLocked}
+                          onClick={() => run('Removing...', () => handleVoidStaleReversal())}
+                        >
+                          <Trash2 size={14} />
+                          {STALE_REVERSAL_VOID_LABEL}
+                        </Button>
+                      ) : String(transaction.reference_type || '').toLowerCase() !== 'correction_reversal' ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="gap-1 border-red-500/40 text-red-300"
+                          disabled={actionLocked}
+                          onClick={() => run('Voiding...', () => handleVoidJournal())}
+                        >
+                          <Trash2 size={14} />
+                          {transaction.payment_id ||
+                          (Array.isArray(transaction.payment) ? transaction.payment[0]?.id : transaction.payment?.id)
+                            ? 'Cancel Payment'
+                            : MANUAL_JE_CANCEL_LABEL}
+                        </Button>
+                      ) : null}
+                    </>
                   )}
-                  {/* Edit Accounts: only for payment/expense/manual — NOT for sale/purchase/return (those are auto-posted) */}
                   {transaction.id && !transaction.is_void && !editingAccounts && (() => {
                     const rt = String(transaction.reference_type || '').toLowerCase();
                     const allowEdit = !rt.startsWith('sale') && !rt.startsWith('purchase') && rt !== 'shipment' && !rt.startsWith('opening_balance') && rt !== 'commission_batch' && rt !== 'stock_adjustment';
@@ -1106,6 +1639,8 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                       </Button>
                     );
                   })()}
+                    </>
+                  )}
                   {editingAccounts && (
                     <>
                       <Button
@@ -1135,7 +1670,19 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <span className="text-gray-400">Reference Number:</span>
-                  <p className="text-white font-medium">{voucherDisplayRef}</p>
+                  <p className="text-white font-medium flex items-center gap-2 flex-wrap">
+                    <span>{voucherDisplayRef}</span>
+                    {transactionAttachmentUrls.length > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => void openFirstTransactionAttachment()}
+                        className="inline-flex items-center p-0.5 hover:bg-amber-500/10 rounded transition-colors"
+                        title="View attachment"
+                      >
+                        <Paperclip size={14} className="text-amber-400" />
+                      </button>
+                    ) : null}
+                  </p>
                   {rentalPaymentVoucherRef && transaction?.entry_no && (
                     <p className="text-xs text-gray-500 mt-0.5">Journal: {transaction.entry_no}</p>
                   )}
@@ -1593,7 +2140,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
               <p className="text-xs text-gray-400 mt-3">Double-entry: total debit must equal total credit.</p>
             </div>
 
-            <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
+            <div ref={activitySectionRef} className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
               <h3 className="text-sm font-semibold text-gray-300 mb-3">Activity</h3>
               {loadingActivityLogs ? (
                 <p className="text-sm text-gray-500">Loading activity…</p>
@@ -1682,8 +2229,8 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
             </DialogHeader>
             <div className="space-y-3 pt-2">
               <div>
-                <Label className="text-gray-400">Transaction date</Label>
-                <Input type="date" value={editEntryDate} onChange={(e) => setEditEntryDate(e.target.value)} className="bg-gray-950 border-gray-700 mt-1" />
+                <Label className="text-gray-400">Transaction date &amp; time</Label>
+                <DateTimePicker value={editEntryDateTime} onChange={setEditEntryDateTime} required />
               </div>
               <div>
                 <Label className="text-gray-400">Description / notes</Label>
@@ -1846,8 +2393,12 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
       />
     )}
 
-    <Sheet open={paymentTraceOpen} onOpenChange={setPaymentTraceOpen}>
-      <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto bg-gray-950 border-gray-800 text-gray-200">
+    <Sheet open={paymentTraceOpen} onOpenChange={setPaymentTraceOpen} modal>
+      <SheetContent
+        side="right"
+        overlayClassName="z-[115]"
+        className="z-[120] w-full sm:max-w-lg overflow-y-auto bg-gray-950 border-gray-800 text-gray-200"
+      >
         <SheetHeader>
           <SheetTitle className="text-white">Payment / GL trace</SheetTitle>
           <p className="text-xs text-gray-500 font-normal">

@@ -1,0 +1,11 @@
+{
+  "run": "PHASE_3B_H_ALIGNMENT_CAPTURE",
+  "status": "PENDING_DEPLOY",
+  "preAlignmentEvidence": "reports/single-core-ledger/phase-3b-f-cash-flow-row-export/production-row-export-capture.json",
+  "companies": [
+    { "company": "DIN CHINA", "preClosingDelta": 45675273, "expectedImprovement": "transfer_exclusion_Q5_C", "captureStatus": "PENDING_DEPLOY" },
+    { "company": "DIN BRIDAL", "preClosingDelta": -55000, "expectedImprovement": "opening_exclusion_Q4_A", "captureStatus": "PENDING_DEPLOY" },
+    { "company": "DIN COUTURE", "preClosingDelta": 0, "captureStatus": "PENDING_DEPLOY" }
+  ],
+  "unitTestEvidence": "src/app/lib/accounting/cashFlowPreviewFinanceAlignment.test.ts"
+}

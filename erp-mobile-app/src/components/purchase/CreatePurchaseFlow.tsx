@@ -20,6 +20,7 @@ import { useSingleFlightAction } from '../../hooks/useSingleFlightAction';
 import { useSubmitLock } from '../../contexts/LoadingContext';
 import { localNowDateString, getCurrentLocalTimestamp } from '../../utils/localDate';
 import { formatStockLabel, getTotalProductStock, stockLabelClassName } from '../../utils/productStockGate';
+import { formatQty } from '../../utils/quantity';
 import { prepareAttachmentFilesForUpload } from '../../utils/imageCompression';
 import { MediaSourcePicker } from '../shared/MediaSourcePicker';
 import { NumericInput } from '../common/NumericInput';
@@ -920,7 +921,7 @@ function AddToPurchaseModal({ product, onClose, onAdd }: AddToPurchaseModalProps
                       <p className="text-sm font-medium truncate">{label || v.sku}</p>
                       <p className="text-xs text-[#9CA3AF] mt-0.5">Rs. {(v.price || 0).toLocaleString()}</p>
                       {typeof v.stock === 'number' && (
-                        <p className={`text-xs mt-0.5 ${v.stock < 10 ? 'text-[#F59E0B]' : 'text-[#9CA3AF]'}`}>Stock: {v.stock}</p>
+                        <p className={`text-xs mt-0.5 tabular-nums ${v.stock < 10 ? 'text-[#F59E0B]' : 'text-[#9CA3AF]'}`}>Stock: {formatQty(v.stock)}</p>
                       )}
                     </button>
                   );

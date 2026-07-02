@@ -26,6 +26,11 @@ import { InventoryReport } from './reports/InventoryReport';
 import { JournalEntryDetailPanel } from './JournalEntryDetailPanel';
 import { MyFinancialActivity } from './MyFinancialActivity';
 import { CourierShipmentsReport } from './reports/CourierShipmentsReport';
+import { BalanceSheetReport } from './reports/BalanceSheetReport';
+import { ProfitLossReport } from './reports/ProfitLossReport';
+import { TrialBalanceReport } from './reports/TrialBalanceReport';
+import { CashFlowReport } from './reports/CashFlowReport';
+import { LedgerV2Report } from './reports/LedgerV2Report';
 import {
   MOBILE_DATA_INVALIDATED_EVENT,
   shouldAcceptMobileInvalidation,
@@ -77,7 +82,12 @@ type View =
   | 'rental-report'
   | 'inventory-report'
   | 'my-activity'
-  | 'courier-shipments';
+  | 'courier-shipments'
+  | 'balance-sheet'
+  | 'profit-loss'
+  | 'trial-balance'
+  | 'cash-flow'
+  | 'ledger-v2';
 
 const PARTY_VIEWS: View[] = ['dashboard', 'my-activity'];
 
@@ -497,6 +507,56 @@ export function AccountsModule({
         companyId={companyId ?? null}
         branchId={branch?.id ?? null}
         onOpenSale={(saleId) => onNavigateToDocumentEdit?.('sale', saleId)}
+      />
+    );
+  }
+  if (view === 'balance-sheet') {
+    return (
+      <BalanceSheetReport
+        reportRefreshEpoch={reportRefreshEpoch}
+        onBack={backToReports}
+        companyId={companyId ?? null}
+        branchId={branch?.id ?? null}
+      />
+    );
+  }
+  if (view === 'profit-loss') {
+    return (
+      <ProfitLossReport
+        reportRefreshEpoch={reportRefreshEpoch}
+        onBack={backToReports}
+        companyId={companyId ?? null}
+        branchId={branch?.id ?? null}
+      />
+    );
+  }
+  if (view === 'trial-balance') {
+    return (
+      <TrialBalanceReport
+        reportRefreshEpoch={reportRefreshEpoch}
+        onBack={backToReports}
+        companyId={companyId ?? null}
+        branchId={branch?.id ?? null}
+      />
+    );
+  }
+  if (view === 'cash-flow') {
+    return (
+      <CashFlowReport
+        reportRefreshEpoch={reportRefreshEpoch}
+        onBack={backToReports}
+        companyId={companyId ?? null}
+        branchId={branch?.id ?? null}
+      />
+    );
+  }
+  if (view === 'ledger-v2') {
+    return (
+      <LedgerV2Report
+        reportRefreshEpoch={reportRefreshEpoch}
+        onBack={backToReports}
+        companyId={companyId ?? null}
+        branchId={branch?.id ?? null}
       />
     );
   }

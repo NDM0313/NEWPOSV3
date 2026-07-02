@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Loader2, FileText, FileSpreadsheet, Filter, RotateCcw, Eye, Pencil } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { useFormatDate } from '@/app/hooks/useFormatDate';
 import { accountingService, AccountLedgerEntry } from '@/app/services/accountingService';
 import { accountService } from '@/app/services/accountService';
 import { exportToPDF, exportToExcel, ExportData } from '@/app/utils/exportUtils';
@@ -11,6 +12,7 @@ import { DateTimeDisplay } from '@/app/components/ui/DateTimeDisplay';
 import { contactService } from '@/app/services/contactService';
 import { studioService } from '@/app/services/studioService';
 import { StatementScopeBanner } from '@/app/components/reports/StatementScopeBanner';
+import { ReportBasisBanner } from '@/app/components/accounting/ReportBasisBanner';
 import {
   accountingStatementExportSlug,
   accountingStatementModeLabel,
@@ -33,6 +35,39 @@ import {
   netEconomicMeaning,
   editTargetTypeLabel,
 } from '@/app/lib/accountFlowPresentation';
+import { ledgerTransactionOpenEventDetail } from '@/app/lib/ledgerTransactionOpenRef';
+import {
+  collectRepairedControl1100SourceLineIds,
+  isGlCorrectionReferenceType,
+  partyEffectiveRowAuditLabel,
+  partyStatementGlCorrectionAuditLabel,
+  shouldHideRepairedControl1100Row,
+  shouldIncludePartyEffectiveRow,
+} from '@/app/lib/reportVisibilityContract';
+import { resolveGlCorrectionDisplayRef } from '@/app/lib/glCorrectionDisplayRef';
+import { canAccessAccountStatementUnifiedPreview } from '@/app/lib/accountStatementUnifiedPreviewAccess';
+import { resolveAccountStatementPreviewTarget } from '@/app/lib/accountStatementUnifiedPreviewTarget';
+import {
+  compareAccountStatementUnifiedPreview,
+  defaultUnifiedBasisForAccountStatement,
+  type AccountStatementUnifiedPreviewDiff,
+} from '@/app/lib/accountStatementUnifiedPreviewDiff';
+import { loadAccountStatementUnifiedPreview } from '@/app/services/accountStatementUnifiedPreviewService';
+import { useUnifiedLedgerEngineState } from '@/app/hooks/useUnifiedLedgerEngineState';
+import { UNIFIED_LEDGER_SCREEN_IDS } from '@/app/lib/unifiedLedgerScreenFlags';
+import type { UnifiedLedgerBasis } from '@/app/lib/unifiedLedgerBasisFilter';
+import {
+  MR_JALIL_CONTACT_ID,
+  MR_JALIL_CONTACT_NAME,
+} from '@/app/lib/unifiedLedgerGoldenFixtures';
+import { AccountStatementUnifiedPreviewPanel } from '@/app/components/reports/AccountStatementUnifiedPreviewPanel';
+import {
+  resolveAccountStatementPreviewCompareSource,
+  buildAccountStatementPreviewCompareRows,
+} from '@/app/lib/resolveAccountStatementPreviewCompareSource';
+import { loadAccountStatementLegacyShadowPreview } from '@/app/services/accountStatementLegacyShadowPreviewService';
+import { loadAccountStatementUnifiedMain } from '@/app/services/accountStatementUnifiedMainService';
+import { loadAccountStatementLegacyMain } from '@/app/services/accountStatementLegacyMainService';
 
 /** AR / AP running balance sign: highlight “inverted” party positions so refunds / prepaids are obvious. */
 const PARTY_BAL_EPS = 0.005;
@@ -247,10 +282,26 @@ function isAdjustmentRow(e: AccountLedgerEntry): boolean {
   return d.includes('adjust') || t.includes('adjust');
 }
 
+function isPartyRowHiddenInNormalEffective(e: AccountLedgerEntry): boolean {
+  return !shouldIncludePartyEffectiveRow({
+    jeReferenceType: e.je_reference_type,
+    jeActionFingerprint: e.je_action_fingerprint,
+    linkedSaleStatus: e.linked_sale_status,
+    paymentVoidedAt: e.payment_voided_at,
+  });
+}
+
 function isReversalRow(e: AccountLedgerEntry): boolean {
   const d = normalizeLower(e.description);
   const t = normalizeLower(e.document_type);
-  return e.ledger_kind === 'reversal' || d.includes('reversal') || t.includes('reversal');
+  const jeRt = normalizeLower(e.je_reference_type);
+  return (
+    e.ledger_kind === 'reversal' ||
+    jeRt === 'correction_reversal' ||
+    jeRt === 'sale_reversal' ||
+    d.includes('reversal') ||
+    t.includes('reversal')
+  );
 }
 
 function isManualRow(e: AccountLedgerEntry): boolean {
@@ -363,8 +414,9 @@ export const AccountLedgerReportPage: React.FC<{
   /** Pre-select this account when opened from Chart of Accounts ⋮ → Statement. */
   initialAccountId?: string | null;
 }> = ({ startDate, endDate, branchId, branchScopeLabel, initialAccountId }) => {
-  const { companyId } = useSupabase();
+  const { companyId, userRole } = useSupabase();
   const { formatCurrency } = useFormatCurrency();
+  const { formatTime } = useFormatDate();
   const [accounts, setAccounts] = useState<
     { id: string; name: string; code?: string; type?: string; linked_contact_id?: string | null; parent_id?: string | null }[]
   >([]);
@@ -381,7 +433,7 @@ export const AccountLedgerReportPage: React.FC<{
   const [transactionTypeFilter, setTransactionTypeFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [polarity, setPolarity] = useState<'all' | 'debit' | 'credit'>('all');
-  const [includeReversals, setIncludeReversals] = useState(true);
+  const [includeReversals, setIncludeReversals] = useState(false);
   const [includeManualEntries, setIncludeManualEntries] = useState(true);
   const [includeAdjustments, setIncludeAdjustments] = useState(true);
   const [applied, setApplied] = useState<FiltersState>({
@@ -395,7 +447,7 @@ export const AccountLedgerReportPage: React.FC<{
     transactionTypeFilter: 'all',
     searchTerm: '',
     polarity: 'all',
-    includeReversals: true,
+    includeReversals: false,
     includeManualEntries: true,
     includeAdjustments: true,
   });
@@ -409,9 +461,29 @@ export const AccountLedgerReportPage: React.FC<{
   );
   /** payment_id → oldest non–payment_adjustment JE entry_no (e.g. JE-0032 / Cash G140 voucher). */
   const [primaryCashVoucherByPaymentId, setPrimaryCashVoucherByPaymentId] = useState<Record<string, string>>({});
+  const [glCorrectionDisplayByJeId, setGlCorrectionDisplayByJeId] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
+  const [statementLoadedOnce, setStatementLoadedOnce] = useState(false);
   const [journalRefreshTick, setJournalRefreshTick] = useState(0);
+  const showUnifiedPreviewTools = canAccessAccountStatementUnifiedPreview(userRole);
+  const [unifiedPreviewEnabled, setUnifiedPreviewEnabled] = useState(false);
+  const [previewBasis, setPreviewBasis] = useState<UnifiedLedgerBasis>('effective_party');
+  const [previewResult, setPreviewResult] = useState<Awaited<ReturnType<typeof loadAccountStatementUnifiedPreview>> | null>(null);
+  const [previewDiff, setPreviewDiff] = useState<AccountStatementUnifiedPreviewDiff | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [mainLoaderSource, setMainLoaderSource] = useState<'legacy' | 'unified'>('legacy');
+
+  const previewCompareSource = useMemo(
+    () => resolveAccountStatementPreviewCompareSource(mainLoaderSource),
+    [mainLoaderSource],
+  );
+
+  const { state: engineState } = useUnifiedLedgerEngineState(companyId, {
+    screenId: UNIFIED_LEDGER_SCREEN_IDS.ACCOUNT_STATEMENT,
+    screenPreview: unifiedPreviewEnabled,
+  });
 
   useEffect(() => {
     const bump = () => setJournalRefreshTick((n) => n + 1);
@@ -564,112 +636,53 @@ export const AccountLedgerReportPage: React.FC<{
     setLoading(true);
     (async () => {
       try {
+        const legacyParams = {
+          companyId,
+          statementType: applied.statementType,
+          selectedContactId: applied.selectedContactId,
+          selectedWorkerId: applied.selectedWorkerId,
+          selectedAccountId: applied.selectedAccountId,
+          accounts,
+          startDate,
+          endDate,
+        };
+
+        const { resolveAccountStatementMainLoaderSource, effectiveAccountStatementMainLoaderSource } =
+          await import('@/app/lib/resolveAccountStatementMainLoaderSource');
+        const resolved = await resolveAccountStatementMainLoaderSource(companyId);
+        const mainSource = effectiveAccountStatementMainLoaderSource(resolved);
+        setMainLoaderSource(mainSource);
+
         let loaded: AccountLedgerEntry[] = [];
-        if (applied.statementType === 'customer') {
-          if (!applied.selectedContactId) {
+        if (mainSource === 'unified') {
+          const target = resolveAccountStatementPreviewTarget({
+            statementType: applied.statementType,
+            selectedContactId: applied.selectedContactId,
+            selectedWorkerId: applied.selectedWorkerId,
+            selectedAccountId: applied.selectedAccountId,
+            accounts,
+          });
+          if (target.kind === 'none') {
             setEntries([]);
             return;
           }
-          loaded = await accountingService.getCustomerLedger(
-            applied.selectedContactId,
+          const basis = defaultUnifiedBasisForAccountStatement(target, viewMode);
+          const unified = await loadAccountStatementUnifiedMain({
             companyId,
-            STATEMENT_ALL_BRANCHES_SCOPE,
+            target,
             startDate,
-            endDate
-          );
-        } else if (applied.statementType === 'supplier') {
-          if (!applied.selectedContactId) {
-            setEntries([]);
-            return;
-          }
-          loaded = await accountingService.getSupplierApGlJournalLedger(
-            applied.selectedContactId,
-            companyId,
-            STATEMENT_ALL_BRANCHES_SCOPE,
-            startDate,
-            endDate
-          );
-        } else if (applied.statementType === 'worker') {
-          if (!applied.selectedWorkerId) {
-            setEntries([]);
-            return;
-          }
-          loaded = await accountingService.getWorkerPartyGlJournalLedger(
-            applied.selectedWorkerId,
-            companyId,
-            STATEMENT_ALL_BRANCHES_SCOPE,
-            startDate,
-            endDate
-          );
+            endDate,
+            basis,
+          });
+          loaded = unified.rows;
         } else {
-          if (!applied.selectedAccountId) {
-            setEntries([]);
-            return;
-          }
-          const accRow = accounts.find((x) => x.id === applied.selectedAccountId);
-          let lc = accRow?.linked_contact_id ? String(accRow.linked_contact_id).trim() : '';
-          const accountsByIdMap = new Map(accounts.map((a) => [a.id, a]));
-          const ancestorId = accRow ? nearestPartyControlAncestorId(accRow, accountsByIdMap as any) : null;
-          const ctrl = ancestorId ? accountsByIdMap.get(ancestorId) : undefined;
-          const ctrlCode = String(ctrl?.code || '').trim();
-
-          if (!lc && accRow?.name && companyId) {
-            if (ctrlCode === '2000') {
-              const resolved = await contactService.resolveSupplierContactIdFromSubledgerAccountName(
-                companyId,
-                accRow.name
-              );
-              if (resolved) lc = resolved;
-            } else if (ctrlCode === '1100') {
-              const resolved = await contactService.resolveCustomerContactIdFromSubledgerAccountName(
-                companyId,
-                accRow.name
-              );
-              if (resolved) lc = resolved;
-            }
-          }
-
-          if (lc && ctrl && (ctrlCode === '1100' || ctrlCode === '2000' || ctrlCode === '2010' || ctrlCode === '1180')) {
-            if (ctrlCode === '2000') {
-              loaded = await accountingService.getSupplierApGlJournalLedger(
-                lc,
-                companyId,
-                STATEMENT_ALL_BRANCHES_SCOPE,
-                startDate,
-                endDate
-              );
-            } else if (ctrlCode === '1100') {
-              loaded = await accountingService.getCustomerLedger(
-                lc,
-                companyId,
-                STATEMENT_ALL_BRANCHES_SCOPE,
-                startDate,
-                endDate,
-                undefined,
-                'default'
-              );
-            } else {
-              loaded = await accountingService.getWorkerPartyGlJournalLedger(
-                lc,
-                companyId,
-                STATEMENT_ALL_BRANCHES_SCOPE,
-                startDate,
-                endDate
-              );
-            }
-          } else {
-            loaded = await accountingService.getAccountLedger(
-              applied.selectedAccountId,
-              companyId,
-              startDate,
-              endDate,
-              STATEMENT_ALL_BRANCHES_SCOPE
-            );
-          }
+          loaded = await loadAccountStatementLegacyMain(legacyParams);
         }
+
         setEntries(loaded || []);
         if (isDebugErpEnabled()) {
           console.log('[STATEMENT_FILTER_TRACE] fetch', {
+            mainLoaderSource: mainSource,
             statementType: applied.statementType,
             contactType: applied.selectedContactType,
             selectedContactId: applied.selectedContactId,
@@ -685,10 +698,11 @@ export const AccountLedgerReportPage: React.FC<{
           });
         }
       } finally {
+        setStatementLoadedOnce(true);
         setLoading(false);
       }
     })();
-  }, [companyId, applied, startDate, endDate, accounts, journalRefreshTick]);
+  }, [companyId, applied, startDate, endDate, accounts, journalRefreshTick, viewMode]);
 
   useEffect(() => {
     const paymentIds = [...new Set(entries.map((e) => e.payment_id).filter(Boolean))] as string[];
@@ -828,10 +842,252 @@ export const AccountLedgerReportPage: React.FC<{
     })();
   }, [entries, companyId]);
 
+  useEffect(() => {
+    if (!companyId) {
+      setGlCorrectionDisplayByJeId({});
+      return;
+    }
+    const glRows = entries.filter((e) => isGlCorrectionReferenceType(e.je_reference_type) && e.journal_entry_id);
+    if (!glRows.length) {
+      setGlCorrectionDisplayByJeId({});
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const sourceJeIds = [
+        ...new Set(glRows.map((e) => String(e.je_reference_id || '').trim()).filter(Boolean)),
+      ];
+      const sourceJournals = new Map<string, { id: string; entry_no: string | null; reference_type: string | null; reference_id: string | null }>();
+      if (sourceJeIds.length) {
+        const { data: srcJes } = await supabase
+          .from('journal_entries')
+          .select('id, entry_no, reference_type, reference_id')
+          .eq('company_id', companyId)
+          .in('id', sourceJeIds);
+        for (const row of srcJes || []) {
+          sourceJournals.set(String((row as { id: string }).id), {
+            id: String((row as { id: string }).id),
+            entry_no: (row as { entry_no?: string }).entry_no ?? null,
+            reference_type: (row as { reference_type?: string }).reference_type ?? null,
+            reference_id: (row as { reference_id?: string }).reference_id ?? null,
+          });
+        }
+      }
+      const rentalIds = [
+        ...new Set(
+          [...sourceJournals.values()]
+            .filter((j) => String(j.reference_type || '').toLowerCase() === 'rental' && j.reference_id)
+            .map((j) => String(j.reference_id))
+        ),
+      ];
+      const rentals = new Map<string, { booking_no?: string | null }>();
+      if (rentalIds.length) {
+        const { data: rentalRows } = await supabase.from('rentals').select('id, booking_no').in('id', rentalIds);
+        for (const r of rentalRows || []) {
+          rentals.set(String((r as { id: string }).id), {
+            booking_no: (r as { booking_no?: string }).booking_no ?? null,
+          });
+        }
+      }
+      const out: Record<string, string> = {};
+      for (const e of glRows) {
+        const ui = resolveGlCorrectionDisplayRef(
+          {
+            id: e.journal_entry_id,
+            entry_no: e.entry_no ?? null,
+            reference_type: e.je_reference_type ?? null,
+            reference_id: e.je_reference_id ?? null,
+            action_fingerprint: e.je_action_fingerprint ?? null,
+            description: e.description ?? null,
+          },
+          { sales: new Map(), sourceJournals, rentals }
+        );
+        out[e.journal_entry_id] = ui.displayRef;
+      }
+      if (!cancelled) setGlCorrectionDisplayByJeId(out);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [entries, companyId]);
+
   const selectedPartyName =
     applied.statementType === 'worker'
       ? workers.find((w) => w.id === applied.selectedWorkerId)?.name || ''
       : contacts.find((c) => c.id === applied.selectedContactId)?.name || '';
+
+  const previewTarget = useMemo(
+    () =>
+      resolveAccountStatementPreviewTarget({
+        statementType: applied.statementType,
+        selectedContactId: applied.selectedContactId,
+        selectedWorkerId: applied.selectedWorkerId,
+        selectedAccountId: applied.selectedAccountId,
+        accounts,
+      }),
+    [applied, accounts]
+  );
+
+  useEffect(() => {
+    if (previewTarget.kind !== 'none') {
+      setPreviewBasis(defaultUnifiedBasisForAccountStatement(previewTarget, viewMode));
+    }
+  }, [previewTarget, viewMode]);
+
+  const loadUnifiedPreview = useCallback(async () => {
+    if (!companyId || !unifiedPreviewEnabled) {
+      setPreviewResult(null);
+      setPreviewDiff(null);
+      return;
+    }
+    if (previewTarget.kind === 'none') {
+      setPreviewResult(null);
+      setPreviewDiff(null);
+      setPreviewError(previewTarget.reason);
+      return;
+    }
+    if (engineState.killSwitchActive) {
+      setPreviewResult(null);
+      setPreviewDiff(null);
+      setPreviewError('Unified preview disabled — kill switch active.');
+      return;
+    }
+
+    setPreviewLoading(true);
+    setPreviewError(null);
+    try {
+      const compareSource = resolveAccountStatementPreviewCompareSource(mainLoaderSource);
+
+      if (compareSource === 'legacy_shadow') {
+        const shadow = await loadAccountStatementLegacyShadowPreview({
+          companyId,
+          statementType: applied.statementType,
+          selectedContactId: applied.selectedContactId,
+          selectedWorkerId: applied.selectedWorkerId,
+          selectedAccountId: applied.selectedAccountId,
+          accounts,
+          startDate,
+          endDate,
+        });
+        setPreviewResult({
+          rows: shadow.rows,
+          unifiedRows: [],
+          closingBalance: shadow.closingBalance,
+          meta: {
+            engine: 'legacy_gl',
+            basis: previewBasis,
+            featureFlagEnabled: true,
+            shadowForce: true,
+            queryDurationMs: 0,
+            rowCount: shadow.rows.length,
+            periodOpeningBalance: 0,
+            message: 'Legacy shadow compare — main table uses unified loader.',
+          },
+          basis: previewBasis,
+        });
+        const { legacyEntries, previewEntries } = buildAccountStatementPreviewCompareRows({
+          compareSource,
+          mainEntries: entries,
+          shadowEntries: shadow.rows,
+        });
+        const partyId =
+          previewTarget.kind === 'party'
+            ? previewTarget.partyId
+            : applied.statementType === 'customer'
+              ? applied.selectedContactId
+              : undefined;
+        setPreviewDiff(
+          compareAccountStatementUnifiedPreview({
+            legacyEntries,
+            previewEntries,
+            statementType: applied.statementType,
+            partyId,
+          }),
+        );
+      } else {
+        const preview = await loadAccountStatementUnifiedPreview({
+          companyId,
+          target: previewTarget,
+          startDate,
+          endDate,
+          basis: previewBasis,
+        });
+        setPreviewResult(preview);
+        const { legacyEntries, previewEntries } = buildAccountStatementPreviewCompareRows({
+          compareSource,
+          mainEntries: entries,
+          shadowEntries: preview.rows,
+        });
+        const partyId =
+          previewTarget.kind === 'party'
+            ? previewTarget.partyId
+            : applied.statementType === 'customer'
+              ? applied.selectedContactId
+              : undefined;
+        setPreviewDiff(
+          compareAccountStatementUnifiedPreview({
+            legacyEntries,
+            previewEntries,
+            previewUnifiedRows: preview.unifiedRows,
+            statementType: applied.statementType,
+            partyId,
+          }),
+        );
+      }
+    } catch (err) {
+      console.error(err);
+      setPreviewResult(null);
+      setPreviewDiff(null);
+      setPreviewError(
+        previewCompareSource === 'legacy_shadow'
+          ? 'Legacy shadow compare failed to load'
+          : 'Unified preview failed to load',
+      );
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [
+    companyId,
+    unifiedPreviewEnabled,
+    entries,
+    previewTarget,
+    engineState.killSwitchActive,
+    startDate,
+    endDate,
+    previewBasis,
+    applied.statementType,
+    applied.selectedContactId,
+    applied.selectedWorkerId,
+    applied.selectedAccountId,
+    accounts,
+    mainLoaderSource,
+    previewCompareSource,
+  ]);
+
+  useEffect(() => {
+    if (!unifiedPreviewEnabled) {
+      setPreviewResult(null);
+      setPreviewDiff(null);
+      setPreviewError(null);
+      return;
+    }
+    void loadUnifiedPreview();
+  }, [unifiedPreviewEnabled, loadUnifiedPreview, mainLoaderSource]);
+
+  const handleLoadMrJalilGolden = useCallback(() => {
+    setStatementType('customer');
+    setSelectedContactType('customer');
+    setSelectedContactId(MR_JALIL_CONTACT_ID);
+    setSelectedAccountId('');
+    setApplied((prev) => ({
+      ...prev,
+      statementType: 'customer',
+      selectedContactType: 'customer',
+      selectedContactId: MR_JALIL_CONTACT_ID,
+      selectedAccountId: '',
+      selectedWorkerId: '',
+    }));
+  }, []);
 
   /** Default statement order: calendar date, then time-of-day (created_at), then stable id. */
   const sortedEntries = useMemo(() => {
@@ -987,8 +1243,21 @@ export const AccountLedgerReportPage: React.FC<{
     if (statementType === 'cash_bank') {
       const firstCash = accounts.find((a) => classifyAccountCategory(a) === 'Cash / Bank / Wallet');
       if (firstCash?.id) setSelectedAccountId(firstCash.id);
+      setIncludeAdjustments(false);
+      setIncludeReversals(false);
+      setApplied((prev) => ({ ...prev, includeAdjustments: false, includeReversals: false }));
     }
   }, [statementType, accounts]);
+
+  // Control 1100 defaults to effective view (hide repaired mobile-rental leakage pairs).
+  useEffect(() => {
+    if (statementType !== 'gl') return;
+    const acct = accounts.find((a) => a.id === selectedAccountId);
+    if (String(acct?.code || '').trim() !== '1100') return;
+    setIncludeAdjustments(false);
+    setIncludeReversals(false);
+    setApplied((prev) => ({ ...prev, includeAdjustments: false, includeReversals: false }));
+  }, [selectedAccountId, statementType, accounts]);
 
   // Primary selector auto-fetch: statement/account/contact fields update applied state immediately.
   useEffect(() => {
@@ -1003,6 +1272,14 @@ export const AccountLedgerReportPage: React.FC<{
   }, [statementType, selectedAccountId, selectedContactType, selectedContactId, selectedWorkerId]);
 
   const selectedAccount = accountById.get(applied.selectedAccountId || selectedAccountId);
+  const isArControlSelected =
+    applied.statementType === 'gl' &&
+    String(selectedAccount?.code || '').trim() === '1100';
+
+  const repairedControl1100LineIds = useMemo(
+    () => collectRepairedControl1100SourceLineIds(entries),
+    [entries]
+  );
 
   const branchScopeResolved = STATEMENT_BRANCH_SCOPE_LABEL;
 
@@ -1051,18 +1328,38 @@ export const AccountLedgerReportPage: React.FC<{
     accountById,
   ]);
 
-  const openStatementTransaction = (referenceNumber: string, autoLaunchUnifiedEdit: boolean) => {
+  const openStatementTransaction = (
+    referenceNumber: string,
+    autoLaunchUnifiedEdit: boolean,
+    journalEntryId?: string
+  ) => {
     if (typeof window === 'undefined' || !referenceNumber) return;
     window.dispatchEvent(
       new CustomEvent('openTransactionDetail', {
-        detail: { referenceNumber, autoLaunchUnifiedEdit },
+        detail: { referenceNumber, journalEntryId, autoLaunchUnifiedEdit },
       })
     );
   };
 
   const presentedEntries = useMemo<PresentedLedgerRow[]>(() => {
     const base = sortedEntries.filter((e) => {
+      if (
+        isArControlSelected &&
+        viewMode === 'effective' &&
+        shouldHideRepairedControl1100Row(
+          {
+            journalLineId: e.journal_line_id,
+            jeReferenceType: e.je_reference_type,
+            jeActionFingerprint: e.je_action_fingerprint,
+            glAccountCode: e.gl_account_code ?? selectedAccount?.code,
+          },
+          repairedControl1100LineIds
+        )
+      ) {
+        return false;
+      }
       if (!applied.includeManualEntries && isManualRow(e)) return false;
+      if (viewMode === 'effective' && isPartyRowHiddenInNormalEffective(e)) return false;
       return true;
     });
     if (!base.length) return [];
@@ -1090,15 +1387,26 @@ export const AccountLedgerReportPage: React.FC<{
         .filter((e) => (applied.includeReversals ? true : !isReversalRow(e)))
         .map((e) => {
           const adjustmentLabel = isAdjustmentRow(e) ? adjustmentSubtypeLabel(e) : '';
+          const auditTrailLabel = partyEffectiveRowAuditLabel({
+            jeReferenceType: e.je_reference_type,
+            jeActionFingerprint: e.je_action_fingerprint,
+            linkedSaleStatus: e.linked_sale_status,
+            paymentVoidedAt: e.payment_voided_at,
+          });
+          const glCorrectionAudit = isGlCorrectionReferenceType(e.je_reference_type);
+          const auditPrefix = auditTrailLabel || (glCorrectionAudit ? partyStatementGlCorrectionAuditLabel() : adjustmentLabel);
           return {
             ...e,
-            description: adjustmentLabel ? `${adjustmentLabel}: ${e.description}` : e.description,
+            description: auditPrefix ? `${auditPrefix}: ${e.description}` : e.description,
             displayDebit: Number(e.debit || 0),
             displayCredit: Number(e.credit || 0),
             displayRunningBalance: Number(e.running_balance || 0),
             displayStatus: hasReversalTwin(e)
               ? 'Reversed'
-              : (e.document_type || e.ledger_kind || (isReversalRow(e) ? 'Reversal' : '—')),
+              : auditTrailLabel ||
+                (glCorrectionAudit
+                  ? partyStatementGlCorrectionAuditLabel()
+                  : (e.document_type || e.ledger_kind || (isReversalRow(e) ? 'Reversal' : '—'))),
             presentationKind: presentationForLedgerEntry(e),
           };
         });
@@ -1211,6 +1519,9 @@ export const AccountLedgerReportPage: React.FC<{
     applied.statementType,
     viewMode,
     isPartyStatement,
+    isArControlSelected,
+    repairedControl1100LineIds,
+    selectedAccount?.code,
   ]);
 
   const summary = useMemo(() => {
@@ -1244,6 +1555,33 @@ export const AccountLedgerReportPage: React.FC<{
 
   const openingBalanceAttention = partyBalanceAttention(applied.statementType, summary.openingBalance);
   const closingBalanceAttention = partyBalanceAttention(applied.statementType, summary.closingBalance);
+
+  const displayFiltersActive = useMemo(
+    () =>
+      Boolean(applied.searchTerm.trim()) ||
+      applied.polarity !== 'all' ||
+      applied.sourceModuleFilter !== 'all' ||
+      applied.transactionTypeFilter !== 'all' ||
+      applied.includeReversals ||
+      applied.includeAdjustments ||
+      !applied.includeManualEntries ||
+      (applied.statementType === 'account_contact' && Boolean(applied.selectedContactId)) ||
+      sortedEntries.length !== entries.length ||
+      presentedEntries.length !== sortedEntries.length,
+    [applied, entries.length, sortedEntries.length, presentedEntries.length]
+  );
+
+  const previewEntityLabel = useMemo(() => {
+    if (applied.statementType === 'worker') return selectedPartyName || applied.selectedWorkerId;
+    if (applied.statementType === 'customer' || applied.statementType === 'supplier') {
+      return selectedPartyName || applied.selectedContactId;
+    }
+    const acc = accountById.get(applied.selectedAccountId);
+    return acc ? `${acc.code || ''} ${acc.name}`.trim() : applied.selectedAccountId;
+  }, [applied, selectedPartyName, accountById]);
+
+  const previewLegacyLabel =
+    previewTarget.kind === 'none' ? 'Legacy Account Statement' : previewTarget.legacyLabel;
 
   const sourceModules = useMemo(
     () => ['all', ...Array.from(new Set(entries.map((e) => normalizeLower(e.source_module)).filter(Boolean)))],
@@ -1323,14 +1661,17 @@ export const AccountLedgerReportPage: React.FC<{
   const handleExportExcel = () => exportToExcel(toExport(), accountingStatementExportSlug(applied.statementType));
 
   const resetFilters = () => {
+    const acct = accounts.find((a) => a.id === selectedAccountId);
+    const is1100Gl =
+      statementType === 'gl' && String(acct?.code || '').trim() === '1100';
     setSelectedCategory('all');
     setSourceModuleFilter('all');
     setTransactionTypeFilter('all');
     setSearchTerm('');
     setPolarity('all');
-    setIncludeReversals(true);
+    setIncludeReversals(is1100Gl ? false : true);
     setIncludeManualEntries(true);
-    setIncludeAdjustments(true);
+    setIncludeAdjustments(is1100Gl ? false : true);
     setSelectedContactId('');
     setSelectedWorkerId('');
     setApplied((prev) => ({
@@ -1340,9 +1681,9 @@ export const AccountLedgerReportPage: React.FC<{
       transactionTypeFilter: 'all',
       searchTerm: '',
       polarity: 'all',
-      includeReversals: true,
+      includeReversals: false,
       includeManualEntries: true,
-      includeAdjustments: true,
+      includeAdjustments: is1100Gl ? false : true,
       selectedContactId: '',
       selectedWorkerId: '',
     }));
@@ -1413,14 +1754,24 @@ export const AccountLedgerReportPage: React.FC<{
 
   if (loadingAccounts) {
     return (
-      <div className="flex items-center justify-center py-12">
+      <div className="flex flex-col items-center justify-center gap-3 py-12">
         <Loader2 className="h-8 w-8 animate-spin text-blue-400" />
+        <p className="text-sm text-gray-400">Loading accounts…</p>
+      </div>
+    );
+  }
+
+  if (loading && !statementLoadedOnce) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-16">
+        <Loader2 className="h-10 w-10 animate-spin text-blue-400" />
+        <p className="text-sm text-gray-400">Loading account statement…</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-account-statement-main-loader={mainLoaderSource}>
       <div className="rounded-xl border border-gray-800 bg-gray-900/60 p-4 space-y-3">
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
           <div>
@@ -1603,6 +1954,81 @@ export const AccountLedgerReportPage: React.FC<{
         }
       />
 
+      {(applied.statementType === 'customer' || applied.statementType === 'supplier') && (
+        <ReportBasisBanner
+          basis={viewMode === 'effective' ? 'effective_party' : 'audit_full'}
+          detail={
+            viewMode === 'effective'
+              ? 'Rollup rules hide cancelled/void/audit-only chains; balance follows posted GL on visible rows.'
+              : 'Shows reversals and adjustments when include checkboxes allow.'
+          }
+        />
+      )}
+
+      {showUnifiedPreviewTools ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer w-fit">
+            <input
+              type="checkbox"
+              checked={unifiedPreviewEnabled}
+              disabled={engineState.killSwitchActive}
+              onChange={(e) => setUnifiedPreviewEnabled(e.target.checked)}
+              className="rounded border-gray-600 disabled:opacity-50"
+            />
+            Unified engine preview (compare only)
+          </label>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="text-xs"
+            onClick={handleLoadMrJalilGolden}
+          >
+            Load MR JALIL
+          </Button>
+        </div>
+      ) : null}
+
+      {unifiedPreviewEnabled && showUnifiedPreviewTools ? (
+        <AccountStatementUnifiedPreviewPanel
+          statementType={applied.statementType}
+          entityLabel={previewEntityLabel}
+          previewTarget={previewTarget}
+          previewResult={previewResult}
+          diff={previewDiff}
+          loading={previewLoading}
+          error={previewError}
+          engineState={engineState}
+          previewBasis={previewBasis}
+          onPreviewBasisChange={setPreviewBasis}
+          displayFiltersActive={displayFiltersActive}
+          legacyEngineLabel={previewLegacyLabel}
+          viewMode={viewMode}
+          previewCompareSource={previewCompareSource}
+        />
+      ) : null}
+
+      {isArControlSelected && (
+        <div className="rounded-lg border border-amber-700/50 bg-amber-950/30 px-4 py-3 text-sm text-amber-100 space-y-1">
+          <p>
+            Customer receipts belong on each customer&apos;s <strong>AR sub-ledger</strong>, not the parent 1100 control
+            account. Use <strong>Customer Statement</strong> or select <strong>Receivable — customer name</strong> for
+            party activity (e.g. Hasseb, Inayat).
+          </p>
+          {viewMode === 'effective' ? (
+            <p className="text-xs text-amber-200/80">
+              Effective view hides repaired mobile-rental leakage pairs (original + gl_correction offset). Enable{' '}
+              <strong>Include adjustments</strong> for the full audit trail on 1100.
+            </p>
+          ) : (
+            <p className="text-xs text-amber-200/80">
+              Audit view shows all lines on control 1100 including gl_correction repairs. Party amounts are on AR-CUS*
+              sub-ledgers after repair.
+            </p>
+          )}
+        </div>
+      )}
+
       <p className="text-sm text-gray-400">
         {selectedAccount && `${selectedAccount.code || ''} ${selectedAccount.name}`.trim()}
         {selectedPartyName
@@ -1612,7 +2038,14 @@ export const AccountLedgerReportPage: React.FC<{
           : ''}
       </p>
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      {loading ? (
+        <div className="flex items-center justify-center gap-2 py-2 text-xs text-blue-400">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          Refreshing statement…
+        </div>
+      ) : null}
+
+      <div className={cn('grid grid-cols-2 md:grid-cols-5 gap-3', loading && 'opacity-60 pointer-events-none')}>
         <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-3">
           <p className="text-xs text-gray-400">Opening Balance</p>
           <p
@@ -1644,8 +2077,9 @@ export const AccountLedgerReportPage: React.FC<{
 
       <div className="overflow-auto rounded-xl border border-gray-800 bg-gray-900/50">
         {loading ? (
-          <div className="flex items-center justify-center py-12">
+          <div className="flex flex-col items-center justify-center gap-2 py-12">
             <Loader2 className="h-6 w-6 animate-spin text-blue-400" />
+            <p className="text-xs text-gray-400">Refreshing statement…</p>
           </div>
         ) : (
           <table className="w-full text-base leading-snug">
@@ -1721,16 +2155,26 @@ export const AccountLedgerReportPage: React.FC<{
                         'opacity-60'
                     )}
                   >
-                    <td className="p-3 text-gray-300">{e.created_at ? <DateTimeDisplay date={e.created_at} /> : e.date}</td>
+                    <td className="p-3 text-gray-300">
+                      <div className="flex flex-col leading-tight">
+                        <DateTimeDisplay date={e.date} dateOnly />
+                        {e.created_at ? (
+                          <span className="text-[10px] text-gray-500 font-normal italic mt-0.5">
+                            {formatTime(e.created_at)}
+                          </span>
+                        ) : null}
+                      </div>
+                    </td>
                     <td className="p-3 font-mono text-gray-300 align-top">
                       <div className="flex flex-col gap-0.5 items-start max-w-[14rem]">
                         {e.journal_entry_id ? (
                           <button
                             type="button"
                             className="text-left text-sky-400 hover:text-sky-300 hover:underline"
-                            onClick={() =>
-                              openStatementTransaction(String(e.entry_no || '').trim() || e.journal_entry_id, false)
-                            }
+                            onClick={() => {
+                              const d = ledgerTransactionOpenEventDetail(e, false);
+                              openStatementTransaction(d.referenceNumber, false, d.journalEntryId);
+                            }}
                           >
                             {e.reference_number}
                           </button>
@@ -1815,7 +2259,10 @@ export const AccountLedgerReportPage: React.FC<{
                           : 'No journal reference type on this line'
                       }
                     >
-                      <span className="text-gray-200">{editTargetTypeLabel(e.je_reference_type)}</span>
+                      <span className="text-gray-200">
+                        {glCorrectionDisplayByJeId[e.journal_entry_id] ||
+                          editTargetTypeLabel(e.je_reference_type)}
+                      </span>
                       {e.je_reference_type &&
                       editTargetTypeLabel(e.je_reference_type).replace(/\s/g, '_').toLowerCase() !==
                         e.je_reference_type.toLowerCase() ? (
@@ -1857,9 +2304,10 @@ export const AccountLedgerReportPage: React.FC<{
                             variant="ghost"
                             size="sm"
                             className="h-8 gap-1 text-gray-300 hover:text-white"
-                            onClick={() =>
-                              openStatementTransaction(String(e.entry_no || '').trim() || e.journal_entry_id, false)
-                            }
+                            onClick={() => {
+                              const d = ledgerTransactionOpenEventDetail(e, false);
+                              openStatementTransaction(d.referenceNumber, false, d.journalEntryId);
+                            }}
                           >
                             <Eye className="h-3.5 w-3.5" />
                             View

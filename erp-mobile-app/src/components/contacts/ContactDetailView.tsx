@@ -117,10 +117,6 @@ export function ContactDetailView({
       setPaymentPrepError('Company not selected.');
       return;
     }
-    if (!branchId) {
-      setPaymentPrepError('Select a branch to record supplier payment.');
-      return;
-    }
     setPaymentPrepError('');
     setPaymentSheet('pay-supplier');
   };
@@ -129,13 +125,14 @@ export function ContactDetailView({
     if (!companyId) return { success: false, error: 'Company not selected.' };
     const { success, error, paymentId, referenceNumber } = await submitOnAccount({
       companyId,
-      branchId: branchId ?? null,
+      branchId: payload.branchId ?? branchId ?? null,
       contactId: contact.id,
       contactName: contact.name,
       amount: payload.amount,
       accountId: payload.accountId,
       paymentMethod: payload.method === 'wallet' ? 'wallet' : payload.method,
       paymentDate: payload.paymentDate,
+      paymentAt: payload.paymentAt,
       notes: payload.notes || null,
       bankTraceId: payload.reference?.trim() || null,
       createdBy: user.id ?? null,
@@ -150,17 +147,19 @@ export function ContactDetailView({
   };
 
   const handleSupplierSubmit = async (payload: MobilePaymentSheetSubmitPayload) => {
-    if (!companyId || !branchId || !supplierPurchaseId) {
+    const payBranchId = payload.branchId ?? branchId;
+    if (!companyId || !payBranchId || !supplierPurchaseId) {
       return { success: false, error: paymentPrepError || 'No purchase to pay against.' };
     }
     const methodForRpc: 'cash' | 'bank' | 'card' | 'other' =
       payload.method === 'wallet' ? 'other' : payload.method;
     const { data, error } = await recordSupplierPayment({
       companyId,
-      branchId,
+      branchId: payBranchId,
       purchaseId: supplierPurchaseId,
       amount: payload.amount,
       paymentDate: payload.paymentDate,
+      paymentAt: payload.paymentAt,
       paymentAccountId: payload.accountId,
       paymentMethod: methodForRpc,
       reference: payload.reference || undefined,
@@ -429,6 +428,8 @@ export function ContactDetailView({
           companyId={companyId}
           branchId={branchId ?? null}
           userId={user.id}
+          userRole={user.role}
+          profileId={user.profileId ?? null}
           partyName={contact.name}
           partyPhone={getContactDisplayPhone(contact) || null}
           outstandingAmount={customerReceivable}
@@ -444,7 +445,7 @@ export function ContactDetailView({
         />
       )}
 
-      {paymentSheet === 'pay-supplier' && companyId && branchId && (
+      {paymentSheet === 'pay-supplier' && companyId && (
         paymentPrepLoading ? (
           <div className="fixed inset-0 z-50 bg-[#111827]/90 flex items-center justify-center">
             <Loader2 className="w-8 h-8 text-[#F59E0B] animate-spin" />
@@ -466,8 +467,10 @@ export function ContactDetailView({
           <MobilePaymentSheet
             mode="pay-supplier"
             companyId={companyId}
-            branchId={branchId}
+            branchId={branchId ?? null}
             userId={user.id}
+            userRole={user.role}
+            profileId={user.profileId ?? null}
             partyName={contact.name}
             partyPhone={getContactDisplayPhone(contact) || null}
             outstandingAmount={supplierPayable || supplierPayableDisplay}

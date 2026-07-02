@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { 
   Search, Filter, Download, Upload, Package, DollarSign, AlertCircle, 
-  MoreVertical, Eye, Edit, Trash2, FileText, X, ShoppingCart, Tag, Building2, Columns3,
+  MoreVertical, Eye, Edit, Trash2, FileText, X, ShoppingCart, Tag, Building2, Columns3, Copy,
   CheckCircle, TrendingDown, AlertTriangle, ImageIcon, Box, Check, Loader2,
   ChevronDown, ChevronUp, Printer, Barcode, Square, CheckSquare
 } from 'lucide-react';
@@ -16,7 +16,8 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/app/components/ui/dropdown-menu";
-import { cn, formatDecimal } from "@/app/components/ui/utils";
+import { cn } from "@/app/components/ui/utils";
+import { formatQty } from '@/app/utils/quantity';
 import { useNavigation } from '@/app/context/NavigationContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useGlobalFilter } from '@/app/context/GlobalFilterContext';
@@ -291,6 +292,9 @@ export const ProductsPage = () => {
         break;
       case 'edit':
         openDrawer('edit-product', undefined, { product });
+        break;
+      case 'duplicate':
+        openDrawer('addProduct', undefined, { duplicateFrom: product });
         break;
       case 'stock-history':
         setStockHistoryOpen(true);
@@ -763,7 +767,7 @@ export const ProductsPage = () => {
               product.stock > 0 && product.stock <= product.lowStockThreshold && 'text-yellow-400',
               product.stock > product.lowStockThreshold && 'text-white'
             )}>
-              {formatDecimal(product.stock)}
+              {formatQty(product.stock)}
             </div>
             {getStockStatusBadge(product)}
           </div>
@@ -1290,6 +1294,13 @@ export const ProductsPage = () => {
                                     >
                                       <Edit size={14} className="mr-2 text-green-400" />
                                       Edit Product
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onClick={() => handleAction(product, 'duplicate')}
+                                      className="hover:bg-gray-800 cursor-pointer"
+                                    >
+                                      <Copy size={14} className="mr-2 text-cyan-400" />
+                                      Duplicate Product
                                     </DropdownMenuItem>
                                     <DropdownMenuItem 
                                       onClick={() => handleAction(product, 'stock-history')}

@@ -1,0 +1,38 @@
+{
+  "run": "PHASE_3B_F_POST_DEPLOY_SMOKE",
+  "generated_at": "2026-06-29T13:40:16.965Z",
+  "production_url": "https://erp.dincouture.pk",
+  "overall": "PASS",
+  "checks": [
+    {
+      "check": "login",
+      "result": "PASS",
+      "notes": "din@yahoo.com"
+    },
+    {
+      "check": "cash flow page loads",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "preview toggle visible",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "preview toggle default OFF",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "Export row-keyed JSON button visible",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "row match counts in panel",
+      "result": "PASS",
+      "notes": ""
+    }
+  ]
+}

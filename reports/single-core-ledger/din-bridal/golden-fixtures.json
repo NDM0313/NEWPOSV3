@@ -1,0 +1,51 @@
+{
+  "company": "DIN BRIDAL",
+  "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+  "captured_from": "Operator-approved fixture refresh after orphan receipt soft-void (RCV-0081/0082)",
+  "capture_method": "unified_browser_monitoring",
+  "finance_sign_off_ref": "reports/web-payment-orphan-fix-deploy-roznamcha-refresh-20260701/final-fixture-values.md",
+  "operator_approval": "Nadeem Khan 2026-07-02 fixture-only after orphan cleanup",
+  "status": "GOLDEN_CAPTURE_COMPLETE",
+  "golden_party": {
+    "name": "MR REHAN ALI",
+    "party_id": "cee98d04-0a04-4692-857c-18df75bcb466",
+    "account_code": "AR-CUS0042"
+  },
+  "fixtures": {
+    "golden_party_closing_pkr": 530000,
+    "ledger_v2_golden_party_closing_pkr": 530000,
+    "account_statement_golden_party_closing_pkr": 530000,
+    "party_ledger_golden_party_closing_pkr": 530000,
+    "trial_balance_debit_pkr": 22390400,
+    "trial_balance_credit_pkr": 22390400,
+    "roznamcha_cash_in_pkr": 2026850,
+    "roznamcha_cash_out_pkr": 917780,
+    "roznamcha_closing_pkr_proxy": 1109070,
+    "roznamcha_closing_pkr": 1109070
+  },
+  "notes": [
+    "TB totals unchanged at 22,390,400 — no GL lines from orphan cleanup.",
+    "Fixture-only refresh 2026-07-02 after soft-void of zero-line orphan receipts RCV-0081/RCV-0082.",
+    "Roznamcha Cash In reduced by 90,000 PKR (2 × 45,000 phantom orphan payments removed).",
+    "Source monitoring artifact: three-company-monitoring-2026-07-02T07-12-38-883Z.json",
+    "Party MR REHAN ALI closing unchanged at 530000."
+  ],
+  "browser_capture_at": "2026-07-02T07:23:10.595Z",
+  "browser_capture_evidence": "reports/web-payment-orphan-fix-deploy-roznamcha-refresh-20260701/",
+  "rpc_proxy_baseline": {
+    "golden_party_closing_pkr": 530000,
+    "ledger_v2_golden_party_closing_pkr": 530000,
+    "account_statement_golden_party_closing_pkr": 530000,
+    "party_ledger_golden_party_closing_pkr": 530000,
+    "trial_balance_debit_pkr": 22390400,
+    "trial_balance_credit_pkr": 22390400,
+    "roznamcha_cash_in_pkr": 2026850,
+    "roznamcha_cash_out_pkr": 917780,
+    "roznamcha_closing_pkr_proxy": 1109070
+  },
+  "date_range": {
+    "start": "2000-01-01",
+    "end": "2026-07-02"
+  },
+  "branch_scope": "all"
+}

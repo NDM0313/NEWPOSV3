@@ -26,6 +26,7 @@ import {
   resolvePolicyReferenceType,
   usesSingleAccountingAttachmentPolicy,
 } from '../../../../lib/accountingAttachmentPolicy';
+import { POSTING_FIELD_TITLES } from '../../../../lib/accountPostingInOutLabel';
 
 interface EditTransactionSheetProps {
   open: boolean;
@@ -353,7 +354,7 @@ export function EditTransactionSheet({
                 {mode === 'journal' && (
                   <>
                     <CustomSelect
-                      label="Debit Account"
+                      label={POSTING_FIELD_TITLES.journalDebit}
                       value={form.debitAccountId}
                       onChange={(v) => setForm((s) => ({ ...s, debitAccountId: v }))}
                       options={[
@@ -364,7 +365,7 @@ export function EditTransactionSheet({
                       zIndexClass="z-[100]"
                     />
                     <CustomSelect
-                      label="Credit Account"
+                      label={POSTING_FIELD_TITLES.journalCredit}
                       value={form.creditAccountId}
                       onChange={(v) => setForm((s) => ({ ...s, creditAccountId: v }))}
                       options={[

@@ -1,46 +1,10 @@
 import React, { useState } from 'react';
 import { useSupabase, STORAGE_BLOCKED_MESSAGE } from '@/app/context/SupabaseContext';
+import { formatSignInError, isStorageSecurityError } from '@/app/utils/authErrorMessages';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Lock, Mail, AlertCircle, Building2 } from 'lucide-react';
 import { CreateBusinessWizard } from './CreateBusinessWizard';
-
-function isStorageSecurityMessage(err: unknown): boolean {
-  if (!err || typeof err !== 'object') return false;
-  const o = err as { name?: string; message?: string };
-  const msg = String(o.message ?? '').toLowerCase();
-  const name = String(o.name ?? '').toLowerCase();
-  return (
-    name === 'securityerror' ||
-    msg.includes('securityerror') ||
-    msg.includes('request was denied') ||
-    msg.includes('access is denied')
-  );
-}
-
-function formatSignInError(signInError: { message?: string; name?: string; status?: number }): string {
-  const message = signInError.message ?? 'Sign in failed';
-  if (isStorageSecurityMessage(signInError)) return STORAGE_BLOCKED_MESSAGE;
-  if (message.includes('Invalid login credentials')) {
-    return 'Invalid email or password. Please check your credentials.';
-  }
-  if (message.includes('Email not confirmed')) {
-    return 'Please confirm your email address first.';
-  }
-  if (message.includes('User not found')) {
-    return 'User does not exist. Please create a business first.';
-  }
-  if (
-    message.includes('Failed to fetch') ||
-    (signInError.name && signInError.name.includes('AuthRetryableFetchError'))
-  ) {
-    return 'Network error: Cannot reach the server. On VPS run: git pull && bash deploy/deploy.sh (uses https://supabase.dincouture.pk).';
-  }
-  if (signInError.status === 401) {
-    return 'Authentication configuration error. Contact administrator or retry after deploy.';
-  }
-  return message;
-}
 
 export const LoginPage: React.FC = () => {
   const { signIn } = useSupabase();
@@ -58,7 +22,12 @@ export const LoginPage: React.FC = () => {
     try {
       const { data, error: signInError } = await signIn(signInEmail, signInPassword);
       if (signInError) {
-        setError(formatSignInError(signInError));
+        setError(
+          formatSignInError(signInError, {
+            storageBlockedMessage: STORAGE_BLOCKED_MESSAGE,
+            attemptedEmail: signInEmail,
+          })
+        );
         return false;
       }
       if (!data?.user) {
@@ -67,7 +36,7 @@ export const LoginPage: React.FC = () => {
       }
       return true;
     } catch (e: unknown) {
-      if (isStorageSecurityMessage(e)) {
+      if (isStorageSecurityError(e)) {
         setError(STORAGE_BLOCKED_MESSAGE);
       } else {
         setError(e instanceof Error ? e.message : 'Sign in failed unexpectedly.');

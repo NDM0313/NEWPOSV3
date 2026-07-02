@@ -3,6 +3,7 @@ import { X, Sparkles, ExternalLink, Wallet } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
+import { DatePicker } from '../ui/DatePicker';
 import { Textarea } from '../ui/textarea';
 import { Switch } from '../ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
@@ -341,29 +342,22 @@ export const AddBranchModal: React.FC<AddBranchModalProps> = ({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="fiscalYearStart" className="text-gray-200">Fiscal Year Start (Optional)</Label>
-              <Input
-                id="fiscalYearStart"
-                type="date"
+              <DatePicker
                 value={formData.fiscalYearStart}
-                onChange={(e) => {
-                  const start = e.target.value;
+                onChange={(start) => {
                   setFormData((prev) => ({
                     ...prev,
                     fiscalYearStart: start,
                     fiscalYearEnd: prev.fiscalYearEnd || suggestFiscalYearEnd(start),
                   }));
                 }}
-                className="bg-gray-900 border-gray-700 text-white"
               />
             </div>
             <div className="space-y-2">
               <Label htmlFor="fiscalYearEnd" className="text-gray-200">Fiscal Year End (Optional)</Label>
-              <Input
-                id="fiscalYearEnd"
-                type="date"
+              <DatePicker
                 value={formData.fiscalYearEnd}
-                onChange={(e) => setFormData({ ...formData, fiscalYearEnd: e.target.value })}
-                className="bg-gray-900 border-gray-700 text-white"
+                onChange={(v) => setFormData({ ...formData, fiscalYearEnd: v })}
               />
             </div>
           </div>

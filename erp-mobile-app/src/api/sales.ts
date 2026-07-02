@@ -118,7 +118,77 @@ export async function patchSaleBillRef(
 }
 
 const SALE_ATTACHMENTS_BUCKET = 'sale-attachments';
-const MAX_SALE_ATTACHMENT_BYTES = 10 * 1024 * 1024; // 10MB each
+export const MAX_SALE_ATTACHMENT_BYTES = 10 * 1024 * 1024; // 10MB each
+export const MAX_SALE_ATTACHMENTS_COUNT = 5;
+
+export type SaleAttachmentMeta = { url: string; name: string };
+
+/** Merge attachment lists; dedupe by url; cap at MAX_SALE_ATTACHMENTS_COUNT. */
+export function mergeSaleAttachments(
+  existing: SaleAttachmentMeta[],
+  uploaded: SaleAttachmentMeta[],
+): SaleAttachmentMeta[] {
+  const seen = new Set<string>();
+  const out: SaleAttachmentMeta[] = [];
+  const push = (a: SaleAttachmentMeta) => {
+    const u = String(a.url || '').trim();
+    if (!u || seen.has(u)) return;
+    seen.add(u);
+    out.push({ url: u, name: a.name || 'Attachment' });
+  };
+  for (const a of existing) push(a);
+  for (const a of uploaded) push(a);
+  return out.slice(0, MAX_SALE_ATTACHMENTS_COUNT);
+}
+
+async function fetchSaleAttachments(saleId: string): Promise<SaleAttachmentMeta[]> {
+  if (!isSupabaseConfigured) return [];
+  const { data } = await supabase.from('sales').select('attachments').eq('id', saleId).maybeSingle();
+  const raw = (data as { attachments?: unknown } | null)?.attachments;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((a: unknown) => {
+      const o = a as Record<string, unknown>;
+      return { url: String(o?.url ?? ''), name: String(o?.name ?? 'Attachment') };
+    })
+    .filter((a) => a.url.length > 0);
+}
+
+/** Upload new files and merge onto existing sale.attachments (max 5 total). */
+export async function appendSaleAttachments(
+  companyId: string,
+  saleId: string,
+  files: File[],
+  existing?: SaleAttachmentMeta[],
+): Promise<{ data: SaleAttachmentMeta[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  if (!files.length) {
+    const current = existing ?? (await fetchSaleAttachments(saleId));
+    return { data: current, error: null };
+  }
+
+  const prior = existing ?? (await fetchSaleAttachments(saleId));
+  const slotsLeft = MAX_SALE_ATTACHMENTS_COUNT - prior.length;
+  if (slotsLeft <= 0) {
+    return {
+      data: prior,
+      error: `Maximum ${MAX_SALE_ATTACHMENTS_COUNT} attachments per sale.`,
+    };
+  }
+
+  const toUpload = files.slice(0, slotsLeft);
+  const upload = await uploadSaleAttachments(companyId, saleId, toUpload);
+  if (upload.error) {
+    return { data: prior, error: upload.error };
+  }
+
+  const merged = mergeSaleAttachments(prior, upload.data);
+  const upd = await updateSaleAttachments(saleId, merged);
+  if (upd.error) {
+    return { data: prior, error: upd.error };
+  }
+  return { data: merged, error: null };
+}
 
 /** Upload files to sale-attachments bucket (path: companyId/saleId/...). */
 export async function uploadSaleAttachments(
@@ -1206,6 +1276,7 @@ export async function recordCustomerPayment(params: {
   accountId: string;
   paymentMethod: string;
   paymentDate: string; // YYYY-MM-DD
+  paymentAt?: string | null;
   notes?: string | null;
   referenceNumber?: string | null;
   createdBy?: string | null;
@@ -1214,6 +1285,7 @@ export async function recordCustomerPayment(params: {
   const {
     companyId,
     branchId,
+    customerId,
     referenceId,
     amount,
     accountId,
@@ -1225,6 +1297,20 @@ export async function recordCustomerPayment(params: {
   } = params;
   if (!companyId || !referenceId || amount <= 0 || !accountId) {
     return { data: null, error: 'Company, reference (sale), amount and account are required.' };
+  }
+  if (customerId) {
+    const { data: contactRow } = await supabase
+      .from('contacts')
+      .select('name')
+      .eq('id', customerId)
+      .maybeSingle();
+    const contactName = (contactRow as { name?: string } | null)?.name?.trim();
+    if (contactName) {
+      await supabase
+        .from('sales')
+        .update({ customer_id: customerId, customer_name: contactName })
+        .eq('id', referenceId);
+    }
   }
   let branchForResolve = branchId;
   if (!isRealBranchUuid(branchForResolve)) {
@@ -1279,6 +1365,24 @@ export async function recordCustomerPayment(params: {
   if (error) return { data: null, error: error.message };
   const res = data as { success?: boolean; payment_id?: string; reference_number?: string; error?: string } | null;
   if (res?.success && res.payment_id) {
+    if (customerId) {
+      const { data: contactRow } = await supabase
+        .from('contacts')
+        .select('name')
+        .eq('id', customerId)
+        .maybeSingle();
+      const contactName = (contactRow as { name?: string } | null)?.name?.trim();
+      if (contactName) {
+        await supabase
+          .from('payments')
+          .update({ contact_id: customerId, contact_name: contactName })
+          .eq('id', res.payment_id);
+      }
+    }
+    if (params.paymentAt) {
+      const { patchPaymentCreatedAt } = await import('./paymentTimestamp');
+      await patchPaymentCreatedAt(res.payment_id, params.paymentAt);
+    }
     return { data: { payment_id: res.payment_id, reference_number: res.reference_number }, error: null };
   }
   return { data: null, error: res?.error ?? 'Payment failed.' };
@@ -1317,6 +1421,7 @@ export async function recordOnAccountCustomerPayment(params: {
   accountId: string;
   paymentMethod: string;
   paymentDate: string;
+  paymentAt?: string | null;
   notes?: string | null;
   bankTraceId?: string | null;
   createdBy?: string | null;
@@ -1373,9 +1478,16 @@ export async function recordOnAccountCustomerPayment(params: {
     contact_name: contactName.trim(),
     received_by: createdBy ?? null,
   };
-  let upd = await supabase.from('payments').update(patch).eq('id', paymentId);
+  const upd = await supabase.from('payments').update(patch).eq('id', paymentId);
   if (upd.error) {
-    console.warn('[recordOnAccountCustomerPayment] payments patch:', upd.error.message);
+    return {
+      data: null,
+      error: `Payment recorded but contact link failed: ${upd.error.message}. Reconcile contact_id on payment ${paymentId}.`,
+    };
+  }
+  if (params.paymentAt) {
+    const { patchPaymentCreatedAt } = await import('./paymentTimestamp');
+    await patchPaymentCreatedAt(paymentId, params.paymentAt);
   }
   return {
     data: { payment_id: paymentId, reference_number: res.reference_number },

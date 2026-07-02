@@ -89,26 +89,46 @@ export const contactService = {
    */
   async getContactBalancesSummary(
     companyId: string,
-    branchId?: string | null
+    branchId?: string | null,
+    asOfDate?: string | null
   ): Promise<{
     map: Map<string, { receivables: number; payables: number }>;
+    signedReceivablesTotal: number;
+    signedPayablesTotal: number;
     error: string | null;
     reasonTag: 'ok' | 'rpc_missing' | 'rpc_empty';
   }> {
     // GL-only cutover: derive balances from party GL RPC (1100/2000/2010).
-    const partyMap = await this.getContactPartyGlBalancesMap(companyId, branchId);
+    const partyMap = await this.getContactPartyGlBalancesMap(companyId, branchId, asOfDate);
     if (!partyMap) {
-      return { map: new Map(), error: 'get_contact_party_gl_balances failed', reasonTag: 'rpc_missing' };
+      return {
+        map: new Map(),
+        signedReceivablesTotal: 0,
+        signedPayablesTotal: 0,
+        error: 'get_contact_party_gl_balances failed',
+        reasonTag: 'rpc_missing',
+      };
     }
     const map = new Map<string, { receivables: number; payables: number }>();
+    let signedReceivablesTotal = 0;
+    let signedPayablesTotal = 0;
     partyMap.forEach((row, contactId) => {
+      const ar = Number(row.glArReceivable) || 0;
+      const ap = (Number(row.glApPayable) || 0) + (Number(row.glWorkerPayable) || 0);
+      signedReceivablesTotal += ar;
+      signedPayablesTotal += ap;
       map.set(String(contactId), {
-        receivables: Math.max(0, Number(row.glArReceivable) || 0),
-        // Keep AP + worker payable in one field to preserve existing contact table contract.
-        payables: Math.max(0, (Number(row.glApPayable) || 0) + (Number(row.glWorkerPayable) || 0)),
+        receivables: Math.max(0, ar),
+        payables: Math.max(0, ap),
       });
     });
-    return { map, error: null, reasonTag: map.size > 0 ? 'ok' : 'rpc_empty' };
+    return {
+      map,
+      signedReceivablesTotal,
+      signedPayablesTotal,
+      error: null,
+      reasonTag: map.size > 0 ? 'ok' : 'rpc_empty',
+    };
   },
 
   /**
@@ -118,16 +138,19 @@ export const contactService = {
    */
   async getContactPartyGlBalancesMap(
     companyId: string,
-    branchId?: string | null
+    branchId?: string | null,
+    asOfDate?: string | null
   ): Promise<Map<string, ContactPartyGlBalancesSlice> | null> {
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const safeBranchId =
       branchId && branchId !== 'all' && typeof branchId === 'string' && uuidRegex.test(branchId.trim())
         ? branchId.trim()
         : null;
+    const asOf = asOfDate?.slice(0, 10) || null;
     const { data, error } = await supabase.rpc('get_contact_party_gl_balances', {
       p_company_id: companyId,
       p_branch_id: safeBranchId,
+      p_as_of_date: asOf,
     });
     if (error) {
       if (import.meta.env?.DEV) {

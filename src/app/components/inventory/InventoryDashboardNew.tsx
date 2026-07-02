@@ -8,9 +8,11 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Badge } from "../ui/badge";
 import { cn, formatBoxesPieces, formatDecimal } from "../ui/utils";
+import { formatQty } from '@/app/utils/quantity';
 import { useSupabase } from '../../context/SupabaseContext';
 import { useSettings } from '../../context/SettingsContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { AdaptiveCurrencyValue } from '@/app/components/shared/AdaptiveCurrencyValue';
 import { productService } from '../../services/productService';
 import { inventoryService, createStockTransfer, InventoryOverviewRow, InventoryMovementRow } from '../../services/inventoryService';
 import { branchService } from '@/app/services/branchService';
@@ -560,14 +562,14 @@ export const InventoryDashboardNew = () => {
                 </div>
               </div>
             </div>
-            <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
+            <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6 min-w-0">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-green-500/10 rounded-lg">
                   <DollarSign className="text-green-400" size={20} />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <h3 className="text-white font-bold">Total Stock Value</h3>
-                  <p className="text-2xl font-bold text-white mt-1">{formatCurrency(totalStockValue)}</p>
+                  <AdaptiveCurrencyValue value={totalStockValue} className="text-2xl font-bold text-white mt-1" as="p" />
                 </div>
               </div>
             </div>
@@ -575,13 +577,11 @@ export const InventoryDashboardNew = () => {
 
           {/* Key Metrics */}
           <div className="grid grid-cols-4 gap-6">
-            <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
+            <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6 min-w-0">
               <div className="flex items-center justify-between">
-                <div>
+                <div className="min-w-0">
                   <p className="text-gray-400 text-sm">Total Stock Value</p>
-                  <h3 className="text-2xl font-bold text-white mt-1">
-                    {formatCurrency(totalStockValue)}
-                  </h3>
+                  <AdaptiveCurrencyValue value={totalStockValue} className="text-2xl font-bold text-white mt-1" as="p" />
                 </div>
                 <div className="p-3 bg-blue-500/10 rounded-lg">
                   <DollarSign className="text-blue-400" size={24} />
@@ -589,13 +589,11 @@ export const InventoryDashboardNew = () => {
               </div>
             </div>
 
-            <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
+            <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6 min-w-0">
               <div className="flex items-center justify-between">
-                <div>
+                <div className="min-w-0">
                   <p className="text-gray-400 text-sm">Potential Profit</p>
-                  <h3 className="text-2xl font-bold text-white mt-1">
-                    {formatCurrency(potentialProfit)}
-                  </h3>
+                  <AdaptiveCurrencyValue value={potentialProfit} className="text-2xl font-bold text-white mt-1" as="p" />
                 </div>
                 <div className="p-3 bg-green-500/10 rounded-lg">
                   <TrendingDown className="text-green-400" size={24} />
@@ -802,7 +800,7 @@ export const InventoryDashboardNew = () => {
                         case 'stockQty':
                           return (
                             <td key={key} className="px-4 py-2 text-center">
-                              <span className={cn("font-bold font-mono text-sm tabular-nums", product.stock < 0 ? "text-red-400" : product.status === 'Out' || product.status === 'Low' ? "text-red-400" : "text-white")}>{formatDecimal(product.stock)}</span>
+                              <span className={cn("font-bold font-mono text-sm tabular-nums", product.stock < 0 ? "text-red-400" : product.status === 'Out' || product.status === 'Low' ? "text-red-400" : "text-white")}>{formatQty(product.stock)}</span>
                             </td>
                           );
                         case 'boxes':
@@ -810,7 +808,7 @@ export const InventoryDashboardNew = () => {
                         case 'pieces':
                           return <td key={key} className="px-4 py-2 text-center text-gray-400 text-sm tabular-nums">{formatBoxesPieces(product.pieces)}</td>;
                         case 'unit':
-                          return <td key={key} className="px-4 py-2 text-center text-gray-400 text-sm font-mono tabular-nums">{formatDecimal(product.stock)}</td>;
+                          return <td key={key} className="px-4 py-2 text-center text-gray-400 text-sm font-mono tabular-nums">{formatQty(product.stock)}</td>;
                         case 'avgCost':
                           return (
                             <td key={key} className={cn('px-4 py-2 text-right text-sm font-medium tabular-nums', product.avgCost < 0 ? 'text-red-400' : 'text-green-400')}>
@@ -1222,12 +1220,28 @@ PROD-003,20`;
                 setImporting(true);
                 try {
                   const branchIdOrNull = branchId && branchId !== 'all' ? branchId : null;
-                  for (const row of valid) {
-                    if (row.productId)
-                      await inventoryService.insertOpeningBalanceMovement(companyId, branchIdOrNull, row.productId, row.quantity, 0);
-                  }
+                  const overviewByProductId = new Map(overviewRows.map((p) => [p.productId, p]));
+                  const result = await inventoryService.bulkImportOpeningInventory(
+                    companyId,
+                    branchIdOrNull,
+                    valid.map((row) => ({
+                      productId: row.productId!,
+                      quantity: row.quantity,
+                      unitCost: overviewByProductId.get(row.productId!)?.avgCost ?? 0,
+                    }))
+                  );
                   await loadOverview();
-                  toast.success(`Imported ${valid.length} item(s) as opening balance.`);
+                  const glMsg =
+                    result.openingGlPosted + result.openingGlKept > 0
+                      ? ` · ${result.openingGlPosted + result.openingGlKept} opening GL entr${result.openingGlPosted + result.openingGlKept === 1 ? 'y' : 'ies'}`
+                      : '';
+                  toast.success(`Imported ${result.processed} item(s) as opening balance${glMsg}.`);
+                  if (result.openingGlSkippedZeroCost > 0) {
+                    toast.warning(`${result.openingGlSkippedZeroCost} item(s) skipped GL — zero cost price.`);
+                  }
+                  if (result.failed > 0) {
+                    toast.error(`${result.failed} row(s) failed.`);
+                  }
                   setImportInventoryModalOpen(false);
                   setImportRows([]);
                 } catch (err: any) {

@@ -6,6 +6,7 @@ import { usePermissions } from '../../context/PermissionContext';
 import { formatAccountBalanceLineIfAllowed } from '../../utils/balancePrivacy';
 import { canViewFinancialBalances } from '../../config/functionalRoles';
 import { localNowDateString } from '../../utils/localDate';
+import { accountInOutBadgeLabel, POSTING_FIELD_TITLES } from '../../lib/accountPostingInOutLabel';
 
 export interface PaymentResult {
   paymentMethod: string;
@@ -382,7 +383,7 @@ export function PaymentDialog({
       {/* Step 2: Account Selection */}
       {step === 2 && paymentMethod && (
         <div className="p-6">
-          <h2 className="text-sm font-medium text-[#9CA3AF] mb-2">SELECT ACCOUNT *</h2>
+          <h2 className="text-sm font-medium text-[#9CA3AF] mb-2">{POSTING_FIELD_TITLES.selectAccountIn} *</h2>
           <p className="text-xs text-[#6B7280] mb-4">(Required for accounting)</p>
 
           {showAccountError && (
@@ -429,7 +430,12 @@ export function PaymentDialog({
                 }`}
               >
                 <div className="flex items-center justify-between mb-2">
-                  <h3 className="font-medium text-[#F9FAFB]">{account.name}</h3>
+                  <h3 className="font-medium text-[#F9FAFB]">
+                    {account.name}{' '}
+                    <span className="text-emerald-400 text-xs font-semibold">
+                      {accountInOutBadgeLabel(account, 'debit')}
+                    </span>
+                  </h3>
                   {selectedAccount?.id === account.id && (
                     <div className="w-5 h-5 bg-[#3B82F6] rounded-full flex items-center justify-center">
                       <div className="w-2 h-2 bg-white rounded-full"></div>

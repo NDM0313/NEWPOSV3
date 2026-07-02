@@ -1,8 +1,11 @@
 import { supabase } from '@/lib/supabase';
 import { documentNumberService } from '@/app/services/documentNumberService';
 import type { ErpDocumentType } from '@/app/services/documentNumberService';
-
-const ERP_SEQ_SENTINEL = '00000000-0000-0000-0000-000000000000';
+import {
+  ERP_SEQ_SENTINEL,
+  counterRowKey,
+  resolveErpCounterBucket,
+} from '@/app/lib/erpNumberingCounter';
 
 /** null = unknown; false = column missing on DB (PGRST204). */
 let numberingIncludeBranchCodeSupported: boolean | null = null;
@@ -429,72 +432,88 @@ export const settingsService = {
     return data;
   },
 
-  /** ERP Numbering Rules row for UI (from erp_document_sequences, current year, company-level branch). */
+  /** ERP Numbering Rules row for UI (metadata from sentinel rule row; last_number from live counter bucket). */
   async getErpDocumentSequences(
     companyId: string,
     branchId?: string | null
   ): Promise<{ document_type: string; prefix: string; last_number: number; padding: number; year_reset: boolean; branch_based: boolean; include_branch_code: boolean }[]> {
-    const year = new Date().getFullYear();
-    const branchFilter = branchId && branchId !== 'all' ? branchId : ERP_SEQ_SENTINEL;
-
-    const runQuery = (columns: string) =>
-      supabase
-        .from('erp_document_sequences')
-        .select(columns)
-        .eq('company_id', companyId)
-        .eq('year', year)
-        .eq('branch_id', branchFilter)
-        .order('document_type');
-
-    const mapRows = (
-      data: any[] | null,
-      opts: { includeBranchCode: boolean; defaultYearReset: boolean; defaultBranchBased: boolean },
-    ) =>
-      (data || []).map((r: any) => {
-        const p = (r.prefix || '').trim().replace(/-$/, '');
-        return {
-          document_type: r.document_type,
-          prefix: p,
-          last_number: Number(r.last_number ?? 0),
-          padding: Number(r.padding ?? 4),
-          year_reset: r.year_reset !== undefined ? r.year_reset !== false : opts.defaultYearReset,
-          branch_based: r.branch_based === true,
-          include_branch_code: opts.includeBranchCode ? r.include_branch_code === true : false,
-        };
-      });
+    const calendarYear = new Date().getFullYear();
+    const previewBranchId = branchId && branchId !== 'all' ? branchId : null;
 
     let queriedIncludeBranchCode = numberingIncludeBranchCodeSupported !== false;
-    let columns = 'document_type, prefix, last_number, padding, year_reset, branch_based';
+    let columns = 'document_type, prefix, last_number, padding, year_reset, branch_based, year, branch_id';
     if (queriedIncludeBranchCode) {
       columns += ', include_branch_code';
     }
 
-    let result: any = await runQuery(columns);
+    const runRulesQuery = (cols: string) =>
+      supabase
+        .from('erp_document_sequences')
+        .select(cols)
+        .eq('company_id', companyId)
+        .eq('branch_id', ERP_SEQ_SENTINEL)
+        .eq('year', calendarYear)
+        .order('document_type');
 
-    if (result.error && isMissingColumnError(result.error, 'include_branch_code')) {
+    const counterBranchIds = previewBranchId ? [ERP_SEQ_SENTINEL, previewBranchId] : [ERP_SEQ_SENTINEL];
+    const runCountersQuery = (cols: string) =>
+      supabase
+        .from('erp_document_sequences')
+        .select(cols)
+        .eq('company_id', companyId)
+        .in('branch_id', counterBranchIds)
+        .in('year', [0, calendarYear]);
+
+    let rulesResult: any = await runRulesQuery(columns);
+
+    if (rulesResult.error && isMissingColumnError(rulesResult.error, 'include_branch_code')) {
       numberingIncludeBranchCodeSupported = false;
       queriedIncludeBranchCode = false;
-      columns = 'document_type, prefix, last_number, padding, year_reset, branch_based';
-      result = await runQuery(columns);
-    } else if (!result.error && queriedIncludeBranchCode) {
+      columns = 'document_type, prefix, last_number, padding, year_reset, branch_based, year, branch_id';
+      rulesResult = await runRulesQuery(columns);
+    } else if (!rulesResult.error && queriedIncludeBranchCode) {
       numberingIncludeBranchCodeSupported = true;
     }
 
     if (
-      result.error
-      && (isMissingColumnError(result.error, 'year_reset') || isMissingColumnError(result.error, 'branch_based'))
+      rulesResult.error
+      && (isMissingColumnError(rulesResult.error, 'year_reset') || isMissingColumnError(rulesResult.error, 'branch_based'))
     ) {
       queriedIncludeBranchCode = false;
-      result = await runQuery('document_type, prefix, last_number, padding');
+      rulesResult = await runRulesQuery('document_type, prefix, last_number, padding, year, branch_id');
     }
 
-    const { data, error } = result;
-    if (error) return [];
+    if (rulesResult.error) return [];
 
-    return mapRows(data, {
-      includeBranchCode: queriedIncludeBranchCode,
-      defaultYearReset: true,
-      defaultBranchBased: false,
+    const countersResult = await runCountersQuery('document_type, last_number, year, branch_id');
+    const counterByKey = new Map<string, number>();
+    for (const row of (countersResult.data || []) as Array<{
+      document_type: string;
+      last_number?: number;
+      year?: number;
+      branch_id?: string;
+    }>) {
+      counterByKey.set(
+        counterRowKey(String(row.branch_id ?? ERP_SEQ_SENTINEL), Number(row.year ?? calendarYear), row.document_type),
+        Number(row.last_number ?? 0),
+      );
+    }
+
+    return ((rulesResult.data || []) as any[]).map((r: any) => {
+      const p = (r.prefix || '').trim().replace(/-$/, '');
+      const yearReset = r.year_reset !== undefined ? r.year_reset !== false : true;
+      const branchBased = r.branch_based === true;
+      const bucket = resolveErpCounterBucket(yearReset, branchBased, previewBranchId, calendarYear);
+      const lastNumber = counterByKey.get(counterRowKey(bucket.branchId, bucket.year, r.document_type)) ?? 0;
+      return {
+        document_type: r.document_type,
+        prefix: p,
+        last_number: lastNumber,
+        padding: Number(r.padding ?? 4),
+        year_reset: yearReset,
+        branch_based: branchBased,
+        include_branch_code: queriedIncludeBranchCode ? r.include_branch_code === true : false,
+      };
     });
   },
 
@@ -510,37 +529,39 @@ export const settingsService = {
     branchBased: boolean = false,
     includeBranchCode: boolean = false
   ): Promise<{ includeBranchCodeApplied: boolean }> {
-    const year = new Date().getFullYear();
+    const calendarYear = new Date().getFullYear();
     const branchUuid = branchId && branchId !== 'all' ? branchId : ERP_SEQ_SENTINEL;
     const prefixClean = (prefix || '').trim().replace(/-$/, '');
-    const payload: Record<string, unknown> = {
+    const rulePayload: Record<string, unknown> = {
       company_id: companyId,
-      branch_id: branchUuid,
+      branch_id: ERP_SEQ_SENTINEL,
       document_type: documentType.toUpperCase(),
       prefix: prefixClean,
-      year,
-      last_number: lastNumber != null ? lastNumber : 0,
+      year: calendarYear,
       padding,
       year_reset: yearReset,
       branch_based: branchBased,
       updated_at: new Date().toISOString(),
     };
+    if (lastNumber != null && branchUuid === ERP_SEQ_SENTINEL) {
+      rulePayload.last_number = lastNumber;
+    }
 
     const wantsIncludeBranchCode = includeBranchCode && branchBased;
     let includeBranchCodeApplied = false;
 
     if (numberingIncludeBranchCodeSupported !== false && wantsIncludeBranchCode) {
-      payload.include_branch_code = true;
+      rulePayload.include_branch_code = true;
     }
 
-    let { error } = await supabase.from('erp_document_sequences').upsert(payload, {
+    let { error } = await supabase.from('erp_document_sequences').upsert(rulePayload, {
       onConflict: 'company_id,branch_id,document_type,year',
     });
 
     if (error && isMissingColumnError(error, 'include_branch_code')) {
       numberingIncludeBranchCodeSupported = false;
-      delete payload.include_branch_code;
-      const retry = await supabase.from('erp_document_sequences').upsert(payload, {
+      delete rulePayload.include_branch_code;
+      const retry = await supabase.from('erp_document_sequences').upsert(rulePayload, {
         onConflict: 'company_id,branch_id,document_type,year',
       });
       error = retry.error;
@@ -550,6 +571,25 @@ export const settingsService = {
     }
 
     if (error) throw error;
+
+    if (lastNumber != null) {
+      const bucket = resolveErpCounterBucket(yearReset, branchBased, branchUuid, calendarYear);
+      const counterPayload: Record<string, unknown> = {
+        company_id: companyId,
+        branch_id: bucket.branchId,
+        document_type: documentType.toUpperCase(),
+        prefix: prefixClean,
+        year: bucket.year,
+        last_number: lastNumber,
+        padding,
+        updated_at: new Date().toISOString(),
+      };
+      const counterUpsert = await supabase.from('erp_document_sequences').upsert(counterPayload, {
+        onConflict: 'company_id,branch_id,document_type,year',
+      });
+      if (counterUpsert.error) throw counterUpsert.error;
+    }
+
     return { includeBranchCodeApplied };
   },
 

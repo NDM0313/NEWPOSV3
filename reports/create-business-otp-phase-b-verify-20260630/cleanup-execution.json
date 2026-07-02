@@ -1,0 +1,16 @@
+{
+  "generated_at": "2026-06-30T14:07:00.000Z",
+  "status": "CLEANUP_COMPLETE",
+  "deleted": {
+    "user_branches": 1,
+    "contacts": 1,
+    "products": 4,
+    "accounts": 6,
+    "branches": 1,
+    "public_users": 1,
+    "companies": 1,
+    "auth_identities": 1,
+    "auth_users": 1
+  },
+  "transaction_tables_touched": false
+}

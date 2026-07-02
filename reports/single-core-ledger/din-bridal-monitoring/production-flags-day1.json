@@ -1,0 +1,19 @@
+{
+  "capturedAt": "2026-06-27T11:23:07.182Z",
+  "dinFlags": {
+    "unified_ledger_engine": false,
+    "unified_ledger_loader_account_statement": false,
+    "unified_ledger_loader_ledger_v2": false,
+    "unified_ledger_loader_party_ledger": false,
+    "unified_ledger_loader_roznamcha": false,
+    "unified_ledger_loader_trial_balance": false,
+    "unified_ledger_pilot": false,
+    "unified_ledger_screen_account_statement": false,
+    "unified_ledger_screen_ledger_v2": false,
+    "unified_ledger_screen_party_ledger": false,
+    "unified_ledger_screen_roznamcha": false,
+    "unified_ledger_screen_trial_balance": false
+  },
+  "otherCompanyLoaders": 0,
+  "verificationPass": false
+}

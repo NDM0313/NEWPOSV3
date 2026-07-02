@@ -300,11 +300,11 @@ export const PickupModal = ({ open, onOpenChange, rental, onConfirm, onAddPaymen
                   </Select>
                 </div>
                 <div>
-                  <Label className="text-gray-400 text-sm">Document Number *</Label>
+                  <Label className="text-gray-400 text-sm">Security document number *</Label>
                   <Input
                     value={documentNumber}
                     onChange={(e) => setDocumentNumber(e.target.value)}
-                    placeholder="ID / Passport number"
+                    placeholder="CNIC / Passport number"
                     className="mt-1 bg-gray-800 border-gray-700 text-white"
                   />
                 </div>

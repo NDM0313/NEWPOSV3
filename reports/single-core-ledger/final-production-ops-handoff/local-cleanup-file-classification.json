@@ -1,0 +1,43 @@
+{
+  "run": "LOCAL_CLEANUP_FILE_CLASSIFICATION",
+  "generated_at": "2026-06-29T16:00:00.000Z",
+  "total_files": 25,
+  "summary_counts": {
+    "KEEP_UNTOUCHED": 1,
+    "GENERATED_NOISE": 1,
+    "ALREADY_COMMITTED_DUPLICATE": 2,
+    "SAFE_ARCHIVE_CANDIDATE": 4,
+    "SAFE_DELETE_CANDIDATE_AFTER_APPROVAL": 4,
+    "POSSIBLE_EVIDENCE_FILE": 6,
+    "NEEDS_REVIEW": 7,
+    "UNKNOWN_DO_NOT_TOUCH": 0
+  },
+  "files": [
+    { "path": "graphify-out/GRAPH_REPORT.md", "git_status": "modified", "category": "GENERATED_NOISE", "committed_equivalent": "yes", "group": "graphify" },
+    { "path": "reports/single-core-ledger/din-bridal-monitoring/golden-capture/golden-capture-raw.json", "git_status": "modified", "category": "NEEDS_REVIEW", "committed_equivalent": "yes", "group": "din-bridal" },
+    { "path": "reports/single-core-ledger/din-bridal-monitoring/golden-capture/golden-capture-report.md", "git_status": "modified", "category": "NEEDS_REVIEW", "committed_equivalent": "yes", "group": "din-bridal" },
+    { "path": "reports/single-core-ledger/din-bridal-monitoring/golden-capture/screenshots/party-ledger.png", "git_status": "modified", "category": "NEEDS_REVIEW", "committed_equivalent": "yes", "group": "din-bridal" },
+    { "path": "reports/single-core-ledger/din-bridal-monitoring/golden-capture/screenshots/roznamcha.png", "git_status": "modified", "category": "NEEDS_REVIEW", "committed_equivalent": "yes", "group": "din-bridal" },
+    { "path": "reports/single-core-ledger/din-bridal-monitoring/production-flags-day1.json", "git_status": "modified", "category": "NEEDS_REVIEW", "committed_equivalent": "yes", "group": "din-bridal" },
+    { "path": "reports/single-core-ledger/din-bridal-monitoring/production-monitoring-day1.md", "git_status": "modified", "category": "NEEDS_REVIEW", "committed_equivalent": "yes", "group": "din-bridal" },
+    { "path": "reports/single-core-ledger/din-bridal/golden-fixtures.json", "git_status": "modified", "category": "POSSIBLE_EVIDENCE_FILE", "committed_equivalent": "yes", "group": "din-bridal" },
+    { "path": "reports/single-core-ledger/din-bridal/golden-fixtures.md", "git_status": "modified", "category": "POSSIBLE_EVIDENCE_FILE", "committed_equivalent": "yes", "group": "din-bridal" },
+    { "path": "reports/single-core-ledger/din-couture-monitoring/production-flags-day1.json", "git_status": "modified", "category": "NEEDS_REVIEW", "committed_equivalent": "yes", "group": "din-couture" },
+    { "path": "reports/single-core-ledger/din-couture-monitoring/production-monitoring-day1.md", "git_status": "modified", "category": "NEEDS_REVIEW", "committed_equivalent": "yes", "group": "din-couture" },
+    { "path": "reports/single-core-ledger/operational-monitoring/latest-three-company-monitoring.json", "git_status": "modified", "category": "POSSIBLE_EVIDENCE_FILE", "committed_equivalent": "yes", "local_slug": "2026-06-29T08-12-46-549Z", "head_slug": "2026-06-29T07-42-30-177Z", "group": "latest-pointer" },
+    { "path": "reports/single-core-ledger/operational-monitoring/latest-three-company-monitoring.md", "git_status": "modified", "category": "ALREADY_COMMITTED_DUPLICATE", "committed_equivalent": "yes", "group": "latest-pointer" },
+    { "path": "reports/single-core-ledger/phase-2-16-monitoring/production-flags-day1.json", "git_status": "modified", "category": "POSSIBLE_EVIDENCE_FILE", "committed_equivalent": "yes", "group": "phase-2-16" },
+    { "path": "reports/single-core-ledger/phase-2-16-monitoring/production-monitoring-day1.md", "git_status": "modified", "category": "NEEDS_REVIEW", "committed_equivalent": "yes", "group": "phase-2-16" },
+    { "path": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-27T15-16-22-259Z.json", "git_status": "untracked", "category": "SAFE_DELETE_CANDIDATE_AFTER_APPROVAL", "overall": "FAIL", "committed_equivalent": "no", "group": "timestamped-monitoring" },
+    { "path": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-27T15-16-22-259Z.md", "git_status": "untracked", "category": "SAFE_DELETE_CANDIDATE_AFTER_APPROVAL", "overall": "FAIL", "committed_equivalent": "no", "group": "timestamped-monitoring" },
+    { "path": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-27T15-27-34-167Z.json", "git_status": "untracked", "category": "SAFE_DELETE_CANDIDATE_AFTER_APPROVAL", "overall": "FAIL", "committed_equivalent": "no", "group": "timestamped-monitoring" },
+    { "path": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-27T15-27-34-167Z.md", "git_status": "untracked", "category": "SAFE_DELETE_CANDIDATE_AFTER_APPROVAL", "overall": "FAIL", "committed_equivalent": "no", "group": "timestamped-monitoring" },
+    { "path": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-27T15-43-53-886Z.json", "git_status": "untracked", "category": "SAFE_ARCHIVE_CANDIDATE", "overall": "PASS", "committed_equivalent": "no", "group": "timestamped-monitoring" },
+    { "path": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-27T15-43-53-886Z.md", "git_status": "untracked", "category": "SAFE_ARCHIVE_CANDIDATE", "overall": "PASS", "committed_equivalent": "no", "group": "timestamped-monitoring" },
+    { "path": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-29T07-31-19-431Z.json", "git_status": "untracked", "category": "SAFE_ARCHIVE_CANDIDATE", "overall": "PASS", "committed_equivalent": "no", "group": "timestamped-monitoring" },
+    { "path": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-29T07-31-19-431Z.md", "git_status": "untracked", "category": "SAFE_ARCHIVE_CANDIDATE", "overall": "PASS", "committed_equivalent": "no", "group": "timestamped-monitoring" },
+    { "path": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-29T08-12-46-549Z.json", "git_status": "untracked", "category": "POSSIBLE_EVIDENCE_FILE", "overall": "PASS", "committed_equivalent": "no", "group": "timestamped-monitoring" },
+    { "path": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-29T08-12-46-549Z.md", "git_status": "untracked", "category": "POSSIBLE_EVIDENCE_FILE", "overall": "PASS", "committed_equivalent": "no", "group": "timestamped-monitoring" }
+  ],
+  "authoritative_committed_monitoring": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-29T07-42-30-177Z.json"
+}

@@ -16,17 +16,18 @@ import {
 } from '@/app/components/ui/dropdown-menu';
 import { documentShareService } from '@/app/services/documentShareService';
 import type { DocumentType } from '@/app/services/pdfExportService';
+import type { ThermalPaperSize } from '@/app/components/shared/invoice/ThermalReceiptLayout';
 import { PdfPreviewModal } from './PdfPreviewModal';
 
 export interface DocumentShareActionsProps {
-  /** Ref to the printable DOM element (e.g. ClassicPrintBase root). */
+  /** Ref to the printable DOM element (e.g. thermal-receipt-root or ClassicPrintBase root). */
   contentRef: React.RefObject<HTMLDivElement | null>;
   documentType: DocumentType;
   reference?: string;
-  /** Customer/contact phone for WhatsApp (optional). */
   sharePhone?: string | null;
-  /** A4 or thermal - affects PDF layout. */
   format?: 'a4' | 'thermal';
+  /** Roll width when format is thermal. */
+  thermalPaperSize?: ThermalPaperSize;
   onPrint?: () => void;
   onClose?: () => void;
   showPrint?: boolean;
@@ -39,6 +40,7 @@ export const DocumentShareActions: React.FC<DocumentShareActionsProps> = ({
   reference,
   sharePhone,
   format = 'a4',
+  thermalPaperSize = '58mm',
   onPrint,
   onClose,
   showPrint = true,
@@ -137,6 +139,7 @@ export const DocumentShareActions: React.FC<DocumentShareActionsProps> = ({
         documentType={documentType}
         reference={reference}
         format={format}
+        thermalPaperSize={format === 'thermal' ? thermalPaperSize : undefined}
         sharePhone={sharePhone}
         cloneFromRef={contentRef}
       />

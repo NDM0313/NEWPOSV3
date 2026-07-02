@@ -9,7 +9,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
-import { CalendarDatePicker } from "../ui/CalendarDatePicker";
+import { DateTimePicker, dateToDateTimePickerValue, dateTimePickerValueToDate } from "../ui/DateTimePicker";
 import {
   Select,
   SelectContent,
@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from "../ui/select";
 import { Badge } from "../ui/badge";
-import { formatDecimal } from "../ui/utils";
+import { formatQty } from '@/app/utils/quantity';
 
 type AdjustmentType = 'add' | 'subtract';
 type AdjustmentReason = 'damaged' | 'audit' | 'return' | 'theft' | 'correction' | 'other';
@@ -483,7 +483,7 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
                         ? Object.entries(v.attributes).map(([k, val]) => `${k}: ${val}`).join(', ')
                         : (v.sku || v.id)}
                       {' — '}
-                      <span className="text-green-400">{formatDecimal(v.stock)} {product.unit}</span>
+                      <span className="text-green-400 tabular-nums">{formatQty(v.stock)} {product.unit}</span>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -572,11 +572,10 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
 
           {/* Date */}
           <div className="space-y-2">
-            <CalendarDatePicker
+            <DateTimePicker
               label="Adjustment Date"
-              value={date}
-              onChange={(d) => setDate(d || new Date())}
-              showTime={true}
+              value={dateToDateTimePickerValue(date)}
+              onChange={(v) => setDate(dateTimePickerValueToDate(v) || new Date())}
               required
             />
           </div>

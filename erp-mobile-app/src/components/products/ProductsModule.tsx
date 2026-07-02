@@ -34,6 +34,7 @@ import { getCompanyName } from '../../api/reports';
 import * as branchesApi from '../../api/branches';
 import { useSubmitLock } from '../../contexts/LoadingContext';
 import { useEffectiveWorkerId } from '../../context/CounterWorkerContext';
+import { prepareMobileProductDuplicateSeed } from '../../utils/productDuplicateUtils';
 
 /** Total stock: sum of variation stocks when hasVariations, else product stock */
 function getDisplayStock(p: productsApi.Product): number {
@@ -75,6 +76,7 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
   const [filterCat, setFilterCat] = useState<string>('all');
   const [view, setView] = useState<'list' | 'add'>('list');
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [duplicateFromProduct, setDuplicateFromProduct] = useState<Product | null>(null);
   const [saveError, setSaveError] = useState('');
   const { run: runSave, busy: saving } = useSubmitLock();
   const [confirmationData, setConfirmationData] = useState<TransactionSuccessData | null>(null);
@@ -126,6 +128,7 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
     async (p: Product) => {
       if (!companyId) return;
       setDetailProduct(null);
+      setDuplicateFromProduct(null);
       setEditLoadingId(p.id);
       const { data, error } = await productsApi.getProductById(companyId, p.id, { branchId: branchId ?? null });
       setEditLoadingId(null);
@@ -135,6 +138,28 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
       }
       setSaveError('');
       setEditingProduct(data);
+      setView('add');
+    },
+    [companyId, branchId],
+  );
+
+  const openDuplicateProduct = useCallback(
+    async (p: Product) => {
+      if (!companyId) return;
+      setDetailProduct(null);
+      setEditingProduct(null);
+      setEditLoadingId(p.id);
+      const [{ data, error }, skuRes] = await Promise.all([
+        productsApi.getProductById(companyId, p.id, { branchId: branchId ?? null }),
+        productsApi.getNextProductSKU(companyId, branchId ?? null),
+      ]);
+      setEditLoadingId(null);
+      if (error || !data) {
+        setSaveError(error || 'Could not load product to duplicate.');
+        return;
+      }
+      setSaveError('');
+      setDuplicateFromProduct(prepareMobileProductDuplicateSeed(data, skuRes || data.sku));
       setView('add');
     },
     [companyId, branchId],
@@ -298,6 +323,7 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
     }
     setView('list');
     setEditingProduct(null);
+    setDuplicateFromProduct(null);
     });
   };
 
@@ -322,9 +348,14 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
           companyId={companyId}
           branchId={branchId ?? null}
           sessionUserId={effectiveUserId}
-          onClose={() => setView('list')}
+          onClose={() => {
+            setView('list');
+            setEditingProduct(null);
+            setDuplicateFromProduct(null);
+          }}
           onSave={handleAddEditSave}
           product={editingProduct}
+          duplicateFrom={duplicateFromProduct}
           saving={saving}
           error={saveError}
         />
@@ -336,11 +367,13 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
               setConfirmationData(null);
               setView('list');
               setEditingProduct(null);
+              setDuplicateFromProduct(null);
             }}
             onOk={() => {
               setConfirmationData(null);
               setView('list');
               setEditingProduct(null);
+              setDuplicateFromProduct(null);
             }}
           />
         )}
@@ -384,6 +417,7 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
               <button
                 onClick={() => {
                   setEditingProduct(null);
+                  setDuplicateFromProduct(null);
                   setView('add');
                 }}
                 className="flex items-center gap-1.5 px-3 h-9 bg-white text-[#1E40AF] rounded-lg font-semibold shadow-md hover:bg-white/95"
@@ -625,6 +659,7 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
         displayStock={detailProduct ? getDisplayStock(detailProduct) : 0}
         onClose={() => setDetailProduct(null)}
         onEdit={(p) => void openEditProduct(p)}
+        onDuplicate={(p) => void openDuplicateProduct(p)}
         onPhoto={(p) => {
           setDetailProduct(null);
           setImagePreviewProduct(p);

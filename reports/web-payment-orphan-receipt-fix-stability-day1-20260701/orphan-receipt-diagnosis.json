@@ -1,0 +1,115 @@
+{
+  "run": "WEB_PAYMENT_ORPHAN_RECEIPT_DIAGNOSIS",
+  "generated_at": "2026-07-01T15:45:27.645Z",
+  "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+  "readonly": true,
+  "records": [
+    {
+      "reference_number": "RCV-0081",
+      "found": true,
+      "payment": {
+        "id": "a7c11a0f-17df-4ade-97f7-f51678f5dbd8",
+        "reference_number": "RCV-0081",
+        "amount_pkr": 45000,
+        "payment_method": "bank",
+        "payment_type": "received",
+        "reference_type": "manual_receipt",
+        "status_fields": {
+          "voided_at": "2026-07-01T15:44:30.193+00:00"
+        },
+        "payment_account_id": "3a3f3597-9f68-4ae7-a01f-a7fd48bd49f0",
+        "contact_id": "4549c5de-0599-435a-a6ab-6e622f99be64",
+        "contact_name": null,
+        "payment_date": "2026-06-16",
+        "created_at": "2026-07-01T13:51:04.138315+00:00",
+        "updated_at": "2026-07-01T15:44:31.387445+00:00",
+        "created_by": "50512623-c99f-4829-a566-01239f1effb6"
+      },
+      "journal_entry": {
+        "id": "e858cfbf-aa05-4797-af44-1bdec3d2e509",
+        "entry_no": "JE-0209",
+        "entry_date": "2026-06-16",
+        "reference_type": "manual_receipt",
+        "reference_id": "4549c5de-0599-435a-a6ab-6e622f99be64",
+        "payment_id": "a7c11a0f-17df-4ade-97f7-f51678f5dbd8",
+        "is_void": true,
+        "voided_at": "2026-07-01T15:44:30.193+00:00",
+        "void_reason": "Duplicate failed web receipt retry artifact — no posted double-entry lines. Soft-hidden per operator request.",
+        "total_debit": 0,
+        "total_credit": 0,
+        "line_count": 0,
+        "computed_debit": 0,
+        "computed_credit": 0,
+        "balanced": true,
+        "lines": []
+      },
+      "allocations": {
+        "count": 0,
+        "total_allocated_pkr": 0,
+        "rows": []
+      },
+      "safety_checks": {
+        "journal_entry_lines_count": 0,
+        "has_posted_gl_lines": false,
+        "allocation_count": 0,
+        "allocated_amount_pkr": 0,
+        "cash_bank_impact": false,
+        "safe_for_soft_cancel": true
+      }
+    },
+    {
+      "reference_number": "RCV-0082",
+      "found": true,
+      "payment": {
+        "id": "485ce156-743a-4988-8889-acfb22ded18c",
+        "reference_number": "RCV-0082",
+        "amount_pkr": 45000,
+        "payment_method": "bank",
+        "payment_type": "received",
+        "reference_type": "manual_receipt",
+        "status_fields": {
+          "voided_at": "2026-07-01T15:44:32.259+00:00"
+        },
+        "payment_account_id": "3a3f3597-9f68-4ae7-a01f-a7fd48bd49f0",
+        "contact_id": "4549c5de-0599-435a-a6ab-6e622f99be64",
+        "contact_name": null,
+        "payment_date": "2026-06-16",
+        "created_at": "2026-07-01T13:51:20.918819+00:00",
+        "updated_at": "2026-07-01T15:44:33.419476+00:00",
+        "created_by": "50512623-c99f-4829-a566-01239f1effb6"
+      },
+      "journal_entry": {
+        "id": "81b2d254-c695-4c58-bdf8-0d61bd78a839",
+        "entry_no": "JE-0210",
+        "entry_date": "2026-06-16",
+        "reference_type": "manual_receipt",
+        "reference_id": "4549c5de-0599-435a-a6ab-6e622f99be64",
+        "payment_id": "485ce156-743a-4988-8889-acfb22ded18c",
+        "is_void": true,
+        "voided_at": "2026-07-01T15:44:32.259+00:00",
+        "void_reason": "Duplicate failed web receipt retry artifact — no posted double-entry lines. Soft-hidden per operator request.",
+        "total_debit": 0,
+        "total_credit": 0,
+        "line_count": 0,
+        "computed_debit": 0,
+        "computed_credit": 0,
+        "balanced": true,
+        "lines": []
+      },
+      "allocations": {
+        "count": 0,
+        "total_allocated_pkr": 0,
+        "rows": []
+      },
+      "safety_checks": {
+        "journal_entry_lines_count": 0,
+        "has_posted_gl_lines": false,
+        "allocation_count": 0,
+        "allocated_amount_pkr": 0,
+        "cash_bank_impact": false,
+        "safe_for_soft_cancel": true
+      }
+    }
+  ],
+  "default_repair_decision": "SAFE_CANCEL_HIDE_BOTH_ORPHAN_RECEIPTS"
+}

@@ -25,6 +25,27 @@ import { isPostgrestMissingColumnError } from '@/app/utils/postgrestSchemaError'
 import { fetchInBatches } from '@/app/lib/chunkInQuery';
 import { applyBranchStockMovementFilter } from '@/app/utils/branchScope';
 import { productService } from '@/app/services/productService';
+import { defaultAccountsService } from '@/app/services/defaultAccountsService';
+import { runChunkedAllSettled } from '@/app/modules/csv-workbench/chunkedCommit';
+
+const OPENING_GL_SYNC_CHUNK_SIZE = 5;
+
+export interface BulkOpeningInventoryImportRow {
+  productId: string;
+  quantity: number;
+  unitCost?: number;
+  variationId?: string | null;
+}
+
+export interface BulkOpeningInventoryImportResult {
+  processed: number;
+  skipped: number;
+  failed: number;
+  openingGlPosted: number;
+  openingGlKept: number;
+  openingGlSkippedZeroCost: number;
+  errors: Array<{ productId: string; message: string }>;
+}
 
 // Dedupe negative-stock warnings per product so console isn't flooded when multiple forms call getInventoryOverview
 const negativeStockWarnedIds = new Set<string>();
@@ -919,8 +940,9 @@ export const inventoryService = {
     productId: string,
     quantity: number,
     unitCost: number,
-    totalMovementCount: number
-  ): Promise<{ error: any }> {
+    totalMovementCount: number,
+    opts?: { deferGlSync?: boolean }
+  ): Promise<{ error: any; movementId?: string }> {
     const b = branchId && branchId !== 'all' ? branchId : null;
     let q = supabase
       .from('stock_movements')
@@ -928,7 +950,6 @@ export const inventoryService = {
       .eq('company_id', companyId)
       .eq('product_id', productId)
       .is('variation_id', null)
-      .eq('movement_type', 'adjustment')
       .eq('reference_type', 'opening_balance');
     if (b) q = q.eq('branch_id', b);
     else q = q.is('branch_id', null);
@@ -942,7 +963,9 @@ export const inventoryService = {
 
     if (!openings?.length) {
       if (totalMovementCount === 0 && qty > 0) {
-        return this.insertOpeningBalanceMovement(companyId, b, productId, qty, uc);
+        return this.insertOpeningBalanceMovement(companyId, b, productId, qty, uc, null, {
+          deferGlSync: opts?.deferGlSync,
+        });
       }
       return { error: null };
     }
@@ -951,7 +974,7 @@ export const inventoryService = {
         '[INVENTORY] Multiple parent-level opening_balance movements; edit skipped for GL reconciliation',
         productId
       );
-      return { error: null };
+      return { error: null, movementId: undefined };
     }
     const id = openings[0].id as string;
     const { error: uerr } = await supabase
@@ -963,12 +986,14 @@ export const inventoryService = {
       })
       .eq('id', id);
     if (uerr) return { error: uerr };
-    try {
-      await openingBalanceJournalService.syncInventoryOpeningFromStockMovementId(id);
-    } catch (jeErr) {
-      console.warn('[INVENTORY] Opening stock updated but GL sync failed:', jeErr);
+    if (!opts?.deferGlSync) {
+      try {
+        await openingBalanceJournalService.syncInventoryOpeningFromStockMovementId(id);
+      } catch (jeErr) {
+        console.warn('[INVENTORY] Opening stock updated but GL sync failed:', jeErr);
+      }
     }
-    return { error: null };
+    return { error: null, movementId: id };
   },
 
   /**
@@ -980,8 +1005,9 @@ export const inventoryService = {
     productId: string,
     variationId: string,
     quantity: number,
-    unitCost: number
-  ): Promise<{ error: any }> {
+    unitCost: number,
+    opts?: { deferGlSync?: boolean }
+  ): Promise<{ error: any; movementId?: string }> {
     const b = branchId && branchId !== 'all' ? branchId : null;
     let q = supabase
       .from('stock_movements')
@@ -989,7 +1015,6 @@ export const inventoryService = {
       .eq('company_id', companyId)
       .eq('product_id', productId)
       .eq('variation_id', variationId)
-      .eq('movement_type', 'adjustment')
       .eq('reference_type', 'opening_balance');
     if (b) q = q.eq('branch_id', b);
     else q = q.is('branch_id', null);
@@ -1003,7 +1028,9 @@ export const inventoryService = {
 
     if (!openings?.length) {
       if (qty > 0) {
-        return this.insertOpeningBalanceMovement(companyId, b, productId, qty, uc, variationId);
+        return this.insertOpeningBalanceMovement(companyId, b, productId, qty, uc, variationId, {
+          deferGlSync: opts?.deferGlSync,
+        });
       }
       return { error: null };
     }
@@ -1024,12 +1051,14 @@ export const inventoryService = {
       })
       .eq('id', id);
     if (uerr) return { error: uerr };
-    try {
-      await openingBalanceJournalService.syncInventoryOpeningFromStockMovementId(id);
-    } catch (jeErr) {
-      console.warn('[INVENTORY] Variation opening stock updated but GL sync failed:', jeErr);
+    if (!opts?.deferGlSync) {
+      try {
+        await openingBalanceJournalService.syncInventoryOpeningFromStockMovementId(id);
+      } catch (jeErr) {
+        console.warn('[INVENTORY] Variation opening stock updated but GL sync failed:', jeErr);
+      }
     }
-    return { error: null };
+    return { error: null, movementId: id };
   },
 
   async insertOpeningBalanceMovement(
@@ -1087,6 +1116,162 @@ export const inventoryService = {
     const mt = String(movement.movement_type || movement.type || '').toLowerCase().trim();
     if (ref !== 'opening_balance' || mt !== 'adjustment') return;
     await openingBalanceJournalService.syncInventoryOpeningFromStockMovementId(movement.id);
+  },
+
+  /**
+   * CSV / UI bulk opening inventory import: one opening_balance movement per product (or variation),
+   * then batch-sync per-movement opening_balance_inventory JEs (Dr Inventory / Cr Equity).
+   */
+  async bulkImportOpeningInventory(
+    companyId: string,
+    branchId: string | null,
+    rows: BulkOpeningInventoryImportRow[]
+  ): Promise<BulkOpeningInventoryImportResult> {
+    const result: BulkOpeningInventoryImportResult = {
+      processed: 0,
+      skipped: 0,
+      failed: 0,
+      openingGlPosted: 0,
+      openingGlKept: 0,
+      openingGlSkippedZeroCost: 0,
+      errors: [],
+    };
+    if (!companyId || rows.length === 0) return result;
+
+    const b = branchId && branchId !== 'all' ? branchId : null;
+    const deferredMovementIds: string[] = [];
+
+    for (const row of rows) {
+      const qty = Number(row.quantity) || 0;
+      if (qty <= 0) {
+        result.skipped++;
+        continue;
+      }
+
+      let unitCost = Number(row.unitCost) || 0;
+      if (!(unitCost > 0)) {
+        try {
+          if (row.variationId) {
+            const { data: pv } = await supabase
+              .from('product_variations')
+              .select('cost_price, purchase_price')
+              .eq('id', row.variationId)
+              .maybeSingle();
+            unitCost =
+              Number((pv as { cost_price?: number; purchase_price?: number } | null)?.cost_price) ||
+              Number((pv as { cost_price?: number; purchase_price?: number } | null)?.purchase_price) ||
+              0;
+          }
+          if (!(unitCost > 0)) {
+            const { data: prod } = await supabase
+              .from('products')
+              .select('cost_price')
+              .eq('id', row.productId)
+              .maybeSingle();
+            unitCost = Number((prod as { cost_price?: number } | null)?.cost_price) || 0;
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+
+      try {
+        if (row.variationId) {
+          const rec = await this.reconcileVariationOpeningStock(
+            companyId,
+            b,
+            row.productId,
+            row.variationId,
+            qty,
+            unitCost,
+            { deferGlSync: true }
+          );
+          if (rec.error) throw rec.error;
+          if (rec.movementId) {
+            deferredMovementIds.push(rec.movementId);
+            result.processed++;
+          } else {
+            result.skipped++;
+          }
+        } else {
+          let countQuery = supabase
+            .from('stock_movements')
+            .select('id', { count: 'exact', head: true })
+            .eq('company_id', companyId)
+            .eq('product_id', row.productId);
+          countQuery = applyBranchStockMovementFilter(countQuery, b);
+          const { count, error: countErr } = await countQuery;
+          if (countErr) throw countErr;
+
+          const rec = await this.reconcileParentLevelOpeningStock(
+            companyId,
+            b,
+            row.productId,
+            qty,
+            unitCost,
+            count ?? 0,
+            { deferGlSync: true }
+          );
+          if (rec.error) throw rec.error;
+          if (rec.movementId) {
+            deferredMovementIds.push(rec.movementId);
+            result.processed++;
+          } else {
+            result.skipped++;
+          }
+        }
+      } catch (err: unknown) {
+        result.failed++;
+        result.errors.push({
+          productId: row.productId,
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    const movementIdsToSync = [...new Set(deferredMovementIds)];
+    if (movementIdsToSync.length > 0) {
+      try {
+        await defaultAccountsService.ensureDefaultAccounts(companyId);
+        await runChunkedAllSettled(
+          movementIdsToSync,
+          OPENING_GL_SYNC_CHUNK_SIZE,
+          async (movementId) => {
+            const gl = await openingBalanceJournalService.syncInventoryOpeningFromStockMovementId(movementId, {
+              suppressNotify: true,
+            });
+            if (gl.posted) result.openingGlPosted++;
+            else if (gl.kept) result.openingGlKept++;
+            else if (gl.skippedZeroCost) result.openingGlSkippedZeroCost++;
+          }
+        );
+      } catch (batchErr) {
+        console.warn('[INVENTORY] Batch opening GL sync failed:', batchErr);
+      }
+    }
+
+    // Backfill GL for any existing opening_balance movements (e.g. SQL import without app GL sync).
+    try {
+      const backfill = await openingBalanceJournalService.syncInventoryOpeningBalancesForCompany(companyId, {
+        suppressNotify: true,
+        excludeMovementIds: movementIdsToSync,
+      });
+      result.openingGlPosted += backfill.posted;
+      result.openingGlKept += backfill.kept;
+      result.openingGlSkippedZeroCost += backfill.skippedZeroCost;
+    } catch (backfillErr) {
+      console.warn('[INVENTORY] Company opening GL backfill failed:', backfillErr);
+    }
+
+    try {
+      const { notifyAccountingEntriesChanged } = await import('@/app/lib/accountingInvalidate');
+      notifyAccountingEntriesChanged();
+    } catch {
+      /* ignore */
+    }
+
+    clearInventoryOverviewCache(companyId);
+    return result;
   },
 
   /**

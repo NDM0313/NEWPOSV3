@@ -1,0 +1,72 @@
+{
+  "phase": "3A",
+  "screen": "profit_loss",
+  "startDate": "2000-01-01",
+  "endDate": "2026-06-29",
+  "branchLabel": "All branches",
+  "previewBasis": "official_gl",
+  "engineState": {
+    "mode": "preview",
+    "killSwitchActive": false,
+    "companyEngineEnabled": true,
+    "screenFlagEnabled": false,
+    "pilotEnabled": true,
+    "localOverride": null,
+    "rpcAllowed": true
+  },
+  "diff": {
+    "legacyRevenue": 49040015,
+    "previewRevenue": 49040015,
+    "revenueDelta": 0,
+    "legacyCostOfSales": 39299479.13,
+    "previewCostOfSales": 39299479.13,
+    "costDelta": 0,
+    "legacyGrossProfit": 9740535.869999997,
+    "previewGrossProfit": 9740535.87,
+    "grossProfitDelta": 0,
+    "legacyExpenses": 1274804,
+    "previewExpenses": 1274804,
+    "expensesDelta": 0,
+    "legacyNetProfit": 8465731.869999997,
+    "previewNetProfit": 8465731.87,
+    "netProfitDelta": 0,
+    "pass": true,
+    "previewOnly": true,
+    "needsFinanceGoldenApproval": true
+  },
+  "preview": {
+    "previewOnly": true,
+    "needsFinanceGoldenApproval": true,
+    "startDate": "2000-01-01",
+    "endDate": "2026-06-29",
+    "totalRevenue": 49040015,
+    "totalCostOfSales": 39299479.13,
+    "grossProfit": 9740535.87,
+    "totalExpenses": 1274804,
+    "netProfit": 8465731.87,
+    "revenueLineCount": 1,
+    "costLineCount": 1,
+    "expenseLineCount": 3,
+    "accountingRuleNotes": [
+      "PREVIEW_ONLY — not finance-approved golden totals.",
+      "COGS split uses COST_OF_PRODUCTION_CODES + type heuristics (mirrors legacy).",
+      "NEEDS_RULE_CONFIRMATION — finance must approve COGS mapping before loader swap."
+    ]
+  },
+  "tbMeta": {
+    "engine": "unified_shadow",
+    "basis": "official_gl",
+    "featureFlagEnabled": true,
+    "shadowForce": true,
+    "queryDurationMs": 561,
+    "rowCount": 49,
+    "periodOpeningBalance": 0
+  },
+  "accountingRuleNotes": [
+    "PREVIEW_ONLY — not finance-approved golden totals.",
+    "COGS split uses COST_OF_PRODUCTION_CODES + type heuristics (mirrors legacy).",
+    "NEEDS_RULE_CONFIRMATION — finance must approve COGS mapping before loader swap."
+  ],
+  "exportedAt": "2026-06-29T10:51:55.952Z",
+  "note": "PREVIEW_ONLY — legacy P&L remains authoritative. COGS heuristic NEEDS_RULE_CONFIRMATION."
+}

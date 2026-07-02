@@ -1,0 +1,69 @@
+import React from 'react';
+import { cn } from '@/app/components/ui/utils';
+import { movementRowColorClass } from '@/app/lib/stockMovementDisplay';
+import type { StockMovementReportRow } from '@/app/lib/stockMovementReportLogic';
+
+interface Props {
+  rows: StockMovementReportRow[];
+  emptyMessage?: string;
+  className?: string;
+  showVariationColumn?: boolean;
+}
+
+export function MovementHistoryTable({ rows, emptyMessage, className, showVariationColumn }: Props) {
+  if (!rows.length) {
+    return (
+      <div className={cn('rounded-lg border border-gray-800 bg-gray-900/40 p-8 text-center text-gray-400', className)}>
+        {emptyMessage || 'No stock movements in the selected period.'}
+      </div>
+    );
+  }
+
+  const fmt = (n: number) =>
+    n === 0 ? '—' : n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+
+  return (
+    <div className={cn('overflow-x-auto rounded-lg border border-gray-800', className)}>
+      <table className="w-full text-sm">
+        <thead className="bg-gray-900/80 text-gray-400 uppercase text-xs">
+          <tr>
+            <th className="px-3 py-2 text-left">Date</th>
+            <th className="px-3 py-2 text-left">Branch</th>
+            {showVariationColumn && <th className="px-3 py-2 text-left">Variation</th>}
+            <th className="px-3 py-2 text-left">Type</th>
+            <th className="px-3 py-2 text-left">Reference</th>
+            <th className="px-3 py-2 text-left">Party</th>
+            <th className="px-3 py-2 text-right text-emerald-400">Qty In</th>
+            <th className="px-3 py-2 text-right text-red-400">Qty Out</th>
+            <th className="px-3 py-2 text-right">Balance</th>
+            <th className="px-3 py-2 text-left">Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr
+              key={r.id}
+              className={cn('border-t border-gray-800/80', movementRowColorClass(r.movementType, r.quantity))}
+            >
+              <td className="px-3 py-2 text-gray-300 whitespace-nowrap">
+                {new Date(r.date).toLocaleString()}
+              </td>
+              <td className="px-3 py-2 text-gray-400">{r.branchName || '—'}</td>
+              {showVariationColumn && (
+                <td className="px-3 py-2 text-purple-300">{r.variationLabel || '—'}</td>
+              )}
+              <td className="px-3 py-2 font-medium">{r.movementTypeLabel}</td>
+              <td className="px-3 py-2 text-gray-300">{r.reference || '—'}</td>
+              <td className="px-3 py-2 text-gray-400">{r.party || '—'}</td>
+              <td className="px-3 py-2 text-right text-emerald-400">{fmt(r.qtyIn)}</td>
+              <td className="px-3 py-2 text-right text-red-400">{fmt(r.qtyOut)}</td>
+              <td className="px-3 py-2 text-right font-semibold text-white">{fmt(r.runningBalance)}</td>
+              <td className="px-3 py-2 text-gray-500 max-w-[200px] truncate">{r.notes || '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+

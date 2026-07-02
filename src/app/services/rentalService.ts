@@ -10,10 +10,43 @@ import { activityLogService } from '@/app/services/activityLogService';
 import { settingsService } from '@/app/services/settingsService';
 import { checkRentalAvailabilityForItems } from '@/app/services/rentalAvailabilityService';
 import { syncJournalEntryDateByDocumentRefs } from '@/app/services/journalTransactionDateSyncService';
-import { formatRentalPaymentRef } from '@/app/lib/rentalPaymentRef';
+import { formatRentalPaymentRef, isRcvReference } from '@/app/lib/rentalPaymentRef';
 import { isLiquidityPaymentAccount } from '@/app/lib/liquidityPaymentAccount';
 import { voidJournalEntries } from '@/app/services/accountingIntegrityService';
 import { voidPaymentAfterJournalReversal } from '@/app/services/paymentLifecycleService';
+import {
+  mapRentalRowToUI,
+  mapRentalRowsSafe,
+  dbStatusesForReturnQueue,
+  dbStatusesForCollections,
+} from '@/app/lib/rentalUiMapper';
+import {
+  isPickupDue,
+  isReturnDue,
+  hasOutstandingBalance,
+  getRentalDueAmount,
+} from '@/app/lib/rentalQueueUtils';
+import type { RentalUI } from '@/app/types/rentalTypes';
+
+/** Next customer receipt number (RCV-*) for a rental payment — same sequence as sale receipts. */
+async function nextRentalCustomerReceiptRef(
+  companyId: string,
+  rentalId: string,
+  branchId?: string | null
+): Promise<string> {
+  let docBranch = branchId ?? null;
+  if (!docBranch && rentalId) {
+    const { data: rental } = await supabase.from('rentals').select('branch_id').eq('id', rentalId).maybeSingle();
+    docBranch = (rental as { branch_id?: string | null } | null)?.branch_id ?? null;
+  }
+  try {
+    const { documentNumberService } = await import('@/app/services/documentNumberService');
+    return await documentNumberService.getNextDocumentNumber(companyId, docBranch, 'customer_receipt');
+  } catch {
+    const { generatePaymentReference } = await import('@/app/utils/paymentUtils');
+    return generatePaymentReference(null);
+  }
+}
 
 /** RPC requires a real branch UUID; map sentinel "default" to first company branch. */
 async function resolveBranchIdForRental(companyId: string, branchId: string): Promise<string> {
@@ -25,6 +58,16 @@ async function resolveBranchIdForRental(companyId: string, branchId: string): Pr
 }
 
 export type RentalStatus = 'draft' | 'booked' | 'active' | 'rented' | 'picked_up' | 'returned' | 'overdue' | 'cancelled';
+
+const RENTAL_QUEUE_SELECT = `
+        *,
+        customer:contacts(name, phone),
+        branch:branches(id, name, code),
+        items:rental_items(
+          *,
+          product:products(name, sku)
+        )
+      `;
 
 export interface Rental {
   id?: string;
@@ -194,7 +237,7 @@ export const rentalService = {
       newValue: { status: 'draft', total_amount, itemsCount: items.length },
       performedBy: createdBy || undefined,
       description: `Rental ${rentalData.rental_no} created`,
-    }).catch(() => {});
+    }).catch((e) => console.warn('[RENTAL SERVICE] Activity log failed:', e));
 
     return rentalData;
   },
@@ -233,6 +276,8 @@ export const rentalService = {
       variationId?: string | null;
     }>;
     skipAvailabilityCheck?: boolean;
+    /** Manual bill book ref → rentals.document_number (not booking_no). */
+    documentNumber?: string | null;
   }): Promise<{ id: string; booking_no: string }> {
     const {
       companyId,
@@ -255,6 +300,7 @@ export const rentalService = {
       commissionEligibleAmount = null,
       items,
       skipAvailabilityCheck = false,
+      documentNumber = null,
     } = params;
 
     if (!items?.length) throw new Error('At least one item is required');
@@ -372,6 +418,17 @@ export const rentalService = {
     const rentalData = { id: rpc.rental_id, booking_no: rpc.booking_no ?? '' };
     const bookingNo = rentalData.booking_no;
 
+    const docNumTrim = documentNumber != null ? String(documentNumber).trim() : '';
+    if (docNumTrim) {
+      const { error: docPatchErr } = await supabase
+        .from('rentals')
+        .update({ document_number: docNumTrim })
+        .eq('id', rentalData.id);
+      if (docPatchErr) {
+        console.warn('[rentalService] Failed to patch manual bill ref:', docPatchErr.message);
+      }
+    }
+
     // Party AR GL (named customer): revenue (when charges > 0) + optional advance cash receipt
     if (customerId) {
       try {
@@ -414,7 +471,7 @@ export const rentalService = {
               rental_id: rentalData.id,
               amount: effectivePaid,
               method: 'cash',
-              reference: formatRentalPaymentRef(bookingNo),
+              reference: await nextRentalCustomerReceiptRef(companyId, rentalData.id, effectiveBranchId),
               payment_date: bookingDate,
               created_by: createdBy || null,
               ...(advancePaymentAccountId ? { payment_account_id: advancePaymentAccountId } : {}),
@@ -455,7 +512,7 @@ export const rentalService = {
         rental_id: rentalData.id,
         amount: effectivePaid,
         method: 'cash',
-        reference: formatRentalPaymentRef(bookingNo),
+        reference: await nextRentalCustomerReceiptRef(companyId, rentalData.id, effectiveBranchId),
         payment_date: bookingDate,
         created_by: createdBy || null,
       });
@@ -499,7 +556,7 @@ export const rentalService = {
         performedBy: createdBy || undefined,
         description: `Rental booking ${bookingNo} created${effectivePaid > 0 ? ` (Advance: Rs ${effectivePaid.toLocaleString()})` : ''}`,
       })
-      .catch(() => {});
+      .catch((e) => console.warn('[RENTAL SERVICE] Activity log failed:', e));
 
     return { id: rentalData.id, booking_no: rentalData.booking_no };
   },
@@ -519,6 +576,8 @@ export const rentalService = {
       securityDeposit?: number;
       paidAmount?: number;
       notes?: string | null;
+      documentNumber?: string | null;
+      salesmanId?: string | null;
       items?: Array<{
         productId: string;
         productName: string;
@@ -582,6 +641,11 @@ export const rentalService = {
     if (updates.securityDeposit !== undefined) payload.security_deposit = updates.securityDeposit;
     if (updates.paidAmount !== undefined) payload.paid_amount = updates.paidAmount;
     if (updates.notes !== undefined) payload.notes = updates.notes;
+    if (updates.documentNumber !== undefined) {
+      const v = updates.documentNumber != null ? String(updates.documentNumber).trim() : '';
+      payload.document_number = v || null;
+    }
+    if (updates.salesmanId !== undefined) payload.salesman_id = updates.salesmanId || null;
 
     if (updates.items && updates.items.length > 0) {
       const rentalCharges = updates.items.reduce((s, i) => s + i.total, 0);
@@ -629,7 +693,33 @@ export const rentalService = {
         performedBy: undefined,
         description: `Rental ${r.booking_no || r.rental_no} updated`,
       })
-      .catch(() => {});
+      .catch((e) => console.warn('[RENTAL SERVICE] Activity log failed:', e));
+  },
+
+  /** Patch manual bill ref / notes on draft or booked rentals only. */
+  async updateRentalMeta(
+    rentalId: string,
+    patch: { documentNumber?: string | null; notes?: string | null }
+  ): Promise<void> {
+    const { data: row, error: fetchErr } = await supabase
+      .from('rentals')
+      .select('status')
+      .eq('id', rentalId)
+      .maybeSingle();
+    if (fetchErr || !row) throw new Error(fetchErr?.message ?? 'Rental not found');
+    const st = String((row as { status?: string }).status ?? '').toLowerCase();
+    if (!['draft', 'booked'].includes(st)) {
+      throw new Error('Bill ref and notes can only be edited on draft or booked rentals.');
+    }
+    const upd: Record<string, unknown> = {};
+    if (patch.documentNumber !== undefined) {
+      const v = patch.documentNumber != null ? String(patch.documentNumber).trim() : '';
+      upd.document_number = v || null;
+    }
+    if (patch.notes !== undefined) upd.notes = patch.notes;
+    if (Object.keys(upd).length === 0) return;
+    const { error } = await supabase.from('rentals').update(upd).eq('id', rentalId);
+    if (error) throw error;
   },
 
   async updateRental(
@@ -689,7 +779,7 @@ export const rentalService = {
       action: 'rental_edited',
       newValue: updates,
       description: `Rental ${(existing as any).rental_no} updated`,
-    }).catch(() => {});
+    }).catch((e) => console.warn('[RENTAL SERVICE] Activity log failed:', e));
   },
 
   async finalizeRental(id: string, companyId: string, performedBy?: string | null): Promise<void> {
@@ -746,7 +836,7 @@ export const rentalService = {
       newValue: { status: 'rented' },
       performedBy: performedBy || undefined,
       description: `Rental ${r.rental_no} finalized – stock out`,
-    }).catch(() => {});
+    }).catch((e) => console.warn('[RENTAL SERVICE] Activity log failed:', e));
   },
 
   /**
@@ -843,14 +933,19 @@ export const rentalService = {
       actual_pickup_date: actualPickupDate,
       picked_up_by: performedBy || null,
       document_type: documentType,
-      document_number: documentNumber,
       document_expiry: documentExpiry || null,
       document_received: documentReceived,
       remaining_payment_confirmed: remainingPaymentConfirmed,
       credit_flag: deliverOnCredit === true,
       notes: notes || r.notes || null,
+      security_document_type: documentType,
+      security_document_number: documentNumber?.trim() || null,
+      security_status: 'collected',
     };
-    if (documentFrontImage) updatePayload.document_front_image = documentFrontImage;
+    if (documentFrontImage) {
+      updatePayload.document_front_image = documentFrontImage;
+      updatePayload.security_document_image_url = documentFrontImage;
+    }
     if (documentBackImage) updatePayload.document_back_image = documentBackImage;
     if (customerPhoto) updatePayload.customer_photo = customerPhoto;
 
@@ -871,7 +966,7 @@ export const rentalService = {
       newValue: { status: 'picked_up', actual_pickup_date: actualPickupDate, document_received: documentReceived },
       performedBy: performedBy || undefined,
       description: `Rental picked up with document received`,
-    }).catch(() => {});
+    }).catch((e) => console.warn('[RENTAL SERVICE] Activity log failed:', e));
   },
 
   /**
@@ -890,6 +985,16 @@ export const rentalService = {
 
     for (const r of rows) {
       await supabase.from('rentals').update({ status: 'overdue' }).eq('id', r.id);
+      await activityLogService.logActivity({
+        companyId,
+        module: 'rental',
+        entityId: r.id,
+        entityReference: (r as { booking_no?: string }).booking_no,
+        action: 'status_change',
+        oldValue: { status: 'rented' },
+        newValue: { status: 'overdue' },
+        description: `Rental ${(r as { booking_no?: string }).booking_no || r.id} marked overdue`,
+      }).catch((e) => console.warn('[RENTAL SERVICE] Activity log overdue failed:', e));
     }
     return rows.length;
   },
@@ -1014,7 +1119,7 @@ export const rentalService = {
       newValue: { status: 'returned', actual_return_date: actualReturnDate, document_returned: documentReturned },
       performedBy: performedBy || undefined,
       description: `Rental returned and document handed back`,
-    }).catch(() => {});
+    }).catch((e) => console.warn('[RENTAL SERVICE] Activity log failed:', e));
   },
 
   async cancelRental(id: string, companyId: string, performedBy?: string | null): Promise<void> {
@@ -1043,7 +1148,7 @@ export const rentalService = {
       newValue: { status: 'cancelled' },
       performedBy: performedBy || undefined,
       description: `Rental ${r.rental_no} cancelled`,
-    }).catch(() => {});
+    }).catch((e) => console.warn('[RENTAL SERVICE] Activity log failed:', e));
   },
 
   async addPayment(
@@ -1080,15 +1185,17 @@ export const rentalService = {
     const payDay = (options?.paymentDate || new Date().toISOString()).split('T')[0];
     const isPenalty = payType === 'penalty';
     const bookingNo = String(r.booking_no || '').trim();
-    const canonicalRef = bookingNo ? formatRentalPaymentRef(bookingNo) : '';
+    const receiptRef = isPenalty
+      ? options?.penaltyReferenceNote || reference || 'Rental penalty / damage'
+      : reference && isRcvReference(reference)
+        ? String(reference).trim()
+        : await nextRentalCustomerReceiptRef(companyId, rentalId);
 
     const insertPayload: Record<string, unknown> = {
       rental_id: rentalId,
       amount,
       method: normalizePaymentMethod(method),
-      reference: isPenalty
-        ? options?.penaltyReferenceNote || reference || 'Rental penalty / damage'
-        : canonicalRef || reference || null,
+      reference: receiptRef || null,
       payment_date: payDay,
       created_by: performedBy || null,
     };
@@ -1146,7 +1253,7 @@ export const rentalService = {
       description: isPenalty
         ? `Penalty / damage ${amount} recorded for rental ${r.rental_no || r.booking_no || rentalId}`
         : `Payment ${amount} added to rental ${r.rental_no || r.booking_no || rentalId}`,
-    }).catch(() => {});
+    }).catch((e) => console.warn('[RENTAL SERVICE] Activity log failed:', e));
 
     return payment as RentalPayment;
   },
@@ -1177,21 +1284,25 @@ export const rentalService = {
       .eq('id', rentalPaymentId)
       .maybeSingle();
 
-    let canonicalRef: string | null = null;
-    const rentalId = (rp as { rental_id?: string } | null)?.rental_id;
-    if (rentalId) {
-      const { data: rental } = await supabase.from('rentals').select('booking_no').eq('id', rentalId).maybeSingle();
-      const bookingNo = String((rental as { booking_no?: string } | null)?.booking_no || '').trim();
-      if (bookingNo) canonicalRef = formatRentalPaymentRef(bookingNo);
-    }
-
     const storedRef = String((rp as { reference?: string } | null)?.reference || '').trim();
     const patch: Record<string, unknown> = { journal_entry_id: journalEntryId };
     if (liquidityAccountId && !(rp as { payment_account_id?: string } | null)?.payment_account_id) {
       patch.payment_account_id = liquidityAccountId;
     }
-    if (canonicalRef && (!storedRef || !/^REN-.+-PAY$/i.test(storedRef))) {
-      patch.reference = canonicalRef;
+    // Assign RCV only when reference is missing — never overwrite stored RCV or legacy refs.
+    if (!storedRef) {
+      const rentalId = (rp as { rental_id?: string } | null)?.rental_id;
+      if (rentalId) {
+        const { data: rental } = await supabase.from('rentals').select('company_id, branch_id').eq('id', rentalId).maybeSingle();
+        const cid = String((rental as { company_id?: string } | null)?.company_id || '').trim();
+        if (cid) {
+          patch.reference = await nextRentalCustomerReceiptRef(
+            cid,
+            rentalId,
+            (rental as { branch_id?: string | null } | null)?.branch_id
+          );
+        }
+      }
     }
 
     const { error } = await supabase.from('rental_payments').update(patch).eq('id', rentalPaymentId);
@@ -1346,6 +1457,37 @@ export const rentalService = {
     }
 
     await recomputeRentalPaidDueFromActivePayments(rentalId);
+
+    const oldAmount = Number((row as { amount?: number }).amount ?? 0);
+    const newAmount = updates.amount;
+    const amountChanged = oldAmount !== newAmount;
+    if (amountChanged || updates.method || updates.accountId) {
+      const { data: rentalRow } = await supabase
+        .from('rentals')
+        .select('booking_no, rental_no')
+        .eq('id', rentalId)
+        .maybeSingle();
+      const rentalNo = (rentalRow as { booking_no?: string; rental_no?: string } | null)?.booking_no
+        || (rentalRow as { rental_no?: string } | null)?.rental_no;
+      const { data: { user } } = await supabase.auth.getUser();
+      const description = amountChanged
+        ? `Payment edited from Rs ${oldAmount.toLocaleString()} to Rs ${newAmount.toLocaleString()} via ${updates.method}`
+        : `Payment updated via ${updates.method}`;
+      await activityLogService.logActivity({
+        companyId,
+        module: 'rental',
+        entityId: rentalId,
+        entityReference: rentalNo,
+        action: 'payment_edited',
+        oldValue: oldAmount,
+        newValue: newAmount,
+        amount: newAmount,
+        paymentMethod: updates.method,
+        performedBy: user?.id ?? null,
+        description,
+      }).catch((e) => console.warn('[RENTAL SERVICE] Activity log payment_edited failed:', e));
+    }
+
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('rentalPaymentsChanged'));
       window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
@@ -1380,7 +1522,10 @@ export const rentalService = {
     const rentalNo = (rentalRow as any)?.booking_no;
 
     if (journalEntryId) {
-      await voidJournalEntries(companyId, [journalEntryId], 'Rental payment deleted');
+      const voidRes = await voidJournalEntries(companyId, [journalEntryId], 'Rental payment deleted');
+      if (!voidRes.success) {
+        throw new Error(voidRes.error || 'Failed to void linked journal entry for deleted rental payment');
+      }
     }
 
     if (payDay) {
@@ -1432,7 +1577,7 @@ export const rentalService = {
       amount: paymentAmount,
       performedBy: performedBy || undefined,
       description: `Payment ${paymentAmount} voided on rental (linked JE voided)`,
-    }).catch(() => {});
+    }).catch((e) => console.warn('[RENTAL SERVICE] Activity log failed:', e));
   },
 
   async getRentalPayments(rentalId: string, options?: { includeVoided?: boolean }): Promise<RentalPayment[]> {
@@ -1458,20 +1603,67 @@ export const rentalService = {
     return (data || []) as RentalPayment[];
   },
 
-  async getAllRentals(companyId: string, branchId?: string | null) {
-    // No created_by_user:users join – production DB may have no FK rentals→users (PGRST200)
+  async getPickupsDue(
+    companyId: string,
+    branchId?: string | null,
+    opts?: { asOfDate?: string }
+  ): Promise<RentalUI[]> {
+    const asOf = (opts?.asOfDate || new Date().toISOString()).slice(0, 10);
     let query = supabase
       .from('rentals')
-      .select(`
-        *,
-        customer:contacts(name, phone),
-        branch:branches(id, name, code),
-        items:rental_items(
-          *,
-          product:products(name, sku)
-        )
-      `)
+      .select(RENTAL_QUEUE_SELECT)
       .eq('company_id', companyId)
+      .eq('status', 'booked')
+      .order('created_at', { ascending: true });
+
+    if (branchId && branchId !== 'all') {
+      query = query.eq('branch_id', branchId);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data || [])
+      .map((row) => mapRentalRowToUI(row as Record<string, unknown>))
+      .filter((r) => isPickupDue(r, asOf))
+      .sort((a, b) => a.startDate.localeCompare(b.startDate));
+  },
+
+  async getReturnsDue(
+    companyId: string,
+    branchId?: string | null,
+    asOfDate?: string
+  ): Promise<RentalUI[]> {
+    const asOf = (asOfDate || new Date().toISOString()).slice(0, 10);
+    const statuses = dbStatusesForReturnQueue();
+    let query = supabase
+      .from('rentals')
+      .select(RENTAL_QUEUE_SELECT)
+      .eq('company_id', companyId)
+      .in('status', statuses)
+      .order('created_at', { ascending: true });
+
+    if (branchId && branchId !== 'all') {
+      query = query.eq('branch_id', branchId);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data || [])
+      .map((row) => mapRentalRowToUI(row as Record<string, unknown>))
+      .filter((r) => isReturnDue(r, asOf))
+      .sort((a, b) => a.expectedReturnDate.localeCompare(b.expectedReturnDate));
+  },
+
+  async getOutstandingForCollections(
+    companyId: string,
+    branchId?: string | null
+  ): Promise<RentalUI[]> {
+    const statuses = dbStatusesForCollections();
+    let query = supabase
+      .from('rentals')
+      .select(RENTAL_QUEUE_SELECT)
+      .eq('company_id', companyId)
+      .in('status', statuses)
       .order('created_at', { ascending: false });
 
     if (branchId && branchId !== 'all') {
@@ -1480,7 +1672,135 @@ export const rentalService = {
 
     const { data, error } = await query;
     if (error) throw error;
-    return data || [];
+    return (data || [])
+      .map((row) => mapRentalRowToUI(row as Record<string, unknown>))
+      .filter(hasOutstandingBalance)
+      .sort((a, b) => getRentalDueAmount(b) - getRentalDueAmount(a));
+  },
+
+  async fetchRentalsForList(
+    companyId: string,
+    branchId?: string | null,
+    opts?: { limit?: number; offset?: number }
+  ): Promise<{ rows: Record<string, unknown>[]; total: number }> {
+    const limit = opts?.limit ?? 500;
+    const offset = opts?.offset ?? 0;
+
+    let query = supabase
+      .from('rentals')
+      .select(RENTAL_QUEUE_SELECT)
+      .eq('company_id', companyId)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (branchId && branchId !== 'all') {
+      query = query.eq('branch_id', branchId);
+    }
+
+    const { data, error } = await query;
+    if (!error && data) {
+      const countQuery = supabase
+        .from('rentals')
+        .select('id', { count: 'exact', head: true })
+        .eq('company_id', companyId);
+      const countQ = branchId && branchId !== 'all' ? countQuery.eq('branch_id', branchId) : countQuery;
+      const { count } = await countQ;
+      return { rows: data as Record<string, unknown>[], total: count ?? data.length };
+    }
+
+    console.warn('[rentalService] fetchRentalsForList join failed, using flat fallback', error);
+
+    let flatQuery = supabase
+      .from('rentals')
+      .select('*')
+      .eq('company_id', companyId)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (branchId && branchId !== 'all') {
+      flatQuery = flatQuery.eq('branch_id', branchId);
+    }
+
+    const { data: flatData, error: flatErr } = await flatQuery;
+    if (flatErr) throw flatErr;
+
+    const flatRows = (flatData || []) as Record<string, unknown>[];
+    const rentalIds = flatRows.map((r) => String(r.id)).filter(Boolean);
+
+    const itemsByRental = new Map<string, Record<string, unknown>[]>();
+    const customerIds = new Set<string>();
+    const branchIds = new Set<string>();
+
+    flatRows.forEach((r) => {
+      if (r.customer_id) customerIds.add(String(r.customer_id));
+      if (r.branch_id) branchIds.add(String(r.branch_id));
+    });
+
+    if (rentalIds.length > 0) {
+      const { data: items } = await supabase
+        .from('rental_items')
+        .select('*, product:products(name, sku)')
+        .in('rental_id', rentalIds);
+      for (const item of (items || []) as Record<string, unknown>[]) {
+        const rid = String(item.rental_id);
+        const list = itemsByRental.get(rid) || [];
+        list.push(item);
+        itemsByRental.set(rid, list);
+      }
+    }
+
+    const customersById = new Map<string, { name?: string; phone?: string }>();
+    if (customerIds.size > 0) {
+      const { data: contacts } = await supabase
+        .from('contacts')
+        .select('id, name, phone')
+        .in('id', [...customerIds]);
+      for (const c of (contacts || []) as { id: string; name?: string; phone?: string }[]) {
+        customersById.set(c.id, c);
+      }
+    }
+
+    const branchesById = new Map<string, { id: string; name?: string; code?: string }>();
+    if (branchIds.size > 0) {
+      const { data: branches } = await supabase
+        .from('branches')
+        .select('id, name, code')
+        .in('id', [...branchIds]);
+      for (const b of (branches || []) as { id: string; name?: string; code?: string }[]) {
+        branchesById.set(b.id, b);
+      }
+    }
+
+    const enriched = flatRows.map((r) => {
+      const id = String(r.id);
+      return {
+        ...r,
+        customer: r.customer_id ? customersById.get(String(r.customer_id)) : undefined,
+        branch: r.branch_id ? branchesById.get(String(r.branch_id)) : undefined,
+        items: itemsByRental.get(id) || [],
+      };
+    });
+
+    const countQuery = supabase
+      .from('rentals')
+      .select('id', { count: 'exact', head: true })
+      .eq('company_id', companyId);
+    const countQ = branchId && branchId !== 'all' ? countQuery.eq('branch_id', branchId) : countQuery;
+    const { count } = await countQ;
+
+    return { rows: enriched, total: count ?? enriched.length };
+  },
+
+  async getAllRentals(
+    companyId: string,
+    branchId?: string | null,
+    opts?: { limit?: number; offset?: number }
+  ): Promise<any[] | { data: any[]; total: number }> {
+    const { rows, total } = await this.fetchRentalsForList(companyId, branchId, opts);
+    if (opts) {
+      return { data: rows, total };
+    }
+    return rows;
   },
 
   async getRental(id: string) {
@@ -1527,6 +1847,6 @@ export const rentalService = {
       action: 'rental_deleted',
       performedBy: performedBy || undefined,
       description: `Rental ${r.rental_no} deleted`,
-    }).catch(() => {});
+    }).catch((e) => console.warn('[RENTAL SERVICE] Activity log failed:', e));
   },
 };

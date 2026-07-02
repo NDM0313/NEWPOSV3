@@ -31,6 +31,10 @@ import {
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
 import { useExpenses, type Expense as ExpenseContextExpense } from '../../context/ExpenseContext';
+import {
+  expenseDeleteOrCancelLabel,
+  isPostedExpenseStatus,
+} from '@/app/lib/expenseCancelPolicy';
 
 interface Expense {
   id: string;
@@ -163,7 +167,7 @@ const mockExpenses: Expense[] = [
 ];
 
 export const ExpensesList = () => {
-  const { expenses: contextExpenses, loading, deleteExpense, refreshExpenses, createExpense } = useExpenses();
+  const { expenses: contextExpenses, loading, deleteExpense, cancelExpense, refreshExpenses, createExpense } = useExpenses();
   const [filters, setFilters] = useState<any>({});
 
   // Convert ExpenseContext format to ExpensesList format
@@ -268,15 +272,23 @@ export const ExpensesList = () => {
     toast.info(`Editing expense ${expense.referenceNo}`);
   };
 
-  const handleDelete = async (expense: Expense) => {
-    if (confirm(`Are you sure you want to delete expense ${expense.referenceNo}?`)) {
-      try {
+  const handleDeleteOrCancel = async (expense: Expense) => {
+    const posted = isPostedExpenseStatus(expense.status);
+    const actionLabel = expenseDeleteOrCancelLabel(expense.status);
+    const confirmMessage = posted
+      ? `Cancel expense ${expense.referenceNo}? Accounting will be voided; the row stays for audit and is hidden from normal reports.`
+      : `Delete draft expense ${expense.referenceNo}? This removes the row.`;
+    if (!confirm(confirmMessage)) return;
+    try {
+      if (posted) {
+        await cancelExpense(expense.id);
+      } else {
         await deleteExpense(expense.id);
-        await refreshExpenses();
-      } catch (error: any) {
-        console.error('[EXPENSES LIST] Error deleting expense:', error);
-        alert('Failed to delete expense: ' + (error.message || 'Unknown error'));
       }
+      await refreshExpenses();
+    } catch (error: any) {
+      console.error('[EXPENSES LIST] Error removing expense:', error);
+      alert(`Failed to ${actionLabel.toLowerCase()}: ` + (error.message || 'Unknown error'));
     }
   };
 
@@ -450,11 +462,11 @@ export const ExpensesList = () => {
                           </DropdownMenuItem>
                           <DropdownMenuSeparator className="bg-gray-800" />
                           <DropdownMenuItem
-                            onClick={() => handleDelete(expense)}
+                            onClick={() => handleDeleteOrCancel(expense)}
                             className="hover:bg-red-900/20 text-red-400 cursor-pointer"
                           >
                             <Trash2 size={14} className="mr-2" />
-                            Delete
+                            {expenseDeleteOrCancelLabel(expense.status)}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>

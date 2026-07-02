@@ -1,7 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Loader2, FileText, FileSpreadsheet, Calendar, Users, AlertTriangle, ShieldAlert } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { Loader2, Calendar, Users, AlertTriangle, ShieldAlert, ChevronRight } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
+import { FinancialReportPrintShell } from './shared/FinancialReportPrintShell';
+import { shareViaWhatsApp } from '@/app/services/documentShareService';
 import { Input } from '@/app/components/ui/input';
+import { DatePicker } from '@/app/components/ui/DatePicker';
 import {
   Dialog,
   DialogContent,
@@ -10,11 +13,36 @@ import {
 } from '@/app/components/ui/dialog';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { toast } from 'sonner';
 import { accountingReportsService, BalanceSheetResult, type BalanceSheetLineItem } from '@/app/services/accountingReportsService';
 import type { BalanceSheetAssetGroup } from '@/app/lib/accountHierarchy';
-import { exportToPDF, exportToExcel, ExportData } from '@/app/utils/exportUtils';
-import { fetchControlAccountBreakdown, type ControlAccountBreakdownResult } from '@/app/services/controlAccountBreakdownService';
+import { exportToExcel, ExportData } from '@/app/utils/exportUtils';
+import { fetchControlAccountBreakdown, type ControlAccountBreakdownResult, type PartyGlRow } from '@/app/services/controlAccountBreakdownService';
+import { ReportBasisBanner } from '@/app/components/accounting/ReportBasisBanner';
+import { useNavigation } from '@/app/context/NavigationContext';
 import { supabase } from '@/lib/supabase';
+import { cn } from '@/app/components/ui/utils';
+import { canAccessBsPlUnifiedPreview } from '@/app/lib/accounting/bsPlUnifiedPreviewAccess';
+import {
+  compareBalanceSheetUnifiedPreview,
+  DEFAULT_BS_PL_PREVIEW_BASIS,
+  type BalanceSheetUnifiedPreviewDiff,
+} from '@/app/lib/accounting/bsPlUnifiedPreviewDiff';
+import type { UnifiedLedgerBasis } from '@/app/lib/unifiedLedgerBasisFilter';
+import { useUnifiedLedgerEngineState } from '@/app/hooks/useUnifiedLedgerEngineState';
+import { loadBalanceSheetUnifiedPreview } from '@/app/services/bsPlUnifiedPreviewService';
+import type { BalanceSheetUnifiedPreviewLoadResult } from '@/app/services/bsPlUnifiedPreviewService';
+import { BalanceSheetUnifiedPreviewPanel } from '@/app/components/accounting/BalanceSheetUnifiedPreviewPanel';
+import {
+  effectiveBalanceSheetMainLoaderSource,
+  resolveBalanceSheetMainLoaderSource,
+} from '@/app/lib/accounting/resolveBalanceSheetMainLoaderSource';
+import { resolveBalanceSheetPreviewCompareSource } from '@/app/lib/accounting/resolveBalanceSheetPreviewCompareSource';
+import { UNIFIED_LEDGER_SCREEN_IDS } from '@/app/lib/unifiedLedgerScreenFlags';
+import {
+  balanceSheetResultToPreviewShape,
+  loadBalanceSheetUnifiedMain,
+} from '@/app/services/bsPlUnifiedMainService';
 
 // Group account items into standard Balance Sheet subgroups with subtotals
 type GroupKey = string;
@@ -150,24 +178,33 @@ function groupEquity(items: { name: string; amount: number; code?: string }[]): 
     }));
 }
 
-const toExport = (r: BalanceSheetResult, formatCurrency: (n: number) => string): ExportData => {
-  const rows: (string | number)[][] = [
-    ['Section', 'Group', 'Account', 'Code', 'Amount'],
-    ...r.assets.items.map((i) => [r.assets.label, '', i.name, i.code || '', formatCurrency(i.amount)]),
-    ['Total Assets', '', '', '', formatCurrency(r.totalAssets)],
-    [],
-    ...r.liabilities.items.map((i) => [r.liabilities.label, '', i.name, i.code || '', formatCurrency(i.amount)]),
-    ['Total Liabilities', '', '', '', formatCurrency(r.liabilities.total)],
-    [],
-    ...r.equity.items.map((i) => [r.equity.label, '', i.name, i.code || '', formatCurrency(i.amount)]),
-    ['Total Equity', '', '', '', formatCurrency(r.equity.total)],
-    [],
-    ['Total Liabilities & Equity', '', '', '', formatCurrency(r.totalLiabilitiesAndEquity)],
-    ['Difference (should be 0)', '', '', '', formatCurrency(r.difference)],
-  ];
+const toExportGrouped = (
+  r: BalanceSheetResult,
+  formatCurrency: (n: number) => string,
+  groupedAssets: GroupedItem[],
+  groupedLiabilities: GroupedItem[],
+  groupedEquity: GroupedItem[]
+): ExportData => {
+  const headers = ['Section', 'Group', 'Account', 'Code', 'Amount'];
+  const rows: (string | number)[][] = [];
+  const pushSection = (section: string, groups: GroupedItem[], sectionTotal: number) => {
+    rows.push([section, '', '', '', '']);
+    groups.forEach((g) => {
+      rows.push(['', g.groupLabel, '', '', '']);
+      g.items.forEach((i) => rows.push(['', g.groupLabel, i.name, i.code || '', formatCurrency(i.amount)]));
+      rows.push(['', g.groupLabel, 'Subtotal', '', formatCurrency(g.subtotal)]);
+    });
+    rows.push([`Total ${section}`, '', '', '', formatCurrency(sectionTotal)]);
+    rows.push([]);
+  };
+  pushSection(r.assets.label, groupedAssets, r.totalAssets);
+  pushSection(r.liabilities.label, groupedLiabilities, r.liabilities.total);
+  pushSection(r.equity.label, groupedEquity, r.equity.total);
+  rows.push(['Total Liabilities & Equity', '', '', '', formatCurrency(r.totalLiabilitiesAndEquity)]);
+  rows.push(['Difference (should be 0)', '', '', '', formatCurrency(r.difference)]);
   return {
     title: `Balance Sheet (GL) as at ${r.asOfDate}`,
-    headers: ['Section', 'Group', 'Account', 'Code', 'Amount'],
+    headers,
     rows,
   };
 };
@@ -235,41 +272,183 @@ export const BalanceSheetPage: React.FC<{
   asOfDate?: string;
   branchId?: string;
 }> = ({ asOfDate: initialAsOfDate, branchId }) => {
-  const { companyId } = useSupabase();
+  const { companyId, userRole } = useSupabase();
   const { formatCurrency } = useFormatCurrency();
+  const { openLedgerStatementV2 } = useNavigation();
   const defaultDate = initialAsOfDate || new Date().toISOString().slice(0, 10);
   const [asOfDate, setAsOfDate] = useState(defaultDate);
+  useEffect(() => {
+    if (initialAsOfDate) setAsOfDate(initialAsOfDate);
+  }, [initialAsOfDate]);
   const [data, setData] = useState<BalanceSheetResult | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [fetchRetryKey, setFetchRetryKey] = useState(0);
+  const [mainLoaderSource, setMainLoaderSource] = useState<'legacy' | 'unified'>('legacy');
   const [partyKind, setPartyKind] = useState<'ar' | 'ap' | null>(null);
   const [partyLoading, setPartyLoading] = useState(false);
   const [partyBreakdown, setPartyBreakdown] = useState<ControlAccountBreakdownResult | null>(null);
 
+  const showUnifiedPreviewTools = canAccessBsPlUnifiedPreview(userRole);
+  const [unifiedPreviewEnabled, setUnifiedPreviewEnabled] = useState(false);
+  const [previewBasis, setPreviewBasis] = useState<UnifiedLedgerBasis>(DEFAULT_BS_PL_PREVIEW_BASIS);
+  const [previewLoadResult, setPreviewLoadResult] = useState<BalanceSheetUnifiedPreviewLoadResult | null>(null);
+  const [previewDiff, setPreviewDiff] = useState<BalanceSheetUnifiedPreviewDiff | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+
+  const { state: engineState } = useUnifiedLedgerEngineState(companyId, {
+    screenId: UNIFIED_LEDGER_SCREEN_IDS.BALANCE_SHEET,
+    screenPreview: unifiedPreviewEnabled,
+  });
+
+  const previewCompareSource = useMemo(
+    () => resolveBalanceSheetPreviewCompareSource(mainLoaderSource),
+    [mainLoaderSource],
+  );
+
+  const loadUnifiedPreview = useCallback(async () => {
+    if (!companyId || !data || !unifiedPreviewEnabled) {
+      setPreviewLoadResult(null);
+      setPreviewDiff(null);
+      setPreviewError(null);
+      return;
+    }
+    setPreviewLoading(true);
+    setPreviewError(null);
+    try {
+      if (previewCompareSource === 'legacy_shadow') {
+        const legacy = await accountingReportsService.getBalanceSheet(companyId, data.asOfDate, branchId);
+        const previewShape = balanceSheetResultToPreviewShape(data);
+        setPreviewLoadResult({
+          preview: previewShape,
+          tbPreview: {
+            rows: [],
+            accounts: [],
+            totalDebit: 0,
+            totalCredit: 0,
+            difference: 0,
+            basis: previewBasis,
+            rpcScope: { branchId: null, asOfDate: data.asOfDate },
+            meta: {
+              engine: 'unified_shadow',
+              basis: previewBasis,
+              featureFlagEnabled: true,
+              shadowForce: false,
+              queryDurationMs: 0,
+              rowCount: 0,
+              periodOpeningBalance: 0,
+            },
+          },
+          basis: previewBasis,
+        });
+        setPreviewDiff(compareBalanceSheetUnifiedPreview({ legacy, preview: previewShape }));
+        return;
+      }
+
+      const result = await loadBalanceSheetUnifiedPreview({
+        companyId,
+        asOfDate: data.asOfDate,
+        branchId,
+        basis: previewBasis,
+      });
+      setPreviewLoadResult(result);
+      if (result.tbPreview.blockedByKillSwitch) {
+        setPreviewDiff(null);
+        setPreviewError(result.tbPreview.blockReason ?? 'Unified preview blocked.');
+        return;
+      }
+      if (result.preview) {
+        setPreviewDiff(compareBalanceSheetUnifiedPreview({ legacy: data, preview: result.preview }));
+      } else {
+        setPreviewDiff(null);
+      }
+    } catch (err) {
+      console.error(err);
+      setPreviewLoadResult(null);
+      setPreviewDiff(null);
+      setPreviewError('Unified preview failed to load');
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [companyId, data, unifiedPreviewEnabled, branchId, previewBasis, previewCompareSource]);
+
+  useEffect(() => {
+    if (!unifiedPreviewEnabled) {
+      setPreviewLoadResult(null);
+      setPreviewDiff(null);
+      setPreviewError(null);
+      return;
+    }
+    void loadUnifiedPreview();
+  }, [unifiedPreviewEnabled, loadUnifiedPreview]);
+
   useEffect(() => {
     if (!companyId || !asOfDate) {
-      setData(null);
-      setLoading(false);
+      if (!companyId) setLoading(true);
       return;
     }
     setLoading(true);
-    accountingReportsService
-      .getBalanceSheet(companyId, asOfDate, branchId)
-      .then(setData)
-      .catch(() => setData(null))
-      .finally(() => setLoading(false));
-  }, [companyId, asOfDate, branchId]);
+    setFetchError(null);
+    (async () => {
+      try {
+        const resolved = await resolveBalanceSheetMainLoaderSource(companyId);
+        const mainSource = effectiveBalanceSheetMainLoaderSource(resolved);
+        setMainLoaderSource(mainSource);
+
+        if (mainSource === 'unified') {
+          try {
+            const unified = await loadBalanceSheetUnifiedMain({
+              companyId,
+              asOfDate,
+              branchId,
+              basis: previewBasis,
+            });
+            setData(unified);
+            return;
+          } catch (unifiedErr) {
+            console.warn('Unified Balance Sheet main loader failed; falling back to legacy.', unifiedErr);
+          }
+        }
+
+        const legacy = await accountingReportsService.getBalanceSheet(companyId, asOfDate, branchId);
+        setData(legacy);
+        if (mainSource === 'unified') {
+          setMainLoaderSource('legacy');
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Failed to load balance sheet';
+        setFetchError(msg);
+        toast.error(msg);
+        setData(null);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [companyId, asOfDate, branchId, fetchRetryKey, previewBasis]);
 
   const groupedAssets = useMemo(() => (data ? groupAssets(data.assets.items) : []), [data]);
   const groupedLiabilities = useMemo(() => (data ? groupLiabilities(data.liabilities.items) : []), [data]);
   const groupedEquity = useMemo(() => (data ? groupEquity(data.equity.items) : []), [data]);
+  const branchLabel = branchId && branchId !== 'all' ? 'Branch scope' : 'All branches';
 
-  const handleExportPDF = () => {
-    if (!data) return;
-    exportToPDF(toExport(data, formatCurrency), `Balance_Sheet_GL_${data.asOfDate}`);
-  };
+  const exportPayload = useMemo(() => {
+    if (!data) return null;
+    const ga = groupedAssets.length > 0 ? groupedAssets : [{ groupLabel: 'Assets', items: data.assets.items, subtotal: data.totalAssets }];
+    const gl = groupedLiabilities.length > 0 ? groupedLiabilities : [{ groupLabel: 'Liabilities', items: data.liabilities.items, subtotal: data.liabilities.total }];
+    const ge = groupedEquity.length > 0 ? groupedEquity : [{ groupLabel: 'Equity', items: data.equity.items, subtotal: data.equity.total }];
+    return toExportGrouped(data, formatCurrency, ga, gl, ge);
+  }, [data, formatCurrency, groupedAssets, groupedLiabilities, groupedEquity]);
+
   const handleExportExcel = () => {
+    if (!exportPayload) return;
+    exportToExcel(exportPayload, `Balance_Sheet_GL_${data!.asOfDate}`);
+  };
+  const handleWhatsApp = () => {
     if (!data) return;
-    exportToExcel(toExport(data, formatCurrency), `Balance_Sheet_GL_${data.asOfDate}`);
+    void shareViaWhatsApp(
+      `Balance Sheet (GL)\nAs at ${data.asOfDate}\nTotal Assets: ${formatCurrency(data.totalAssets)}\nL+E: ${formatCurrency(data.totalLiabilitiesAndEquity)}`
+    );
   };
 
   const openPartyDrilldown = async (kind: 'ar' | 'ap') => {
@@ -296,6 +475,7 @@ export const BalanceSheetPage: React.FC<{
         accountCode: String(acc.code || code),
         accountName: String(acc.name || ''),
         controlKind: kind === 'ar' ? 'ar' : 'ap',
+        asOfDate,
       });
       setPartyBreakdown(b);
     } catch {
@@ -303,6 +483,23 @@ export const BalanceSheetPage: React.FC<{
     } finally {
       setPartyLoading(false);
     }
+  };
+
+  const openPartyLedgerV2 = (row: PartyGlRow) => {
+    if (!partyKind) return;
+    openLedgerStatementV2?.({
+      entityId: row.contactId,
+      statementType: partyKind === 'ar' ? 'customer' : 'supplier',
+      entityLabel: row.name,
+    });
+    setPartyKind(null);
+    setPartyBreakdown(null);
+  };
+
+  const formatPartyCode = (row: PartyGlRow) => {
+    if (row.contactCode) return row.contactCode;
+    if (row.subledgerAccountCode) return row.subledgerAccountCode;
+    return '—';
   };
 
   if (loading) {
@@ -315,28 +512,77 @@ export const BalanceSheetPage: React.FC<{
   if (!data) {
     return (
       <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-6 text-center text-gray-400">
-        <p className="font-medium">No data for the selected period</p>
-        <p className="text-sm text-gray-500 mt-1">Adjust the date or ensure journal entries exist.</p>
+        <p className="font-medium">{fetchError || 'No data for the selected period'}</p>
+        <p className="text-sm text-gray-500 mt-1">
+          {fetchError ? 'Check your connection and try again.' : 'Adjust the date or ensure journal entries exist.'}
+        </p>
+        {fetchError ? (
+          <Button variant="outline" className="mt-4 border-gray-700" onClick={() => { setFetchError(null); setFetchRetryKey((k) => k + 1); }}>
+            Retry
+          </Button>
+        ) : null}
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/[0.07] px-3 py-2 text-xs text-emerald-100/95">
-        <strong className="font-semibold">Basis: GL (journal)</strong> — Point-in-time balance sheet from posted accounts.
-        Party “Parties” drill-down is <strong className="text-emerald-200">Party GL</strong> attribution, not operational due.
-      </div>
-      <div className="flex flex-wrap items-center justify-between gap-4">
+    <div className="space-y-4" data-balance-sheet-main-loader={mainLoaderSource}>
+      <ReportBasisBanner
+        basis="official_gl"
+        detail="Point-in-time balance sheet from posted accounts. Party “Parties” drill-down is Party GL attribution, not operational due."
+      />
+      {showUnifiedPreviewTools ? (
+        <div className="flex flex-wrap items-center gap-3 no-print">
+          <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer w-fit">
+            <input
+              type="checkbox"
+              checked={unifiedPreviewEnabled}
+              disabled={engineState.killSwitchActive}
+              onChange={(e) => setUnifiedPreviewEnabled(e.target.checked)}
+              className="rounded border-gray-600 disabled:opacity-50"
+            />
+            Unified TB preview (Balance Sheet compare only)
+          </label>
+          {unifiedPreviewEnabled ? (
+            <Button type="button" variant="outline" size="sm" className="border-gray-700" onClick={() => void loadUnifiedPreview()}>
+              Refresh preview
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+      {unifiedPreviewEnabled && showUnifiedPreviewTools ? (
+        <BalanceSheetUnifiedPreviewPanel
+          asOfDate={data.asOfDate}
+          branchLabel={branchLabel}
+          loadResult={previewLoadResult}
+          diff={previewDiff}
+          loading={previewLoading}
+          error={previewError}
+          engineState={engineState}
+          previewBasis={previewBasis}
+          onPreviewBasisChange={setPreviewBasis}
+        />
+      ) : null}
+      <FinancialReportPrintShell
+        companyId={companyId}
+        actionsTitle="Balance Sheet (GL)"
+        reportTitle="Balance Sheet (GL)"
+        periodLabel={`As at ${data.asOfDate}`}
+        branchLabel={branchLabel}
+        previewReference={`balance-sheet-${asOfDate}`}
+        exportPayload={exportPayload}
+        onExcel={handleExportExcel}
+        onWhatsapp={handleWhatsApp}
+      />
+      <div className="no-print flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2">
             <Calendar className="h-4 w-4 text-gray-400" />
             <label className="text-sm text-gray-400 whitespace-nowrap">As at date</label>
-            <Input
-              type="date"
+            <DatePicker
               value={asOfDate}
-              onChange={(e) => setAsOfDate(e.target.value.slice(0, 10))}
-              className="w-[160px] h-9 bg-gray-800 border-gray-700 text-white text-sm"
+              onChange={(v) => setAsOfDate(v)}
+              className="w-[160px]"
             />
           </div>
           {data.difference !== 0 && (
@@ -348,16 +594,8 @@ export const BalanceSheetPage: React.FC<{
             </span>
           )}
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={handleExportPDF} className="gap-1">
-            <FileText size={14} /> PDF
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleExportExcel} className="gap-1">
-            <FileSpreadsheet size={14} /> Excel
-          </Button>
-        </div>
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 no-print">
         <SectionBlock
           title={data.assets.label}
           grouped={groupedAssets.length > 0 ? groupedAssets : [{ groupLabel: 'Assets', items: data.assets.items, subtotal: data.totalAssets }]}
@@ -398,7 +636,7 @@ export const BalanceSheetPage: React.FC<{
               have unequal debit and credit sides. This is a data integrity issue, not a reporting formula issue.
             </p>
             <p className="text-amber-200/80 text-xs">
-              <strong>Fix:</strong> Go to <span className="font-medium text-white">Accounting → Integrity Test Lab → Phase 8</span> (Load detection → Unbalanced JEs table)
+              <strong>Fix:</strong> Go to <span className="font-medium text-white">AR/AP Diagnostics → Tie-out</span> (unbalanced JEs / TB difference rows)
               to identify the specific entry/entries causing this imbalance, then reverse or manually adjust them.
             </p>
           </div>
@@ -406,7 +644,7 @@ export const BalanceSheetPage: React.FC<{
       )}
 
       <Dialog open={partyKind !== null} onOpenChange={(o) => !o && setPartyKind(null)}>
-        <DialogContent className="max-w-lg bg-gray-900 border-gray-800 text-white">
+        <DialogContent className="max-w-2xl bg-gray-900 border-gray-800 text-white">
           <DialogHeader>
             <DialogTitle>
               {partyKind === 'ar' ? 'Receivables — party breakdown' : partyKind === 'ap' ? 'Payables — party breakdown' : 'Party breakdown'}
@@ -417,14 +655,51 @@ export const BalanceSheetPage: React.FC<{
               <Loader2 className="h-8 w-8 animate-spin text-blue-400" />
             </div>
           ) : partyBreakdown?.partyRows?.length ? (
-            <ul className="space-y-2 max-h-[360px] overflow-y-auto text-sm">
-              {partyBreakdown.partyRows.map((r) => (
-                <li key={r.contactId} className="flex justify-between gap-2 border-b border-gray-800 pb-2">
-                  <span className="text-gray-300 truncate">{r.name}</span>
-                  <span className="tabular-nums text-white shrink-0">{formatCurrency(r.glAmount)}</span>
-                </li>
-              ))}
-            </ul>
+            <div className="space-y-2">
+              <div className="overflow-x-auto max-h-[360px] overflow-y-auto rounded-lg border border-gray-800">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-gray-900/95 text-gray-500 text-left">
+                    <tr>
+                      <th className="py-2 px-3 font-medium">Code</th>
+                      <th className="py-2 px-3 font-medium">Party</th>
+                      <th className="py-2 px-3 font-medium text-right">GL balance</th>
+                      <th className="w-8" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {partyBreakdown.partyRows.map((r) => (
+                      <tr
+                        key={r.contactId}
+                        className={cn(
+                          'border-t border-gray-800/80 cursor-pointer hover:bg-indigo-950/30 transition-colors',
+                          r.glAmount < -0.005 && 'bg-amber-950/10'
+                        )}
+                        onClick={() => openPartyLedgerV2(r)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            openPartyLedgerV2(r);
+                          }
+                        }}
+                        tabIndex={0}
+                        role="button"
+                        title="Open Account Statements for this party"
+                      >
+                        <td className="py-2 px-3 font-mono text-xs text-gray-400">{formatPartyCode(r)}</td>
+                        <td className="py-2 px-3 text-gray-200 truncate max-w-[220px]">{r.name}</td>
+                        <td className="py-2 px-3 text-right tabular-nums text-white shrink-0">
+                          {formatCurrency(r.glAmount)}
+                        </td>
+                        <td className="py-2 px-2 text-gray-500">
+                          <ChevronRight className="w-4 h-4" />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-xs text-gray-500">Click a row to open Account Statements for that party.</p>
+            </div>
           ) : (
             <p className="text-sm text-gray-500">No party rows or data unavailable (ensure GL mapping RPC is applied).</p>
           )}

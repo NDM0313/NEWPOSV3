@@ -1,0 +1,84 @@
+{
+  "run_at": "2026-06-23T15:50:06.427Z",
+  "run_mode": "pg",
+  "staging_guard": "UNIFIED_LEDGER_STAGING=1",
+  "generated_at": "2026-06-23T15:50:06.390262",
+  "companies_count": 3,
+  "summary": {
+    "companies_total": 3,
+    "strict_pass_count": 3,
+    "strict_fail_count": 0,
+    "branch_attribution_risk_total": 0,
+    "warnings_unposted_sales": 0,
+    "warnings_unposted_purchases": 0
+  },
+  "companies": [
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "company_is_active": true,
+      "payments_missing_contact_sale_linked": 0,
+      "payments_wrong_party_attribution": 0,
+      "branch_attribution_risk": 0,
+      "unposted_final_sales": 0,
+      "unposted_final_purchases": 0,
+      "unposted_rentals": 0,
+      "correction_reversal_je_count": 0,
+      "opening_balance_null_branch_je_count": 173,
+      "strict_pass": true,
+      "issues": [
+        {
+          "field": "opening_balance_null_branch_je_count",
+          "count": 173,
+          "fix_class": "opening_balance_branch_review",
+          "severity": "info"
+        }
+      ]
+    },
+    {
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "company_name": "DIN CHINA",
+      "company_is_active": true,
+      "payments_missing_contact_sale_linked": 0,
+      "payments_wrong_party_attribution": 0,
+      "branch_attribution_risk": 0,
+      "unposted_final_sales": 0,
+      "unposted_final_purchases": 0,
+      "unposted_rentals": 0,
+      "correction_reversal_je_count": 0,
+      "opening_balance_null_branch_je_count": 11,
+      "strict_pass": true,
+      "issues": [
+        {
+          "field": "opening_balance_null_branch_je_count",
+          "count": 11,
+          "fix_class": "opening_balance_branch_review",
+          "severity": "info"
+        }
+      ]
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "company_is_active": true,
+      "payments_missing_contact_sale_linked": 0,
+      "payments_wrong_party_attribution": 0,
+      "branch_attribution_risk": 0,
+      "unposted_final_sales": 0,
+      "unposted_final_purchases": 0,
+      "unposted_rentals": 0,
+      "correction_reversal_je_count": 0,
+      "opening_balance_null_branch_je_count": 72,
+      "strict_pass": true,
+      "issues": [
+        {
+          "field": "opening_balance_null_branch_je_count",
+          "count": 72,
+          "fix_class": "opening_balance_branch_review",
+          "severity": "info"
+        }
+      ]
+    }
+  ],
+  "pilot_branch_attribution_risk_sample": []
+}

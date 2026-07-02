@@ -1,0 +1,70 @@
+{
+  "phase": "3B-L",
+  "run": "loader-architecture-map",
+  "generated_at": "2026-06-29T17:00:00.000Z",
+  "cashFlowLoaderFlagExists": false,
+  "proposedFutureFlags": {
+    "loader": "unified_ledger_loader_cash_flow",
+    "screen": "unified_ledger_screen_cash_flow"
+  },
+  "existingLoaderPattern": {
+    "resolverFiles": [
+      "src/app/lib/resolveLedgerV2MainLoaderSource.ts",
+      "src/app/lib/resolveAccountStatementMainLoaderSource.ts",
+      "src/app/lib/resolveTrialBalanceMainLoaderSource.ts",
+      "src/app/lib/resolvePartyLedgerMainLoaderSource.ts",
+      "src/app/lib/resolveRoznamchaMainLoaderSource.ts"
+    ],
+    "flagKeysFile": "src/app/lib/unifiedLedgerFlagKeys.ts",
+    "screenFlagsFile": "src/app/lib/unifiedLedgerScreenFlags.ts",
+    "flagService": "src/app/services/featureFlagsService.ts",
+    "storage": "feature_flags table (company_id, feature_key, enabled)",
+    "unifiedGate": "loaderFlag AND unified_ledger_engine AND screenFlag AND NOT kill_switch"
+  },
+  "cashFlowCurrentPaths": {
+    "officialLegacy": {
+      "entry": "src/app/components/reports/CashFlowReportPage.tsx",
+      "service": "src/app/services/cashFlowReportService.ts",
+      "function": "getCashFlowReport",
+      "engine": "roznamchaService.getRoznamcha (legacy)"
+    },
+    "alignedPreview": {
+      "service": "src/app/services/cashFlowUnifiedPreviewService.ts",
+      "function": "loadCashFlowUnifiedPreview",
+      "mapper": "src/app/lib/accounting/cashFlowUnifiedPreviewMapper.ts",
+      "alignment": "src/app/lib/accounting/cashFlowPreviewFinanceAlignment.ts",
+      "panel": "src/app/components/accounting/CashFlowUnifiedPreviewPanel.tsx",
+      "access": "src/app/lib/accounting/cashFlowUnifiedPreviewAccess.ts",
+      "toggle": "unifiedPreviewEnabled state — default OFF, role-gated"
+    }
+  },
+  "futureImplementationTouchPoints": [
+    "src/app/lib/unifiedLedgerFlagKeys.ts — add LOADER_CASH_FLOW, SCREEN_CASH_FLOW",
+    "src/app/lib/unifiedLedgerScreenFlags.ts — add cash_flow screen id",
+    "src/app/lib/resolveCashFlowMainLoaderSource.ts — new resolver (mirror roznamcha pattern)",
+    "src/app/services/cashFlowReportService.ts or CashFlowReportPage.tsx — branch main loader",
+    "src/app/services/featureFlagsService.ts — FEATURE_KEYS entries",
+    "scripts/single-core-ledger/monitoring-company-profiles.json — optional loader key in expected flags",
+    "scripts/single-core-ledger/run-three-company-operational-monitoring.mjs — Cash Flow loader checks"
+  ],
+  "rollbackPath": {
+    "flagDisable": "DELETE/UPDATE feature_flags row unified_ledger_loader_cash_flow per company",
+    "killSwitch": "unified_ledger_kill_switch ON forces legacy everywhere",
+    "frontendRevert": "deploy prior commit if unified main path has runtime bug",
+    "monitoring": "npm run monitor:three-company-unified-ledger"
+  },
+  "monitoringPath": "npm run monitor:three-company-unified-ledger",
+  "risks": [
+    "DIN CHINA/DIN BRIDAL user-visible totals will change vs legacy when loader swaps",
+    "No Cash Flow loader flag exists today — must be implemented before any swap",
+    "Preview path derives from unified roznamcha rows — main swap must use finance-aligned mapper",
+    "Five existing loaders must remain stable — guard against accidental sixth-company flags"
+  ],
+  "stopConditions": [
+    "monitor:three-company-unified-ledger FAIL",
+    "other_company_loaders_on > 0",
+    "gl_mutations detected",
+    "finance basis sign-off revoked",
+    "operator approval not on record"
+  ]
+}

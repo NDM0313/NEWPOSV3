@@ -300,15 +300,51 @@ export interface PartyCandidate {
   name: string;
   type?: string | null;
   suggested_from: string;
+  code?: string | null;
+  phone?: string | null;
+  account_code?: string | null;
+}
+
+function contactTypesForRow(row: UnmappedJournalRow): string[] {
+  const wantWorker = row.control_bucket === 'AP' && row.ap_sub_bucket === 'worker';
+  const wantSupplier = row.control_bucket === 'AP' && row.ap_sub_bucket === 'supplier';
+  if (wantWorker) return ['worker'];
+  if (wantSupplier) return ['supplier', 'both'];
+  return ['customer', 'both'];
+}
+
+function mapContactRow(
+  c: { id: string; name: string; type?: string | null; code?: string | null; phone?: string | null },
+  suggestedFrom: string,
+  accountCode?: string | null
+): PartyCandidate {
+  return {
+    contact_id: c.id,
+    name: c.name,
+    type: c.type ?? null,
+    suggested_from: suggestedFrom,
+    code: c.code ?? null,
+    phone: c.phone ?? null,
+    account_code: accountCode ?? null,
+  };
 }
 
 /**
- * Suggest contacts for relink: document party first, then same-type search (limited).
+ * Suggest contacts for relink: document party first, then account-linked contact, then search results.
  */
 export async function suggestPartyContactsForUnmappedLine(
   row: UnmappedJournalRow,
   companyId: string
 ): Promise<PartyCandidate[]> {
+  const { suggestions } = await searchPartyContactsForRelink(row, companyId, { limit: 12 });
+  return suggestions;
+}
+
+export async function searchPartyContactsForRelink(
+  row: UnmappedJournalRow,
+  companyId: string,
+  options?: { query?: string; limit?: number; linkedContactId?: string | null }
+): Promise<{ suggestions: PartyCandidate[]; results: PartyCandidate[] }> {
   const out: PartyCandidate[] = [];
   const seen = new Set<string>();
   const push = (c: PartyCandidate) => {
@@ -319,6 +355,8 @@ export async function suggestPartyContactsForUnmappedLine(
 
   const refType = (row.reference_type || '').toLowerCase().trim();
   const refId = row.reference_id;
+  const query = String(options?.query || '').trim().toLowerCase();
+  const limit = options?.limit ?? 500;
 
   if (refType === 'sale' && refId) {
     const { data: sale } = await supabase
@@ -328,11 +366,12 @@ export async function suggestPartyContactsForUnmappedLine(
       .eq('company_id', companyId)
       .maybeSingle();
     if (sale?.customer_id) {
-      push({
-        contact_id: sale.customer_id as string,
-        name: (sale.customer_name as string) || 'Customer',
-        suggested_from: 'sale.customer_id',
-      });
+      push(
+        mapContactRow(
+          { id: sale.customer_id as string, name: (sale.customer_name as string) || 'Customer' },
+          'sale.customer_id'
+        )
+      );
     }
   }
 
@@ -344,66 +383,107 @@ export async function suggestPartyContactsForUnmappedLine(
       .eq('company_id', companyId)
       .maybeSingle();
     if (pur?.supplier_id) {
-      push({
-        contact_id: pur.supplier_id as string,
-        name: (pur.supplier_name as string) || 'Supplier',
-        suggested_from: 'purchase.supplier_id',
+      push(
+        mapContactRow(
+          { id: pur.supplier_id as string, name: (pur.supplier_name as string) || 'Supplier' },
+          'purchase.supplier_id'
+        )
+      );
+    }
+  }
+
+  if (options?.linkedContactId) {
+    const { data: linked } = await supabase
+      .from('contacts')
+      .select('id, name, type, code, phone')
+      .eq('id', options.linkedContactId)
+      .eq('company_id', companyId)
+      .maybeSingle();
+    if (linked?.id) {
+      push(mapContactRow(linked as { id: string; name: string; type?: string; code?: string; phone?: string }, 'account.linked_contact'));
+    }
+  }
+
+  if (row.account_id) {
+    const { data: acct } = await supabase
+      .from('accounts')
+      .select('linked_contact_id, code, linked_contact:contacts(id, name, type, code, phone)')
+      .eq('id', row.account_id)
+      .maybeSingle();
+    const lc = (acct as { linked_contact?: { id: string; name: string; type?: string; code?: string; phone?: string } | null })
+      ?.linked_contact;
+    if (lc?.id) {
+      push(
+        mapContactRow(
+          lc,
+          'accounts.linked_contact_id',
+          (acct as { code?: string }).code ?? row.account_code
+        )
+      );
+    }
+  }
+
+  const suggestions = [...out];
+
+  const types = contactTypesForRow(row);
+  let q = supabase
+    .from('contacts')
+    .select('id, name, type, code, phone')
+    .eq('company_id', companyId)
+    .in('type', types)
+    .order('name', { ascending: true })
+    .limit(limit);
+
+  if (query) {
+    q = q.or(`name.ilike.%${query}%,code.ilike.%${query}%,phone.ilike.%${query}%`);
+  }
+
+  const { data: contacts } = await q;
+  const results: PartyCandidate[] = [];
+  (contacts || []).forEach((c: { id: string; name: string; type?: string; code?: string; phone?: string }) => {
+    const candidate = mapContactRow(c, query ? 'search.match' : 'contacts.full_list');
+    if (seen.has(candidate.contact_id)) return;
+    seen.add(candidate.contact_id);
+    results.push(candidate);
+  });
+
+  if (query && row.account_code) {
+    const codeMatch = results.filter(
+      (c) =>
+        String(c.code || '').toLowerCase().includes(query) ||
+        String(c.account_code || '').toLowerCase().includes(query)
+    );
+    if (codeMatch.length) {
+      codeMatch.forEach((c) => {
+        c.suggested_from = 'search.account_code';
       });
     }
   }
 
-  const wantWorker = row.control_bucket === 'AP' && row.ap_sub_bucket === 'worker';
-  const wantSupplier = row.control_bucket === 'AP' && row.ap_sub_bucket === 'supplier';
-  const wantCustomer = row.control_bucket === 'AR';
+  return { suggestions, results };
+}
 
-  if (wantSupplier) {
-    const { data: contacts } = await supabase
-      .from('contacts')
-      .select('id, name, type')
-      .eq('company_id', companyId)
-      .in('type', ['supplier', 'both'])
-      .limit(40);
-    (contacts || []).forEach((c: { id: string; name: string; type?: string }) => {
-      push({
-        contact_id: c.id,
-        name: c.name,
-        type: c.type ?? null,
-        suggested_from: 'contacts.supplier_or_both',
-      });
-    });
-  } else if (wantCustomer) {
-    const { data: contacts } = await supabase
-      .from('contacts')
-      .select('id, name, type')
-      .eq('company_id', companyId)
-      .in('type', ['customer', 'both'])
-      .limit(40);
-    (contacts || []).forEach((c: { id: string; name: string; type?: string }) => {
-      push({
-        contact_id: c.id,
-        name: c.name,
-        type: c.type ?? null,
-        suggested_from: 'contacts.customer_or_both',
-      });
-    });
-  } else if (wantWorker) {
-    const { data: contacts } = await supabase
-      .from('contacts')
-      .select('id, name, type')
-      .eq('company_id', companyId)
-      .eq('type', 'worker')
-      .limit(40);
-    (contacts || []).forEach((c: { id: string; name: string; type?: string }) => {
-      push({
-        contact_id: c.id,
-        name: c.name,
-        type: c.type ?? null,
-        suggested_from: 'contacts.worker',
-      });
-    });
+export type JournalPartyMappingWriteResult = {
+  ok: boolean;
+  error?: string;
+  mappingId?: string;
+  /** Mapping row already existed with the same contact — safe to mark resolved. */
+  alreadyMapped?: boolean;
+};
+
+async function fetchExistingJournalPartyMapping(params: {
+  journalEntryId: string;
+  journalLineId: string | null;
+}): Promise<{ id: string; party_contact_id: string } | null> {
+  let q = supabase.from('journal_party_contact_mapping').select('id, party_contact_id');
+  if (params.journalLineId) {
+    q = q.eq('journal_line_id', params.journalLineId);
+  } else {
+    q = q.eq('journal_entry_id', params.journalEntryId).is('journal_line_id', null);
   }
-
-  return out;
+  const { data, error } = await q.maybeSingle();
+  if (error || !data) return null;
+  return data as { id: string; party_contact_id: string };
 }
 
 export async function saveJournalPartyContactMapping(params: {
@@ -413,26 +493,120 @@ export async function saveJournalPartyContactMapping(params: {
   partyContactId: string;
   suggestedFrom: string;
   notes?: string;
-}): Promise<{ ok: boolean; error?: string }> {
+}): Promise<JournalPartyMappingWriteResult> {
   const { data: userRes } = await supabase.auth.getUser();
   const uid = userRes?.user?.id ?? null;
+  const suggestedFrom = params.suggestedFrom.slice(0, 200);
+  const notes = params.notes?.slice(0, 500) ?? null;
 
-  const { error } = await supabase.from('journal_party_contact_mapping').insert({
-    company_id: params.companyId,
-    journal_entry_id: params.journalEntryId,
-    journal_line_id: params.journalLineId,
-    party_contact_id: params.partyContactId,
-    mapping_source: 'reconciliation_lab',
-    suggested_from: params.suggestedFrom.slice(0, 200),
-    notes: params.notes?.slice(0, 500) ?? null,
-    created_by: uid,
+  const existing = await fetchExistingJournalPartyMapping({
+    journalEntryId: params.journalEntryId,
+    journalLineId: params.journalLineId,
   });
+  if (existing) {
+    if (existing.party_contact_id === params.partyContactId) {
+      return { ok: true, mappingId: existing.id, alreadyMapped: true };
+    }
+    const { data, error } = await supabase
+      .from('journal_party_contact_mapping')
+      .update({
+        party_contact_id: params.partyContactId,
+        suggested_from: suggestedFrom,
+        notes,
+      })
+      .eq('id', existing.id)
+      .select('id')
+      .maybeSingle();
+    if (error) return { ok: false, error: error.message };
+    return { ok: true, mappingId: (data as { id?: string } | null)?.id };
+  }
+
+  const { data, error } = await supabase
+    .from('journal_party_contact_mapping')
+    .insert({
+      company_id: params.companyId,
+      journal_entry_id: params.journalEntryId,
+      journal_line_id: params.journalLineId,
+      party_contact_id: params.partyContactId,
+      mapping_source: 'reconciliation_lab',
+      suggested_from: suggestedFrom,
+      notes,
+      created_by: uid,
+    })
+    .select('id')
+    .maybeSingle();
 
   if (error) {
     if (error.code === '23505') {
-      return { ok: false, error: 'A mapping already exists for this line or entry. Remove it in SQL or extend UI to replace.' };
+      const raced = await fetchExistingJournalPartyMapping({
+        journalEntryId: params.journalEntryId,
+        journalLineId: params.journalLineId,
+      });
+      if (raced?.party_contact_id === params.partyContactId) {
+        return { ok: true, mappingId: raced.id, alreadyMapped: true };
+      }
+      return { ok: false, error: 'A mapping already exists for this line or entry.' };
     }
     return { ok: false, error: error.message };
   }
-  return { ok: true };
+  return { ok: true, mappingId: (data as { id?: string } | null)?.id };
+}
+
+/** Phase 2A — metadata-only Fix Link apply with party_repair_audit (no GL line edits). */
+export async function applyRelinkContactForTrace(params: {
+  companyId: string;
+  journalEntryId: string;
+  journalLineId: string | null;
+  partyContactId: string;
+  suggestedFrom: string;
+  entryNo?: string | null;
+  beforeContactName?: string | null;
+  afterContactName: string;
+  traceOnly: boolean;
+  notes?: string;
+  appliedByUserId?: string | null;
+}): Promise<{ ok: boolean; error?: string; auditId?: string; alreadyMapped?: boolean; auditWarning?: string }> {
+  const mapResult = await saveJournalPartyContactMapping({
+    companyId: params.companyId,
+    journalEntryId: params.journalEntryId,
+    journalLineId: params.journalLineId,
+    partyContactId: params.partyContactId,
+    suggestedFrom: params.suggestedFrom,
+    notes: params.notes,
+  });
+  if (!mapResult.ok) return { ok: false, error: mapResult.error };
+
+  if (mapResult.alreadyMapped) {
+    return { ok: true, auditId: undefined, alreadyMapped: true };
+  }
+
+  const reasonCode = params.traceOnly ? 'ar_ap_relink_contact_audit_trace' : 'ar_ap_relink_contact';
+  const { data: audit, error: audErr } = await supabase
+    .from('party_repair_audit')
+    .insert({
+      company_id: params.companyId,
+      table_name: 'journal_party_contact_mapping',
+      row_id: mapResult.mappingId || params.journalEntryId,
+      column_name: 'party_contact_id',
+      old_value: params.beforeContactName || '',
+      new_value: params.afterContactName,
+      reason_code: reasonCode,
+      metadata: {
+        journal_entry_id: params.journalEntryId,
+        journal_line_id: params.journalLineId,
+        party_contact_id: params.partyContactId,
+        entry_no: params.entryNo ?? null,
+        trace_only: params.traceOnly,
+        gl_lines_unchanged: true,
+      },
+      applied_by: params.appliedByUserId ?? null,
+    })
+    .select('id')
+    .maybeSingle();
+
+  if (audErr) {
+    console.warn('[applyRelinkContactForTrace] party_repair_audit insert failed:', audErr.message);
+    return { ok: true, auditId: undefined, auditWarning: audErr.message };
+  }
+  return { ok: true, auditId: (audit as { id?: string } | null)?.id };
 }

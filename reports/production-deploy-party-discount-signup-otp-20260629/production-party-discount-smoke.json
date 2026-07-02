@@ -1,0 +1,17 @@
+{
+  "generated": "2026-06-29",
+  "result": "PARTIAL_PASS",
+  "customer": {
+    "party": "Walk-in Customer",
+    "discountButton": true,
+    "modalOpens": true,
+    "validationWorks": true,
+    "posted": false
+  },
+  "supplier": {
+    "exercised": false,
+    "reason": "No supplier contact in QA test company"
+  },
+  "partyDiscountJeCount": 0,
+  "glMutations": false
+}

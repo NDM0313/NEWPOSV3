@@ -25,6 +25,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
 import { cn } from '../ui/utils';
+import { formatQty } from '@/app/utils/quantity';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useGlobalFilterOptional } from '@/app/context/GlobalFilterContext';
 import { supabase } from '@/lib/supabase';
@@ -1127,7 +1128,7 @@ export const ProductLedger = () => {
                 <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
                   <div className="bg-gray-950/60 rounded-lg px-3 py-2">
                     <p className="text-[8px] text-gray-500 uppercase">Total Stock</p>
-                    <p className="text-sm font-bold text-white font-mono">{fmt(allProductsGrandTotals.stock)}</p>
+                    <p className="text-sm font-bold text-white font-mono tabular-nums">{formatQty(allProductsGrandTotals.stock)}</p>
                   </div>
                   <div className="bg-gray-950/60 rounded-lg px-3 py-2">
                     <p className="text-[8px] text-gray-500 uppercase">Stock Value</p>
@@ -1176,7 +1177,7 @@ export const ProductLedger = () => {
                         <td className="px-3 py-2 text-white font-medium">{p.name}</td>
                         <td className="px-3 py-2 font-mono text-gray-400">{p.sku}</td>
                         <td className="px-3 py-2 text-gray-500">{p.category || '—'}</td>
-                        <td className={cn('px-3 py-2 text-right font-mono font-bold', p.stock < 0 ? 'text-red-400' : 'text-white')}>{fmt(p.stock)}</td>
+                        <td className={cn('px-3 py-2 text-right font-mono font-bold tabular-nums', p.stock < 0 ? 'text-red-400' : 'text-white')}>{formatQty(p.stock)}</td>
                         <td className="px-3 py-2 text-right font-mono text-green-400">{p.purchaseQty > 0 ? fmt(p.purchaseQty) : '—'}</td>
                         <td className="px-3 py-2 text-right font-mono text-green-400">{p.purchaseValue > 0 ? fmtRs(p.purchaseValue) : '—'}</td>
                         <td className="px-3 py-2 text-right font-mono text-red-400">{p.saleQty > 0 ? fmt(p.saleQty) : '—'}</td>
@@ -1191,7 +1192,7 @@ export const ProductLedger = () => {
                         Total ({filteredAllSummary.length} {filteredAllSummary.length === 1 ? 'product' : 'products'})
                       </td>
                       <td className={cn('px-3 py-2.5 text-right font-mono text-white', allProductsGrandTotals.stock < 0 && 'text-red-400')}>
-                        {fmt(allProductsGrandTotals.stock)}
+                        {formatQty(allProductsGrandTotals.stock)}
                       </td>
                       <td className="px-3 py-2.5 text-right font-mono text-green-400">
                         {allProductsGrandTotals.purchaseQty > 0 ? fmt(allProductsGrandTotals.purchaseQty) : '—'}

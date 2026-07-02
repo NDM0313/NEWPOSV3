@@ -1,0 +1,10 @@
+{
+  "generated_at": "2026-06-30T10:11:41.223Z",
+  "command": "npm run monitor:three-company-unified-ledger",
+  "overall": "PASS",
+  "exit_code": 0,
+  "note": "Same run as pre-QA; no E2E signup or cleanup between snapshots",
+  "din_china_admin_compare": "compared=9 pass=9 fail=0",
+  "migrations_run": false,
+  "gl_mutations": false
+}

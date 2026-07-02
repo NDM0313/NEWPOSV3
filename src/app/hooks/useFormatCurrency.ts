@@ -5,7 +5,7 @@
  */
 import { useCallback, useMemo } from 'react';
 import { useSettings } from '@/app/context/SettingsContext';
-import { formatCurrency as formatCurrencyUtil, getCurrencySymbol } from '@/app/utils/formatCurrency';
+import { formatCurrency as formatCurrencyUtil, formatCurrencyCompact as formatCurrencyCompactUtil, getCurrencySymbol } from '@/app/utils/formatCurrency';
 
 export function useFormatCurrency() {
   const { company } = useSettings();
@@ -18,5 +18,10 @@ export function useFormatCurrency() {
     [currency, decimalPrecision]
   );
 
-  return { formatCurrency, currency, currencySymbol, decimalPrecision };
+  const formatCurrencyCompact = useCallback(
+    (value: number) => formatCurrencyCompactUtil(value, currency, decimalPrecision),
+    [currency, decimalPrecision]
+  );
+
+  return { formatCurrency, formatCurrencyCompact, currency, currencySymbol, decimalPrecision };
 }

@@ -23,6 +23,12 @@ import {
 } from '../lib/authSessionRecovery';
 import { isAuthAbortError, withAuthRefreshMutex } from '../lib/authRefreshMutex';
 import { getUserAccessibleBranchIds } from './permissions';
+import {
+  formatCreateBusinessSignInFallbackError,
+  isReservedSystemEmail,
+  RESERVED_SYSTEM_EMAIL_MESSAGE,
+  shouldAttemptSignupSignInFallback,
+} from '../utils/authErrorMessages';
 
 export { getOAuthRedirectTo } from '../lib/oauthRedirect';
 
@@ -179,6 +185,10 @@ export async function signInWithGoogle(): Promise<{
   return { error: null };
 }
 
+function isSignupExistingEmailError(authError: { message?: string; status?: number }): boolean {
+  return shouldAttemptSignupSignInFallback(authError);
+}
+
 export async function signUpForNewBusiness(params: {
   email: string;
   password: string;
@@ -201,6 +211,13 @@ export async function signUpForNewBusiness(params: {
       },
     };
   }
+  if (isReservedSystemEmail(params.email)) {
+    return {
+      needsEmailVerification: false,
+      hasSession: false,
+      error: { message: RESERVED_SYSTEM_EMAIL_MESSAGE },
+    };
+  }
   const { data, error } = await supabase.auth.signUp({
     email: params.email,
     password: params.password,
@@ -214,11 +231,25 @@ export async function signUpForNewBusiness(params: {
     },
   });
   if (error) {
-    let msg = error.message;
-    if (msg.toLowerCase().includes('already registered')) {
-      msg = 'This email is already registered. Sign in, or use a different email.';
+    if (isSignupExistingEmailError(error)) {
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        email: params.email,
+        password: params.password,
+      });
+      if (!signInError && signInData.session) {
+        return { needsEmailVerification: false, hasSession: true, error: null };
+      }
+      return {
+        needsEmailVerification: false,
+        hasSession: false,
+        error: {
+          message: signInError
+            ? formatCreateBusinessSignInFallbackError(signInError, error)
+            : 'This email is already registered. Sign in with your password, or use a different email.',
+        },
+      };
     }
-    return { needsEmailVerification: false, hasSession: false, error: { message: msg } };
+    return { needsEmailVerification: false, hasSession: false, error: { message: error.message } };
   }
   const hasSession = Boolean(data.session);
   const needsEmailVerification = Boolean(data.user) && !hasSession;

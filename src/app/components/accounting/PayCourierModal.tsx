@@ -14,6 +14,10 @@ import { useSettings } from '@/app/context/SettingsContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { shipmentAccountingService } from '@/app/services/shipmentAccountingService';
 import { toast } from 'sonner';
+import { formatLocalDateTimeYYYYMMDDHHmm } from '@/app/utils/localDate';
+import { DateTimePicker } from '@/app/components/ui/DateTimePicker';
+import { formatAccountSelectOptionLabel } from '@/app/lib/accountPostingInOutLabel';
+import { AccountPickerFieldLabel } from '@/app/components/accounting/AccountPickerFieldLabel';
 
 interface PayCourierModalProps {
   open: boolean;
@@ -40,10 +44,7 @@ export function PayCourierModal({ open, onClose, companyId, branchId, onSuccess 
   const [selectedAccount, setSelectedAccount] = useState('');
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [paymentDateTime, setPaymentDateTime] = useState<string>(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-  });
+  const [paymentDateTime, setPaymentDateTime] = useState<string>(() => formatLocalDateTimeYYYYMMDDHHmm(new Date()));
   const [attachments, setAttachments] = useState<File[]>([]);
 
   const selectedCourier = couriers.find((c) => c.id === courierId);
@@ -325,9 +326,12 @@ export function PayCourierModal({ open, onClose, companyId, branchId, onSuccess 
 
                 {/* Select Account */}
                 <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
-                  <label className="block text-sm font-semibold text-gray-300 mb-2">
-                    Select Account <span className="text-red-400">*</span>
-                  </label>
+                  <AccountPickerFieldLabel
+                    className="block text-sm font-semibold text-gray-300 mb-2"
+                    base="Select Account"
+                    inOut="OUT"
+                    required
+                  />
                   <div className="relative">
                     <select
                       value={selectedAccount}
@@ -341,7 +345,12 @@ export function PayCourierModal({ open, onClose, companyId, branchId, onSuccess 
                       </option>
                       {filteredAccounts.map((account) => (
                         <option key={account.id} value={account.id} className="text-white bg-gray-900">
-                          {account.name} • Balance: {formatCurrency(account.balance)}
+                          {formatAccountSelectOptionLabel(account, {
+                            postingSide: 'credit',
+                            balance: account.balance,
+                            formatBalance: formatCurrency,
+                            includeGlBalance: true,
+                          })}
                         </option>
                       ))}
                     </select>
@@ -373,18 +382,12 @@ export function PayCourierModal({ open, onClose, companyId, branchId, onSuccess 
               <div className="space-y-4">
                 {/* Payment Date & Time */}
                 <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
-                  <label className="block text-sm font-semibold text-gray-300 mb-2">
-                    Payment Date & Time <span className="text-red-400">*</span>
-                  </label>
-                  <div className="relative">
-                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
-                    <input
-                      type="datetime-local"
-                      value={paymentDateTime}
-                      onChange={(e) => setPaymentDateTime(e.target.value)}
-                      className="w-full bg-gray-900 border-2 border-gray-700 rounded-lg pl-10 pr-4 py-2.5 text-white text-sm focus:outline-none focus:border-indigo-500"
-                    />
-                  </div>
+                  <DateTimePicker
+                    label="Payment Date & Time"
+                    value={paymentDateTime}
+                    onChange={setPaymentDateTime}
+                    required
+                  />
                 </div>
 
                 {/* Attachments (optional) */}

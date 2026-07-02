@@ -52,6 +52,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Badge } from "../ui/badge";
 import { cn } from "../ui/utils";
+import { formatQty } from '@/app/utils/quantity';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "../ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Check, ChevronsUpDown } from "lucide-react";
@@ -69,6 +70,8 @@ import type { Sale, SaleItem } from '@/app/context/SalesContext';
 import { BespokeDetailsModal } from '../bespoke/BespokeDetailsModal';
 import type { CustomizationDetails } from '@/app/types/bespoke';
 import { buildBespokeMetadataForPersist } from '@/app/types/bespoke';
+import { ProductImage } from '../products/ProductImage';
+import { getPrimaryProductImageUrl } from '@/app/utils/productImageResolve';
 import type { BespokeInjectionPayload } from '@/app/lib/bespokeCartInjection';
 import {
   syncFabricChildLines,
@@ -95,6 +98,7 @@ interface POSProduct {
   category: string;
   stock: number;
   color: string;
+  imageUrl?: string;
   variations?: POSVariation[];
 }
 
@@ -545,6 +549,7 @@ export const POS = () => {
             category: p.category?.name || 'Uncategorized',
             stock: hasVariations ? 0 : baseStock,
             color: 'from-blue-600/20 to-blue-900/20',
+            imageUrl: getPrimaryProductImageUrl(p as Record<string, unknown>) || undefined,
             variations: hasVariations ? variations.map((v: any) => ({
               id: v.id,
               name: v.name || v.sku,
@@ -1110,13 +1115,23 @@ export const POS = () => {
                   className={cn(
                     "relative aspect-square p-4 rounded-xl flex flex-col justify-between items-start text-left transition-all border border-gray-700/50 bg-gradient-to-br group overflow-hidden",
                     isViewMode ? "opacity-60 cursor-not-allowed" : "hover:border-blue-500/50 shadow-lg hover:shadow-xl hover:shadow-blue-900/30",
-                    product.color || 'from-gray-800 to-gray-900'
+                    product.imageUrl ? 'from-gray-900 to-gray-950' : (product.color || 'from-gray-800 to-gray-900')
                   )}
                 >
+                  {product.imageUrl ? (
+                    <div className="absolute inset-0 z-0">
+                      <ProductImage
+                        src={product.imageUrl}
+                        alt={product.name}
+                        className="w-full h-full object-cover opacity-90"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-gray-950 via-gray-950/70 to-transparent" />
+                    </div>
+                  ) : null}
                   {/* Stock Badge (for products without variations; with variations show in modal) */}
                   {!product.variations?.length && (
                     <Badge variant="secondary" className="absolute top-2 right-2 bg-black/40 text-white text-[10px] px-1.5 py-0.5 border-0 backdrop-blur-sm">
-                      {product.stock} left
+                      {formatQty(product.stock)} left
                     </Badge>
                   )}
                   {product.variations?.length ? (

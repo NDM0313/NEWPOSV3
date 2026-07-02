@@ -55,6 +55,7 @@ type RentalCreateDraft = {
   lineRateMap: Record<string, string>;
   pickupDate: string;
   returnDate: string;
+  bookingDate: string;
   advancePaid: string;
   advancePaymentAccountId: string | null;
   salesmanId: string | null;
@@ -69,6 +70,8 @@ type RentalCreateDraft = {
 
 export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack, onSuccess }: CreateRentalFlowProps) {
   const responsive = useResponsive();
+  /** Local calendar "today" for date pickers (not UTC). */
+  const today = localNowDateString();
   const effectiveUserId = useEffectiveWorkerId(userId ?? '');
   const effectiveProfileId = useEffectiveWorkerProfileId();
   const effectiveRole = useEffectiveWorkerRole(userRole ?? 'admin');
@@ -104,6 +107,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
   const [lineRateMap, setLineRateMap] = useState<Record<string, string>>({});
   const [pickupDate, setPickupDate] = useState('');
   const [returnDate, setReturnDate] = useState('');
+  const [bookingDate, setBookingDate] = useState(today);
   const [advancePaid, setAdvancePaid] = useState('');
   const [advancePaymentAccountId, setAdvancePaymentAccountId] = useState<string | null>(null);
   const [paymentAccounts, setPaymentAccounts] = useState<accountsApi.AccountRow[]>([]);
@@ -120,8 +124,6 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
   const { run: runSave, busy: saving } = useSubmitLock();
   const [error, setError] = useState('');
   const [confirmationData, setConfirmationData] = useState<TransactionSuccessData | null>(null);
-  /** Local calendar "today" for date pickers (not UTC). */
-  const today = localNowDateString();
 
   const {
     showRestoredBanner: showRentalDraftBanner,
@@ -139,6 +141,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
       lineRateMap,
       pickupDate,
       returnDate,
+      bookingDate,
       advancePaid,
       advancePaymentAccountId,
       salesmanId,
@@ -157,6 +160,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
       setLineRateMap(d.lineRateMap);
       setPickupDate(d.pickupDate);
       setReturnDate(d.returnDate);
+      setBookingDate(d.bookingDate || today);
       setAdvancePaid(d.advancePaid);
       setAdvancePaymentAccountId(d.advancePaymentAccountId);
       setSalesmanId(d.salesmanId);
@@ -396,6 +400,10 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
       setError('Select pickup and return dates.');
       return;
     }
+    if (!bookingDate) {
+      setError('Select booking date.');
+      return;
+    }
     if (ret && pickup && ret < pickup) {
       setError('Return date must be after pickup date.');
       return;
@@ -418,6 +426,35 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
       variationLabel: item.variationLabel,
     }));
 
+    const availability = await rentalsApi.checkRentalAvailabilityForItems({
+      companyId,
+      items: items.map((i) => ({
+        productId: i.productId,
+        quantity: i.quantity,
+        variationId: i.variationId,
+      })),
+      startDate: pickupDate,
+      endDate: returnDate,
+      branchId: writeBranchId,
+    });
+
+    let skipAvailabilityCheck = false;
+    if (!availability.available) {
+      if (availability.requiresConfirmation) {
+        const ok = window.confirm(
+          `${availability.message ?? 'This item overlaps an existing booking.'}\n\nBook this item again anyway?`,
+        );
+        if (!ok) {
+          setError(availability.message ?? 'Booking cancelled.');
+          return;
+        }
+        skipAvailabilityCheck = true;
+      } else {
+        setError(availability.message ?? 'Failed to check availability.');
+        return;
+      }
+    }
+
     const commissionPctNum = commissionPct.trim() ? parseFloat(commissionPct) : NaN;
 
     const { data: createResult, error: err } = await rentalsApi.createBooking({
@@ -426,7 +463,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
       userId: effectiveUserId || null,
       customerId: selectedCustomer.id,
       customerName: selectedCustomer.name,
-      bookingDate: localNowDateString(),
+      bookingDate: bookingDate || today,
       pickupDate,
       returnDate,
       rentalCharges: customerRentTotal,
@@ -442,6 +479,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
       securityDocumentNumber: securityDocNumber.trim() || null,
       securityDocumentImageUrl: securityDocImageUrl.trim() || null,
       items,
+      skipAvailabilityCheck,
     });
 
     if (err) {
@@ -778,7 +816,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
 
   // ─── Step 2: Duration Selection ──────────────────────────────────────────
   if (step === 'duration') {
-    const datesValid = pickupDate && returnDate && (!pickup || !ret || ret >= pickup);
+    const datesValid = bookingDate && pickupDate && returnDate && (!pickup || !ret || ret >= pickup);
     return (
       <div className="flex flex-col min-h-0 w-full bg-[#111827] pb-24">
         <FormDraftRestoredBanner show={showRentalDraftBanner} onDismiss={dismissRentalDraftBanner} />
@@ -815,31 +853,38 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <DateInputField
+              label="Booking Date"
+              value={bookingDate}
+              accent="rental"
+              onChange={setBookingDate}
+              required
+            />
+            <DateInputField
               label="Pickup Date"
               value={pickupDate}
-              min={today}
               accent="rental"
               onChange={(value) => {
-                const v = value && value < today ? today : value;
-                setPickupDate(v);
-                if (returnDate && v && returnDate < v) setReturnDate(v);
+                setPickupDate(value);
+                if (returnDate && value && returnDate < value) setReturnDate(value);
               }}
               required
             />
             <DateInputField
               label="Return Date"
               value={returnDate}
-              min={pickupDate || today}
+              min={pickupDate || undefined}
               accent="rental"
               onChange={(value) => {
-                const minReturn = pickupDate || today;
-                const v = value && value < minReturn ? minReturn : value;
+                const minReturn = pickupDate;
+                const v = minReturn && value && value < minReturn ? minReturn : value;
                 setReturnDate(v);
               }}
               required
             />
           </div>
-          <p className="text-xs text-[#6B7280]">Dates are for booking period and availability. Rent amount is entered in the next step.</p>
+          <p className="text-xs text-[#6B7280]">
+            Booking date is when the reservation is recorded. Pickup/return dates control availability. Booking # (REN-*) is assigned automatically; optional bill ref is on the rent step.
+          </p>
         </div>
         {datesValid && (
           <div className="fixed left-0 right-0 bottom-0 bg-[#1F2937] border-t border-[#374151] p-4 z-40 pb-[calc(1rem+env(safe-area-inset-bottom,0))]">
@@ -938,9 +983,10 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
               type="text"
               value={documentNumber}
               onChange={(e) => setDocumentNumber(e.target.value)}
-              placeholder="e.g. A 109"
+              placeholder="e.g. A 109 — not the auto REN booking #"
               className="w-full h-10 bg-[#111827] border border-[#374151] rounded-lg px-3 text-white text-sm"
             />
+            <p className="text-xs text-[#6B7280] mt-2">System booking number (REN-*) is assigned on save; this field is only for your paper bill book reference.</p>
           </div>
         </div>
         {canNext && (
@@ -1312,8 +1358,8 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
         </div>
         <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
           <p className="text-sm text-[#9CA3AF]">Dates</p>
-          <p className="font-medium text-white">{pickupDate} → {returnDate}</p>
-          <p className="text-xs text-[#6B7280]">{durationDays} days</p>
+          <p className="font-medium text-white">Booked {bookingDate} · {pickupDate} → {returnDate}</p>
+          <p className="text-xs text-[#6B7280]">{durationDays} rental days · Booking # (REN-*) assigned on save</p>
         </div>
         {documentNumber.trim() && (
           <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">

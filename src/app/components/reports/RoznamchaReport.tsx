@@ -4,9 +4,18 @@
  * Structure: Filters → Summary Cards → Cash Split → Roznamcha Table.
  */
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { ReportActions } from './ReportActions';
+import { PdfPreviewModal, type PdfPreviewOrientation } from '@/app/components/shared/PdfPreviewModal';
+import { useReportExport } from './shared/useReportExport';
+import { CashBookReportPreview } from './shared/CashBookReportPreview';
+import {
+  buildRoznamchaPrintRows,
+  buildRoznamchaSummaryStats,
+  ROZNAMCHA_PRINT_COLUMNS,
+  roznamchaDetailsForDisplay,
+} from './shared/buildRoznamchaPrintPreview';
 import { DateRangePicker } from '../ui/DateRangePicker';
 import { Button } from '../ui/button';
 import {
@@ -19,26 +28,74 @@ import {
 import { BranchSelector } from '@/app/components/layout/BranchSelector';
 import { Switch } from '../ui/switch';
 import { Label } from '../ui/label';
+import { formatRoznamchaRowDateTimeDisplay } from '@/app/utils/transactionEventDateTime';
 import {
-  getRoznamcha,
   roznamchaJournalSubtitle,
   roznamchaRefDisplay,
   type AccountFilter,
   type RoznamchaResult,
   type RoznamchaRowWithBalance,
 } from '@/app/services/roznamchaService';
+import { loadRoznamchaLegacyMain } from '@/app/services/roznamchaLegacyMainService';
+import { loadRoznamchaUnifiedMain } from '@/app/services/roznamchaUnifiedMainService';
+import { loadRoznamchaLegacyShadowPreview } from '@/app/services/roznamchaLegacyShadowPreviewService';
+import {
+  resolveRoznamchaMainLoaderSource,
+  effectiveRoznamchaMainLoaderSource,
+} from '@/app/lib/resolveRoznamchaMainLoaderSource';
+import {
+  resolveRoznamchaPreviewCompareSource,
+  buildRoznamchaPreviewCompareArgs,
+} from '@/app/lib/resolveRoznamchaPreviewCompareSource';
+import type { UnifiedLedgerRow } from '@/app/services/unifiedLedgerService';
 import { accountService } from '@/app/services/accountService';
-import { exportToPDF, exportToExcel } from '@/app/utils/exportUtils';
+import { ReportBasisBanner } from '@/app/components/accounting/ReportBasisBanner';
+import { canAccessRoznamchaUnifiedPreview } from '@/app/lib/roznamchaUnifiedPreviewAccess';
+import {
+  compareRoznamchaUnifiedPreview,
+  defaultUnifiedBasisForRoznamcha,
+  type RoznamchaUnifiedPreviewDiff,
+} from '@/app/lib/roznamchaUnifiedPreviewDiff';
+import { loadRoznamchaUnifiedPreview } from '@/app/services/roznamchaUnifiedPreviewService';
+import { buildRoznamchaPreviewRpcScope } from '@/app/lib/roznamchaUnifiedPreviewScope';
+import { useUnifiedLedgerEngineState } from '@/app/hooks/useUnifiedLedgerEngineState';
+import { UNIFIED_LEDGER_SCREEN_IDS } from '@/app/lib/unifiedLedgerScreenFlags';
+import type { UnifiedLedgerBasis } from '@/app/lib/unifiedLedgerBasisFilter';
+import { RoznamchaUnifiedPreviewPanel } from '@/app/components/reports/RoznamchaUnifiedPreviewPanel';
+import { DIN_CHINA_COMPANY_ID } from '@/app/lib/unifiedLedgerGoldenFixtures';
+import { toast } from 'sonner';
+
+const ROZNAMCHA_CACHE_TTL_MS = 30_000;
+const roznamchaResultCache = new Map<string, { at: number; data: RoznamchaResult }>();
+
+function roznamchaCacheKey(
+  companyId: string,
+  branchId: string | null,
+  dateFrom: string,
+  dateTo: string,
+  accountFilter: AccountFilter,
+  includeVoidedReversed: boolean,
+  paymentLedgerAccountId: string | null
+): string {
+  return [
+    companyId,
+    branchId ?? 'all',
+    dateFrom,
+    dateTo,
+    accountFilter,
+    includeVoidedReversed ? '1' : '0',
+    paymentLedgerAccountId ?? '',
+  ].join('|');
+}
+import { exportToExcel } from '@/app/utils/exportUtils';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { useFormatDate } from '@/app/hooks/useFormatDate';
 import { DateTimeDisplay } from '../ui/DateTimeDisplay';
-import { Loader2, BookOpen, Wallet, Building2, CreditCard, Smartphone } from 'lucide-react';
+import { Loader2, BookOpen, Wallet, Building2, CreditCard, Smartphone, Search } from 'lucide-react';
+import { Input } from '../ui/input';
 import { cn } from '../ui/utils';
 import { format, parseISO } from 'date-fns';
 import { journalDescriptionForDisplay } from '@/app/utils/journalDescriptionDisplay';
-
-function roznamchaDetailsForDisplay(r: RoznamchaRowWithBalance): string {
-  return journalDescriptionForDisplay(r.details, r.type || 'Payment');
-}
 
 function rowSortTimestamp(r: RoznamchaRowWithBalance): number {
   const t = r.time?.length === 5 ? `${r.time}:00` : r.time || '00:00:00';
@@ -84,8 +141,10 @@ export interface RoznamchaReportProps {
 }
 
 export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaReportProps = {}) => {
-  const rozPrintRef = useRef<HTMLDivElement>(null);
-  const { companyId, branchId: contextBranchId } = useSupabase();
+  const { companyId, branchId: contextBranchId, userRole } = useSupabase();
+  const reportExport = useReportExport({ companyId, documentType: 'ledger', reportKind: 'roznamcha' });
+  const { formatCurrency } = useFormatCurrency();
+  const [printOrientation, setPrintOrientation] = useState<PdfPreviewOrientation>('landscape');
   const { formatDate, formatDateTime } = useFormatDate();
   const today = new Date();
   const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({ from: today, to: today });
@@ -98,10 +157,30 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
   const [dateSort, setDateSort] = useState<'asc' | 'desc'>('asc');
   const [pageSize, setPageSize] = useState(50);
   const [data, setData] = useState<RoznamchaResult | null>(null);
+  const [mainLoaderSource, setMainLoaderSource] = useState<'legacy' | 'unified'>('legacy');
+  const [mainUnifiedRows, setMainUnifiedRows] = useState<UnifiedLedgerRow[]>([]);
+  const previewCompareSource = useMemo(
+    () => resolveRoznamchaPreviewCompareSource(mainLoaderSource),
+    [mainLoaderSource],
+  );
   const [loading, setLoading] = useState(!!companyId);
   const [currentPage, setCurrentPage] = useState(1);
   /** When Accounting uses global header dates, still allow a local start/end (or single day) here */
   const [overrideGlobalDates, setOverrideGlobalDates] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const showUnifiedPreviewTools = canAccessRoznamchaUnifiedPreview(userRole);
+  const [unifiedPreviewEnabled, setUnifiedPreviewEnabled] = useState(false);
+  const [previewBasis, setPreviewBasis] = useState<UnifiedLedgerBasis>('effective_party');
+  const [previewResult, setPreviewResult] = useState<Awaited<ReturnType<typeof loadRoznamchaUnifiedPreview>> | null>(null);
+  const [previewDiff, setPreviewDiff] = useState<RoznamchaUnifiedPreviewDiff | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+
+  const { state: engineState } = useUnifiedLedgerEngineState(companyId, {
+    screenId: UNIFIED_LEDGER_SCREEN_IDS.ROZNAMCHA,
+    screenPreview: unifiedPreviewEnabled,
+  });
 
   useEffect(() => {
     if (!companyId) {
@@ -136,13 +215,46 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
     return copy;
   }, [data?.rows, dateSort]);
 
-  const totalRows = orderedRows.length;
+  const filteredRows = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return orderedRows;
+    return orderedRows.filter((r) => {
+      const textHay = [
+        r.ref,
+        r.journalEntryNo,
+        roznamchaRefDisplay(r),
+        roznamchaJournalSubtitle(r),
+        roznamchaDetailsForDisplay(r),
+        r.referenceDisplay,
+        r.partyLine,
+        r.type,
+        r.accountLabel,
+        r.accountName,
+        r.createdBy,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      if (textHay.includes(q)) return true;
+      const amtHay = [
+        r.amount,
+        r.cashIn,
+        r.cashOut,
+        r.runningBalance,
+      ]
+        .map((n) => String(n ?? ''))
+        .join(' ');
+      return amtHay.includes(q.replace(/,/g, ''));
+    });
+  }, [orderedRows, searchTerm]);
+
+  const totalRows = filteredRows.length;
   const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
   const paginatedRows = useMemo(() => {
-    if (!orderedRows.length) return [];
+    if (!filteredRows.length) return [];
     const start = (currentPage - 1) * pageSize;
-    return orderedRows.slice(start, start + pageSize);
-  }, [orderedRows, currentPage, pageSize]);
+    return filteredRows.slice(start, start + pageSize);
+  }, [filteredRows, currentPage, pageSize]);
 
   const useGlobalRange = Boolean(globalStartDate && globalEndDate);
   const dateFrom = useMemo(() => {
@@ -178,16 +290,176 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
 
   const rowDateTime = (r: RoznamchaRowWithBalance) => {
     if (!r.date) return r.time || '—';
-    if (!r.time) return formatDate(new Date(r.date));
-    try {
-      const combined = r.date + 'T' + (r.time.length === 5 ? r.time + ':00' : r.time);
-      return formatDateTime(new Date(combined));
-    } catch {
-      return r.date + ' ' + r.time;
-    }
+    return formatRoznamchaRowDateTimeDisplay(r.date, r.time || '');
   };
 
   const effectiveBranchId = contextBranchId === 'all' ? null : (contextBranchId || null);
+
+  useEffect(() => {
+    if (!includeVoidedReversed) {
+      setPreviewBasis(defaultUnifiedBasisForRoznamcha(false));
+    } else {
+      setPreviewBasis(defaultUnifiedBasisForRoznamcha(true));
+    }
+  }, [includeVoidedReversed]);
+
+  const loadUnifiedPreview = useCallback(async () => {
+    if (!companyId || !unifiedPreviewEnabled || !data || !dateFrom || !dateTo) {
+      setPreviewResult(null);
+      setPreviewDiff(null);
+      return;
+    }
+    if (engineState.killSwitchActive) {
+      setPreviewResult(null);
+      setPreviewDiff(null);
+      setPreviewError('Unified preview disabled — kill switch active.');
+      return;
+    }
+
+    const ledgerId = paymentLedgerAccountId.trim() ? paymentLedgerAccountId.trim() : null;
+    setPreviewLoading(true);
+    setPreviewError(null);
+    try {
+      const compareSource = resolveRoznamchaPreviewCompareSource(mainLoaderSource);
+
+      if (compareSource === 'legacy_shadow') {
+        const shadow = await loadRoznamchaLegacyShadowPreview({
+          companyId,
+          branchId: effectiveBranchId,
+          dateFrom,
+          dateTo,
+          accountFilter,
+          includeVoidedReversed,
+          paymentLedgerAccountId: ledgerId,
+        });
+        setPreviewResult({
+          rows: [],
+          unifiedRows: [],
+          closingBalance: shadow.closingBalance,
+          openingBalance: shadow.openingBalance,
+          meta: {
+            engine: 'legacy_gl',
+            basis: previewBasis,
+            featureFlagEnabled: true,
+            shadowForce: true,
+            queryDurationMs: 0,
+            rowCount: shadow.legacy.rows.length,
+            periodOpeningBalance: shadow.openingBalance,
+            message: 'Legacy shadow compare — main table uses unified loader.',
+          },
+          basis: previewBasis,
+          rpcScope: buildRoznamchaPreviewRpcScope({
+            branchId: effectiveBranchId,
+            dateFrom,
+            dateTo,
+            accountFilter,
+            includeVoidedReversed,
+          }),
+          paymentAccountFilterApplied: Boolean(ledgerId),
+        });
+        const compareArgs = buildRoznamchaPreviewCompareArgs({
+          compareSource,
+          mainResult: data,
+          mainUnifiedRows,
+          shadowLegacy: shadow.legacy,
+          shadowUnifiedRows: [],
+          shadowClosingBalance: shadow.closingBalance,
+          shadowOpeningBalance: shadow.openingBalance,
+        });
+        setPreviewDiff(
+          compareRoznamchaUnifiedPreview({
+            legacy: compareArgs.legacy,
+            unifiedRows: compareArgs.unifiedRows,
+            unifiedClosingBalance: compareArgs.unifiedClosingBalance,
+            unifiedOpeningBalance: compareArgs.unifiedOpeningBalance,
+          }),
+        );
+      } else {
+        const preview = await loadRoznamchaUnifiedPreview({
+          companyId,
+          branchId: effectiveBranchId,
+          dateFrom,
+          dateTo,
+          accountFilter,
+          includeVoidedReversed,
+          paymentLedgerAccountId: ledgerId,
+          paymentAccountOptions,
+          basis: previewBasis,
+        });
+        setPreviewResult(preview);
+        if (preview.blockedByKillSwitch) {
+          setPreviewDiff(null);
+          setPreviewError(preview.blockReason ?? 'Unified preview blocked.');
+          return;
+        }
+        const compareArgs = buildRoznamchaPreviewCompareArgs({
+          compareSource,
+          mainResult: data,
+          mainUnifiedRows,
+          shadowLegacy: data,
+          shadowUnifiedRows: preview.unifiedRows,
+          shadowClosingBalance: preview.closingBalance,
+          shadowOpeningBalance: preview.openingBalance,
+        });
+        setPreviewDiff(
+          compareRoznamchaUnifiedPreview({
+            legacy: compareArgs.legacy,
+            unifiedRows: compareArgs.unifiedRows,
+            unifiedClosingBalance: compareArgs.unifiedClosingBalance,
+            unifiedOpeningBalance: compareArgs.unifiedOpeningBalance,
+          }),
+        );
+      }
+    } catch (err) {
+      console.error(err);
+      setPreviewResult(null);
+      setPreviewDiff(null);
+      setPreviewError(
+        previewCompareSource === 'legacy_shadow'
+          ? 'Legacy shadow compare failed to load'
+          : 'Unified preview failed to load',
+      );
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [
+    companyId,
+    unifiedPreviewEnabled,
+    data,
+    dateFrom,
+    dateTo,
+    effectiveBranchId,
+    accountFilter,
+    includeVoidedReversed,
+    paymentLedgerAccountId,
+    paymentAccountOptions,
+    previewBasis,
+    engineState.killSwitchActive,
+    mainLoaderSource,
+    mainUnifiedRows,
+    previewCompareSource,
+  ]);
+
+  useEffect(() => {
+    if (!unifiedPreviewEnabled) {
+      setPreviewResult(null);
+      setPreviewDiff(null);
+      setPreviewError(null);
+      return;
+    }
+    void loadUnifiedPreview();
+  }, [unifiedPreviewEnabled, loadUnifiedPreview, mainLoaderSource]);
+
+  const handleLoadDinChinaPeriodHint = useCallback(() => {
+    if (companyId !== DIN_CHINA_COMPANY_ID) {
+      toast.message('DIN CHINA preset applies when logged into DIN CHINA tenant.');
+      return;
+    }
+    toast.message('Use Roznamcha date range for DIN CHINA validation period. Preview compares legacy vs unified cash/bank ledger.');
+  }, [companyId]);
+
+  const displayFiltersActive = searchTerm.trim().length > 0 || dateSort !== 'asc' || pageSize !== 50;
+  const paymentAccountFilterActive = Boolean(paymentLedgerAccountId.trim());
 
   const load = useCallback(async () => {
     if (!companyId || !dateFrom || !dateTo) {
@@ -195,24 +467,74 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
       setLoading(false);
       return;
     }
+    const ledgerId = paymentLedgerAccountId.trim() ? paymentLedgerAccountId.trim() : null;
+    const cacheKey = roznamchaCacheKey(
+      companyId,
+      effectiveBranchId,
+      dateFrom,
+      dateTo,
+      accountFilter,
+      includeVoidedReversed,
+      ledgerId
+    );
     setLoading(true);
     try {
-      const result = await getRoznamcha(
-        companyId,
-        effectiveBranchId,
-        dateFrom,
-        dateTo,
-        accountFilter,
-        includeVoidedReversed,
-        paymentLedgerAccountId.trim() ? paymentLedgerAccountId.trim() : null
-      );
-      setData(result);
+      const resolved = await resolveRoznamchaMainLoaderSource(companyId);
+      const mainSource = effectiveRoznamchaMainLoaderSource(resolved);
+      setMainLoaderSource(mainSource);
+
+      if (mainSource === 'unified') {
+        setMainUnifiedRows([]);
+        const unified = await loadRoznamchaUnifiedMain({
+          companyId,
+          branchId: effectiveBranchId,
+          dateFrom,
+          dateTo,
+          accountFilter,
+          includeVoidedReversed,
+          paymentLedgerAccountId: ledgerId,
+          paymentAccountOptions,
+          basis: previewBasis,
+        });
+        setMainUnifiedRows(unified.unifiedRows);
+        setData(unified);
+      } else {
+        const cached = roznamchaResultCache.get(cacheKey);
+        if (cached && Date.now() - cached.at < ROZNAMCHA_CACHE_TTL_MS) {
+          setMainUnifiedRows([]);
+          setData(cached.data);
+          return;
+        }
+        setMainUnifiedRows([]);
+        const result = await loadRoznamchaLegacyMain({
+          companyId,
+          branchId: effectiveBranchId,
+          dateFrom,
+          dateTo,
+          accountFilter,
+          includeVoidedReversed,
+          paymentLedgerAccountId: ledgerId,
+        });
+        roznamchaResultCache.set(cacheKey, { at: Date.now(), data: result });
+        setData(result);
+      }
     } catch {
       setData(null);
+      setMainUnifiedRows([]);
     } finally {
       setLoading(false);
     }
-  }, [companyId, effectiveBranchId, dateFrom, dateTo, accountFilter, includeVoidedReversed, paymentLedgerAccountId]);
+  }, [
+    companyId,
+    effectiveBranchId,
+    dateFrom,
+    dateTo,
+    accountFilter,
+    includeVoidedReversed,
+    paymentLedgerAccountId,
+    paymentAccountOptions,
+    previewBasis,
+  ]);
 
   useEffect(() => {
     load();
@@ -222,9 +544,31 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
   }, [currentPage, totalPages]);
   useEffect(() => {
     setCurrentPage(1);
-  }, [dateFrom, dateTo, accountFilter, includeVoidedReversed, paymentLedgerAccountId, dateSort, pageSize, overrideGlobalDates]);
+  }, [dateFrom, dateTo, accountFilter, includeVoidedReversed, paymentLedgerAccountId, dateSort, pageSize, overrideGlobalDates, searchTerm]);
 
   const selectedBranchLabel = contextBranchId === 'all' || !contextBranchId ? 'All Branches' : 'Selected branch';
+
+  useEffect(() => {
+    setPrintOrientation(reportExport.accountingPrintOptions.orientation);
+  }, [reportExport.accountingPrintOptions.orientation]);
+
+  const handleOpenPdfPreview = useCallback(async () => {
+    await reportExport.openPreview();
+  }, [reportExport]);
+
+  const printOpts = reportExport.accountingPrintOptions;
+  const periodLabel = dateFrom && dateTo ? `${dateFrom} → ${dateTo}` : '—';
+  const generatedAt = useMemo(() => new Date().toLocaleString(), [reportExport.previewOpen]);
+
+  const rozPrintPreview = useMemo(() => {
+    if (!data?.summary) return null;
+    return {
+      summaryStats: buildRoznamchaSummaryStats(data.summary, formatCurrency),
+      rows: buildRoznamchaPrintRows(filteredRows, roznamchaDetailsForDisplay),
+      openingBalance: formatCurrency(data.summary.openingBalance),
+      closingBalance: formatCurrency(data.summary.closingBalance),
+    };
+  }, [data?.summary, filteredRows, formatCurrency]);
 
   const exportData = {
     title: `Roznamcha ${dateFrom} to ${dateTo} – ${selectedBranchLabel}`,
@@ -232,7 +576,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
     rows: data
       ? [
           ['Opening', '—', 'Opening Balance', '—', '', '', data.summary.openingBalance],
-          ...orderedRows.map((r: RoznamchaRowWithBalance) => {
+          ...filteredRows.map((r: RoznamchaRowWithBalance) => {
             const meta = [r.referenceDisplay, r.partyLine, r.createdBy ? `by ${r.createdBy}` : ''].filter(Boolean).join(' • ');
             const jeSub = roznamchaJournalSubtitle(r);
             const refCol = jeSub ? `${roznamchaRefDisplay(r)}\n${jeSub}` : roznamchaRefDisplay(r);
@@ -251,30 +595,162 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
   };
 
   return (
-    <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
+    <div
+      className="space-y-6 animate-in slide-in-from-bottom-2 duration-300"
+      data-roznamcha-main-loader={mainLoaderSource}
+      data-roznamcha-preview-compare-source={unifiedPreviewEnabled ? previewCompareSource : undefined}
+    >
+      <ReportBasisBanner
+        basis={includeVoidedReversed ? 'audit_full' : 'effective_party'}
+        detail="Operational cash book — payments and rental_payments only (not full GL). Toggle voided rows for audit view."
+      />
+
+      {showUnifiedPreviewTools ? (
+        <div className="flex flex-wrap items-center gap-3 no-print">
+          <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer w-fit">
+            <input
+              type="checkbox"
+              checked={unifiedPreviewEnabled}
+              disabled={engineState.killSwitchActive}
+              onChange={(e) => setUnifiedPreviewEnabled(e.target.checked)}
+              className="rounded border-gray-600 disabled:opacity-50"
+            />
+            Unified engine preview (compare only)
+          </label>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="text-xs"
+            onClick={handleLoadDinChinaPeriodHint}
+          >
+            Load DIN CHINA period
+          </Button>
+        </div>
+      ) : null}
+
+      {unifiedPreviewEnabled && showUnifiedPreviewTools ? (
+        <RoznamchaUnifiedPreviewPanel
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          branchLabel={selectedBranchLabel}
+          accountFilter={accountFilter}
+          includeVoidedReversed={includeVoidedReversed}
+          paymentAccountFilterActive={paymentAccountFilterActive}
+          previewResult={previewResult}
+          diff={previewDiff}
+          loading={previewLoading}
+          error={previewError}
+          engineState={engineState}
+          previewBasis={previewBasis}
+          onPreviewBasisChange={setPreviewBasis}
+          displayFiltersActive={displayFiltersActive}
+          previewCompareSource={previewCompareSource}
+        />
+      ) : null}
+
       <p className="text-xs text-gray-500 border border-gray-800/80 rounded-lg px-3 py-2 bg-gray-950/40 max-w-3xl">
         Cash / bank / wallet receive &amp; pay only — from <strong className="text-gray-400">payments</strong> and{' '}
         <strong className="text-gray-400">rental_payments</strong> (not rental journal vouchers). One row per actual
-        movement. Rental receipts show as <strong className="text-gray-400">REN-*-PAY</strong>, not JE.{' '}
+        movement. Incoming receipts (sale, rental, manual) show as <strong className="text-gray-400">RCV-*</strong>;{' '}
+        <strong className="text-gray-400">JE-*</strong> appears as a subtitle when linked.{' '}
         <span className="text-gray-600">
           Match header date range to payment_date; use All Branches and All accounts if a line is missing.
         </span>
       </p>
-      <ReportActions
-        title="Roznamcha"
-        onPrint={() => window.print()}
-        onPdf={() => exportToPDF(exportData, 'Roznamcha')}
-        onExcel={() => exportToExcel(exportData, 'Roznamcha')}
-        onWhatsapp={() => {}}
-        previewContentRef={rozPrintRef}
-        previewDocumentType="ledger"
-        previewReference={dateFrom && dateTo ? `Roznamcha-${dateFrom}-${dateTo}` : 'Roznamcha'}
-      />
+      <div className="no-print">
+        <ReportActions
+          title="Roznamcha"
+          onPrint={() => void handleOpenPdfPreview()}
+          onOpenPdfPreview={() => void handleOpenPdfPreview()}
+          onExcel={() => exportToExcel(exportData, 'Roznamcha')}
+          pdfLoading={reportExport.loadingBrand}
+          onWhatsapp={() => {
+            const s = data?.summary;
+            reportExport.shareViaWhatsApp({
+              title: 'Roznamcha (Daily Cash Book)',
+              period: `${dateFrom} to ${dateTo}`,
+              message: [
+                'Roznamcha (Daily Cash Book)',
+                `Period: ${dateFrom} to ${dateTo}`,
+                s
+                  ? `Opening: ${s.openingBalance.toLocaleString()} · In: ${s.cashIn.toLocaleString()} · Out: ${s.cashOut.toLocaleString()} · Closing: ${s.closingBalance.toLocaleString()}`
+                  : '',
+                `Rows shown: ${filteredRows.length}`,
+              ]
+                .filter(Boolean)
+                .join('\n'),
+            });
+          }}
+          previewContentRef={reportExport.printRef}
+          previewDocumentType="ledger"
+          previewReference={dateFrom && dateTo ? `Roznamcha-${dateFrom}-${dateTo}` : 'Roznamcha'}
+        />
+      </div>
 
-      <div ref={rozPrintRef} className="space-y-6">
+      {reportExport.previewOpen && reportExport.brand && rozPrintPreview ? (
+        <PdfPreviewModal
+          open={reportExport.previewOpen}
+          onClose={reportExport.closePreview}
+          title="Roznamcha (Daily Cash Book)"
+          documentType="ledger"
+          reference={dateFrom && dateTo ? `Roznamcha-${dateFrom}-${dateTo}` : 'Roznamcha'}
+          format={reportExport.printFormat}
+          orientation={printOrientation}
+          showOrientationToggle
+          onOrientationChange={setPrintOrientation}
+          pageNumbers={printOpts.showFooter}
+        >
+          <CashBookReportPreview
+            brand={reportExport.brand}
+            title="Roznamcha (Daily Cash Book)"
+            periodLabel={periodLabel}
+            branchScopeLabel={selectedBranchLabel}
+            generatedAt={generatedAt}
+            columns={ROZNAMCHA_PRINT_COLUMNS}
+            rows={rozPrintPreview.rows}
+            summaryStats={rozPrintPreview.summaryStats}
+            openingBalance={rozPrintPreview.openingBalance}
+            closingBalance={rozPrintPreview.closingBalance}
+            fieldVisibility={printOpts.fieldVisibility}
+            showHeader={printOpts.showHeader}
+            showFooter={printOpts.showFooter}
+            orientation={printOrientation}
+            fontSize={printOpts.fontSize}
+            fontFamily={printOpts.fontFamily}
+            margins={printOpts.margins}
+          />
+        </PdfPreviewModal>
+      ) : null}
+
+      <div ref={reportExport.printRef} className="sr-only">
+        {reportExport.brand && rozPrintPreview ? (
+          <CashBookReportPreview
+            brand={reportExport.brand}
+            title="Roznamcha (Daily Cash Book)"
+            periodLabel={periodLabel}
+            branchScopeLabel={selectedBranchLabel}
+            generatedAt={generatedAt}
+            columns={ROZNAMCHA_PRINT_COLUMNS}
+            rows={rozPrintPreview.rows}
+            summaryStats={rozPrintPreview.summaryStats}
+            openingBalance={rozPrintPreview.openingBalance}
+            closingBalance={rozPrintPreview.closingBalance}
+            fieldVisibility={printOpts.fieldVisibility}
+            showHeader={printOpts.showHeader}
+            showFooter={printOpts.showFooter}
+            orientation={printOrientation}
+            fontSize={printOpts.fontSize}
+            fontFamily={printOpts.fontFamily}
+            margins={printOpts.margins}
+          />
+        ) : null}
+      </div>
+
+      <div className="space-y-6">
 
       {/* 1. FILTERS */}
-      <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-4">
+      <div className="no-print rounded-xl border border-gray-800 bg-gray-900/50 p-4">
         <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Filters</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-6 gap-y-5 items-start">
           <div className="flex flex-col gap-2 min-w-0">
@@ -443,6 +919,19 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
           </div>
 
           <div className="flex flex-col gap-2 min-w-0 sm:col-span-2 lg:col-span-2">
+            <Label className="text-xs text-gray-500 uppercase tracking-wide">Search</Label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none" />
+              <Input
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Ref, description, party, or amount…"
+                className="pl-9 bg-gray-950 border-gray-700 text-white h-10"
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2 min-w-0 sm:col-span-2 lg:col-span-2">
             <div className="flex items-center gap-2">
               <Switch
                 id="roznamcha-include-voided"
@@ -474,7 +963,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
         </p>
       </div>
 
-      {loading ? (
+      {loading && !data ? (
         <div className="flex justify-center py-16">
           <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
         </div>
@@ -546,7 +1035,17 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
           </div>
 
           {/* 4. ROZNAMCHA TABLE */}
-          <div className="rounded-xl border border-gray-800 overflow-hidden bg-gray-900/50">
+          <div className="relative rounded-xl border border-gray-800 overflow-hidden bg-gray-900/50">
+            {loading ? (
+              <div
+                className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-gray-950/70 backdrop-blur-sm pointer-events-none"
+                aria-live="polite"
+                aria-busy="true"
+              >
+                <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+                <p className="text-sm text-gray-300">Loading roznamcha…</p>
+              </div>
+            ) : null}
             <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider p-4 border-b border-gray-800">
               Roznamcha Table
             </h3>

@@ -6,6 +6,7 @@ import { getCurrentLocalTimestamp, localNowDateString } from '@/app/utils/localD
  */
 
 import { supabase } from '@/lib/supabase';
+import { fetchInBatches } from '@/app/lib/chunkInQuery';
 import { accountHelperService } from './accountHelperService';
 import { accountingService, type JournalEntry, type JournalEntryLine } from './accountingService';
 import { recordTransactionMutation } from './transactionMutationService';
@@ -268,14 +269,18 @@ async function sumDebitOnAccountPaymentAccountChangeJes(
     .eq('reference_id', paymentId)
     .ilike('description', '%Payment account changed%')
     .or('is_void.is.null,is_void.eq.false');
-  if (error || !jes?.length) return 0;
-  const ids = jes.map((j: { id: string }) => j.id);
-  const { data: lines } = await supabase
-    .from('journal_entry_lines')
-    .select('debit')
-    .in('journal_entry_id', ids)
-    .eq('account_id', accountId);
-  return (lines || []).reduce((s, l) => s + Number((l as { debit?: number }).debit ?? 0), 0);
+    if (error || !jes?.length) return 0;
+    const ids = jes.map((j: { id: string }) => j.id);
+    const lineRows = await fetchInBatches(ids, async (chunk) => {
+      const { data, error: lineErr } = await supabase
+        .from('journal_entry_lines')
+        .select('debit')
+        .in('journal_entry_id', chunk)
+        .eq('account_id', accountId);
+      if (lineErr) throw lineErr;
+      return data || [];
+    });
+    return lineRows.reduce((s, l) => s + Number((l as { debit?: number }).debit ?? 0), 0);
 }
 
 /**
@@ -493,22 +498,30 @@ export async function syncPaymentAccountAdjustmentsForCompany(companyId: string)
   }
 
   const paymentIds = payments.map((p: any) => p.id);
-  const { data: paymentJEs } = await supabase
-    .from('journal_entries')
-    .select(`
-      id,
-      payment_id,
-      reference_type,
-      reference_id,
-      entry_date,
-      branch_id,
-      created_at,
-      lines:journal_entry_lines(account_id, debit, credit)
-    `)
-    .eq('company_id', companyId)
-    .in('payment_id', paymentIds)
-    .or('is_void.is.null,is_void.eq.false')
-    .neq('reference_type', 'payment_adjustment');
+  const paymentJEs = await fetchInBatches(
+    paymentIds,
+    async (chunk) => {
+      const { data, error } = await supabase
+        .from('journal_entries')
+        .select(`
+          id,
+          payment_id,
+          reference_type,
+          reference_id,
+          entry_date,
+          branch_id,
+          created_at,
+          lines:journal_entry_lines(account_id, debit, credit)
+        `)
+        .eq('company_id', companyId)
+        .in('payment_id', chunk)
+        .or('is_void.is.null,is_void.eq.false')
+        .neq('reference_type', 'payment_adjustment');
+      if (error) throw error;
+      return data || [];
+    },
+    { chunkSize: 15 }
+  );
 
   const byPaymentPrimary = new Map<string, any[]>();
   for (const je of paymentJEs || []) {

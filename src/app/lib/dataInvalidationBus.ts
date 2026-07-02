@@ -1,5 +1,17 @@
 export const DATA_INVALIDATED_EVENT = 'erp:dataInvalidated';
 
+/** Fired once when the user requests a full app data refresh. */
+export const GLOBAL_REFRESH_EVENT = 'erp:globalRefresh';
+
+export type GlobalRefreshReason = 'user-refresh' | 'focus-refresh';
+
+export interface GlobalRefreshDetail {
+  companyId?: string | null;
+  branchId?: string | null;
+  reason: GlobalRefreshReason;
+  ts: number;
+}
+
 export type InvalidationDomain =
   | 'contacts'
   | 'inventory'
@@ -7,7 +19,54 @@ export type InvalidationDomain =
   | 'sales'
   | 'purchases'
   | 'rentals'
-  | 'studio';
+  | 'studio'
+  | 'expenses'
+  | 'reports';
+
+const ALL_INVALIDATION_DOMAINS: InvalidationDomain[] = [
+  'accounting',
+  'sales',
+  'purchases',
+  'contacts',
+  'inventory',
+  'rentals',
+  'studio',
+  'expenses',
+  'reports',
+];
+
+/** Manual refresh — one header control refreshes every module that listens to the invalidation bus. */
+export function dispatchGlobalRefresh(opts?: {
+  companyId?: string | null;
+  branchId?: string | null;
+  reason?: GlobalRefreshReason;
+}): void {
+  if (typeof window === 'undefined') return;
+  const reason = opts?.reason ?? 'user-refresh';
+  window.dispatchEvent(
+    new CustomEvent<GlobalRefreshDetail>(GLOBAL_REFRESH_EVENT, {
+      detail: {
+        companyId: opts?.companyId ?? null,
+        branchId: opts?.branchId ?? null,
+        reason,
+        ts: Date.now(),
+      },
+    })
+  );
+  for (const domain of ALL_INVALIDATION_DOMAINS) {
+    dispatchDataInvalidated({
+      domain,
+      companyId: opts?.companyId ?? null,
+      branchId: opts?.branchId ?? null,
+      reason,
+    });
+  }
+}
+
+export function isGlobalRefreshReason(reason?: string | null): boolean {
+  const r = String(reason ?? '').toLowerCase();
+  return r === 'user-refresh' || r === 'focus-refresh';
+}
 
 export interface DataInvalidationDetail {
   domain: InvalidationDomain;
@@ -142,6 +201,7 @@ export function dispatchAccountingInvalidated(opts: {
   });
 }
 
+/** Studio production lists / summaries. */
 export function dispatchStudioDataInvalidated(opts: {
   companyId: string;
   branchId?: string | null;
@@ -152,6 +212,29 @@ export function dispatchStudioDataInvalidated(opts: {
     companyId: opts.companyId,
     branchId: opts.branchId ?? null,
     reason: opts.reason,
+  });
+}
+
+/** Expense list / dashboard refresh after create, update, or cancel. */
+export function dispatchExpenseLifecycleInvalidated(opts: {
+  companyId: string;
+  branchId?: string | null;
+  expenseId?: string | null;
+  reason: string;
+}): void {
+  dispatchDataInvalidated({
+    domain: 'expenses',
+    companyId: opts.companyId,
+    branchId: opts.branchId ?? null,
+    entityId: opts.expenseId ?? null,
+    reason: opts.reason,
+  });
+  dispatchDataInvalidated({
+    domain: 'accounting',
+    companyId: opts.companyId,
+    branchId: opts.branchId ?? null,
+    entityId: opts.expenseId ?? null,
+    reason: `expense:${opts.reason}`,
   });
 }
 

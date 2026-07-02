@@ -44,7 +44,7 @@ export function SupplierPaymentFlow({ onBack, onComplete, user, companyId, branc
     return () => { cancelled = true; };
   }, [companyId, selectedSupplier]);
 
-  if (selectedSupplier && companyId && branchId) {
+  if (selectedSupplier && companyId) {
     if (!resolvedPurchaseId) {
       return (
         <div className="min-h-screen bg-[#111827] flex items-center justify-center">
@@ -58,8 +58,10 @@ export function SupplierPaymentFlow({ onBack, onComplete, user, companyId, branc
         referenceId={resolvedPurchaseId}
         referenceNo={selectedSupplier.phone || null}
         companyId={companyId}
-        branchId={branchId}
+        branchId={branchId ?? null}
         userId={user.id}
+        userRole={user.role}
+        profileId={user.profileId ?? null}
         partyName={selectedSupplier.name}
         partyId={selectedSupplier.id}
         partyPhone={selectedSupplier.phone || null}

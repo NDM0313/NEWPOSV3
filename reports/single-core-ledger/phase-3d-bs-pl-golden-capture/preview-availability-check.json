@@ -1,0 +1,42 @@
+{
+  "run": "PHASE_3D_PREVIEW_AVAILABILITY_CHECK",
+  "generated_at": "2026-06-29T10:50:03.438Z",
+  "production_url": "https://erp.dincouture.pk",
+  "overall": "PASS",
+  "failure_report_required": false,
+  "companies": {
+    "din-china": {
+      "user_email": "din@yahoo.com",
+      "balance_sheet_loads": true,
+      "profit_loss_loads": true,
+      "balance_sheet_toggle_visible": true,
+      "profit_loss_toggle_visible": true,
+      "balance_sheet_toggle_default_off": true,
+      "profit_loss_toggle_default_off": true,
+      "preview_labels_present": true,
+      "legacy_loads_before_preview": true
+    },
+    "din-bridal": {
+      "user_email": "ndm313@yahoo.com",
+      "balance_sheet_loads": true,
+      "profit_loss_loads": true,
+      "balance_sheet_toggle_visible": true,
+      "profit_loss_toggle_visible": true,
+      "balance_sheet_toggle_default_off": true,
+      "profit_loss_toggle_default_off": true,
+      "preview_labels_present": true,
+      "legacy_loads_before_preview": true
+    },
+    "din-couture": {
+      "user_email": "zhd@dincouture.pk",
+      "balance_sheet_loads": true,
+      "profit_loss_loads": true,
+      "balance_sheet_toggle_visible": true,
+      "profit_loss_toggle_visible": true,
+      "balance_sheet_toggle_default_off": true,
+      "profit_loss_toggle_default_off": true,
+      "preview_labels_present": true,
+      "legacy_loads_before_preview": true
+    }
+  }
+}

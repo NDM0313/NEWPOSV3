@@ -1,0 +1,306 @@
+{
+  "phase": "3D",
+  "run": "BS/P&L candidate golden capture",
+  "productionUrl": "https://erp.dincouture.pk",
+  "capturedAt": "2026-07-01T07:21:16.778Z",
+  "approvalStatus": "CANDIDATE_ONLY — NOT FINANCE APPROVED",
+  "companies": {
+    "din-china": {
+      "company": "DIN CHINA",
+      "companyId": "30bd8592-3384-4f34-899a-f3907e336485",
+      "userEmail": "din@yahoo.com",
+      "availability": {
+        "balanceSheetLoads": true,
+        "profitLossLoads": true,
+        "balanceSheetToggleVisible": true,
+        "profitLossToggleVisible": true,
+        "balanceSheetToggleDefaultOff": true,
+        "profitLossToggleDefaultOff": true,
+        "previewLabelsPresent": true
+      },
+      "balanceSheet": {
+        "status": "CAPTURED",
+        "asOfDate": "2026-07-01",
+        "branchScope": "All Branches",
+        "legacy": {
+          "totalAssets": null,
+          "liabilitiesAndEquity": null,
+          "difference": null,
+          "revenue": null,
+          "costOfSales": null,
+          "netProfit": null
+        },
+        "preview": {
+          "totalAssets": null,
+          "liabilitiesAndEquity": null,
+          "difference": null,
+          "revenue": null,
+          "costOfSales": null,
+          "netProfit": null
+        },
+        "deltas": {
+          "Assets": null,
+          "Liabilities": null,
+          "Equity": null,
+          "L+E": null,
+          "Revenue": null,
+          "COGS": null,
+          "Expenses": null,
+          "Net Profit": null
+        },
+        "pass": true,
+        "retainedEarningsWarning": false,
+        "needsAccountingRuleConfirmation": false,
+        "accountingRuleNotes": [
+          "PREVIEW_ONLY — not finance-approved golden totals.",
+          "Net income folded into equity per legacy BS-FIX / PF-04 rules.",
+          "NEEDS_ACCOUNTING_RULE_CONFIRMATION — compare with finance before loader swap."
+        ],
+        "screenshot": "screenshots/din-china-balance-sheet-preview.png",
+        "export": "exports/din-china-balance-sheet-preview.json",
+        "approvalStatus": "CANDIDATE_ONLY — NOT FINANCE APPROVED"
+      },
+      "profitLoss": {
+        "status": "CAPTURED",
+        "startDate": "2000-01-01",
+        "endDate": "2026-07-01",
+        "branchScope": "All Branches",
+        "legacy": {
+          "totalAssets": null,
+          "liabilitiesAndEquity": null,
+          "difference": null,
+          "revenue": null,
+          "costOfSales": null,
+          "netProfit": null
+        },
+        "preview": {
+          "totalAssets": null,
+          "liabilitiesAndEquity": null,
+          "difference": null,
+          "revenue": null,
+          "costOfSales": null,
+          "netProfit": null
+        },
+        "deltas": {
+          "Assets": null,
+          "Liabilities": null,
+          "Equity": null,
+          "L+E": null,
+          "Revenue": null,
+          "COGS": null,
+          "Expenses": null,
+          "Net Profit": null
+        },
+        "pass": true,
+        "cogsHeuristicWarning": false,
+        "needsRuleConfirmation": false,
+        "accountingRuleNotes": [
+          "PREVIEW_ONLY — not finance-approved golden totals.",
+          "COGS split uses COST_OF_PRODUCTION_CODES + type heuristics (mirrors legacy).",
+          "NEEDS_RULE_CONFIRMATION — finance must approve COGS mapping before loader swap."
+        ],
+        "screenshot": "screenshots/din-china-profit-loss-preview.png",
+        "export": "exports/din-china-profit-loss-preview.json",
+        "approvalStatus": "CANDIDATE_ONLY — NOT FINANCE APPROVED"
+      }
+    },
+    "din-bridal": {
+      "company": "DIN BRIDAL",
+      "companyId": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "userEmail": "ndm313@yahoo.com",
+      "availability": {
+        "balanceSheetLoads": true,
+        "profitLossLoads": true,
+        "balanceSheetToggleVisible": true,
+        "profitLossToggleVisible": true,
+        "balanceSheetToggleDefaultOff": true,
+        "profitLossToggleDefaultOff": true,
+        "previewLabelsPresent": true
+      },
+      "balanceSheet": {
+        "status": "CAPTURED",
+        "asOfDate": "2026-07-01",
+        "branchScope": "All Branches",
+        "legacy": {
+          "totalAssets": null,
+          "liabilitiesAndEquity": null,
+          "difference": null,
+          "revenue": null,
+          "costOfSales": null,
+          "netProfit": null
+        },
+        "preview": {
+          "totalAssets": null,
+          "liabilitiesAndEquity": null,
+          "difference": null,
+          "revenue": null,
+          "costOfSales": null,
+          "netProfit": null
+        },
+        "deltas": {
+          "Assets": null,
+          "Liabilities": null,
+          "Equity": null,
+          "L+E": null,
+          "Revenue": null,
+          "COGS": null,
+          "Expenses": null,
+          "Net Profit": null
+        },
+        "pass": true,
+        "retainedEarningsWarning": false,
+        "needsAccountingRuleConfirmation": false,
+        "accountingRuleNotes": [
+          "PREVIEW_ONLY — not finance-approved golden totals.",
+          "Net income folded into equity per legacy BS-FIX / PF-04 rules.",
+          "NEEDS_ACCOUNTING_RULE_CONFIRMATION — compare with finance before loader swap."
+        ],
+        "screenshot": "screenshots/din-bridal-balance-sheet-preview.png",
+        "export": "exports/din-bridal-balance-sheet-preview.json",
+        "approvalStatus": "CANDIDATE_ONLY — NOT FINANCE APPROVED"
+      },
+      "profitLoss": {
+        "status": "CAPTURED",
+        "startDate": "2000-01-01",
+        "endDate": "2026-07-01",
+        "branchScope": "All Branches",
+        "legacy": {
+          "totalAssets": null,
+          "liabilitiesAndEquity": null,
+          "difference": null,
+          "revenue": null,
+          "costOfSales": null,
+          "netProfit": null
+        },
+        "preview": {
+          "totalAssets": null,
+          "liabilitiesAndEquity": null,
+          "difference": null,
+          "revenue": null,
+          "costOfSales": null,
+          "netProfit": null
+        },
+        "deltas": {
+          "Assets": null,
+          "Liabilities": null,
+          "Equity": null,
+          "L+E": null,
+          "Revenue": null,
+          "COGS": null,
+          "Expenses": null,
+          "Net Profit": null
+        },
+        "pass": true,
+        "cogsHeuristicWarning": false,
+        "needsRuleConfirmation": false,
+        "accountingRuleNotes": [
+          "PREVIEW_ONLY — not finance-approved golden totals.",
+          "COGS split uses COST_OF_PRODUCTION_CODES + type heuristics (mirrors legacy).",
+          "NEEDS_RULE_CONFIRMATION — finance must approve COGS mapping before loader swap."
+        ],
+        "screenshot": "screenshots/din-bridal-profit-loss-preview.png",
+        "export": "exports/din-bridal-profit-loss-preview.json",
+        "approvalStatus": "CANDIDATE_ONLY — NOT FINANCE APPROVED"
+      }
+    },
+    "din-couture": {
+      "company": "DIN COUTURE",
+      "companyId": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "userEmail": "zhd@dincouture.pk",
+      "availability": {
+        "balanceSheetLoads": true,
+        "profitLossLoads": true,
+        "balanceSheetToggleVisible": true,
+        "profitLossToggleVisible": true,
+        "balanceSheetToggleDefaultOff": true,
+        "profitLossToggleDefaultOff": true,
+        "previewLabelsPresent": true
+      },
+      "balanceSheet": {
+        "status": "CAPTURED",
+        "asOfDate": "2026-07-01",
+        "branchScope": "All Branches",
+        "legacy": {
+          "totalAssets": null,
+          "liabilitiesAndEquity": null,
+          "difference": null,
+          "revenue": null,
+          "costOfSales": null,
+          "netProfit": null
+        },
+        "preview": {
+          "totalAssets": null,
+          "liabilitiesAndEquity": null,
+          "difference": null,
+          "revenue": null,
+          "costOfSales": null,
+          "netProfit": null
+        },
+        "deltas": {
+          "Assets": null,
+          "Liabilities": null,
+          "Equity": null,
+          "L+E": null,
+          "Revenue": null,
+          "COGS": null,
+          "Expenses": null,
+          "Net Profit": null
+        },
+        "pass": true,
+        "retainedEarningsWarning": false,
+        "needsAccountingRuleConfirmation": false,
+        "accountingRuleNotes": [
+          "PREVIEW_ONLY — not finance-approved golden totals.",
+          "Net income folded into equity per legacy BS-FIX / PF-04 rules.",
+          "NEEDS_ACCOUNTING_RULE_CONFIRMATION — compare with finance before loader swap."
+        ],
+        "screenshot": "screenshots/din-couture-balance-sheet-preview.png",
+        "export": "exports/din-couture-balance-sheet-preview.json",
+        "approvalStatus": "CANDIDATE_ONLY — NOT FINANCE APPROVED"
+      },
+      "profitLoss": {
+        "status": "CAPTURED",
+        "startDate": "2000-01-01",
+        "endDate": "2026-07-01",
+        "branchScope": "All Branches",
+        "legacy": {
+          "totalAssets": null,
+          "liabilitiesAndEquity": null,
+          "difference": null,
+          "revenue": null,
+          "costOfSales": null,
+          "netProfit": null
+        },
+        "preview": {
+          "totalAssets": null,
+          "liabilitiesAndEquity": null,
+          "difference": null,
+          "revenue": null,
+          "costOfSales": null,
+          "netProfit": null
+        },
+        "deltas": {
+          "Assets": null,
+          "Liabilities": null,
+          "Equity": null,
+          "L+E": null,
+          "Revenue": null,
+          "COGS": null,
+          "Expenses": null,
+          "Net Profit": null
+        },
+        "pass": true,
+        "cogsHeuristicWarning": false,
+        "needsRuleConfirmation": false,
+        "accountingRuleNotes": [
+          "PREVIEW_ONLY — not finance-approved golden totals.",
+          "COGS split uses COST_OF_PRODUCTION_CODES + type heuristics (mirrors legacy).",
+          "NEEDS_RULE_CONFIRMATION — finance must approve COGS mapping before loader swap."
+        ],
+        "screenshot": "screenshots/din-couture-profit-loss-preview.png",
+        "export": "exports/din-couture-profit-loss-preview.json",
+        "approvalStatus": "CANDIDATE_ONLY — NOT FINANCE APPROVED"
+      }
+    }
+  }
+}

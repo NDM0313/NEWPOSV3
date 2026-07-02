@@ -1,0 +1,18 @@
+{
+  "run": "DIN_BRIDAL_JULY1_GL_ACTIVITY_AUDIT",
+  "task": "final-monitoring",
+  "generated_at": "2026-07-01T13:22:58.800Z",
+  "overall": "FAIL",
+  "artifact": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-01T13-12-09-163Z.json",
+  "migrations_run": false,
+  "gl_mutations": false,
+  "flags_unchanged": true,
+  "din_china": "PASS",
+  "din_couture": "PASS",
+  "din_bridal_failures": [
+    { "check": "Roznamcha Cash In golden", "expected_pkr": 1836350, "actual_pkr": 1991850, "delta_pkr": 155500 },
+    { "check": "Roznamcha Closing golden", "expected_pkr": 918570, "actual_pkr": 1074070, "delta_pkr": 155500 },
+    { "check": "Trial Balance golden total", "expected_pkr": 22056075, "actual_pkr": 22313400, "delta_pkr": 257325 }
+  ],
+  "note": "FAIL expected — fixtures not refreshed; drift continues with live activity (RCV-0077 + further postings after 12:43 audit baseline)"
+}

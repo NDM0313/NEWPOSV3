@@ -1,0 +1,14 @@
+{
+  "run": "MOBILE_APK_MANUAL_ADMIN_QA",
+  "task": "device-qa-summary",
+  "generated_at": "2026-07-01T12:05:00.000Z",
+  "classification": "PARTIAL_DEVICE_QA",
+  "apk_installed": true,
+  "admin_qa": "ADMIN_QA_PASS",
+  "manager_qa": "MANAGER_QA_PENDING_CREDENTIALS",
+  "salesman_qa": "SALESMAN_QA_PENDING_CREDENTIALS",
+  "golden_totals_verified": true,
+  "production_mutations": false,
+  "play_store_released": false,
+  "public_released": false
+}

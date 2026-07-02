@@ -7,9 +7,11 @@ import {
   postRentalExpenseJournalMobile,
   postRentalPartyRevenueJournalMobile,
 } from './rentalBookingAccounting';
+import { ensurePartySubledgersForContact } from './partySubledger';
 import { isRealBranchUuid, resolveBranchUuidForWrite } from '../utils/branchId';
 import { fetchProductStockByKey } from '../utils/productStockFetch';
 import { formatRentalPaymentRef } from '../utils/rentalPaymentRef';
+import { enrichRowsWithCreatorNames } from '../lib/resolveCreatorName';
 
 const BLOCKING_RENTAL_STATUSES = ['booked', 'picked_up', 'active', 'overdue'] as const;
 
@@ -208,6 +210,8 @@ export interface RentalListItem {
   bookingDate: string;
   createdBy?: string | null;
   salesmanId?: string | null;
+  salesmanName?: string | null;
+  createdByName?: string | null;
   branchId?: string | null;
 }
 
@@ -227,6 +231,9 @@ export interface RentalPaymentRow {
   amount: number;
   method: string;
   reference: string | null;
+  /** RCV-* from linked payments row when available */
+  referenceNo?: string | null;
+  notes?: string | null;
   paymentDate: string;
 }
 
@@ -255,8 +262,57 @@ export interface RentalDetail {
   /** Pickup-held ID (CNIC etc.) — `document_type` / `document_number` on rental */
   pickupDocumentType: string | null;
   pickupDocumentNumber: string | null;
+  createdBy?: string | null;
+  salesmanId?: string | null;
+  salesmanName?: string | null;
+  createdByName?: string | null;
   items: RentalItemRow[];
   payments: RentalPaymentRow[];
+}
+
+type RentalStaffEnrichable = {
+  createdBy?: string | null;
+  salesmanId?: string | null;
+  salesmanName?: string | null;
+  createdByName?: string | null;
+};
+
+/** Batch-resolve salesman (users.id) and creator display names for rental rows. */
+async function enrichRentalStaffNames<T extends RentalStaffEnrichable>(rows: T[]): Promise<void> {
+  if (rows.length === 0) return;
+
+  const salesmanIds = [
+    ...new Set(
+      rows
+        .map((r) => r.salesmanId)
+        .filter((id): id is string => typeof id === 'string' && id.trim() !== ''),
+    ),
+  ];
+  const salesmanNameById = new Map<string, string>();
+  if (salesmanIds.length > 0) {
+    const { data: users } = await supabase
+      .from('users')
+      .select('id, full_name, email')
+      .in('id', salesmanIds);
+    for (const u of users || []) {
+      const rec = u as { id?: string; full_name?: string | null; email?: string | null };
+      const id = rec.id != null ? String(rec.id) : '';
+      if (!id) continue;
+      const name = String(rec.full_name ?? rec.email ?? '').trim();
+      if (name) salesmanNameById.set(id, name);
+    }
+  }
+
+  const mutable: Array<Record<string, unknown>> = rows.map((r) => ({
+    created_by: r.createdBy ?? null,
+  }));
+  await enrichRowsWithCreatorNames(mutable, 'created_by');
+
+  rows.forEach((row, i) => {
+    const name = mutable[i].created_by_name;
+    row.createdByName = typeof name === 'string' ? name : null;
+    row.salesmanName = row.salesmanId ? salesmanNameById.get(row.salesmanId) ?? null : null;
+  });
 }
 
 export interface GetRentalsOptions {
@@ -396,6 +452,11 @@ export async function createBooking(input: CreateBookingInput): Promise<{ data: 
   if (!companyId || !branchId || branchId === 'all') return { data: null, error: 'Company and branch required.' };
   if (!items?.length) return { data: null, error: 'At least one item required.' };
   if (!customerId) return { data: null, error: 'Customer required.' };
+
+  const subEnsure = await ensurePartySubledgersForContact(customerId);
+  if (!subEnsure.success) {
+    return { data: null, error: subEnsure.error ?? 'Could not set up customer AR sub-account.' };
+  }
 
   const pickup = new Date(pickupDate);
   const ret = new Date(returnDate);
@@ -695,8 +756,7 @@ export async function getRentals(
   if (opts?.dateTo) q = q.lte('booking_date', opts.dateTo);
   const { data, error } = await q;
   if (error) return { data: [], error: error.message };
-  return {
-    data: (data || []).map((r: Record<string, unknown>) => {
+  const list: RentalListItem[] = (data || []).map((r: Record<string, unknown>) => {
       const customer = r.customer as { phone?: string | null; mobile?: string | null } | null;
       const customerPhone = customer ? getContactWhatsAppPhone(customer) : '';
       const bookingNo = String(r.booking_no || `RNT-${String(r.id ?? '').slice(0, 8)}`);
@@ -724,9 +784,9 @@ export async function getRentals(
         salesmanId: r.salesman_id != null ? String(r.salesman_id) : null,
         branchId: r.branch_id != null ? String(r.branch_id) : null,
       };
-    }),
-    error: null,
-  };
+  });
+  await enrichRentalStaffNames(list);
+  return { data: list, error: null };
 }
 
 /** Calendar availability: rentals with line items; no booking_date range (overlap filtered in UI). */
@@ -828,10 +888,51 @@ export async function getRentalById(rentalId: string): Promise<{ data: RentalDet
 
   const { data: payments, error: pErr } = await supabase
     .from('rental_payments')
-    .select('id, amount, method, reference, payment_date, created_at')
+    .select('id, amount, method, reference, payment_date, created_at, journal_entry_id')
     .eq('rental_id', rentalId)
+    .is('voided_at', null)
     .order('created_at', { ascending: false });
   if (pErr) return { data: null, error: pErr.message };
+
+  const paymentRefByRentalPaymentId = new Map<string, { referenceNo: string | null; notes: string | null }>();
+  const paymentListRaw = (payments || []) as Array<Record<string, unknown>>;
+  const jeIds = paymentListRaw
+    .map((p) => p.journal_entry_id)
+    .filter((id): id is string => typeof id === 'string' && id.length > 0);
+  if (jeIds.length > 0) {
+    const { data: jes } = await supabase.from('journal_entries').select('id, payment_id').in('id', jeIds);
+    const paymentIds = (jes || [])
+      .map((j) => (j as { payment_id?: string | null }).payment_id)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0);
+    if (paymentIds.length > 0) {
+      const { data: payRows } = await supabase
+        .from('payments')
+        .select('id, reference_number, notes')
+        .in('id', paymentIds);
+      const jeToPayment = new Map<string, string>();
+      for (const j of jes || []) {
+        const rec = j as { id?: string; payment_id?: string | null };
+        if (rec.id && rec.payment_id) jeToPayment.set(String(rec.id), String(rec.payment_id));
+      }
+      const payById = new Map<string, { reference_number?: string | null; notes?: string | null }>();
+      for (const pay of payRows || []) {
+        const rec = pay as { id?: string; reference_number?: string | null; notes?: string | null };
+        if (rec.id) payById.set(String(rec.id), rec);
+      }
+      for (const rp of paymentListRaw) {
+        const rpId = String(rp.id);
+        const jeId = rp.journal_entry_id != null ? String(rp.journal_entry_id) : '';
+        const payId = jeId ? jeToPayment.get(jeId) : undefined;
+        const linked = payId ? payById.get(payId) : undefined;
+        if (linked) {
+          paymentRefByRentalPaymentId.set(rpId, {
+            referenceNo: linked.reference_number != null ? String(linked.reference_number) : null,
+            notes: linked.notes != null ? String(linked.notes) : null,
+          });
+        }
+      }
+    }
+  }
 
   const r = rental as Record<string, unknown>;
   const branch = r.branch as { name?: string; code?: string } | null;
@@ -845,8 +946,7 @@ export async function getRentalById(rentalId: string): Promise<{ data: RentalDet
       ? String(r.document_number).trim()
       : null;
 
-  return {
-    data: {
+  const detail: RentalDetail = {
       id: String(r.id),
       bookingNo,
       documentNumber,
@@ -867,8 +967,13 @@ export async function getRentalById(rentalId: string): Promise<{ data: RentalDet
       securityDocumentNumber: (r.security_document_number as string) ?? null,
       securityDocumentImageUrl: (r.security_document_image_url as string) ?? null,
       securityStatus: (r.security_status as string) ?? null,
-      pickupDocumentType: (r.document_type as string) ?? null,
-      pickupDocumentNumber: (r.document_number as string) ?? null,
+      pickupDocumentType: (r.security_document_type as string) ?? ((r.document_received ? r.document_type : null) as string | null) ?? null,
+      pickupDocumentNumber:
+        (r.security_document_number as string)
+        ?? (r.document_received && r.document_type && !r.security_document_number ? (r.document_number as string) : null)
+        ?? null,
+      createdBy: r.created_by != null ? String(r.created_by) : null,
+      salesmanId: r.salesman_id != null ? String(r.salesman_id) : null,
       items: itemList.map((i) => ({
         id: String(i.id),
         productId: String(i.product_id),
@@ -887,17 +992,22 @@ export async function getRentalById(rentalId: string): Promise<{ data: RentalDet
             : rawDate instanceof Date
               ? rawDate.toISOString().slice(0, 10)
               : '';
+        const rpId = String(p.id);
+        const linked = paymentRefByRentalPaymentId.get(rpId);
+        const fallbackRef = (p.reference as string) ?? null;
         return {
-          id: String(p.id),
+          id: rpId,
           amount: Number(p.amount) ?? 0,
           method: String(p.method ?? ''),
-          reference: (p.reference as string) ?? null,
+          reference: fallbackRef,
+          referenceNo: linked?.referenceNo ?? fallbackRef,
+          notes: linked?.notes ?? null,
           paymentDate,
         };
       }),
-    },
-    error: null,
   };
+  await enrichRentalStaffNames([detail]);
+  return { data: detail, error: null };
 }
 
 export async function receiveReturn(
@@ -917,7 +1027,11 @@ export async function receiveReturn(
   userId?: string | null
 ): Promise<{ error: string | null }> {
   if (!isSupabaseConfigured) return { error: 'App not configured.' };
-  const { data: rental, error: fetchErr } = await supabase.from('rentals').select('id, status, branch_id, due_amount').eq('id', rentalId).single();
+  const { data: rental, error: fetchErr } = await supabase
+    .from('rentals')
+    .select('id, status, branch_id, due_amount, customer_id, booking_no')
+    .eq('id', rentalId)
+    .single();
   if (fetchErr || !rental) return { error: fetchErr?.message ?? 'Rental not found.' };
   const r = rental as Record<string, unknown>;
   const status = String(r.status ?? '');
@@ -979,7 +1093,7 @@ export async function receiveReturn(
       const t = String((acc as Record<string, unknown>).type ?? '').toLowerCase();
       penaltyMethod = t === 'bank' || t === 'asset' ? t : t === 'mobile_wallet' ? 'other' : 'cash';
     }
-    await supabase.from('rental_payments').insert({
+    const payInsert: Record<string, unknown> = {
       rental_id: rentalId,
       amount: payload.penaltyAmount,
       method: penaltyMethod,
@@ -987,7 +1101,40 @@ export async function receiveReturn(
       payment_date: payload.actualReturnDate,
       payment_type: 'penalty',
       created_by: userId ?? null,
-    });
+    };
+    if (payload.penaltyPaymentAccountId) {
+      payInsert.payment_account_id = payload.penaltyPaymentAccountId;
+    }
+    const { data: penPay, error: penPayErr } = await supabase
+      .from('rental_payments')
+      .insert(payInsert)
+      .select('id')
+      .single();
+    if (penPayErr) return { error: penPayErr.message };
+
+    const customerId = String(r.customer_id ?? '').trim();
+    if (customerId && payload.penaltyPaymentAccountId && penPay?.id) {
+      const { postRentalPartyPenaltySettlementMobile } = await import('./rentalBookingAccounting');
+      let customerName = 'Customer';
+      const { data: contact } = await supabase.from('contacts').select('name').eq('id', customerId).maybeSingle();
+      if (contact && (contact as { name?: string }).name) {
+        customerName = String((contact as { name?: string }).name);
+      }
+      const gl = await postRentalPartyPenaltySettlementMobile({
+        companyId,
+        branchId: String(r.branch_id ?? ''),
+        rentalId,
+        rentalPaymentId: String(penPay.id),
+        customerId,
+        customerName,
+        amount: payload.penaltyAmount,
+        paymentAccountId: payload.penaltyPaymentAccountId,
+        entryDate: payload.actualReturnDate,
+        userId: userId ?? null,
+      });
+      if (gl.error) return { error: gl.error };
+    }
+
     const { data: row } = await supabase.from('rentals').select('paid_amount, due_amount').eq('id', rentalId).single();
     const rowr = row as Record<string, number>;
     const newPaid = (rowr?.paid_amount ?? 0) + payload.penaltyAmount;
@@ -1015,6 +1162,7 @@ export interface AddRentalPaymentParams {
   /** Cash/Bank/Wallet account UUID (accounts table) selected by user. */
   paymentAccountId?: string | null;
   paymentDate?: string;
+  paymentAt?: string | null;
   userId?: string | null;
 }
 
@@ -1108,10 +1256,17 @@ export async function addRentalPayment(
     });
 
     if (rpcErr) return { error: rpcErr.message };
-    const rpcRes = rpcData as { success?: boolean; payment_id?: string; reference_number?: string; error?: string };
+    const rpcRes = rpcData as {
+      success?: boolean;
+      payment_id?: string;
+      reference_number?: string;
+      journal_entry_id?: string;
+      error?: string;
+    };
     if (!rpcRes?.success) return { error: rpcRes?.error ?? 'Payment failed.' };
     paymentId = rpcRes.payment_id ?? null;
     referenceNumber = rpcRes.reference_number ?? null;
+    const journalEntryId = rpcRes.journal_entry_id ?? null;
 
     if (!referenceNumber && paymentId) {
       try {
@@ -1124,8 +1279,9 @@ export async function addRentalPayment(
       }
     }
 
-    try {
-      await supabase.from('rental_payments').insert({
+    const { data: rpRow, error: rpInsErr } = await supabase
+      .from('rental_payments')
+      .insert({
         rental_id: params.rentalId,
         amount: params.amount,
         method: normalizedMethod,
@@ -1134,12 +1290,31 @@ export async function addRentalPayment(
         payment_type: 'remaining',
         payment_account_id: params.paymentAccountId ?? null,
         created_by: params.userId ?? null,
-      });
-    } catch {
-      // rental_payments insert is informational; RPC already updated rentals totals.
+      })
+      .select('id')
+      .single();
+
+    if (rpInsErr || !rpRow) {
+      return { error: rpInsErr?.message ?? 'Failed to record rental payment row.' };
+    }
+
+    if (journalEntryId) {
+      await linkRentalPaymentJournalEntry((rpRow as { id: string }).id, journalEntryId);
+    }
+
+    if (paymentId && params.paymentAt) {
+      const { patchPaymentCreatedAt } = await import('./paymentTimestamp');
+      await patchPaymentCreatedAt(paymentId, params.paymentAt);
     }
 
     return { error: null, paymentId, referenceNumber };
+  }
+
+  const rentalCustomerId = r.customer_id as string | null | undefined;
+  if (rentalCustomerId) {
+    return {
+      error: 'Payment account required for named customer rentals (ledger posting via record_payment_with_accounting).',
+    };
   }
 
   await supabase.from('rental_payments').insert({

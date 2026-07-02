@@ -46,10 +46,12 @@ import { Input } from "../ui/input";
 import { Badge } from "../ui/badge";
 import { cn } from "../ui/utils";
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { AdaptiveCurrencyValue } from '@/app/components/shared/AdaptiveCurrencyValue';
 import { ReturnDressModal } from './ReturnDressModal';
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Label } from "../ui/label";
 import { CalendarDateRangePicker } from "../ui/CalendarDateRangePicker";
+import { DatePicker } from "../ui/DatePicker";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../ui/dropdown-menu";
 import { Checkbox } from "../ui/checkbox";
@@ -173,6 +175,7 @@ export const RentalOrdersList = () => {
   // 🎯 Action Dialogs (TASK 4 FIX)
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [extendDialogOpen, setExtendDialogOpen] = useState(false);
+  const [extendReturnDate, setExtendReturnDate] = useState('');
   const [lateFeeDialogOpen, setLateFeeDialogOpen] = useState(false);
   const [dispatchDialogOpen, setDispatchDialogOpen] = useState(false);
 
@@ -524,12 +527,12 @@ export const RentalOrdersList = () => {
           <p className="text-xs text-red-400 mt-1">Need immediate action</p>
         </div>
 
-        <div className="bg-gradient-to-br from-green-900/30 to-green-900/10 border border-green-900/50 rounded-xl p-4">
+        <div className="bg-gradient-to-br from-green-900/30 to-green-900/10 border border-green-900/50 rounded-xl p-4 min-w-0">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs text-gray-400 uppercase font-medium">Outstanding</span>
             <DollarSign size={16} className="text-green-400" />
           </div>
-          <p className="text-3xl font-bold text-white">₹{(stats.totalOutstanding / 1000).toFixed(0)}k</p>
+          <AdaptiveCurrencyValue value={stats.totalOutstanding} className="text-3xl font-bold text-white" as="p" />
           <p className="text-xs text-green-400 mt-1">Total balance due</p>
         </div>
 
@@ -670,9 +673,8 @@ export const RentalOrdersList = () => {
                 <div className="space-y-2">
                   <Label className="text-xs text-gray-400 uppercase">Return Date Range</Label>
                   <CalendarDateRangePicker
-                    date={filterDateRange}
-                    onDateChange={setFilterDateRange}
-                    className="bg-gray-950 border-gray-800 text-white h-9"
+                    value={filterDateRange}
+                    onChange={setFilterDateRange}
                   />
                 </div>
               </div>
@@ -1077,12 +1079,10 @@ export const RentalOrdersList = () => {
           </AlertDialogHeader>
           <div className="py-4">
             <Label className="text-gray-300">New Return Date</Label>
-            <Input
-              type="date"
-              id="newReturnDate"
-              className="bg-gray-800 border-gray-700 text-white mt-2"
-              defaultValue={selectedOrder?.returnDate}
-              min={selectedOrder?.returnDate}
+            <DatePicker
+              value={extendReturnDate || selectedOrder?.returnDate || ''}
+              onChange={setExtendReturnDate}
+              minDate={selectedOrder?.returnDate ? new Date(selectedOrder.returnDate + 'T12:00:00') : undefined}
             />
           </div>
           <AlertDialogFooter>
@@ -1091,10 +1091,8 @@ export const RentalOrdersList = () => {
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
-                const input = document.getElementById('newReturnDate') as HTMLInputElement;
-                if (input?.value) {
-                  handleExtend(input.value);
-                }
+                const next = extendReturnDate || selectedOrder?.returnDate || '';
+                if (next) handleExtend(next);
               }}
               className="bg-blue-600 hover:bg-blue-700 text-white"
             >

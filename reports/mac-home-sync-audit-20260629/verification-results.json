@@ -1,0 +1,12 @@
+{
+  "generated": "2026-06-29",
+  "head": "ae6c69d0",
+  "results": {
+    "testUnifiedLedger": { "pass": 298, "fail": 0, "status": "PASS" },
+    "testUnit": { "pass": 122, "fail": 0, "status": "PASS" },
+    "build": { "status": "PASS" },
+    "lint": { "status": "NOT_AVAILABLE_ROOT" },
+    "typecheck": { "status": "NOT_AVAILABLE_ROOT" }
+  },
+  "verdict": "VERIFICATION_PASS"
+}

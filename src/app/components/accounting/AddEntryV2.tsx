@@ -29,6 +29,8 @@ import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
+import { DateTimePicker } from '@/app/components/ui/DateTimePicker';
+import { formatLocalDateTimeYYYYMMDDHHmm } from '@/app/utils/localDate';
 import { Textarea } from '@/app/components/ui/textarea';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useAccounting } from '@/app/context/AccountingContext';
@@ -60,6 +62,8 @@ import {
   MAX_FILE_SIZE_BYTES as ATTACHMENT_MAX_BYTES,
 } from '@/app/utils/uploadTransactionAttachments';
 import { prepareAttachmentFilesForUpload } from '@/app/utils/imageCompression';
+import { formatAccountSelectOptionLabel } from '@/app/lib/accountPostingInOutLabel';
+import { AccountPickerFieldLabel } from '@/app/components/accounting/AccountPickerFieldLabel';
 
 export type AddEntryV2Type =
   | 'pure_journal'
@@ -81,6 +85,12 @@ const ENTRY_TYPES: { key: AddEntryV2Type; label: string; description: string; ic
 ];
 
 const today = () => new Date().toISOString().slice(0, 10);
+
+function entryDateFromDateTime(value: string): string {
+  const v = String(value || '').trim();
+  if (!v) return today();
+  return v.includes('T') ? v.split('T')[0] : v.slice(0, 10);
+}
 
 export interface AddEntryV2Props {
   onClose: () => void;
@@ -141,7 +151,8 @@ export function AddEntryV2({
   const initialPropsAppliedRef = useRef(false);
 
   // Form state – shared where applicable
-  const [entryDate, setEntryDate] = useState(today());
+  const [entryDateTime, setEntryDateTime] = useState(() => formatLocalDateTimeYYYYMMDDHHmm(new Date()));
+  const entryDate = entryDateFromDateTime(entryDateTime);
   const [amount, setAmount] = useState<number>(0);
   const [description, setDescription] = useState('');
   const [paymentAccountId, setPaymentAccountId] = useState('');
@@ -1170,7 +1181,7 @@ export function AddEntryV2({
 
                         {entryType === 'pure_journal' && (
                           <div className={cardInnerClass}>
-                            <Label className={labelClass}>Debit account</Label>
+                            <AccountPickerFieldLabel className={labelClass} base="Debit account" drCr="Dr" inOut="IN/OUT" />
                             <div className="relative mb-4">
                               <select value={debitAccountId} onChange={(e) => setDebitAccountId(e.target.value)} className={`${inputClass} appearance-none pr-10`}>
                                 <option value="">Select</option>
@@ -1178,14 +1189,19 @@ export function AddEntryV2({
                                   const bal = glBalanceByAccountId.get(a.id) ?? 0;
                                   return (
                                     <option key={a.id} value={a.id}>
-                                      {a.name} • GL: {formatCurrency(bal)}
+                                      {formatAccountSelectOptionLabel(a, {
+                                        postingSide: 'debit',
+                                        balance: bal,
+                                        formatBalance: formatCurrency,
+                                        includeGlBalance: true,
+                                      })}
                                     </option>
                                   );
                                 })}
                               </select>
                               <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
                             </div>
-                            <Label className={labelClass}>Credit account</Label>
+                            <AccountPickerFieldLabel className={labelClass} base="Credit account" drCr="Cr" inOut="IN/OUT" />
                             <div className="relative">
                               <select value={creditAccountId} onChange={(e) => setCreditAccountId(e.target.value)} className={`${inputClass} appearance-none pr-10`}>
                                 <option value="">Select</option>
@@ -1193,7 +1209,12 @@ export function AddEntryV2({
                                   const bal = glBalanceByAccountId.get(a.id) ?? 0;
                                   return (
                                     <option key={a.id} value={a.id}>
-                                      {a.name} • GL: {formatCurrency(bal)}
+                                      {formatAccountSelectOptionLabel(a, {
+                                        postingSide: 'credit',
+                                        balance: bal,
+                                        formatBalance: formatCurrency,
+                                        includeGlBalance: true,
+                                      })}
                                     </option>
                                   );
                                 })}
@@ -1225,28 +1246,38 @@ export function AddEntryV2({
 
                         {entryType === 'internal_transfer' && (
                           <div className={cardInnerClass}>
-                            <Label className={labelClass}>From account (Cr)</Label>
+                            <AccountPickerFieldLabel className={labelClass} base="From account" drCr="Cr" inOut="OUT" />
                             <div className="relative mb-4">
                               <select value={fromAccountId} onChange={(e) => setFromAccountId(e.target.value)} className={`${inputClass} appearance-none pr-10`}>
                                 {transferEligibleAccounts.map((a) => {
                                   const bal = glBalanceByAccountId.get(a.id) ?? 0;
                                   return (
                                     <option key={a.id} value={a.id}>
-                                      {a.name} • GL: {formatCurrency(bal)}
+                                      {formatAccountSelectOptionLabel(a, {
+                                        forceInOut: 'OUT',
+                                        balance: bal,
+                                        formatBalance: formatCurrency,
+                                        includeGlBalance: true,
+                                      })}
                                     </option>
                                   );
                                 })}
                               </select>
                               <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
                             </div>
-                            <Label className={labelClass}>To account (Dr)</Label>
+                            <AccountPickerFieldLabel className={labelClass} base="To account" drCr="Dr" inOut="IN" />
                             <div className="relative">
                               <select value={toAccountId} onChange={(e) => setToAccountId(e.target.value)} className={`${inputClass} appearance-none pr-10`}>
                                 {transferEligibleAccounts.map((a) => {
                                   const bal = glBalanceByAccountId.get(a.id) ?? 0;
                                   return (
                                     <option key={a.id} value={a.id}>
-                                      {a.name} • GL: {formatCurrency(bal)}
+                                      {formatAccountSelectOptionLabel(a, {
+                                        forceInOut: 'IN',
+                                        balance: bal,
+                                        formatBalance: formatCurrency,
+                                        includeGlBalance: true,
+                                      })}
                                     </option>
                                   );
                                 })}
@@ -1399,16 +1430,25 @@ export function AddEntryV2({
                           entryType === 'expense_payment' ||
                           entryType === 'courier_payment') && (
                           <div className={cardInnerClass}>
-                            <Label className={labelClass}>
-                              Payment account (Cr) <span className="text-red-400">*</span>
-                            </Label>
+                            <AccountPickerFieldLabel
+                              className={labelClass}
+                              base="Payment account"
+                              drCr={entryType === 'customer_receipt' ? 'Dr' : 'Cr'}
+                              inOut={entryType === 'customer_receipt' ? 'IN' : 'OUT'}
+                              required
+                            />
                             <div className="relative">
                               <select value={paymentAccountId} onChange={(e) => setPaymentAccountId(e.target.value)} className={`${inputClass} appearance-none pr-10`}>
                                 {paymentAccounts.map((a) => {
                                   const bal = glBalanceByAccountId.get(a.id) ?? 0;
                                   return (
                                     <option key={a.id} value={a.id}>
-                                      {a.name} • GL: {formatCurrency(bal)}
+                                      {formatAccountSelectOptionLabel(a, {
+                                        postingSide: entryType === 'customer_receipt' ? 'debit' : 'credit',
+                                        balance: bal,
+                                        formatBalance: formatCurrency,
+                                        includeGlBalance: true,
+                                      })}
                                     </option>
                                   );
                                 })}
@@ -1454,17 +1494,13 @@ export function AddEntryV2({
                       <div className="space-y-4">
                         <div className={cardInnerClass}>
                           <Label className={labelClass}>
-                            Entry date <span className="text-red-400">*</span>
+                            Entry date &amp; time <span className="text-red-400">*</span>
                           </Label>
-                          <div className="relative">
-                            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" size={16} />
-                            <Input
-                              type="date"
-                              value={entryDate}
-                              onChange={(e) => setEntryDate(e.target.value)}
-                              className={`${inputClass} pl-10`}
-                            />
-                          </div>
+                          <DateTimePicker
+                            value={entryDateTime}
+                            onChange={(v) => setEntryDateTime(v || entryDateTime)}
+                            required
+                          />
                         </div>
 
                         {showEntryAttachments && (

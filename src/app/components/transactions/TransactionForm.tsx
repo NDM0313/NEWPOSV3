@@ -28,8 +28,8 @@ import {
 } from 'lucide-react';
 import { format } from "date-fns";
 import { cn } from "../ui/utils";
+import { formatQty } from '@/app/utils/quantity';
 import { Button } from "../ui/button";
-import { Calendar } from "../ui/calendar";
 import {
   Popover,
   PopoverContent,
@@ -357,7 +357,7 @@ export const TransactionForm = ({ type: initialType, onClose }: TransactionFormP
                             </div>
                             <div className="absolute top-2 right-2">
                                <Badge className={cn("bg-black/50 backdrop-blur text-white border-0", product.stock < 10 ? "text-red-400" : "text-green-400")}>
-                                  {product.stock} left
+                                  {formatQty(product.stock)} left
                                </Badge>
                             </div>
                          </div>

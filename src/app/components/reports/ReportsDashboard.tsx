@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import { Button } from "../ui/button";
 import { cn } from "../ui/utils";
+import { formatQty } from '@/app/utils/quantity';
 import {
   Select,
   SelectContent,
@@ -386,7 +387,7 @@ export const ReportsDashboard = () => {
           rows: lowStockItems.map(item => [
             item.name,
             item.category,
-            item.stock,
+            formatQty(item.stock),
             item.alert
           ])
         };
@@ -489,9 +490,9 @@ export const ReportsDashboard = () => {
         );
 
       case 'roznamcha':
-        return <RoznamchaReport />;
+        return <RoznamchaReport globalStartDate={startDate} globalEndDate={endDate} />;
       case 'daybook':
-        return <DayBookReport />;
+        return <DayBookReport globalStartDate={startDate} globalEndDate={endDate} />;
 
       case 'sales':
         return (
@@ -625,7 +626,7 @@ export const ReportsDashboard = () => {
                                <tr key={item.id} className="hover:bg-gray-800/30">
                                   <td className="px-6 py-4 font-medium text-white">{item.name}</td>
                                   <td className="px-6 py-4 text-gray-400">{item.category}</td>
-                                  <td className="px-6 py-4 text-center text-white font-mono">{item.stock}</td>
+                                  <td className="px-6 py-4 text-center text-white font-mono tabular-nums">{formatQty(item.stock)}</td>
                                   <td className="px-6 py-4 text-center">
                                      <span className={cn(
                                         "px-2 py-1 rounded-full text-xs font-bold border",

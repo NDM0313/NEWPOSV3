@@ -17,6 +17,7 @@ import {
   buildGeneralJournalAutoDescription,
   composeJournalEntryDescription,
 } from '../../utils/journalEntryDescription';
+import { accountInOutBadgeLabel, POSTING_FIELD_TITLES } from '../../lib/accountPostingInOutLabel';
 
 interface GeneralEntryFlowProps {
   onBack: () => void;
@@ -231,7 +232,7 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
         {step === 1 && (
           <div className="space-y-4">
             <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 mb-4">
-              <h2 className="text-sm font-semibold text-white mb-2">Select Debit Account</h2>
+              <h2 className="text-sm font-semibold text-white mb-2">{POSTING_FIELD_TITLES.journalDebit}</h2>
               <p className="text-xs text-[#9CA3AF]">Which account should be debited?</p>
             </div>
             <div className="relative">
@@ -258,7 +259,16 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
                       <div>
                         <p className="text-sm font-semibold text-white">{account.name}</p>
                         <p className="text-xs text-[#9CA3AF]">
-                          {account.code} · {account.type}
+                          {account.code} · {account.type} ·{' '}
+                          <span
+                            className={
+                              accountInOutBadgeLabel(account, 'debit') === 'IN'
+                                ? 'text-emerald-400'
+                                : 'text-amber-400'
+                            }
+                          >
+                            {accountInOutBadgeLabel(account, 'debit')}
+                          </span>
                         </p>
                         {formatAccountBalanceInline(account.balance, canViewBalances) && (
                           <p className="text-xs text-[#6B7280] mt-1">{formatAccountBalanceInline(account.balance, canViewBalances)}</p>
@@ -280,7 +290,7 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
         {step === 2 && (
           <div className="space-y-4">
             <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 mb-4">
-              <h2 className="text-sm font-semibold text-white mb-2">Select Credit Account</h2>
+              <h2 className="text-sm font-semibold text-white mb-2">{POSTING_FIELD_TITLES.journalCredit}</h2>
               <p className="text-xs text-[#9CA3AF]">Which account should be credited?</p>
               {entryData.debitAccountName && (
                 <div className="mt-3 p-2 bg-[#EF4444]/10 border border-[#EF4444]/30 rounded-lg">
@@ -315,7 +325,16 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
                         <div>
                           <p className="text-sm font-semibold text-white">{account.name}</p>
                           <p className="text-xs text-[#9CA3AF]">
-                            {account.code} · {account.type}
+                            {account.code} · {account.type} ·{' '}
+                            <span
+                              className={
+                                accountInOutBadgeLabel(account, 'credit') === 'IN'
+                                  ? 'text-emerald-400'
+                                  : 'text-amber-400'
+                              }
+                            >
+                              {accountInOutBadgeLabel(account, 'credit')}
+                            </span>
                           </p>
                           {formatAccountBalanceInline(account.balance, canViewBalances) && (
                             <p className="text-xs text-[#6B7280] mt-1">{formatAccountBalanceInline(account.balance, canViewBalances)}</p>
@@ -341,11 +360,11 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
               <h2 className="text-sm font-semibold text-white mb-3">Selected Accounts</h2>
               <div className="space-y-2">
                 <div className="p-3 bg-[#EF4444]/10 border border-[#EF4444]/30 rounded-lg">
-                  <p className="text-xs text-[#9CA3AF] mb-1">Debit Account</p>
+                  <p className="text-xs text-[#9CA3AF] mb-1">Debit Account (Dr · IN/OUT)</p>
                   <p className="text-sm text-white font-semibold">{entryData.debitAccountName}</p>
                 </div>
                 <div className="p-3 bg-[#10B981]/10 border border-[#10B981]/30 rounded-lg">
-                  <p className="text-xs text-[#9CA3AF] mb-1">Credit Account</p>
+                  <p className="text-xs text-[#9CA3AF] mb-1">Credit Account (Cr · IN/OUT)</p>
                   <p className="text-sm text-white font-semibold">{entryData.creditAccountName}</p>
                 </div>
               </div>

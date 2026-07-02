@@ -59,13 +59,14 @@ export function CustomerPaymentFlow({
     }
     const { success, error, paymentId, referenceNumber } = await submit({
       companyId,
-      branchId: branchId ?? null,
+      branchId: payload.branchId ?? branchId ?? null,
       contactId: selectedCustomer.id,
       contactName: selectedCustomer.name,
       amount: payload.amount,
       accountId: payload.accountId,
       paymentMethod: payload.method === 'wallet' ? 'wallet' : payload.method,
       paymentDate: payload.paymentDate,
+      paymentAt: payload.paymentAt,
       notes: payload.notes || null,
       bankTraceId: payload.reference?.trim() || null,
       createdBy: user.id ?? null,
@@ -86,6 +87,8 @@ export function CustomerPaymentFlow({
         companyId={companyId}
         branchId={branchId ?? null}
         userId={user.id}
+        userRole={user.role}
+        profileId={user.profileId ?? null}
         partyName={selectedCustomer.name}
         partyPhone={selectedCustomer.phone}
         outstandingAmount={Math.max(0, selectedCustomer.balance)}

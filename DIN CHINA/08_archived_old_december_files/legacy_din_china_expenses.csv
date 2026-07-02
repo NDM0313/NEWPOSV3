@@ -1,0 +1,5 @@
+legacy_transaction_id,location_id,ref_no,expense_date,status,category_id,category_name,sub_category_id,sub_category_name,amount,payment_status,payment_method,payment_account_id,payment_account_name,description
+37,2,EP2025/0001,2025-10-28 21:55:00,final,1,TR SALE 2025,4,RENT,36000,paid,cash,115,DIN CASH TR G140,RENT BATY CASH BY DIN
+38,2,EP2025/0002,2025-10-01 22:15:00,final,1,TR SALE 2025,2,MAINTENANCE,19500,paid,cash,115,DIN CASH TR G140,MAZDOR BANDAL EXP + PALSTIC
+39,2,EP2025/0003,2025-11-22 22:16:00,final,1,TR SALE 2025,2,MAINTENANCE,20000,paid,cash,115,DIN CASH TR G140,DIN CASH TARPAL EXP
+43,2,EP2025/0004,2025-12-06 19:11:00,final,1,TR SALE 2025,2,MAINTENANCE,12500,paid,cash,115,DIN CASH TR G140,CHAIR EXP

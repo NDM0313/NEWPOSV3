@@ -1,0 +1,37 @@
+{
+  "pack": "scheduled-monitoring-ops-pack",
+  "generated_at": "2026-06-14T00:00:00Z",
+  "latest_main_commit": "9586e611",
+  "production_url": "https://erp.dincouture.pk",
+  "command": "npm run monitor:three-company-unified-ledger",
+  "schedule": {
+    "daily_business_hours": true,
+    "weekly_deep_optional": true
+  },
+  "required_env": [
+    "QA_BROWSER_PASSWORD_CHINA",
+    "QA_BROWSER_PASSWORD_BRIDAL",
+    "QA_BROWSER_PASSWORD_COUTURE"
+  ],
+  "optional_email_env": [
+    "QA_BROWSER_EMAIL_CHINA",
+    "QA_BROWSER_EMAIL_BRIDAL",
+    "QA_BROWSER_EMAIL_COUTURE"
+  ],
+  "warnings": {
+    "generic_qa_browser_email_ignored": true,
+    "generic_password_requires": "ALLOW_GENERIC_MONITORING_CREDENTIAL_FALLBACK=true"
+  },
+  "evidence_paths": {
+    "timestamped_json": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-<timestamp>.json",
+    "latest_json": "reports/single-core-ledger/operational-monitoring/latest-three-company-monitoring.json"
+  },
+  "pass_criteria": {
+    "profiles": ["din-china", "din-bridal", "din-couture"],
+    "flags_per_company": 12,
+    "loaders_per_company": 5,
+    "other_company_loaders": 0,
+    "cross_company_leakage": false
+  },
+  "no_production_mutation": true
+}

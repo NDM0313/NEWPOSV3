@@ -2,8 +2,26 @@
  * Read/write centralized printing settings from companies.printing_settings.
  */
 import { supabase } from '@/lib/supabase';
-import type { CompanyPrintingSettings } from '@/app/types/printingSettings';
-import { mergeWithDefaults } from '@/app/types/printingSettings';
+import type { CompanyPrintingSettings, ThermalSettings } from '@/app/types/printingSettings';
+import { DEFAULT_THERMAL, mergeWithDefaults } from '@/app/types/printingSettings';
+
+/** Browser silent-print automation guide (POS kiosk — not an in-app API). */
+export const POS_SILENT_PRINT_GUIDE = {
+  chromeFlag: '--kiosk-printing',
+  suggestedDeviceName: 'POSPrinter POS58',
+  note:
+    'Browser silent print is OS/Chrome policy. Set the Windows default printer to your POS58 device and launch Chrome/Edge with --kiosk-printing for unattended POS receipt printing.',
+} as const;
+
+/** Human-readable hint for Settings UI and docs. */
+export function getPosPrintAutomationHint(thermal?: Partial<ThermalSettings>): string {
+  const device = thermal?.posPrinterDeviceName?.trim() || DEFAULT_THERMAL.posPrinterDeviceName!;
+  return [
+    `Preferred printer: ${device}`,
+    `Launch flag: ${POS_SILENT_PRINT_GUIDE.chromeFlag}`,
+    POS_SILENT_PRINT_GUIDE.note,
+  ].join(' · ');
+}
 
 export const printingSettingsService = {
   async get(companyId: string): Promise<{ data: CompanyPrintingSettings | null; error: string | null }> {

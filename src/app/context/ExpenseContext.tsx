@@ -5,10 +5,10 @@ import { getCurrentLocalTimestamp, localNowDateString } from '@/app/utils/localD
 // Manages expenses with auto-numbering and accounting integration
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef, ReactNode } from 'react';
-import { documentNumberService } from '@/app/services/documentNumberService';
 import { useAccountingOptional } from '@/app/context/AccountingContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { expenseService, Expense as SupabaseExpense } from '@/app/services/expenseService';
+import { syncExpenseLinkedPayment } from '@/app/services/expensePaymentSyncService';
 import { accountingService } from '@/app/services/accountingService';
 import { voidJournalEntries } from '@/app/services/accountingIntegrityService';
 import {
@@ -32,6 +32,15 @@ import {
   postedPaymentDisplayFromRow,
 } from '@/app/lib/resolveExpensePaymentAccount';
 import { toast } from 'sonner';
+import { isPostedExpenseStatus } from '@/app/lib/expenseCancelPolicy';
+import {
+  DATA_INVALIDATED_EVENT,
+  dispatchAccountingInvalidated,
+  dispatchDataInvalidated,
+  dispatchExpenseLifecycleInvalidated,
+  shouldAcceptInvalidation,
+  type DataInvalidationDetail,
+} from '@/app/lib/dataInvalidationBus';
 
 // ============================================
 // TYPES
@@ -83,6 +92,7 @@ interface ExpenseContextType {
   createExpense: (expense: Omit<Expense, 'id' | 'expenseNo' | 'createdAt' | 'updatedAt'> & { category: ExpenseCategory | string }, options?: { branchId?: string; payment_account_id?: string; paidToUserId?: string; expense_category_id?: string }) => Promise<Expense>;
   updateExpense: (id: string, updates: Partial<Expense>, options?: { silent?: boolean }) => Promise<void>;
   deleteExpense: (id: string) => Promise<void>;
+  cancelExpense: (id: string, reason?: string) => Promise<void>;
   approveExpense: (id: string, approvedBy: string) => Promise<void>;
   rejectExpense: (id: string) => Promise<void>;
   markAsPaid: (id: string, paymentMethod: string) => Promise<void>;
@@ -114,6 +124,7 @@ export const useExpenses = () => {
           defaultError();
         },
         deleteExpense: defaultError,
+        cancelExpense: defaultError,
         recordPayment: defaultError,
         getExpensesByDateRange: () => [],
         getTotalByCategory: () => 0,
@@ -266,6 +277,78 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
     else if (!companyId) setLoading(false);
   }, [companyId, activated, loadExpenses]);
 
+  const patchExpenseInList = useCallback(
+    async (expenseId: string) => {
+      if (!companyId) return;
+      try {
+        const row = await expenseService.getExpense(expenseId);
+        if (!row) return;
+        const updated = convertFromSupabaseExpense(row);
+        setExpenses((prev) => {
+          const idx = prev.findIndex((e) => e.id === expenseId);
+          if (idx >= 0) {
+            const next = [...prev];
+            next[idx] = updated;
+            return next;
+          }
+          return [updated, ...prev];
+        });
+      } catch (e) {
+        console.warn('[EXPENSE CONTEXT] patchExpenseInList failed:', e);
+      }
+    },
+    [companyId, convertFromSupabaseExpense]
+  );
+
+  useEffect(() => {
+    if (!companyId || !activated) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const queue = () => {
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        void loadExpenses();
+      }, 220);
+    };
+    const onDataInvalidated = (ev: Event) => {
+      const detail = (ev as CustomEvent<DataInvalidationDetail>).detail;
+      const reason = String(detail?.reason ?? '');
+      if (reason.includes('fallback-poll')) return;
+      if (
+        !shouldAcceptInvalidation(detail, {
+          domain: ['expenses'],
+          companyId,
+          branchId: branchId === 'all' ? null : branchId ?? null,
+        })
+      ) {
+        return;
+      }
+      if ((reason === 'created' || reason === 'updated') && detail?.entityId) {
+        void patchExpenseInList(String(detail.entityId));
+        return;
+      }
+      queue();
+    };
+    window.addEventListener(DATA_INVALIDATED_EVENT, onDataInvalidated as EventListener);
+    return () => {
+      if (timer) clearTimeout(timer);
+      window.removeEventListener(DATA_INVALIDATED_EVENT, onDataInvalidated as EventListener);
+    };
+  }, [branchId, companyId, activated, loadExpenses, patchExpenseInList]);
+
+  const notifyExpenseChanged = useCallback(
+    (expenseId: string | null, reason: string) => {
+      if (!companyId) return;
+      dispatchExpenseLifecycleInvalidated({
+        companyId,
+        branchId: branchId === 'all' ? null : branchId ?? null,
+        expenseId,
+        reason,
+      });
+    },
+    [companyId, branchId]
+  );
+
   // Get expense by ID
   const getExpenseById = (id: string): Expense | undefined => {
     return expenses.find(e => e.id === id);
@@ -284,34 +367,40 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
     }
 
     try {
-      // ERP Numbering Engine: atomic, duplicate-free
-      const expenseNo = await documentNumberService.getNextDocumentNumber(companyId, effectiveBranchId, 'expense');
+      const status =
+        expenseData.status === 'paid'
+          ? 'paid'
+          : expenseData.status === 'approved'
+            ? 'approved'
+            : expenseData.status === 'rejected'
+              ? 'rejected'
+              : 'submitted';
 
-      // Convert to Supabase format (expense_no = EXP-0001 style from document numbering)
-      const supabaseExpense: Partial<SupabaseExpense> = {
-        company_id: companyId,
-        branch_id: effectiveBranchId,
-        expense_no: expenseNo,
-        expense_date: expenseData.date,
-        category: mapCategoryToSupabase(expenseData.category),
-        description: expenseData.description,
-        amount: expenseData.amount,
-        payment_method: expenseData.paymentMethod,
-        status: expenseData.status === 'paid' ? 'paid' : expenseData.status === 'approved' ? 'approved' : expenseData.status === 'rejected' ? 'rejected' : 'submitted',
-        notes: expenseData.notes,
-        created_by: user.id,
-      };
-      if (options?.payment_account_id) supabaseExpense.payment_account_id = options.payment_account_id;
-      if (options?.paidToUserId) (supabaseExpense as any).paid_to_user_id = options.paidToUserId;
-      if (options?.expense_category_id) (supabaseExpense as any).expense_category_id = options.expense_category_id;
-      if (expenseData.payeeName?.trim()) (supabaseExpense as any).vendor_name = expenseData.payeeName.trim();
+      const result = await expenseService.createExpenseDocument({
+        companyId,
+        branchId: effectiveBranchId,
+        createdBy: user.id,
+        expense: {
+          expense_date: expenseData.date,
+          category: mapCategoryToSupabase(expenseData.category),
+          description: expenseData.description,
+          amount: expenseData.amount,
+          payment_method: expenseData.paymentMethod,
+          status,
+          payment_account_id: options?.payment_account_id,
+          receipt_url: expenseData.receiptUrl?.trim() || undefined,
+        },
+        patch: {
+          paid_to_user_id: options?.paidToUserId,
+          expense_category_id: options?.expense_category_id,
+          vendor_name: expenseData.payeeName?.trim() || undefined,
+        },
+      });
 
-      // Save to Supabase
-      const result = await expenseService.createExpense(supabaseExpense);
-
-      // Convert back to app format (use generated expenseNo if DB doesn't return expense_no)
+      const expenseNo = String((result as { expense_no?: string }).expense_no || '');
+      const receiptWarning = (result as { _receiptWarning?: string })._receiptWarning;
       const newExpense = convertFromSupabaseExpense(result);
-      if (!newExpense.expenseNo) (newExpense as { expenseNo: string }).expenseNo = expenseNo;
+      if (!newExpense.expenseNo && expenseNo) (newExpense as { expenseNo: string }).expenseNo = expenseNo;
       
       // Update local state
       setExpenses(prev => [newExpense, ...prev]);
@@ -320,21 +409,35 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
         window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'user', entityId: options.paidToUserId } }));
       }
 
-      // Auto-post to accounting if paid
+      toast.success(`Expense ${newExpense.expenseNo || expenseNo} created successfully!`);
+      if (receiptWarning) toast.warning(receiptWarning);
+
+      dispatchDataInvalidated({
+        domain: 'expenses',
+        companyId,
+        branchId: effectiveBranchId,
+        entityId: newExpense.id,
+        reason: 'created',
+      });
+
       if (newExpense.status === 'paid') {
-        accounting?.recordExpense({
-          expenseId: newExpense.id,
-          category: newExpense.category,
-          amount: newExpense.amount,
-          paymentMethod: newExpense.paymentMethod,
-          date: newExpense.date,
-          description: newExpense.description,
-          creditAccountId: options?.payment_account_id,
+        void expenseService.postExpenseAccounting(newExpense.id).then((post) => {
+          if (!post.success) {
+            toast.warning(
+              post.error
+                ? `Expense saved; accounting post failed: ${post.error}`
+                : 'Expense saved; cash book may be missing until accounting posts.',
+            );
+          }
+          dispatchAccountingInvalidated({
+            companyId,
+            branchId: effectiveBranchId,
+            entityId: newExpense.id,
+            reason: 'expense:created',
+          });
         });
       }
 
-      toast.success(`Expense ${expenseNo} created successfully!`);
-      
       return newExpense;
     } catch (error: any) {
       console.error('[EXPENSE CONTEXT] Error creating expense:', error);
@@ -405,6 +508,7 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
       if (updates.approvedDate !== undefined) supabaseUpdates.approved_at = updates.approvedDate;
       if (updates.date !== undefined) supabaseUpdates.expense_date = updates.date;
       if (updates.location !== undefined) supabaseUpdates.branch_id = updates.location;
+      if (updates.receiptUrl !== undefined) supabaseUpdates.receipt_url = updates.receiptUrl || null;
       const pAcc = updates.paymentAccountId;
       if (pAcc !== undefined) supabaseUpdates.payment_account_id = pAcc || null;
 
@@ -657,6 +761,34 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
             data: { jeId, oldAmount: existing?.amount, newAmount, description: newDesc },
           });
 
+          const mergedPayAcc =
+            updates.paymentAccountId !== undefined
+              ? updates.paymentAccountId || null
+              : existing.paymentAccountId || null;
+
+          if (classification.actionPlan.touchPayments) {
+            const sync = await syncExpenseLinkedPayment({
+              companyId,
+              expenseId: id,
+              expenseNo: existing.expenseNo,
+              amount: newAmount,
+              paymentAccountId: mergedPayAcc,
+              jeId,
+              performedBy: user?.id ?? null,
+            });
+            if (!sync.ok) {
+              throw new Error(sync.error || 'Could not sync linked payment amount to expense.');
+            }
+            pushExpenseEditTrace({
+              traceId,
+              ts: getCurrentLocalTimestamp(),
+              expenseId: id,
+              companyId: companyId || null,
+              phase: 'payment_sync',
+              data: { paymentId: sync.paymentId, updated: sync.updated },
+            });
+          }
+
           // Refresh
           if (typeof window !== 'undefined') {
             window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
@@ -697,6 +829,7 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
       );
 
       if (!options?.silent) toast.success('Expense updated successfully!');
+      notifyExpenseChanged(id, 'updated');
       void accounting?.refreshEntries();
       pushExpenseEditTrace({
         traceId,
@@ -721,23 +854,50 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // Delete expense
+  // Delete expense (draft/unposted only)
   const deleteExpense = async (id: string): Promise<void> => {
     const expense = getExpenseById(id);
     if (!expense) {
       throw new Error('Expense not found');
     }
+    if (isPostedExpenseStatus(expense.status)) {
+      throw new Error('Posted expenses must be cancelled, not deleted.');
+    }
 
     try {
-      // Delete from Supabase
       await expenseService.deleteExpense(id, companyId || undefined);
-      
-      // Update local state
-      setExpenses(prev => prev.filter(e => e.id !== id));
+      setExpenses((prev) => prev.filter((e) => e.id !== id));
       toast.success(`${expense.expenseNo} deleted successfully!`);
+      notifyExpenseChanged(id, 'deleted');
     } catch (error: any) {
       console.error('[EXPENSE CONTEXT] Error deleting expense:', error);
       toast.error(`Failed to delete expense: ${error.message || 'Unknown error'}`);
+      throw error;
+    }
+  };
+
+  const cancelExpense = async (id: string, reason = 'Cancelled by user'): Promise<void> => {
+    const expense = getExpenseById(id);
+    if (!expense) {
+      throw new Error('Expense not found');
+    }
+    if (!companyId) {
+      throw new Error('Company not loaded');
+    }
+
+    try {
+      await expenseService.cancelPostedExpense(id, companyId, reason, user?.id ?? null);
+      setExpenses((prev) =>
+        prev.map((e) =>
+          e.id === id ? { ...e, status: 'rejected' as ExpenseStatus, updatedAt: new Date().toISOString() } : e
+        )
+      );
+      void accounting?.refreshEntries();
+      toast.success(`${expense.expenseNo} cancelled — audit trail preserved.`);
+      notifyExpenseChanged(id, 'cancelled');
+    } catch (error: any) {
+      console.error('[EXPENSE CONTEXT] Error cancelling expense:', error);
+      toast.error(`Failed to cancel expense: ${error.message || 'Unknown error'}`);
       throw error;
     }
   };
@@ -796,17 +956,14 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
         { silent: true }
       );
 
-      const ok = await (accounting?.recordExpense({
-        expenseId: expense.id,
-        category: String(expense.category),
-        description: expense.description,
-        amount: expense.amount,
-        paymentMethod: paymentMethod as any,
-        date: expense.date,
-      }) ?? Promise.resolve(false));
+      const post = await expenseService.postExpenseAccounting(expense.id);
 
-      if (!ok) {
-        toast.error('Expense marked paid but accounting post failed. Check Chart of Accounts.');
+      if (!post.success) {
+        toast.error(
+          post.error
+            ? `Expense marked paid but accounting post failed: ${post.error}`
+            : 'Expense marked paid but accounting post failed. Check Chart of Accounts.',
+        );
       } else {
         toast.success(`${expense.expenseNo} marked as paid and posted to accounting!`);
       }
@@ -840,6 +997,7 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
     createExpense,
     updateExpense,
     deleteExpense,
+    cancelExpense,
     approveExpense,
     rejectExpense,
     markAsPaid,
@@ -849,7 +1007,7 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
     refreshExpenses: loadExpenses,
     __activate: activate,
   }), [
-    expenses, loading, getExpenseById, createExpense, updateExpense, deleteExpense,
+    expenses, loading, getExpenseById, createExpense, updateExpense, deleteExpense, cancelExpense,
     approveExpense, rejectExpense, markAsPaid, getExpensesByCategory,
     getExpensesByStatus, getTotalByCategory, loadExpenses, activate,
   ]);

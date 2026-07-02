@@ -1,0 +1,43 @@
+{
+  "run": "PHASE_3B_G_CASH_FLOW_FINANCE_DECISION_FORM",
+  "generated_at": "2026-06-29T16:00:00.000Z",
+  "defaultStatus": "PENDING",
+  "loaderSwapApproved": false,
+  "officialCashFlow": "legacy_roznamcha",
+  "recordedByPhase3B_H": true,
+  "decisions": [
+    {
+      "id": "Q4",
+      "question": "Opening balance rows treatment",
+      "selected_option": "A",
+      "status": "APPROVED",
+      "reviewer": "Nadeem Khan",
+      "review_date": "2026-06-29",
+      "notes": "Preview alignment only — opening summary-only, not period cash-in",
+      "loader_swap_approved": false,
+      "primary_company": "DIN BRIDAL"
+    },
+    {
+      "id": "Q5",
+      "question": "Internal transfers treatment",
+      "selected_option": "C",
+      "status": "APPROVED",
+      "reviewer": "Nadeem Khan",
+      "review_date": "2026-06-29",
+      "notes": "Preview alignment only — transfers excluded from normal totals",
+      "loader_swap_approved": false,
+      "primary_company": "DIN CHINA"
+    },
+    {
+      "id": "Q7",
+      "question": "Treatment of current deltas",
+      "selected_option": "B",
+      "status": "APPROVED_FOR_PREVIEW_ALIGNMENT_ONLY",
+      "reviewer": "Nadeem Khan",
+      "review_date": "2026-06-29",
+      "notes": "Phase 3B-H preview alignment implemented; legacy official unchanged; loader swap NOT APPROVED",
+      "loader_swap_approved": false,
+      "affected_companies": ["DIN CHINA", "DIN BRIDAL", "DIN COUTURE"]
+    }
+  ]
+}

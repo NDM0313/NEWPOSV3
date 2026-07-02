@@ -35,16 +35,28 @@ import { useSubmitLock } from '../../contexts/LoadingContext';
 import { formatSaleChargeDisplayLabel } from '../../lib/saleChargeDisplay';
 import { ExpenseCategorySheet } from './ExpenseCategorySheet';
 import { ExpenseDetailSheet } from './ExpenseDetailSheet';
+import { AttachmentIndicatorButton } from '../shared/AttachmentIndicatorButton';
+import { AttachmentPreviewModal } from '../sales/AttachmentPreviewModal';
 import {
-  categoryRequires4120Clearing,
+  categoryIsDirect4120Clearing,
   collectCategoryIdsForClearingFilter,
   collectClearingSlugsUnder,
   displayLabelForCategoryId,
-  expenseMatchesMainFilter,
+  buildExpenseFilterChips,
+  expenseMatchesCategoryFilter,
   resolveExpenseCategoryIdFromLevels,
 } from '../../lib/expenseCategoryTreeUtils';
 
 const MAX_EXPENSE_RECEIPT_BYTES = 5 * 1024 * 1024;
+
+function expenseReceiptName(url: string): string {
+  const base = url.split('/').pop() || 'receipt';
+  try {
+    return decodeURIComponent(base.replace(/^\d+_/, ''));
+  } catch {
+    return base;
+  }
+}
 
 interface ExpenseModuleProps {
   onBack: () => void;
@@ -129,7 +141,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
   const effectiveProfileId = useEffectiveWorkerProfileId() ?? user.profileId ?? null;
   const effectiveRole = useEffectiveWorkerRole(user.role);
   const isolateWorkerData = shouldIsolateCounterWorkerData(effectiveRole);
-  const { canViewBalances, branchIds, isAdminOrOwner } = usePermissions();
+  const { canViewBalances, branchIds, isAdminOrOwner, isPermissionLoaded } = usePermissions();
 
   const listBranchScope = useMemo(
     () => resolveCounterListBranchScope(branch?.id, branchIds, isAdminOrOwner, isolateWorkerData),
@@ -159,9 +171,12 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
     }[]
   >([]);
   const [loading, setLoading] = useState(!!companyId);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadWarning, setLoadWarning] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [showCategories, setShowCategories] = useState(false);
   const [detailExpenseId, setDetailExpenseId] = useState<string | null>(null);
+  const [receiptPreview, setReceiptPreview] = useState<{ url: string; name: string } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<expensesApi.ExpenseRow | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [addCategory, setAddCategory] = useState(CATEGORY_OPTIONS[0]);
@@ -187,6 +202,9 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
   const [subCategoryId, setSubCategoryId] = useState('');
   const [leafCategoryId, setLeafCategoryId] = useState('');
   const [addReceiptFile, setAddReceiptFile] = useState<File | null>(null);
+  const [existingReceiptUrl, setExistingReceiptUrl] = useState<string | null>(null);
+  const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
+  const [editingExpenseNo, setEditingExpenseNo] = useState<string | null>(null);
   const [isProcessingReceipt, setIsProcessingReceipt] = useState(false);
   const [receiptNotice, setReceiptNotice] = useState<string | null>(null);
   const [documentBranchId, setDocumentBranchId] = useState<string | null>(null);
@@ -238,6 +256,9 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
     setLeafCategoryId('');
     setPaidToUserId('');
     setAddReceiptFile(null);
+    setExistingReceiptUrl(null);
+    setEditingExpenseId(null);
+    setEditingExpenseNo(null);
     setAddExpenseDate(localNowDateString());
     setSelectedClearingChargeId('');
     setClearingLines([]);
@@ -298,6 +319,9 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
 
   const handleOpenAdd = () => {
     if (!companyId || branchGateLoading) return;
+    setEditingExpenseId(null);
+    setEditingExpenseNo(null);
+    setExistingReceiptUrl(null);
     if (branch?.id === 'all') {
       runWithBranch(
         (pickedId) => {
@@ -316,13 +340,31 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
     if (showAdd) setAddExpenseDate(localNowDateString());
   }, [showAdd]);
 
+  const noBranchAccess =
+    isPermissionLoaded &&
+    listBranchScope.mode === 'accessible' &&
+    listBranchScope.branchIds.length === 0;
+
   const loadExpenses = useCallback(
     async (opts?: { silent?: boolean }) => {
       if (!companyId) {
         setLoading(false);
         return;
       }
+      if (!isPermissionLoaded) {
+        if (!opts?.silent) setLoading(true);
+        return;
+      }
+      if (noBranchAccess) {
+        setLoading(false);
+        setLoadError('No branch access configured for your account. Contact an administrator.');
+        setLoadWarning(null);
+        setList([]);
+        return;
+      }
       if (!opts?.silent) setLoading(true);
+      setLoadError(null);
+      setLoadWarning(null);
       const scope = listBranchScope;
       const apiBranchId = scope.mode === 'single' ? scope.branchId : null;
       const accessibleBranchIds = scope.mode === 'accessible' ? scope.branchIds : undefined;
@@ -330,7 +372,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
         accessibleBranchIds,
       });
       setLoading(false);
-      if (!error && data) {
+      if (data?.length) {
         setList(
           data.map((r) => ({
             id: r.id,
@@ -353,9 +395,15 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
             vendor_name: r.vendor_name ?? null,
           })),
         );
+        if (error) setLoadWarning(error);
+      } else if (error) {
+        setLoadError(error);
+        setList([]);
+      } else {
+        setList([]);
       }
     },
-    [companyId, listBranchScope, user.id]
+    [companyId, listBranchScope, isPermissionLoaded, noBranchAccess],
   );
 
   useEffect(() => {
@@ -415,8 +463,8 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
     selectedLeaf?.type === 'salary';
 
   const isClearingCategory =
-    categoryTree.length > 0 && selectedMain
-      ? categoryRequires4120Clearing(selectedMain)
+    categoryTree.length > 0 && deepestCategory
+      ? categoryIsDirect4120Clearing(deepestCategory)
       : CLEARING_CATEGORY_SLUGS.has(slugLower);
 
   const selectedClearingLine = clearingLines.find(
@@ -557,12 +605,8 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
       showExpenseError(clearingLoadError);
       return;
     }
-    if (isClearingCategory && !selectedClearingLine) {
-      showExpenseError(
-        clearingLines.length === 0
-          ? 'No open sale extra to pay against. Finalize a sale with stitching/dying extras first.'
-          : 'Select a sale extra charge to pay against (4120 clearing).',
-      );
+    if (isClearingCategory && clearingLines.length > 0 && !selectedClearingLine) {
+      showExpenseError('Select a sale extra charge to pay against (4120 clearing).');
       return;
     }
     if (
@@ -581,20 +625,16 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
       return;
     }
     const expenseUserId = effectiveUserId;
-    await runSave('Saving expense...', async () => {
+    const editId = editingExpenseId;
+    await runSave(editId ? 'Updating expense...' : 'Saving expense...', async () => {
     setAddError(null);
     setSubmitErrorModal(null);
-    let receiptUrl: string | null = null;
+    let receiptUrl: string | null = existingReceiptUrl;
     if (addReceiptFile && navigator.onLine) {
       const up = await expensesApi.uploadExpenseReceipt(companyId, addReceiptFile);
       if (up.error) {
-        if (up.kind === 'bucket') {
-          receiptUrl = null;
-          showExpenseError(up.error);
-        } else {
-          showExpenseError(up.error);
-          return;
-        }
+        showExpenseError(up.error);
+        return;
       } else if (!up.url) {
         showExpenseError('Receipt could not be uploaded. Remove the file or try again.');
         return;
@@ -603,6 +643,61 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
       }
     }
     const paymentMethod = paymentAccounts.length > 0 ? paymentMethodFromAccount : 'cash';
+
+    if (editId) {
+      if (!navigator.onLine) {
+        showExpenseError('Editing expenses requires an internet connection.');
+        return;
+      }
+      const { data, error } = await expensesApi.updateExpense({
+        companyId,
+        expenseId: editId,
+        branchId: writeBranchId,
+        category: effectiveCategorySlug,
+        description: descriptionFinal,
+        amount: amt,
+        paymentMethod,
+        expenseDate: addExpenseDate,
+        paymentAccountId: addAccountId || undefined,
+        receiptUrl: receiptUrl ?? undefined,
+        paidToUserId: isSalaryCategory && paidToUserId ? paidToUserId : undefined,
+        payeeName: isSalaryCategory && selectedSalaryUser ? selectedSalaryUser.full_name : undefined,
+        expenseCategoryId: resolvedCategoryId || undefined,
+      });
+      if (error) {
+        showExpenseError(error);
+        return;
+      }
+      const displayCategory = resolvedCategoryId
+        ? displayLabelForCategoryId(categoryTree, resolvedCategoryId, addCategory)
+        : addCategory;
+      const updated = data!;
+      setList((prev) =>
+        prev.map((e) =>
+          e.id === editId
+            ? {
+                ...e,
+                expense_no: updated.expense_no || e.expense_no,
+                date: updated.expense_date,
+                category: displayCategory,
+                expense_category_id: updated.expense_category_id ?? resolvedCategoryId ?? null,
+                description: updated.description,
+                amount: updated.amount,
+                branch_id: updated.branch_id ?? writeBranchId,
+                payment_account_id: updated.payment_account_id ?? null,
+                payment_account_display: updated.payment_account_display,
+                payment_method: updated.payment_method,
+                receipt_url: updated.receipt_url ?? null,
+              }
+            : e,
+        ),
+      );
+      setAddError(null);
+      setSubmitErrorModal(null);
+      resetAddFormAndDraft();
+      void loadExpenses({ silent: true });
+      return;
+    }
 
     if (!navigator.onLine) {
       try {
@@ -693,12 +788,17 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
         amount: amt,
         branch_id: writeBranchId,
         created_by: expenseUserId,
+        receipt_url: receiptUrl || null,
       },
       ...prev,
     ]);
+    if (data?.receiptWarning) {
+      setReceiptNotice(data.receiptWarning);
+    }
     setAddError(null);
     setSubmitErrorModal(null);
     resetAddFormAndDraft();
+    void loadExpenses({ silent: true });
     });
   };
 
@@ -719,17 +819,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
   }, [list, listBranchScope, isolateWorkerData, effectiveUserId, effectiveProfileId]);
 
   const filterChips = useMemo(() => {
-    const all = { value: 'all', label: 'All', icon: '📊' };
-    if (categoryTree.length > 0) {
-      return [
-        all,
-        ...categoryTree.map((m) => ({
-          value: m.name,
-          label: m.name,
-          icon: '📁',
-        })),
-      ];
-    }
+    if (categoryTree.length > 0) return buildExpenseFilterChips(categoryTree);
     return CATEGORIES;
   }, [categoryTree]);
 
@@ -743,6 +833,10 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
 
   const prefillEditFromRow = useCallback(
     (row: (typeof list)[number]) => {
+      setEditingExpenseId(row.id);
+      setEditingExpenseNo(row.expense_no || null);
+      setExistingReceiptUrl(row.receipt_url ?? null);
+      setAddReceiptFile(null);
       setAddDesc(row.description);
       setAddAmount(String(row.amount));
       setAddExpenseDate(row.date);
@@ -789,20 +883,12 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
 
   const filtered = useMemo(() => {
     const rows = scopedList.filter((e) => {
-      const matchCat =
-        filterCategory === 'all' ||
-        (() => {
-          const main = categoryTree.find((m) => m.name === filterCategory);
-          if (main) {
-            return expenseMatchesMainFilter(
-              e.category,
-              e.expense_category_id,
-              main,
-              categoryTree,
-            );
-          }
-          return e.category === filterCategory;
-        })();
+      const matchCat = expenseMatchesCategoryFilter(
+        filterCategory,
+        e.category,
+        e.expense_category_id,
+        categoryTree,
+      );
       const label = categoryLabelForRow(e);
       const matchSearch =
         e.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -841,8 +927,12 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
               <ArrowLeft className="w-5 h-5" />
             </button>
             <div>
-              <h1 className="font-semibold text-white">Add Expense</h1>
-              <p className="text-xs text-white/80">Record new business expense</p>
+              <h1 className="font-semibold text-white">{editingExpenseId ? 'Edit Expense' : 'Add Expense'}</h1>
+              <p className="text-xs text-white/80">
+                {editingExpenseId
+                  ? editingExpenseNo || 'Update existing expense'
+                  : 'Record new business expense'}
+              </p>
             </div>
           </div>
         </div>
@@ -943,7 +1033,8 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
             {isClearingCategory && (
               <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
                 <span className="block text-sm font-medium text-[#D1D5DB] mb-2">
-                  Link to sale extra (4120 clearing) *
+                  Link to sale extra (4120 clearing)
+                  {clearingLines.length > 0 ? ' *' : ''}
                 </span>
                 {clearingLinesLoading ? (
                   <p className="text-sm text-[#9CA3AF] flex items-center gap-2">
@@ -953,7 +1044,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
                   <p className="text-xs text-[#EF4444]">{clearingLoadError}</p>
                 ) : clearingLines.length === 0 ? (
                   <p className="text-xs text-[#9CA3AF]">
-                    No open extra-service balance. Finalize a sale with stitching extras first.
+                    No open extra-service balance to clear. You can still save this as a normal expense.
                   </p>
                 ) : (
                   <>
@@ -1239,10 +1330,12 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
                   onClick={() => setFilterCategory(cat.value)}
                   className={`flex items-center gap-1.5 px-3 py-2 rounded-lg whitespace-nowrap transition-all ${
                     filterCategory === cat.value ? 'bg-white text-[#EF4444]' : 'bg-white/10 text-white hover:bg-white/20'
-                  }`}
+                  } ${'isSub' in cat && cat.isSub ? 'text-[11px]' : ''}`}
                 >
                   <span>{cat.icon}</span>
-                  <span className="text-xs font-medium">{cat.label}</span>
+                  <span className={`font-medium ${'isSub' in cat && cat.isSub ? 'text-[11px]' : 'text-xs'}`}>
+                    {cat.label}
+                  </span>
                 </button>
               ))}
             </div>
@@ -1257,9 +1350,28 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
         spinnerAccentClass="border-t-[#EF4444]"
       >
       <div className="p-4 space-y-4">
-        {loading ? (
+        {loadWarning && (
+          <div className="p-3 bg-[#F59E0B]/10 border border-[#F59E0B]/40 rounded-xl text-sm text-[#FCD34D]">
+            {loadWarning}
+          </div>
+        )}
+        {loading || !isPermissionLoaded ? (
           <div className="flex justify-center py-12">
             <Loader2 className="w-8 h-8 text-[#EF4444] animate-spin" />
+          </div>
+        ) : loadError ? (
+          <div className="text-center py-12">
+            <div className="w-16 h-16 bg-[#EF4444]/10 rounded-full flex items-center justify-center mx-auto mb-3">
+              <DollarSign className="w-8 h-8 text-[#FCA5A5]" />
+            </div>
+            <p className="text-[#FCA5A5] text-sm">{loadError}</p>
+            <button
+              type="button"
+              onClick={() => void loadExpenses()}
+              className="mt-4 px-4 py-2 bg-[#374151] hover:bg-[#4B5563] rounded-lg text-white text-sm font-medium"
+            >
+              Retry
+            </button>
           </div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-12">
@@ -1267,7 +1379,11 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
               <DollarSign className="w-8 h-8 text-[#6B7280]" />
             </div>
             <p className="text-[#9CA3AF] text-sm">No expenses found</p>
-            <p className="text-[#6B7280] text-xs mt-1 mb-4">Try adjusting your filters or add a new expense</p>
+            <p className="text-[#6B7280] text-xs mt-1 mb-4">
+              {noBranchAccess
+                ? 'You need branch access to view expenses.'
+                : 'Try adjusting your filters or add a new expense'}
+            </p>
             <button
               type="button"
               onClick={handleOpenAdd}
@@ -1320,11 +1436,30 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
                         <div className="flex items-start gap-3 flex-1 min-w-0">
                           <span className="text-2xl">{getCategoryIcon(e.category)}</span>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-white mb-1">{categoryLabelForRow(e)}</p>
-                            <p className="text-xs text-[#9CA3AF] line-clamp-2">{e.description || e.expense_no}</p>
+                            <p className="text-sm font-semibold text-white truncate mb-1">
+                              {e.expense_no && e.expense_no !== '—' ? (
+                                <>
+                                  <span className="font-mono font-normal">{e.expense_no}</span>
+                                  <span className="text-[#6B7280] font-normal"> · </span>
+                                </>
+                              ) : null}
+                              {categoryLabelForRow(e)}
+                            </p>
+                            <p className="text-xs text-[#9CA3AF] line-clamp-2">{e.description}</p>
                           </div>
                         </div>
-                        <div className="text-right ml-2">
+                        <div className="text-right ml-2 flex items-start gap-0.5 shrink-0">
+                          {e.receipt_url ? (
+                            <AttachmentIndicatorButton
+                              size="sm"
+                              onClick={() =>
+                                setReceiptPreview({
+                                  url: e.receipt_url!,
+                                  name: expenseReceiptName(e.receipt_url!),
+                                })
+                              }
+                            />
+                          ) : null}
                           <p className="text-base font-bold text-[#EF4444]">- Rs. {e.amount.toLocaleString()}</p>
                         </div>
                       </div>
@@ -1390,6 +1525,14 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
           setDetailExpenseId(null);
           setDeleteTarget(exp);
         }}
+      />
+    ) : null}
+    {receiptPreview ? (
+      <AttachmentPreviewModal
+        isOpen={!!receiptPreview}
+        attachments={[receiptPreview]}
+        initialIndex={0}
+        onClose={() => setReceiptPreview(null)}
       />
     ) : null}
     {deleteTarget ? (

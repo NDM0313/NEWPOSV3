@@ -15,6 +15,7 @@ import {
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
+import { DatePicker } from '@/app/components/ui/DatePicker';
 import { Label } from '@/app/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
 import {
@@ -376,12 +377,7 @@ export function PartyTieOutRepairPanel({ branchId }: { branchId: string | null }
           </div>
           <div className="space-y-1">
             <Label className="text-gray-400 text-xs">As-of date</Label>
-            <Input
-              type="date"
-              className="w-[160px] bg-gray-950 border-gray-700"
-              value={asOf}
-              onChange={(e) => setAsOf(e.target.value)}
-            />
+            <DatePicker value={asOf} onChange={(v) => setAsOf(v)} className="w-[160px]" />
           </div>
           <Button onClick={() => void run()} disabled={loading || !partyId} className="gap-1">
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}

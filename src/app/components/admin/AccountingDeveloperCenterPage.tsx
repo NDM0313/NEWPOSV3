@@ -1,8 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Shield, BookOpen, Lock } from 'lucide-react';
+import { Shield, BookOpen, Lock, ArrowLeft } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
+import { Button } from '@/app/components/ui/button';
 import { useSupabase } from '@/app/context/SupabaseContext';
+import { useNavigation } from '@/app/context/NavigationContext';
 import { canAccessAccountingDeveloperCenter } from '@/app/lib/accountingDeveloperCenterAccess';
+import { leaveSpecialAppRoute } from '@/app/lib/specialRouteNavigation';
 import {
   buildDeveloperCenterUrl,
   DISABLED_PLACEHOLDER_TABS,
@@ -10,12 +13,20 @@ import {
   parseDeveloperCenterQuery,
   parseDeveloperCenterTab,
   PHASE_C_SHELL_TABS,
+  PHASE_DE_TABS,
   type DeveloperCenterTabId,
 } from '@/app/lib/accountingDeveloperCenterTabs';
 import { CoaHealthTab } from '@/app/components/admin/developer-center/CoaHealthTab';
 import { TransactionTraceTab } from '@/app/components/admin/developer-center/TransactionTraceTab';
 import { RoznamchaTraceTab } from '@/app/components/admin/developer-center/RoznamchaTraceTab';
-import { PhaseCTabShell } from '@/app/components/admin/developer-center/PhaseCTabShell';
+import { StatementTraceTab } from '@/app/components/admin/developer-center/StatementTraceTab';
+import { DayBookDiagnosticsTab } from '@/app/components/admin/developer-center/DayBookDiagnosticsTab';
+import { PaymentTraceTab } from '@/app/components/admin/developer-center/PaymentTraceTab';
+import { JournalIntegrityTab } from '@/app/components/admin/developer-center/JournalIntegrityTab';
+import { RepairQueueTab } from '@/app/components/admin/developer-center/RepairQueueTab';
+import { RepairQueueProvider } from '@/app/components/admin/developer-center/RepairQueueContext';
+import { OpeningBalanceToolsTab } from '@/app/components/admin/developer-center/OpeningBalanceToolsTab';
+import { AuditLogTab } from '@/app/components/admin/developer-center/AuditLogTab';
 
 function readUrlState(): { tab: DeveloperCenterTabId; query: string } {
   if (typeof window === 'undefined') return { tab: 'coa', query: '' };
@@ -28,6 +39,7 @@ function readUrlState(): { tab: DeveloperCenterTabId; query: string } {
 
 export default function AccountingDeveloperCenterPage() {
   const { companyId, userRole } = useSupabase();
+  const { setCurrentView } = useNavigation();
   const allowed = canAccessAccountingDeveloperCenter(userRole);
   const initial = useMemo(() => readUrlState(), []);
   const [activeTab, setActiveTab] = useState<DeveloperCenterTabId>(initial.tab);
@@ -53,6 +65,11 @@ export default function AccountingDeveloperCenterPage() {
     },
     [urlQuery]
   );
+
+  const exitToErp = useCallback(() => {
+    setCurrentView('dashboard');
+    leaveSpecialAppRoute('/');
+  }, [setCurrentView]);
 
   if (!allowed) {
     return (
@@ -82,19 +99,50 @@ export default function AccountingDeveloperCenterPage() {
             Accounting Developer Center
           </h1>
           <p className="text-sm text-gray-400 mt-1">
-            Read-only COA health, transaction trace, Roznamcha trace (C2), and Phase C shells.
+            COA health, trace diagnostics (C2–C6), Repair Queue (D), Opening Balance preview & Audit Log (E).
           </p>
         </div>
-        <span className="text-xs text-gray-500 flex items-center gap-1" title="docs/accounting/coa-developer-center/">
-          <BookOpen className="w-3 h-3" />
-          docs/accounting/coa-developer-center/
-        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              window.location.href = '/admin/unified-ledger-tieout';
+            }}
+          >
+            Unified Ledger Compare
+          </Button>
+          <Button type="button" size="sm" variant="outline" onClick={exitToErp} className="gap-1.5">
+            <ArrowLeft className="w-4 h-4" />
+            Back to ERP
+          </Button>
+          <span className="text-xs text-gray-500 flex items-center gap-1" title="docs/accounting/coa-developer-center/">
+            <BookOpen className="w-3 h-3" />
+            docs/accounting/coa-developer-center/
+          </span>
+        </div>
       </div>
 
-      <div className="rounded-lg border border-violet-900/40 bg-violet-950/20 px-3 py-2 text-xs text-violet-200/90">
-        Read-only mode. Repair queue, void, sync, and OB tools remain disabled. Phase C shells are navigable only.
+      <div className="rounded-lg border border-violet-900/40 bg-violet-950/20 px-3 py-2 text-xs text-violet-200/90 space-y-1">
+        <p>Phase F controlled repairs: dry-run, confirm phrase, and audit log for every apply. No SQL editor or mass updates.</p>
+        <p className="text-gray-400">
+          For AR/AP variance and exception queues, start at{' '}
+          <button
+            type="button"
+            className="text-cyan-300 hover:underline"
+            onClick={() => {
+              setCurrentView('ar-ap-reconciliation-center');
+              leaveSpecialAppRoute('/');
+            }}
+          >
+            AR/AP Diagnostics
+          </button>{' '}
+          (Overview &amp; Queues / Tie-out) — this center is for COA, trace shells, and confirm-gated repairs.
+        </p>
       </div>
 
+      <RepairQueueProvider>
       <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
         <TabsList className="bg-gray-900 border border-gray-800 flex-wrap h-auto gap-1 p-1">
           <TabsTrigger value="coa">COA Health</TabsTrigger>
@@ -104,11 +152,16 @@ export default function AccountingDeveloperCenterPage() {
               {t.label}
             </TabsTrigger>
           ))}
+          {PHASE_DE_TABS.map((t) => (
+            <TabsTrigger key={t.id} value={t.id}>
+              {t.label}
+            </TabsTrigger>
+          ))}
           {DISABLED_PLACEHOLDER_TABS.map((label) => (
             <span
               key={label}
               className="inline-flex items-center px-3 py-1.5 text-xs text-gray-600 opacity-50 cursor-not-allowed rounded-md"
-              title="Permanently disabled in Developer Center"
+              title="Not implemented"
             >
               {label}
             </span>
@@ -127,17 +180,35 @@ export default function AccountingDeveloperCenterPage() {
           <RoznamchaTraceTab companyId={companyId} initialQuery={urlQuery} />
         </TabsContent>
 
-        {PHASE_C_SHELL_TABS.filter((t) => t.id !== 'roznamcha').map((t) => (
-          <TabsContent key={t.id} value={t.id}>
-            <PhaseCTabShell
-              title={t.label}
-              phase={t.phase}
-              blurb={t.blurb}
-              initialQuery={urlQuery || undefined}
-            />
-          </TabsContent>
-        ))}
+        <TabsContent value="statement">
+          <StatementTraceTab companyId={companyId} initialQuery={urlQuery} />
+        </TabsContent>
+
+        <TabsContent value="daybook">
+          <DayBookDiagnosticsTab companyId={companyId} initialQuery={urlQuery} />
+        </TabsContent>
+
+        <TabsContent value="payment">
+          <PaymentTraceTab companyId={companyId} initialQuery={urlQuery} />
+        </TabsContent>
+
+        <TabsContent value="journal">
+          <JournalIntegrityTab companyId={companyId} initialQuery={urlQuery} />
+        </TabsContent>
+
+        <TabsContent value="repair">
+          <RepairQueueTab companyId={companyId} />
+        </TabsContent>
+
+        <TabsContent value="opening">
+          <OpeningBalanceToolsTab companyId={companyId} initialQuery={urlQuery} />
+        </TabsContent>
+
+        <TabsContent value="audit">
+          <AuditLogTab companyId={companyId} />
+        </TabsContent>
       </Tabs>
+      </RepairQueueProvider>
     </div>
   );
 }

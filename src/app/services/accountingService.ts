@@ -1,7 +1,25 @@
 import { supabase } from '@/lib/supabase';
 import { fetchInBatches } from '@/app/lib/chunkInQuery';
-import { fetchCustomerLedgerSalesForRange, ledgerSalesRpcBranchId } from '@/app/services/customerLedgerApi';
-import { formatRentalPaymentRef } from '@/app/lib/rentalPaymentRef';
+import {
+  fetchCustomerLedgerSalesForRange,
+  fetchCustomerReceivedPaymentsForRange,
+  ledgerSalesRpcBranchId,
+} from '@/app/services/customerLedgerApi';
+import { formatRentalPaymentRef, isRcvReference } from '@/app/lib/rentalPaymentRef';
+import {
+  customerReceiptLedgerDescription,
+  rentalPaymentLedgerDescription,
+  resolvePartyLedgerReference,
+} from '@/app/lib/partyLedgerReference';
+import { filterLivePaymentsExcludingVoidedJournals } from '@/app/lib/paymentVoidVisibility';
+import { isPartyDiscountJournalForContact } from '@/app/lib/partyLedgerLegacyJournalMatch';
+import { appendRentalPaymentMergeItems } from '@/app/lib/rentalPenaltyLedgerLines';
+import {
+  mergeAttachmentLists,
+  normalizeAttachmentList,
+  receiptUrlToAttachments,
+  type TransactionAttachment,
+} from '@/app/utils/transactionAttachments';
 
 export interface JournalEntry {
   id?: string;
@@ -57,6 +75,10 @@ export interface AccountLedgerEntry {
   je_reference_type?: string | null;
   /** PF-14 / Phase 4 fingerprint on journal_entries. */
   je_action_fingerprint?: string | null;
+  /** journal_entry_lines.id for control-1100 repair pairing. */
+  journal_line_id?: string | null;
+  /** journal_entries.reference_id (source document / source JE for gl_correction). */
+  je_reference_id?: string | null;
   payment_id?: string;
   sale_id?: string;
   rental_id?: string;
@@ -73,6 +95,10 @@ export interface AccountLedgerEntry {
   ledger_kind?: 'standard' | 'reversal';
   /** journal_entries.economic_event_id when present */
   economic_event_id?: string | null;
+  /** Linked sale.status when JE references a sale (sale / sale_reversal / sale_return). */
+  linked_sale_status?: string | null;
+  /** payments.voided_at when row is payment-linked (voided payment trail). */
+  payment_voided_at?: string | null;
 }
 
 /**
@@ -97,6 +123,7 @@ function glStatementDocumentTypeFromReferenceType(
   const t = String(referenceType || '').toLowerCase().trim();
   if (t === 'sale') return 'Sale';
   if (t === 'sale_return') return 'Sale return';
+  if (t === 'sale_reversal') return 'Sale reversal';
   if (t === 'sale_adjustment' || t === 'sale_extra_expense') return 'Sale adjustment';
   if (t === 'payment' || t === 'payment_adjustment') return 'Payment';
   if (t === 'manual_receipt') return 'Manual receipt';
@@ -241,6 +268,9 @@ function arJournalLineMatchesCustomer(
   if (entry.reference_type === 'rental' && entry.reference_id) {
     return rentalIdsForParty.has(String(entry.reference_id));
   }
+  if (isPartyDiscountJournalForContact(entry, customerId)) {
+    return true;
+  }
   return false;
 }
 
@@ -322,6 +352,7 @@ function supplierApJournalLineMatchesSupplier(
   if (rt === 'on_account' && rid && String(rid) === String(supplierId)) return true;
   if (rt === 'manual_payment' && rid && String(rid) === String(supplierId)) return true;
   if (rt === 'opening_balance_contact_ap' && rid && String(rid) === String(supplierId)) return true;
+  if (isPartyDiscountJournalForContact(entry, supplierId)) return true;
   return false;
 }
 
@@ -608,17 +639,26 @@ function mergeLedgerEntryDescriptionForStatement(
 export const accountingService = {
   // Get all journal entries with lines
   // CRITICAL: Filter out entries for deleted purchases/sales
-  async getAllEntries(companyId: string, branchId?: string, startDate?: string | Date, endDate?: string | Date) {
+  async getAllEntries(
+    companyId: string,
+    branchId?: string,
+    startDate?: string | Date,
+    endDate?: string | Date,
+    opts?: { limit?: number; offset?: number }
+  ): Promise<any[] | { data: any[]; total: number }> {
     try {
       // Normalize dates to ISO YYYY-MM-DD so PostgREST accepts them (Date objects get serialized incorrectly otherwise).
       const startStr = startDate == null ? undefined : typeof startDate === 'string' ? startDate.slice(0, 10) : startDate.toISOString().slice(0, 10);
       const endStr = endDate == null ? undefined : typeof endDate === 'string' ? endDate.slice(0, 10) : endDate.toISOString().slice(0, 10);
+      const limit = opts?.limit ?? 500;
+      const offset = opts?.offset ?? 0;
 
       // SOURCE LOCK (Phase 1): journal_entries + journal_entry_lines only for GL.
       // Embed account name per line for display; avoid payment embed so query works when payment_id column is missing.
       let query = supabase
         .from('journal_entries')
-        .select(`
+        .select(
+          `
           *,
           lines:journal_entry_lines(
             id,
@@ -629,7 +669,9 @@ export const accountingService = {
             description,
             account:accounts(name, code, type)
           )
-        `)
+        `,
+          opts ? { count: 'exact' } : undefined
+        )
         .eq('company_id', companyId)
         .order('entry_date', { ascending: false })
         .order('created_at', { ascending: false });
@@ -647,21 +689,25 @@ export const accountingService = {
         query = query.lte('entry_date', endStr);
       }
 
-      const { data, error } = await query;
+      if (opts) {
+        query = query.range(offset, offset + limit - 1);
+      }
+
+      const { data, error, count } = await query;
       
       // Handle missing table gracefully
       if (error && (error.code === 'PGRST205' || error.message?.includes('does not exist'))) {
         console.warn('[ACCOUNTING SERVICE] journal_entries table does not exist, returning empty array');
-        return [];
+        return opts ? { data: [], total: 0 } : [];
       }
       
       if (error) {
         console.error('[ACCOUNTING SERVICE] Error fetching journal entries:', error);
-        return [];
+        return opts ? { data: [], total: 0 } : [];
       }
 
       if (!data || data.length === 0) {
-        return [];
+        return opts ? { data: [], total: count ?? 0 } : [];
       }
 
       // PF-14.4: Exclude voided entries from business ledgers/reports (audit can show all via raw query).
@@ -673,7 +719,12 @@ export const accountingService = {
         .map(e => e.reference_id) as string[];
       
       const saleIds = dataFiltered
-        .filter((e: any) => (e.reference_type === 'sale' || e.reference_type === 'sale_adjustment') && e.reference_id)
+        .filter((e: any) =>
+          (e.reference_type === 'sale' ||
+            e.reference_type === 'sale_adjustment' ||
+            e.reference_type === 'sale_reversal') &&
+          e.reference_id
+        )
         .map((e: any) => e.reference_id) as string[];
       
       // Include journal_entries.payment_id in the payments batch so supplier/customer settlement rows get PAY-xx / RCV-xx
@@ -696,72 +747,68 @@ export const accountingService = {
         [];
 
       if (purchaseIds.length > 0) {
-        const { data: purchases } = await supabase
-          .from('purchases')
-          .select('id')
-          .in('id', purchaseIds);
-        
-        if (purchases) {
-          existingPurchases = new Set(purchases.map((p: any) => p.id));
-        }
+        const purchases = await fetchInBatches(purchaseIds, async (chunk) => {
+          const { data, error } = await supabase.from('purchases').select('id').in('id', chunk);
+          if (error) throw error;
+          return data || [];
+        });
+        existingPurchases = new Set(purchases.map((p: any) => p.id));
       }
 
       if (saleIds.length > 0) {
-        const { data: sales } = await supabase
-          .from('sales')
-          .select('id')
-          .in('id', saleIds);
-        
-        if (sales) {
-          existingSales = new Set(sales.map((s: any) => s.id));
-        }
+        const sales = await fetchInBatches(saleIds, async (chunk) => {
+          const { data, error } = await supabase.from('sales').select('id').in('id', chunk);
+          if (error) throw error;
+          return data || [];
+        });
+        existingSales = new Set(sales.map((s: any) => s.id));
       }
 
       // For payments, check if the referenced purchase/sale exists (payment + payment_adjustment both use payment id)
       if (uniquePaymentIds.length > 0) {
-        const { data: payments } = await supabase
-          .from('payments')
-          .select('id, reference_type, reference_id, reference_number')
-          .in('id', uniquePaymentIds);
-        
-        if (payments) {
+        const payments = await fetchInBatches(uniquePaymentIds, async (chunk) => {
+          const { data, error } = await supabase
+            .from('payments')
+            .select('id, reference_type, reference_id, reference_number, attachments')
+            .in('id', chunk);
+          if (error) throw error;
+          return data || [];
+        });
+
+        if (payments.length > 0) {
           paymentsList = payments;
           const purchaseRefs = payments
             .filter((p: any) => p.reference_type === 'purchase' && p.reference_id)
             .map((p: any) => p.reference_id) as string[];
-          
+
           const saleRefs = payments
             .filter((p: any) => p.reference_type === 'sale' && p.reference_id)
             .map((p: any) => p.reference_id) as string[];
 
           // Check if referenced purchases exist
           if (purchaseRefs.length > 0) {
-            const { data: purchaseChecks } = await supabase
-              .from('purchases')
-              .select('id')
-              .in('id', purchaseRefs);
-            
-            if (purchaseChecks) {
-              const validPurchaseIds = new Set(purchaseChecks.map((p: any) => p.id));
-              payments
-                .filter((p: any) => p.reference_type === 'purchase' && validPurchaseIds.has(p.reference_id))
-                .forEach((p: any) => validPayments.add(p.id));
-            }
+            const purchaseChecks = await fetchInBatches(purchaseRefs, async (chunk) => {
+              const { data, error } = await supabase.from('purchases').select('id').in('id', chunk);
+              if (error) throw error;
+              return data || [];
+            });
+            const validPurchaseIds = new Set(purchaseChecks.map((p: any) => p.id));
+            payments
+              .filter((p: any) => p.reference_type === 'purchase' && validPurchaseIds.has(p.reference_id))
+              .forEach((p: any) => validPayments.add(p.id));
           }
 
           // Check if referenced sales exist
           if (saleRefs.length > 0) {
-            const { data: saleChecks } = await supabase
-              .from('sales')
-              .select('id')
-              .in('id', saleRefs);
-            
-            if (saleChecks) {
-              const validSaleIds = new Set(saleChecks.map((s: any) => s.id));
-              payments
-                .filter((p: any) => p.reference_type === 'sale' && validSaleIds.has(p.reference_id))
-                .forEach((p: any) => validPayments.add(p.id));
-            }
+            const saleChecks = await fetchInBatches(saleRefs, async (chunk) => {
+              const { data, error } = await supabase.from('sales').select('id').in('id', chunk);
+              if (error) throw error;
+              return data || [];
+            });
+            const validSaleIds = new Set(saleChecks.map((s: any) => s.id));
+            payments
+              .filter((p: any) => p.reference_type === 'sale' && validSaleIds.has(p.reference_id))
+              .forEach((p: any) => validPayments.add(p.id));
           }
 
           // Payments without reference_type or with other types are valid
@@ -912,28 +959,72 @@ export const accountingService = {
       (paymentsList || []).forEach((p: any) => {
         if (p.reference_type === 'purchase' && p.reference_id) purchaseIdsForPo.add(String(p.reference_id));
       });
+      const expenseIdsForNo = new Set<string>();
+      validEntries.forEach((e: any) => {
+        const rtN = String(e.reference_type || '')
+          .toLowerCase()
+          .trim()
+          .replace(/\s+/g, '_');
+        if (rtN === 'expense' && e.reference_id) expenseIdsForNo.add(String(e.reference_id));
+        if ((rtN === 'sale' || rtN === 'sale_reversal') && e.reference_id) {
+          saleIdsForInvoice.add(String(e.reference_id));
+        }
+      });
+      (paymentsList || []).forEach((p: any) => {
+        if (p.reference_type === 'expense' && p.reference_id) expenseIdsForNo.add(String(p.reference_id));
+      });
 
       const saleInvoiceNoById = new Map<string, string>();
+      const saleStatusById = new Map<string, string>();
+      const saleAttachmentsById = new Map<string, TransactionAttachment[]>();
       if (saleIdsForInvoice.size > 0) {
         const { data: saleRows } = await supabase
           .from('sales')
-          .select('id, invoice_no')
+          .select('id, invoice_no, status, attachments')
           .in('id', [...saleIdsForInvoice]);
         (saleRows || []).forEach((s: any) => {
           if (s?.id && s.invoice_no) saleInvoiceNoById.set(String(s.id), String(s.invoice_no));
+          if (s?.id && s.status) saleStatusById.set(String(s.id), String(s.status));
+          if (s?.id && s.attachments) {
+            saleAttachmentsById.set(String(s.id), normalizeAttachmentList(s.attachments));
+          }
         });
       }
 
       const purchasePoNoById = new Map<string, string>();
+      const purchaseAttachmentsById = new Map<string, TransactionAttachment[]>();
       if (purchaseIdsForPo.size > 0) {
         const { data: purRows } = await supabase
           .from('purchases')
-          .select('id, po_no')
+          .select('id, po_no, attachments')
           .in('id', [...purchaseIdsForPo]);
         (purRows || []).forEach((r: any) => {
           if (r?.id && r.po_no) purchasePoNoById.set(String(r.id), String(r.po_no));
+          if (r?.id && r.attachments) {
+            purchaseAttachmentsById.set(String(r.id), normalizeAttachmentList(r.attachments));
+          }
         });
       }
+
+      const expenseNoById = new Map<string, string>();
+      const expenseReceiptById = new Map<string, string>();
+      if (expenseIdsForNo.size > 0) {
+        const { data: expRows } = await supabase
+          .from('expenses')
+          .select('id, expense_no, receipt_url')
+          .in('id', [...expenseIdsForNo]);
+        (expRows || []).forEach((r: any) => {
+          if (r?.id && r.expense_no) expenseNoById.set(String(r.id), String(r.expense_no).trim());
+          if (r?.id && r.receipt_url) expenseReceiptById.set(String(r.id), String(r.receipt_url).trim());
+        });
+      }
+
+      const paymentAttachmentsById = new Map<string, TransactionAttachment[]>();
+      (paymentsList || []).forEach((p: any) => {
+        if (p?.id && p.attachments) {
+          paymentAttachmentsById.set(String(p.id), normalizeAttachmentList(p.attachments));
+        }
+      });
 
       validEntries = validEntries.map((e: any) => {
         const rtNorm = String(e.reference_type || '')
@@ -1017,10 +1108,15 @@ export const accountingService = {
           .replace(/\s+/g, '_');
         let opSaleInv: string | undefined;
         let opPurPo: string | undefined;
+        let opExpenseNo: string | undefined;
         if ((rtN === 'sale' || rtN === 'sale_adjustment') && entry.reference_id) {
+          opSaleInv = saleInvoiceNoById.get(String(entry.reference_id));
+        } else if (rtN === 'sale_reversal' && entry.reference_id) {
           opSaleInv = saleInvoiceNoById.get(String(entry.reference_id));
         } else if ((rtN === 'purchase' || rtN === 'purchase_adjustment') && entry.reference_id) {
           opPurPo = purchasePoNoById.get(String(entry.reference_id));
+        } else if (rtN === 'expense' && entry.reference_id) {
+          opExpenseNo = expenseNoById.get(String(entry.reference_id));
         }
         const payKeyForOps =
           entry.payment_id ||
@@ -1030,6 +1126,14 @@ export const accountingService = {
         if (payKeyForOps) {
           const payRn = paymentRefNumberById.get(String(payKeyForOps));
           if (payRn) out._payment_reference_number = payRn;
+          const payRow = (paymentsList || []).find((p: any) => String(p.id) === String(payKeyForOps));
+          if (payRow?.amount != null) out._payment_amount = Number(payRow.amount) || 0;
+          const linkedPayRt = paymentRefTypeByPaymentId.get(String(payKeyForOps));
+          if (linkedPayRt === 'expense') {
+            if (payRow?.reference_id) {
+              opExpenseNo = opExpenseNo || expenseNoById.get(String(payRow.reference_id));
+            }
+          }
           const root = paymentIdToRoot.get(String(payKeyForOps));
           if (root?.root_reference_type === 'sale' && root.root_reference_id) {
             opSaleInv = opSaleInv || saleInvoiceNoById.get(String(root.root_reference_id));
@@ -1040,13 +1144,62 @@ export const accountingService = {
         }
         if (opSaleInv) out._display_sale_invoice_no = opSaleInv;
         if (opPurPo) out._display_purchase_po_no = opPurPo;
+        if (opExpenseNo) out._display_expense_no = opExpenseNo;
+        const saleRefId =
+          (rtN === 'sale' || rtN === 'sale_adjustment' || rtN === 'sale_reversal') && entry.reference_id
+            ? String(entry.reference_id)
+            : undefined;
+        if (saleRefId && saleStatusById.has(saleRefId)) {
+          out._linked_sale_status = saleStatusById.get(saleRefId);
+        }
+        const sourceAttachmentParts: unknown[] = [];
+        if (rtN === 'expense' && entry.reference_id) {
+          const receipt = expenseReceiptById.get(String(entry.reference_id));
+          if (receipt) sourceAttachmentParts.push(...receiptUrlToAttachments(receipt));
+        } else if ((rtN === 'sale' || rtN === 'sale_adjustment' || rtN === 'sale_reversal') && entry.reference_id) {
+          const saleAtt = saleAttachmentsById.get(String(entry.reference_id));
+          if (saleAtt?.length) sourceAttachmentParts.push(...saleAtt);
+        } else if (
+          (rtN === 'purchase' || rtN === 'purchase_adjustment' || rtN === 'purchase_return') &&
+          entry.reference_id
+        ) {
+          const purAtt = purchaseAttachmentsById.get(String(entry.reference_id));
+          if (purAtt?.length) sourceAttachmentParts.push(...purAtt);
+        }
+        if (payKeyForOps) {
+          const payAtt = paymentAttachmentsById.get(String(payKeyForOps));
+          if (payAtt?.length) sourceAttachmentParts.push(...payAtt);
+          const linkedPayRtForAtt = paymentRefTypeByPaymentId.get(String(payKeyForOps));
+          const payRowForAtt = (paymentsList || []).find((p: any) => String(p.id) === String(payKeyForOps));
+          if (linkedPayRtForAtt === 'expense' && payRowForAtt?.reference_id) {
+            const receipt = expenseReceiptById.get(String(payRowForAtt.reference_id));
+            if (receipt) sourceAttachmentParts.push(...receiptUrlToAttachments(receipt));
+          } else if (linkedPayRtForAtt === 'sale' && payRowForAtt?.reference_id) {
+            const saleAtt = saleAttachmentsById.get(String(payRowForAtt.reference_id));
+            if (saleAtt?.length) sourceAttachmentParts.push(...saleAtt);
+          } else if (linkedPayRtForAtt === 'purchase' && payRowForAtt?.reference_id) {
+            const purAtt = purchaseAttachmentsById.get(String(payRowForAtt.reference_id));
+            if (purAtt?.length) sourceAttachmentParts.push(...purAtt);
+          }
+        }
+        const rootRefId = out.root_reference_id;
+        const rootRefType = String(out.root_reference_type || '').toLowerCase();
+        if (rootRefId && rootRefType === 'sale') {
+          const saleAtt = saleAttachmentsById.get(String(rootRefId));
+          if (saleAtt?.length) sourceAttachmentParts.push(...saleAtt);
+        } else if (rootRefId && rootRefType === 'purchase') {
+          const purAtt = purchaseAttachmentsById.get(String(rootRefId));
+          if (purAtt?.length) sourceAttachmentParts.push(...purAtt);
+        }
+        const mergedSource = mergeAttachmentLists(sourceAttachmentParts);
+        if (mergedSource.length > 0) out._source_attachments = mergedSource;
         return out;
       });
 
-      return enrichedEntries;
+      return opts ? { data: enrichedEntries, total: count ?? enrichedEntries.length } : enrichedEntries;
     } catch (error: any) {
       console.warn('[ACCOUNTING SERVICE] Error:', error.message);
-      return [];
+      return opts ? { data: [], total: 0 } : [];
     }
   },
 
@@ -1125,6 +1278,58 @@ export const accountingService = {
       if (row?.id) byId.set(String(row.id), row);
     }
     return Array.from(byId.values());
+  },
+
+  /** Incremental refresh: journal rows for an expense document (avoids full getAllEntries). */
+  async fetchJournalEntriesForExpense(
+    companyId: string,
+    expenseId: string,
+    branchId?: string
+  ): Promise<any[]> {
+    if (!companyId || !expenseId) return [];
+    const jeSelect = `
+      *,
+      lines:journal_entry_lines(
+        id,
+        journal_entry_id,
+        account_id,
+        debit,
+        credit,
+        description,
+        account:accounts(name, code, type)
+      )
+    `;
+    let query = supabase
+      .from('journal_entries')
+      .select(jeSelect)
+      .eq('company_id', companyId)
+      .eq('reference_id', expenseId)
+      .eq('reference_type', 'expense');
+    if (branchId) {
+      query = query.or(`branch_id.eq.${branchId},branch_id.is.null`);
+    }
+    const { data, error } = await query;
+    if (error && import.meta.env?.DEV) {
+      console.warn('[ACCOUNTING SERVICE] fetchJournalEntriesForExpense:', error.message);
+    }
+    const rows = ((data || []) as any[]).filter((e) => e.is_void !== true);
+    if (rows.length === 0) return rows;
+    const { data: expRow } = await supabase
+      .from('expenses')
+      .select('receipt_url')
+      .eq('id', expenseId)
+      .eq('company_id', companyId)
+      .maybeSingle();
+    const receipt = expRow?.receipt_url ? String(expRow.receipt_url).trim() : '';
+    if (!receipt) return rows;
+    const sourceAtt = receiptUrlToAttachments(receipt);
+    return rows.map((row) => ({
+      ...row,
+      _source_attachments: mergeAttachmentLists(
+        (row as { _source_attachments?: unknown })._source_attachments,
+        sourceAtt
+      ),
+    }));
   },
 
   /**
@@ -1233,11 +1438,20 @@ export const accountingService = {
       .or('is_void.is.null,is_void.eq.false');
     if (error || !entries?.length) return false;
     const jeIds = entries.map((e: { id: string }) => e.id);
-    const { data: lines } = await supabase
-      .from('journal_entry_lines')
-      .select('journal_entry_id, account_id, debit, credit')
-      .in('journal_entry_id', jeIds);
-    if (!lines?.length) return false;
+    let lines: { journal_entry_id: string; account_id: string; debit: number; credit: number }[] = [];
+    try {
+      lines = await fetchInBatches(jeIds, async (chunk) => {
+        const { data, error: lineErr } = await supabase
+          .from('journal_entry_lines')
+          .select('journal_entry_id, account_id, debit, credit')
+          .in('journal_entry_id', chunk);
+        if (lineErr) throw lineErr;
+        return data || [];
+      });
+    } catch {
+      return false;
+    }
+    if (!lines.length) return false;
     const amountRounded = Math.round(amount * 100) / 100;
     const byJe = new Map<string, { debit: Map<string, number>; credit: Map<string, number> }>();
     for (const line of lines as { journal_entry_id: string; account_id: string; debit: number; credit: number }[]) {
@@ -1692,7 +1906,11 @@ export const accountingService = {
   },
 
   // CRITICAL FIX: Lookup by entry_no, payment reference_number, or invoice_no (FALLBACK ONLY)
-  async getEntryByReference(referenceNumber: string, companyId: string) {
+  async getEntryByReference(
+    referenceNumber: string,
+    companyId: string,
+    options?: { journalEntryIdHint?: string }
+  ) {
     if (!referenceNumber || !companyId) {
       console.error('[ACCOUNTING SERVICE] getEntryByReference: Missing referenceNumber or companyId');
       return null;
@@ -1702,9 +1920,111 @@ export const accountingService = {
     // But use uppercase for ilike search (case-insensitive)
     const cleanRef = referenceNumber.trim();
     const cleanRefUpper = cleanRef.toUpperCase();
+    const hintJeId = String(options?.journalEntryIdHint || '').trim();
     
     let data: any = null;
     let error: any = null;
+
+    const loadRentalPaymentJournalEntry = async (
+      rentalJeId: string | null,
+      rentalPaymentRef: string | null
+    ): Promise<boolean> => {
+      if (!rentalJeId) return false;
+      const stepRp = await supabase
+        .from('journal_entries')
+        .select(`
+          *,
+          lines:journal_entry_lines(
+            *,
+            account:accounts(id, name, code, type)
+          ),
+          payment:payments(id, reference_number, notes, amount, payment_method, payment_date, contact_id, payment_account_id, contact:contacts(name)),
+          branch:branches(id, name, code)
+        `)
+        .eq('company_id', companyId)
+        .eq('id', rentalJeId)
+        .limit(1);
+
+      if (stepRp.error) {
+        error = stepRp.error;
+        return false;
+      }
+      data = pickPreferredJournalEntryRow(stepRp.data as any[]) ?? null;
+      if (data) {
+        (data as { rental_payment_ref?: string }).rental_payment_ref =
+          rentalPaymentRef || formatRentalPaymentRef(cleanRef.replace(/-PAY$/i, '')) || cleanRef;
+        error = null;
+        return true;
+      }
+      error = { code: 'PGRST116' } as any;
+      return false;
+    };
+
+    // STEP 0: Bare rental booking no (REN-0002) → linked payment journal (not revenue JE)
+    if (/^REN-\d+$/i.test(cleanRef)) {
+      error = null;
+      const { data: rentalRow } = await supabase
+        .from('rentals')
+        .select('id, booking_no')
+        .eq('company_id', companyId)
+        .ilike('booking_no', cleanRef)
+        .maybeSingle();
+
+      if (rentalRow?.id) {
+        let rentalJeId: string | null = null;
+        let rentalPaymentRef: string | null = formatRentalPaymentRef(String(rentalRow.booking_no || cleanRef));
+
+        if (hintJeId) {
+          const { data: rpByHint } = await supabase
+            .from('rental_payments')
+            .select('id, journal_entry_id, reference')
+            .eq('rental_id', rentalRow.id)
+            .eq('journal_entry_id', hintJeId)
+            .is('voided_at', null)
+            .maybeSingle();
+          if (rpByHint) {
+            rentalJeId = (rpByHint as { journal_entry_id?: string | null }).journal_entry_id ?? null;
+            rentalPaymentRef =
+              String((rpByHint as { reference?: string }).reference || '').trim() || rentalPaymentRef;
+          }
+        }
+
+        if (!rentalJeId) {
+          const { data: rpRows } = await supabase
+            .from('rental_payments')
+            .select('id, journal_entry_id, reference')
+            .eq('rental_id', rentalRow.id)
+            .is('voided_at', null)
+            .not('journal_entry_id', 'is', null)
+            .order('payment_date', { ascending: false })
+            .order('created_at', { ascending: false })
+            .limit(1);
+          const rpRow = (rpRows || [])[0] as { journal_entry_id?: string | null; reference?: string } | undefined;
+          if (rpRow) {
+            rentalJeId = rpRow.journal_entry_id ?? null;
+            rentalPaymentRef = String(rpRow.reference || '').trim() || rentalPaymentRef;
+          }
+        }
+
+        if (!rentalJeId) {
+          const { data: rpRows } = await supabase
+            .from('rental_payments')
+            .select('id, journal_entry_id, reference')
+            .eq('rental_id', rentalRow.id)
+            .is('voided_at', null)
+            .order('payment_date', { ascending: false })
+            .order('created_at', { ascending: false })
+            .limit(1);
+          const rpRow = (rpRows || [])[0] as { journal_entry_id?: string | null; reference?: string } | undefined;
+          if (rpRow) {
+            rentalJeId = rpRow.journal_entry_id ?? null;
+            rentalPaymentRef = String(rpRow.reference || '').trim() || rentalPaymentRef;
+          }
+        }
+
+        await loadRentalPaymentJournalEntry(rentalJeId, rentalPaymentRef);
+      }
+    }
 
     // STEP 1: entry_no (case-insensitive). No maybeSingle — duplicate entry_no caused PostgREST / UI failures.
     const step1 = await supabase
@@ -1766,6 +2086,37 @@ export const accountingService = {
       }
     }
 
+    // STEP 2.4: RCV-* on rental_payments → linked journal entry (rental receipts)
+    if (!data && (!error || error.code === 'PGRST116') && isRcvReference(cleanRef)) {
+      error = null;
+      let rentalJeId: string | null = null;
+      const rentalPaymentRef = cleanRef;
+
+      const rpBaseQuery = () =>
+        supabase
+          .from('rental_payments')
+          .select('id, journal_entry_id, reference, rentals!inner(company_id)')
+          .eq('rentals.company_id', companyId)
+          .ilike('reference', cleanRef)
+          .is('voided_at', null)
+          .order('created_at', { ascending: true });
+
+      if (hintJeId) {
+        const { data: rpByHint } = await rpBaseQuery().eq('journal_entry_id', hintJeId).limit(1).maybeSingle();
+        if (rpByHint) {
+          rentalJeId = (rpByHint as { journal_entry_id?: string | null }).journal_entry_id ?? null;
+        }
+      }
+
+      if (!rentalJeId) {
+        const { data: rpRows } = await rpBaseQuery().limit(1);
+        const rpRow = (rpRows || [])[0] as { journal_entry_id?: string | null } | undefined;
+        if (rpRow) rentalJeId = rpRow.journal_entry_id ?? null;
+      }
+
+      await loadRentalPaymentJournalEntry(rentalJeId, rentalPaymentRef);
+    }
+
     // STEP 2.5: Rental payment voucher (REN-*-PAY) → linked journal entry
     if (!data && (!error || error.code === 'PGRST116') && /^REN-.+-PAY$/i.test(cleanRef)) {
       error = null;
@@ -1814,33 +2165,7 @@ export const accountingService = {
         }
       }
 
-      if (rentalJeId) {
-        const stepRp = await supabase
-          .from('journal_entries')
-          .select(`
-            *,
-            lines:journal_entry_lines(
-              *,
-              account:accounts(id, name, code, type)
-            ),
-            payment:payments(id, reference_number, notes, amount, payment_method, payment_date, contact_id, payment_account_id, contact:contacts(name)),
-            branch:branches(id, name, code)
-          `)
-          .eq('company_id', companyId)
-          .eq('id', rentalJeId)
-          .limit(1);
-
-        if (stepRp.error) {
-          error = stepRp.error;
-        } else {
-          data = pickPreferredJournalEntryRow(stepRp.data as any[]) ?? null;
-          if (data) {
-            (data as { rental_payment_ref?: string }).rental_payment_ref =
-              rentalPaymentRef || cleanRef;
-          }
-          error = data ? null : ({ code: 'PGRST116' } as any);
-        }
-      }
+      await loadRentalPaymentJournalEntry(rentalJeId, rentalPaymentRef || cleanRef);
     }
 
     // STEP 3: If still not found, try invoice_no (for sales)
@@ -2026,27 +2351,34 @@ export const accountingService = {
       
       const paymentRefsMap = new Map<string, { referenceNumber: string; bankTraceId: string }>();
       if (paymentIds.length > 0) {
-        const { data: payments } = await supabase
-          .from('payments')
-          .select('id, reference_number, notes')
-          .in('id', paymentIds);
-        
-        if (payments) {
-          payments.forEach((p: any) => {
-            if (p.reference_number) {
-              paymentRefsMap.set(p.id, {
-                referenceNumber: String(p.reference_number),
-                bankTraceId: extractBankTraceId(p.notes),
-              });
-            }
-          });
-        }
+        const payments = await fetchInBatches(paymentIds, async (chunk) => {
+          const { data, error } = await supabase
+            .from('payments')
+            .select('id, reference_number, notes')
+            .in('id', chunk);
+          if (error) throw error;
+          return data || [];
+        });
+        payments.forEach((p: any) => {
+          if (p.reference_number) {
+            paymentRefsMap.set(p.id, {
+              referenceNumber: String(p.reference_number),
+              bankTraceId: extractBankTraceId(p.notes),
+            });
+          }
+        });
       }
 
       const saleIds = [...new Set(
         (lines as any[])
           .map((line: any) => line.journal_entry)
-          .filter((entry: any) => String(entry?.reference_type || '').toLowerCase() === 'sale' && entry?.reference_id)
+          .filter((entry: any) => {
+            const rt = String(entry?.reference_type || '').toLowerCase();
+            return (
+              entry?.reference_id &&
+              (['sale', 'sale_reversal', 'sale_return', 'gl_correction'].includes(rt))
+            );
+          })
           .map((entry: any) => String(entry.reference_id))
       )];
       const purchaseIds = [...new Set(
@@ -2056,19 +2388,135 @@ export const accountingService = {
           .map((entry: any) => String(entry.reference_id))
       )];
       const saleDocMap = new Map<string, string>();
+      const saleStatusById = new Map<string, string>();
       const purchaseDocMap = new Map<string, string>();
+      const saleBranchById = new Map<string, string>();
+      const purchaseBranchById = new Map<string, string>();
+      const rentalBranchByRefId = new Map<string, string>();
+      const branchLabelById = new Map<string, string>();
       if (saleIds.length) {
-        const { data: sales } = await supabase.from('sales').select('id, invoice_no, order_no, draft_no').in('id', saleIds);
-        (sales || []).forEach((s: any) => {
+        const sales = await fetchInBatches(saleIds, async (chunk) => {
+          const { data, error } = await supabase
+            .from('sales')
+            .select('id, invoice_no, order_no, draft_no, branch_id, status')
+            .in('id', chunk);
+          if (error) throw error;
+          return data || [];
+        });
+        sales.forEach((s: any) => {
           const doc = String(s.invoice_no || s.order_no || s.draft_no || '').trim();
           if (doc) saleDocMap.set(String(s.id), doc);
+          if (s?.status) saleStatusById.set(String(s.id), String(s.status));
+          if (s?.branch_id) saleBranchById.set(String(s.id), String(s.branch_id));
         });
       }
       if (purchaseIds.length) {
-        const { data: purchases } = await supabase.from('purchases').select('id, po_no, order_no, draft_no').in('id', purchaseIds);
-        (purchases || []).forEach((p: any) => {
+        const purchases = await fetchInBatches(purchaseIds, async (chunk) => {
+          const { data, error } = await supabase
+            .from('purchases')
+            .select('id, po_no, order_no, draft_no, branch_id')
+            .in('id', chunk);
+          if (error) throw error;
+          return data || [];
+        });
+        purchases.forEach((p: any) => {
           const doc = String(p.po_no || p.order_no || p.draft_no || '').trim();
           if (doc) purchaseDocMap.set(String(p.id), doc);
+          if (p?.branch_id) purchaseBranchById.set(String(p.id), String(p.branch_id));
+        });
+      }
+
+      const ledgerPaymentIds = [
+        ...new Set(
+          (lines as any[])
+            .flatMap((line: any) => {
+              const entry = line.journal_entry;
+              if (!entry) return [];
+              const ids: string[] = [];
+              if (entry.payment_id) ids.push(String(entry.payment_id));
+              if (String(entry.reference_type || '').toLowerCase() === 'payment' && entry.reference_id) {
+                ids.push(String(entry.reference_id));
+              }
+              return ids;
+            })
+        ),
+      ];
+      const paymentMetaById = new Map<string, { voided_at: string | null; sale_id: string | null }>();
+      const paymentLinkedSaleIds: string[] = [];
+      if (ledgerPaymentIds.length) {
+        const payRows = await fetchInBatches(ledgerPaymentIds, async (chunk) => {
+          const { data, error } = await supabase
+            .from('payments')
+            .select('id, voided_at, reference_type, reference_id')
+            .eq('company_id', companyId)
+            .in('id', chunk);
+          if (error) throw error;
+          return data || [];
+        });
+        payRows.forEach((p: any) => {
+          const saleId =
+            String(p.reference_type || '').toLowerCase() === 'sale' && p.reference_id
+              ? String(p.reference_id)
+              : null;
+          paymentMetaById.set(String(p.id), {
+            voided_at: p.voided_at ?? null,
+            sale_id: saleId,
+          });
+          if (saleId && !saleStatusById.has(saleId)) paymentLinkedSaleIds.push(saleId);
+        });
+        if (paymentLinkedSaleIds.length) {
+          const extraSales = await fetchInBatches([...new Set(paymentLinkedSaleIds)], async (chunk) => {
+            const { data, error } = await supabase
+              .from('sales')
+              .select('id, invoice_no, order_no, draft_no, branch_id, status')
+              .in('id', chunk);
+            if (error) throw error;
+            return data || [];
+          });
+          extraSales.forEach((s: any) => {
+            const doc = String(s.invoice_no || s.order_no || s.draft_no || '').trim();
+            if (doc) saleDocMap.set(String(s.id), doc);
+            if (s?.status) saleStatusById.set(String(s.id), String(s.status));
+            if (s?.branch_id) saleBranchById.set(String(s.id), String(s.branch_id));
+          });
+        }
+      }
+
+      const rentalRefIds = [
+        ...new Set(
+          (lines as any[])
+            .map((line: any) => line.journal_entry)
+            .filter((entry: any) => String(entry?.reference_type || '').toLowerCase() === 'rental' && entry?.reference_id)
+            .map((entry: any) => String(entry.reference_id))
+        ),
+      ];
+      if (rentalRefIds.length) {
+        const rentalRows = await fetchInBatches(rentalRefIds, async (chunk) => {
+          const { data, error } = await supabase.from('rentals').select('id, branch_id').in('id', chunk);
+          if (error) throw error;
+          return data || [];
+        });
+        rentalRows.forEach((r: any) => {
+          if (r?.id && r.branch_id) rentalBranchByRefId.set(String(r.id), String(r.branch_id));
+        });
+      }
+      const docBranchIds = [
+        ...new Set([
+          ...saleBranchById.values(),
+          ...purchaseBranchById.values(),
+          ...rentalBranchByRefId.values(),
+        ]),
+      ];
+      if (docBranchIds.length) {
+        const branchRows = await fetchInBatches(docBranchIds, async (chunk) => {
+          const { data, error } = await supabase.from('branches').select('id, name, code').in('id', chunk);
+          if (error) throw error;
+          return data || [];
+        });
+        branchRows.forEach((b: any) => {
+          if (!b?.id) return;
+          const label = b.code ? `${b.code} | ${b.name}` : String(b.name || '');
+          branchLabelById.set(String(b.id), label);
         });
       }
 
@@ -2127,14 +2575,20 @@ export const accountingService = {
       const jeIds = [...new Set(filteredLines.map((l: any) => l.journal_entry?.id).filter(Boolean))] as string[];
       const counterAccountMap = new Map<string, string>();
       if (jeIds.length > 0) {
-        const { data: otherLines } = await supabase
-          .from('journal_entry_lines')
-          .select('journal_entry_id, account_id, account:accounts(name)')
-          .in('journal_entry_id', jeIds)
-          .neq('account_id', accountId);
-        for (const ol of otherLines || []) {
+        const otherLines = await fetchInBatches(jeIds, async (chunk) => {
+          const { data, error } = await supabase
+            .from('journal_entry_lines')
+            .select('journal_entry_id, account_id, account:accounts(name)')
+            .in('journal_entry_id', chunk)
+            .neq('account_id', accountId);
+          if (error) throw error;
+          return data || [];
+        });
+        for (const ol of otherLines) {
           const name = (ol as any).account?.name ?? 'Unknown';
-          const arr = counterAccountMap.get(ol.journal_entry_id) ? `${counterAccountMap.get(ol.journal_entry_id)}, ${name}` : name;
+          const arr = counterAccountMap.get(ol.journal_entry_id)
+            ? `${counterAccountMap.get(ol.journal_entry_id)}, ${name}`
+            : name;
           counterAccountMap.set(ol.journal_entry_id, arr);
         }
       }
@@ -2153,12 +2607,16 @@ export const accountingService = {
       ];
       const reversedEntryNoByJeId = new Map<string, string>();
       if (reversalTargetIds.length > 0) {
-        const { data: origJes } = await supabase
-          .from('journal_entries')
-          .select('id, entry_no')
-          .eq('company_id', companyId)
-          .in('id', reversalTargetIds);
-        (origJes || []).forEach((r: any) => {
+        const origJes = await fetchInBatches(reversalTargetIds, async (chunk) => {
+          const { data, error } = await supabase
+            .from('journal_entries')
+            .select('id, entry_no')
+            .eq('company_id', companyId)
+            .in('id', chunk);
+          if (error) throw error;
+          return data || [];
+        });
+        origJes.forEach((r: any) => {
           if (r?.id) reversedEntryNoByJeId.set(r.id, String(r.entry_no || '').trim() || r.id.slice(0, 8));
         });
       }
@@ -2210,6 +2668,9 @@ export const accountingService = {
           let sourceModule = 'Accounting';
           if (refType === 'sale') {
             sourceModule = 'Sales';
+          } else if (refType === 'sale_reversal') {
+            sourceModule = 'Sales';
+            ledgerKind = 'reversal';
           } else if (refType === 'correction_reversal') {
             sourceModule = 'Reversal';
           } else if (entry.payment_id) {
@@ -2277,12 +2738,39 @@ export const accountingService = {
           }
 
           const branch = (entry as any).branch;
-          const branchName = branch ? (branch.code ? `${branch.code} | ${branch.name}` : branch.name) : null;
+          let branchName = branch ? (branch.code ? `${branch.code} | ${branch.name}` : branch.name) : null;
+          let resolvedBranchId = entry.branch_id as string | null | undefined;
+          if (!resolvedBranchId) {
+            if (refType === 'rental' && entry.reference_id) {
+              resolvedBranchId = rentalBranchByRefId.get(String(entry.reference_id));
+            } else if (refType === 'sale' && entry.reference_id) {
+              resolvedBranchId = saleBranchById.get(String(entry.reference_id));
+            } else if (refType === 'purchase' && entry.reference_id) {
+              resolvedBranchId = purchaseBranchById.get(String(entry.reference_id));
+            }
+          }
+          if (!branchName && resolvedBranchId) {
+            branchName = branchLabelById.get(String(resolvedBranchId)) ?? null;
+          }
           const counterAccount = counterAccountMap.get(entry.id) || null;
           const acc = (line as { account?: { name?: string; code?: string } | null }).account;
           const accName = acc?.name ? String(acc.name) : '';
           const accCode = acc?.code != null && String(acc.code).trim() !== '' ? String(acc.code).trim() : '';
           const accountNameLine = accName ? (accCode ? `${accName} (${accCode})` : accName) : undefined;
+
+          const linkedSaleId =
+            entry.reference_id &&
+            ['sale', 'sale_reversal', 'sale_return', 'gl_correction'].includes(refType)
+              ? String(entry.reference_id)
+              : undefined;
+
+          const payMeta =
+            (entry.payment_id && paymentMetaById.get(String(entry.payment_id))) ||
+            (refType === 'payment' && entry.reference_id
+              ? paymentMetaById.get(String(entry.reference_id))
+              : undefined);
+          const paymentSaleId = payMeta?.sale_id ?? null;
+          const resolvedLinkedSaleId = linkedSaleId ?? paymentSaleId ?? undefined;
 
           return {
             date: entry.entry_date,
@@ -2298,11 +2786,18 @@ export const accountingService = {
             journal_entry_id: entry.id,
             je_reference_type: refType,
             je_action_fingerprint: (entry as { action_fingerprint?: string | null }).action_fingerprint ?? null,
+            journal_line_id: line.id != null ? String(line.id) : null,
+            je_reference_id: entry.reference_id != null ? String(entry.reference_id) : null,
             payment_id: entry.payment_id,
-            sale_id: entry.reference_id,
-            branch_id: entry.branch_id,
+            sale_id: resolvedLinkedSaleId ?? entry.reference_id,
+            linked_sale_status: resolvedLinkedSaleId
+              ? saleStatusById.get(resolvedLinkedSaleId) ?? null
+              : null,
+            payment_voided_at: payMeta?.voided_at ?? null,
+            branch_id: resolvedBranchId ?? entry.branch_id,
             branch_name: branchName,
             account_name: accountNameLine,
+            gl_account_code: accCode || undefined,
             counter_account: counterAccount ?? undefined,
             ledger_kind: ledgerKind,
             document_type: glStatementDocumentTypeFromReferenceType(refType, sourceModule),
@@ -2358,6 +2853,14 @@ export const accountingService = {
   ): Promise<AccountLedgerEntry[]> {
     const glJournalOnly = ledgerMode === 'gl_journal_only';
     try {
+      let customerDisplayName = '';
+      const { data: customerContactRow } = await supabase
+        .from('contacts')
+        .select('name')
+        .eq('id', customerId)
+        .maybeSingle();
+      customerDisplayName = String((customerContactRow as { name?: string } | null)?.name || '').trim();
+
       // Accounts Receivable: control 1100 **and all descendants** (per-contact Receivable — … subledgers).
       // Old query only matched code 1100 or name ilike %Accounts Receivable%; party AR children are named
       // "Receivable — {name}" and were excluded — sales/returns on subledgers never appeared in customer ledger.
@@ -2410,9 +2913,11 @@ export const accountingService = {
             reference_type,
             reference_id,
             payment_id,
+            action_fingerprint,
             branch_id,
             created_by,
             created_at,
+            is_void,
             branch:branches(id, name, code)
           )
         `;
@@ -2462,72 +2967,26 @@ export const accountingService = {
       const saleIds = customerSales.map((s: any) => s.id);
       console.log('[ACCOUNTING SERVICE] getCustomerLedger - Customer sales (canonical fetch):', saleIds.length);
       
-      // Get payments via RPC so we get them regardless of branch (SECURITY DEFINER bypasses RLS)
-      let customerPayments: any[] = [];
-      if (saleIds.length > 0) {
-        const rpcPay = await supabase.rpc('get_customer_ledger_payments', {
-          p_company_id: companyId,
-          p_sale_ids: saleIds,
-          p_from_date: glJournalOnly ? null : startDate || null,
-          p_to_date: glJournalOnly ? null : endDate || null,
-        });
-        if (!rpcPay.error) customerPayments = rpcPay.data ?? [];
-      }
-      // Normalize to include reference_type for downstream (RPC does not return it)
-      customerPayments = customerPayments.map((p: any) => ({ ...p, reference_type: 'sale' }));
+      // Received payments: includes advances on non-final sales/orders (not gated by final saleIds RPC).
+      let customerPayments: any[] = glJournalOnly
+        ? []
+        : await fetchCustomerReceivedPaymentsForRange(
+            companyId,
+            customerId,
+            startDate,
+            endDate,
+            'live',
+            ledgerSalesRpcBranchId(branchId)
+          );
 
-      // On-account payments: same contact, not linked to a sale — must be included for correct ledger
-      let onAccountPayments: any[] = [];
-      const { data: onAccountData } = await supabase
-        .from('payments')
-        .select('id, reference_number, payment_date, amount, payment_method, notes, reference_id, payment_account_id')
+      const { data: allCustomerSalesMeta } = await supabase
+        .from('sales')
+        .select('id, status, invoice_no')
         .eq('company_id', companyId)
-        .eq('contact_id', customerId)
-        .eq('reference_type', 'on_account')
-        .is('voided_at', null);
-      if (onAccountData?.length) {
-        const dateFiltered = glJournalOnly
-          ? (onAccountData as any[])
-          : (onAccountData as any[]).filter((p: any) => {
-              const d = (p.payment_date || '').toString().slice(0, 10);
-              if (startDate && d < startDate) return false;
-              if (endDate && d > endDate) return false;
-              return true;
-            });
-        onAccountPayments = dateFiltered.map((p: any) => ({ ...p, reference_type: 'on_account', reference_id: p.reference_id ?? null }));
-      }
-      // Add Entry V2: manual_receipt (customer receipt) — same contact, must appear in customer ledger
-      let manualReceiptPayments: any[] = [];
-      const { data: manualReceiptData } = await supabase
-        .from('payments')
-        .select('id, reference_number, payment_date, amount, payment_method, notes, reference_id, payment_account_id')
-        .eq('company_id', companyId)
-        .eq('contact_id', customerId)
-        .eq('reference_type', 'manual_receipt')
-        .is('voided_at', null);
-      if (manualReceiptData?.length) {
-        const dateFiltered = glJournalOnly
-          ? (manualReceiptData as any[])
-          : (manualReceiptData as any[]).filter((p: any) => {
-              const d = (p.payment_date || '').toString().slice(0, 10);
-              if (startDate && d < startDate) return false;
-              if (endDate && d > endDate) return false;
-              return true;
-            });
-        manualReceiptPayments = dateFiltered.map((p: any) => ({ ...p, reference_type: 'manual_receipt', reference_id: p.reference_id ?? null }));
-      }
-      const existingPaymentIds = new Set(customerPayments.map((p: any) => p.id));
-      onAccountPayments.forEach((p: any) => {
-        if (!existingPaymentIds.has(p.id)) {
-          customerPayments.push(p);
-          existingPaymentIds.add(p.id);
-        }
-      });
-      manualReceiptPayments.forEach((p: any) => {
-        if (!existingPaymentIds.has(p.id)) {
-          customerPayments.push(p);
-          existingPaymentIds.add(p.id);
-        }
+        .eq('customer_id', customerId);
+      const saleStatusById = new Map<string, string>();
+      (allCustomerSalesMeta || []).forEach((s: any) => {
+        if (s?.id) saleStatusById.set(String(s.id), String(s.status || ''));
       });
       
       const accountMap = new Map<string, string>();
@@ -2551,10 +3010,6 @@ export const accountingService = {
             bankTraceId: extractBankTraceId(p.notes),
           });
         }
-        // Add account name to payment details
-        if (p.payment_account_id && accountMap.has(p.payment_account_id)) {
-          p.payment_account = { name: accountMap.get(p.payment_account_id) };
-        }
         paymentDetailsMap.set(p.id, p);
       });
       
@@ -2563,7 +3018,12 @@ export const accountingService = {
       // Sales already from RPC above (customerSales). Build salesMap for journal entry matching.
       const salesMap = new Map();
       customerSales.forEach((sale: any) => {
-        salesMap.set(sale.id, { id: sale.id, invoice_no: sale.invoice_no, customer_id: customerId });
+        salesMap.set(sale.id, {
+          id: sale.id,
+          invoice_no: sale.invoice_no,
+          customer_id: customerId,
+          branch_id: sale.branch_id ?? null,
+        });
       });
       // Also include cancelled sales in salesMap (for sale_reversal JE matching only — no synthetic rows)
       const { data: cancelledSales } = await supabase
@@ -2610,23 +3070,50 @@ export const accountingService = {
         if (rentalIds.length > 0) {
           const { data: rpData } = await supabase
             .from('rental_payments')
-            .select('id, rental_id, amount, method, payment_date, created_at, journal_entry_id')
-            .in('rental_id', rentalIds);
+            .select('id, rental_id, amount, method, payment_date, created_at, journal_entry_id, reference, voided_at, payment_type')
+            .in('rental_id', rentalIds)
+            .is('voided_at', null);
           customerRentalPayments = rpData ?? [];
         }
       } catch (e) {
         console.warn('[ACCOUNTING SERVICE] getCustomerLedger - Rental fetch failed (non-critical):', e);
       }
+      if (customerRentals.length > 0) {
+        const rentalIdsForDamage = customerRentals.map((r: any) => r.id).filter(Boolean);
+        const { data: damageRows } = await supabase
+          .from('rentals')
+          .select('id, damage_charges')
+          .in('id', rentalIdsForDamage);
+        const damageById = new Map((damageRows || []).map((r: any) => [String(r.id), Number(r.damage_charges) || 0]));
+        customerRentals = customerRentals.map((r: any) => ({
+          ...r,
+          damage_charges: r.damage_charges ?? damageById.get(String(r.id)) ?? 0,
+        }));
+      }
       const rentalsMap = new Map(customerRentals.map((r: any) => [r.id, r]));
+      const rentalPaymentRefByJeId = new Map<string, string>();
+      customerRentalPayments.forEach((rp: any) => {
+        const jeId = String(rp.journal_entry_id || '').trim();
+        const ref = String(rp.reference || '').trim();
+        if (jeId && ref) rentalPaymentRefByJeId.set(jeId, ref);
+      });
       const branchNameById = new Map<string, string>();
       const rentalBranchIds = [
         ...new Set(customerRentals.map((r: any) => r.branch_id).filter(Boolean)),
       ] as string[];
-      if (rentalBranchIds.length > 0) {
+      const saleBranchIds = [
+        ...new Set(
+          [...salesMap.values()]
+            .map((s: any) => s.branch_id)
+            .filter(Boolean)
+        ),
+      ] as string[];
+      const statementBranchIds = [...new Set([...rentalBranchIds, ...saleBranchIds])];
+      if (statementBranchIds.length > 0) {
         const { data: branchRows } = await supabase
           .from('branches')
           .select('id, name, code')
-          .in('id', rentalBranchIds);
+          .in('id', statementBranchIds);
         (branchRows || []).forEach((b: any) => {
           if (!b?.id) return;
           const label = b.code ? `${b.code} | ${b.name}` : String(b.name || '');
@@ -2753,6 +3240,48 @@ export const accountingService = {
 
       let runningBalance = openingBalance;
 
+      const journalPaymentIds = [
+        ...new Set(
+          rangeLines
+            .flatMap((l: any) => {
+              const e = l.journal_entry;
+              if (!e) return [];
+              const ids: string[] = [];
+              if (e.payment_id) ids.push(String(e.payment_id));
+              if (String(e.reference_type || '').toLowerCase() === 'payment' && e.reference_id) {
+                ids.push(String(e.reference_id));
+              }
+              return ids;
+            })
+        ),
+      ].filter((id) => !paymentDetailsMap.has(id));
+      if (journalPaymentIds.length) {
+        const { data: extraPayRows } = await supabase
+          .from('payments')
+          .select('id, voided_at, reference_type, reference_id, reference_number, notes, payment_account_id')
+          .eq('company_id', companyId)
+          .in('id', journalPaymentIds);
+        (extraPayRows || []).forEach((p: any) => {
+          paymentDetailsMap.set(p.id, p);
+          if (p.reference_type === 'sale' && p.reference_id && !saleStatusById.has(String(p.reference_id))) {
+            saleStatusById.set(String(p.reference_id), '');
+          }
+        });
+        const extraSaleIds = (extraPayRows || [])
+          .filter((p: any) => String(p.reference_type || '').toLowerCase() === 'sale' && p.reference_id)
+          .map((p: any) => String(p.reference_id));
+        if (extraSaleIds.length) {
+          const { data: extraSalesMeta } = await supabase
+            .from('sales')
+            .select('id, status')
+            .eq('company_id', companyId)
+            .in('id', [...new Set(extraSaleIds)]);
+          (extraSalesMeta || []).forEach((s: any) => {
+            if (s?.id) saleStatusById.set(String(s.id), String(s.status || ''));
+          });
+        }
+      }
+
       // PHASE 4: Build ledger entries with running balance (from rangeLines only)
       console.log('[ACCOUNTING SERVICE] getCustomerLedger - PHASE 4: Building ledger entries', {
         rangeLines: rangeLines.length,
@@ -2850,15 +3379,31 @@ export const accountingService = {
         const rental = entry.reference_type === 'rental' && entry.reference_id ? rentalsMap.get(entry.reference_id) : null;
         const paymentMeta = entry.payment_id ? paymentRefsMap.get(entry.payment_id) : undefined;
         const normalizedRefType = String(entry.reference_type || '').toLowerCase();
-        const preferredRef =
-          (normalizedRefType === 'sale' && sale?.invoice_no ? String(sale.invoice_no) : '') ||
-          ((normalizedRefType === 'manual_receipt' || normalizedRefType === 'manual_payment') && paymentMeta
-            ? paymentMeta.bankTraceId || paymentMeta.referenceNumber
-            : '') ||
-          (paymentMeta?.referenceNumber || '') ||
-          (normalizedRefType === 'rental' && rental?.booking_no ? String(rental.booking_no) : '');
-        if (preferredRef) {
-          referenceNumber = preferredRef;
+        const isReceiptCredit = credit > 0 && (
+          Boolean(entry.payment_id) ||
+          normalizedRefType === 'payment' ||
+          (normalizedRefType === 'rental' && debit === 0)
+        );
+        const lineKind =
+          normalizedRefType === 'sale' && debit > 0
+            ? 'sale_debit'
+            : normalizedRefType === 'rental' && debit > 0
+              ? 'rental_debit'
+              : isReceiptCredit
+                ? 'receipt_credit'
+                : 'journal';
+        const resolvedRef = resolvePartyLedgerReference({
+          lineKind,
+          entryNo: entry.entry_no,
+          referenceType: entry.reference_type,
+          saleInvoiceNo: sale?.invoice_no,
+          rentalBookingNo: rental?.booking_no,
+          rentalPaymentRef: rentalPaymentRefByJeId.get(String(entry.id)) || null,
+          paymentReferenceNumber: paymentMeta?.referenceNumber,
+          paymentBankTraceId: paymentMeta?.bankTraceId,
+        });
+        if (resolvedRef && resolvedRef !== '—') {
+          referenceNumber = resolvedRef;
         } else if (isInvalidEntryNo) {
           if (entry.payment_id) {
             referenceNumber = `PAY-${entry.payment_id.substring(0, 4).toUpperCase()}`;
@@ -2870,9 +3415,22 @@ export const accountingService = {
           }
         }
         
-        // Get branch info from joined data
+        // Get branch info from joined data; fall back to source document branch when JE.branch_id is null
         const branch = (entry as any).branch;
-        const branchName = branch ? (branch.code ? `${branch.code} | ${branch.name}` : branch.name) : null;
+        let branchName = branch ? (branch.code ? `${branch.code} | ${branch.name}` : branch.name) : null;
+        let resolvedBranchId = entry.branch_id as string | null | undefined;
+        if (entry.reference_type === 'rental' && entry.reference_id) {
+          const rb = rentalLedgerBranch(String(entry.reference_id));
+          if (!resolvedBranchId) resolvedBranchId = rb.branch_id;
+          if (!branchName) branchName = rb.branch_name;
+        } else if (
+          (entry.reference_type === 'sale' || entry.reference_type === 'sale_adjustment') &&
+          entry.reference_id
+        ) {
+          const saleBranchId = salesMap.get(entry.reference_id)?.branch_id;
+          if (!resolvedBranchId && saleBranchId) resolvedBranchId = String(saleBranchId);
+          if (!branchName && saleBranchId) branchName = branchNameById.get(String(saleBranchId)) ?? null;
+        }
 
         // STEP 2: DATA SOURCE CONFIRMATION - Ensure debit/credit are properly set
         const finalDebit = debit;
@@ -2887,6 +3445,24 @@ export const accountingService = {
             credit: finalCredit
           });
         }
+
+        const linkedSaleId =
+          entry.reference_id &&
+          ['sale', 'sale_reversal', 'sale_return', 'gl_correction'].includes(normalizedRefType)
+            ? String(entry.reference_id)
+            : undefined;
+
+        const payId =
+          entry.payment_id ||
+          (normalizedRefType === 'payment' && entry.reference_id ? String(entry.reference_id) : null);
+        const payDetail = payId ? paymentDetailsMap.get(payId) : undefined;
+        const paymentSaleId =
+          payDetail &&
+          String(payDetail.reference_type || '').toLowerCase() === 'sale' &&
+          payDetail.reference_id
+            ? String(payDetail.reference_id)
+            : null;
+        const resolvedLinkedSaleId = linkedSaleId ?? paymentSaleId ?? undefined;
 
         return {
           date: entry.entry_date,
@@ -2905,12 +3481,16 @@ export const accountingService = {
           notes: notes,
           created_by: entry.created_by,
           journal_entry_id: entry.id, // Use journal_entry_id as fallback if entry_no is missing
+          je_reference_type: entry.reference_type || undefined,
+          je_action_fingerprint: (entry as { action_fingerprint?: string | null }).action_fingerprint ?? null,
           payment_id:
             entry.payment_id ||
             (entry.reference_type === 'payment' && entry.reference_id ? String(entry.reference_id) : undefined),
-          sale_id: entry.reference_type === 'sale' ? entry.reference_id : undefined,
+          sale_id: resolvedLinkedSaleId,
+          linked_sale_status: resolvedLinkedSaleId ? saleStatusById.get(resolvedLinkedSaleId) ?? null : null,
+          payment_voided_at: payDetail?.voided_at ?? null,
           rental_id: entry.reference_type === 'rental' ? entry.reference_id : undefined,
-          branch_id: entry.branch_id,
+          branch_id: resolvedBranchId ?? entry.branch_id,
           branch_name: branchName,
           ledger_kind: entry.reference_type === 'correction_reversal' ? ('reversal' as const) : undefined,
         };
@@ -2943,10 +3523,17 @@ export const accountingService = {
           const d = (p.payment_date || '').toString();
           if (startDate && d < startDate) return;
           if (endDate && d > endDate) return;
+          const saleStatus =
+            String(p.reference_type || '') === 'sale' && p.reference_id
+              ? saleStatusById.get(String(p.reference_id))
+              : undefined;
           items.push({
             date: d,
-            reference_number: (p.reference_number || `PAY-${p.id?.slice(0, 8)}`).toString(),
-            description: 'Payment',
+            reference_number: resolvePartyLedgerReference({
+              lineKind: 'receipt_credit',
+              paymentReferenceNumber: p.reference_number,
+            }),
+            description: customerReceiptLedgerDescription({ saleStatus, base: 'Payment' }),
             debit: 0,
             credit: Number(p.amount) || 0,
             payment_id: p.id,
@@ -2974,23 +3561,15 @@ export const accountingService = {
             document_type: 'Rental Invoice',
           });
         });
-        // Rental payments (credit – customer paid)
+        // Rental payments (credit – customer paid; penalty = debit charge + credit receipt)
         customerRentalPayments.forEach((p: any) => {
-          if (p.journal_entry_id) return;
-          const rawDate = p.payment_date || p.created_at;
-          const d = rawDate ? (typeof rawDate === 'string' && rawDate.length >= 10 ? rawDate.slice(0, 10) : new Date(rawDate).toISOString().slice(0, 10)) : '';
-          if (!d) return;
-          if (startDate && d < startDate) return;
-          if (endDate && d > endDate) return;
-          items.push({
-            date: d,
-            reference_number: (rentalsMap.get(p.rental_id)?.booking_no || `RN-${p.rental_id?.slice(0, 8)}`) + `-PAY`,
-            description: 'Rental Payment',
-            debit: 0,
-            credit: Number(p.amount) || 0,
-            rental_id: p.rental_id,
-            source_module: 'Rental',
-            document_type: 'Rental Payment',
+          appendRentalPaymentMergeItems(items, {
+            payment: p,
+            rental: rentalsMap.get(p.rental_id),
+            customerDisplayName,
+            ledgerRows: items,
+            startDate,
+            endDate,
           });
         });
         items.sort((a, b) => a.date.localeCompare(b.date) || 0);
@@ -3032,7 +3611,10 @@ export const accountingService = {
       const paymentIdsInJournal = new Set((ledgerEntriesFromRange.map((e: AccountLedgerEntry) => e.payment_id).filter(Boolean)) as string[]);
       const rentalIdsInJournal = new Set((ledgerEntriesFromRange.map((e: AccountLedgerEntry) => e.rental_id).filter(Boolean)) as string[]);
       const missingSales = customerSales.filter((s: any) => !saleIdsInJournal.has(s.id));
-      const missingPayments = customerPayments.filter((p: any) => !paymentIdsInJournal.has(p.id));
+      let missingPayments = customerPayments.filter((p: any) => !paymentIdsInJournal.has(p.id));
+      if (missingPayments.length > 0) {
+        missingPayments = await filterLivePaymentsExcludingVoidedJournals(companyId, missingPayments);
+      }
       const hasRentalsToAdd = customerRentals.length > 0 || customerRentalPayments.length > 0;
       if (!glJournalOnly && (missingSales.length > 0 || missingPayments.length > 0 || hasRentalsToAdd)) {
         const mergeItems: { date: string; reference_number: string; description: string; debit: number; credit: number; sale_id?: string; payment_id?: string; rental_id?: string; source_module: string; document_type: string }[] = [];
@@ -3056,10 +3638,21 @@ export const accountingService = {
           const d = (p.payment_date || '').toString();
           if (startDate && d < startDate) return;
           if (endDate && d > endDate) return;
+          const saleStatus =
+            String(p.reference_type || '') === 'sale' && p.reference_id
+              ? saleStatusById.get(String(p.reference_id))
+              : undefined;
+          const refType = String(p.reference_type || '').toLowerCase();
           mergeItems.push({
             date: d,
-            reference_number: (p.reference_number || `PAY-${p.id?.slice(0, 8)}`).toString(),
-            description: 'Payment',
+            reference_number: resolvePartyLedgerReference({
+              lineKind: 'receipt_credit',
+              paymentReferenceNumber: p.reference_number,
+            }),
+            description:
+              refType === 'on_account' && p.notes
+                ? String(p.notes)
+                : customerReceiptLedgerDescription({ saleStatus, base: 'Payment' }),
             debit: 0,
             credit: Number(p.amount) || 0,
             payment_id: p.id,
@@ -3090,21 +3683,13 @@ export const accountingService = {
           });
         });
         customerRentalPayments.forEach((p: any) => {
-          if (p.journal_entry_id) return;
-          const rawDate = p.payment_date || p.created_at;
-          const d = rawDate ? (typeof rawDate === 'string' && rawDate.length >= 10 ? rawDate.slice(0, 10) : new Date(rawDate).toISOString().slice(0, 10)) : '';
-          if (!d) return;
-          if (startDate && d < startDate) return;
-          if (endDate && d > endDate) return;
-          mergeItems.push({
-            date: d,
-            reference_number: (rentalsMap.get(p.rental_id)?.booking_no || `RN-${p.rental_id?.slice(0, 8)}`) + `-PAY`,
-            description: 'Rental Payment',
-            debit: 0,
-            credit: Number(p.amount) || 0,
-            rental_id: p.rental_id,
-            source_module: 'Rental',
-            document_type: 'Rental Payment',
+          appendRentalPaymentMergeItems(mergeItems, {
+            payment: p,
+            rental: rentalsMap.get(p.rental_id),
+            customerDisplayName,
+            ledgerRows: [...ledgerEntriesFromRange, ...mergeItems],
+            startDate,
+            endDate,
           });
         });
         if (mergeItems.length > 0) {
@@ -3321,8 +3906,10 @@ export const accountingService = {
           running_balance: Number(r.running_balance ?? 0),
           source_module: glStatementSourceModuleFromReferenceType(refType),
           journal_entry_id: String(r.journal_entry_id ?? ''),
-          payment_id: r.payment_id != null ? String(r.payment_id) : undefined,
+          journal_line_id:
+            r.journal_entry_line_id != null ? String(r.journal_entry_line_id) : undefined,
           je_reference_type: refType || undefined,
+          payment_id: r.payment_id != null ? String(r.payment_id) : undefined,
           branch_id: r.branch_id != null ? String(r.branch_id) : undefined,
           branch_name: r.branch_name != null ? String(r.branch_name) : undefined,
           account_name: String(r.account_name ?? ''),
@@ -3742,7 +4329,33 @@ export const accountingService = {
       .from('journal_entry_lines')
       .insert(linesData);
 
-    if (linesError) throw linesError;
+    if (linesError) {
+      const nowIso = new Date().toISOString();
+      await supabase
+        .from('journal_entries')
+        .update({
+          is_void: true,
+          void_reason: 'posting_failed_rollback_no_lines',
+          voided_at: nowIso,
+        })
+        .eq('id', entryData.id)
+        .eq('company_id', entry.company_id);
+      throw linesError;
+    }
+
+    if (linesData.length < 2 || totalDebit <= 0 || totalCredit <= 0) {
+      const nowIso = new Date().toISOString();
+      await supabase
+        .from('journal_entries')
+        .update({
+          is_void: true,
+          void_reason: 'posting_failed_rollback_invalid_lines',
+          voided_at: nowIso,
+        })
+        .eq('id', entryData.id)
+        .eq('company_id', entry.company_id);
+      throw new Error('Journal entry must have at least two posted lines with non-zero totals.');
+    }
 
     // Header totals: DB trigger (migration 20260434) keeps these in sync; set explicitly so older DBs and
     // immediate reads after insert are correct.
@@ -3857,6 +4470,8 @@ export const accountingService = {
     journalEntryId: string,
     patch: {
       entry_date?: string;
+      /** Posted-at timestamp (manual journals only) — does not change GL amounts. */
+      created_at?: string;
       description?: string | null;
       lines?: { account_id: string; debit: number; credit: number; description?: string | null }[];
     }
@@ -3872,13 +4487,14 @@ export const accountingService = {
     if (!row) return { ok: false, error: 'Journal not found' };
     if ((row as { is_void?: boolean }).is_void) return { ok: false, error: 'Void journal cannot be edited' };
     const rt = String((row as { reference_type?: string }).reference_type || '').toLowerCase();
-    if (rt !== 'journal' && rt !== 'manual') {
-      return { ok: false, error: 'Only manual (journal) entries can be edited here; use Edit source for posted documents.' };
+    if (rt !== 'journal' && rt !== 'manual' && rt !== 'transfer') {
+      return { ok: false, error: 'Only manual (journal/transfer) entries can be edited here; use Edit source for posted documents.' };
     }
 
-    if (patch.entry_date !== undefined || patch.description !== undefined) {
+    if (patch.entry_date !== undefined || patch.description !== undefined || patch.created_at !== undefined) {
       const header: Record<string, unknown> = {};
       if (patch.entry_date !== undefined) header.entry_date = String(patch.entry_date).slice(0, 10);
+      if (patch.created_at !== undefined) header.created_at = patch.created_at;
       if (patch.description !== undefined) header.description = patch.description;
       const { error: up } = await supabase
         .from('journal_entries')

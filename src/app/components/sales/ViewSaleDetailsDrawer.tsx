@@ -54,6 +54,8 @@ import { Badge } from "../ui/badge";
 import { Separator } from "../ui/separator";
 import { cn, formatBoxesPieces } from "../ui/utils";
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { usePrinterConfig } from '@/app/hooks/usePrinterConfig';
+import { getThermalDimensions } from '@/app/constants/thermalPrintDimensions';
 import { toast } from 'sonner';
 import { getAttachmentOpenUrl } from '@/app/utils/paymentAttachmentUrl';
 import { AttachmentPreviewRow } from '@/app/components/shared/AttachmentPreviewRow';
@@ -171,6 +173,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
   const { company, inventorySettings, businessSettings } = useSettings();
   const enableBespoke = businessSettings.enableBespokeOrders;
   const { formatCurrency } = useFormatCurrency();
+  const { config: printerConfig } = usePrinterConfig();
   const enablePacking = inventorySettings.enablePacking;
   const [sale, setSale] = useState<Sale | null>(null);
   const [loading, setLoading] = useState(true);
@@ -395,6 +398,12 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
       setLoading(false);
     }
   }, [isOpen, saleId, companyId, loadPayments, loadActivityLogs]);
+
+  // Refresh activity logs when History tab is opened (e.g. after mobile attachment add)
+  useEffect(() => {
+    if (!isOpen || !saleId || activeTab !== 'history') return;
+    void loadActivityLogs(saleId);
+  }, [isOpen, saleId, activeTab, loadActivityLogs]);
 
   // Load studio summary for this sale (real-time sync: productions + stages)
   useEffect(() => {
@@ -1702,7 +1711,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                                 setDeleteConfirmationOpen(true);
                               }}
                               className="p-1.5 rounded-lg hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                              title="Delete Payment"
+                              title="Cancel Payment"
                               disabled={isDeletingPayment || loadingPayments}
                             >
                               <Trash2 size={14} />
@@ -1794,6 +1803,10 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                           return <DollarSign size={16} className="text-blue-500" />;
                         case 'payment_deleted':
                           return <DollarSign size={16} className="text-red-500" />;
+                        case 'attachment_added':
+                          return <Paperclip size={16} className="text-blue-400" />;
+                        case 'attachment_removed':
+                          return <Paperclip size={16} className="text-orange-400" />;
                         case 'update':
                           return <Edit size={16} className="text-yellow-500" />;
                         case 'delete':
@@ -1813,6 +1826,10 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                           return 'bg-blue-500/20';
                         case 'payment_deleted':
                           return 'bg-red-500/20';
+                        case 'attachment_added':
+                          return 'bg-blue-500/20';
+                        case 'attachment_removed':
+                          return 'bg-orange-500/20';
                         case 'update':
                           return 'bg-yellow-500/20';
                         case 'delete':
@@ -1891,15 +1908,23 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
 
       {/* Print / PDF / Share – single document engine (Phase A) */}
       {showPrintLayout && sale && companyId && (
-        <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-auto">
+        <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4 thermal-print-overlay">
+          <div
+            className={`bg-white rounded-lg w-full max-h-[90vh] overflow-auto ${
+              printLayoutType === 'Thermal' ? 'thermal-print-modal-shell' : 'max-w-4xl'
+            }`}
+            style={
+              printLayoutType === 'Thermal'
+                ? { maxWidth: getThermalDimensions(printerConfig.paperSize).modalMaxPx }
+                : undefined
+            }
+          >
             <UnifiedSalesInvoiceView
               saleId={sale.id}
               companyId={companyId}
               templateType={printLayoutType}
               onClose={() => setShowPrintLayout(false)}
               showPrintAction={true}
-              thermalPaperSize="80mm"
             />
           </div>
         </div>

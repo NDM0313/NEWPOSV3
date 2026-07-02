@@ -17,6 +17,12 @@ import { usePdfPreview } from '../../shared/usePdfPreview';
 import { TransactionDetailSheet } from './_shared/TransactionDetailSheet';
 import type { TransactionReferenceType } from '../../../api/transactionDetail';
 import { sortLedgerLinesAndRebuildRunningBalance } from '../../../lib/ledgerChronology';
+import { rpcGetUnifiedAccountLedger } from '../../../api/unifiedLedgerRpc';
+import {
+  effectiveReportLoaderSource,
+  resolveReportMainLoaderSource,
+} from '../../../lib/reportLoaderSource';
+import { LoaderSourceBadge } from './_shared/LoaderSourceBadge';
 import { useAttachmentPreview } from '../../../hooks/useAttachmentPreview';
 import { loadMergedAttachmentsForJournalEntry } from '../../../lib/loadMergedAttachments';
 import { AttachmentIndicatorButton } from '../../shared/AttachmentIndicatorButton';
@@ -58,6 +64,7 @@ export function AccountLedgerReport({
   const [manualLedgerRefresh, setManualLedgerRefresh] = useState(false);
   /** Shown when party GL RPC fails and we fall back to raw sub-account lines. */
   const [ledgerFallbackNotice, setLedgerFallbackNotice] = useState<string | null>(null);
+  const [ledgerLoaderSource, setLedgerLoaderSource] = useState<'legacy' | 'unified'>('legacy');
   const preview = usePdfPreview(companyId);
   const { openAttachmentPreview, AttachmentPreviewPortal } = useAttachmentPreview();
 
@@ -182,6 +189,46 @@ export function AccountLedgerReport({
           return;
         }
 
+        const resolved = await resolveReportMainLoaderSource(companyId, 'account_statement', {
+          legacyAvailable: true,
+        });
+        if (effectiveReportLoaderSource(resolved) === 'unified') {
+          const unified = await rpcGetUnifiedAccountLedger({
+            companyId,
+            accountId: selected.id,
+            branchId: branchId ?? null,
+            dateFrom: range.from,
+            dateTo: range.to,
+            basis: 'official_gl',
+          });
+          if (cancelled) return;
+          if (!unified.error && unified.rows.length >= 0) {
+            const openingBal = unified.rows[0]?.runningBalance
+              ? unified.rows[0].runningBalance - unified.rows[0].debit + unified.rows[0].credit
+              : unified.closingBalance;
+            const mapped: LedgerLine[] = unified.rows.map((r) => ({
+              id: r.journalEntryLineId,
+              journalEntryId: r.journalEntryId,
+              sourceReferenceId: null,
+              date: r.entryDate,
+              createdAt: r.entryDate,
+              entryNo: r.entryNo || '',
+              description: r.description,
+              reference: r.entryNo || '',
+              referenceType: r.referenceType || '',
+              debit: r.debit,
+              credit: r.credit,
+              runningBalance: r.runningBalance,
+              paymentId: r.paymentId,
+            }));
+            setOpening(openingBal);
+            setLines(mapped);
+            setLedgerLoaderSource('unified');
+            setLedgerFallbackNotice(null);
+            return;
+          }
+        }
+
         const res = await getAccountLedgerLines(
           companyId,
           selected.id,
@@ -192,6 +239,7 @@ export function AccountLedgerReport({
         if (cancelled) return;
         setOpening(res.openingBalance);
         setLines(sortLedgerLinesAndRebuildRunningBalance(res.lines, res.openingBalance));
+        setLedgerLoaderSource('legacy');
         setLedgerFallbackNotice(null);
       } catch {
         if (!cancelled) {
@@ -398,6 +446,7 @@ export function AccountLedgerReport({
           setLedgerRefreshNonce((n) => n + 1);
         }}
         refreshing={manualLedgerRefresh && detailLoading}
+        rightExtras={<LoaderSourceBadge source={ledgerLoaderSource} />}
       >
         <DateRangeBar value={range} onChange={setRange} />
       </ReportHeader>

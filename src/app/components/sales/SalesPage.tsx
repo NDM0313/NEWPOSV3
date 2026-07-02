@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { readSaleBillRef } from '@/app/utils/saleBillRef';
+import { parseLocalDateInput } from '@/app/utils/localDate';
 import { 
   Plus, ShoppingCart, DollarSign, TrendingUp, 
   MoreVertical, Eye, Edit, Trash2, FileText, Phone, MapPin,
@@ -58,6 +59,10 @@ import { useGlobalFilter } from '@/app/context/GlobalFilterContext';
 import { getContactWhatsAppPhone, openWhatsAppShare } from '@/app/lib/phoneWhatsApp';
 import { saleService } from '@/app/services/saleService';
 import { supabase } from '@/lib/supabase';
+import {
+  safeSessionStorageGetItem,
+  safeSessionStorageRemoveItem,
+} from '@/app/lib/safeBrowserStorage';
 import { branchService, Branch } from '@/app/services/branchService';
 import { saleReturnService } from '@/app/services/saleReturnService';
 import { shipmentService } from '@/app/services/shipmentService';
@@ -81,6 +86,7 @@ import { exportToCSV, exportToExcel, exportToPDF, type ExportData } from '@/app/
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 import { getEffectiveSaleStatus, getSaleStatusBadgeConfig, DEFAULT_SALE_BADGE, isPaymentClosedForSale, canAddPaymentToSale, saleLifecycleHidesPaymentColumns } from '@/app/utils/statusHelpers';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { AdaptiveCurrencyValue } from '@/app/components/shared/AdaptiveCurrencyValue';
 import { getSaleDisplayNumber } from '@/app/lib/documentDisplayNumbers';
 import { transitionSaleLifecycle, restoreSaleFromCancelled } from '@/app/lib/documentLifecycleActions';
 import { SaleLifecycleMenuBlock, type SaleLifecycleAction } from '@/app/components/sales/SaleLifecycleMenuBlock';
@@ -374,12 +380,12 @@ export const SalesPage = () => {
 
   // Check for customer filter from ContactsPage
   useEffect(() => {
-    const customerId = sessionStorage.getItem('salesFilter_customerId');
-    const customerName = sessionStorage.getItem('salesFilter_customerName');
+    const customerId = safeSessionStorageGetItem('salesFilter_customerId');
+    const customerName = safeSessionStorageGetItem('salesFilter_customerName');
     if (customerId) {
       setCustomerFilter(customerId);
-      sessionStorage.removeItem('salesFilter_customerId');
-      sessionStorage.removeItem('salesFilter_customerName');
+      safeSessionStorageRemoveItem('salesFilter_customerId');
+      safeSessionStorageRemoveItem('salesFilter_customerName');
       if (customerName) {
         toast.info(`Filtering sales for ${customerName}`);
       }
@@ -430,9 +436,9 @@ export const SalesPage = () => {
   /** Open a specific sale return from Accounting → “Open source” on a sale_return journal row. */
   useEffect(() => {
     if (typeof window === 'undefined' || !companyId) return;
-    const pendingId = sessionStorage.getItem('pendingAccountingOpen_saleReturnId');
+    const pendingId = safeSessionStorageGetItem('pendingAccountingOpen_saleReturnId');
     if (!pendingId) return;
-    sessionStorage.removeItem('pendingAccountingOpen_saleReturnId');
+    safeSessionStorageRemoveItem('pendingAccountingOpen_saleReturnId');
     let cancelled = false;
     void (async () => {
       try {
@@ -969,11 +975,13 @@ export const SalesPage = () => {
       }
       // activeTab === 'all' shows all
 
-      // Global filter date range
+      // Global filter date range (local calendar — inclusive end of day)
       if (startDate && endDate) {
-        const saleDate = new Date(sale.date);
-        const start = new Date(startDate);
-        const end = new Date(endDate);
+        const saleDate = parseLocalDateInput(String(sale.date).slice(0, 10));
+        const start = parseLocalDateInput(startDate);
+        start.setHours(0, 0, 0, 0);
+        const end = parseLocalDateInput(endDate);
+        end.setHours(23, 59, 59, 999);
         if (saleDate < start || saleDate > end) return false;
       }
       // If no date range, show all (no filter applied)
@@ -1090,16 +1098,12 @@ export const SalesPage = () => {
     invoiceCount: finalSalesForSummary.length,
   }), [finalSalesForSummary, getEffectiveDue]);
 
-  // Client-side pagination: context loads all sales (capped); we filter, sort, then slice for current page
+  // Server-paginated: context holds one page; client filters/sorts within that page
   const pageSize = contextPageSize ?? 50;
-  const totalFilteredCount = sortedSales.length;
-  const totalPages = Math.max(1, Math.ceil(totalFilteredCount / pageSize));
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const currentPage = Math.min(page + 1, totalPages);
 
-  const paginatedSales = useMemo(
-    () => sortedSales.slice(page * pageSize, (page + 1) * pageSize),
-    [sortedSales, page, pageSize]
-  );
+  const paginatedSales = useMemo(() => sortedSales, [sortedSales]);
 
   // Paid amount from payment records (fixes wrong sales.paid_amount in table - same as ViewSaleDetailsDrawer)
   const [paidBySaleId, setPaidBySaleId] = useState<Map<string, number>>(new Map());
@@ -1142,6 +1146,10 @@ export const SalesPage = () => {
   React.useEffect(() => {
     setPage(0);
   }, [searchTerm, dateFilter, customerFilter, paymentStatusFilter, saleStatusFilter, shippingStatusFilter, branchFilter, paymentMethodFilter, setPage]);
+
+  React.useEffect(() => {
+    setPage(0);
+  }, [startDate, endDate, branchId, setPage]);
 
   // Clamp page when total pages shrinks (e.g. filter leaves fewer pages)
   React.useEffect(() => {
@@ -1662,11 +1670,11 @@ export const SalesPage = () => {
       <div className="shrink-0 px-6 py-4 bg-[#0F1419] border-b border-gray-800">
         <div className="grid grid-cols-4 gap-4">
           {/* Total Sales */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 min-w-0">
             <div className="flex items-start justify-between mb-3">
-              <div>
+              <div className="min-w-0">
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Sales</p>
-                <p className="text-2xl font-bold text-white mt-1">{formatCurrency(summary.totalSales)}</p>
+                <AdaptiveCurrencyValue value={summary.totalSales} className="text-2xl font-bold text-white mt-1" as="p" />
                 <p className="text-xs text-gray-500 mt-1">All invoices</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center">
@@ -1676,11 +1684,11 @@ export const SalesPage = () => {
           </div>
 
           {/* Total Paid */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 min-w-0">
             <div className="flex items-start justify-between mb-3">
-              <div>
+              <div className="min-w-0">
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Paid</p>
-                <p className="text-2xl font-bold text-green-400 mt-1">{formatCurrency(summary.totalPaid)}</p>
+                <AdaptiveCurrencyValue value={summary.totalPaid} className="text-2xl font-bold text-green-400 mt-1" as="p" />
                 <p className="text-xs text-gray-500 mt-1">Received amount</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
@@ -1690,11 +1698,11 @@ export const SalesPage = () => {
           </div>
 
           {/* Total Due */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 min-w-0">
             <div className="flex items-start justify-between mb-3">
-              <div>
+              <div className="min-w-0">
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Due</p>
-                <p className="text-2xl font-bold text-red-400 mt-1">{formatCurrency(summary.totalDue)}</p>
+                <AdaptiveCurrencyValue value={summary.totalDue} className="text-2xl font-bold text-red-400 mt-1" as="p" />
                 <p className="text-xs text-gray-500 mt-1">Pending payments</p>
                 <p className="text-[10px] text-gray-500 mt-2 leading-snug">
                   Listed final sales: effective due (product + shipment to customer + studio − paid). Not Contacts operational receivables or GL AR 1100 — use Contacts reconciliation or Financial reports to tie out.
@@ -2265,7 +2273,7 @@ export const SalesPage = () => {
                     <p className="text-gray-400 text-sm">No sales found</p>
                     {sales.length > 0 ? (
                       <p className="text-gray-500 text-xs mt-2 max-w-lg mx-auto">
-                        {totalFilteredCount === 0
+                        {sortedSales.length === 0
                           ? 'This company has sales, but none match the current filters. Widen the header date range, set branch to All where applicable, or clear search and column filters.'
                           : 'Try another page or adjust filters.'}
                       </p>
@@ -2517,7 +2525,7 @@ export const SalesPage = () => {
         currentPage={currentPage}
         totalPages={totalPages}
         pageSize={pageSize}
-        totalItems={totalFilteredCount}
+        totalItems={totalCount}
         onPageChange={handlePageChange}
         onPageSizeChange={handlePageSizeChange}
       />

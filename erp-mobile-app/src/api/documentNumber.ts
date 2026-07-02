@@ -60,6 +60,7 @@ const FALLBACK_PREFIX: Record<DocumentType, string> = {
 
 /**
  * Get next document number from the ERP numbering engine (same as web Settings).
+ * Pass the real branch UUID; Postgres resolves global vs branch_based. Expenses: use create_expense_document RPC.
  */
 export async function getNextDocumentNumber(
   companyId: string,

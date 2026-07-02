@@ -1,0 +1,74 @@
+{
+  "phase": "3B-J",
+  "run": "finance-basis-decision-pack",
+  "generated_at": "2026-06-29T15:30:00.000Z",
+  "defaultSelectedOption": "B",
+  "financeStatus": "APPROVED_FOR_SIGNOFF_PACK",
+  "loaderSwapApproved": false,
+  "officialLegacyUnchanged": true,
+  "reviewer": "",
+  "reviewDate": "",
+  "approvedPreviewRules": { "Q4": "A", "Q5": "C", "Q7": "B" },
+  "options": [
+    {
+      "id": "A",
+      "label": "Keep legacy official indefinitely",
+      "description": "Legacy Cash Flow remains official. Aligned preview stays diagnostic-only. No loader swap. Cash Flow unified adoption closed or deferred.",
+      "legacyOfficial": true,
+      "alignedPreviewRole": "diagnostic_only",
+      "loaderSwap": false,
+      "nextPhase": "Continue monitoring; no Cash Flow sign-off pack"
+    },
+    {
+      "id": "B",
+      "label": "Approve aligned preview as finance basis candidate — no loader swap yet",
+      "description": "Finance accepts Q4=A and Q5=C basis. DIN CHINA/DIN BRIDAL deltas accepted as expected rule differences vs legacy. Next phase: separate Cash Flow finance sign-off pack. Loader swap still needs separate operator approval later.",
+      "legacyOfficial": true,
+      "alignedPreviewRole": "finance_basis_candidate",
+      "loaderSwap": false,
+      "nextPhase": "Phase 3B-K or equivalent Cash Flow finance sign-off pack",
+      "recommended": true,
+      "recommendationRationale": "Preview rules already approved by Nadeem Khan; residual bridge shows deltas are expected legacy-mismatch, not mapper failure. DIN COUTURE zero-diff supports path. Loader swap remains gated separately."
+    },
+    {
+      "id": "C",
+      "label": "Require another fix/investigation before finance sign-off",
+      "description": "Specify remaining questions. No sign-off. No loader swap.",
+      "legacyOfficial": true,
+      "alignedPreviewRole": "diagnostic_pending_investigation",
+      "loaderSwap": false,
+      "remainingQuestions": [
+        "Q1 — Should legacy getCashFlowReport remain official long-term?",
+        "Q2 — Unified effective_party basis adoption scope",
+        "Q6 — Source module inclusion in normal Cash Flow",
+        "DIN CHINA — Quantify residual beyond Q5 transfer exclusion (engine row-set differences)",
+        "DIN BRIDAL — Confirm opening_balance_account JE mapping treatment"
+      ],
+      "nextPhase": "Phase 3B follow-up investigation; no sign-off"
+    },
+    {
+      "id": "D",
+      "label": "Align legacy official to finance rules later",
+      "description": "Controlled behavior-change plan required. Possible user-facing report behavior change. Full rollback and finance sign-off required. No immediate loader swap.",
+      "legacyOfficial": false,
+      "alignedPreviewRole": "target_official_behavior",
+      "loaderSwap": false,
+      "nextPhase": "Controlled legacy behavior-change phase with rollback plan",
+      "risk": "User-facing official Cash Flow totals would change"
+    }
+  ],
+  "companyImpact": {
+    "din-china": { "closingDelta": 69637623, "nonZeroDiff": true, "optionBAcceptableIfDeltasExpected": true },
+    "din-bridal": { "closingDelta": 857850, "nonZeroDiff": true, "optionBAcceptableIfDeltasExpected": true },
+    "din-couture": { "closingDelta": 0, "zeroDiff": true, "optionBSupportsReview": true }
+  },
+  "selectedOption": "B",
+  "financeStatus": "APPROVED_FOR_SIGNOFF_PACK",
+  "reviewer": "Nadeem Khan",
+  "reviewDate": "2026-06-29",
+  "loaderSwapApproved": false,
+  "officialLegacyCashFlowChanged": false,
+  "writtenApprovalText": "Option B approved: aligned Cash Flow preview is accepted as finance basis candidate under Q4=A, Q5=C, Q7=B. DIN CHINA and DIN BRIDAL deltas are accepted as expected rule differences vs legacy. Official legacy Cash Flow remains unchanged. Cash Flow loader swap is NOT APPROVED.",
+  "signoffPack": "reports/single-core-ledger/phase-3b-k-cash-flow-finance-signoff/cash-flow-finance-signoff-pack.md",
+  "operatorWrittenApprovalRequired": true
+}

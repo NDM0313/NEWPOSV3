@@ -1,0 +1,63 @@
+{
+  "phase": "3B-F",
+  "screen": "cash_flow",
+  "diagnosticOnly": true,
+  "companyId": "sample-co",
+  "dateFrom": "2000-01-01",
+  "dateTo": "2026-06-29",
+  "diff": {
+    "legacyCashIn": 100,
+    "previewCashIn": 200,
+    "cashInDelta": -100,
+    "legacyCashOut": 0,
+    "previewCashOut": 50,
+    "cashOutDelta": -50,
+    "closingDelta": -150,
+    "legacyRowCount": 1,
+    "previewRowCount": 2,
+    "pass": false
+  },
+  "rowKeyedDiff": {
+    "exactMatches": [],
+    "strongMatches": [],
+    "weakMatches": [],
+    "legacyOnly": [
+      {
+        "stableRowKey": "jel:a",
+        "cashIn": 100,
+        "cashOut": 0,
+        "sourceModule": "transfers",
+        "referenceType": "transfer"
+      }
+    ],
+    "previewOnly": [
+      {
+        "stableRowKey": "jel:b",
+        "cashIn": 200,
+        "cashOut": 0,
+        "referenceType": "transfer",
+        "transferClass": "internal_transfer_in"
+      },
+      {
+        "stableRowKey": "jel:c",
+        "cashIn": 0,
+        "cashOut": 50,
+        "referenceType": "transfer",
+        "transferClass": "internal_transfer_out"
+      }
+    ],
+    "thematicBuckets": [
+      {
+        "bucketId": "transfer_leg",
+        "label": "Transfer leg bucket",
+        "rowCount": 3,
+        "cashInTotal": 300,
+        "cashOutTotal": 50,
+        "netImpact": 250,
+        "closingImpact": 250,
+        "sampleRefs": ["transfer sample"],
+        "ruleConfirmationQuestionId": "Q5"
+      }
+    ]
+  }
+}

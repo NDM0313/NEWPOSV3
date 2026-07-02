@@ -14,7 +14,8 @@ import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { cn } from "../ui/utils";
-import { CalendarDatePicker } from "../ui/CalendarDatePicker";
+import { DateTimePicker } from "../ui/DateTimePicker";
+import { formatLocalDateTimeYYYYMMDDHHmm } from '@/app/utils/localDate';
 import { useFormatCurrency } from "@/app/hooks/useFormatCurrency";
 
 import { VirtualNumpad } from '../ui/virtual-numpad';
@@ -30,6 +31,7 @@ export const FundsTransferModal = ({ isOpen, onClose }: FundsTransferModalProps)
   const [fromAccount, setFromAccount] = useState("meezan");
   const [toAccount, setToAccount] = useState("jazzcash");
   const [isNumpadOpen, setIsNumpadOpen] = useState(false);
+  const [transferDateTime, setTransferDateTime] = useState(() => formatLocalDateTimeYYYYMMDDHHmm(new Date()));
 
   // Prevent default keyboard on mobile/tablet for the amount input
   const handleAmountFocus = (e: React.FocusEvent<HTMLInputElement>) => {
@@ -61,11 +63,10 @@ export const FundsTransferModal = ({ isOpen, onClose }: FundsTransferModalProps)
           {/* Date Row */}
           <div className="grid grid-cols-2 gap-4">
              <div className="col-span-2">
-                <CalendarDatePicker
+                <DateTimePicker
                   label="Date & Time"
-                  value={new Date()}
-                  onChange={() => {}}
-                  showTime={true}
+                  value={transferDateTime}
+                  onChange={setTransferDateTime}
                 />
              </div>
           </div>

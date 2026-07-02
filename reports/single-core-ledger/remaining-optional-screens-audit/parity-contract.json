@@ -1,0 +1,57 @@
+{
+  "run": "PHASE_3_REMAINING_OPTIONAL_SCREEN_AUDIT",
+  "generatedAt": "2026-06-29",
+  "goldenStatus": "NEEDS_GOLDEN_CAPTURE_FOR_BS_PL_CF_MOBILE_STATEMENTS",
+  "approvedGoldensReference": "five_live_loaders_only",
+  "surfaces": {
+    "balance_sheet": {
+      "accountingBasis": "official_gl",
+      "dateBehavior": "as_of_single_date_cumulative",
+      "branchBehavior": "match_unified_trial_balance_strict",
+      "companyScoping": "single_company",
+      "normalVsAudit": { "normal": "exclude_void_and_align_unified_tb", "audit": "include_labeled_trails" },
+      "reversalRule": "correction_reversal excluded in normal per unified basis",
+      "rounding": "PKR_2dp",
+      "printExport": ["excel", "print_shell", "whatsapp"],
+      "mobileParity": "not_applicable_no_screen",
+      "goldenTest": "NEEDS_GOLDEN_CAPTURE",
+      "safeFallback": "legacy_getBalanceSheet_main"
+    },
+    "profit_loss": {
+      "accountingBasis": "official_gl",
+      "dateBehavior": "inclusive_period_with_optional_comparison",
+      "branchBehavior": "match_unified_tb",
+      "companyScoping": "single_company",
+      "normalVsAudit": { "normal": "exclude_void", "audit": "include_trails" },
+      "reversalRule": "no_double_count_in_normal",
+      "cogsMapping": "COST_OF_PRODUCTION_CODES_plus_type_heuristics",
+      "rounding": "PKR_2dp",
+      "printExport": ["excel", "print_shell", "whatsapp"],
+      "mobileParity": "not_applicable_no_screen",
+      "goldenTest": "NEEDS_GOLDEN_CAPTURE",
+      "safeFallback": "legacy_getProfitLoss_main"
+    },
+    "cash_flow": {
+      "accountingBasis": "official_gl_liquidity",
+      "dateBehavior": "dateFrom_dateTo",
+      "branchBehavior": "match_roznamcha_unified_when_wired",
+      "companyScoping": "single_company",
+      "normalVsAudit": { "normal": "shouldIncludeInNormalCashMovement", "audit": "all_with_suffix_labels" },
+      "reversalRule": "reportVisibilityContract",
+      "rounding": "PKR_running_balance_recompute",
+      "printExport": ["csv", "pdf_preview", "print"],
+      "mobileParity": "partial_roznamcha_only_NEEDS_GOLDEN_CAPTURE",
+      "goldenTest": "NEEDS_GOLDEN_CAPTURE",
+      "safeFallback": "legacy_roznamcha_getCashFlowReport"
+    },
+    "mobile": {
+      "scope": ["account_ledger", "party_ledgers", "daybook_roznamcha", "cash_bank_wallet_summaries"],
+      "accountingBasis": "legacy_match_web_when_same_filters",
+      "unifiedLoaderParity": false,
+      "auditToggleOnMobile": false,
+      "printExport": ["LedgerPreviewPdf", "RoznamchaPreviewPdf"],
+      "goldenTest": "NEEDS_GOLDEN_CAPTURE",
+      "safeFallback": "no_loader_swap_until_web_proven"
+    }
+  }
+}

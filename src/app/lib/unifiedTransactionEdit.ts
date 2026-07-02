@@ -46,6 +46,7 @@ export interface JournalTransactionLike {
   payment_id?: string | null;
   is_void?: boolean | null;
   description?: string | null;
+  action_fingerprint?: string | null;
   /** When true, this row is superseded in a PF-14 payment chain — do not open payment editor. */
   payment_chain_is_historical?: boolean;
   /** Active PF-07 correction_reversal exists for this journal header — terminal for unified edit. */
@@ -111,6 +112,11 @@ export function inferTransactionKind(transaction: JournalTransactionLike, paymen
   if (desc.includes('discount')) return 'discount';
   if (desc.includes('commission')) return 'commission';
   if (desc.includes('shipping') || desc.includes('courier')) return 'shipping';
+
+  const fp = String(transaction.action_fingerprint || '').trim();
+  if (rt === 'rental' && (fp.startsWith('rental_party_payment:') || desc.includes('rental payment'))) {
+    return 'payment';
+  }
 
   if (rt === 'sale' || rt === 'purchase' || rt === 'rental') return 'document_total';
 
@@ -181,6 +187,15 @@ export function resolveUnifiedJournalEdit(
     };
   }
   if (kind === 'payment') {
+    if (rt === 'rental' && !payment?.id && transaction.reference_id) {
+      return {
+        kind: 'payment_editor',
+        transactionKind: 'payment',
+        context: 'rental',
+        sourceId: String(transaction.reference_id),
+        paymentReferenceType: 'rental',
+      };
+    }
     // PF-14 adjustment voucher: always edit the underlying payment, not the sale/purchase document.
     if (rt === 'payment_adjustment') {
       const pidFromJe =

@@ -13,7 +13,7 @@ export function getSupabaseStorageDashboardUrl(): string {
     : 'https://supabase.com/dashboard';
 }
 
-const KNOWN_BUCKETS = ['payment-attachments', 'purchase-attachments', 'sale-attachments'];
+const KNOWN_BUCKETS = ['payment-attachments', 'purchase-attachments', 'sale-attachments', 'expense-receipts'];
 
 export function storageRefForPersistence(bucket: string, path: string): string {
   return `${bucket}/${path}`;

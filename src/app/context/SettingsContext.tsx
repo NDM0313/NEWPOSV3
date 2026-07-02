@@ -19,6 +19,7 @@ import {
   mapAppRoleToEngineRole,
   mapAppRoleToUiRole,
 } from '@/app/config/functionalRoles';
+import { FISCAL_YEAR_CONFIG_UPDATED_EVENT } from '@/app/utils/financialYear';
 
 export type { ModuleToggles };
 
@@ -1038,6 +1039,15 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     
     try {
       await settingsService.setSetting(companyId, 'accounting_settings', updated, 'accounting', 'Accounting module settings');
+      if (updated.fiscalYearStart) {
+        await supabase
+          .from('companies')
+          .update({ financial_year_start: updated.fiscalYearStart })
+          .eq('id', companyId);
+      }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(FISCAL_YEAR_CONFIG_UPDATED_EVENT));
+      }
       toast.success('Accounting settings saved');
     } catch (error) {
       console.error('[SETTINGS] Error saving accounting settings:', error);

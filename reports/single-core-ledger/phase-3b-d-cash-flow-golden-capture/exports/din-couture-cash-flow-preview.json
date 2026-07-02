@@ -1,0 +1,81 @@
+{
+  "phase": "3B",
+  "screen": "cash_flow",
+  "dateFrom": "2000-01-01",
+  "dateTo": "2026-06-29",
+  "branchLabel": "Selected branch",
+  "auditMode": false,
+  "previewBasis": "effective_party",
+  "engineState": {
+    "mode": "preview",
+    "killSwitchActive": false,
+    "companyEngineEnabled": true,
+    "screenFlagEnabled": false,
+    "pilotEnabled": true,
+    "localOverride": null,
+    "rpcAllowed": true
+  },
+  "diff": {
+    "legacyOpening": 0,
+    "previewOpening": 0,
+    "openingDelta": 0,
+    "legacyCashIn": 85000,
+    "previewCashIn": 85000,
+    "cashInDelta": 0,
+    "legacyCashOut": 34500,
+    "previewCashOut": 34500,
+    "cashOutDelta": 0,
+    "legacyNetMovement": 50500,
+    "previewNetMovement": 50500,
+    "netMovementDelta": 0,
+    "legacyClosing": 50500,
+    "previewClosing": 50500,
+    "closingDelta": 0,
+    "legacyRowCount": 6,
+    "previewRowCount": 6,
+    "rowCountDelta": 0,
+    "pass": true,
+    "previewOnly": true,
+    "needsFinanceGoldenApproval": true
+  },
+  "preview": {
+    "previewOnly": true,
+    "needsFinanceGoldenApproval": true,
+    "summary": {
+      "opening": 0,
+      "cashIn": 85000,
+      "cashOut": 34500,
+      "netMovement": 50500,
+      "closing": 50500
+    },
+    "rowCount": 6,
+    "sourceModuleFilter": "all",
+    "auditMode": false,
+    "accountingRuleNotes": [
+      "PREVIEW_ONLY — not finance-approved golden totals.",
+      "Derived from get_unified_cash_bank_ledger (unified Roznamcha preview path).",
+      "Legacy getCashFlowReport → roznamchaService.getRoznamcha remains main.",
+      "Cash Flow screen does not use unified Roznamcha main loader when ON — preview-only parity compare.",
+      "NEEDS_FINANCE_GOLDEN_APPROVAL before any loader swap."
+    ]
+  },
+  "roznamchaMeta": {
+    "engine": "unified_shadow",
+    "basis": "effective_party",
+    "featureFlagEnabled": true,
+    "shadowForce": true,
+    "queryDurationMs": 562,
+    "rowCount": 6,
+    "periodOpeningBalance": 0,
+    "message": "Liquidity RPC (all), accounts=9"
+  },
+  "accountingRuleNotes": [
+    "PREVIEW_ONLY — not finance-approved golden totals.",
+    "Derived from get_unified_cash_bank_ledger (unified Roznamcha preview path).",
+    "Legacy getCashFlowReport → roznamchaService.getRoznamcha remains main.",
+    "Cash Flow screen does not use unified Roznamcha main loader when ON — preview-only parity compare.",
+    "NEEDS_FINANCE_GOLDEN_APPROVAL before any loader swap."
+  ],
+  "exportedAt": "2026-06-29T12:20:19.712Z",
+  "note": "PREVIEW_ONLY — legacy Cash Flow table remains authoritative. NEEDS_FINANCE_GOLDEN_APPROVAL."
+}

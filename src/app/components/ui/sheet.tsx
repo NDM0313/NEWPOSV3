@@ -57,15 +57,18 @@ SheetOverlay.displayName = "SheetOverlay";
 
 function SheetContent({
   className,
+  overlayClassName,
   children,
   side = "right",
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Content> & {
   side?: "top" | "right" | "bottom" | "left";
+  /** When opened above a Dialog (z-[110]), pass e.g. z-[115] so the sheet stacks correctly. */
+  overlayClassName?: string;
 }) {
   return (
     <SheetPortal>
-      <SheetOverlay />
+      <SheetOverlay className={overlayClassName} />
       <SheetPrimitive.Content
         data-slot="sheet-content"
         aria-describedby={undefined}

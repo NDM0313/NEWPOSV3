@@ -1,0 +1,11 @@
+{
+  "generated_at": "2026-06-30T13:10:49.000Z",
+  "overall": "FAIL",
+  "exit_code": 1,
+  "reason": "din-china Phase 2.16 page.goto networkidle timeout (transient)",
+  "timestamp_slug": "2026-06-30T12-58-57-465Z",
+  "din_china": "FAIL (timeout after partial checks)",
+  "din_bridal": "PASS",
+  "din_couture": "PASS",
+  "note": "Post-work retry PASS at 13-12-20-086Z"
+}

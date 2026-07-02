@@ -79,6 +79,27 @@ export async function loadMergedAttachmentsForJournalEntry(
   return mergeAttachmentLists(jeFromDb, paymentAtt, refAtt);
 }
 
+/** Expense ids with a non-empty receipt_url (batch, for hasAttachments hints). */
+export async function batchExpenseIdsWithReceiptUrl(
+  companyId: string,
+  expenseIds: string[],
+): Promise<Set<string>> {
+  const out = new Set<string>();
+  const ids = Array.from(new Set(expenseIds.filter((id) => id.trim() !== '')));
+  if (!isSupabaseConfigured || !companyId || ids.length === 0) return out;
+  const { data } = await supabase
+    .from('expenses')
+    .select('id, receipt_url')
+    .eq('company_id', companyId)
+    .in('id', ids);
+  for (const row of data || []) {
+    const id = String((row as Record<string, unknown>).id ?? '');
+    const ru = String((row as Record<string, unknown>).receipt_url ?? '').trim();
+    if (id && ru) out.add(id);
+  }
+  return out;
+}
+
 /** Batch flag for ledger lines (RPC / worker ledgers without attachment columns). */
 export async function batchJournalEntryHasAttachments(
   companyId: string,
@@ -134,15 +155,37 @@ export async function batchJournalEntryHasAttachments(
     }
   }
 
+  const expenseRefIds: string[] = [];
+  for (const id of ids) {
+    const meta = jeMeta.get(id);
+    if (!meta) continue;
+    const rt = meta.referenceType.toLowerCase();
+    if (
+      (rt === 'expense' || rt === 'expense_payment') &&
+      meta.referenceId &&
+      meta.attachments.length === 0 &&
+      !(meta.paymentId && (paymentAttById.get(meta.paymentId)?.length ?? 0) > 0)
+    ) {
+      expenseRefIds.push(meta.referenceId);
+    }
+  }
+  const expenseWithReceipt = await batchExpenseIdsWithReceiptUrl(companyId, expenseRefIds);
+
   for (const id of ids) {
     const meta = jeMeta.get(id);
     if (!meta) {
       result.set(id, false);
       continue;
     }
+    const rt = meta.referenceType.toLowerCase();
+    const hasExpenseReceipt =
+      (rt === 'expense' || rt === 'expense_payment') &&
+      !!meta.referenceId &&
+      expenseWithReceipt.has(meta.referenceId);
     const has =
       meta.attachments.length > 0 ||
-      (meta.paymentId ? (paymentAttById.get(meta.paymentId)?.length ?? 0) > 0 : false);
+      (meta.paymentId ? (paymentAttById.get(meta.paymentId)?.length ?? 0) > 0 : false) ||
+      hasExpenseReceipt;
     result.set(id, has);
   }
   return result;

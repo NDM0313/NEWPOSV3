@@ -1,0 +1,46 @@
+{
+  "generated_at": "2026-06-30T08:58:28.373Z",
+  "url": "https://erp.dincouture.pk",
+  "overall": "PARTIAL",
+  "deployed_commit": "a83522f758a3a55f0faffc4b35787cdd889547f2",
+  "frontend_constant_verified": "216299 in production CompareSummaryCards bundle",
+  "admin_compare_classification": "RETAINED_JE_ENGINE_TIEOUT_BASELINE",
+  "checks": [
+    {
+      "check": "App login",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "Ledger V2 loads",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "MR JALIL closing 216299",
+      "result": "PASS",
+      "notes": "actual=216299"
+    },
+    {
+      "check": "Discount filter shows party discount row",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "Admin Compare shows 216299 golden",
+      "result": "FAIL",
+      "notes": ""
+    },
+    {
+      "check": "Admin Compare Pilot Batch 9/9",
+      "result": "PARTIAL",
+      "notes": "pass=3 fail=9"
+    },
+    {
+      "check": "No material console/RPC errors",
+      "result": "PASS",
+      "notes": "none"
+    }
+  ],
+  "no_new_je_posted": true
+}

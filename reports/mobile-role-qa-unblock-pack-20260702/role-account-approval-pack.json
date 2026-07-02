@@ -1,0 +1,24 @@
+{
+  "run": "MOBILE_ROLE_ACCOUNT_APPROVAL_PACK",
+  "run_local_datetime": "2026-07-02T19:32:18+05:00",
+  "users_created": false,
+  "options": {
+    "A_existing_accounts": {
+      "salesman_ready": true,
+      "manager_ready": false,
+      "requires_operator_password": true
+    },
+    "B_temporary_qa_accounts": {
+      "requires_explicit_approval": true,
+      "manager_creation_needed": true,
+      "salesman_creation_needed": false
+    },
+    "C_defer": {
+      "release_gate": "BLOCKED_PARTIAL_DEVICE_QA_PENDING_ROLES"
+    }
+  },
+  "recommended": {
+    "salesman": "Option A — existing DIN BRIDAL salesman",
+    "manager": "Option B — temporary manager QA user with approval"
+  }
+}

@@ -12,11 +12,17 @@ import {
 } from '@/app/components/ui/select';
 import { Badge } from '@/app/components/ui/badge';
 import { toast } from 'sonner';
+import { useRepairQueue } from '@/app/components/admin/developer-center/RepairQueueContext';
+import { detectTransactionTraceRepairCandidates } from '@/app/lib/transactionTraceRepairDiagnostics';
+import { TraceRepairCandidatesPanel } from '@/app/components/admin/developer-center/TraceRepairCandidateCard';
 import {
   runTransactionTrace,
   type TraceMode,
   type TransactionTraceResult,
 } from '@/app/services/accountingDeveloperCenterService';
+import type { ReportModeVisibility, ReportVisibility } from '@/app/lib/transactionTraceReportVisibility';
+import { suggestTraceActions } from '@/app/lib/transactionTraceSuggestedActions';
+import { isCorrectionReversalReferenceType } from '@/app/lib/reportVisibilityContract';
 
 interface Props {
   companyId: string;
@@ -56,7 +62,52 @@ function inclBadge(included: boolean) {
   );
 }
 
+function modeVisLine(label: string, vis: ReportModeVisibility) {
+  return (
+    <div key={label} className="space-y-0.5">
+      <p>
+        {label} — normal {inclBadge(vis.normal.included)} · audit {inclBadge(vis.audit.included)}
+      </p>
+      <p className="text-gray-500 pl-2">{vis.normal.reason}</p>
+    </div>
+  );
+}
+
+function renderReportVisibility(vis: ReportVisibility, journalRt?: string | null) {
+  const suggested = suggestTraceActions({
+    issueType: 'none',
+    journalReferenceType: journalRt,
+    normalHiddenAuditVisible:
+      isCorrectionReversalReferenceType(journalRt) &&
+      !vis.roznamcha.normal.included &&
+      vis.roznamcha.audit.included,
+  });
+  return (
+    <div className="space-y-2">
+      {modeVisLine('Roznamcha', vis.roznamcha)}
+      {modeVisLine('Account statement', vis.accountStatement)}
+      {modeVisLine('Customer/supplier statement', vis.customerSupplierStatement)}
+      {modeVisLine('Day Book', vis.dayBook)}
+      <p>Dashboard: {vis.dashboard.note}</p>
+      {vis.dashboard.impacted.length > 0 && <p>KPIs: {vis.dashboard.impacted.join(', ')}</p>}
+      {suggested.length > 0 && (
+        <div className="border-t border-gray-800 pt-2 mt-2">
+          <p className="text-gray-300 font-medium">Suggested safe actions</p>
+          <ul className="list-disc pl-4 mt-1">
+            {suggested.map((s) => (
+              <li key={s.id}>
+                <span className="text-gray-200">{s.label}</span> — {s.detail}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function TransactionTraceTab({ companyId, initialQuery = '' }: Props) {
+  const { sendToRepairQueue } = useRepairQueue();
   const [mode, setMode] = useState<TraceMode>('auto');
   const [query, setQuery] = useState(initialQuery);
   const [loading, setLoading] = useState(false);
@@ -94,13 +145,15 @@ export function TransactionTraceTab({ companyId, initialQuery = '' }: Props) {
         visibility,
       }));
 
+  const repairCandidates = trace ? detectTransactionTraceRepairCandidates(trace, 'trace') : [];
+
   return (
     <div className="space-y-4">
       <Card className="border-gray-800 bg-gray-900/40">
         <CardHeader>
           <CardTitle className="text-lg">Transaction trace</CardTitle>
           <CardDescription>
-            RCV/PAY/EXP/JE/SL/REN/UUID — operational doc → payment → JE → report visibility. Read-only.
+            RCV/PAY/EXP/JE/SL/REN/UUID — operational doc → payment → JE → report visibility. Phase F repair queue.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -140,6 +193,23 @@ export function TransactionTraceTab({ companyId, initialQuery = '' }: Props) {
 
       {trace && (
         <div className="space-y-2">
+          <Card className="border-violet-900/30 bg-violet-950/10">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Repair candidates</CardTitle>
+              <CardDescription>Safe metadata repairs — always dry-run before apply</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <TraceRepairCandidatesPanel
+                candidates={repairCandidates}
+                sourceTab="trace"
+                onSendToQueue={(item) => {
+                  sendToRepairQueue(item);
+                  toast.success('Sent to Repair Queue');
+                }}
+              />
+            </CardContent>
+          </Card>
+
           <div className="flex flex-wrap gap-2 items-center text-sm">
             <span className="text-gray-500">Overall:</span>
             <Badge>{trace.overall}</Badge>
@@ -250,38 +320,14 @@ export function TransactionTraceTab({ companyId, initialQuery = '' }: Props) {
                       {row.entryNo || row.journalId.slice(0, 8)}
                       {row.referenceType ? ` · ${row.referenceType}` : ''}
                     </p>
-                    <p>
-                      Roznamcha {inclBadge(row.visibility.roznamcha.included)} — {row.visibility.roznamcha.reason}
-                    </p>
-                    <p>
-                      Account Statement {inclBadge(row.visibility.accountStatement.included)} —{' '}
-                      {row.visibility.accountStatement.reason}
-                    </p>
-                    <p>
-                      Day Book {inclBadge(row.visibility.dayBook.included)} — {row.visibility.dayBook.reason}
-                    </p>
-                    <p>Dashboard: {row.visibility.dashboard.note}</p>
-                    {row.visibility.dashboard.impacted.length > 0 && (
-                      <p>KPIs: {row.visibility.dashboard.impacted.join(', ')}</p>
-                    )}
+                    {renderReportVisibility(row.visibility, row.referenceType)}
                   </div>
                 ))}
               </div>
             ) : trace.reportVisibility.length > 0 ? (
               <div className="space-y-2">
                 {trace.reportVisibility.map((vis, i) => (
-                  <div key={i} className="space-y-2">
-                    <p>
-                      Roznamcha {inclBadge(vis.roznamcha.included)} — {vis.roznamcha.reason}
-                    </p>
-                    <p>
-                      Account Statement {inclBadge(vis.accountStatement.included)} — {vis.accountStatement.reason}
-                    </p>
-                    <p>
-                      Day Book {inclBadge(vis.dayBook.included)} — {vis.dayBook.reason}
-                    </p>
-                    <p>Dashboard: {vis.dashboard.note}</p>
-                  </div>
+                  <div key={i}>{renderReportVisibility(vis, trace.journals[i]?.reference_type)}</div>
                 ))}
               </div>
             ) : (

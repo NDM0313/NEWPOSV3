@@ -5,6 +5,7 @@ import {
   type ProductVariation,
   formatVariationLabel,
 } from './ProductWithVariations';
+import { formatQty } from '../../utils/quantity';
 
 interface VariationSelectorProps {
   product: ProductWithVariations;
@@ -97,7 +98,7 @@ export function VariationSelector({ product, onSelect, onClose }: VariationSelec
                                         : 'text-[#10B981]'
                                   }`}
                                 >
-                                  {variation.stock} {product.unit}
+                                  {formatQty(variation.stock)} {product.unit}
                                 </p>
                               </div>
                               <div>

@@ -603,8 +603,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
   const { modules, inventorySettings } = useSettings();
   const { formatCurrency } = useFormatCurrency();
 
-  // Load sales from database (all up to cap for client-side filter/sort/pagination)
-  const SALES_LOAD_CAP = 5000;
+  // Load sales from database (server-paginated)
   const loadSales = useCallback(async () => {
     if (!companyId) return;
     try {
@@ -612,12 +611,26 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       const result = await saleService.getAllSales(
         companyId,
         branchId === 'all' ? undefined : branchId || undefined,
-        { offset: 0, limit: SALES_LOAD_CAP }
+        { offset: page * pageSize, limit: pageSize }
       );
       const isPaginated = result && typeof result === 'object' && 'data' in result && 'total' in result;
       const data = isPaginated ? (result as { data: any[]; total: number }).data : (result as any[]);
       const total = isPaginated ? (result as { data: any[]; total: number }).total : data.length;
-      setSales(data.map(convertFromSupabaseSale));
+      let mapped = data.map(convertFromSupabaseSale);
+      const pageIds = new Set(mapped.map((s) => s.id));
+      const missingRecent = recentCreatedSaleIdsRef.current.filter((id) => !pageIds.has(id));
+      if (missingRecent.length > 0) {
+        const extraRows = await Promise.all(
+          missingRecent.map((id) => saleService.getSaleById(id).catch(() => null))
+        );
+        const extras = extraRows
+          .filter(Boolean)
+          .map((row) => convertFromSupabaseSale(row!));
+        if (extras.length > 0) {
+          mapped = [...extras, ...mapped];
+        }
+      }
+      setSales(mapped);
       setTotalCount(total);
     } catch (error) {
       console.error('[SALES CONTEXT] Error loading sales:', error);
@@ -627,7 +640,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       setLoading(false);
     }
-  }, [companyId, branchId]);
+  }, [companyId, branchId, page, pageSize]);
 
   const setPage = useCallback((p: number) => {
     setPageState(Math.max(0, p));
@@ -635,6 +648,13 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
 
   const activatedRef = React.useRef(false);
   const [activated, setActivated] = React.useState(false);
+  const recentCreatedSaleIdsRef = React.useRef<string[]>([]);
+  const rememberRecentCreatedSale = useCallback((saleId: string) => {
+    recentCreatedSaleIdsRef.current = [
+      saleId,
+      ...recentCreatedSaleIdsRef.current.filter((id) => id !== saleId),
+    ].slice(0, 10);
+  }, []);
   const activate = useCallback(() => {
     if (!activatedRef.current) { activatedRef.current = true; setActivated(true); }
   }, []);
@@ -642,7 +662,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     if (companyId && activated) loadSales();
     else if (!companyId) setLoading(false);
-  }, [companyId, activated, loadSales]);
+  }, [companyId, activated, loadSales, page]);
 
   const patchSaleInList = useCallback(async (saleId: string) => {
     if (!companyId) return;
@@ -694,6 +714,17 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
     };
     const onDataInvalidated = (ev: Event) => {
       const detail = (ev as CustomEvent<DataInvalidationDetail>).detail;
+      const reason = String(detail?.reason ?? '');
+      if (reason.includes('fallback-poll')) return;
+      if (
+        reason.includes('sales-context-create') &&
+        detail?.entityId &&
+        detail?.companyId === companyId
+      ) {
+        setPageState(0);
+        void patchSaleInList(String(detail.entityId));
+        return;
+      }
       if (
         !shouldAcceptInvalidation(detail, {
           domain: ['sales', 'contacts', 'studio'],
@@ -703,7 +734,6 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       ) {
         return;
       }
-      const reason = String(detail?.reason ?? '');
       if (
         (reason.includes('sales-context-payment') || reason.includes('sale-payment')) &&
         detail?.entityId
@@ -718,9 +748,13 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       if (timer) clearTimeout(timer);
       window.removeEventListener(DATA_INVALIDATED_EVENT, onDataInvalidated as EventListener);
     };
-  }, [branchId, companyId, loadSales]);
+  }, [branchId, companyId, loadSales, patchSaleInList]);
 
-  // When page changes we do not refetch; SalesPage slices the loaded sales for display
+  useEffect(() => {
+    setPageState(0);
+  }, [companyId, branchId]);
+
+  // When page changes we refetch from server; SalesPage filters/sorts the current page only
 
   // Get sale by ID (stable ref — avoids consumer useEffect loops when only unrelated context fields change)
   const getSaleById = useCallback((id: string): Sale | undefined => {
@@ -790,11 +824,10 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       try {
         invoiceNo = await documentNumberService.getNextDocumentNumberGlobal(companyId, sequenceType);
       } catch (e) {
-        // Fallback to form number only if RPC missing (e.g. migration not run)
-        const formInvoiceNo = (saleData as any).invoiceNo as string | undefined;
-        invoiceNo = (typeof formInvoiceNo === 'string' && formInvoiceNo && !formInvoiceNo.includes('undefined'))
-          ? formInvoiceNo
-          : generateDocumentNumber(docType);
+        const msg = e instanceof Error ? e.message : String(e);
+        throw new Error(
+          `Could not allocate document number (${sequenceType}). Apply migrations on the server (get_next_document_number_global self-heal) and retry. ${msg}`
+        );
       }
       const weGeneratedNumber = true;
       if (!invoiceNo || invoiceNo.includes('undefined') || invoiceNo.includes('NaN')) {
@@ -1203,6 +1236,25 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       }
       
       setSales((prev) => [newSale, ...prev]);
+      rememberRecentCreatedSale(newSale.id);
+
+      if (
+        branchId &&
+        branchId !== 'all' &&
+        newSale.branchId &&
+        newSale.branchId !== branchId
+      ) {
+        const branchLabel = newSale.location?.trim() || 'another branch';
+        toast.info(
+          `Sale saved on ${branchLabel}. Switch header branch to All or ${branchLabel} to see it in the default list.`
+        );
+      }
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('saleUpdated', { detail: { saleId: newSale.id, fullReload: false } })
+        );
+      }
       
       // Stock OUT: handled by DB trigger (if exists) + syncSaleStockForDocument (Z1 below).
       // The manual stock creation loop was removed because it raced with the DB trigger,
@@ -2331,11 +2383,9 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
           if (docJe?.id) {
             const jeId = docJe.id as string;
             const newTotal = newSnapshot.total;
-            const newGross = newSnapshot.subtotal || (newTotal + newSnapshot.discount);
             const newDiscount = newSnapshot.discount;
             const newShipping = newSnapshot.shippingCharges || 0;
             const newExtra = newSnapshot.extraExpense || 0;
-            const newRevenue = newGross - newShipping - newExtra;
 
             // Resolve AR sub-ledger for customer
             const customerId = (updatedSale as any).customer_id;
@@ -2354,9 +2404,22 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
               const { data } = await sbEdit.from('accounts').select('id').eq('code', code).eq('company_id', companyId).eq('is_active', true).maybeSingle();
               return data?.id as string | null;
             };
-            const { computeProductRevenueCreditSplit, syncSaleDocumentJeCogsInventoryPair, assertJournalEntryBalanced } =
-              await import('@/app/services/saleAccountingService');
-            const revenueSplit = await computeProductRevenueCreditSplit(id, Math.max(0, newRevenue));
+            const {
+              computeProductRevenueCreditSplit,
+              computeSaleDocumentRevenueAmounts,
+              syncSaleDocumentJeCogsInventoryPair,
+              assertJournalEntryBalanced,
+            } = await import('@/app/services/saleAccountingService');
+            const docAmounts = computeSaleDocumentRevenueAmounts({
+              total: newTotal,
+              discount: newDiscount,
+              extraExpense: newExtra,
+              shippingCharges: newShipping,
+            });
+            const revenueSplit = await computeProductRevenueCreditSplit(
+              id,
+              Math.max(0, docAmounts.merchandisePool)
+            );
             const merchandiseRevenueIds = new Set(
               [(await getAccId('4000')), (await getAccId('4100'))].filter(Boolean) as string[]
             );
@@ -2378,7 +2441,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
               let didMatch = false;
 
               if (accId === arAccountId || (ar1100Id && accId === ar1100Id)) {
-                newDebit = Math.round((newTotal + newShipping) * 100) / 100;
+                newDebit = docAmounts.arDebit;
                 newCredit = 0;
                 didMatch = true;
               } else if (merchandiseRevenueIds.has(accId)) {
