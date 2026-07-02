@@ -1,15 +1,18 @@
 {
-  "generated": "2026-07-03T01:40:51+05:00",
+  "generated": "2026-07-03T01:57:08+05:00",
+  "completedAt": "2026-07-03T02:06:34+05:00",
   "calendarDay": 3,
   "localDate": "2026-07-03",
-  "classification": "CALENDAR_STABILITY_DAY_PARTIAL_BLOCKED_MISSING_QA_PASSWORDS",
-  "fullMonitoring": "BLOCKED",
-  "loaderGuard": {
-    "dinChina": 8,
-    "dinBridal": 8,
-    "dinCouture": 8,
-    "otherCompanyLoaders": 0
-  },
+  "daysElapsedSince20260701": 2,
+  "classification": "CALENDAR_STABILITY_DAY_PASS",
+  "monitoringArtifact": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-02T20-57-08-493Z.json",
+  "roznamchaReached": true,
+  "dinChina": "PASS",
+  "adminCompare9of9": "PASS",
+  "dinBridal": "PASS",
+  "dinCouture": "PASS",
+  "overall": "PASS",
   "migrationsRun": false,
-  "glMutations": false
+  "glMutations": false,
+  "featureFlagsUnchanged": true
 }

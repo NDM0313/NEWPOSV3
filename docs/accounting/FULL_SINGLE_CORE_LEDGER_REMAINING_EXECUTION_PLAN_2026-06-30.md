@@ -309,6 +309,31 @@ Evidence: [`reports/single-core-engine-stability-daily-20260708-retry1/`](../rep
 
 Evidence: [`reports/single-core-engine-calendar-stability-20260702/`](../reports/single-core-engine-calendar-stability-20260702/)
 
+## Calendar Stability Check — 2026-07-03 (Home Mac closure)
+
+| Item | Status |
+|------|--------|
+| Classification | **CALENDAR_STABILITY_DAY_PASS** |
+| Run local date/time | 2026-07-03 01:57:08 → 02:06:34 +05:00 |
+| Stability window calendar day | **3** |
+| Calendar days elapsed since 2026-07-01 | **2** |
+| Monitoring artifact | `three-company-monitoring-2026-07-02T20-57-08-493Z` |
+| Roznamcha reached | **yes** |
+| DIN CHINA | PASS (Admin Compare 9/9) |
+| DIN BRIDAL | PASS |
+| DIN COUTURE | PASS |
+| migrations_run | false |
+| gl_mutations | false |
+| Feature flags | unchanged |
+| Production mutation | **none** |
+| Tests/build | 328/328 unified · 124/124 unit · build PASS |
+| Password env | supplied yes — value **not** recorded |
+| R8 | **BLOCKED** |
+| Mobile release | separate track |
+| Supplier Party Discount | separate approval |
+
+Evidence: [`reports/single-core-engine-calendar-stability-20260703/`](../reports/single-core-engine-calendar-stability-20260703/)
+
 ## Exact next recommended phase
 
 1. **Daily monitoring** during stability window — `npm run monitor:three-company-unified-ledger`
