@@ -1,0 +1,8 @@
+{
+  "commit": "92989a9829f67fd4075abe083b51c798a0bcd791",
+  "message": "test(accounting): refresh roznamcha goldens after orphan cleanup deploy",
+  "branch": "main",
+  "origin_main": "92989a9829f67fd4075abe083b51c798a0bcd791",
+  "push": "SUCCESS",
+  "vps_deploy_commit": "6da3387f"
+}
