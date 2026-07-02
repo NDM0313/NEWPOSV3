@@ -3,8 +3,13 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import {
+  HISTORICAL_PREFIX,
+  isPaymentChainHistoricalErrorMessage,
+  stripPaymentChainHistoricalPrefix,
+} from '@/app/lib/paymentChainHistorical';
 
-export const HISTORICAL_PREFIX = 'PAYMENT_CHAIN_HISTORICAL:';
+export { HISTORICAL_PREFIX } from '@/app/lib/paymentChainHistorical';
 
 export function extractPaymentChainIdFromJournalRow(je: {
   payment_id?: string | null;
@@ -84,10 +89,4 @@ export async function getPaymentChainMutationBlockReason(
   return null;
 }
 
-export function isPaymentChainHistoricalErrorMessage(msg: string | undefined): boolean {
-  return Boolean(msg && msg.startsWith(HISTORICAL_PREFIX));
-}
-
-export function stripPaymentChainHistoricalPrefix(msg: string): string {
-  return msg.startsWith(HISTORICAL_PREFIX) ? msg.slice(HISTORICAL_PREFIX.length) : msg;
-}
+export { isPaymentChainHistoricalErrorMessage, stripPaymentChainHistoricalPrefix };
