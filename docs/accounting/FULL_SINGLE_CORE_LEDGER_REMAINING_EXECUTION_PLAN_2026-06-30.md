@@ -198,6 +198,27 @@ Evidence: [`reports/single-core-engine-stability-daily-20260704/`](../reports/si
 
 Evidence: [`reports/single-core-engine-stability-daily-20260705/`](../reports/single-core-engine-stability-daily-20260705/)
 
+## Stability Day 6 — daily check
+
+| Item | Status |
+|------|--------|
+| Classification | **STABILITY_DAY_PASS** |
+| Run local date/time | 2026-07-02 16:25:44 +05:00 |
+| Monitoring artifact | `three-company-monitoring-2026-07-02T11-26-12-309Z` |
+| DIN CHINA | PASS (Admin Compare 9/9) |
+| DIN BRIDAL | PASS |
+| DIN COUTURE | PASS |
+| migrations_run | false |
+| gl_mutations | false |
+| Feature flags | unchanged |
+| Production mutation | **none** |
+| Tests | 328/328 unified · 124/124 unit |
+| R8 | **BLOCKED** |
+| Mobile release | separate track |
+| Supplier Party Discount | separate approval |
+
+Evidence: [`reports/single-core-engine-stability-daily-20260706/`](../reports/single-core-engine-stability-daily-20260706/)
+
 ## Exact next recommended phase
 
 1. **Daily monitoring** during stability window — `npm run monitor:three-company-unified-ledger`
