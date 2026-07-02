@@ -265,6 +265,25 @@ Evidence: [`reports/single-core-engine-stability-daily-20260707/`](../reports/si
 
 Evidence: [`reports/single-core-engine-stability-daily-20260708/`](../reports/single-core-engine-stability-daily-20260708/)
 
+### Day 8 retry 1 (2026-07-02 17:31:22 +05:00)
+
+| Item | Status |
+|------|--------|
+| Classification | **STABILITY_SAMPLE_RETRY_PASS** |
+| Calendar days elapsed since 2026-07-01 | **1** |
+| Monitoring artifact | `three-company-monitoring-2026-07-02T12-31-57-841Z` |
+| Roznamcha reached | **yes** |
+| DIN CHINA | PASS (Admin Compare 9/9) |
+| DIN BRIDAL | PASS |
+| DIN COUTURE | PASS |
+| migrations_run | false |
+| gl_mutations | false |
+| Conclusion | Prior Day 8 fail was **transient monitoring UI flake** |
+| Monitoring harness fix | **none** |
+| Tests | 328/328 unified · 124/124 unit |
+
+Evidence: [`reports/single-core-engine-stability-daily-20260708-retry1/`](../reports/single-core-engine-stability-daily-20260708-retry1/)
+
 ## Exact next recommended phase
 
 1. **Daily monitoring** during stability window — `npm run monitor:three-company-unified-ledger`
