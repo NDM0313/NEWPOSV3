@@ -6,7 +6,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { execSync } from 'node:child_process';
+import { execSqlFileViaSsh } from './monitoringSshSql.mjs';
 import { chromium } from 'playwright';
 import { loadMonitoringProfile } from './loadMonitoringProfile.mjs';
 import {
@@ -171,11 +171,7 @@ async function loadProductionFlags() {
   const flagSqlPath = profile.flagVerifySql;
   if (!fs.existsSync(flagSqlPath)) return null;
   try {
-    const raw = execSync(
-      `Get-Content "${flagSqlPath}" | ssh dincouture-vps "docker exec -i supabase-db psql -U postgres -d postgres -t -A -F '|'"`,
-      { encoding: 'utf8', shell: 'powershell.exe', maxBuffer: 1024 * 1024 },
-    );
-    return raw;
+    return execSqlFileViaSsh(flagSqlPath, { psqlArgs: "-t -A -F '|'" });
   } catch (e) {
     log('production flags read', 'FAIL', String(e.message || e));
     return null;

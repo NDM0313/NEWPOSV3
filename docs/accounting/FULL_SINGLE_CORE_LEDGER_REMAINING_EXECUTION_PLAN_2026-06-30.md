@@ -350,9 +350,37 @@ Evidence: [`reports/single-core-engine-calendar-stability-20260703/`](../reports
 
 Evidence: [`reports/home-mac-mobile-qa-status-manager-waived-no-device-20260703/`](../reports/home-mac-mobile-qa-status-manager-waived-no-device-20260703/)
 
+## Calendar Stability Check — 2026-07-04 (Home Mac)
+
+| Item | Status |
+|------|--------|
+| Initial guard fail | `spawnSync powershell.exe ENOENT` — **MONITORING_GUARD_HARNESS_BUG** |
+| Fix | Cross-platform Node stdin SSH (`monitoringSshSql.mjs`, `threeCompanyLoaderGuard.mjs`) |
+| Final classification | **CALENDAR_STABILITY_DAY_PASS** |
+| Run local date/time | 2026-07-04 01:00:55 → 01:10:01 +05:00 |
+| Stability window calendar day | **4** |
+| Calendar days elapsed since 2026-07-01 | **3** |
+| Monitoring artifact | `three-company-monitoring-2026-07-03T20-00-55-685Z` |
+| Loader guard | **PASS** (8 loaders × 3 companies) |
+| Roznamcha reached | **yes** |
+| DIN CHINA | PASS (Admin Compare 9/9) |
+| DIN BRIDAL | PASS (Admin Compare waived) |
+| DIN COUTURE | PASS (Admin Compare waived) |
+| migrations_run | false |
+| gl_mutations | false |
+| Feature flags | unchanged |
+| Production mutation | **none** |
+| Tests/build | 335/335 unified · 124/124 unit · build PASS |
+| Password env | supplied yes — value **not** recorded |
+| R8 | **BLOCKED** |
+| Mobile release | Admin PASS 21/21; Manager N/A/waived; Salesman pending |
+| Supplier Party Discount | separate approval |
+
+Evidence: [`reports/single-core-engine-calendar-stability-20260704/`](../reports/single-core-engine-calendar-stability-20260704/)
+
 ## Exact next recommended phase
 
-1. **Daily monitoring** during stability window — `npm run monitor:three-company-unified-ledger` (Calendar Day 4 on 2026-07-04+)
+1. **Daily monitoring** during stability window — `npm run monitor:three-company-unified-ledger` (Calendar Day 5 on 2026-07-05+)
 2. **Salesman device QA** — when Pixel 6 Pro available + Salesman password supplied securely at QA time
 3. **R8 legacy retirement** — blocked until stability window complete + final approval
 

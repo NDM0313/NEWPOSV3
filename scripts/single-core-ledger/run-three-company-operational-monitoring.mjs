@@ -16,7 +16,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawnSync, execSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import {
   validateThreeCompanyCredentials,
   formatCredentialSourceLog,
@@ -26,6 +26,7 @@ import {
   PASSWORD_ENV_KEYS,
 } from './monitoringCredentials.mjs';
 import { buildTimestampSlug, parseMonitoringOutput } from './monitoringRunnerHelpers.mjs';
+import { runReadOnlyFlagGuard } from './threeCompanyLoaderGuard.mjs';
 
 export { resolveProfileEmail } from './monitoringCredentials.mjs';
 export { buildTimestampSlug, parseMonitoringOutput } from './monitoringRunnerHelpers.mjs';
@@ -33,36 +34,9 @@ export { buildTimestampSlug, parseMonitoringOutput } from './monitoringRunnerHel
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const PROFILES_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), 'monitoring-company-profiles.json');
 const MONITOR_SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'run-unified-ledger-monitoring-verify.mjs');
-const FLAG_GUARD_SQL = path.join(path.dirname(fileURLToPath(import.meta.url)), 'three-company-loader-guard-pipe.sql');
 const OUT_DIR = path.join(ROOT, 'reports/single-core-ledger/operational-monitoring');
 const LATEST_MD = path.join(OUT_DIR, 'latest-three-company-monitoring.md');
 const LATEST_JSON = path.join(OUT_DIR, 'latest-three-company-monitoring.json');
-
-function runReadOnlyFlagGuard() {
-  if (!fs.existsSync(FLAG_GUARD_SQL)) {
-    return { ok: false, error: 'missing three-company-loader-guard-pipe.sql' };
-  }
-  try {
-    const raw = execSync(
-      `Get-Content "${FLAG_GUARD_SQL}" | ssh dincouture-vps "docker exec -i supabase-db psql -U postgres -d postgres -t -A"`,
-      { encoding: 'utf8', shell: 'powershell.exe', maxBuffer: 1024 * 1024 },
-    );
-    const rows = raw.trim().split('\n').filter(Boolean).map((line) => {
-      const [name, count] = line.split('|');
-      return { name, loaders_on: Number(count) };
-    });
-    const allowed = new Set(['DIN CHINA', 'DIN BRIDAL', 'DIN COUTURE']);
-    const unexpected = rows.filter((r) => !allowed.has(r.name));
-    return {
-      ok: unexpected.length === 0 && rows.length === 3,
-      rows,
-      unexpected,
-      other_company_loaders_on: unexpected.reduce((n, r) => n + r.loaders_on, 0),
-    };
-  } catch (e) {
-    return { ok: false, error: String(e.message || e) };
-  }
-}
 
 function runProfile(creds) {
   const emailKey = EMAIL_ENV_KEYS[creds.profileId];
@@ -166,7 +140,7 @@ function main() {
     '## Read-only flag guard',
     '',
     flagGuard.ok
-      ? '- PASS — only DIN CHINA, DIN BRIDAL, DIN COUTURE have loaders ON (5 each)'
+      ? '- PASS — only DIN CHINA, DIN BRIDAL, DIN COUTURE have loaders ON'
       : `- FAIL — ${flagGuard.error || JSON.stringify(flagGuard.unexpected)}`,
     '',
     '## Profile results',
