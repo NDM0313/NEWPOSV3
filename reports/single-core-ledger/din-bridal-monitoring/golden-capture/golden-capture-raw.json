@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-06-27T11:11:44.314Z",
+  "capturedAt": "2026-06-27T11:34:40.043Z",
   "company": "DIN BRIDAL",
   "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
   "party": "MR REHAN ALI",
@@ -10,24 +10,24 @@
   },
   "branch_scope": "all",
   "party_ledger": {
-    "loader": "legacy",
+    "loader": "unified",
     "closing": 530000
   },
   "account_statement": {
-    "loader": "legacy",
+    "loader": "unified",
     "closing": 530000
   },
   "ledger_v2": {
-    "loader": "legacy",
+    "loader": "unified",
     "closing": 530000
   },
   "trial_balance": {
-    "loader": "legacy",
+    "loader": "unified",
     "debit": 21919575,
     "credit": 21919575
   },
   "roznamcha": {
-    "loader": "legacy",
+    "loader": "unified",
     "cashIn": 1836350,
     "cashOut": 917780,
     "closing": 918570

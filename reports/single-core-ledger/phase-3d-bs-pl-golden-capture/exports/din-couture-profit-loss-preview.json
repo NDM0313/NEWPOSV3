@@ -2,14 +2,14 @@
   "phase": "3A",
   "screen": "profit_loss",
   "startDate": "2000-01-01",
-  "endDate": "2026-06-29",
+  "endDate": "2026-07-01",
   "branchLabel": "All branches",
   "previewBasis": "official_gl",
   "engineState": {
     "mode": "preview",
     "killSwitchActive": false,
     "companyEngineEnabled": true,
-    "screenFlagEnabled": false,
+    "screenFlagEnabled": true,
     "pilotEnabled": true,
     "localOverride": null,
     "rpcAllowed": true
@@ -38,7 +38,7 @@
     "previewOnly": true,
     "needsFinanceGoldenApproval": true,
     "startDate": "2000-01-01",
-    "endDate": "2026-06-29",
+    "endDate": "2026-07-01",
     "totalRevenue": 26250,
     "totalCostOfSales": 35000,
     "grossProfit": -8750,
@@ -48,25 +48,21 @@
     "costLineCount": 2,
     "expenseLineCount": 1,
     "accountingRuleNotes": [
-      "PREVIEW_ONLY — not finance-approved golden totals.",
-      "COGS split uses COST_OF_PRODUCTION_CODES + type heuristics (mirrors legacy).",
-      "NEEDS_RULE_CONFIRMATION — finance must approve COGS mapping before loader swap."
+      "Unified main loader active."
     ]
   },
   "tbMeta": {
     "engine": "unified_shadow",
     "basis": "official_gl",
     "featureFlagEnabled": true,
-    "shadowForce": true,
-    "queryDurationMs": 677.0999999642372,
-    "rowCount": 83,
+    "shadowForce": false,
+    "queryDurationMs": 0,
+    "rowCount": 0,
     "periodOpeningBalance": 0
   },
   "accountingRuleNotes": [
-    "PREVIEW_ONLY — not finance-approved golden totals.",
-    "COGS split uses COST_OF_PRODUCTION_CODES + type heuristics (mirrors legacy).",
-    "NEEDS_RULE_CONFIRMATION — finance must approve COGS mapping before loader swap."
+    "Unified main loader active."
   ],
-  "exportedAt": "2026-06-29T10:55:45.955Z",
+  "exportedAt": "2026-07-01T08:50:32.987Z",
   "note": "PREVIEW_ONLY — legacy P&L remains authoritative. COGS heuristic NEEDS_RULE_CONFIRMATION."
 }

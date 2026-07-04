@@ -6,7 +6,7 @@
     {
       "company": "DIN CHINA",
       "report": "Balance Sheet",
-      "candidateValues": "Assets PKR 89,754,088.52; L+E PKR 89,754,088.52 (legacy=preview)",
+      "candidateValues": "Assets PKR 89,754,087.52; L+E PKR 89,754,087.52 (legacy=preview)",
       "financeStatus": "PENDING",
       "reviewer": "",
       "reviewDate": "",
@@ -15,7 +15,7 @@
     {
       "company": "DIN CHINA",
       "report": "Profit & Loss",
-      "candidateValues": "Revenue PKR 49,040,015.00; Net PKR 8,465,731.87 (legacy=preview)",
+      "candidateValues": "Revenue PKR 49,040,015.00; Net PKR 8,465,730.87 (legacy=preview)",
       "financeStatus": "PENDING",
       "reviewer": "",
       "reviewDate": "",

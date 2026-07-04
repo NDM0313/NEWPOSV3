@@ -3,6 +3,8 @@ import type { User } from '../../types';
 import type { PackingDetails } from '../transactions/PackingEntryModal';
 import { useResponsive } from '../../hooks/useResponsive';
 import * as salesApi from '../../api/sales';
+import * as usersApi from '../../api/users';
+import type { SalesmanRow } from '../../api/users';
 import { addPending } from '../../lib/offlineStore';
 import { useWriteBranchSelection } from '../../hooks/useWriteBranchSelection';
 import { useDocumentBranchGate } from '../../hooks/useDocumentBranchGate';
@@ -27,6 +29,7 @@ import { orderSaleLinesForPersist } from '../../lib/bespokeCartInjection';
 import { useEffectiveWorkerId, useEffectiveWorkerRole, useEffectiveWorkerProfileId } from '../../context/CounterWorkerContext';
 import { useFormDraft } from '../../hooks/useFormDraft';
 import { FormDraftRestoredBanner } from '../shared/FormDraftRestoredBanner';
+import { canAssignSaleCommission } from '../../lib/saleCommission';
 import type { ExtraExpense } from '../../types/saleExtras';
 import {
   computeBillableSubtotal,
@@ -139,6 +142,9 @@ export interface SaleData {
   shippingCharge?: number;
   /** When true, extra amounts add to customer invoice total (4120 ON). */
   chargeExtrasToCustomer?: boolean;
+  /** Owner/admin/manager: assign commission to another salesman (public.users.id). */
+  salesmanId?: string | null;
+  commissionPercent?: number | null;
 }
 
 interface SalesModuleProps {
@@ -174,10 +180,30 @@ export function SalesModule({
   const effectiveUserId = useEffectiveWorkerId(user.id);
   const effectiveRole = useEffectiveWorkerRole(user.role);
   const effectiveProfileId = useEffectiveWorkerProfileId() ?? user.profileId ?? null;
+  const canPickSalesman = canAssignSaleCommission(effectiveRole);
+  const [salesmen, setSalesmen] = useState<SalesmanRow[]>([]);
+  const [salesmenLoading, setSalesmenLoading] = useState(false);
 
   useEffect(() => {
     if (companyId) void reloadSettings(companyId);
   }, [companyId, reloadSettings]);
+
+  useEffect(() => {
+    if (!companyId || !canPickSalesman) {
+      setSalesmen([]);
+      return;
+    }
+    let cancelled = false;
+    setSalesmenLoading(true);
+    void usersApi.getSalesmen(companyId).then(({ data, error }) => {
+      if (cancelled) return;
+      setSalesmen(error ? [] : data);
+      setSalesmenLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, canPickSalesman]);
 
   const [step, setStep] = useState<SalesStep>(
     initialSaleType === 'studio' && initialDocumentBranchId ? 'customer' : initialSaleType === 'studio' ? 'home' : 'home',
@@ -188,6 +214,7 @@ export function SalesModule({
   const [createdInvoiceNo, setCreatedInvoiceNo] = useState<string | null>(null);
   const [createdSaleId, setCreatedSaleId] = useState<string | null>(null);
   const [confirmationData, setConfirmationData] = useState<TransactionSuccessData | null>(null);
+  const [printHint, setPrintHint] = useState<string | null>(null);
   const { runSingleFlight, isRunning: isPaymentSubmitRunning } = useSingleFlightAction();
   const [saleData, setSaleData] = useState<SaleData>({
     customer: null,
@@ -210,6 +237,8 @@ export function SalesModule({
     extraExpenses: [],
     shippingCharge: 0,
     chargeExtrasToCustomer: true,
+    salesmanId: null,
+    commissionPercent: null,
   });
 
   const { runWithBranch, modalProps: branchGateModalProps } = useDocumentBranchGate({
@@ -295,6 +324,8 @@ export function SalesModule({
       extraExpenses: [],
       shippingCharge: 0,
       chargeExtrasToCustomer: true,
+      salesmanId: null,
+      commissionPercent: null,
     });
   }, []);
 
@@ -453,7 +484,9 @@ export function SalesModule({
       isStudio: saleData.saleType === 'studio',
       userId: effectiveUserId,
       profileUserId: effectiveProfileId,
-      actorRole: user.role,
+      actorRole: effectiveRole,
+      salesmanId: saleData.salesmanId ?? undefined,
+      commissionPercent: saleData.commissionPercent ?? undefined,
       invoiceDate: saleData.saleDate || localNowDateString(),
       paymentDate: result.paymentDate || localNowDateString(),
       ...(saleData.saleType === 'studio' && {
@@ -510,6 +543,7 @@ export function SalesModule({
       branchName = accessibleBranches.find((b) => b.id === effectiveBranchId)?.name ?? null;
     }
     clearSaleDraft();
+    setStep('home');
     setConfirmationData({
       type: 'sale',
       title: 'Sale Saved Successfully',
@@ -520,7 +554,8 @@ export function SalesModule({
       branch: branchName ?? undefined,
       entityId: data?.id ?? null,
     });
-    void maybeAutoPrintAfterTransaction(
+    setPrintHint(null);
+    const printRes = await maybeAutoPrintAfterTransaction(
       companyId,
       {
         title: 'SALE RECEIPT',
@@ -532,6 +567,9 @@ export function SalesModule({
       },
       { mirrorFromCompany: user.role === 'admin' || user.role === 'owner' }
     );
+    if (printRes && !printRes.ok && printRes.hint) {
+      setPrintHint(printRes.hint);
+    }
     });
   });
   };
@@ -592,6 +630,7 @@ export function SalesModule({
     const studioSaleId = createdSaleId;
     clearSaleDraft();
     setConfirmationData(null);
+    setPrintHint(null);
     setCreatedSaleId(null);
     setCreatedInvoiceNo(null);
     setSaleData({
@@ -622,6 +661,7 @@ export function SalesModule({
 
   const handleSuccessNewSale = () => {
     setConfirmationData(null);
+    setPrintHint(null);
     setCreatedSaleId(null);
     setCreatedInvoiceNo(null);
     startNewSaleFlow();
@@ -700,6 +740,9 @@ export function SalesModule({
           onPickedBranchChange={setPickedBranchId}
           branchSelectionError={branchSelectionError}
           branchReady={branchReady}
+          canPickSalesman={canPickSalesman}
+          salesmen={salesmen}
+          salesmenLoading={salesmenLoading}
         />
       )}
       {step === 'payment' && (
@@ -744,6 +787,7 @@ export function SalesModule({
         printReceiptLabel={printButtonLabel}
         onNewSale={handleSuccessNewSale}
         onHome={handleBackToHome}
+        printHint={printHint}
       />
 
       <DocumentBranchGateModal

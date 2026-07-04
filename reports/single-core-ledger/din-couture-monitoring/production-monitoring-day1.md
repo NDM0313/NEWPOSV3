@@ -1,12 +1,12 @@
 # DIN COUTURE production monitoring
 
 **Profile:** din-couture
-**Date:** 2026-06-27T13:19:25.231Z
+**Date:** 2026-07-02T13:06:09.371Z
 **URL:** https://erp.dincouture.pk
 **Core gates:** PASS
 **Overall:** PASS
 
-- [PASS] DIN COUTURE expected flags ON — keys=12/12
+- [PASS] DIN COUTURE expected flags ON — keys=18/18
 - [PASS] no other company loaders ON — count=0
 - [PASS] admin login
 - [PASS] Roznamcha main loader unified — actual=unified

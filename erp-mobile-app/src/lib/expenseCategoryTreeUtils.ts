@@ -2,7 +2,7 @@ import type { ExpenseCategoryTreeItem } from '../api/expenses';
 
 export type CategoryTreeNode = Pick<
   ExpenseCategoryTreeItem,
-  'id' | 'name' | 'slug' | 'parent_id' | 'children'
+  'id' | 'name' | 'slug' | 'parent_id' | 'type' | 'children'
 >;
 
 /** Main (0) → Sub (1) → Re-sub (2). */
@@ -216,6 +216,19 @@ export function countExpensesForSub(
 
 export const CLEARING_CATEGORY_SLUGS = new Set(['stitching', 'dying', 'dyeing', 'lining']);
 
+const SALARY_CATEGORY_SLUGS = new Set(['salaries', 'salary', 'wages']);
+
+/** True when any node on the category path is a salary branch (main/sub/leaf). */
+export function isExpenseSalaryCategory(path: CategoryTreeNode[] | null | undefined): boolean {
+  if (!path?.length) return false;
+  return path.some((node) => {
+    if (node.type === 'salary') return true;
+    const slug = normalizeSlug(node.slug ?? '');
+    const nameSlug = normalizeSlug(node.name ?? '');
+    return SALARY_CATEGORY_SLUGS.has(slug) || SALARY_CATEGORY_SLUGS.has(nameSlug);
+  });
+}
+
 /** True only when THIS node is stitching/dying/lining — not when a child is. */
 export function categoryIsDirect4120Clearing(node: CategoryTreeNode): boolean {
   const slug = normalizeSlug(node.slug);
@@ -273,6 +286,14 @@ export function levelIdsFromPath(path: CategoryTreeNode[] | null): {
     level2Id: path[1]?.id ?? '',
     level3Id: path[2]?.id ?? '',
   };
+}
+
+/** Map expense_categories.id → main / sub / leaf picker ids (max 3 levels). */
+export function levelIdsFromCategoryId(
+  tree: CategoryTreeNode[],
+  categoryId: string | null | undefined,
+): { level1Id: string; level2Id: string; level3Id: string } {
+  return levelIdsFromPath(findPathToCategory(tree, categoryId));
 }
 
 export interface ExpenseFilterChip {

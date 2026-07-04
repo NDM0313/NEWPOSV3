@@ -82,6 +82,16 @@ export interface RoznamchaRow {
   sourceEconomicEventId?: string | null;
   branchId: string | null;
   type: string;
+  /** payments.reference_type or journal_entries.reference_type (for transaction actions) */
+  referenceType?: string | null;
+  /** payments.reference_id, journal reference_id, or rental id */
+  referenceId?: string | null;
+  /** payments.voided_at set */
+  isVoided?: boolean;
+  /** journal_entries.is_void */
+  journalIsVoid?: boolean;
+  /** journal_entries.payment_id when row is JE-sourced */
+  paymentIdOnJournal?: string | null;
 }
 
 export interface RoznamchaSummary {
@@ -1020,6 +1030,7 @@ async function fetchPaymentRows(
 
     const payRefType = String((p as any).reference_type || '').toLowerCase();
     const payRefId = (p as any).reference_id ? String((p as any).reference_id) : '';
+    const payContactId = (p as any).contact_id ? String((p as any).contact_id) : '';
     const payBranchId =
       (p as any).branch_id ??
       (payRefType === 'rental' && payRefId ? rentalBranchById.get(payRefId) ?? null : null);
@@ -1047,6 +1058,12 @@ async function fetchPaymentRows(
       sourceJournalEntryId: journalEntryIdByPaymentId.get(paymentId) || null,
       branchId: payBranchId ?? null,
       type: getPartyAwareTypeLabel((p as any).reference_type, (p as any).payment_type),
+      referenceType: payRefType || null,
+      referenceId:
+        payRefId ||
+        (payRefType === 'manual_receipt' || payRefType === 'manual_payment' ? payContactId : '') ||
+        null,
+      isVoided: voided,
     } as RoznamchaRow);
   }
 
@@ -1513,6 +1530,9 @@ async function fetchRentalPaymentRows(
       sourceJournalEntryId: linkedJeId || null,
       branchId: rental.branch_id ?? null,
       type: 'Rental Payment',
+      referenceType: 'rental',
+      referenceId: rentalId || null,
+      isVoided: false,
     });
   }
 
@@ -1682,6 +1702,10 @@ function mapJournalLiquidityLinesToRows(
         sourceEconomicEventId: String((je as JournalLiquidityLineRow).economic_event_id || '').trim() || null,
         branchId: je.branch_id ?? null,
         type: typeLabel,
+        referenceType: refType || null,
+        referenceId: expenseId || (je.reference_id ? String(je.reference_id) : null) || null,
+        journalIsVoid: (je as { is_void?: boolean }).is_void === true,
+        paymentIdOnJournal: null,
       });
     }
   }
@@ -2234,6 +2258,10 @@ async function recoverOrphanRentalPaymentJeRows(
         sourceJournalEntryId: String(je.id),
         branchId: rental?.branch_id ?? je.branch_id ?? null,
         type: 'Rental Payment',
+        referenceType: 'rental',
+        referenceId: je.reference_id ? String(je.reference_id) : null,
+        journalIsVoid: je.is_void === true,
+        sourceRentalPaymentId: linkedRpId || null,
       };
       const candidateEntityKeys = roznamchaEntityKeys(candidate);
       if (candidateEntityKeys.some((k) => representedEntityKeys.has(k))) continue;

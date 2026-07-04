@@ -8,6 +8,8 @@ import { WriteBranchPickerField } from '../shared/WriteBranchPickerField';
 import { prepareAttachmentFilesForUpload } from '../../utils/imageCompression';
 import { MediaSourcePicker } from '../shared/MediaSourcePicker';
 import { SaleExtrasPanel } from './SaleExtrasPanel';
+import { CustomSearchableSheet, NumericInput } from '../common';
+import type { SalesmanRow } from '../../api/users';
 import {
   hasInclusiveBespokeParents,
   isStockOnlyBespokeLine,
@@ -29,6 +31,9 @@ interface SaleSummaryProps {
   onPickedBranchChange?: (branchId: string) => void;
   branchSelectionError?: string | null;
   branchReady?: boolean;
+  canPickSalesman?: boolean;
+  salesmen?: SalesmanRow[];
+  salesmenLoading?: boolean;
 }
 
 export function SaleSummary({
@@ -43,6 +48,9 @@ export function SaleSummary({
   onPickedBranchChange,
   branchSelectionError,
   branchReady = true,
+  canPickSalesman = false,
+  salesmen = [],
+  salesmenLoading = false,
 }: SaleSummaryProps) {
   const [discountType, setDiscountType] = useState<'amount' | 'percent'>('amount');
   const [discountValue, setDiscountValue] = useState(
@@ -53,6 +61,9 @@ export function SaleSummary({
   const [attachments, setAttachments] = useState<File[]>(saleData.attachmentFiles ?? []);
   const [isProcessingAttachments, setIsProcessingAttachments] = useState(false);
   const [attachmentNotice, setAttachmentNotice] = useState<string | null>(null);
+  const [commissionPctInput, setCommissionPctInput] = useState(
+    saleData.commissionPercent != null ? String(saleData.commissionPercent) : '',
+  );
   useEffect(() => {
     setDiscountValue(saleData.discount ? String(saleData.discount) : '');
   }, [saleData.discount]);
@@ -68,6 +79,18 @@ export function SaleSummary({
   useEffect(() => {
     setAttachments(saleData.attachmentFiles ?? []);
   }, [saleData.attachmentFiles]);
+
+  useEffect(() => {
+    setCommissionPctInput(
+      saleData.commissionPercent != null ? String(saleData.commissionPercent) : '',
+    );
+  }, [saleData.commissionPercent]);
+
+  const commissionNum = parseFloat(commissionPctInput);
+  const commissionValid =
+    !saleData.salesmanId ||
+    commissionPctInput.trim() === '' ||
+    (Number.isFinite(commissionNum) && commissionNum >= 0 && commissionNum <= 100);
 
   const syncAttachments = (files: File[]) => {
     setAttachments(files);
@@ -293,6 +316,79 @@ export function SaleSummary({
           </div>
         )}
 
+        {canPickSalesman && (
+          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 space-y-3">
+            <div>
+              <p className="text-sm font-medium text-[#9CA3AF] mb-1">Salesman</p>
+              <p className="text-xs text-[#6B7280] mb-2">Optional — assign commission to a salesperson</p>
+              <CustomSearchableSheet
+                label=""
+                sheetTitle="Salesman"
+                value={saleData.salesmanId ?? ''}
+                onChange={(id) => {
+                  if (!id) {
+                    onUpdate({ salesmanId: null, commissionPercent: null });
+                    setCommissionPctInput('');
+                    return;
+                  }
+                  const picked = salesmen.find((s) => s.id === id);
+                  const defPct = picked?.defaultCommissionPercent ?? null;
+                  onUpdate({
+                    salesmanId: id,
+                    commissionPercent: defPct,
+                  });
+                  setCommissionPctInput(defPct != null ? String(defPct) : '');
+                }}
+                options={[
+                  { value: '', label: '— None —' },
+                  ...salesmen.map((s) => ({
+                    value: s.id,
+                    label: s.name,
+                    description: s.role || undefined,
+                  })),
+                ]}
+                placeholder={salesmenLoading ? 'Loading salesmen…' : 'Search salesman…'}
+                searchPlaceholder="Search…"
+                hint={
+                  salesmen.length === 0 && !salesmenLoading
+                    ? 'No salesmen configured. Enable "can be salesman" in user permissions.'
+                    : undefined
+                }
+                zIndexClass="z-[100]"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-[#9CA3AF] mb-2">Commission %</label>
+              <NumericInput
+                value={commissionPctInput}
+                onChange={(v) => {
+                  setCommissionPctInput(v);
+                  const n = parseFloat(v);
+                  onUpdate({
+                    commissionPercent:
+                      v.trim() === '' || !Number.isFinite(n) ? null : Math.min(100, Math.max(0, n)),
+                  });
+                }}
+                allowDecimal
+                min={0}
+                max={100}
+                placeholder="0"
+                disabled={!saleData.salesmanId}
+              />
+              {saleData.salesmanId && commissionNum > 0 && Number.isFinite(commissionNum) && (
+                <p className="text-xs text-[#10B981] mt-1">
+                  Commission amount: Rs.{' '}
+                  {Math.round(saleData.subtotal * (commissionNum / 100)).toLocaleString()} on Rs.{' '}
+                  {saleData.subtotal.toLocaleString()} subtotal
+                </p>
+              )}
+              {!commissionValid && (
+                <p className="text-xs text-[#EF4444] mt-1">Enter a percentage between 0 and 100.</p>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
           <label className="text-sm font-medium text-[#9CA3AF] mb-2 block">Attachments (optional)</label>
           <MediaSourcePicker
@@ -403,7 +499,7 @@ export function SaleSummary({
         <div className="fixed left-0 right-0 bottom-0 bg-[#1F2937] border-t border-[#374151] p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0))] z-[60]">
           <button
             onClick={onProceedToPayment}
-            disabled={!branchReady}
+            disabled={!branchReady || !commissionValid}
             className="w-full h-12 bg-[#3B82F6] hover:bg-[#2563EB] disabled:bg-[#374151] disabled:text-[#9CA3AF] rounded-lg font-medium text-white transition-colors"
           >
             {saleData.saleType === 'studio' || (saleData.documentStatus ?? 'order') !== 'final'

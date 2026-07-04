@@ -64,6 +64,16 @@ import type { UnifiedLedgerBasis } from '@/app/lib/unifiedLedgerBasisFilter';
 import { RoznamchaUnifiedPreviewPanel } from '@/app/components/reports/RoznamchaUnifiedPreviewPanel';
 import { DIN_CHINA_COMPANY_ID } from '@/app/lib/unifiedLedgerGoldenFixtures';
 import { toast } from 'sonner';
+import { useCheckPermission } from '@/app/hooks/useCheckPermission';
+import { isTransactionActionPanelEnabled } from '@/app/lib/transactionActionRules';
+import {
+  buildSyntheticAccountingEntryFromRoznamchaRow,
+  roznamchaAllowsUnifiedEdit,
+  roznamchaRowHasActionTarget,
+} from '@/app/lib/roznamchaTransactionActions';
+import { useJournalTransactionActionHandlers } from '@/app/hooks/useJournalTransactionActionHandlers';
+import { RoznamchaRowTransactionActions } from '@/app/components/reports/RoznamchaRowTransactionActions';
+import { TransactionDetailModal } from '@/app/components/accounting/TransactionDetailModal';
 
 const ROZNAMCHA_CACHE_TTL_MS = 30_000;
 const roznamchaResultCache = new Map<string, { at: number; data: RoznamchaResult }>();
@@ -142,6 +152,27 @@ export interface RoznamchaReportProps {
 
 export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaReportProps = {}) => {
   const { companyId, branchId: contextBranchId, userRole } = useSupabase();
+  const { canPostAccounting } = useCheckPermission();
+  const useTransactionActionPanel = isTransactionActionPanelEnabled();
+  const showRoznamchaActions = canPostAccounting && useTransactionActionPanel;
+  const {
+    busy: actionBusy,
+    transactionReference,
+    transactionJournalEntryIdHint,
+    transactionDetailAutoEdit,
+    transactionDetailAutoOpenTrace,
+    transactionDetailScrollToAudit,
+    clearTransactionDetail,
+    setTransactionDetailAutoEdit,
+    setTransactionDetailAutoOpenTrace,
+    setTransactionDetailScrollToAudit,
+    handleOpenJournalSourceDocument,
+    openFromRoznamchaRow,
+    handleJournalUndoLastChange,
+    handleJournalCancelPayment,
+    handleJournalCancelEntry,
+    handleJournalCancelOrphan,
+  } = useJournalTransactionActionHandlers();
   const reportExport = useReportExport({ companyId, documentType: 'ledger', reportKind: 'roznamcha' });
   const { formatCurrency } = useFormatCurrency();
   const [printOrientation, setPrintOrientation] = useState<PdfPreviewOrientation>('landscape');
@@ -1060,6 +1091,9 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
                     <th className="px-4 py-3 text-right font-medium w-28">Cash In</th>
                     <th className="px-4 py-3 text-right font-medium w-28">Cash Out</th>
                     <th className="px-4 py-3 text-right font-medium w-32">Balance</th>
+                    {showRoznamchaActions ? (
+                      <th className="px-2 py-3 text-left font-medium w-12">Actions</th>
+                    ) : null}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-800">
@@ -1073,14 +1107,20 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
                     <td className="px-4 py-3 text-right font-mono text-white">
                       {data.summary.openingBalance.toLocaleString()}
                     </td>
+                    {showRoznamchaActions ? <td className="px-2 py-3 w-12" /> : null}
                   </tr>
                   {paginatedRows.map((r: RoznamchaRowWithBalance, i: number) => (
                     <tr
                       key={r.id}
                       className={cn(
-                        'hover:bg-gray-800/30',
+                        'hover:bg-gray-800/30 transition-colors',
+                        roznamchaRowHasActionTarget(r) ? 'cursor-pointer' : '',
                         i % 2 === 0 ? 'bg-gray-950/30' : 'bg-gray-900/20'
                       )}
+                      onClick={() => {
+                        if (!roznamchaRowHasActionTarget(r) || actionBusy) return;
+                        openFromRoznamchaRow(r);
+                      }}
                     >
                       <td className="px-4 py-3 text-gray-300 whitespace-nowrap">
                         {r.date && r.time ? (
@@ -1123,6 +1163,30 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
                       <td className="px-4 py-3 text-right font-mono text-white">
                         {r.runningBalance.toLocaleString()}
                       </td>
+                      {showRoznamchaActions ? (
+                        <td className="px-2 py-3 align-top w-12" onClick={(e) => e.stopPropagation()}>
+                          {roznamchaRowHasActionTarget(r) ? (
+                            <RoznamchaRowTransactionActions
+                              row={r}
+                              busy={actionBusy}
+                              allowUnifiedEdit={roznamchaAllowsUnifiedEdit(r)}
+                              onView={() => openFromRoznamchaRow(r)}
+                              onEdit={() => openFromRoznamchaRow(r, { autoEdit: true })}
+                              onOpenSourceDocument={() =>
+                                void handleOpenJournalSourceDocument(buildSyntheticAccountingEntryFromRoznamchaRow(r))
+                              }
+                              onUndoLastChange={handleJournalUndoLastChange}
+                              onCancelPayment={(id) => handleJournalCancelPayment(id, false)}
+                              onCancelOrphan={(id, paymentId) =>
+                                handleJournalCancelOrphan(id, paymentId ?? r.sourcePaymentId)
+                              }
+                              onCancelEntry={handleJournalCancelEntry}
+                              onViewTrace={() => openFromRoznamchaRow(r, { autoTrace: true })}
+                              onViewAudit={() => openFromRoznamchaRow(r, { scrollAudit: true })}
+                            />
+                          ) : null}
+                        </td>
+                      ) : null}
                     </tr>
                   ))}
                 </tbody>
@@ -1140,6 +1204,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
                     <td className="px-4 py-3 text-right font-bold text-white">
                       {data.summary.closingBalance.toLocaleString()}
                     </td>
+                    {showRoznamchaActions ? <td className="px-2 py-3 w-12" /> : null}
                   </tr>
                 </tfoot>
               </table>
@@ -1200,6 +1265,21 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
         </div>
       )}
       </div>
+
+      {transactionReference ? (
+        <TransactionDetailModal
+          isOpen={!!transactionReference}
+          onClose={clearTransactionDetail}
+          referenceNumber={transactionReference}
+          journalEntryIdHint={transactionJournalEntryIdHint ?? undefined}
+          autoLaunchUnifiedEdit={transactionDetailAutoEdit}
+          onAutoLaunchUnifiedEditConsumed={() => setTransactionDetailAutoEdit(false)}
+          autoOpenPaymentTrace={transactionDetailAutoOpenTrace}
+          onAutoOpenPaymentTraceConsumed={() => setTransactionDetailAutoOpenTrace(false)}
+          autoScrollToAudit={transactionDetailScrollToAudit}
+          onAutoScrollToAuditConsumed={() => setTransactionDetailScrollToAudit(false)}
+        />
+      ) : null}
     </div>
   );
 };

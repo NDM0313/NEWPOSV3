@@ -638,6 +638,8 @@ export async function createExpense(input: {
   saleChargeId?: string | null;
   tailorContactId?: string | null;
   expenseCategoryId?: string | null;
+  /** Hybrid 4120: [{ saleChargeId, amount }] — remainder posts to category expense. */
+  clearingAllocations?: Array<{ saleChargeId: string; amount: number }>;
 }) {
   if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
   let effectiveBranchId: string;
@@ -699,25 +701,6 @@ export async function createExpense(input: {
     return { data: null, error: rpc?.error ?? 'Failed to create expense.' };
   }
 
-  // Accounting: post journal entry (Dr mapped expense account, Cr payment
-  // account). Soft-warn on failure.
-  try {
-    const expenseId = rpc.expense_id;
-    if (expenseId) {
-      const { data: postData, error: postErr } = await supabase.rpc(
-        'record_expense_with_accounting',
-        { p_expense_id: expenseId },
-      );
-      if (postErr) {
-        console.warn('[EXPENSES API] record_expense_with_accounting failed:', postErr);
-      } else if (postData && typeof postData === 'object' && (postData as { success?: boolean }).success === false) {
-        console.warn('[EXPENSES API] record_expense_with_accounting returned error:', postData);
-      }
-    }
-  } catch (err) {
-    console.warn('[EXPENSES API] record_expense_with_accounting threw:', err);
-  }
-
   const expenseId = rpc.expense_id;
   const patch: Record<string, unknown> = {};
   const paidUid = sanitizeUuid(input.paidToUserId ?? null);
@@ -733,6 +716,16 @@ export async function createExpense(input: {
   if (tailorId) patch.tailor_contact_id = tailorId;
   if (expenseCategoryId) patch.expense_category_id = expenseCategoryId;
   if (receipt) patch.receipt_url = receipt;
+  if (input.clearingAllocations && input.clearingAllocations.length > 0) {
+    patch.clearing_allocations = input.clearingAllocations
+      .map((a) => {
+        const id = sanitizeUuid(a.saleChargeId);
+        const chunkAmt = Math.max(0, Number(a.amount) || 0);
+        if (!id || chunkAmt <= 0) return null;
+        return { sale_charge_id: id, amount: chunkAmt };
+      })
+      .filter(Boolean);
+  }
 
   if (expenseId && Object.keys(patch).length > 0) {
     let upd = await supabase.from('expenses').update(patch).eq('id', expenseId).eq('company_id', input.companyId);
@@ -745,6 +738,7 @@ export async function createExpense(input: {
         'tailor_contact_id',
         'expense_category_id',
         'receipt_url',
+        'clearing_allocations',
       ] as const;
       let slim = { ...patch };
       for (const key of dropKeys) {
@@ -767,6 +761,31 @@ export async function createExpense(input: {
         };
       }
     }
+  }
+
+  try {
+    if (expenseId) {
+      const { data: postData, error: postErr } = await supabase.rpc(
+        'record_expense_with_accounting',
+        { p_expense_id: expenseId },
+      );
+      if (postErr) {
+        return {
+          data: null,
+          error: postErr.message || 'Expense saved but accounting post failed.',
+        };
+      }
+      if (postData && typeof postData === 'object' && (postData as { success?: boolean }).success === false) {
+        const errMsg =
+          (postData as { error?: string }).error ?? 'Expense saved but accounting post failed.';
+        return { data: null, error: errMsg };
+      }
+    }
+  } catch (err) {
+    return {
+      data: null,
+      error: err instanceof Error ? err.message : 'Expense saved but accounting post failed.',
+    };
   }
 
   let receiptWarning: string | null = null;

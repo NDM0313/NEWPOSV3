@@ -2,7 +2,7 @@
   "phase": "3D",
   "run": "BS/P&L candidate golden capture",
   "productionUrl": "https://erp.dincouture.pk",
-  "capturedAt": "2026-07-01T07:21:16.778Z",
+  "capturedAt": "2026-07-01T08:45:07.530Z",
   "approvalStatus": "CANDIDATE_ONLY — NOT FINANCE APPROVED",
   "companies": {
     "din-china": {
@@ -52,9 +52,7 @@
         "retainedEarningsWarning": false,
         "needsAccountingRuleConfirmation": false,
         "accountingRuleNotes": [
-          "PREVIEW_ONLY — not finance-approved golden totals.",
-          "Net income folded into equity per legacy BS-FIX / PF-04 rules.",
-          "NEEDS_ACCOUNTING_RULE_CONFIRMATION — compare with finance before loader swap."
+          "Unified main loader active."
         ],
         "screenshot": "screenshots/din-china-balance-sheet-preview.png",
         "export": "exports/din-china-balance-sheet-preview.json",
@@ -95,9 +93,7 @@
         "cogsHeuristicWarning": false,
         "needsRuleConfirmation": false,
         "accountingRuleNotes": [
-          "PREVIEW_ONLY — not finance-approved golden totals.",
-          "COGS split uses COST_OF_PRODUCTION_CODES + type heuristics (mirrors legacy).",
-          "NEEDS_RULE_CONFIRMATION — finance must approve COGS mapping before loader swap."
+          "Unified main loader active."
         ],
         "screenshot": "screenshots/din-china-profit-loss-preview.png",
         "export": "exports/din-china-profit-loss-preview.json",
@@ -151,9 +147,7 @@
         "retainedEarningsWarning": false,
         "needsAccountingRuleConfirmation": false,
         "accountingRuleNotes": [
-          "PREVIEW_ONLY — not finance-approved golden totals.",
-          "Net income folded into equity per legacy BS-FIX / PF-04 rules.",
-          "NEEDS_ACCOUNTING_RULE_CONFIRMATION — compare with finance before loader swap."
+          "Unified main loader active."
         ],
         "screenshot": "screenshots/din-bridal-balance-sheet-preview.png",
         "export": "exports/din-bridal-balance-sheet-preview.json",
@@ -194,9 +188,7 @@
         "cogsHeuristicWarning": false,
         "needsRuleConfirmation": false,
         "accountingRuleNotes": [
-          "PREVIEW_ONLY — not finance-approved golden totals.",
-          "COGS split uses COST_OF_PRODUCTION_CODES + type heuristics (mirrors legacy).",
-          "NEEDS_RULE_CONFIRMATION — finance must approve COGS mapping before loader swap."
+          "Unified main loader active."
         ],
         "screenshot": "screenshots/din-bridal-profit-loss-preview.png",
         "export": "exports/din-bridal-profit-loss-preview.json",
@@ -250,9 +242,7 @@
         "retainedEarningsWarning": false,
         "needsAccountingRuleConfirmation": false,
         "accountingRuleNotes": [
-          "PREVIEW_ONLY — not finance-approved golden totals.",
-          "Net income folded into equity per legacy BS-FIX / PF-04 rules.",
-          "NEEDS_ACCOUNTING_RULE_CONFIRMATION — compare with finance before loader swap."
+          "Unified main loader active."
         ],
         "screenshot": "screenshots/din-couture-balance-sheet-preview.png",
         "export": "exports/din-couture-balance-sheet-preview.json",
@@ -293,9 +283,7 @@
         "cogsHeuristicWarning": false,
         "needsRuleConfirmation": false,
         "accountingRuleNotes": [
-          "PREVIEW_ONLY — not finance-approved golden totals.",
-          "COGS split uses COST_OF_PRODUCTION_CODES + type heuristics (mirrors legacy).",
-          "NEEDS_RULE_CONFIRMATION — finance must approve COGS mapping before loader swap."
+          "Unified main loader active."
         ],
         "screenshot": "screenshots/din-couture-profit-loss-preview.png",
         "export": "exports/din-couture-profit-loss-preview.json",

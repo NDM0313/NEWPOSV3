@@ -16,6 +16,10 @@ import { createWorkerPayment } from '@/app/services/workerPaymentService';
 import { createCourierPayment } from '@/app/services/courierPaymentService';
 import { logPaymentCreated } from '@/app/services/auditLogService';
 import { ensurePaymentsForLiquidityJournal } from '@/app/services/journalLiquidityPaymentService';
+import {
+  recordPaymentWithAccounting,
+  resolveBranchIdForPaymentRpc,
+} from '@/app/services/recordPaymentWithAccountingRpc';
 
 const PAYMENT_METHOD_MAP: Record<string, string> = {
   cash: 'cash', Cash: 'cash', bank: 'bank', Bank: 'bank', 'mobile wallet': 'other', 'Mobile Wallet': 'other',
@@ -29,14 +33,6 @@ function normalizePaymentMethod(m: string): string {
 
 function validBranchId(branchId: string | null | undefined): string | null {
   return branchId && branchId !== 'all' ? branchId : null;
-}
-
-async function getCustomerReceiptRef(companyId: string, branchId: string | null): Promise<string> {
-  try {
-    return await documentNumberService.getNextDocumentNumber(companyId, branchId, 'customer_receipt');
-  } catch {
-    return generatePaymentReference(null);
-  }
 }
 
 /** Returns contactId only if it exists in contacts. Used to avoid payments.contact_id FK violation (e.g. courier with stale/missing contact). */
@@ -124,35 +120,12 @@ export async function createCustomerReceiptEntry(params: CreateCustomerReceiptPa
   const { companyId, branchId, customerId, customerName, amount, paymentAccountId, paymentDate, paymentMethod, notes, attachments, invoiceAllocations } = params;
   if (!companyId || !customerId || amount <= 0 || !paymentAccountId) throw new Error('Invalid customer receipt params');
   const branch = validBranchId(branchId);
-  const refNo = await getCustomerReceiptRef(companyId, branch);
+  const branchResolved = await resolveBranchIdForPaymentRpc(companyId, branch);
   const { data: { user } } = await supabase.auth.getUser();
   const uid = (user as any)?.id ?? null;
+  const desc = notes || `Receipt from ${customerName}`;
 
-  const { data: arAccounts } = await supabase.from('accounts').select('id').eq('company_id', companyId).or('code.eq.1100,name.ilike.%Accounts Receivable%').limit(1);
-  const arId = (arAccounts?.[0] as { id: string })?.id;
-  if (!arId) throw new Error('Accounts Receivable account (1100) not found');
-
-  const receiptPayload: Record<string, unknown> = {
-    company_id: companyId,
-    branch_id: branch,
-    payment_type: 'received',
-    reference_type: 'manual_receipt',
-    reference_id: null,
-    contact_id: customerId,
-    amount,
-    payment_method: normalizePaymentMethod(paymentMethod),
-    payment_account_id: paymentAccountId,
-    payment_date: paymentDate,
-    reference_number: refNo,
-    notes: notes || undefined,
-    received_by: uid,
-    created_by: uid,
-  };
-  if (attachments && attachments.length > 0) receiptPayload.attachments = attachments;
-
-  const { findRecentDuplicateManualReceipt, rollbackFailedCustomerReceiptAttempt } = await import(
-    '@/app/services/orphanReceiptService'
-  );
+  const { findRecentDuplicateManualReceipt } = await import('@/app/services/orphanReceiptService');
   const duplicate = await findRecentDuplicateManualReceipt({
     companyId,
     customerId,
@@ -172,41 +145,55 @@ export async function createCustomerReceiptEntry(params: CreateCustomerReceiptPa
     );
   }
 
-  const { data: paymentRow, error: payErr } = await supabase.from('payments').insert(receiptPayload).select('id').single();
-  if (payErr) throw new Error(`Payment row failed: ${payErr.message}`);
-  const paymentId = (paymentRow as { id: string }).id;
-  logPaymentCreated(companyId, paymentId, { reference_type: 'manual_receipt', amount, contact_id: customerId });
+  const rpcResult = await recordPaymentWithAccounting({
+    companyId,
+    branchId: branchResolved,
+    paymentType: 'received',
+    referenceType: 'on_account',
+    referenceId: customerId,
+    amount,
+    paymentMethod,
+    paymentDate,
+    paymentAccountId,
+    notes: desc,
+    createdBy: uid,
+  });
 
-  const entryNo = `JE-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
-  const desc = notes || `Receipt from ${customerName}`;
-  const journalEntry: JournalEntry = {
-    company_id: companyId,
-    branch_id: branch ?? undefined,
-    entry_no: entryNo,
-    entry_date: paymentDate,
-    description: desc,
+  const paymentId = rpcResult.paymentId;
+  const journalEntryId = rpcResult.journalEntryId;
+  const refNo = rpcResult.referenceNumber;
+
+  const paymentPatch: Record<string, unknown> = {
     reference_type: 'manual_receipt',
-    reference_id: customerId,
-    created_by: uid ?? undefined,
+    reference_id: null,
+    contact_id: customerId,
+    received_by: uid,
   };
-  const lines: JournalEntryLine[] = [
-    { account_id: paymentAccountId, debit: amount, credit: 0, description: desc },
-    { account_id: arId, debit: 0, credit: amount, description: desc },
-  ];
-
-  let saved: Awaited<ReturnType<typeof accountingService.createEntry>>;
-  try {
-    saved = (await accountingService.createEntry(journalEntry, lines, paymentId)) as Awaited<
-      ReturnType<typeof accountingService.createEntry>
-    >;
-  } catch (postErr) {
-    try {
-      await rollbackFailedCustomerReceiptAttempt({ companyId, paymentId });
-    } catch (rollbackErr) {
-      console.warn('[AddEntryV2] Customer receipt rollback failed:', rollbackErr);
-    }
-    throw postErr;
+  if (attachments && attachments.length > 0) {
+    paymentPatch.attachments = attachments;
   }
+
+  let payUpd = await supabase.from('payments').update(paymentPatch).eq('id', paymentId);
+  if (payUpd.error?.code === 'PGRST204' && String(payUpd.error.message || '').includes('attachments')) {
+    const { attachments: _a, ...rest } = paymentPatch;
+    payUpd = await supabase.from('payments').update(rest).eq('id', paymentId);
+  } else if (payUpd.error) {
+    console.warn('[AddEntryV2] manual receipt payment patch after RPC:', payUpd.error.message);
+  }
+
+  const jeUpd = await supabase
+    .from('journal_entries')
+    .update({
+      reference_type: 'manual_receipt',
+      reference_id: customerId,
+      description: desc,
+    })
+    .eq('id', journalEntryId);
+  if (jeUpd.error) {
+    console.warn('[AddEntryV2] manual receipt JE patch after RPC:', jeUpd.error.message);
+  }
+
+  logPaymentCreated(companyId, paymentId, { reference_type: 'manual_receipt', amount, contact_id: customerId });
 
   await applyManualReceiptAllocations({
     companyId,
@@ -220,6 +207,7 @@ export async function createCustomerReceiptEntry(params: CreateCustomerReceiptPa
     explicitAllocations: invoiceAllocations && invoiceAllocations.length > 0 ? invoiceAllocations : null,
   });
 
+  dispatchContactBalancesRefresh(companyId);
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'customer', entityId: customerId } }));
     window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
@@ -228,12 +216,12 @@ export async function createCustomerReceiptEntry(params: CreateCustomerReceiptPa
     console.log('[AddEntryV2] createCustomerReceiptEntry:', {
       payload: { customerId, customerName, amount, paymentAccountId, paymentDate },
       paymentId,
-      journalEntryId: (saved as { id: string }).id,
+      journalEntryId,
       referenceNumber: refNo,
       refetchEvent: 'ledgerUpdated(customer)',
     });
   }
-  return { paymentId, journalEntryId: (saved as { id: string }).id, referenceNumber: refNo };
+  return { paymentId, journalEntryId, referenceNumber: refNo };
 }
 
 // ─── 3. Supplier Payment ──────────────────────────────────────────────────

@@ -1,56 +1,33 @@
-# Full three-company monitoring — Office resume 2026-06-30
+# Full three-company monitoring — Office resume 2026-06-30 (retry)
 
 **Command:** `npm run monitor:three-company-unified-ledger`  
-**Generated:** 2026-06-30
+**Generated:** 2026-06-30 (retry after credentials added)
 
 ---
 
 ## Result
 
-**BLOCKED_MISSING_QA_BROWSER_PASSWORDS** (exit code 1)
+**PASS** (exit code 0)
 
-Credential validation failed before any profile run:
+| Profile | Result | Checks |
+|---------|--------|--------|
+| din-china | **PASS** | 19/19 |
+| din-bridal | **PASS** | 18/19 (Admin Compare waived) |
+| din-couture | **PASS** | 18/19 (Admin Compare waived) |
 
-| Env var | Status |
-|---------|--------|
-| `QA_BROWSER_PASSWORD_CHINA` | **MISSING** |
-| `QA_BROWSER_PASSWORD_BRIDAL` | **MISSING** |
-| `QA_BROWSER_PASSWORD_COUTURE` | **MISSING** |
+| Guard | Result |
+|-------|--------|
+| Other-company loaders | **0** |
+| migrations_run | **false** |
+| gl_mutations | **false** |
+| Flag guard | **PASS** — DIN CHINA / BRIDAL / COUTURE only (6 loaders each) |
 
-`ALLOW_GENERIC_MONITORING_CREDENTIAL_FALLBACK` was not set.
-
----
-
-## Expected (when credentials available)
-
-| Check | Expected |
-|-------|----------|
-| din-china | PASS |
-| din-bridal | PASS |
-| din-couture | PASS |
-| other-company loaders | 0 |
-| migrations_run | false |
-| gl_mutations | false |
+**Evidence:** `reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-30T06-58-58-962Z.json`
 
 ---
 
-## Context
+## Credential note
 
-A prior office session on **2026-06-29** achieved **PASS** with per-company credentials (see `reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-29T16-11-13-569Z.json`). The current agent shell does not inherit those session env vars.
+Passwords were loaded from `erp-mobile-app/.env` into the PowerShell session before running. Monitoring scripts do **not** auto-load `.env` files — use session env vars or root `.env.local` with `KEY=value` format for future runs.
 
----
-
-## Remediation
-
-In PowerShell (do not save passwords to repo):
-
-```powershell
-$env:QA_BROWSER_PASSWORD_CHINA = "<password>"
-$env:QA_BROWSER_PASSWORD_BRIDAL = "<password>"
-$env:QA_BROWSER_PASSWORD_COUTURE = "<password>"
-npm run monitor:three-company-unified-ledger
-```
-
-See [`windows-task-scheduler-guide.md`](../single-core-ledger/operational-monitoring/windows-task-scheduler-guide.md).
-
-**No passwords printed. No invented monitoring results.**
+**Do not commit passwords to git.**

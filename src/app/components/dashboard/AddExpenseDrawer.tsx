@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   X, 
   Upload, 
@@ -36,6 +36,7 @@ import { accountService } from "@/app/services/accountService";
 import { expenseCategoryService, type ExpenseCategoryTreeItem } from "@/app/services/expenseCategoryService";
 import {
   findPathToCategory,
+  isExpenseSalaryCategory,
   levelIdsFromPath,
   resolveExpenseCategoryIdFromLevels,
 } from "@/app/lib/expenseCategoryTreeUtils";
@@ -97,6 +98,7 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
   const [leafCategoryId, setLeafCategoryId] = useState("");
   const [paidToUserId, setPaidToUserId] = useState("");
   const [salaryUsers, setSalaryUsers] = useState<Array<{ id: string; full_name: string; email?: string; role?: string }>>([]);
+  const [salaryUsersLoading, setSalaryUsersLoading] = useState(false);
   const [salaryUserSearch, setSalaryUserSearch] = useState("");
   const [paidFromAccountId, setPaidFromAccountId] = useState("");
   const [selectedBranchId, setSelectedBranchId] = useState("");
@@ -182,30 +184,48 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
   const selectedLeaf = leafOptions.find((n) => n.id === leafCategoryId);
   const deepestCategory = selectedLeaf ?? selectedSub ?? selectedMain;
   const effectiveSlug = deepestCategory?.slug ?? categorySlug;
-  const isSalaryCategory =
-    effectiveSlug === 'salaries' ||
-    selectedMain?.type === 'salary' ||
-    selectedSub?.type === 'salary' ||
-    selectedLeaf?.type === 'salary';
   const resolvedCategoryId = resolveExpenseCategoryIdFromLevels(
     mainCategoryId,
     subCategoryId,
     leafCategoryId,
   );
+  const salaryCategoryPath = useMemo(() => {
+    if (categoryTree.length === 0) return null;
+    if (resolvedCategoryId) {
+      return findPathToCategory(categoryTree, resolvedCategoryId);
+    }
+    const trail = [selectedMain, selectedSub, selectedLeaf].filter(Boolean) as ExpenseCategoryTreeItem[];
+    return trail.length > 0 ? trail : null;
+  }, [categoryTree, resolvedCategoryId, selectedMain, selectedSub, selectedLeaf]);
+
+  const isSalaryCategory = useMemo(() => {
+    if (isExpenseSalaryCategory(salaryCategoryPath)) return true;
+    const slug = (effectiveSlug || '').toLowerCase();
+    return slug === 'salaries' || slug === 'salary' || slug === 'wages';
+  }, [salaryCategoryPath, effectiveSlug]);
 
   useEffect(() => {
     if (isOpen && companyId && isSalaryCategory) {
-      userService.getUsersForSalary(companyId).then((list) => {
-        setSalaryUsers(list.map((u) => ({
-          id: u.id,
-          full_name: u.full_name || u.email || 'Unknown',
-          email: u.email,
-          role: u.role,
-        })));
-      }).catch(() => setSalaryUsers([]));
+      setSalaryUsersLoading(true);
+      userService
+        .getUsersForSalary(companyId)
+        .then((list) => {
+          setSalaryUsers(
+            list.map((u) => ({
+              id: u.id,
+              full_name: u.full_name || u.email || 'Unknown',
+              email: u.email,
+              role: u.role,
+            })),
+          );
+        })
+        .catch(() => setSalaryUsers([]))
+        .finally(() => setSalaryUsersLoading(false));
     } else if (!isSalaryCategory) {
       setPaidToUserId('');
       setSalaryUserSearch('');
+      setSalaryUsers([]);
+      setSalaryUsersLoading(false);
     }
   }, [isOpen, companyId, isSalaryCategory]);
 
@@ -568,6 +588,12 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
             {isSalaryCategory && (
               <div className="space-y-2">
                 <Label className="text-gray-400 text-sm">Pay to (User)</Label>
+                {salaryUsersLoading ? (
+                  <p className="text-sm text-gray-400 flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin shrink-0" /> Loading staff…
+                  </p>
+                ) : (
+                  <>
                 <Input
                   placeholder="Search user..."
                   value={salaryUserSearch}
@@ -592,6 +618,14 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
                       ))}
                   </SelectContent>
                 </Select>
+                {salaryUsers.length === 0 && (
+                  <p className="text-xs text-amber-500">
+                    No eligible users found. Add users in Settings with role Staff/Salesman or enable
+                    &quot;Can be assigned as salesman&quot;.
+                  </p>
+                )}
+                  </>
+                )}
                 <p className="text-xs text-gray-500">Salary is for users only (Admin, Staff, Salesman, Operator). Workers are paid via Production → Worker Ledger.</p>
               </div>
             )}

@@ -20,11 +20,16 @@ import { useNavigation } from '@/app/context/NavigationContext';
 import { format } from 'date-fns';
 import { cn } from '@/app/components/ui/utils';
 import { getAttachmentOpenUrl } from '@/app/utils/paymentAttachmentUrl';
-import { normalizeAttachmentList } from '@/app/utils/transactionAttachments';
+import { collectTransactionOwnedAttachments } from '@/app/utils/transactionAttachments';
 import type { AccountingEntry, PaymentMethod } from '@/app/context/AccountingContext';
 import { toast } from 'sonner';
 import { safeSessionStorageSetItem } from '@/app/lib/safeBrowserStorage';
 import { getManualReceiptAllocationSummary, type ManualReceiptAllocationSummary } from '@/app/services/paymentAllocationService';
+import {
+  getManualReceiptGlDriftSummary,
+  repairManualReceiptGlDrift,
+  type ManualReceiptGlDriftSummary,
+} from '@/app/services/manualReceiptGlDriftService';
 import { UnifiedPaymentDialog, type PaymentDialogProps } from '@/app/components/shared/UnifiedPaymentDialog';
 import { getSaleDisplayNumber, getPurchaseDisplayNumber } from '@/app/lib/documentDisplayNumbers';
 import { contactService } from '@/app/services/contactService';
@@ -242,32 +247,22 @@ async function enrichLedgerPaymentEditorFields(args: {
 }
 
 function collectTransactionAttachmentUrls(
-  transaction: { attachments?: unknown } | null | undefined,
-  expenseReceiptUrl?: string | null,
-  sourceDocumentAttachments?: unknown
+  transaction: { attachments?: unknown; reference_type?: string; payment_id?: string } | null | undefined,
+  options: {
+    expenseReceiptUrl?: string | null;
+    sourceDocumentAttachments?: unknown;
+    paymentAttachments?: unknown;
+  } = {}
 ): string[] {
-  const urls: string[] = [];
-  const jeAtt = transaction?.attachments;
-  if (Array.isArray(jeAtt)) {
-    for (const att of jeAtt) {
-      const u =
-        typeof att === 'string'
-          ? att
-          : (att as { url?: string; fileUrl?: string })?.url ||
-            (att as { url?: string; fileUrl?: string })?.fileUrl;
-      if (u) urls.push(String(u));
-    }
-  } else if (typeof jeAtt === 'string' && jeAtt.trim()) {
-    urls.push(jeAtt.trim());
-  }
-  const receipt = expenseReceiptUrl?.trim();
-  if (receipt) urls.push(receipt);
-  if (sourceDocumentAttachments) {
-    for (const att of normalizeAttachmentList(sourceDocumentAttachments)) {
-      if (att.url) urls.push(att.url);
-    }
-  }
-  return [...new Set(urls)];
+  const owned = collectTransactionOwnedAttachments({
+    referenceType: transaction?.reference_type,
+    paymentId: transaction?.payment_id,
+    jeAttachments: transaction?.attachments,
+    paymentAttachments: options.paymentAttachments,
+    expenseReceiptUrl: options.expenseReceiptUrl,
+    documentAttachments: options.sourceDocumentAttachments,
+  });
+  return owned.map((a) => a.url);
 }
 
 export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
@@ -297,6 +292,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
   const [selectedAttachment, setSelectedAttachment] = useState<string | null>(null);
   const [expenseReceiptUrl, setExpenseReceiptUrl] = useState<string | null>(null);
   const [sourceDocumentAttachments, setSourceDocumentAttachments] = useState<unknown>(null);
+  const [paymentAttachments, setPaymentAttachments] = useState<unknown>(null);
   const [journalQuickEditOpen, setJournalQuickEditOpen] = useState(false);
   const [editEntryDateTime, setEditEntryDateTime] = useState('');
   const [editDescription, setEditDescription] = useState('');
@@ -304,6 +300,8 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
   /** Effective journal lines for payment (original + account-adjustment JEs merged) so Bank shows after Cash→Bank edit */
   const [effectiveLines, setEffectiveLines] = useState<any[]>([]);
   const [manualReceiptSummary, setManualReceiptSummary] = useState<ManualReceiptAllocationSummary | null>(null);
+  const [glDriftSummary, setGlDriftSummary] = useState<ManualReceiptGlDriftSummary | null>(null);
+  const [glDriftRepairBusy, setGlDriftRepairBusy] = useState(false);
   const [manualReceiptEditorOpen, setManualReceiptEditorOpen] = useState(false);
   const [supplierManualEditorOpen, setSupplierManualEditorOpen] = useState(false);
   const [rentalPaymentEditorOpen, setRentalPaymentEditorOpen] = useState(false);
@@ -434,6 +432,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
       setJournalQuickEditOpen(false);
       setExpenseReceiptUrl(null);
       setSourceDocumentAttachments(null);
+      setPaymentAttachments(null);
     }
   }, [isOpen]);
 
@@ -441,7 +440,39 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     if (!transaction || !companyId) {
       setExpenseReceiptUrl(null);
       setSourceDocumentAttachments(null);
+      setPaymentAttachments(null);
       return;
+    }
+    const paymentId =
+      transaction.payment_id ??
+      (Array.isArray(transaction.payment) ? transaction.payment[0]?.id : transaction.payment?.id);
+    if (paymentId) {
+      let cancelled = false;
+      void (async () => {
+        try {
+          const { supabase } = await import('@/lib/supabase');
+          const { data } = await supabase
+            .from('payments')
+            .select('attachments')
+            .eq('id', String(paymentId))
+            .eq('company_id', companyId)
+            .maybeSingle();
+          if (!cancelled) {
+            setPaymentAttachments((data as { attachments?: unknown } | null)?.attachments ?? null);
+            setExpenseReceiptUrl(null);
+            setSourceDocumentAttachments(null);
+          }
+        } catch {
+          if (!cancelled) {
+            setPaymentAttachments(null);
+            setExpenseReceiptUrl(null);
+            setSourceDocumentAttachments(null);
+          }
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
     }
     const prt = String(transaction.reference_type || '').toLowerCase();
     const refId = transaction.reference_id;
@@ -459,11 +490,13 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
           if (!cancelled) {
             setExpenseReceiptUrl(data?.receipt_url ? String(data.receipt_url) : null);
             setSourceDocumentAttachments(null);
+            setPaymentAttachments(null);
           }
         } catch {
           if (!cancelled) {
             setExpenseReceiptUrl(null);
             setSourceDocumentAttachments(null);
+            setPaymentAttachments(null);
           }
         }
       })();
@@ -495,11 +528,13 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
           if (!cancelled) {
             setExpenseReceiptUrl(null);
             setSourceDocumentAttachments(data?.attachments ?? null);
+            setPaymentAttachments(null);
           }
         } catch {
           if (!cancelled) {
             setExpenseReceiptUrl(null);
             setSourceDocumentAttachments(null);
+            setPaymentAttachments(null);
           }
         }
       })();
@@ -509,11 +544,17 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     }
     setExpenseReceiptUrl(null);
     setSourceDocumentAttachments(null);
-  }, [transaction?.id, transaction?.reference_type, transaction?.reference_id, companyId]);
+    setPaymentAttachments(null);
+  }, [transaction?.id, transaction?.reference_type, transaction?.reference_id, transaction?.payment_id, companyId]);
 
   const transactionAttachmentUrls = useMemo(
-    () => collectTransactionAttachmentUrls(transaction, expenseReceiptUrl, sourceDocumentAttachments),
-    [transaction, expenseReceiptUrl, sourceDocumentAttachments]
+    () =>
+      collectTransactionAttachmentUrls(transaction, {
+        expenseReceiptUrl,
+        sourceDocumentAttachments,
+        paymentAttachments,
+      }),
+    [transaction, expenseReceiptUrl, sourceDocumentAttachments, paymentAttachments]
   );
 
   const openFirstTransactionAttachment = useCallback(async () => {
@@ -1051,6 +1092,69 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     }
   };
 
+  useEffect(() => {
+    if (!companyId || !transaction || String(transaction.reference_type || '').toLowerCase() !== 'manual_receipt') {
+      setGlDriftSummary(null);
+      return;
+    }
+    const pid =
+      transaction.payment_id ??
+      (Array.isArray(transaction.payment) ? transaction.payment[0]?.id : transaction.payment?.id);
+    const lines = Array.isArray(transaction.lines) ? transaction.lines : transaction.lines ? [transaction.lines] : [];
+    if (!pid || lines.length < 2) {
+      setGlDriftSummary(null);
+      return;
+    }
+    const pay = Array.isArray(transaction.payment) ? transaction.payment[0] : transaction.payment;
+    const paymentAccountId = (pay as { payment_account_id?: string | null })?.payment_account_id ?? null;
+    getManualReceiptGlDriftSummary(companyId, String(pid), lines, paymentAccountId)
+      .then((s) => setGlDriftSummary(s))
+      .catch(() => setGlDriftSummary(null));
+  }, [companyId, transaction, effectiveLines.length]);
+
+  const handleRepairManualReceiptGlDrift = useCallback(async () => {
+    if (!companyId || !glDriftSummary || glDriftSummary.netAligned || !transaction) return;
+    const pid =
+      transaction.payment_id ??
+      (Array.isArray(transaction.payment) ? transaction.payment[0]?.id : transaction.payment?.id);
+    const pay = Array.isArray(transaction.payment) ? transaction.payment[0] : transaction.payment;
+    const customerId = String(transaction.reference_id || (pay as { contact_id?: string })?.contact_id || '');
+    const paymentAccountId = String(
+      (pay as { payment_account_id?: string })?.payment_account_id || '',
+    ).trim();
+    if (!pid || !customerId || !paymentAccountId) {
+      toast.error('Missing customer or bank account on this receipt — cannot post GL repair.');
+      return;
+    }
+    setGlDriftRepairBusy(true);
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const { data: { user } } = await supabase.auth.getUser();
+      await repairManualReceiptGlDrift({
+        companyId,
+        branchId: transaction.branch_id ?? null,
+        paymentId: String(pid),
+        customerId,
+        primaryJeAmount: glDriftSummary.primaryJeAmount,
+        paymentAmount: glDriftSummary.paymentAmount,
+        paymentAccountId,
+        paymentDate: String((pay as { payment_date?: string })?.payment_date || transaction.entry_date || '').slice(0, 10),
+        referenceNumber: (pay as { reference_number?: string })?.reference_number ?? null,
+        createdBy: user?.id ?? null,
+      });
+      toast.success('Posted payment adjustment so GL matches receipt amount.');
+      await loadTransaction();
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+        window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'customer', entityId: customerId } }));
+      }
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'GL repair failed');
+    } finally {
+      setGlDriftRepairBusy(false);
+    }
+  }, [companyId, glDriftSummary, transaction]);
+
   const handleReverseJournal = async () => {
     if (!transaction?.id || !companyId) return;
     if (journalSourceReverseBlockReason) {
@@ -1096,32 +1200,33 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     }
   };
 
-  // Void/Cancel: payment-linked JEs also void payments.voided_at (Roznamcha / statements / ledger).
+  // Void/Cancel: same path as Journal Entries row — createReversalEntry (posts offset + voids payment when linked).
   const handleVoidJournal = async () => {
     if (!transaction?.id || !companyId) return;
+    if (journalSourceReverseBlockReason) {
+      toast.error(journalSourceReverseBlockReason);
+      return;
+    }
+    const blockReason = await getPaymentChainMutationBlockReason(companyId, String(transaction.id));
+    if (blockReason) {
+      toast.error(blockReason);
+      return;
+    }
     const paymentId =
       transaction.payment_id ??
       (Array.isArray(transaction.payment) ? transaction.payment[0]?.id : transaction.payment?.id);
-    if (!window.confirm(manualJournalCancelConfirmMessage(!!paymentId))) return;
-    try {
-      if (paymentId) {
-        const { voidPaymentAfterJournalReversal } = await import('@/app/services/paymentLifecycleService');
-        await voidPaymentAfterJournalReversal({ companyId, paymentId: String(paymentId) });
-      } else {
-        const { supabase } = await import('@/lib/supabase');
-        const { error } = await supabase
-          .from('journal_entries')
-          .update({ is_void: true, void_reason: 'manual_void', voided_at: new Date().toISOString() })
-          .eq('id', transaction.id);
-        if (error) throw error;
-      }
-      toast.success('Entry cancelled — removed from live reports');
+    const isMultiMemberChain = paymentChainMemberCount > 1 && !!paymentId;
+    const msg = paymentId
+      ? isMultiMemberChain
+        ? 'Cancel this payment entirely? This voids the original posting plus every edit in the chain. Cannot be undone.'
+        : 'Cancel this payment? This posts offsetting entries and removes it from live reports.'
+      : manualJournalCancelConfirmMessage(false);
+    if (!window.confirm(msg)) return;
+    const ok = await accounting.createReversalEntry(transaction.id);
+    if (ok) {
       await loadTransaction();
       dispatchAccountingEditCommitted();
-      accounting.refreshEntries?.();
       if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('rentalPaymentsChanged'));
-    } catch (e: any) {
-      toast.error('Cancel failed: ' + (e?.message || 'Unknown error'));
     }
   };
 
@@ -1861,6 +1966,32 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                     </>
                   )}
                 </div>
+              </div>
+            )}
+
+            {glDriftSummary && !glDriftSummary.netAligned && (
+              <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100">
+                <p className="font-medium text-amber-200">Payment amount differs from posted journal</p>
+                <p className="mt-1 text-xs text-amber-100/90">
+                  Roznamcha receipt is Rs {glDriftSummary.paymentAmount.toLocaleString()}, but the primary journal entry
+                  shows Rs {glDriftSummary.primaryJeAmount.toLocaleString()}
+                  {glDriftSummary.netEffectiveAmount != null && glDriftSummary.adjustmentJeCount > 0
+                    ? ` (net after ${glDriftSummary.adjustmentJeCount} adjustment(s): Rs ${glDriftSummary.netEffectiveAmount.toLocaleString()})`
+                    : ''}
+                  . This usually means a receipt edit updated the payment row without posting a GL adjustment.
+                </p>
+                {glDriftSummary.adjustmentJeCount === 0 && Math.abs(glDriftSummary.driftVsPrimary) > 0.01 && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="mt-3 border-amber-500/40 text-amber-100 hover:bg-amber-500/20"
+                    disabled={glDriftRepairBusy}
+                    onClick={() => void handleRepairManualReceiptGlDrift()}
+                  >
+                    {glDriftRepairBusy ? 'Posting adjustment…' : 'Repair GL to match receipt'}
+                  </Button>
+                )}
               </div>
             )}
 

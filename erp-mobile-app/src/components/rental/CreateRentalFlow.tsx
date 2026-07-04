@@ -25,6 +25,7 @@ import { isRealBranchUuid } from '../../utils/branchId';
 import { useSubmitLock } from '../../contexts/LoadingContext';
 import { useFormDraft } from '../../hooks/useFormDraft';
 import { FormDraftRestoredBanner } from '../shared/FormDraftRestoredBanner';
+import { canAssignSaleCommission } from '../../lib/saleCommission';
 
 interface CreateRentalFlowProps {
   companyId: string | null;
@@ -120,7 +121,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
   const [notes, setNotes] = useState('');
   const [documentNumber, setDocumentNumber] = useState('');
   const [loading, setLoading] = useState(false);
-  const canPickSalesman = effectiveRole === 'admin' || effectiveRole === 'owner';
+  const canPickSalesman = canAssignSaleCommission(effectiveRole);
   const { run: runSave, busy: saving } = useSubmitLock();
   const [error, setError] = useState('');
   const [confirmationData, setConfirmationData] = useState<TransactionSuccessData | null>(null);

@@ -8,7 +8,7 @@
     "mode": "preview",
     "killSwitchActive": false,
     "companyEngineEnabled": true,
-    "screenFlagEnabled": false,
+    "screenFlagEnabled": true,
     "pilotEnabled": true,
     "localOverride": null,
     "rpcAllowed": true
@@ -50,25 +50,21 @@
     "liabilityLineCount": 6,
     "equityLineCount": 4,
     "accountingRuleNotes": [
-      "PREVIEW_ONLY — not finance-approved golden totals.",
-      "Net income folded into equity per legacy BS-FIX / PF-04 rules.",
-      "NEEDS_ACCOUNTING_RULE_CONFIRMATION — compare with finance before loader swap."
+      "Unified main loader active."
     ]
   },
   "tbMeta": {
     "engine": "unified_shadow",
     "basis": "official_gl",
     "featureFlagEnabled": true,
-    "shadowForce": true,
-    "queryDurationMs": 520.6999999997206,
-    "rowCount": 109,
+    "shadowForce": false,
+    "queryDurationMs": 0,
+    "rowCount": 0,
     "periodOpeningBalance": 0
   },
   "accountingRuleNotes": [
-    "PREVIEW_ONLY — not finance-approved golden totals.",
-    "Net income folded into equity per legacy BS-FIX / PF-04 rules.",
-    "NEEDS_ACCOUNTING_RULE_CONFIRMATION — compare with finance before loader swap."
+    "Unified main loader active."
   ],
-  "exportedAt": "2026-07-01T07:24:29.095Z",
+  "exportedAt": "2026-07-01T08:48:14.588Z",
   "note": "PREVIEW_ONLY — legacy Balance Sheet table remains authoritative. NEEDS_FINANCE_GOLDEN_APPROVAL."
 }

@@ -1,19 +1,25 @@
 {
-  "capturedAt": "2026-06-27T11:23:07.182Z",
+  "capturedAt": "2026-07-02T12:59:59.424Z",
   "dinFlags": {
-    "unified_ledger_engine": false,
-    "unified_ledger_loader_account_statement": false,
-    "unified_ledger_loader_ledger_v2": false,
-    "unified_ledger_loader_party_ledger": false,
-    "unified_ledger_loader_roznamcha": false,
-    "unified_ledger_loader_trial_balance": false,
-    "unified_ledger_pilot": false,
-    "unified_ledger_screen_account_statement": false,
-    "unified_ledger_screen_ledger_v2": false,
-    "unified_ledger_screen_party_ledger": false,
-    "unified_ledger_screen_roznamcha": false,
-    "unified_ledger_screen_trial_balance": false
+    "unified_ledger_engine": true,
+    "unified_ledger_loader_account_statement": true,
+    "unified_ledger_loader_balance_sheet": true,
+    "unified_ledger_loader_cash_flow": true,
+    "unified_ledger_loader_ledger_v2": true,
+    "unified_ledger_loader_party_ledger": true,
+    "unified_ledger_loader_profit_loss": true,
+    "unified_ledger_loader_roznamcha": true,
+    "unified_ledger_loader_trial_balance": true,
+    "unified_ledger_pilot": true,
+    "unified_ledger_screen_account_statement": true,
+    "unified_ledger_screen_balance_sheet": true,
+    "unified_ledger_screen_cash_flow": true,
+    "unified_ledger_screen_ledger_v2": true,
+    "unified_ledger_screen_party_ledger": true,
+    "unified_ledger_screen_profit_loss": true,
+    "unified_ledger_screen_roznamcha": true,
+    "unified_ledger_screen_trial_balance": true
   },
   "otherCompanyLoaders": 0,
-  "verificationPass": false
+  "verificationPass": true
 }

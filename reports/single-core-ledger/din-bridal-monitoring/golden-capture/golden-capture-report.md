@@ -1,16 +1,16 @@
 # DIN BRIDAL golden capture
 
-**Date:** 2026-06-27T11:11:44.314Z
+**Date:** 2026-06-27T11:34:40.043Z
 **Party:** MR REHAN ALI
 **Company id:** 597a5292-14c8-4cd8-96bd-c61b5a0d8c92
 
 - [PASS] login — credentials present
-- [PASS] Party Ledger legacy loader — loader=legacy closing=530000
+- [INFO] Party Ledger legacy loader — loader=unified closing=530000
 - [PASS] Account Statement — closing=530000
 - [PASS] Ledger V2 — closing=530000
 - [PASS] Trial Balance debit=credit — debit=21919575 credit=21919575
 - [PASS] DIN BRIDAL TB fingerprint — debit=21919575 expected~21919575
-- [PASS] Roznamcha legacy loader — loader=legacy
+- [INFO] Roznamcha legacy loader — loader=unified
 - [PASS] Roznamcha totals — in=1836350 out=917780 close=918570
 - [PASS] Party Ledger closing — closing=530000
 - [PASS] Account Statement closing — closing=530000
@@ -19,7 +19,7 @@
 ## Captured values
 ```json
 {
-  "capturedAt": "2026-06-27T11:11:44.314Z",
+  "capturedAt": "2026-06-27T11:34:40.043Z",
   "company": "DIN BRIDAL",
   "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
   "party": "MR REHAN ALI",
@@ -30,24 +30,24 @@
   },
   "branch_scope": "all",
   "party_ledger": {
-    "loader": "legacy",
+    "loader": "unified",
     "closing": 530000
   },
   "account_statement": {
-    "loader": "legacy",
+    "loader": "unified",
     "closing": 530000
   },
   "ledger_v2": {
-    "loader": "legacy",
+    "loader": "unified",
     "closing": 530000
   },
   "trial_balance": {
-    "loader": "legacy",
+    "loader": "unified",
     "debit": 21919575,
     "credit": 21919575
   },
   "roznamcha": {
-    "loader": "legacy",
+    "loader": "unified",
     "cashIn": 1836350,
     "cashOut": 917780,
     "closing": 918570

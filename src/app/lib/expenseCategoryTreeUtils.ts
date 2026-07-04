@@ -2,7 +2,7 @@ import type { ExpenseCategoryTreeItem } from '@/app/services/expenseCategoryServ
 
 export type CategoryTreeNode = Pick<
   ExpenseCategoryTreeItem,
-  'id' | 'name' | 'slug' | 'parent_id' | 'children'
+  'id' | 'name' | 'slug' | 'parent_id' | 'type' | 'children'
 >;
 
 export const MAX_EXPENSE_CATEGORY_DEPTH = 3;
@@ -212,6 +212,19 @@ export function countExpensesForSub(
 }
 
 export const CLEARING_CATEGORY_SLUGS = new Set(['stitching', 'dying', 'dyeing', 'lining']);
+
+const SALARY_CATEGORY_SLUGS = new Set(['salaries', 'salary', 'wages']);
+
+/** True when any node on the category path is a salary branch (main/sub/leaf). */
+export function isExpenseSalaryCategory(path: CategoryTreeNode[] | null | undefined): boolean {
+  if (!path?.length) return false;
+  return path.some((node) => {
+    if (node.type === 'salary') return true;
+    const slug = normalizeSlug(node.slug ?? '');
+    const nameSlug = normalizeSlug(node.name ?? '');
+    return SALARY_CATEGORY_SLUGS.has(slug) || SALARY_CATEGORY_SLUGS.has(nameSlug);
+  });
+}
 
 /** True only when THIS node is stitching/dying/lining — not when a child is. */
 export function categoryIsDirect4120Clearing(node: CategoryTreeNode): boolean {

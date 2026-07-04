@@ -6,8 +6,8 @@
       "company": "DIN CHINA",
       "report": "Balance Sheet",
       "zeroDiff": true,
-      "legacySummary": "Assets 89754088.52; L+E 89754088.52000001",
-      "previewSummary": "Assets 89754088.52; L+E 89754088.52",
+      "legacySummary": "Assets 89754087.52; L+E 89754087.52000001",
+      "previewSummary": "Assets 89754087.52; L+E 89754087.52",
       "maxDelta": 0,
       "ruleConfirmations": [
         "NEEDS_ACCOUNTING_RULE_CONFIRMATION — compare with finance before loader swap."
@@ -19,8 +19,8 @@
       "company": "DIN CHINA",
       "report": "Profit & Loss",
       "zeroDiff": true,
-      "legacySummary": "Revenue 49040015; Net 8465731.869999997",
-      "previewSummary": "Revenue 49040015; Net 8465731.87",
+      "legacySummary": "Revenue 49040015; Net 8465730.869999997",
+      "previewSummary": "Revenue 49040015; Net 8465730.87",
       "maxDelta": 0,
       "ruleConfirmations": [
         "NEEDS_RULE_CONFIRMATION — finance must approve COGS mapping before loader swap."

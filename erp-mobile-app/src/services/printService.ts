@@ -119,15 +119,87 @@ export async function printHtmlDocument(html: string, title: string): Promise<Pr
     if (!w) {
       return { ok: false, hint: 'Allow pop-ups to print, or use Share.' };
     }
-    w.document.write(html);
+    const docHtml = injectBrowserPrintChrome(html);
+    w.document.write(docHtml);
     w.document.title = title;
     w.document.close();
     w.focus();
-    w.print();
     return { ok: true, backend: 'browser' };
   } catch (e) {
     return { ok: false, hint: e instanceof Error ? e.message : 'Print failed' };
   }
+}
+
+const BROWSER_PRINT_CHROME = `
+<div id="erp-print-toolbar" class="erp-print-toolbar no-print">
+  <p class="erp-print-hint">No printer? Tap <strong>Close</strong> to return to the app.</p>
+  <div class="erp-print-actions">
+    <button type="button" onclick="window.print()">Print again</button>
+    <button type="button" class="erp-print-close" onclick="window.close()">Close</button>
+  </div>
+</div>
+<script>
+(function () {
+  var closed = false;
+  function tryClose() {
+    if (closed) return;
+    closed = true;
+    window.close();
+  }
+  window.onafterprint = tryClose;
+  window.addEventListener('load', function () {
+    window.setTimeout(function () {
+      try { window.print(); } catch (e) { /* toolbar remains for manual close */ }
+    }, 150);
+  });
+})();
+</script>
+`;
+
+const BROWSER_PRINT_STYLES = `
+  .erp-print-toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    margin: -16px -16px 16px;
+    padding: 12px 16px;
+    background: #1f2937;
+    color: #f9fafb;
+    border-bottom: 1px solid #374151;
+    font-family: system-ui, sans-serif;
+    font-size: 13px;
+  }
+  .erp-print-hint { margin: 0 0 10px; color: #9ca3af; line-height: 1.4; }
+  .erp-print-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .erp-print-actions button {
+    padding: 8px 14px;
+    border-radius: 8px;
+    border: 1px solid #4b5563;
+    background: #374151;
+    color: #fff;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .erp-print-actions .erp-print-close {
+    background: #3b82f6;
+    border-color: #2563eb;
+  }
+  @media print {
+    .no-print { display: none !important; }
+  }
+`;
+
+function injectBrowserPrintChrome(html: string): string {
+  if (html.includes('id="erp-print-toolbar"')) return html;
+
+  if (html.includes('</body>')) {
+    if (html.includes('</head>') && !html.includes('erp-print-toolbar')) {
+      html = html.replace('</head>', `<style>${BROWSER_PRINT_STYLES}</style></head>`);
+    }
+    return html.replace('</body>', `${BROWSER_PRINT_CHROME}</body>`);
+  }
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><style>${BROWSER_PRINT_STYLES}</style></head><body>${html}${BROWSER_PRINT_CHROME}</body></html>`;
 }
 
 function buildReceiptHtml(lines: string[]): string {
@@ -135,7 +207,8 @@ function buildReceiptHtml(lines: string[]): string {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"/><style>
     body{font-family:monospace;font-size:12px;padding:16px;max-width:80mm;margin:0 auto;}
     @media print{body{max-width:100%;}}
-  </style></head><body>${body}</body></html>`;
+    ${BROWSER_PRINT_STYLES}
+  </style></head><body>${body}${BROWSER_PRINT_CHROME}</body></html>`;
 }
 
 function escapeHtml(s: string): string {

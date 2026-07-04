@@ -17,6 +17,7 @@ export type PaymentEditTraceEvent =
   | 'UnifiedPaymentDialog.edit.sale_purchase_routed'
   | 'UnifiedPaymentDialog.edit.manual_patch_done'
   | 'UnifiedPaymentDialog.edit.manual_amount_adjust'
+  | 'UnifiedPaymentDialog.edit.manual_amount_adjust_failed'
   | 'UnifiedPaymentDialog.edit.manual_account_transfer'
   | 'paymentAdjustment.post_amount_adjust.enter'
   | 'paymentAdjustment.post_amount_adjust.skip_idempotent'

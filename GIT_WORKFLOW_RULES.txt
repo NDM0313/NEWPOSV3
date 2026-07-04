@@ -61,7 +61,7 @@ git commit -m "Bug fix: Purchase service FK issue"
 
 On current machine:
 git add .
-git commit -m "DATA DIN CHINA IMPORT"
+git commit -m "working"
 git push origin main
 
 On new machine:

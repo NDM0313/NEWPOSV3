@@ -68,3 +68,41 @@ export function collectGroupAttachments(
 ): TransactionAttachment[] {
   return mergeAttachmentLists(...entries.map(collectEntryAttachments));
 }
+
+const DOCUMENT_JE_REFERENCE_TYPES = new Set([
+  'sale',
+  'sale_adjustment',
+  'sale_reversal',
+  'purchase',
+  'purchase_adjustment',
+  'purchase_return',
+]);
+
+/** Attachments owned by a single journal/payment row (no inherited sale/purchase files on payment settlements). */
+export function collectTransactionOwnedAttachments(input: {
+  referenceType?: string | null;
+  paymentId?: string | null;
+  jeAttachments?: unknown;
+  paymentAttachments?: unknown;
+  expenseReceiptUrl?: string | null;
+  documentAttachments?: unknown;
+}): TransactionAttachment[] {
+  const rt = String(input.referenceType || '').toLowerCase().trim();
+  const hasPayment = !!String(input.paymentId || '').trim();
+  const isDocumentJe = DOCUMENT_JE_REFERENCE_TYPES.has(rt);
+
+  const parts: unknown[] = [input.jeAttachments];
+
+  if (hasPayment) {
+    parts.push(input.paymentAttachments);
+    if (rt === 'expense' || rt === 'extra_expense') {
+      parts.push(receiptUrlToAttachments(input.expenseReceiptUrl));
+    }
+  } else if (isDocumentJe) {
+    parts.push(input.documentAttachments);
+  } else if (rt === 'expense' || rt === 'extra_expense') {
+    parts.push(receiptUrlToAttachments(input.expenseReceiptUrl));
+  }
+
+  return mergeAttachmentLists(...parts);
+}

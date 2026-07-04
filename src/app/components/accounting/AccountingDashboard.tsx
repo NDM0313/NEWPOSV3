@@ -108,9 +108,9 @@ import {
   getJournalEntrySourceDocumentOpenTarget,
   journalReversalBlockedReason,
 } from '@/app/lib/journalEntryEditPolicy';
-import { openJournalSourceDocumentFromEntry } from '@/app/lib/openJournalSourceDocument';
 import { isTransactionActionPanelEnabled } from '@/app/lib/transactionActionRules';
 import { JournalRowTransactionActions } from '@/app/components/accounting/JournalRowTransactionActions';
+import { useJournalTransactionActionHandlers } from '@/app/hooks/useJournalTransactionActionHandlers';
 
 const StudioCostsTab = lazy(() => import('./StudioCostsTab').then((m) => ({ default: m.StudioCostsTab })));
 const DepositsTab = lazy(() => import('./DepositsTab').then((m) => ({ default: m.DepositsTab })));
@@ -122,7 +122,6 @@ const AccountLedgerReportPage = lazy(() => import('@/app/components/reports/Acco
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { AdaptiveCurrencyValue } from '@/app/components/shared/AdaptiveCurrencyValue';
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
-import { useSubmitLock } from '@/app/context/LoadingContext';
 import { DateTimeDisplay } from '@/app/components/ui/DateTimeDisplay';
 import {
   DropdownMenu,
@@ -517,105 +516,32 @@ export const AccountingDashboard = () => {
   const { openDrawer, setCurrentView, accountStatementV2Initial, setAccountStatementV2Initial, accountingTabInitial, setAccountingTabInitial } = useNavigation();
   const { companyId, branchId } = useSupabase();
   const { setCurrentModule, startDate: globalStartDate, endDate: globalEndDate } = useGlobalFilter();
+  const {
+    busy,
+    transactionReference,
+    transactionJournalEntryIdHint,
+    selectedGroupEntries,
+    transactionDetailAutoEdit,
+    transactionDetailAutoOpenTrace,
+    transactionDetailScrollToAudit,
+    clearTransactionDetail,
+    setTransactionDetailAutoEdit,
+    setTransactionDetailAutoOpenTrace,
+    setTransactionDetailScrollToAudit,
+    runJournalMutation,
+    handleOpenJournalSourceDocument,
+    openJournalEntryDetail,
+    openJournalEntryDetailFromEntry,
+    handleJournalUndoLastChange,
+    handleJournalCancelPayment,
+    handleJournalCancelEntry,
+    handleJournalCancelOrphan,
+  } = useJournalTransactionActionHandlers();
   const { formatCurrency } = useFormatCurrency();
-  const { run, busy } = useSubmitLock();
 
   useEffect(() => {
     void accounting.ensureEntriesLoaded();
   }, [accounting.ensureEntriesLoaded]);
-
-  const runJournalMutation = useCallback(
-    (label: string, task: () => Promise<void>) => {
-      void run(label, task);
-    },
-    [run],
-  );
-
-  const handleOpenJournalSourceDocument = useCallback(
-    async (entry: AccountingEntry) => {
-      await openJournalSourceDocumentFromEntry(entry, { openDrawer, setCurrentView });
-    },
-    [openDrawer, setCurrentView],
-  );
-
-  const openJournalEntryDetail = useCallback(
-    (entry: AccountingEntry, groupEntries: AccountingEntry[] | null, opts?: { autoEdit?: boolean; autoTrace?: boolean; scrollAudit?: boolean }) => {
-      if (busy) return;
-      setSelectedGroupEntries(groupEntries);
-      setTransactionDetailAutoEdit(!!opts?.autoEdit);
-      setTransactionDetailAutoOpenTrace(!!opts?.autoTrace);
-      setTransactionDetailScrollToAudit(!!opts?.scrollAudit);
-      setTransactionReference(entry.id);
-    },
-    [busy],
-  );
-
-  const handleJournalUndoLastChange = useCallback(
-    (paymentId: string) => {
-      runJournalMutation('Undoing edit...', async () => {
-        if (
-          !window.confirm(
-            'Undo the last edit on this payment? This voids the latest adjustment and restores the previous state.',
-          )
-        ) {
-          return;
-        }
-        await accounting.undoLastPaymentMutation(paymentId);
-      });
-    },
-    [accounting, runJournalMutation],
-  );
-
-  const handleJournalCancelPayment = useCallback(
-    (entryId: string, isMultiMemberChain: boolean) => {
-      runJournalMutation('Cancelling payment...', async () => {
-        const msg = isMultiMemberChain
-          ? 'Cancel this payment entirely? This voids the original posting plus every edit in the chain. Cannot be undone.'
-          : 'Cancel this payment? This posts offsetting entries and removes it from live reports.';
-        if (!window.confirm(msg)) return;
-        await accounting.createReversalEntry(entryId);
-      });
-    },
-    [accounting, runJournalMutation],
-  );
-
-  const handleJournalCancelEntry = useCallback(
-    (entryId: string) => {
-      runJournalMutation('Cancelling entry...', async () => {
-        if (
-          !window.confirm(
-            'Cancel this journal entry? This posts offsetting entries and removes it from live reports.',
-          )
-        ) {
-          return;
-        }
-        await accounting.createReversalEntry(entryId);
-      });
-    },
-    [accounting, runJournalMutation],
-  );
-
-  const handleJournalCancelOrphan = useCallback(
-    (entryId: string) => {
-      if (!companyId) return;
-      runJournalMutation('Hiding orphan receipt...', async () => {
-        const entry = accounting.entries.find((e) => e.id === entryId);
-        const paymentId = entry?.metadata?.paymentId;
-        if (!paymentId) throw new Error('Orphan receipt has no linked payment id.');
-        if (
-          !window.confirm(
-            'Hide this failed receipt attempt from normal reports? The payment record and audit history are kept; no GL lines were posted.',
-          )
-        ) {
-          return;
-        }
-        const { cancelOrphanManualReceipt } = await import('@/app/services/orphanReceiptService');
-        await cancelOrphanManualReceipt({ companyId, paymentId });
-        await accounting.refreshEntries?.();
-      });
-    },
-    [accounting, companyId, runJournalMutation],
-  );
 
   useEffect(() => {
     setCurrentModule('accounting');
@@ -709,14 +635,6 @@ export const AccountingDashboard = () => {
     controlCodeLabel?: string;
     unmappedTop?: { referenceType: string; amount: number }[];
   }>({ loading: false, error: null, rows: [] });
-  const [transactionReference, setTransactionReference] = useState<string | null>(null);
-  const [transactionJournalEntryIdHint, setTransactionJournalEntryIdHint] = useState<string | null>(null);
-  /** PF-14.3B: When opening a grouped journal row, pass all entries in the group for the detail trail. */
-  const [selectedGroupEntries, setSelectedGroupEntries] = useState<AccountingEntry[] | null>(null);
-  /** Open TransactionDetailModal and immediately run unified source-aware edit when true. */
-  const [transactionDetailAutoEdit, setTransactionDetailAutoEdit] = useState(false);
-  const [transactionDetailAutoOpenTrace, setTransactionDetailAutoOpenTrace] = useState(false);
-  const [transactionDetailScrollToAudit, setTransactionDetailScrollToAudit] = useState(false);
   const useTransactionActionPanel = isTransactionActionPanelEnabled();
   /** PF-14.3B: Default = grouped (one logical row per sale); audit = all raw JEs. */
   const [journalViewMode, setJournalViewMode] = useState<'grouped' | 'audit'>('grouped');
@@ -1554,9 +1472,7 @@ export const AccountingDashboard = () => {
                                 className="border-b border-gray-800 hover:bg-gray-800/30 transition-colors cursor-pointer"
                                 onClick={() => {
                                   if (busy) return;
-                                  setTransactionDetailAutoEdit(false);
-                                  setTransactionReference(entry.id);
-                                  setSelectedGroupEntries(group.entries);
+                                  openJournalEntryDetailFromEntry(entry, group.entries);
                                 }}
                               >
                                 <td className="px-4 py-3 text-sm text-gray-300 whitespace-nowrap">
@@ -1584,9 +1500,7 @@ export const AccountingDashboard = () => {
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         if (busy) return;
-                                        setTransactionDetailAutoEdit(false);
-                                        setTransactionReference(entry.id);
-                                        setSelectedGroupEntries(group.entries);
+                                        openJournalEntryDetailFromEntry(entry, group.entries);
                                       }}
                                       className="text-blue-400 hover:text-blue-300 hover:underline text-sm font-medium disabled:opacity-40"
                                     >
@@ -1685,8 +1599,8 @@ export const AccountingDashboard = () => {
                                         isReversal={isReversal}
                                         lockPaymentChainReverse={lockPaymentChainReverse}
                                         allowUnifiedEdit={allowUnifiedEdit}
-                                        onView={() => openJournalEntryDetail(entry, group.entries)}
-                                        onEdit={() => openJournalEntryDetail(entry, group.entries, { autoEdit: true })}
+                                        onView={() => openJournalEntryDetailFromEntry(entry, group.entries)}
+                                        onEdit={() => openJournalEntryDetailFromEntry(entry, group.entries, { autoEdit: true })}
                                         onOpenSourceDocument={handleOpenJournalSourceDocument}
                                         onUndoLastChange={handleJournalUndoLastChange}
                                         onCancelPayment={(id) => {
@@ -1699,10 +1613,10 @@ export const AccountingDashboard = () => {
                                         onCancelOrphan={handleJournalCancelOrphan}
                                         onCancelEntry={handleJournalCancelEntry}
                                         onViewTrace={() =>
-                                          openJournalEntryDetail(entry, group.entries, { autoTrace: true })
+                                          openJournalEntryDetailFromEntry(entry, group.entries, { autoTrace: true })
                                         }
                                         onViewAudit={() =>
-                                          openJournalEntryDetail(entry, group.entries, { scrollAudit: true })
+                                          openJournalEntryDetailFromEntry(entry, group.entries, { scrollAudit: true })
                                         }
                                       />
                                     ) : (
@@ -1716,9 +1630,7 @@ export const AccountingDashboard = () => {
                                             disabled={busy}
                                             onClick={() => {
                                               if (busy) return;
-                                              setSelectedGroupEntries(group.entries);
-                                              setTransactionDetailAutoEdit(false);
-                                              setTransactionReference(entry.id);
+                                              openJournalEntryDetailFromEntry(entry, group.entries);
                                             }}
                                             title="Open journal detail (read-only)"
                                           >
@@ -1733,9 +1645,7 @@ export const AccountingDashboard = () => {
                                               disabled={busy}
                                               onClick={() => {
                                                 if (busy) return;
-                                                setSelectedGroupEntries(group.entries);
-                                                setTransactionDetailAutoEdit(true);
-                                                setTransactionReference(entry.id);
+                                                openJournalEntryDetailFromEntry(entry, group.entries, { autoEdit: true });
                                               }}
                                               title="Open unified editor (same as transaction detail)"
                                             >
@@ -1890,9 +1800,7 @@ export const AccountingDashboard = () => {
                                 className="border-b border-gray-800 hover:bg-gray-800/30 transition-colors cursor-pointer"
                                 onClick={() => {
                                   if (busy) return;
-                                  setTransactionDetailAutoEdit(false);
-                                  setTransactionReference(entry.id);
-                                  setSelectedGroupEntries(null);
+                                  openJournalEntryDetailFromEntry(entry, null);
                                 }}
                               >
                                 <td className="px-4 py-3 text-sm text-gray-300 whitespace-nowrap">
@@ -1920,9 +1828,7 @@ export const AccountingDashboard = () => {
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         if (busy) return;
-                                        setTransactionDetailAutoEdit(false);
-                                        setTransactionReference(entry.id);
-                                        setSelectedGroupEntries(null);
+                                        openJournalEntryDetailFromEntry(entry, null);
                                       }}
                                       className="text-blue-400 hover:text-blue-300 hover:underline text-sm font-medium"
                                     >
@@ -2016,8 +1922,8 @@ export const AccountingDashboard = () => {
                                         isReversal={isReversal}
                                         lockPaymentChainReverse={lockFlatPaymentChainReverse}
                                         allowUnifiedEdit={allowUnifiedEditFlat}
-                                        onView={() => openJournalEntryDetail(entry, null)}
-                                        onEdit={() => openJournalEntryDetail(entry, null, { autoEdit: true })}
+                                        onView={() => openJournalEntryDetailFromEntry(entry, null)}
+                                        onEdit={() => openJournalEntryDetailFromEntry(entry, null, { autoEdit: true })}
                                         onOpenSourceDocument={handleOpenJournalSourceDocument}
                                         onUndoLastChange={handleJournalUndoLastChange}
                                         onCancelPayment={(id) => {
@@ -2029,8 +1935,8 @@ export const AccountingDashboard = () => {
                                         }}
                                         onCancelOrphan={handleJournalCancelOrphan}
                                         onCancelEntry={handleJournalCancelEntry}
-                                        onViewTrace={() => openJournalEntryDetail(entry, null, { autoTrace: true })}
-                                        onViewAudit={() => openJournalEntryDetail(entry, null, { scrollAudit: true })}
+                                        onViewTrace={() => openJournalEntryDetailFromEntry(entry, null, { autoTrace: true })}
+                                        onViewAudit={() => openJournalEntryDetailFromEntry(entry, null, { scrollAudit: true })}
                                       />
                                     ) : (
                                     <div className="flex flex-wrap items-center gap-1">
@@ -2043,9 +1949,7 @@ export const AccountingDashboard = () => {
                                             disabled={busy}
                                             onClick={() => {
                                               if (busy) return;
-                                              setSelectedGroupEntries(null);
-                                              setTransactionDetailAutoEdit(false);
-                                              setTransactionReference(entry.id);
+                                              openJournalEntryDetailFromEntry(entry, null);
                                             }}
                                             title="Open journal detail (read-only)"
                                           >
@@ -2060,9 +1964,7 @@ export const AccountingDashboard = () => {
                                               disabled={busy}
                                               onClick={() => {
                                                 if (busy) return;
-                                                setSelectedGroupEntries(null);
-                                                setTransactionDetailAutoEdit(true);
-                                                setTransactionReference(entry.id);
+                                                openJournalEntryDetailFromEntry(entry, null, { autoEdit: true });
                                               }}
                                               title="Open unified editor (same as transaction detail)"
                                             >
@@ -2244,13 +2146,10 @@ export const AccountingDashboard = () => {
             <Suspense fallback={<ReportTabSuspenseFallback label="Loading day book…" />}>
               <DayBookReport
                 onVoucherClick={(voucher) => {
-                  setTransactionDetailAutoEdit(false);
-                  setTransactionReference(voucher);
+                  openJournalEntryDetail(voucher, null);
                 }}
                 onEditJournalEntry={(journalEntryId) => {
-                  setSelectedGroupEntries(null);
-                  setTransactionDetailAutoEdit(true);
-                  setTransactionReference(journalEntryId);
+                  openJournalEntryDetail(journalEntryId, journalEntryId, null, { autoEdit: true });
                 }}
                 globalStartDate={globalStartDate}
                 globalEndDate={globalEndDate}
@@ -2932,14 +2831,7 @@ export const AccountingDashboard = () => {
       {transactionReference && (
         <TransactionDetailModal
           isOpen={!!transactionReference}
-          onClose={() => {
-            setTransactionReference(null);
-            setTransactionJournalEntryIdHint(null);
-            setSelectedGroupEntries(null);
-            setTransactionDetailAutoEdit(false);
-            setTransactionDetailAutoOpenTrace(false);
-            setTransactionDetailScrollToAudit(false);
-          }}
+          onClose={clearTransactionDetail}
           referenceNumber={transactionReference}
           journalEntryIdHint={transactionJournalEntryIdHint ?? undefined}
           groupEntries={selectedGroupEntries ?? undefined}
@@ -2956,10 +2848,9 @@ export const AccountingDashboard = () => {
       {typeof window !== 'undefined' && (
         <TransactionDetailListener
           onOpen={(referenceNumber, opts) => {
-            setTransactionReference(referenceNumber);
-            setTransactionJournalEntryIdHint(opts?.journalEntryId ?? null);
-            setSelectedGroupEntries(null);
-            setTransactionDetailAutoEdit(!!opts?.autoLaunchUnifiedEdit);
+            openJournalEntryDetail(referenceNumber, opts?.journalEntryId ?? null, null, {
+              autoEdit: !!opts?.autoLaunchUnifiedEdit,
+            });
           }}
         />
       )}

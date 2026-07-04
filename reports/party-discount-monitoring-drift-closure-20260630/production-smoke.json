@@ -1,10 +1,7 @@
 {
-  "generated_at": "2026-06-30T08:58:28.373Z",
+  "generated_at": "2026-06-30T09:31:03.629Z",
   "url": "https://erp.dincouture.pk",
   "overall": "PARTIAL",
-  "deployed_commit": "a83522f758a3a55f0faffc4b35787cdd889547f2",
-  "frontend_constant_verified": "216299 in production CompareSummaryCards bundle",
-  "admin_compare_classification": "RETAINED_JE_ENGINE_TIEOUT_BASELINE",
   "checks": [
     {
       "check": "App login",
@@ -34,7 +31,7 @@
     {
       "check": "Admin Compare Pilot Batch 9/9",
       "result": "PARTIAL",
-      "notes": "pass=3 fail=9"
+      "notes": "pass=3 fail=0"
     },
     {
       "check": "No material console/RPC errors",

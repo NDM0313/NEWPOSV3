@@ -1,8 +1,8 @@
 {
   "run": "PHASE_3B_H_PROD_POST_DEPLOY_SMOKE",
-  "generated_at": "2026-06-29T14:39:01.373Z",
+  "generated_at": "2026-06-29T16:10:39.696Z",
   "production_url": "https://erp.dincouture.pk",
-  "overall": "PASS",
+  "overall": "PARTIAL",
   "checks": [
     {
       "check": "app loads",
@@ -26,42 +26,12 @@
     },
     {
       "check": "preview toggle visible",
-      "result": "PASS",
+      "result": "FAIL",
       "notes": ""
     },
     {
       "check": "preview toggle default OFF",
-      "result": "PASS",
-      "notes": ""
-    },
-    {
-      "check": "preview panel loads",
-      "result": "PASS",
-      "notes": ""
-    },
-    {
-      "check": "PREVIEW_ONLY label",
-      "result": "PASS",
-      "notes": ""
-    },
-    {
-      "check": "Q4=A Q5=C Q7=B labels",
-      "result": "PASS",
-      "notes": ""
-    },
-    {
-      "check": "finance alignment active",
-      "result": "PASS",
-      "notes": ""
-    },
-    {
-      "check": "loader swap NOT APPROVED note",
-      "result": "PASS",
-      "notes": ""
-    },
-    {
-      "check": "Export row-keyed JSON",
-      "result": "PASS",
+      "result": "SKIP",
       "notes": ""
     },
     {

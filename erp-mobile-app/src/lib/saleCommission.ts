@@ -2,7 +2,7 @@
  * Sale-level commission capture (pending until Commission Report batch post).
  */
 import { supabase } from './supabase';
-import { isAdminOrOwnerAppRole } from '../config/functionalRoles';
+import { normalizeAppRole } from '../config/functionalRoles';
 
 export type SaleCommissionPatch = {
   salesman_id: string | null;
@@ -13,7 +13,8 @@ export type SaleCommissionPatch = {
 };
 
 export function canAssignSaleCommission(role: string | null | undefined): boolean {
-  return isAdminOrOwnerAppRole(role);
+  const r = normalizeAppRole(role);
+  return r === 'owner' || r === 'admin' || r === 'manager';
 }
 
 async function loadDefaultCommissionPercent(userId: string): Promise<number | null> {

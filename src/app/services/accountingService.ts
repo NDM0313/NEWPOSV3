@@ -1174,22 +1174,19 @@ export const accountingService = {
           if (linkedPayRtForAtt === 'expense' && payRowForAtt?.reference_id) {
             const receipt = expenseReceiptById.get(String(payRowForAtt.reference_id));
             if (receipt) sourceAttachmentParts.push(...receiptUrlToAttachments(receipt));
-          } else if (linkedPayRtForAtt === 'sale' && payRowForAtt?.reference_id) {
-            const saleAtt = saleAttachmentsById.get(String(payRowForAtt.reference_id));
-            if (saleAtt?.length) sourceAttachmentParts.push(...saleAtt);
-          } else if (linkedPayRtForAtt === 'purchase' && payRowForAtt?.reference_id) {
-            const purAtt = purchaseAttachmentsById.get(String(payRowForAtt.reference_id));
-            if (purAtt?.length) sourceAttachmentParts.push(...purAtt);
           }
         }
+        const isPaymentSettlementRow = !!(payKeyForOps || entry.payment_id);
         const rootRefId = out.root_reference_id;
         const rootRefType = String(out.root_reference_type || '').toLowerCase();
-        if (rootRefId && rootRefType === 'sale') {
-          const saleAtt = saleAttachmentsById.get(String(rootRefId));
-          if (saleAtt?.length) sourceAttachmentParts.push(...saleAtt);
-        } else if (rootRefId && rootRefType === 'purchase') {
-          const purAtt = purchaseAttachmentsById.get(String(rootRefId));
-          if (purAtt?.length) sourceAttachmentParts.push(...purAtt);
+        if (!isPaymentSettlementRow) {
+          if (rootRefId && rootRefType === 'sale') {
+            const saleAtt = saleAttachmentsById.get(String(rootRefId));
+            if (saleAtt?.length) sourceAttachmentParts.push(...saleAtt);
+          } else if (rootRefId && rootRefType === 'purchase') {
+            const purAtt = purchaseAttachmentsById.get(String(rootRefId));
+            if (purAtt?.length) sourceAttachmentParts.push(...purAtt);
+          }
         }
         const mergedSource = mergeAttachmentLists(sourceAttachmentParts);
         if (mergedSource.length > 0) out._source_attachments = mergedSource;

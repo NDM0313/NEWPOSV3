@@ -682,14 +682,14 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
     return { data: null, error: `Failed to save items: ${itemsError.message}` };
   }
 
-  if (postStockAndAccounting) {
-    const commissionPatch = await resolveSaleCommissionFields({
-      profileUserId,
-      subtotal: Number(subtotal) || 0,
-      actorRole,
-      explicitSalesmanId,
-      explicitCommissionPercent,
-    });
+  const commissionPatch = await resolveSaleCommissionFields({
+    profileUserId,
+    subtotal: Number(subtotal) || 0,
+    actorRole,
+    explicitSalesmanId,
+    explicitCommissionPercent,
+  });
+  if (commissionPatch) {
     const commissionErr = await applySaleCommissionPatch(saleId, commissionPatch);
     if (commissionErr) {
       await supabase.from('sales').delete().eq('id', saleId);

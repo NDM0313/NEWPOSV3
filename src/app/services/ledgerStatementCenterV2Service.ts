@@ -370,13 +370,15 @@ async function enrichAttachmentFlags(rows: LedgerStatementV2Row[]): Promise<void
   rows.forEach((r) => {
     if (r.journalEntryId && jeHas.has(r.journalEntryId)) r.hasAttachments = true;
     if (r.paymentId && payHas.has(r.paymentId)) r.hasAttachments = true;
-    const sid = r.glEntry?.sale_id;
-    if (sid && saleHas.has(sid)) r.hasAttachments = true;
-    const rid = r.glEntry?.rental_id;
-    if (rid && rentalHas.has(rid)) r.hasAttachments = true;
-    if (r.journalEntryId) {
-      const purchaseId = jePurchaseRefById.get(r.journalEntryId);
-      if (purchaseId && purchaseHas.has(purchaseId)) r.hasAttachments = true;
+    if (!r.paymentId) {
+      const sid = r.glEntry?.sale_id;
+      if (sid && saleHas.has(sid)) r.hasAttachments = true;
+      const rid = r.glEntry?.rental_id;
+      if (rid && rentalHas.has(rid)) r.hasAttachments = true;
+      if (r.journalEntryId) {
+        const purchaseId = jePurchaseRefById.get(r.journalEntryId);
+        if (purchaseId && purchaseHas.has(purchaseId)) r.hasAttachments = true;
+      }
     }
   });
 }
@@ -509,6 +511,7 @@ export async function getLedgerAttachmentsV2(
     const { data } = await supabase.from('payments').select('attachments').eq('id', row.paymentId).maybeSingle();
     const att = normalizeAttachments((data as { attachments?: unknown } | null)?.attachments);
     if (att.length) return att;
+    return [];
   }
   const e = row.glEntry;
   if (e?.sale_id) {

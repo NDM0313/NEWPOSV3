@@ -24,11 +24,22 @@ import {
   Calendar,
   Upload,
   Trash2,
+  ChevronsUpDown,
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
+import { Popover, PopoverContent, PopoverTrigger } from '@/app/components/ui/popover';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/app/components/ui/command';
+import { cn } from '@/app/components/ui/utils';
 import { DateTimePicker } from '@/app/components/ui/DateTimePicker';
 import { formatLocalDateTimeYYYYMMDDHHmm } from '@/app/utils/localDate';
 import { Textarea } from '@/app/components/ui/textarea';
@@ -163,6 +174,8 @@ export function AddEntryV2({
   const [supplierName, setSupplierName] = useState('');
   const [customerId, setCustomerId] = useState('');
   const [customerName, setCustomerName] = useState('');
+  const [customerSearchOpen, setCustomerSearchOpen] = useState(false);
+  const [customerSearchTerm, setCustomerSearchTerm] = useState('');
   const [workerId, setWorkerId] = useState('');
   const [workerName, setWorkerName] = useState('');
   const [courierId, setCourierId] = useState('');
@@ -430,6 +443,27 @@ export function AddEntryV2({
         return null;
     }
   }, [entryType, glBalancesOk]);
+
+  const formatCustomerBalanceLabel = useCallback(
+    (c: { dueGl: number; dueOp: number }) => {
+      if (glBalancesOk && operationalBalancesOk) {
+        return `GL ${formatCurrency(c.dueGl)} · Doc ${formatCurrency(c.dueOp)}`;
+      }
+      return `Due: ${formatCurrency(glBalancesOk ? c.dueGl : c.dueOp)}`;
+    },
+    [glBalancesOk, operationalBalancesOk, formatCurrency],
+  );
+
+  const filteredCustomers = useMemo(() => {
+    const q = customerSearchTerm.trim().toLowerCase();
+    if (!q) return customers;
+    return customers.filter((c) => c.name.toLowerCase().includes(q) || c.id.toLowerCase().includes(q));
+  }, [customers, customerSearchTerm]);
+
+  const selectedCustomer = useMemo(
+    () => customers.find((x) => x.id === customerId) ?? null,
+    [customers, customerId],
+  );
 
   /** Prefill remarks when opening payment flows — only overwrites empty or prior auto-lines. */
   useEffect(() => {
@@ -858,28 +892,76 @@ export function AddEntryV2({
                               </Badge>
                             </div>
                             <Label className={labelClass}>{selectedPartyLabel.entity}</Label>
-                            <div className="relative">
-                              <select
-                                value={customerId}
-                                onChange={(e) => {
-                                  const c = customers.find((x) => x.id === e.target.value);
-                                  setCustomerId(e.target.value);
-                                  setCustomerName(c?.name ?? '');
-                                }}
-                                className={`${inputClass} appearance-none pr-10`}
+                            <Popover open={customerSearchOpen} onOpenChange={setCustomerSearchOpen}>
+                              <PopoverTrigger asChild>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  role="combobox"
+                                  aria-expanded={customerSearchOpen}
+                                  className={cn(
+                                    inputClass,
+                                    'h-auto min-h-[2.75rem] justify-between font-normal hover:bg-gray-900 hover:text-white',
+                                  )}
+                                >
+                                  {selectedCustomer ? (
+                                    <span className="truncate text-left">
+                                      {selectedCustomer.name}
+                                      <span className="block text-xs text-gray-400 font-normal truncate">
+                                        {formatCustomerBalanceLabel(selectedCustomer)}
+                                      </span>
+                                    </span>
+                                  ) : (
+                                    <span className="text-gray-500">Select customer</span>
+                                  )}
+                                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent
+                                className="w-[var(--radix-popover-trigger-width)] min-w-[280px] p-0 bg-gray-900 border-gray-800 text-white"
+                                align="start"
                               >
-                                <option value="">Select customer</option>
-                                {customers.map((c) => (
-                                  <option key={c.id} value={c.id}>
-                                    {c.name}
-                                    {glBalancesOk && operationalBalancesOk
-                                      ? ` — GL ${formatCurrency(c.dueGl)} · Doc ${formatCurrency(c.dueOp)}`
-                                      : ` — Due: ${formatCurrency(glBalancesOk ? c.dueGl : c.dueOp)}`}
-                                  </option>
-                                ))}
-                              </select>
-                              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
-                            </div>
+                                <Command shouldFilter={false} className="bg-gray-900 text-white">
+                                  <CommandInput
+                                    placeholder="Search customer..."
+                                    className="h-9 border-none focus:ring-0 text-white"
+                                    value={customerSearchTerm}
+                                    onValueChange={setCustomerSearchTerm}
+                                  />
+                                  <CommandList>
+                                    <CommandEmpty>No customer found.</CommandEmpty>
+                                    <CommandGroup>
+                                      {filteredCustomers.map((c) => (
+                                        <CommandItem
+                                          key={c.id}
+                                          value={`${c.name} ${c.id}`}
+                                          onSelect={() => {
+                                            setCustomerId(c.id);
+                                            setCustomerName(c.name);
+                                            setCustomerSearchOpen(false);
+                                            setCustomerSearchTerm('');
+                                          }}
+                                          className="text-white hover:bg-gray-800 cursor-pointer"
+                                        >
+                                          <Check
+                                            className={cn(
+                                              'mr-2 h-4 w-4 shrink-0',
+                                              customerId === c.id ? 'opacity-100' : 'opacity-0',
+                                            )}
+                                          />
+                                          <div className="flex flex-col min-w-0">
+                                            <span className="truncate">{c.name}</span>
+                                            <span className="text-xs text-gray-400 truncate">
+                                              {formatCustomerBalanceLabel(c)}
+                                            </span>
+                                          </div>
+                                        </CommandItem>
+                                      ))}
+                                    </CommandGroup>
+                                  </CommandList>
+                                </Command>
+                              </PopoverContent>
+                            </Popover>
                             {customerId && (
                               <div className="mt-4 pt-4 border-t border-gray-800 space-y-2">
                                 <p className="text-lg font-bold text-white">{customerName}</p>

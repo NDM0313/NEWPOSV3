@@ -686,10 +686,11 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
           let preManualAmount: number | null = null;
           let preManualBranch: string | null = null;
           let preManualAccountId: string | null = null;
+          let preManualReferenceType: string | null = null;
           if (editMode && paymentToEdit) {
             const { data: preRow } = await supabase
               .from('payments')
-              .select('amount, branch_id, payment_account_id')
+              .select('amount, branch_id, payment_account_id, reference_type')
               .eq('id', paymentIdForUpdate)
               .single();
             if (preRow) {
@@ -697,8 +698,133 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
               preManualBranch = (preRow as { branch_id?: string | null }).branch_id ?? null;
               const pa = (preRow as { payment_account_id?: string | null }).payment_account_id;
               preManualAccountId = pa && String(pa).trim() ? String(pa) : null;
+              preManualReferenceType = String((preRow as { reference_type?: string }).reference_type || '').toLowerCase();
             }
           }
+          const deltaLiquidityId =
+            (selectedAccount && String(selectedAccount).trim() ? String(selectedAccount) : null) ||
+            preManualAccountId ||
+            (paymentToEdit?.accountId && String(paymentToEdit.accountId).trim() ? String(paymentToEdit.accountId) : null);
+
+          const postManualAmountAdjustmentBeforePatch = async () => {
+            if (!editMode || !companyId || preManualAmount == null || !deltaLiquidityId) return;
+            if (Math.abs(preManualAmount - amount) <= 0.009) return;
+
+            const { tracePaymentEditFlow } = await import('@/app/lib/paymentEditFlowTrace');
+            const { postPaymentAmountAdjustment } = await import('@/app/services/paymentAdjustmentService');
+            const { data: { user } } = await supabase.auth.getUser();
+            const branchForAdj =
+              preManualBranch && String(preManualBranch).trim() && preManualBranch !== 'all'
+                ? preManualBranch
+                : null;
+
+            if (context === 'supplier' && preManualReferenceType === 'manual_payment') {
+              tracePaymentEditFlow('UnifiedPaymentDialog.edit.manual_amount_adjust', {
+                paymentId: paymentIdForUpdate,
+                kind: 'manual_payment',
+                preManualAmount,
+                amount,
+                deltaLiquidityId,
+                phase: 'before_payment_patch',
+              });
+              const { resolvePayablePostingAccountId } = await import('@/app/services/partySubledgerAccountService');
+              const apId = entityId ? await resolvePayablePostingAccountId(companyId, entityId) : null;
+              try {
+                await postPaymentAmountAdjustment({
+                  context: 'purchase',
+                  companyId,
+                  branchId: branchForAdj,
+                  paymentId: paymentIdForUpdate,
+                  referenceId: paymentIdForUpdate,
+                  oldAmount: preManualAmount,
+                  newAmount: amount,
+                  paymentAccountId: deltaLiquidityId,
+                  invoiceNoOrRef: String((paymentToEdit as any).referenceNumber || 'Supplier payment'),
+                  entryDate: paymentDate,
+                  createdBy: (user as any)?.id ?? null,
+                  payableAccountId: apId || undefined,
+                });
+              } catch (adjErr) {
+                tracePaymentEditFlow('UnifiedPaymentDialog.edit.manual_amount_adjust_failed', {
+                  paymentId: paymentIdForUpdate,
+                  kind: 'manual_payment',
+                  preManualAmount,
+                  amount,
+                  error: adjErr instanceof Error ? adjErr.message : String(adjErr),
+                });
+                const { logAudit } = await import('@/app/services/auditLogService');
+                void logAudit({
+                  company_id: companyId,
+                  user_id: (user as any)?.id ?? null,
+                  entity: 'payments',
+                  entity_id: paymentIdForUpdate,
+                  action: 'updated',
+                  metadata: {
+                    kind: 'manual_payment_amount_adjust_failed',
+                    preManualAmount,
+                    newAmount: amount,
+                    error: adjErr instanceof Error ? adjErr.message : String(adjErr),
+                  },
+                });
+                throw adjErr;
+              }
+            }
+
+            if (context === 'customer' && preManualReferenceType === 'manual_receipt') {
+              tracePaymentEditFlow('UnifiedPaymentDialog.edit.manual_amount_adjust', {
+                paymentId: paymentIdForUpdate,
+                kind: 'manual_receipt',
+                preManualAmount,
+                amount,
+                deltaLiquidityId,
+                phase: 'before_payment_patch',
+              });
+              const { resolveReceivablePostingAccountId } = await import('@/app/services/partySubledgerAccountService');
+              const arId = entityId ? await resolveReceivablePostingAccountId(companyId, entityId) : null;
+              try {
+                await postPaymentAmountAdjustment({
+                  context: 'sale',
+                  companyId,
+                  branchId: branchForAdj,
+                  paymentId: paymentIdForUpdate,
+                  referenceId: paymentIdForUpdate,
+                  oldAmount: preManualAmount,
+                  newAmount: amount,
+                  paymentAccountId: deltaLiquidityId,
+                  invoiceNoOrRef: String((paymentToEdit as any).referenceNumber || 'Customer receipt'),
+                  entryDate: paymentDate,
+                  createdBy: (user as any)?.id ?? null,
+                  receivableAccountId: arId || undefined,
+                });
+              } catch (adjErr) {
+                tracePaymentEditFlow('UnifiedPaymentDialog.edit.manual_amount_adjust_failed', {
+                  paymentId: paymentIdForUpdate,
+                  kind: 'manual_receipt',
+                  preManualAmount,
+                  amount,
+                  error: adjErr instanceof Error ? adjErr.message : String(adjErr),
+                });
+                const { logAudit } = await import('@/app/services/auditLogService');
+                void logAudit({
+                  company_id: companyId,
+                  user_id: (user as any)?.id ?? null,
+                  entity: 'payments',
+                  entity_id: paymentIdForUpdate,
+                  action: 'updated',
+                  metadata: {
+                    kind: 'manual_receipt_amount_adjust_failed',
+                    preManualAmount,
+                    newAmount: amount,
+                    error: adjErr instanceof Error ? adjErr.message : String(adjErr),
+                  },
+                });
+                throw adjErr;
+              }
+            }
+          };
+
+          await postManualAmountAdjustmentBeforePatch();
+
           const paymentMethodMap: Record<string, string> = {
             cash: 'cash',
             bank: 'bank',
@@ -751,104 +877,10 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
               expenseDate: paymentDate,
             });
           }
-          // Supplier Add Entry / on-account manual_payment: amount edit updated `payments` only — GL must get a delta JE (same as purchase-linked path).
-          const deltaLiquidityId =
-            preManualAccountId ||
-            (paymentToEdit?.accountId && String(paymentToEdit.accountId).trim() ? String(paymentToEdit.accountId) : null);
-          if (
-            editMode &&
-            context === 'supplier' &&
-            rt === 'manual_payment' &&
-            preManualAmount != null &&
-            companyId &&
-            deltaLiquidityId &&
-            Math.abs(preManualAmount - amount) > 0.009
-          ) {
-            try {
-              const { tracePaymentEditFlow } = await import('@/app/lib/paymentEditFlowTrace');
-              tracePaymentEditFlow('UnifiedPaymentDialog.edit.manual_amount_adjust', {
-                paymentId: paymentIdForUpdate,
-                kind: 'manual_payment',
-                preManualAmount,
-                amount,
-                deltaLiquidityId,
-              });
-              const { postPaymentAmountAdjustment } = await import('@/app/services/paymentAdjustmentService');
-              const { resolvePayablePostingAccountId } = await import('@/app/services/partySubledgerAccountService');
-              const apId = entityId ? await resolvePayablePostingAccountId(companyId, entityId) : null;
-              const { data: { user } } = await supabase.auth.getUser();
-              await postPaymentAmountAdjustment({
-                context: 'purchase',
-                companyId,
-                branchId:
-                  preManualBranch && String(preManualBranch).trim() && preManualBranch !== 'all'
-                    ? preManualBranch
-                    : null,
-                paymentId: paymentIdForUpdate,
-                referenceId: paymentIdForUpdate,
-                oldAmount: preManualAmount,
-                newAmount: amount,
-                paymentAccountId: deltaLiquidityId,
-                invoiceNoOrRef: String((paymentToEdit as any).referenceNumber || 'Supplier payment'),
-                entryDate: paymentDate,
-                createdBy: (user as any)?.id ?? null,
-                payableAccountId: apId || undefined,
-              });
-              if (typeof window !== 'undefined') {
-                window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
-              }
-            } catch (adjErr) {
-              console.warn('[UnifiedPaymentDialog] Supplier manual_payment amount adjustment JE failed:', adjErr);
-            }
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
           }
-          // Customer Add Entry / on-account manual_receipt: same class as supplier manual — update `payments` + FIFO only; original JE lines unchanged without a delta JE.
-          if (
-            editMode &&
-            context === 'customer' &&
-            rt === 'manual_receipt' &&
-            preManualAmount != null &&
-            companyId &&
-            deltaLiquidityId &&
-            Math.abs(preManualAmount - amount) > 0.009
-          ) {
-            try {
-              const { tracePaymentEditFlow } = await import('@/app/lib/paymentEditFlowTrace');
-              tracePaymentEditFlow('UnifiedPaymentDialog.edit.manual_amount_adjust', {
-                paymentId: paymentIdForUpdate,
-                kind: 'manual_receipt',
-                preManualAmount,
-                amount,
-                deltaLiquidityId,
-              });
-              const { postPaymentAmountAdjustment } = await import('@/app/services/paymentAdjustmentService');
-              const { resolveReceivablePostingAccountId } = await import('@/app/services/partySubledgerAccountService');
-              const arId = entityId ? await resolveReceivablePostingAccountId(companyId, entityId) : null;
-              const { data: { user } } = await supabase.auth.getUser();
-              await postPaymentAmountAdjustment({
-                context: 'sale',
-                companyId,
-                branchId:
-                  preManualBranch && String(preManualBranch).trim() && preManualBranch !== 'all'
-                    ? preManualBranch
-                    : null,
-                paymentId: paymentIdForUpdate,
-                referenceId: paymentIdForUpdate,
-                oldAmount: preManualAmount,
-                newAmount: amount,
-                paymentAccountId: deltaLiquidityId,
-                invoiceNoOrRef: String((paymentToEdit as any).referenceNumber || 'Customer receipt'),
-                entryDate: paymentDate,
-                createdBy: (user as any)?.id ?? null,
-                receivableAccountId: arId || undefined,
-              });
-              if (typeof window !== 'undefined') {
-                window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
-              }
-            } catch (adjErr) {
-              console.warn('[UnifiedPaymentDialog] Customer manual_receipt amount adjustment JE failed:', adjErr);
-            }
-          }
-          // PF-14: manual receipt/payment account change — post Dr new / Cr old for final amount (after any amount delta above).
+          // PF-14: manual receipt/payment account change — post Dr new / Cr old for final amount (after payment patch).
           if (
             editMode &&
             companyId &&

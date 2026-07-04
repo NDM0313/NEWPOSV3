@@ -9,7 +9,7 @@
     "mode": "preview",
     "killSwitchActive": false,
     "companyEngineEnabled": true,
-    "screenFlagEnabled": false,
+    "screenFlagEnabled": true,
     "pilotEnabled": true,
     "localOverride": null,
     "rpcAllowed": true
@@ -48,25 +48,21 @@
     "costLineCount": 1,
     "expenseLineCount": 3,
     "accountingRuleNotes": [
-      "PREVIEW_ONLY — not finance-approved golden totals.",
-      "COGS split uses COST_OF_PRODUCTION_CODES + type heuristics (mirrors legacy).",
-      "NEEDS_RULE_CONFIRMATION — finance must approve COGS mapping before loader swap."
+      "Unified main loader active."
     ]
   },
   "tbMeta": {
     "engine": "unified_shadow",
     "basis": "official_gl",
     "featureFlagEnabled": true,
-    "shadowForce": true,
-    "queryDurationMs": 519.2000000001863,
-    "rowCount": 109,
+    "shadowForce": false,
+    "queryDurationMs": 0,
+    "rowCount": 0,
     "periodOpeningBalance": 0
   },
   "accountingRuleNotes": [
-    "PREVIEW_ONLY — not finance-approved golden totals.",
-    "COGS split uses COST_OF_PRODUCTION_CODES + type heuristics (mirrors legacy).",
-    "NEEDS_RULE_CONFIRMATION — finance must approve COGS mapping before loader swap."
+    "Unified main loader active."
   ],
-  "exportedAt": "2026-07-01T07:24:53.128Z",
+  "exportedAt": "2026-07-01T08:48:39.400Z",
   "note": "PREVIEW_ONLY — legacy P&L remains authoritative. COGS heuristic NEEDS_RULE_CONFIRMATION."
 }

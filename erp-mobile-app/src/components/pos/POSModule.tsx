@@ -71,6 +71,7 @@ export function POSModule({ onBack, user, companyId, branchId, onRequestCounterL
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [lastInvoiceNo, setLastInvoiceNo] = useState<string | null>(null);
+  const [printHint, setPrintHint] = useState<string | null>(null);
   const [variationModalProduct, setVariationModalProduct] = useState<POSProduct | null>(null);
   const [showPaymentStep, setShowPaymentStep] = useState(false);
   const [invoiceDate, setInvoiceDate] = useState(() => localNowDateString());
@@ -331,6 +332,7 @@ export function POSModule({ onBack, user, companyId, branchId, onRequestCounterL
 
   const openPaymentStep = () => {
     setCheckoutError(null);
+    setPrintHint(null);
     if (!branchReady || !effectiveBranchId) {
       setCheckoutError(branchSelectionError ?? 'Select a branch for this POS sale.');
       return;
@@ -415,13 +417,17 @@ export function POSModule({ onBack, user, companyId, branchId, onRequestCounterL
     setLastInvoiceNo(data?.invoiceNo ?? null);
     setCart([]);
     setShowPaymentStep(false);
-    void maybeAutoPrintAfterTransaction(companyId, {
+    setPrintHint(null);
+    const printRes = await maybeAutoPrintAfterTransaction(companyId, {
       title: 'POS RECEIPT',
       transactionNo: data?.invoiceNo ?? null,
       partyName: walkingCustomerName,
       amount: total,
       date: invoiceDate,
     });
+    if (printRes && !printRes.ok && printRes.hint) {
+      setPrintHint(printRes.hint);
+    }
     } catch (e) {
       setCheckoutError(e instanceof Error ? e.message : 'Checkout failed.');
     } finally {
@@ -480,6 +486,11 @@ export function POSModule({ onBack, user, companyId, branchId, onRequestCounterL
             </div>
           </div>
         )}
+        {printHint ? (
+          <div className="mb-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-sm text-amber-200">
+            {printHint}
+          </div>
+        ) : null}
         <div className="flex items-center gap-2 text-sm text-[#9CA3AF] mb-4">
           <UserIcon size={16} />
           <span>Customer:</span>
