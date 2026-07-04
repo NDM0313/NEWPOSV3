@@ -3,11 +3,9 @@
 import React, { useMemo } from 'react';
 import type { AccountingEntry } from '@/app/context/AccountingContext';
 import { getJournalEntrySourceDocumentOpenTarget } from '@/app/lib/journalEntryEditPolicy';
-import {
-  buildTransactionActionRowFromAccountingEntry,
-  getTransactionActions,
-  type TransactionActionId,
-} from '@/app/lib/transactionActionRules';
+import { buildTransactionActionRowFromAccountingEntry } from '@/app/lib/transactionActionRules';
+import { getTransactionActions } from '@/app/lib/transactionActionsRegistry';
+import type { TransactionActionId } from '@/app/lib/transactionActionRules';
 import { TransactionActionPanel } from '@/app/components/accounting/TransactionActionPanel';
 
 export interface JournalRowTransactionActionsProps {
@@ -57,7 +55,7 @@ export function JournalRowTransactionActions({
     [row, allowUnifiedEdit, sourceOpen, lockPaymentChainReverse, isReversal]
   );
 
-  const handleAction = (actionId: TransactionActionId) => {
+  const handleAction = (actionId: TransactionActionId | 'edit_accounts') => {
     if (busy) return;
     switch (actionId) {
       case 'view':

@@ -40,11 +40,13 @@ import {
 import { journalReversalBlockedReason } from '@/app/lib/journalEntryEditPolicy';
 import { resolvePaymentIdForMutation } from '@/app/lib/paymentRowEditRouting';
 import { getPaymentChainMutationBlockReason, fetchPaymentChainState } from '@/app/services/paymentChainMutationGuard';
+import { isTransactionActionPanelEnabled } from '@/app/lib/transactionActionRules';
+import type { TransactionActionId } from '@/app/lib/transactionActionRules';
+import { getTransactionActions } from '@/app/lib/transactionActionsRegistry';
 import {
-  getTransactionActions,
-  isTransactionActionPanelEnabled,
-  type TransactionActionId,
-} from '@/app/lib/transactionActionRules';
+  isTransactionDetailNestedEditorOpen,
+  shouldAllowTransactionDetailClose,
+} from '@/app/lib/transactionDetailNestedEditor';
 import { canApplyDeveloperRepair } from '@/app/lib/developerAccountingAccess';
 import {
   getStaleCorrectionReversalCandidates,
@@ -336,6 +338,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
   const [activityLogs, setActivityLogs] = useState<Awaited<ReturnType<typeof activityLogService.getEntityActivityLogs>>>([]);
   const [loadingActivityLogs, setLoadingActivityLogs] = useState(false);
   const [staleReversalVoidEligible, setStaleReversalVoidEligible] = useState(false);
+  const [nestedEditorPending, setNestedEditorPending] = useState(false);
   const canVoidStaleReversal = canApplyDeveloperRepair(userRole);
 
   const loadPaymentTrace = useCallback(async () => {
@@ -662,11 +665,63 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     }
   };
 
+  const nestedEditorFlags = useMemo(
+    () => ({
+      journalQuickEditOpen,
+      manualReceiptEditorOpen,
+      supplierManualEditorOpen,
+      rentalPaymentEditorOpen,
+      genericPaymentEditorOpen: !!genericPaymentEditor,
+      editingAccounts,
+      paymentTraceOpen,
+      nestedEditorPending,
+    }),
+    [
+      journalQuickEditOpen,
+      manualReceiptEditorOpen,
+      supplierManualEditorOpen,
+      rentalPaymentEditorOpen,
+      genericPaymentEditor,
+      editingAccounts,
+      paymentTraceOpen,
+      nestedEditorPending,
+    ]
+  );
+
+  const nestedEditorOpen = useMemo(
+    () => isTransactionDetailNestedEditorOpen(nestedEditorFlags),
+    [nestedEditorFlags]
+  );
+
+  useEffect(() => {
+    if (!isTransactionDetailNestedEditorOpen({ ...nestedEditorFlags, nestedEditorPending: false })) {
+      setNestedEditorPending(false);
+    }
+  }, [nestedEditorFlags]);
+
+  const handleTransactionDetailOpenChange = useCallback(
+    (open: boolean) => {
+      if (!shouldAllowTransactionDetailClose(open, nestedEditorFlags)) return;
+      if (!open) onClose();
+    },
+    [nestedEditorFlags, onClose]
+  );
+
+  const preventDismissWhileNestedEditor = useCallback(
+    (event: Event) => {
+      if (nestedEditorOpen) event.preventDefault();
+    },
+    [nestedEditorOpen]
+  );
+
   const runUnifiedEdit = useCallback(async () => {
     if (!transaction || !transactionForUnifiedPolicy || !companyId) return;
+    setNestedEditorPending(true);
+    const clearNestedPending = () => setNestedEditorPending(false);
     const blockReason = await getPaymentChainMutationBlockReason(companyId, String(transaction.id));
     if (blockReason) {
       toast.error(blockReason);
+      clearNestedPending();
       return;
     }
     const pay = Array.isArray(transaction?.payment) ? transaction.payment[0] : transaction?.payment;
@@ -674,10 +729,12 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
 
     if (resolution.kind === 'blocked') {
       toast.message(resolution.reason);
+      clearNestedPending();
       return;
     }
     if (resolution.kind === 'noop') {
       toast.message(resolution.reason);
+      clearNestedPending();
       return;
     }
 
@@ -696,6 +753,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
           openJournalQuickEdit();
           return;
         case 'document_editor': {
+          clearNestedPending();
           if (resolution.sourceType === 'sale') {
             const { saleService } = await import('@/app/services/saleService');
             const full = await saleService.getSaleById(resolution.sourceId);
@@ -724,6 +782,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
               String(pr?.reference_id || '').trim();
             if (!rentalId) {
               toast.error('Missing rental reference on payment.');
+              clearNestedPending();
               return;
             }
             const { rentalService } = await import('@/app/services/rentalService');
@@ -740,12 +799,14 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
               : '');
           if (!pid) {
             toast.error('Could not resolve payment id for editing.');
+            clearNestedPending();
             return;
           }
           const { saleService } = await import('@/app/services/saleService');
           const full = await saleService.getPaymentById(pid);
           if (!full) {
             toast.error('Payment row not found.');
+            clearNestedPending();
             return;
           }
           const prt = String(full.referenceType || '').toLowerCase();
@@ -762,6 +823,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
             const rentalId = resolution.sourceId || prid;
             if (!rentalId) {
               toast.error('Missing rental reference on payment.');
+              clearNestedPending();
               return;
             }
             const { rentalService } = await import('@/app/services/rentalService');
@@ -806,6 +868,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
           return;
         }
         case 'transfer_editor':
+          clearNestedPending();
           if (typeof window !== 'undefined') {
             window.dispatchEvent(new CustomEvent('openAddEntryV2', { detail: { entryType: 'internal_transfer' } }));
           }
@@ -819,19 +882,23 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
             return;
           }
           if (resolution.sourceType === 'expense' && resolution.sourceId) {
+            clearNestedPending();
             setCurrentView('expenses');
             onClose();
             toast.info(`Open expense ${resolution.sourceId.slice(0, 8)}… to edit this component.`);
             return;
           }
           if (resolution.sourceType === 'sale' && resolution.sourceId) {
+            clearNestedPending();
             toast.message('Sale adjustments follow the invoice. Open the sale from Sales to change amounts.');
             return;
           }
           if (resolution.sourceType === 'purchase' && resolution.sourceId) {
+            clearNestedPending();
             toast.message('Purchase adjustments follow the PO. Open the purchase from Purchases to change amounts.');
             return;
           }
+          clearNestedPending();
           toast.message(
             'This adjustment is source-controlled. Open the original document from its module, or use Reverse to correct amounts.'
           );
@@ -839,6 +906,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
         }
       }
     } catch (e: any) {
+      clearNestedPending();
       toast.error(e?.message || 'Could not open editor');
     }
   }, [transaction, transactionForUnifiedPolicy, companyId, openDrawer, setCurrentView, onClose]);
@@ -1198,9 +1266,14 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     await openJournalSourceDocumentFromEntry(entry as AccountingEntry, { openDrawer, setCurrentView });
   };
 
-  const handleDetailModalAction = (actionId: TransactionActionId) => {
+  const handleDetailModalAction = (actionId: TransactionActionId | 'edit_accounts') => {
     switch (actionId) {
+      case 'edit_accounts':
+        setNestedEditorPending(true);
+        void handleLoadAccountsForEdit();
+        break;
       case 'edit':
+        setNestedEditorPending(true);
         void run('Opening editor...', () => runUnifiedEdit());
         break;
       case 'cancel_payment':
@@ -1354,7 +1427,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
 
   if (!transaction && !loading) {
     return (
-      <Dialog open={isOpen} onOpenChange={onClose}>
+      <Dialog open={isOpen} onOpenChange={handleTransactionDetailOpenChange}>
         <DialogContent className="max-w-4xl bg-gray-900 border-gray-800">
           <DialogHeader>
             <DialogTitle className="text-white">Transaction Not Found</DialogTitle>
@@ -1395,8 +1468,12 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
   return (
     <>
     {/* Keep parent open while nested editors (e.g. journal quick edit) are open — closing parent here unmounted the child Dialog and caused flicker. */}
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="!w-[800px] !max-w-[800px] sm:!max-w-[800px] max-h-[95vh] overflow-auto bg-gray-900 border-gray-800">
+    <Dialog open={isOpen} onOpenChange={handleTransactionDetailOpenChange}>
+      <DialogContent
+        className="!w-[800px] !max-w-[800px] sm:!max-w-[800px] max-h-[95vh] overflow-auto bg-gray-900 border-gray-800"
+        onInteractOutside={preventDismissWhileNestedEditor}
+        onPointerDownOutside={preventDismissWhileNestedEditor}
+      >
         <DialogHeader>
           <DialogTitle className="text-white flex items-center justify-between">
             <div>
@@ -1511,30 +1588,6 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                         disabled={actionLocked}
                         variant="modal"
                       />
-                      {transaction.id && !transaction.is_void && !editingAccounts && (() => {
-                        const rt = String(transaction.reference_type || '').toLowerCase();
-                        const allowEdit =
-                          !rt.startsWith('sale') &&
-                          !rt.startsWith('purchase') &&
-                          rt !== 'shipment' &&
-                          !rt.startsWith('opening_balance') &&
-                          rt !== 'commission_batch' &&
-                          rt !== 'stock_adjustment';
-                        if (!allowEdit) return null;
-                        return (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            className="gap-1 border-blue-500/40 text-blue-300"
-                            disabled={actionLocked}
-                            onClick={() => void handleLoadAccountsForEdit()}
-                          >
-                            <ArrowLeftRight size={14} />
-                            Edit Accounts
-                          </Button>
-                        );
-                      })()}
                     </>
                   ) : (
                     <>
@@ -2218,36 +2271,6 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
           </div>
         ) : null}
 
-        <Dialog open={journalQuickEditOpen} onOpenChange={setJournalQuickEditOpen}>
-          <DialogContent className="max-w-md bg-gray-900 border-gray-800 text-white">
-            <DialogHeader>
-              <DialogTitle>Edit manual journal</DialogTitle>
-              <p className="text-xs text-gray-400 font-normal">
-                Updates transaction date and description only. To change debit/credit amounts or accounts, close this dialog and use{' '}
-                <strong className="text-gray-300">Edit Accounts</strong> on the transaction detail screen.
-              </p>
-            </DialogHeader>
-            <div className="space-y-3 pt-2">
-              <div>
-                <Label className="text-gray-400">Transaction date &amp; time</Label>
-                <DateTimePicker value={editEntryDateTime} onChange={setEditEntryDateTime} required />
-              </div>
-              <div>
-                <Label className="text-gray-400">Description / notes</Label>
-                <Input value={editDescription} onChange={(e) => setEditDescription(e.target.value)} className="bg-gray-950 border-gray-700 mt-1" />
-              </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <Button type="button" variant="ghost" onClick={() => setJournalQuickEditOpen(false)}>
-                  Cancel
-                </Button>
-                <Button type="button" onClick={() => void saveJournalQuickEdit()} disabled={savingJournalEdit}>
-                  {savingJournalEdit ? 'Saving…' : 'Save'}
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
-
         {/* Attachment Viewer Modal */}
         {selectedAttachment && (
           <div 
@@ -2278,6 +2301,36 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
             </div>
           </div>
         )}
+      </DialogContent>
+    </Dialog>
+
+    <Dialog open={journalQuickEditOpen} onOpenChange={setJournalQuickEditOpen}>
+      <DialogContent className="max-w-md bg-gray-900 border-gray-800 text-white z-[120]">
+        <DialogHeader>
+          <DialogTitle>Edit manual journal</DialogTitle>
+          <p className="text-xs text-gray-400 font-normal">
+            Updates transaction date and description only. To change debit/credit amounts or accounts, close this dialog and use{' '}
+            <strong className="text-gray-300">Edit Accounts</strong> on the transaction detail screen.
+          </p>
+        </DialogHeader>
+        <div className="space-y-3 pt-2">
+          <div>
+            <Label className="text-gray-400">Transaction date &amp; time</Label>
+            <DateTimePicker value={editEntryDateTime} onChange={setEditEntryDateTime} required />
+          </div>
+          <div>
+            <Label className="text-gray-400">Description / notes</Label>
+            <Input value={editDescription} onChange={(e) => setEditDescription(e.target.value)} className="bg-gray-950 border-gray-700 mt-1" />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="ghost" onClick={() => setJournalQuickEditOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={() => void saveJournalQuickEdit()} disabled={savingJournalEdit}>
+              {savingJournalEdit ? 'Saving…' : 'Save'}
+            </Button>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
 
