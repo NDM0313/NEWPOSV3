@@ -20,6 +20,7 @@ import { WorkflowNextStepBanner } from '@/app/workflows';
 import type { InvoiceTemplateType } from '@/app/types/invoiceDocument';
 import { PaymentDeleteConfirmationModal } from '../shared/PaymentDeleteConfirmationModal';
 import { UnifiedPaymentDialog } from '../shared/UnifiedPaymentDialog';
+import { readSaleBillRef } from '@/app/utils/saleBillRef';
 import { 
   X, 
   Calendar, 
@@ -2028,6 +2029,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
           paidAmount={totalPaidDisplay}
           referenceNo={sale.invoiceNo}
           referenceId={sale.id}
+          customerBillRef={readSaleBillRef(sale as unknown as Record<string, unknown>)}
           editMode={true}
           paymentToEdit={{
             id: paymentToEdit.id,
@@ -2035,6 +2037,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
             method: paymentToEdit.method,
             accountId: paymentToEdit.accountId || paymentToEdit.payment_account_id,
             date: paymentToEdit.date || paymentToEdit.payment_date,
+            createdAt: paymentToEdit.createdAt || paymentToEdit.created_at,
             referenceNumber: paymentToEdit.referenceNo || paymentToEdit.reference_number,
             notes: paymentToEdit.notes,
             attachments: paymentToEdit.attachments,

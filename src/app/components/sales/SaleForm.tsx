@@ -43,6 +43,7 @@ import {
 import { format, parseISO } from "date-fns";
 import { buildNotesWithStudioDeadline, parseStudioDeadlineFromNotes, getStudioDeadlineFromNotes } from "@/app/utils/studioDeadlineNotes";
 import { readSaleBillRef } from "@/app/utils/saleBillRef";
+import { mergeCustomerBillRefIntoNotes } from "@/app/utils/saleNotesComposition";
 import { canAssignSaleCommission } from '@/app/lib/executiveDashboardAccess';
 import { cn, formatDateWithTimezone } from "../ui/utils";
 import { Button } from "../ui/button";
@@ -2737,9 +2738,12 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 paymentStatus: finalPaymentStatus,
                 paymentMethod: (effectiveFinal && partialPayments.length > 0) ? partialPayments[0].method : 'cash',
                 shippingStatus: 'pending' as const,
-                notes: isStudioSale
-                    ? buildNotesWithStudioDeadline(studioDeadline, saleNotes || studioNotes || '')
-                    : (saleNotes || studioNotes || undefined),
+                notes: (() => {
+                    const merged = mergeCustomerBillRefIntoNotes(refNumber, saleNotes || studioNotes || '');
+                    return isStudioSale
+                        ? buildNotesWithStudioDeadline(studioDeadline, merged)
+                        : merged || undefined;
+                })(),
                 customerBillRef: refNumber.trim() || undefined,
                 deadline: (() => {
                     const d = studioDeadlineRef.current ?? studioDeadline;
@@ -4074,6 +4078,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 previousPayments={[]}
                 referenceNo={savedSaleInvoiceNo || undefined}
                 referenceId={savedSaleId || undefined}
+                customerBillRef={refNumber.trim() || undefined}
                 onSuccess={() => {
                     console.log('[SALE FORM] ✅ Payment saved successfully, refreshing sales list');
                     setUnifiedPaymentDialogOpen(false);

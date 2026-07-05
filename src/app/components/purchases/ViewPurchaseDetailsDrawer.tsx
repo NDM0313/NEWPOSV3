@@ -1942,6 +1942,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
             method: paymentToEdit.method,
             accountId: paymentToEdit.accountId || paymentToEdit.payment_account_id,
             date: paymentToEdit.date || paymentToEdit.payment_date,
+            createdAt: paymentToEdit.createdAt || paymentToEdit.created_at,
             referenceNumber: paymentToEdit.referenceNo || paymentToEdit.reference_number,
             notes: paymentToEdit.notes,
             attachments: paymentToEdit.attachments,

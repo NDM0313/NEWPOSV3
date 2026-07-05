@@ -3,6 +3,7 @@
  * Centralized date range and branch filters controlled from TopHeader.
  * State persists across module navigation (localStorage).
  * Defaults: Dashboard = Last 7 Days, other modules = Last 30 Days.
+ * Rentals list applies the header range to booking/created date (see RentalsPage dateFilterMode), not pickup date.
  */
 
 import React, { createContext, useContext, useState, useCallback, useMemo, useEffect, useRef, ReactNode } from 'react';

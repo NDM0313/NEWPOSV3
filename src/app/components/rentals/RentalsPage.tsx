@@ -144,7 +144,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
   const [listFilter, setListFilter] = useState<RentalListFilter>('all');
   const [branchFilter, setBranchFilter] = useState('all');
   const [salesmanFilter, setSalesmanFilter] = useState('all');
-  const [dateFilterMode, setDateFilterMode] = useState<'pickup' | 'created'>('pickup');
+  const [dateFilterMode, setDateFilterMode] = useState<'pickup' | 'created'>('created');
   const [salesmen, setSalesmen] = useState<Array<{ id: string; full_name?: string; name?: string }>>([]);
   const [viewDetailsPrintMode, setViewDetailsPrintMode] = useState(false);
   const [pageSize, setPageSize] = useState(25);
@@ -320,9 +320,14 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
       if (salesmanFilter !== 'all' && (r.salesmanId || '') !== salesmanFilter) return false;
       return true;
     });
-    if (matchesWithoutDate && (startDate || endDate)) return 'No rentals in selected date range';
+    if (matchesWithoutDate && (startDate || endDate)) {
+      if (dateFilterMode === 'pickup') {
+        return 'No rentals in selected date range by pickup date. Use Filters → Booking / created date to list recent bookings (including future pickups).';
+      }
+      return 'No rentals in selected date range';
+    }
     return 'No rentals found';
-  }, [loading, rentals, filteredRentals.length, loadFailed, hasNonDateFilters, listFilter, searchTerm, branchFilter, salesmanFilter, startDate, endDate, today]);
+  }, [loading, rentals, filteredRentals.length, loadFailed, hasNonDateFilters, listFilter, searchTerm, branchFilter, salesmanFilter, startDate, endDate, today, dateFilterMode]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -479,7 +484,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
             listFilter !== 'all' ? listFilter : null,
             branchFilter !== 'all' ? branchFilter : null,
             salesmanFilter !== 'all' ? salesmanFilter : null,
-            dateFilterMode !== 'pickup' ? dateFilterMode : null,
+            dateFilterMode !== 'created' ? dateFilterMode : null,
           ].filter(Boolean).length,
           renderPanel: () => (
             <div className="absolute right-0 top-12 w-64 max-h-[min(70vh,22rem)] overflow-y-auto bg-gray-900 border border-gray-700 rounded-lg shadow-xl p-4 z-50">
@@ -491,7 +496,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                 onChange={(e) => setDateFilterMode(e.target.value as 'pickup' | 'created')}
               >
                 <option value="pickup">Pickup / start date</option>
-                <option value="created">Created date</option>
+                <option value="created">Booking / created date</option>
               </select>
               <label className="text-xs text-gray-400 mt-2 block">Branch</label>
               <select
@@ -958,6 +963,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                   method: rentalPaymentToEdit.method,
                   accountId: rentalPaymentToEdit.accountId,
                   date: rentalPaymentToEdit.date,
+                  createdAt: rentalPaymentToEdit.createdAt,
                   referenceNumber: rentalPaymentToEdit.referenceNo,
                   notes: rentalPaymentToEdit.notes,
                 }

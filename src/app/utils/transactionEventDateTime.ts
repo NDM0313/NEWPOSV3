@@ -4,6 +4,12 @@
  * Time = from created_at only when its local calendar day matches the business date.
  */
 
+import {
+  formatLocalDateTimeYYYYMMDDHHmm,
+  parseLocalDateTimeInput,
+  toLocalISOString,
+} from '@/app/utils/localDate';
+
 export function sliceDateOnly(s: string | null | undefined): string {
   const t = String(s || '').trim();
   if (!t) return '';
@@ -61,6 +67,24 @@ export function resolveRoznamchaRowDateTime(
   }
 
   return { date, time: '' };
+}
+
+/** DateTimePicker value (yyyy-MM-ddTHH:mm) from payments.payment_date + created_at. */
+export function paymentPickerValueFromRow(
+  paymentDate?: string | null,
+  createdAt?: string | null,
+): string {
+  const { date, time } = resolveRoznamchaRowDateTime(paymentDate, createdAt);
+  if (date && time) return `${date}T${time}`;
+  if (date) return `${date}T00:00`;
+  const ca = String(createdAt || '').trim();
+  if (ca) return formatLocalDateTimeYYYYMMDDHHmm(parseLocalDateTimeInput(ca));
+  return formatLocalDateTimeYYYYMMDDHHmm(new Date());
+}
+
+/** Persist picker value to payments.created_at (timestamptz, local offset). */
+export function paymentEventTimestampFromPicker(paymentDateTime: string): string {
+  return toLocalISOString(parseLocalDateTimeInput(paymentDateTime));
 }
 
 export function isEventDateInRange(

@@ -56,6 +56,9 @@ export interface UnifiedPaymentSheetProps {
 
   /** Rental returns — penalty deduction pre-filled (display only). */
   damageDeduction?: number | null;
+  /** Customer bill book / REF # for sale receive-payment auto description. */
+  customerBillRef?: string | null;
+  defaultPaymentNotes?: string | null;
 
   onClose: () => void;
   onSuccess: () => void;
@@ -79,6 +82,8 @@ export function UnifiedPaymentSheet({
   alreadyPaid,
   outstandingAmount,
   damageDeduction,
+  customerBillRef,
+  defaultPaymentNotes,
   onClose,
   onSuccess,
   onViewLedger,
@@ -210,6 +215,8 @@ export function UnifiedPaymentSheet({
       alreadyPaid={alreadyPaid ?? null}
       outstandingAmount={outstandingAmount}
       subtitle={subtitleBits.length > 0 ? subtitleBits.join(' · ') : undefined}
+      customerBillRef={kind === 'sale' ? customerBillRef : undefined}
+      defaultPaymentNotes={kind === 'sale' ? defaultPaymentNotes : undefined}
       onClose={onClose}
       onSuccess={onSuccess}
       onSubmit={handleSubmit}

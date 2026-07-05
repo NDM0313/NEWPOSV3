@@ -16,6 +16,10 @@ import {
   saleExtrasPanelActive,
   sumExtraExpenses,
 } from '../../lib/saleTotals';
+import {
+  mergeCustomerBillRefIntoNotes,
+  stripCustomerBillRefLine,
+} from '../../utils/saleNotesComposition';
 
 const MAX_SALE_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
@@ -116,8 +120,35 @@ export function SaleSummary({
     const d = discountType === 'amount' ? parseFloat(discountValue) || 0 : (saleData.subtotal * (parseFloat(discountValue) || 0)) / 100;
     onUpdate({ discount: d });
   };
-  const applyNotes = () => onUpdate({ notes });
-  const applyBillRef = () => onUpdate({ billRef });
+  const applyNotes = () => onUpdate({ notes: mergeCustomerBillRefIntoNotes(billRef, notes) });
+  const applyBillRef = () => {
+    const mergedNotes = mergeCustomerBillRefIntoNotes(billRef, notes);
+    setNotes(mergedNotes);
+    onUpdate({ billRef, notes: mergedNotes });
+  };
+
+  const handleBillRefChange = (value: string) => {
+    setBillRef(value);
+    const mergedNotes = mergeCustomerBillRefIntoNotes(value, stripCustomerBillRefLine(notes));
+    setNotes(mergedNotes);
+    onUpdate({ billRef: value, notes: mergedNotes });
+  };
+
+  const handleNotesChange = (value: string) => {
+    setNotes(value);
+  };
+
+  const flushSummaryFields = () => {
+    const mergedNotes = mergeCustomerBillRefIntoNotes(billRef, notes);
+    setNotes(mergedNotes);
+    onUpdate({ billRef, notes: mergedNotes });
+    return mergedNotes;
+  };
+
+  const handleProceed = () => {
+    flushSummaryFields();
+    onProceedToPayment();
+  };
 
   const extrasActive = saleExtrasPanelActive(saleData.saleType, saleData.documentStatus);
   const inclusiveBespoke = hasInclusiveBespokeParents(saleData.products);
@@ -265,7 +296,7 @@ export function SaleSummary({
           <input
             type="text"
             value={billRef}
-            onChange={(e) => setBillRef(e.target.value)}
+            onChange={(e) => handleBillRefChange(e.target.value)}
             onBlur={applyBillRef}
             placeholder="Customer bill / REF # (optional)"
             className="w-full h-10 bg-[#111827] border border-[#374151] rounded-lg px-3 text-sm text-white placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6]"
@@ -276,7 +307,7 @@ export function SaleSummary({
           <h3 className="text-sm font-medium text-[#9CA3AF] mb-2">Notes</h3>
           <textarea
             value={notes}
-            onChange={(e) => setNotes(e.target.value)}
+            onChange={(e) => handleNotesChange(e.target.value)}
             onBlur={applyNotes}
             placeholder="Optional notes..."
             rows={2}
@@ -498,7 +529,7 @@ export function SaleSummary({
       {createPortal(
         <div className="fixed left-0 right-0 bottom-0 bg-[#1F2937] border-t border-[#374151] p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0))] z-[60]">
           <button
-            onClick={onProceedToPayment}
+            onClick={handleProceed}
             disabled={!branchReady || !commissionValid}
             className="w-full h-12 bg-[#3B82F6] hover:bg-[#2563EB] disabled:bg-[#374151] disabled:text-[#9CA3AF] rounded-lg font-medium text-white transition-colors"
           >

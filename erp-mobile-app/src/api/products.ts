@@ -638,11 +638,7 @@ export async function getRentalProducts(companyId: string): Promise<{ data: Rent
     };
   };
 
-  const mapped = rows.map(toRentalProduct).filter((p) => p.isRentable || p.rentPricePerDay > 0);
-
-  if (mapped.length === 0 && rows.length > 0) {
-    return { data: rows.map((r) => ({ ...toRentalProduct(r), isRentable: true })), error: null };
-  }
+  const mapped = rows.map(toRentalProduct);
 
   return { data: mapped, error: null };
 }

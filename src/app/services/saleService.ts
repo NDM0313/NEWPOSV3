@@ -9,6 +9,8 @@ import {
 } from '@/app/lib/postingStatusGate';
 import { documentNumberService } from '@/app/services/documentNumberService';
 import { recordPaymentWithAccounting } from '@/app/services/recordPaymentWithAccountingRpc';
+import { readSaleBillRef } from '@/app/utils/saleBillRef';
+import { composeCustomerPaymentNotesForRpc } from '@/app/utils/saleNotesComposition';
 import { employeeService } from './employeeService';
 import { activityLogService } from '@/app/services/activityLogService';
 import { settingsService } from '@/app/services/settingsService';
@@ -1405,7 +1407,11 @@ export const saleService = {
     options?: { notes?: string; attachments?: any }
   ) {
     // 🔒 CANCELLED: No payment allowed on cancelled sales
-    const { data: saleRow } = await supabase.from('sales').select('status, customer_id').eq('id', saleId).single();
+    const { data: saleRow } = await supabase
+      .from('sales')
+      .select('status, customer_id, customer_name, invoice_no, customer_bill_ref, notes, reference, ref_no, bill_ref')
+      .eq('id', saleId)
+      .single();
     if (saleRow && (saleRow as any).status === 'cancelled') {
       throw new Error('Cannot record payment on a cancelled invoice.');
     }
@@ -1424,6 +1430,18 @@ export const saleService = {
 
     const callerRef = referenceNumber && String(referenceNumber).trim() ? String(referenceNumber).trim() : null;
     const paymentDateValue = paymentDate || localNowDateString();
+    const customerBillRef = readSaleBillRef(saleRow as Record<string, unknown>);
+    const partyName = String((saleRow as { customer_name?: string }).customer_name ?? '').trim() || 'Customer';
+    const invoiceRef = String((saleRow as { invoice_no?: string }).invoice_no ?? '').trim() || undefined;
+    const composedPaymentNotes = composeCustomerPaymentNotesForRpc({
+      partyName,
+      invoiceRef,
+      customerBillRef,
+      amount,
+      paymentMethod,
+      combinedNotes: options?.notes,
+      bankTraceId: callerRef,
+    });
 
     const { data: { user: authUser } } = await supabase.auth.getUser();
     const authUserId = authUser?.id ?? null;
@@ -1447,7 +1465,7 @@ export const saleService = {
       paymentMethod,
       paymentDate: paymentDateValue,
       paymentAccountId: accountId,
-      notes: options?.notes ?? null,
+      notes: composedPaymentNotes || null,
       bankTraceId: callerRef,
       createdBy: authUserId,
     });
@@ -1608,6 +1626,8 @@ export const saleService = {
       paymentMethod?: string;
       accountId?: string;
       paymentDate?: string;
+      /** When set, updates payments.created_at (business event time for roznamcha / picker). */
+      eventTimestamp?: string;
       referenceNumber?: string;
       notes?: string;
       attachments?: any;
@@ -1673,6 +1693,7 @@ export const saleService = {
       if (normalizedPaymentMethod) updateData.payment_method = normalizedPaymentMethod;
       if (updates.accountId) updateData.payment_account_id = updates.accountId;
       if (updates.paymentDate) updateData.payment_date = updates.paymentDate;
+      if (updates.eventTimestamp) updateData.created_at = updates.eventTimestamp;
       if (updates.referenceNumber !== undefined) updateData.reference_number = updates.referenceNumber;
       if (updates.notes !== undefined) updateData.notes = updates.notes;
       if (updates.attachments !== undefined) {

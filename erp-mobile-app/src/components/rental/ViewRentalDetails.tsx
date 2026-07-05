@@ -150,15 +150,7 @@ export function ViewRentalDetails({
     onRefresh();
   };
 
-  const handlePickup = async (payload: {
-    actualPickupDate: string;
-    notes?: string;
-    documentType: string;
-    documentNumber: string;
-    securityDocumentImageUrl?: string | null;
-    documentReceived: boolean;
-    remainingPaymentConfirmed: boolean;
-  }) => {
+  const handlePickup = async (payload: rentalsApi.MarkRentalPickedUpPayload) => {
     if (!companyId) return;
     setActionLoading(true);
     const { error: err } = await rentalsApi.markRentalPickedUp(rentalId, companyId, payload, effectiveUserId || null);
@@ -480,11 +472,13 @@ export function ViewRentalDetails({
           onSuccess={handlePaymentSuccess}
         />
       )}
-      {pickupOpen && (
+      {pickupOpen && companyId && (
         <RentalPickupModal
           rental={rental}
+          companyId={companyId}
           onClose={() => setPickupOpen(false)}
           onConfirm={handlePickup}
+          onAddPayment={() => setPaymentOpen(true)}
           loading={actionLoading}
         />
       )}

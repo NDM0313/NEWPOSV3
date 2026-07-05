@@ -18,7 +18,7 @@ import {
   Clock,
   Package
 } from 'lucide-react';
-import { format, addDays, differenceInDays } from "date-fns";
+import { format, addDays } from "date-fns";
 import { formatLocalDateYYYYMMDD } from '@/app/utils/localDate';
 import { cn } from "../ui/utils";
 import { Button } from "../ui/button";
@@ -50,7 +50,7 @@ import {
   } from "../ui/command";
 import { Check, ChevronsUpDown, User, PlusCircle } from "lucide-react";
 import { Label } from "../ui/label";
-import { RentalProductSearch, SearchProduct } from './RentalProductSearch';
+import { RentalProductSearch, SearchProduct, matchesRentalProductSearch } from './RentalProductSearch';
 import { ProductImage } from '../products/ProductImage';
 import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDialog';
 import {
@@ -156,6 +156,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
   const [bookingDate, setBookingDate] = useState<Date>(new Date());
   const [pickupDate, setPickupDate] = useState<Date | undefined>(new Date());
   const [returnDate, setReturnDate] = useState<Date | undefined>(addDays(new Date(), 3));
+  const [durationDays, setDurationDays] = useState(3);
   const [rentalStatus, setRentalStatus] = useState("booked");
 
   const [selectedCustomer, setSelectedCustomer] = useState<string>("");
@@ -164,6 +165,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
   const [customerList, setCustomerList] = useState<Array<{id: string; name: string}>>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
+  const [productSearchTerm, setProductSearchTerm] = useState('');
 
   // Cart State — multi-item support
   const [selectedProduct, setSelectedProduct] = useState<SearchProduct | null>(null);
@@ -214,8 +216,12 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
         });
       }
       setBookingDate(editRental.startDate ? new Date(editRental.startDate) : new Date());
-      setPickupDate(editRental.startDate ? new Date(editRental.startDate) : new Date());
-      setReturnDate(editRental.expectedReturnDate ? new Date(editRental.expectedReturnDate) : addDays(new Date(), 3));
+      const editPickup = editRental.startDate ? new Date(editRental.startDate) : new Date();
+      const editReturn = editRental.expectedReturnDate ? new Date(editRental.expectedReturnDate) : addDays(new Date(), 3);
+      setPickupDate(editPickup);
+      setReturnDate(editReturn);
+      const editDuration = calculateRentalDays(editPickup, editReturn);
+      setDurationDays(editDuration > 0 ? editDuration : 3);
       setAdvancePaid(editRental.paidAmount?.toString() || '');
       setSalesmanId(editRental.salesmanId || '');
       setDocumentNumber(editRental.documentNumber || '');
@@ -278,6 +284,8 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
       setBookingDate(new Date());
       setPickupDate(new Date());
       setReturnDate(addDays(new Date(), 3));
+      setDurationDays(3);
+      setProductSearchTerm('');
     }
   }, [isOpen, editRental?.id]);
 
@@ -408,9 +416,24 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
 
   if (!isOpen) return null;
 
-  const totalDays = pickupDate && returnDate 
-    ? differenceInDays(returnDate, pickupDate) 
-    : 0;
+  const totalDays = durationDays;
+
+  const handlePickupDateChange = (value: string) => {
+    const nextPickup = dateTimePickerValueToDate(value) || undefined;
+    setPickupDate(nextPickup);
+    if (nextPickup) {
+      setReturnDate(addDays(nextPickup, durationDays));
+    }
+  };
+
+  const handleReturnDateChange = (value: string) => {
+    const nextReturn = dateTimePickerValueToDate(value) || undefined;
+    setReturnDate(nextReturn);
+    if (pickupDate && nextReturn) {
+      const days = calculateRentalDays(pickupDate, nextReturn);
+      if (days > 0) setDurationDays(days);
+    }
+  };
 
   const handleCustomerSelect = (id: string) => {
       setSelectedCustomer(id);
@@ -626,6 +649,10 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
     return product;
   });
 
+  const filteredProductsForGrid = productsWithConflicts.filter((product) =>
+    matchesRentalProductSearch(product, productSearchTerm),
+  );
+
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex justify-end animate-in fade-in duration-200">
       <div className="w-full max-w-6xl bg-gray-950 h-full shadow-2xl flex flex-col border-l border-gray-800 animate-in slide-in-from-right duration-300">
@@ -829,7 +856,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                          </Label>
                          <DateTimePicker
                             value={pickupDate ? dateToDateTimePickerValue(pickupDate) : ''}
-                            onChange={(v) => setPickupDate(dateTimePickerValueToDate(v) || undefined)}
+                            onChange={handlePickupDateChange}
                             placeholder="Pick date & time"
                           />
                       </div>
@@ -847,7 +874,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                          <div className={cn(hasConflict && 'rounded-lg ring-1 ring-red-500')}>
                             <DateTimePicker
                               value={returnDate ? dateToDateTimePickerValue(returnDate) : ''}
-                              onChange={(v) => setReturnDate(dateTimePickerValueToDate(v) || undefined)}
+                              onChange={handleReturnDateChange}
                               placeholder="Pick date & time"
                             />
                           </div>
@@ -884,6 +911,8 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                         <Label className="text-xs text-gray-500 uppercase">Product Search</Label>
                         <RentalProductSearch
                           products={productsWithConflicts}
+                          searchTerm={productSearchTerm}
+                          onSearchTermChange={setProductSearchTerm}
                           onSelect={async (p) => {
                             // Check if product has variations
                             const fullProd = products.find(pp => String(pp.id) === String(p.id));
@@ -916,7 +945,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
              <div className="flex-1 overflow-hidden">
               <ScrollArea className="h-full p-4 bg-gray-950">
                    <div className="grid grid-cols-1 gap-3">
-                       {productsWithConflicts.map((product) => {
+                       {filteredProductsForGrid.map((product) => {
                            const isUnavailable = product.status === 'unavailable';
                            const isSelected = selectedProduct?.id === product.id;
                            const isConflict = hasConflict && product.id === selectedProduct?.id; // Only show conflict for selected

@@ -1,6 +1,11 @@
 import { getCurrentLocalTimestamp, localNowDateString, formatLocalDateTimeYYYYMMDDHHmm } from '@/app/utils/localDate';
+import {
+  buildCustomerSalePaymentAutoNotes,
+  composeCustomerPaymentNotesForRpc,
+} from '@/app/utils/saleNotesComposition';
 import { DateTimePicker } from '@/app/components/ui/DateTimePicker';
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Wallet, Building2, CreditCard, AlertCircle, Check, ChevronDown, Upload, FileText, Calendar, Clock, Trash2, History, Banknote } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
@@ -28,6 +33,10 @@ import {
   getPaymentLiquidityPostingSide,
 } from '@/app/lib/accountPostingInOutLabel';
 import { AccountPickerFieldLabel } from '@/app/components/accounting/AccountPickerFieldLabel';
+import {
+  paymentEventTimestampFromPicker,
+  paymentPickerValueFromRow,
+} from '@/app/utils/transactionEventDateTime';
 
 // ============================================
 // 🎯 TYPES
@@ -59,6 +68,8 @@ export interface PaymentDialogProps {
   rentalPaymentKind?: 'advance' | 'remaining' | 'penalty';
   /** Pre-fill notes when dialog opens (e.g. rental advance explanation) */
   defaultPaymentNotes?: string;
+  /** Customer bill book / REF # — included in auto payment description. */
+  customerBillRef?: string;
   /** When context=worker and paying for specific stage (Pay Now), pass stageId so ledger uses markStageLedgerPaid */
   workerStageId?: string;
   onSuccess?: (paymentRef?: string, amountPaid?: number) => void;
@@ -77,6 +88,8 @@ export interface PaymentDialogProps {
     referenceNumber?: string;
     notes?: string;
     attachments?: any; // saved: { url, name }[] or url string
+    /** payments.created_at — used with payment_date for time in picker / roznamcha */
+    createdAt?: string | null;
     /** When id is `alloc:<uuid>`, parent payments.id (set by payment history normalizers) */
     parentPaymentId?: string;
   };
@@ -87,6 +100,7 @@ function buildAutoPaymentContextNotes(args: {
   context: PaymentContextType;
   entityName: string;
   referenceNo?: string;
+  customerBillRef?: string;
   workerStageId?: string;
   rentalPaymentKind?: 'advance' | 'remaining' | 'penalty';
   linkedJournalEntryNo?: string;
@@ -102,8 +116,12 @@ function buildAutoPaymentContextNotes(args: {
     return `Worker payment to ${party}.${refPart}${stagePart}${jePart}`.replace(/\s{2,}/g, ' ').trim();
   }
   if (args.context === 'customer') {
-    const refPart = ref ? ` Invoice/ref: ${ref}.` : '';
-    return `Customer receipt from ${party}.${refPart}${jePart}`.replace(/\s{2,}/g, ' ').trim();
+    const auto = buildCustomerSalePaymentAutoNotes({
+      partyName: party,
+      invoiceRef: ref,
+      customerBillRef: args.customerBillRef,
+    });
+    return jePart ? `${auto}${jePart}`.replace(/\s{2,}/g, ' ').trim() : auto;
   }
   if (args.context === 'supplier') {
     const refPart = ref ? ` Bill/ref: ${ref}.` : '';
@@ -152,6 +170,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
   referenceId, // CRITICAL FIX: UUID for journal entry reference_id
   rentalPaymentKind = 'remaining',
   defaultPaymentNotes = '',
+  customerBillRef = '',
   workerStageId,
   onSuccess,
   initialAttachmentFiles,
@@ -201,41 +220,39 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
       const justOpened = !prevOpenRef.current;
       prevOpenRef.current = true;
       if (editMode && paymentToEdit) {
-        setAmount(paymentToEdit.amount);
-        setPaymentMethod((paymentToEdit.method.charAt(0).toUpperCase() + paymentToEdit.method.slice(1)) as PaymentMethod || 'Cash');
-        setSelectedAccount(String(paymentToEdit.accountId || '').trim());
-        setNotes(paymentToEdit.notes || '');
-        let raw: any = paymentToEdit.attachments;
-        if (typeof raw === 'string' && raw.trim()) {
-          const trimmed = raw.trim();
-          if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
-            try {
-              raw = JSON.parse(raw);
-            } catch {
-              raw = null;
+        if (justOpened) {
+          setAmount(paymentToEdit.amount);
+          setPaymentMethod((paymentToEdit.method.charAt(0).toUpperCase() + paymentToEdit.method.slice(1)) as PaymentMethod || 'Cash');
+          setSelectedAccount(String(paymentToEdit.accountId || '').trim());
+          setNotes(paymentToEdit.notes || '');
+          let raw: any = paymentToEdit.attachments;
+          if (typeof raw === 'string' && raw.trim()) {
+            const trimmed = raw.trim();
+            if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+              try {
+                raw = JSON.parse(raw);
+              } catch {
+                raw = null;
+              }
             }
           }
+          const list: { url: string; name: string }[] = [];
+          if (Array.isArray(raw)) {
+            raw.forEach((a: any) => {
+              const url = typeof a === 'string' ? a : (a?.url || a?.fileUrl || a?.href);
+              const name = (typeof a === 'object' && a?.name) ? a.name : (typeof a === 'object' && (a?.fileName || a?.file_name)) ? (a.fileName || a.file_name) : 'Attachment';
+              if (url) list.push({ url, name });
+            });
+          } else if (typeof raw === 'object' && raw && !Array.isArray(raw) && (raw.url || raw.fileUrl)) {
+            list.push({ url: raw.url || raw.fileUrl || '', name: raw.name || raw.fileName || 'Attachment' });
+          } else if (typeof raw === 'string' && raw) {
+            list.push({ url: raw, name: 'Attachment' });
+          }
+          setExistingAttachments(list);
+          setPaymentDateTime(
+            paymentPickerValueFromRow(paymentToEdit.date, paymentToEdit.createdAt),
+          );
         }
-        const list: { url: string; name: string }[] = [];
-        if (Array.isArray(raw)) {
-          raw.forEach((a: any) => {
-            const url = typeof a === 'string' ? a : (a?.url || a?.fileUrl || a?.href);
-            const name = (typeof a === 'object' && a?.name) ? a.name : (typeof a === 'object' && (a?.fileName || a?.file_name)) ? (a.fileName || a.file_name) : 'Attachment';
-            if (url) list.push({ url, name });
-          });
-        } else if (typeof raw === 'object' && raw && !Array.isArray(raw) && (raw.url || raw.fileUrl)) {
-          list.push({ url: raw.url || raw.fileUrl || '', name: raw.name || raw.fileName || 'Attachment' });
-        } else if (typeof raw === 'string' && raw) {
-          list.push({ url: raw, name: 'Attachment' });
-        }
-        setExistingAttachments(list);
-        const paymentDate = new Date(paymentToEdit.date);
-        const year = paymentDate.getFullYear();
-        const month = String(paymentDate.getMonth() + 1).padStart(2, '0');
-        const day = String(paymentDate.getDate()).padStart(2, '0');
-        const hours = String(paymentDate.getHours() || 0).padStart(2, '0');
-        const minutes = String(paymentDate.getMinutes() || 0).padStart(2, '0');
-        setPaymentDateTime(`${year}-${month}-${day}T${hours}:${minutes}`);
       } else {
         // Pay Now (workerStageId): do not pre-fill job amount so we never record job amount as payment by mistake
         setAmount(workerStageId ? 0 : Math.max(0, effectiveOutstanding));
@@ -246,6 +263,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
             context,
             entityName,
             referenceNo,
+            customerBillRef,
             workerStageId,
             rentalPaymentKind,
             linkedJournalEntryNo,
@@ -276,6 +294,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
     effectiveOutstanding,
     workerStageId,
     defaultPaymentNotes,
+    customerBillRef,
     context,
     entityName,
     referenceNo,
@@ -586,6 +605,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
       // EDIT MODE: Update existing payment (keep existing attachments + upload new ones)
       if (editMode && paymentToEdit) {
         const paymentDate = paymentDateTime.split('T')[0];
+        const eventTimestamp = paymentEventTimestampFromPicker(paymentDateTime);
         let mergedAttachments: { url: string; name: string }[] = [...existingAttachments];
         if (attachments.length > 0 && companyId) {
           let anyUploadFailed = false;
@@ -633,6 +653,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
           paymentMethod,
           accountId: selectedAccount,
           paymentDate,
+          eventTimestamp,
           referenceNumber: (paymentToEdit as any).referenceNumber ?? undefined,
           notes: notes || undefined,
           attachments: mergedAttachments.length ? mergedAttachments : undefined,
@@ -675,6 +696,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
           await rentalService.updateRentalPayment(referenceId, paymentIdForUpdate, companyId, {
             amount,
             paymentDate,
+            eventTimestamp,
             method: paymentMethod,
             reference: (paymentToEdit as any).referenceNumber ?? notes,
             notes: notes || undefined,
@@ -840,6 +862,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
             payment_method: normalizedPm,
             payment_account_id: selectedAccount || null,
             payment_date: paymentDate,
+            created_at: eventTimestamp,
             notes: notes || null,
             updated_at: getCurrentLocalTimestamp(),
           };
@@ -1109,6 +1132,14 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
             return;
           }
           try {
+            const customerPaymentNotes = composeCustomerPaymentNotesForRpc({
+              partyName: entityName,
+              invoiceRef: referenceNo,
+              customerBillRef,
+              amount,
+              paymentMethod,
+              combinedNotes: notes,
+            });
             let attachmentPayload: { url: string; name: string }[] = [];
             const storagePrefixRef = referenceId || entityId || 'on-account';
             if (attachments.length > 0 && companyId) {
@@ -1179,7 +1210,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                 companyId,
                 branchForPayment,
                 paymentDateTime.split('T')[0],
-                { notes: notes.trim() || undefined, attachments: attachmentPayload.length ? attachmentPayload : undefined }
+                { notes: customerPaymentNotes || undefined, attachments: attachmentPayload.length ? attachmentPayload : undefined }
               );
               if (!onAccountData?.id) {
                 toast.error('Payment saved but missing id.');
@@ -1198,7 +1229,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                 effectiveBranchId || branchId || '',
                 paymentDateTime.split('T')[0],
                 undefined,
-                { notes: notes.trim() || undefined, attachments: attachmentPayload.length ? attachmentPayload : undefined }
+                { notes: customerPaymentNotes || undefined, attachments: attachmentPayload.length ? attachmentPayload : undefined }
               );
               success = await accounting.recordSalePayment({
                 saleId: referenceId,
@@ -1393,30 +1424,29 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
 
   if (!isOpen) return null;
 
-  return (
-    <>
-      {/* Backdrop — match AddEntryV2 (click-outside + aria) */}
+  const overlay = (
+    <div
+      data-unified-payment-dialog
+      className="fixed inset-0 z-[130] overflow-y-auto animate-in fade-in duration-200"
+    >
       <div
-        className="fixed inset-0 bg-black/70 backdrop-blur-md z-[130] animate-in fade-in duration-200"
-        onClick={() => {
+        className="absolute inset-0 bg-black/70 backdrop-blur-md"
+        aria-hidden="true"
+        onMouseDown={() => {
           if (!isProcessing) onClose();
         }}
-        aria-hidden="true"
       />
-
-      {/* Dialog shell — z above ui/dialog (z-110) so this can open on top of ReturnModal etc. */}
-      <div className="fixed inset-0 z-[130] flex items-center justify-center p-4 pointer-events-none overflow-y-auto">
+      <div className="relative z-10 flex min-h-full items-center justify-center p-4 pointer-events-none">
         <div
           className="bg-gray-900 border border-gray-700/80 rounded-2xl shadow-2xl shadow-black/40 w-full max-w-4xl pointer-events-auto animate-in zoom-in-95 duration-200 my-6 max-h-[92vh] overflow-y-auto ring-1 ring-white/5"
-          onClick={(e) => e.stopPropagation()}
           role="dialog"
           aria-modal="true"
           aria-busy={isProcessing}
         >
-          <fieldset
-            disabled={isProcessing}
-            className="min-w-0 border-0 p-0 m-0 block w-full rounded-2xl disabled:opacity-90 disabled:pointer-events-none"
-          >
+        <fieldset
+          disabled={isProcessing}
+          className="min-w-0 border-0 p-0 m-0 block w-full rounded-2xl disabled:opacity-90"
+        >
           {/* Header */}
           <div className="flex items-center justify-between p-5 border-b border-gray-800 bg-gradient-to-r from-gray-900 via-gray-900 to-gray-800">
             <div className="flex items-center gap-3">
@@ -1901,6 +1931,8 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
           </fieldset>
         </div>
       </div>
-    </>
+    </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(overlay, document.body) : null;
 };

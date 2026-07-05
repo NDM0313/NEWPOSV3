@@ -2026,6 +2026,7 @@ export const PurchasesPage = () => {
                   method: purchasePaymentToEdit.method,
                   accountId: purchasePaymentToEdit.accountId,
                   date: purchasePaymentToEdit.date,
+                  createdAt: purchasePaymentToEdit.createdAt,
                   referenceNumber: purchasePaymentToEdit.referenceNo,
                   notes: purchasePaymentToEdit.notes,
                   attachments: purchasePaymentToEdit.attachments,

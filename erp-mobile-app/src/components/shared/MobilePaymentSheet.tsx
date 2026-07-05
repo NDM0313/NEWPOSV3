@@ -29,6 +29,10 @@ import { PdfPreviewModal } from './PdfPreviewModal';
 import { ReceiptPreviewPdf } from './ReceiptPreviewPdf';
 import { usePdfPreview } from './usePdfPreview';
 import { usePermissions } from '../../context/PermissionContext';
+import {
+  buildCustomerSalePaymentAutoNotes,
+  composeSalePaymentNotes,
+} from '../../utils/saleNotesComposition';
 import { formatAccountBalanceLineIfAllowed } from '../../utils/balancePrivacy';
 import {
   localNowDateTimeString,
@@ -124,6 +128,10 @@ export interface MobilePaymentSheetProps {
   profileId?: string | null;
   /** When paying an existing document, its branch_id takes priority. */
   documentBranchId?: string | null;
+  /** Customer bill book / REF # for sale receive-payment auto description. */
+  customerBillRef?: string | null;
+  /** Optional user add-on prefill for description field. */
+  defaultPaymentNotes?: string | null;
 
   onClose: () => void;
   onSuccess: () => void;
@@ -249,6 +257,8 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
     userRole,
     profileId,
     documentBranchId,
+    customerBillRef,
+    defaultPaymentNotes,
     onClose,
     onSuccess,
     onSubmit,
@@ -267,7 +277,7 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
   const { canViewBalances } = usePermissions();
   const [paymentDateTime, setPaymentDateTime] = useState(() => localNowDateTimeString());
   const [branchPickerModalOpen, setBranchPickerModalOpen] = useState(false);
-  const [notes, setNotes] = useState('');
+  const [notes, setNotes] = useState(() => String(defaultPaymentNotes ?? '').trim());
   const [reference, setReference] = useState('');
   const [showOptional, setShowOptional] = useState(false);
   const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
@@ -384,6 +394,17 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
   }, [paymentMethod]);
 
   const selectedAccount = accounts.find((a) => a.id === accountId);
+  const salePaymentAutoDescription = useMemo(() => {
+    if (mode !== 'receive') return '';
+    return buildCustomerSalePaymentAutoNotes({
+      partyName: partyName ?? 'Customer',
+      invoiceRef: referenceNo,
+      customerBillRef,
+      amount,
+      paymentMethod: METHOD_LABELS[paymentMethod],
+    });
+  }, [mode, partyName, referenceNo, customerBillRef, amount, paymentMethod]);
+
   const dueDisplay = outstandingAmount ?? 0;
   const amountExceedsBalance =
     canViewBalances &&
@@ -415,6 +436,22 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
     const { paymentDate, paymentAt } = parsePaymentDateTimeLocal(paymentDateTime);
     await runSave('Processing payment...', async () => {
       try {
+      const composedNotes =
+        mode === 'receive'
+          ? composeSalePaymentNotes({
+              autoNotes: buildCustomerSalePaymentAutoNotes({
+                partyName: partyName ?? 'Customer',
+                invoiceRef: referenceNo,
+                customerBillRef,
+                amount,
+                paymentMethod: METHOD_LABELS[paymentMethod],
+              }),
+              userNotes: notes.trim(),
+              bankTraceId: reference.trim() || null,
+            })
+          : reference.trim()
+            ? composeSalePaymentNotes({ autoNotes: notes.trim(), bankTraceId: reference.trim() })
+            : notes.trim();
       const result = await onSubmit({
         amount,
         method: paymentMethod,
@@ -423,7 +460,7 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
         paymentDate,
         paymentAt,
         reference: reference.trim(),
-        notes: notes.trim(),
+        notes: composedNotes,
         attachments: attachmentFiles,
         companyId,
         branchId: resolvedBranchId,
@@ -778,6 +815,15 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
           </button>
           {showOptional && (
             <div className="px-4 pb-4 space-y-4 border-t border-[#374151] pt-4">
+              {mode === 'receive' && salePaymentAutoDescription && (
+                <div>
+                  <label className="block text-xs font-medium text-[#9CA3AF] mb-1">Auto description</label>
+                  <p className="text-sm text-[#9CA3AF] leading-relaxed whitespace-pre-wrap break-words">
+                    {salePaymentAutoDescription}
+                  </p>
+                  <p className="text-[10px] text-[#6B7280] mt-1">Saved with your add-on and bank trace below.</p>
+                </div>
+              )}
               <div>
                 <label className="block text-xs font-medium text-[#9CA3AF] mb-1">Bank Trace ID (Optional)</label>
                 <input

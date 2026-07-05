@@ -181,15 +181,9 @@ export const ReturnModal = ({ open, onOpenChange, rental, documentInfo, onConfir
 
   return (
     <>
-      <Dialog open={open} onOpenChange={handleOpenChange}>
+      <Dialog open={open} onOpenChange={handleOpenChange} modal={!unifiedPaymentOpen}>
         <DialogContent
           className="bg-gray-900 border-gray-700 max-w-[950px] p-0 overflow-hidden sm:max-w-[min(calc(100vw-2rem),950px)]"
-          onPointerDownOutside={(e) => {
-            if (unifiedPaymentOpen || blockParentDismissRef.current) e.preventDefault();
-          }}
-          onInteractOutside={(e) => {
-            if (unifiedPaymentOpen || blockParentDismissRef.current) e.preventDefault();
-          }}
           onEscapeKeyDown={(e) => {
             if (unifiedPaymentOpen) {
               e.preventDefault();

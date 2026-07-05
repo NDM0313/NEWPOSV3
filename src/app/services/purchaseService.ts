@@ -1428,6 +1428,8 @@ export const purchaseService = {
       paymentMethod?: string;
       accountId?: string;
       paymentDate?: string;
+      /** When set, updates payments.created_at (business event time for roznamcha / picker). */
+      eventTimestamp?: string;
       referenceNumber?: string;
       notes?: string;
       attachments?: any;
@@ -1493,6 +1495,7 @@ export const purchaseService = {
       if (normalizedPaymentMethod) updateData.payment_method = normalizedPaymentMethod;
       if (updates.accountId) updateData.payment_account_id = updates.accountId;
       if (updates.paymentDate) updateData.payment_date = updates.paymentDate;
+      if (updates.eventTimestamp) updateData.created_at = updates.eventTimestamp;
       if (updates.referenceNumber !== undefined) updateData.reference_number = updates.referenceNumber;
       if (updates.notes !== undefined) updateData.notes = updates.notes;
       if (updates.attachments !== undefined) updateData.attachments = updates.attachments;

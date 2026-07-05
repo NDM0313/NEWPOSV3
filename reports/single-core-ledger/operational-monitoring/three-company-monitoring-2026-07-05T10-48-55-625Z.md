@@ -1,7 +1,7 @@
 # Three-company operational monitoring
 
-**Generated:** 2026-07-05T11:26:28.502Z
-**Overall:** PASS
+**Generated:** 2026-07-05T10:59:32.597Z
+**Overall:** FAIL
 **Credential policy:** per-company preferred; generic fallback=true
 
 ## Read-only flag guard
@@ -20,11 +20,11 @@
 
 ### din-bridal
 
-- **Result:** PASS
+- **Result:** FAIL
 - **Login email:** ndm313@yahoo.com
 - **Email source:** built-in-default
 - **Password source:** per-company
-- **Checks:** 18/19 PASS
+- **Checks:** 15/19 PASS
 
 ### din-couture
 
@@ -35,4 +35,4 @@
 - **Checks:** 18/19 PASS
 
 
-**JSON:** `reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-05T11-15-38-400Z.json`
+**JSON:** `reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-05T10-48-55-625Z.json`

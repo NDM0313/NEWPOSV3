@@ -840,6 +840,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
               method: rowMethodToPaymentMethod(full.method),
               accountId: full.accountId,
               date: String(full.date || '').slice(0, 10),
+              createdAt: full.createdAt,
               referenceNumber: full.referenceNo,
               notes: full.notes,
             },
@@ -1497,11 +1498,39 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     ? transaction.sale[0] 
     : transaction?.sale;
 
+  const nestedPaymentEditorOpen =
+    manualReceiptEditorOpen ||
+    supplierManualEditorOpen ||
+    rentalPaymentEditorOpen ||
+    genericPaymentEditor != null;
+
+  const dismissNestedPaymentEditor = () => {
+    if (genericPaymentEditor) setGenericPaymentEditor(null);
+    else if (manualReceiptEditorOpen) setManualReceiptEditorOpen(false);
+    else if (supplierManualEditorOpen) setSupplierManualEditorOpen(false);
+    else if (rentalPaymentEditorOpen) setRentalPaymentEditorOpen(false);
+  };
+
   return (
     <>
     {/* Keep parent open while nested editors (e.g. journal quick edit) are open — closing parent here unmounted the child Dialog and caused flicker. */}
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="!w-[800px] !max-w-[800px] sm:!max-w-[800px] max-h-[95vh] overflow-auto bg-gray-900 border-gray-800">
+    <Dialog
+      open={isOpen}
+      modal={!nestedPaymentEditorOpen}
+      onOpenChange={(open) => {
+        if (!open && nestedPaymentEditorOpen) return;
+        onClose();
+      }}
+    >
+      <DialogContent
+        className="!w-[800px] !max-w-[800px] sm:!max-w-[800px] max-h-[95vh] overflow-auto bg-gray-900 border-gray-800"
+        onEscapeKeyDown={(e) => {
+          if (nestedPaymentEditorOpen) {
+            e.preventDefault();
+            dismissNestedPaymentEditor();
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle className="text-white flex items-center justify-between">
             <div>
@@ -2433,6 +2462,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
             method: rowMethodToPaymentMethod((payment as any).payment_method),
             accountId: (payment as any).payment_account_id ?? undefined,
             date: String((payment as any).payment_date || '').slice(0, 10),
+            createdAt: (payment as any).created_at ?? (payment as any).createdAt,
             referenceNumber: (payment as any).reference_number,
             notes: (payment as any).notes ?? undefined,
             attachments: (payment as any).attachments,
@@ -2469,6 +2499,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
             method: rowMethodToPaymentMethod((payment as any).payment_method),
             accountId: (payment as any).payment_account_id ?? undefined,
             date: String((payment as any).payment_date || '').slice(0, 10),
+            createdAt: (payment as any).created_at ?? (payment as any).createdAt,
             referenceNumber: (payment as any).reference_number,
             notes: (payment as any).notes ?? undefined,
             attachments: (payment as any).attachments,
@@ -2510,6 +2541,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
           method: rowMethodToPaymentMethod((payment as any).payment_method),
           accountId: (payment as any).payment_account_id ?? undefined,
           date: String((payment as any).payment_date || '').slice(0, 10),
+          createdAt: (payment as any).created_at ?? (payment as any).createdAt,
           referenceNumber: (payment as any).reference_number,
           notes: (payment as any).notes ?? undefined,
           attachments: (payment as any).attachments,

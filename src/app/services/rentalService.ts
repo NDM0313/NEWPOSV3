@@ -1413,6 +1413,8 @@ export const rentalService = {
     updates: {
       amount: number;
       paymentDate: string;
+      /** When set, updates rental_payments.created_at (business event time). */
+      eventTimestamp?: string;
       method: string;
       reference?: string;
       notes?: string;
@@ -1435,6 +1437,7 @@ export const rentalService = {
       method: normalizePaymentMethod(updates.method),
       reference: (updates.reference ?? updates.notes ?? '').trim() || null,
     };
+    if (updates.eventTimestamp) patch.created_at = updates.eventTimestamp;
     if (updates.accountId) patch.payment_account_id = updates.accountId;
 
     const { error: upErr } = await supabase.from('rental_payments').update(patch).eq('id', paymentId);

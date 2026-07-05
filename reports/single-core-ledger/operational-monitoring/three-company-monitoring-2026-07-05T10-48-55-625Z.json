@@ -1,8 +1,8 @@
 {
   "run": "THREE_COMPANY_OPERATIONAL_MONITORING",
-  "generated_at": "2026-07-05T11:26:28.502Z",
-  "timestamp_slug": "2026-07-05T11-15-38-400Z",
-  "overall": "PASS",
+  "generated_at": "2026-07-05T10:59:32.597Z",
+  "timestamp_slug": "2026-07-05T10-48-55-625Z",
+  "overall": "FAIL",
   "credential_policy": "per-company-preferred",
   "generic_fallback_allowed": true,
   "flag_guard": {
@@ -136,8 +136,8 @@
       "email": "ndm313@yahoo.com",
       "emailSource": "built-in-default",
       "passwordSource": "per-company",
-      "exitCode": 0,
-      "pass": true,
+      "exitCode": 1,
+      "pass": false,
       "checks": [
         {
           "result": "PASS",
@@ -165,7 +165,7 @@
           "notes": "actual=legacy_shadow"
         },
         {
-          "result": "PASS",
+          "result": "FAIL",
           "check": "Roznamcha Cash In golden",
           "notes": "actual=2507350"
         },
@@ -175,7 +175,7 @@
           "notes": "actual=1164607"
         },
         {
-          "result": "PASS",
+          "result": "FAIL",
           "check": "Roznamcha Closing golden",
           "notes": "actual=1342743"
         },
@@ -200,7 +200,7 @@
           "notes": "debit=23688377 credit=23688377"
         },
         {
-          "result": "PASS",
+          "result": "FAIL",
           "check": "Trial Balance golden total",
           "notes": "debit=23688377"
         },
@@ -235,7 +235,7 @@
           "notes": "none"
         }
       ],
-      "phaseResult": "PASS"
+      "phaseResult": "FAIL"
     },
     {
       "profileId": "din-couture",

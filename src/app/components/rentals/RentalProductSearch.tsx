@@ -1,10 +1,8 @@
 import React, { useState } from 'react';
 import { 
   Search, 
-  Tag, 
   CalendarOff,
   Box,
-  BadgeAlert
 } from 'lucide-react';
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "../ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
@@ -29,20 +27,37 @@ export interface SearchProduct {
   securityDeposit?: number | null;
 }
 
+export function matchesRentalProductSearch(product: SearchProduct, term: string): boolean {
+  const q = term.trim().toLowerCase();
+  if (!q) return true;
+  return (
+    product.name.toLowerCase().includes(q) ||
+    product.sku.toLowerCase().includes(q)
+  );
+}
+
 interface RentalProductSearchProps {
   onSelect: (product: SearchProduct) => void;
   products: SearchProduct[];
+  searchTerm: string;
+  onSearchTermChange: (value: string) => void;
 }
 
-export const RentalProductSearch = ({ onSelect, products }: RentalProductSearchProps) => {
+export const RentalProductSearch = ({
+  onSelect,
+  products,
+  searchTerm,
+  onSearchTermChange,
+}: RentalProductSearchProps) => {
   const [open, setOpen] = useState(false);
-  const [inputValue, setInputValue] = useState("");
+
+  const filteredProducts = products.filter((p) => matchesRentalProductSearch(p, searchTerm));
 
   const handleSelect = (product: SearchProduct) => {
     if (product.status === 'unavailable') return;
     onSelect(product);
     setOpen(false);
-    setInputValue(product.name);
+    onSearchTermChange(product.name);
   };
 
   return (
@@ -51,8 +66,8 @@ export const RentalProductSearch = ({ onSelect, products }: RentalProductSearchP
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={14} />
           <Input 
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
+            value={searchTerm}
+            onChange={(e) => onSearchTermChange(e.target.value)}
             placeholder="Search Bridal Dress (Name/SKU)..." 
             className="bg-gray-900 border-gray-700 pl-9 text-white focus:border-pink-500 h-9 w-full"
             onClick={() => setOpen(true)}
@@ -64,12 +79,12 @@ export const RentalProductSearch = ({ onSelect, products }: RentalProductSearchP
         align="start"
         sideOffset={5}
       >
-        <Command className="bg-gray-900 text-white border-none rounded-lg overflow-hidden">
+        <Command shouldFilter={false} className="bg-gray-900 text-white border-none rounded-lg overflow-hidden">
           <CommandInput 
             placeholder="Type to search..." 
-            className="h-0 border-0 p-0 opacity-0 focus:ring-0" // Hidden input to trap focus but use external trigger
-            value={inputValue}
-            onValueChange={setInputValue}
+            className="h-0 border-0 p-0 opacity-0 focus:ring-0"
+            value={searchTerm}
+            onValueChange={onSearchTermChange}
           /> 
           <CommandList className="max-h-[300px] overflow-y-auto custom-scrollbar p-2">
             <CommandEmpty className="py-4 text-center text-sm text-gray-500">
@@ -77,13 +92,13 @@ export const RentalProductSearch = ({ onSelect, products }: RentalProductSearchP
             </CommandEmpty>
             
             <CommandGroup heading="Search Results">
-              {products.filter(p => p.name.toLowerCase().includes(inputValue.toLowerCase()) || p.sku.toLowerCase().includes(inputValue.toLowerCase())).map((product) => {
+              {filteredProducts.map((product) => {
                 const isUnavailable = product.status === 'unavailable';
                 
                 return (
                   <CommandItem
                     key={product.id}
-                    value={product.name}
+                    value={`${product.name} ${product.sku}`}
                     onSelect={() => handleSelect(product)}
                     className={cn(
                       "flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-colors mb-1",

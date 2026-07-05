@@ -15,6 +15,11 @@ import {
   ATTACHMENT_UPLOAD_VERIFY_FAIL_MSG,
   uploadStorageAttachmentFile,
 } from '../utils/storageAttachmentPipeline';
+import {
+  buildCustomerSalePaymentAutoNotes,
+  composeSalePaymentNotes,
+} from '../utils/saleNotesComposition';
+import { readSaleBillRef } from '../utils/saleBillRef';
 
 export interface CreateSaleInput {
   companyId: string;
@@ -70,6 +75,8 @@ export interface CreateSaleInput {
   studioDesignName?: string;
   /** Payment date when paid > 0 (YYYY-MM-DD). */
   paymentDate?: string;
+  /** Composed payment row notes when paid > 0 (includes Bill/REF auto description). */
+  paymentNotes?: string | null;
   /** Point of sale — PS- invoice sequence (web parity). */
   isPOS?: boolean;
   /** Regular sale lifecycle (default order). Studio always order. POS always final. */
@@ -374,6 +381,7 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
     deadline,
     studioDesignName,
     paymentDate,
+    paymentNotes,
     isPOS,
     targetStatus: targetStatusInput,
     documentType,
@@ -764,6 +772,18 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
       paymentDate != null && String(paymentDate).trim() !== ''
         ? String(paymentDate).trim().slice(0, 10)
         : localNowDateString();
+    const composedPaymentNotes =
+      paymentNotes?.trim() ||
+      composeSalePaymentNotes({
+        autoNotes: buildCustomerSalePaymentAutoNotes({
+          partyName: customerName,
+          invoiceRef: docNo,
+          customerBillRef: billRef,
+          amount: paymentToRecord,
+          paymentMethod: paymentMethod || 'Cash',
+        }),
+        userNotes: notes,
+      });
     const { data: payData, error: payErr } = await recordSalePayment({
       companyId,
       branchId: effectiveBranchId,
@@ -772,6 +792,7 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
       paymentMethod: paymentMethod || 'Cash',
       paymentAccountId,
       paymentDate: payDate,
+      notes: composedPaymentNotes || undefined,
       userId,
     });
     if (payErr) {
@@ -1239,7 +1260,7 @@ export async function recordSalePayment(params: {
   const bankTraceId = referenceNumber?.trim() ?? '';
   const baseNotes = notes?.trim() ?? '';
   const composedNotes = bankTraceId
-    ? `${baseNotes ? `${baseNotes} | ` : ''}Bank Trace ID: ${bankTraceId}`
+    ? composeSalePaymentNotes({ autoNotes: baseNotes, bankTraceId })
     : baseNotes;
   const dateVal = paymentDate || localNowDateString();
   const { data: authData } = await supabase.auth.getUser();
@@ -1312,14 +1333,15 @@ export async function recordCustomerPayment(params: {
         .eq('id', referenceId);
     }
   }
+  const { data: saleMetaRow } = await supabase
+    .from('sales')
+    .select('branch_id, customer_name, invoice_no, customer_bill_ref, notes, reference, ref_no, bill_ref')
+    .eq('id', referenceId)
+    .maybeSingle();
+  const saleMeta = (saleMetaRow ?? {}) as Record<string, unknown>;
   let branchForResolve = branchId;
   if (!isRealBranchUuid(branchForResolve)) {
-    const { data: saleRow } = await supabase
-      .from('sales')
-      .select('branch_id')
-      .eq('id', referenceId)
-      .maybeSingle();
-    const saleBranch = (saleRow as { branch_id?: string | null } | null)?.branch_id;
+    const saleBranch = saleMeta.branch_id as string | null | undefined;
     if (isRealBranchUuid(saleBranch)) {
       branchForResolve = saleBranch;
     }
@@ -1332,10 +1354,22 @@ export async function recordCustomerPayment(params: {
   }
   const dateVal = paymentDate || localNowDateString();
   const refTrim = referenceNumber != null ? String(referenceNumber).trim() : '';
-  const baseNotes = notes?.trim() ?? '';
-  const composedNotes = refTrim
-    ? `${baseNotes ? `${baseNotes} | ` : ''}Bank Trace ID: ${refTrim}`
-    : baseNotes;
+  const userNotes = notes?.trim() ?? '';
+  const customerBillRef = readSaleBillRef(saleMeta);
+  const partyName = String(saleMeta.customer_name ?? '').trim() || 'Customer';
+  const invoiceRef = String(saleMeta.invoice_no ?? '').trim() || undefined;
+  const autoNotes = buildCustomerSalePaymentAutoNotes({
+    partyName,
+    invoiceRef,
+    customerBillRef,
+    amount,
+    paymentMethod,
+  });
+  const composedNotes = composeSalePaymentNotes({
+    autoNotes,
+    userNotes,
+    bankTraceId: refTrim || null,
+  });
   const normalized = String(paymentMethod || 'cash').toLowerCase();
   const methodMap: Record<string, 'cash' | 'bank' | 'card' | 'other'> = {
     cash: 'cash',

@@ -68,7 +68,9 @@ if ($LASTEXITCODE -ne 0) { throw 'test:unit FAILED' }
 $unitMatch = [regex]::Match(($unitOut -join "`n"), 'pass (\d+)')
 $unitCount = if ($unitMatch.Success) { "$($unitMatch.Groups[1].Value)/$($unitMatch.Groups[1].Value)_PASS" } else { 'PASS' }
 
-npm run build 2>&1 | ForEach-Object { Write-Host $_ }; if ($LASTEXITCODE -ne 0) { throw 'build FAILED' }
+npm run build 2>&1 | ForEach-Object { Write-Host $_ }
+$buildExit = $LASTEXITCODE
+if ($buildExit -ne 0) { throw 'build FAILED' }
 
 $runEnd = Get-Date -Format 'yyyy-MM-dd HH:mm:ss zzz'
 $head = (git rev-parse HEAD).Trim()

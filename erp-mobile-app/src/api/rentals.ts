@@ -399,10 +399,6 @@ export interface CreateBookingInput {
   /** Optional salesman + commission (mirrors sales commission). Persisted on rentals.salesman_id / commission_*. */
   salesmanId?: string | null;
   commissionPercent?: number | null;
-  /** Optional security document (NSC) captured at booking. Mirrors web ERP. */
-  securityDocumentType?: string | null;
-  securityDocumentNumber?: string | null;
-  securityDocumentImageUrl?: string | null;
   /** Devaluation / shop costs — same as web `rental_expenses`; not added into `rental_charges`. */
   expenses?: Array<{ description: string; amount: number }>;
   items: Array<{
@@ -441,9 +437,6 @@ export async function createBooking(input: CreateBookingInput): Promise<{ data: 
     documentNumber = null,
     salesmanId = null,
     commissionPercent = null,
-    securityDocumentType = null,
-    securityDocumentNumber = null,
-    securityDocumentImageUrl = null,
     expenses = [],
     items,
     skipAvailabilityCheck = false,
@@ -548,12 +541,6 @@ export async function createBooking(input: CreateBookingInput): Promise<{ data: 
   }
   if (normalizedExpenses.length > 0 && normalizedExpenseTotal > 0) {
     rentalPayload.rental_expenses = normalizedExpenses;
-  }
-  if (securityDocumentType) rentalPayload.security_document_type = securityDocumentType;
-  if (securityDocumentNumber) rentalPayload.security_document_number = securityDocumentNumber.trim() || null;
-  if (securityDocumentImageUrl) rentalPayload.security_document_image_url = securityDocumentImageUrl;
-  if (securityDocumentType || securityDocumentNumber || securityDocumentImageUrl) {
-    rentalPayload.security_status = 'collected';
   }
 
   const itemsJson = items.map((i) => {
@@ -1334,30 +1321,54 @@ export async function addRentalPayment(
   return { error: null };
 }
 
+export interface MarkRentalPickedUpPayload {
+  actualPickupDate: string;
+  notes?: string;
+  documentType: string;
+  documentNumber: string;
+  documentExpiry?: string;
+  documentReceived: boolean;
+  remainingPaymentConfirmed: boolean;
+  deliverOnCredit?: boolean;
+  documentFrontImage?: string;
+  documentBackImage?: string;
+  customerPhoto?: string;
+}
+
 export async function markRentalPickedUp(
   rentalId: string,
   companyId: string,
-  payload: {
-    actualPickupDate: string;
-    notes?: string;
-    documentType: string;
-    documentNumber: string;
-    /** Optional URL of uploaded security document image */
-    securityDocumentImageUrl?: string | null;
-    documentReceived: boolean;
-    remainingPaymentConfirmed: boolean;
-  },
+  payload: MarkRentalPickedUpPayload,
   userId?: string | null
 ): Promise<{ error: string | null }> {
   if (!isSupabaseConfigured) return { error: 'App not configured.' };
   const { data: rental, error: fetchErr } = await supabase
     .from('rentals')
-    .select('id, status, branch_id, pickup_date, total_amount, paid_amount, booking_no')
+    .select('id, status, branch_id, pickup_date, total_amount, paid_amount, due_amount, notes, booking_no')
     .eq('id', rentalId)
     .single();
   if (fetchErr || !rental) return { error: fetchErr?.message ?? 'Rental not found.' };
   const r = rental as Record<string, unknown>;
   if (String(r.status) !== 'booked') return { error: 'Only booked rentals can be marked as picked up.' };
+
+  const totalAmount = Number(r.total_amount) || 0;
+  const paidAmount = Number(r.paid_amount) || 0;
+  const remaining = totalAmount - paidAmount;
+  if (!payload.deliverOnCredit && (!payload.remainingPaymentConfirmed || remaining > 0.009)) {
+    return { error: 'Full payment required before delivery, or confirm remaining payment collected.' };
+  }
+
+  const bookingPickup = String(r.pickup_date || '').slice(0, 10);
+  if (payload.actualPickupDate < bookingPickup) {
+    return { error: 'Pickup date cannot be before the booking start date.' };
+  }
+
+  if (payload.documentExpiry) {
+    const exp = payload.documentExpiry.slice(0, 10);
+    if (exp < payload.actualPickupDate.slice(0, 10)) {
+      return { error: 'Document has expired. Please provide a valid document.' };
+    }
+  }
 
   const { data: items } = await supabase.from('rental_items').select('id, product_id, quantity').eq('rental_id', rentalId);
   const itemList = (items || []) as Array<{ product_id: string; quantity: number }>;
@@ -1379,12 +1390,25 @@ export async function markRentalPickedUp(
 
   const updatePayload: Record<string, unknown> = {
     status: 'picked_up',
-    notes: payload.notes ?? r.notes ?? null,
-    security_document_type: payload.documentType ?? null,
+    actual_pickup_date: payload.actualPickupDate,
+    picked_up_by: userId ?? null,
+    document_type: payload.documentType,
+    document_expiry: payload.documentExpiry || null,
+    document_received: payload.documentReceived,
+    remaining_payment_confirmed: payload.remainingPaymentConfirmed,
+    credit_flag: payload.deliverOnCredit === true,
+    notes: payload.notes?.trim() || r.notes || null,
+    security_document_type: payload.documentType,
     security_document_number: payload.documentNumber?.trim() || null,
-    security_document_image_url: payload.securityDocumentImageUrl ?? null,
     security_status: 'collected',
   };
+  if (payload.documentFrontImage) {
+    updatePayload.document_front_image = payload.documentFrontImage;
+    updatePayload.security_document_image_url = payload.documentFrontImage;
+  }
+  if (payload.documentBackImage) updatePayload.document_back_image = payload.documentBackImage;
+  if (payload.customerPhoto) updatePayload.customer_photo = payload.customerPhoto;
+
   try {
     const { error: updateErr } = await supabase.from('rentals').update(updatePayload).eq('id', rentalId);
     if (updateErr) return { error: updateErr.message };

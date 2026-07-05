@@ -2616,6 +2616,7 @@ export const SalesPage = () => {
           previousPayments={(selectedSale as any).payments || []}
           referenceNo={selectedSale.invoiceNo}
           referenceId={selectedSale.id}
+          customerBillRef={readSaleBillRef(selectedSale as Record<string, unknown>)}
           editMode={!!paymentToEdit}
           paymentToEdit={paymentToEdit ? {
             id: paymentToEdit.id,
@@ -2623,6 +2624,7 @@ export const SalesPage = () => {
             method: paymentToEdit.method,
             accountId: paymentToEdit.accountId,
             date: paymentToEdit.date,
+            createdAt: paymentToEdit.createdAt,
             referenceNumber: paymentToEdit.referenceNo,
             notes: paymentToEdit.notes,
             attachments: paymentToEdit.attachments,

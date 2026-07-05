@@ -38,6 +38,11 @@ import {
   isStockOnlyBespokeLine,
   validateInclusiveExtraChargeCap,
 } from '../../lib/saleTotals';
+import {
+  mergeCustomerBillRefIntoNotes,
+  buildCustomerSalePaymentAutoNotes,
+  composeSalePaymentNotes,
+} from '../../utils/saleNotesComposition';
 
 /** Fabric children bill at 0 — stock/WO only (web parity). */
 function normalizeStockOnlyLinePrices(products: Product[]): Product[] {
@@ -460,6 +465,7 @@ export function SalesModule({
       parentLineIndex: line.parentLineIndex,
       packingDetails: line.packingDetails,
     }));
+    const mergedNotes = mergeCustomerBillRefIntoNotes(saleData.billRef, saleData.notes);
     const salePayload = {
       companyId,
       branchId: effectiveBranchId,
@@ -479,7 +485,7 @@ export function SalesModule({
       paidAmount: result.paidAmount,
       dueAmount: result.dueAmount,
       paymentAccountId: result.accountId ?? undefined,
-      notes: saleData.saleType === 'studio' ? (saleData.productionNotes || saleData.notes || undefined) : (saleData.notes || undefined),
+      notes: saleData.saleType === 'studio' ? (saleData.productionNotes || mergedNotes || undefined) : (mergedNotes || undefined),
       billRef: saleData.billRef?.trim() || null,
       isStudio: saleData.saleType === 'studio',
       userId: effectiveUserId,
@@ -489,6 +495,19 @@ export function SalesModule({
       commissionPercent: saleData.commissionPercent ?? undefined,
       invoiceDate: saleData.saleDate || localNowDateString(),
       paymentDate: result.paymentDate || localNowDateString(),
+      ...(result.paidAmount != null && result.paidAmount > 0
+        ? {
+            paymentNotes: composeSalePaymentNotes({
+              autoNotes: buildCustomerSalePaymentAutoNotes({
+                partyName: saleData.customer?.name ?? 'Walk-in',
+                customerBillRef: saleData.billRef,
+                amount: result.paidAmount,
+                paymentMethod: result.paymentMethod,
+              }),
+              userNotes: mergedNotes,
+            }),
+          }
+        : {}),
       ...(saleData.saleType === 'studio' && {
         orderDate: saleData.orderDate || undefined,
         deadline: saleData.deadlineDate || undefined,

@@ -68,6 +68,7 @@ import { NumericInput } from '../common';
 import { InvoicePreviewPdf, type InvoicePreviewItem } from '../shared/InvoicePreviewPdf';
 import { SaleActivitySheet } from './SaleActivitySheet';
 import { buildSaleThermalReceiptLines, saleRecordToThermalInput } from '../../services/saleThermalReceipt';
+import { mergeCustomerBillRefIntoNotes } from '../../utils/saleNotesComposition';
 import { printReceiptLines } from '../../services/printService';
 import { getEffectivePrinterSettings } from '../../api/settings';
 import { AttachmentsSection } from '../shared/AttachmentsSection';
@@ -907,7 +908,7 @@ export function SalesHome({
         const totalHdr = Math.max(0, subtotal - discount + tax + shipmentFrozen + extra + studio);
         const dueHdr = Math.max(0, totalHdr - paid);
         const updates: Record<string, unknown> = {
-          notes: editNotes || null,
+          notes: mergeCustomerBillRefIntoNotes(editBillRef, editNotes) || null,
           customer_name: editCustomerName || raw.customer_name,
           customer_id: editCustomerId || null,
           discount_amount: discount,
@@ -1001,7 +1002,7 @@ export function SalesHome({
         taxAmount: tax,
         shipmentCharges: shipmentFrozen,
         extraExpenses: extra,
-        notes: editNotes || null,
+        notes: mergeCustomerBillRefIntoNotes(editBillRef, editNotes) || null,
         customerName: editCustomerName || null,
         contactNumber: null,
         paymentMethod: null,
@@ -1993,6 +1994,7 @@ export function SalesHome({
         totalAmount={addPaymentSale.grand_total ?? addPaymentSale.amount}
         alreadyPaid={addPaymentSale.total_received}
         outstandingAmount={addPaymentSale.balance_due}
+        customerBillRef={addPaymentSale.billRef}
       />
     )}
 

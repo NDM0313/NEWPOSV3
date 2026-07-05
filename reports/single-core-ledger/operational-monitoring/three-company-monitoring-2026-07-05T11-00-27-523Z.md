@@ -1,6 +1,6 @@
 # Three-company operational monitoring
 
-**Generated:** 2026-07-05T11:26:28.502Z
+**Generated:** 2026-07-05T11:11:19.768Z
 **Overall:** PASS
 **Credential policy:** per-company preferred; generic fallback=true
 
@@ -35,4 +35,4 @@
 - **Checks:** 18/19 PASS
 
 
-**JSON:** `reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-05T11-15-38-400Z.json`
+**JSON:** `reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-05T11-00-27-523Z.json`
