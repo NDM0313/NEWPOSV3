@@ -406,11 +406,11 @@ Evidence: [`reports/single-core-engine-calendar-stability-20260704/`](../reports
 
 Evidence: [`reports/single-core-engine-calendar-stability-20260705/`](../reports/single-core-engine-calendar-stability-20260705/)
 
-## Calendar Stability Check — 2026-07-06
+## Calendar Stability Check — 2026-07-06 (accelerated sample — see audit correction)
 
 | Item | Status |
 |------|--------|
-| Classification | **CALENDAR_STABILITY_DAY_PASS** |
+| Classification | **TECHNICAL_SAMPLE_PASS_NOT_CALENDAR_COUNTED** |
 | Run local date/time | 2026-07-05 16:00:26 → 16:15:03 +05:00 |
 | Stability window calendar day | **6** |
 | Calendar days elapsed since 2026-07-01 | **5** |
@@ -434,11 +434,11 @@ Evidence: [`reports/single-core-engine-calendar-stability-20260705/`](../reports
 
 Evidence: [`reports/single-core-engine-calendar-stability-20260706/`](../reports/single-core-engine-calendar-stability-20260706/)
 
-## Calendar Stability Check — 2026-07-07
+## Calendar Stability Check — 2026-07-07 (accelerated sample — see audit correction)
 
 | Item | Status |
 |------|--------|
-| Classification | **CALENDAR_STABILITY_DAY_PASS** |
+| Classification | **TECHNICAL_SAMPLE_PASS_NOT_CALENDAR_COUNTED** |
 | Run local date/time | 2026-07-05 16:15:36 → 16:28:13 +05:00 |
 | Stability window calendar day | **7** |
 | Calendar days elapsed since 2026-07-01 | **6** |
@@ -460,9 +460,28 @@ Evidence: [`reports/single-core-engine-calendar-stability-20260706/`](../reports
 
 Evidence: [`reports/single-core-engine-calendar-stability-20260707/`](../reports/single-core-engine-calendar-stability-20260707/)
 
+## Calendar audit correction — 2026-07-05 accelerated samples
+
+The samples previously recorded as Calendar Day 6 and Calendar Day 7 were technically successful monitoring samples, but their evidence shows local run date 2026-07-05.
+
+Classification:
+- Technical monitoring result: PASS
+- Calendar/R8 counting result: NOT COUNTED as separate calendar days
+- Reason: same-day repeated samples do not shorten the 2–4 week R8 stability window
+
+These samples are retained as extra stability evidence only.
+
+Official calendar-counted Day 6 must be run on 2026-07-06 or later.
+Official calendar-counted Day 7 must be run on 2026-07-07 or later.
+Official calendar-counted Day 8 must be run on 2026-07-08 or later.
+
+R8 remains BLOCKED until the real 2–4 week calendar stability window completes and Nadeem gives written approval.
+
+Correction evidence: [`reports/single-core-engine-calendar-audit-correction-20260705/`](../reports/single-core-engine-calendar-audit-correction-20260705/)
+
 ## Exact next recommended phase
 
-1. **Daily monitoring** during stability window — `npm run monitor:three-company-unified-ledger` (Calendar Day 8 on 2026-07-08+)
+1. **Daily monitoring** during stability window — `npm run monitor:three-company-unified-ledger` (official Calendar Day 6 on 2026-07-06+, Day 7 on 2026-07-07+, Day 8 on 2026-07-08+)
 2. **Salesman device QA** — when Pixel 6 Pro available + Salesman password supplied securely at QA time
 3. **R8 legacy retirement** — blocked until stability window complete + final approval
 
