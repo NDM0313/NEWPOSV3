@@ -111,6 +111,7 @@ import {
   resolveFabricMaterialRetailPrice,
 } from '@/app/lib/bespokeCartInjection';
 import { toast } from "sonner";
+import { webSaveTimingMark, webSaveTimingStart } from '@/app/lib/webSaveTiming';
 import { BranchSelector } from '@/app/components/layout/BranchSelector';
 import { SaleItemsSection } from './SaleItemsSection';
 import { PaymentAttachments, PaymentAttachment } from '../payments/PaymentAttachments';
@@ -2456,6 +2457,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
         try {
             saveInProgressRef.current = true;
             setSaving(true);
+            let saveT = webSaveTimingStart('sale:proceedWithSave');
             
             const selectedCustomer = customers.find(c => c.id.toString() === customerId);
             const customerName = selectedCustomer?.name || 'Walk-in Customer';
@@ -2466,19 +2468,9 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
             } else {
                 customerUuid = customerId.toString();
             }
+            saveT = webSaveTimingMark('sale:resolveCustomer', saveT);
             
             // CRITICAL FIX: Convert items to SaleItem format with variationId
-            // Need to find variation_id from size/color if product has variations
-            console.log('[SALE FORM] 🔄 Converting items for save. Total items:', items.length);
-            console.log('[SALE FORM] Items state before conversion:', items.map((item, idx) => ({
-              index: idx,
-              id: item.id,
-              productId: item.productId,
-              name: item.name,
-              qty: item.qty,
-              price: item.price
-            })));
-            
             const orderedItems = orderSaleLinesForPersist(
               items.map((item) => ({
                 ...item,
@@ -2486,26 +2478,47 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
               })),
             );
 
-            const saleItems = await Promise.all(
-              orderedItems.map(async (item, index) => {
-                let variationId: string | undefined = undefined;
-                
-                // Use variationId from inline selector (backend) if set; else resolve from size/color
-                if (item.variationId) {
-                  variationId = item.variationId;
-                } else if (item.size || item.color) {
+            const productIdsNeedingVariation = [
+              ...new Set(
+                orderedItems
+                  .filter(
+                    (item) =>
+                      !item.variationId &&
+                      !(item as { selectedVariationId?: string }).selectedVariationId &&
+                      (item.size || item.color),
+                  )
+                  .map((item) => item.productId.toString()),
+              ),
+            ];
+            const productById = new Map<string, Awaited<ReturnType<typeof productService.getProduct>>>();
+            if (productIdsNeedingVariation.length > 0) {
+              await Promise.all(
+                productIdsNeedingVariation.map(async (pid) => {
                   try {
-                    const product = await productService.getProduct(item.productId.toString());
-                    if (product && product.variations && product.variations.length > 0) {
-                      const matchingVariation = product.variations.find((v: any) => {
-                        const vSize = v.size || v.attributes?.size;
-                        const vColor = v.color || v.attributes?.color;
-                        return vSize === item.size && vColor === item.color;
-                      });
-                      if (matchingVariation) variationId = matchingVariation.id;
-                    }
-                  } catch (variationError) {
-                    console.warn(`[SALE FORM] Could not find variation for item ${item.id}:`, variationError);
+                    const product = await productService.getProduct(pid);
+                    if (product) productById.set(pid, product);
+                  } catch {
+                    /* variation lookup optional */
+                  }
+                }),
+              );
+            }
+            saveT = webSaveTimingMark('sale:variationPrefetch', saveT);
+
+            const saleItems = orderedItems.map((item, index) => {
+                const selectedVar = (item as { selectedVariationId?: string }).selectedVariationId;
+                let variationId: string | undefined =
+                  selectedVar || item.variationId || undefined;
+
+                if (!variationId && (item.size || item.color)) {
+                  const product = productById.get(item.productId.toString());
+                  if (product?.variations?.length) {
+                    const matchingVariation = product.variations.find((v: any) => {
+                      const vSize = v.size || v.attributes?.size;
+                      const vColor = v.color || v.attributes?.color;
+                      return vSize === item.size && vColor === item.color;
+                    });
+                    if (matchingVariation) variationId = matchingVariation.id;
                   }
                 }
                 
@@ -2561,17 +2574,13 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 }
                 
                 return saleItem;
-              })
-            );
+              });
             
-            console.log('[SALE FORM] ✅ Final saleItems array length:', saleItems.length);
-            console.log('[SALE FORM] Final saleItems payload:', saleItems.map((item, idx) => ({
-              index: idx,
-              id: item.id,
-              productId: item.productId,
-              qty: item.quantity,
-              price: item.price
-            })));
+            saveT = webSaveTimingMark('sale:mapItems', saveT);
+            
+            if (import.meta.env?.DEV) {
+              console.log('[SALE FORM] Final saleItems array length:', saleItems.length);
+            }
             
             // CRITICAL FIX: Map sale status correctly
             // Draft → status: 'draft', type: 'quotation'
@@ -2815,38 +2824,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 return { saleId: initialSale.id, invoiceNo: documentNumber };
             } else {
                 const created = await createSale(saleData);
-                // If user entered a shipping charge, create a sale_shipments row so ledger and shipment list stay correct
-                if (created?.id && (shippingChargeInput || 0) > 0 && companyId && finalBranchId) {
-                    try {
-                        await shipmentService.create(
-                            created.id,
-                            companyId,
-                            finalBranchId,
-                            {
-                                shipment_type: 'Courier',
-                                charged_to_customer: shippingChargeInput,
-                                actual_cost: 0,
-                                currency: 'PKR',
-                                shipment_status: 'Pending',
-                            },
-                            undefined,
-                            created.invoiceNo ?? documentNumber
-                        );
-                    } catch (shipErr: any) {
-                        console.warn('[SALE FORM] Shipment record for shipping charge could not be created:', shipErr?.message);
-                    }
-                }
-                if (created?.id && saleAttachmentFiles.length > 0 && companyId) {
-                    try {
-                        const uploaded = await uploadSaleAttachments(companyId, created.id, saleAttachmentFiles);
-                        if (uploaded.length > 0) await updateSale(created.id, { attachments: uploaded } as any);
-                        setSaleAttachmentFiles([]);
-                        setSavedSaleAttachments(uploaded);
-                    } catch (e) {
-                        console.warn('[SALE FORM] Attachment upload failed:', e);
-                        toast.warning('Sale created but some attachments could not be uploaded.');
-                    }
-                }
+                webSaveTimingMark('sale:createSale', saveT);
                 // Increment local counter only for stage numbers (draft/qt/order/studio); final SL is global RPC
                 if (documentType !== 'invoice') {
                     incrementNextNumber(documentType);
@@ -2854,11 +2832,42 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 if (!convertToFinal) {
                     toast.success(`${saleType === 'invoice' ? 'Invoice' : 'Quotation'} created successfully!`);
                 }
-                
-                // Store sale ID and invoice number for payment dialog
                 if (created?.id) {
                     setSavedSaleId(created.id);
                     setSavedSaleInvoiceNo(created.invoiceNo ?? documentNumber);
+                }
+                // Non-critical post-save work — do not block success toast / payment dialog
+                if (created?.id && (shippingChargeInput || 0) > 0 && companyId && finalBranchId) {
+                    void shipmentService.create(
+                        created.id,
+                        companyId,
+                        finalBranchId,
+                        {
+                            shipment_type: 'Courier',
+                            charged_to_customer: shippingChargeInput,
+                            actual_cost: 0,
+                            currency: 'PKR',
+                            shipment_status: 'Pending',
+                        },
+                        undefined,
+                        created.invoiceNo ?? documentNumber
+                    ).catch((shipErr: unknown) => {
+                        const msg = shipErr instanceof Error ? shipErr.message : String(shipErr);
+                        console.warn('[SALE FORM] Shipment record for shipping charge could not be created:', msg);
+                    });
+                }
+                if (created?.id && saleAttachmentFiles.length > 0 && companyId) {
+                    const filesToUpload = saleAttachmentFiles;
+                    void uploadSaleAttachments(companyId, created.id, filesToUpload)
+                        .then(async (uploaded) => {
+                            if (uploaded.length > 0) await updateSale(created.id, { attachments: uploaded } as any);
+                            setSaleAttachmentFiles([]);
+                            setSavedSaleAttachments(uploaded);
+                        })
+                        .catch((e) => {
+                            console.warn('[SALE FORM] Attachment upload failed:', e);
+                            toast.warning('Sale created but some attachments could not be uploaded.');
+                        });
                 }
                 
                 // Studio sale: after save, open Studio Sale Detail for this sale (single master page)

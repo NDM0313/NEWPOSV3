@@ -834,8 +834,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         throw new Error(`Invalid invoice number generated: ${invoiceNo}. Check document numbering settings.`);
       }
 
-      // Negative stock: only enforce when this save will post stock (`final`), not for draft/quotation/order
-      const effectiveCreateStatus = saleData.status || (saleData.type === 'invoice' ? 'final' : 'quotation');
+      // Negative stock + stock quantities: enforced in saleService.createSale (avoid duplicate DB round-trips here).
       const fromContext = inventorySettings.negativeStockAllowed === true;
       const fromDb = fromContext
         ? true
@@ -845,28 +844,6 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       const allowNegative = fromContext || fromDb;
       if (import.meta.env?.DEV) {
         console.log('[SALES CONTEXT] Negative stock:', { allowNegative, fromContext, fromDb, inventorySettingsNegative: inventorySettings.negativeStockAllowed });
-      }
-      if (canPostStockForSaleStatus(effectiveCreateStatus) && !allowNegative && saleData.items?.length > 0) {
-        const { supabase } = await import('@/lib/supabase');
-        const productIds = [...new Set(saleData.items.map((i) => i.productId))];
-        const [stockMap, { data: prods }] = await Promise.all([
-          productService.getStockForProducts(productIds, companyId, effectiveBranchId ?? undefined),
-          supabase.from('products').select('id, has_variations').in('id', productIds),
-        ]);
-        const productMap = new Map((prods || []).map((p: any) => [p.id, p]));
-
-        for (const item of saleData.items) {
-          const p = productMap.get(item.productId) as { has_variations?: boolean } | undefined;
-          if (!p) continue;
-          const key = (item as any).variationId ? `${item.productId}:${(item as any).variationId}` : `${item.productId}:`;
-          const stock = stockMap.get(key) ?? 0;
-          if (stock < item.quantity) {
-            throw new Error(
-              `${item.productName}: quantity (${item.quantity}) exceeds available stock (${stock}). ` +
-              'To allow this sale, enable "Negative Stock Allowed" in Settings → Inventory.'
-            );
-          }
-        }
       }
 
       // Identity: created_by must be auth.uid() (never public.users.id)
@@ -1443,17 +1420,16 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         }
       }
 
-      // Z1: Idempotent line ↔ movements reconciliation (trigger/app drift, combos edge cases)
+      // Z1: Idempotent line ↔ movements reconciliation — background (mobile uses RPC inline; trigger + async reconcile is enough for UI responsiveness)
       if (newSale.id && (canPostStockForSaleStatus(newSale.status) || String(newSale.status).toLowerCase() === 'cancelled')) {
-        try {
-          const { syncSaleStockForDocument } = await import('@/app/services/documentStockSyncService');
-          const z1 = await syncSaleStockForDocument(newSale.id);
-          if (z1.adjustmentsInserted > 0) {
-            console.log('[SALES CONTEXT] Z1 stock sync (create):', z1.keysAdjusted);
-          }
-        } catch (z1Err) {
-          console.warn('[SALES CONTEXT] Z1 stock sync (create) failed:', z1Err);
-        }
+        void import('@/app/services/documentStockSyncService')
+          .then(({ syncSaleStockForDocument }) => syncSaleStockForDocument(newSale.id))
+          .then((z1) => {
+            if (z1.adjustmentsInserted > 0) {
+              console.log('[SALES CONTEXT] Z1 stock sync (create):', z1.keysAdjusted);
+            }
+          })
+          .catch((z1Err) => console.warn('[SALES CONTEXT] Z1 stock sync (create) failed:', z1Err));
       }
       
       // Commission: NOT posted per sale (commission_status=pending until batch post).
@@ -1473,25 +1449,12 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         }
       }
       
-      // Payment JE only for posted (final) sales — draft/quotation/order must not hit GL or AR payment postings
-      if (canPostAccountingForSaleStatus(newSale.status) && newSale.paid > 0) {
-        try {
-          await accounting?.recordSalePayment({
-          saleId: newSale.id,
-          invoiceNo: newSale.invoiceNo,
-          customerName: newSale.customerName,
-          amount: newSale.paid,
-          paymentMethod: newSale.paymentMethod as any,
-          });
-        } catch (accountingError) {
-          console.error('[SALES CONTEXT] ❌ CRITICAL: Payment journal entry failed:', accountingError);
-          // Don't block sale creation if payment entry fails (sale entry already created)
-          console.warn('[SALES CONTEXT] Warning: Sale created but payment entry failed');
-        }
-      }
+      // Payment JEs handled above via saleService.recordPayment + accounting.recordSalePayment (avoid duplicate recordSalePayment).
 
       const createdLabel = docType === 'pos' ? 'POS sale' : docType === 'invoice' ? 'Invoice' : docType === 'quotation' ? 'Quotation' : docType === 'order' ? 'Order' : 'Draft';
-      toast.success(`${createdLabel} ${effectiveInvoiceNo} created successfully!`);
+      if (import.meta.env?.DEV) {
+        console.info('[SALES CONTEXT] createSale complete:', createdLabel, effectiveInvoiceNo);
+      }
       
       // Dispatch event to refresh inventory
       window.dispatchEvent(new CustomEvent('saleSaved', { detail: { saleId: newSale.id } }));

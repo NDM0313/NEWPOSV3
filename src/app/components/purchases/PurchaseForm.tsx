@@ -1774,24 +1774,32 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
             } else {
                 // CREATE MODE: Create new purchase
                 const newPurchase = await createPurchase(purchaseData);
+                toast.success('Purchase order created successfully!');
+                console.log('[PURCHASE FORM] 📢 Dispatching purchaseSaved event (CREATE MODE), purchaseId:', newPurchase?.id);
+                window.dispatchEvent(new CustomEvent('purchaseSaved', { 
+                    detail: { purchaseId: newPurchase?.id } 
+                }));
                 if (newPurchase?.id && purchaseAttachmentFiles.length > 0 && companyId) {
-                    try {
-                        const uploaded = await uploadPurchaseAttachments(companyId, newPurchase.id, purchaseAttachmentFiles);
-                        if (uploaded.length > 0) {
-                            await updatePurchase(newPurchase.id, { attachments: uploaded } as any);
-                            if (uploaded.length < purchaseAttachmentFiles.length) {
-                                toast.warning(`Purchase saved. ${uploaded.length}/${purchaseAttachmentFiles.length} attachments uploaded.`);
+                    const filesToUpload = purchaseAttachmentFiles;
+                    void uploadPurchaseAttachments(companyId, newPurchase.id, filesToUpload)
+                        .then(async (uploaded) => {
+                            if (uploaded.length > 0) {
+                                await updatePurchase(newPurchase.id, { attachments: uploaded } as any);
+                                if (uploaded.length < filesToUpload.length) {
+                                    toast.warning(`Purchase saved. ${uploaded.length}/${filesToUpload.length} attachments uploaded.`);
+                                } else {
+                                    toast.success(`Purchase saved with ${uploaded.length} attachment(s).`);
+                                }
                             } else {
-                                toast.success(`Purchase saved with ${uploaded.length} attachment(s).`);
+                                toast.warning('Purchase saved but attachments could not be uploaded. Check if storage bucket exists.');
                             }
-                        } else {
-                            toast.warning('Purchase saved but attachments could not be uploaded. Check if storage bucket exists.');
-                        }
-                        setPurchaseAttachmentFiles([]);
-                    } catch (e: any) {
-                        console.error('[PURCHASE FORM] Attachment upload failed:', e);
-                        toast.error(`Purchase saved but attachments failed: ${e?.message || 'Unknown error'}`);
-                    }
+                            setPurchaseAttachmentFiles([]);
+                        })
+                        .catch((e: unknown) => {
+                            const msg = e instanceof Error ? e.message : String(e);
+                            console.error('[PURCHASE FORM] Attachment upload failed:', e);
+                            toast.error(`Purchase saved but attachments failed: ${msg || 'Unknown error'}`);
+                        });
                 }
                 // Save payments only when NOT opening payment dialog (user already added in form or chose Credit)
                 if (!openPaymentDialogAfter && partialPayments.length > 0 && newPurchase?.id && companyId) {
@@ -1817,13 +1825,6 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                         toast.error('Purchase created but failed to save payments: ' + (paymentError.message || 'Unknown error'));
                     }
                 }
-                
-                toast.success('Purchase order created successfully!');
-                
-                console.log('[PURCHASE FORM] 📢 Dispatching purchaseSaved event (CREATE MODE), purchaseId:', newPurchase?.id);
-                window.dispatchEvent(new CustomEvent('purchaseSaved', { 
-                    detail: { purchaseId: newPurchase?.id } 
-                }));
                 if (openPaymentDialogAfter && newPurchase?.id) {
                     setSavedPurchaseIdForPayment(newPurchase.id);
                     setUnifiedPaymentDialogOpen(true);

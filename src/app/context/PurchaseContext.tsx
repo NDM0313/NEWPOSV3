@@ -521,21 +521,20 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
         console.log('[PURCHASE CONTEXT] Stock for purchase', newPurchase.id, 'handled by DB trigger (single posting).');
       }
 
-      // Z1: Reconcile lines vs stock_movements after trigger + any race
+      // Z1: Reconcile lines vs stock_movements after trigger — background (do not block save UI)
       const pst = normalizePurchaseStatusForPosting(newPurchase.status);
       if (
         newPurchase.id &&
         (canPostStockForPurchaseStatus(pst) || String(newPurchase.status).toLowerCase() === 'cancelled')
       ) {
-        try {
-          const { syncPurchaseStockForDocument } = await import('@/app/services/documentStockSyncService');
-          const z1 = await syncPurchaseStockForDocument(newPurchase.id);
-          if (z1.adjustmentsInserted > 0) {
-            console.log('[PURCHASE CONTEXT] Z1 stock sync (create):', z1.keysAdjusted);
-          }
-        } catch (z1Err) {
-          console.warn('[PURCHASE CONTEXT] Z1 stock sync (create) failed:', z1Err);
-        }
+        void import('@/app/services/documentStockSyncService')
+          .then(({ syncPurchaseStockForDocument }) => syncPurchaseStockForDocument(newPurchase.id))
+          .then((z1) => {
+            if (z1.adjustmentsInserted > 0) {
+              console.log('[PURCHASE CONTEXT] Z1 stock sync (create):', z1.keysAdjusted);
+            }
+          })
+          .catch((z1Err) => console.warn('[PURCHASE CONTEXT] Z1 stock sync (create) failed:', z1Err));
       }
       
       // 🔒 CRITICAL FIX: Record initial payment in payments table (like Sale module) — posted POs only (no payment JE for draft/ordered)
@@ -600,7 +599,9 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
         });
       }
 
-      toast.success(`Purchase Order ${purchaseNo} created successfully!`);
+      if (import.meta.env?.DEV) {
+        console.info('[PURCHASE CONTEXT] createPurchase complete:', purchaseNo);
+      }
       
       // 🔒 CRITICAL FIX: Dispatch event to refresh inventory (like Sale module)
       window.dispatchEvent(new CustomEvent('purchaseSaved', { detail: { purchaseId: newPurchase.id } }));
