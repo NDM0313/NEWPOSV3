@@ -1,0 +1,31 @@
+{
+  "generatedAt": "2026-07-05T14:45:00+05:00",
+  "deployedCommit": "37e49f2feb81f35f007b8c180a1c2c4c54001772",
+  "deployCommand": "ssh dincouture-vps \"cd /root/NEWPOSV3 && git pull --ff-only origin main && bash deploy/vps-build-erp-only.sh\"",
+  "deployDurationSeconds": 117,
+  "vpsContainer": "erp-frontend Up (healthy)",
+  "preDeployValidation": {
+    "testUnit": { "pass": 126, "fail": 0, "status": "PASS" },
+    "testUnifiedLedger": { "pass": 335, "fail": 0, "status": "PASS" },
+    "build": { "status": "PASS" }
+  },
+  "smokeCheck": {
+    "loginPageLoads": true,
+    "httpStatus": 200,
+    "containerHealthy": true
+  },
+  "liveSaveSpotCheck": {
+    "saleTestPerformed": false,
+    "purchaseTestPerformed": false,
+    "note": "Pending operator manual test after login"
+  },
+  "safety": {
+    "migrations_run": false,
+    "repairs_run": false,
+    "r8_run": false,
+    "play_store_upload": false,
+    "production_gl_repair": false,
+    "credentials_committed": false
+  },
+  "deployStatus": "FRONTEND_DEPLOYED"
+}
