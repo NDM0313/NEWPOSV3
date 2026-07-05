@@ -24,11 +24,15 @@ function parseArgs() {
     originMain: '',
     runStart: '',
     runEnd: '',
+    runLocalDate: '',
   };
   for (let i = 0; i < args.length; i += 1) {
     const k = args[i];
     const v = args[i + 1];
     if (k === '--folder-date') out.folderDate = v;
+    if (k === '--calendar-day') out.calendarDay = Number(v);
+    if (k === '--calendar-days-elapsed') out.calendarDaysElapsed = Number(v);
+    if (k === '--run-local-date') out.runLocalDate = v;
     if (k === '--monitoring-artifact') out.monitoringArtifact = v;
     if (k === '--unified') out.unifiedResult = v;
     if (k === '--unit') out.unitResult = v;
@@ -134,13 +138,14 @@ function main() {
     migrationsRun: false,
     glMutations: false,
   };
+  const runLocalDateLabel = cfg.runLocalDate || cfg.folderDate.replace(/^(\d{4})(\d{2})(\d{2})$/, '$1-$2-$3');
   fs.writeFileSync(path.join(outDir, 'tests-build.json'), `${JSON.stringify(testsBuild, null, 2)}\n`);
   fs.writeFileSync(
     path.join(outDir, 'tests-build.md'),
     [
       `# Tests/build — Calendar Day ${cfg.calendarDay}`,
       '',
-      `**Run local date:** 2026-07-05`,
+      `**Run local date:** ${runLocalDateLabel}`,
       '',
       '| Suite | Result |',
       '|-------|--------|',
@@ -172,7 +177,7 @@ function main() {
     [
       `# Password env status — Calendar Day ${cfg.calendarDay}`,
       '',
-      '**Run local date:** 2026-07-05',
+      '**Run local date:** ' + runLocalDateLabel,
       '',
       '| Item | Value |',
       '|------|--------|',
