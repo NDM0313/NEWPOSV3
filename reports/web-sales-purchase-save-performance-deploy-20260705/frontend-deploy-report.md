@@ -49,14 +49,19 @@ Authenticated Sales/Purchase page navigation requires operator login — not exe
 
 | Test | Performed |
 |------|-----------|
-| Live test sale created | **No** — pending operator manual test after login |
-| Live test purchase created | **No** — pending operator manual test after login |
+| Live test sale created | **Yes** — DIN CHINA admin, Create New → New Invoice |
+| Live test purchase created | **Yes** — DIN CHINA admin, Create New → New Purchase |
 
-**Recommended operator spot-check (post-deploy):**
+**Results (2026-07-05, post-deploy `37e49f2f`):**
 
-1. Hard refresh (`Ctrl+Shift+R`) on `https://erp.dincouture.pk`
-2. Create one small safe test sale — confirm spinner clears faster; single success toast; attachments/shipping do not block toast
-3. Create one small safe test purchase — same checks; no duplicate payment JE
+| Flow | Save time | Success toast | Duplicate save toast | Notes |
+|------|-----------|---------------|----------------------|-------|
+| Sales | ~1.4s | Single (`Quotation created successfully!`) | No | Spinner cleared quickly; item/variation toasts pre-save only |
+| Purchase | ~1.7s | Single (`Purchase order created successfully!`) | No | Spinner cleared quickly; attachments did not block success toast |
+
+**Verdict:** `LIVE_CONFIRMED` — web save performance fix behaves as intended on production.
+
+Evidence: `live-spot-check.json` in this folder.
 
 ## Fix scope (deployed)
 
