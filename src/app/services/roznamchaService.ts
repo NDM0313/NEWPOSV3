@@ -1700,6 +1700,8 @@ async function fetchRentalPaymentRows(
 
   return { rows, branchFilteredPayments: paymentList };
 }
+
+function journalLiquidityTypeLabel(referenceType: string): string {
   const rt = (referenceType || '').toLowerCase();
   const m: Record<string, string> = {
     general: 'General Entry',
