@@ -479,9 +479,38 @@ R8 remains BLOCKED until the real 2–4 week calendar stability window completes
 
 Correction evidence: [`reports/single-core-engine-calendar-audit-correction-20260705/`](../reports/single-core-engine-calendar-audit-correction-20260705/)
 
+## Official Calendar Stability Check — 2026-07-06
+
+| Item | Status |
+|------|--------|
+| Classification | **CALENDAR_STABILITY_DAY_PASS** |
+| Run local date/time | 2026-07-06 12:56:34 → 13:10:15 +05:00 |
+| Official stability window calendar day | **6** |
+| Calendar days elapsed since 2026-07-01 | **5** |
+| Pre-check fail | DIN BRIDAL golden drift — legitimate live activity (first attempt 12:27 +05:00) |
+| Fixture refresh | **COMPLETE** — operator Option A approved; fixture-only |
+| Monitoring artifact | `three-company-monitoring-2026-07-06T07-56-36-537Z` |
+| Loader guard | **PASS** |
+| Roznamcha reached | **yes** |
+| DIN CHINA | PASS (Admin Compare 9/9) |
+| DIN BRIDAL | PASS (Admin Compare waived) |
+| DIN COUTURE | PASS (Admin Compare waived) |
+| migrations_run | false |
+| gl_mutations | false |
+| Feature flags | unchanged |
+| Production mutation | **none** |
+| Tests/build | 335/335 unified · 136/136 unit · build PASS |
+| Password env | supplied yes — value **not** recorded |
+| Accelerated sample note | Prior 2026-07-05 accelerated Day 6/7 samples retained as extra evidence only and not counted |
+| R8 | **BLOCKED** |
+| Mobile release | separate track — Admin PASS 21/21; Manager N/A/waived; Salesman pending |
+| Supplier Party Discount | separate approval |
+
+Evidence: [`reports/single-core-engine-calendar-stability-official-20260706/`](../reports/single-core-engine-calendar-stability-official-20260706/)
+
 ## Exact next recommended phase
 
-1. **Daily monitoring** during stability window — `npm run monitor:three-company-unified-ledger` (official Calendar Day 6 on 2026-07-06+, Day 7 on 2026-07-07+, Day 8 on 2026-07-08+)
+1. **Daily monitoring** during stability window — `npm run monitor:three-company-unified-ledger` (official Calendar Day 7 on 2026-07-07+, Day 8 on 2026-07-08+)
 2. **Salesman device QA** — when Pixel 6 Pro available + Salesman password supplied securely at QA time
 3. **R8 legacy retirement** — blocked until stability window complete + final approval
 
