@@ -8,10 +8,16 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { isLiquidityPaymentAccount, paymentMethodForLiquidityAccount } from '../lib/liquidityPaymentAccount';
 import {
+  buildCounterpartyByDirectionFromJeLines,
   buildExpenseCounterpartyByDirectionFromJeLines,
+  formatJvRoznamchaSubtitle,
   isGenericRoznamchaPartyLabel,
+  isGeneralLiquidityJournalRef,
+  isJvBoilerplatePaymentNote,
   resolveExpenseCounterpartyFromJeLines,
   resolveGenericPaymentExpenseLabel,
+  resolveJvLinkedCounterpartyLabel,
+  seedManualJournalPaymentJeMaps,
   type CounterpartyByDirection,
   type RoznamchaJeLineRef,
 } from '../lib/roznamchaCounterpartyLabel';
@@ -452,9 +458,15 @@ async function loadLiquidityDebitAccountByJeId(
   return liquidityAccountByJeId;
 }
 
-async function loadExpenseCounterpartyByJeId(jeIds: string[]): Promise<Map<string, CounterpartyByDirection>> {
-  const out = new Map<string, CounterpartyByDirection>();
-  if (jeIds.length === 0) return out;
+async function loadCounterpartyMapsByJeId(jeIds: string[]): Promise<{
+  expenseCounterpartyByJeId: Map<string, CounterpartyByDirection>;
+  fullCounterpartyByJeId: Map<string, CounterpartyByDirection>;
+}> {
+  const expenseCounterpartyByJeId = new Map<string, CounterpartyByDirection>();
+  const fullCounterpartyByJeId = new Map<string, CounterpartyByDirection>();
+  if (jeIds.length === 0) {
+    return { expenseCounterpartyByJeId, fullCounterpartyByJeId };
+  }
 
   const { data: jeLines } = await supabase
     .from('journal_entry_lines')
@@ -477,9 +489,41 @@ async function loadExpenseCounterpartyByJeId(jeIds: string[]): Promise<Map<strin
   });
 
   linesByJeId.forEach((lines, jeId) => {
-    out.set(jeId, buildExpenseCounterpartyByDirectionFromJeLines(lines));
+    expenseCounterpartyByJeId.set(jeId, buildExpenseCounterpartyByDirectionFromJeLines(lines));
+    fullCounterpartyByJeId.set(jeId, buildCounterpartyByDirectionFromJeLines(lines));
   });
-  return out;
+  return { expenseCounterpartyByJeId, fullCounterpartyByJeId };
+}
+
+function resolveJvJeIdForPayment(
+  paymentId: string,
+  journalEntryIdByPaymentId: Map<string, string>,
+  referenceIdFallback?: string | null,
+): string | null {
+  const fromMap = journalEntryIdByPaymentId.get(paymentId)?.trim();
+  if (fromMap) return fromMap;
+  const fallback = String(referenceIdFallback || '').trim();
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(fallback)) {
+    return fallback;
+  }
+  return null;
+}
+
+function applyJvRoznamchaRowDisplay(
+  r: RoznamchaRow,
+  pay: { notes?: string | null; reference_id?: string | null },
+  jvLabel: string,
+  fullCounterpartyByJeId: Map<string, CounterpartyByDirection>,
+  journalEntryIdByPaymentId: Map<string, string>,
+): void {
+  r.details = jvLabel;
+  r.partyLine = null;
+  const jeId = resolveJvJeIdForPayment(r.id, journalEntryIdByPaymentId, pay.reference_id);
+  const subtitle = jeId ? formatJvRoznamchaSubtitle(fullCounterpartyByJeId.get(jeId)) : '';
+  const notes = String(pay.notes || '').trim();
+  const noteSuffix = notes && !isJvBoilerplatePaymentNote(notes) ? notes : '';
+  r.referenceDisplay =
+    subtitle && noteSuffix ? `${subtitle} — ${noteSuffix}` : subtitle || noteSuffix;
 }
 
 function resolveRentalPaymentLiquidity(
@@ -987,8 +1031,20 @@ async function fetchPaymentRows(
     }
   }
 
+  seedManualJournalPaymentJeMaps(
+    paymentList.map((p: any) => ({
+      id: String(p.id),
+      reference_type: p.reference_type,
+      reference_id: p.reference_id,
+      reference_number: p.reference_number,
+    })),
+    journalEntryNoByPaymentId,
+    journalEntryIdByPaymentId,
+  );
+
   const linkedJeIds = [...new Set(journalEntryIdByPaymentId.values())];
-  const expenseCounterpartyByJeId = await loadExpenseCounterpartyByJeId(linkedJeIds);
+  const { expenseCounterpartyByJeId, fullCounterpartyByJeId } =
+    await loadCounterpartyMapsByJeId(linkedJeIds);
 
   const contactNameById = new Map<string, string>();
   (contactRes.data || []).forEach((c: any) => {
@@ -1049,6 +1105,11 @@ async function fetchPaymentRows(
       (payRefType === 'rental' && payRefId ? rentalBranchById.get(payRefId) ?? null : null);
 
     const paymentId = String((p as any).id);
+    const payRefNumber = String((p as any).reference_number || '').trim();
+    const journalEntryNo =
+      journalEntryNoByPaymentId.get(paymentId) ||
+      (isGeneralLiquidityJournalRef(payRefNumber) ? payRefNumber : null) ||
+      null;
     rows.push({
       id: paymentId,
       date: dateStr,
@@ -1057,7 +1118,7 @@ async function fetchPaymentRows(
       details,
       referenceDisplay,
       partyLine: null,
-      journalEntryNo: journalEntryNoByPaymentId.get(paymentId) || null,
+      journalEntryNo,
       createdBy: null, // filled below via received_by
       cashIn: direction === 'IN' ? amount : 0,
       cashOut: direction === 'OUT' ? amount : 0,
@@ -1175,6 +1236,19 @@ async function fetchPaymentRows(
     }
 
     if (isCustomerReceiptPayment(refType, paymentType)) {
+      const jvRef = r.journalEntryNo || r.ref || pay.reference_number;
+      const jvLabel = resolveJvLinkedCounterpartyLabel(
+        r.id,
+        r.direction,
+        jvRef,
+        journalEntryIdByPaymentId,
+        fullCounterpartyByJeId,
+        pay.reference_id,
+      );
+      if (jvLabel) {
+        applyJvRoznamchaRowDisplay(r, pay, jvLabel, fullCounterpartyByJeId, journalEntryIdByPaymentId);
+        return;
+      }
       const customer =
         contactName ||
         (refType === 'sale' && refId ? saleCustomerByRefId.get(refId) : null) ||
@@ -1198,6 +1272,19 @@ async function fetchPaymentRows(
     }
 
     if (isSupplierPaymentPayment(refType, paymentType)) {
+      const jvRef = r.journalEntryNo || r.ref || pay.reference_number;
+      const jvLabel = resolveJvLinkedCounterpartyLabel(
+        r.id,
+        r.direction,
+        jvRef,
+        journalEntryIdByPaymentId,
+        fullCounterpartyByJeId,
+        pay.reference_id,
+      );
+      if (jvLabel) {
+        applyJvRoznamchaRowDisplay(r, pay, jvLabel, fullCounterpartyByJeId, journalEntryIdByPaymentId);
+        return;
+      }
       const generic = getPartyAwareTypeLabel(refType, paymentType);
       const expenseLabel = resolveGenericPaymentExpenseLabel(
         generic,
@@ -1554,7 +1641,7 @@ function journalLiquidityTypeLabel(referenceType: string): string {
   const m: Record<string, string> = {
     general: 'General Entry',
     transfer: 'Internal Transfer',
-    journal: 'Journal Entry',
+    journal: 'General Entry',
     manual: 'Manual Entry',
     manual_journal: 'Journal Entry',
   };

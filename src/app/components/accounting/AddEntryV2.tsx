@@ -1,13 +1,12 @@
 /**
  * Add Entry V2 – Rebuild of Add Entry. Theme-matched, typed, accounting-safe.
- * Entry types: Pure Journal, Customer Receipt, Supplier Payment, Worker Payment, Expense Payment, Internal Transfer, Courier Payment.
+ * Entry types: General Entry, Customer Receipt, Supplier Payment, Worker Payment, Expense Payment, Courier Payment.
  */
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   FileText,
-  ArrowLeftRight,
   ArrowLeft,
   Truck,
   UserCog,
@@ -59,11 +58,11 @@ import { courierService } from '@/app/services/courierService';
 import { studioService } from '@/app/services/studioService';
 import {
   createPureJournalEntry,
+  updatePureJournalEntry,
   createCustomerReceiptEntry,
   createSupplierPaymentEntry,
   createWorkerPaymentEntry,
   createExpensePaymentEntry,
-  createInternalTransferEntry,
   createCourierPaymentEntry,
 } from '@/app/services/addEntryV2Service';
 import { toast } from 'sonner';
@@ -75,6 +74,13 @@ import {
 import { prepareAttachmentFilesForUpload } from '@/app/utils/imageCompression';
 import { formatAccountSelectOptionLabel } from '@/app/lib/accountPostingInOutLabel';
 import { AccountPickerFieldLabel } from '@/app/components/accounting/AccountPickerFieldLabel';
+import { SearchableAccountSelect } from '@/app/components/accounting/SearchableAccountSelect';
+import { accountingService } from '@/app/services/accountingService';
+import {
+  extractPureJournalFormFromLines,
+  journalEntryDateTimeFromRow,
+} from '@/app/lib/pureJournalFormFromEntry';
+import { paymentEventTimestampFromPicker } from '@/app/utils/transactionEventDateTime';
 
 export type AddEntryV2Type =
   | 'pure_journal'
@@ -86,12 +92,11 @@ export type AddEntryV2Type =
   | 'courier_payment';
 
 const ENTRY_TYPES: { key: AddEntryV2Type; label: string; description: string; icon: React.ReactNode }[] = [
-  { key: 'pure_journal', label: 'Pure Journal', description: 'Record a non-cash accounting adjustment', icon: <FileText size={20} /> },
+  { key: 'pure_journal', label: 'General Entry', description: 'Payment from one account to another', icon: <FileText size={20} /> },
   { key: 'customer_receipt', label: 'Customer Receipt', description: 'Record payment received from customer', icon: <Receipt size={20} /> },
   { key: 'supplier_payment', label: 'Supplier Payment', description: 'Record payment made to supplier', icon: <CreditCard size={20} /> },
   { key: 'worker_payment', label: 'Worker Payment', description: 'Record payment made to worker', icon: <UserCog size={20} /> },
   { key: 'expense_payment', label: 'Expense Payment', description: 'Record an operating expense payment', icon: <Wallet size={20} /> },
-  { key: 'internal_transfer', label: 'Internal Transfer', description: 'Move money between your own accounts', icon: <ArrowLeftRight size={20} /> },
   { key: 'courier_payment', label: 'Courier Payment', description: 'Record payment made to courier company', icon: <Truck size={20} /> },
 ];
 
@@ -111,12 +116,14 @@ export interface AddEntryV2Props {
   initialSupplierContactId?: string;
   /** Pre-fill amount (e.g. outstanding due). */
   initialAmount?: number;
-  /** Internal transfer: pre-select from account (e.g. COA row menu). */
+  /** Journal voucher / transfer deep link: pre-select credit (OUT) account. */
   initialFromAccountId?: string;
-  /** Internal transfer: pre-select to account. */
+  /** Journal voucher / transfer deep link: pre-select debit (IN) account. */
   initialToAccountId?: string;
   /** Called only after a successful save, before `onClose`. */
   onRecorded?: () => void | Promise<void>;
+  /** Edit existing General Entry (pure journal) — opens form pre-filled. */
+  editJournalEntryId?: string;
 }
 
 type AddEntryStep = 'select-type' | 'entry-form';
@@ -130,22 +137,28 @@ export function AddEntryV2({
   initialFromAccountId,
   initialToAccountId,
   onRecorded,
+  editJournalEntryId,
 }: AddEntryV2Props) {
+  const isEditMode = Boolean(editJournalEntryId);
   const { companyId, branchId, user } = useSupabase();
   const settings = useSettings();
   const { formatCurrency } = useFormatCurrency();
   const accounting = useAccounting();
   const { createExpense } = useExpenses();
-  const [step, setStep] = useState<AddEntryStep>('select-type');
+  const [step, setStep] = useState<AddEntryStep>(isEditMode ? 'entry-form' : 'select-type');
   const [entryType, setEntryType] = useState<AddEntryV2Type>('pure_journal');
   useEffect(() => {
+    if (editJournalEntryId) {
+      setEntryType('pure_journal');
+      setStep('entry-form');
+      return;
+    }
     if (!initialEntryType) return;
-    setEntryType(initialEntryType);
+    setEntryType(initialEntryType === 'internal_transfer' ? 'pure_journal' : initialEntryType);
     setStep('entry-form');
-  }, [initialEntryType]);
+  }, [initialEntryType, editJournalEntryId]);
 
   const [accounts, setAccounts] = useState<{ id: string; name: string; code?: string }[]>([]);
-  const [transferAccountsList, setTransferAccountsList] = useState<{ id: string; name: string; code?: string }[]>([]);
   const [suppliers, setSuppliers] = useState<{ id: string; name: string; dueGl: number; dueOp: number }[]>([]);
   const [customers, setCustomers] = useState<{ id: string; name: string; dueGl: number; dueOp: number }[]>([]);
   const [workers, setWorkers] = useState<{ id: string; name: string; dueGl: number; dueOp: number }[]>([]);
@@ -155,11 +168,13 @@ export function AddEntryV2({
   /** Sales/purchases/worker_ledger RPC — open-document view. */
   const [operationalBalancesOk, setOperationalBalancesOk] = useState(false);
   const [expenseCategories, setExpenseCategories] = useState<{ id: string; name: string; slug: string }[]>([]);
-  const [paymentAccountsList, setPaymentAccountsList] = useState<{ id: string; name: string }[]>([]);
+  const [paymentAccountsList, setPaymentAccountsList] = useState<{ id: string; name: string; code?: string | null }[]>([]);
   const [salaryUsers, setSalaryUsers] = useState<{ id: string; full_name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [editLoadError, setEditLoadError] = useState<string | null>(null);
   const initialPropsAppliedRef = useRef(false);
+  const editPrefillAppliedRef = useRef(false);
 
   // Form state – shared where applicable
   const [entryDateTime, setEntryDateTime] = useState(() => formatLocalDateTimeYYYYMMDDHHmm(new Date()));
@@ -185,8 +200,6 @@ export function AddEntryV2({
   const [expenseSalaryUserName, setExpenseSalaryUserName] = useState('');
   const [expenseBonus, setExpenseBonus] = useState<number>(0);
   const [expenseDeduction, setExpenseDeduction] = useState<number>(0);
-  const [fromAccountId, setFromAccountId] = useState('');
-  const [toAccountId, setToAccountId] = useState('');
   /** Optional files — stored on `payments` (receipt/pay flows) or `journal_entries` (pure journal / transfer). Same bucket/layout as UnifiedPaymentDialog. */
   const [entryAttachmentFiles, setEntryAttachmentFiles] = useState<File[]>([]);
   const [isProcessingEntryAttachments, setIsProcessingEntryAttachments] = useState(false);
@@ -226,13 +239,9 @@ export function AddEntryV2({
       setGlBalancesOk(glRpcOk);
       setOperationalBalancesOk(operationalRpcOk);
 
-      const accList = (acc || []).map((a: any) => ({ id: a.id, name: (a.code ? `${a.code} – ` : '') + (a.name || ''), code: a.code }));
+      const accList = (acc || []).map((a: any) => ({ id: a.id, name: a.name || '', code: a.code }));
       setAccounts(accList);
-      const transferList = (acc || [])
-        .filter((a: any) => a.is_active !== false && a.is_group !== true)
-        .map((a: any) => ({ id: a.id, name: (a.code ? `${a.code} – ` : '') + (a.name || ''), code: a.code }));
-      setTransferAccountsList(transferList);
-      const payList = (payAcc || []).map((a: any) => ({ id: a.id, name: a.name || a.code || '' }));
+      const payList = (payAcc || []).map((a: any) => ({ id: a.id, name: a.name || '', code: a.code }));
       setPaymentAccountsList(payList);
 
       const row = (id: string) => byContactId.get(id);
@@ -283,17 +292,10 @@ export function AddEntryV2({
 
       setExpenseCategories(expCats || []);
       setPaymentAccountId((prev) => prev || (payList[0]?.id ?? ''));
-      const transferIds = new Set(transferList.map((a) => a.id));
-      setFromAccountId((prev) => {
-        if (prev && transferIds.has(prev)) return prev;
-        return transferList[0]?.id || payList[0]?.id || '';
-      });
-      setToAccountId((prev) => {
-        if (prev && transferIds.has(prev)) return prev;
-        return transferList[1]?.id || transferList[0]?.id || payList[1]?.id || payList[0]?.id || '';
-      });
-      setDebitAccountId((prev) => prev || accList[0]?.id || '');
-      setCreditAccountId((prev) => prev || accList[accList.length - 1]?.id || accList[0]?.id || '');
+      if (!editJournalEntryId) {
+        setDebitAccountId((prev) => prev || accList[0]?.id || '');
+        setCreditAccountId((prev) => prev || accList[accList.length - 1]?.id || accList[0]?.id || '');
+      }
       setExpenseCategorySlug((prev) => prev || (expCats || [])[0]?.slug || '');
       if (!operationalRpcOk) {
         warnIfUsingStoredBalanceAsTruth(
@@ -302,16 +304,59 @@ export function AddEntryV2({
           'Open-doc column may use contact/worker cache when get_contact_balances_summary fails'
         );
       }
-    } catch {
+    } catch (e) {
+      if (import.meta.env?.DEV) console.error('[AddEntryV2] loadFormData', e);
       toast.error('Failed to load data');
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [companyId, branchId]);
+  }, [companyId, branchId, editJournalEntryId]);
 
   useEffect(() => {
     loadFormData();
   }, [loadFormData]);
+
+  useEffect(() => {
+    editPrefillAppliedRef.current = false;
+    setEditLoadError(null);
+  }, [editJournalEntryId]);
+
+  useEffect(() => {
+    if (!editJournalEntryId || !companyId || loading || editPrefillAppliedRef.current) return;
+    editPrefillAppliedRef.current = true;
+    void (async () => {
+      try {
+        const entry = await accountingService.getEntryById(editJournalEntryId, companyId);
+        if (!entry) {
+          setEditLoadError('Journal entry not found');
+          return;
+        }
+        const rawLines = (entry as { lines?: Array<{ account_id?: string; account?: { id?: string }; debit?: number; credit?: number }> }).lines || [];
+        const mapped = rawLines.map((l) => ({
+          account_id: l.account_id || l.account?.id,
+          debit: l.debit,
+          credit: l.credit,
+        }));
+        const form = extractPureJournalFormFromLines(mapped);
+        if (!form) {
+          setEditLoadError('Could not read journal lines for editing');
+          return;
+        }
+        setEntryDateTime(
+          journalEntryDateTimeFromRow({
+            entry_date: (entry as { entry_date?: string }).entry_date,
+            created_at: (entry as { created_at?: string }).created_at,
+          }),
+        );
+        setDescription(String((entry as { description?: string }).description || ''));
+        setDebitAccountId(form.debitAccountId);
+        setCreditAccountId(form.creditAccountId);
+        setAmount(form.amount);
+      } catch (e: unknown) {
+        setEditLoadError(e instanceof Error ? e.message : 'Failed to load entry');
+      }
+    })();
+  }, [editJournalEntryId, companyId, loading]);
 
   useEffect(() => {
     initialPropsAppliedRef.current = false;
@@ -336,24 +381,24 @@ export function AddEntryV2({
     if (initialAmount != null && Number.isFinite(Number(initialAmount))) {
       setAmount(Math.max(0, Number(initialAmount)));
     }
-    const transferIds = new Set(transferAccountsList.map((a) => a.id));
-    if (initialFromAccountId && transferIds.has(initialFromAccountId)) {
-      setFromAccountId(initialFromAccountId);
-      if (initialToAccountId && transferIds.has(initialToAccountId)) {
-        setToAccountId(initialToAccountId);
+    const accountIds = new Set(accounts.map((a) => a.id));
+    if (initialFromAccountId && accountIds.has(initialFromAccountId)) {
+      setCreditAccountId(initialFromAccountId);
+      if (initialToAccountId && accountIds.has(initialToAccountId)) {
+        setDebitAccountId(initialToAccountId);
       } else {
-        const other = transferAccountsList.find((a) => a.id !== initialFromAccountId);
-        if (other) setToAccountId(other.id);
+        const other = accounts.find((a) => a.id !== initialFromAccountId);
+        if (other) setDebitAccountId(other.id);
       }
-    } else if (initialToAccountId && transferIds.has(initialToAccountId)) {
-      setToAccountId(initialToAccountId);
+    } else if (initialToAccountId && accountIds.has(initialToAccountId)) {
+      setDebitAccountId(initialToAccountId);
     }
     initialPropsAppliedRef.current = true;
   }, [
     loading,
     customers,
     suppliers,
-    transferAccountsList,
+    accounts,
     initialCustomerContactId,
     initialSupplierContactId,
     initialAmount,
@@ -369,11 +414,12 @@ export function AddEntryV2({
     ).catch(() => setSalaryUsers([]));
   }, [companyId, isExpenseSalary]);
 
-  const paymentAccounts = useMemo(() => paymentAccountsList.length > 0 ? paymentAccountsList.map((a) => ({ id: a.id, name: a.name })) : accounts.filter((a) => /cash|bank|wallet/.test((a.name || '').toLowerCase())), [paymentAccountsList, accounts]);
-
-  const transferEligibleAccounts = useMemo(
-    () => (transferAccountsList.length > 0 ? transferAccountsList : accounts),
-    [transferAccountsList, accounts]
+  const paymentAccounts = useMemo(
+    () =>
+      paymentAccountsList.length > 0
+        ? paymentAccountsList
+        : accounts.filter((a) => /cash|bank|wallet/.test((a.name || '').toLowerCase())),
+    [paymentAccountsList, accounts],
   );
 
   /** COA balance from AccountingContext (journal merge) — same source as UnifiedPaymentDialog. */
@@ -470,15 +516,34 @@ export function AddEntryV2({
     const isAutoOrEmpty = (d: string) => {
       const t = d.trim();
       if (!t) return true;
-      return (
-        t.startsWith('Worker payment to') ||
-        t.startsWith('Customer receipt from') ||
-        t.startsWith('Supplier payment to') ||
-        t.startsWith('Courier payment to')
-      );
+      if (t.startsWith('Worker payment to')) return true;
+      if (t.startsWith('Customer receipt from')) return true;
+      if (t.startsWith('Supplier payment to')) return true;
+      if (t.startsWith('Courier payment to')) return true;
+      if (/\s•\sOUT\s*→\s*.+\s•\sIN/.test(t)) return true;
+      if (/\(OUT\)\s*→\s*.+\(IN\)/.test(t)) return true;
+      return false;
     };
     setDescription((prev) => {
       if (!isAutoOrEmpty(prev)) return prev;
+      if (entryType === 'pure_journal') {
+        const credit = accounts.find((a) => a.id === creditAccountId);
+        const debit = accounts.find((a) => a.id === debitAccountId);
+        if (credit && debit) {
+          const outLeg = formatAccountSelectOptionLabel(credit, {
+            postingSide: 'credit',
+            forceInOut: 'OUT',
+            includeGlBalance: false,
+          });
+          const inLeg = formatAccountSelectOptionLabel(debit, {
+            postingSide: 'debit',
+            forceInOut: 'IN',
+            includeGlBalance: false,
+          });
+          return `${outLeg} → ${inLeg}`;
+        }
+        return prev;
+      }
       if (entryType === 'worker_payment' && workerName.trim()) {
         return `Worker payment to ${workerName.trim()}.`;
       }
@@ -493,7 +558,16 @@ export function AddEntryV2({
       }
       return prev;
     });
-  }, [entryType, workerName, customerName, supplierName, courierName]);
+  }, [
+    entryType,
+    workerName,
+    customerName,
+    supplierName,
+    courierName,
+    accounts,
+    creditAccountId,
+    debitAccountId,
+  ]);
 
   const preview = useMemo(() => {
     const touchesPayment = ['customer_receipt', 'supplier_payment', 'worker_payment', 'expense_payment', 'courier_payment'].includes(entryType);
@@ -529,14 +603,12 @@ export function AddEntryV2({
         if (isExpenseSalary && !expenseSalaryUserId) return false;
         if (!branchId || branchId === 'all') return false;
         return true;
-      case 'internal_transfer':
-        return !!(fromAccountId && toAccountId);
       case 'courier_payment':
         return !!(courierId && courierName && paymentAccountId);
       default:
         return false;
     }
-  }, [entryType, amount, debitAccountId, creditAccountId, customerId, customerName, supplierContactId, supplierName, workerId, workerName, paymentAccountId, expenseCategorySlug, isExpenseSalary, expenseSalaryUserId, branchId, fromAccountId, toAccountId, courierId, courierName]);
+  }, [entryType, amount, debitAccountId, creditAccountId, customerId, customerName, supplierContactId, supplierName, workerId, workerName, paymentAccountId, expenseCategorySlug, isExpenseSalary, expenseSalaryUserId, branchId, courierId, courierName]);
 
   const handleSubmit = async () => {
     if (!companyId) return;
@@ -546,7 +618,7 @@ export function AddEntryV2({
     try {
       let uploadedAttachments: { url: string; name: string }[] | undefined;
       if (entryAttachmentFiles.length > 0) {
-        if (entryType === 'pure_journal' || entryType === 'internal_transfer') {
+        if (entryType === 'pure_journal') {
           const up = await uploadJournalEntryAttachments(companyId, entryAttachmentFiles);
           uploadedAttachments = up.length ? up : undefined;
         } else if (
@@ -574,6 +646,24 @@ export function AddEntryV2({
             toast.error('Select both accounts and enter amount');
             return;
           }
+          if (isEditMode && editJournalEntryId) {
+            const res = await updatePureJournalEntry({
+              companyId,
+              journalEntryId: editJournalEntryId,
+              entryDate,
+              createdAt: paymentEventTimestampFromPicker(entryDateTime),
+              debitAccountId,
+              creditAccountId,
+              amount,
+              description: description || undefined,
+            });
+            if (!res.ok) {
+              toast.error(res.error || 'Could not update entry');
+              return;
+            }
+            toast.success('General entry updated');
+            break;
+          }
           await createPureJournalEntry({
             companyId,
             branchId: branch,
@@ -585,7 +675,7 @@ export function AddEntryV2({
             createdBy: uid,
             attachments: uploadedAttachments,
           });
-          toast.success('Journal entry saved');
+          toast.success('General entry saved');
           break;
         }
         case 'customer_receipt': {
@@ -693,29 +783,6 @@ export function AddEntryV2({
           toast.success('Expense saved');
           break;
         }
-        case 'internal_transfer': {
-          if (!fromAccountId || !toAccountId || amount <= 0) {
-            toast.error('Select from/to accounts and amount');
-            return;
-          }
-          if (fromAccountId === toAccountId) {
-            toast.error('From and To accounts must be different');
-            return;
-          }
-          await createInternalTransferEntry({
-            companyId,
-            branchId: branch,
-            fromAccountId,
-            toAccountId,
-            amount,
-            entryDate,
-            description: description || undefined,
-            createdBy: uid,
-            attachments: uploadedAttachments,
-          });
-          toast.success('Transfer saved');
-          break;
-        }
         case 'courier_payment': {
           if (!courierId || !courierName || amount <= 0 || !paymentAccountId) {
             toast.error('Select courier, amount, and payment account');
@@ -739,9 +806,17 @@ export function AddEntryV2({
           break;
         }
       }
-      await accounting.refreshEntries?.();
-      await loadFormData({ silent: true });
-      dispatchContactBalancesRefresh(companyId);
+      const partyPaymentFlow =
+        entryType === 'customer_receipt' ||
+        entryType === 'supplier_payment' ||
+        entryType === 'worker_payment' ||
+        entryType === 'courier_payment';
+      if (!isEditMode) {
+        await loadFormData({ silent: true });
+      }
+      if (partyPaymentFlow) {
+        dispatchContactBalancesRefresh(companyId);
+      }
       await Promise.resolve(onRecorded?.());
       onClose();
     } catch (e: any) {
@@ -849,23 +924,31 @@ export function AddEntryV2({
             <>
               <div className="flex items-center justify-between p-5 border-b border-gray-800 bg-gradient-to-r from-gray-900 via-gray-900 to-gray-800">
                 <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEntryAttachmentFiles([]);
-                      setStep('select-type');
-                    }}
-                    className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
-                    aria-label="Back to entry type"
-                  >
-                    <ArrowLeft size={20} />
-                  </button>
+                  {!isEditMode && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEntryAttachmentFiles([]);
+                        setStep('select-type');
+                      }}
+                      className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+                      aria-label="Back to entry type"
+                    >
+                      <ArrowLeft size={20} />
+                    </button>
+                  )}
                   <div className="w-10 h-10 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center flex-shrink-0">
                     {ENTRY_TYPES.find((t) => t.key === entryType)?.icon ?? <FileText className="w-5 h-5 text-blue-400" />}
                   </div>
                   <div>
-                    <h2 className="text-lg font-bold text-white">{ENTRY_TYPES.find((t) => t.key === entryType)?.label ?? 'Add Entry'}</h2>
-                    <p className="text-xs text-gray-400 mt-0.5">{ENTRY_TYPES.find((t) => t.key === entryType)?.description ?? ''}</p>
+                    <h2 className="text-lg font-bold text-white">
+                      {isEditMode ? 'Edit Entry' : ENTRY_TYPES.find((t) => t.key === entryType)?.label ?? 'Add Entry'}
+                    </h2>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {isEditMode
+                        ? 'Update accounts, amount, date, and description'
+                        : ENTRY_TYPES.find((t) => t.key === entryType)?.description ?? ''}
+                    </p>
                   </div>
                 </div>
                 <button type="button" onClick={onClose} className="text-gray-400 hover:text-white transition-colors p-1.5 hover:bg-gray-800 rounded-lg" aria-label="Close">
@@ -878,6 +961,8 @@ export function AddEntryV2({
                   <div className="flex items-center justify-center py-12 text-gray-400">
                     <Loader2 className="w-8 h-8 animate-spin" />
                   </div>
+                ) : editLoadError ? (
+                  <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">{editLoadError}</div>
                 ) : (
                   <>
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -1263,45 +1348,39 @@ export function AddEntryV2({
 
                         {entryType === 'pure_journal' && (
                           <div className={cardInnerClass}>
-                            <AccountPickerFieldLabel className={labelClass} base="Debit account" drCr="Dr" inOut="IN/OUT" />
-                            <div className="relative mb-4">
-                              <select value={debitAccountId} onChange={(e) => setDebitAccountId(e.target.value)} className={`${inputClass} appearance-none pr-10`}>
-                                <option value="">Select</option>
-                                {accounts.map((a) => {
-                                  const bal = glBalanceByAccountId.get(a.id) ?? 0;
-                                  return (
-                                    <option key={a.id} value={a.id}>
-                                      {formatAccountSelectOptionLabel(a, {
-                                        postingSide: 'debit',
-                                        balance: bal,
-                                        formatBalance: formatCurrency,
-                                        includeGlBalance: true,
-                                      })}
-                                    </option>
-                                  );
-                                })}
-                              </select>
-                              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
+                            <AccountPickerFieldLabel className={labelClass} base="Debit account" drCr="Dr" inOut="IN" />
+                            <div className="mb-4">
+                              <SearchableAccountSelect
+                                accounts={accounts}
+                                value={debitAccountId}
+                                onChange={setDebitAccountId}
+                                placeholder="Select debit account"
+                                formatOptionLabel={(a) =>
+                                  formatAccountSelectOptionLabel(a, {
+                                    postingSide: 'debit',
+                                    balance: glBalanceByAccountId.get(a.id) ?? 0,
+                                    formatBalance: formatCurrency,
+                                    includeGlBalance: true,
+                                  })
+                                }
+                              />
                             </div>
-                            <AccountPickerFieldLabel className={labelClass} base="Credit account" drCr="Cr" inOut="IN/OUT" />
-                            <div className="relative">
-                              <select value={creditAccountId} onChange={(e) => setCreditAccountId(e.target.value)} className={`${inputClass} appearance-none pr-10`}>
-                                <option value="">Select</option>
-                                {accounts.map((a) => {
-                                  const bal = glBalanceByAccountId.get(a.id) ?? 0;
-                                  return (
-                                    <option key={a.id} value={a.id}>
-                                      {formatAccountSelectOptionLabel(a, {
-                                        postingSide: 'credit',
-                                        balance: bal,
-                                        formatBalance: formatCurrency,
-                                        includeGlBalance: true,
-                                      })}
-                                    </option>
-                                  );
-                                })}
-                              </select>
-                              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
+                            <AccountPickerFieldLabel className={labelClass} base="Credit account" drCr="Cr" inOut="OUT" />
+                            <div>
+                              <SearchableAccountSelect
+                                accounts={accounts}
+                                value={creditAccountId}
+                                onChange={setCreditAccountId}
+                                placeholder="Select credit account"
+                                formatOptionLabel={(a) =>
+                                  formatAccountSelectOptionLabel(a, {
+                                    postingSide: 'credit',
+                                    balance: glBalanceByAccountId.get(a.id) ?? 0,
+                                    formatBalance: formatCurrency,
+                                    includeGlBalance: true,
+                                  })
+                                }
+                              />
                             </div>
                             {(debitAccountId || creditAccountId) && (
                               <div className="mt-3 space-y-2 rounded-lg border border-gray-800 bg-gray-900/50 px-3 py-2 text-xs">
@@ -1319,75 +1398,6 @@ export function AddEntryV2({
                                     <span className="font-mono text-emerald-400 tabular-nums">
                                       {formatCurrency(glBalanceByAccountId.get(creditAccountId) ?? 0)}
                                     </span>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {entryType === 'internal_transfer' && (
-                          <div className={cardInnerClass}>
-                            <AccountPickerFieldLabel className={labelClass} base="From account" drCr="Cr" inOut="OUT" />
-                            <div className="relative mb-4">
-                              <select value={fromAccountId} onChange={(e) => setFromAccountId(e.target.value)} className={`${inputClass} appearance-none pr-10`}>
-                                {transferEligibleAccounts.map((a) => {
-                                  const bal = glBalanceByAccountId.get(a.id) ?? 0;
-                                  return (
-                                    <option key={a.id} value={a.id}>
-                                      {formatAccountSelectOptionLabel(a, {
-                                        forceInOut: 'OUT',
-                                        balance: bal,
-                                        formatBalance: formatCurrency,
-                                        includeGlBalance: true,
-                                      })}
-                                    </option>
-                                  );
-                                })}
-                              </select>
-                              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
-                            </div>
-                            <AccountPickerFieldLabel className={labelClass} base="To account" drCr="Dr" inOut="IN" />
-                            <div className="relative">
-                              <select value={toAccountId} onChange={(e) => setToAccountId(e.target.value)} className={`${inputClass} appearance-none pr-10`}>
-                                {transferEligibleAccounts.map((a) => {
-                                  const bal = glBalanceByAccountId.get(a.id) ?? 0;
-                                  return (
-                                    <option key={a.id} value={a.id}>
-                                      {formatAccountSelectOptionLabel(a, {
-                                        forceInOut: 'IN',
-                                        balance: bal,
-                                        formatBalance: formatCurrency,
-                                        includeGlBalance: true,
-                                      })}
-                                    </option>
-                                  );
-                                })}
-                              </select>
-                              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
-                            </div>
-                            {(fromAccountId || toAccountId) && (
-                              <div className="mt-3 space-y-2 rounded-lg border border-gray-800 bg-gray-900/50 px-3 py-2 text-xs">
-                                {fromAccountId && (
-                                  <div className="flex justify-between gap-2 text-gray-400">
-                                    <span>From — GL balance</span>
-                                    <span className="font-mono text-emerald-400 tabular-nums">
-                                      {formatCurrency(glBalanceByAccountId.get(fromAccountId) ?? 0)}
-                                    </span>
-                                  </div>
-                                )}
-                                {toAccountId && (
-                                  <div className="flex justify-between gap-2 text-gray-400">
-                                    <span>To — GL balance</span>
-                                    <span className="font-mono text-emerald-400 tabular-nums">
-                                      {formatCurrency(glBalanceByAccountId.get(toAccountId) ?? 0)}
-                                    </span>
-                                  </div>
-                                )}
-                                {fromAccountId && amount > 0 && amount > (glBalanceByAccountId.get(fromAccountId) ?? 0) && (
-                                  <div className="flex items-center gap-2 text-orange-400 text-[11px] bg-orange-500/10 border border-orange-500/20 rounded-lg p-2">
-                                    <AlertCircle size={12} />
-                                    <span>Transfer amount exceeds &quot;from&quot; account GL balance.</span>
                                   </div>
                                 )}
                               </div>
@@ -1519,23 +1529,21 @@ export function AddEntryV2({
                               inOut={entryType === 'customer_receipt' ? 'IN' : 'OUT'}
                               required
                             />
-                            <div className="relative">
-                              <select value={paymentAccountId} onChange={(e) => setPaymentAccountId(e.target.value)} className={`${inputClass} appearance-none pr-10`}>
-                                {paymentAccounts.map((a) => {
-                                  const bal = glBalanceByAccountId.get(a.id) ?? 0;
-                                  return (
-                                    <option key={a.id} value={a.id}>
-                                      {formatAccountSelectOptionLabel(a, {
-                                        postingSide: entryType === 'customer_receipt' ? 'debit' : 'credit',
-                                        balance: bal,
-                                        formatBalance: formatCurrency,
-                                        includeGlBalance: true,
-                                      })}
-                                    </option>
-                                  );
-                                })}
-                              </select>
-                              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
+                            <div>
+                              <SearchableAccountSelect
+                                accounts={paymentAccounts}
+                                value={paymentAccountId}
+                                onChange={setPaymentAccountId}
+                                placeholder="Select payment account"
+                                formatOptionLabel={(a) =>
+                                  formatAccountSelectOptionLabel(a, {
+                                    postingSide: entryType === 'customer_receipt' ? 'debit' : 'credit',
+                                    balance: glBalanceByAccountId.get(a.id) ?? 0,
+                                    formatBalance: formatCurrency,
+                                    includeGlBalance: true,
+                                  })
+                                }
+                              />
                             </div>
                             {paymentAccountId &&
                               (() => {
@@ -1700,9 +1708,9 @@ export function AddEntryV2({
                         <Button variant="outline" className="border-gray-700 text-gray-300 hover:bg-gray-800 px-5" onClick={onClose} disabled={saving}>
                           Cancel
                         </Button>
-                        <Button className="bg-blue-600 hover:bg-blue-500 text-white min-w-[140px] font-semibold" onClick={handleSubmit} disabled={saving || !canSave}>
+                        <Button className="bg-blue-600 hover:bg-blue-500 text-white min-w-[140px] font-semibold" onClick={handleSubmit} disabled={saving || !canSave || Boolean(editLoadError)}>
                           {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Check className="w-4 h-4 mr-2" />}
-                          Save entry
+                          {isEditMode ? 'Save changes' : 'Save entry'}
                         </Button>
                       </div>
                     </div>

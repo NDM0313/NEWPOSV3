@@ -2085,6 +2085,7 @@ export const saleService = {
         reference_type,
         notes,
         created_at,
+        attachments,
         account:accounts(id, name)
       `)
       .eq('id', id)
@@ -2105,6 +2106,7 @@ export const saleService = {
       referenceType: p.reference_type,
       notes: p.notes || '',
       createdAt: p.created_at,
+      attachments: p.attachments,
     };
   },
 

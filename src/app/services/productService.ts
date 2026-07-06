@@ -12,6 +12,9 @@ import {
 } from '@/app/utils/variationFieldMap';
 import { isPostgrestMissingColumnError } from '@/app/utils/postgrestSchemaError';
 import { resolveStockWriteBranchId } from '@/app/utils/branchScope';
+import { parseLocalDateTimeInput, toLocalISOString } from '@/app/utils/localDate';
+import { resolveProductUnitCost, roundStockMoney } from '@/app/utils/stockMovementValuation';
+import { stockAdjustmentJournalService } from '@/app/services/stockAdjustmentJournalService';
 
 /** normal = catalog product; production = manufactured from studio (STD-PROD, inventory + cost). */
 export type ProductType = 'normal' | 'production';
@@ -903,10 +906,26 @@ export const productService = {
     reference_id?: string;
     notes?: string;
     created_by?: string;
+    /** When set (e.g. manual stock adjustment), writes stock_movements.created_at */
+    created_at?: string;
     box_change?: number; // Packing: net boxes (positive IN, negative OUT)
     piece_change?: number; // Packing: net pieces (positive IN, negative OUT)
   }) {
     const resolvedBranchId = resolveStockWriteBranchId(data.branch_id, undefined);
+
+    const movementType = String(data.movement_type || '').toLowerCase().trim();
+    const referenceType = String(data.reference_type || '').toLowerCase().trim();
+    const isGenericAdjustment =
+      movementType === 'adjustment' && referenceType !== 'opening_balance';
+
+    let unitCost = Number(data.unit_cost) || 0;
+    let totalCost = Number(data.total_cost) || 0;
+    if (isGenericAdjustment && !(totalCost > 0) && !(unitCost > 0)) {
+      unitCost = await resolveProductUnitCost(data.product_id, data.variation_id ?? null);
+      totalCost = roundStockMoney(Math.abs(Number(data.quantity) || 0) * unitCost);
+    } else if (!totalCost && unitCost > 0) {
+      totalCost = roundStockMoney(unitCost * Math.abs(Number(data.quantity) || 0));
+    }
 
     console.log('[CREATE STOCK MOVEMENT] Creating movement:', {
       product_id: data.product_id,
@@ -924,13 +943,17 @@ export const productService = {
       product_id: data.product_id,
       variation_id: data.variation_id || null,
       quantity: data.quantity,
-      unit_cost: data.unit_cost || 0,
-      total_cost: data.total_cost || (data.unit_cost || 0) * Math.abs(data.quantity),
+      unit_cost: unitCost,
+      total_cost: totalCost,
       reference_type: data.reference_type || null,
       reference_id: data.reference_id || null,
       notes: data.notes || null,
       created_by: data.created_by || null,
     };
+
+    if (data.created_at && String(data.created_at).trim()) {
+      insertData.created_at = toLocalISOString(parseLocalDateTimeInput(data.created_at));
+    }
 
     insertData.movement_type = data.movement_type;
     // Box and pieces are always integers in inventory (no decimals)
@@ -1003,6 +1026,13 @@ export const productService = {
           if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('inventory-updated'));
           clearInventoryOverviewCache(data.company_id);
           await inventoryService.syncOpeningJournalIfApplicable(retryMovement2);
+          if (isGenericAdjustment) {
+            try {
+              await stockAdjustmentJournalService.syncStockAdjustmentFromMovementId(retryMovement2.id);
+            } catch (jeErr) {
+              console.warn('[CREATE STOCK MOVEMENT] Stock adjustment GL sync failed:', jeErr);
+            }
+          }
           return retryMovement2;
         }
         
@@ -1014,6 +1044,13 @@ export const productService = {
         if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('inventory-updated'));
         clearInventoryOverviewCache(data.company_id);
         await inventoryService.syncOpeningJournalIfApplicable(retryMovement);
+        if (isGenericAdjustment) {
+          try {
+            await stockAdjustmentJournalService.syncStockAdjustmentFromMovementId(retryMovement.id);
+          } catch (jeErr) {
+            console.warn('[CREATE STOCK MOVEMENT] Stock adjustment GL sync failed:', jeErr);
+          }
+        }
         return retryMovement;
       }
       
@@ -1041,6 +1078,13 @@ export const productService = {
     if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('inventory-updated'));
     clearInventoryOverviewCache(data.company_id);
     await inventoryService.syncOpeningJournalIfApplicable(movement);
+    if (isGenericAdjustment) {
+      try {
+        await stockAdjustmentJournalService.syncStockAdjustmentFromMovementId(movement.id);
+      } catch (jeErr) {
+        console.warn('[CREATE STOCK MOVEMENT] Stock adjustment GL sync failed:', jeErr);
+      }
+    }
     return movement;
   },
 

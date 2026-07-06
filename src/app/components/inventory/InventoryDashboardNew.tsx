@@ -318,7 +318,7 @@ export const InventoryDashboardNew = () => {
     quantity: number;
     reason: string;
     notes: string;
-    date: string;
+    movementAt: string;
     newStock: number;
     variationId?: string | null;
   }) => {
@@ -335,6 +335,7 @@ export const InventoryDashboardNew = () => {
         notes: `${data.reason}: ${data.notes}`,
         reference_type: 'adjustment',
         created_by: user?.id,
+        created_at: data.movementAt,
       });
       toast.success('Stock adjustment saved');
       setAdjustmentProduct(null);

@@ -20,6 +20,7 @@ import {
   receiptUrlToAttachments,
   type TransactionAttachment,
 } from '@/app/utils/transactionAttachments';
+import { resolveStockMovementDisplayAmount } from '@/app/utils/stockMovementValuation';
 
 export interface JournalEntry {
   id?: string;
@@ -1026,6 +1027,85 @@ export const accountingService = {
         }
       });
 
+      const stockAdjMovementIds = [
+        ...new Set(
+          validEntries
+            .filter(
+              (e: { reference_type?: string; reference_id?: string }) =>
+                String(e.reference_type || '').toLowerCase() === 'stock_adjustment' && e.reference_id
+            )
+            .map((e: { reference_id?: string }) => String(e.reference_id))
+        ),
+      ] as string[];
+      const stockMovementAmountById = new Map<string, number>();
+      if (stockAdjMovementIds.length > 0) {
+        try {
+          const movements = await fetchInBatches(stockAdjMovementIds, async (chunk) => {
+            const { data, error } = await supabase
+              .from('stock_movements')
+              .select('id, quantity, unit_cost, total_cost, product_id, variation_id')
+              .in('id', chunk);
+            if (error) throw error;
+            return data || [];
+          });
+          const productIds = [
+            ...new Set(
+              movements
+                .map((m: { product_id?: string }) => m.product_id)
+                .filter((id): id is string => id != null && String(id).trim() !== '')
+            ),
+          ];
+          const variationIds = [
+            ...new Set(
+              movements
+                .map((m: { variation_id?: string | null }) => m.variation_id)
+                .filter((id): id is string => id != null && String(id).trim() !== '')
+            ),
+          ];
+          const productCostById = new Map<string, number>();
+          if (productIds.length > 0) {
+            const { data: prods } = await supabase
+              .from('products')
+              .select('id, cost_price')
+              .in('id', productIds);
+            (prods || []).forEach((p: { id?: string; cost_price?: number }) => {
+              if (p?.id) productCostById.set(String(p.id), Number(p.cost_price) || 0);
+            });
+          }
+          const variationCostById = new Map<string, { cost: number; purchase: number }>();
+          if (variationIds.length > 0) {
+            const { data: vars } = await supabase
+              .from('product_variations')
+              .select('id, cost_price, purchase_price')
+              .in('id', variationIds);
+            (vars || []).forEach((v: { id?: string; cost_price?: number; purchase_price?: number }) => {
+              if (v?.id) {
+                variationCostById.set(String(v.id), {
+                  cost: Number(v.cost_price) || 0,
+                  purchase: Number(v.purchase_price) || 0,
+                });
+              }
+            });
+          }
+          for (const m of movements) {
+            const mid = String((m as { id?: string }).id || '');
+            if (!mid) continue;
+            const vid = (m as { variation_id?: string | null }).variation_id;
+            const pid = (m as { product_id?: string }).product_id;
+            const vcost = vid ? variationCostById.get(String(vid)) : undefined;
+            const displayAmt = resolveStockMovementDisplayAmount({
+              ...m,
+              product_cost_price: pid ? productCostById.get(String(pid)) : 0,
+              variation_cost_price: vcost?.cost,
+              variation_purchase_price: vcost?.purchase,
+            });
+            if (displayAmt > 0) stockMovementAmountById.set(mid, displayAmt);
+          }
+        } catch (stockEnrichErr) {
+          console.warn('[ACCOUNTING SERVICE] stock_adjustment movement enrich:', stockEnrichErr);
+        }
+      }
+
       validEntries = validEntries.map((e: any) => {
         const rtNorm = String(e.reference_type || '')
           .toLowerCase()
@@ -1190,6 +1270,10 @@ export const accountingService = {
         }
         const mergedSource = mergeAttachmentLists(sourceAttachmentParts);
         if (mergedSource.length > 0) out._source_attachments = mergedSource;
+        if (rtN === 'stock_adjustment' && entry.reference_id) {
+          const smAmt = stockMovementAmountById.get(String(entry.reference_id));
+          if (smAmt != null && smAmt > 0) out._stock_movement_amount = smAmt;
+        }
         return out;
       });
 
@@ -4370,10 +4454,18 @@ export const accountingService = {
 
     try {
       const { notifyAccountingEntriesChanged } = await import('@/app/lib/accountingInvalidate');
-      notifyAccountingEntriesChanged();
+      notifyAccountingEntriesChanged({
+        companyId: entry.company_id,
+        entityId: entryData.id,
+        reason: 'accounting-entries-changed',
+      });
     } catch {
       if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+        window.dispatchEvent(
+          new CustomEvent('accountingEntriesChanged', {
+            detail: { entityId: entryData.id, journalEntryId: entryData.id },
+          }),
+        );
       }
     }
 

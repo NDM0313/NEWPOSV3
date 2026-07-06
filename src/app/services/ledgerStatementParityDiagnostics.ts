@@ -188,6 +188,18 @@ export function deriveClosingBalanceFromEntries(rows: ParityLedgerEntry[]): numb
   return round2(Number(last.running_balance) || 0);
 }
 
+/** Net closing from period opening + line movements (account GL debit − credit). */
+export function deriveClosingFromDebitCreditMovements(
+  periodOpening: number,
+  rows: Array<{ debit?: number | null; credit?: number | null }>,
+): number {
+  let balance = round2(periodOpening);
+  for (const row of rows) {
+    balance = round2(balance + Number(row.debit || 0) - Number(row.credit || 0));
+  }
+  return balance;
+}
+
 export function countOpeningRows(rows: ParityLedgerEntry[]): number {
   return rows.filter(isOpeningRow).length;
 }

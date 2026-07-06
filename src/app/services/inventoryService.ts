@@ -27,6 +27,13 @@ import { applyBranchStockMovementFilter } from '@/app/utils/branchScope';
 import { productService } from '@/app/services/productService';
 import { defaultAccountsService } from '@/app/services/defaultAccountsService';
 import { runChunkedAllSettled } from '@/app/modules/csv-workbench/chunkedCommit';
+import { stockAdjustmentJournalService } from '@/app/services/stockAdjustmentJournalService';
+import {
+  isEditableManualStockAdjustment,
+  projectedStockBalanceAfterEdit,
+} from '@/app/lib/stockMovementEditPolicy';
+import { parseLocalDateTimeInput, toLocalISOString } from '@/app/utils/localDate';
+import { roundStockMoney } from '@/app/utils/stockMovementValuation';
 
 const OPENING_GL_SYNC_CHUNK_SIZE = 5;
 
@@ -1319,6 +1326,79 @@ export const inventoryService = {
     }
 
     return Array.from(map.values());
+  },
+
+  /**
+   * Edit a manual stock adjustment from Full Stock Ledger (date, signed qty, notes).
+   * Re-syncs stock_adjustment GL via stockAdjustmentJournalService.
+   */
+  async updateManualStockAdjustment(
+    movementId: string,
+    payload: {
+      movementAt: string;
+      quantity: number;
+      notes: string;
+      /** Running balance after this row (from ledger) for negative-stock guard */
+      balanceAfter?: number;
+    }
+  ): Promise<{ error: string | null }> {
+    const { data: m, error: loadErr } = await supabase
+      .from('stock_movements')
+      .select('*')
+      .eq('id', movementId)
+      .maybeSingle();
+    if (loadErr) return { error: loadErr.message };
+    if (!m) return { error: 'Stock movement not found.' };
+    if (!isEditableManualStockAdjustment(m)) {
+      return { error: 'This movement cannot be edited here. Use the source module instead.' };
+    }
+
+    const newQty = Number(payload.quantity);
+    if (!Number.isFinite(newQty) || Math.abs(newQty) < 0.0001) {
+      return { error: 'Quantity must be greater than zero.' };
+    }
+
+    const oldQty = Number(m.quantity) || 0;
+    if (payload.balanceAfter != null && Number.isFinite(payload.balanceAfter)) {
+      const projected = projectedStockBalanceAfterEdit(payload.balanceAfter, oldQty, newQty);
+      if (projected < -0.0001) {
+        return { error: `Adjustment would make stock negative (${projected.toFixed(2)}).` };
+      }
+    }
+
+    const unitCost = Number(m.unit_cost) || 0;
+    const totalCost = roundStockMoney(Math.abs(newQty) * unitCost);
+    const createdAt = toLocalISOString(parseLocalDateTimeInput(payload.movementAt));
+
+    const { error: updErr } = await supabase
+      .from('stock_movements')
+      .update({
+        created_at: createdAt,
+        quantity: newQty,
+        notes: payload.notes.trim() || null,
+        total_cost: totalCost,
+      })
+      .eq('id', movementId);
+    if (updErr) return { error: updErr.message };
+
+    clearInventoryOverviewCache(m.company_id as string);
+
+    try {
+      await stockAdjustmentJournalService.syncStockAdjustmentFromMovementId(movementId);
+    } catch (glErr) {
+      console.warn('[INVENTORY SERVICE] Stock adjustment GL sync after edit:', glErr);
+    }
+
+    try {
+      const { notifyAccountingEntriesChanged } = await import('@/app/lib/accountingInvalidate');
+      notifyAccountingEntriesChanged();
+    } catch {
+      /* ignore */
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('inventory-updated'));
+    }
+    return { error: null };
   },
 };
 

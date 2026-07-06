@@ -7,8 +7,33 @@ import { useSupabase } from '@/app/context/SupabaseContext';
 import { useNavigation } from '@/app/context/NavigationContext';
 import { useSubmitLock } from '@/app/context/LoadingContext';
 import { openJournalSourceDocumentFromEntry } from '@/app/lib/openJournalSourceDocument';
+import { manualJournalCancelConfirmMessage } from '@/app/lib/manualJournalCancelPolicy';
 import type { RoznamchaRow } from '@/app/services/roznamchaService';
 import { roznamchaRowDetailReference } from '@/app/lib/roznamchaTransactionActions';
+
+export type JournalPendingConfirm =
+  | {
+      kind: 'cancel_entry';
+      entryId: string;
+      title: string;
+      message: string;
+      busyLabel: string;
+    }
+  | {
+      kind: 'cancel_payment';
+      entryId: string;
+      title: string;
+      message: string;
+      busyLabel: string;
+    }
+  | {
+      kind: 'cancel_orphan';
+      entryId: string;
+      paymentId: string;
+      title: string;
+      message: string;
+      busyLabel: string;
+    };
 
 export function useJournalTransactionActionHandlers() {
   const { companyId } = useSupabase();
@@ -22,6 +47,7 @@ export function useJournalTransactionActionHandlers() {
   const [transactionDetailAutoEdit, setTransactionDetailAutoEdit] = useState(false);
   const [transactionDetailAutoOpenTrace, setTransactionDetailAutoOpenTrace] = useState(false);
   const [transactionDetailScrollToAudit, setTransactionDetailScrollToAudit] = useState(false);
+  const [pendingConfirm, setPendingConfirm] = useState<JournalPendingConfirm | null>(null);
 
   const clearTransactionDetail = useCallback(() => {
     setTransactionReference(null);
@@ -32,12 +58,43 @@ export function useJournalTransactionActionHandlers() {
     setTransactionDetailScrollToAudit(false);
   }, []);
 
+  const dismissPendingConfirm = useCallback(() => {
+    setPendingConfirm(null);
+  }, []);
+
   const runJournalMutation = useCallback(
     (label: string, task: () => Promise<void>) => {
       void run(label, task);
     },
     [run],
   );
+
+  const confirmPendingJournalAction = useCallback(() => {
+    if (!pendingConfirm || busy) return;
+    const action = pendingConfirm;
+    setPendingConfirm(null);
+
+    if (action.kind === 'cancel_entry') {
+      runJournalMutation(action.busyLabel, async () => {
+        await accounting.createReversalEntry(action.entryId);
+      });
+      return;
+    }
+
+    if (action.kind === 'cancel_payment') {
+      runJournalMutation(action.busyLabel, async () => {
+        await accounting.createReversalEntry(action.entryId);
+      });
+      return;
+    }
+
+    if (!companyId) return;
+    runJournalMutation(action.busyLabel, async () => {
+      const { cancelOrphanManualReceipt } = await import('@/app/services/orphanReceiptService');
+      await cancelOrphanManualReceipt({ companyId, paymentId: action.paymentId });
+      await accounting.refreshEntries?.();
+    });
+  }, [accounting, busy, companyId, pendingConfirm, runJournalMutation]);
 
   const handleOpenJournalSourceDocument = useCallback(
     async (entry: AccountingEntry) => {
@@ -102,54 +159,54 @@ export function useJournalTransactionActionHandlers() {
 
   const handleJournalCancelPayment = useCallback(
     (entryId: string, isMultiMemberChain: boolean) => {
-      runJournalMutation('Cancelling payment...', async () => {
-        const msg = isMultiMemberChain
+      if (busy) return;
+      setPendingConfirm({
+        kind: 'cancel_payment',
+        entryId,
+        title: 'Cancel payment?',
+        message: isMultiMemberChain
           ? 'Cancel this payment entirely? This voids the original posting plus every edit in the chain. Cannot be undone.'
-          : 'Cancel this payment? This posts offsetting entries and removes it from live reports.';
-        if (!window.confirm(msg)) return;
-        await accounting.createReversalEntry(entryId);
+          : 'Cancel this payment? This posts offsetting entries and removes it from live reports.',
+        busyLabel: 'Cancelling payment...',
       });
     },
-    [accounting, runJournalMutation],
+    [busy],
   );
 
   const handleJournalCancelEntry = useCallback(
     (entryId: string) => {
-      runJournalMutation('Cancelling entry...', async () => {
-        if (
-          !window.confirm(
-            'Cancel this journal entry? This posts offsetting entries and removes it from live reports.',
-          )
-        ) {
-          return;
-        }
-        await accounting.createReversalEntry(entryId);
+      if (busy) return;
+      setPendingConfirm({
+        kind: 'cancel_entry',
+        entryId,
+        title: 'Cancel entry?',
+        message: manualJournalCancelConfirmMessage(false),
+        busyLabel: 'Cancelling entry...',
       });
     },
-    [accounting, runJournalMutation],
+    [busy],
   );
 
   const handleJournalCancelOrphan = useCallback(
     (entryId: string, paymentIdOverride?: string | null) => {
-      if (!companyId) return;
-      runJournalMutation('Hiding orphan receipt...', async () => {
-        const entry = accounting.entries.find((e) => e.id === entryId);
-        const paymentId =
-          paymentIdOverride ?? entry?.metadata?.paymentId ?? null;
-        if (!paymentId) throw new Error('Orphan receipt has no linked payment id.');
-        if (
-          !window.confirm(
-            'Hide this failed receipt attempt from normal reports? The payment record and audit history are kept; no GL lines were posted.',
-          )
-        ) {
-          return;
-        }
-        const { cancelOrphanManualReceipt } = await import('@/app/services/orphanReceiptService');
-        await cancelOrphanManualReceipt({ companyId, paymentId });
-        await accounting.refreshEntries?.();
+      if (!companyId || busy) return;
+      const entry = accounting.entries.find((e) => e.id === entryId);
+      const paymentId = paymentIdOverride ?? entry?.metadata?.paymentId ?? null;
+      if (!paymentId) {
+        console.error('[useJournalTransactionActionHandlers] Orphan receipt has no linked payment id.');
+        return;
+      }
+      setPendingConfirm({
+        kind: 'cancel_orphan',
+        entryId,
+        paymentId,
+        title: 'Hide orphan receipt?',
+        message:
+          'Hide this failed receipt attempt from normal reports? The payment record and audit history are kept; no GL lines were posted.',
+        busyLabel: 'Hiding orphan receipt...',
       });
     },
-    [accounting, companyId, runJournalMutation],
+    [accounting.entries, busy, companyId],
   );
 
   return {
@@ -160,7 +217,10 @@ export function useJournalTransactionActionHandlers() {
     transactionDetailAutoEdit,
     transactionDetailAutoOpenTrace,
     transactionDetailScrollToAudit,
+    pendingConfirm,
     clearTransactionDetail,
+    dismissPendingConfirm,
+    confirmPendingJournalAction,
     setTransactionDetailAutoEdit,
     setTransactionDetailAutoOpenTrace,
     setTransactionDetailScrollToAudit,

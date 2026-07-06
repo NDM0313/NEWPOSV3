@@ -8,6 +8,7 @@ import { accountingService, type JournalEntry, type JournalEntryLine } from './a
 import { accountService } from './accountService';
 import { defaultAccountsService } from './defaultAccountsService';
 import type { AccountCategory } from './chartAccountService';
+import { resolveStockMovementValuation, roundStockMoney as roundStockMoneyUtil } from '@/app/utils/stockMovementValuation';
 
 export const OPENING_BALANCE_REFERENCE = {
   CONTACT_AR: 'opening_balance_contact_ar',
@@ -506,49 +507,21 @@ export const openingBalanceJournalService = {
     const companyId = m.company_id as string;
     await voidMisclassifiedStockAdjustmentJesForMovement(movementId);
 
-    let amt = roundMoney(
-      Number(m.total_cost) || (Number(m.quantity) || 0) * (Number(m.unit_cost) || 0) || 0
-    );
+    const valuation = await resolveStockMovementValuation(m);
+    let amt = roundMoney(valuation.amount);
 
-    // Cost fallback: movement has no cost data but product/variation has a cost_price.
-    // This happens when opening stock was saved before cost price was entered, or via older code paths.
-    // The Inventory Management UI uses products.cost_price for stock value — align GL sync with same source.
-    if (amt < MONEY_EPS) {
-      const qty = Number(m.quantity) || 0;
-      const vid = (m as { variation_id?: string | null }).variation_id;
-      let productCost = 0;
-      if (vid) {
-        try {
-          const { data: pv } = await supabase
-            .from('product_variations')
-            .select('cost_price, purchase_price')
-            .eq('id', vid)
-            .maybeSingle();
-          productCost = Number((pv as any)?.cost_price) || Number((pv as any)?.purchase_price) || 0;
-        } catch { /* ignore */ }
-      }
-      if (!productCost && m.product_id) {
-        try {
-          const { data: prod } = await supabase
-            .from('products')
-            .select('cost_price')
-            .eq('id', m.product_id)
-            .maybeSingle();
-          productCost = Number((prod as any)?.cost_price) || 0;
-        } catch { /* ignore */ }
-      }
-      const fallbackAmt = roundMoney(qty * productCost);
-      if (fallbackAmt > MONEY_EPS) {
-        // Update the movement to be canonical for future syncs (also fix movement_type for legacy null rows)
-        await supabase
-          .from('stock_movements')
-          .update({ unit_cost: productCost, total_cost: fallbackAmt, movement_type: 'adjustment' })
-          .eq('id', movementId);
-        console.info(
-          `[openingBalanceJournalService] Inventory OB cost fallback: movement ${movementId} had zero cost; used product cost_price ${productCost} → Rs.${fallbackAmt}`
-        );
-        amt = fallbackAmt;
-      }
+    if (valuation.usedProductFallback && amt > MONEY_EPS) {
+      await supabase
+        .from('stock_movements')
+        .update({
+          unit_cost: valuation.unitCost,
+          total_cost: roundStockMoneyUtil(amt),
+          movement_type: 'adjustment',
+        })
+        .eq('id', movementId);
+      console.info(
+        `[openingBalanceJournalService] Inventory OB cost fallback: movement ${movementId} used product cost_price ${valuation.unitCost} → Rs.${amt}`
+      );
     }
 
     const invId = await resolveInventoryAssetAccountId(companyId);

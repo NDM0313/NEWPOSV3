@@ -55,6 +55,7 @@ import { ManualEntryDialog } from './ManualEntryDialog';
 import { AccountLedgerView } from './AccountLedgerView';
 import { AccountLedgerPage } from './AccountLedgerPage';
 import { TransactionDetailModal } from './TransactionDetailModal';
+import { TransactionConfirmDialog } from './TransactionConfirmDialog';
 import { AttachmentViewer } from '@/app/components/shared/AttachmentViewer';
 import {
   collectEntryAttachments,
@@ -69,7 +70,7 @@ import type { LedgerStatementV2Initial } from '@/app/features/ledger-statement-c
 import { PayCourierModal } from './PayCourierModal';
 import { useSettings } from '@/app/context/SettingsContext';
 import { AccountingTestPage } from '@/app/components/test/AccountingTestPage';
-import { AddEntryV2 } from './AddEntryV2';
+import { AddEntryV2Host, dispatchOpenAddEntryV2 } from './AddEntryV2Host';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { INTEGRITY_LAB_SESSION_KEY } from '@/app/lib/integrityLabConstants';
 import { syncArApDiagnosticsHubTabToUrl } from '@/app/lib/arApDiagnosticsHubTabs';
@@ -257,6 +258,13 @@ function journalRowPresentation(entry: AccountingEntry): {
       typeLabel: 'Worker payment',
       amountClass: 'text-violet-400',
       badgeClass: 'bg-violet-500/20 text-violet-300 border-violet-500/35',
+    };
+  }
+  if (rtRaw === 'stock_adjustment') {
+    return {
+      typeLabel: 'Stock adjustment',
+      amountClass: 'text-yellow-400',
+      badgeClass: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/35',
     };
   }
   if (payId && rtRaw === 'purchase') {
@@ -536,6 +544,9 @@ export const AccountingDashboard = () => {
     handleJournalCancelPayment,
     handleJournalCancelEntry,
     handleJournalCancelOrphan,
+    pendingConfirm,
+    dismissPendingConfirm,
+    confirmPendingJournalAction,
   } = useJournalTransactionActionHandlers();
   const { formatCurrency } = useFormatCurrency();
 
@@ -598,10 +609,7 @@ export const AccountingDashboard = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [filterOpen, setFilterOpen] = useState(false);
   
-  // 🎯 Add Entry flow (type selector + modals, same as Accounting Test page)
-  const [addEntryFlowOpen, setAddEntryFlowOpen] = useState(false);
-  const [addEntryInitialType, setAddEntryInitialType] = useState<import('./AddEntryV2').AddEntryV2Type | undefined>(undefined);
-  const [transferFromAccountId, setTransferFromAccountId] = useState<string | null>(null);
+  // Add Entry flow — opened via openAddEntryV2 event (AddEntryV2Host)
   // Legacy manual-entry-only dialog (kept for any direct use)
   const [manualEntryOpen, setManualEntryOpen] = useState(false);
   
@@ -658,18 +666,6 @@ export const AccountingDashboard = () => {
     return accounting.entries;
   }, [accounting.entries]);
 
-  useEffect(() => {
-    const handleOpenAddEntryV2 = (event: Event) => {
-      const d = (event as CustomEvent).detail || {};
-      const requested = d.entryType as import('./AddEntryV2').AddEntryV2Type | undefined;
-      setAddEntryInitialType(requested);
-      setActiveTab('journal_entries');
-      setAddEntryFlowOpen(true);
-    };
-    window.addEventListener('openAddEntryV2', handleOpenAddEntryV2 as EventListener);
-    return () => window.removeEventListener('openAddEntryV2', handleOpenAddEntryV2 as EventListener);
-  }, []);
-  
   // Calculate summary stats from journal entries (uses module-level account sets above)
   const summary = useMemo(() => {
     let totalIncome = 0;
@@ -1135,8 +1131,8 @@ export const AccountingDashboard = () => {
           {canAccessAccounting && canPostAccounting && activeTab === 'journal_entries' && (
             <Button 
               onClick={() => {
-                setAddEntryInitialType(undefined);
-                setAddEntryFlowOpen(true);
+                setActiveTab('journal_entries');
+                dispatchOpenAddEntryV2();
               }}
               className="bg-blue-600 hover:bg-blue-500 text-white h-10 gap-2 shadow-lg shadow-blue-900/30"
             >
@@ -2416,9 +2412,11 @@ export const AccountingDashboard = () => {
                     setCurrentView={setCurrentView}
                     canPostAccounting={canPostAccounting}
                     onTransferBalance={(accountId) => {
-                      setTransferFromAccountId(accountId);
-                      setAddEntryInitialType('internal_transfer');
-                      setAddEntryFlowOpen(true);
+                      setActiveTab('journal_entries');
+                      dispatchOpenAddEntryV2({
+                        entryType: 'pure_journal',
+                        fromAccountId: accountId,
+                      });
                     }}
                     onOpenAccountStatements={(accountId) => {
                       setAccountStatementPreselectId(accountId);
@@ -2714,28 +2712,7 @@ export const AccountingDashboard = () => {
 
       </div>
       
-      {/* Add Entry flow: V2 (default) or legacy */}
-      {addEntryFlowOpen && USE_ADD_ENTRY_V2 && (
-        <AddEntryV2
-          initialEntryType={addEntryInitialType}
-          initialFromAccountId={transferFromAccountId ?? undefined}
-          onClose={() => {
-            setAddEntryFlowOpen(false);
-            setAddEntryInitialType(undefined);
-            setTransferFromAccountId(null);
-            accounting.refreshEntries();
-          }}
-        />
-      )}
-      {addEntryFlowOpen && !USE_ADD_ENTRY_V2 && (
-        <AccountingTestPage
-          embedded
-          onClose={() => {
-            setAddEntryFlowOpen(false);
-            accounting.refreshEntries();
-          }}
-        />
-      )}
+      <AddEntryV2Host />
 
       {/* Manual Entry Dialog (legacy) */}
       <ManualEntryDialog 
@@ -2843,6 +2820,18 @@ export const AccountingDashboard = () => {
           onAutoScrollToAuditConsumed={() => setTransactionDetailScrollToAudit(false)}
         />
       )}
+
+      {pendingConfirm ? (
+        <TransactionConfirmDialog
+          open
+          title={pendingConfirm.title}
+          description={pendingConfirm.message}
+          confirmLabel="Yes"
+          cancelLabel="No"
+          onConfirm={confirmPendingJournalAction}
+          onCancel={dismissPendingConfirm}
+        />
+      ) : null}
 
       {/* Listen for transaction detail events */}
       {typeof window !== 'undefined' && (

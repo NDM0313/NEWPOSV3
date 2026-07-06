@@ -1300,7 +1300,6 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
               await sbPur.from('journal_entries').update({ description: `${baseDesc} ${editLog}`.slice(0, 500) }).eq('id', jeId);
 
               console.log('[PURCHASE CONTEXT] In-place updated purchase JE', jeId, 'for', poNo);
-              if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
             } else {
               // Fallback: use old adjustment approach
               const newSnapshotFb = pac.getPurchaseAccountingSnapshot(updated);
@@ -1325,10 +1324,17 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
 
           try {
             const { notifyAccountingEntriesChanged } = await import('@/app/lib/accountingInvalidate');
-            notifyAccountingEntriesChanged();
+            notifyAccountingEntriesChanged({
+              companyId,
+              branchId: effectiveBranchId ?? null,
+              entityId: id,
+              reason: 'purchase-updated',
+            });
           } catch {
             if (typeof window !== 'undefined') {
-              window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+              window.dispatchEvent(
+                new CustomEvent('accountingEntriesChanged', { detail: { entityId: id } }),
+              );
             }
           }
         } catch (repostErr: any) {
@@ -1406,9 +1412,8 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
         }).catch((err) => console.warn('[PURCHASE CONTEXT] Activity log failed:', err));
       }
       
-      // 🔒 CRITICAL FIX: Refresh purchases list after update to show correct items count
-      // This ensures UI reflects the actual DB state after items update
-      await loadPurchases();
+      // Refresh purchases list in background (local state already patched above).
+      void loadPurchases();
       
       // Dispatch event to refresh inventory if stock movements were created
       if (stockMovementDeltas.length > 0) {

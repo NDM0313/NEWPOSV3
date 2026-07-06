@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { X, FileText, ArrowUpRight, ArrowDownRight, Loader2, ExternalLink, Package, Printer, Shirt } from 'lucide-react';
+import { X, FileText, ArrowUpRight, ArrowDownRight, Loader2, ExternalLink, Package, Printer, Shirt, Pencil } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
@@ -13,10 +13,14 @@ import { useSettings } from '@/app/context/SettingsContext';
 import { toast } from 'sonner';
 import { cn } from '../ui/utils';
 import { formatStockReference } from '@/app/utils/formatters';
+import { formatRelativeListDateTime } from '@/app/utils/localDate';
 import { ViewSaleDetailsDrawer } from '../sales/ViewSaleDetailsDrawer';
 import { ViewPurchaseDetailsDrawer } from '../purchases/ViewPurchaseDetailsDrawer';
 import { StockLedgerClassicPrintView } from './StockLedgerClassicPrintView';
 import { supabase } from '@/lib/supabase';
+import { isEditableManualStockAdjustment } from '@/app/lib/stockMovementEditPolicy';
+import { EditStockAdjustmentDialog } from '../inventory/EditStockAdjustmentDialog';
+import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 
 interface StockMovement {
   id: string;
@@ -73,6 +77,7 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
   const { companyId, branchId: contextBranchId } = useSupabase();
   const { getSaleById } = useSales();
   const { getPurchaseById } = usePurchases();
+  const { canManageProducts } = useCheckPermission();
   const { inventorySettings, modules } = useSettings();
   const enablePacking = inventorySettings.enablePacking ?? false;
   const rentalModuleEnabled = modules?.rentalModuleEnabled ?? false;
@@ -98,6 +103,7 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
   const [printOrientation, setPrintOrientation] = useState<'portrait' | 'landscape'>('landscape');
   const [showClassicPrintView, setShowClassicPrintView] = useState(false);
   const [companyName, setCompanyName] = useState<string>('');
+  const [editingMovement, setEditingMovement] = useState<StockMovement | null>(null);
 
   // Company name for print view header
   useEffect(() => {
@@ -488,12 +494,7 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
   }, [movements]);
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
+    return formatRelativeListDateTime(dateString, 'en-US');
   };
 
   const getMovementType = (movement: StockMovement): string => {
@@ -884,6 +885,9 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
                       <th className="text-left py-3 px-4 text-gray-400 font-semibold">Reference No</th>
                       <th className="text-left py-3 px-4 text-gray-400 font-semibold">Customer/Supplier</th>
                       <th className="text-left py-3 px-4 text-gray-400 font-semibold">Notes</th>
+                      {canManageProducts ? (
+                        <th className="text-right py-3 px-4 text-gray-400 font-semibold w-[72px]">Actions</th>
+                      ) : null}
                     </tr>
                   </thead>
                   <tbody>
@@ -996,6 +1000,26 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
                           <td className="py-3 px-4 text-gray-500 text-xs min-w-[120px] max-w-[280px] break-words" title={movement.notes || ''}>
                             {movement.notes || '-'}
                           </td>
+                          {canManageProducts ? (
+                            <td className="py-3 px-4 text-right">
+                              {isEditableManualStockAdjustment(movement) ? (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditingMovement(movement);
+                                  }}
+                                  className="inline-flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300"
+                                  title="Edit adjustment"
+                                >
+                                  <Pencil size={14} />
+                                  Edit
+                                </button>
+                              ) : (
+                                <span className="text-gray-600 text-xs">—</span>
+                              )}
+                            </td>
+                          ) : null}
                         </tr>
                       );
                     })}
@@ -1058,6 +1082,16 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
           purchase={selectedPurchase}
         />
       )}
+
+      <EditStockAdjustmentDialog
+        open={!!editingMovement}
+        onClose={() => setEditingMovement(null)}
+        movement={editingMovement}
+        productName={productName}
+        productSku={productSku}
+        balanceAfter={editingMovement ? runningBalance.get(editingMovement.id) ?? 0 : 0}
+        onSaved={() => void loadStockMovements()}
+      />
       </div>
       )}
     </>

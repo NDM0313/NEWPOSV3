@@ -174,3 +174,80 @@ export function resolveGenericPaymentExpenseLabel(
     expenseCounterpartyByJeId
   );
 }
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Manual liquidity journals from Add Entry — legacy JV- and new JE- refs. */
+export function isGeneralLiquidityJournalRef(no: string | null | undefined): boolean {
+  return /^(JE|JV)-/i.test(String(no || '').trim());
+}
+
+/** @deprecated Use isGeneralLiquidityJournalRef — kept for existing callers/tests. */
+export function isJvJournalEntryNo(no: string | null | undefined): boolean {
+  return isGeneralLiquidityJournalRef(no);
+}
+
+export type ManualJournalPaymentRef = {
+  id: string;
+  reference_type?: string | null;
+  reference_id?: string | null;
+  reference_number?: string | null;
+};
+
+/** Backfill JE id/no from manual journal liquidity payments (reference_id = JE uuid, reference_number = JE-/JV-…). */
+export function seedManualJournalPaymentJeMaps(
+  payments: ManualJournalPaymentRef[],
+  journalEntryNoByPaymentId: Map<string, string>,
+  journalEntryIdByPaymentId: Map<string, string>,
+): void {
+  for (const p of payments) {
+    const rt = String(p.reference_type || '').toLowerCase();
+    if (rt !== 'manual_receipt' && rt !== 'manual_payment') continue;
+    const pid = String(p.id || '').trim();
+    if (!pid) continue;
+    const refId = String(p.reference_id || '').trim();
+    if (refId && UUID_RE.test(refId) && !journalEntryIdByPaymentId.has(pid)) {
+      journalEntryIdByPaymentId.set(pid, refId);
+    }
+    const refNo = String(p.reference_number || '').trim();
+    if (isGeneralLiquidityJournalRef(refNo) && !journalEntryNoByPaymentId.has(pid)) {
+      journalEntryNoByPaymentId.set(pid, refNo);
+    }
+  }
+}
+
+export function formatJvRoznamchaSubtitle(counterpartyMap: CounterpartyByDirection | undefined): string {
+  if (!counterpartyMap) return '';
+  const outLeg = counterpartyMap.OUT?.trim() || '';
+  const inLeg = counterpartyMap.IN?.trim() || '';
+  if (outLeg && inLeg) return `${outLeg} → ${inLeg}`;
+  return outLeg || inLeg;
+}
+
+export function isJvBoilerplatePaymentNote(notes: string | null | undefined): boolean {
+  const t = String(notes || '').trim();
+  if (!t) return true;
+  if (/^receipt\s+(jv|je)-/i.test(t)) return true;
+  if (/^customer receipt$/i.test(t)) return true;
+  if (/^supplier payment$/i.test(t)) return true;
+  if (isGenericRoznamchaPartyLabel(t)) return true;
+  return false;
+}
+
+export function resolveJvLinkedCounterpartyLabel(
+  paymentId: string,
+  direction: 'IN' | 'OUT',
+  journalEntryNoOrRef: string | null | undefined,
+  journalEntryIdByPaymentId: Map<string, string>,
+  counterpartyByJeId: Map<string, CounterpartyByDirection>,
+  journalEntryIdFallback?: string | null,
+): string | null {
+  if (!isGeneralLiquidityJournalRef(journalEntryNoOrRef)) return null;
+  const jeId =
+    journalEntryIdByPaymentId.get(paymentId)?.trim() ||
+    (journalEntryIdFallback && UUID_RE.test(String(journalEntryIdFallback).trim())
+      ? String(journalEntryIdFallback).trim()
+      : null);
+  if (!jeId) return null;
+  return counterpartyForPaymentDirection(counterpartyByJeId.get(jeId), direction);
+}

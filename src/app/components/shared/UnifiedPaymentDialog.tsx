@@ -21,6 +21,7 @@ import { getAttachmentOpenUrl, getSupabaseStorageDashboardUrl } from '@/app/util
 import { showStorageRlsToast, MAX_FILE_SIZE_BYTES, showFileTooLargeToast } from '@/app/utils/uploadTransactionAttachments';
 import { prepareAttachmentFilesForUpload } from '@/app/utils/imageCompression';
 import { dispatchContactBalancesRefresh } from '@/app/lib/contactBalancesRefresh';
+import { notifyAccountingEntriesChanged } from '@/app/lib/accountingInvalidate';
 import { dispatchAccountingEditCommitted } from '@/app/lib/unifiedTransactionEdit';
 import { resolvePaymentIdForMutation } from '@/app/lib/paymentRowEditRouting';
 import { rebuildManualReceiptFifoAllocations, rebuildManualSupplierFifoAllocations } from '@/app/services/paymentAllocationService';
@@ -28,6 +29,39 @@ import {
   syncExpenseDateByPaymentId,
   syncJournalEntryDateByPaymentId,
 } from '@/app/services/journalTransactionDateSyncService';
+
+async function notifyAccountingAfterPaymentChange(companyId: string, paymentId: string): Promise<void> {
+  let journalEntryId: string | null = null;
+  try {
+    const { data: byPayment } = await supabase
+      .from('journal_entries')
+      .select('id')
+      .eq('company_id', companyId)
+      .eq('payment_id', paymentId)
+      .maybeSingle();
+    journalEntryId = (byPayment as { id?: string } | null)?.id ?? null;
+    if (!journalEntryId) {
+      const { data: byRef } = await supabase
+        .from('journal_entries')
+        .select('id')
+        .eq('company_id', companyId)
+        .eq('reference_id', paymentId)
+        .limit(1)
+        .maybeSingle();
+      journalEntryId = (byRef as { id?: string } | null)?.id ?? null;
+    }
+  } catch {
+    /* non-blocking */
+  }
+  notifyAccountingEntriesChanged({
+    companyId,
+    entityId: journalEntryId ?? paymentId,
+    reason: 'accounting-entries-changed',
+  });
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('paymentAdded'));
+  }
+}
 import {
   formatAccountSelectOptionLabel,
   getPaymentLiquidityPostingSide,
@@ -900,8 +934,8 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
               expenseDate: paymentDate,
             });
           }
-          if (typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+          if (companyId) {
+            await notifyAccountingAfterPaymentChange(companyId, paymentIdForUpdate);
           }
           // PF-14: manual receipt/payment account change — post Dr new / Cr old for final amount (after payment patch).
           if (
@@ -940,8 +974,8 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                   entryDate: paymentDate,
                   createdBy: (user as any)?.id ?? null,
                 });
-                if (typeof window !== 'undefined') {
-                  window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+                if (companyId) {
+                  await notifyAccountingAfterPaymentChange(companyId, paymentIdForUpdate);
                 }
               } catch (accErr) {
                 console.warn('[UnifiedPaymentDialog] Customer manual_receipt account transfer JE failed:', accErr);
@@ -975,8 +1009,8 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                   entryDate: paymentDate,
                   createdBy: (user as any)?.id ?? null,
                 });
-                if (typeof window !== 'undefined') {
-                  window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+                if (companyId) {
+                  await notifyAccountingAfterPaymentChange(companyId, paymentIdForUpdate);
                 }
               } catch (accErr) {
                 console.warn('[UnifiedPaymentDialog] Supplier manual_payment account transfer JE failed:', accErr);

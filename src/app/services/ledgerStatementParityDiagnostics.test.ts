@@ -5,6 +5,7 @@ import {
   buildLedgerV2CustomerRequest,
   countOpeningRows,
   deriveClosingBalanceFromEntries,
+  deriveClosingFromDebitCreditMovements,
   diffLedgerStatementRows,
   partyStatementBasisFromFlags,
   type ParityLedgerEntry,
@@ -104,5 +105,14 @@ describe('ledgerStatementParityDiagnostics', () => {
     expect(diff.syntheticRowsA).toHaveLength(1);
     expect(diff.onlyInA).toHaveLength(0);
     expect(diff.difference).toBe(0);
+  });
+
+  it('account ledger after liquidity cancel includes voided original + reversal and nets to opening', () => {
+    const movements = [
+      { debit: 500000, credit: 0 },
+      { debit: 500000, credit: 0 },
+      { debit: 0, credit: 500000 },
+    ];
+    expect(deriveClosingFromDebitCreditMovements(0, movements)).toBe(500000);
   });
 });

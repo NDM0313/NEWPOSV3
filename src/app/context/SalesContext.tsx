@@ -3058,8 +3058,8 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         s.id === saleId ? { ...s, shippingStatus: status } : s
       ));
       
-      // Also refresh from database to ensure consistency
-      await loadSales();
+      // Also refresh from database in background
+      void loadSales();
       
       toast.success(`Shipping status updated to ${status}!`);
     } catch (error) {

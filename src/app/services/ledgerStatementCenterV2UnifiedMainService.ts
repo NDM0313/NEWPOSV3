@@ -10,11 +10,9 @@ import type {
 } from '@/app/features/ledger-statement-center-v2/types';
 import { defaultUnifiedBasisForV2Type } from '@/app/lib/ledgerStatementV2UnifiedPreviewDiff';
 import { isUnifiedLedgerKillSwitchActive } from '@/app/lib/unifiedLedgerEngineState';
-import {
-  deriveLedgerV2Opening,
-  summarizeLedgerV2Rows,
-} from '@/app/services/ledgerStatementCenterV2Service';
+import { deriveLedgerV2Opening, summarizeLedgerV2Rows } from '@/app/services/ledgerStatementCenterV2Service';
 import { fetchLedgerV2UnifiedRpc } from '@/app/services/ledgerStatementCenterV2UnifiedFetch';
+import { realignAccountLedgerRunningBalances } from '@/app/lib/ledgerStatementV2UnifiedMapper';
 
 /**
  * Load Ledger V2 statement via unified RPC for the main table (shadowForce: false).
@@ -55,7 +53,10 @@ export async function getLedgerStatementV2UnifiedMain(
     shadowForce: false,
   });
 
-  const rows = fetched.rows;
+  let rows = fetched.rows;
+  if (statementType === 'account') {
+    rows = realignAccountLedgerRunningBalances(rows, fetched.meta.periodOpeningBalance);
+  }
   const opening = deriveLedgerV2Opening(rows);
   const summary = summarizeLedgerV2Rows(rows, opening, statementType);
 

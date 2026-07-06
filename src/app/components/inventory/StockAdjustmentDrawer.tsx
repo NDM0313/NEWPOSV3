@@ -19,6 +19,7 @@ import {
 } from "../ui/select";
 import { Badge } from "../ui/badge";
 import { formatQty } from '@/app/utils/quantity';
+import { toLocalISOString } from '@/app/utils/localDate';
 
 type AdjustmentType = 'add' | 'subtract';
 type AdjustmentReason = 'damaged' | 'audit' | 'return' | 'theft' | 'correction' | 'other';
@@ -57,7 +58,8 @@ interface StockAdjustmentDrawerProps {
     quantity: number;
     reason: AdjustmentReason;
     notes: string;
-    date: string;
+    /** Full local timestamp for stock_movements.created_at */
+    movementAt: string;
     newStock: number;
     /** Required when product has variations – adjustment applies only to this variation */
     variationId?: string | null;
@@ -294,7 +296,7 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
       quantity,
       reason,
       notes,
-      date: date instanceof Date ? date.toISOString().split('T')[0] : date,
+      movementAt: toLocalISOString(date instanceof Date ? date : new Date()),
       newStock: calculatedNewStock,
       variationId: hasVariations ? selectedVariationId : undefined,
     });

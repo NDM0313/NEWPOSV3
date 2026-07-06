@@ -122,11 +122,42 @@ export function hasStableEntityId(row: RoznamchaDedupeRow): boolean {
   return roznamchaEntityKeys(row).length > 0;
 }
 
-/** True when two rows represent the same underlying movement (shared entity key). */
-export function rowsShareMovementEvidence(a: RoznamchaDedupeRow, b: RoznamchaDedupeRow): boolean {
+/** Two payment rows for the same JE but different liquidity accounts (e.g. bank OUT + wallet IN). */
+function areDistinctJournalPaymentLegs(a: RoznamchaDedupeRow, b: RoznamchaDedupeRow): boolean {
+  const payA = String(a.sourcePaymentId || '').trim();
+  const payB = String(b.sourcePaymentId || '').trim();
+  const acctA = String(a.paymentAccountId || '').trim();
+  const acctB = String(b.paymentAccountId || '').trim();
+  const jeA = String(a.sourceJournalEntryId || '').trim();
+  const jeB = String(b.sourceJournalEntryId || '').trim();
+  return Boolean(
+    payA &&
+      payB &&
+      payA !== payB &&
+      acctA &&
+      acctB &&
+      acctA !== acctB &&
+      jeA &&
+      jeB &&
+      jeA === jeB,
+  );
+}
+
+/** True when two rows should be treated as the same entity for dedupe (not distinct transfer legs). */
+export function rowsShareDedupeEntity(a: RoznamchaDedupeRow, b: RoznamchaDedupeRow): boolean {
   const keysA = roznamchaEntityKeys(a);
   const keysB = roznamchaEntityKeys(b);
-  return keysA.some((k) => keysB.includes(k));
+  const shared = keysA.filter((k) => keysB.includes(k));
+  if (shared.length === 0) return false;
+  if (areDistinctJournalPaymentLegs(a, b) && shared.every((k) => k.startsWith('je:'))) {
+    return false;
+  }
+  return true;
+}
+
+/** True when two rows represent the same underlying movement (shared entity key). */
+export function rowsShareMovementEvidence(a: RoznamchaDedupeRow, b: RoznamchaDedupeRow): boolean {
+  return rowsShareDedupeEntity(a, b);
 }
 
 export function roznamchaEntityKeys(row: RoznamchaDedupeRow): string[] {
@@ -170,11 +201,9 @@ export function dedupeRoznamchaRows<T extends RoznamchaDedupeRow>(rows: T[]): T[
 
   const entityCandidates = [...new Set([...bestByEntity.values(), ...withoutEntity])];
   const entityDeduped = entityCandidates.filter((row) => {
-    const rowKeys = roznamchaEntityKeys(row);
     return !entityCandidates.some((other) => {
       if (other === row) return false;
-      const otherKeys = roznamchaEntityKeys(other);
-      const linked = rowKeys.some((k) => otherKeys.includes(k));
+      const linked = rowsShareDedupeEntity(row, other);
       return linked && pickBetterRoznamchaRow(other, row) === other;
     });
   });

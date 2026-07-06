@@ -6,12 +6,22 @@
 
 import { supabase } from '@/lib/supabase';
 import { fetchInBatches } from '@/app/lib/chunkInQuery';
-import { isLiquidityPaymentAccount, paymentMethodForLiquidityAccount } from '@/app/lib/liquidityPaymentAccount';
 import {
+  isLiquidityPaymentAccount,
+  isRoznamchaLiquidityAccount,
+  paymentMethodForLiquidityAccount,
+} from '@/app/lib/liquidityPaymentAccount';
+import {
+  buildCounterpartyByDirectionFromJeLines,
   buildExpenseCounterpartyByDirectionFromJeLines,
+  formatJvRoznamchaSubtitle,
   isGenericRoznamchaPartyLabel,
+  isGeneralLiquidityJournalRef,
+  isJvBoilerplatePaymentNote,
   resolveExpenseCounterpartyFromJeLines,
   resolveGenericPaymentExpenseLabel,
+  resolveJvLinkedCounterpartyLabel,
+  seedManualJournalPaymentJeMaps,
   type CounterpartyByDirection,
   type RoznamchaJeLineRef,
 } from '@/app/lib/roznamchaCounterpartyLabel';
@@ -421,9 +431,15 @@ async function loadLiquidityDebitAccountByJeId(
   return liquidityAccountByJeId;
 }
 
-async function loadExpenseCounterpartyByJeId(jeIds: string[]): Promise<Map<string, CounterpartyByDirection>> {
-  const out = new Map<string, CounterpartyByDirection>();
-  if (jeIds.length === 0) return out;
+async function loadCounterpartyMapsByJeId(jeIds: string[]): Promise<{
+  expenseCounterpartyByJeId: Map<string, CounterpartyByDirection>;
+  fullCounterpartyByJeId: Map<string, CounterpartyByDirection>;
+}> {
+  const expenseCounterpartyByJeId = new Map<string, CounterpartyByDirection>();
+  const fullCounterpartyByJeId = new Map<string, CounterpartyByDirection>();
+  if (jeIds.length === 0) {
+    return { expenseCounterpartyByJeId, fullCounterpartyByJeId };
+  }
 
   const jeLines = await fetchInBatches(jeIds, async (chunk) => {
     const { data, error } = await supabase
@@ -450,9 +466,41 @@ async function loadExpenseCounterpartyByJeId(jeIds: string[]): Promise<Map<strin
   });
 
   linesByJeId.forEach((lines, jeId) => {
-    out.set(jeId, buildExpenseCounterpartyByDirectionFromJeLines(lines));
+    expenseCounterpartyByJeId.set(jeId, buildExpenseCounterpartyByDirectionFromJeLines(lines));
+    fullCounterpartyByJeId.set(jeId, buildCounterpartyByDirectionFromJeLines(lines));
   });
-  return out;
+  return { expenseCounterpartyByJeId, fullCounterpartyByJeId };
+}
+
+function resolveJvJeIdForPayment(
+  paymentId: string,
+  journalEntryIdByPaymentId: Map<string, string>,
+  referenceIdFallback?: string | null,
+): string | null {
+  const fromMap = journalEntryIdByPaymentId.get(paymentId)?.trim();
+  if (fromMap) return fromMap;
+  const fallback = String(referenceIdFallback || '').trim();
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(fallback)) {
+    return fallback;
+  }
+  return null;
+}
+
+function applyJvRoznamchaRowDisplay(
+  r: RoznamchaRow,
+  pay: { notes?: string | null; reference_id?: string | null },
+  jvLabel: string,
+  fullCounterpartyByJeId: Map<string, CounterpartyByDirection>,
+  journalEntryIdByPaymentId: Map<string, string>,
+): void {
+  r.details = jvLabel;
+  r.partyLine = null;
+  const jeId = resolveJvJeIdForPayment(r.id, journalEntryIdByPaymentId, pay.reference_id);
+  const subtitle = jeId ? formatJvRoznamchaSubtitle(fullCounterpartyByJeId.get(jeId)) : '';
+  const notes = String(pay.notes || '').trim();
+  const noteSuffix = notes && !isJvBoilerplatePaymentNote(notes) ? notes : '';
+  r.referenceDisplay =
+    subtitle && noteSuffix ? `${subtitle} — ${noteSuffix}` : subtitle || noteSuffix;
 }
 
 function resolveRentalPaymentLiquidity(
@@ -645,6 +693,11 @@ export function classifyRoznamchaLiquidity(
   accountName: string | null | undefined,
   accountCode?: string | null | undefined
 ): { liquidity: RoznamchaLiquidity | null; shortLabel: string } {
+  const accRef = { code: accountCode, type: accountType, name: accountName };
+  if (!isRoznamchaLiquidityAccount(accRef)) {
+    return { liquidity: null, shortLabel: '—' };
+  }
+
   const m = (paymentMethod || '').toLowerCase().trim();
   const t = String(accountType || '').toLowerCase().trim();
   const n = (accountName || '').toLowerCase().trim();
@@ -690,7 +743,14 @@ export function classifyRoznamchaLiquidity(
     }
   }
 
-  return { liquidity: null, shortLabel: '—' };
+  const inferred = paymentMethodForLiquidityAccount(accRef);
+  if (inferred === 'bank') {
+    return { liquidity: 'bank', shortLabel: 'Bank' };
+  }
+  if (inferred === 'other') {
+    return { liquidity: 'wallet', shortLabel: walletDisplayLabel(accountName, paymentMethod) };
+  }
+  return { liquidity: 'cash', shortLabel: 'Cash' };
 }
 
 /** Map auth_user_id or users.id → display name for Roznamcha "by …" subtitle. */
@@ -856,7 +916,7 @@ async function fetchPaymentRows(
 
   const [accRes, expRes, jeRes, jeByPaymentRes, contactRes, expenseCatRes] = await Promise.all([
     accountIds.length > 0
-      ? supabase.from('accounts').select('id, name, type, code').in('id', accountIds)
+      ? supabase.from('accounts').select('id, name, type, code, linked_contact_id').in('id', accountIds)
       : Promise.resolve({ data: [] as { id: string; name: string; type: string; code?: string | null }[] }),
     expenseEntityIds.length > 0
       ? supabase
@@ -895,13 +955,17 @@ async function fetchPaymentRows(
     supabase.from('expense_categories').select('id, name, parent_id').eq('company_id', companyId),
   ]);
 
-  const accountById = new Map<string, { name: string; type: string; code: string | null }>();
+  const accountById = new Map<
+    string,
+    { name: string; type: string; code: string | null; linked_contact_id?: string | null }
+  >();
   (accRes.data || []).forEach((a: any) => {
     if (a?.id) {
       accountById.set(a.id, {
         name: (a.name || '').trim(),
         type: String(a.type || ''),
         code: a.code != null ? String(a.code).trim() : null,
+        linked_contact_id: a.linked_contact_id ?? null,
       });
     }
   });
@@ -973,8 +1037,20 @@ async function fetchPaymentRows(
     }
   }
 
+  seedManualJournalPaymentJeMaps(
+    paymentList.map((p: any) => ({
+      id: String(p.id),
+      reference_type: p.reference_type,
+      reference_id: p.reference_id,
+      reference_number: p.reference_number,
+    })),
+    journalEntryNoByPaymentId,
+    journalEntryIdByPaymentId,
+  );
+
   const linkedJeIds = [...new Set(journalEntryIdByPaymentId.values())];
-  const expenseCounterpartyByJeId = await loadExpenseCounterpartyByJeId(linkedJeIds);
+  const { expenseCounterpartyByJeId, fullCounterpartyByJeId } =
+    await loadCounterpartyMapsByJeId(linkedJeIds);
 
   const contactNameById = new Map<string, string>();
   (contactRes.data || []).forEach((c: any) => {
@@ -987,6 +1063,8 @@ async function fetchPaymentRows(
     const aid = (p as any).payment_account_id as string | null | undefined;
     const meta = aid ? accountById.get(aid) : undefined;
     const methodRaw = String((p as any).payment_method || '');
+    if (meta && !isRoznamchaLiquidityAccount(meta)) continue;
+
     const { liquidity, shortLabel } = classifyRoznamchaLiquidity(
       methodRaw,
       meta?.type,
@@ -1036,6 +1114,11 @@ async function fetchPaymentRows(
       (payRefType === 'rental' && payRefId ? rentalBranchById.get(payRefId) ?? null : null);
 
     const paymentId = String((p as any).id);
+    const payRefNumber = String((p as any).reference_number || '').trim();
+    const journalEntryNo =
+      journalEntryNoByPaymentId.get(paymentId) ||
+      (isGeneralLiquidityJournalRef(payRefNumber) ? payRefNumber : null) ||
+      null;
     rows.push({
       id: paymentId,
       date: dateStr,
@@ -1044,7 +1127,7 @@ async function fetchPaymentRows(
       details,
       referenceDisplay,
       partyLine: null,
-      journalEntryNo: journalEntryNoByPaymentId.get(paymentId) || null,
+      journalEntryNo,
       createdBy: null, // filled below via received_by
       cashIn: direction === 'IN' ? amount : 0,
       cashOut: direction === 'OUT' ? amount : 0,
@@ -1168,6 +1251,19 @@ async function fetchPaymentRows(
     }
 
     if (isCustomerReceiptPayment(refType, paymentType)) {
+      const jvRef = r.journalEntryNo || r.ref || pay.reference_number;
+      const jvLabel = resolveJvLinkedCounterpartyLabel(
+        r.id,
+        r.direction,
+        jvRef,
+        journalEntryIdByPaymentId,
+        fullCounterpartyByJeId,
+        pay.reference_id,
+      );
+      if (jvLabel) {
+        applyJvRoznamchaRowDisplay(r, pay, jvLabel, fullCounterpartyByJeId, journalEntryIdByPaymentId);
+        return;
+      }
       const customer =
         contactName ||
         (refType === 'sale' && refId ? saleCustomerByRefId.get(refId) : null) ||
@@ -1191,6 +1287,19 @@ async function fetchPaymentRows(
     }
 
     if (isSupplierPaymentPayment(refType, paymentType)) {
+      const jvRef = r.journalEntryNo || r.ref || pay.reference_number;
+      const jvLabel = resolveJvLinkedCounterpartyLabel(
+        r.id,
+        r.direction,
+        jvRef,
+        journalEntryIdByPaymentId,
+        fullCounterpartyByJeId,
+        pay.reference_id,
+      );
+      if (jvLabel) {
+        applyJvRoznamchaRowDisplay(r, pay, jvLabel, fullCounterpartyByJeId, journalEntryIdByPaymentId);
+        return;
+      }
       const generic = getPartyAwareTypeLabel(refType, paymentType);
       const expenseLabel = resolveGenericPaymentExpenseLabel(
         generic,
@@ -1554,7 +1663,7 @@ function journalLiquidityTypeLabel(referenceType: string): string {
   const m: Record<string, string> = {
     general: 'General Entry',
     transfer: 'Internal Transfer',
-    journal: 'Journal Entry',
+    journal: 'General Entry',
     manual: 'Manual Entry',
     manual_journal: 'Journal Entry',
   };
@@ -1650,7 +1759,7 @@ function mapJournalLiquidityLinesToRows(
     for (const line of je.lines || []) {
       const rawAcc = line.account as { id: string; name: string; type: string; code: string | null } | { id: string; name: string; type: string; code: string | null }[] | null | undefined;
       const acc = Array.isArray(rawAcc) ? rawAcc[0] : rawAcc;
-      if (!acc || !isLiquidityPaymentAccount(acc)) continue;
+      if (!acc || !isRoznamchaLiquidityAccount(acc)) continue;
       const debit = Number(line.debit) || 0;
       const credit = Number(line.credit) || 0;
       if (debit <= 0 && credit <= 0) continue;
@@ -2217,7 +2326,7 @@ async function recoverOrphanRentalPaymentJeRows(
     for (const line of je.lines || []) {
       const rawAcc = line.account as { id: string; name: string; type: string; code: string | null } | { id: string; name: string; type: string; code: string | null }[] | null | undefined;
       const acc = Array.isArray(rawAcc) ? rawAcc[0] : rawAcc;
-      if (!acc || !isLiquidityPaymentAccount(acc)) continue;
+      if (!acc || !isRoznamchaLiquidityAccount(acc)) continue;
       const debit = Number(line.debit) || 0;
       if (debit <= 0) continue;
       const { liquidity, shortLabel } = classifyRoznamchaLiquidity('', acc.type, acc.name, acc.code);

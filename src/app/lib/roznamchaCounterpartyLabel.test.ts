@@ -4,9 +4,15 @@ import {
   buildCounterpartyByDirectionFromJeLines,
   buildExpenseCounterpartyByDirectionFromJeLines,
   counterpartyForPaymentDirection,
+  formatJvRoznamchaSubtitle,
   isGenericRoznamchaPartyLabel,
+  isGeneralLiquidityJournalRef,
+  isJvBoilerplatePaymentNote,
+  isJvJournalEntryNo,
   resolveCounterpartyLabelFromJeLines,
   resolveExpenseCounterpartyFromJeLines,
+  resolveJvLinkedCounterpartyLabel,
+  seedManualJournalPaymentJeMaps,
 } from './roznamchaCounterpartyLabel';
 
 test('OUT payment resolves debit-side expense account', () => {
@@ -138,4 +144,159 @@ test('buildCounterpartyByDirectionFromJeLines still maps any non-liquidity leg',
   ];
   const map = buildCounterpartyByDirectionFromJeLines(lines);
   assert.equal(counterpartyForPaymentDirection(map, 'OUT'), 'HOME EXPENSES (3003)');
+});
+
+test('isGeneralLiquidityJournalRef matches JE- and JV- prefixes', () => {
+  assert.equal(isGeneralLiquidityJournalRef('JE-0006'), true);
+  assert.equal(isGeneralLiquidityJournalRef('JV-000237'), true);
+  assert.equal(isGeneralLiquidityJournalRef('FT-00012'), false);
+  assert.equal(isGeneralLiquidityJournalRef('RCV-0095'), false);
+  assert.equal(isJvJournalEntryNo('JE-0006'), true);
+});
+
+test('resolveJvLinkedCounterpartyLabel uses full counterparty for JV rows', () => {
+  const lines = [
+    {
+      debit: 5000,
+      credit: 0,
+      account: { name: 'Miscellaneous Expense', type: 'expense', code: '6000' },
+    },
+    {
+      debit: 0,
+      credit: 5000,
+      account: { name: 'CASH IN HAND', type: 'cash', code: '1000' },
+    },
+  ];
+  const jeId = 'je-uuid-1';
+  const payId = 'pay-uuid-1';
+  const counterpartyByJeId = new Map([[jeId, buildCounterpartyByDirectionFromJeLines(lines)]]);
+  const journalEntryIdByPaymentId = new Map([[payId, jeId]]);
+  assert.equal(
+    resolveJvLinkedCounterpartyLabel(
+      payId,
+      'OUT',
+      'JV-000237',
+      journalEntryIdByPaymentId,
+      counterpartyByJeId
+    ),
+    'Miscellaneous Expense (6000)'
+  );
+  assert.equal(
+    resolveJvLinkedCounterpartyLabel(payId, 'IN', 'FT-0001', journalEntryIdByPaymentId, counterpartyByJeId),
+    null
+  );
+});
+
+test('resolveJvLinkedCounterpartyLabel works when journalEntryNo null but ref is JV', () => {
+  const lines = [
+    {
+      debit: 5000,
+      credit: 0,
+      account: { name: 'Bank', type: 'bank', code: '1010' },
+    },
+    {
+      debit: 0,
+      credit: 5000,
+      account: { name: 'Accounts Payable', type: 'liability', code: '2000' },
+    },
+  ];
+  const jeId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+  const payId = 'pay-uuid-2';
+  const counterpartyByJeId = new Map([[jeId, buildCounterpartyByDirectionFromJeLines(lines)]]);
+  const journalEntryIdByPaymentId = new Map<string, string>();
+  assert.equal(
+    resolveJvLinkedCounterpartyLabel(
+      payId,
+      'IN',
+      'JV-000237',
+      journalEntryIdByPaymentId,
+      counterpartyByJeId,
+      jeId,
+    ),
+    'Accounts Payable (2000)',
+  );
+});
+
+test('resolveJvLinkedCounterpartyLabel works with JE- ref and reference_id fallback', () => {
+  const lines = [
+    {
+      debit: 5000,
+      credit: 0,
+      account: { name: 'M. Ullah Committee', type: 'equity', code: '1172' },
+    },
+    {
+      debit: 0,
+      credit: 5000,
+      account: { name: 'CASH IN HAND', type: 'cash', code: '1000' },
+    },
+  ];
+  const jeId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+  const payId = 'pay-uuid-je';
+  const counterpartyByJeId = new Map([[jeId, buildCounterpartyByDirectionFromJeLines(lines)]]);
+  const journalEntryIdByPaymentId = new Map<string, string>();
+  assert.equal(
+    resolveJvLinkedCounterpartyLabel(
+      payId,
+      'OUT',
+      'JE-0006',
+      journalEntryIdByPaymentId,
+      counterpartyByJeId,
+      jeId,
+    ),
+    'M. Ullah Committee (1172)',
+  );
+});
+
+test('seedManualJournalPaymentJeMaps fills JE id and JE number', () => {
+  const jeId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+  const noMap = new Map<string, string>();
+  const idMap = new Map<string, string>();
+  seedManualJournalPaymentJeMaps(
+    [
+      {
+        id: 'pay-2',
+        reference_type: 'manual_receipt',
+        reference_id: jeId,
+        reference_number: 'JE-0006',
+      },
+    ],
+    noMap,
+    idMap,
+  );
+  assert.equal(noMap.get('pay-2'), 'JE-0006');
+  assert.equal(idMap.get('pay-2'), jeId);
+});
+
+test('seedManualJournalPaymentJeMaps fills JE id and JV number', () => {
+  const jeId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+  const noMap = new Map<string, string>();
+  const idMap = new Map<string, string>();
+  seedManualJournalPaymentJeMaps(
+    [
+      {
+        id: 'pay-1',
+        reference_type: 'manual_receipt',
+        reference_id: jeId,
+        reference_number: 'JV-000237',
+      },
+    ],
+    noMap,
+    idMap,
+  );
+  assert.equal(noMap.get('pay-1'), 'JV-000237');
+  assert.equal(idMap.get('pay-1'), jeId);
+});
+
+test('formatJvRoznamchaSubtitle joins OUT and IN legs', () => {
+  const map = buildCounterpartyByDirectionFromJeLines([
+    { debit: 100, credit: 0, account: { name: 'Misc Expense', type: 'expense', code: '6000' } },
+    { debit: 0, credit: 100, account: { name: 'Accounts Payable', type: 'liability', code: '2000' } },
+  ]);
+  assert.equal(formatJvRoznamchaSubtitle(map), 'Misc Expense (6000) → Accounts Payable (2000)');
+});
+
+test('isJvBoilerplatePaymentNote flags receipt JV/JE boilerplate', () => {
+  assert.equal(isJvBoilerplatePaymentNote('Receipt JV-000237 (Walk-in Customer)'), true);
+  assert.equal(isJvBoilerplatePaymentNote('Receipt JE-0006 (Walk-in Customer)'), true);
+  assert.equal(isJvBoilerplatePaymentNote('COMETTE NO 03 AB'), false);
 });

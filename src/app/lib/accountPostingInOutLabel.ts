@@ -79,8 +79,8 @@ export function formatPostingFieldLabel(base: string, opts: PostingFieldLabelOpt
 export const POSTING_FIELD_TITLES = {
   transferFrom: formatPostingFieldLabel('From account', { drCr: 'Cr', inOut: 'OUT' }),
   transferTo: formatPostingFieldLabel('To account', { drCr: 'Dr', inOut: 'IN' }),
-  journalDebit: formatPostingFieldLabel('Debit account', { drCr: 'Dr', inOut: 'IN/OUT' }),
-  journalCredit: formatPostingFieldLabel('Credit account', { drCr: 'Cr', inOut: 'IN/OUT' }),
+  journalDebit: formatPostingFieldLabel('Debit account', { drCr: 'Dr', inOut: 'IN' }),
+  journalCredit: formatPostingFieldLabel('Credit account', { drCr: 'Cr', inOut: 'OUT' }),
   paymentReceipt: formatPostingFieldLabel('Payment account', { drCr: 'Dr', inOut: 'IN' }),
   paymentOut: formatPostingFieldLabel('Payment account', { drCr: 'Cr', inOut: 'OUT' }),
   selectAccountIn: formatPostingFieldLabel('Select account', { inOut: 'IN' }),

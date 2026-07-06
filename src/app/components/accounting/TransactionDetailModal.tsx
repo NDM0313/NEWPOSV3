@@ -6,13 +6,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/app/componen
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
 import { Input } from '@/app/components/ui/input';
-import { DateTimePicker } from '@/app/components/ui/DateTimePicker';
-import {
-  formatLocalDateTimeYYYYMMDDHHmm,
-  parseLocalDateInput,
-  parseLocalDateTimeInput,
-  toLocalISOString,
-} from '@/app/utils/localDate';
 import { Label } from '@/app/components/ui/label';
 import { accountingService } from '@/app/services/accountingService';
 import { useSupabase } from '@/app/context/SupabaseContext';
@@ -42,6 +35,7 @@ import {
   dispatchAccountingEditCommitted,
   isPureManualJournalReferenceType,
 } from '@/app/lib/unifiedTransactionEdit';
+import { dispatchOpenAddEntryV2, type AddEntryV2Origin } from '@/app/components/accounting/AddEntryV2Host';
 import { journalReversalBlockedReason } from '@/app/lib/journalEntryEditPolicy';
 import { resolvePaymentIdForMutation } from '@/app/lib/paymentRowEditRouting';
 import { getPaymentChainMutationBlockReason, fetchPaymentChainState } from '@/app/services/paymentChainMutationGuard';
@@ -104,6 +98,8 @@ interface TransactionDetailModalProps {
   /** Scroll to activity / audit section once transaction is loaded. */
   autoScrollToAudit?: boolean;
   onAutoScrollToAuditConsumed?: () => void;
+  /** When opened from Account Ledger, suppress accounting tab switch on unified edit launch. */
+  editOrigin?: AddEntryV2Origin;
 }
 
 function mapRentalRowForPaymentDialog(row: Record<string, any>) {
@@ -277,6 +273,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
   onAutoOpenPaymentTraceConsumed,
   autoScrollToAudit = false,
   onAutoScrollToAuditConsumed,
+  editOrigin,
 }) => {
   const { companyId, branchId, userRole } = useSupabase();
   const { openDrawer, setCurrentView } = useNavigation();
@@ -293,10 +290,6 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
   const [expenseReceiptUrl, setExpenseReceiptUrl] = useState<string | null>(null);
   const [sourceDocumentAttachments, setSourceDocumentAttachments] = useState<unknown>(null);
   const [paymentAttachments, setPaymentAttachments] = useState<unknown>(null);
-  const [journalQuickEditOpen, setJournalQuickEditOpen] = useState(false);
-  const [editEntryDateTime, setEditEntryDateTime] = useState('');
-  const [editDescription, setEditDescription] = useState('');
-  const [savingJournalEdit, setSavingJournalEdit] = useState(false);
   /** Effective journal lines for payment (original + account-adjustment JEs merged) so Bank shows after Cash→Bank edit */
   const [effectiveLines, setEffectiveLines] = useState<any[]>([]);
   const [manualReceiptSummary, setManualReceiptSummary] = useState<ManualReceiptAllocationSummary | null>(null);
@@ -664,45 +657,6 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     onAutoScrollToAuditConsumed?.();
   }, [autoScrollToAudit, isOpen, loading, transaction, onAutoScrollToAuditConsumed]);
 
-  const openJournalQuickEdit = () => {
-    if (!transaction) return;
-    const base = transaction.entry_date
-      ? parseLocalDateInput(String(transaction.entry_date).slice(0, 10))
-      : new Date();
-    if (transaction.created_at) {
-      const posted = new Date(transaction.created_at as string);
-      if (!Number.isNaN(posted.getTime())) {
-        base.setHours(posted.getHours(), posted.getMinutes(), 0, 0);
-      }
-    }
-    setEditEntryDateTime(formatLocalDateTimeYYYYMMDDHHmm(base));
-    setEditDescription(String(transaction.description || ''));
-    setJournalQuickEditOpen(true);
-  };
-
-  const saveJournalQuickEdit = async () => {
-    if (!companyId || !transaction?.id) return;
-    setSavingJournalEdit(true);
-    try {
-      const when = parseLocalDateTimeInput(editEntryDateTime);
-      const res = await accountingService.updateManualJournalEntry(companyId, transaction.id, {
-        entry_date: editEntryDateTime.split('T')[0] || format(when, 'yyyy-MM-dd'),
-        created_at: toLocalISOString(when),
-        description: editDescription,
-      });
-      if (!res.ok) {
-        toast.error(res.error || 'Could not save journal');
-        return;
-      }
-      toast.success('Journal updated');
-      setJournalQuickEditOpen(false);
-      await loadTransaction();
-      dispatchAccountingEditCommitted();
-    } finally {
-      setSavingJournalEdit(false);
-    }
-  };
-
   const runUnifiedEdit = useCallback(async () => {
     if (!transaction || !transactionForUnifiedPolicy || !companyId) return;
     const blockReason = await getPaymentChainMutationBlockReason(companyId, String(transaction.id));
@@ -734,7 +688,15 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     try {
       switch (resolution.kind) {
         case 'manual_journal_editor':
-          openJournalQuickEdit();
+          if (typeof window !== 'undefined') {
+            dispatchOpenAddEntryV2({
+              entryType: 'pure_journal',
+              editJournalEntryId: String(transaction.id),
+              origin: editOrigin,
+            });
+          }
+          if (editOrigin !== 'account_ledger') setCurrentView('accounting');
+          onClose();
           return;
         case 'document_editor': {
           if (resolution.sourceType === 'sale') {
@@ -843,21 +805,34 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
               createdAt: full.createdAt,
               referenceNumber: full.referenceNo,
               notes: full.notes,
+              attachments: (full as { attachments?: unknown }).attachments,
             },
           });
           return;
         }
         case 'transfer_editor':
           if (typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('openAddEntryV2', { detail: { entryType: 'internal_transfer' } }));
+            dispatchOpenAddEntryV2({
+              entryType: 'pure_journal',
+              editJournalEntryId: String(transaction.id),
+              origin: editOrigin,
+            });
           }
-          setCurrentView('accounting');
+          if (editOrigin !== 'account_ledger') setCurrentView('accounting');
           onClose();
           return;
         case 'adjustment_editor': {
           const rtAdj = String(transaction.reference_type || '').toLowerCase();
           if (isPureManualJournalReferenceType(rtAdj)) {
-            openJournalQuickEdit();
+            if (typeof window !== 'undefined') {
+              dispatchOpenAddEntryV2({
+                entryType: 'pure_journal',
+                editJournalEntryId: String(transaction.id),
+                origin: editOrigin,
+              });
+            }
+            if (editOrigin !== 'account_ledger') setCurrentView('accounting');
+            onClose();
             return;
           }
           if (resolution.sourceType === 'expense' && resolution.sourceId) {
@@ -883,7 +858,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     } catch (e: any) {
       toast.error(e?.message || 'Could not open editor');
     }
-  }, [transaction, transactionForUnifiedPolicy, companyId, openDrawer, setCurrentView, onClose]);
+  }, [transaction, transactionForUnifiedPolicy, companyId, openDrawer, setCurrentView, onClose, editOrigin]);
 
   useEffect(() => {
     if (!autoLaunchUnifiedEdit || !isOpen || loading || !transaction) return;
@@ -2377,36 +2352,6 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
             )}
           </div>
         ) : null}
-
-        <Dialog open={journalQuickEditOpen} onOpenChange={setJournalQuickEditOpen}>
-          <DialogContent className="max-w-md bg-gray-900 border-gray-800 text-white">
-            <DialogHeader>
-              <DialogTitle>Edit manual journal</DialogTitle>
-              <p className="text-xs text-gray-400 font-normal">
-                Updates transaction date and description only. To change debit/credit amounts or accounts, close this dialog and use{' '}
-                <strong className="text-gray-300">Edit Accounts</strong> on the transaction detail screen.
-              </p>
-            </DialogHeader>
-            <div className="space-y-3 pt-2">
-              <div>
-                <Label className="text-gray-400">Transaction date &amp; time</Label>
-                <DateTimePicker value={editEntryDateTime} onChange={setEditEntryDateTime} required />
-              </div>
-              <div>
-                <Label className="text-gray-400">Description / notes</Label>
-                <Input value={editDescription} onChange={(e) => setEditDescription(e.target.value)} className="bg-gray-950 border-gray-700 mt-1" />
-              </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <Button type="button" variant="ghost" onClick={() => setJournalQuickEditOpen(false)}>
-                  Cancel
-                </Button>
-                <Button type="button" onClick={() => void saveJournalQuickEdit()} disabled={savingJournalEdit}>
-                  {savingJournalEdit ? 'Saving…' : 'Save'}
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
 
         {/* Attachment Viewer Modal */}
         {selectedAttachment && (

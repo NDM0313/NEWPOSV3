@@ -226,6 +226,7 @@ export interface AccountingEntry {
     isOrphanReceipt?: boolean;
     orphanReceiptStatus?: 'orphan_posting_failed';
     linkedPaymentAmount?: number;
+    linkedStockMovementAmount?: number;
   };
 }
 
@@ -248,6 +249,8 @@ interface AccountingContextType {
   createReversalEntry: (originalJournalEntryId: string, reason?: string) => Promise<boolean>;
   undoLastPaymentMutation: (paymentId: string) => Promise<boolean>;
   refreshEntries: () => Promise<void>;
+  /** Journal list only — skips COA reload (faster after single-entry saves). */
+  refreshJournalEntries: () => Promise<void>;
   /** Load journal entries on first accounting/reports open (skipped on app boot for speed). */
   ensureEntriesLoaded: () => Promise<void>;
   /** Reload COA only (no full journal fetch) — use when opening payment dialogs. */
@@ -511,7 +514,7 @@ const AccountingContext = createContext<AccountingContextType | undefined>(undef
 // ============================================
 
 const BALANCE_SYNC_THROTTLE_MS = 60_000;
-const COALESCED_REFRESH_MS = 1200;
+const COALESCED_REFRESH_MS = 400;
 const ENTRIES_FETCH_LIMIT = 500;
 
 /** Reload COA on invalidation only when the chart changed — not payments/sales/realtime noise. */
@@ -749,6 +752,17 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
         metadata.linkedPaymentAmount = linkedPaymentAmount;
         resolvedAmount = linkedPaymentAmount;
       }
+    }
+    const stockMovementAmount = (journalEntry as { _stock_movement_amount?: number })._stock_movement_amount;
+    const rtForStock = String(journalEntry.reference_type || '').toLowerCase().trim();
+    if (
+      rtForStock === 'stock_adjustment' &&
+      resolvedAmount < 0.02 &&
+      stockMovementAmount != null &&
+      stockMovementAmount > 0
+    ) {
+      resolvedAmount = stockMovementAmount;
+      metadata.linkedStockMovementAmount = stockMovementAmount;
     }
     const linkedSaleStatus = (journalEntry as { _linked_sale_status?: string })._linked_sale_status;
     if (linkedSaleStatus) metadata.linkedSaleStatus = linkedSaleStatus;
@@ -1146,30 +1160,33 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     async (rows: JournalEntryWithLines[]) => {
       if (!rows.length || !companyId) return false;
       try {
-        const jeIds = rows.map((j) => String(j.id || '').trim()).filter(Boolean);
-        const reversedOriginalIds = new Set<string>();
-        const CHUNK = 25;
-        for (let i = 0; i < jeIds.length; i += CHUNK) {
-          const chunk = jeIds.slice(i, i + CHUNK);
-          const { data: revParents, error: revErr } = await supabase
-            .from('journal_entries')
-            .select('reference_id')
-            .eq('company_id', companyId)
-            .eq('reference_type', 'correction_reversal')
-            .in('reference_id', chunk)
-            .or('is_void.is.null,is_void.eq.false');
-          if (revErr && import.meta.env?.DEV) {
-            console.warn('[ACCOUNTING CONTEXT] incremental reversal lookup:', revErr.message);
+        let flagged = rows;
+        if (rows.length > 1) {
+          const jeIds = rows.map((j) => String(j.id || '').trim()).filter(Boolean);
+          const reversedOriginalIds = new Set<string>();
+          const CHUNK = 25;
+          for (let i = 0; i < jeIds.length; i += CHUNK) {
+            const chunk = jeIds.slice(i, i + CHUNK);
+            const { data: revParents, error: revErr } = await supabase
+              .from('journal_entries')
+              .select('reference_id')
+              .eq('company_id', companyId)
+              .eq('reference_type', 'correction_reversal')
+              .in('reference_id', chunk)
+              .or('is_void.is.null,is_void.eq.false');
+            if (revErr && import.meta.env?.DEV) {
+              console.warn('[ACCOUNTING CONTEXT] incremental reversal lookup:', revErr.message);
+            }
+            for (const r of revParents || []) {
+              const rid = (r as { reference_id?: string }).reference_id;
+              if (rid) reversedOriginalIds.add(String(rid));
+            }
           }
-          for (const r of revParents || []) {
-            const rid = (r as { reference_id?: string }).reference_id;
-            if (rid) reversedOriginalIds.add(String(rid));
-          }
+          flagged = rows.map((je) => ({
+            ...je,
+            _has_active_correction_reversal: Boolean(je.id && reversedOriginalIds.has(String(je.id))),
+          })) as JournalEntryWithLines[];
         }
-        const flagged = rows.map((je) => ({
-          ...je,
-          _has_active_correction_reversal: Boolean(je.id && reversedOriginalIds.has(String(je.id))),
-        })) as JournalEntryWithLines[];
         appendOrMergeEntries(flagged);
         return true;
       } catch (e) {
@@ -1212,6 +1229,19 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       if (reason.includes('accounting-entries-changed')) {
         const row = await accountingService.getEntryById(entityId, companyId);
         if (row) return mergeIncrementalJournalRows([row as JournalEntryWithLines]);
+      }
+
+      if (reason.includes('purchase-updated')) {
+        const { data: rows, error } = await supabase
+          .from('journal_entries')
+          .select('*, lines:journal_entry_lines(*, account:accounts(id, name, code, type))')
+          .eq('company_id', companyId)
+          .eq('reference_type', 'purchase')
+          .eq('reference_id', entityId)
+          .limit(5);
+        if (!error && rows?.length) {
+          return mergeIncrementalJournalRows(rows as JournalEntryWithLines[]);
+        }
       }
 
       return false;
@@ -1286,13 +1316,32 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
   useEffect(() => {
     if (!companyId) return;
 
-    const bumpEntriesOnly = () => {
+    const bumpEntriesOnly = (ev: Event) => {
       if (!entriesBootstrappedRef.current) return;
       void (async () => {
-        const handled = await tryIncrementalJournalFromInvalidationRef.current(undefined);
-        if (!handled) {
-          scheduleCoalescedRefreshRef.current({ entries: true, accounts: false });
+        const detail = (ev as CustomEvent<{ entityId?: string; journalEntryId?: string }>).detail;
+        const entityId = String(detail?.entityId || detail?.journalEntryId || '').trim();
+        const handled = await tryIncrementalJournalFromInvalidationRef.current(
+          entityId
+            ? {
+                domain: 'accounting',
+                companyId,
+                branchId: branchId === 'all' ? null : branchId ?? null,
+                entityId,
+                reason: 'accounting-entries-changed',
+                ts: Date.now(),
+              }
+            : undefined,
+        );
+        if (handled) {
+          if (coalescedRefreshTimerRef.current) {
+            clearTimeout(coalescedRefreshTimerRef.current);
+            coalescedRefreshTimerRef.current = null;
+          }
+          coalescedRefreshOptsRef.current.entries = false;
+          return;
         }
+        scheduleCoalescedRefreshRef.current({ entries: true, accounts: false });
       })();
     };
 
@@ -3262,6 +3311,11 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
   // ============================================
 
   // Refresh both accounts and entries
+  const refreshJournalEntries = useCallback(async () => {
+    await ensureEntriesLoaded();
+    await loadEntries({ showBlockingLoading: false, skipBalanceSync: true });
+  }, [loadEntries, ensureEntriesLoaded]);
+
   const refreshEntries = useCallback(async () => {
     await ensureEntriesLoaded();
     await Promise.all([
@@ -3355,6 +3409,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     createReversalEntry,
     undoLastPaymentMutation,
     refreshEntries,
+    refreshJournalEntries,
     ensureEntriesLoaded,
     refreshAccounts,
     appendOrMergeEntries,
@@ -3393,7 +3448,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     getAccountById,
   }), [
     entries, entriesTotal, entriesPage, entriesPageSize, setEntriesPage, balances, initialLoading, backgroundSync, accounts,
-    createEntry, createReversalEntry, undoLastPaymentMutation, refreshEntries, ensureEntriesLoaded, refreshAccounts, appendOrMergeEntries, patchAccountBalances,
+    createEntry, createReversalEntry, undoLastPaymentMutation, refreshEntries, refreshJournalEntries, ensureEntriesLoaded, refreshAccounts, appendOrMergeEntries, patchAccountBalances,
     getEntriesByReference, getEntriesBySource,
     getAccountBalance, getEntriesBySupplier, getEntriesByCustomer, getEntriesByWorker,
     getSupplierBalance, getCustomerBalance, getWorkerBalance,

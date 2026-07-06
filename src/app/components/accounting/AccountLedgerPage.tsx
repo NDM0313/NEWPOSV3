@@ -176,10 +176,29 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
   };
 
   const printRef = useRef<HTMLDivElement>(null);
+  const ledgerRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handlePrint = () => {
     window.print();
   };
+
+  // Reload ledger when entries change (debounced — coalesce post-save event bursts).
+  useEffect(() => {
+    const scheduleRefresh = () => {
+      if (ledgerRefreshTimerRef.current) clearTimeout(ledgerRefreshTimerRef.current);
+      ledgerRefreshTimerRef.current = setTimeout(() => {
+        ledgerRefreshTimerRef.current = null;
+        void loadLedger();
+      }, 400);
+    };
+    window.addEventListener('accountingEntriesChanged', scheduleRefresh);
+    window.addEventListener('paymentAdded', scheduleRefresh);
+    return () => {
+      if (ledgerRefreshTimerRef.current) clearTimeout(ledgerRefreshTimerRef.current);
+      window.removeEventListener('accountingEntriesChanged', scheduleRefresh);
+      window.removeEventListener('paymentAdded', scheduleRefresh);
+    };
+  }, [accountId, companyId, selectedBranchId, dateRange, searchTerm]);
 
   const openLedgerTransactionDetail = (entry: AccountLedgerEntry, autoLaunchUnifiedEdit?: boolean) => {
     const resolved = resolveLedgerTransactionOpenRef(entry);
@@ -609,6 +628,7 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
           journalEntryIdHint={selectedJournalEntryId ?? undefined}
           autoLaunchUnifiedEdit={ledgerDetailAutoEdit}
           onAutoLaunchUnifiedEditConsumed={() => setLedgerDetailAutoEdit(false)}
+          editOrigin="account_ledger"
         />
       )}
     </div>

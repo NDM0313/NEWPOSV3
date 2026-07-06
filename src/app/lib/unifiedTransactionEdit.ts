@@ -3,6 +3,8 @@
  * resolve the real editable entity here instead of inventing per-screen edit logic.
  */
 
+import { notifyAccountingEntriesChanged } from '@/app/lib/accountingInvalidate';
+
 export type TransactionKind =
   | 'document_total'
   | 'payment'
@@ -261,9 +263,29 @@ export function unifiedEditButtonLabel(resolution: UnifiedJournalEditResolution)
 }
 
 /** After a successful save, broadcast so lists / ledger / statements reload. */
-export function dispatchAccountingEditCommitted(extra?: { customerId?: string; supplierId?: string }) {
+export function dispatchAccountingEditCommitted(extra?: {
+  customerId?: string;
+  supplierId?: string;
+  journalEntryId?: string;
+  companyId?: string;
+  branchId?: string | null;
+}) {
   if (typeof window === 'undefined') return;
-  window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+  if (extra?.journalEntryId && extra?.companyId) {
+    notifyAccountingEntriesChanged({
+      companyId: extra.companyId,
+      branchId: extra.branchId ?? null,
+      entityId: extra.journalEntryId,
+      reason: 'accounting-entries-changed',
+    });
+  } else {
+    const entityId = extra?.journalEntryId;
+    window.dispatchEvent(
+      new CustomEvent('accountingEntriesChanged', {
+        detail: entityId ? { entityId, journalEntryId: entityId } : undefined,
+      }),
+    );
+  }
   window.dispatchEvent(new CustomEvent('paymentAdded'));
   if (extra?.customerId) {
     window.dispatchEvent(

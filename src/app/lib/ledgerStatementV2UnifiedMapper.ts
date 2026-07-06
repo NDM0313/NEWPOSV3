@@ -52,3 +52,19 @@ export function mapUnifiedRowToLedgerV2(row: UnifiedLedgerRow): LedgerStatementV
 export function mapUnifiedRowsToLedgerV2(rows: UnifiedLedgerRow[]): LedgerStatementV2Row[] {
   return rows.map(mapUnifiedRowToLedgerV2);
 }
+
+function round2(n: number): number {
+  return Math.round((Number(n) || 0) * 100) / 100;
+}
+
+/** Recompute running balance from period opening + debit/credit deltas (guards RPC ordering gaps). */
+export function realignAccountLedgerRunningBalances(
+  rows: LedgerStatementV2Row[],
+  periodOpening: number,
+): LedgerStatementV2Row[] {
+  let balance = round2(periodOpening);
+  return rows.map((row) => {
+    balance = round2(balance + row.debit - row.credit);
+    return { ...row, runningBalance: balance };
+  });
+}

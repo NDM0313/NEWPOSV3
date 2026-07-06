@@ -74,6 +74,7 @@ import {
 import { useJournalTransactionActionHandlers } from '@/app/hooks/useJournalTransactionActionHandlers';
 import { RoznamchaRowTransactionActions } from '@/app/components/reports/RoznamchaRowTransactionActions';
 import { TransactionDetailModal } from '@/app/components/accounting/TransactionDetailModal';
+import { TransactionConfirmDialog } from '@/app/components/accounting/TransactionConfirmDialog';
 
 const ROZNAMCHA_CACHE_TTL_MS = 30_000;
 const roznamchaResultCache = new Map<string, { at: number; data: RoznamchaResult }>();
@@ -172,6 +173,9 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
     handleJournalCancelPayment,
     handleJournalCancelEntry,
     handleJournalCancelOrphan,
+    pendingConfirm,
+    dismissPendingConfirm,
+    confirmPendingJournalAction,
   } = useJournalTransactionActionHandlers();
   const reportExport = useReportExport({ companyId, documentType: 'ledger', reportKind: 'roznamcha' });
   const { formatCurrency } = useFormatCurrency();
@@ -1278,6 +1282,18 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
           onAutoOpenPaymentTraceConsumed={() => setTransactionDetailAutoOpenTrace(false)}
           autoScrollToAudit={transactionDetailScrollToAudit}
           onAutoScrollToAuditConsumed={() => setTransactionDetailScrollToAudit(false)}
+        />
+      ) : null}
+
+      {pendingConfirm ? (
+        <TransactionConfirmDialog
+          open
+          title={pendingConfirm.title}
+          description={pendingConfirm.message}
+          confirmLabel="Yes"
+          cancelLabel="No"
+          onConfirm={confirmPendingJournalAction}
+          onCancel={dismissPendingConfirm}
         />
       ) : null}
     </div>

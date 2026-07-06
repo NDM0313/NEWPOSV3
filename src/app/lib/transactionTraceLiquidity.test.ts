@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { isLiquidityPaymentAccount } from './liquidityPaymentAccount';
+import {
+  isLiquidityPaymentAccount,
+  isPartyTtRoutingAccount,
+  isRoznamchaLiquidityAccount,
+  paymentMethodForLiquidityAccount,
+} from './liquidityPaymentAccount';
 
 test('1002 and 1003 cash type accounts are liquidity', () => {
   assert.equal(isLiquidityPaymentAccount({ code: '1002', type: 'cash', name: 'CASH G140' }), true);
@@ -13,4 +18,37 @@ test('AR line is not liquidity', () => {
 
 test('bank type is liquidity without canonical code', () => {
   assert.equal(isLiquidityPaymentAccount({ code: '1012', type: 'bank', name: 'FHD MZ' }), true);
+});
+
+test('USD TT Agent Clearing 1201 is liquidity (bank clearing)', () => {
+  assert.equal(
+    isLiquidityPaymentAccount({ code: '1201', type: 'asset', name: 'USD TT Agent Clearing' }),
+    true,
+  );
+  assert.equal(
+    isRoznamchaLiquidityAccount({ code: '1201', type: 'asset', name: 'USD TT Agent Clearing' }),
+    true,
+  );
+});
+
+test('101x bank sub-account code is liquidity', () => {
+  assert.equal(isLiquidityPaymentAccount({ code: '1011', type: 'asset', name: 'HBL Main' }), true);
+});
+
+test('party payee WALI T/T is liquidity for payments but excluded from roznamcha', () => {
+  const wali = { code: '1015', type: 'bank', name: 'WALI T/T' };
+  assert.equal(isLiquidityPaymentAccount(wali), true);
+  assert.equal(isPartyTtRoutingAccount(wali), true);
+  assert.equal(isRoznamchaLiquidityAccount(wali), false);
+});
+
+test('internal bank to own wallet both remain roznamcha liquidity', () => {
+  assert.equal(isRoznamchaLiquidityAccount({ code: '1012', type: 'bank', name: 'FHD MZ' }), true);
+  assert.equal(isRoznamchaLiquidityAccount({ code: '1021', type: 'wallet', name: 'NDM Easy' }), true);
+});
+
+test('USD TT Agent Clearing maps to bank for roznamcha sign', () => {
+  const clearing = { code: '1201', type: 'asset', name: 'USD TT Agent Clearing' };
+  assert.equal(paymentMethodForLiquidityAccount(clearing), 'bank');
+  assert.equal(isRoznamchaLiquidityAccount(clearing), true);
 });

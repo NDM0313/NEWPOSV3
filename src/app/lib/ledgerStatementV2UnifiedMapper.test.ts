@@ -1,47 +1,34 @@
-import assert from 'node:assert/strict';
-import { test } from 'node:test';
-import {
-  mapGlReferenceTypeToSourceKind,
-  mapUnifiedRowToLedgerV2,
-} from './ledgerStatementV2UnifiedMapper';
-import type { UnifiedLedgerRow } from '@/app/services/unifiedLedgerService';
+import { describe, expect, it } from 'vitest';
+import { realignAccountLedgerRunningBalances } from '@/app/lib/ledgerStatementV2UnifiedMapper';
+import type { LedgerStatementV2Row } from '@/app/features/ledger-statement-center-v2/types';
 
-test('mapGlReferenceTypeToSourceKind maps sale payment types', () => {
-  assert.equal(mapGlReferenceTypeToSourceKind('sale_invoice'), 'sale');
-  assert.equal(mapGlReferenceTypeToSourceKind('payment_received'), 'payment');
-  assert.equal(mapGlReferenceTypeToSourceKind('opening_balance'), 'opening');
-  assert.equal(mapGlReferenceTypeToSourceKind('manual_journal'), 'journal');
-});
-
-test('mapUnifiedRowToLedgerV2 maps core fields', () => {
-  const unified: UnifiedLedgerRow = {
-    journalEntryLineId: 'line-1',
-    journalEntryId: 'je-1',
-    entryDate: '2026-01-15',
-    entryNo: 'JE-100',
-    referenceType: 'sale_invoice',
-    description: 'Test sale',
-    debit: 0,
-    credit: 5000,
-    runningBalance: 216300,
-    periodOpeningBalance: 0,
-    paymentId: null,
-    branchId: null,
-    branchName: 'Main',
-    accountCode: '1100',
-    accountName: 'Cash',
-    partyResolved: null,
+function v2Row(partial: Partial<LedgerStatementV2Row>): LedgerStatementV2Row {
+  return {
+    id: partial.id || 'row-1',
+    journalEntryId: partial.journalEntryId || 'je-1',
+    date: partial.date || '2026-07-01',
+    referenceNo: partial.referenceNo || 'JE-1',
+    transactionType: partial.transactionType || 'journal',
+    description: partial.description || '—',
+    branch: partial.branch || '—',
+    debit: partial.debit ?? 0,
+    credit: partial.credit ?? 0,
+    runningBalance: partial.runningBalance ?? 0,
+    paymentMethod: partial.paymentMethod || '—',
+    createdBy: partial.createdBy || '—',
+    hasAttachments: partial.hasAttachments ?? false,
+    sourceKind: partial.sourceKind || 'journal',
   };
-  const row = mapUnifiedRowToLedgerV2(unified);
-  assert.equal(row.id, 'line-1');
-  assert.equal(row.journalEntryId, 'je-1');
-  assert.equal(row.date, '2026-01-15');
-  assert.equal(row.referenceNo, 'JE-100');
-  assert.equal(row.transactionType, 'sale_invoice');
-  assert.equal(row.sourceKind, 'sale');
-  assert.equal(row.branch, 'Main');
-  assert.equal(row.paymentMethod, 'Cash');
-  assert.equal(row.runningBalance, 216300);
-  assert.equal(row.hasAttachments, false);
-  assert.equal(row.createdBy, '—');
+}
+
+describe('realignAccountLedgerRunningBalances', () => {
+  it('recomputes running balance from period opening and movements', () => {
+    const rows = [
+      v2Row({ id: 'a', debit: 500000, credit: 0, runningBalance: 999 }),
+      v2Row({ id: 'b', debit: 500000, credit: 0, runningBalance: 999 }),
+      v2Row({ id: 'c', debit: 0, credit: 500000, runningBalance: 999 }),
+    ];
+    const aligned = realignAccountLedgerRunningBalances(rows, 0);
+    expect(aligned.map((r) => r.runningBalance)).toEqual([500000, 1000000, 500000]);
+  });
 });

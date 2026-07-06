@@ -133,6 +133,56 @@ describe('roznamcha dedupe', () => {
     assert.equal(rows[0].ref, 'HQ-RCV-0007');
   });
 
+  it('keeps both payment legs of same transfer JE when both are roznamcha liquidity', () => {
+    const rows = dedupeRoznamchaRows([
+      baseRow({
+        id: 'pay-out',
+        ref: 'JE-0238',
+        sourcePaymentId: 'pay-out',
+        sourceJournalEntryId: 'je-1',
+        paymentAccountId: 'usd-tt',
+        direction: 'OUT',
+        amount: 100,
+        accountType: 'bank',
+        accountName: 'USD TT Agent Clearing',
+        accountLabel: 'USD TT Agent Clearing',
+      }),
+      baseRow({
+        id: 'pay-in',
+        ref: 'JE-0238',
+        sourcePaymentId: 'pay-in',
+        sourceJournalEntryId: 'je-1',
+        paymentAccountId: 'fhd-wallet',
+        direction: 'IN',
+        amount: 100,
+        accountType: 'wallet',
+        accountName: 'FHD MZ Wallet',
+        accountLabel: 'FHD MZ Wallet',
+      }),
+    ]);
+    assert.equal(rows.length, 2);
+  });
+
+  it('bank OUT leg survives dedupe alone (WALI T/T excluded upstream by roznamcha filter)', () => {
+    const rows = dedupeRoznamchaRows([
+      baseRow({
+        id: 'pay-out',
+        ref: 'JE-0238',
+        sourcePaymentId: 'pay-out',
+        sourceJournalEntryId: 'je-1',
+        paymentAccountId: 'usd-tt',
+        direction: 'OUT',
+        amount: 100,
+        accountType: 'bank',
+        accountName: 'USD TT Agent Clearing',
+        accountLabel: 'USD TT Agent Clearing',
+      }),
+    ]);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].direction, 'OUT');
+    assert.equal(rows[0].accountName, 'USD TT Agent Clearing');
+  });
+
   it('exposes entity keys for payment rental and journal', () => {
     const keys = roznamchaEntityKeys(
       baseRow({

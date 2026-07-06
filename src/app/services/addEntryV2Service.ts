@@ -15,7 +15,12 @@ import { createManualSupplierPayment } from '@/app/services/supplierPaymentServi
 import { createWorkerPayment } from '@/app/services/workerPaymentService';
 import { createCourierPayment } from '@/app/services/courierPaymentService';
 import { logPaymentCreated } from '@/app/services/auditLogService';
-import { ensurePaymentsForLiquidityJournal } from '@/app/services/journalLiquidityPaymentService';
+import {
+  ensurePaymentsForLiquidityJournal,
+  syncExistingLiquidityPaymentsForJournal,
+  syncLiquidityPaymentForJournal,
+} from '@/app/services/journalLiquidityPaymentService';
+import { notifyAccountingEntriesChanged } from '@/app/lib/accountingInvalidate';
 import {
   recordPaymentWithAccounting,
   resolveBranchIdForPaymentRpc,
@@ -42,6 +47,22 @@ async function validPaymentsContactId(_companyId: string, contactId: string | nu
   return (data && (data as { id: string }).id) ? contactId : null;
 }
 
+function notifyAddEntryAccountingSaved(args: {
+  companyId: string;
+  branchId?: string | null;
+  journalEntryId?: string | null;
+}): void {
+  notifyAccountingEntriesChanged({
+    companyId: args.companyId,
+    branchId: args.branchId ?? null,
+    entityId: args.journalEntryId ?? null,
+    reason: 'accounting-entries-changed',
+  });
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('paymentAdded'));
+  }
+}
+
 // ─── 1. Pure Journal ─────────────────────────────────────────────────────
 export interface CreatePureJournalParams {
   companyId: string;
@@ -61,9 +82,9 @@ export async function createPureJournalEntry(params: CreatePureJournalParams): P
   const branch = validBranchId(branchId);
   let entryNo: string;
   try {
-    entryNo = await documentNumberService.getNextDocumentNumber(companyId, branch, 'manual_journal');
+    entryNo = await documentNumberService.getNextJournalEntryNumber(companyId, branch);
   } catch {
-    entryNo = `JV-${Date.now()}`;
+    entryNo = `JE-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
   }
   const journalEntry: JournalEntry = {
     company_id: companyId,
@@ -97,7 +118,100 @@ export async function createPureJournalEntry(params: CreatePureJournalParams): P
     })),
     createdBy: createdBy ?? null,
   });
+  notifyAddEntryAccountingSaved({ companyId, branchId: branch, journalEntryId });
   return { journalEntryId };
+}
+
+export interface UpdatePureJournalParams {
+  companyId: string;
+  journalEntryId: string;
+  entryDate: string;
+  createdAt?: string | null;
+  debitAccountId: string;
+  creditAccountId: string;
+  amount: number;
+  description?: string | null;
+}
+
+export async function updatePureJournalEntry(params: UpdatePureJournalParams): Promise<{ ok: boolean; error?: string }> {
+  const {
+    companyId,
+    journalEntryId,
+    entryDate,
+    createdAt,
+    debitAccountId,
+    creditAccountId,
+    amount,
+    description,
+  } = params;
+  if (!companyId || !journalEntryId || !debitAccountId || !creditAccountId || amount <= 0) {
+    return { ok: false, error: 'Invalid pure journal update params' };
+  }
+
+  const lines: JournalEntryLine[] = [
+    { account_id: debitAccountId, debit: amount, credit: 0, description: description || undefined },
+    { account_id: creditAccountId, debit: 0, credit: amount, description: description || undefined },
+  ];
+
+  const res = await accountingService.updateManualJournalEntry(companyId, journalEntryId, {
+    entry_date: entryDate,
+    ...(createdAt ? { created_at: createdAt } : {}),
+    description: description ?? null,
+    lines,
+  });
+  if (!res.ok) return res;
+
+  const { data: jeRow } = await supabase
+    .from('journal_entries')
+    .select('payment_id, entry_no, branch_id')
+    .eq('id', journalEntryId)
+    .eq('company_id', companyId)
+    .maybeSingle();
+
+  const entryNo = String((jeRow as { entry_no?: string } | null)?.entry_no || '').trim();
+  const paymentId = String((jeRow as { payment_id?: string } | null)?.payment_id || '').trim();
+  const branchId = (jeRow as { branch_id?: string | null } | null)?.branch_id ?? null;
+  const lineInputs = lines.map((l) => ({
+    accountId: l.account_id,
+    debit: l.debit,
+    credit: l.credit,
+  }));
+
+  if (paymentId) {
+    await syncLiquidityPaymentForJournal({
+      companyId,
+      paymentId,
+      entryNo,
+      entryDate,
+      description: description || 'Journal entry',
+      lines: lineInputs,
+    });
+  } else {
+    const { syncedCount } = await syncExistingLiquidityPaymentsForJournal({
+      companyId,
+      journalEntryId,
+      entryNo,
+      entryDate,
+      description: description || 'Journal entry',
+      lines: lineInputs,
+    });
+    if (syncedCount === 0) {
+      await ensurePaymentsForLiquidityJournal({
+        companyId,
+        branchId: validBranchId(branchId),
+        journalEntryId,
+        entryNo,
+        entryDate,
+        description: description || 'Journal entry',
+        lines: lineInputs,
+        createdBy: null,
+      });
+    }
+  }
+
+  notifyAddEntryAccountingSaved({ companyId, journalEntryId });
+
+  return { ok: true };
 }
 
 // ─── 2. Customer Receipt ───────────────────────────────────────────────────
@@ -210,8 +324,8 @@ export async function createCustomerReceiptEntry(params: CreateCustomerReceiptPa
   dispatchContactBalancesRefresh(companyId);
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'customer', entityId: customerId } }));
-    window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
   }
+  notifyAddEntryAccountingSaved({ companyId, branchId: branch, journalEntryId });
   if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
     console.log('[AddEntryV2] createCustomerReceiptEntry:', {
       payload: { customerId, customerName, amount, paymentAccountId, paymentDate },
@@ -253,9 +367,11 @@ export async function createSupplierPaymentEntry(params: CreateSupplierPaymentPa
     notes: desc,
     attachments,
   });
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
-  }
+  notifyAddEntryAccountingSaved({
+    companyId,
+    branchId: validBranchId(branchId),
+    journalEntryId: result.journalEntryId,
+  });
   return result;
 }
 
@@ -299,8 +415,12 @@ export async function createWorkerPaymentEntry(params: CreateWorkerPaymentParams
   }
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'worker', entityId: workerId } }));
-    window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
   }
+  notifyAddEntryAccountingSaved({
+    companyId,
+    branchId: validBranchId(branchId),
+    journalEntryId: result.journalEntryId,
+  });
   return result;
 }
 
@@ -365,7 +485,9 @@ export async function createExpensePaymentEntry(params: CreateExpensePaymentPara
     { account_id: paymentAccountId, debit: 0, credit: amount, description: desc },
   ];
   const saved = await accountingService.createEntry(journalEntry, lines, paymentId);
-  return { paymentId, journalEntryId: (saved as { id: string }).id, referenceNumber: refNo };
+  const journalEntryId = (saved as { id: string }).id;
+  notifyAddEntryAccountingSaved({ companyId, branchId: branch, journalEntryId });
+  return { paymentId, journalEntryId, referenceNumber: refNo };
 }
 
 // ─── 6. Internal Transfer ──────────────────────────────────────────────────
@@ -423,6 +545,7 @@ export async function createInternalTransferEntry(params: CreateInternalTransfer
     ],
     createdBy: createdBy ?? null,
   });
+  notifyAddEntryAccountingSaved({ companyId, branchId: branch, journalEntryId });
   return { journalEntryId };
 }
 
@@ -462,8 +585,10 @@ export async function createCourierPaymentEntry(params: CreateCourierPaymentPara
     notes: desc,
     attachments,
   });
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
-  }
+  notifyAddEntryAccountingSaved({
+    companyId,
+    branchId: validBranchId(branchId),
+    journalEntryId: result.journalEntryId,
+  });
   return result;
 }

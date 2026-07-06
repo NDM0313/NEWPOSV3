@@ -61,7 +61,7 @@ git commit -m "Bug fix: Purchase service FK issue"
 
 On current machine:
 git add .
-git commit -m "DON"
+git commit -m "DON2"
 git push origin main
 
 On new machine:
