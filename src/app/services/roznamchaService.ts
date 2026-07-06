@@ -1451,7 +1451,7 @@ async function fetchPaymentRows(
   );
   rows.push(...rentalPayRows);
 
-  return rows;
+  return { rows, branchFilteredPayments: paymentList };
 }
 
 /** Fetch rental_payments rows (customer cash-IN) and map to RoznamchaRow. */
@@ -1698,7 +1698,7 @@ async function fetchRentalPaymentRows(
     }
   }
 
-  return { rows, branchFilteredPayments: paymentList };
+  return rows;
 }
 
 function journalLiquidityTypeLabel(referenceType: string): string {

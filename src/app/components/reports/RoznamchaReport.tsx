@@ -553,7 +553,9 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
         roznamchaResultCache.set(cacheKey, { at: Date.now(), data: result });
         setData(result);
       }
-    } catch {
+    } catch (err) {
+      console.error('[RoznamchaReport] load failed:', err);
+      toast.error('Could not load Roznamcha. Try refreshing or widening the date range.');
       setData(null);
       setMainUnifiedRows([]);
     } finally {
