@@ -25,6 +25,7 @@ import {
   recordPaymentWithAccounting,
   resolveBranchIdForPaymentRpc,
 } from '@/app/services/recordPaymentWithAccountingRpc';
+import { resolveBranchUuidForWrite } from '@/app/utils/branchId';
 
 const PAYMENT_METHOD_MAP: Record<string, string> = {
   cash: 'cash', Cash: 'cash', bank: 'bank', Bank: 'bank', 'mobile wallet': 'other', 'Mobile Wallet': 'other',
@@ -79,7 +80,7 @@ export interface CreatePureJournalParams {
 export async function createPureJournalEntry(params: CreatePureJournalParams): Promise<{ journalEntryId: string }> {
   const { companyId, branchId, entryDate, debitAccountId, creditAccountId, amount, description, createdBy, attachments } = params;
   if (!companyId || !debitAccountId || !creditAccountId || amount <= 0) throw new Error('Invalid pure journal params');
-  const branch = validBranchId(branchId);
+  const branch = await resolveBranchUuidForWrite(companyId, branchId);
   let entryNo: string;
   try {
     entryNo = await documentNumberService.getNextJournalEntryNumber(companyId, branch);
@@ -88,7 +89,7 @@ export async function createPureJournalEntry(params: CreatePureJournalParams): P
   }
   const journalEntry: JournalEntry = {
     company_id: companyId,
-    branch_id: branch ?? undefined,
+    branch_id: branch,
     entry_no: entryNo,
     document_no: entryNo,
     entry_date: entryDate,
@@ -233,8 +234,8 @@ export interface CreateCustomerReceiptParams {
 export async function createCustomerReceiptEntry(params: CreateCustomerReceiptParams): Promise<{ paymentId: string; journalEntryId: string; referenceNumber: string }> {
   const { companyId, branchId, customerId, customerName, amount, paymentAccountId, paymentDate, paymentMethod, notes, attachments, invoiceAllocations } = params;
   if (!companyId || !customerId || amount <= 0 || !paymentAccountId) throw new Error('Invalid customer receipt params');
-  const branch = validBranchId(branchId);
-  const branchResolved = await resolveBranchIdForPaymentRpc(companyId, branch);
+  const branch = await resolveBranchUuidForWrite(companyId, branchId);
+  const branchResolved = branch;
   const { data: { user } } = await supabase.auth.getUser();
   const uid = (user as any)?.id ?? null;
   const desc = notes || `Receipt from ${customerName}`;
@@ -356,9 +357,10 @@ export async function createSupplierPaymentEntry(params: CreateSupplierPaymentPa
   const { companyId, branchId, supplierContactId, supplierName, amount, paymentAccountId, paymentDate, paymentMethod, notes, attachments } = params;
   if (!companyId || !supplierContactId || amount <= 0 || !paymentAccountId) throw new Error('Invalid supplier payment params');
   const desc = notes || `Manual payment to ${supplierName}`;
+  const branch = await resolveBranchUuidForWrite(companyId, branchId);
   const result = await createManualSupplierPayment({
     companyId,
-    branchId: validBranchId(branchId),
+    branchId: branch,
     supplierContactId,
     amount,
     paymentMethod,
@@ -369,7 +371,7 @@ export async function createSupplierPaymentEntry(params: CreateSupplierPaymentPa
   });
   notifyAddEntryAccountingSaved({
     companyId,
-    branchId: validBranchId(branchId),
+    branchId: branch,
     journalEntryId: result.journalEntryId,
   });
   return result;
@@ -395,9 +397,10 @@ export async function createWorkerPaymentEntry(params: CreateWorkerPaymentParams
   const { companyId, branchId, workerId, workerName, amount, paymentAccountId, paymentDate, paymentMethod, notes, stageId, attachments } = params;
   if (!companyId || !workerId || amount <= 0 || !paymentAccountId) throw new Error('Invalid worker payment params');
   const desc = notes || `Payment to worker ${workerName}`;
+  const branch = await resolveBranchUuidForWrite(companyId, branchId);
   const result = await createWorkerPayment({
     companyId,
-    branchId: validBranchId(branchId),
+    branchId: branch,
     workerId,
     workerName,
     amount,
@@ -418,7 +421,7 @@ export async function createWorkerPaymentEntry(params: CreateWorkerPaymentParams
   }
   notifyAddEntryAccountingSaved({
     companyId,
-    branchId: validBranchId(branchId),
+    branchId: branch,
     journalEntryId: result.journalEntryId,
   });
   return result;
@@ -439,7 +442,7 @@ export interface CreateExpensePaymentParams {
 export async function createExpensePaymentEntry(params: CreateExpensePaymentParams): Promise<{ paymentId: string; journalEntryId: string; referenceNumber: string }> {
   const { companyId, branchId, expenseAccountId, amount, paymentAccountId, paymentDate, paymentMethod, notes } = params;
   if (!companyId || !expenseAccountId || amount <= 0 || !paymentAccountId) throw new Error('Invalid expense payment params');
-  const branch = validBranchId(branchId);
+  const branch = await resolveBranchUuidForWrite(companyId, branchId);
   let refNo: string;
   try {
     refNo = await documentNumberService.getNextDocumentNumber(companyId, branch, 'expense');
@@ -472,7 +475,7 @@ export async function createExpensePaymentEntry(params: CreateExpensePaymentPara
   const entryNo = `JE-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
   const journalEntry: JournalEntry = {
     company_id: companyId,
-    branch_id: branch ?? undefined,
+    branch_id: branch,
     entry_no: entryNo,
     entry_date: paymentDate,
     description: desc,
@@ -506,7 +509,7 @@ export interface CreateInternalTransferParams {
 export async function createInternalTransferEntry(params: CreateInternalTransferParams): Promise<{ journalEntryId: string }> {
   const { companyId, branchId, fromAccountId, toAccountId, amount, entryDate, description, createdBy, attachments } = params;
   if (!companyId || !fromAccountId || !toAccountId || amount <= 0) throw new Error('Invalid transfer params');
-  const branch = validBranchId(branchId);
+  const branch = await resolveBranchUuidForWrite(companyId, branchId);
   const desc = description || 'Internal transfer';
   let entryNo: string;
   try {
@@ -516,7 +519,7 @@ export async function createInternalTransferEntry(params: CreateInternalTransfer
   }
   const journalEntry: JournalEntry = {
     company_id: companyId,
-    branch_id: branch ?? undefined,
+    branch_id: branch,
     entry_no: entryNo,
     document_no: entryNo,
     entry_date: entryDate,
@@ -573,9 +576,10 @@ export async function createCourierPaymentEntry(params: CreateCourierPaymentPara
     throw new Error('Courier payment requires a valid contact linked to the courier.');
   }
   const desc = notes || `Courier payment – ${courierName}`;
+  const branch = await resolveBranchUuidForWrite(companyId, branchId);
   const result = await createCourierPayment({
     companyId,
-    branchId: validBranchId(branchId),
+    branchId: branch,
     courierContactId: contactIdForPayments,
     courierReferenceId: courierId,
     amount,
@@ -587,7 +591,7 @@ export async function createCourierPaymentEntry(params: CreateCourierPaymentPara
   });
   notifyAddEntryAccountingSaved({
     companyId,
-    branchId: validBranchId(branchId),
+    branchId: branch,
     journalEntryId: result.journalEntryId,
   });
   return result;

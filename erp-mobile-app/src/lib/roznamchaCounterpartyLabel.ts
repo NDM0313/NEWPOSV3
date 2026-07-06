@@ -2,6 +2,7 @@ import { isLiquidityPaymentAccount } from './liquidityPaymentAccount';
 import { isOperationalExtendedCoaCode } from './coaTreeRows';
 
 export type RoznamchaJeLineRef = {
+  accountId?: string | null;
   debit?: number | null;
   credit?: number | null;
   account?: {
@@ -73,16 +74,22 @@ export function isManualTransferCounterpartyAccount(
 function resolveCounterpartyFromJeLinesFiltered(
   lines: RoznamchaJeLineRef[] | null | undefined,
   direction: 'IN' | 'OUT',
-  accountFilter: (acc: NonNullable<RoznamchaJeLineRef['account']>) => boolean
+  accountFilter: (acc: NonNullable<RoznamchaJeLineRef['account']>) => boolean,
+  excludeAccountId?: string | null,
+  skipLiquidityAccounts = true,
 ): string | null {
   if (!lines?.length) return null;
 
   const candidates: string[] = [];
   const seen = new Set<string>();
+  const excludeId = String(excludeAccountId || '').trim();
 
   for (const line of lines) {
+    const lineAccountId = String(line.accountId || '').trim();
+    if (excludeId && lineAccountId && lineAccountId === excludeId) continue;
+
     const acc = line.account;
-    if (!acc || isLiquidityPaymentAccount(acc) || !accountFilter(acc)) continue;
+    if (!acc || (skipLiquidityAccounts && isLiquidityPaymentAccount(acc)) || !accountFilter(acc)) continue;
 
     const debit = Number(line.debit) || 0;
     const credit = Number(line.credit) || 0;
@@ -106,6 +113,31 @@ export function resolveCounterpartyLabelFromJeLines(
   direction: 'IN' | 'OUT'
 ): string | null {
   return resolveCounterpartyFromJeLinesFiltered(lines, direction, () => true);
+}
+
+/** Manual journal payment row — skip only the payment ledger leg (allows wallet-to-wallet titles). */
+export function resolveCounterpartyLabelExcludingAccountId(
+  lines: RoznamchaJeLineRef[] | null | undefined,
+  direction: 'IN' | 'OUT',
+  excludeAccountId: string | null | undefined,
+): string | null {
+  const excluded = resolveCounterpartyFromJeLinesFiltered(
+    lines,
+    direction,
+    () => true,
+    excludeAccountId,
+    false,
+  );
+  if (excluded) return excluded;
+  return resolveCounterpartyLabelFromJeLines(lines, direction);
+}
+
+export function resolveManualPaymentCounterpartyLabel(
+  lines: RoznamchaJeLineRef[] | null | undefined,
+  direction: 'IN' | 'OUT',
+  paymentAccountId: string | null | undefined,
+): string | null {
+  return resolveCounterpartyLabelExcludingAccountId(lines, direction, paymentAccountId);
 }
 
 /** Expense / manual-transfer GL leg — for replacing generic Supplier Payment / Customer Receipt labels. */
@@ -242,12 +274,14 @@ export function resolveJvLinkedCounterpartyLabel(
   counterpartyByJeId: Map<string, CounterpartyByDirection>,
   journalEntryIdFallback?: string | null,
 ): string | null {
-  if (!isGeneralLiquidityJournalRef(journalEntryNoOrRef)) return null;
   const jeId =
     journalEntryIdByPaymentId.get(paymentId)?.trim() ||
     (journalEntryIdFallback && UUID_RE.test(String(journalEntryIdFallback).trim())
       ? String(journalEntryIdFallback).trim()
       : null);
-  if (!jeId) return null;
-  return counterpartyForPaymentDirection(counterpartyByJeId.get(jeId), direction);
+  if (jeId) {
+    return counterpartyForPaymentDirection(counterpartyByJeId.get(jeId), direction);
+  }
+  if (!isGeneralLiquidityJournalRef(journalEntryNoOrRef)) return null;
+  return null;
 }

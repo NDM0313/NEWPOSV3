@@ -623,9 +623,6 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     try {
       const isAdmin = userRole === 'admin' || userRole === 'Admin';
       if (isAdmin) {
-        setDefaultBranchId('all');
-        setBranchId('all');
-        setRequiresBranchSelection(false);
         const { data: companyBranches } = await supabase
           .from('branches')
           .select('id')
@@ -634,6 +631,16 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const ids = (companyBranches || []).map((b: { id: string }) => b.id);
         setAccessibleBranchIds(ids);
         setBranchCount(ids.length);
+        if (ids.length === 1) {
+          setDefaultBranchId(ids[0]);
+          setBranchId(ids[0]);
+          setRequiresBranchSelection(false);
+          if (import.meta.env?.DEV) console.log('[BRANCH LOADED] Admin single branch:', ids[0]);
+          return;
+        }
+        setDefaultBranchId('all');
+        setBranchId('all');
+        setRequiresBranchSelection(false);
         if (import.meta.env?.DEV) console.log('[BRANCH LOADED] Admin: All Branches', { count: ids.length });
         return;
       }
@@ -657,7 +664,11 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setRequiresBranchSelection(Boolean(payload.requires_branch_selection));
         const effectiveId = payload.effective_branch_id ?? null;
         setDefaultBranchId(effectiveId);
-        setBranchId(effectiveId);
+        if (count === 1 && accessible.length === 1) {
+          setBranchId(accessible[0]);
+        } else {
+          setBranchId(effectiveId);
+        }
         if (import.meta.env?.DEV) console.log('[BRANCH LOADED] get_effective_user_branch', { count, effectiveId, requiresBranchSelection: payload.requires_branch_selection });
         return;
       }

@@ -75,12 +75,12 @@ export const TopHeader = () => {
     loadBranches();
   }, [loadBranches]);
 
-  // If business has only one branch, auto-select it (persist in global filter + Supabase)
+  // If business has only one branch, always auto-select it (persist in global filter + Supabase)
   useEffect(() => {
-    if (branches.length === 1 && (!branchId || branchId === 'all')) {
+    if (branches.length === 1) {
       setGlobalBranchId(branches[0].id);
     }
-  }, [branches, branchId, setGlobalBranchId]);
+  }, [branches, setGlobalBranchId]);
 
   // Get current branch name (All Branches = real option for admin)
   const currentBranch = useMemo(() => {

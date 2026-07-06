@@ -628,7 +628,17 @@ export async function createJournalEntry(params: {
   if (Math.abs(totalDebit - totalCredit) > 0.01) {
     return { data: null, error: 'Debit must equal Credit.' };
   }
-  const entryNo = await getNextDocumentNumber(companyId, branchId ?? null, 'journal');
+  let resolvedBranchId: string;
+  try {
+    resolvedBranchId = await resolveBranchUuidForWrite(
+      companyId,
+      branchId,
+      'No branch set up. Add a branch in Settings to continue.',
+    );
+  } catch (e) {
+    return { data: null, error: e instanceof Error ? e.message : 'No branch set up.' };
+  }
+  const entryNo = await getNextDocumentNumber(companyId, resolvedBranchId, 'journal');
   const entryRow: Record<string, unknown> = {
     company_id: companyId,
     entry_no: entryNo,
@@ -636,8 +646,8 @@ export async function createJournalEntry(params: {
     description,
     reference_type: referenceType,
     created_by: userId ?? null,
+    branch_id: resolvedBranchId,
   };
-  if (branchId && branchId !== 'all' && branchId !== 'default') entryRow.branch_id = branchId;
   if (referenceId) entryRow.reference_id = referenceId;
   if (actionFingerprint) entryRow.action_fingerprint = actionFingerprint;
   if (attachments && attachments.length > 0) entryRow.attachments = attachments;
@@ -669,8 +679,7 @@ export async function createJournalEntry(params: {
     if (lineErr) return { data: null, error: lineErr.message };
   }
 
-  const effectiveBranch =
-    branchId && branchId !== 'all' && branchId !== 'default' ? branchId : null;
+  const effectiveBranch = resolvedBranchId;
   try {
     const { ensurePaymentsForLiquidityJournal } = await import('../lib/journalLiquidityPayment');
     await ensurePaymentsForLiquidityJournal({

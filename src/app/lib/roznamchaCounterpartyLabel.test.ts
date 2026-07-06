@@ -12,6 +12,7 @@ import {
   resolveCounterpartyLabelFromJeLines,
   resolveExpenseCounterpartyFromJeLines,
   resolveJvLinkedCounterpartyLabel,
+  resolveManualPaymentCounterpartyLabel,
   seedManualJournalPaymentJeMaps,
 } from './roznamchaCounterpartyLabel';
 
@@ -85,6 +86,31 @@ test('IN receipt resolves credit-side revenue account for broad resolver only', 
   ];
   assert.equal(resolveCounterpartyLabelFromJeLines(lines, 'IN'), 'Sales Income (4100)');
   assert.equal(resolveExpenseCounterpartyFromJeLines(lines, 'IN'), null);
+});
+
+test('internal cash transfer resolves counterparty when excluding payment account', () => {
+  const lines = [
+    {
+      accountId: 'bank-id',
+      debit: 1000,
+      credit: 0,
+      account: { name: 'NDM MZ', type: 'bank', code: '1012' },
+    },
+    {
+      accountId: 'cash-id',
+      debit: 0,
+      credit: 1000,
+      account: { name: 'CASH IN HAND', type: 'cash', code: '1000' },
+    },
+  ];
+  assert.equal(
+    resolveManualPaymentCounterpartyLabel(lines, 'OUT', 'cash-id'),
+    'NDM MZ (1012)',
+  );
+  assert.equal(
+    resolveManualPaymentCounterpartyLabel(lines, 'IN', 'bank-id'),
+    'CASH IN HAND (1000)',
+  );
 });
 
 test('internal cash transfer returns null counterparty', () => {
@@ -299,4 +325,33 @@ test('isJvBoilerplatePaymentNote flags receipt JV/JE boilerplate', () => {
   assert.equal(isJvBoilerplatePaymentNote('Receipt JV-000237 (Walk-in Customer)'), true);
   assert.equal(isJvBoilerplatePaymentNote('Receipt JE-0006 (Walk-in Customer)'), true);
   assert.equal(isJvBoilerplatePaymentNote('COMETTE NO 03 AB'), false);
+});
+
+test('resolveJvLinkedCounterpartyLabel resolves via jeId without JE-/JV- ref prefix', () => {
+  const lines = [
+    {
+      debit: 5000,
+      credit: 0,
+      account: { name: 'M. Ullah Committee', type: 'equity', code: '1172' },
+    },
+    {
+      debit: 0,
+      credit: 5000,
+      account: { name: 'DIN NDM MZ', type: 'asset', code: '1020' },
+    },
+  ];
+  const jeId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+  const payId = 'pay-uuid-manual';
+  const counterpartyByJeId = new Map([[jeId, buildCounterpartyByDirectionFromJeLines(lines)]]);
+  const journalEntryIdByPaymentId = new Map([[payId, jeId]]);
+  assert.equal(
+    resolveJvLinkedCounterpartyLabel(
+      payId,
+      'OUT',
+      'manual_payment-abc12345',
+      journalEntryIdByPaymentId,
+      counterpartyByJeId,
+    ),
+    'M. Ullah Committee (1172)',
+  );
 });
