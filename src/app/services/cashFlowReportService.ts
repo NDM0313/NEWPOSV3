@@ -10,7 +10,6 @@ import {
   type RoznamchaRowWithBalance,
 } from '@/app/services/roznamchaService';
 import type { TransactionAttachment } from '@/app/utils/transactionAttachments';
-import { isGenericRoznamchaPartyLabel } from '@/app/lib/roznamchaCounterpartyLabel';
 import { branchService } from '@/app/services/branchService';
 import {
   CASH_FLOW_SOURCE_MODULE_LABELS,
@@ -19,6 +18,7 @@ import {
   inferCashFlowSourceModule,
   recomputeCashFlowRunningBalance,
   resolveCashFlowRowStatus,
+  firstMeaningfulCashFlowPartyLabel,
   type CashFlowSourceModule,
   type CashFlowRowStatus,
   type CashFlowSummary,
@@ -136,17 +136,16 @@ function mapRoznamchaToCashFlowRow(
   });
   const branchName = row.branchId ? branchNameById.get(String(row.branchId)) ?? null : null;
 
+  const party =
+    firstMeaningfulCashFlowPartyLabel(row.partyLine, row.details, row.referenceDisplay) ?? null;
+
   return {
     id: row.id,
     date: row.date,
     time: row.time,
     reference: roznamchaRefDisplay(row),
     journalEntryNo: row.journalEntryNo ?? null,
-    party:
-      row.partyLine ??
-      (!isGenericRoznamchaPartyLabel(row.details) ? row.details : null) ??
-      row.referenceDisplay ??
-      null,
+    party,
     sourceModule,
     sourceModuleLabel: CASH_FLOW_SOURCE_MODULE_LABELS[sourceModule],
     cashAccount: (row.accountName ?? row.accountLabel) || '—',

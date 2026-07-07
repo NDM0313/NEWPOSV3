@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from "../ui/select";
 import { cn } from "../ui/utils";
+import { formatQty } from '@/app/utils/quantity';
 import {
   Table,
   TableBody,
@@ -114,7 +115,7 @@ export const ItemLifecycleReport = () => {
               <p className="text-gray-400 text-xs uppercase tracking-wider font-medium mb-1">Current Stock</p>
               <div className="flex items-center justify-center md:justify-end gap-2">
                  <Package size={18} className="text-blue-500" />
-                 <span className="text-3xl font-bold text-white">{productInfo.currentStock}</span>
+                 <span className="text-3xl font-bold text-white tabular-nums">{formatQty(productInfo.currentStock)}</span>
               </div>
            </div>
            

@@ -701,8 +701,9 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
         case 'document_editor': {
           if (resolution.sourceType === 'sale') {
             const { saleService } = await import('@/app/services/saleService');
+            const { convertFromSupabaseSale } = await import('@/app/context/SalesContext');
             const full = await saleService.getSaleById(resolution.sourceId);
-            openDrawer('edit-sale', undefined, { sale: full });
+            openDrawer('edit-sale', undefined, { sale: full ? convertFromSupabaseSale(full) : full });
             onClose();
             return;
           }

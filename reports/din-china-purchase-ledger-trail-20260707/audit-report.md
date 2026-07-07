@@ -27,14 +27,30 @@
 | Supplier AP cached sign uses `debit-credit` (-2.06M) — matches journal; UI uses liability polarity | OK | No change |
 | YAQOOB 2031 journal net | **0.00** | OK — cached 0 correct |
 
-## Expected after repair
+## Post-repair (applied 2026-07-07)
 
-| Account | Expected balance (debit − credit) |
-|---------|-----------------------------------|
-| Inventory 1200 | ~**28,678,939** (purchase − COGS + returns, no orphan opening) |
-| Supplier AP | **−2,061,978.40** (we owe ~2.06M) |
+| Action | Result |
+|--------|--------|
+| Voided 10 orphan `opening_balance_inventory` JEs | ~38.76M Dr removed from GL |
+| Refreshed 1200 / AP / 2031 cached balances | Done |
+| `recalc_purchase_payment_totals` | due **2,061,978.40** |
+
+| Account | Balance (debit − credit) |
+|---------|--------------------------|
+| Inventory 1200 | **28,678,939.27** |
+| Supplier AP | **−2,061,978.40** (liability ~2.06M) |
 | YAQOOB 2031 | **0.00** |
 
-## Script
+## Acceptance gates (all PASS)
 
-Run: `scripts/sql/diag_din_china_purchase_ledger_trail.sql`
+- purchase_header, inventory_1200_purchase_dr, supplier_ap_net, yaqoob_2031_net, trial_balance, orphan_opening_inv_jes
+
+## Scripts
+
+- Diagnose: `scripts/sql/diag_din_china_purchase_ledger_trail.sql`
+- Repair: `scripts/sql/repair_din_china_orphan_opening_jes.sql`
+- Verify: `scripts/sql/verify_din_china_purchase_ledger_trail.sql`
+
+## Deploy
+
+Commit `becc2767` pushed and deployed to VPS (`git pull && bash deploy/deploy.sh`).

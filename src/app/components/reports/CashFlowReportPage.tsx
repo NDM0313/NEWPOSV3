@@ -41,6 +41,7 @@ import {
   cashFlowStatusLabel,
   computeCashFlowTieOut,
   glCashFlowModeNote,
+  resolveCashFlowPartyDisplay,
   type CashFlowSourceModule,
   type GlCashFlowStatementSummary,
 } from '@/app/lib/cashFlowReportLogic';
@@ -465,7 +466,7 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
       filteredRows.map((r) => ({
         dateTime: formatRoznamchaRowDateTimeDisplay(r.date, r.time || ''),
         reference: r.journalEntryNo ? `${r.reference} (${r.journalEntryNo})` : r.reference,
-        party: r.party,
+        party: resolveCashFlowPartyDisplay(r),
         sourceModuleLabel: r.sourceModuleLabel,
         cashAccount: r.cashAccount,
         cashIn: r.cashIn,
@@ -549,7 +550,7 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
           </div>
         </td>
         <td className="p-3 text-gray-300 align-middle min-w-[200px] max-w-[280px] break-words leading-snug">
-          {r.party || '—'}
+          {resolveCashFlowPartyDisplay(r) || '—'}
         </td>
         <td className="p-3 text-gray-300 align-middle min-w-[120px]">
           <span className="inline-flex items-center gap-1">

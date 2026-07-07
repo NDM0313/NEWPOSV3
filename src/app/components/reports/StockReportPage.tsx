@@ -28,6 +28,7 @@ import { PdfPreviewModal, type PdfPreviewOrientation } from '@/app/components/sh
 import { TabularReportPreview } from './shared/TabularReportPreview';
 import { buildTabularPrintSnapshot } from './shared/buildTabularPrintSnapshot';
 import { useReportExport } from './shared/useReportExport';
+import { formatQty } from '@/app/utils/quantity';
 
 // --------------- Types ---------------
 
@@ -348,7 +349,7 @@ export const StockReportPage = () => {
 
   // --------------- Number formatting ---------------
 
-  const fmtNum = (v: number) => Number(v).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  const fmtQty = formatQty;
 
   // --------------- Render ---------------
 
@@ -576,7 +577,7 @@ export const StockReportPage = () => {
                       {visibleCols.includes('currentStock') && (
                         <td className="px-4 py-3 text-center">
                           <span className={cn('font-semibold tabular-nums text-base', row.currentStock <= 0 ? 'text-red-400' : 'text-white')}>
-                            {fmtNum(row.currentStock)}
+                            {fmtQty(row.currentStock)}
                           </span>
                         </td>
                       )}
@@ -591,15 +592,15 @@ export const StockReportPage = () => {
                         </td>
                       )}
                       {visibleCols.includes('totalSold') && (
-                        <td className="px-4 py-3 text-center text-base tabular-nums text-gray-300">{fmtNum(row.totalSold)}</td>
+                        <td className="px-4 py-3 text-center text-base tabular-nums text-gray-300">{fmtQty(row.totalSold)}</td>
                       )}
                       {visibleCols.includes('totalTransferred') && (
-                        <td className="px-4 py-3 text-center text-base tabular-nums text-gray-300">{fmtNum(row.totalTransferred)}</td>
+                        <td className="px-4 py-3 text-center text-base tabular-nums text-gray-300">{fmtQty(row.totalTransferred)}</td>
                       )}
                       {visibleCols.includes('totalAdjusted') && (
                         <td className="px-4 py-3 text-center text-base tabular-nums text-gray-300">
                           <span className={row.totalAdjusted < 0 ? 'text-red-400' : row.totalAdjusted > 0 ? 'text-green-400' : ''}>
-                            {fmtNum(row.totalAdjusted)}
+                            {fmtQty(row.totalAdjusted)}
                           </span>
                         </td>
                       )}
@@ -620,7 +621,7 @@ export const StockReportPage = () => {
                     {visibleCols.includes('sellingPrice') && <td className="px-4 py-3" />}
                     {visibleCols.includes('currentStock') && (
                       <td className="px-4 py-3 text-center text-white tabular-nums">
-                        {fmtNum(filteredRows.reduce((s, r) => s + r.currentStock, 0))}
+                        {fmtQty(filteredRows.reduce((s, r) => s + r.currentStock, 0))}
                       </td>
                     )}
                     {visibleCols.includes('stockValueCost') && (
@@ -635,17 +636,17 @@ export const StockReportPage = () => {
                     )}
                     {visibleCols.includes('totalSold') && (
                       <td className="px-4 py-3 text-center text-white tabular-nums">
-                        {fmtNum(filteredRows.reduce((s, r) => s + r.totalSold, 0))}
+                        {fmtQty(filteredRows.reduce((s, r) => s + r.totalSold, 0))}
                       </td>
                     )}
                     {visibleCols.includes('totalTransferred') && (
                       <td className="px-4 py-3 text-center text-white tabular-nums">
-                        {fmtNum(filteredRows.reduce((s, r) => s + r.totalTransferred, 0))}
+                        {fmtQty(filteredRows.reduce((s, r) => s + r.totalTransferred, 0))}
                       </td>
                     )}
                     {visibleCols.includes('totalAdjusted') && (
                       <td className="px-4 py-3 text-center text-white tabular-nums">
-                        {fmtNum(filteredRows.reduce((s, r) => s + r.totalAdjusted, 0))}
+                        {fmtQty(filteredRows.reduce((s, r) => s + r.totalAdjusted, 0))}
                       </td>
                     )}
                   </tr>

@@ -19,6 +19,7 @@ import {
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Badge } from "../ui/badge";
+import { formatQty } from '@/app/utils/quantity';
 import {
   Select,
   SelectContent,
@@ -413,7 +414,7 @@ export const InventoryDashboard = () => {
                     <td className="px-6 py-4 text-gray-400">{item.location}</td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
-                        <span className="text-2xl font-bold text-white">{item.currentStock}</span>
+                        <span className="text-2xl font-bold text-white tabular-nums">{formatQty(item.currentStock)}</span>
                         <span className="text-xs text-gray-500 uppercase">{item.unit}</span>
                       </div>
                       <div className="text-xs text-gray-600 mt-1">

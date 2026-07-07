@@ -5,6 +5,7 @@ import { Input } from "../ui/input";
 import { Badge } from "../ui/badge";
 import { cn, formatBoxesPieces } from "../ui/utils";
 import { formatQty } from '@/app/utils/quantity';
+import { formatSaleLineVariationText } from '@/app/utils/saleLineVariation';
 import type { Variation } from "../ui/inline-variation-selector";
 import {
     Command,
@@ -401,29 +402,12 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                            (typeof v.id === 'string' && typeof item.selectedVariationId === 'string' && v.id.trim() === item.selectedVariationId.trim());
                                 }) : null;
                                 
-                                // Extract variation attributes properly
-                                const variationAttrs = selectedVariationForDisplay?.attributes || {};
-                                
-                                // Build variation text - prioritize direct size/color, then attributes, then item's own size/color
-                                let variationText: string | null = null;
-                                
-                                // First try: Direct size/color from selected variation
-                                if (selectedVariationForDisplay?.size || selectedVariationForDisplay?.color) {
-                                    variationText = [selectedVariationForDisplay.size, selectedVariationForDisplay.color].filter(Boolean).join(' / ');
-                                }
-                                // Second try: Attributes from selected variation
-                                else if (variationAttrs && Object.keys(variationAttrs).length > 0) {
-                                    const attrEntries = Object.entries(variationAttrs)
-                                        .filter(([_, v]) => v != null && v !== '')
-                                        .map(([k, v]) => `${k.charAt(0).toUpperCase() + k.slice(1)}: ${v}`);
-                                    if (attrEntries.length > 0) {
-                                        variationText = attrEntries.join(', ');
-                                    }
-                                }
-                                // Third try: Item's own size/color (set when variation was selected)
-                                if (!variationText && (item.size || item.color)) {
-                                    variationText = [item.size, item.color].filter(Boolean).join(' / ');
-                                }
+                                // Build variation text — public attributes only (no __erp_* keys)
+                                let variationText: string | null = formatSaleLineVariationText(
+                                    selectedVariationForDisplay,
+                                    item.size,
+                                    item.color,
+                                );
                                 
                                 // When a variation is selected, show variation SKU (not base product SKU)
                                 const displaySku = selectedVariationForDisplay

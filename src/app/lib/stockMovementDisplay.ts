@@ -1,6 +1,7 @@
 /** Shared movement type labels and colors for stock ledger UIs. */
 
 import type { ProductStockSummary } from './stockMovementReportLogic';
+import { formatQty } from '@/app/utils/quantity';
 
 export function formatProductVariationLabel(variation: {
   name?: string | null;
@@ -18,8 +19,7 @@ export function formatProductVariationLabel(variation: {
 }
 
 export function formatProductSummaryLine(summary: ProductStockSummary): string {
-  const fmt = (n: number) => Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 });
-  return `Opening: ${fmt(summary.openingStock)} | In: ${fmt(summary.totalIn)} | Out: ${fmt(summary.totalOut)} | Adj: ${fmt(summary.netAdjustment)} | Current: ${fmt(summary.currentStock)} | ${stockStatusBadgeLabel(summary.status)}`;
+  return `Opening: ${formatQty(summary.openingStock)} | In: ${formatQty(summary.totalIn)} | Out: ${formatQty(summary.totalOut)} | Adj: ${formatQty(summary.netAdjustment)} | Current: ${formatQty(summary.currentStock)} | ${stockStatusBadgeLabel(summary.status)}`;
 }
 
 export const STOCK_MOVEMENT_TYPE_LABELS: Record<string, string> = {

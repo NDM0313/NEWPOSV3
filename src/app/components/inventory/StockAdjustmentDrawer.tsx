@@ -615,7 +615,7 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
                     <div className="flex justify-between text-gray-300">
                       <span>Adjustment:</span>
                       <span className={`font-semibold ${type === 'add' ? 'text-green-400' : 'text-red-400'}`}>
-                        {type === 'add' ? '+' : '-'}{quantity} {product.unit}
+                        {type === 'add' ? '+' : '-'}{formatQty(quantity)} {product.unit}
                       </span>
                     </div>
                     <div className="border-t border-blue-500/20 pt-2 mt-2 flex justify-between">
@@ -637,7 +637,7 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
                 <div className="flex-1 text-sm space-y-1">
                   <p className="font-semibold text-violet-400">Transfer preview</p>
                   <p className="text-gray-300">
-                    {quantity} {product.unit} from{' '}
+                    {formatQty(quantity)} {product.unit} from{' '}
                     <span className="text-white">{branches.find((b) => b.id === adjustBranchId)?.name}</span>
                     {' → '}
                     <span className="text-white">{branches.find((b) => b.id === toBranchId)?.name}</span>

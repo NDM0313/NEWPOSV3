@@ -25,6 +25,7 @@ import {
   syncJournalEntryDateByPaymentId,
 } from '@/app/services/journalTransactionDateSyncService';
 import { filterSaleLinesForStockPosting } from '@/app/lib/saleStockLineEligibility';
+import { coerceUuidOrNull } from '@/app/utils/uuidCoerce';
 
 /** Max rows for Reports dashboard period fetch (no pagination). */
 const REPORT_SALES_MAX = 5000;
@@ -181,6 +182,12 @@ export async function insertSaleItemsOrdered(
   const insertedIds: (string | null)[] = [];
   for (const item of items) {
     const row: Record<string, unknown> = { ...item, sale_id: saleId };
+    if ('variation_id' in row && row.variation_id != null) {
+      row.variation_id = coerceUuidOrNull(row.variation_id);
+    }
+    if ('product_id' in row && row.product_id != null) {
+      row.product_id = coerceUuidOrNull(row.product_id) ?? row.product_id;
+    }
     delete row.discount_percentage;
     delete row.tax_percentage;
     const parentIdx = item.parent_line_index;

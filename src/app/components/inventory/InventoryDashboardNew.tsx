@@ -1190,7 +1190,7 @@ PROD-003,20`;
                       <tr key={i} className="border-t border-gray-800">
                         <td className="px-3 py-1.5 font-mono">{r.sku}</td>
                         <td className="px-3 py-1.5 text-gray-400">{r.name ?? '—'}</td>
-                        <td className="px-3 py-1.5 text-right">{r.quantity}</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums">{formatQty(r.quantity)}</td>
                         <td className="px-3 py-1.5 text-center">
                           {r.productId ? (
                             <span className="text-green-400 text-xs">✓</span>

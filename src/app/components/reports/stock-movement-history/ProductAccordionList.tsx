@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
 import { cn } from '@/app/components/ui/utils';
 import { Pagination } from '@/app/components/ui/pagination';
 import { stockStatusBadgeClass, stockStatusBadgeLabel } from '@/app/lib/stockMovementDisplay';
+import { formatQty } from '@/app/utils/quantity';
 import type { ProductReportSection, ProductStockSummary } from '@/app/lib/stockMovementReportLogic';
 import { ProductStockSummaryCard } from './ProductStockSummaryCard';
 import { MovementHistoryTable } from './MovementHistoryTable';
@@ -98,7 +99,7 @@ export function ProductAccordionList({
                 <span className="text-gray-500 ml-2 text-sm">{s.sku}</span>
               </div>
               <span className="text-sm text-gray-400">{s.movementCountInPeriod} mov.</span>
-              <span className="text-sm font-semibold text-white">{s.currentStock}</span>
+              <span className="text-sm font-semibold text-white tabular-nums">{formatQty(s.currentStock)}</span>
               <span className={cn('text-xs px-2 py-0.5 rounded border', stockStatusBadgeClass(s.status))}>
                 {stockStatusBadgeLabel(s.status)}
               </span>

@@ -25,6 +25,7 @@ import { StockAdjustmentDrawer } from './StockAdjustmentDrawer';
 import { ListToolbar } from '../ui/list-toolbar';
 import { Pagination } from '../ui/pagination';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../ui/dialog';
+import { formatQty } from '@/app/utils/quantity';
 
 export const InventoryDesignTestPage = () => {
   const { openDrawer, setCurrentView } = useNavigation();
@@ -425,7 +426,7 @@ export const InventoryDesignTestPage = () => {
                       {visibleCols.includes('stockQty') && (
                         <td className="px-4 py-3 text-center">
                           <span className={cn('font-semibold tabular-nums text-sm', product.stock < 0 ? 'text-red-400' : product.status === 'Out' || product.status === 'Low' ? 'text-red-400' : 'text-white')}>
-                            {Number(product.stock).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                            {formatQty(product.stock)}
                           </span>
                         </td>
                       )}
@@ -528,7 +529,7 @@ export const InventoryDesignTestPage = () => {
                           {visibleCols.includes('stockQty') && (
                             <td className="px-4 py-2 text-center">
                               <span className={cn('font-mono text-sm tabular-nums', (v.stock ?? 0) < 0 ? 'text-red-400' : 'text-gray-300')}>
-                                {Number(v.stock ?? 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                                {formatQty(v.stock ?? 0)}
                               </span>
                             </td>
                           )}
@@ -656,7 +657,7 @@ export const InventoryDesignTestPage = () => {
                 <thead className="bg-gray-800"><tr><th className="text-left px-3 py-2 text-gray-400">SKU</th><th className="text-left px-3 py-2 text-gray-400">Product</th><th className="text-right px-3 py-2 text-gray-400">Qty</th></tr></thead>
                 <tbody>
                   {importRows.slice(0, 15).map((r, i) => (
-                    <tr key={i} className="border-t border-gray-800"><td className="px-3 py-1 font-mono">{r.sku}</td><td className="px-3 py-1 text-gray-400">{r.name ?? '—'}</td><td className="px-3 py-1 text-right">{r.quantity}</td></tr>
+                    <tr key={i} className="border-t border-gray-800"><td className="px-3 py-1 font-mono">{r.sku}</td><td className="px-3 py-1 text-gray-400">{r.name ?? '—'}</td><td className="px-3 py-1 text-right tabular-nums">{formatQty(r.quantity)}</td></tr>
                   ))}
                 </tbody>
               </table>

@@ -6,6 +6,8 @@ import {
   isCorrectionReversalReferenceType,
   shouldIncludeInNormalCashMovement,
 } from '@/app/lib/reportVisibilityContract';
+import { isGenericRoznamchaPartyLabel } from '@/app/lib/roznamchaCounterpartyLabel';
+import { journalDescriptionForDisplay } from '@/app/utils/journalDescriptionDisplay';
 
 export type CashFlowSourceModule =
   | 'sales_receipts'
@@ -102,6 +104,27 @@ export function cashFlowStatusBadges(status: CashFlowRowStatus, auditMode: boole
 
 export function cashFlowStatusBadgesText(status: CashFlowRowStatus, auditMode: boolean): string {
   return cashFlowStatusBadges(status, auditMode).join(' / ');
+}
+
+export function firstMeaningfulCashFlowPartyLabel(
+  ...labels: Array<string | null | undefined>
+): string | null {
+  for (const label of labels) {
+    const value = String(label ?? '').trim();
+    if (value && !isGenericRoznamchaPartyLabel(value)) return value;
+  }
+  return null;
+}
+
+/** Party column: customer / supplier / GL account — never document ref. */
+export function resolveCashFlowPartyDisplay(row: {
+  party: string | null;
+  details: string;
+}): string | null {
+  return firstMeaningfulCashFlowPartyLabel(
+    row.party,
+    journalDescriptionForDisplay(row.details, ''),
+  );
 }
 
 export const CASH_FLOW_CSV_HEADERS = [

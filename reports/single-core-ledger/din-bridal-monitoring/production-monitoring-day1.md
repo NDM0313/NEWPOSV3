@@ -1,24 +1,24 @@
 # DIN BRIDAL production monitoring
 
 **Profile:** din-bridal
-**Date:** 2026-07-06T11:55:26.211Z
+**Date:** 2026-07-07T14:54:05.879Z
 **URL:** https://erp.dincouture.pk
-**Core gates:** FAIL
-**Overall:** PASS WITH WAIVERS
+**Core gates:** PASS
+**Overall:** PASS
 
 - [PASS] DIN BRIDAL expected flags ON — keys=18/18
 - [PASS] no other company loaders ON — count=0
 - [PASS] admin login
 - [PASS] Roznamcha main loader unified — actual=unified
 - [PASS] Roznamcha preview legacy_shadow — actual=legacy_shadow
-- [FAIL] Roznamcha Cash In golden — actual=2835850
-- [FAIL] Roznamcha Cash Out golden — actual=1794607
-- [FAIL] Roznamcha Closing golden — actual=1041243
+- [PASS] Roznamcha Cash In golden — actual=2850850
+- [PASS] Roznamcha Cash Out golden — actual=1794607
+- [PASS] Roznamcha Closing golden — actual=1056243
 - [PASS] Account Statement loader unified — actual=unified
 - [PASS] Account Statement MR REHAN ALI — closing=530000
 - [PASS] Trial Balance loader unified — actual=unified
-- [PASS] Trial Balance debit = credit — debit=26255077 credit=26255077
-- [FAIL] Trial Balance golden total — debit=26255077
+- [PASS] Trial Balance debit = credit — debit=26330077 credit=26330077
+- [PASS] Trial Balance golden total — debit=26330077
 - [PASS] Party Ledger loader unified — actual=unified
 - [PASS] Party Ledger MR REHAN ALI — closing=530000
 - [PASS] Ledger V2 loader unified — actual=unified

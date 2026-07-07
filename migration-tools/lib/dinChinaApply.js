@@ -201,9 +201,32 @@ async function ensureContacts(supabase, companyId, contactPlan, stats, errors) {
   }
 }
 
+/** True only for legacy products with multiple variation ids or non-sentinel variation ids (TR, WOOL). */
+function buildHasVariationsByLegacyProduct(productPlan) {
+  const byProduct = new Map();
+  for (const row of productPlan) {
+    const legProd = Number(row.legacyProductId);
+    const legVar = Number(row.legacyVariationId);
+    if (!byProduct.has(legProd)) byProduct.set(legProd, new Set());
+    byProduct.get(legProd).add(legVar);
+  }
+  const result = new Map();
+  for (const [legProd, varSet] of byProduct) {
+    const ids = [...varSet];
+    const hasMulti = ids.length > 1;
+    const hasNonSentinel = ids.some((v) => v !== legProd);
+    result.set(legProd, hasMulti || hasNonSentinel);
+  }
+  return result;
+}
+
 async function ensureProducts(supabase, companyId, productPlan, stats, errors) {
+  const hasVariationsByLegacyProduct = buildHasVariationsByLegacyProduct(productPlan);
+  const createdLegacyProducts = new Set();
+
   for (const p of productPlan) {
-    if (p.action === 'create') {
+    if (p.action === 'create' && !createdLegacyProducts.has(p.legacyProductId)) {
+      const hasVariations = hasVariationsByLegacyProduct.get(p.legacyProductId) ?? false;
       const { error } = await supabase.from('products').upsert(
         {
           id: p.productId,
@@ -212,7 +235,7 @@ async function ensureProducts(supabase, companyId, productPlan, stats, errors) {
           sku: p.sku || `DC-P${p.legacyProductId}`,
           cost_price: 0,
           retail_price: 0,
-          has_variations: true,
+          has_variations: hasVariations,
           track_stock: true,
         },
         { onConflict: 'id' },
@@ -222,6 +245,7 @@ async function ensureProducts(supabase, companyId, productPlan, stats, errors) {
         continue;
       }
       stats.productsCreated++;
+      createdLegacyProducts.add(p.legacyProductId);
     }
     if (p.action === 'create' || p.action === 'create_variation') {
       const { error: varErr } = await supabase.from('product_variations').upsert(

@@ -1021,9 +1021,9 @@ export const ExpensesDashboard = () => {
               <table className="w-full table-fixed text-sm text-left">
                  <thead className="text-xs text-gray-500 uppercase bg-gray-950/50 border-b border-gray-800">
                     <tr>
-                       <th className="px-3 py-3 font-medium w-[6.5rem]">Date</th>
-                       <th className="px-3 py-3 font-medium w-[5.5rem]">Reference #</th>
-                       <th className="px-3 py-3 font-medium max-w-[8rem]">Category</th>
+                       <th className="px-3 py-3 font-medium w-[8.5rem] min-w-[8.5rem]">Date</th>
+                       <th className="px-3 py-3 font-medium w-[7.5rem] min-w-[7.5rem]">Reference #</th>
+                       <th className="px-3 py-3 font-medium max-w-[7rem]">Category</th>
                        <th className="px-3 py-3 font-medium max-w-[8rem] hidden md:table-cell">Branch</th>
                        <th className="px-3 py-3 font-medium w-[12rem]">Expense For</th>
                        <th className="px-3 py-3 font-medium max-w-[8rem]">Paid Via</th>
@@ -1050,13 +1050,13 @@ export const ExpensesDashboard = () => {
                     ) : (
                       paginatedExpenses.map((expense) => (
                        <tr key={expense.id} className="group hover:bg-gray-800/30 transition-colors">
-                          <td className="px-3 py-3 font-medium text-gray-300">
-                             <div className="flex items-center gap-1.5 truncate">
+                          <td className="px-3 py-3 font-medium text-gray-300 whitespace-nowrap">
+                             <div className="flex items-center gap-1.5">
                                 <Calendar size={14} className="text-gray-500 shrink-0" />
-                                <span className="truncate">{new Date(expense.date).toLocaleDateString()}</span>
+                                <span className="tabular-nums">{new Date(expense.date).toLocaleDateString()}</span>
                              </div>
                           </td>
-                          <td className="px-3 py-3 text-white font-mono font-bold text-[0.75rem] truncate">
+                          <td className="px-3 py-3 text-gray-300 whitespace-nowrap tabular-nums">
                              {expense.expenseNo || '—'}
                           </td>
                           <td className="px-3 py-3 max-w-[8rem]">
@@ -1089,7 +1089,7 @@ export const ExpensesDashboard = () => {
                           <td className="px-3 py-3 text-gray-400 max-w-[8rem] truncate">
                              {paymentDisplayForExpense(expense)}
                           </td>
-                          <td className="px-3 py-3 text-right font-bold text-red-500 whitespace-nowrap">
+                          <td className="px-3 py-3 text-right text-white whitespace-nowrap tabular-nums">
                              -{formatCurrency(expense.amount)}
                           </td>
                           <td className="px-3 py-3 text-center">

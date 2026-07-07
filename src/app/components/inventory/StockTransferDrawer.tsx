@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "../ui/select";
 import { Badge } from "../ui/badge";
+import { formatQty } from '@/app/utils/quantity';
 
 type TransferStatus = 'pending' | 'in-transit' | 'completed' | 'cancelled';
 
@@ -177,7 +178,7 @@ export const StockTransferDrawer: React.FC<StockTransferDrawerProps> = ({
                     {product.sku}
                   </code>
                   <Badge className="bg-green-500/10 text-green-400 border-green-500/20">
-                    Available: {product.currentStock} {product.unit}
+                    Available: {formatQty(product.currentStock)} {product.unit}
                   </Badge>
                 </div>
               </div>
@@ -201,7 +202,7 @@ export const StockTransferDrawer: React.FC<StockTransferDrawerProps> = ({
                 <ArrowRight size={24} className="text-purple-400" />
                 {quantity > 0 && (
                   <Badge className="bg-purple-500/20 text-purple-300 border-purple-500/30">
-                    {quantity} {product.unit}
+                    {formatQty(quantity)} {product.unit}
                   </Badge>
                 )}
               </div>
@@ -272,7 +273,7 @@ export const StockTransferDrawer: React.FC<StockTransferDrawerProps> = ({
               required
             />
             <p className="text-xs text-gray-500">
-              Maximum available: {product.currentStock} {product.unit}
+              Maximum available: {formatQty(product.currentStock)} {product.unit}
             </p>
           </div>
 
@@ -333,7 +334,7 @@ export const StockTransferDrawer: React.FC<StockTransferDrawerProps> = ({
                 <div>
                   <h4 className="font-semibold text-red-400">Invalid Quantity</h4>
                   <p className="text-sm text-gray-300 mt-1">
-                    Cannot transfer more than available stock ({product.currentStock} {product.unit})
+                    Cannot transfer more than available stock ({formatQty(product.currentStock)} {product.unit})
                   </p>
                 </div>
               </div>

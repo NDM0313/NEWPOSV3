@@ -16,6 +16,7 @@ import {
   computeCashFlowTieOut,
   buildCashFlowTieOutDiagnosticHints,
   CASH_FLOW_TIEOUT_EXPLANATION,
+  resolveCashFlowPartyDisplay,
 } from './cashFlowReportLogic';
 
 test('normal mode excludes JE-0168-class correction_reversal rows', () => {
@@ -184,4 +185,34 @@ test('Cash Flow tie-out diagnostic hints count manual and reversal rows', () => 
   assert.ok(hints.some((h) => h.code === 'manual_cash_je'));
   assert.ok(hints.some((h) => h.code === 'reversal_audit'));
   assert.match(CASH_FLOW_TIEOUT_EXPLANATION, /Operational grid/i);
+});
+
+test('resolveCashFlowPartyDisplay prefers customer name', () => {
+  assert.equal(
+    resolveCashFlowPartyDisplay({
+      party: 'PARVAISE MARDAN',
+      details: 'PARVAISE MARDAN',
+    }),
+    'PARVAISE MARDAN',
+  );
+});
+
+test('resolveCashFlowPartyDisplay uses GL account from details', () => {
+  assert.equal(
+    resolveCashFlowPartyDisplay({
+      party: null,
+      details: 'Shop Expense (5100)',
+    }),
+    'Shop Expense (5100)',
+  );
+});
+
+test('resolveCashFlowPartyDisplay returns null for generic label only', () => {
+  assert.equal(
+    resolveCashFlowPartyDisplay({
+      party: null,
+      details: 'Customer Receipt',
+    }),
+    null,
+  );
 });

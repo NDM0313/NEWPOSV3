@@ -1,6 +1,9 @@
 import type { CashBookReportColumn } from '@/app/components/reports/shared/CashBookReportPreview';
 import type { CashFlowRow } from '@/app/services/cashFlowReportService';
 import type { CashFlowSummary } from '@/app/lib/cashFlowReportLogic';
+import {
+  resolveCashFlowPartyDisplay,
+} from '@/app/lib/cashFlowReportLogic';
 import { formatRoznamchaRowDateTimeDisplay } from '@/app/utils/transactionEventDateTime';
 
 export const CASH_FLOW_PRINT_COLUMNS: CashBookReportColumn[] = [
@@ -21,7 +24,7 @@ export function buildCashFlowPrintRows(rows: CashFlowRow[]): (string | number)[]
     return [
       formatRoznamchaRowDateTimeDisplay(r.date, r.time || ''),
       refLine,
-      r.party || '—',
+      resolveCashFlowPartyDisplay(r) || '—',
       r.cashAccount,
       r.cashIn > 0 ? r.cashIn : '',
       r.cashOut > 0 ? r.cashOut : '',

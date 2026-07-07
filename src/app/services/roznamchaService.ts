@@ -376,7 +376,7 @@ function shouldSkipJournalEntryForRoznamcha(
 
 async function loadLiquidityDebitAccountByJeId(
   jeIds: string[],
-  accountById: Map<string, { name: string; type: string; code: string | null }>
+  accountById: Map<string, { name: string; type: string; code: string | null; is_active?: boolean | null }>
 ): Promise<Map<string, string>> {
   const liquidityAccountByJeId = new Map<string, string>();
   if (jeIds.length === 0) return liquidityAccountByJeId;
@@ -384,27 +384,38 @@ async function loadLiquidityDebitAccountByJeId(
   const jeLines = await fetchInBatches(jeIds, async (chunk) => {
     const { data, error } = await supabase
       .from('journal_entry_lines')
-      .select('journal_entry_id, account_id, debit, credit, account:accounts(id, name, type, code)')
+      .select('journal_entry_id, account_id, debit, credit, account:accounts(id, name, type, code, is_active)')
       .in('journal_entry_id', chunk);
     if (error) throw error;
     return data || [];
   });
+  const linesByJe = new Map<string, any[]>();
   jeLines.forEach((line: any) => {
-    const rawAcc = line.account;
-    const acc = Array.isArray(rawAcc) ? rawAcc[0] : rawAcc;
-    if (!acc || !isLiquidityPaymentAccount(acc)) return;
-    const debit = Number(line.debit) || 0;
-    if (debit <= 0) return;
     const jeId = String(line.journal_entry_id || '');
-    if (jeId && !liquidityAccountByJeId.has(jeId)) {
+    if (!jeId) return;
+    const list = linesByJe.get(jeId) ?? [];
+    list.push(line);
+    linesByJe.set(jeId, list);
+  });
+
+  linesByJe.forEach((lines, jeId) => {
+    for (const line of lines) {
+      const rawAcc = line.account;
+      const acc = Array.isArray(rawAcc) ? rawAcc[0] : rawAcc;
+      if (!acc || !isLiquidityPaymentAccount(acc)) continue;
+      const debit = Number(line.debit) || 0;
+      if (debit <= 0) continue;
+      if (!isRoznamchaLiquidityAccount(acc)) continue;
       liquidityAccountByJeId.set(jeId, String(line.account_id));
       if (!accountById.has(line.account_id)) {
         accountById.set(line.account_id, {
           name: (acc.name || '').trim(),
           type: String(acc.type || ''),
           code: acc.code != null ? String(acc.code).trim() : null,
+          is_active: acc.is_active ?? null,
         });
       }
+      break;
     }
   });
   return liquidityAccountByJeId;
@@ -920,7 +931,7 @@ async function fetchPaymentRows(
 
   const [accRes, expRes, jeRes, jeByPaymentRes, contactRes, expenseCatRes] = await Promise.all([
     accountIds.length > 0
-      ? supabase.from('accounts').select('id, name, type, code, linked_contact_id').in('id', accountIds)
+      ? supabase.from('accounts').select('id, name, type, code, linked_contact_id, is_active').in('id', accountIds)
       : Promise.resolve({ data: [] as { id: string; name: string; type: string; code?: string | null }[] }),
     expenseEntityIds.length > 0
       ? supabase
@@ -961,7 +972,7 @@ async function fetchPaymentRows(
 
   const accountById = new Map<
     string,
-    { name: string; type: string; code: string | null; linked_contact_id?: string | null }
+    { name: string; type: string; code: string | null; linked_contact_id?: string | null; is_active?: boolean | null }
   >();
   (accRes.data || []).forEach((a: any) => {
     if (a?.id) {
@@ -970,6 +981,7 @@ async function fetchPaymentRows(
         type: String(a.type || ''),
         code: a.code != null ? String(a.code).trim() : null,
         linked_contact_id: a.linked_contact_id ?? null,
+        is_active: a.is_active ?? null,
       });
     }
   });

@@ -23,12 +23,13 @@ export async function openJournalSourceDocumentFromEntry(
     try {
       if (target.kind === 'sale') {
         const { saleService } = await import('@/app/services/saleService');
+        const { convertFromSupabaseSale } = await import('@/app/context/SalesContext');
         const full = await saleService.getSaleById(target.id);
         if (!full) {
           toast.error('Sale not found.');
           return;
         }
-        deps.openDrawer('edit-sale', undefined, { sale: full });
+        deps.openDrawer('edit-sale', undefined, { sale: convertFromSupabaseSale(full) });
         return;
       }
       if (target.kind === 'purchase') {

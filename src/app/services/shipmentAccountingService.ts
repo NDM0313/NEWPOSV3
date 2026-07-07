@@ -514,7 +514,7 @@ export const shipmentAccountingService = {
   ) {
     let query = supabase
       .from('courier_ledger')
-      .select('company_id, date, courier_name, account_id, courier_id, shipment_id, reference_type, description, debit, credit, balance', { count: 'exact' })
+      .select('company_id, date, courier_name, account_id, courier_id, shipment_id, reference_type, entry_no, document_no, payment_ref, entry_kind, description, debit, credit, balance', { count: 'exact' })
       .eq('company_id', companyId)
       .order('date', { ascending: false });
 

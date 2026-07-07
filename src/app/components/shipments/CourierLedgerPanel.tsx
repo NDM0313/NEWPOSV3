@@ -23,20 +23,31 @@ function fmt(amount: number) {
 
 /** Merge master couriers with balance data so all company couriers show (newly added with 0 balance). */
 function mergeCourierBalances(
-  masterCouriers: { id: string; name: string }[],
+  masterCouriers: { id: string; name: string; contact_id?: string | null }[],
   balanceRows: CourierBalance[]
 ): CourierBalance[] {
-  const balanceById = new Map<string, CourierBalance>();
+  const balanceByContactId = new Map<string, CourierBalance>();
   const balanceByName = new Map<string, CourierBalance>();
   balanceRows.forEach((b) => {
-    if (b.courier_id) balanceById.set(b.courier_id, b);
+    if (b.courier_id) balanceByContactId.set(b.courier_id, b);
     balanceByName.set(b.courier_name.trim().toLowerCase(), b);
   });
   const result: CourierBalance[] = [];
   const namesAdded = new Set<string>();
   for (const c of masterCouriers) {
-    const row = balanceById.get(c.id) ?? balanceByName.get(c.name.trim().toLowerCase());
-    result.push(row ?? { courier_id: c.id, courier_name: c.name, total_payable: 0, total_paid: 0, balance: 0 });
+    const contactKey = c.contact_id ?? null;
+    const row =
+      (contactKey ? balanceByContactId.get(contactKey) : undefined) ??
+      balanceByName.get(c.name.trim().toLowerCase());
+    result.push(
+      row ?? {
+        courier_id: contactKey ?? c.id,
+        courier_name: c.name,
+        total_payable: 0,
+        total_paid: 0,
+        balance: 0,
+      }
+    );
     namesAdded.add(c.name.trim().toLowerCase());
   }
   for (const b of balanceRows) {
@@ -64,7 +75,7 @@ export default function CourierLedgerPanel({ companyId }: CourierLedgerPanelProp
     ])
       .then(([master, balanceRows]) => {
         const merged = mergeCourierBalances(
-          master.map((c) => ({ id: c.id, name: c.name })),
+          master.map((c) => ({ id: c.id, name: c.name, contact_id: c.contact_id })),
           balanceRows
         );
         setBalances(merged);
@@ -75,7 +86,9 @@ export default function CourierLedgerPanel({ companyId }: CourierLedgerPanelProp
 
   useEffect(load, [companyId]);
 
-  const totalPayable = balances.reduce((s, b) => s + b.balance, 0);
+  const totalPayable = balances.reduce((s, b) => s + b.total_payable, 0);
+  const totalPaid = balances.reduce((s, b) => s + b.total_paid, 0);
+  const totalBalance = balances.reduce((s, b) => s + b.balance, 0);
 
   return (
     <div className="space-y-4">

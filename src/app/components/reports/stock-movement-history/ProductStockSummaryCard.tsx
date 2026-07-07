@@ -6,6 +6,7 @@ import {
   stockStatusBadgeLabel,
 } from '@/app/lib/stockMovementDisplay';
 import type { ProductStockSummary } from '@/app/lib/stockMovementReportLogic';
+import { formatQty } from '@/app/utils/quantity';
 
 interface Props {
   summary: ProductStockSummary;
@@ -49,8 +50,8 @@ export function ProductStockSummaryCard({ summary, className }: Props) {
         {kpis.map((k) => (
           <div key={k.label} className="rounded-md bg-gray-950/50 p-3 border border-gray-800/80">
             <p className="text-xs text-gray-500 uppercase tracking-wide">{k.label}</p>
-            <p className={cn('text-lg font-semibold mt-1', k.color || (k.highlight ? 'text-blue-400' : 'text-white'))}>
-              {Number(k.value).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+            <p className={cn('text-lg font-semibold mt-1 tabular-nums', k.color || (k.highlight ? 'text-blue-400' : 'text-white'))}>
+              {formatQty(k.value)}
               {summary.unit ? ` ${summary.unit}` : ''}
             </p>
           </div>

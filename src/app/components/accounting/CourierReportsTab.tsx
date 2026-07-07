@@ -283,6 +283,8 @@ function CourierLedgerView({ companyId, courierId }: { companyId: string; courie
               <thead className="bg-gray-900 border-b border-gray-800">
                 <tr className="text-gray-500 uppercase tracking-wider">
                   <th className="px-3 py-2 text-left">Date</th>
+                  <th className="px-3 py-2 text-left">Ref</th>
+                  <th className="px-3 py-2 text-left">Type</th>
                   <th className="px-3 py-2 text-left">Courier</th>
                   <th className="px-3 py-2 text-left">Description</th>
                   <th className="px-3 py-2 text-right">Debit</th>
@@ -294,6 +296,8 @@ function CourierLedgerView({ companyId, courierId }: { companyId: string; courie
                 {rows.map((r, i) => (
                   <tr key={i} className="border-b border-gray-800/50 hover:bg-gray-800/30">
                     <td className="px-3 py-2 text-gray-300">{fmtDate(r.date)}</td>
+                    <td className="px-3 py-2 text-blue-300 font-mono text-[11px]">{r.payment_ref || r.document_no || r.entry_no || '—'}</td>
+                    <td className="px-3 py-2 text-gray-400 capitalize">{r.entry_kind || r.reference_type || '—'}</td>
                     <td className="px-3 py-2 text-white">{r.courier_name}</td>
                     <td className="px-3 py-2 text-gray-400 max-w-[200px] truncate">{r.description}</td>
                     <td className="px-3 py-2 text-right text-orange-400">{r.debit > 0 ? fmt(r.debit) : '—'}</td>

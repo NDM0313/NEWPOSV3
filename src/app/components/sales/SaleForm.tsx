@@ -131,6 +131,8 @@ import { productService } from '@/app/services/productService';
 import { inventoryService } from '@/app/services/inventoryService';
 import { branchService, Branch } from '@/app/services/branchService';
 import { useSales, convertFromSupabaseSale, Sale } from '@/app/context/SalesContext';
+import { coerceUuidOrNull } from '@/app/utils/uuidCoerce';
+import { shouldShowSaleLineVariations } from '@/app/utils/saleLineVariation';
 import { UnifiedSalesInvoiceView } from '@/app/documents';
 import { useNavigation } from '@/app/context/NavigationContext';
 import { Loader2 } from 'lucide-react';
@@ -834,6 +836,26 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
         });
         return map;
     }, [products]);
+
+    // Reconcile variation selector visibility once product catalog (with variations) is loaded
+    useEffect(() => {
+        if (!items.length || !Object.keys(productVariationsFromBackend).length) return;
+        setItems((prev) => {
+            let changed = false;
+            const next = prev.map((item) => {
+                const variations =
+                    productVariationsFromBackend[item.productId] ??
+                    productVariationsFromBackend[String(item.productId)] ??
+                    productVariationsFromBackend[Number(item.productId)] ??
+                    [];
+                const show = shouldShowSaleLineVariations(undefined, variations);
+                if (item.showVariations === show) return item;
+                changed = true;
+                return { ...item, showVariations: show };
+            });
+            return changed ? next : prev;
+        });
+    }, [productVariationsFromBackend, items.length]);
     
     // Load data from Supabase
     // CRITICAL: Only load on initial mount, not on every companyId change
@@ -1356,7 +1378,10 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
     // This ensures the customer dropdown shows the correct selected customer
     useEffect(() => {
         if (initialSale && initialSale.customer) {
-            const customerIdValue = initialSale.customer || '';
+            const customerIdValue =
+                coerceUuidOrNull(
+                    (initialSale as { customer_id?: string }).customer_id ?? initialSale.customer,
+                ) ?? '';
             
             // If customers are not loaded yet, set customerId anyway (will be validated when customers load)
             if (customers.length === 0) {
@@ -1483,7 +1508,10 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 // CRITICAL: Preselect variation when editing – use variation_id from DB so dropdown is not blank
                 const convertedItems: SaleItem[] = list.map((item: any, index: number) => {
                     const variationId = item.variation_id ?? item.variationId ?? undefined;
-                    const hasVariation = Boolean(variationId);
+                    const productForVar = item.product as
+                        | { has_variations?: boolean; variations?: Array<{ id?: string; size?: string; color?: string; attributes?: Record<string, unknown> }> }
+                        | undefined;
+                    const showLineVariations = shouldShowSaleLineVariations(productForVar);
                     
                     // CRITICAL: packing_details might be JSONB (object) or JSON string
                     // Load complete structure, not just totals
@@ -1557,9 +1585,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                         color: item.color,
                         variationId,
                         selectedVariationId: variationId,
-                        showVariations: isFabricChild
-                            ? false
-                            : hasVariation || Boolean(item.product?.has_variations),
+                        showVariations: isFabricChild ? false : showLineVariations,
                         stock: 0,
                         lastPurchasePrice: undefined,
                         lastSupplier: undefined,
@@ -2040,8 +2066,8 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
     const handleSelectProduct = (product: any) => {
         const newItemId = Date.now();
         
-        // Check if product has variations
-        if (product.hasVariations) {
+        // Check if product has real user-facing variations (not legacy sentinel rows)
+        if (shouldShowSaleLineVariations(product, product.variations)) {
             // Add product with variation selector flag
             const newItem: SaleItem = {
                 id: newItemId,
@@ -2467,7 +2493,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 const walkIn = await contactService.getWalkingCustomer(companyId);
                 customerUuid = walkIn?.id ?? undefined;
             } else {
-                customerUuid = customerId.toString();
+                customerUuid = coerceUuidOrNull(customerId) ?? undefined;
             }
             saveT = webSaveTimingMark('sale:resolveCustomer', saveT);
             

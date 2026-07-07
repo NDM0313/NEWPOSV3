@@ -50,6 +50,8 @@ import {
   snapshotBespokeWorkOrderAnchors,
   relinkBespokeWorkOrdersAfterSaleItemReplace,
 } from '@/app/services/bespokeWorkOrderRelinkService';
+import { coerceUuidOrNull } from '@/app/utils/uuidCoerce';
+import { normalizeVariationIdForPersist } from '@/app/utils/saleLineVariation';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function isValidBranchId(id: string | null | undefined): id is string {
@@ -139,9 +141,10 @@ async function buildSaleChargeRowsFromExtras(
           amount: amt,
           ledger_account_id: extraLedgerAccountId,
           charged_to_customer: chargeOnBill,
-          tailor_contact_id: e.tailorContactId ?? e.tailor_contact_id ?? null,
-          expense_category_id:
-            e.tailorExpenseCategoryId ?? e.tailor_expense_category_id ?? null,
+          tailor_contact_id: coerceUuidOrNull(e.tailorContactId ?? e.tailor_contact_id),
+          expense_category_id: coerceUuidOrNull(
+            e.tailorExpenseCategoryId ?? e.tailor_expense_category_id,
+          ),
         });
       }
     });
@@ -1535,11 +1538,11 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       if (updates.date !== undefined) supabaseUpdates.invoice_date = updates.date;
       if (updates.customerName !== undefined) supabaseUpdates.customer_name = updates.customerName;
       // UUID column: empty string is invalid; use null for walk-in / no customer
-      if (updates.customer !== undefined) supabaseUpdates.customer_id = (updates.customer === '' || updates.customer == null) ? null : updates.customer;
+      if (updates.customer !== undefined) {
+        supabaseUpdates.customer_id = coerceUuidOrNull(updates.customer);
+      }
       if (updates.location !== undefined) {
-        // Location is branch_id, need to resolve branch name to ID
-        // For now, if it's already a UUID, use it directly
-        supabaseUpdates.branch_id = updates.location;
+        supabaseUpdates.branch_id = coerceUuidOrNull(updates.location);
       }
       if (updates.notes !== undefined) supabaseUpdates.notes = updates.notes;
       if ((updates as any).customerBillRef !== undefined) {
@@ -1556,8 +1559,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       }
       if ((updates as any).attachments !== undefined) supabaseUpdates.attachments = (updates as any).attachments;
       if ((updates as any).salesmanId !== undefined) {
-        const sid = (updates as any).salesmanId;
-        supabaseUpdates.salesman_id = (sid === '' || sid === 'none' || sid === '1') ? null : sid;
+        supabaseUpdates.salesman_id = coerceUuidOrNull((updates as any).salesmanId);
       }
       if ((updates as any).commissionAmount !== undefined) supabaseUpdates.commission_amount = Number((updates as any).commissionAmount) || 0;
       if ((updates as any).commissionEligibleAmount !== undefined) supabaseUpdates.commission_eligible_amount = (updates as any).commissionEligibleAmount;
@@ -1875,7 +1877,10 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
           const lineTotal = Number(item.total ?? unitPrice * qty) || 0;
           const saleItem = {
           product_id: item.productId,
-          variation_id: item.variationId || undefined,
+          variation_id: normalizeVariationIdForPersist(
+            item.variationId,
+            item.product as { has_variations?: boolean; variations?: unknown[] } | undefined,
+          ),
           product_name: item.productName,
           sku: item.sku || 'N/A',
           quantity: qty,

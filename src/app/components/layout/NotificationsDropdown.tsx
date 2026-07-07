@@ -150,12 +150,13 @@ export const NotificationsDropdown: React.FC = () => {
         if (notif.type === 'receivable' && notif.entityId) {
           setCurrentView('sales');
           const { saleService } = await import('@/app/services/saleService');
+          const { convertFromSupabaseSale } = await import('@/app/context/SalesContext');
           const full = await saleService.getSaleById(notif.entityId);
           if (!full) {
             toast.error('Sale not found.');
             return;
           }
-          openDrawer('edit-sale', undefined, { sale: full });
+          openDrawer('edit-sale', undefined, { sale: convertFromSupabaseSale(full) });
           return;
         }
         if (notif.type === 'payable' && notif.entityId) {
