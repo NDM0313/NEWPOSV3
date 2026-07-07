@@ -5,6 +5,7 @@ export type LiquidityAccountRef = {
   name?: string | null;
   type?: string | null;
   linked_contact_id?: string | null;
+  is_active?: boolean | null;
 };
 
 function accountCodeDigits(code: string | null | undefined): string {
@@ -38,6 +39,22 @@ function isTtClearingAccountCode(digits: string, name: string): boolean {
   return digits.length >= 3 && digits.startsWith('12');
 }
 
+/**
+ * Party TT agent foreign-currency wallet (e.g. HAMID IK RMB 1205) — not company roznamcha cash.
+ */
+export function isPartyTtAgentWalletAccount(acc: LiquidityAccountRef | null | undefined): boolean {
+  if (!acc) return false;
+  const name = String(acc.name ?? '').trim();
+  const n = name.toLowerCase();
+  if (/\bclearing\b/i.test(name)) return false;
+  const digits = accountCodeDigits(acc.code);
+  if (digits.length < 3 || !digits.startsWith('12')) return false;
+  if (/\btt\s*agent\b/i.test(name)) return true;
+  if (/\bik\s*rmb\b/i.test(name)) return true;
+  if (/\bhamid\b/i.test(name) && /\brmb\b/i.test(name)) return true;
+  return false;
+}
+
 export function isPartyTtRoutingAccount(acc: LiquidityAccountRef | null | undefined): boolean {
   if (!acc) return false;
   const name = String(acc.name ?? '').trim();
@@ -46,11 +63,14 @@ export function isPartyTtRoutingAccount(acc: LiquidityAccountRef | null | undefi
     return false;
   }
   if (/\bt\/t\b/i.test(name) && !/\bclearing\b/i.test(n)) return true;
+  if (/\btt\b/i.test(name) && !/\bclearing\b/i.test(n) && /\bwali\b/i.test(name)) return true;
+  if (/\bwali\b/i.test(name) && /\b(t\/t|tt)\b/i.test(name) && !/\bclearing\b/i.test(n)) return true;
   return false;
 }
 
 export function isLiquidityPaymentAccount(acc: LiquidityAccountRef | null | undefined): boolean {
   if (!acc) return false;
+  if (acc.is_active === false) return false;
   const code = String(acc.code ?? '').trim();
   const digits = accountCodeDigits(code);
   const type = String(acc.type ?? '').toLowerCase();
@@ -65,12 +85,14 @@ export function isLiquidityPaymentAccount(acc: LiquidityAccountRef | null | unde
     return true;
   }
   if (nameLooksLikeTtClearingAccount(name)) return true;
+  if (isPartyTtAgentWalletAccount(acc)) return true;
   return false;
 }
 
 export function isRoznamchaLiquidityAccount(acc: LiquidityAccountRef | null | undefined): boolean {
   if (!isLiquidityPaymentAccount(acc)) return false;
   if (isPartyTtRoutingAccount(acc)) return false;
+  if (isPartyTtAgentWalletAccount(acc)) return false;
   const linked = acc?.linked_contact_id != null && String(acc.linked_contact_id).trim() !== '';
   if (linked) {
     const digits = accountCodeDigits(acc?.code);
