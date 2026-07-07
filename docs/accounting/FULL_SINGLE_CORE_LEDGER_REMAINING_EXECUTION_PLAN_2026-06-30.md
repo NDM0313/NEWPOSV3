@@ -25,6 +25,7 @@
 | BS/P&L loader swap | **COMPLETE** | Runtime wiring + frontend deploy + flags enabled 2026-07-01 — see `reports/bs-pl-runtime-wiring-swap-20260701/` |
 | Mobile parity | **PARTIAL** — Admin PASS 21/21; Manager **N/A/waived** (Admin+Salesman only); Salesman **pending** (password + Pixel) | [`reports/home-mac-mobile-qa-status-manager-waived-no-device-20260703/`](../reports/home-mac-mobile-qa-status-manager-waived-no-device-20260703/) |
 | DIN BRIDAL monitoring drift | **CLOSED** — legitimate live activity; fixture-only golden refresh **COMPLETE** (operator Nadeem Khan 2026-07-01) | None — monitoring PASS |
+| **Official calendar stability Days 7–12** | **COMPLETE** — 6/6 PASS; see [`OFFICIAL_CALENDAR_STABILITY_DAYS_7_12_SUMMARY_2026-07-07.md`](OFFICIAL_CALENDAR_STABILITY_DAYS_7_12_SUMMARY_2026-07-07.md) | Continue **Day 13+** toward R8 window |
 | R8 legacy retirement | **BLOCKED** | Stability window 2–4 weeks from 2026-07-01; final approval required |
 | Supplier party_discount QA | **Not approved** | Separate PKR 1 approval |
 
@@ -647,9 +648,35 @@ Evidence: [`reports/single-core-engine-calendar-stability-official-20260710/`](.
 
 Evidence: [`reports/single-core-engine-calendar-stability-official-20260711/`](../reports/single-core-engine-calendar-stability-official-20260711/)
 
+## Official Calendar Stability Check — 2026-07-12
+
+| Item | Status |
+|------|--------|
+| Classification | **CALENDAR_STABILITY_DAY_PASS** |
+| Run local date/time | 2026-07-07 19:46:26 → 19:58:30 +05:00 |
+| Official stability window calendar day | **12** |
+| Calendar days elapsed since 2026-07-01 | **11** |
+| Pre-check fail | Attempts 1–2 — CHINA TB/roznamcha drift; BRIDAL roznamcha revert |
+| Monitoring artifact | `three-company-monitoring-2026-07-07T14-46-27-601Z` (final PASS) |
+| Loader guard | **PASS** |
+| Roznamcha reached | **yes** |
+| DIN CHINA | PASS (Admin Compare **9/9 strict PASS**) |
+| DIN BRIDAL | PASS (Admin Compare waived) |
+| DIN COUTURE | PASS (Admin Compare waived) |
+| Fixture refresh | **COMPLETE** — CHINA TB/roznamcha (incl. negative closing) + BRIDAL roznamcha |
+| migrations_run | false |
+| gl_mutations | false |
+| Feature flags | unchanged |
+| Production mutation | **none** from calendar run |
+| Tests/build | 334/334 unified · 176/176 unit · build PASS |
+| Days 7–12 summary | [`OFFICIAL_CALENDAR_STABILITY_DAYS_7_12_SUMMARY_2026-07-07.md`](OFFICIAL_CALENDAR_STABILITY_DAYS_7_12_SUMMARY_2026-07-07.md) |
+| R8 | **BLOCKED** |
+
+Evidence: [`reports/single-core-engine-calendar-stability-official-20260712/`](../reports/single-core-engine-calendar-stability-official-20260712/)
+
 ## Exact next recommended phase
 
-1. **Daily monitoring** during stability window — continue calendar days toward R8 window completion (Day 12+)
+1. **Daily monitoring** during stability window — continue calendar days toward R8 window completion (Day 13+)
 2. **Salesman device QA** — when Pixel 6 Pro available + Salesman password supplied securely at QA time
 3. **R8 legacy retirement** — blocked until stability window complete + final approval
 

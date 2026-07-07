@@ -1,7 +1,7 @@
 {
   "company": "DIN BRIDAL",
   "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
-  "captured_from": "Operator-approved fixture refresh — Official Calendar Day 10 valid-date run (2026-07-07)",
+  "captured_from": "Official Calendar Day 12 valid-date run (2026-07-07)",
   "capture_method": "unified_browser_monitoring",
   "finance_sign_off_ref": "reports/single-core-engine-calendar-stability-official-20260707/option-a-fixture-refresh-approval-note.md",
   "operator_approval": "Nadeem — fixture-only Option A (Official Calendar Day 7)",
@@ -18,10 +18,10 @@
     "party_ledger_golden_party_closing_pkr": 530000,
     "trial_balance_debit_pkr": 26330077,
     "trial_balance_credit_pkr": 26330077,
-    "roznamcha_cash_in_pkr": 2968850,
+    "roznamcha_cash_in_pkr": 2850850,
     "roznamcha_cash_out_pkr": 1794607,
-    "roznamcha_closing_pkr_proxy": 1174243,
-    "roznamcha_closing_pkr": 1174243
+    "roznamcha_closing_pkr_proxy": 1056243,
+    "roznamcha_closing_pkr": 1056243
   },
   "notes": [
     "Fixture-only refresh — legitimate live activity since Official Day 6 fixture.",
@@ -39,9 +39,9 @@
     "party_ledger_golden_party_closing_pkr": 530000,
     "trial_balance_debit_pkr": 26330077,
     "trial_balance_credit_pkr": 26330077,
-    "roznamcha_cash_in_pkr": 2968850,
+    "roznamcha_cash_in_pkr": 2850850,
     "roznamcha_cash_out_pkr": 1794607,
-    "roznamcha_closing_pkr_proxy": 1174243
+    "roznamcha_closing_pkr_proxy": 1056243
   },
   "date_range": {
     "start": "2000-01-01",

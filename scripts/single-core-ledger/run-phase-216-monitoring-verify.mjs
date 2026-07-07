@@ -98,11 +98,12 @@ async function readRoznamchaSummary(page) {
   if (!Number.isFinite(cashIn)) cashIn = await readStatCardValue(page, 'Cash In');
   if (!Number.isFinite(cashOut)) cashOut = await readStatCardValue(page, 'Cash Out');
   let closing = await readStatCardValue(page, 'Closing Balance');
+  if (!Number.isFinite(closing)) closing = await readClosingBalance(page, { labels: ['Closing Balance', 'Closing balance'] });
   if (!Number.isFinite(cashIn) || !Number.isFinite(cashOut) || !Number.isFinite(closing)) {
     const body = await page.innerText('body');
     const cashInM = body.match(/Cash In(?: Today)?[\s\n\r]+(?:Rs\.?\s*)?([\d,]+\.?\d*)/i);
     const cashOutM = body.match(/Cash Out(?: Today)?[\s\n\r]+(?:Rs\.?\s*)?([\d,]+\.?\d*)/i);
-    const closingM = body.match(/Closing Balance[\s\n\r]+(?:Rs\.?\s*)?([\d,]+\.?\d*)/i);
+    const closingM = body.match(/Closing Balance[\s\n\r]+(?:Rs\.?\s*)?(-?[\d,]+\.?\d*)/i);
     if (!Number.isFinite(cashIn)) cashIn = cashInM ? parsePkr(cashInM[1]) : NaN;
     if (!Number.isFinite(cashOut)) cashOut = cashOutM ? parsePkr(cashOutM[1]) : NaN;
     if (!Number.isFinite(closing)) closing = closingM ? parsePkr(closingM[1]) : NaN;
