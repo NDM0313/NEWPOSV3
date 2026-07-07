@@ -99,6 +99,8 @@ export interface Purchase {
   discount: number;
   tax: number;
   shippingCost: number;
+  freightSettlement?: 'supplier' | 'courier';
+  clearanceCourierId?: string | null;
   total: number;
   paid: number;
   due: number;
@@ -220,6 +222,8 @@ export const convertFromSupabasePurchase = (supabasePurchase: any): Purchase => 
     discount: supabasePurchase.discount_amount || 0,
     tax: supabasePurchase.tax_amount || 0,
     shippingCost: supabasePurchase.shipping_cost || 0,
+    freightSettlement: (supabasePurchase.freight_settlement === 'courier' ? 'courier' : 'supplier') as 'supplier' | 'courier',
+    clearanceCourierId: supabasePurchase.clearance_courier_id ?? null,
     total: supabasePurchase.total || 0,
     paid: supabasePurchase.paid_amount || 0,
     due: supabasePurchase.due_amount || 0,
@@ -1245,38 +1249,39 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
               }
               if (!apAccountId) apAccountId = await getAccId('2000');
 
-              // Rebuild JE lines: delete old lines and insert fresh correct ones
-              // (the old per-line update was buggy: freight+subtotal lines shared same account_id
-              //  so both got the same amount, doubling the JE)
+              const freightSettlement = String((updated as any).freight_settlement ?? 'supplier');
+              const clearanceCourierId = (updated as any).clearance_courier_id ?? null;
+              const headerTax = Number((updated as any).tax_amount ?? 0) || 0;
+              const headerShipping = Number((updated as any).shipping_cost ?? 0) || 0;
+
               await sbPur.from('journal_entry_lines').delete().eq('journal_entry_id', jeId);
 
-              const newLines: { journal_entry_id: string; account_id: string; debit: number; credit: number; description: string }[] = [];
-              const itemsSubtotal = newSnapshot.subtotal;
-              const freight = newSnapshot.otherCharges;
-              const discount = newSnapshot.discount;
+              const { buildPurchaseDocumentJournalLines } = await import('@/app/services/purchaseAccountingService');
+              const lineSpecs = await buildPurchaseDocumentJournalLines({
+                companyId,
+                purchaseId: id,
+                poNo,
+                supplierName: (updated as any).supplier_name || 'Supplier',
+                subtotal: newSnapshot.subtotal,
+                discount: newSnapshot.discount,
+                tax: headerTax,
+                shippingCost: headerShipping,
+                freightSettlement,
+                clearanceCourierId,
+                supplierContactId: supplierId,
+                charges: (updated as any).purchase_charges ?? (updated as any).charges ?? [],
+                inventoryAccountId: inventoryId!,
+                apAccountId: apAccountId!,
+                discountAccountId: discountId,
+              });
 
-              // DR Inventory = subtotal (items)
-              if (itemsSubtotal > 0) {
-                newLines.push({ journal_entry_id: jeId, account_id: inventoryId!, debit: itemsSubtotal, credit: 0, description: `Inventory purchase ${poNo}` });
-              }
-              // CR AP = subtotal (items)
-              if (itemsSubtotal > 0) {
-                newLines.push({ journal_entry_id: jeId, account_id: apAccountId!, debit: 0, credit: itemsSubtotal, description: `Payable — ${(updated as any).supplier_name || 'Supplier'}` });
-              }
-              // DR Inventory = freight, CR AP = freight (if any)
-              if (freight > 0) {
-                newLines.push(
-                  { journal_entry_id: jeId, account_id: inventoryId!, debit: freight, credit: 0, description: `Freight (purchase)` },
-                  { journal_entry_id: jeId, account_id: apAccountId!, debit: 0, credit: freight, description: `Payable — freight` },
-                );
-              }
-              // DR AP = discount, CR Discount Received (if any)
-              if (discount > 0 && discountId) {
-                newLines.push(
-                  { journal_entry_id: jeId, account_id: apAccountId!, debit: discount, credit: 0, description: `Purchase discount` },
-                  { journal_entry_id: jeId, account_id: discountId, debit: 0, credit: discount, description: `Discount received` },
-                );
-              }
+              const newLines = lineSpecs.map((l) => ({
+                journal_entry_id: jeId,
+                account_id: l.account_id,
+                debit: l.debit,
+                credit: l.credit,
+                description: l.description,
+              }));
               if (newLines.length > 0) {
                 await sbPur.from('journal_entry_lines').insert(newLines);
               }

@@ -140,6 +140,8 @@ export interface Purchase {
   discount_amount: number;
   tax_amount: number;
   shipping_cost: number;
+  freight_settlement?: 'supplier' | 'courier';
+  clearance_courier_id?: string | null;
   total: number;
   paid_amount: number;
   due_amount: number;
@@ -179,6 +181,7 @@ export interface PurchaseChargeInsert {
 const PURCHASE_INSERT_KEYS = [
   'company_id', 'branch_id', 'po_no', 'draft_no', 'order_no', 'po_date', 'supplier_id', 'supplier_name',
   'status', 'payment_status', 'subtotal', 'discount_amount', 'tax_amount', 'shipping_cost',
+  'freight_settlement', 'clearance_courier_id',
   'total', 'paid_amount', 'due_amount', 'notes', 'attachments', 'created_by',
 ] as const;
 
@@ -533,7 +536,7 @@ export const purchaseService = {
     const offset = opts?.offset ?? 0;
     const purchaseSelect = `
         *,
-        supplier:contacts(name, phone),
+        supplier:contacts!supplier_id(name, phone),
         branch:branches(id, name, code),
         items:purchase_items(
           *,
@@ -571,7 +574,7 @@ export const purchaseService = {
         .from('purchases')
         .select(`
           *,
-          supplier:contacts(name, phone),
+          supplier:contacts!supplier_id(name, phone),
           branch:branches(id, name, code),
           items:purchase_items(
             *,
@@ -592,7 +595,7 @@ export const purchaseService = {
           .from('purchases')
         .select(`
           *,
-          supplier:contacts(name, phone),
+          supplier:contacts!supplier_id(name, phone),
           branch:branches(id, name, code),
           items:purchase_items(
             *,
@@ -613,7 +616,7 @@ export const purchaseService = {
     }
     
     // If error is about foreign key relationship or other issues, try without nested selects
-    if (error && (error.code === '42703' || error.code === '42P01' || error.code === 'PGRST116')) {
+    if (error && (error.code === '42703' || error.code === '42P01' || error.code === 'PGRST116' || error.code === 'PGRST201')) {
       // Try simpler query without nested relationships
       let simpleQuery = supabase
         .from('purchases')
@@ -767,7 +770,7 @@ export const purchaseService = {
     // NOTE: Do not list `attachments` after `*` — duplicate field in select often yields PostgREST 400 (`select=*` requests).
     const embeddedSelect = `
         *,
-        supplier:contacts(id, name, phone),
+        supplier:contacts!supplier_id(id, name, phone),
         items:purchase_items(
           *,
           product:products(id, name, sku, cost_price, has_variations, unit_id, category_id, min_stock, max_stock),
@@ -783,6 +786,7 @@ export const purchaseService = {
       const msg = String((error as any).message || '');
       const retry =
         code === 'PGRST200' ||
+        code === 'PGRST201' ||
         code === 'PGRST204' ||
         code === '42703' ||
         (error as any).status === 400 ||

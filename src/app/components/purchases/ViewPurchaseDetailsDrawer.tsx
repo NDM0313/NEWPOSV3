@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { usePurchases, Purchase, convertFromSupabasePurchase } from '@/app/context/PurchaseContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useSettings } from '@/app/context/SettingsContext';
@@ -6,7 +6,16 @@ import { branchService, Branch } from '@/app/services/branchService';
 import { contactService } from '@/app/services/contactService';
 import { purchaseService } from '@/app/services/purchaseService';
 import { resolvePaymentRowForEdit, resolvePaymentIdForMutation } from '@/app/lib/paymentRowEditRouting';
-import { activityLogService } from '@/app/services/activityLogService';
+import {
+  lineClearanceAlloc,
+  purchaseClearanceTotal,
+  purchaseHasSeparateClearance,
+} from '@/app/lib/purchaseClearanceAlloc';
+import {
+  isWholesaleImportClearance,
+  purchaseSupplierDue,
+} from '@/app/wholesale/wholesaleImportPurchase';
+import { WholesaleImportClearanceWorkflow } from '@/app/wholesale/WholesaleImportClearanceWorkflow';
 import { UnifiedPurchaseInvoiceView } from '@/app/documents';
 import { PaymentDeleteConfirmationModal } from '../shared/PaymentDeleteConfirmationModal';
 import { UnifiedPaymentDialog } from '../shared/UnifiedPaymentDialog';
@@ -158,7 +167,9 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
   const { formatDate, formatDateTime } = useFormatDate();
   const { getPurchaseById } = usePurchases();
   const { companyId, branchId: contextBranchId, user } = useSupabase();
-  const { inventorySettings } = useSettings();
+  const { inventorySettings, company } = useSettings();
+  const businessType = company?.businessType;
+  const isWholesaleCompany = businessType === 'wholesale';
   const enablePacking = inventorySettings.enablePacking;
   const [purchase, setPurchase] = useState<Purchase | null>(null);
   const [loading, setLoading] = useState(true);
@@ -194,6 +205,20 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
   const [itemSelectionDialogOpen, setItemSelectionDialogOpen] = useState(false);
   const [purchaseReturns, setPurchaseReturns] = useState<any[]>([]);
   const [loadingPurchaseReturns, setLoadingPurchaseReturns] = useState(false);
+
+  const showClearanceSplit = purchase != null && purchaseHasSeparateClearance(purchase);
+  const wholesaleClearanceActive =
+    purchase != null &&
+    isWholesaleCompany &&
+    (isWholesaleImportClearance(purchase) || showClearanceSplit || purchase.freightSettlement === 'courier');
+  const clearanceTotal = purchase ? purchaseClearanceTotal(purchase) : 0;
+  const goodsSubtotal = useMemo(() => {
+    if (!purchase?.items?.length) return 0;
+    return purchase.items.reduce((sum, it) => {
+      const lineTotal = Number((it as any).total ?? (it.price ?? 0) * (it.quantity ?? 0)) || 0;
+      return sum + lineTotal;
+    }, 0);
+  }, [purchase?.items]);
 
   // Load branches for location display
   useEffect(() => {
@@ -641,8 +666,11 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
   const badge = statusBadgeConfig?.bg != null ? statusBadgeConfig : { bg: 'bg-gray-500/20', text: 'text-gray-400', border: 'border-gray-500/30', label: 'Draft' };
   const hidePaymentCommercial = isPurchaseNonPostedCommercial(purchase.status);
   const purchaseDue = (purchase as any).due ?? (purchase as any).paymentDue ?? 0;
+  const displaySupplierDue = wholesaleClearanceActive && purchase
+    ? purchaseSupplierDue(purchase)
+    : purchaseDue;
   const canAddPayment =
-    !hidePaymentCommercial && canAddPaymentToPurchase(purchase, purchaseDue);
+    !hidePaymentCommercial && canAddPaymentToPurchase(purchase, displaySupplierDue);
 
   const getStatusColor = (status: string) => {
     const s = (status || '').toLowerCase();
@@ -1041,6 +1069,9 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                         <TableHead className="text-gray-400">Variation</TableHead>
                         {enablePacking && <TableHead className="text-gray-400">Packing</TableHead>}
                         <TableHead className="text-gray-400 text-right">Unit Price</TableHead>
+                        {showClearanceSplit && (
+                          <TableHead className="text-gray-400 text-right">Courier alloc</TableHead>
+                        )}
                         <TableHead className="text-gray-400 text-center">Original Qty</TableHead>
                         {returnMode && <TableHead className="text-gray-400 text-center">Already Returned</TableHead>}
                         {returnMode && <TableHead className="text-gray-400 text-center">Return Qty</TableHead>}
@@ -1055,6 +1086,10 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                         const productName = item.productName || 'Unknown Product';
                         const displaySku = item.sku || 'N/A';
                         const qty = item.quantity ?? 0;
+                        const lineTotal = Number((item as any).total ?? (item.price ?? 0) * qty) || 0;
+                        const courierAlloc = showClearanceSplit
+                          ? lineClearanceAlloc(lineTotal, goodsSubtotal, clearanceTotal)
+                          : 0;
                         
                         // Extract variation data
                         const variation = (item as any).variation || (item as any).product_variations || null;
@@ -1161,6 +1196,11 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                           <TableCell className="text-right text-white">
                             {formatCurrency(item.price)}
                           </TableCell>
+                          {showClearanceSplit && (
+                            <TableCell className="text-right text-amber-300/90 tabular-nums">
+                              {courierAlloc > 0 ? formatCurrency(courierAlloc) : '—'}
+                            </TableCell>
+                          )}
                           <TableCell className="text-center text-white font-medium">
                             {qty}
                           </TableCell>
@@ -1316,9 +1356,16 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                 </div>
                 <div className="p-5 space-y-3">
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-400">Subtotal</span>
-                    <span className="text-white font-medium">{formatCurrency(purchase.subtotal ?? 0)}</span>
+                    <span className="text-gray-400">{showClearanceSplit ? 'Goods subtotal' : 'Subtotal'}</span>
+                    <span className="text-white font-medium">{formatCurrency(purchase.subtotal ?? goodsSubtotal ?? 0)}</span>
                   </div>
+                  
+                  {showClearanceSplit && clearanceTotal > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-400">Clearance / Freight (YAQOOB)</span>
+                      <span className="text-amber-300/90 font-medium">{formatCurrency(clearanceTotal)}</span>
+                    </div>
+                  )}
                   
                   {(purchase.discount ?? 0) > 0 && (
                     <div className="flex justify-between text-sm">
@@ -1339,13 +1386,16 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                     const charges = (purchase as any).charges ?? [];
                     const chargeList = Array.isArray(charges) ? charges : [];
                     const shippingRows = chargeList.filter((c: any) => (c.charge_type || c.chargeType) === 'shipping');
-                    const extraRows = chargeList.filter((c: any) => (c.charge_type || c.chargeType) !== 'discount' && (c.charge_type || c.chargeType) !== 'shipping');
+                    const extraRows = chargeList.filter((c: any) => {
+                      const type = c.charge_type || c.chargeType;
+                      return type !== 'discount' && type !== 'shipping' && !(showClearanceSplit && type === 'freight');
+                    });
                     const shippingTotal = shippingRows.reduce((s: number, c: any) => s + (Number(c.amount) || 0), 0);
                     const extraTotal = extraRows.reduce((s: number, c: any) => s + (Number(c.amount) || 0), 0);
                     const hasShipping = shippingTotal > 0;
                     const hasExtra = extraRows.length > 0;
                     if (!hasShipping && !hasExtra) {
-                      if ((purchase.shippingCost ?? 0) > 0) {
+                      if ((purchase.shippingCost ?? 0) > 0 && !showClearanceSplit) {
                         return (
                           <div className="flex justify-between text-sm">
                             <span className="text-gray-400">Shipping / Extra charges</span>
@@ -1387,16 +1437,33 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                         <span className="text-green-400 font-medium">{formatCurrency(purchase.paid)}</span>
                       </div>
 
-                      {purchase.due > 0 && (
+                      {displaySupplierDue > 0 && (
                         <div className="flex justify-between">
-                          <span className="text-gray-400 font-medium">Amount Due</span>
-                          <span className="text-red-400 text-lg font-bold">{formatCurrency(purchase.due)}</span>
+                          <span className="text-gray-400 font-medium">
+                            {wholesaleClearanceActive ? 'Supplier due (goods)' : 'Amount Due'}
+                          </span>
+                          <span className="text-red-400 text-lg font-bold">{formatCurrency(displaySupplierDue)}</span>
                         </div>
                       )}
                     </>
                   )}
                 </div>
               </div>
+              )}
+
+              {wholesaleClearanceActive && purchase && companyId && (
+                <WholesaleImportClearanceWorkflow
+                  purchase={purchase}
+                  companyId={companyId}
+                  formatCurrency={formatCurrency}
+                  onUpdated={() => {
+                    if (purchaseId) {
+                      void purchaseService.getPurchase(purchaseId).then((row) => {
+                        if (row) setPurchase(convertFromSupabasePurchase(row));
+                      });
+                    }
+                  }}
+                />
               )}
 
               {/* Notes */}
@@ -1546,10 +1613,12 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                         {purchase.paymentStatus === 'paid' ? 'Paid' : purchase.paymentStatus === 'partial' ? 'Partial' : 'Unpaid'}
                       </Badge>
                     </div>
-                    {purchase.due > 0 && (
+                    {displaySupplierDue > 0 && (
                       <div className="flex justify-between text-sm pt-3 border-t border-gray-800">
-                        <span className="text-gray-400">Amount Due:</span>
-                        <span className="text-red-400 font-medium">{formatCurrency(purchase.due)}</span>
+                        <span className="text-gray-400">
+                          {wholesaleClearanceActive ? 'Supplier due (goods):' : 'Amount Due:'}
+                        </span>
+                        <span className="text-red-400 font-medium">{formatCurrency(displaySupplierDue)}</span>
                       </div>
                     )}
                   </div>
@@ -1819,8 +1888,10 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
           <div className="border-t border-gray-800 px-6 py-4 bg-gray-900/50 shrink-0">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-400">Amount Due</p>
-                <p className="text-2xl font-bold text-red-400">{formatCurrency(purchase.due)}</p>
+                <p className="text-sm text-gray-400">
+                  {wholesaleClearanceActive ? 'Supplier due (goods)' : 'Amount Due'}
+                </p>
+                <p className="text-2xl font-bold text-red-400">{formatCurrency(displaySupplierDue)}</p>
               </div>
           <Button
                 onClick={() => onAddPayment?.(purchase.id)}
@@ -1930,7 +2001,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
           context="supplier"
           entityName={purchase.supplierName || 'Supplier'}
           entityId={purchase.supplier}
-          outstandingAmount={purchase.due}
+          outstandingAmount={displaySupplierDue}
           totalAmount={purchase.total}
           paidAmount={purchase.paid}
           referenceNo={purchase.purchaseNo}

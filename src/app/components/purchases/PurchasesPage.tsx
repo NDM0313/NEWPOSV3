@@ -25,6 +25,7 @@ import {
   AlertDialogAction,
 } from "@/app/components/ui/alert-dialog";
 import { cn } from "@/app/components/ui/utils";
+import { getFreightSettlement, purchaseSupplierDue } from '@/app/wholesale/wholesaleImportPurchase';
 import {
   Popover,
   PopoverContent,
@@ -113,6 +114,7 @@ interface Purchase {
   items: number;
   grandTotal: number;
   paymentDue: number;
+  freightSettlement?: 'supplier' | 'courier';
   status: PurchaseStatus;
   paymentStatus: PaymentStatus;
   addedBy: string;
@@ -122,6 +124,13 @@ interface Purchase {
 }
 
 // Mock data removed - using purchaseService which loads from Supabase
+
+function resolveListPaymentDue(row: Record<string, unknown>): number {
+  if (getFreightSettlement(row as any) === 'courier') {
+    return purchaseSupplierDue(row as any);
+  }
+  return Number(row.due_amount ?? row.due ?? 0) || 0;
+}
 
 export const PurchasesPage = () => {
   const { openDrawer } = useNavigation();
@@ -525,7 +534,8 @@ export const PurchasesPage = () => {
           location: location,
           items: p.items?.length || 0,
           grandTotal: p.total || 0,
-          paymentDue: p.due_amount || 0,
+          paymentDue: resolveListPaymentDue(p as Record<string, unknown>),
+          freightSettlement: (p.freight_settlement === 'courier' ? 'courier' : 'supplier') as 'supplier' | 'courier',
           // Preserve API status: draft | ordered | received | final | cancelled
           status: (p.status === 'final' ? 'final' : 
                    p.status === 'received' ? 'received' : 
@@ -601,7 +611,8 @@ export const PurchasesPage = () => {
           location: locationDisplay,
           items: p.itemsCount || 0,
           grandTotal: p.total || 0,
-          paymentDue: p.due || 0,
+          paymentDue: resolveListPaymentDue(p as Record<string, unknown>),
+          freightSettlement: (p.freightSettlement === 'courier' ? 'courier' : 'supplier') as 'supplier' | 'courier',
           // Preserve API status for tabs: draft | ordered | received | final
           status: (p.status === 'final' ? 'final' : 
                    p.status === 'received' ? 'received' : 
@@ -1039,16 +1050,23 @@ export const PurchasesPage = () => {
       }
       case 'poNo':
         return (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleViewDetails(purchase);
-            }}
-            className="text-sm text-orange-400 font-mono font-semibold hover:underline text-left"
-          >
-            {purchase.poNo}
-          </button>
+          <div className="flex flex-col gap-0.5 items-start">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleViewDetails(purchase);
+              }}
+              className="text-sm text-orange-400 font-mono font-semibold hover:underline text-left"
+            >
+              {purchase.poNo}
+            </button>
+            {purchase.freightSettlement === 'courier' && (
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-500/40 text-amber-400/90">
+                Import clearance
+              </Badge>
+            )}
+          </div>
         );
       case 'reference':
         return <div className="text-sm text-gray-400">{purchase.reference || '-'}</div>;
