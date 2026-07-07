@@ -537,9 +537,36 @@ Evidence: [`reports/single-core-engine-calendar-stability-official-20260706/`](.
 
 Evidence: [`reports/single-core-engine-calendar-stability-official-20260707/`](../reports/single-core-engine-calendar-stability-official-20260707/)
 
+## Official Calendar Stability Check — 2026-07-08
+
+| Item | Status |
+|------|--------|
+| Classification | **CALENDAR_STABILITY_DAY_PASS** |
+| Run local date/time | 2026-07-07 12:52:18 → 13:06:17 +05:00 |
+| Official stability window calendar day | **8** |
+| Calendar days elapsed since 2026-07-01 | **7** |
+| Monitoring artifact | `three-company-monitoring-2026-07-07T07-52-21-211Z` |
+| Loader guard | **PASS** |
+| Roznamcha reached | **yes** |
+| DIN CHINA | PASS (Admin Compare 9/9) |
+| DIN BRIDAL | PASS (Admin Compare waived) |
+| DIN COUTURE | PASS (Admin Compare waived) |
+| migrations_run | false |
+| gl_mutations | false |
+| Feature flags | unchanged |
+| Production mutation | **none** |
+| Tests/build | 334/334 unified · 167/167 unit · build PASS |
+| Password env | supplied yes — value **not** recorded |
+| Consecutive session note | Day 8 run same session as Day 7 after date-gate removal |
+| R8 | **BLOCKED** |
+| Mobile release | separate track — Admin PASS 21/21; Manager N/A/waived; Salesman **BLOCKED_SALESMAN_DEVICE_QA_PENDING** |
+| Supplier Party Discount | separate approval |
+
+Evidence: [`reports/single-core-engine-calendar-stability-official-20260708/`](../reports/single-core-engine-calendar-stability-official-20260708/)
+
 ## Exact next recommended phase
 
-1. **Daily monitoring** during stability window — `npm run monitor:three-company-unified-ledger` (official Calendar Day 8 next)
+1. **Daily monitoring** during stability window — continue calendar days toward R8 window completion
 2. **Salesman device QA** — when Pixel 6 Pro available + Salesman password supplied securely at QA time
 3. **R8 legacy retirement** — blocked until stability window complete + final approval
 
