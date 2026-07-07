@@ -23,6 +23,9 @@ import { usePdfPreview } from '../../shared/usePdfPreview';
 import { TransactionDetailSheet } from './_shared/TransactionDetailSheet';
 import { localNowDateString } from '../../../utils/localDate';
 import { roznamchaMetaSubline } from '../../../lib/roznamchaRowDescription';
+import { roznamchaRowHasAttachments } from '../../../lib/roznamchaAttachments';
+import { AttachmentIndicatorButton } from '../../shared/AttachmentIndicatorButton';
+import { useAttachmentPreview } from '../../../hooks/useAttachmentPreview';
 
 interface DayBookReportProps {
   onBack: () => void;
@@ -71,6 +74,7 @@ export function DayBookReport({ onBack, companyId, branchId, user, reportRefresh
   const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(null);
 
   const preview = usePdfPreview(companyId);
+  const { openAttachmentPreview, AttachmentPreviewPortal } = useAttachmentPreview();
 
   const dateFrom = range.from || '1970-01-01';
   const dateTo = range.to || localNowDateString();
@@ -460,7 +464,15 @@ export function DayBookReport({ onBack, companyId, branchId, user, reportRefresh
                               <FileText className="w-4 h-4 text-[#9CA3AF]" />
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-semibold text-white truncate">{r.details}</p>
+                              <div className="flex items-start gap-1">
+                                <p className="text-sm font-semibold text-white truncate flex-1 min-w-0">{r.details}</p>
+                                {roznamchaRowHasAttachments(r) ? (
+                                  <AttachmentIndicatorButton
+                                    size="sm"
+                                    onClick={() => openAttachmentPreview(r.attachments ?? [], 0)}
+                                  />
+                                ) : null}
+                              </div>
                               <p className="text-[11px] text-[#9CA3AF] truncate font-mono">
                                 {roznamchaRefDisplay(r)}
                               </p>
@@ -639,6 +651,8 @@ export function DayBookReport({ onBack, companyId, branchId, user, reportRefresh
         referenceType="payment"
         referenceId={selectedPaymentId}
       />
+
+      {AttachmentPreviewPortal}
     </div>
   );
 }

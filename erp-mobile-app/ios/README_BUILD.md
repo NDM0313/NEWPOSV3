@@ -56,9 +56,18 @@ If Xcode still shows stale SPM warnings (CapacitorHaptics, etc.): **Product → 
 
 In Xcode:
 
-1. Select the **NDM ERP** target → **Signing & Capabilities** → Team + automatic signing.
-2. Choose a simulator or connected iPhone.
-3. **Product → Run** for debug, or **Product → Archive** for TestFlight / App Store.
+1. **One-time:** **Xcode → Settings → Accounts** → add Apple ID for team **NLNZN84GX4** (required for CLI archive / fresh provisioning profiles).
+2. Select the **NDM ERP** target → **Signing & Capabilities** → Team + automatic signing.
+3. Choose a simulator or connected iPhone.
+4. **Product → Run** for debug, or **Product → Archive** for TestFlight / App Store.
+
+CLI release IPA (same signing requirements):
+
+```bash
+npm run ios:ipa:release:mac
+```
+
+Preflight: `bash scripts/check-xcode-apple-account.sh` — must pass before archive.
 
 Launch screen background matches app shell (`#111827`) — no white flash before WebView.
 

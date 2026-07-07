@@ -55,6 +55,10 @@ export type CashFlowRow = {
   cashOut: number;
   runningBalance: number;
   details: string;
+  attachments?: { url: string; name: string }[];
+  sourcePaymentId?: string | null;
+  sourceJournalEntryId?: string | null;
+  referenceType?: string | null;
 };
 
 export type CashFlowResult = {

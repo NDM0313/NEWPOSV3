@@ -9,6 +9,7 @@ import {
   type AccountFilter,
   type RoznamchaRowWithBalance,
 } from '@/app/services/roznamchaService';
+import type { TransactionAttachment } from '@/app/utils/transactionAttachments';
 import { isGenericRoznamchaPartyLabel } from '@/app/lib/roznamchaCounterpartyLabel';
 import { branchService } from '@/app/services/branchService';
 import {
@@ -44,6 +45,7 @@ export interface CashFlowRow {
   sourcePaymentId: string | null;
   sourceJournalEntryId: string | null;
   sourceRentalPaymentId: string | null;
+  attachments?: TransactionAttachment[];
 }
 
 export interface CashFlowReportResult {
@@ -159,6 +161,7 @@ function mapRoznamchaToCashFlowRow(
     sourcePaymentId: payId,
     sourceJournalEntryId: jeId,
     sourceRentalPaymentId: row.sourceRentalPaymentId ? String(row.sourceRentalPaymentId) : null,
+    attachments: row.attachments,
   };
 }
 

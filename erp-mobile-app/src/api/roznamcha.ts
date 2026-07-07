@@ -6,6 +6,7 @@
  */
 
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { enrichRowsWithTransactionAttachments } from '../lib/roznamchaAttachments';
 import { isLiquidityPaymentAccount, paymentMethodForLiquidityAccount } from '../lib/liquidityPaymentAccount';
 import {
   buildCounterpartyByDirectionFromJeLines,
@@ -86,6 +87,8 @@ export interface RoznamchaRow {
   sourceEconomicEventId?: string | null;
   branchId: string | null;
   type: string;
+  /** Resolved transaction-owned attachments for icon / preview */
+  attachments?: { url: string; name: string }[];
 }
 
 export interface RoznamchaSummary {
@@ -2543,6 +2546,7 @@ export async function getRoznamcha(
   const rows = dedupeRoznamchaRows(inRangeRows);
   logRoznamchaTraceDedupe(inRangeRows, rows);
   sortRoznamchaRows(rows);
+  await enrichRowsWithTransactionAttachments(companyId, rows);
   const { rowsWithBalance, summary, cashSplit } = buildSummaryAndRunning(rows, openingBalance);
   return {
     rows: rowsWithBalance,

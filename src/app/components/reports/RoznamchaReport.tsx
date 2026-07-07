@@ -75,6 +75,10 @@ import { useJournalTransactionActionHandlers } from '@/app/hooks/useJournalTrans
 import { RoznamchaRowTransactionActions } from '@/app/components/reports/RoznamchaRowTransactionActions';
 import { TransactionDetailModal } from '@/app/components/accounting/TransactionDetailModal';
 import { TransactionConfirmDialog } from '@/app/components/accounting/TransactionConfirmDialog';
+import { AttachmentViewer } from '@/app/components/shared/AttachmentViewer';
+import { TransactionAttachmentIconButton } from '@/app/components/shared/TransactionAttachmentIconButton';
+import { roznamchaRowHasAttachments } from '@/app/lib/roznamchaAttachments';
+import type { TransactionAttachment } from '@/app/utils/transactionAttachments';
 
 const ROZNAMCHA_CACHE_TTL_MS = 30_000;
 const roznamchaResultCache = new Map<string, { at: number; data: RoznamchaResult }>();
@@ -203,6 +207,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
   /** When Accounting uses global header dates, still allow a local start/end (or single day) here */
   const [overrideGlobalDates, setOverrideGlobalDates] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [attachmentsDialogList, setAttachmentsDialogList] = useState<TransactionAttachment[] | null>(null);
 
   const showUnifiedPreviewTools = canAccessRoznamchaUnifiedPreview(userRole);
   const [unifiedPreviewEnabled, setUnifiedPreviewEnabled] = useState(false);
@@ -1144,7 +1149,14 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
                         ) : null}
                       </td>
                       <td className="px-4 py-3 max-w-xs">
-                        <div className="font-medium text-white">{roznamchaDetailsForDisplay(r)}</div>
+                        <div className="inline-flex items-start gap-1 max-w-full">
+                          <div className="font-medium text-white min-w-0">{roznamchaDetailsForDisplay(r)}</div>
+                          {roznamchaRowHasAttachments(r) ? (
+                            <TransactionAttachmentIconButton
+                              onClick={() => setAttachmentsDialogList(r.attachments ?? [])}
+                            />
+                          ) : null}
+                        </div>
                         {(r.referenceDisplay || r.partyLine || r.createdBy) && (
                           <div className="text-xs text-gray-400 mt-0.5 leading-snug">
                             {[
@@ -1296,6 +1308,14 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
           cancelLabel="No"
           onConfirm={confirmPendingJournalAction}
           onCancel={dismissPendingConfirm}
+        />
+      ) : null}
+
+      {attachmentsDialogList ? (
+        <AttachmentViewer
+          attachments={attachmentsDialogList}
+          isOpen={!!attachmentsDialogList}
+          onClose={() => setAttachmentsDialogList(null)}
         />
       ) : null}
     </div>

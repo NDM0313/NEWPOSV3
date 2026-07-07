@@ -1123,18 +1123,18 @@ export const AccountingDashboard = () => {
     <div className="flex flex-col bg-[#0B0F19] min-h-0 min-w-0 w-full max-w-full">
       {/* Page Header — no h-screen/overflow-hidden so outer main can scroll the full page */}
       <div className="shrink-0 px-6 py-4 border-b border-gray-800 bg-[#0F1419]">
-        <div className="flex items-center justify-between">
-          <div>
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="min-w-0">
             <h1 className="text-2xl font-bold text-white">Accounting</h1>
             <p className="text-sm text-gray-400 mt-0.5">Financial transactions and reporting</p>
           </div>
-          {canAccessAccounting && canPostAccounting && activeTab === 'journal_entries' && (
-            <Button 
+          {canAccessAccounting && canPostAccounting && (
+            <Button
               onClick={() => {
                 setActiveTab('journal_entries');
                 dispatchOpenAddEntryV2();
               }}
-              className="bg-blue-600 hover:bg-blue-500 text-white h-10 gap-2 shadow-lg shadow-blue-900/30"
+              className="shrink-0 bg-blue-600 hover:bg-blue-500 text-white h-10 gap-2 shadow-lg shadow-blue-900/30"
             >
               <Plus size={16} />
               Add Entry

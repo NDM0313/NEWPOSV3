@@ -1,0 +1,46 @@
+{
+  "run": "THREE_COMPANY_OPERATIONAL_MONITORING",
+  "generated_at": "2026-07-02T20:54:54.046Z",
+  "timestamp_slug": "2026-07-02T20-54-53-735Z",
+  "overall": "FAIL",
+  "credential_policy": "per-company-preferred",
+  "generic_fallback_allowed": false,
+  "flag_guard": {
+    "ok": false,
+    "error": "spawnSync powershell.exe ENOENT"
+  },
+  "profiles": [
+    {
+      "profileId": "din-china",
+      "email": "din@yahoo.com",
+      "emailSource": "profile-default",
+      "passwordSource": "per-company",
+      "exitCode": 1,
+      "pass": false,
+      "checks": [],
+      "phaseResult": null
+    },
+    {
+      "profileId": "din-bridal",
+      "email": "ndm313@yahoo.com",
+      "emailSource": "built-in-default",
+      "passwordSource": "per-company",
+      "exitCode": 1,
+      "pass": false,
+      "checks": [],
+      "phaseResult": null
+    },
+    {
+      "profileId": "din-couture",
+      "email": "zhd@dincouture.pk",
+      "emailSource": "built-in-default",
+      "passwordSource": "per-company",
+      "exitCode": 1,
+      "pass": false,
+      "checks": [],
+      "phaseResult": null
+    }
+  ],
+  "migrations_run": false,
+  "gl_mutations": false
+}

@@ -3,6 +3,7 @@
  */
 
 import { getRoznamcha } from './roznamcha';
+import { enrichRowsWithTransactionAttachments } from '../lib/roznamchaAttachments';
 import {
   effectiveReportLoaderSource,
   resolveReportMainLoaderSource,
@@ -204,8 +205,12 @@ export async function loadMobileCashFlow(params: {
           cashOut: r.credit,
           runningBalance: r.runningBalance,
           details: r.description || '—',
+          sourcePaymentId: r.paymentId,
+          sourceJournalEntryId: r.journalEntryId,
+          referenceType: r.referenceType,
         };
       });
+      await enrichRowsWithTransactionAttachments(params.companyId, rows);
       return {
         data: {
           rows,
@@ -248,6 +253,9 @@ export async function loadMobileCashFlow(params: {
         cashOut,
         runningBalance: r.runningBalance ?? 0,
         details: r.details || '—',
+        attachments: r.attachments,
+        sourcePaymentId: r.sourcePaymentId ?? null,
+        sourceJournalEntryId: r.sourceJournalEntryId ?? null,
       };
     });
     return {

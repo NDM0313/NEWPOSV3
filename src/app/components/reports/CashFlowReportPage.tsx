@@ -76,6 +76,10 @@ import {
 import { loadCashFlowUnifiedMain } from '@/app/services/cashFlowUnifiedMainService';
 import { UNIFIED_LEDGER_SCREEN_IDS } from '@/app/lib/unifiedLedgerScreenFlags';
 import { CASH_FLOW_APPROVED_FINANCE_RULES } from '@/app/lib/accounting/cashFlowPreviewFinanceAlignment';
+import { AttachmentViewer } from '@/app/components/shared/AttachmentViewer';
+import { TransactionAttachmentIconButton } from '@/app/components/shared/TransactionAttachmentIconButton';
+import { loadRowAttachmentsLazy } from '@/app/lib/roznamchaAttachments';
+import type { TransactionAttachment } from '@/app/utils/transactionAttachments';
 
 export interface CashFlowReportPageProps {
   globalStartDate?: string | null;
@@ -131,6 +135,7 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
   const [previewDiff, setPreviewDiff] = useState<CashFlowUnifiedPreviewDiff | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [attachmentsDialogList, setAttachmentsDialogList] = useState<TransactionAttachment[] | null>(null);
 
   const { state: engineState } = useUnifiedLedgerEngineState(companyId, {
     screenId: UNIFIED_LEDGER_SCREEN_IDS.CASH_FLOW,
@@ -498,6 +503,23 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
       </Badge>
     ));
 
+  const openRowAttachments = useCallback(
+    async (row: CashFlowRow) => {
+      if (!companyId) return;
+      if (row.attachments?.length) {
+        setAttachmentsDialogList(row.attachments);
+        return;
+      }
+      const loaded = await loadRowAttachmentsLazy(companyId, {
+        sourcePaymentId: row.sourcePaymentId,
+        sourceJournalEntryId: row.sourceJournalEntryId,
+        referenceType: row.referenceType,
+      });
+      if (loaded.length) setAttachmentsDialogList(loaded);
+    },
+    [companyId],
+  );
+
   const renderTableBody = (rows: CashFlowRow[], emptyMessage: string) => {
     if (rows.length === 0) {
       return (
@@ -519,8 +541,11 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
           {r.journalEntryNo && (
             <div className="text-xs text-gray-500 font-mono">{r.journalEntryNo}</div>
           )}
-          <div className="text-xs text-gray-500 mt-0.5 leading-snug">
-            {journalDescriptionForDisplay(r.details, r.sourceModuleLabel)}
+          <div className="text-xs text-gray-500 mt-0.5 leading-snug inline-flex items-start gap-1 max-w-full">
+            <span>{journalDescriptionForDisplay(r.details, r.sourceModuleLabel)}</span>
+            {(r.attachments?.length ?? 0) > 0 ? (
+              <TransactionAttachmentIconButton onClick={() => void openRowAttachments(r)} />
+            ) : null}
           </div>
         </td>
         <td className="p-3 text-gray-300 align-middle min-w-[200px] max-w-[280px] break-words leading-snug">
@@ -997,6 +1022,13 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
           </Button>
         </div>
       )}
+      {attachmentsDialogList ? (
+        <AttachmentViewer
+          attachments={attachmentsDialogList}
+          isOpen={!!attachmentsDialogList}
+          onClose={() => setAttachmentsDialogList(null)}
+        />
+      ) : null}
     </div>
   );
 }

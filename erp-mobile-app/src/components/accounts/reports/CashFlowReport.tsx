@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { usePermissions } from '../../../context/PermissionContext';
 import { ReportHeader } from './_shared/ReportHeader';
 import { DateRangeBar, makeInitialRange, type DateRangeValue } from './_shared/DateRangeBar';
@@ -7,6 +7,9 @@ import { formatAmount, dateRangeLabel, formatDate } from './_shared/format';
 import { LoaderSourceBadge } from './_shared/LoaderSourceBadge';
 import { loadMobileCashFlow } from '../../../api/unifiedReports';
 import type { CashFlowResult } from '../../../types/unifiedReports';
+import { AttachmentIndicatorButton } from '../../shared/AttachmentIndicatorButton';
+import { useAttachmentPreview } from '../../../hooks/useAttachmentPreview';
+import { loadRowAttachmentsLazy } from '../../../lib/roznamchaAttachments';
 
 interface CashFlowReportProps {
   onBack: () => void;
@@ -27,6 +30,24 @@ export function CashFlowReport({
   const [loaderSource, setLoaderSource] = useState<'legacy' | 'unified' | 'unavailable'>('unavailable');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { openAttachmentPreview, AttachmentPreviewPortal } = useAttachmentPreview();
+
+  const openRowAttachments = useCallback(
+    async (row: CashFlowResult['rows'][number]) => {
+      if (!companyId) return;
+      if (row.attachments?.length) {
+        openAttachmentPreview(row.attachments, 0);
+        return;
+      }
+      const loaded = await loadRowAttachmentsLazy(companyId, {
+        sourcePaymentId: row.sourcePaymentId,
+        sourceJournalEntryId: row.sourceJournalEntryId,
+        referenceType: row.referenceType,
+      });
+      if (loaded.length) openAttachmentPreview(loaded, 0);
+    },
+    [companyId, openAttachmentPreview],
+  );
 
   useEffect(() => {
     if (!companyId) {
@@ -77,10 +98,20 @@ export function CashFlowReport({
           <ReportCard className="divide-y divide-[#374151]">
             {data.rows.slice(0, 100).map((r) => (
               <div key={r.id} className="px-3 py-2.5">
-                <div className="flex justify-between text-sm">
-                  <span className="text-[#E5E7EB]">{formatDate(r.date)} · {r.reference}</span>
+                <div className="flex justify-between text-sm gap-2">
+                  <span className="text-[#E5E7EB] min-w-0 flex-1">
+                    <span className="inline-flex items-start gap-1 max-w-full">
+                      <span className="truncate">{formatDate(r.date)} · {r.reference}</span>
+                      {(r.attachments?.length ?? 0) > 0 ? (
+                        <AttachmentIndicatorButton
+                          size="sm"
+                          onClick={() => void openRowAttachments(r)}
+                        />
+                      ) : null}
+                    </span>
+                  </span>
                   {canViewBalances && (
-                    <span className="text-[#9CA3AF] font-mono text-xs">
+                    <span className="text-[#9CA3AF] font-mono text-xs shrink-0">
                       {r.cashIn > 0 ? `+${formatAmount(r.cashIn, 0)}` : r.cashOut > 0 ? `-${formatAmount(r.cashOut, 0)}` : '—'}
                     </span>
                   )}
@@ -91,6 +122,7 @@ export function CashFlowReport({
           </ReportCard>
         )}
       </ReportShell>
+      {AttachmentPreviewPortal}
     </div>
   );
 }

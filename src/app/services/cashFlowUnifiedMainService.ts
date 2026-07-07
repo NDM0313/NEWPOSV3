@@ -4,6 +4,7 @@
  */
 
 import type { UnifiedLedgerBasis } from '@/app/lib/unifiedLedgerBasisFilter';
+import { enrichRowsWithTransactionAttachments } from '@/app/lib/roznamchaAttachments';
 import { mapUnifiedRowsToCashFlowMain } from '@/app/lib/accounting/cashFlowUnifiedMainMapper';
 import type { CashFlowUnifiedMainResult } from '@/app/lib/accounting/cashFlowUnifiedMainMapper';
 import { previewBasisFromVoidedToggle } from '@/app/lib/roznamchaUnifiedPreviewDiff';
@@ -44,10 +45,12 @@ export async function loadCashFlowUnifiedMain(params: {
     throw new Error(roznamchaPreview.blockReason ?? 'Unified Cash Flow blocked by kill switch.');
   }
 
-  return mapUnifiedRowsToCashFlowMain({
+  const result = mapUnifiedRowsToCashFlowMain({
     unifiedRows: roznamchaPreview.unifiedRows,
     openingBalance: roznamchaPreview.openingBalance,
     sourceModuleFilter: params.sourceModuleFilter ?? 'all',
     auditMode,
   });
+  await enrichRowsWithTransactionAttachments(params.companyId, result.rows);
+  return result;
 }
