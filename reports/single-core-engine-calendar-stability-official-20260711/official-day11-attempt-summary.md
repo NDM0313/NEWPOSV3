@@ -45,4 +45,4 @@
 
 ## Deploy
 
-Frontend deploy to `erp.dincouture.pk` via `deploy/vps-build-erp-only.sh` @ `f558222d` (same session).
+Frontend deploy to `erp.dincouture.pk` via `deploy/vps-build-erp-only.sh` @ `711d2307` (same session).

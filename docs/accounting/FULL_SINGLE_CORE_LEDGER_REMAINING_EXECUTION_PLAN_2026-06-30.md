@@ -640,7 +640,7 @@ Evidence: [`reports/single-core-engine-calendar-stability-official-20260710/`](.
 | Feature flags | unchanged |
 | Production mutation | **none** from calendar run |
 | Tests/build | 334/334 unified · 176/176 unit · build PASS |
-| Frontend deploy | **COMPLETE** — `deploy/vps-build-erp-only.sh` @ `f558222d` |
+| Frontend deploy | **COMPLETE** — `deploy/vps-build-erp-only.sh` @ `711d2307` |
 | Password env | supplied yes — value **not** recorded |
 | R8 | **BLOCKED** |
 | Mobile release | separate track — Salesman **BLOCKED_SALESMAN_DEVICE_QA_PENDING** |
