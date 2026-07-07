@@ -50,7 +50,9 @@
 [`reports/din-bridal-monitoring-drift-mobile-role-readiness-20260701/`](../reports/din-bridal-monitoring-drift-mobile-role-readiness-20260701/)  
 [`reports/din-bridal-july1-gl-activity-audit-20260701/`](../reports/din-bridal-july1-gl-activity-audit-20260701/)  
 [`reports/din-bridal-monitoring-golden-refresh-20260701/`](../reports/din-bridal-monitoring-golden-refresh-20260701/)  
-[`reports/single-core-engine-stability-window-20260701/`](../reports/single-core-engine-stability-window-20260701/)
+[`reports/single-core-engine-stability-window-20260701/`](../reports/single-core-engine-stability-window-20260701/)  
+[`OFFICIAL_CALENDAR_STABILITY_DAYS_7_12_SUMMARY_2026-07-07.md`](OFFICIAL_CALENDAR_STABILITY_DAYS_7_12_SUMMARY_2026-07-07.md)  
+[`reports/single-core-engine-calendar-stability-official-20260707/`](../reports/single-core-engine-calendar-stability-official-20260707/) … [`20260712/`](../reports/single-core-engine-calendar-stability-official-20260712/)
 
 ## BS/P&L controlled loader swap — COMPLETE (2026-07-01)
 

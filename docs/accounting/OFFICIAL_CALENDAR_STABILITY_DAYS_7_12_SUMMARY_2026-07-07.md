@@ -24,7 +24,7 @@
 | **9** | `3e05c473` | 13:18 → 13:30 | `…08-18-09-034Z` | 9/9 strict PASS | none | 334 · 173 | Retry 1 after CHINA UI flake |
 | **10** | `e6673ff3` | 15:29 → 15:40 | `…10-29-51-582Z` | **1 PKR materiality waiver** | CHINA + BRIDAL | 334 · 175 | Harness hardening; live GL drift |
 | **11** | `711d2307` | 19:04 → 19:17 | `…14-04-35-150Z` | 1 PKR waiver | CHINA only | 334 · 176 | Post-clearance TB; VPS deploy `e922416c` |
-| **12** | *(this commit)* | 19:46 → 19:58 | `…14-46-27-601Z` | **9/9 strict PASS** | CHINA + BRIDAL | 334 · 176 | Negative roznamcha closing; admin compare clean |
+| **12** | `96ce5c85` | 19:46 → 19:58 | `…14-46-27-601Z` | **9/9 strict PASS** | CHINA + BRIDAL | 334 · 176 | Negative roznamcha closing; admin compare clean |
 
 Evidence folders: `reports/single-core-engine-calendar-stability-official-20260707/` through `…20260712/`.
 
