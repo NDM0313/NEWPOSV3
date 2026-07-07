@@ -57,13 +57,13 @@ export function reportBasisDescription(basis: ReportBasis): string {
 export function reportBasisBannerClass(basis: ReportBasis): string {
   switch (basis) {
     case 'official_gl':
-      return 'border-emerald-500/30 bg-emerald-500/[0.07] text-emerald-100/95';
+      return 'border-emerald-500/30 bg-emerald-500/[0.07] text-emerald-800 dark:text-emerald-100';
     case 'effective_party':
-      return 'border-cyan-500/30 bg-cyan-500/[0.07] text-cyan-100/95';
+      return 'border-cyan-500/30 bg-cyan-500/[0.07] text-cyan-800 dark:text-cyan-100';
     case 'audit_full':
-      return 'border-amber-500/30 bg-amber-500/[0.07] text-amber-100/95';
+      return 'border-amber-500/30 bg-amber-500/[0.07] text-amber-800 dark:text-amber-100';
     default:
-      return 'border-gray-600 bg-gray-900/50 text-gray-200';
+      return 'border-border bg-muted/40 text-foreground';
   }
 }
 

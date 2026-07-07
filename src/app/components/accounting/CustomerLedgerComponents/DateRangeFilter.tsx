@@ -20,7 +20,7 @@ export const DateRangeFilter: React.FC<DateRangeFilterProps> = ({
   return (
     <div className="flex items-center gap-2">
       <div className="flex items-center gap-2">
-        <Calendar size={16} className="text-gray-400" />
+        <Calendar size={16} className="text-muted-foreground" />
         <DatePicker
           value={dateFrom}
           onChange={onDateFromChange}
@@ -28,7 +28,7 @@ export const DateRangeFilter: React.FC<DateRangeFilterProps> = ({
           className="w-40"
         />
       </div>
-      <span className="text-gray-400">to</span>
+      <span className="text-muted-foreground">to</span>
       <DatePicker
         value={dateTo}
         onChange={onDateToChange}

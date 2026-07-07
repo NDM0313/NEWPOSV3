@@ -33,8 +33,8 @@ export const MoneyFlowCharts: React.FC<Props> = ({ charts, formatCurrency, showM
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-      <div className="rounded-xl border border-[#374151] bg-[#1F2937] p-4">
-        <h3 className="text-white font-semibold mb-3 text-sm">Sales & Spend Trend</h3>
+      <div className="rounded-xl border border-border bg-card p-4">
+        <h3 className="text-foreground font-semibold mb-3 text-sm">Sales & Spend Trend</h3>
         {trendData.length ? (
           <ResponsiveContainer width="100%" height={220}>
             <LineChart data={trendData}>
@@ -55,8 +55,8 @@ export const MoneyFlowCharts: React.FC<Props> = ({ charts, formatCurrency, showM
           <p className="text-[#6B7280] text-sm py-8 text-center">No trend data for selected period.</p>
         )}
       </div>
-      <div className="rounded-xl border border-[#374151] bg-[#1F2937] p-4">
-        <h3 className="text-white font-semibold mb-3 text-sm">Payment Methods</h3>
+      <div className="rounded-xl border border-border bg-card p-4">
+        <h3 className="text-foreground font-semibold mb-3 text-sm">Payment Methods</h3>
         {paymentData.length ? (
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={paymentData}>

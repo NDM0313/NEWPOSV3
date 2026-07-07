@@ -131,13 +131,13 @@ export const StudioJobCard = () => {
       {/* HEADER */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" className="text-gray-400 hover:text-white">
+          <Button variant="ghost" className="text-muted-foreground hover:text-foreground">
             <ArrowLeft size={20} className="mr-2" />
             Back to Jobs
           </Button>
           <div>
-            <h1 className="text-2xl font-bold text-white">{jobDetails.jobId}</h1>
-            <p className="text-sm text-gray-400">
+            <h1 className="text-2xl font-bold text-foreground">{jobDetails.jobId}</h1>
+            <p className="text-sm text-muted-foreground">
               Linked Invoice: <span className="font-mono text-blue-400">{jobDetails.linkedInvoice}</span>
             </p>
           </div>
@@ -167,19 +167,19 @@ export const StudioJobCard = () => {
         <div className="col-span-2 space-y-6">
           
           {/* WORKFLOW STEPS */}
-          <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-            <div className="p-4 border-b border-gray-800 flex items-center justify-between">
-              <h2 className="font-semibold text-white flex items-center gap-2">
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="p-4 border-b border-border flex items-center justify-between">
+              <h2 className="font-semibold text-foreground flex items-center gap-2">
                 <Zap size={18} className="text-blue-400" />
                 Production Workflow
               </h2>
-              <Button size="sm" variant="outline" className="border-gray-700 text-gray-400 h-8">
+              <Button size="sm" variant="outline" className="border-border text-muted-foreground h-8">
                 <Plus size={14} className="mr-1" />
                 Add Step
               </Button>
             </div>
 
-            <div className="divide-y divide-gray-800">
+            <div className="divide-y divide-border">
               {workflowSteps.map((step, index) => (
                 <div 
                   key={step.id} 
@@ -191,7 +191,7 @@ export const StudioJobCard = () => {
                 >
                   <div className="flex items-start gap-4">
                     {/* Drag Handle */}
-                    <div className="mt-1 cursor-move text-gray-600 hover:text-gray-400">
+                    <div className="mt-1 cursor-move text-muted-foreground hover:text-muted-foreground">
                       <GripVertical size={16} />
                     </div>
 
@@ -200,17 +200,17 @@ export const StudioJobCard = () => {
                       <div className={cn(
                         "h-8 w-8 rounded-full border-2 flex items-center justify-center text-xs font-bold",
                         step.completed 
-                          ? "bg-green-500 border-green-500 text-white" 
+                          ? "bg-green-500 border-green-500 text-foreground" 
                           : step.enabled 
                             ? "border-blue-500 text-blue-400" 
-                            : "border-gray-700 text-gray-600"
+                            : "border-border text-muted-foreground"
                       )}>
                         {step.completed ? <CheckCircle2 size={16} /> : index + 1}
                       </div>
                       {index < workflowSteps.length - 1 && (
                         <div className={cn(
                           "h-8 w-0.5",
-                          step.completed ? "bg-green-500" : "bg-gray-800"
+                          step.completed ? "bg-green-500" : "bg-muted"
                         )} />
                       )}
                     </div>
@@ -221,12 +221,12 @@ export const StudioJobCard = () => {
                         <div className="flex items-center gap-3">
                           <h3 className={cn(
                             "font-medium",
-                            step.completed ? "text-green-400 line-through" : "text-white"
+                            step.completed ? "text-[var(--erp-money-positive)] line-through" : "text-foreground"
                           )}>
                             {step.name}
                           </h3>
                           {!step.enabled && (
-                            <Badge variant="outline" className="bg-gray-900/50 text-gray-500 border-gray-800 text-xs">
+                            <Badge variant="outline" className="bg-muted/40 text-muted-foreground border-border text-xs">
                               Disabled
                             </Badge>
                           )}
@@ -237,7 +237,7 @@ export const StudioJobCard = () => {
                             variant="ghost"
                             className={cn(
                               "h-7 text-xs",
-                              step.enabled ? "text-gray-400" : "text-blue-400"
+                              step.enabled ? "text-muted-foreground" : "text-blue-400"
                             )}
                             onClick={() => toggleStep(step.id)}
                           >
@@ -257,15 +257,15 @@ export const StudioJobCard = () => {
                         <div className="grid grid-cols-2 gap-3 mt-3">
                           {/* Assigned Worker */}
                           <div className="space-y-1">
-                            <Label className="text-xs text-gray-500">Assigned Worker</Label>
+                            <Label className="text-xs text-muted-foreground">Assigned Worker</Label>
                             <Select 
                               value={step.assignedWorker || ""} 
                               onValueChange={(val) => assignWorker(step.id, val)}
                             >
-                              <SelectTrigger className="bg-gray-950 border-gray-800 text-white h-9">
+                              <SelectTrigger className="bg-input-background border-border text-foreground h-9">
                                 <SelectValue placeholder="Select worker..." />
                               </SelectTrigger>
-                              <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                              <SelectContent className="bg-popover border-border text-popover-foreground">
                                 {mockWorkers.map(worker => (
                                   <SelectItem key={worker.id} value={worker.id}>
                                     {worker.name}
@@ -277,19 +277,19 @@ export const StudioJobCard = () => {
 
                           {/* Cost */}
                           <div className="space-y-1">
-                            <Label className="text-xs text-gray-500">Cost (Internal)</Label>
+                            <Label className="text-xs text-muted-foreground">Cost (Internal)</Label>
                             <Input
                               type="number"
                               placeholder="0"
                               value={step.cost || ''}
                               onChange={(e) => addCost(step.id, parseFloat(e.target.value) || 0)}
-                              className="bg-gray-950 border-gray-800 text-white h-9"
+                              className="bg-input-background border-border text-foreground h-9"
                             />
                           </div>
 
                           {/* Notes */}
                           <div className="col-span-2 space-y-1">
-                            <Label className="text-xs text-gray-500">Notes (Optional)</Label>
+                            <Label className="text-xs text-muted-foreground">Notes (Optional)</Label>
                             <Textarea
                               placeholder="Add notes..."
                               value={step.notes || ''}
@@ -298,7 +298,7 @@ export const StudioJobCard = () => {
                                   s.id === step.id ? { ...s, notes: e.target.value } : s
                                 ));
                               }}
-                              className="bg-gray-950 border-gray-800 text-white resize-none h-16"
+                              className="bg-input-background border-border text-foreground resize-none h-16"
                             />
                           </div>
                         </div>
@@ -319,7 +319,7 @@ export const StudioJobCard = () => {
                         <Button
                           size="sm"
                           variant="outline"
-                          className="mt-3 border-gray-700 text-gray-400 h-8"
+                          className="mt-3 border-border text-muted-foreground h-8"
                           onClick={() => completeStep(step.id)}
                         >
                           <X size={14} className="mr-1" />
@@ -334,16 +334,16 @@ export const StudioJobCard = () => {
           </div>
 
           {/* COSTING SECTION */}
-          <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-            <div className="p-4 border-b border-gray-800 flex items-center justify-between">
-              <h2 className="font-semibold text-white flex items-center gap-2">
-                <DollarSign size={18} className="text-green-400" />
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="p-4 border-b border-border flex items-center justify-between">
+              <h2 className="font-semibold text-foreground flex items-center gap-2">
+                <DollarSign size={18} className="text-[var(--erp-money-positive)]" />
                 Costing & Billing
               </h2>
               <Button
                 size="sm"
                 variant="ghost"
-                className="text-gray-400 h-8"
+                className="text-muted-foreground h-8"
                 onClick={() => setEditingCost(!editingCost)}
               >
                 {editingCost ? <Save size={14} className="mr-1" /> : <Edit size={14} className="mr-1" />}
@@ -355,43 +355,43 @@ export const StudioJobCard = () => {
               {/* Internal Cost (Auto-calculated) */}
               <div className="p-3 bg-orange-900/10 border border-orange-900/30 rounded-lg">
                 <div className="flex items-center justify-between mb-2">
-                  <Label className="text-xs text-gray-400 uppercase">Internal Cost (Auto)</Label>
+                  <Label className="text-xs text-muted-foreground uppercase">Internal Cost (Auto)</Label>
                   <Badge variant="outline" className="bg-orange-900/20 text-orange-400 border-orange-900/50 text-xs">
                     Admin Only
                   </Badge>
                 </div>
                 <p className="text-2xl font-bold text-orange-400">₹{totalInternalCost.toLocaleString()}</p>
-                <p className="text-xs text-gray-500 mt-1">Sum of all step costs</p>
+                <p className="text-xs text-muted-foreground mt-1">Sum of all step costs</p>
               </div>
 
               {/* Customer Billing (Editable) */}
               <div className="p-3 bg-green-900/10 border border-green-900/30 rounded-lg">
-                <Label className="text-xs text-gray-400 uppercase mb-2 block">Customer Billing</Label>
+                <Label className="text-xs text-muted-foreground uppercase mb-2 block">Customer Billing</Label>
                 <Input
                   type="number"
                   value={customerBilling}
                   onChange={(e) => setCustomerBilling(parseFloat(e.target.value) || 0)}
                   disabled={!editingCost}
-                  className="bg-gray-950 border-gray-800 text-white text-2xl font-bold h-12"
+                  className="bg-input-background border-border text-foreground text-2xl font-bold h-12"
                 />
-                <p className="text-xs text-gray-500 mt-1">Amount charged to customer</p>
+                <p className="text-xs text-muted-foreground mt-1">Amount charged to customer</p>
               </div>
 
               {/* Profit/Margin (Hidden) */}
               <div className="p-3 bg-purple-900/10 border border-purple-900/30 rounded-lg">
                 <div className="flex items-center justify-between mb-2">
-                  <Label className="text-xs text-gray-400 uppercase">Profit/Margin</Label>
+                  <Label className="text-xs text-muted-foreground uppercase">Profit/Margin</Label>
                   <Badge variant="outline" className="bg-purple-900/20 text-purple-400 border-purple-900/50 text-xs">
                     Hidden from Customer
                   </Badge>
                 </div>
                 <p className={cn(
                   "text-2xl font-bold",
-                  profit > 0 ? "text-green-400" : "text-red-400"
+                  profit > 0 ? "text-[var(--erp-money-positive)]" : "text-red-400"
                 )}>
                   ₹{profit.toLocaleString()}
                 </p>
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   {profit > 0 ? "Profit" : "Loss"} • {((profit / customerBilling) * 100).toFixed(1)}% margin
                 </p>
               </div>
@@ -403,48 +403,48 @@ export const StudioJobCard = () => {
         <div className="col-span-1 space-y-6">
           
           {/* PRODUCT INFO */}
-          <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-            <div className="p-4 border-b border-gray-800">
-              <h2 className="font-semibold text-white flex items-center gap-2">
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="p-4 border-b border-border">
+              <h2 className="font-semibold text-foreground flex items-center gap-2">
                 <Package size={18} className="text-purple-400" />
                 Product
               </h2>
             </div>
             <div className="p-4">
-              <div className="aspect-square bg-gray-800 rounded-lg overflow-hidden mb-3 border border-gray-700">
+              <div className="aspect-square bg-muted rounded-lg overflow-hidden mb-3 border border-border">
                 <img src={jobDetails.productImage} alt="" className="w-full h-full object-cover" />
               </div>
-              <h3 className="font-medium text-white mb-1">{jobDetails.productName}</h3>
-              <p className="text-sm text-gray-500 font-mono">{jobDetails.productCode}</p>
+              <h3 className="font-medium text-foreground mb-1">{jobDetails.productName}</h3>
+              <p className="text-sm text-muted-foreground font-mono">{jobDetails.productCode}</p>
             </div>
           </div>
 
           {/* CUSTOMER INFO */}
-          <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-            <div className="p-4 border-b border-gray-800">
-              <h2 className="font-semibold text-white flex items-center gap-2">
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="p-4 border-b border-border">
+              <h2 className="font-semibold text-foreground flex items-center gap-2">
                 <User size={18} className="text-blue-400" />
                 Customer
               </h2>
             </div>
             <div className="p-4 space-y-3">
               <div className="flex items-center gap-3">
-                <div className="h-12 w-12 rounded-full bg-gradient-to-tr from-purple-500 to-blue-500 flex items-center justify-center text-lg font-bold text-white shrink-0">
+                <div className="h-12 w-12 rounded-full bg-gradient-to-tr from-purple-500 to-blue-500 flex items-center justify-center text-lg font-bold text-foreground shrink-0">
                   {jobDetails.customerName.charAt(0)}
                 </div>
                 <div>
-                  <p className="font-medium text-white">{jobDetails.customerName}</p>
-                  <p className="text-xs text-gray-500">Customer</p>
+                  <p className="font-medium text-foreground">{jobDetails.customerName}</p>
+                  <p className="text-xs text-muted-foreground">Customer</p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 text-gray-400 text-sm">
+              <div className="flex items-center gap-2 text-muted-foreground text-sm">
                 <Phone size={14} />
                 <span className="font-mono">{jobDetails.customerMobile}</span>
               </div>
 
               {jobDetails.customerAddress && (
-                <div className="flex items-start gap-2 text-gray-400 text-sm">
+                <div className="flex items-start gap-2 text-muted-foreground text-sm">
                   <MapPin size={14} className="mt-0.5 shrink-0" />
                   <span>{jobDetails.customerAddress}</span>
                 </div>
@@ -453,32 +453,32 @@ export const StudioJobCard = () => {
           </div>
 
           {/* TIMELINE */}
-          <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-            <div className="p-4 border-b border-gray-800">
-              <h2 className="font-semibold text-white flex items-center gap-2">
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="p-4 border-b border-border">
+              <h2 className="font-semibold text-foreground flex items-center gap-2">
                 <Calendar size={18} className="text-orange-400" />
                 Timeline
               </h2>
             </div>
             <div className="p-4 space-y-3">
               <div>
-                <Label className="text-xs text-gray-500 uppercase">Created Date</Label>
-                <p className="text-white font-mono text-sm mt-1">{jobDetails.createdDate}</p>
+                <Label className="text-xs text-muted-foreground uppercase">Created Date</Label>
+                <p className="text-foreground font-mono text-sm mt-1">{jobDetails.createdDate}</p>
               </div>
               <div>
-                <Label className="text-xs text-gray-500 uppercase">Expected Delivery</Label>
+                <Label className="text-xs text-muted-foreground uppercase">Expected Delivery</Label>
                 <div className="flex items-center gap-2 mt-1">
-                  <p className="text-white font-mono text-sm">{jobDetails.expectedDelivery}</p>
+                  <p className="text-foreground font-mono text-sm">{jobDetails.expectedDelivery}</p>
                   {jobDetails.priority === 'Urgent' && (
                     <AlertTriangle size={14} className="text-yellow-400" />
                   )}
                 </div>
               </div>
               <div>
-                <Label className="text-xs text-gray-500 uppercase">Time Remaining</Label>
+                <Label className="text-xs text-muted-foreground uppercase">Time Remaining</Label>
                 <div className="flex items-center gap-2 mt-1">
-                  <Clock size={14} className="text-gray-500" />
-                  <p className="text-white text-sm">7 days</p>
+                  <Clock size={14} className="text-muted-foreground" />
+                  <p className="text-foreground text-sm">7 days</p>
                 </div>
               </div>
             </div>

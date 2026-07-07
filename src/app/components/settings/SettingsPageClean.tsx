@@ -153,10 +153,10 @@ export const SettingsPageClean = () => {
   return (
     <div className="flex h-full">
       {/* LEFT SIDEBAR - Vertical Tabs */}
-      <div className="w-64 bg-gray-900 border-r border-gray-800 p-4 space-y-1">
+      <div className="w-64 bg-card border-r border-border p-4 space-y-1">
         <div className="mb-6">
-          <h2 className="text-xl font-bold text-white px-3">Settings</h2>
-          <p className="text-xs text-gray-500 px-3 mt-1">System Configuration</p>
+          <h2 className="text-xl font-bold text-foreground px-3">Settings</h2>
+          <p className="text-xs text-muted-foreground px-3 mt-1">System Configuration</p>
         </div>
 
         {tabs.map((tab) => (
@@ -167,7 +167,7 @@ export const SettingsPageClean = () => {
               "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-left",
               activeTab === tab.id
                 ? "bg-blue-600 text-white"
-                : "text-gray-400 hover:bg-gray-800 hover:text-white"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
             )}
           >
             <tab.icon size={18} />
@@ -185,30 +185,30 @@ export const SettingsPageClean = () => {
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-2xl font-bold text-white">Company Information</h3>
-                  <p className="text-sm text-gray-400 mt-1">Basic business details</p>
+                  <h3 className="text-2xl font-bold text-foreground">Company Information</h3>
+                  <p className="text-sm text-muted-foreground mt-1">Basic business details</p>
                 </div>
                 <Button onClick={handleSave} className="bg-blue-600 hover:bg-blue-500" disabled={!hasUnsavedChanges}>
                   <Save size={16} className="mr-2" /> Save
                 </Button>
               </div>
 
-              <div className="bg-gray-900 border border-gray-800 rounded-lg p-6 space-y-4">
+              <div className="bg-card border border-border rounded-lg p-6 space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label className="text-gray-300 mb-2 block text-sm">Business Name</Label>
+                    <Label className="text-muted-foreground mb-2 block text-sm">Business Name</Label>
                     <Input
                       value={companyForm.businessName}
                       onChange={(e) => {
                         setCompanyForm({ ...companyForm, businessName: e.target.value });
                         setHasUnsavedChanges(true);
                       }}
-                      className="bg-gray-950 border-gray-700 text-white"
+                      className="bg-input-background border-border text-foreground"
                     />
                   </div>
 
                   <div>
-                    <Label className="text-gray-300 mb-2 block text-sm">Currency</Label>
+                    <Label className="text-muted-foreground mb-2 block text-sm">Currency</Label>
                     <Select 
                       value={companyForm.currency} 
                       onValueChange={(val) => {
@@ -216,10 +216,10 @@ export const SettingsPageClean = () => {
                         setHasUnsavedChanges(true);
                       }}
                     >
-                      <SelectTrigger className="bg-gray-950 border-gray-700 text-white">
+                      <SelectTrigger className="bg-input-background border-border text-foreground">
                         <SelectValue />
                       </SelectTrigger>
-                      <SelectContent className="bg-gray-900 border-gray-700 text-white">
+                      <SelectContent className="bg-popover border-border text-popover-foreground">
                         <SelectItem value="PKR">PKR</SelectItem>
                         <SelectItem value="USD">USD</SelectItem>
                         <SelectItem value="EUR">EUR</SelectItem>
@@ -228,7 +228,7 @@ export const SettingsPageClean = () => {
                   </div>
 
                   <div>
-                    <Label className="text-gray-300 mb-2 block text-sm">Email</Label>
+                    <Label className="text-muted-foreground mb-2 block text-sm">Email</Label>
                     <Input
                       type="email"
                       value={companyForm.businessEmail}
@@ -236,43 +236,43 @@ export const SettingsPageClean = () => {
                         setCompanyForm({ ...companyForm, businessEmail: e.target.value });
                         setHasUnsavedChanges(true);
                       }}
-                      className="bg-gray-950 border-gray-700 text-white"
+                      className="bg-input-background border-border text-foreground"
                     />
                   </div>
 
                   <div>
-                    <Label className="text-gray-300 mb-2 block text-sm">Phone</Label>
+                    <Label className="text-muted-foreground mb-2 block text-sm">Phone</Label>
                     <Input
                       value={companyForm.businessPhone}
                       onChange={(e) => {
                         setCompanyForm({ ...companyForm, businessPhone: e.target.value });
                         setHasUnsavedChanges(true);
                       }}
-                      className="bg-gray-950 border-gray-700 text-white"
+                      className="bg-input-background border-border text-foreground"
                     />
                   </div>
 
                   <div className="col-span-2">
-                    <Label className="text-gray-300 mb-2 block text-sm">Address</Label>
+                    <Label className="text-muted-foreground mb-2 block text-sm">Address</Label>
                     <Input
                       value={companyForm.businessAddress}
                       onChange={(e) => {
                         setCompanyForm({ ...companyForm, businessAddress: e.target.value });
                         setHasUnsavedChanges(true);
                       }}
-                      className="bg-gray-950 border-gray-700 text-white"
+                      className="bg-input-background border-border text-foreground"
                     />
                   </div>
 
                   <div>
-                    <Label className="text-gray-300 mb-2 block text-sm">Tax ID / NTN</Label>
+                    <Label className="text-muted-foreground mb-2 block text-sm">Tax ID / NTN</Label>
                     <Input
                       value={companyForm.taxId}
                       onChange={(e) => {
                         setCompanyForm({ ...companyForm, taxId: e.target.value });
                         setHasUnsavedChanges(true);
                       }}
-                      className="bg-gray-950 border-gray-700 text-white"
+                      className="bg-input-background border-border text-foreground"
                     />
                   </div>
                 </div>
@@ -285,8 +285,8 @@ export const SettingsPageClean = () => {
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-2xl font-bold text-white">Branch Management</h3>
-                  <p className="text-sm text-gray-400 mt-1">Manage locations</p>
+                  <h3 className="text-2xl font-bold text-foreground">Branch Management</h3>
+                  <p className="text-sm text-muted-foreground mt-1">Manage locations</p>
                 </div>
                 <Button className="bg-green-600 hover:bg-green-500">
                   <MapPin size={16} className="mr-2" /> Add Branch
@@ -295,20 +295,20 @@ export const SettingsPageClean = () => {
 
               <div className="space-y-3">
                 {settings.branches.map((branch) => (
-                  <div key={branch.id} className="bg-gray-900 border border-gray-800 rounded-lg p-5">
+                  <div key={branch.id} className="bg-card border border-border rounded-lg p-5">
                     <div className="flex items-start justify-between">
                       <div>
                         <div className="flex items-center gap-2 mb-2">
-                          <h4 className="text-white font-bold">{branch.branchName}</h4>
+                          <h4 className="text-foreground font-bold">{branch.branchName}</h4>
                           <Badge className="bg-blue-500/20 text-blue-400 text-xs">{branch.branchCode}</Badge>
                           {branch.isDefault && (
-                            <Badge className="bg-green-500/20 text-green-400 text-xs">Default</Badge>
+                            <Badge className="bg-green-500/20 text-[var(--erp-money-positive)] text-xs">Default</Badge>
                           )}
                         </div>
-                        <p className="text-sm text-gray-400">{branch.address}</p>
-                        <p className="text-xs text-gray-500 mt-1">{branch.phone}</p>
+                        <p className="text-sm text-muted-foreground">{branch.address}</p>
+                        <p className="text-xs text-muted-foreground mt-1">{branch.phone}</p>
                       </div>
-                      <Button variant="ghost" size="sm" className="text-gray-400">Edit</Button>
+                      <Button variant="ghost" size="sm" className="text-muted-foreground">Edit</Button>
                     </div>
                   </div>
                 ))}
@@ -321,8 +321,8 @@ export const SettingsPageClean = () => {
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-2xl font-bold text-white">User Management</h3>
-                  <p className="text-sm text-gray-400 mt-1">Manage system users and their access</p>
+                  <h3 className="text-2xl font-bold text-foreground">User Management</h3>
+                  <p className="text-sm text-muted-foreground mt-1">Manage system users and their access</p>
                 </div>
                 <Button 
                   className="bg-blue-600 hover:bg-blue-500"
@@ -336,13 +336,13 @@ export const SettingsPageClean = () => {
               </div>
 
               {/* Users Table */}
-              <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
+              <div className="bg-card border border-border rounded-lg overflow-hidden">
                 {loadingUsers ? (
-                  <div className="p-8 text-center text-gray-400">Loading users...</div>
+                  <div className="p-8 text-center text-muted-foreground">Loading users...</div>
                 ) : users.length === 0 ? (
-                  <div className="p-8 text-center text-gray-400">
-                    <Users size={48} className="mx-auto mb-4 text-gray-600" />
-                    <p className="text-gray-400 mb-2">No users found</p>
+                  <div className="p-8 text-center text-muted-foreground">
+                    <Users size={48} className="mx-auto mb-4 text-muted-foreground" />
+                    <p className="text-muted-foreground mb-2">No users found</p>
                     <Button 
                       variant="outline" 
                       size="sm"
@@ -357,18 +357,18 @@ export const SettingsPageClean = () => {
                   </div>
                 ) : (
                   <table className="w-full">
-                    <thead className="bg-gray-950 border-b border-gray-800">
+                    <thead className="bg-input-background border-b border-border">
                       <tr>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">User</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Email</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Role</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase">Status</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase">Actions</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">User</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Email</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Role</th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-muted-foreground uppercase">Status</th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-muted-foreground uppercase">Actions</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-800">
+                    <tbody className="divide-y divide-border">
                       {users.map((user) => (
-                        <tr key={user.id} className="hover:bg-gray-800/50 transition-colors">
+                        <tr key={user.id} className="hover:bg-muted/50 transition-colors">
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-3">
                               <div className="w-10 h-10 bg-blue-500/20 rounded-full flex items-center justify-center">
@@ -377,24 +377,24 @@ export const SettingsPageClean = () => {
                                 </span>
                               </div>
                               <div>
-                                <span className="text-white text-sm font-medium">{user.full_name || 'No Name'}</span>
+                                <span className="text-foreground text-sm font-medium">{user.full_name || 'No Name'}</span>
                                 {user.phone && (
-                                  <p className="text-xs text-gray-500">{user.phone}</p>
+                                  <p className="text-xs text-muted-foreground">{user.phone}</p>
                                 )}
                               </div>
                             </div>
                           </td>
                           <td className="px-4 py-3">
-                            <span className="text-gray-300 text-sm">{user.email}</span>
+                            <span className="text-muted-foreground text-sm">{user.email}</span>
                           </td>
                           <td className="px-4 py-3">
                             <Badge className={cn(
                               "text-xs font-medium",
                               user.role === 'admin' && "bg-red-500/20 text-red-400 border-red-500/30",
                               user.role === 'manager' && "bg-purple-500/20 text-purple-400 border-purple-500/30",
-                              user.role === 'salesman' && "bg-green-500/20 text-green-400 border-green-500/30",
+                              user.role === 'salesman' && "bg-green-500/20 text-[var(--erp-money-positive)] border-green-500/30",
                               user.role === 'staff' && "bg-blue-500/20 text-blue-400 border-blue-500/30",
-                              "bg-gray-500/20 text-gray-400 border-gray-500/30"
+                              "bg-gray-500/20 text-muted-foreground border-gray-500/30"
                             )}>
                               {user.role ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : 'Staff'}
                             </Badge>
@@ -403,8 +403,8 @@ export const SettingsPageClean = () => {
                             <Badge className={cn(
                               "text-xs font-medium",
                               user.is_active 
-                                ? "bg-green-500/20 text-green-400 border-green-500/30" 
-                                : "bg-gray-500/20 text-gray-400 border-gray-500/30"
+                                ? "bg-green-500/20 text-[var(--erp-money-positive)] border-green-500/30" 
+                                : "bg-gray-500/20 text-muted-foreground border-gray-500/30"
                             )}>
                               {user.is_active ? 'Active' : 'Inactive'}
                             </Badge>
@@ -455,48 +455,48 @@ export const SettingsPageClean = () => {
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-2xl font-bold text-white">Default Accounts</h3>
-                  <p className="text-sm text-gray-400 mt-1">Payment method defaults</p>
+                  <h3 className="text-2xl font-bold text-foreground">Default Accounts</h3>
+                  <p className="text-sm text-muted-foreground mt-1">Payment method defaults</p>
                 </div>
                 <Button onClick={handleSave} className="bg-blue-600 hover:bg-blue-500" disabled={!hasUnsavedChanges}>
                   <Save size={16} className="mr-2" /> Save
                 </Button>
               </div>
 
-              <div className="bg-gray-900 border border-gray-800 rounded-lg p-6 space-y-4">
+              <div className="bg-card border border-border rounded-lg p-6 space-y-4">
                 <div>
-                  <Label className="text-gray-300 mb-2 block text-sm">Default Cash Account</Label>
+                  <Label className="text-muted-foreground mb-2 block text-sm">Default Cash Account</Label>
                   <Input
                     value={accountsForm.defaultCashAccount}
                     onChange={(e) => {
                       setAccountsForm({ ...accountsForm, defaultCashAccount: e.target.value });
                       setHasUnsavedChanges(true);
                     }}
-                    className="bg-gray-950 border-gray-700 text-white"
+                    className="bg-input-background border-border text-foreground"
                   />
                 </div>
 
                 <div>
-                  <Label className="text-gray-300 mb-2 block text-sm">Default Bank Account</Label>
+                  <Label className="text-muted-foreground mb-2 block text-sm">Default Bank Account</Label>
                   <Input
                     value={accountsForm.defaultBankAccount}
                     onChange={(e) => {
                       setAccountsForm({ ...accountsForm, defaultBankAccount: e.target.value });
                       setHasUnsavedChanges(true);
                     }}
-                    className="bg-gray-950 border-gray-700 text-white"
+                    className="bg-input-background border-border text-foreground"
                   />
                 </div>
 
                 <div>
-                  <Label className="text-gray-300 mb-2 block text-sm">Default Mobile Wallet</Label>
+                  <Label className="text-muted-foreground mb-2 block text-sm">Default Mobile Wallet</Label>
                   <Input
                     value={accountsForm.defaultMobileWalletAccount}
                     onChange={(e) => {
                       setAccountsForm({ ...accountsForm, defaultMobileWalletAccount: e.target.value });
                       setHasUnsavedChanges(true);
                     }}
-                    className="bg-gray-950 border-gray-700 text-white"
+                    className="bg-input-background border-border text-foreground"
                   />
                 </div>
               </div>
@@ -508,15 +508,15 @@ export const SettingsPageClean = () => {
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-2xl font-bold text-white">Numbering Rules</h3>
-                  <p className="text-sm text-gray-400 mt-1">Auto-increment settings</p>
+                  <h3 className="text-2xl font-bold text-foreground">Numbering Rules</h3>
+                  <p className="text-sm text-muted-foreground mt-1">Auto-increment settings</p>
                 </div>
                 <Button onClick={handleSave} className="bg-blue-600 hover:bg-blue-500" disabled={!hasUnsavedChanges}>
                   <Save size={16} className="mr-2" /> Save
                 </Button>
               </div>
 
-              <div className="bg-gray-900 border border-gray-800 rounded-lg p-6 space-y-4">
+              <div className="bg-card border border-border rounded-lg p-6 space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   {[
                     { key: 'salePrefix', nextKey: 'saleNextNumber', label: 'Sales' },
@@ -526,8 +526,8 @@ export const SettingsPageClean = () => {
                     { key: 'expensePrefix', nextKey: 'expenseNextNumber', label: 'Expenses' },
                     { key: 'productPrefix', nextKey: 'productNextNumber', label: 'Products' },
                   ].map((rule) => (
-                    <div key={rule.key} className="bg-gray-950 p-4 rounded-lg">
-                      <p className="text-xs text-gray-500 mb-2">{rule.label}</p>
+                    <div key={rule.key} className="bg-input-background p-4 rounded-lg">
+                      <p className="text-xs text-muted-foreground mb-2">{rule.label}</p>
                       <div className="flex gap-2">
                         <Input
                           value={numberingForm[rule.key as keyof typeof numberingForm]}
@@ -535,7 +535,7 @@ export const SettingsPageClean = () => {
                             setNumberingForm({ ...numberingForm, [rule.key]: e.target.value });
                             setHasUnsavedChanges(true);
                           }}
-                          className="bg-gray-900 border-gray-700 text-white flex-1"
+                          className="bg-card border-border text-foreground flex-1"
                           placeholder="Prefix"
                         />
                         <Input
@@ -545,7 +545,7 @@ export const SettingsPageClean = () => {
                             setNumberingForm({ ...numberingForm, [rule.nextKey]: Number(e.target.value) });
                             setHasUnsavedChanges(true);
                           }}
-                          className="bg-gray-900 border-gray-700 text-white w-24"
+                          className="bg-card border-border text-foreground w-24"
                           placeholder="Next"
                         />
                       </div>
@@ -561,8 +561,8 @@ export const SettingsPageClean = () => {
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-2xl font-bold text-white">Module Toggles</h3>
-                  <p className="text-sm text-gray-400 mt-1">Enable/disable features</p>
+                  <h3 className="text-2xl font-bold text-foreground">Module Toggles</h3>
+                  <p className="text-sm text-muted-foreground mt-1">Enable/disable features</p>
                 </div>
                 <Button onClick={handleSave} className="bg-blue-600 hover:bg-blue-500" disabled={!hasUnsavedChanges}>
                   <Save size={16} className="mr-2" /> Save
@@ -577,10 +577,10 @@ export const SettingsPageClean = () => {
                   { key: 'posModuleEnabled', label: 'POS System', desc: 'Point of sale' },
                   { key: 'productionModuleEnabled', label: 'Production', desc: 'Advanced manufacturing' },
                 ].map((module) => (
-                  <div key={module.key} className="flex items-center justify-between bg-gray-900 border border-gray-800 rounded-lg p-4">
+                  <div key={module.key} className="flex items-center justify-between bg-card border border-border rounded-lg p-4">
                     <div>
-                      <p className="text-white font-medium">{module.label}</p>
-                      <p className="text-sm text-gray-400">{module.desc}</p>
+                      <p className="text-foreground font-medium">{module.label}</p>
+                      <p className="text-sm text-muted-foreground">{module.desc}</p>
                     </div>
                     <Switch
                       checked={modulesForm[module.key as keyof typeof modulesForm]}
@@ -600,16 +600,16 @@ export const SettingsPageClean = () => {
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-2xl font-bold text-white capitalize">{activeTab} Settings</h3>
-                  <p className="text-sm text-gray-400 mt-1">Configure {activeTab} behavior</p>
+                  <h3 className="text-2xl font-bold text-foreground capitalize">{activeTab} Settings</h3>
+                  <p className="text-sm text-muted-foreground mt-1">Configure {activeTab} behavior</p>
                 </div>
                 <Button onClick={handleSave} className="bg-blue-600 hover:bg-blue-500" disabled={!hasUnsavedChanges}>
                   <Save size={16} className="mr-2" /> Save
                 </Button>
               </div>
 
-              <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
-                <p className="text-gray-400 text-sm">
+              <div className="bg-card border border-border rounded-lg p-6">
+                <p className="text-muted-foreground text-sm">
                   {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} module settings will be configured here.
                 </p>
               </div>

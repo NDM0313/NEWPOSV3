@@ -713,9 +713,9 @@ export const PackingEntryModal = ({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-[700px] bg-gray-900 border-gray-800 text-white max-h-[90vh] flex flex-col p-0">
-        <DialogHeader className="px-6 pt-6 pb-4 border-b border-gray-800">
-          <DialogTitle className="flex items-center gap-3 text-white">
+        <DialogContent className="sm:max-w-[700px] bg-card border-border text-foreground max-h-[90vh] flex flex-col p-0">
+        <DialogHeader className="px-6 pt-6 pb-4 border-b border-border">
+          <DialogTitle className="flex items-center gap-3 text-foreground">
             <div className={cn(
               "p-2 rounded-lg",
               returnMode ? "bg-purple-500/20" : "bg-blue-500/20"
@@ -732,7 +732,7 @@ export const PackingEntryModal = ({
             </div>
           </DialogTitle>
           <DialogDescription asChild>
-            <span className="text-gray-400 block">
+            <span className="text-muted-foreground block">
               {returnMode ? (
                 <>
                   Select which pieces to return for <span className="text-purple-400 font-medium">{productName}</span>
@@ -750,7 +750,7 @@ export const PackingEntryModal = ({
         {/* Tab Switcher - Hidden in return mode */}
         {!returnMode && (
         <div className="px-6 pt-4">
-          <div className="inline-flex items-center gap-1 p-1 bg-gray-950 border border-gray-800 rounded-lg">
+          <div className="inline-flex items-center gap-1 p-1 bg-input-background border border-border rounded-lg">
             <button
               type="button"
               onClick={() => setActiveTab('detailed')}
@@ -758,7 +758,7 @@ export const PackingEntryModal = ({
                 "px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2",
                 activeTab === 'detailed'
                   ? "bg-blue-600 text-white shadow-lg shadow-blue-500/20"
-                  : "text-gray-400 hover:text-gray-300 hover:bg-gray-800/50"
+                  : "text-muted-foreground hover:text-muted-foreground hover:bg-muted/50"
               )}
             >
               <Package size={14} />
@@ -771,7 +771,7 @@ export const PackingEntryModal = ({
                 "px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2",
                 activeTab === 'quick'
                   ? "bg-blue-600 text-white shadow-lg shadow-blue-500/20"
-                  : "text-gray-400 hover:text-gray-300 hover:bg-gray-800/50"
+                  : "text-muted-foreground hover:text-muted-foreground hover:bg-muted/50"
               )}
             >
               <Zap size={14} />
@@ -786,7 +786,7 @@ export const PackingEntryModal = ({
           <div className="px-6 pt-4">
             <div className="bg-purple-500/10 border border-purple-500/30 rounded-lg p-3">
               <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-400">Selected:</span>
+                <span className="text-muted-foreground">Selected:</span>
                 <span className="text-purple-400 font-semibold">
                   {calculateReturnPackingDetails().returned_pieces_count} Piece{calculateReturnPackingDetails().returned_pieces_count !== 1 ? 's' : ''} 
                   {calculateReturnPackingDetails().returned_boxes > 0 && ` • ${formatBoxesPieces(calculateReturnPackingDetails().returned_boxes)} Complete Box${Math.round(calculateReturnPackingDetails().returned_boxes) !== 1 ? 'es' : ''}`}
@@ -806,7 +806,7 @@ export const PackingEntryModal = ({
                 {/* Boxes Section */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <h4 className="text-sm font-semibold text-gray-300 flex items-center gap-2">
+                    <h4 className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
                       <Package size={16} className="text-blue-400" />
                       Boxes
                     </h4>
@@ -822,14 +822,14 @@ export const PackingEntryModal = ({
                   </div>
 
                   {boxes.length === 0 ? (
-                    <div className="text-center py-6 text-gray-500 text-sm border border-dashed border-gray-800 rounded-lg">
+                    <div className="text-center py-6 text-muted-foreground text-sm border border-dashed border-border rounded-lg">
                       No boxes added. Click "Add Box" to start.
                     </div>
                   ) : (
                     boxes.map((box) => (
                       <div
                         key={box.box_no}
-                        className="bg-gray-950 border border-gray-800 rounded-lg p-4 space-y-3"
+                        className="bg-input-background border border-border rounded-lg p-4 space-y-3"
                       >
                         {/* Box Header */}
                         <div className="flex items-center justify-between">
@@ -837,7 +837,7 @@ export const PackingEntryModal = ({
                             <div className="w-8 h-8 rounded bg-blue-500/10 flex items-center justify-center">
                               <span className="text-sm font-bold text-blue-400">#{box.box_no}</span>
                             </div>
-                            <span className="text-sm text-gray-400">
+                            <span className="text-sm text-muted-foreground">
                               {box.pieces.length} {box.pieces.length === 1 ? 'Piece' : 'Pieces'} • {box.pieces.reduce((sum, m) => sum + m, 0).toFixed(2)} M
                             </span>
                           </div>
@@ -883,7 +883,7 @@ export const PackingEntryModal = ({
                                   />
                                 )}
                                 <div className="relative flex-1">
-                                  <Ruler className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500" size={14} />
+                                  <Ruler className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" size={14} />
                                   <Input
                                     ref={el => inputRefs.current[`box-${box.box_no}-piece-${pieceIndex}`] = el}
                                     type="number"
@@ -908,16 +908,16 @@ export const PackingEntryModal = ({
                                     }}
                                     disabled={returnMode || isDisabled}
                                     className={cn(
-                                      "pl-7 pr-12 h-8 bg-gray-900 text-white text-sm focus:border-blue-500",
+                                      "pl-7 pr-12 h-8 bg-card text-foreground text-sm focus:border-blue-500",
                                       returnMode && "cursor-pointer",
                                       validationErrors.has(`box-${box.box_no}-piece-${pieceIndex}`)
                                         ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20'
-                                        : 'border-gray-700',
+                                        : 'border-border',
                                       returnMode && isSelected && "border-purple-500/50 bg-purple-500/5"
                                     )}
                                     placeholder="0.00"
                                   />
-                                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">
+                                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
                                     M
                                   </span>
                                 </div>
@@ -948,7 +948,7 @@ export const PackingEntryModal = ({
                           size="sm"
                           variant="ghost"
                           onClick={() => addPieceToBox(box.box_no)}
-                          className="w-full h-7 text-xs border border-dashed border-gray-700 text-gray-400 hover:text-white hover:border-blue-500/50 hover:bg-blue-500/5"
+                          className="w-full h-7 text-xs border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-blue-500/50 hover:bg-blue-500/5"
                         >
                           <Plus size={12} className="mr-1" /> Add Piece
                         </Button>
@@ -958,12 +958,12 @@ export const PackingEntryModal = ({
                   )}
                 </div>
 
-                <Separator className="bg-gray-800" />
+                <Separator className="bg-muted" />
 
                 {/* Loose Pieces Section */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <h4 className="text-sm font-semibold text-gray-300 flex items-center gap-2">
+                    <h4 className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
                       <Layers size={16} className="text-purple-400" />
                       Loose Pieces (No Box)
                     </h4>
@@ -981,7 +981,7 @@ export const PackingEntryModal = ({
                   </div>
 
                   {loosePieces.length === 0 ? (
-                    <div className="text-center py-4 text-gray-600 text-xs italic">
+                    <div className="text-center py-4 text-muted-foreground text-xs italic">
                       Optional: Add pieces sold without a box
                     </div>
                   ) : (
@@ -1007,7 +1007,7 @@ export const PackingEntryModal = ({
                               />
                             )}
                           <div className="relative flex-1">
-                            <Ruler className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500" size={14} />
+                            <Ruler className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" size={14} />
                             <Input
                               ref={el => inputRefs.current[`loose-piece-${index}`] = el}
                               type="number"
@@ -1032,16 +1032,16 @@ export const PackingEntryModal = ({
                                 }}
                                 disabled={returnMode || isDisabled}
                                 className={cn(
-                                  "pl-7 pr-12 h-8 bg-gray-900 text-white text-sm focus:border-purple-500",
+                                  "pl-7 pr-12 h-8 bg-card text-foreground text-sm focus:border-purple-500",
                                   returnMode && "cursor-pointer",
                                   validationErrors.has(`loose-piece-${index}`)
                                     ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20'
-                                    : 'border-gray-700',
+                                    : 'border-border',
                                   returnMode && isSelected && "border-purple-500/50 bg-purple-500/5"
                                 )}
                               placeholder="0.00"
                             />
-                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">
+                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
                               M
                             </span>
                           </div>
@@ -1079,11 +1079,11 @@ export const PackingEntryModal = ({
                   
                   {/* Input 1: Number of Boxes */}
                   <div className="space-y-2">
-                    <Label htmlFor="quick-boxes" className="text-gray-300">
+                    <Label htmlFor="quick-boxes" className="text-muted-foreground">
                       Number of Boxes
                     </Label>
                     <div className="relative">
-                      <Package className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+                      <Package className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
                       <Input
                         id="quick-boxes"
                         type="number"
@@ -1091,7 +1091,7 @@ export const PackingEntryModal = ({
                         min="0"
                         value={quickBoxes || ''}
                         onChange={(e) => setQuickBoxes(parseInt(e.target.value) || 0)}
-                        className="pl-10 h-12 bg-gray-950 border-gray-700 text-white text-lg focus:border-blue-500"
+                        className="pl-10 h-12 bg-input-background border-border text-foreground text-lg focus:border-blue-500"
                         placeholder="e.g., 1"
                       />
                     </div>
@@ -1099,11 +1099,11 @@ export const PackingEntryModal = ({
 
                   {/* Input 2: Number of Pieces */}
                   <div className="space-y-2">
-                    <Label htmlFor="quick-pieces" className="text-gray-300">
+                    <Label htmlFor="quick-pieces" className="text-muted-foreground">
                       Number of Pieces
                     </Label>
                     <div className="relative">
-                      <Layers className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+                      <Layers className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
                       <Input
                         id="quick-pieces"
                         type="number"
@@ -1111,7 +1111,7 @@ export const PackingEntryModal = ({
                         min="0"
                         value={quickPieces || ''}
                         onChange={(e) => setQuickPieces(parseInt(e.target.value) || 0)}
-                        className="pl-10 h-12 bg-gray-950 border-gray-700 text-white text-lg focus:border-blue-500"
+                        className="pl-10 h-12 bg-input-background border-border text-foreground text-lg focus:border-blue-500"
                         placeholder="e.g., 15"
                       />
                     </div>
@@ -1119,7 +1119,7 @@ export const PackingEntryModal = ({
 
                   {/* Input 3: Total Meters - CRITICAL */}
                   <div className="space-y-2">
-                    <Label htmlFor="quick-meters" className="text-gray-300 flex items-center gap-2">
+                    <Label htmlFor="quick-meters" className="text-muted-foreground flex items-center gap-2">
                       Total Meters 
                       <span className="text-xs text-yellow-400 bg-yellow-500/10 px-2 py-0.5 rounded border border-yellow-500/20">
                         ⚡ Critical for Billing
@@ -1134,7 +1134,7 @@ export const PackingEntryModal = ({
                         min="0"
                         value={quickMeters || ''}
                         onChange={(e) => setQuickMeters(parseFloat(e.target.value) || 0)}
-                        className="pl-10 h-14 bg-gray-950 border-green-600/50 text-white text-2xl font-bold focus:border-green-500 focus:ring-2 focus:ring-green-500/20"
+                        className="pl-10 h-14 bg-input-background border-green-600/50 text-foreground text-2xl font-bold focus:border-green-500 focus:ring-2 focus:ring-green-500/20"
                         placeholder="e.g., 786.6"
                       />
                       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-lg text-green-500 font-bold">
@@ -1145,14 +1145,14 @@ export const PackingEntryModal = ({
 
                   {/* Average Calculation Display */}
                   {quickPieces > 0 && quickMeters > 0 && (
-                    <div className="bg-gray-950 border border-gray-800 rounded-lg p-4 mt-4">
+                    <div className="bg-input-background border border-border rounded-lg p-4 mt-4">
                       <div className="flex items-center justify-between">
-                        <span className="text-sm text-gray-400">Average Meter per Piece:</span>
+                        <span className="text-sm text-muted-foreground">Average Meter per Piece:</span>
                         <span className="text-xl font-bold text-purple-400">
                           ~{avgMetersPerPiece.toFixed(2)} M
                         </span>
                       </div>
-                      <p className="text-xs text-gray-600 mt-2">
+                      <p className="text-xs text-muted-foreground mt-2">
                         Calculated as: {quickMeters.toFixed(2)} M ÷ {quickPieces} pieces
                       </p>
                     </div>
@@ -1174,7 +1174,7 @@ export const PackingEntryModal = ({
         </ScrollArea>
 
         {/* Summary & Footer */}
-        <div className="border-t border-gray-800 bg-gray-950 px-6 py-4 space-y-4">
+        <div className="border-t border-border bg-input-background px-6 py-4 space-y-4">
           {/* Summary - Only show non-zero values */}
           <div className={cn(
             "grid gap-4 p-4 bg-blue-500/5 border border-blue-500/20 rounded-lg",
@@ -1185,20 +1185,20 @@ export const PackingEntryModal = ({
           )}>
             {totals.total_boxes > 0 && (
               <div className="text-center">
-                <div className="text-xs text-gray-400 mb-1">Total Boxes</div>
+                <div className="text-xs text-muted-foreground mb-1">Total Boxes</div>
                 <div className="text-2xl font-bold text-blue-400">{formatBoxesPieces(totals.total_boxes)}</div>
               </div>
             )}
             {totals.total_pieces > 0 && (
               <div className="text-center">
-                <div className="text-xs text-gray-400 mb-1">Total Pieces</div>
+                <div className="text-xs text-muted-foreground mb-1">Total Pieces</div>
                 <div className="text-2xl font-bold text-purple-400">{formatBoxesPieces(totals.total_pieces)}</div>
               </div>
             )}
             {totals.total_meters > 0 && (
               <div className="text-center">
-                <div className="text-xs text-gray-400 mb-1">Total Meters</div>
-                <div className="text-2xl font-bold text-green-400">{totals.total_meters.toFixed(2)}</div>
+                <div className="text-xs text-muted-foreground mb-1">Total Meters</div>
+                <div className="text-2xl font-bold text-[var(--erp-money-positive)]">{totals.total_meters.toFixed(2)}</div>
               </div>
             )}
           </div>
@@ -1209,7 +1209,7 @@ export const PackingEntryModal = ({
               <p className="text-xs text-yellow-400 flex items-start gap-2">
                 <span className="mt-0.5">💡</span>
                 <span>
-                    <strong>Tip:</strong> Press <kbd className="px-1 py-0.5 bg-gray-800 rounded text-[10px]">Enter</kbd> after typing a valid meter value (&gt; 0) to move to the next piece. Invalid values (empty or zero) will keep focus on the current field.
+                    <strong>Tip:</strong> Press <kbd className="px-1 py-0.5 bg-muted rounded text-[10px]">Enter</kbd> after typing a valid meter value (&gt; 0) to move to the next piece. Invalid values (empty or zero) will keep focus on the current field.
                 </span>
               </p>
             </div>
@@ -1221,7 +1221,7 @@ export const PackingEntryModal = ({
               type="button"
               variant="outline"
               onClick={() => onOpenChange(false)}
-              className="flex-1 border-gray-700 text-gray-300 hover:bg-gray-800 hover:text-white"
+              className="flex-1 border-border text-muted-foreground hover:bg-muted hover:text-foreground"
             >
               Cancel
             </Button>
@@ -1229,7 +1229,7 @@ export const PackingEntryModal = ({
               type="button"
               onClick={handleSave}
               className={cn(
-                "flex-1 text-white",
+                "flex-1 text-foreground",
                 returnMode 
                   ? "bg-purple-600 hover:bg-purple-500" 
                   : "bg-blue-600 hover:bg-blue-500"

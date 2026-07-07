@@ -27,7 +27,7 @@ export function AccountPickerFieldLabel({
           (
           {drCr && <span>{drCr}</span>}
           {drCr && inOut && <span> · </span>}
-          {inOut === 'IN/OUT' && <span className="text-gray-400 font-medium">IN/OUT</span>}
+          {inOut === 'IN/OUT' && <span className="text-muted-foreground font-medium">IN/OUT</span>}
           {inOut === 'IN' && <span className="text-emerald-400 font-semibold">IN</span>}
           {inOut === 'OUT' && <span className="text-amber-400 font-semibold">OUT</span>}
           )

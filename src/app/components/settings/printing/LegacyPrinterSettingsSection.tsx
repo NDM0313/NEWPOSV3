@@ -87,13 +87,13 @@ export function LegacyPrinterSettingsSection({ printer }: LegacyPrinterSettingsS
 
 
 
-      <div className="flex items-center justify-between bg-gray-900 p-4 rounded-lg border border-gray-800">
+      <div className="flex items-center justify-between bg-card p-4 rounded-lg border border-border">
 
         <div>
 
-          <p className="text-white font-medium">Printer Mode</p>
+          <p className="text-foreground font-medium">Printer Mode</p>
 
-          <p className="text-sm text-gray-400">Thermal receipt or A4 invoice layout</p>
+          <p className="text-sm text-muted-foreground">Thermal receipt or A4 invoice layout</p>
 
         </div>
 
@@ -103,7 +103,7 @@ export function LegacyPrinterSettingsSection({ printer }: LegacyPrinterSettingsS
 
           onChange={(e) => void printer.setMode(e.target.value as 'thermal' | 'a4')}
 
-          className="bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2"
+          className="bg-muted border border-border text-foreground rounded-lg px-3 py-2"
 
         >
 
@@ -119,13 +119,13 @@ export function LegacyPrinterSettingsSection({ printer }: LegacyPrinterSettingsS
 
       {printer.config.mode === 'thermal' && (
 
-        <div className="flex items-center justify-between bg-gray-900 p-4 rounded-lg border border-gray-800">
+        <div className="flex items-center justify-between bg-card p-4 rounded-lg border border-border">
 
           <div>
 
-            <p className="text-white font-medium">Paper Size</p>
+            <p className="text-foreground font-medium">Paper Size</p>
 
-            <p className="text-sm text-gray-400">58mm or 80mm thermal roll</p>
+            <p className="text-sm text-muted-foreground">58mm or 80mm thermal roll</p>
 
           </div>
 
@@ -135,7 +135,7 @@ export function LegacyPrinterSettingsSection({ printer }: LegacyPrinterSettingsS
 
             onChange={(e) => void printer.setPaperSize(e.target.value as '58mm' | '80mm')}
 
-            className="bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2"
+            className="bg-muted border border-border text-foreground rounded-lg px-3 py-2"
 
           >
 
@@ -151,13 +151,13 @@ export function LegacyPrinterSettingsSection({ printer }: LegacyPrinterSettingsS
 
 
 
-      <div className="flex items-center justify-between bg-gray-900 p-4 rounded-lg border border-gray-800">
+      <div className="flex items-center justify-between bg-card p-4 rounded-lg border border-border">
 
         <div>
 
-          <p className="text-white font-medium">Auto Print Receipt</p>
+          <p className="text-foreground font-medium">Auto Print Receipt</p>
 
-          <p className="text-sm text-gray-400">Print receipt after POS sale</p>
+          <p className="text-sm text-muted-foreground">Print receipt after POS sale</p>
 
         </div>
 
@@ -177,7 +177,7 @@ export function LegacyPrinterSettingsSection({ printer }: LegacyPrinterSettingsS
 
         variant="outline"
 
-        className="border-gray-600 text-gray-300 hover:bg-gray-800"
+        className="border-gray-600 text-muted-foreground hover:bg-muted"
 
         onClick={() => setTestOpen(true)}
 
@@ -193,18 +193,18 @@ export function LegacyPrinterSettingsSection({ printer }: LegacyPrinterSettingsS
 
       {testOpen ? (
 
-        <div className="fixed inset-0 z-[200] bg-black/80 flex items-center justify-center p-4 thermal-print-overlay">
+        <div className="fixed inset-0 z-[200] bg-[var(--erp-overlay)] flex items-center justify-center p-4 thermal-print-overlay">
 
           <div
-            className="thermal-print-modal-shell bg-gray-900 border border-gray-700 rounded-xl p-4 w-full max-h-[90vh] overflow-auto"
+            className="thermal-print-modal-shell bg-card border border-border rounded-xl p-4 w-full max-h-[90vh] overflow-auto"
             style={{ maxWidth: getThermalDimensions(paperSize).modalMaxPx }}
           >
 
             <div className="flex items-center justify-between mb-3">
 
-              <p className="text-white font-medium text-sm">Sample thermal receipt</p>
+              <p className="text-foreground font-medium text-sm">Sample thermal receipt</p>
 
-              <button type="button" onClick={() => setTestOpen(false)} className="text-gray-400 hover:text-white">
+              <button type="button" onClick={() => setTestOpen(false)} className="text-muted-foreground hover:text-foreground">
 
                 <X size={18} />
 

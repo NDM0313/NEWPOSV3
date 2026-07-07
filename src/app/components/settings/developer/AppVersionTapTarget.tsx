@@ -19,12 +19,12 @@ export function AppVersionTapTarget() {
     <button
       type="button"
       onClick={onClick}
-      className="text-left w-full text-xs text-gray-500 hover:text-gray-400 transition-colors py-1 px-0 border-0 bg-transparent cursor-pointer"
+      className="text-left w-full text-xs text-muted-foreground hover:text-muted-foreground transition-colors py-1 px-0 border-0 bg-transparent cursor-pointer"
     >
-      App version <span className="font-mono text-gray-400">{APP_VERSION}</span>
+      App version <span className="font-mono text-muted-foreground">{APP_VERSION}</span>
       {' · '}
-      build <span className="font-mono text-gray-500">{APP_BUILD_COMMIT}</span>
-      <span className="block text-[10px] text-gray-600 mt-0.5">
+      build <span className="font-mono text-muted-foreground">{APP_BUILD_COMMIT}</span>
+      <span className="block text-[10px] text-muted-foreground mt-0.5">
         Compare this build hash on office vs home; if stale, use Settings → Clear cache &amp; refresh.
       </span>
       <span className="sr-only">. Tap seven times to unlock developer tools.</span>

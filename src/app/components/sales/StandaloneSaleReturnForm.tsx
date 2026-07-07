@@ -414,9 +414,9 @@ export const StandaloneSaleReturnForm: React.FC<StandaloneSaleReturnFormProps> =
   if (loading) {
     return (
       <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-        <div className="bg-gray-900 border border-gray-700 rounded-xl p-8">
+        <div className="bg-card border border-border rounded-xl p-8">
           <Loader2 className="animate-spin text-blue-500 mx-auto mb-4" size={32} />
-          <p className="text-gray-400 text-center">Loading...</p>
+          <p className="text-muted-foreground text-center">Loading...</p>
         </div>
       </div>
     );
@@ -425,13 +425,13 @@ export const StandaloneSaleReturnForm: React.FC<StandaloneSaleReturnFormProps> =
   return (
     <>
       <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 overflow-y-auto p-4">
-        <div className="bg-[#0B0F19] border border-gray-800 rounded-2xl w-[90%] max-w-4xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
-          <div className="shrink-0 bg-gray-900/80 border-b border-gray-800 px-6 py-4 flex items-center justify-between">
+        <div className="bg-secondary border border-border rounded-2xl w-[90%] max-w-4xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
+          <div className="shrink-0 bg-card border-b border-border px-6 py-4 flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-bold text-white">Sale Return (No Invoice)</h2>
-              <p className="text-xs text-gray-500 mt-0.5">Return items without linking to a sale invoice</p>
+              <h2 className="text-lg font-bold text-foreground">Sale Return (No Invoice)</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">Return items without linking to a sale invoice</p>
             </div>
-            <Button variant="ghost" size="icon" onClick={onClose} className="text-gray-400 hover:text-white rounded-full">
+            <Button variant="ghost" size="icon" onClick={onClose} className="text-muted-foreground hover:text-foreground rounded-full">
               <X size={22} />
             </Button>
           </div>
@@ -439,12 +439,12 @@ export const StandaloneSaleReturnForm: React.FC<StandaloneSaleReturnFormProps> =
           <div className="flex-1 overflow-y-auto p-6 space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <Label className="text-gray-500 text-xs">Branch</Label>
+                <Label className="text-muted-foreground text-xs">Branch</Label>
                 <Select value={branchId} onValueChange={setBranchId}>
-                  <SelectTrigger className="bg-gray-800 border-gray-700 text-white mt-1">
+                  <SelectTrigger className="bg-muted border-border text-foreground mt-1">
                     <SelectValue placeholder="Select branch" />
                   </SelectTrigger>
-                  <SelectContent className="bg-gray-900 border-gray-700 text-white">
+                  <SelectContent className="bg-popover border-border text-popover-foreground">
                     {branches.map((b) => (
                       <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
                     ))}
@@ -452,12 +452,12 @@ export const StandaloneSaleReturnForm: React.FC<StandaloneSaleReturnFormProps> =
                 </Select>
               </div>
               <div>
-                <Label className="text-gray-500 text-xs">Customer</Label>
+                <Label className="text-muted-foreground text-xs">Customer</Label>
                 <Select value={customerId || 'walk-in'} onValueChange={(v) => setCustomerId(v === 'walk-in' ? '' : v)}>
-                  <SelectTrigger className="bg-gray-800 border-gray-700 text-white mt-1">
+                  <SelectTrigger className="bg-muted border-border text-foreground mt-1">
                     <SelectValue placeholder="Walk-in Customer" />
                   </SelectTrigger>
-                  <SelectContent className="bg-gray-900 border-gray-700 text-white">
+                  <SelectContent className="bg-popover border-border text-popover-foreground">
                     <SelectItem value="walk-in">Walk-in Customer</SelectItem>
                     {contacts.map((c) => (
                       <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
@@ -466,17 +466,17 @@ export const StandaloneSaleReturnForm: React.FC<StandaloneSaleReturnFormProps> =
                 </Select>
               </div>
               <div>
-                <Label className="text-gray-500 text-xs">Return Date</Label>
-                <CalendarDatePicker value={returnDate} onChange={(d) => d && setReturnDate(d)} className="bg-gray-800 border-gray-700 text-white h-9 mt-1 w-full" />
+                <Label className="text-muted-foreground text-xs">Return Date</Label>
+                <CalendarDatePicker value={returnDate} onChange={(d) => d && setReturnDate(d)} className="bg-muted border-border text-foreground h-9 mt-1 w-full" />
               </div>
               <div>
-                <Label className="text-gray-500 text-xs">Reason (optional)</Label>
-                <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Defective" className="bg-gray-800 border-gray-700 text-white mt-1" />
+                <Label className="text-muted-foreground text-xs">Reason (optional)</Label>
+                <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Defective" className="bg-muted border-border text-foreground mt-1" />
               </div>
             </div>
             <div>
-              <Label className="text-gray-500 text-xs">Notes (optional)</Label>
-              <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Additional notes" className="bg-gray-800 border-gray-700 text-white mt-1" />
+              <Label className="text-muted-foreground text-xs">Notes (optional)</Label>
+              <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Additional notes" className="bg-muted border-border text-foreground mt-1" />
             </div>
 
             <div className="flex items-center gap-3 px-4 py-3 bg-amber-500/10 border border-amber-500/20 rounded-xl">
@@ -485,20 +485,20 @@ export const StandaloneSaleReturnForm: React.FC<StandaloneSaleReturnFormProps> =
             </div>
 
             {/* Add item */}
-            <div className="border border-gray-800 rounded-xl p-4 bg-gray-900/50">
-              <h3 className="text-sm font-semibold text-gray-400 mb-3 flex items-center gap-2">
+            <div className="border border-border rounded-xl p-4 bg-muted/40">
+              <h3 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-2">
                 <Plus size={16} /> Add Item
               </h3>
               <div className="flex flex-wrap items-end gap-3">
                 <Popover open={productSearchOpen} onOpenChange={setProductSearchOpen}>
                   <PopoverTrigger asChild>
-                    <Button variant="outline" className="bg-gray-800 border-gray-700 text-white w-[260px] justify-between">
+                    <Button variant="outline" className="bg-muted border-border text-foreground w-[260px] justify-between">
                       {pendingProduct ? `${pendingProduct.name} ${pendingProduct.sku ? `(${pendingProduct.sku})` : ''}` : 'Select product...'}
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-[260px] p-0 bg-gray-900 border-gray-700" align="start">
+                  <PopoverContent className="w-[260px] p-0 bg-card border-border" align="start">
                     <Command>
-                      <CommandInput placeholder="Search product..." value={productSearchTerm} onValueChange={setProductSearchTerm} className="text-white" />
+                      <CommandInput placeholder="Search product..." value={productSearchTerm} onValueChange={setProductSearchTerm} className="text-foreground" />
                       <CommandList>
                         <CommandEmpty>No product found.</CommandEmpty>
                         <CommandGroup>
@@ -513,9 +513,9 @@ export const StandaloneSaleReturnForm: React.FC<StandaloneSaleReturnFormProps> =
                                 setPendingPackingDetails(null);
                                 if (!p.variations?.length) setPendingVariationId(null);
                               }}
-                              className="text-white"
+                              className="text-foreground"
                             >
-                              {p.name} {p.sku && <span className="text-gray-500">({p.sku})</span>}
+                              {p.name} {p.sku && <span className="text-muted-foreground">({p.sku})</span>}
                             </CommandItem>
                           ))}
                         </CommandGroup>
@@ -526,10 +526,10 @@ export const StandaloneSaleReturnForm: React.FC<StandaloneSaleReturnFormProps> =
 
                 {pendingProduct?.variations?.length ? (
                   <Select value={pendingVariationId || ''} onValueChange={setPendingVariationId}>
-                    <SelectTrigger className="w-[180px] bg-gray-800 border-gray-700 text-white">
+                    <SelectTrigger className="w-[180px] bg-muted border-border text-foreground">
                       <SelectValue placeholder="Select variation" />
                     </SelectTrigger>
-                    <SelectContent className="bg-gray-900 border-gray-700 text-white">
+                    <SelectContent className="bg-popover border-border text-popover-foreground">
                       {pendingProduct.variations.map((v) => (
                         <SelectItem key={v.id} value={v.id}>
                           {v.attributes && Object.keys(v.attributes).length > 0
@@ -542,24 +542,24 @@ export const StandaloneSaleReturnForm: React.FC<StandaloneSaleReturnFormProps> =
                 ) : null}
 
                 <div className="w-24">
-                  <Label className="text-xs text-gray-500">Qty</Label>
-                  <Input type="number" min={0} step={0.01} value={pendingQty} onChange={(e) => setPendingQty(Number(e.target.value) || 0)} className="bg-gray-800 border-gray-700 text-white h-9" readOnly={!!pendingPackingDetails} />
+                  <Label className="text-xs text-muted-foreground">Qty</Label>
+                  <Input type="number" min={0} step={0.01} value={pendingQty} onChange={(e) => setPendingQty(Number(e.target.value) || 0)} className="bg-muted border-border text-foreground h-9" readOnly={!!pendingPackingDetails} />
                 </div>
                 <div className="w-28">
-                  <Label className="text-xs text-gray-500">Unit Price</Label>
-                  <Input type="number" min={0} step={0.01} value={pendingPrice} onChange={(e) => setPendingPrice(Number(e.target.value) || 0)} className="bg-gray-800 border-gray-700 text-white h-9" />
+                  <Label className="text-xs text-muted-foreground">Unit Price</Label>
+                  <Input type="number" min={0} step={0.01} value={pendingPrice} onChange={(e) => setPendingPrice(Number(e.target.value) || 0)} className="bg-muted border-border text-foreground h-9" />
                 </div>
                 {enablePacking && pendingProduct && (
                   <div className="flex items-end">
                     {pendingPackingDetails ? (
                       <div className="flex items-center gap-2 h-9">
-                        <span className="text-xs text-gray-400">
+                        <span className="text-xs text-muted-foreground">
                           {formatBoxesPieces(pendingPackingDetails.total_boxes)} Box, {formatBoxesPieces(pendingPackingDetails.total_pieces)} Pc, {Number(pendingPackingDetails.total_meters).toFixed(2)} M
                         </span>
                         <Button type="button" variant="ghost" size="sm" className="text-blue-400 h-8 px-2" onClick={() => setPendingPackingDetails(null)}>Clear</Button>
                       </div>
                     ) : (
-                      <Button type="button" variant="outline" size="sm" className="bg-gray-800 border-gray-700 text-blue-400 hover:bg-gray-700 h-9" onClick={openPackingForPending}>
+                      <Button type="button" variant="outline" size="sm" className="bg-muted border-border text-blue-400 hover:bg-muted h-9" onClick={openPackingForPending}>
                         <Package size={14} className="mr-1" /> Add Packing
                       </Button>
                     )}
@@ -572,39 +572,39 @@ export const StandaloneSaleReturnForm: React.FC<StandaloneSaleReturnFormProps> =
             </div>
 
             {/* Items table */}
-            <div className="border border-gray-800 rounded-xl overflow-hidden">
-              <div className="px-4 py-2 bg-gray-950/50 border-b border-gray-800 flex items-center gap-2">
-                <Package size={16} className="text-gray-500" />
-                <span className="text-sm font-medium text-gray-400">Items ({items.length})</span>
+            <div className="border border-border rounded-xl overflow-hidden">
+              <div className="px-4 py-2 bg-muted/40 border-b border-border flex items-center gap-2">
+                <Package size={16} className="text-muted-foreground" />
+                <span className="text-sm font-medium text-muted-foreground">Items ({items.length})</span>
               </div>
               <Table>
                 <TableHeader>
-                  <TableRow className="border-gray-800 hover:bg-transparent">
-                    <TableHead className="text-gray-400">Product</TableHead>
-                    <TableHead className="text-gray-400">SKU / Variation</TableHead>
-                    {enablePacking && <TableHead className="text-gray-400 w-[140px]">Packing</TableHead>}
-                    <TableHead className="text-gray-400 text-right">Qty</TableHead>
-                    <TableHead className="text-gray-400 text-right">Unit Price</TableHead>
-                    <TableHead className="text-gray-400 text-right">Total</TableHead>
+                  <TableRow className="border-border hover:bg-transparent">
+                    <TableHead className="text-muted-foreground">Product</TableHead>
+                    <TableHead className="text-muted-foreground">SKU / Variation</TableHead>
+                    {enablePacking && <TableHead className="text-muted-foreground w-[140px]">Packing</TableHead>}
+                    <TableHead className="text-muted-foreground text-right">Qty</TableHead>
+                    <TableHead className="text-muted-foreground text-right">Unit Price</TableHead>
+                    <TableHead className="text-muted-foreground text-right">Total</TableHead>
                     <TableHead className="w-10" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {items.length === 0 ? (
-                    <TableRow className="border-gray-800">
-                      <TableCell colSpan={enablePacking ? 7 : 6} className="text-center text-gray-500 py-8">
+                    <TableRow className="border-border">
+                      <TableCell colSpan={enablePacking ? 7 : 6} className="text-center text-muted-foreground py-8">
                         No items. Add products above.
                       </TableCell>
                     </TableRow>
                   ) : (
                     items.map((row, idx) => (
-                      <TableRow key={idx} className="border-gray-800">
-                        <TableCell className="text-white font-medium">{row.product_name}</TableCell>
-                        <TableCell className="text-gray-400">{row.sku}{row.variationLabel ? ` · ${row.variationLabel}` : ''}</TableCell>
+                      <TableRow key={idx} className="border-border">
+                        <TableCell className="text-foreground font-medium">{row.product_name}</TableCell>
+                        <TableCell className="text-muted-foreground">{row.sku}{row.variationLabel ? ` · ${row.variationLabel}` : ''}</TableCell>
                         {enablePacking && (
                           <TableCell>
                             {row.packing_details ? (
-                              <button type="button" onClick={() => openPackingForItem(idx)} className="text-xs text-gray-400 hover:text-blue-400 text-left">
+                              <button type="button" onClick={() => openPackingForItem(idx)} className="text-xs text-muted-foreground hover:text-blue-400 text-left">
                                 {formatBoxesPieces(row.packing_details.total_boxes)} Box, {formatBoxesPieces(row.packing_details.total_pieces)} Pc, {Number(row.packing_details.total_meters).toFixed(2)} M
                               </button>
                             ) : (
@@ -614,9 +614,9 @@ export const StandaloneSaleReturnForm: React.FC<StandaloneSaleReturnFormProps> =
                             )}
                           </TableCell>
                         )}
-                        <TableCell className="text-right text-white">{row.quantity}</TableCell>
-                        <TableCell className="text-right text-white">{row.unit_price.toLocaleString()}</TableCell>
-                        <TableCell className="text-right text-white">{row.total.toLocaleString()}</TableCell>
+                        <TableCell className="text-right text-foreground">{row.quantity}</TableCell>
+                        <TableCell className="text-right text-foreground">{row.unit_price.toLocaleString()}</TableCell>
+                        <TableCell className="text-right text-foreground">{row.total.toLocaleString()}</TableCell>
                         <TableCell>
                           <Button variant="ghost" size="icon" className="h-8 w-8 text-red-400 hover:text-red-300 hover:bg-red-500/10" onClick={() => removeItem(idx)}>
                             <Trash2 size={14} />
@@ -628,16 +628,16 @@ export const StandaloneSaleReturnForm: React.FC<StandaloneSaleReturnFormProps> =
                 </TableBody>
               </Table>
               {items.length > 0 && (
-                <div className="px-4 py-3 border-t border-gray-800 flex justify-end">
-                  <span className="text-sm text-gray-400">Subtotal: </span>
-                  <span className="text-lg font-semibold text-white ml-2">{formatCurrency(subtotal)}</span>
+                <div className="px-4 py-3 border-t border-border flex justify-end">
+                  <span className="text-sm text-muted-foreground">Subtotal: </span>
+                  <span className="text-lg font-semibold text-foreground ml-2">{formatCurrency(subtotal)}</span>
                 </div>
               )}
             </div>
           </div>
 
-          <div className="shrink-0 border-t border-gray-800 px-6 py-4 flex justify-end gap-3">
-            <Button variant="outline" onClick={onClose} className="border-gray-700 text-gray-300">Cancel</Button>
+          <div className="shrink-0 border-t border-border px-6 py-4 flex justify-end gap-3">
+            <Button variant="outline" onClick={onClose} className="border-border text-muted-foreground">Cancel</Button>
             <Button onClick={handleSave} disabled={saving || items.length === 0} className="bg-blue-600 hover:bg-blue-700">
               {saving ? <Loader2 size={16} className="animate-spin mr-2" /> : <Save size={16} className="mr-2" />}
               Finalize Return
@@ -666,24 +666,24 @@ export const StandaloneSaleReturnForm: React.FC<StandaloneSaleReturnFormProps> =
           />
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 pointer-events-none overflow-y-auto">
             <div
-              className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-3xl pointer-events-auto animate-in zoom-in-95 duration-200 my-8"
+              className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-3xl pointer-events-auto animate-in zoom-in-95 duration-200 my-8"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header — same as Receive Payment */}
-              <div className="flex items-center justify-between p-5 border-b border-gray-800 bg-gradient-to-r from-gray-900 via-gray-900 to-gray-800">
+              <div className="flex items-center justify-between p-5 border-b border-border bg-gradient-to-r from-gray-900 via-gray-900 to-gray-800">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-xl">
                     💵
                   </div>
                   <div>
-                    <h2 className="text-lg font-bold text-white">Refund / Return Settlement</h2>
-                    <p className="text-xs text-gray-400 mt-0.5">Complete transaction details</p>
+                    <h2 className="text-lg font-bold text-foreground">Refund / Return Settlement</h2>
+                    <p className="text-xs text-muted-foreground mt-0.5">Complete transaction details</p>
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => { setShowSettlementDialog(false); setSaving(false); setSettlementNotes(''); }}
-                  className="text-gray-400 hover:text-white transition-colors p-1.5 hover:bg-gray-800 rounded-lg"
+                  className="text-muted-foreground hover:text-foreground transition-colors p-1.5 hover:bg-muted rounded-lg"
                 >
                   <X size={20} />
                 </button>
@@ -695,20 +695,20 @@ export const StandaloneSaleReturnForm: React.FC<StandaloneSaleReturnFormProps> =
                   {/* LEFT COLUMN */}
                   <div className="space-y-4">
                     {/* Entity Info Card — Customer + Return Amount */}
-                    <div className="bg-gradient-to-br from-gray-950/80 to-gray-900/50 border border-gray-800 rounded-xl p-4">
+                    <div className="bg-gradient-to-br from-gray-950/80 to-gray-900/50 border border-border rounded-xl p-4">
                       <div className="flex items-center justify-between mb-3">
-                        <span className="text-xs font-medium text-gray-400">Return Details</span>
+                        <span className="text-xs font-medium text-muted-foreground">Return Details</span>
                         <Badge variant="outline" className="bg-red-500/10 text-red-400 border-red-500/20">
                           RETURN
                         </Badge>
                       </div>
-                      <p className="text-lg font-bold text-white mb-1">{customerName}</p>
-                      <p className="text-xs text-gray-500 font-mono bg-gray-900/50 px-2 py-1 rounded inline-block">
+                      <p className="text-lg font-bold text-foreground mb-1">{customerName}</p>
+                      <p className="text-xs text-muted-foreground font-mono bg-muted/40 px-2 py-1 rounded inline-block">
                         Ref: No invoice
                       </p>
-                      <div className="mt-4 pt-4 border-t border-gray-800">
+                      <div className="mt-4 pt-4 border-t border-border">
                         <div className="flex items-center justify-between">
-                          <span className="text-xs text-gray-400">Return Amount</span>
+                          <span className="text-xs text-muted-foreground">Return Amount</span>
                           <span className="text-xl font-bold text-red-400">
                             {formatCurrency(subtotal)}
                           </span>
@@ -717,8 +717,8 @@ export const StandaloneSaleReturnForm: React.FC<StandaloneSaleReturnFormProps> =
                     </div>
 
                     {/* Refund Method — same as Payment Method in UnifiedPaymentDialog (Cash, Bank, Adjust in Customer Account) */}
-                    <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
-                      <label className="block text-sm font-semibold text-gray-300 mb-2">
+                    <div className="bg-muted/40 border border-border rounded-xl p-4">
+                      <label className="block text-sm font-semibold text-muted-foreground mb-2">
                         Refund Method <span className="text-red-400">*</span>
                       </label>
                       <div className="grid grid-cols-3 gap-2">
@@ -729,11 +729,11 @@ export const StandaloneSaleReturnForm: React.FC<StandaloneSaleReturnFormProps> =
                             'flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-lg border-2 transition-all',
                             refundMethod === 'cash'
                               ? 'border-blue-500 bg-blue-500/10'
-                              : 'border-gray-700 bg-gray-900/50 hover:border-gray-600'
+                              : 'border-border bg-muted/40 hover:border-gray-600'
                           )}
                         >
-                          <Wallet size={18} className={refundMethod === 'cash' ? 'text-blue-400' : 'text-gray-400'} />
-                          <span className={cn('text-xs font-medium', refundMethod === 'cash' ? 'text-blue-400' : 'text-gray-400')}>Cash</span>
+                          <Wallet size={18} className={refundMethod === 'cash' ? 'text-blue-400' : 'text-muted-foreground'} />
+                          <span className={cn('text-xs font-medium', refundMethod === 'cash' ? 'text-blue-400' : 'text-muted-foreground')}>Cash</span>
                         </button>
                         <button
                           type="button"
@@ -742,11 +742,11 @@ export const StandaloneSaleReturnForm: React.FC<StandaloneSaleReturnFormProps> =
                             'flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-lg border-2 transition-all',
                             refundMethod === 'bank'
                               ? 'border-blue-500 bg-blue-500/10'
-                              : 'border-gray-700 bg-gray-900/50 hover:border-gray-600'
+                              : 'border-border bg-muted/40 hover:border-gray-600'
                           )}
                         >
-                          <Building2 size={18} className={refundMethod === 'bank' ? 'text-blue-400' : 'text-gray-400'} />
-                          <span className={cn('text-xs font-medium', refundMethod === 'bank' ? 'text-blue-400' : 'text-gray-400')}>Bank</span>
+                          <Building2 size={18} className={refundMethod === 'bank' ? 'text-blue-400' : 'text-muted-foreground'} />
+                          <span className={cn('text-xs font-medium', refundMethod === 'bank' ? 'text-blue-400' : 'text-muted-foreground')}>Bank</span>
                         </button>
                         <button
                           type="button"
@@ -755,41 +755,41 @@ export const StandaloneSaleReturnForm: React.FC<StandaloneSaleReturnFormProps> =
                             'flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-lg border-2 transition-all',
                             refundMethod === 'adjust'
                               ? 'border-blue-500 bg-blue-500/10'
-                              : 'border-gray-700 bg-gray-900/50 hover:border-gray-600'
+                              : 'border-border bg-muted/40 hover:border-gray-600'
                           )}
                         >
-                          <UserCheck size={18} className={refundMethod === 'adjust' ? 'text-blue-400' : 'text-gray-400'} />
-                          <span className={cn('text-xs font-medium text-center leading-tight', refundMethod === 'adjust' ? 'text-blue-400' : 'text-gray-400')}>Adjust in Account</span>
+                          <UserCheck size={18} className={refundMethod === 'adjust' ? 'text-blue-400' : 'text-muted-foreground'} />
+                          <span className={cn('text-xs font-medium text-center leading-tight', refundMethod === 'adjust' ? 'text-blue-400' : 'text-muted-foreground')}>Adjust in Account</span>
                         </button>
                       </div>
                     </div>
 
                     {/* Select Account — only when Cash or Bank (same as UnifiedPaymentDialog) */}
                     {(refundMethod === 'cash' || refundMethod === 'bank') && (
-                      <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
-                        <label className="block text-sm font-semibold text-gray-300 mb-2">
+                      <div className="bg-muted/40 border border-border rounded-xl p-4">
+                        <label className="block text-sm font-semibold text-muted-foreground mb-2">
                           Select Account <span className="text-red-400">*</span>
                         </label>
                         <div className="relative">
                           <select
                             value={selectedRefundAccountId}
                             onChange={(e) => setSelectedRefundAccountId(e.target.value)}
-                            className="w-full bg-gray-900 border-2 border-gray-700 rounded-lg px-4 py-2.5 pr-10 text-white focus:outline-none focus:border-blue-500 transition-colors appearance-none"
+                            className="w-full bg-card border-2 border-border rounded-lg px-4 py-2.5 pr-10 text-foreground focus:outline-none focus:border-blue-500 transition-colors appearance-none"
                           >
-                            <option value="" className="text-gray-500">
+                            <option value="" className="text-muted-foreground">
                               {refundMethod === 'cash' && 'Select Cash Account'}
                               {refundMethod === 'bank' && 'Select Bank Account'}
                             </option>
                             {refundAccounts.map((account) => (
-                              <option key={account.id} value={account.id} className="text-white bg-gray-900">
+                              <option key={account.id} value={account.id} className="text-foreground bg-card">
                                 {account.name} • Balance: {formatCurrency(Number(account.balance || 0))}
                               </option>
                             ))}
                           </select>
-                          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
+                          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" size={18} />
                         </div>
                         {selectedRefundAccountId === '' && (
-                          <p className="text-xs text-gray-500 mt-1.5 flex items-center gap-1">
+                          <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
                             <AlertCircle size={11} />
                             Please select an account to proceed
                           </p>
@@ -797,8 +797,8 @@ export const StandaloneSaleReturnForm: React.FC<StandaloneSaleReturnFormProps> =
                         {selectedRefundAccountId && (() => {
                           const account = accounting.getAccountById(selectedRefundAccountId);
                           return account ? (
-                            <div className="mt-2 text-xs text-gray-400">
-                              Selected: <span className="text-white font-medium">{account.name}</span>
+                            <div className="mt-2 text-xs text-muted-foreground">
+                              Selected: <span className="text-foreground font-medium">{account.name}</span>
                             </div>
                           ) : null;
                         })()}
@@ -808,8 +808,8 @@ export const StandaloneSaleReturnForm: React.FC<StandaloneSaleReturnFormProps> =
 
                   {/* RIGHT COLUMN — Notes (same as UnifiedPaymentDialog) */}
                   <div className="space-y-4">
-                    <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
-                      <label className="block text-sm font-semibold text-gray-300 mb-2">
+                    <div className="bg-muted/40 border border-border rounded-xl p-4">
+                      <label className="block text-sm font-semibold text-muted-foreground mb-2">
                         Notes (Optional)
                       </label>
                       <textarea
@@ -817,7 +817,7 @@ export const StandaloneSaleReturnForm: React.FC<StandaloneSaleReturnFormProps> =
                         onChange={(e) => setSettlementNotes(e.target.value)}
                         placeholder="Add refund notes, remarks..."
                         rows={5}
-                        className="w-full bg-gray-900 border-2 border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors resize-none"
+                        className="w-full bg-card border-2 border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors resize-none"
                       />
                     </div>
                   </div>
@@ -825,13 +825,13 @@ export const StandaloneSaleReturnForm: React.FC<StandaloneSaleReturnFormProps> =
               </div>
 
               {/* Footer — same as UnifiedPaymentDialog */}
-              <div className="flex items-center justify-between p-5 border-t border-gray-800 bg-gray-950/50">
-                <div className="text-xs text-gray-400" />
+              <div className="flex items-center justify-between p-5 border-t border-border bg-muted/40">
+                <div className="text-xs text-muted-foreground" />
                 <div className="flex items-center gap-3">
                   <Button
                     variant="outline"
                     onClick={() => { setShowSettlementDialog(false); setSaving(false); setSettlementNotes(''); }}
-                    className="border-gray-700 text-gray-300 hover:bg-gray-800 px-5 text-sm"
+                    className="border-border text-muted-foreground hover:bg-muted px-5 text-sm"
                     disabled={saving}
                   >
                     Cancel

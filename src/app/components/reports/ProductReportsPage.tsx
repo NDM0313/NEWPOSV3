@@ -38,7 +38,7 @@ export function ProductReportsPage({ startDate, endDate, branchId }: Props) {
               'px-4 py-2 rounded-lg font-medium text-sm transition-colors flex items-center gap-2',
               mode === t.key
                 ? 'bg-blue-600 text-white'
-                : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white'
+                : 'bg-muted text-muted-foreground hover:bg-muted hover:text-foreground'
             )}
           >
             <t.icon size={16} />

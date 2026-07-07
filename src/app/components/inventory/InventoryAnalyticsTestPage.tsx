@@ -198,7 +198,7 @@ export const InventoryAnalyticsTestPage = () => {
 
   if (loading) {
     return (
-      <div className="flex flex-col h-full min-h-0 bg-[#0B0F19]">
+      <div className="flex flex-col h-full min-h-0 bg-secondary">
         <div className="flex items-center justify-center flex-1">
           <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
         </div>
@@ -207,18 +207,18 @@ export const InventoryAnalyticsTestPage = () => {
   }
 
   return (
-    <div className="flex flex-col h-full min-h-0 bg-[#0B0F19] text-white overflow-y-auto">
+    <div className="flex flex-col h-full min-h-0 bg-secondary text-foreground overflow-y-auto">
       {/* Header */}
-      <div className="shrink-0 flex items-start justify-between px-6 py-4 border-b border-gray-800 bg-[#0B0F19]/95">
+      <div className="shrink-0 flex items-start justify-between px-6 py-4 border-b border-border bg-secondary/95">
         <div>
-          <h1 className="text-2xl font-bold text-white">Stock Analytics & Insights</h1>
-          <p className="text-sm text-gray-400 mt-0.5">Comprehensive analysis of your inventory performance</p>
+          <h1 className="text-2xl font-bold text-foreground">Stock Analytics & Insights</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">Comprehensive analysis of your inventory performance</p>
         </div>
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={loadData}
-            className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+            className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             aria-label="Refresh"
           >
             <RefreshCw size={18} />
@@ -226,7 +226,7 @@ export const InventoryAnalyticsTestPage = () => {
           <button
             type="button"
             onClick={handleClose}
-            className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+            className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             aria-label="Close"
           >
             <X size={20} />
@@ -237,45 +237,45 @@ export const InventoryAnalyticsTestPage = () => {
       <div className="flex-1 px-6 py-4 space-y-6 pb-8">
         {/* Top KPI Cards - screenshot style with icons and subtitles */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-gray-900/80 border border-gray-700/80 rounded-xl p-4 shadow-lg hover:border-gray-600/50 transition-colors">
+          <div className="bg-card border border-border/80 rounded-xl p-4 shadow-lg hover:border-gray-600/50 transition-colors">
             <div className="flex items-center justify-between">
-              <span className="text-gray-400 text-sm font-medium">Avg. Profit Margin</span>
+              <span className="text-muted-foreground text-sm font-medium">Avg. Profit Margin</span>
               <TrendingUp size={20} className="text-green-500 shrink-0" />
             </div>
-            <p className="text-2xl font-bold text-white mt-2">{kpis.avgProfitMargin.toFixed(1)}%</p>
-            <p className="text-xs text-green-400 mt-1 flex items-center gap-1">
+            <p className="text-2xl font-bold text-foreground mt-2">{kpis.avgProfitMargin.toFixed(1)}%</p>
+            <p className="text-xs text-[var(--erp-money-positive)] mt-1 flex items-center gap-1">
               <span>{kpis.marginChange}% vs last month</span>
             </p>
           </div>
-          <div className="bg-gray-900/80 border border-gray-700/80 rounded-xl p-4 shadow-lg hover:border-gray-600/50 transition-colors">
+          <div className="bg-card border border-border/80 rounded-xl p-4 shadow-lg hover:border-gray-600/50 transition-colors">
             <div className="flex items-center justify-between">
-              <span className="text-gray-400 text-sm font-medium">Stock Turnover</span>
+              <span className="text-muted-foreground text-sm font-medium">Stock Turnover</span>
               <BarChart3 size={20} className="text-blue-500 shrink-0" />
             </div>
-            <p className="text-2xl font-bold text-white mt-2">{typeof kpis.stockTurnover === 'number' ? kpis.stockTurnover.toFixed(1) : kpis.stockTurnover}x</p>
-            <p className="text-xs text-gray-500 mt-1">Times per year</p>
+            <p className="text-2xl font-bold text-foreground mt-2">{typeof kpis.stockTurnover === 'number' ? kpis.stockTurnover.toFixed(1) : kpis.stockTurnover}x</p>
+            <p className="text-xs text-muted-foreground mt-1">Times per year</p>
           </div>
-          <div className="bg-gray-900/80 border border-gray-700/80 rounded-xl p-4 shadow-lg hover:border-gray-600/50 transition-colors">
+          <div className="bg-card border border-border/80 rounded-xl p-4 shadow-lg hover:border-gray-600/50 transition-colors">
             <div className="flex items-center justify-between">
-              <span className="text-gray-400 text-sm font-medium">Days of Stock</span>
+              <span className="text-muted-foreground text-sm font-medium">Days of Stock</span>
               <Calendar size={20} className="text-purple-500 shrink-0" />
             </div>
-            <p className="text-2xl font-bold text-white mt-2">{kpis.daysOfStock}</p>
-            <p className="text-xs text-gray-500 mt-1">Average days on hand</p>
+            <p className="text-2xl font-bold text-foreground mt-2">{kpis.daysOfStock}</p>
+            <p className="text-xs text-muted-foreground mt-1">Average days on hand</p>
           </div>
-          <div className="bg-gray-900/80 border border-gray-700/80 rounded-xl p-4 shadow-lg hover:border-gray-600/50 transition-colors">
+          <div className="bg-card border border-border/80 rounded-xl p-4 shadow-lg hover:border-gray-600/50 transition-colors">
             <div className="flex items-center justify-between">
-              <span className="text-gray-400 text-sm font-medium">Items Need Attention</span>
+              <span className="text-muted-foreground text-sm font-medium">Items Need Attention</span>
               <AlertTriangle size={20} className="text-amber-500 shrink-0" />
             </div>
-            <p className="text-2xl font-bold text-white mt-2">{kpis.itemsNeedAttention}</p>
-            <p className="text-xs text-gray-500 mt-1">Low/Out of stock</p>
+            <p className="text-2xl font-bold text-foreground mt-2">{kpis.itemsNeedAttention}</p>
+            <p className="text-xs text-muted-foreground mt-1">Low/Out of stock</p>
           </div>
         </div>
 
         {/* Stock Movement Trend (30 Days) */}
-        <div className="bg-gray-900/80 border border-gray-700/80 rounded-xl p-4 shadow-lg">
-          <h3 className="text-sm font-semibold text-white mb-4">Stock Movement Trend (30 Days)</h3>
+        <div className="bg-card border border-border/80 rounded-xl p-4 shadow-lg">
+          <h3 className="text-sm font-semibold text-foreground mb-4">Stock Movement Trend (30 Days)</h3>
           <div className="h-72">
             {movementTrendData.some((d) => d.stockIn > 0 || d.stockOut > 0) ? (
               <ResponsiveContainer width="100%" height="100%">
@@ -300,7 +300,7 @@ export const InventoryAnalyticsTestPage = () => {
                 </AreaChart>
               </ResponsiveContainer>
             ) : (
-              <div className="h-full flex items-center justify-center text-gray-500 text-sm">
+              <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
                 <div className="text-center">
                   <Package size={40} className="mx-auto mb-2 opacity-50" />
                   <p>No movement data in last 30 days</p>
@@ -313,8 +313,8 @@ export const InventoryAnalyticsTestPage = () => {
         {/* Row: Stock Value by Category (vertical bars) + Donuts + Top Valuable */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* Stock Value by Category - vertical bar chart like screenshot */}
-          <div className="bg-gray-900/80 border border-gray-700/80 rounded-xl p-4 shadow-lg">
-            <h3 className="text-sm font-semibold text-white mb-4">Stock Value by Category</h3>
+          <div className="bg-card border border-border/80 rounded-xl p-4 shadow-lg">
+            <h3 className="text-sm font-semibold text-foreground mb-4">Stock Value by Category</h3>
             <div className="h-56">
               {categoryValueData.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
@@ -327,14 +327,14 @@ export const InventoryAnalyticsTestPage = () => {
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="h-full flex items-center justify-center text-gray-500 text-sm">No categories</div>
+                <div className="h-full flex items-center justify-center text-muted-foreground text-sm">No categories</div>
               )}
             </div>
           </div>
 
           {/* Stock Status Donut - with legend showing count */}
-          <div className="bg-gray-900/80 border border-gray-700/80 rounded-xl p-4 shadow-lg">
-            <h3 className="text-sm font-semibold text-white mb-4">Stock Status Distribution</h3>
+          <div className="bg-card border border-border/80 rounded-xl p-4 shadow-lg">
+            <h3 className="text-sm font-semibold text-foreground mb-4">Stock Status Distribution</h3>
             <div className="h-48 flex items-center justify-center">
               {statusData.some((d) => d.value > 0) ? (
                 <ResponsiveContainer width="100%" height="100%">
@@ -357,7 +357,7 @@ export const InventoryAnalyticsTestPage = () => {
                   </PieChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="text-center text-gray-500 text-sm">
+                <div className="text-center text-muted-foreground text-sm">
                   <Package size={36} className="mx-auto mb-2 opacity-50" />
                   <p>No products</p>
                 </div>
@@ -367,16 +367,16 @@ export const InventoryAnalyticsTestPage = () => {
               {statusData.map((d) => (
                 <span key={d.name} className="flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: d.color }} />
-                  <span className="text-gray-400">{d.name}:</span>
-                  <span className="text-white font-medium">{d.value}</span>
+                  <span className="text-muted-foreground">{d.name}:</span>
+                  <span className="text-foreground font-medium">{d.value}</span>
                 </span>
               ))}
             </div>
           </div>
 
           {/* Movement Analysis Donut - with legend */}
-          <div className="bg-gray-900/80 border border-gray-700/80 rounded-xl p-4 shadow-lg">
-            <h3 className="text-sm font-semibold text-white mb-4">Movement Analysis</h3>
+          <div className="bg-card border border-border/80 rounded-xl p-4 shadow-lg">
+            <h3 className="text-sm font-semibold text-foreground mb-4">Movement Analysis</h3>
             <div className="h-48 flex items-center justify-center">
               {movementData.some((d) => d.value > 0) ? (
                 <ResponsiveContainer width="100%" height="100%">
@@ -399,7 +399,7 @@ export const InventoryAnalyticsTestPage = () => {
                   </PieChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="text-center text-gray-500 text-sm">
+                <div className="text-center text-muted-foreground text-sm">
                   <Package size={36} className="mx-auto mb-2 opacity-50" />
                   <p>No products</p>
                 </div>
@@ -409,8 +409,8 @@ export const InventoryAnalyticsTestPage = () => {
               {movementData.map((d) => (
                 <span key={d.name} className="flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: d.color }} />
-                  <span className="text-gray-400">{d.name}:</span>
-                  <span className="text-white font-medium">{d.value}</span>
+                  <span className="text-muted-foreground">{d.name}:</span>
+                  <span className="text-foreground font-medium">{d.value}</span>
                 </span>
               ))}
             </div>
@@ -418,15 +418,15 @@ export const InventoryAnalyticsTestPage = () => {
         </div>
 
         {/* Top 5 Most Valuable - screenshot style with distinct bar colors */}
-        <div className="bg-gray-900/80 border border-gray-700/80 rounded-xl p-4 shadow-lg">
-          <h3 className="text-sm font-semibold text-white mb-4">Top 5 Most Valuable</h3>
+        <div className="bg-card border border-border/80 rounded-xl p-4 shadow-lg">
+          <h3 className="text-sm font-semibold text-foreground mb-4">Top 5 Most Valuable</h3>
           <div className="space-y-4">
             {topValuable.map((item, i) => (
               <div key={item.name} className="flex items-center gap-3">
-                <span className="text-gray-400 text-sm w-6">{i + 1}.</span>
+                <span className="text-muted-foreground text-sm w-6">{i + 1}.</span>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-white truncate">{item.name}</p>
-                  <div className="h-2.5 bg-gray-800 rounded-full mt-1.5 overflow-hidden">
+                  <p className="text-sm font-medium text-foreground truncate">{item.name}</p>
+                  <div className="h-2.5 bg-muted rounded-full mt-1.5 overflow-hidden">
                     <div
                       className="h-full rounded-full transition-all"
                       style={{
@@ -436,13 +436,13 @@ export const InventoryAnalyticsTestPage = () => {
                     />
                   </div>
                 </div>
-                <span className={cn('text-sm font-semibold tabular-nums shrink-0 min-w-[4rem] text-right', item.value < 0 ? 'text-red-400' : 'text-green-400')}>
+                <span className={cn('text-sm font-semibold tabular-nums shrink-0 min-w-[4rem] text-right', item.value < 0 ? 'text-red-400' : 'text-[var(--erp-money-positive)]')}>
                   {item.value.toLocaleString()}
                 </span>
               </div>
             ))}
             {topValuable.length === 0 && (
-              <div className="py-6 text-center text-gray-500 text-sm">
+              <div className="py-6 text-center text-muted-foreground text-sm">
                 <Package size={32} className="mx-auto mb-2 opacity-50" />
                 <p>No products</p>
               </div>
@@ -451,16 +451,16 @@ export const InventoryAnalyticsTestPage = () => {
         </div>
 
         {/* Low Stock Alerts - screenshot style with "Current Stock" label */}
-        <div className="bg-gray-900/80 border border-gray-700/80 rounded-xl p-4 shadow-lg">
-          <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
+        <div className="bg-card border border-border/80 rounded-xl p-4 shadow-lg">
+          <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
             <AlertTriangle size={20} className="text-amber-500" />
             Low Stock Alerts
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {lowStockAlerts.slice(0, 6).map((p) => (
-              <div key={p.id} className="bg-gray-800/60 border border-gray-700 rounded-lg p-4 hover:border-gray-600 transition-colors">
-                <p className="text-sm font-medium text-white truncate">{p.name}</p>
-                <p className="text-xs text-gray-400 font-mono mt-1">SKU: {p.sku}</p>
+              <div key={p.id} className="bg-muted/60 border border-border rounded-lg p-4 hover:border-gray-600 transition-colors">
+                <p className="text-sm font-medium text-foreground truncate">{p.name}</p>
+                <p className="text-xs text-muted-foreground font-mono mt-1">SKU: {p.sku}</p>
                 <div className="flex items-center justify-between mt-3 flex-wrap gap-2">
                   <span
                     className={cn(
@@ -471,7 +471,7 @@ export const InventoryAnalyticsTestPage = () => {
                     {p.status === 'Out' ? 'Out' : 'Low'}
                   </span>
                   <div className="text-right">
-                    <p className="text-[10px] text-gray-500 uppercase tracking-wide">Current Stock</p>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Current Stock</p>
                     <p className={cn('text-sm font-mono tabular-nums font-medium', p.stock < 0 ? 'text-red-400' : p.status === 'Out' ? 'text-red-400' : 'text-amber-400')}>
                       {formatQty(p.stock)} {enablePacking ? p.unit || 'pcs' : 'pcs'}
                     </p>
@@ -480,7 +480,7 @@ export const InventoryAnalyticsTestPage = () => {
               </div>
             ))}
             {lowStockAlerts.length === 0 && (
-              <div className="col-span-full py-8 text-center text-gray-500 text-sm">
+              <div className="col-span-full py-8 text-center text-muted-foreground text-sm">
                 <Package size={36} className="mx-auto mb-2 opacity-50" />
                 <p>No low stock alerts</p>
               </div>
@@ -489,27 +489,27 @@ export const InventoryAnalyticsTestPage = () => {
         </div>
 
         {/* Top Profit Potential Table - 2 decimals for currency */}
-        <div className="bg-gray-900/80 border border-gray-700/80 rounded-xl p-4 overflow-x-auto shadow-lg">
-          <h3 className="text-sm font-semibold text-white mb-4">Top Profit Potential</h3>
+        <div className="bg-card border border-border/80 rounded-xl p-4 overflow-x-auto shadow-lg">
+          <h3 className="text-sm font-semibold text-foreground mb-4">Top Profit Potential</h3>
           <table className="w-full min-w-[520px]">
             <thead>
-              <tr className="border-b border-gray-700">
-                <th className="text-left py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Product</th>
-                <th className="text-right py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Stock</th>
-                <th className="text-right py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Stock Value</th>
-                <th className="text-right py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Profit Potential</th>
-                <th className="text-right py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Margin</th>
+              <tr className="border-b border-border">
+                <th className="text-left py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Product</th>
+                <th className="text-right py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Stock</th>
+                <th className="text-right py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Stock Value</th>
+                <th className="text-right py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Profit Potential</th>
+                <th className="text-right py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Margin</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-800">
+            <tbody className="divide-y divide-border">
               {profitPotentialRows.map((row) => (
-                <tr key={row.name} className="hover:bg-gray-800/30 transition-colors">
-                  <td className="py-3 text-sm text-white font-medium">{row.name}</td>
-                  <td className="py-3 text-sm text-right font-mono tabular-nums text-gray-300">{formatQty(row.stock)}</td>
-                  <td className={cn('py-3 text-sm text-right font-mono tabular-nums', row.stockValue < 0 ? 'text-red-400' : 'text-gray-300')}>
+                <tr key={row.name} className="hover:bg-accent/30 transition-colors">
+                  <td className="py-3 text-sm text-foreground font-medium">{row.name}</td>
+                  <td className="py-3 text-sm text-right font-mono tabular-nums text-muted-foreground">{formatQty(row.stock)}</td>
+                  <td className={cn('py-3 text-sm text-right font-mono tabular-nums', row.stockValue < 0 ? 'text-red-400' : 'text-muted-foreground')}>
                     {row.stockValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </td>
-                  <td className={cn('py-3 text-sm text-right font-mono tabular-nums font-medium', row.profitPotential < 0 ? 'text-red-400' : 'text-green-400')}>
+                  <td className={cn('py-3 text-sm text-right font-mono tabular-nums font-medium', row.profitPotential < 0 ? 'text-red-400' : 'text-[var(--erp-money-positive)]')}>
                     {row.profitPotential.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </td>
                   <td className="py-3 text-sm text-right font-mono tabular-nums text-blue-400 font-medium">{row.margin.toFixed(1)}%</td>
@@ -518,7 +518,7 @@ export const InventoryAnalyticsTestPage = () => {
             </tbody>
           </table>
           {profitPotentialRows.length === 0 && (
-            <div className="py-10 text-center text-gray-500 text-sm">
+            <div className="py-10 text-center text-muted-foreground text-sm">
               <Package size={36} className="mx-auto mb-2 opacity-50" />
               <p>No data</p>
             </div>

@@ -61,25 +61,25 @@ function CollapsibleHygieneSection(props: {
 }) {
   const { title, subtitle, icon, count, expanded, onToggle, borderClass, bgClass, children } = props;
   return (
-    <div className={cn('rounded-xl border', borderClass ?? 'border-gray-800', bgClass ?? 'bg-gray-900/50')}>
+    <div className={cn('rounded-xl border', borderClass ?? 'border-border', bgClass ?? 'bg-muted/40')}>
       <button
         type="button"
-        className="w-full p-4 flex items-center justify-between gap-3 text-left hover:bg-gray-900/30 transition-colors"
+        className="w-full p-4 flex items-center justify-between gap-3 text-left hover:bg-muted/30 transition-colors"
         onClick={onToggle}
       >
         <div className="flex items-start gap-2 min-w-0">
           {icon}
           <div className="min-w-0">
-            <h3 className="font-semibold text-white">{title}</h3>
-            {subtitle ? <div className="text-xs text-gray-400 mt-0.5">{subtitle}</div> : null}
+            <h3 className="font-semibold text-foreground">{title}</h3>
+            {subtitle ? <div className="text-xs text-muted-foreground mt-0.5">{subtitle}</div> : null}
           </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0 text-gray-400">
+        <div className="flex items-center gap-2 shrink-0 text-muted-foreground">
           <span className="text-sm font-mono">{count}</span>
           {expanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
         </div>
       </button>
-      {expanded ? <div className="border-t border-gray-800/80">{children}</div> : null}
+      {expanded ? <div className="border-t border-border/80">{children}</div> : null}
     </div>
   );
 }
@@ -87,7 +87,7 @@ function CollapsibleHygieneSection(props: {
 function ClickableRow(props: { onClick: () => void; children: React.ReactNode; className?: string }) {
   return (
     <tr
-      className={cn('border-b border-gray-800/50 cursor-pointer hover:bg-gray-800/40 transition-colors', props.className)}
+      className={cn('border-b border-border cursor-pointer hover:bg-muted/40 transition-colors', props.className)}
       onClick={props.onClick}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -257,7 +257,7 @@ export function JournalHygienePanel() {
     }
     return (
       <p className="text-sm text-amber-200/90 font-medium">
-        Total needing review: <span className="text-white">{needsActionTotal}</span>
+        Total needing review: <span className="text-foreground">{needsActionTotal}</span>
       </p>
     );
   }, [needsActionTotal]);
@@ -284,10 +284,10 @@ export function JournalHygienePanel() {
         <ShieldAlert className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" />
         <div>
           <p className="font-semibold">Journal hygiene</p>
-          <p className="text-gray-400 mt-0.5">
-            Only <strong className="text-gray-300">Duplicates</strong>, <strong className="text-gray-300">Stale reversals</strong>, and{' '}
-            <strong className="text-gray-300">Orphans</strong> below are actionable.{' '}
-            <strong className="text-gray-300">Voided history</strong> is browse-only (already cancelled — not a fix queue).
+          <p className="text-muted-foreground mt-0.5">
+            Only <strong className="text-muted-foreground">Duplicates</strong>, <strong className="text-muted-foreground">Stale reversals</strong>, and{' '}
+            <strong className="text-muted-foreground">Orphans</strong> below are actionable.{' '}
+            <strong className="text-muted-foreground">Voided history</strong> is browse-only (already cancelled — not a fix queue).
           </p>
           {!canVoid && (
             <p className="text-amber-200/90 mt-1">Read-only — void requires admin/developer apply permission.</p>
@@ -304,29 +304,29 @@ export function JournalHygienePanel() {
       </div>
 
       <div>
-        <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">Needs action</p>
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">Needs action</p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-4">
-            <div className="text-xs font-medium text-gray-400 uppercase">Duplicate groups</div>
-            <div className="text-2xl font-bold text-white mt-1">{dupes.length}</div>
+          <div className="rounded-xl border border-border bg-muted/40 p-4">
+            <div className="text-xs font-medium text-muted-foreground uppercase">Duplicate groups</div>
+            <div className="text-2xl font-bold text-foreground mt-1">{dupes.length}</div>
           </div>
-          <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-4">
-            <div className="text-xs font-medium text-gray-400 uppercase">Orphan entries</div>
-            <div className="text-2xl font-bold text-white mt-1">{orphans.length}</div>
+          <div className="rounded-xl border border-border bg-muted/40 p-4">
+            <div className="text-xs font-medium text-muted-foreground uppercase">Orphan entries</div>
+            <div className="text-2xl font-bold text-foreground mt-1">{orphans.length}</div>
           </div>
-          <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-4">
-            <div className="text-xs font-medium text-gray-400 uppercase">Stale reversals</div>
+          <div className="rounded-xl border border-border bg-muted/40 p-4">
+            <div className="text-xs font-medium text-muted-foreground uppercase">Stale reversals</div>
             <div className="text-2xl font-bold text-rose-400/90 mt-1">{staleReversals.length}</div>
           </div>
         </div>
       </div>
 
       <div>
-        <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">Audit reference</p>
-        <div className="rounded-xl border border-gray-700/60 bg-gray-950/40 p-4 max-w-xs">
-          <div className="text-xs font-medium text-gray-400 uppercase">Voided history (info)</div>
-          <div className="text-2xl font-bold text-gray-300 mt-1">{voidedStatTotal}</div>
-          <p className="text-[11px] text-gray-500 mt-1 leading-snug">
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">Audit reference</p>
+        <div className="rounded-xl border border-border/60 bg-input-background/40 p-4 max-w-xs">
+          <div className="text-xs font-medium text-muted-foreground uppercase">Voided history (info)</div>
+          <div className="text-2xl font-bold text-muted-foreground mt-1">{voidedStatTotal}</div>
+          <p className="text-[11px] text-muted-foreground mt-1 leading-snug">
             Not actionable — already cancelled. Browse in the section below.
           </p>
         </div>
@@ -340,18 +340,18 @@ export function JournalHygienePanel() {
         onToggle={() => setDupesExpanded((v) => !v)}
       >
         {dupes.length === 0 ? (
-          <div className="p-6 text-center text-gray-500 text-sm space-y-1">
+          <div className="p-6 text-center text-muted-foreground text-sm space-y-1">
             <p>No duplicate groups found.</p>
-            <p className="text-xs text-gray-600">
-              Scanned active <code className="text-gray-500">sale_adjustment</code> and{' '}
-              <code className="text-gray-500">payment_adjustment</code> only — PF-14.5B scope.
+            <p className="text-xs text-muted-foreground">
+              Scanned active <code className="text-muted-foreground">sale_adjustment</code> and{' '}
+              <code className="text-muted-foreground">payment_adjustment</code> only — PF-14.5B scope.
             </p>
           </div>
         ) : (
           <HygieneScrollTable>
             <HygieneTable minWidth={720}>
               <thead>
-                <tr className="border-b border-gray-800 text-left text-gray-400">
+                <tr className="border-b border-border text-left text-muted-foreground">
                   <th className="px-4 py-3 whitespace-nowrap">Type</th>
                   <th className="px-4 py-3 whitespace-nowrap">Count</th>
                   <th className="px-4 py-3 whitespace-nowrap min-w-[12rem]">Journal IDs</th>
@@ -360,10 +360,10 @@ export function JournalHygienePanel() {
               </thead>
               <tbody>
                 {dupes.map((g) => (
-                  <tr key={g.je_ids[0]} className="border-b border-gray-800/50">
+                  <tr key={g.je_ids[0]} className="border-b border-border">
                     <td className="px-4 py-3 font-mono text-xs whitespace-nowrap">{g.reference_type}</td>
                     <td className="px-4 py-3 text-amber-400 whitespace-nowrap">{g.count}</td>
-                    <td className="px-4 py-3 font-mono text-[11px] text-gray-300 min-w-[12rem] max-w-[24rem] whitespace-normal break-words">
+                    <td className="px-4 py-3 font-mono text-[11px] text-muted-foreground min-w-[12rem] max-w-[24rem] whitespace-normal break-words">
                       {g.je_ids.join(', ')}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
@@ -384,7 +384,7 @@ export function JournalHygienePanel() {
                           )}
                         </Button>
                       ) : (
-                        <span className="text-xs text-gray-500">—</span>
+                        <span className="text-xs text-muted-foreground">—</span>
                       )}
                     </td>
                   </tr>
@@ -400,7 +400,7 @@ export function JournalHygienePanel() {
         subtitle={
           <>
             Active <code className="text-rose-200/80">correction_reversal</code> after payment/source already void — shows on Cash &amp; Trial Balance.{' '}
-            <span className="text-gray-500">Urdu: void payment ke baad reversal zinda reh jati hai; yahan se live GL se hataen (soft void).</span>
+            <span className="text-muted-foreground">Urdu: void payment ke baad reversal zinda reh jati hai; yahan se live GL se hataen (soft void).</span>
           </>
         }
         icon={<Trash2 className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />}
@@ -411,19 +411,19 @@ export function JournalHygienePanel() {
         bgClass="bg-rose-950/10"
       >
         {staleReversals.length === 0 ? (
-          <div className="p-6 text-center text-gray-500 text-sm space-y-1">
+          <div className="p-6 text-center text-muted-foreground text-sm space-y-1">
             <p>No stale reversal entries — good.</p>
-            <p className="text-xs text-gray-600">
+            <p className="text-xs text-muted-foreground">
               If a payment was voided but its reversal still appears on Cash/Trial Balance, it will show here with{' '}
-              <strong className="text-gray-500">{STALE_REVERSAL_VOID_LABEL}</strong>.
+              <strong className="text-muted-foreground">{STALE_REVERSAL_VOID_LABEL}</strong>.
             </p>
           </div>
         ) : (
           <HygieneScrollTable>
             <HygieneTable minWidth={960}>
               <thead>
-                <tr className="border-b border-gray-800 text-left text-gray-400">
-                  <th className="px-4 py-3 whitespace-nowrap sticky left-0 bg-gray-950/95 z-10">Entry</th>
+                <tr className="border-b border-border text-left text-muted-foreground">
+                  <th className="px-4 py-3 whitespace-nowrap sticky left-0 bg-input-background/95 z-10">Entry</th>
                   <th className="px-4 py-3 whitespace-nowrap">Date</th>
                   <th className="px-4 py-3 whitespace-nowrap">Amount</th>
                   <th className="px-4 py-3 whitespace-nowrap min-w-[10rem]">Payment / source</th>
@@ -434,16 +434,16 @@ export function JournalHygienePanel() {
               <tbody>
                 {staleReversals.map((e) => (
                   <ClickableRow key={e.id} onClick={() => openTransactionDetail(e)}>
-                    <td className="px-4 py-3 font-mono text-xs text-rose-200 whitespace-nowrap sticky left-0 bg-gray-950/95 z-10">
+                    <td className="px-4 py-3 font-mono text-xs text-rose-200 whitespace-nowrap sticky left-0 bg-input-background/95 z-10">
                       {e.entry_no ?? e.id.slice(0, 8)}
                     </td>
-                    <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">{e.entry_date?.slice(0, 10) ?? '—'}</td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">{e.entry_date?.slice(0, 10) ?? '—'}</td>
                     <td className="px-4 py-3 text-xs font-mono whitespace-nowrap">{e.amount.toFixed(2)}</td>
-                    <td className="px-4 py-3 text-xs text-gray-300 min-w-[10rem] whitespace-normal break-words">
+                    <td className="px-4 py-3 text-xs text-muted-foreground min-w-[10rem] whitespace-normal break-words">
                       {e.paymentRef ?? '—'}
                       {e.sourceEntryNo ? ` · src ${e.sourceEntryNo}` : ''}
                     </td>
-                    <td className="px-4 py-3 text-xs text-gray-400 min-w-[12rem] max-w-[24rem] whitespace-normal break-words">
+                    <td className="px-4 py-3 text-xs text-muted-foreground min-w-[12rem] max-w-[24rem] whitespace-normal break-words">
                       {e.description ?? '—'}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap" onClick={(ev) => ev.stopPropagation()}>
@@ -462,7 +462,7 @@ export function JournalHygienePanel() {
                           )}
                         </Button>
                       ) : (
-                        <span className="text-xs text-gray-500">Admin only</span>
+                        <span className="text-xs text-muted-foreground">Admin only</span>
                       )}
                     </td>
                   </ClickableRow>
@@ -473,15 +473,15 @@ export function JournalHygienePanel() {
         )}
 
         <div className="border-t border-rose-900/20 px-4 py-3 space-y-2">
-          <p className="text-[10px] uppercase tracking-wider text-gray-500">Active correction reversals (review)</p>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Active correction reversals (review)</p>
           {correctionReview.length === 0 ? (
-            <p className="text-xs text-gray-500">No active correction reversals in GL.</p>
+            <p className="text-xs text-muted-foreground">No active correction reversals in GL.</p>
           ) : (
             <HygieneScrollTable>
               <HygieneTable minWidth={960}>
                 <thead>
-                  <tr className="border-b border-gray-800 text-left text-gray-500">
-                    <th className="px-4 py-2 whitespace-nowrap sticky left-0 bg-gray-950/95 z-10">Entry</th>
+                  <tr className="border-b border-border text-left text-muted-foreground">
+                    <th className="px-4 py-2 whitespace-nowrap sticky left-0 bg-input-background/95 z-10">Entry</th>
                     <th className="px-4 py-2 whitespace-nowrap">Date</th>
                     <th className="px-4 py-2 whitespace-nowrap">Amount</th>
                     <th className="px-4 py-2 whitespace-nowrap min-w-[12rem]">Payment / source</th>
@@ -491,16 +491,16 @@ export function JournalHygienePanel() {
                 <tbody>
                   {correctionReview.map((row) => (
                     <ClickableRow key={row.id} onClick={() => openTransactionDetail(row)}>
-                      <td className="px-4 py-2 font-mono text-xs text-gray-300 whitespace-nowrap sticky left-0 bg-gray-950/95 z-10">
+                      <td className="px-4 py-2 font-mono text-xs text-muted-foreground whitespace-nowrap sticky left-0 bg-input-background/95 z-10">
                         {row.entry_no ?? row.id.slice(0, 8)}
                       </td>
-                      <td className="px-4 py-2 text-xs text-gray-500 whitespace-nowrap">{row.entry_date?.slice(0, 10) ?? '—'}</td>
+                      <td className="px-4 py-2 text-xs text-muted-foreground whitespace-nowrap">{row.entry_date?.slice(0, 10) ?? '—'}</td>
                       <td className="px-4 py-2 text-xs font-mono whitespace-nowrap">{row.amount.toFixed(2)}</td>
-                      <td className="px-4 py-2 text-xs text-gray-400 min-w-[12rem] whitespace-normal break-words">{row.sourceStatus}</td>
+                      <td className="px-4 py-2 text-xs text-muted-foreground min-w-[12rem] whitespace-normal break-words">{row.sourceStatus}</td>
                       <td
                         className={cn(
                           'px-4 py-2 text-xs min-w-[14rem] max-w-[24rem] whitespace-normal break-words',
-                          row.eligibilityStatus === 'eligible' ? 'text-emerald-400/90' : 'text-gray-500'
+                          row.eligibilityStatus === 'eligible' ? 'text-emerald-400/90' : 'text-muted-foreground'
                         )}
                       >
                         {row.eligibilityLabel}
@@ -522,9 +522,9 @@ export function JournalHygienePanel() {
         onToggle={() => setOrphansExpanded((v) => !v)}
       >
         {orphans.length === 0 ? (
-          <div className="p-6 text-center text-gray-500 text-sm space-y-1">
+          <div className="p-6 text-center text-muted-foreground text-sm space-y-1">
             <p>No orphan entries found.</p>
-            <p className="text-xs text-gray-600">
+            <p className="text-xs text-muted-foreground">
               Orphans are active adjustment JEs whose linked sale or payment no longer exists.
             </p>
           </div>
@@ -532,8 +532,8 @@ export function JournalHygienePanel() {
           <HygieneScrollTable>
             <HygieneTable minWidth={720}>
               <thead>
-                <tr className="border-b border-gray-800 text-left text-gray-400">
-                  <th className="px-4 py-3 whitespace-nowrap sticky left-0 bg-gray-950/95 z-10">Entry</th>
+                <tr className="border-b border-border text-left text-muted-foreground">
+                  <th className="px-4 py-3 whitespace-nowrap sticky left-0 bg-input-background/95 z-10">Entry</th>
                   <th className="px-4 py-3 whitespace-nowrap">Type</th>
                   <th className="px-4 py-3 whitespace-nowrap min-w-[12rem]">Description</th>
                   <th className="px-4 py-3 whitespace-nowrap">Actions</th>
@@ -542,11 +542,11 @@ export function JournalHygienePanel() {
               <tbody>
                 {orphans.map((o) => (
                   <ClickableRow key={o.id} onClick={() => openTransactionDetail(o)}>
-                    <td className="px-4 py-3 font-mono text-xs whitespace-nowrap sticky left-0 bg-gray-950/95 z-10">
+                    <td className="px-4 py-3 font-mono text-xs whitespace-nowrap sticky left-0 bg-input-background/95 z-10">
                       {o.entry_no ?? o.id.slice(0, 8)}
                     </td>
                     <td className="px-4 py-3 text-xs whitespace-nowrap">{o.reference_type}</td>
-                    <td className="px-4 py-3 text-xs text-gray-400 min-w-[12rem] max-w-[24rem] whitespace-normal break-words">
+                    <td className="px-4 py-3 text-xs text-muted-foreground min-w-[12rem] max-w-[24rem] whitespace-normal break-words">
                       {o.description ?? '—'}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap" onClick={(ev) => ev.stopPropagation()}>
@@ -561,7 +561,7 @@ export function JournalHygienePanel() {
                           {actionLoading === o.id ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Void'}
                         </Button>
                       ) : (
-                        <span className="text-xs text-gray-500">—</span>
+                        <span className="text-xs text-muted-foreground">—</span>
                       )}
                     </td>
                   </ClickableRow>
@@ -572,19 +572,19 @@ export function JournalHygienePanel() {
         )}
       </CollapsibleHygieneSection>
 
-      <div className="rounded-xl border border-gray-700/50 bg-gray-950/30">
+      <div className="rounded-xl border border-border bg-muted/30">
         <button
           type="button"
-          className="w-full p-4 flex items-center justify-between gap-2 text-left hover:bg-gray-900/40 transition-colors"
+          className="w-full p-4 flex items-center justify-between gap-2 text-left hover:bg-card/40 transition-colors"
           onClick={() => setVoidedHistoryExpanded((v) => !v)}
         >
           <div>
             <h3 className="font-semibold text-gray-200">Voided history (audit)</h3>
-            <p className="text-xs text-gray-500 mt-0.5">
+            <p className="text-xs text-muted-foreground mt-0.5">
               {voidedStatTotal} cancelled journal(s) — read-only. Removed from live GL; Day Book Audit mode shows full trail.
             </p>
           </div>
-          <div className="flex items-center gap-2 shrink-0 text-gray-400">
+          <div className="flex items-center gap-2 shrink-0 text-muted-foreground">
             <span className="text-sm font-mono">
               {voidedHistory.length}
               {voidedTotal > voidedHistory.length ? '+' : ''}
@@ -593,15 +593,15 @@ export function JournalHygienePanel() {
           </div>
         </button>
         {voidedHistoryExpanded && (
-          <div className="border-t border-gray-800">
+          <div className="border-t border-border">
             {voidedHistory.length === 0 ? (
-              <p className="p-6 text-center text-gray-500 text-sm">No voided journals in browse window.</p>
+              <p className="p-6 text-center text-muted-foreground text-sm">No voided journals in browse window.</p>
             ) : (
               <HygieneScrollTable>
                 <HygieneTable minWidth={1024}>
                   <thead>
-                    <tr className="border-b border-gray-800 text-left text-gray-500">
-                      <th className="px-4 py-3 whitespace-nowrap sticky left-0 bg-gray-950/95 z-10">Entry</th>
+                    <tr className="border-b border-border text-left text-muted-foreground">
+                      <th className="px-4 py-3 whitespace-nowrap sticky left-0 bg-input-background/95 z-10">Entry</th>
                       <th className="px-4 py-3 whitespace-nowrap">Date</th>
                       <th className="px-4 py-3 whitespace-nowrap">Type</th>
                       <th className="px-4 py-3 whitespace-nowrap">Voided at</th>
@@ -612,18 +612,18 @@ export function JournalHygienePanel() {
                   <tbody>
                     {voidedHistory.map((row) => (
                       <ClickableRow key={row.id} onClick={() => openTransactionDetail(row)}>
-                        <td className="px-4 py-3 font-mono text-xs text-gray-300 whitespace-nowrap sticky left-0 bg-gray-950/95 z-10">
+                        <td className="px-4 py-3 font-mono text-xs text-muted-foreground whitespace-nowrap sticky left-0 bg-input-background/95 z-10">
                           {row.entry_no ?? row.id.slice(0, 8)}
                         </td>
-                        <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{row.entry_date?.slice(0, 10) ?? '—'}</td>
-                        <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">{row.reference_type ?? '—'}</td>
-                        <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
+                        <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">{row.entry_date?.slice(0, 10) ?? '—'}</td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">{row.reference_type ?? '—'}</td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
                           {row.voided_at ? row.voided_at.slice(0, 10) : '—'}
                         </td>
-                        <td className="px-4 py-3 text-xs text-gray-500 min-w-[14rem] max-w-[28rem] whitespace-normal break-words">
+                        <td className="px-4 py-3 text-xs text-muted-foreground min-w-[14rem] max-w-[28rem] whitespace-normal break-words">
                           {row.void_reason ?? '—'}
                         </td>
-                        <td className="px-4 py-3 text-xs text-gray-500 min-w-[14rem] max-w-[28rem] whitespace-normal break-words">
+                        <td className="px-4 py-3 text-xs text-muted-foreground min-w-[14rem] max-w-[28rem] whitespace-normal break-words">
                           {row.description ?? '—'}
                         </td>
                       </ClickableRow>
@@ -633,13 +633,13 @@ export function JournalHygienePanel() {
               </HygieneScrollTable>
             )}
             {voidedFooterLabel ? (
-              <div className="px-4 py-2 text-[11px] text-gray-600 border-t border-gray-800/60 flex flex-wrap items-center justify-between gap-2">
+              <div className="px-4 py-2 text-[11px] text-muted-foreground border-t border-border/60 flex flex-wrap items-center justify-between gap-2">
                 <span>{voidedFooterLabel}</span>
                 {voidedTotal > voidedHistory.length ? (
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-7 text-xs text-gray-400"
+                    className="h-7 text-xs text-muted-foreground"
                     onClick={() => void handleLoadMoreVoided()}
                     disabled={loading}
                   >

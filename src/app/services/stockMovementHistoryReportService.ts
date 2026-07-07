@@ -21,6 +21,7 @@ import {
   type StockMovementReportFilters,
 } from '@/app/lib/stockMovementReportLogic';
 import { formatProductVariationLabel } from '@/app/lib/stockMovementDisplay';
+import { buildStockMovementEnrichment } from '@/app/lib/stockMovementReferenceEnrichment';
 
 export interface CatalogProduct {
   id: string;
@@ -287,103 +288,8 @@ async function buildSectionFromCachedMovements(
   return { summary, rows, isEmpty: periodMovements.length === 0, showVariationColumn };
 }
 
-async function fetchSaleRefs(ids: Set<string>): Promise<Record<string, { invoiceNo: string; partyName: string | null }>> {
-  if (!ids.size) return {};
-  const { data } = await supabase.from('sales').select('id, invoice_no, order_no, customer_name').in('id', Array.from(ids));
-  const map: Record<string, { invoiceNo: string; partyName: string | null }> = {};
-  for (const r of data || []) {
-    const invoice = String(r.invoice_no ?? '').trim();
-    const order = String(r.order_no ?? '').trim();
-    map[String(r.id)] = { invoiceNo: invoice || order || '', partyName: String(r.customer_name ?? '').trim() || null };
-  }
-  return map;
-}
-
-async function fetchPurchaseRefs(ids: Set<string>): Promise<Record<string, { invoiceNo: string; partyName: string | null }>> {
-  if (!ids.size) return {};
-  const { data } = await supabase.from('purchases').select('id, po_no, supplier_name').in('id', Array.from(ids));
-  const map: Record<string, { invoiceNo: string; partyName: string | null }> = {};
-  for (const r of data || []) {
-    map[String(r.id)] = { invoiceNo: String(r.po_no ?? '').trim(), partyName: String(r.supplier_name ?? '').trim() || null };
-  }
-  return map;
-}
-
-async function fetchStudioProductionRefs(ids: Set<string>): Promise<Record<string, { refNo: string; partyName: string | null }>> {
-  if (!ids.size) return {};
-  const { data: prodRows } = await supabase.from('studio_productions').select('id, production_no, sale_id').in('id', Array.from(ids));
-  const saleIds = new Set<string>();
-  for (const r of prodRows || []) {
-    if (r.sale_id) saleIds.add(String(r.sale_id));
-  }
-  const salesMap = await fetchSaleRefs(saleIds);
-  const map: Record<string, { refNo: string; partyName: string | null }> = {};
-  for (const r of prodRows || []) {
-    const id = String(r.id);
-    const sale = r.sale_id ? salesMap[String(r.sale_id)] : null;
-    map[id] = { refNo: String(r.production_no ?? '').trim() || sale?.invoiceNo || '', partyName: sale?.partyName ?? null };
-  }
-  return map;
-}
-
-async function fetchBranchNames(ids: Set<string>): Promise<Record<string, string>> {
-  if (!ids.size) return {};
-  const { data } = await supabase.from('branches').select('id, name').in('id', Array.from(ids));
-  const map: Record<string, string> = {};
-  for (const r of data || []) {
-    map[String(r.id)] = String(r.name ?? '');
-  }
-  return map;
-}
-
 async function buildEnrichmentContext(movements: RawStockMovement[]): Promise<EnrichmentContext> {
-  const saleIds = new Set<string>();
-  const purchaseIds = new Set<string>();
-  const studioIds = new Set<string>();
-  const branchIds = new Set<string>();
-
-  movements.forEach((m) => {
-    const rt = String(m.reference_type || '').toLowerCase();
-    const rid = m.reference_id ? String(m.reference_id) : '';
-    if (!rid) return;
-    if (rt === 'sale' || rt === 'sales') saleIds.add(rid);
-    else if (rt === 'purchase' || rt === 'purchases') purchaseIds.add(rid);
-    else if (rt === 'studio_production' || rt === 'production') studioIds.add(rid);
-    if (m.branch_id) branchIds.add(m.branch_id);
-  });
-
-  const [salesMap, purchasesMap, studioMap, branchNames] = await Promise.all([
-    fetchSaleRefs(saleIds),
-    fetchPurchaseRefs(purchaseIds),
-    fetchStudioProductionRefs(studioIds),
-    fetchBranchNames(branchIds),
-  ]);
-
-  const referenceLabels: Record<string, string> = {};
-  const partyNames: Record<string, string> = {};
-
-  movements.forEach((m) => {
-    const rt = String(m.reference_type || '').toLowerCase();
-    const rid = m.reference_id ? String(m.reference_id) : '';
-    if (!rid) return;
-    const key = `${m.reference_type}:${rid}`;
-    if (rt === 'sale' || rt === 'sales') {
-      referenceLabels[key] = salesMap[rid]?.invoiceNo || rid;
-      partyNames[key] = salesMap[rid]?.partyName ?? null;
-    } else if (rt === 'purchase' || rt === 'purchases') {
-      referenceLabels[key] = purchasesMap[rid]?.invoiceNo || rid;
-      partyNames[key] = purchasesMap[rid]?.partyName ?? null;
-    } else if (rt === 'studio_production' || rt === 'production') {
-      referenceLabels[key] = studioMap[rid]?.refNo || rid;
-      partyNames[key] = studioMap[rid]?.partyName ?? null;
-    } else if (rt === 'opening_balance') {
-      referenceLabels[key] = 'Opening Balance';
-    } else {
-      referenceLabels[key] = rid;
-    }
-  });
-
-  return { branchNames, referenceLabels, partyNames };
+  return buildStockMovementEnrichment(movements);
 }
 
 async function fetchAllMovementsForProduct(

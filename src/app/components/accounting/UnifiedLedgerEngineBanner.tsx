@@ -3,8 +3,8 @@ import type { UnifiedLedgerEngineMode } from '@/app/lib/unifiedLedgerEngineState
 import type { UnifiedLedgerScreenId } from '@/app/lib/unifiedLedgerScreenFlags';
 
 const MODE_STYLES: Record<UnifiedLedgerEngineMode, string> = {
-  legacy: 'border-gray-600/50 bg-gray-900/50 text-gray-200',
-  disabled: 'border-gray-700/50 bg-gray-900/40 text-gray-400',
+  legacy: 'border-gray-600/50 bg-muted/40 text-gray-200',
+  disabled: 'border-border bg-card/40 text-muted-foreground',
   preview: 'border-amber-500/40 bg-amber-500/[0.08] text-amber-100/95',
   unified: 'border-emerald-500/40 bg-emerald-500/[0.08] text-emerald-100/95',
   killed: 'border-red-500/50 bg-red-500/[0.1] text-red-100/95',

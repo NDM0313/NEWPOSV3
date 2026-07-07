@@ -149,18 +149,18 @@ export function BespokeDetailsModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-gray-900 border-gray-700 text-white max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="bg-card border-border text-white max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Customize / Add Details</DialogTitle>
           {productName && (
-            <p className="text-sm text-gray-400">{productName}</p>
+            <p className="text-sm text-muted-foreground">{productName}</p>
           )}
         </DialogHeader>
 
         <div className="space-y-4 py-2">
-          <p className="text-xs text-gray-500 rounded border border-gray-800 bg-gray-950/80 px-3 py-2">
+          <p className="text-xs text-muted-foreground rounded border border-border bg-input-background/80 px-3 py-2">
             Fabrics selected here are added as separate cart lines for inventory. Add stitching and other
-            modification charges under <strong className="text-gray-400">Extra Expenses</strong> on the sale.
+            modification charges under <strong className="text-muted-foreground">Extra Expenses</strong> on the sale.
           </p>
 
           {config.show_fabric && companyId && (
@@ -175,19 +175,19 @@ export function BespokeDetailsModal({
           {config.show_color_code && (
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-gray-300">Color name</Label>
+                <Label className="text-muted-foreground">Color name</Label>
                 <Input
                   value={colorName}
                   onChange={(e) => setColorName(e.target.value)}
-                  className="bg-gray-950 border-gray-700 text-white mt-1"
+                  className="bg-input-background border-border text-white mt-1"
                 />
               </div>
               <div>
-                <Label className="text-gray-300">Shade card code</Label>
+                <Label className="text-muted-foreground">Shade card code</Label>
                 <Input
                   value={shadeCode}
                   onChange={(e) => setShadeCode(e.target.value)}
-                  className="bg-gray-950 border-gray-700 text-white mt-1"
+                  className="bg-input-background border-border text-white mt-1"
                 />
               </div>
             </div>
@@ -195,19 +195,19 @@ export function BespokeDetailsModal({
 
           {config.show_measurements && (
             <div>
-              <Label className="text-gray-300">Measurements</Label>
+              <Label className="text-muted-foreground">Measurements</Label>
               <Textarea
                 value={measurements}
                 onChange={(e) => setMeasurements(e.target.value)}
                 placeholder="Chest, length, sleeve… or paste measurement sheet"
-                className="bg-gray-950 border-gray-700 text-white mt-1 min-h-[80px]"
+                className="bg-input-background border-border text-white mt-1 min-h-[80px]"
               />
             </div>
           )}
 
           {config.show_delivery_date && (
             <div>
-              <Label className="text-gray-300">Expected delivery date</Label>
+              <Label className="text-muted-foreground">Expected delivery date</Label>
               <div className="mt-1">
                 <CalendarDatePicker
                   value={deliveryDate}
@@ -221,7 +221,7 @@ export function BespokeDetailsModal({
 
           {config.show_image_upload && (
             <div className="space-y-2">
-              <Label className="text-gray-300">Reference image</Label>
+              <Label className="text-muted-foreground">Reference image</Label>
               <Input
                 value={imageUrl}
                 onChange={(e) => {
@@ -229,7 +229,7 @@ export function BespokeDetailsModal({
                   if (e.target.value.trim()) setImagePath('');
                 }}
                 placeholder="External image URL (optional)"
-                className="bg-gray-950 border-gray-700 text-white"
+                className="bg-input-background border-border text-white"
               />
               <div className="flex items-center gap-2">
                 <Label
@@ -252,18 +252,18 @@ export function BespokeDetailsModal({
                 <img
                   src={previewSrc}
                   alt="Reference"
-                  className="max-h-32 rounded border border-gray-700 object-contain"
+                  className="max-h-32 rounded border border-border object-contain"
                 />
               )}
             </div>
           )}
 
           <div>
-            <Label className="text-gray-300">Notes (optional)</Label>
+            <Label className="text-muted-foreground">Notes (optional)</Label>
             <Textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="bg-gray-950 border-gray-700 text-white mt-1 min-h-[60px]"
+              className="bg-input-background border-border text-white mt-1 min-h-[60px]"
             />
           </div>
         </div>

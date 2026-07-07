@@ -27,22 +27,22 @@ export function PayablesVarianceExplainerPanel({ summary, formatCurrency, defaul
       >
         <div>
           <h3 className="text-sm font-semibold text-red-100">Payables — three bases explained</h3>
-          <p className="text-xs text-gray-400 mt-0.5">
+          <p className="text-xs text-muted-foreground mt-0.5">
             Operational document due vs party GL vs AP control ledger (same branch / as-of)
           </p>
         </div>
-        {open ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
+        {open ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
       </button>
 
       {open ? (
         <div className="px-4 pb-4 space-y-3 border-t border-red-500/15">
-          <div className="rounded-lg border border-blue-600/35 bg-blue-950/20 p-3 text-xs text-blue-100/90 flex gap-2">
+          <div className="rounded-lg border border-blue-600/35 bg-primary/5 p-3 text-xs text-primary dark:text-blue-100 flex gap-2">
             <Info className="w-4 h-4 shrink-0 text-blue-400 mt-0.5" />
             <p>
               <strong>Operational payables</strong> = open purchase due from documents (
-              <code className="text-blue-300/80">getContactBalancesSummary</code>).{' '}
+              <code className="text-blue-700 dark:text-blue-300/80">getContactBalancesSummary</code>).{' '}
               <strong>Party GL payables</strong> = supplier sub-ledger sum (
-              <code className="text-blue-300/80">get_contact_party_gl_balances</code>) — same as Contacts green/red
+              <code className="text-blue-700 dark:text-blue-300/80">get_contact_party_gl_balances</code>) — same as Contacts green/red
               cards. <strong>Control GL</strong> = AP 2000 net Cr−Dr on the control account. Comparing operational to
               control directly often looks wrong; use party GL for apples-to-apples with Contacts.
             </p>
@@ -99,15 +99,15 @@ function StatBox({
   return (
     <div
       className={cn(
-        'rounded border p-3 bg-gray-950/50',
-        highlight ? 'border-emerald-700/40' : 'border-gray-800'
+        'rounded border p-3 bg-muted/40',
+        highlight ? 'border-emerald-700/40' : 'border-border'
       )}
     >
-      <p className="text-[10px] text-gray-500 uppercase tracking-wide">{label}</p>
+      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{label}</p>
       <p className={cn('tabular-nums text-sm font-medium mt-1', highlight ? 'text-emerald-200' : 'text-gray-200')}>
         {value}
       </p>
-      <p className="text-[10px] text-gray-600 mt-1">{note}</p>
+      <p className="text-[10px] text-muted-foreground mt-1">{note}</p>
     </div>
   );
 }

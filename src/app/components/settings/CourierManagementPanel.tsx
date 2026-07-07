@@ -122,15 +122,15 @@ export const CourierManagementPanel = () => {
           <Truck className="text-blue-500" size={24} />
         </div>
         <div>
-          <h3 className="text-xl font-bold text-white">Courier Management</h3>
-          <p className="text-sm text-gray-400">Manage courier companies for shipments (default rate, tracking URL, future API)</p>
+          <h3 className="text-xl font-bold text-foreground">Courier Management</h3>
+          <p className="text-sm text-muted-foreground">Manage courier companies for shipments (default rate, tracking URL, future API)</p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h4 className="text-sm font-semibold text-gray-300">Couriers</h4>
+            <h4 className="text-sm font-semibold text-muted-foreground">Couriers</h4>
             {!editingId && (
               <Button size="sm" variant="outline" className="border-gray-600 text-blue-400" onClick={() => setForm(emptyForm)}>
                 <Plus size={14} className="mr-2" />
@@ -139,29 +139,29 @@ export const CourierManagementPanel = () => {
             )}
           </div>
           {loading ? (
-            <p className="text-gray-500 text-sm">Loading…</p>
+            <p className="text-muted-foreground text-sm">Loading…</p>
           ) : (
             <div className="space-y-2 max-h-96 overflow-y-auto">
               {list.length === 0 && (
-                <p className="text-gray-500 text-sm">No couriers. Add one to use in the shipment modal.</p>
+                <p className="text-muted-foreground text-sm">No couriers. Add one to use in the shipment modal.</p>
               )}
               {list.map((c) => (
                 <div
                   key={c.id}
                   className={cn(
                     'flex items-center justify-between gap-2 p-3 rounded-lg border',
-                    editingId === c.id ? 'border-blue-500 bg-blue-500/10' : 'border-gray-800 bg-gray-950/50'
+                    editingId === c.id ? 'border-blue-500 bg-blue-500/10' : 'border-border bg-muted/40'
                   )}
                 >
                   <div>
-                    <p className="font-medium text-white">{c.name}</p>
-                    <p className="text-xs text-gray-500">
+                    <p className="font-medium text-foreground">{c.name}</p>
+                    <p className="text-xs text-muted-foreground">
                       Default rate: {Number(c.default_rate || 0).toLocaleString()} · {c.is_active ? 'Active' : 'Inactive'}
                     </p>
                   </div>
                   <div className="flex items-center gap-1">
                     <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => handleEdit(c)}>
-                      <Edit size={14} className="text-gray-400" />
+                      <Edit size={14} className="text-muted-foreground" />
                     </Button>
                     <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-red-400 hover:text-red-300" onClick={() => handleDelete(c.id)}>
                       <Trash2 size={14} />
@@ -173,8 +173,8 @@ export const CourierManagementPanel = () => {
           )}
         </div>
 
-        <div className="border border-gray-800 rounded-lg p-4 space-y-4">
-          <h4 className="text-sm font-semibold text-gray-300 flex items-center justify-between">
+        <div className="border border-border rounded-lg p-4 space-y-4">
+          <h4 className="text-sm font-semibold text-muted-foreground flex items-center justify-between">
             {editingId ? 'Edit Courier' : 'Add Courier'}
             {editingId && (
               <Button size="sm" variant="ghost" onClick={handleCancelEdit} className="h-8 w-8 p-0">
@@ -183,55 +183,55 @@ export const CourierManagementPanel = () => {
             )}
           </h4>
           <div>
-            <Label className="text-gray-400 text-sm">Courier Name</Label>
+            <Label className="text-muted-foreground text-sm">Courier Name</Label>
             <Input
               value={form.name}
               onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
               placeholder="e.g. TCS, Leopard, DHL"
-              className="mt-1 bg-gray-950 border-gray-700 text-white"
+              className="mt-1 bg-input-background border-border text-foreground"
             />
           </div>
           <div>
-            <Label className="text-gray-400 text-sm">Default Rate (Rs)</Label>
+            <Label className="text-muted-foreground text-sm">Default Rate (Rs)</Label>
             <Input
               type="number"
               min={0}
               value={form.default_rate > 0 ? form.default_rate : ''}
               onChange={(e) => setForm((prev) => ({ ...prev, default_rate: parseFloat(e.target.value) || 0 }))}
               placeholder="250"
-              className="mt-1 bg-gray-950 border-gray-700 text-white"
+              className="mt-1 bg-input-background border-border text-foreground"
             />
           </div>
           <div>
-            <Label className="text-gray-400 text-sm">Tracking URL (use &#123;tracking_id&#125; for placeholder)</Label>
+            <Label className="text-muted-foreground text-sm">Tracking URL (use &#123;tracking_id&#125; for placeholder)</Label>
             <Input
               value={form.tracking_url}
               onChange={(e) => setForm((prev) => ({ ...prev, tracking_url: e.target.value }))}
               placeholder="https://www.tcsexpress.com/track?trackingNo={tracking_id}"
-              className="mt-1 bg-gray-950 border-gray-700 text-white font-mono text-xs"
+              className="mt-1 bg-input-background border-border text-foreground font-mono text-xs"
             />
           </div>
           <div>
-            <Label className="text-gray-400 text-sm">API Endpoint (future)</Label>
+            <Label className="text-muted-foreground text-sm">API Endpoint (future)</Label>
             <Input
               value={form.api_endpoint}
               onChange={(e) => setForm((prev) => ({ ...prev, api_endpoint: e.target.value }))}
               placeholder="https://api.courier.com/v1/ship"
-              className="mt-1 bg-gray-950 border-gray-700 text-white font-mono text-xs"
+              className="mt-1 bg-input-background border-border text-foreground font-mono text-xs"
             />
           </div>
           <div>
-            <Label className="text-gray-400 text-sm">API Key (future, stored securely)</Label>
+            <Label className="text-muted-foreground text-sm">API Key (future, stored securely)</Label>
             <Input
               type="password"
               value={form.api_key}
               onChange={(e) => setForm((prev) => ({ ...prev, api_key: e.target.value }))}
               placeholder="••••••••"
-              className="mt-1 bg-gray-950 border-gray-700 text-white"
+              className="mt-1 bg-input-background border-border text-foreground"
             />
           </div>
           <div className="flex items-center justify-between">
-            <Label className="text-gray-400 text-sm">Active</Label>
+            <Label className="text-muted-foreground text-sm">Active</Label>
             <Switch
               checked={form.is_active ?? true}
               onCheckedChange={(v) => setForm((prev) => ({ ...prev, is_active: v }))}

@@ -24,8 +24,8 @@ export function ThermalReceiptPreviewPanel({ thermal }: ThermalReceiptPreviewPan
   const paperSize: ThermalPaperSize = thermal.paperSize ?? '58mm';
 
   return (
-    <div className="border border-gray-700 rounded-xl overflow-hidden bg-gray-950 p-3">
-      <p className="text-xs text-gray-400 mb-2 font-medium">Thermal preview (sample)</p>
+    <div className="border border-border rounded-xl overflow-hidden bg-input-background p-3">
+      <p className="text-xs text-muted-foreground mb-2 font-medium">Thermal preview (sample)</p>
       <div className="flex justify-center overflow-auto max-h-[520px] py-2">
         <ThermalReceiptLayout
           paperSize={paperSize}
@@ -42,7 +42,7 @@ export function ThermalReceiptPreviewPanel({ thermal }: ThermalReceiptPreviewPan
           totalRows={[{ label: 'TOTAL', value: '6,800', bold: true }]}
         />
       </div>
-      <p className="text-[11px] text-gray-500 mt-2 text-center">
+      <p className="text-[11px] text-muted-foreground mt-2 text-center">
         {paperSize} roll · toggles update live
       </p>
     </div>

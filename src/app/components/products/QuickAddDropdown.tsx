@@ -65,10 +65,10 @@ export const QuickAddDropdown = ({
   return (
     <>
       <Select value={value} onValueChange={onValueChange} open={isSelectOpen} onOpenChange={setIsSelectOpen}>
-        <SelectTrigger className="bg-gray-800 border-gray-700 text-white mt-1">
+        <SelectTrigger className="bg-muted border-border text-foreground mt-1">
           <SelectValue placeholder={placeholder} />
         </SelectTrigger>
-        <SelectContent className="bg-gray-900 border-gray-800 text-white">
+        <SelectContent className="bg-popover border-border text-popover-foreground">
           {/* Regular items */}
           {items.map((item) => (
             <SelectItem key={item.value} value={item.value}>
@@ -77,12 +77,12 @@ export const QuickAddDropdown = ({
           ))}
 
           {/* Divider */}
-          <div className="h-px bg-gray-700 my-2 mx-2" />
+          <div className="h-px bg-muted my-2 mx-2" />
 
           {/* Add New Button */}
           <button
             onClick={handleOpenAddModal}
-            className="w-full flex items-center gap-2 px-2 py-2.5 text-blue-500 hover:bg-gray-800 transition-colors rounded-sm cursor-pointer"
+            className="w-full flex items-center gap-2 px-2 py-2.5 text-blue-500 hover:bg-muted transition-colors rounded-sm cursor-pointer"
           >
             <Plus size={16} />
             <span className="font-medium">{addNewLabel}</span>
@@ -92,10 +92,10 @@ export const QuickAddDropdown = ({
 
       {/* Quick Add Modal */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="sm:max-w-[400px] bg-gray-900 border-gray-800 text-white">
+        <DialogContent className="sm:max-w-[400px] bg-card border-border text-foreground">
           <DialogHeader>
-            <DialogTitle className="text-white">{addNewLabel}</DialogTitle>
-            <DialogDescription className="text-gray-400">
+            <DialogTitle className="text-foreground">{addNewLabel}</DialogTitle>
+            <DialogDescription className="text-muted-foreground">
               Enter the name and save to add it to the list.
             </DialogDescription>
           </DialogHeader>
@@ -109,7 +109,7 @@ export const QuickAddDropdown = ({
               value={newItemName}
               onChange={(e) => setNewItemName(e.target.value)}
               placeholder="Enter name..."
-              className="bg-gray-800 border-gray-700 text-white mt-2"
+              className="bg-muted border-border text-foreground mt-2"
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault();
@@ -128,7 +128,7 @@ export const QuickAddDropdown = ({
                 setIsModalOpen(false);
                 setNewItemName("");
               }}
-              className="text-gray-400 hover:text-white hover:bg-gray-800"
+              className="text-muted-foreground hover:text-foreground hover:bg-muted"
             >
               Cancel
             </Button>

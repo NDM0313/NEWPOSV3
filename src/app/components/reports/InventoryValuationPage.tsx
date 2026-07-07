@@ -81,10 +81,10 @@ export const InventoryValuationPage: React.FC<{
   }
   if (!data) {
     return (
-      <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-6 text-center text-gray-400">
+      <div className="rounded-xl border border-border bg-muted/40 p-6 text-center text-muted-foreground">
         <p className="font-medium">{fetchError || 'No inventory valuation data'}</p>
         {fetchError ? (
-          <Button variant="outline" className="mt-4 border-gray-700" onClick={() => { setFetchError(null); setFetchRetryKey((k) => k + 1); }}>
+          <Button variant="outline" className="mt-4 border-border" onClick={() => { setFetchError(null); setFetchRetryKey((k) => k + 1); }}>
             Retry
           </Button>
         ) : null}
@@ -105,41 +105,41 @@ export const InventoryValuationPage: React.FC<{
         onExcel={handleExportExcel}
         onWhatsapp={handleWhatsApp}
       />
-      <p className="no-print text-sm text-gray-400">
+      <p className="no-print text-sm text-muted-foreground">
         As at: {data.asOfDate} • {branchLabel} • {data.rows.length} SKU row(s) • Total value: {formatCurrency(data.totalValue)}
       </p>
-      <div className="overflow-auto rounded-xl border border-gray-800 bg-gray-900/50 no-print max-h-[calc(100dvh-16rem)]">
+      <div className="overflow-auto rounded-xl border border-border bg-muted/40 no-print max-h-[calc(100dvh-16rem)]">
         <table className="w-full text-base leading-snug">
-          <thead className="border-b border-gray-800 bg-gray-800/50 sticky top-0 z-10">
+          <thead className="border-b border-border bg-muted/50 sticky top-0 z-10">
             <tr>
-              <th className="p-3 text-left font-medium text-gray-300">Product</th>
-              <th className="p-3 text-left font-medium text-gray-300">SKU</th>
-              <th className="p-3 text-left font-medium text-gray-300">Category</th>
-              <th className="p-3 text-left font-medium text-gray-300">Unit</th>
-              <th className="p-3 text-right font-medium text-gray-300">Qty</th>
-              <th className="p-3 text-right font-medium text-gray-300">Unit cost</th>
-              <th className="p-3 text-right font-medium text-gray-300">Total value</th>
+              <th className="p-3 text-left font-medium text-muted-foreground">Product</th>
+              <th className="p-3 text-left font-medium text-muted-foreground">SKU</th>
+              <th className="p-3 text-left font-medium text-muted-foreground">Category</th>
+              <th className="p-3 text-left font-medium text-muted-foreground">Unit</th>
+              <th className="p-3 text-right font-medium text-muted-foreground">Qty</th>
+              <th className="p-3 text-right font-medium text-muted-foreground">Unit cost</th>
+              <th className="p-3 text-right font-medium text-muted-foreground">Total value</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-800">
+          <tbody className="divide-y divide-border">
             {data.rows.map((row) => (
-              <tr key={row.product_id} className="hover:bg-gray-800/30">
-                <td className="p-3 text-white">{row.product_name}</td>
-                <td className="p-3 text-gray-400 font-mono text-sm">{row.sku}</td>
-                <td className="p-3 text-gray-300">{row.category}</td>
-                <td className="p-3 text-gray-300">{row.unit}</td>
-                <td className="p-3 text-right text-gray-300 tabular-nums">{formatQty(row.quantity)}</td>
-                <td className="p-3 text-right text-gray-300">{formatCurrency(row.unit_cost)}</td>
-                <td className="p-3 text-right text-white font-medium">{formatCurrency(row.total_value)}</td>
+              <tr key={row.product_id} className="hover:bg-accent/30">
+                <td className="p-3 text-foreground">{row.product_name}</td>
+                <td className="p-3 text-muted-foreground font-mono text-sm">{row.sku}</td>
+                <td className="p-3 text-muted-foreground">{row.category}</td>
+                <td className="p-3 text-muted-foreground">{row.unit}</td>
+                <td className="p-3 text-right text-muted-foreground tabular-nums">{formatQty(row.quantity)}</td>
+                <td className="p-3 text-right text-muted-foreground">{formatCurrency(row.unit_cost)}</td>
+                <td className="p-3 text-right text-foreground font-medium">{formatCurrency(row.total_value)}</td>
               </tr>
             ))}
           </tbody>
-          <tfoot className="border-t border-gray-700 bg-gray-800/30">
+          <tfoot className="border-t border-border bg-accent/30">
             <tr>
-              <td colSpan={6} className="p-3 text-right font-semibold text-gray-300">
+              <td colSpan={6} className="p-3 text-right font-semibold text-muted-foreground">
                 Total value
               </td>
-              <td className="p-3 text-right font-bold text-white">{formatCurrency(data.totalValue)}</td>
+              <td className="p-3 text-right font-bold text-foreground">{formatCurrency(data.totalValue)}</td>
             </tr>
           </tfoot>
         </table>

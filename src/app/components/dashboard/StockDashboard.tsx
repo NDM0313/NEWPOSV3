@@ -14,10 +14,10 @@ export const StockDashboard = () => {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Stock Management</h2>
-          <p className="text-gray-500 dark:text-gray-400">Overview of inventory value and health.</p>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-foreground">Stock Management</h2>
+          <p className="text-muted-foreground dark:text-muted-foreground">Overview of inventory value and health.</p>
         </div>
-        <Button variant="outline" className="border-gray-200 dark:border-gray-800 text-gray-700 dark:text-gray-200">
+        <Button variant="outline" className="border-gray-200 dark:border-border text-gray-700 dark:text-gray-200">
           Stock Adjustment
         </Button>
       </div>
@@ -46,18 +46,18 @@ export const StockDashboard = () => {
         />
       </div>
 
-      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden shadow-sm">
-        <div className="p-6 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center">
-          <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+      <div className="bg-white dark:bg-card border border-gray-200 dark:border-border rounded-xl overflow-hidden shadow-sm">
+        <div className="p-6 border-b border-gray-200 dark:border-border flex justify-between items-center">
+          <h3 className="text-lg font-bold text-gray-900 dark:text-foreground flex items-center gap-2">
             <AlertTriangle className="text-orange-500" size={20} />
             Slow Moving Items
-            <span className="text-sm font-normal text-gray-500 ml-2">(Not sold in 90+ days)</span>
+            <span className="text-sm font-normal text-muted-foreground ml-2">(Not sold in 90+ days)</span>
           </h3>
           <Button variant="ghost" size="sm" className="text-blue-500 hover:text-blue-400">View All <ArrowRight size={16} className="ml-1" /></Button>
         </div>
         
         <table className="w-full text-left text-sm">
-          <thead className="bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-800">
+          <thead className="bg-gray-50 dark:bg-muted/50 border-b border-gray-200 dark:border-border">
             <tr>
               <th className="px-6 py-4 font-semibold text-gray-900 dark:text-gray-200">Product Name</th>
               <th className="px-6 py-4 font-semibold text-gray-900 dark:text-gray-200">SKU</th>
@@ -66,18 +66,18 @@ export const StockDashboard = () => {
               <th className="px-6 py-4 font-semibold text-gray-900 dark:text-gray-200 text-right">Value Locked</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+          <tbody className="divide-y divide-gray-200 dark:divide-border">
             {slowMovingItems.map((item) => (
-              <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
-                <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{item.name}</td>
-                <td className="px-6 py-4 text-gray-500 dark:text-gray-400 text-xs font-mono">{item.sku}</td>
+              <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-accent/30 transition-colors">
+                <td className="px-6 py-4 font-medium text-gray-900 dark:text-foreground">{item.name}</td>
+                <td className="px-6 py-4 text-muted-foreground dark:text-muted-foreground text-xs font-mono">{item.sku}</td>
                 <td className="px-6 py-4">
                   <span className="bg-orange-100 dark:bg-orange-500/10 text-orange-700 dark:text-orange-500 px-2 py-1 rounded-full text-xs font-medium border border-orange-200 dark:border-orange-500/20">
                     {item.days} Days
                   </span>
                 </td>
-                <td className="px-6 py-4 text-center text-gray-900 dark:text-white tabular-nums">{formatQty(item.stock)}</td>
-                <td className="px-6 py-4 text-right font-bold text-gray-900 dark:text-white">${item.value.toLocaleString()}</td>
+                <td className="px-6 py-4 text-center text-gray-900 dark:text-foreground tabular-nums">{formatQty(item.stock)}</td>
+                <td className="px-6 py-4 text-right font-bold text-gray-900 dark:text-foreground">${item.value.toLocaleString()}</td>
               </tr>
             ))}
           </tbody>
@@ -88,13 +88,13 @@ export const StockDashboard = () => {
 };
 
 const StockCard = ({ title, value, icon: Icon, color, bg }: any) => (
-  <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-6 rounded-xl flex items-center gap-4">
+  <div className="bg-white dark:bg-card border border-gray-200 dark:border-border p-6 rounded-xl flex items-center gap-4">
     <div className={`p-4 rounded-xl ${bg} ${color}`}>
       <Icon size={24} />
     </div>
     <div>
-      <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{title}</p>
-      <h3 className={`text-2xl font-bold mt-1 ${title.includes('Profit') ? 'text-green-500' : 'text-gray-900 dark:text-white'}`}>{value}</h3>
+      <p className="text-sm font-medium text-muted-foreground dark:text-muted-foreground">{title}</p>
+      <h3 className={`text-2xl font-bold mt-1 ${title.includes('Profit') ? 'text-green-500' : 'text-gray-900 dark:text-foreground'}`}>{value}</h3>
     </div>
   </div>
 );

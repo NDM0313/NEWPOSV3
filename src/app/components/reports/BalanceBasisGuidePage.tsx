@@ -54,15 +54,15 @@ function StatCard({
   return (
     <div
       className={cn(
-        'rounded-lg border p-3 bg-gray-950/50',
-        highlight ? 'border-emerald-700/40' : 'border-gray-800'
+        'rounded-lg border p-3 bg-muted/40',
+        highlight ? 'border-emerald-700/40' : 'border-border'
       )}
     >
-      <p className="text-[10px] text-gray-500 uppercase tracking-wide">{label}</p>
+      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{label}</p>
       <p className={cn('tabular-nums text-lg font-semibold mt-1', highlight ? 'text-emerald-200' : 'text-gray-100')}>
         {value}
       </p>
-      <p className="text-[10px] text-gray-600 mt-1">{note}</p>
+      <p className="text-[10px] text-muted-foreground mt-1">{note}</p>
     </div>
   );
 }
@@ -71,7 +71,7 @@ function VarianceLine({ label, value, formatCurrency }: { label: string; value: 
   if (value == null) return null;
   const nearZero = Math.abs(value) < 0.01;
   return (
-    <p className="text-xs text-gray-500 mt-2">
+    <p className="text-xs text-muted-foreground mt-2">
       {label}:{' '}
       <span className={cn('tabular-nums font-medium', nearZero ? 'text-emerald-400' : 'text-amber-300')}>
         {formatCurrency(value)}
@@ -154,7 +154,7 @@ export function BalanceBasisGuidePage({ asOfDate, branchId }: Props) {
   };
 
   const SortHeader = ({ col, label, align = 'right' }: { col: BalanceBasisGuideSortKey; label: string; align?: 'left' | 'right' }) => (
-    <th className={cn('py-2 px-3 cursor-pointer select-none hover:text-gray-300', align === 'right' ? 'text-right' : 'text-left')}>
+    <th className={cn('py-2 px-3 cursor-pointer select-none hover:text-muted-foreground', align === 'right' ? 'text-right' : 'text-left')}>
       <button type="button" className="inline-flex items-center gap-1" onClick={() => toggleSort(col)}>
         {label}
         {sortKey === col ? (
@@ -271,22 +271,22 @@ export function BalanceBasisGuidePage({ asOfDate, branchId }: Props) {
         detail="Control GL columns = posted journal on 1100 AR / 2000 AP / 2010 Worker Payable — same source as Balance Sheet and Trial Balance."
       />
 
-      <div className="rounded-xl border border-blue-600/30 bg-blue-950/20">
+      <div className="rounded-xl border border-blue-600/30 bg-primary/5">
         <button
           type="button"
-          className="w-full flex items-center justify-between gap-3 p-4 text-left hover:bg-blue-950/30"
+          className="w-full flex items-center justify-between gap-3 p-4 text-left hover:bg-primary/10"
           onClick={() => setIntroOpen((v) => !v)}
         >
           <div>
             <h2 className="text-sm font-semibold text-blue-100">How to read this report</h2>
-            <p className="text-xs text-gray-400 mt-0.5">
+            <p className="text-xs text-muted-foreground mt-0.5">
               Three bases: Operational (clamped) | Party GL signed | Control GL (Balance Sheet)
             </p>
           </div>
-          {introOpen ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
+          {introOpen ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
         </button>
         {introOpen ? (
-          <div className="px-4 pb-4 space-y-3 border-t border-blue-600/20 text-xs text-blue-100/90">
+          <div className="px-4 pb-4 space-y-3 border-t border-blue-600/20 text-xs text-primary dark:text-blue-100">
             <div className="flex gap-2 pt-3">
               <Info className="w-4 h-4 shrink-0 text-blue-400 mt-0.5" />
               <div className="space-y-2">
@@ -311,15 +311,15 @@ export function BalanceBasisGuidePage({ asOfDate, branchId }: Props) {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-[11px]">
               <div className="rounded border border-cyan-700/40 bg-cyan-950/20 p-2">
                 <strong className="text-cyan-200">Operational</strong>
-                <p className="text-gray-400 mt-1">Collections / payments follow-up — not on Balance Sheet</p>
+                <p className="text-muted-foreground mt-1">Collections / payments follow-up — not on Balance Sheet</p>
               </div>
               <div className="rounded border border-emerald-700/40 bg-emerald-950/20 p-2">
                 <strong className="text-emerald-200">Party GL signed</strong>
-                <p className="text-gray-400 mt-1">Per-contact journal sub-ledger (+ and −)</p>
+                <p className="text-muted-foreground mt-1">Per-contact journal sub-ledger (+ and −)</p>
               </div>
               <div className="rounded border border-sky-700/40 bg-sky-950/20 p-2">
                 <strong className="text-sky-200">Control GL</strong>
-                <p className="text-gray-400 mt-1">Balance Sheet line (1100 / 2000 / 2010)</p>
+                <p className="text-muted-foreground mt-1">Balance Sheet line (1100 / 2000 / 2010)</p>
               </div>
             </div>
           </div>
@@ -369,7 +369,7 @@ export function BalanceBasisGuidePage({ asOfDate, branchId }: Props) {
         ) : null}
       </div>
 
-      <p className="text-xs text-gray-500">As of: {asOfDate}</p>
+      <p className="text-xs text-muted-foreground">As of: {asOfDate}</p>
 
       {error ? (
         <div className="rounded-lg border border-amber-800/50 bg-amber-950/30 p-3 text-sm text-amber-200">{error}</div>
@@ -435,33 +435,33 @@ export function BalanceBasisGuidePage({ asOfDate, branchId }: Props) {
               value={totals.payablesOperationalVsSigned}
               formatCurrency={formatCurrency}
             />
-            <p className="text-[10px] text-gray-600">See Balance Sheet → Accounts Payable (2000) for the liability line.</p>
+            <p className="text-[10px] text-muted-foreground">See Balance Sheet → Accounts Payable (2000) for the liability line.</p>
           </section>
 
           {control ? (
-            <section className="rounded-lg border border-gray-800 bg-gray-900/40 p-3 space-y-2">
-              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Control accounts (Balance Sheet source)</h3>
+            <section className="rounded-lg border border-border bg-card/40 p-3 space-y-2">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Control accounts (Balance Sheet source)</h3>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
-                <div className="rounded border border-gray-800 p-2">
-                  <p className="text-gray-500 text-xs">{control.ar1100.code} {control.ar1100.name}</p>
+                <div className="rounded border border-border p-2">
+                  <p className="text-muted-foreground text-xs">{control.ar1100.code} {control.ar1100.name}</p>
                   <p className="tabular-nums font-medium text-gray-100">
                     {control.ar1100.balanceDrMinusCr != null ? formatCurrency(control.ar1100.balanceDrMinusCr) : '—'}
                   </p>
-                  <p className="text-[10px] text-gray-600">Dr − Cr (asset)</p>
+                  <p className="text-[10px] text-muted-foreground">Dr − Cr (asset)</p>
                 </div>
-                <div className="rounded border border-gray-800 p-2">
-                  <p className="text-gray-500 text-xs">{control.ap2000.code} {control.ap2000.name}</p>
+                <div className="rounded border border-border p-2">
+                  <p className="text-muted-foreground text-xs">{control.ap2000.code} {control.ap2000.name}</p>
                   <p className="tabular-nums font-medium text-gray-100">
                     {control.ap2000.balanceCrMinusDr != null ? formatCurrency(control.ap2000.balanceCrMinusDr) : '—'}
                   </p>
-                  <p className="text-[10px] text-gray-600">Cr − Dr (liability)</p>
+                  <p className="text-[10px] text-muted-foreground">Cr − Dr (liability)</p>
                 </div>
-                <div className="rounded border border-gray-800 p-2">
-                  <p className="text-gray-500 text-xs">{control.wp2010.code} {control.wp2010.name}</p>
+                <div className="rounded border border-border p-2">
+                  <p className="text-muted-foreground text-xs">{control.wp2010.code} {control.wp2010.name}</p>
                   <p className="tabular-nums font-medium text-gray-100">
                     {control.wp2010.balanceCrMinusDr != null ? formatCurrency(control.wp2010.balanceCrMinusDr) : '—'}
                   </p>
-                  <p className="text-[10px] text-gray-600">Cr − Dr (liability)</p>
+                  <p className="text-[10px] text-muted-foreground">Cr − Dr (liability)</p>
                 </div>
               </div>
             </section>
@@ -469,12 +469,12 @@ export function BalanceBasisGuidePage({ asOfDate, branchId }: Props) {
 
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative flex-1 min-w-[200px] max-w-sm">
-              <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-gray-500" />
+              <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-muted-foreground" />
               <Input
                 placeholder="Search name, code, account…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-9 bg-gray-900 border-gray-700"
+                className="pl-9 bg-card border-border"
               />
             </div>
             <div className="flex flex-wrap gap-1">
@@ -485,27 +485,27 @@ export function BalanceBasisGuidePage({ asOfDate, branchId }: Props) {
                   onClick={() => setTypeFilter(t)}
                   className={cn(
                     'px-3 py-1.5 rounded-lg text-xs font-medium capitalize',
-                    typeFilter === t ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'
+                    typeFilter === t ? 'bg-blue-600 text-white' : 'bg-muted text-muted-foreground hover:text-foreground'
                   )}
                 >
                   {t}
                 </button>
               ))}
             </div>
-            <label className="flex items-center gap-2 text-xs text-gray-400">
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
               <input type="checkbox" checked={hideZeroOperational} onChange={(e) => setHideZeroOperational(e.target.checked)} />
               Hide zero operational
             </label>
-            <label className="flex items-center gap-2 text-xs text-gray-400">
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
               <input type="checkbox" checked={showOnlyWithGap} onChange={(e) => setShowOnlyWithGap(e.target.checked)} />
               Only with gap
             </label>
           </div>
 
-          <div className="overflow-x-auto rounded-lg border border-gray-800">
+          <div className="overflow-x-auto rounded-lg border border-border">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-gray-500 border-b border-gray-800 bg-gray-900/50 text-left">
+                <tr className="text-muted-foreground border-b border-border bg-muted/40 text-left">
                   <th className="py-2 px-3 w-8" />
                   <SortHeader col="contactName" label="Contact" align="left" />
                   <th className="py-2 px-3 text-left">Code / GL</th>
@@ -523,7 +523,7 @@ export function BalanceBasisGuidePage({ asOfDate, branchId }: Props) {
               <tbody>
                 {filteredRows.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className="py-8 text-center text-gray-500">
+                    <td colSpan={12} className="py-8 text-center text-muted-foreground">
                       No contacts match filters
                     </td>
                   </tr>
@@ -541,7 +541,7 @@ export function BalanceBasisGuidePage({ asOfDate, branchId }: Props) {
               </tbody>
               {filteredTotals && filteredRows.length > 0 ? (
                 <tfoot>
-                  <tr className="border-t border-gray-700 bg-gray-900/80 font-medium text-gray-200">
+                  <tr className="border-t border-border bg-card font-medium text-gray-200">
                     <td className="py-2 px-3" colSpan={4}>
                       Totals ({filteredRows.length} rows)
                     </td>
@@ -582,20 +582,20 @@ function ContactRow({
   const apSignedTotal = row.glApSigned + row.glWorkerSigned;
   return (
     <>
-      <tr className={cn('border-b border-gray-800/80 hover:bg-gray-900/40', hasGap && 'bg-amber-950/10')}>
+      <tr className={cn('border-b border-border/80 hover:bg-card/40', hasGap && 'bg-amber-950/10')}>
         <td className="py-2 px-3">
           {hasGap ? (
-            <button type="button" onClick={onToggle} className="text-gray-500 hover:text-gray-300">
+            <button type="button" onClick={onToggle} className="text-muted-foreground hover:text-muted-foreground">
               {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
             </button>
           ) : null}
         </td>
         <td className="py-2 px-3 font-medium text-gray-100">{row.contactName}</td>
-        <td className="py-2 px-3 text-gray-400 text-xs">
+        <td className="py-2 px-3 text-muted-foreground text-xs">
           {row.contactCode || '—'}
           {row.subledgerAccountHint ? ` / ${row.subledgerAccountHint}` : ''}
         </td>
-        <td className="py-2 px-3 text-gray-500 capitalize text-xs">{row.contactType}</td>
+        <td className="py-2 px-3 text-muted-foreground capitalize text-xs">{row.contactType}</td>
         <td className="py-2 px-3 text-right tabular-nums">{formatCurrency(row.glArSigned)}</td>
         <td className="py-2 px-3 text-right tabular-nums text-cyan-300/90">{formatCurrency(row.operationalReceivable)}</td>
         <td className={cn('py-2 px-3 text-right tabular-nums', Math.abs(row.hiddenCreditAr) > 0.009 && 'text-amber-300')}>
@@ -606,8 +606,8 @@ function ContactRow({
         <td className={cn('py-2 px-3 text-right tabular-nums', Math.abs(row.hiddenCreditAp) > 0.009 && 'text-amber-300')}>
           {formatCurrency(row.hiddenCreditAp)}
         </td>
-        <td className="py-2 px-3 text-right tabular-nums text-gray-500">{formatCurrency(row.documentDueReceivable)}</td>
-        <td className="py-2 px-3 text-right tabular-nums text-gray-500">{formatCurrency(row.documentDuePayable)}</td>
+        <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">{formatCurrency(row.documentDueReceivable)}</td>
+        <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">{formatCurrency(row.documentDuePayable)}</td>
       </tr>
       {expanded && hasGap ? (
         <tr className="bg-amber-950/5">

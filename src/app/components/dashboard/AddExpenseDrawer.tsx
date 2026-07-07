@@ -76,9 +76,9 @@ const FALLBACK_CATEGORIES: { id: ExpenseCategory; name: string; slug: string; ic
   { id: 'Salaries', name: 'Salary', slug: 'salaries', icon: Users, color: 'text-purple-500' },
   { id: 'Marketing', name: 'Marketing', slug: 'marketing', icon: Zap, color: 'text-pink-500' },
   { id: 'Travel', name: 'Travel', slug: 'travel', icon: MapPin, color: 'text-cyan-500' },
-  { id: 'Office Supplies', name: 'Office Supplies', slug: 'office_supplies', icon: Building2, color: 'text-gray-400' },
+  { id: 'Office Supplies', name: 'Office Supplies', slug: 'office_supplies', icon: Building2, color: 'text-muted-foreground' },
   { id: 'Repairs & Maintenance', name: 'Repairs & Maintenance', slug: 'repairs', icon: Zap, color: 'text-orange-500' },
-  { id: 'Other', name: 'Other', slug: 'miscellaneous', icon: Wallet, color: 'text-gray-500' },
+  { id: 'Other', name: 'Other', slug: 'miscellaneous', icon: Wallet, color: 'text-muted-foreground' },
 ];
 
 export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: AddExpenseDrawerProps) => {
@@ -424,10 +424,10 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
   return (
     <>
       <Sheet open={isOpen} onOpenChange={(open) => !open && handleOpenChange(false)}>
-        <SheetContent side="right" className="w-full max-w-full sm:max-w-md bg-[#111827] border-l border-gray-800 text-white p-0 flex flex-col">
+        <SheetContent side="right" className="w-full max-w-full sm:max-w-md bg-background border-l border-border text-foreground p-0 flex flex-col">
           
           {/* TOP HEADER - Branch Info */}
-          <div className="bg-gray-900 p-4 border-b border-gray-800">
+          <div className="bg-card p-4 border-b border-border">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="h-10 w-10 rounded-lg bg-blue-600/20 backdrop-blur-sm flex items-center justify-center border border-blue-600/30">
@@ -436,19 +436,19 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
                 <div>
                   {canManageSettings && branches.length > 0 ? (
                     <Select value={selectedBranchId || branches[0]?.id} onValueChange={setSelectedBranchId}>
-                      <SelectTrigger className="h-8 bg-gray-800 border-gray-700 text-white hover:bg-gray-700 w-[200px] focus:ring-0 focus:ring-offset-0">
+                      <SelectTrigger className="h-8 bg-muted border-border text-foreground hover:bg-muted w-[200px] focus:ring-0 focus:ring-offset-0">
                         <SelectValue placeholder="Select branch" />
                       </SelectTrigger>
-                      <SelectContent className="bg-gray-900 border-gray-700 text-white">
+                      <SelectContent className="bg-popover border-border text-popover-foreground">
                         {branches.map((branch) => (
                           <SelectItem 
                             key={branch.id} 
                             value={branch.id}
-                            className="focus:bg-gray-800 focus:text-white cursor-pointer"
+                            className="focus:bg-muted focus:text-foreground cursor-pointer"
                           >
                             <div className="flex flex-col items-start">
                               <span className="font-medium">{branch.name}</span>
-                              <span className="text-xs text-gray-400">{branch.address || branch.name}</span>
+                              <span className="text-xs text-muted-foreground">{branch.address || branch.name}</span>
                             </div>
                           </SelectItem>
                         ))}
@@ -456,8 +456,8 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
                     </Select>
                   ) : (
                     <>
-                      <p className="text-white font-semibold text-sm">{currentBranch?.name || 'Branch'}</p>
-                      <p className="text-gray-400 text-xs flex items-center gap-1">
+                      <p className="text-foreground font-semibold text-sm">{currentBranch?.name || 'Branch'}</p>
+                      <p className="text-muted-foreground text-xs flex items-center gap-1">
                         <MapPin size={10} />
                         {currentBranch?.address || currentBranch?.name || ''}
                       </p>
@@ -469,7 +469,7 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
               <Button 
                 variant="ghost" 
                 size="icon" 
-                className="text-gray-400 hover:text-white hover:bg-gray-800 h-8 w-8" 
+                className="text-muted-foreground hover:text-foreground hover:bg-muted h-8 w-8" 
                 onClick={onClose}
               >
                 <X size={20} />
@@ -478,9 +478,9 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
           </div>
 
           {/* TITLE BAR */}
-          <div className="p-4 border-b border-gray-800">
-            <h2 className="text-xl font-bold text-white">{expenseToEdit ? 'Edit Expense' : 'Record Expense'}</h2>
-            <p className="text-sm text-gray-400 mt-1">{expenseToEdit ? expenseToEdit.expenseNo || expenseToEdit.id : 'Track operational costs and expenditures'}</p>
+          <div className="p-4 border-b border-border">
+            <h2 className="text-xl font-bold text-foreground">{expenseToEdit ? 'Edit Expense' : 'Record Expense'}</h2>
+            <p className="text-sm text-muted-foreground mt-1">{expenseToEdit ? expenseToEdit.expenseNo || expenseToEdit.id : 'Track operational costs and expenditures'}</p>
           </div>
 
           {/* Body (Scrollable) */}
@@ -488,7 +488,7 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
             
             {/* Row 1: Date Picker */}
             <div className="space-y-2">
-              <Label className="text-gray-400 text-sm">Date</Label>
+              <Label className="text-muted-foreground text-sm">Date</Label>
               <DatePicker
                 value={date ? formatLocalDateYYYYMMDD(date) : ''}
                 onChange={(v) => setDate(v ? parseLocalDateInput(v) : undefined)}
@@ -498,7 +498,7 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
 
             {/* Row 2: Category – Main + Sub from DB, or single fallback */}
             <div className="space-y-2">
-              <Label className="text-gray-400 text-sm">Category</Label>
+              <Label className="text-muted-foreground text-sm">Category</Label>
               {categoryTree.length > 0 ? (
                 <div className="space-y-2">
                   <Select
@@ -509,13 +509,13 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
                       setLeafCategoryId('');
                     }}
                   >
-                    <SelectTrigger className="h-11 bg-gray-900 border-gray-700 text-white">
+                    <SelectTrigger className="h-11 bg-card border-border text-foreground">
                       <SelectValue placeholder="Main category" />
                     </SelectTrigger>
-                    <SelectContent className="bg-gray-900 border-gray-800 text-white">
-                      <SelectItem value="_none" className="focus:bg-gray-800 focus:text-white cursor-pointer">Select main category</SelectItem>
+                    <SelectContent className="bg-popover border-border text-popover-foreground">
+                      <SelectItem value="_none" className="focus:bg-muted focus:text-foreground cursor-pointer">Select main category</SelectItem>
                       {categoryTree.map((m) => (
-                        <SelectItem key={m.id} value={m.id} className="focus:bg-gray-800 focus:text-white cursor-pointer">
+                        <SelectItem key={m.id} value={m.id} className="focus:bg-muted focus:text-foreground cursor-pointer">
                           {m.name}
                         </SelectItem>
                       ))}
@@ -529,15 +529,15 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
                         setLeafCategoryId('');
                       }}
                     >
-                      <SelectTrigger className="h-11 bg-gray-900 border-gray-700 text-white">
+                      <SelectTrigger className="h-11 bg-card border-border text-foreground">
                         <SelectValue placeholder="Sub-category (optional)" />
                       </SelectTrigger>
-                      <SelectContent className="bg-gray-900 border-gray-800 text-white">
-                        <SelectItem value="_main" className="focus:bg-gray-800 focus:text-white cursor-pointer">
+                      <SelectContent className="bg-popover border-border text-popover-foreground">
+                        <SelectItem value="_main" className="focus:bg-muted focus:text-foreground cursor-pointer">
                           — {selectedMain?.name} (main)
                         </SelectItem>
                         {subOptions.map((s) => (
-                          <SelectItem key={s.id} value={s.id} className="focus:bg-gray-800 focus:text-white cursor-pointer">
+                          <SelectItem key={s.id} value={s.id} className="focus:bg-muted focus:text-foreground cursor-pointer">
                             {s.name}
                           </SelectItem>
                         ))}
@@ -549,15 +549,15 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
                       value={leafCategoryId || '_parent'}
                       onValueChange={(v) => setLeafCategoryId(v === '_parent' ? '' : v)}
                     >
-                      <SelectTrigger className="h-11 bg-gray-900 border-gray-700 text-white">
+                      <SelectTrigger className="h-11 bg-card border-border text-foreground">
                         <SelectValue placeholder="Re-sub (optional)" />
                       </SelectTrigger>
-                      <SelectContent className="bg-gray-900 border-gray-800 text-white">
-                        <SelectItem value="_parent" className="focus:bg-gray-800 focus:text-white cursor-pointer">
+                      <SelectContent className="bg-popover border-border text-popover-foreground">
+                        <SelectItem value="_parent" className="focus:bg-muted focus:text-foreground cursor-pointer">
                           — {selectedSub?.name ?? selectedMain?.name} (parent level)
                         </SelectItem>
                         {leafOptions.map((n) => (
-                          <SelectItem key={n.id} value={n.id} className="focus:bg-gray-800 focus:text-white cursor-pointer">
+                          <SelectItem key={n.id} value={n.id} className="focus:bg-muted focus:text-foreground cursor-pointer">
                             {n.name}
                           </SelectItem>
                         ))}
@@ -567,12 +567,12 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
                 </div>
               ) : (
                 <Select value={categorySlug} onValueChange={setCategorySlug}>
-                  <SelectTrigger className="h-11 bg-gray-900 border-gray-700 text-white">
+                  <SelectTrigger className="h-11 bg-card border-border text-foreground">
                     <SelectValue placeholder="Select Category" />
                   </SelectTrigger>
-                  <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                  <SelectContent className="bg-popover border-border text-popover-foreground">
                     {FALLBACK_CATEGORIES.map((cat) => (
-                      <SelectItem key={cat.id} value={cat.slug} className="focus:bg-gray-800 focus:text-white cursor-pointer">
+                      <SelectItem key={cat.id} value={cat.slug} className="focus:bg-muted focus:text-foreground cursor-pointer">
                         <div className="flex items-center gap-2">
                           <cat.icon className={cn("h-4 w-4", cat.color)} />
                           {cat.name}
@@ -587,9 +587,9 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
             {/* Salary: Pay to (User) only – Staff/Salesman/Operator from User Management. Workers (Dyer, Stitcher) never here. */}
             {isSalaryCategory && (
               <div className="space-y-2">
-                <Label className="text-gray-400 text-sm">Pay to (User)</Label>
+                <Label className="text-muted-foreground text-sm">Pay to (User)</Label>
                 {salaryUsersLoading ? (
-                  <p className="text-sm text-gray-400 flex items-center gap-2">
+                  <p className="text-sm text-muted-foreground flex items-center gap-2">
                     <Loader2 className="h-4 w-4 animate-spin shrink-0" /> Loading staff…
                   </p>
                 ) : (
@@ -598,21 +598,21 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
                   placeholder="Search user..."
                   value={salaryUserSearch}
                   onChange={(e) => setSalaryUserSearch(e.target.value)}
-                  className="h-9 mb-1 bg-gray-900 border-gray-700 text-white text-sm"
+                  className="h-9 mb-1 bg-card border-border text-foreground text-sm"
                 />
                 <Select value={paidToUserId} onValueChange={setPaidToUserId}>
-                  <SelectTrigger className="h-11 bg-gray-900 border-gray-700 text-white">
+                  <SelectTrigger className="h-11 bg-card border-border text-foreground">
                     <SelectValue placeholder="Select user (Staff / Salesman / Operator)" />
                   </SelectTrigger>
-                  <SelectContent className="bg-gray-900 border-gray-800 text-white max-h-[280px]">
+                  <SelectContent className="bg-card border-border text-foreground max-h-[280px]">
                     {salaryUsers
                       .filter((u) => !salaryUserSearch || (u.full_name + ' ' + (u.email || '') + ' ' + (u.role || '')).toLowerCase().includes(salaryUserSearch.toLowerCase()))
                       .map((u) => (
-                        <SelectItem key={u.id} value={u.id} className="focus:bg-gray-800 focus:text-white cursor-pointer">
+                        <SelectItem key={u.id} value={u.id} className="focus:bg-muted focus:text-foreground cursor-pointer">
                           <div className="flex items-center gap-2">
                             <Users className="h-4 w-4 text-purple-400 shrink-0" />
                             <span>{u.full_name}</span>
-                            {u.role && <span className="text-xs text-gray-500 capitalize">({u.role})</span>}
+                            {u.role && <span className="text-xs text-muted-foreground capitalize">({u.role})</span>}
                           </div>
                         </SelectItem>
                       ))}
@@ -626,23 +626,23 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
                 )}
                   </>
                 )}
-                <p className="text-xs text-gray-500">Salary is for users only (Admin, Staff, Salesman, Operator). Workers are paid via Production → Worker Ledger.</p>
+                <p className="text-xs text-muted-foreground">Salary is for users only (Admin, Staff, Salesman, Operator). Workers are paid via Production → Worker Ledger.</p>
               </div>
             )}
 
             {/* Row 3: Paid From Account */}
             <div className="space-y-2">
-              <Label className="text-gray-400 text-sm">Paid From</Label>
+              <Label className="text-muted-foreground text-sm">Paid From</Label>
               <Select value={paidFromAccountId} onValueChange={setPaidFromAccountId}>
-                <SelectTrigger className="h-11 bg-gray-900 border-gray-700 text-white">
+                <SelectTrigger className="h-11 bg-card border-border text-foreground">
                   <SelectValue placeholder="Select Account" />
                 </SelectTrigger>
-                <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                <SelectContent className="bg-popover border-border text-popover-foreground">
                   {accounts.map((acc: { id: string; name: string; balance: number; icon: typeof Wallet }) => (
-                    <SelectItem key={acc.id} value={acc.id} className="focus:bg-gray-800 focus:text-white cursor-pointer">
+                    <SelectItem key={acc.id} value={acc.id} className="focus:bg-muted focus:text-foreground cursor-pointer">
                       <div className="flex items-center justify-between w-full gap-4">
                         <div className="flex items-center gap-2">
-                          <acc.icon className="h-4 w-4 text-gray-400" />
+                          <acc.icon className="h-4 w-4 text-muted-foreground" />
                           {acc.name}
                         </div>
                         <span className="text-xs text-green-500 font-mono">
@@ -657,33 +657,33 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
 
             {/* Row 4: Amount Input */}
             <div className="space-y-2">
-              <Label className="text-gray-400 text-sm">Amount</Label>
+              <Label className="text-muted-foreground text-sm">Amount</Label>
               <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm font-medium">Rs</span>
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm font-medium">Rs</span>
                 <Input
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                   onFocus={handleAmountFocus}
                   placeholder="0.00"
-                  className="pl-10 h-11 bg-gray-900 border-gray-700 text-white placeholder:text-gray-600 focus:border-blue-500 text-base"
+                  className="pl-10 h-11 bg-card border-border text-foreground placeholder:text-muted-foreground focus:border-blue-500 text-base"
                 />
               </div>
             </div>
 
             {/* Row 5: Description Area */}
             <div className="space-y-2">
-              <Label className="text-gray-400 text-sm">Description</Label>
+              <Label className="text-muted-foreground text-sm">Description</Label>
               <Textarea 
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Enter expense details..." 
-                className="bg-gray-900 border-gray-700 text-white min-h-[100px] resize-none focus:border-blue-500"
+                className="bg-card border-border text-foreground min-h-[100px] resize-none focus:border-blue-500"
               />
             </div>
 
             {/* Row 6: Upload Receipt Box */}
             <div className="space-y-2">
-              <Label className="text-gray-400 text-sm">Upload Receipt (Optional)</Label>
+              <Label className="text-muted-foreground text-sm">Upload Receipt (Optional)</Label>
               <input
                 ref={receiptInputRef}
                 type="file"
@@ -700,14 +700,14 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
                 tabIndex={0}
                 onClick={() => receiptInputRef.current?.click()}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') receiptInputRef.current?.click(); }}
-                className="border-2 border-dashed border-gray-700 rounded-lg p-6 flex flex-col items-center justify-center text-center hover:bg-gray-800/50 transition-colors cursor-pointer group bg-gray-900/50"
+                className="border-2 border-dashed border-border rounded-lg p-6 flex flex-col items-center justify-center text-center hover:bg-muted/50 transition-colors cursor-pointer group bg-muted/40"
               >
-                <div className="h-10 w-10 rounded-full bg-gray-800 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform border border-gray-700">
-                  <Upload className="h-5 w-5 text-gray-400" />
+                <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center mb-2 group-hover:scale-110 transition-transform border border-border">
+                  <Upload className="h-5 w-5 text-muted-foreground" />
                 </div>
                 {receiptFile ? (
                   <>
-                    <p className="text-sm text-white truncate max-w-full px-2">{receiptFile.name}</p>
+                    <p className="text-sm text-foreground truncate max-w-full px-2">{receiptFile.name}</p>
                     <button
                       type="button"
                       className="text-xs text-red-400 mt-2 hover:underline"
@@ -723,7 +723,7 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
                 ) : existingReceiptUrl ? (
                   <>
                     <p className="text-sm text-amber-400">Receipt attached</p>
-                    <p className="text-xs text-gray-500 mt-1 truncate max-w-full px-2">{existingReceiptUrl.split('/').pop()}</p>
+                    <p className="text-xs text-muted-foreground mt-1 truncate max-w-full px-2">{existingReceiptUrl.split('/').pop()}</p>
                     <button
                       type="button"
                       className="text-xs text-red-400 mt-2 hover:underline"
@@ -737,8 +737,8 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
                   </>
                 ) : (
                   <>
-                    <p className="text-sm text-gray-400">Click to upload bill</p>
-                    <p className="text-xs text-gray-600 mt-1">PNG, JPG, PDF up to 5MB</p>
+                    <p className="text-sm text-muted-foreground">Click to upload bill</p>
+                    <p className="text-xs text-muted-foreground mt-1">PNG, JPG, PDF up to 5MB</p>
                   </>
                 )}
               </div>
@@ -747,18 +747,18 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
           </div>
 
           {/* Footer */}
-          <div className="p-4 border-t border-gray-800 bg-gray-900/80 backdrop-blur-sm">
+          <div className="p-4 border-t border-border bg-card backdrop-blur-sm">
             <div className="grid grid-cols-2 gap-3">
               <Button 
                 variant="outline" 
-                className="border-gray-700 text-gray-300 hover:bg-gray-800 hover:text-white h-11"
+                className="border-border text-muted-foreground hover:bg-muted hover:text-foreground h-11"
                 onClick={() => handleOpenChange(false)}
                 disabled={saving}
               >
                 Cancel
               </Button>
               <Button 
-                className="bg-orange-600 hover:bg-orange-500 text-white font-semibold h-11 shadow-lg shadow-orange-600/20 transition-all active:scale-[0.98] disabled:opacity-70"
+                className="bg-orange-600 hover:bg-orange-500 text-foreground font-semibold h-11 shadow-lg shadow-orange-600/20 transition-all active:scale-[0.98] disabled:opacity-70"
                 onClick={handleSave}
                 disabled={saving}
               >

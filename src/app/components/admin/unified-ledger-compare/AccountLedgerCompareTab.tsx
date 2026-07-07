@@ -59,11 +59,11 @@ export function AccountLedgerCompareTab(props: {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 rounded-xl border border-gray-800 bg-gray-900/40 p-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 rounded-xl border border-border bg-card/40 p-4">
         <label className="text-sm space-y-1">
           Account
           <select
-            className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1.5"
+            className="w-full rounded bg-muted border border-border px-2 py-1.5"
             value={accountId}
             onChange={(e) => setAccountId(e.target.value)}
           >

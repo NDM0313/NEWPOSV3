@@ -1437,11 +1437,11 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
   if (!transaction && !loading) {
     return (
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="max-w-4xl bg-gray-900 border-gray-800">
+        <DialogContent className="max-w-4xl bg-card border-border">
           <DialogHeader>
-            <DialogTitle className="text-white">Transaction Not Found</DialogTitle>
+            <DialogTitle className="text-foreground">Transaction Not Found</DialogTitle>
           </DialogHeader>
-          <div className="text-center py-8 text-gray-400">
+          <div className="text-center py-8 text-muted-foreground">
             Transaction with reference {referenceNumber} not found.
           </div>
         </DialogContent>
@@ -1499,7 +1499,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
       }}
     >
       <DialogContent
-        className="!w-[800px] !max-w-[800px] sm:!max-w-[800px] max-h-[95vh] overflow-auto bg-gray-900 border-gray-800"
+        className="!w-[800px] !max-w-[800px] sm:!max-w-[800px] max-h-[95vh] overflow-auto bg-card border-border"
         onEscapeKeyDown={(e) => {
           if (nestedPaymentEditorOpen) {
             e.preventDefault();
@@ -1508,10 +1508,10 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
         }}
       >
         <DialogHeader>
-          <DialogTitle className="text-white flex items-center justify-between">
+          <DialogTitle className="text-foreground flex items-center justify-between">
             <div>
               <h2 className="text-xl font-bold">Transaction Details</h2>
-              <p className="text-sm text-gray-400 mt-1 flex items-center gap-2 flex-wrap">
+              <p className="text-sm text-muted-foreground mt-1 flex items-center gap-2 flex-wrap">
                 <span>Reference: {voucherDisplayRef}</span>
                 {transactionAttachmentUrls.length > 0 ? (
                   <button
@@ -1525,14 +1525,14 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                 ) : null}
               </p>
               {rentalPaymentVoucherRef && transaction?.entry_no && (
-                <p className="text-xs text-gray-500 mt-0.5">Journal: {transaction.entry_no}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Journal: {transaction.entry_no}</p>
               )}
             </div>
             <Button
               variant="ghost"
               size="sm"
               onClick={onClose}
-              className="text-gray-400 hover:text-white"
+              className="text-muted-foreground hover:text-foreground"
             >
               <X size={20} />
             </Button>
@@ -1540,7 +1540,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
         </DialogHeader>
 
         {loading ? (
-          <div className="text-center py-12 text-gray-400">Loading transaction details...</div>
+          <div className="text-center py-12 text-muted-foreground">Loading transaction details...</div>
         ) : transaction ? (
           <div className="space-y-6">
             {isOrphanReceipt ? (
@@ -1564,16 +1564,16 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
               </div>
             ) : null}
             {journalSourceReverseBlockReason && !paymentChainBlockReason ? (
-              <div className="rounded-lg border border-gray-600/50 bg-gray-900/60 px-3 py-2 text-sm text-gray-300 leading-relaxed">
+              <div className="rounded-lg border border-gray-600/50 bg-muted/60 px-3 py-2 text-sm text-muted-foreground leading-relaxed">
                 <span className="font-semibold text-gray-200">Source-controlled — </span>
                 {journalSourceReverseBlockReason}
               </div>
             ) : null}
             {/* PF-14.3B: Document trail (original + adjustments) when opened from grouped row */}
             {groupEntries && groupEntries.length > 1 && (
-              <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-                <h3 className="text-sm font-semibold text-gray-300 mb-3">Document trail (same sale / payment)</h3>
-                <p className="text-xs text-gray-500 mb-3">Original entry and any edit or payment adjustments – one logical document.</p>
+              <div className="bg-muted/50 rounded-lg p-4 border border-border">
+                <h3 className="text-sm font-semibold text-muted-foreground mb-3">Document trail (same sale / payment)</h3>
+                <p className="text-xs text-muted-foreground mb-3">Original entry and any edit or payment adjustments – one logical document.</p>
                 <ul className="space-y-2">
                   {[...groupEntries]
                     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
@@ -1586,16 +1586,16 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                           key={e.id}
                           className={cn(
                             'flex items-center justify-between rounded px-3 py-2 text-sm',
-                            isPrimary ? 'bg-blue-500/10 border border-blue-500/30' : 'bg-gray-800/50'
+                            isPrimary ? 'bg-blue-500/10 border border-blue-500/30' : 'bg-muted/50'
                           )}
                         >
                           <div className="flex items-center gap-3">
-                            <span className="text-gray-400 font-medium w-24">{label}</span>
-                            <span className="text-white">{e.referenceNo}</span>
-                            <span className="text-gray-500">{format(new Date(e.date), 'dd MMM yyyy')}</span>
-                            <span className="text-gray-400 max-w-[200px] truncate">{e.description || '—'}</span>
+                            <span className="text-muted-foreground font-medium w-24">{label}</span>
+                            <span className="text-foreground">{e.referenceNo}</span>
+                            <span className="text-muted-foreground">{format(new Date(e.date), 'dd MMM yyyy')}</span>
+                            <span className="text-muted-foreground max-w-[200px] truncate">{e.description || '—'}</span>
                           </div>
-                          <span className={cn('font-medium tabular-nums', e.amount >= 0 ? 'text-green-400' : 'text-red-400')}>
+                          <span className={cn('font-medium tabular-nums', e.amount >= 0 ? 'text-[var(--erp-money-positive)]' : 'text-red-400')}>
                             Rs {Math.abs(e.amount).toLocaleString()}
                           </span>
                         </li>
@@ -1606,9 +1606,9 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
             )}
 
             {/* SECTION A: BASIC INFO */}
-            <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
+            <div className="bg-muted/50 rounded-lg p-4 border border-border">
               <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-2 mb-3">
-                <h3 className="text-sm font-semibold text-gray-300 flex items-center gap-2 shrink-0">
+                <h3 className="text-sm font-semibold text-muted-foreground flex items-center gap-2 shrink-0">
                   <FileText size={16} />
                   Basic Information
                 </h3>
@@ -1779,8 +1779,8 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
               </div>
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <span className="text-gray-400">Reference Number:</span>
-                  <p className="text-white font-medium flex items-center gap-2 flex-wrap">
+                  <span className="text-muted-foreground">Reference Number:</span>
+                  <p className="text-foreground font-medium flex items-center gap-2 flex-wrap">
                     <span>{voucherDisplayRef}</span>
                     {transactionAttachmentUrls.length > 0 ? (
                       <button
@@ -1794,44 +1794,44 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                     ) : null}
                   </p>
                   {rentalPaymentVoucherRef && transaction?.entry_no && (
-                    <p className="text-xs text-gray-500 mt-0.5">Journal: {transaction.entry_no}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Journal: {transaction.entry_no}</p>
                   )}
                 </div>
                 <div>
-                  <span className="text-gray-400">Transaction date:</span>
-                  <p className="text-white">
+                  <span className="text-muted-foreground">Transaction date:</span>
+                  <p className="text-foreground">
                     {transaction.entry_date ? format(new Date(transaction.entry_date), 'dd MMM yyyy') : '—'}
                   </p>
                 </div>
                 <div>
-                  <span className="text-gray-400">Posted at:</span>
-                  <p className="text-white text-xs">
+                  <span className="text-muted-foreground">Posted at:</span>
+                  <p className="text-foreground text-xs">
                     {transaction.created_at ? format(new Date(transaction.created_at), 'dd MMM yyyy HH:mm') : '—'}
                   </p>
                 </div>
                 <div>
-                  <span className="text-gray-400">Last updated:</span>
-                  <p className="text-white text-xs">
+                  <span className="text-muted-foreground">Last updated:</span>
+                  <p className="text-foreground text-xs">
                     {(transaction as { updated_at?: string }).updated_at
                       ? format(new Date((transaction as { updated_at?: string }).updated_at!), 'dd MMM yyyy HH:mm')
                       : '—'}
                   </p>
                 </div>
                 <div>
-                  <span className="text-gray-400">Source link:</span>
-                  <p className="text-white font-mono text-xs break-all">
+                  <span className="text-muted-foreground">Source link:</span>
+                  <p className="text-foreground font-mono text-xs break-all">
                     {transaction.reference_type || '—'}
                     {transaction.reference_id ? ` · ${String(transaction.reference_id).slice(0, 8)}…` : ''}
                   </p>
                 </div>
                 <div>
-                  <span className="text-gray-400">Transaction kind:</span>
-                  <p className="text-white text-xs uppercase tracking-wide">
+                  <span className="text-muted-foreground">Transaction kind:</span>
+                  <p className="text-foreground text-xs uppercase tracking-wide">
                     {inferTransactionKind(transactionForUnifiedPolicy || transaction, payment).replace(/_/g, ' ')}
                   </p>
                 </div>
                 <div>
-                  <span className="text-gray-400">Module:</span>
+                  <span className="text-muted-foreground">Module:</span>
                   <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 ml-2">
                     {transaction.reference_type === 'sale' || transaction.reference_type === 'sale_adjustment'
                       ? 'Sales'
@@ -1853,13 +1853,13 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                   </Badge>
                 </div>
                 <div>
-                  <span className="text-gray-400">Created By:</span>
-                  <p className="text-white">{transaction.created_by ? 'User' : 'System'}</p>
+                  <span className="text-muted-foreground">Created By:</span>
+                  <p className="text-foreground">{transaction.created_by ? 'User' : 'System'}</p>
                 </div>
                 {(transaction as any).branch && (
                   <div>
-                    <span className="text-gray-400">Branch:</span>
-                    <p className="text-white">
+                    <span className="text-muted-foreground">Branch:</span>
+                    <p className="text-foreground">
                       {(transaction as any).branch.code 
                         ? `${(transaction as any).branch.code} | ${(transaction as any).branch.name}`
                         : (transaction as any).branch.name}
@@ -1867,8 +1867,8 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                   </div>
                 )}
                 <div className="col-span-2">
-                  <span className="text-gray-400">Description:</span>
-                  <p className="text-white">
+                  <span className="text-muted-foreground">Description:</span>
+                  <p className="text-foreground">
                     {journalDescriptionForDisplay(transaction.description, 'No description')}
                   </p>
                 </div>
@@ -1877,61 +1877,61 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
 
             {/* SECTION B: LINKED RECORDS */}
             {(sale || payment) && (
-              <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-                <h3 className="text-sm font-semibold text-gray-300 mb-3">Linked Records</h3>
+              <div className="bg-muted/50 rounded-lg p-4 border border-border">
+                <h3 className="text-sm font-semibold text-muted-foreground mb-3">Linked Records</h3>
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   {sale && (
                     <>
                       <div>
-                        <span className="text-gray-400">Invoice Number:</span>
-                        <p className="text-white font-medium">{sale.invoice_no}</p>
+                        <span className="text-muted-foreground">Invoice Number:</span>
+                        <p className="text-foreground font-medium">{sale.invoice_no}</p>
                       </div>
                       <div>
-                        <span className="text-gray-400">Customer:</span>
-                        <p className="text-white">{sale.customer_name}</p>
+                        <span className="text-muted-foreground">Customer:</span>
+                        <p className="text-foreground">{sale.customer_name}</p>
                       </div>
                       <div>
-                        <span className="text-gray-400">Total Amount:</span>
-                        <p className="text-white">Rs {parseFloat(sale.total || 0).toLocaleString()}</p>
+                        <span className="text-muted-foreground">Total Amount:</span>
+                        <p className="text-foreground">Rs {parseFloat(sale.total || 0).toLocaleString()}</p>
                       </div>
                       <div>
-                        <span className="text-gray-400">Paid Amount:</span>
-                        <p className="text-green-400">Rs {parseFloat(sale.paid_amount || 0).toLocaleString()}</p>
+                        <span className="text-muted-foreground">Paid Amount:</span>
+                        <p className="text-[var(--erp-money-positive)]">Rs {parseFloat(sale.paid_amount || 0).toLocaleString()}</p>
                       </div>
                     </>
                   )}
                   {payment && (
                     <>
                       <div>
-                        <span className="text-gray-400">Payment Reference:</span>
-                        <p className="text-white font-medium">{payment.reference_number}</p>
+                        <span className="text-muted-foreground">Payment Reference:</span>
+                        <p className="text-foreground font-medium">{payment.reference_number}</p>
                       </div>
                       <div>
-                        <span className="text-gray-400">Payment Method:</span>
-                        <Badge className="bg-green-500/20 text-green-400 border-green-500/30 ml-2 capitalize">
+                        <span className="text-muted-foreground">Payment Method:</span>
+                        <Badge className="bg-green-500/20 text-[var(--erp-money-positive)] border-green-500/30 ml-2 capitalize">
                           {payment.payment_method}
                         </Badge>
                       </div>
                       <div>
-                        <span className="text-gray-400">Payment Amount:</span>
-                        <p className="text-white">Rs {parseFloat(payment.amount || 0).toLocaleString()}</p>
+                        <span className="text-muted-foreground">Payment Amount:</span>
+                        <p className="text-foreground">Rs {parseFloat(payment.amount || 0).toLocaleString()}</p>
                       </div>
                       <div>
-                        <span className="text-gray-400">Payment Date:</span>
-                        <p className="text-white">
+                        <span className="text-muted-foreground">Payment Date:</span>
+                        <p className="text-foreground">
                           {format(new Date(payment.payment_date), 'dd MMM yyyy')}
                         </p>
                       </div>
                       {paymentNotesDisplay && (
                         <div className="col-span-2">
-                          <span className="text-gray-400">Payment Notes / Trace:</span>
-                          <p className="text-white break-words mt-1">{paymentNotesDisplay}</p>
+                          <span className="text-muted-foreground">Payment Notes / Trace:</span>
+                          <p className="text-foreground break-words mt-1">{paymentNotesDisplay}</p>
                         </div>
                       )}
                       {/* CRITICAL FIX: Show attachment icon if payment has attachments */}
                       {payment.attachments && (
                         <div className="col-span-2">
-                          <span className="text-gray-400">Attachments:</span>
+                          <span className="text-muted-foreground">Attachments:</span>
                           <div className="flex flex-wrap gap-2 mt-2">
                             {Array.isArray(payment.attachments) ? (
                               payment.attachments.map((att: any, idx: number) => {
@@ -2009,7 +2009,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                 <div className="grid grid-cols-2 gap-3 text-sm mb-3">
                   <div>
                     <span className="text-slate-400">Receipt total</span>
-                    <p className="text-white font-medium tabular-nums">Rs {manualReceiptSummary.receiptTotal.toLocaleString()}</p>
+                    <p className="text-foreground font-medium tabular-nums">Rs {manualReceiptSummary.receiptTotal.toLocaleString()}</p>
                   </div>
                   <div>
                     <span className="text-slate-400">Allocated to invoices</span>
@@ -2028,7 +2028,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                           #{l.allocationOrder} — {l.invoiceNo || l.saleId.slice(0, 8)}
                           <Badge className="ml-2 bg-blue-500/15 text-blue-300 border-blue-500/30 text-[10px]">manual receipt</Badge>
                         </span>
-                        <span className="tabular-nums text-white">Rs {l.amount.toLocaleString()}</span>
+                        <span className="tabular-nums text-foreground">Rs {l.amount.toLocaleString()}</span>
                       </li>
                     ))}
                   </ul>
@@ -2039,8 +2039,8 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
             )}
 
             {/* SECTION C: JOURNAL ENTRIES (MOST IMPORTANT) */}
-            <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-              <h3 className="text-sm font-semibold text-gray-300 mb-3">Journal Entries (Double Entry)</h3>
+            <div className="bg-muted/50 rounded-lg p-4 border border-border">
+              <h3 className="text-sm font-semibold text-muted-foreground mb-3">Journal Entries (Double Entry)</h3>
               {journalTotals.imbalanced && (
                 <div className="mb-3 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
                   <p className="font-medium text-red-300">Out of balance</p>
@@ -2081,7 +2081,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                 </div>
               )}
               {journalLines.length > 0 ? (
-                <p className="text-xs text-gray-400 mb-2">
+                <p className="text-xs text-muted-foreground mb-2">
                   Posted lines for this journal entry (journal_entry_lines). Same basis as GL.
                 </p>
               ) : (
@@ -2092,8 +2092,8 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
               )}
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  <thead className="bg-gray-900">
-                    <tr className="text-xs font-semibold text-gray-400 uppercase">
+                  <thead className="bg-card">
+                    <tr className="text-xs font-semibold text-muted-foreground uppercase">
                       <th className="px-4 py-2 text-left">Account Name</th>
                       <th className="px-4 py-2 text-right">Debit</th>
                       <th className="px-4 py-2 text-right">Credit</th>
@@ -2102,7 +2102,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                   <tbody>
                     {journalLines.length === 0 && (
                       <tr>
-                        <td colSpan={3} className="px-4 py-4 text-center text-gray-500 text-sm">
+                        <td colSpan={3} className="px-4 py-4 text-center text-muted-foreground text-sm">
                           No posted lines in this grid.
                         </td>
                       </tr>
@@ -2118,14 +2118,14 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                         nameLower.includes('accounts payable');
                       const partySuffix = isApPartyLine && paymentContactName ? ` — ${paymentContactName}` : '';
                       return (
-                        <tr key={line.id || line.account_id || idx} className="border-b border-gray-700">
-                          <td className="px-4 py-3 text-sm text-white">
+                        <tr key={`jel-${line.id ?? line.account_id ?? 'row'}-${idx}`} className="border-b border-border">
+                          <td className="px-4 py-3 text-sm text-foreground">
                             {editingAccounts && line.id ? (
                               <div className="relative">
                                 <input
                                   type="text"
                                   placeholder="Search account..."
-                                  className="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1 text-sm text-white mb-1"
+                                  className="w-full bg-muted border border-gray-600 rounded px-2 py-1 text-sm text-foreground mb-1"
                                   value={accountSearch[line.id] ?? (editLineChanges[line.id] ? accountsList.find(a => a.id === editLineChanges[line.id])?.name || '' : `${account.name || ''} (${account.code || ''})`)}
                                   onChange={(e) => {
                                     setAccountSearch(prev => ({ ...prev, [line.id]: e.target.value }));
@@ -2133,7 +2133,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                                   onFocus={() => setAccountSearch(prev => ({ ...prev, [line.id]: '' }))}
                                 />
                                 {accountSearch[line.id] !== undefined && (
-                                  <div className="absolute z-50 w-full max-h-48 overflow-y-auto bg-gray-800 border border-gray-600 rounded shadow-lg">
+                                  <div className="absolute z-50 w-full max-h-48 overflow-y-auto bg-muted border border-gray-600 rounded shadow-lg">
                                     {accountsList
                                       .filter(a => {
                                         const q = (accountSearch[line.id] || '').toLowerCase();
@@ -2146,15 +2146,15 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                                           key={a.id}
                                           type="button"
                                           className={cn(
-                                            'w-full text-left px-2 py-1.5 text-xs hover:bg-gray-700 transition-colors',
-                                            (editLineChanges[line.id] || line.account_id || account.id) === a.id ? 'bg-blue-900/40 text-blue-300' : 'text-gray-300'
+                                            'w-full text-left px-2 py-1.5 text-xs hover:bg-muted transition-colors',
+                                            (editLineChanges[line.id] || line.account_id || account.id) === a.id ? 'bg-blue-900/40 text-blue-300' : 'text-muted-foreground'
                                           )}
                                           onClick={() => {
                                             setEditLineChanges(prev => ({ ...prev, [line.id]: a.id }));
                                             setAccountSearch(prev => { const n = { ...prev }; delete n[line.id]; return n; });
                                           }}
                                         >
-                                          <span className="font-mono text-gray-500 mr-1">{a.code}</span>
+                                          <span className="font-mono text-muted-foreground mr-1">{a.code}</span>
                                           {a.name}
                                         </button>
                                       ))}
@@ -2174,11 +2174,11 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                               </div>
                             )}
                           </td>
-                          <td className={cn("px-4 py-3 text-sm text-right tabular-nums", line.debit > 0 ? "text-green-400 font-medium" : "text-gray-500")}>
+                          <td className={cn("px-4 py-3 text-sm text-right tabular-nums", line.debit > 0 ? "text-[var(--erp-money-positive)] font-medium" : "text-muted-foreground")}>
                             {editingAccounts && line.id ? (
                               <input
                                 type="number"
-                                className="w-24 bg-gray-800 border border-gray-600 rounded px-2 py-1 text-sm text-right text-green-400"
+                                className="w-24 bg-muted border border-gray-600 rounded px-2 py-1 text-sm text-right text-[var(--erp-money-positive)]"
                                 value={editAmountChanges[line.id]?.debit ?? line.debit ?? 0}
                                 onChange={(e) => {
                                   const val = Number(e.target.value) || 0;
@@ -2192,11 +2192,11 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                               line.debit > 0 ? line.debit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'
                             )}
                           </td>
-                          <td className={cn("px-4 py-3 text-sm text-right tabular-nums", line.credit > 0 ? "text-red-400 font-medium" : "text-gray-500")}>
+                          <td className={cn("px-4 py-3 text-sm text-right tabular-nums", line.credit > 0 ? "text-red-400 font-medium" : "text-muted-foreground")}>
                             {editingAccounts && line.id ? (
                               <input
                                 type="number"
-                                className="w-24 bg-gray-800 border border-gray-600 rounded px-2 py-1 text-sm text-right text-red-400"
+                                className="w-24 bg-muted border border-gray-600 rounded px-2 py-1 text-sm text-right text-red-400"
                                 value={editAmountChanges[line.id]?.credit ?? line.credit ?? 0}
                                 onChange={(e) => {
                                   const val = Number(e.target.value) || 0;
@@ -2214,10 +2214,10 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                       );
                     })}
                   </tbody>
-                  <tfoot className="bg-gray-900">
-                    <tr className="font-semibold text-white">
+                  <tfoot className="bg-card">
+                    <tr className="font-semibold text-foreground">
                       <td className="px-4 py-2 text-right">Total:</td>
-                      <td className="px-4 py-2 text-right text-green-400">
+                      <td className="px-4 py-2 text-right text-[var(--erp-money-positive)]">
                         {journalLines.reduce((sum: number, line: any) => sum + (line.debit || 0), 0).toLocaleString('en-US', {
                           minimumFractionDigits: 2,
                           maximumFractionDigits: 2,
@@ -2234,18 +2234,18 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                 </table>
               </div>
               {effectiveLines.length > 0 && (transaction.payment_id || payment?.id) && (
-                <div className="mt-4 rounded-lg border border-gray-700/80 bg-gray-900/40 p-3">
-                  <p className="text-xs font-medium text-gray-400 mb-2">
+                <div className="mt-4 rounded-lg border border-border/80 bg-card/40 p-3">
+                  <p className="text-xs font-medium text-muted-foreground mb-2">
                     Auxiliary: effective payment accounts (merged JEs — not primary posted truth)
                   </p>
-                  <p className="text-xs text-gray-500 mb-2">
+                  <p className="text-xs text-muted-foreground mb-2">
                     Use only to explain cash/bank account changes across payment_adjustment entries. The double-entry table
                     above is authoritative.
                   </p>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="text-gray-500 text-xs uppercase">
+                        <tr className="text-muted-foreground text-xs uppercase">
                           <th className="text-left py-1">Account</th>
                           <th className="text-right py-1">Debit</th>
                           <th className="text-right py-1">Credit</th>
@@ -2255,14 +2255,14 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                         {effectiveLines.map((line: any, idx: number) => {
                           const account = line.account || {};
                           return (
-                            <tr key={line.account_id || idx} className="border-b border-gray-800/80">
+                            <tr key={`eff-${line.account_id ?? line.id ?? 'row'}-${idx}`} className="border-b border-border/80">
                               <td className="py-1.5 text-gray-200">
                                 {(account.name || '—') + (account.code ? ` (${account.code})` : '')}
                               </td>
-                              <td className="py-1.5 text-right tabular-nums text-gray-300">
+                              <td className="py-1.5 text-right tabular-nums text-muted-foreground">
                                 {line.debit > 0 ? Number(line.debit).toLocaleString() : '—'}
                               </td>
-                              <td className="py-1.5 text-right tabular-nums text-gray-300">
+                              <td className="py-1.5 text-right tabular-nums text-muted-foreground">
                                 {line.credit > 0 ? Number(line.credit).toLocaleString() : '—'}
                               </td>
                             </tr>
@@ -2273,23 +2273,23 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                   </div>
                 </div>
               )}
-              <p className="text-xs text-gray-400 mt-3">Double-entry: total debit must equal total credit.</p>
+              <p className="text-xs text-muted-foreground mt-3">Double-entry: total debit must equal total credit.</p>
             </div>
 
-            <div ref={activitySectionRef} className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-              <h3 className="text-sm font-semibold text-gray-300 mb-3">Activity</h3>
+            <div ref={activitySectionRef} className="bg-muted/50 rounded-lg p-4 border border-border">
+              <h3 className="text-sm font-semibold text-muted-foreground mb-3">Activity</h3>
               {loadingActivityLogs ? (
-                <p className="text-sm text-gray-500">Loading activity…</p>
+                <p className="text-sm text-muted-foreground">Loading activity…</p>
               ) : activityLogs.length > 0 ? (
                 <div className="space-y-3 max-h-48 overflow-y-auto">
                   {activityLogs.map((log, index) => (
                     <div key={log.id || index} className="flex gap-3 text-sm">
-                      <Clock className="w-4 h-4 text-gray-500 shrink-0 mt-0.5" />
+                      <Clock className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
                       <div>
-                        <p className="text-white">
+                        <p className="text-foreground">
                           {log.description || activityLogService.formatActivityLog(log)}
                         </p>
-                        <p className="text-xs text-gray-500 mt-0.5">
+                        <p className="text-xs text-muted-foreground mt-0.5">
                           {log.created_at ? format(new Date(log.created_at), 'dd MMM yyyy, h:mm a') : ''}
                           {log.performed_by_name ? ` · ${log.performed_by_name}` : ''}
                         </p>
@@ -2298,7 +2298,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-gray-500">No activity recorded for this entry yet.</p>
+                <p className="text-sm text-muted-foreground">No activity recorded for this entry yet.</p>
               )}
             </div>
 
@@ -2306,7 +2306,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
             {transaction.description?.toLowerCase().includes('discount') && (
               <div className="bg-yellow-500/10 rounded-lg p-4 border border-yellow-500/30">
                 <h3 className="text-sm font-semibold text-yellow-400 mb-2">Sales Discount Applied</h3>
-                <p className="text-sm text-gray-300">
+                <p className="text-sm text-muted-foreground">
                   This transaction includes a sales discount. The discount amount reduces Accounts Receivable.
                 </p>
               </div>
@@ -2323,7 +2323,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                 return (
                   <div className="bg-orange-500/10 rounded-lg p-4 border border-orange-500/30">
                     <h3 className="text-sm font-semibold text-orange-400 mb-2">Rental dress devaluation</h3>
-                    <p className="text-sm text-gray-300">
+                    <p className="text-sm text-muted-foreground">
                       This posting reflects wear / devaluation on rented inventory. For named customers it reduces rental
                       income and the customer&apos;s receivable (party AR), not operating cash.
                     </p>
@@ -2334,7 +2334,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                 return (
                   <div className="bg-orange-500/10 rounded-lg p-4 border border-orange-500/30">
                     <h3 className="text-sm font-semibold text-orange-400 mb-2">Extra Expense Recorded</h3>
-                    <p className="text-sm text-gray-300">
+                    <p className="text-sm text-muted-foreground">
                       This transaction records an extra expense (e.g., stitching, packing) linked to the sale.
                     </p>
                   </div>
@@ -2346,7 +2346,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
             {transaction.description?.toLowerCase().includes('commission') && (
               <div className="bg-purple-500/10 rounded-lg p-4 border border-purple-500/30">
                 <h3 className="text-sm font-semibold text-purple-400 mb-2">Commission Expense</h3>
-                <p className="text-sm text-gray-300">
+                <p className="text-sm text-muted-foreground">
                   This transaction records commission expense for the salesperson.
                 </p>
               </div>
@@ -2363,7 +2363,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
             <div className="relative max-w-6xl max-h-[90vh] w-full h-full flex items-center justify-center">
               <button
                 onClick={() => setSelectedAttachment(null)}
-                className="absolute top-4 right-4 text-white hover:text-gray-300 z-10 bg-gray-900/80 rounded-full p-2"
+                className="absolute top-4 right-4 text-foreground hover:text-muted-foreground z-10 bg-card rounded-full p-2"
               >
                 <X size={24} />
               </button>
@@ -2506,35 +2506,35 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
       <SheetContent
         side="right"
         overlayClassName="z-[115]"
-        className="z-[120] w-full sm:max-w-lg overflow-y-auto bg-gray-950 border-gray-800 text-gray-200"
+        className="z-[120] w-full sm:max-w-lg overflow-y-auto bg-input-background border-border text-gray-200"
       >
         <SheetHeader>
-          <SheetTitle className="text-white">Payment / GL trace</SheetTitle>
-          <p className="text-xs text-gray-500 font-normal">
+          <SheetTitle className="text-foreground">Payment / GL trace</SheetTitle>
+          <p className="text-xs text-muted-foreground font-normal">
             Read-only chain from Truth Lab services — mutations, journal entries, allocations. Use AR/AP Truth Lab for deep
             analysis.
           </p>
         </SheetHeader>
         <div className="mt-4 space-y-3 text-sm">
           {paymentTraceLoading ? (
-            <p className="text-gray-400">Loading trace…</p>
+            <p className="text-muted-foreground">Loading trace…</p>
           ) : paymentTrace?.errors?.length ? (
             <p className="text-amber-300 text-xs">{paymentTrace.errors.join(' · ')}</p>
           ) : null}
           {paymentTrace?.payment && (
-            <div className="rounded-lg border border-gray-800 bg-gray-900/60 p-3 space-y-1 text-xs">
+            <div className="rounded-lg border border-border bg-muted/60 p-3 space-y-1 text-xs">
               <p>
-                <span className="text-gray-500">Payment id:</span>{' '}
+                <span className="text-muted-foreground">Payment id:</span>{' '}
                 <span className="font-mono text-gray-200">{String((paymentTrace.payment as { id?: string }).id || '')}</span>
               </p>
               <p>
-                <span className="text-gray-500">Reference:</span>{' '}
+                <span className="text-muted-foreground">Reference:</span>{' '}
                 <span className="text-gray-200">
                   {String((paymentTrace.payment as { reference_number?: string }).reference_number || '—')}
                 </span>
               </p>
               <p>
-                <span className="text-gray-500">payment_account_id:</span>{' '}
+                <span className="text-muted-foreground">payment_account_id:</span>{' '}
                 <span className="font-mono text-gray-200">
                   {String((paymentTrace.payment as { payment_account_id?: string }).payment_account_id || '—')}
                 </span>
@@ -2542,30 +2542,30 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
             </div>
           )}
           {postingVsActual && (
-            <div className="rounded-lg border border-gray-800 bg-gray-900/40 p-3">
-              <p className="text-[11px] font-semibold text-gray-400 uppercase mb-1">Expected vs actual (heuristic)</p>
-              <p className="text-xs text-gray-300 leading-relaxed">{postingVsActual.narrative}</p>
+            <div className="rounded-lg border border-border bg-card/40 p-3">
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase mb-1">Expected vs actual (heuristic)</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">{postingVsActual.narrative}</p>
             </div>
           )}
-          <div className="text-xs text-gray-500 space-y-1">
+          <div className="text-xs text-muted-foreground space-y-1">
             <p>
-              Linked journal entries: <span className="text-gray-300">{paymentTrace?.journalEntries?.length ?? 0}</span>
+              Linked journal entries: <span className="text-muted-foreground">{paymentTrace?.journalEntries?.length ?? 0}</span>
             </p>
             <p>
-              Journal lines: <span className="text-gray-300">{paymentTrace?.journalLines?.length ?? 0}</span>
+              Journal lines: <span className="text-muted-foreground">{paymentTrace?.journalLines?.length ?? 0}</span>
             </p>
             <p>
-              transaction_mutations: <span className="text-gray-300">{paymentTrace?.transactionMutations?.length ?? 0}</span>
+              transaction_mutations: <span className="text-muted-foreground">{paymentTrace?.transactionMutations?.length ?? 0}</span>
             </p>
             <p>
-              payment_allocations: <span className="text-gray-300">{paymentTrace?.allocations?.length ?? 0}</span>
+              payment_allocations: <span className="text-muted-foreground">{paymentTrace?.allocations?.length ?? 0}</span>
             </p>
           </div>
           <Button
             type="button"
             variant="outline"
             size="sm"
-            className="w-full border-gray-700"
+            className="w-full border-border"
             onClick={() => {
               setPaymentTraceOpen(false);
               if (typeof window !== 'undefined') {

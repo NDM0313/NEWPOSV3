@@ -39,9 +39,9 @@ const STATUS_TABS: Array<BespokeWorkOrderStatus | 'all'> = [
 ];
 
 const statusStyles: Record<BespokeWorkOrderStatus, string> = {
-  draft: 'bg-gray-500/20 text-gray-300 border-gray-500/30',
+  draft: 'bg-gray-500/20 text-muted-foreground border-gray-500/30',
   in_progress: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  completed: 'bg-green-500/20 text-green-400 border-green-500/30',
+  completed: 'bg-green-500/20 text-[var(--erp-money-positive)] border-green-500/30',
   cancelled: 'bg-red-500/20 text-red-400 border-red-500/30',
 };
 
@@ -208,21 +208,21 @@ export function BespokeWorkOrdersPage() {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-[#0B0F19]">
-      <div className="shrink-0 px-6 py-4 border-b border-gray-800">
+    <div className="h-screen flex flex-col bg-secondary">
+      <div className="shrink-0 px-6 py-4 border-b border-border">
         <div className="flex items-center gap-3">
           <div className="p-2 rounded-lg bg-violet-500/10 border border-violet-500/30">
             <Scissors className="h-5 w-5 text-violet-400" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-white">Work Orders</h1>
-            <p className="text-sm text-gray-400 mt-0.5">
+            <h1 className="text-2xl font-bold text-foreground">Work Orders</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
               Bespoke production jobs across all sales
             </p>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-1 mt-4 p-1 bg-gray-950 border border-gray-800 rounded-lg w-fit">
+        <div className="flex flex-wrap items-center gap-1 mt-4 p-1 bg-input-background border border-border rounded-lg w-fit">
           {STATUS_TABS.map((tab) => (
             <button
               key={tab}
@@ -232,7 +232,7 @@ export function BespokeWorkOrdersPage() {
                 'px-4 py-2 rounded-md text-sm font-medium transition-all capitalize',
                 statusFilter === tab
                   ? 'bg-violet-600 text-white'
-                  : 'text-gray-400 hover:text-white hover:bg-gray-800',
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted',
               )}
             >
               {tab === 'all' ? 'All' : tab.replace('_', ' ')}
@@ -242,16 +242,16 @@ export function BespokeWorkOrdersPage() {
 
         <div className="flex flex-wrap gap-3 mt-4">
           <div className="relative min-w-[200px] flex-1 max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search BWO, sale, worker…"
-              className="pl-9 bg-gray-950 border-gray-800"
+              className="pl-9 bg-input-background border-border"
             />
           </div>
           <Select value={branchFilter} onValueChange={setBranchFilter}>
-            <SelectTrigger className="w-[180px] bg-gray-950 border-gray-800">
+            <SelectTrigger className="w-[180px] bg-input-background border-border">
               <SelectValue placeholder="Branch" />
             </SelectTrigger>
             <SelectContent>
@@ -264,7 +264,7 @@ export function BespokeWorkOrdersPage() {
             </SelectContent>
           </Select>
           <Select value={workerFilter} onValueChange={setWorkerFilter}>
-            <SelectTrigger className="w-[200px] bg-gray-950 border-gray-800">
+            <SelectTrigger className="w-[200px] bg-input-background border-border">
               <SelectValue placeholder="Worker" />
             </SelectTrigger>
             <SelectContent>
@@ -276,45 +276,45 @@ export function BespokeWorkOrdersPage() {
               ))}
             </SelectContent>
           </Select>
-          <Button variant="outline" className="border-gray-700" onClick={() => void load()}>
+          <Button variant="outline" className="border-border" onClick={() => void load()}>
             Refresh
           </Button>
         </div>
       </div>
 
       <div className="flex-1 overflow-auto px-6 py-4">
-        <div className="rounded-xl border border-gray-800 bg-gray-900/50 overflow-hidden">
+        <div className="rounded-xl border border-border bg-muted/40 overflow-hidden">
           {loading ? (
             <div className="flex items-center justify-center py-20">
               <Loader2 className="h-8 w-8 animate-spin text-violet-400" />
             </div>
           ) : orders.length === 0 ? (
-            <div className="py-16 text-center text-gray-500">
+            <div className="py-16 text-center text-muted-foreground">
               <Scissors className="h-10 w-10 mx-auto mb-3 opacity-40" />
               <p>No work orders found.</p>
               <p className="text-xs mt-1">Create one from a bespoke sale&apos;s detail drawer.</p>
             </div>
           ) : (
             <table className="w-full min-w-[900px]">
-              <thead className="bg-gray-900/50 border-b border-gray-800 sticky top-0">
+              <thead className="bg-muted/40 border-b border-border sticky top-0">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs text-gray-400 uppercase font-medium">BWO #</th>
-                  <th className="px-4 py-3 text-left text-xs text-gray-400 uppercase font-medium">Status</th>
-                  <th className="px-4 py-3 text-left text-xs text-gray-400 uppercase font-medium">Worker</th>
-                  <th className="px-4 py-3 text-left text-xs text-gray-400 uppercase font-medium">Sale</th>
-                  <th className="px-4 py-3 text-left text-xs text-gray-400 uppercase font-medium">Branch</th>
-                  <th className="px-4 py-3 text-right text-xs text-gray-400 uppercase font-medium">Cost</th>
-                  <th className="px-4 py-3 text-left text-xs text-gray-400 uppercase font-medium">Created</th>
-                  <th className="px-4 py-3 text-left text-xs text-gray-400 uppercase font-medium">Completed</th>
-                  <th className="px-4 py-3 text-left text-xs text-gray-400 uppercase font-medium">Stock</th>
-                  <th className="px-4 py-3 text-right text-xs text-gray-400 uppercase font-medium">Actions</th>
+                  <th className="px-4 py-3 text-left text-xs text-muted-foreground uppercase font-medium">BWO #</th>
+                  <th className="px-4 py-3 text-left text-xs text-muted-foreground uppercase font-medium">Status</th>
+                  <th className="px-4 py-3 text-left text-xs text-muted-foreground uppercase font-medium">Worker</th>
+                  <th className="px-4 py-3 text-left text-xs text-muted-foreground uppercase font-medium">Sale</th>
+                  <th className="px-4 py-3 text-left text-xs text-muted-foreground uppercase font-medium">Branch</th>
+                  <th className="px-4 py-3 text-right text-xs text-muted-foreground uppercase font-medium">Cost</th>
+                  <th className="px-4 py-3 text-left text-xs text-muted-foreground uppercase font-medium">Created</th>
+                  <th className="px-4 py-3 text-left text-xs text-muted-foreground uppercase font-medium">Completed</th>
+                  <th className="px-4 py-3 text-left text-xs text-muted-foreground uppercase font-medium">Stock</th>
+                  <th className="px-4 py-3 text-right text-xs text-muted-foreground uppercase font-medium">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-800">
+              <tbody className="divide-y divide-border">
                 {orders.map((wo) => (
                   <tr
                     key={wo.id}
-                    className="hover:bg-gray-800/30 cursor-pointer"
+                    className="hover:bg-accent/30 cursor-pointer"
                     onClick={() => setSelectedId(wo.id)}
                   >
                     <td className="px-4 py-3 text-sm font-mono text-violet-300">{wo.work_order_no}</td>
@@ -323,18 +323,18 @@ export function BespokeWorkOrdersPage() {
                         {wo.status.replace('_', ' ')}
                       </Badge>
                     </td>
-                    <td className="px-4 py-3 text-sm text-white">{wo.tailor?.name ?? '—'}</td>
+                    <td className="px-4 py-3 text-sm text-foreground">{wo.tailor?.name ?? '—'}</td>
                     <td className="px-4 py-3 text-sm font-mono text-blue-400">
                       {wo.sale?.invoice_no ?? '—'}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-400">{wo.branch?.name ?? '—'}</td>
-                    <td className="px-4 py-3 text-sm text-right font-semibold text-white tabular-nums">
+                    <td className="px-4 py-3 text-sm text-muted-foreground">{wo.branch?.name ?? '—'}</td>
+                    <td className="px-4 py-3 text-sm text-right font-semibold text-foreground tabular-nums">
                       {formatCurrency(Number(wo.production_cost) || 0)}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-400">
+                    <td className="px-4 py-3 text-sm text-muted-foreground">
                       {wo.created_at ? formatDateTime(wo.created_at) : '—'}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-400">
+                    <td className="px-4 py-3 text-sm text-muted-foreground">
                       {wo.completed_at ? formatDateTime(wo.completed_at) : '—'}
                     </td>
                     <td className="px-4 py-3">
@@ -344,12 +344,12 @@ export function BespokeWorkOrdersPage() {
                             Missing
                           </Badge>
                         ) : (
-                          <Badge variant="outline" className="text-[10px] border-green-500/40 text-green-400">
+                          <Badge variant="outline" className="text-[10px] border-green-500/40 text-[var(--erp-money-positive)]">
                             Posted
                           </Badge>
                         )
                       ) : (
-                        <span className="text-xs text-gray-600">—</span>
+                        <span className="text-xs text-muted-foreground">—</span>
                       )}
                     </td>
                     <td className="px-4 py-3 text-right">
@@ -361,7 +361,7 @@ export function BespokeWorkOrdersPage() {
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-7 border-gray-700 text-xs"
+                            className="h-7 border-border text-xs"
                             disabled={busyId === wo.id}
                             onClick={() => void handleMarkInProgress(wo.id)}
                           >
@@ -419,7 +419,7 @@ export function BespokeWorkOrdersPage() {
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-7 border-gray-700 text-xs"
+                            className="h-7 border-border text-xs"
                             onClick={() => setEditWorkOrder(wo)}
                           >
                             Edit

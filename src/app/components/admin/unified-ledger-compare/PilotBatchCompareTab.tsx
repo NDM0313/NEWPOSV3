@@ -38,10 +38,10 @@ export function PilotBatchCompareTab(props: {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-lg border border-gray-800 bg-gray-900/40 p-4 text-sm text-gray-400 space-y-1">
+      <div className="rounded-lg border border-border bg-card/40 p-4 text-sm text-muted-foreground space-y-1">
         <p>
-          <strong className="text-white">{DIN_CHINA_COMPANY_NAME}</strong> — MR JALIL × 3 bases × 3 branch
-          scopes (expected <strong className="text-white">9/9 PASS</strong>).
+          <strong className="text-foreground">{DIN_CHINA_COMPANY_NAME}</strong> — MR JALIL × 3 bases × 3 branch
+          scopes (expected <strong className="text-foreground">9/9 PASS</strong>).
         </p>
         <p>Golden balance: PKR {MR_JALIL_EXPECTED_BALANCE.toLocaleString()} · Clone: {CLONE_REFERENCE}</p>
         <p>
@@ -65,10 +65,10 @@ export function PilotBatchCompareTab(props: {
             <MiniStat label="Max |diff|" value={result.summary.maxAbsDifference} />
           </div>
 
-          <div className="rounded-lg border border-gray-800 overflow-hidden">
+          <div className="rounded-lg border border-border overflow-hidden">
             <table className="w-full text-xs">
               <thead>
-                <tr className="text-gray-500 border-b border-gray-800 bg-gray-900/80">
+                <tr className="text-muted-foreground border-b border-border bg-card">
                   <th className="text-left p-2">Branch</th>
                   <th className="text-left p-2">Basis</th>
                   <th className="text-right p-2">Old</th>
@@ -81,7 +81,7 @@ export function PilotBatchCompareTab(props: {
                 {result.rows.map((row, i) => (
                   <tr
                     key={`${row.branchLabel}-${row.basis}-${i}`}
-                    className={`border-b border-gray-800/50 ${row.pass ? '' : 'bg-red-500/10'}`}
+                    className={`border-b border-border ${row.pass ? '' : 'bg-red-500/10'}`}
                   >
                     <td className="p-2">{row.branchLabel || 'All'}</td>
                     <td className="p-2">{row.basis}</td>
@@ -121,9 +121,9 @@ function MiniStat({
 }) {
   return (
     <div
-      className={`rounded-lg border p-3 ${highlight ? 'border-amber-500/50 bg-amber-500/10' : 'border-gray-800 bg-gray-900/50'}`}
+      className={`rounded-lg border p-3 ${highlight ? 'border-amber-500/50 bg-amber-500/10' : 'border-border bg-muted/40'}`}
     >
-      <div className="text-xs text-gray-500">{label}</div>
+      <div className="text-xs text-muted-foreground">{label}</div>
       <div className="text-lg font-mono mt-1">{value}</div>
     </div>
   );

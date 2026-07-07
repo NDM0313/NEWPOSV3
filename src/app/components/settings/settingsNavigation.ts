@@ -2,6 +2,7 @@
 
 export type SettingsContentKey =
   | 'company'
+  | 'appearance'
   | 'branches'
   | 'pos'
   | 'sales'
@@ -57,6 +58,7 @@ export const SETTINGS_NAV: SettingsCategory[] = [
     description: 'Company profile aur branches',
     items: [
       { id: 'company', label: 'Company', contentKey: 'company' },
+      { id: 'appearance', label: 'Appearance', contentKey: 'appearance' },
       { id: 'branches', label: 'Branches', contentKey: 'branches' },
     ],
   },

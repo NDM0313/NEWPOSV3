@@ -18,8 +18,8 @@ export const TopEntitiesCharts: React.FC<Props> = ({ charts, formatCurrency, sho
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-      <div className="rounded-xl border border-[#374151] bg-[#1F2937] p-4">
-        <h3 className="text-white font-semibold mb-3 text-sm">Sales by Category</h3>
+      <div className="rounded-xl border border-border bg-card p-4">
+        <h3 className="text-foreground font-semibold mb-3 text-sm">Sales by Category</h3>
         {categories.length ? (
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={categories} layout="vertical" margin={{ left: 8 }}>
@@ -41,8 +41,8 @@ export const TopEntitiesCharts: React.FC<Props> = ({ charts, formatCurrency, sho
           <p className="text-[#6B7280] text-sm py-8 text-center">No category sales in period.</p>
         )}
       </div>
-      <div className="rounded-xl border border-[#374151] bg-[#1F2937] p-4">
-        <h3 className="text-white font-semibold mb-3 text-sm">Top Customers</h3>
+      <div className="rounded-xl border border-border bg-card p-4">
+        <h3 className="text-foreground font-semibold mb-3 text-sm">Top Customers</h3>
         {customers.length ? (
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={customers}>

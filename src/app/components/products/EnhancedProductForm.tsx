@@ -1570,23 +1570,23 @@ export const EnhancedProductForm = ({
   };
 
   return (
-    <div className="flex flex-col h-full min-h-0 bg-gray-950 text-white relative">
+    <div className="flex flex-col h-full min-h-0 bg-input-background text-foreground relative">
       {(loadingFullProduct && initialProduct) || (loadingDuplicateSource && isDuplicateMode) ? (
-        <div className="absolute inset-0 bg-gray-950/80 z-20 flex items-center justify-center rounded-xl">
+        <div className="absolute inset-0 bg-input-background/80 z-20 flex items-center justify-center rounded-xl">
           <div className="flex flex-col items-center gap-3">
             <RefreshCcw size={32} className="text-blue-400 animate-spin" />
-            <p className="text-sm text-gray-400">
+            <p className="text-sm text-muted-foreground">
               {isDuplicateMode ? 'Preparing duplicate...' : 'Loading product...'}
             </p>
           </div>
         </div>
       ) : null}
-      <div className="p-6 border-b border-gray-800 flex justify-between items-center bg-gray-900 sticky top-0 z-10">
+      <div className="p-6 border-b border-border flex justify-between items-center bg-card sticky top-0 z-10">
         <div>
           <h2 className="text-xl font-bold">
             {initialProduct ? 'Edit Product' : isDuplicateMode ? 'Duplicate Product' : 'Add New Product'}
           </h2>
-          <p className="text-sm text-gray-400">
+          <p className="text-sm text-muted-foreground">
             {initialProduct
               ? 'Update product details'
               : isDuplicateMode
@@ -1596,22 +1596,22 @@ export const EnhancedProductForm = ({
         </div>
         <button
           onClick={onCancel}
-          className="p-2 hover:bg-gray-800 rounded-full"
+          className="p-2 hover:bg-muted rounded-full"
         >
           <X size={20} />
         </button>
       </div>
 
       {/* Tab Navigation */}
-      <div className="border-b border-gray-800 bg-gray-900 sticky top-[89px] z-10">
+      <div className="border-b border-border bg-card sticky top-[89px] z-10">
         <div className="flex px-6 overflow-x-auto">
           <button
             onClick={() => setActiveTab('basic')}
             className={clsx(
               "px-6 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
               activeTab === 'basic'
-                ? "border-blue-500 text-white"
-                : "border-transparent text-gray-400 hover:text-gray-300"
+                ? "border-blue-500 text-foreground"
+                : "border-transparent text-muted-foreground hover:text-muted-foreground"
             )}
           >
             Basic Info
@@ -1621,8 +1621,8 @@ export const EnhancedProductForm = ({
             className={clsx(
               "px-6 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
               activeTab === 'pricing'
-                ? "border-blue-500 text-white"
-                : "border-transparent text-gray-400 hover:text-gray-300"
+                ? "border-blue-500 text-foreground"
+                : "border-transparent text-muted-foreground hover:text-muted-foreground"
             )}
           >
             Pricing & Tax
@@ -1632,8 +1632,8 @@ export const EnhancedProductForm = ({
             className={clsx(
               "px-6 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
               activeTab === 'inventory'
-                ? "border-blue-500 text-white"
-                : "border-transparent text-gray-400 hover:text-gray-300"
+                ? "border-blue-500 text-foreground"
+                : "border-transparent text-muted-foreground hover:text-muted-foreground"
             )}
           >
             Inventory
@@ -1643,8 +1643,8 @@ export const EnhancedProductForm = ({
             className={clsx(
               "px-6 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
               activeTab === 'media'
-                ? "border-blue-500 text-white"
-                : "border-transparent text-gray-400 hover:text-gray-300"
+                ? "border-blue-500 text-foreground"
+                : "border-transparent text-muted-foreground hover:text-muted-foreground"
             )}
           >
             Media
@@ -1654,8 +1654,8 @@ export const EnhancedProductForm = ({
             className={clsx(
               "px-6 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
               activeTab === 'details'
-                ? "border-blue-500 text-white"
-                : "border-transparent text-gray-400 hover:text-gray-300"
+                ? "border-blue-500 text-foreground"
+                : "border-transparent text-muted-foreground hover:text-muted-foreground"
             )}
           >
             Details
@@ -1666,8 +1666,8 @@ export const EnhancedProductForm = ({
               className={clsx(
                 "px-6 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
                 activeTab === 'variations'
-                  ? "border-blue-500 text-white"
-                  : "border-transparent text-gray-400 hover:text-gray-300"
+                  ? "border-blue-500 text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-muted-foreground"
               )}
             >
               Variations {generatedVariations.length > 0 && `(${generatedVariations.length} / ${MAX_VARIATIONS})`}
@@ -1679,8 +1679,8 @@ export const EnhancedProductForm = ({
             className={clsx(
               "px-6 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
               activeTab === 'combos'
-                ? "border-blue-500 text-white"
-                : "border-transparent text-gray-400 hover:text-gray-300"
+                ? "border-blue-500 text-foreground"
+                : "border-transparent text-muted-foreground hover:text-muted-foreground"
             )}
           >
             Combos {combos.length > 0 && `(${combos.length})`}
@@ -1708,7 +1708,7 @@ export const EnhancedProductForm = ({
                     id="name"
                     {...register("name")}
                     placeholder="e.g. Cotton Premium Shirt"
-                    className="bg-gray-800 border-gray-700 text-white mt-1"
+                    className="bg-muted border-border text-foreground mt-1"
                   />
                   {errors.name && (
                     <p className="text-red-500 text-xs mt-1">
@@ -1726,12 +1726,12 @@ export const EnhancedProductForm = ({
                       id="sku"
                       {...register("sku")}
                       placeholder="AUTO-GENERATED"
-                      className="bg-gray-800 border-gray-700 text-white pr-10"
+                      className="bg-muted border-border text-foreground pr-10"
                     />
                     <button
                       type="button"
                       onClick={generateSKUForForm}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                     >
                       <RefreshCcw size={16} />
                     </button>
@@ -1756,7 +1756,7 @@ export const EnhancedProductForm = ({
                   <Label className="text-gray-200">Brand</Label>
                   <div className="mt-1">
                     {loadingBrands ? (
-                      <div className="flex h-9 items-center rounded-md border border-gray-700 bg-gray-800 px-3 text-sm text-gray-400">Loading brands...</div>
+                      <div className="flex h-9 items-center rounded-md border border-border bg-muted px-3 text-sm text-muted-foreground">Loading brands...</div>
                     ) : (
                       <SearchableSelect
                         value={watch('brand') ?? ''}
@@ -1765,7 +1765,7 @@ export const EnhancedProductForm = ({
                         placeholder="Select Brand"
                         searchPlaceholder="Search brand..."
                         emptyText="No brand found."
-                        className="bg-gray-800 border-gray-700 text-white h-9"
+                        className="bg-muted border-border text-foreground h-9"
                         enableAddNew
                         addNewLabel="Add Brand"
                         onAddNew={async (searchText) => {
@@ -1789,7 +1789,7 @@ export const EnhancedProductForm = ({
                   <Label className="text-gray-200">Category</Label>
                   <div className="mt-1">
                     {loadingCategories ? (
-                      <div className="flex h-9 items-center rounded-md border border-gray-700 bg-gray-800 px-3 text-sm text-gray-400">Loading categories...</div>
+                      <div className="flex h-9 items-center rounded-md border border-border bg-muted px-3 text-sm text-muted-foreground">Loading categories...</div>
                     ) : (
                       <SearchableSelect
                         value={watch('category') ?? ''}
@@ -1801,7 +1801,7 @@ export const EnhancedProductForm = ({
                         placeholder="Select Category"
                         searchPlaceholder="Search category..."
                         emptyText="No category found."
-                        className="bg-gray-800 border-gray-700 text-white h-9"
+                        className="bg-muted border-border text-foreground h-9"
                         enableAddNew
                         addNewLabel="Add Category"
                         onAddNew={async (searchText) => {
@@ -1826,7 +1826,7 @@ export const EnhancedProductForm = ({
                   <Label className="text-gray-200">Sub-Category</Label>
                   <div className="mt-1">
                     {!selectedCategoryId ? (
-                      <div className="flex h-9 items-center rounded-md border border-gray-700 bg-gray-800 px-3 text-sm text-gray-500">Select a category first</div>
+                      <div className="flex h-9 items-center rounded-md border border-border bg-muted px-3 text-sm text-muted-foreground">Select a category first</div>
                     ) : (
                       <SearchableSelect
                         value={watch('subCategory') ?? ''}
@@ -1835,7 +1835,7 @@ export const EnhancedProductForm = ({
                         placeholder="Select Sub-Category"
                         searchPlaceholder="Search sub-category..."
                         emptyText="No sub-category found."
-                        className="bg-gray-800 border-gray-700 text-white h-9"
+                        className="bg-muted border-border text-foreground h-9"
                         enableAddNew
                         addNewLabel="Add Sub-Category"
                         onAddNew={async (searchText) => {
@@ -1859,7 +1859,7 @@ export const EnhancedProductForm = ({
                   <Label className="text-gray-200">Unit</Label>
                   <div className="mt-1">
                     {loadingUnits ? (
-                      <div className="flex h-9 items-center rounded-md border border-gray-700 bg-gray-800 px-3 text-sm text-gray-400">Loading units...</div>
+                      <div className="flex h-9 items-center rounded-md border border-border bg-muted px-3 text-sm text-muted-foreground">Loading units...</div>
                     ) : (
                       <SearchableSelect
                         value={watch('unit') ?? ''}
@@ -1868,7 +1868,7 @@ export const EnhancedProductForm = ({
                         placeholder="Select Unit"
                         searchPlaceholder="Search unit..."
                         emptyText="No unit found. Add units in Settings → Inventory → Units."
-                        className="bg-gray-800 border-gray-700 text-white h-9"
+                        className="bg-muted border-border text-foreground h-9"
                       />
                     )}
                   </div>
@@ -1891,9 +1891,9 @@ export const EnhancedProductForm = ({
                     type="number"
                     {...register("purchasePrice", { setValueAs: setValueAsNumber })}
                     placeholder="0.00"
-                    className="bg-gray-800 border-gray-700 text-white mt-1"
+                    className="bg-muted border-border text-foreground mt-1"
                   />
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-xs text-muted-foreground mt-1">
                     Cost price from supplier
                   </p>
                 </div>
@@ -1907,7 +1907,7 @@ export const EnhancedProductForm = ({
                     {...register("sellingPrice", { setValueAs: setValueAsNumber })}
                     placeholder="0.00"
                     className={clsx(
-                      "bg-green-900/30 border-green-700 text-white mt-1 font-bold",
+                      "bg-green-900/30 border-green-700 text-foreground mt-1 font-bold",
                       errors.sellingPrice &&
                         "border-red-500 ring-1 ring-red-500",
                     )}
@@ -1917,7 +1917,7 @@ export const EnhancedProductForm = ({
                       {errors.sellingPrice.message}
                     </p>
                   )}
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-xs text-muted-foreground mt-1">
                     Final price for customers
                   </p>
                 </div>
@@ -1948,9 +1948,9 @@ export const EnhancedProductForm = ({
                     type="number"
                     {...register("purchasePrice", { setValueAs: setValueAsNumber })}
                     placeholder="0.00"
-                    className="bg-gray-800 border-gray-700 text-white mt-1"
+                    className="bg-muted border-border text-foreground mt-1"
                   />
-                  <p className="text-xs text-gray-500 mt-1">Cost from supplier</p>
+                  <p className="text-xs text-muted-foreground mt-1">Cost from supplier</p>
                 </div>
 
                 <div>
@@ -1961,9 +1961,9 @@ export const EnhancedProductForm = ({
                     type="number"
                     {...register("margin", { setValueAs: setValueAsNumber })}
                     placeholder="0"
-                    className="bg-gray-800 border-gray-700 text-white mt-1"
+                    className="bg-muted border-border text-foreground mt-1"
                   />
-                  <p className="text-xs text-gray-500 mt-1">Auto-calculate selling price</p>
+                  <p className="text-xs text-muted-foreground mt-1">Auto-calculate selling price</p>
                 </div>
 
                 <div>
@@ -1975,7 +1975,7 @@ export const EnhancedProductForm = ({
                     {...register("sellingPrice", { setValueAs: setValueAsNumber })}
                     placeholder="0.00"
                     className={clsx(
-                      "bg-green-900/30 border-green-700 text-white mt-1 font-bold",
+                      "bg-green-900/30 border-green-700 text-foreground mt-1 font-bold",
                       errors.sellingPrice &&
                         "border-red-500 ring-1 ring-red-500",
                     )}
@@ -1985,7 +1985,7 @@ export const EnhancedProductForm = ({
                       {errors.sellingPrice.message}
                     </p>
                   )}
-                  <p className="text-xs text-gray-500 mt-1">Retail price</p>
+                  <p className="text-xs text-muted-foreground mt-1">Retail price</p>
                 </div>
               </div>
             </div>
@@ -2004,9 +2004,9 @@ export const EnhancedProductForm = ({
                     type="number"
                     {...register("wholesalePrice", { setValueAs: setValueAsNumber })}
                     placeholder="0.00"
-                    className="bg-gray-800 border-gray-700 text-white mt-1"
+                    className="bg-muted border-border text-foreground mt-1"
                   />
-                  <p className="text-xs text-gray-500 mt-1">Price for wholesale customers</p>
+                  <p className="text-xs text-muted-foreground mt-1">Price for wholesale customers</p>
                 </div>
 
                 <div>
@@ -2016,9 +2016,9 @@ export const EnhancedProductForm = ({
                   <Input
                     type="number"
                     placeholder="0.00"
-                    className="bg-gray-800 border-gray-700 text-white mt-1"
+                    className="bg-muted border-border text-foreground mt-1"
                   />
-                  <p className="text-xs text-gray-500 mt-1">Price for retail customers</p>
+                  <p className="text-xs text-muted-foreground mt-1">Price for retail customers</p>
                 </div>
 
                 <div>
@@ -2028,9 +2028,9 @@ export const EnhancedProductForm = ({
                   <Input
                     type="number"
                     placeholder="0.00"
-                    className="bg-gray-800 border-gray-700 text-white mt-1"
+                    className="bg-muted border-border text-foreground mt-1"
                   />
-                  <p className="text-xs text-gray-500 mt-1">Special price for bulk orders</p>
+                  <p className="text-xs text-muted-foreground mt-1">Special price for bulk orders</p>
                 </div>
 
                 <div>
@@ -2040,9 +2040,9 @@ export const EnhancedProductForm = ({
                   <Input
                     type="number"
                     placeholder="1"
-                    className="bg-gray-800 border-gray-700 text-white mt-1"
+                    className="bg-muted border-border text-foreground mt-1"
                   />
-                  <p className="text-xs text-gray-500 mt-1">Minimum quantity to order</p>
+                  <p className="text-xs text-muted-foreground mt-1">Minimum quantity to order</p>
                 </div>
               </div>
 
@@ -2050,19 +2050,19 @@ export const EnhancedProductForm = ({
                 <h4 className="text-sm font-semibold text-purple-300 mb-2">💰 Pricing Summary</h4>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                   <div>
-                    <p className="text-gray-500">Purchase:</p>
-                    <p className="text-white font-bold">₨{watch('purchasePrice') || 0}</p>
+                    <p className="text-muted-foreground">Purchase:</p>
+                    <p className="text-foreground font-bold">₨{watch('purchasePrice') || 0}</p>
                   </div>
                   <div>
-                    <p className="text-gray-500">Selling:</p>
-                    <p className="text-green-400 font-bold">₨{watch('sellingPrice') || 0}</p>
+                    <p className="text-muted-foreground">Selling:</p>
+                    <p className="text-[var(--erp-money-positive)] font-bold">₨{watch('sellingPrice') || 0}</p>
                   </div>
                   <div>
-                    <p className="text-gray-500">Margin:</p>
+                    <p className="text-muted-foreground">Margin:</p>
                     <p className="text-blue-400 font-bold">{watch('margin') || 0}%</p>
                   </div>
                   <div>
-                    <p className="text-gray-500">Profit:</p>
+                    <p className="text-muted-foreground">Profit:</p>
                     <p className="text-yellow-400 font-bold">₨{((watch('sellingPrice') || 0) - (watch('purchasePrice') || 0)).toFixed(2)}</p>
                   </div>
                 </div>
@@ -2085,10 +2085,10 @@ export const EnhancedProductForm = ({
                         onValueChange={field.onChange}
                         defaultValue={field.value}
                       >
-                        <SelectTrigger className="bg-gray-800 border-gray-700 text-white mt-1">
+                        <SelectTrigger className="bg-muted border-border text-foreground mt-1">
                           <SelectValue placeholder="Select Tax Type" />
                         </SelectTrigger>
-                        <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                        <SelectContent className="bg-popover border-border text-popover-foreground">
                           <SelectItem value="exclusive">
                             Exclusive (Tax Added)
                           </SelectItem>
@@ -2124,7 +2124,7 @@ export const EnhancedProductForm = ({
                     type="number"
                     {...register("rentalPrice", { setValueAs: setValueAsNumber })}
                     placeholder="0.00"
-                    className="bg-gray-800 border-gray-700 text-white mt-1"
+                    className="bg-muted border-border text-foreground mt-1"
                   />
                 </div>
 
@@ -2136,7 +2136,7 @@ export const EnhancedProductForm = ({
                     type="number"
                     {...register("securityDeposit", { setValueAs: setValueAsNumber })}
                     placeholder="0.00"
-                    className="bg-gray-800 border-gray-700 text-white mt-1"
+                    className="bg-muted border-border text-foreground mt-1"
                   />
                 </div>
               </div>
@@ -2149,9 +2149,9 @@ export const EnhancedProductForm = ({
           <>
             <div className="space-y-4">
               {companyBranches.length > 1 && (
-                <div className="p-3 bg-gray-800 border border-gray-700 rounded-lg space-y-2">
+                <div className="p-3 bg-muted border border-border rounded-lg space-y-2">
                   <Label className="text-gray-200 font-medium">Available in branches</Label>
-                  <p className="text-xs text-gray-500">Select which branches can sell this product.</p>
+                  <p className="text-xs text-muted-foreground">Select which branches can sell this product.</p>
                   <div className="space-y-2">
                     {companyBranches.map((b) => {
                       const checked = selectedBranchIds.includes(b.id);
@@ -2176,12 +2176,12 @@ export const EnhancedProductForm = ({
               )}
 
               {/* Enable Variations toggle (opt-in, default OFF for new product) */}
-              <div className="flex items-center justify-between p-3 bg-gray-800 border border-gray-700 rounded-lg">
+              <div className="flex items-center justify-between p-3 bg-muted border border-border rounded-lg">
                 <div>
                   <Label htmlFor="enable-variations" className="text-gray-200 font-medium">
                     Enable Variations
                   </Label>
-                  <p className="text-xs text-gray-500 mt-0.5">
+                  <p className="text-xs text-muted-foreground mt-0.5">
                     Enable size/color variations. Stock will be tracked per variation.
                   </p>
                 </div>
@@ -2193,20 +2193,20 @@ export const EnhancedProductForm = ({
               </div>
 
               {enableVariations && (
-                <div className="p-3 bg-gray-800 border border-gray-700 rounded-lg">
-                  <p className="text-sm text-gray-400">Parent product does not hold stock when variations are enabled.</p>
+                <div className="p-3 bg-muted border border-border rounded-lg">
+                  <p className="text-sm text-muted-foreground">Parent product does not hold stock when variations are enabled.</p>
                 </div>
               )}
 
               {/* Enable Combo Product toggle (only if module enabled) */}
               {modules.combosEnabled && (
                 <>
-                  <div className="flex items-center justify-between p-3 bg-gray-800 border border-gray-700 rounded-lg">
+                  <div className="flex items-center justify-between p-3 bg-muted border border-border rounded-lg">
                     <div>
                       <Label htmlFor="enable-combo" className="text-gray-200 font-medium">
                         Enable Combo Product
                       </Label>
-                      <p className="text-xs text-gray-500 mt-0.5">
+                      <p className="text-xs text-muted-foreground mt-0.5">
                         Make this product a combo/bundle. Stock will be managed through component products.
                       </p>
                     </div>
@@ -2218,8 +2218,8 @@ export const EnhancedProductForm = ({
                   </div>
 
                   {isComboProduct && (
-                    <div className="p-3 bg-gray-800 border border-gray-700 rounded-lg">
-                      <p className="text-sm text-gray-400">Combo products do not hold stock. Stock is managed through component products.</p>
+                    <div className="p-3 bg-muted border border-border rounded-lg">
+                      <p className="text-sm text-muted-foreground">Combo products do not hold stock. Stock is managed through component products.</p>
                     </div>
                   )}
                 </>
@@ -2266,13 +2266,13 @@ export const EnhancedProductForm = ({
                       disabled={enableVariations || isComboProduct}
                       {...register("initialStock", { setValueAs: setValueAsNumber })}
                       placeholder="0"
-                      className={clsx("mt-1", (enableVariations || isComboProduct) ? "bg-gray-900 border-gray-700 text-gray-500 cursor-not-allowed" : "bg-gray-800 border-gray-700 text-white")}
+                      className={clsx("mt-1", (enableVariations || isComboProduct) ? "bg-card border-border text-muted-foreground cursor-not-allowed" : "bg-muted border-border text-foreground")}
                     />
                     {enableVariations && (
-                      <p className="text-xs text-gray-500 mt-1">Opening stock is defined per variation.</p>
+                      <p className="text-xs text-muted-foreground mt-1">Opening stock is defined per variation.</p>
                     )}
                     {isComboProduct && (
-                      <p className="text-xs text-gray-500 mt-1">Combo products do not hold stock. Stock is managed through component products.</p>
+                      <p className="text-xs text-muted-foreground mt-1">Combo products do not hold stock. Stock is managed through component products.</p>
                     )}
                   </div>
 
@@ -2288,9 +2288,9 @@ export const EnhancedProductForm = ({
                       type="number"
                       {...register("alertQty", { setValueAs: setValueAsNumber })}
                       placeholder="5"
-                      className="bg-gray-800 border-red-900/50 text-white mt-1"
+                      className="bg-muted border-red-900/50 text-foreground mt-1"
                     />
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-xs text-muted-foreground mt-1">
                       Get notified when stock falls below this level
                     </p>
                   </div>
@@ -2302,17 +2302,17 @@ export const EnhancedProductForm = ({
                       type="number"
                       {...register("maxStock", { setValueAs: setValueAsNumber })}
                       placeholder="1000"
-                      className="bg-gray-800 border-gray-700 text-white mt-1"
+                      className="bg-muted border-border text-foreground mt-1"
                     />
-                    <p className="text-xs text-gray-500 mt-1">Maximum stock capacity</p>
+                    <p className="text-xs text-muted-foreground mt-1">Maximum stock capacity</p>
                   </div>
                 </div>
               )}
 
               {!stockManagement && (
-                <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 text-center">
-                  <p className="text-gray-400">Stock tracking is disabled for this product</p>
-                  <p className="text-sm text-gray-500 mt-1">Enable tracking above to manage inventory levels</p>
+                <div className="bg-muted border border-border rounded-xl p-6 text-center">
+                  <p className="text-muted-foreground">Stock tracking is disabled for this product</p>
+                  <p className="text-sm text-muted-foreground mt-1">Enable tracking above to manage inventory levels</p>
                 </div>
               )}
             </div>
@@ -2333,15 +2333,15 @@ export const EnhancedProductForm = ({
                   "border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer transition-colors",
                   isDragActive
                     ? "border-blue-500 bg-blue-500/10"
-                    : "border-gray-700 hover:border-gray-500 bg-gray-800/50",
+                    : "border-border hover:border-gray-500 bg-muted/50",
                 )}
               >
                 <input {...getInputProps()} />
                 <Upload
                   size={32}
-                  className="text-gray-500 mb-3"
+                  className="text-muted-foreground mb-3"
                 />
-                <p className="text-gray-400 text-center">
+                <p className="text-muted-foreground text-center">
                   Drag & drop images here, or{" "}
                   <span className="text-blue-500">browse</span>
                 </p>
@@ -2349,11 +2349,11 @@ export const EnhancedProductForm = ({
 
               {existingImageUrls.length > 0 && (
                 <div className="grid grid-cols-4 gap-4 mt-4">
-                  <p className="col-span-full text-sm text-gray-500">Saved images</p>
+                  <p className="col-span-full text-sm text-muted-foreground">Saved images</p>
                   {existingImageUrls.map((url, idx) => (
                     <div
                       key={url + idx}
-                      className="relative group aspect-square bg-gray-800 rounded-lg overflow-hidden border border-gray-700"
+                      className="relative group aspect-square bg-muted rounded-lg overflow-hidden border border-border"
                     >
                       <ProductImage src={url} alt="product" className="w-full h-full object-cover" />
                       <button
@@ -2362,7 +2362,7 @@ export const EnhancedProductForm = ({
                           e.stopPropagation();
                           setExistingImageUrls(existingImageUrls.filter((_, i) => i !== idx));
                         }}
-                        className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="absolute top-1 right-1 bg-red-500 text-foreground p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                       >
                         <X size={12} />
                       </button>
@@ -2373,11 +2373,11 @@ export const EnhancedProductForm = ({
 
               {images.length > 0 && (
                 <div className="grid grid-cols-4 gap-4 mt-4">
-                  {existingImageUrls.length > 0 && <p className="col-span-full text-sm text-gray-500">New images (will save on Submit)</p>}
+                  {existingImageUrls.length > 0 && <p className="col-span-full text-sm text-muted-foreground">New images (will save on Submit)</p>}
                   {images.map((file, idx) => (
                     <div
                       key={idx}
-                      className="relative group aspect-square bg-gray-800 rounded-lg overflow-hidden border border-gray-700"
+                      className="relative group aspect-square bg-muted rounded-lg overflow-hidden border border-border"
                     >
                       <img
                         src={URL.createObjectURL(file)}
@@ -2392,7 +2392,7 @@ export const EnhancedProductForm = ({
                             images.filter((_, i) => i !== idx),
                           );
                         }}
-                        className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="absolute top-1 right-1 bg-red-500 text-foreground p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                       >
                         <X size={12} />
                       </button>
@@ -2402,9 +2402,9 @@ export const EnhancedProductForm = ({
               )}
 
               {images.length === 0 && existingImageUrls.length === 0 && (
-                <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 text-center">
-                  <p className="text-gray-400">No images uploaded yet</p>
-                  <p className="text-sm text-gray-500 mt-1">Upload images to showcase your product</p>
+                <div className="bg-muted border border-border rounded-xl p-6 text-center">
+                  <p className="text-muted-foreground">No images uploaded yet</p>
+                  <p className="text-sm text-muted-foreground mt-1">Upload images to showcase your product</p>
                 </div>
               )}
             </div>
@@ -2430,7 +2430,7 @@ export const EnhancedProductForm = ({
                   id="description"
                   {...register("description")}
                   placeholder="Detailed product description..."
-                  className="bg-gray-800 border-gray-700 text-white mt-1 min-h-[120px]"
+                  className="bg-muted border-border text-foreground mt-1 min-h-[120px]"
                 />
               </div>
 
@@ -2445,7 +2445,7 @@ export const EnhancedProductForm = ({
                   id="notes"
                   {...register("notes")}
                   placeholder="Private notes (not visible to customers)..."
-                  className="bg-gray-800 border-gray-700 text-white mt-1 min-h-[80px]"
+                  className="bg-muted border-border text-foreground mt-1 min-h-[80px]"
                 />
               </div>
             </div>
@@ -2468,12 +2468,12 @@ export const EnhancedProductForm = ({
                         onValueChange={field.onChange}
                         value={field.value ?? ''}
                       >
-                        <SelectTrigger className="bg-gray-800 border-gray-700 text-white mt-1">
+                        <SelectTrigger className="bg-muted border-border text-foreground mt-1">
                           <SelectValue placeholder="Select Supplier" />
                         </SelectTrigger>
-                        <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                        <SelectContent className="bg-popover border-border text-popover-foreground">
                           {loadingSuppliers ? (
-                            <div className="px-2 py-1.5 text-sm text-gray-400">Loading suppliers...</div>
+                            <div className="px-2 py-1.5 text-sm text-muted-foreground">Loading suppliers...</div>
                           ) : suppliers.length > 0 ? (
                             suppliers.map((s) => (
                               <SelectItem key={s.id} value={s.id}>
@@ -2481,7 +2481,7 @@ export const EnhancedProductForm = ({
                               </SelectItem>
                             ))
                           ) : (
-                            <div className="px-2 py-1.5 text-sm text-gray-500">No suppliers. Add in Contacts (type: Supplier).</div>
+                            <div className="px-2 py-1.5 text-sm text-muted-foreground">No suppliers. Add in Contacts (type: Supplier).</div>
                           )}
                         </SelectContent>
                       </Select>
@@ -2495,7 +2495,7 @@ export const EnhancedProductForm = ({
                   <Input
                     {...register("supplierCode")}
                     placeholder="Supplier's SKU"
-                    className="bg-gray-800 border-gray-700 text-white mt-1"
+                    className="bg-muted border-border text-foreground mt-1"
                   />
                 </div>
               </div>
@@ -2507,15 +2507,15 @@ export const EnhancedProductForm = ({
         {activeTab === 'variations' && (
           <>
             {/* Supplier display - shows selected supplier from Details tab */}
-            <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-              <Label className="text-gray-400 text-xs uppercase tracking-wide">Supplier for this product</Label>
-              <p className="text-white font-medium mt-1">
+            <div className="bg-muted border border-border rounded-xl p-4">
+              <Label className="text-muted-foreground text-xs uppercase tracking-wide">Supplier for this product</Label>
+              <p className="text-foreground font-medium mt-1">
                 {watch('supplier') && suppliers.length > 0
                   ? suppliers.find((s) => s.id === watch('supplier'))?.name ?? '—'
                   : 'Select supplier in Details tab'}
               </p>
               {watch('supplier') && (
-                <p className="text-xs text-gray-500 mt-0.5">Variations will be associated with this supplier</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Variations will be associated with this supplier</p>
               )}
             </div>
 
@@ -2529,9 +2529,9 @@ export const EnhancedProductForm = ({
 
             {/* Copy from existing variation – format: Supplier — AttributeName: Value (e.g. variant: Size: L, SUPLIER: Ibrahim) */}
             {variationsForCopy.length > 0 && (
-              <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+              <div className="bg-muted border border-border rounded-xl p-4">
                 <Label className="text-gray-200 mb-2 block">Copy from existing variation</Label>
-                <p className="text-xs text-gray-500 mb-2">Select an existing variation to copy its attributes. Shows: Supplier, Attribute: Value (e.g. Size: Large, Color: Red).</p>
+                <p className="text-xs text-muted-foreground mb-2">Select an existing variation to copy its attributes. Shows: Supplier, Attribute: Value (e.g. Size: Large, Color: Red).</p>
                 <Select
                   value={copyFromVariationId}
                   onValueChange={(id) => {
@@ -2546,12 +2546,12 @@ export const EnhancedProductForm = ({
                     }
                   }}
                 >
-                  <SelectTrigger className="bg-gray-900 border-gray-700 text-white">
+                  <SelectTrigger className="bg-card border-border text-foreground">
                     <SelectValue placeholder="Select variation to copy from..." />
                   </SelectTrigger>
-                  <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                  <SelectContent className="bg-popover border-border text-popover-foreground">
                     {loadingProductsWithVariations ? (
-                      <div className="px-2 py-1.5 text-sm text-gray-400">Loading...</div>
+                      <div className="px-2 py-1.5 text-sm text-muted-foreground">Loading...</div>
                     ) : (
                       variationsForCopy
                         .filter((e) => e.productId !== (initialProduct?.uuid || initialProduct?.id))
@@ -2571,7 +2571,7 @@ export const EnhancedProductForm = ({
               <h3 className="text-lg font-semibold border-l-4 border-blue-500 pl-3">
                 Step 1: Define Variation Attributes
               </h3>
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-muted-foreground">
                 Pick from Settings → Inventory → Variations master or type new names; values can be chosen from saved lists per attribute.
               </p>
               <datalist id="variation-master-attr-names">
@@ -2582,7 +2582,7 @@ export const EnhancedProductForm = ({
                   ))}
               </datalist>
 
-              <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+              <div className="bg-muted border border-border rounded-xl p-4">
                 <Label className="text-gray-200 mb-2 block">Add New Attribute (e.g., Size, Color, Material)</Label>
                 <div className="flex items-center gap-2">
                   <Input
@@ -2590,7 +2590,7 @@ export const EnhancedProductForm = ({
                     onChange={(e) => setNewAttributeName(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addVariantAttribute())}
                     placeholder="Enter attribute name (e.g., Color)"
-                    className="bg-gray-900 border-gray-700 text-white"
+                    className="bg-card border-border text-foreground"
                     list="variation-master-attr-names"
                   />
                   <button
@@ -2608,9 +2608,9 @@ export const EnhancedProductForm = ({
               {variantAttributes.length > 0 && (
                 <div className="space-y-4">
                   {variantAttributes.map((attr, attrIndex) => (
-                    <div key={attr.name} className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+                    <div key={attr.name} className="bg-muted border border-border rounded-xl p-4">
                       <div className="flex items-center justify-between mb-3">
-                        <h4 className="text-md font-semibold text-white flex items-center gap-2">
+                        <h4 className="text-md font-semibold text-foreground flex items-center gap-2">
                           {attr.name}
                         </h4>
                         <button
@@ -2642,7 +2642,7 @@ export const EnhancedProductForm = ({
                               }
                             }}
                             placeholder={`Add ${attr.name} value (e.g., Red, Blue)`}
-                            className="bg-gray-900 border-gray-700 text-white text-sm"
+                            className="bg-card border-border text-foreground text-sm"
                             list={`variation-master-values-${attr.name.replace(/\s+/g, '-')}`}
                           />
                           <button
@@ -2663,7 +2663,7 @@ export const EnhancedProductForm = ({
                         {attr.values.map((value, valueIndex) => (
                           <div
                             key={value}
-                            className="bg-gray-900 border border-gray-700 text-white px-3 py-1.5 rounded-lg flex items-center gap-2 text-sm"
+                            className="bg-card border border-border text-foreground px-3 py-1.5 rounded-lg flex items-center gap-2 text-sm"
                           >
                             <span>{value}</span>
                             <button
@@ -2676,7 +2676,7 @@ export const EnhancedProductForm = ({
                           </div>
                         ))}
                         {attr.values.length === 0 && (
-                          <span className="text-gray-500 text-sm italic">No values added yet</span>
+                          <span className="text-muted-foreground text-sm italic">No values added yet</span>
                         )}
                       </div>
                     </div>
@@ -2693,15 +2693,15 @@ export const EnhancedProductForm = ({
                 </h3>
 
                 <div className="flex items-center justify-between gap-4 flex-wrap">
-                  <p className="text-xs text-gray-400">
+                  <p className="text-xs text-muted-foreground">
                     Limit: {MAX_VARIATIONS} variations per product. Opening stock is set per row and saved as stock movements on save.
                   </p>
-                  <span className="text-xs text-gray-500 font-mono">
+                  <span className="text-xs text-muted-foreground font-mono">
                     {generatedVariations.length} / {MAX_VARIATIONS}
                   </span>
                 </div>
                 
-                <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+                <div className="bg-muted border border-border rounded-xl p-4">
                   {(() => {
                     const count = variantAttributes.reduce((acc, attr) => acc * attr.values.length, 1);
                     const atLimit = count > MAX_VARIATIONS;
@@ -2712,7 +2712,7 @@ export const EnhancedProductForm = ({
                           onClick={generateVariations}
                           disabled={atLimit}
                           className={clsx(
-                            "text-white px-6 py-3 rounded-xl font-bold transition-colors flex items-center gap-2",
+                            "text-foreground px-6 py-3 rounded-xl font-bold transition-colors flex items-center gap-2",
                             atLimit
                               ? "bg-gray-600 cursor-not-allowed opacity-60"
                               : "bg-blue-500 hover:bg-blue-600 shadow-lg shadow-blue-500/20"
@@ -2721,7 +2721,7 @@ export const EnhancedProductForm = ({
                           <RefreshCcw size={18} />
                           Generate {count} Variations
                         </button>
-                        <p className="text-xs text-gray-400 mt-2">
+                        <p className="text-xs text-muted-foreground mt-2">
                           {atLimit
                             ? `Reduce attributes or values to stay under ${MAX_VARIATIONS} variations.`
                             : "All possible combinations of your attribute values."}
@@ -2733,30 +2733,30 @@ export const EnhancedProductForm = ({
 
                 {/* Variations Table */}
                 {generatedVariations.length > 0 && (
-                  <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
+                  <div className="bg-muted border border-border rounded-xl overflow-hidden">
                     <div className="overflow-x-auto overflow-y-auto" style={{ maxHeight: 'min(60vh, 420px)' }}>
                       <table className="w-full border-collapse">
-                        <thead className="bg-gray-900 border-b border-gray-700 sticky top-0 z-[1]">
+                        <thead className="bg-card border-b border-border sticky top-0 z-[1]">
                           <tr>
-                            <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">#</th>
+                            <th className="px-4 py-3 text-left text-sm font-semibold text-muted-foreground">#</th>
                             {variantAttributes.map(attr => (
-                              <th key={attr.name} className="px-4 py-3 text-left text-sm font-semibold text-gray-300">
+                              <th key={attr.name} className="px-4 py-3 text-left text-sm font-semibold text-muted-foreground">
                                 {attr.name}
                               </th>
                             ))}
-                            <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">SKU</th>
-                            <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Purchase Price</th>
-                            <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Selling Price</th>
-                            <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Opening Stock</th>
-                            <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Barcode</th>
+                            <th className="px-4 py-3 text-left text-sm font-semibold text-muted-foreground">SKU</th>
+                            <th className="px-4 py-3 text-left text-sm font-semibold text-muted-foreground">Purchase Price</th>
+                            <th className="px-4 py-3 text-left text-sm font-semibold text-muted-foreground">Selling Price</th>
+                            <th className="px-4 py-3 text-left text-sm font-semibold text-muted-foreground">Opening Stock</th>
+                            <th className="px-4 py-3 text-left text-sm font-semibold text-muted-foreground">Barcode</th>
                           </tr>
                         </thead>
                         <tbody>
                           {generatedVariations.map((variation, index) => (
-                            <tr key={index} className="border-b border-gray-700 hover:bg-gray-900/50 transition-colors">
-                              <td className="px-4 py-3 text-sm text-gray-400">{index + 1}</td>
+                            <tr key={index} className="border-b border-border hover:bg-muted/40 transition-colors">
+                              <td className="px-4 py-3 text-sm text-muted-foreground">{index + 1}</td>
                               {variantAttributes.map(attr => (
-                                <td key={attr.name} className="px-4 py-3 text-sm text-white">
+                                <td key={attr.name} className="px-4 py-3 text-sm text-foreground">
                                   <span className="bg-blue-900/30 border border-blue-800 px-2 py-1 rounded text-xs">
                                     {variation.combination[attr.name]}
                                   </span>
@@ -2770,7 +2770,7 @@ export const EnhancedProductForm = ({
                                     updated[index].sku = e.target.value;
                                     setGeneratedVariations(updated);
                                   }}
-                                  className="bg-gray-900 border-gray-700 text-white text-sm w-32"
+                                  className="bg-card border-border text-foreground text-sm w-32"
                                   placeholder="SKU"
                                 />
                               </td>
@@ -2786,7 +2786,7 @@ export const EnhancedProductForm = ({
                                     updated[index].purchasePrice = Number.isNaN(v) ? 0 : v;
                                     setGeneratedVariations(updated);
                                   }}
-                                  className="bg-gray-900 border-gray-700 text-white text-sm w-24"
+                                  className="bg-card border-border text-foreground text-sm w-24"
                                   placeholder={String(watch('purchasePrice') ?? 0)}
                                   title="Purchase cost for this variation"
                                 />
@@ -2803,7 +2803,7 @@ export const EnhancedProductForm = ({
                                     updated[index].price = Number.isNaN(v) ? 0 : v;
                                     setGeneratedVariations(updated);
                                   }}
-                                  className="bg-gray-900 border-gray-700 text-white text-sm w-24"
+                                  className="bg-card border-border text-foreground text-sm w-24"
                                   placeholder={String(watch('sellingPrice') ?? 0)}
                                   title="Selling price for this variation"
                                 />
@@ -2819,7 +2819,7 @@ export const EnhancedProductForm = ({
                                     updated[index].stock = parseVariationQtyInput(e.target.value);
                                     setGeneratedVariations(updated);
                                   }}
-                                  className="bg-gray-900 border-gray-700 text-white text-sm w-24"
+                                  className="bg-card border-border text-foreground text-sm w-24"
                                   placeholder="0"
                                   title={
                                     selectedUnitAllowsDecimal
@@ -2836,7 +2836,7 @@ export const EnhancedProductForm = ({
                                     updated[index].barcode = e.target.value;
                                     setGeneratedVariations(updated);
                                   }}
-                                  className="bg-gray-900 border-gray-700 text-white text-sm w-32"
+                                  className="bg-card border-border text-foreground text-sm w-32"
                                   placeholder="Barcode"
                                 />
                               </td>
@@ -2846,9 +2846,9 @@ export const EnhancedProductForm = ({
                       </table>
                     </div>
                     
-                    <div className="bg-gray-900 px-4 py-3 border-t border-gray-700">
-                      <p className="text-sm text-gray-400">
-                        Total Variations: <span className="text-white font-semibold">{generatedVariations.length}</span>
+                    <div className="bg-card px-4 py-3 border-t border-border">
+                      <p className="text-sm text-muted-foreground">
+                        Total Variations: <span className="text-foreground font-semibold">{generatedVariations.length}</span>
                       </p>
                     </div>
                   </div>
@@ -2858,10 +2858,10 @@ export const EnhancedProductForm = ({
 
             {/* Empty State */}
             {variantAttributes.length === 0 && (
-              <div className="bg-gray-800 border border-gray-700 rounded-xl p-8 text-center">
-                <Package size={48} className="text-gray-600 mx-auto mb-3" />
-                <p className="text-gray-400 mb-2">No variation attributes added yet</p>
-                <p className="text-sm text-gray-500">
+              <div className="bg-muted border border-border rounded-xl p-8 text-center">
+                <Package size={48} className="text-muted-foreground mx-auto mb-3" />
+                <p className="text-muted-foreground mb-2">No variation attributes added yet</p>
+                <p className="text-sm text-muted-foreground">
                   Add attributes like Size, Color, or Material to create product variations
                 </p>
               </div>
@@ -2898,18 +2898,18 @@ export const EnhancedProductForm = ({
               </h3>
               
               {/* Combo Name */}
-              <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+              <div className="bg-muted border border-border rounded-xl p-4">
                 <Label className="text-gray-200 mb-2 block">Combo Name</Label>
                 <Input
                   value={comboName}
                   onChange={(e) => setComboName(e.target.value)}
                   placeholder="e.g., Wedding Package, Summer Bundle"
-                  className="bg-gray-900 border-gray-700 text-white"
+                  className="bg-card border-border text-foreground"
                 />
               </div>
 
               {/* Add Products to Combo */}
-              <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 space-y-3">
+              <div className="bg-muted border border-border rounded-xl p-4 space-y-3">
                 <Label className="text-gray-200 block">Add Products to Combo</Label>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
                   {/* Product Search with Dropdown */}
@@ -2922,25 +2922,25 @@ export const EnhancedProductForm = ({
                       }}
                       onFocus={() => setShowProductDropdown(true)}
                       placeholder="Search product by name or SKU..."
-                      className="bg-gray-900 border-gray-700 text-white text-sm"
+                      className="bg-card border-border text-foreground text-sm"
                     />
                     
                     {/* Product Dropdown */}
                     {showProductDropdown && productSearchQuery && filteredProducts.length > 0 && (
-                      <div className="absolute z-50 w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg shadow-xl max-h-60 overflow-y-auto">
+                      <div className="absolute z-50 w-full mt-1 bg-card border border-border rounded-lg shadow-xl max-h-60 overflow-y-auto">
                         {filteredProducts.map((product) => (
                           <button
                             key={product.id}
                             type="button"
                             onClick={() => selectProduct(product)}
-                            className="w-full px-4 py-3 text-left hover:bg-gray-800 transition-colors border-b border-gray-800 last:border-b-0"
+                            className="w-full px-4 py-3 text-left hover:bg-muted transition-colors border-b border-border last:border-b-0"
                           >
                             <div className="flex justify-between items-start">
                               <div>
-                                <p className="text-white text-sm font-medium">{product.name}</p>
-                                <p className="text-gray-500 text-xs mt-1">SKU: {product.sku}</p>
+                                <p className="text-foreground text-sm font-medium">{product.name}</p>
+                                <p className="text-muted-foreground text-xs mt-1">SKU: {product.sku}</p>
                               </div>
-                              <span className="text-green-400 text-sm font-semibold">₨{product.retail_price}</span>
+                              <span className="text-[var(--erp-money-positive)] text-sm font-semibold">₨{product.retail_price}</span>
                             </div>
                           </button>
                         ))}
@@ -2948,39 +2948,39 @@ export const EnhancedProductForm = ({
                     )}
                     
                     {showProductDropdown && productSearchQuery && filteredProducts.length === 0 && !loadingProducts && (
-                      <div className="absolute z-50 w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg shadow-xl p-4 text-center">
-                        <p className="text-gray-500 text-sm">No products available to add.</p>
+                      <div className="absolute z-50 w-full mt-1 bg-card border border-border rounded-lg shadow-xl p-4 text-center">
+                        <p className="text-muted-foreground text-sm">No products available to add.</p>
                       </div>
                     )}
                     {loadingProducts && (
-                      <div className="absolute z-50 w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg shadow-xl p-4 text-center">
-                        <p className="text-gray-500 text-sm">Loading products...</p>
+                      <div className="absolute z-50 w-full mt-1 bg-card border border-border rounded-lg shadow-xl p-4 text-center">
+                        <p className="text-muted-foreground text-sm">Loading products...</p>
                   </div>
                     )}
                 </div>
                 </div>
                 {availableProducts.length === 0 && !loadingProducts && (
-                  <div className="bg-gray-900 border border-gray-700 rounded-lg p-4 text-center">
-                    <p className="text-gray-500 text-sm">No products available to add.</p>
-                    <p className="text-gray-600 text-xs mt-1">Create products first, then add them to this combo.</p>
+                  <div className="bg-card border border-border rounded-lg p-4 text-center">
+                    <p className="text-muted-foreground text-sm">No products available to add.</p>
+                    <p className="text-muted-foreground text-xs mt-1">Create products first, then add them to this combo.</p>
                   </div>
                 )}
               </div>
 
               {/* Current Combo Items */}
               {currentComboItems.length > 0 && (
-                <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 space-y-3">
+                <div className="bg-muted border border-border rounded-xl p-4 space-y-3">
                   <Label className="text-gray-200 block">Products in This Combo</Label>
                   <div className="space-y-2">
                     {currentComboItems.map((item, index) => (
                       <div
                         key={index}
-                        className="bg-gray-900 border border-gray-700 px-4 py-3 rounded-lg flex items-center justify-between"
+                        className="bg-card border border-border px-4 py-3 rounded-lg flex items-center justify-between"
                       >
                         <div className="flex items-center gap-4 flex-1">
                           <div className="flex-1">
-                            <span className="text-white font-medium">{item.product_name}</span>
-                            <p className="text-gray-500 text-xs mt-0.5">SKU: {item.product_sku}</p>
+                            <span className="text-foreground font-medium">{item.product_name}</span>
+                            <p className="text-muted-foreground text-xs mt-0.5">SKU: {item.product_sku}</p>
                           </div>
                           <Input
                             type="number"
@@ -2988,7 +2988,7 @@ export const EnhancedProductForm = ({
                             step={0.01}
                             value={item.qty || ''}
                             onChange={(e) => updateComboItemQty(index, parseFloat(e.target.value) || 1)}
-                            className="bg-gray-800 border-gray-700 text-white text-sm w-20"
+                            className="bg-muted border-border text-foreground text-sm w-20"
                             placeholder="Qty"
                           />
                           <Input
@@ -2997,10 +2997,10 @@ export const EnhancedProductForm = ({
                             step={0.01}
                             value={item.unit_price || ''}
                             onChange={(e) => updateComboItemPrice(index, parseFloat(e.target.value) || 0)}
-                            className="bg-gray-800 border-gray-700 text-white text-sm w-24"
+                            className="bg-muted border-border text-foreground text-sm w-24"
                             placeholder="Price"
                           />
-                          <span className="text-gray-500 text-sm w-24 text-right">
+                          <span className="text-muted-foreground text-sm w-24 text-right">
                             Subtotal: ₨{((item.qty || 0) * (item.unit_price || 0)).toFixed(2)}
                           </span>
                         </div>
@@ -3016,10 +3016,10 @@ export const EnhancedProductForm = ({
                   </div>
 
                   {/* Combo Pricing */}
-                  <div className="border-t border-gray-700 pt-4 space-y-3">
+                  <div className="border-t border-border pt-4 space-y-3">
                     <div className="flex justify-between items-center">
-                      <span className="text-gray-400">Total Individual Price:</span>
-                      <span className="text-white font-semibold">
+                      <span className="text-muted-foreground">Total Individual Price:</span>
+                      <span className="text-foreground font-semibold">
                         ₨{currentComboItems.reduce((sum, item) => sum + (item.qty || 0) * (item.unit_price || 0), 0).toFixed(2)}
                       </span>
                     </div>
@@ -3032,13 +3032,13 @@ export const EnhancedProductForm = ({
                         value={comboFinalPrice || ''}
                         onChange={(e) => setComboFinalPrice(parseFloat(e.target.value) || 0)}
                         placeholder="Enter combo price"
-                        className="bg-gray-900 border-gray-700 text-white flex-1"
+                        className="bg-card border-border text-foreground flex-1"
                       />
                     </div>
                     {comboFinalPrice > 0 && (
                       <div className="flex justify-between items-center text-sm">
-                        <span className="text-green-400">Discount:</span>
-                        <span className="text-green-400 font-semibold">
+                        <span className="text-[var(--erp-money-positive)]">Discount:</span>
+                        <span className="text-[var(--erp-money-positive)] font-semibold">
                           ₨{(currentComboItems.reduce((sum, item) => sum + (item.qty || 0) * (item.unit_price || 0), 0) - comboFinalPrice).toFixed(2)}
                         </span>
                       </div>
@@ -3049,7 +3049,7 @@ export const EnhancedProductForm = ({
                     type="button"
                     onClick={saveCombo}
                     disabled={!comboName.trim() || comboFinalPrice <= 0 || currentComboItems.length === 0}
-                    className="bg-blue-500 hover:bg-blue-600 disabled:bg-gray-700 disabled:cursor-not-allowed text-white px-6 py-3 rounded-xl font-bold transition-colors shadow-lg shadow-blue-500/20 w-full"
+                    className="bg-blue-500 hover:bg-blue-600 disabled:bg-muted disabled:cursor-not-allowed text-foreground px-6 py-3 rounded-xl font-bold transition-colors shadow-lg shadow-blue-500/20 w-full"
                   >
                     Save Combo
                   </button>
@@ -3066,9 +3066,9 @@ export const EnhancedProductForm = ({
                 
                 <div className="space-y-3">
                   {combos.map((combo) => (
-                    <div key={combo.id} className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+                    <div key={combo.id} className="bg-muted border border-border rounded-xl p-4">
                       <div className="flex items-center justify-between mb-3">
-                        <h4 className="text-lg font-semibold text-white">{combo.combo_name}</h4>
+                        <h4 className="text-lg font-semibold text-foreground">{combo.combo_name}</h4>
                         <button
                           type="button"
                           onClick={() => deleteCombo(combo.id)}
@@ -3080,30 +3080,30 @@ export const EnhancedProductForm = ({
                       
                       <div className="space-y-2 mb-3">
                         {combo.items.map((item, idx) => (
-                          <div key={idx} className="bg-gray-900 border border-gray-700 px-3 py-2 rounded-lg flex items-center justify-between text-sm">
+                          <div key={idx} className="bg-card border border-border px-3 py-2 rounded-lg flex items-center justify-between text-sm">
                             <div>
-                              <span className="text-white">{item.product_name || 'Unknown Product'}</span>
+                              <span className="text-foreground">{item.product_name || 'Unknown Product'}</span>
                               {item.product_sku && (
-                                <p className="text-gray-500 text-xs mt-0.5">SKU: {item.product_sku}</p>
+                                <p className="text-muted-foreground text-xs mt-0.5">SKU: {item.product_sku}</p>
                               )}
                             </div>
-                            <div className="flex items-center gap-4 text-gray-400">
+                            <div className="flex items-center gap-4 text-muted-foreground">
                               <span>Qty: {item.qty}</span>
                               {item.unit_price && <span>₨{item.unit_price.toFixed(2)}</span>}
-                              <span className="text-white">₨{((item.qty || 0) * (item.unit_price || 0)).toFixed(2)}</span>
+                              <span className="text-foreground">₨{((item.qty || 0) * (item.unit_price || 0)).toFixed(2)}</span>
                             </div>
                           </div>
                         ))}
                       </div>
 
-                      <div className="border-t border-gray-700 pt-3 space-y-1">
+                      <div className="border-t border-border pt-3 space-y-1">
                         <div className="flex justify-between text-sm">
-                          <span className="text-gray-400">Total Individual Price:</span>
-                          <span className="text-white">₨{combo.items.reduce((sum, item) => sum + (item.qty || 0) * (item.unit_price || 0), 0).toFixed(2)}</span>
+                          <span className="text-muted-foreground">Total Individual Price:</span>
+                          <span className="text-foreground">₨{combo.items.reduce((sum, item) => sum + (item.qty || 0) * (item.unit_price || 0), 0).toFixed(2)}</span>
                         </div>
                         <div className="flex justify-between text-sm">
-                          <span className="text-green-400">Combo Price:</span>
-                          <span className="text-green-400 font-bold">₨{combo.combo_price.toFixed(2)}</span>
+                          <span className="text-[var(--erp-money-positive)]">Combo Price:</span>
+                          <span className="text-[var(--erp-money-positive)] font-bold">₨{combo.combo_price.toFixed(2)}</span>
                         </div>
                         <div className="flex justify-between text-sm">
                           <span className="text-blue-400">You Save:</span>
@@ -3118,10 +3118,10 @@ export const EnhancedProductForm = ({
 
             {/* Empty State */}
             {combos.length === 0 && currentComboItems.length === 0 && (
-              <div className="bg-gray-800 border border-gray-700 rounded-xl p-8 text-center">
-                <Package size={48} className="text-gray-600 mx-auto mb-3" />
-                <p className="text-gray-400 mb-2">No combos created yet</p>
-                <p className="text-sm text-gray-500">
+              <div className="bg-muted border border-border rounded-xl p-8 text-center">
+                <Package size={48} className="text-muted-foreground mx-auto mb-3" />
+                <p className="text-muted-foreground mb-2">No combos created yet</p>
+                <p className="text-sm text-muted-foreground">
                   Start adding products above to create your first combo package
                 </p>
               </div>
@@ -3132,11 +3132,11 @@ export const EnhancedProductForm = ({
         )}
       </div>
 
-      <div className="p-6 border-t border-gray-800 bg-gray-900 sticky bottom-0 z-10 flex gap-4">
+      <div className="p-6 border-t border-border bg-card sticky bottom-0 z-10 flex gap-4">
         <button
           onClick={onCancel}
           type="button"
-          className="px-6 bg-gray-800 hover:bg-gray-700 text-white py-3 rounded-xl font-bold transition-colors border border-gray-700"
+          className="px-6 bg-muted hover:bg-muted text-foreground py-3 rounded-xl font-bold transition-colors border border-border"
         >
           Cancel
         </button>
@@ -3146,7 +3146,7 @@ export const EnhancedProductForm = ({
           )}
           type="button"
           disabled={saving}
-          className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-3 rounded-xl font-bold transition-colors disabled:opacity-50 disabled:pointer-events-none"
+          className="flex-1 bg-muted hover:bg-gray-600 text-foreground py-3 rounded-xl font-bold transition-colors disabled:opacity-50 disabled:pointer-events-none"
         >
           {saving ? 'Saving...' : 'Save Product'}
         </button>
@@ -3166,21 +3166,21 @@ export const EnhancedProductForm = ({
 
       {/* PART 5: Modal when blocking enable variations (parent-level stock exists) */}
       <Dialog open={blockVariationsModalOpen} onOpenChange={setBlockVariationsModalOpen}>
-        <DialogContent className="bg-gray-900 border-gray-700 text-white max-w-md">
+        <DialogContent className="bg-card border-border text-foreground max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-white">Cannot enable variations</DialogTitle>
+            <DialogTitle className="text-foreground">Cannot enable variations</DialogTitle>
           </DialogHeader>
-          <p className="text-gray-300 text-sm">
+          <p className="text-muted-foreground text-sm">
             Parent-level stock exists. Clear or adjust stock first.
           </p>
-          <p className="text-gray-400 text-xs mt-2">
+          <p className="text-muted-foreground text-xs mt-2">
             Clear or adjust stock in Inventory first, then add variations. Opening stock for each size/color can be set in the Variations tab after saving.
           </p>
           <DialogFooter className="mt-4">
             <button
               type="button"
               onClick={() => setBlockVariationsModalOpen(false)}
-              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm font-medium"
+              className="px-4 py-2 bg-muted hover:bg-gray-600 text-foreground rounded-lg text-sm font-medium"
             >
               OK
             </button>
@@ -3189,18 +3189,18 @@ export const EnhancedProductForm = ({
       </Dialog>
 
       <Dialog open={blockDisableVariationsModalOpen} onOpenChange={setBlockDisableVariationsModalOpen}>
-        <DialogContent className="bg-gray-900 border-gray-700 text-white max-w-md">
+        <DialogContent className="bg-card border-border text-foreground max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-white">Cannot disable variations</DialogTitle>
+            <DialogTitle className="text-foreground">Cannot disable variations</DialogTitle>
           </DialogHeader>
-          <p className="text-gray-300 text-sm">
+          <p className="text-muted-foreground text-sm">
             Variation-level stock exists. Cannot disable variations until variation stock is cleared or adjusted.
           </p>
           <DialogFooter className="mt-4">
             <button
               type="button"
               onClick={() => setBlockDisableVariationsModalOpen(false)}
-              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm font-medium"
+              className="px-4 py-2 bg-muted hover:bg-gray-600 text-foreground rounded-lg text-sm font-medium"
             >
               OK
             </button>
@@ -3210,21 +3210,21 @@ export const EnhancedProductForm = ({
 
       {/* PART 6: Modal when blocking enable combo (parent-level stock exists) */}
       <Dialog open={blockEnableComboModalOpen} onOpenChange={setBlockEnableComboModalOpen}>
-        <DialogContent className="bg-gray-900 border-gray-700 text-white max-w-md">
+        <DialogContent className="bg-card border-border text-foreground max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-white">Cannot enable combo</DialogTitle>
+            <DialogTitle className="text-foreground">Cannot enable combo</DialogTitle>
           </DialogHeader>
-          <p className="text-gray-300 text-sm">
+          <p className="text-muted-foreground text-sm">
             This product already has stock. Clear stock before enabling Combo mode.
           </p>
-          <p className="text-gray-400 text-xs mt-2">
+          <p className="text-muted-foreground text-xs mt-2">
             Clear or adjust stock in Inventory first, then enable Combo mode. Combo products do not hold stock - stock is managed through component products.
           </p>
           <DialogFooter className="mt-4">
             <button
               type="button"
               onClick={() => setBlockEnableComboModalOpen(false)}
-              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm font-medium"
+              className="px-4 py-2 bg-muted hover:bg-gray-600 text-foreground rounded-lg text-sm font-medium"
             >
               OK
             </button>
@@ -3234,21 +3234,21 @@ export const EnhancedProductForm = ({
 
       {/* PART 7: Modal when blocking disable combo (combo items exist) */}
       <Dialog open={blockDisableComboModalOpen} onOpenChange={setBlockDisableComboModalOpen}>
-        <DialogContent className="bg-gray-900 border-gray-700 text-white max-w-md">
+        <DialogContent className="bg-card border-border text-foreground max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-white">Cannot disable combo</DialogTitle>
+            <DialogTitle className="text-foreground">Cannot disable combo</DialogTitle>
           </DialogHeader>
-          <p className="text-gray-300 text-sm">
+          <p className="text-muted-foreground text-sm">
             This product has combo components. Remove them before disabling Combo mode.
           </p>
-          <p className="text-gray-400 text-xs mt-2">
+          <p className="text-muted-foreground text-xs mt-2">
             Delete all combo items in the Combos tab first, then you can disable Combo mode.
           </p>
           <DialogFooter className="mt-4">
             <button
               type="button"
               onClick={() => setBlockDisableComboModalOpen(false)}
-              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm font-medium"
+              className="px-4 py-2 bg-muted hover:bg-gray-600 text-foreground rounded-lg text-sm font-medium"
             >
               OK
             </button>

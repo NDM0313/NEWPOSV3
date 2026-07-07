@@ -5,13 +5,10 @@
  */
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  Package, Download, Warehouse, Loader2, ExternalLink, SlidersHorizontal,
-  ChevronDown, ChevronRight, Pencil, Upload, BarChart3
+  Download, Warehouse, Loader2, Upload, BarChart3
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
-import { Badge } from '../ui/badge';
-import { cn, formatBoxesPieces } from '../ui/utils';
 import { useSupabase } from '../../context/SupabaseContext';
 import { useSettings } from '../../context/SettingsContext';
 import { useNavigation } from '../../context/NavigationContext';
@@ -26,6 +23,13 @@ import { ListToolbar } from '../ui/list-toolbar';
 import { Pagination } from '../ui/pagination';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../ui/dialog';
 import { formatQty } from '@/app/utils/quantity';
+import {
+  ErpPage,
+  ErpPageDescription,
+  ErpPageHeader,
+  ErpPageTitle,
+} from '../ui/erp-surfaces';
+import { InventoryOverviewTable } from './InventoryOverviewTable';
 
 export const InventoryDesignTestPage = () => {
   const { openDrawer, setCurrentView } = useNavigation();
@@ -192,16 +196,6 @@ export const InventoryDesignTestPage = () => {
     });
   };
 
-  const getMovementBadge = (movement: string) => {
-    switch (movement) {
-      case 'Fast': return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
-      case 'Medium': return 'bg-purple-500/20 text-purple-400 border-purple-500/30';
-      case 'Slow': return 'bg-orange-500/20 text-orange-400 border-orange-500/30';
-      case 'Dead': return 'bg-red-500/20 text-red-400 border-red-500/30';
-      default: return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
-    }
-  };
-
   const handleAdjustSave = useCallback(async (data: {
     productId: string;
     branchId: string;
@@ -256,31 +250,29 @@ export const InventoryDesignTestPage = () => {
   const visibleCols = columnKeys.filter(k => visibleColumns[k] !== false);
 
   return (
-    <div className="flex flex-col h-full min-h-0 bg-[#0B0F19]">
-      {/* Header - screenshot style */}
-      <div className="shrink-0 px-6 py-4 border-b border-gray-800 flex justify-between items-start">
+    <ErpPage>
+      <ErpPageHeader>
         <div>
-          <h1 className="text-2xl font-bold text-white">Inventory Management</h1>
-          <p className="text-sm text-gray-400 mt-0.5">Track and manage your stock efficiently</p>
+          <ErpPageTitle>Inventory Management</ErpPageTitle>
+          <ErpPageDescription>Track and manage your stock efficiently</ErpPageDescription>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" className="gap-2 border-gray-700 text-gray-300" onClick={() => setCurrentView('stock-report')}>
+          <Button variant="outline" className="gap-2" onClick={() => setCurrentView('stock-report')}>
             <BarChart3 size={16} />
             Stock Report
           </Button>
-          <Button variant="outline" className="gap-2 border-gray-700 text-gray-300" onClick={() => setCurrentView('inventory-analytics-test')}>
+          <Button variant="outline" className="gap-2" onClick={() => setCurrentView('inventory-analytics-test')}>
             <BarChart3 size={16} />
             Stock Analytics
           </Button>
-          <Button variant="outline" className="gap-2 border-gray-700 text-gray-300" onClick={exportCsv}>
+          <Button variant="outline" className="gap-2" onClick={exportCsv}>
             <Download size={16} />
             Export
           </Button>
         </div>
-      </div>
+      </ErpPageHeader>
 
-      {/* Toolbar */}
-      <div className="shrink-0 border-b border-gray-800">
+      <div className="shrink-0 border-b border-border">
         <ListToolbar
           search={{ value: searchTerm, onChange: setSearchTerm, placeholder: 'Search by product name, SKU, or category...' }}
           rowsSelector={{
@@ -301,22 +293,22 @@ export const InventoryDesignTestPage = () => {
             onToggle: () => setOverviewFilterOpen(o => !o),
             activeCount: overviewFilterActiveCount,
             renderPanel: () => (
-              <div className="absolute right-0 top-12 w-72 bg-gray-900 border border-gray-700 rounded-lg shadow-2xl p-4 z-50">
+              <div className="absolute right-0 top-12 w-72 bg-card border border-border rounded-lg shadow-2xl p-4 z-50">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-semibold text-white">Filters</h3>
+                  <h3 className="text-sm font-semibold text-foreground">Filters</h3>
                   <button onClick={() => { setOverviewCategoryFilter('all'); setOverviewStatusFilter('all'); setOverviewMovementFilter('all'); }} className="text-xs text-blue-400 hover:text-blue-300">Clear All</button>
                 </div>
                 <div className="space-y-4">
                   <div>
-                    <label className="text-xs text-gray-400 block font-medium mb-1">Category</label>
-                    <select value={overviewCategoryFilter} onChange={e => setOverviewCategoryFilter(e.target.value)} className="w-full rounded-md bg-gray-800 border border-gray-700 text-white text-sm px-3 py-2">
+                    <label className="text-xs text-muted-foreground block font-medium mb-1">Category</label>
+                    <select value={overviewCategoryFilter} onChange={e => setOverviewCategoryFilter(e.target.value)} className="w-full rounded-md bg-muted border border-border text-foreground text-sm px-3 py-2">
                       <option value="all">All categories</option>
                       {uniqueCategories.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs text-gray-400 block font-medium mb-1">Status</label>
-                    <select value={overviewStatusFilter} onChange={e => setOverviewStatusFilter(e.target.value)} className="w-full rounded-md bg-gray-800 border border-gray-700 text-white text-sm px-3 py-2">
+                    <label className="text-xs text-muted-foreground block font-medium mb-1">Status</label>
+                    <select value={overviewStatusFilter} onChange={e => setOverviewStatusFilter(e.target.value)} className="w-full rounded-md bg-muted border border-border text-foreground text-sm px-3 py-2">
                       <option value="all">All status</option>
                       <option value="OK">OK</option>
                       <option value="Low">Low</option>
@@ -324,8 +316,8 @@ export const InventoryDesignTestPage = () => {
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs text-gray-400 block font-medium mb-1">Movement</label>
-                    <select value={overviewMovementFilter} onChange={e => setOverviewMovementFilter(e.target.value)} className="w-full rounded-md bg-gray-800 border border-gray-700 text-white text-sm px-3 py-2">
+                    <label className="text-xs text-muted-foreground block font-medium mb-1">Movement</label>
+                    <select value={overviewMovementFilter} onChange={e => setOverviewMovementFilter(e.target.value)} className="w-full rounded-md bg-muted border border-border text-foreground text-sm px-3 py-2">
                       <option value="all">All</option>
                       <option value="Fast">Fast</option>
                       <option value="Medium">Medium</option>
@@ -342,237 +334,22 @@ export const InventoryDesignTestPage = () => {
         />
       </div>
 
-      {/* Table — container width unchanged; scroll inside */}
       <div className="flex-1 min-h-0 flex flex-col px-6 py-4">
-        <div className="flex-1 min-h-0 bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden flex flex-col">
-          <div className="flex-1 min-h-0 overflow-auto">
-          <table className="w-full min-w-[1000px]">
-            <thead className="bg-gray-950/50 border-b border-gray-800">
-              <tr>
-                {visibleCols.map(key => {
-                  const label = columnsList.find(c => c.key === key)?.label ?? key;
-                  const align = ['avgCost', 'sellingPrice', 'stockValue'].includes(key) ? 'text-right' : ['stockQty', 'unit', 'boxes', 'pieces', 'movement', 'status', 'actions'].includes(key) ? 'text-center' : 'text-left';
-                  return <th key={key} className={cn('px-4 py-3 text-xs font-medium text-gray-400 uppercase', align, key === 'product' && 'min-w-[220px] w-[220px]', key === 'sku' && 'min-w-[140px] w-[140px]', key === 'actions' && 'print:hidden')}>{label}</th>;
-                })}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-800">
-              {loading ? (
-                <tr>
-                  <td colSpan={visibleCols.length} className="px-6 py-12 text-center">
-                    <Loader2 size={40} className="mx-auto text-blue-500 animate-spin mb-2" />
-                    <p className="text-gray-400 text-sm">Loading inventory...</p>
-                  </td>
-                </tr>
-              ) : paginatedProducts.length === 0 ? (
-                <tr>
-                  <td colSpan={visibleCols.length} className="px-6 py-12 text-center">
-                    <Package size={40} className="mx-auto text-gray-600 mb-2" />
-                    <p className="text-gray-400 text-sm">No products found</p>
-                  </td>
-                </tr>
-              ) : (
-                paginatedProducts.flatMap(product => {
-                  const rows: React.ReactNode[] = [];
-                  const hasVariations = product.hasVariations && (product as any).variations?.length > 0;
-                  const isCombo = combosEnabled && !!(product as any).isComboProduct && ((product as any).comboItemCount ?? 0) > 0;
-                  const isExpandable = hasVariations || isCombo;
-                  const isExpanded = expandedIds.has(product.id);
-
-                  rows.push(
-                    <tr key={product.id} className="hover:bg-gray-800/30 transition-colors">
-                      {visibleCols.includes('actions') && (
-                        <td className="px-4 py-3 text-center print:hidden">
-                          <div className="flex items-center justify-center gap-1">
-                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-blue-400 hover:bg-blue-500/10" onClick={() => setLedgerProduct(product)} title="Ledger">
-                              <ExternalLink size={16} />
-                            </Button>
-                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-gray-400 hover:bg-gray-500/10" onClick={() => openDrawer?.('edit-product', undefined, { product: { id: product.productId, uuid: product.productId, name: product.name, sku: product.sku } })} title="Edit">
-                              <Pencil size={16} />
-                            </Button>
-                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-amber-400 hover:bg-amber-500/10" onClick={() => setAdjustmentProduct(product)} title="Adjust">
-                              <SlidersHorizontal size={16} />
-                            </Button>
-                          </div>
-                        </td>
-                      )}
-                      {visibleCols.includes('product') && (
-                        <td className="px-4 py-3 min-w-[220px] w-[220px]">
-                          <div className="flex items-center gap-2">
-                            {isExpandable ? (
-                              <button type="button" onClick={() => toggleExpand(product.id)} className="text-gray-400 hover:text-white p-0.5">
-                                {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                              </button>
-                            ) : <span className="w-5" />}
-                            <Package size={16} className="text-gray-500 shrink-0" />
-                            <div>
-                              <div className="font-medium text-white text-sm leading-tight">{product.name}</div>
-                              {hasVariations && (
-                                <p className="text-xs text-gray-500 mt-0.5">{(product as any).variations?.length} variations</p>
-                              )}
-                              {isCombo && (
-                                <p className="text-xs text-gray-500 mt-0.5">Bundle ({(product as any).comboItemCount ?? 0} items)</p>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-                      )}
-                      {visibleCols.includes('sku') && <td className="px-4 py-3 text-gray-400 font-mono text-sm min-w-[140px] w-[140px] whitespace-nowrap">{product.sku}</td>}
-                      {visibleCols.includes('category') && (
-                        <td className="px-4 py-3">
-                          <Badge className="bg-gray-700/50 text-gray-300 border-gray-600 text-xs">{product.category}</Badge>
-                        </td>
-                      )}
-                      {visibleCols.includes('stockQty') && (
-                        <td className="px-4 py-3 text-center">
-                          <span className={cn('font-semibold tabular-nums text-sm', product.stock < 0 ? 'text-red-400' : product.status === 'Out' || product.status === 'Low' ? 'text-red-400' : 'text-white')}>
-                            {formatQty(product.stock)}
-                          </span>
-                        </td>
-                      )}
-                      {enablePacking && visibleCols.includes('boxes') && <td className="px-4 py-3 text-center text-gray-400 text-sm tabular-nums">{formatBoxesPieces(product.boxes)}</td>}
-                      {enablePacking && visibleCols.includes('pieces') && <td className="px-4 py-3 text-center text-gray-400 text-sm tabular-nums">{formatBoxesPieces(product.pieces)}</td>}
-                      {enablePacking && visibleCols.includes('unit') && <td className="px-4 py-3 text-center text-gray-400 text-sm">{product.unit ?? '—'}</td>}
-                      {visibleCols.includes('avgCost') && (
-                        <td className={cn('px-4 py-3 text-right text-sm font-medium tabular-nums', product.avgCost < 0 ? 'text-red-400' : 'text-green-400')}>
-                          {Number(product.avgCost).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
-                        </td>
-                      )}
-                      {visibleCols.includes('sellingPrice') && (
-                        <td className={cn('px-4 py-3 text-right text-sm font-medium tabular-nums', product.sellingPrice < 0 ? 'text-red-400' : 'text-green-400')}>
-                          {Number(product.sellingPrice).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
-                        </td>
-                      )}
-                      {visibleCols.includes('stockValue') && (
-                        <td className={cn('px-4 py-3 text-right font-medium text-sm tabular-nums', product.stockValue < 0 ? 'text-red-400' : 'text-green-400')}>
-                          {Number(product.stockValue).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
-                        </td>
-                      )}
-                      {visibleCols.includes('movement') && (
-                        <td className="px-4 py-3 text-center">
-                          <Badge className={cn('border text-xs', getMovementBadge(product.movement))}>{product.movement}</Badge>
-                        </td>
-                      )}
-                      {visibleCols.includes('status') && (
-                        <td className="px-4 py-3 text-center">
-                          {product.status === 'Out' ? (
-                            <Badge className="bg-red-500/20 text-red-400 border-red-500/30 text-xs">Out</Badge>
-                          ) : product.status === 'Low' ? (
-                            <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30 text-xs">Low</Badge>
-                          ) : (
-                            <Badge className="bg-green-500/20 text-green-400 border-green-500/30 text-xs">OK</Badge>
-                          )}
-                        </td>
-                      )}
-                    </tr>
-                  );
-
-                  if (isCombo && isExpanded) {
-                    const bundleItems = comboDetailsCache[product.id];
-                    const loadingBundle = loadingComboId === product.id;
-                    rows.push(
-                      <tr key={`${product.id}-bundle-includes`} className="bg-gray-900/60 hover:bg-gray-800/20">
-                        <td colSpan={visibleCols.length} className="px-4 py-3 pl-12 text-gray-400 text-sm">
-                          <p className="font-medium text-gray-300 mb-1">Bundle includes:</p>
-                          {loadingBundle ? (
-                            <span className="text-gray-500 flex items-center gap-1"><Loader2 size={14} className="animate-spin" /> Loading…</span>
-                          ) : bundleItems?.length ? (
-                            <ul className="list-disc list-inside space-y-0.5">
-                              {bundleItems.map((it, idx) => (
-                                <li key={idx}>{it.product_name} × {it.qty}</li>
-                              ))}
-                            </ul>
-                          ) : (
-                            <span className="text-gray-500">No items</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  }
-                  if (hasVariations && isExpanded && (product as any).variations?.length) {
-                    ((product as any).variations as any[]).forEach((v: any) => {
-                      const attrText =
-                        typeof v.attributes === 'object' && v.attributes !== null
-                          ? Object.entries(v.attributes as Record<string, string>)
-                              .filter(([, val]) => String(val).trim() !== '')
-                              .map(([k, val]) => `${k}: ${val}`)
-                              .join(' · ')
-                          : '';
-                      const vQty = Number(v.stock ?? 0);
-                      const varPurch =
-                        typeof v.purchasePrice === 'number' && Number.isFinite(v.purchasePrice)
-                          ? v.purchasePrice
-                          : product.avgCost;
-                      const varSell =
-                        typeof v.sellingPrice === 'number' && Number.isFinite(v.sellingPrice)
-                          ? v.sellingPrice
-                          : product.sellingPrice;
-                      const valueAtCost =
-                        typeof v.stockValueAtCost === 'number' && Number.isFinite(v.stockValueAtCost)
-                          ? v.stockValueAtCost
-                          : vQty * varPurch;
-                      const valueAtRetail =
-                        typeof v.retailStockValue === 'number' && Number.isFinite(v.retailStockValue)
-                          ? v.retailStockValue
-                          : vQty * varSell;
-                      rows.push(
-                        <tr key={`${product.id}-${v.id}`} className="bg-gray-900/60 hover:bg-gray-800/20">
-                          {visibleCols.includes('actions') && <td className="px-4 py-2 text-center text-gray-600">—</td>}
-                          {visibleCols.includes('product') && (
-                            <td className="px-4 py-2 pl-12 min-w-[220px] w-[220px]">
-                              <div className="text-gray-300 text-sm font-medium leading-snug">{attrText || 'Variation'}</div>
-                              <div className="text-gray-500 text-xs font-mono mt-0.5">SKU {v.sku || '—'}</div>
-                            </td>
-                          )}
-                          {visibleCols.includes('sku') && <td className="px-4 py-2 text-gray-500 text-sm font-mono min-w-[140px] w-[140px] whitespace-nowrap">{v.sku || v.id || '—'}</td>}
-                          {visibleCols.includes('category') && <td className="px-4 py-2 text-gray-600">—</td>}
-                          {visibleCols.includes('stockQty') && (
-                            <td className="px-4 py-2 text-center">
-                              <span className={cn('font-mono text-sm tabular-nums', (v.stock ?? 0) < 0 ? 'text-red-400' : 'text-gray-300')}>
-                                {formatQty(v.stock ?? 0)}
-                              </span>
-                            </td>
-                          )}
-                          {enablePacking && visibleCols.includes('boxes') && <td className="px-4 py-2 text-center text-gray-600 tabular-nums">{formatBoxesPieces((v as any).boxes)}</td>}
-                          {enablePacking && visibleCols.includes('pieces') && <td className="px-4 py-2 text-center text-gray-600 tabular-nums">{formatBoxesPieces((v as any).pieces)}</td>}
-                          {enablePacking && visibleCols.includes('unit') && <td className="px-4 py-2 text-center text-gray-600">{product.unit ?? '—'}</td>}
-                          {visibleCols.includes('avgCost') && (
-                            <td className="px-4 py-2 text-right text-sm tabular-nums text-gray-300">
-                              {varPurch.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
-                            </td>
-                          )}
-                          {visibleCols.includes('sellingPrice') && (
-                            <td className="px-4 py-2 text-right text-sm tabular-nums text-gray-300">
-                              {varSell.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
-                            </td>
-                          )}
-                          {visibleCols.includes('stockValue') && (() => {
-                            return (
-                              <td className={cn('px-4 py-2 text-right text-sm tabular-nums align-top', valueAtCost < 0 ? 'text-red-400' : 'text-green-400/80')}>
-                                <div className="text-[10px] uppercase tracking-wide text-gray-500 font-medium">At cost</div>
-                                <div>{Number(valueAtCost).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</div>
-                                <div className="text-[10px] uppercase tracking-wide text-gray-500 font-medium mt-1">At retail</div>
-                                <div className="text-gray-400">{Number(valueAtRetail).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</div>
-                              </td>
-                            );
-                          })()}
-                          {visibleCols.includes('movement') && <td className="px-4 py-2 text-center text-gray-600">—</td>}
-                          {visibleCols.includes('status') && (
-                            <td className="px-4 py-2 text-center">
-                              {(v.stock ?? 0) <= 0 ? <Badge className="bg-red-500/20 text-red-400 text-xs">Out</Badge> : <Badge className="bg-green-500/20 text-green-400 text-xs">OK</Badge>}
-                            </td>
-                          )}
-                        </tr>
-                      );
-                    });
-                  }
-                  return rows;
-                })
-              )}
-            </tbody>
-          </table>
-          </div>
-        </div>
+        <InventoryOverviewTable
+          products={paginatedProducts}
+          loading={loading}
+          visibleCols={visibleCols}
+          columnsList={columnsList}
+          enablePacking={enablePacking}
+          combosEnabled={combosEnabled}
+          expandedIds={expandedIds}
+          onToggleExpand={toggleExpand}
+          comboDetailsCache={comboDetailsCache}
+          loadingComboId={loadingComboId}
+          onLedger={setLedgerProduct}
+          onEdit={(product) => openDrawer?.('edit-product', undefined, { product: { id: product.productId, uuid: product.productId, name: product.name, sku: product.sku } })}
+          onAdjust={setAdjustmentProduct}
+        />
       </div>
 
       <Pagination
@@ -616,15 +393,15 @@ export const InventoryDesignTestPage = () => {
       />
 
       <Dialog open={importInventoryModalOpen} onOpenChange={o => { if (!o) { setImportInventoryModalOpen(false); setImportRows([]); } }}>
-        <DialogContent className="bg-gray-900 border-gray-700 text-white max-w-lg">
+        <DialogContent className="bg-card border-border text-foreground max-w-lg">
           <DialogHeader>
-            <DialogTitle className="text-white flex items-center gap-2"><Upload size={20} /> Import inventory</DialogTitle>
+            <DialogTitle className="text-foreground flex items-center gap-2"><Upload size={20} /> Import inventory</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-gray-400">CSV with columns <code className="bg-gray-800 px-1 rounded">sku</code> and <code className="bg-gray-800 px-1 rounded">quantity</code>.</p>
+          <p className="text-sm text-muted-foreground">CSV with columns <code className="bg-muted px-1 rounded">sku</code> and <code className="bg-muted px-1 rounded">quantity</code>.</p>
           <input
             type="file"
             accept=".csv"
-            className="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-gray-700 file:text-white"
+            className="block w-full text-sm text-muted-foreground file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-muted file:text-foreground"
             onChange={e => {
               const file = e.target.files?.[0];
               if (!file) return;
@@ -652,22 +429,22 @@ export const InventoryDesignTestPage = () => {
             }}
           />
           {importRows.length > 0 && (
-            <div className="max-h-40 overflow-y-auto rounded border border-gray-700 text-sm">
+            <div className="max-h-40 overflow-y-auto rounded border border-border text-sm">
               <table className="w-full">
-                <thead className="bg-gray-800"><tr><th className="text-left px-3 py-2 text-gray-400">SKU</th><th className="text-left px-3 py-2 text-gray-400">Product</th><th className="text-right px-3 py-2 text-gray-400">Qty</th></tr></thead>
+                <thead className="bg-muted"><tr><th className="text-left px-3 py-2 text-muted-foreground">SKU</th><th className="text-left px-3 py-2 text-muted-foreground">Product</th><th className="text-right px-3 py-2 text-muted-foreground">Qty</th></tr></thead>
                 <tbody>
                   {importRows.slice(0, 15).map((r, i) => (
-                    <tr key={i} className="border-t border-gray-800"><td className="px-3 py-1 font-mono">{r.sku}</td><td className="px-3 py-1 text-gray-400">{r.name ?? '—'}</td><td className="px-3 py-1 text-right tabular-nums">{formatQty(r.quantity)}</td></tr>
+                    <tr key={i} className="border-t border-border"><td className="px-3 py-1 font-mono">{r.sku}</td><td className="px-3 py-1 text-muted-foreground">{r.name ?? '—'}</td><td className="px-3 py-1 text-right tabular-nums">{formatQty(r.quantity)}</td></tr>
                   ))}
                 </tbody>
               </table>
-              {importRows.length > 15 && <p className="text-xs text-gray-500 px-3 py-1">+ {importRows.length - 15} more</p>}
+              {importRows.length > 15 && <p className="text-xs text-muted-foreground px-3 py-1">+ {importRows.length - 15} more</p>}
             </div>
           )}
           <DialogFooter className="gap-2">
             <Button
               variant="outline"
-              className="border-gray-700 mr-auto"
+              className="border-border mr-auto"
               disabled={!companyId || importing}
               onClick={async () => {
                 if (!companyId) return;
@@ -695,7 +472,7 @@ export const InventoryDesignTestPage = () => {
             >
               Sync opening GL
             </Button>
-            <Button variant="outline" className="border-gray-700" onClick={() => { setImportInventoryModalOpen(false); setImportRows([]); }}>Cancel</Button>
+            <Button variant="outline" className="border-border" onClick={() => { setImportInventoryModalOpen(false); setImportRows([]); }}>Cancel</Button>
             <Button
               className="bg-blue-600 hover:bg-blue-500"
               disabled={importRows.length === 0 || importing || importRows.every(r => !r.productId)}
@@ -742,6 +519,6 @@ export const InventoryDesignTestPage = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </ErpPage>
   );
 };

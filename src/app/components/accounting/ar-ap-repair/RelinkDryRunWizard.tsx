@@ -43,14 +43,14 @@ function ContactPickButton(props: {
       onClick={onSelect}
       className={cn(
         'w-full text-left rounded-lg border p-2.5 text-xs transition-colors',
-        selected ? 'border-blue-500 bg-blue-950/40' : 'border-gray-800 bg-gray-900/50 hover:border-gray-600'
+        selected ? 'border-blue-500 bg-primary/10' : 'border-border bg-muted/40 hover:border-border'
       )}
     >
-      <span className="text-white font-medium">{c.name}</span>
-      <span className="text-gray-500 block mt-0.5">
+      <span className="text-foreground font-medium">{c.name}</span>
+      <span className="text-muted-foreground block mt-0.5">
         {[c.code, c.phone, c.account_code].filter(Boolean).join(' · ') || '—'}
       </span>
-      <span className="text-[10px] text-gray-600 block">{c.suggested_from}</span>
+      <span className="text-[10px] text-muted-foreground block">{c.suggested_from}</span>
     </button>
   );
 }
@@ -190,10 +190,10 @@ export function RelinkDryRunWizard(props: {
 
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-      <DialogContent className="bg-gray-950 border-gray-800 text-white w-[min(1050px,calc(100vw-2rem))] max-h-[80vh] overflow-hidden flex flex-col p-0">
+      <DialogContent className="bg-input-background border-border text-foreground w-[min(1050px,calc(100vw-2rem))] max-h-[80vh] overflow-hidden flex flex-col p-0">
         <DialogHeader className="px-6 pt-6 pb-3 shrink-0">
           <DialogTitle>Fix Link</DialogTitle>
-          <DialogDescription className="text-gray-400">
+          <DialogDescription className="text-muted-foreground">
             Maps a contact to this journal line for traceability. GL debit/credit amounts and account balances are
             unchanged.
             {traceOnly ? ' This row is voided or a reversal — saving is for audit trace only.' : ''}
@@ -215,45 +215,45 @@ export function RelinkDryRunWizard(props: {
                 )}
               </div>
 
-              <dl className="rounded-lg border border-gray-800 bg-gray-900/60 p-3 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1 text-xs">
+              <dl className="rounded-lg border border-border bg-muted/60 p-3 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1 text-xs">
                 <div className="flex justify-between gap-2">
-                  <dt className="text-gray-500">JE</dt>
-                  <dd className="font-mono text-blue-300">{trace?.journal?.entry_no || props.row.entry_no}</dd>
+                  <dt className="text-muted-foreground">JE</dt>
+                  <dd className="font-mono text-blue-700 dark:text-blue-300">{trace?.journal?.entry_no || props.row.entry_no}</dd>
                 </div>
                 <div className="flex justify-between gap-2">
-                  <dt className="text-gray-500">Target account</dt>
+                  <dt className="text-muted-foreground">Target account</dt>
                   <dd>
                     {props.row.account_name} ({props.row.account_code})
                   </dd>
                 </div>
                 <div className="flex justify-between gap-2">
-                  <dt className="text-gray-500">Line amount</dt>
+                  <dt className="text-muted-foreground">Line amount</dt>
                   <dd>
                     Dr {formatCurrency(Number(props.row.debit) || 0)} / Cr {formatCurrency(Number(props.row.credit) || 0)}
                   </dd>
                 </div>
                 <div className="flex justify-between gap-2">
-                  <dt className="text-gray-500">Current linked contact</dt>
+                  <dt className="text-muted-foreground">Current linked contact</dt>
                   <dd>{trace?.lineAccount?.linked_contact_name || '—'}</dd>
                 </div>
               </dl>
 
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search by name, contact code, phone, or account code…"
-                  className="pl-9 bg-gray-900 border-gray-700"
+                  className="pl-9 bg-card border-border"
                 />
                 {searching ? (
-                  <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-gray-500" />
+                  <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-muted-foreground" />
                 ) : null}
               </div>
 
               {suggestions.length > 0 && (
                 <div>
-                  <p className="text-[10px] uppercase text-gray-500 font-semibold mb-2">Suggested matches</p>
+                  <p className="text-[10px] uppercase text-muted-foreground font-semibold mb-2">Suggested matches</p>
                   <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
                     {suggestions.map((c) => (
                       <ContactPickButton
@@ -268,12 +268,12 @@ export function RelinkDryRunWizard(props: {
               )}
 
               <div>
-                <p className="text-[10px] uppercase text-gray-500 font-semibold mb-2">
+                <p className="text-[10px] uppercase text-muted-foreground font-semibold mb-2">
                   All contacts {results.length ? `(${results.length})` : ''}
                 </p>
-                <div className="space-y-2 max-h-[min(320px,40vh)] overflow-y-auto pr-1 border border-gray-800/80 rounded-lg p-2 bg-gray-900/30">
+                <div className="space-y-2 max-h-[min(320px,40vh)] overflow-y-auto pr-1 border border-border/80 rounded-lg p-2 bg-muted/30">
                   {results.length === 0 ? (
-                    <p className="text-gray-500 text-xs p-2">No contacts match your search.</p>
+                    <p className="text-muted-foreground text-xs p-2">No contacts match your search.</p>
                   ) : (
                     results.map((c) => (
                       <ContactPickButton
@@ -287,20 +287,20 @@ export function RelinkDryRunWizard(props: {
                 </div>
               </div>
 
-              <div className="rounded-lg border border-gray-700 bg-gray-900/40 p-3 text-xs space-y-2">
-                <p className="text-gray-500 uppercase text-[10px] font-semibold">Selection preview</p>
+              <div className="rounded-lg border border-border bg-card/40 p-3 text-xs space-y-2">
+                <p className="text-muted-foreground uppercase text-[10px] font-semibold">Selection preview</p>
                 <p>
-                  <span className="text-gray-400">Selected contact:</span>{' '}
+                  <span className="text-muted-foreground">Selected contact:</span>{' '}
                   {selected ? selected.name : '— none —'}
                 </p>
                 <p>
-                  <span className="text-gray-400">Target account:</span> {props.row.account_code} · {props.row.account_name}
+                  <span className="text-muted-foreground">Target account:</span> {props.row.account_code} · {props.row.account_name}
                 </p>
                 <p>
-                  <span className="text-gray-400">What will change:</span> contact mapping metadata (journal_party_contact_mapping)
+                  <span className="text-muted-foreground">What will change:</span> contact mapping metadata (journal_party_contact_mapping)
                 </p>
                 <p className="text-emerald-300/90">
-                  <span className="text-gray-400">What will never change:</span> GL amounts, debit/credit lines, posted balances
+                  <span className="text-muted-foreground">What will never change:</span> GL amounts, debit/credit lines, posted balances
                 </p>
                 {saveDisabledReason && !saveEnabled ? (
                   <p className="text-amber-300/90">{saveDisabledReason}</p>
@@ -310,12 +310,12 @@ export function RelinkDryRunWizard(props: {
           )}
         </div>
 
-        <DialogFooter className="px-6 py-4 border-t border-gray-800 shrink-0 gap-2">
-          <Button variant="outline" className="border-gray-700" onClick={() => props.onOpenChange(false)}>
+        <DialogFooter className="px-6 py-4 border-t border-border shrink-0 gap-2">
+          <Button variant="outline" className="border-border" onClick={() => props.onOpenChange(false)}>
             Cancel
           </Button>
           <Button
-            className={saveEnabled ? 'bg-emerald-700 hover:bg-emerald-600' : 'bg-gray-700 cursor-not-allowed opacity-60'}
+            className={saveEnabled ? 'bg-emerald-700 hover:bg-emerald-600' : 'bg-muted cursor-not-allowed opacity-60'}
             disabled={!saveEnabled || saving}
             title={saveDisabledReason ?? undefined}
             onClick={() => void handleSave()}

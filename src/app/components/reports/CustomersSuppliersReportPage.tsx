@@ -305,13 +305,13 @@ export function CustomersSuppliersReportPage({ startDate, endDate, branchId }: P
         return renderAmountCell(row.openingBalanceDue);
       case 'due':
         return (
-          <span className={cn('tabular-nums', row.due > 0 ? 'text-amber-300' : 'text-gray-300')}>
+          <span className={cn('tabular-nums', row.due > 0 ? 'text-amber-300' : 'text-muted-foreground')}>
             {formatAmount(row.due)}
           </span>
         );
       case 'advanceGl':
         return (
-          <span className={cn('tabular-nums', row.advanceGl > 0 ? 'text-cyan-300' : 'text-gray-500')}>
+          <span className={cn('tabular-nums', row.advanceGl > 0 ? 'text-cyan-300' : 'text-muted-foreground')}>
             {formatAmount(row.advanceGl)}
           </span>
         );
@@ -343,7 +343,7 @@ export function CustomersSuppliersReportPage({ startDate, endDate, branchId }: P
   };
 
   const renderTableHead = (forPrint = false) => (
-    <thead className={cn(!forPrint && 'sticky top-0 z-10 bg-gray-950/95 text-gray-400 uppercase tracking-wide border-b border-gray-800')}>
+    <thead className={cn(!forPrint && 'sticky top-0 z-10 bg-input-background/95 text-muted-foreground uppercase tracking-wide border-b border-border')}>
       <tr>
         {visibleCols.map((col) => (
           <th
@@ -374,7 +374,7 @@ export function CustomersSuppliersReportPage({ startDate, endDate, branchId }: P
                     </TooltipTrigger>
                     <TooltipContent
                       side="top"
-                      className="max-w-xs bg-gray-900 border border-gray-700 text-gray-200"
+                      className="max-w-xs bg-card border border-border text-gray-200"
                     >
                       Party GL follow-up balance MAX(0, signed) as at period end — amounts you still
                       need to collect or pay. Same basis as Contacts receivables/payables columns.
@@ -396,7 +396,7 @@ export function CustomersSuppliersReportPage({ startDate, endDate, branchId }: P
                     </TooltipTrigger>
                     <TooltipContent
                       side="top"
-                      className="max-w-xs bg-gray-900 border border-gray-700 text-gray-200"
+                      className="max-w-xs bg-card border border-border text-gray-200"
                     >
                       Party GL credit/advance MAX(0, −signed) as at period end — e.g. supplier prepayment
                       or customer overpayment. Shown as a positive amount.
@@ -430,7 +430,7 @@ export function CustomersSuppliersReportPage({ startDate, endDate, branchId }: P
           <Filter className="w-4 h-4 text-sky-400" />
           Filters
           {filterActiveCount > 0 && (
-            <span className="ml-1 text-xs bg-sky-600/80 text-white px-1.5 py-0.5 rounded-full">
+            <span className="ml-1 text-xs bg-sky-600/80 text-foreground px-1.5 py-0.5 rounded-full">
               {filterActiveCount}
             </span>
           )}
@@ -439,12 +439,12 @@ export function CustomersSuppliersReportPage({ startDate, endDate, branchId }: P
           </span>
         </button>
         {filtersOpen && (
-          <div className="border-t border-sky-500/20 px-4 py-4 bg-gray-900/60 space-y-4">
+          <div className="border-t border-sky-500/20 px-4 py-4 bg-muted/60 space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               <div className="space-y-2">
-                <Label className="text-xs text-gray-400">Contact type</Label>
+                <Label className="text-xs text-muted-foreground">Contact type</Label>
                 <Select value={contactType} onValueChange={(v) => setContactType(v as ContactTypeFilter)}>
-                  <SelectTrigger className="bg-gray-950 border-gray-700 text-white">
+                  <SelectTrigger className="bg-input-background border-border text-foreground">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -456,9 +456,9 @@ export function CustomersSuppliersReportPage({ startDate, endDate, branchId }: P
               </div>
 
               <div className="space-y-2">
-                <Label className="text-xs text-gray-400">Balance status</Label>
+                <Label className="text-xs text-muted-foreground">Balance status</Label>
                 <Select value={balanceStatus} onValueChange={(v) => setBalanceStatus(v as BalanceStatus)}>
-                  <SelectTrigger className="bg-gray-950 border-gray-700 text-white">
+                  <SelectTrigger className="bg-input-background border-border text-foreground">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -470,21 +470,21 @@ export function CustomersSuppliersReportPage({ startDate, endDate, branchId }: P
               </div>
 
               <div className="space-y-2">
-                <Label className="text-xs text-gray-400">Date range</Label>
+                <Label className="text-xs text-muted-foreground">Date range</Label>
                 <div className="flex items-center gap-2 mb-2">
                   <Switch
                     checked={overrideGlobalDates}
                     onCheckedChange={setOverrideGlobalDates}
                     id="cs-override-dates"
                   />
-                  <Label htmlFor="cs-override-dates" className="text-xs text-gray-400 cursor-pointer">
+                  <Label htmlFor="cs-override-dates" className="text-xs text-muted-foreground cursor-pointer">
                     Override header dates
                   </Label>
                 </div>
                 {overrideGlobalDates ? (
                   <DateRangePicker value={dateRange} onChange={setDateRange} placeholder="Select period" />
                 ) : (
-                  <p className="text-sm text-gray-300">{periodLabel} (header)</p>
+                  <p className="text-sm text-muted-foreground">{periodLabel} (header)</p>
                 )}
               </div>
             </div>
@@ -516,7 +516,7 @@ export function CustomersSuppliersReportPage({ startDate, endDate, branchId }: P
       />
 
       <div className="no-print flex flex-wrap items-center gap-3 py-2">
-        <div className="flex items-center gap-2 text-sm text-gray-400 shrink-0">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground shrink-0">
           <span>Show</span>
           <CustomSelect
             value={pageSize}
@@ -534,16 +534,16 @@ export function CustomersSuppliersReportPage({ startDate, endDate, branchId }: P
             <Button
               variant="outline"
               size="sm"
-              className="h-9 gap-1.5 bg-gray-900 border-gray-700 text-gray-300"
+              className="h-9 gap-1.5 bg-card border-border text-muted-foreground"
               onClick={() => setColumnsOpen((o) => !o)}
             >
               <Columns3 size={14} />
               Column visibility
             </Button>
             {columnsOpen && (
-              <div className="absolute left-0 top-11 w-64 bg-gray-900 border border-gray-700 rounded-lg shadow-2xl p-4 z-50">
+              <div className="absolute left-0 top-11 w-64 bg-card border border-border rounded-lg shadow-2xl p-4 z-50">
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold text-white">Show columns</h3>
+                  <h3 className="text-sm font-semibold text-foreground">Show columns</h3>
                   <button
                     type="button"
                     onClick={() => setVisibleColumns(resolveVisibleColumns(contactType))}
@@ -556,7 +556,7 @@ export function CustomersSuppliersReportPage({ startDate, endDate, branchId }: P
                   {CUSTOMERS_SUPPLIERS_COLUMN_KEYS.map((key) => (
                     <label
                       key={key}
-                      className="flex items-center gap-2 text-sm text-gray-300 hover:bg-gray-800/50 p-2 rounded cursor-pointer"
+                      className="flex items-center gap-2 text-sm text-muted-foreground hover:bg-muted/50 p-2 rounded cursor-pointer"
                     >
                       <input
                         type="checkbox"
@@ -577,18 +577,18 @@ export function CustomersSuppliersReportPage({ startDate, endDate, branchId }: P
         </div>
 
         <div className="relative w-full sm:w-64 shrink-0 ml-auto">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search…"
-            className="pl-9 pr-8 h-9 bg-gray-900 border-gray-700 text-white text-sm"
+            className="pl-9 pr-8 h-9 bg-card border-border text-foreground text-sm"
           />
           {search && (
             <button
               type="button"
               onClick={() => setSearch('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
             >
               <X size={14} />
             </button>
@@ -654,7 +654,7 @@ export function CustomersSuppliersReportPage({ startDate, endDate, branchId }: P
         </div>
       </div>
 
-      <div className="no-print rounded-xl border border-gray-800 bg-gray-900/40 overflow-hidden">
+      <div className="no-print rounded-xl border border-border bg-card/40 overflow-hidden">
         {loading ? (
           <div className="flex justify-center py-16">
             <Loader2 className="w-8 h-8 animate-spin text-blue-400" />
@@ -664,19 +664,19 @@ export function CustomersSuppliersReportPage({ startDate, endDate, branchId }: P
             <div className="overflow-x-auto max-h-[calc(100dvh-22rem)] overflow-y-auto">
               <table className="w-full text-left text-sm min-w-[1100px]">
                 {renderTableHead()}
-                <tbody className="divide-y divide-gray-800/80 text-gray-200">
+                <tbody className="divide-y divide-border/80 text-gray-200">
                   {pageSlice.length === 0 ? (
                     <tr>
                       <td
                         colSpan={visibleCols.length || 1}
-                        className="px-4 py-12 text-center text-gray-500"
+                        className="px-4 py-12 text-center text-muted-foreground"
                       >
                         No contacts match the current filters.
                       </td>
                     </tr>
                   ) : (
                     pageSlice.map((r) => (
-                      <tr key={r.contactId} className="hover:bg-gray-800/40">
+                      <tr key={r.contactId} className="hover:bg-muted/40">
                         {visibleCols.map((col) => (
                           <td
                             key={col}
@@ -690,7 +690,7 @@ export function CustomersSuppliersReportPage({ startDate, endDate, branchId }: P
                   )}
                 </tbody>
                 {filteredRows.length > 0 && (
-                  <tfoot className="sticky bottom-0 z-10 bg-gray-950/95 border-t border-gray-800 text-gray-300 text-sm font-bold">
+                  <tfoot className="sticky bottom-0 z-10 bg-input-background/95 border-t border-border text-muted-foreground text-sm font-bold">
                     <tr>
                       {visibleCols.map((col) => (
                         <td
@@ -698,7 +698,7 @@ export function CustomersSuppliersReportPage({ startDate, endDate, branchId }: P
                           className={cn(
                             'px-2 py-2',
                             col !== 'contact' && 'text-right tabular-nums',
-                            col === 'contact' && 'text-white'
+                            col === 'contact' && 'text-foreground'
                           )}
                         >
                           {renderTotalCell(col)}
@@ -710,8 +710,8 @@ export function CustomersSuppliersReportPage({ startDate, endDate, branchId }: P
               </table>
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-t border-gray-800 bg-gray-900/80">
-              <p className="text-xs text-gray-400">
+            <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-t border-border bg-card">
+              <p className="text-xs text-muted-foreground">
                 {total === 0
                   ? 'Showing 0 to 0 of 0 entries'
                   : `Showing ${from} to ${to} of ${total} entries`}
@@ -720,7 +720,7 @@ export function CustomersSuppliersReportPage({ startDate, endDate, branchId }: P
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-8 border-gray-700 text-gray-300"
+                  className="h-8 border-border text-muted-foreground"
                   disabled={currentPage <= 1}
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                 >
@@ -733,7 +733,7 @@ export function CustomersSuppliersReportPage({ startDate, endDate, branchId }: P
                   .map((p, idx, arr) => (
                     <React.Fragment key={p}>
                       {idx > 0 && arr[idx - 1] !== p - 1 && (
-                        <span className="px-1 text-gray-500">…</span>
+                        <span className="px-1 text-muted-foreground">…</span>
                       )}
                       <button
                         type="button"
@@ -741,7 +741,7 @@ export function CustomersSuppliersReportPage({ startDate, endDate, branchId }: P
                           'h-8 min-w-[2rem] rounded px-2 text-sm font-medium',
                           p === currentPage
                             ? 'bg-blue-600 text-white'
-                            : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                            : 'bg-muted text-muted-foreground hover:bg-muted'
                         )}
                         onClick={() => setCurrentPage(p)}
                       >
@@ -752,7 +752,7 @@ export function CustomersSuppliersReportPage({ startDate, endDate, branchId }: P
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-8 border-gray-700 text-gray-300"
+                  className="h-8 border-border text-muted-foreground"
                   disabled={currentPage >= totalPages}
                   onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                 >

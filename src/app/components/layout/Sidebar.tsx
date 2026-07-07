@@ -208,15 +208,15 @@ export const Sidebar = () => {
   const renderNavContextMenu = (viewId: string, trigger: React.ReactNode, onOpen: () => void) => (
     <ContextMenu>
       <ContextMenuTrigger asChild>{trigger}</ContextMenuTrigger>
-      <ContextMenuContent className="w-48 bg-gray-900 border-gray-700 text-white">
+      <ContextMenuContent className="w-48 bg-popover border-border text-popover-foreground">
         <ContextMenuItem
-          className="cursor-pointer focus:bg-gray-800 focus:text-white"
+          className="cursor-pointer focus:bg-accent focus:text-accent-foreground"
           onSelect={() => onOpen()}
         >
           Open
         </ContextMenuItem>
         <ContextMenuItem
-          className="cursor-pointer focus:bg-gray-800 focus:text-white"
+          className="cursor-pointer focus:bg-accent focus:text-accent-foreground"
           onSelect={() => openNavInNewTab(viewId)}
         >
           Open in new tab
@@ -229,11 +229,11 @@ export const Sidebar = () => {
     <motion.aside 
       initial={false}
       animate={{ width: isSidebarOpen ? 260 : 80 }}
-      className="hidden md:flex flex-col h-screen bg-gray-900 border-r border-gray-800 text-white transition-all duration-300 relative z-20 shrink-0"
+      className="hidden md:flex flex-col h-screen bg-sidebar border-r border-sidebar-border text-sidebar-foreground transition-all duration-300 relative z-20 shrink-0"
     >
-      <div className="p-4 flex items-center justify-between h-16 border-b border-gray-800">
+      <div className="p-4 flex items-center justify-between h-16 border-b border-sidebar-border">
         <div className="flex items-center gap-3 overflow-hidden whitespace-nowrap">
-          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shrink-0 text-white shadow-lg shadow-blue-900/20">
+          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shrink-0 text-foreground shadow-lg shadow-blue-900/20">
             <span className="font-bold text-lg">E</span>
           </div>
           {isSidebarOpen && (
@@ -248,7 +248,7 @@ export const Sidebar = () => {
         </div>
         <button 
           onClick={toggleSidebar}
-          className="p-1.5 hover:bg-gray-800 rounded-lg text-gray-400 hover:text-white transition-colors absolute -right-3 top-6 bg-gray-900 border border-gray-700 shadow-sm"
+          className="p-1.5 hover:bg-sidebar-accent rounded-lg text-muted-foreground hover:text-sidebar-foreground transition-colors absolute -right-3 top-6 bg-sidebar border border-sidebar-border shadow-sm"
         >
           {isSidebarOpen ? <ChevronLeft size={14} /> : <ChevronRight size={14} />}
         </button>
@@ -280,12 +280,12 @@ export const Sidebar = () => {
                     className={clsx(
                       "flex-1 flex items-center justify-between p-3 rounded-xl transition-all duration-200 group relative min-w-0",
                       isActive && !item.children
-                        ? "bg-blue-600 text-white shadow-lg shadow-blue-900/20" 
-                        : "text-gray-400 hover:bg-gray-800 hover:text-white"
+                        ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
+                        : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
                     )}
                   >
                     <div className="flex items-center gap-3 min-w-0">
-                      <item.icon size={20} strokeWidth={1.5} className={clsx("shrink-0", isActive && "text-white")} />
+                      <item.icon size={20} strokeWidth={1.5} className={clsx("shrink-0", isActive && "text-primary-foreground")} />
                       
                       {isSidebarOpen ? (
                         <motion.span 
@@ -302,7 +302,7 @@ export const Sidebar = () => {
                           )}
                         </motion.span>
                       ) : (
-                        <div className="absolute left-14 bg-gray-900 text-white text-sm px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity border border-gray-700 whitespace-nowrap z-50 shadow-xl flex items-center gap-1.5">
+                        <div className="absolute left-14 bg-popover text-popover-foreground text-sm px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity border border-border whitespace-nowrap z-50 shadow-xl flex items-center gap-1.5">
                           {item.label}
                           {item.id === 'studio-group' && studioProductionV3 && <span className="text-emerald-400 text-xs font-semibold">V3</span>}
                           {item.id === 'studio-group' && studioProductionV2 && !studioProductionV3 && <span className="text-amber-400 text-xs font-semibold">V2</span>}
@@ -330,7 +330,7 @@ export const Sidebar = () => {
                   <div className="flex gap-0.5 opacity-0 group-hover/item:opacity-100 transition-opacity shrink-0">
                     <button
                       onClick={(e) => { e.stopPropagation(); openDrawer('addContact'); }}
-                      className="p-1.5 rounded-lg hover:bg-gray-700 text-gray-400 hover:text-white"
+                      className="p-1.5 rounded-lg hover:bg-sidebar-accent text-muted-foreground hover:text-sidebar-foreground"
                       title="Add Contact"
                     >
                       <Plus size={14} />
@@ -361,8 +361,8 @@ export const Sidebar = () => {
                                   (child.id === 'accounting-edit-trace' && pathname === '/test/accounting-edit-trace') ||
                                   (child.id === 'ar-ap-truth-lab' && pathname === '/test/ar-ap-truth-lab') ||
                                   (child.id === 'expense-edit-trace' && pathname === '/test/expense-edit-trace')
-                                  ? "text-blue-400 bg-blue-500/10 font-medium" 
-                                  : "text-gray-500 hover:text-white hover:bg-gray-800/50"
+                                  ? "text-primary bg-primary/10 font-medium"
+                                  : "text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
                               )}
                             >
                               {child.label}

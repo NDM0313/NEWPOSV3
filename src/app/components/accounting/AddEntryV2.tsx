@@ -829,16 +829,16 @@ export function AddEntryV2({
   if (!companyId) {
     const empty = (
       <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-md flex items-center justify-center p-6 animate-in fade-in duration-200">
-        <p className="text-gray-400">Select a company first.</p>
+        <p className="text-muted-foreground">Select a company first.</p>
       </div>
     );
     return typeof document !== 'undefined' ? createPortal(empty, document.body) : null;
   }
 
   const inputClass =
-    'w-full bg-gray-900 border-2 border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors';
-  const labelClass = 'block text-sm font-semibold text-gray-300 mb-2';
-  const cardInnerClass = 'bg-gray-950/50 border border-gray-800 rounded-xl p-4';
+    'w-full bg-card border-2 border-border rounded-lg px-4 py-2.5 text-foreground placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors';
+  const labelClass = 'block text-sm font-semibold text-muted-foreground mb-2';
+  const cardInnerClass = 'bg-muted/40 border border-border rounded-xl p-4';
   const currencyPrefix =
     settings.company?.currency === 'PKR' || !settings.company?.currency ? 'Rs.' : settings.company?.currency || currencySymbol;
 
@@ -852,7 +852,7 @@ export function AddEntryV2({
       />
       <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 pointer-events-none overflow-y-auto">
         <div
-          className="bg-gray-900 border border-gray-700/80 rounded-2xl shadow-2xl shadow-black/40 w-full max-w-[700px] h-[850px] pointer-events-auto animate-in zoom-in-95 duration-200 my-6 max-h-[92vh] overflow-y-auto ring-1 ring-white/5"
+          className="bg-card border border-border/80 rounded-2xl shadow-2xl shadow-black/40 w-full max-w-[700px] h-[850px] pointer-events-auto animate-in zoom-in-95 duration-200 my-6 max-h-[92vh] overflow-y-auto ring-1 ring-white/5"
           onClick={(e) => e.stopPropagation()}
           role="dialog"
           aria-modal="true"
@@ -860,17 +860,17 @@ export function AddEntryV2({
           {/* Step 1: Entry type selection */}
           {step === 'select-type' && (
             <>
-              <div className="flex items-center justify-between p-5 border-b border-gray-800 bg-gradient-to-r from-gray-900 via-gray-900 to-gray-800">
+              <div className="flex items-center justify-between p-5 border-b border-border bg-gradient-to-r from-gray-900 via-gray-900 to-gray-800">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
                     <FileText className="w-5 h-5 text-blue-400" />
                   </div>
                   <div>
-                    <h2 className="text-lg font-bold text-white">Add Entry</h2>
-                    <p className="text-xs text-gray-400 mt-0.5">Select the type of accounting entry you want to record</p>
+                    <h2 className="text-lg font-bold text-foreground">Add Entry</h2>
+                    <p className="text-xs text-muted-foreground mt-0.5">Select the type of accounting entry you want to record</p>
                   </div>
                 </div>
-                <button type="button" onClick={onClose} className="text-gray-400 hover:text-white transition-colors p-1.5 hover:bg-gray-800 rounded-lg" aria-label="Close">
+                <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors p-1.5 hover:bg-muted rounded-lg" aria-label="Close">
                   <X size={20} />
                 </button>
               </div>
@@ -885,17 +885,17 @@ export function AddEntryV2({
                         onClick={() => setEntryType(t.key)}
                         className={`text-left p-4 rounded-xl border-2 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-900 shadow-sm ${
                           selected
-                            ? 'border-blue-500 bg-gradient-to-br from-blue-500/15 to-gray-900/80 text-white ring-1 ring-blue-500/30'
-                            : 'border-gray-700/80 bg-gray-800/40 text-gray-300 hover:border-gray-600 hover:bg-gray-800/70 hover:shadow-md'
+                            ? 'border-blue-500 bg-gradient-to-br from-blue-500/15 to-gray-900/80 text-foreground ring-1 ring-blue-500/30'
+                            : 'border-border/80 bg-muted/40 text-muted-foreground hover:border-gray-600 hover:bg-muted/70 hover:shadow-md'
                         }`}
                       >
                         <div className="flex items-start gap-3">
-                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${selected ? 'bg-blue-500/20 text-blue-400' : 'bg-gray-700/50 text-gray-400'}`}>
+                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${selected ? 'bg-blue-500/20 text-blue-400' : 'bg-muted/50 text-muted-foreground'}`}>
                             {t.icon}
                           </div>
                           <div className="min-w-0 flex-1">
-                            <div className="font-semibold text-white">{t.label}</div>
-                            <div className="text-xs text-gray-400 mt-0.5">{t.description}</div>
+                            <div className="font-semibold text-foreground">{t.label}</div>
+                            <div className="text-xs text-muted-foreground mt-0.5">{t.description}</div>
                             {selected && (
                               <div className="mt-2 flex items-center gap-1 text-blue-400 text-xs font-medium">
                                 <Check size={14} /> Selected
@@ -907,8 +907,8 @@ export function AddEntryV2({
                     );
                   })}
                 </div>
-                <div className="flex gap-3 mt-6 pt-4 border-t border-gray-800">
-                  <Button variant="outline" className="border-gray-700 text-gray-300 hover:text-white" onClick={onClose}>
+                <div className="flex gap-3 mt-6 pt-4 border-t border-border">
+                  <Button variant="outline" className="border-border text-muted-foreground hover:text-foreground" onClick={onClose}>
                     Cancel
                   </Button>
                   <Button className="bg-blue-600 hover:bg-blue-700" onClick={() => setStep('entry-form')}>
@@ -922,7 +922,7 @@ export function AddEntryV2({
           {/* Step 2: Entry form */}
           {step === 'entry-form' && (
             <>
-              <div className="flex items-center justify-between p-5 border-b border-gray-800 bg-gradient-to-r from-gray-900 via-gray-900 to-gray-800">
+              <div className="flex items-center justify-between p-5 border-b border-border bg-gradient-to-r from-gray-900 via-gray-900 to-gray-800">
                 <div className="flex items-center gap-3">
                   {!isEditMode && (
                     <button
@@ -931,7 +931,7 @@ export function AddEntryV2({
                         setEntryAttachmentFiles([]);
                         setStep('select-type');
                       }}
-                      className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+                      className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                       aria-label="Back to entry type"
                     >
                       <ArrowLeft size={20} />
@@ -941,24 +941,24 @@ export function AddEntryV2({
                     {ENTRY_TYPES.find((t) => t.key === entryType)?.icon ?? <FileText className="w-5 h-5 text-blue-400" />}
                   </div>
                   <div>
-                    <h2 className="text-lg font-bold text-white">
+                    <h2 className="text-lg font-bold text-foreground">
                       {isEditMode ? 'Edit Entry' : ENTRY_TYPES.find((t) => t.key === entryType)?.label ?? 'Add Entry'}
                     </h2>
-                    <p className="text-xs text-gray-400 mt-0.5">
+                    <p className="text-xs text-muted-foreground mt-0.5">
                       {isEditMode
                         ? 'Update accounts, amount, date, and description'
                         : ENTRY_TYPES.find((t) => t.key === entryType)?.description ?? ''}
                     </p>
                   </div>
                 </div>
-                <button type="button" onClick={onClose} className="text-gray-400 hover:text-white transition-colors p-1.5 hover:bg-gray-800 rounded-lg" aria-label="Close">
+                <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors p-1.5 hover:bg-muted rounded-lg" aria-label="Close">
                   <X size={20} />
                 </button>
               </div>
 
               <div className="p-5">
                 {loading ? (
-                  <div className="flex items-center justify-center py-12 text-gray-400">
+                  <div className="flex items-center justify-center py-12 text-muted-foreground">
                     <Loader2 className="w-8 h-8 animate-spin" />
                   </div>
                 ) : editLoadError ? (
@@ -969,9 +969,9 @@ export function AddEntryV2({
                       {/* LEFT — party / accounts / amount / method (UnifiedPaymentDialog style) */}
                       <div className="space-y-4">
                         {entryType === 'customer_receipt' && selectedPartyLabel && (
-                          <div className="bg-gradient-to-br from-gray-950/80 to-gray-900/50 border border-gray-800 rounded-xl p-4">
+                          <div className="bg-gradient-to-br from-gray-950/80 to-gray-900/50 border border-border rounded-xl p-4">
                             <div className="flex items-center justify-between mb-3">
-                              <span className="text-xs font-medium text-gray-400">{selectedPartyLabel.entity} details</span>
+                              <span className="text-xs font-medium text-muted-foreground">{selectedPartyLabel.entity} details</span>
                               <Badge variant="outline" className="border-blue-500/40 text-blue-300 bg-blue-500/10">
                                 {selectedPartyLabel.badge}
                               </Badge>
@@ -986,30 +986,30 @@ export function AddEntryV2({
                                   aria-expanded={customerSearchOpen}
                                   className={cn(
                                     inputClass,
-                                    'h-auto min-h-[2.75rem] justify-between font-normal hover:bg-gray-900 hover:text-white',
+                                    'h-auto min-h-[2.75rem] justify-between font-normal hover:bg-card hover:text-foreground',
                                   )}
                                 >
                                   {selectedCustomer ? (
                                     <span className="truncate text-left">
                                       {selectedCustomer.name}
-                                      <span className="block text-xs text-gray-400 font-normal truncate">
+                                      <span className="block text-xs text-muted-foreground font-normal truncate">
                                         {formatCustomerBalanceLabel(selectedCustomer)}
                                       </span>
                                     </span>
                                   ) : (
-                                    <span className="text-gray-500">Select customer</span>
+                                    <span className="text-muted-foreground">Select customer</span>
                                   )}
                                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                 </Button>
                               </PopoverTrigger>
                               <PopoverContent
-                                className="w-[var(--radix-popover-trigger-width)] min-w-[280px] p-0 bg-gray-900 border-gray-800 text-white"
+                                className="w-[var(--radix-popover-trigger-width)] min-w-[280px] p-0 bg-card border-border text-foreground"
                                 align="start"
                               >
-                                <Command shouldFilter={false} className="bg-gray-900 text-white">
+                                <Command shouldFilter={false} className="bg-card text-foreground">
                                   <CommandInput
                                     placeholder="Search customer..."
-                                    className="h-9 border-none focus:ring-0 text-white"
+                                    className="h-9 border-none focus:ring-0 text-foreground"
                                     value={customerSearchTerm}
                                     onValueChange={setCustomerSearchTerm}
                                   />
@@ -1026,7 +1026,7 @@ export function AddEntryV2({
                                             setCustomerSearchOpen(false);
                                             setCustomerSearchTerm('');
                                           }}
-                                          className="text-white hover:bg-gray-800 cursor-pointer"
+                                          className="text-foreground hover:bg-muted cursor-pointer"
                                         >
                                           <Check
                                             className={cn(
@@ -1036,7 +1036,7 @@ export function AddEntryV2({
                                           />
                                           <div className="flex flex-col min-w-0">
                                             <span className="truncate">{c.name}</span>
-                                            <span className="text-xs text-gray-400 truncate">
+                                            <span className="text-xs text-muted-foreground truncate">
                                               {formatCustomerBalanceLabel(c)}
                                             </span>
                                           </div>
@@ -1048,12 +1048,12 @@ export function AddEntryV2({
                               </PopoverContent>
                             </Popover>
                             {customerId && (
-                              <div className="mt-4 pt-4 border-t border-gray-800 space-y-2">
-                                <p className="text-lg font-bold text-white">{customerName}</p>
-                                <div className="space-y-2 pt-2 border-t border-gray-800">
+                              <div className="mt-4 pt-4 border-t border-border space-y-2">
+                                <p className="text-lg font-bold text-foreground">{customerName}</p>
+                                <div className="space-y-2 pt-2 border-t border-border">
                                   {glBalancesOk && (
                                     <div className="flex items-center justify-between gap-2">
-                                      <span className="text-xs text-gray-400">Due (GL — Accounts Receivable)</span>
+                                      <span className="text-xs text-muted-foreground">Due (GL — Accounts Receivable)</span>
                                       <span className="text-xl font-bold text-amber-400 tabular-nums shrink-0">
                                         {formatCurrency(customers.find((x) => x.id === customerId)?.dueGl ?? 0)}
                                       </span>
@@ -1061,7 +1061,7 @@ export function AddEntryV2({
                                   )}
                                   {operationalBalancesOk && (
                                     <div className="flex items-center justify-between gap-2">
-                                      <span className="text-xs text-gray-400">Due (open-doc — invoices / opening)</span>
+                                      <span className="text-xs text-muted-foreground">Due (open-doc — invoices / opening)</span>
                                       <span
                                         className={`text-xl font-bold tabular-nums shrink-0 ${glBalancesOk ? 'text-slate-300' : 'text-amber-400'}`}
                                       >
@@ -1071,7 +1071,7 @@ export function AddEntryV2({
                                   )}
                                   {!glBalancesOk && !operationalBalancesOk && (
                                     <div className="flex items-center justify-between gap-2">
-                                      <span className="text-xs text-gray-400">{selectedPartyLabel.dueLabel}</span>
+                                      <span className="text-xs text-muted-foreground">{selectedPartyLabel.dueLabel}</span>
                                       <span className="text-xl font-bold text-amber-400 tabular-nums">{formatCurrency(selectedPartyDue ?? 0)}</span>
                                     </div>
                                   )}
@@ -1091,17 +1091,17 @@ export function AddEntryV2({
                               </div>
                             )}
                             {customerId && (
-                              <p className="mt-3 text-[10px] text-gray-500 leading-relaxed">
-                                Open invoices are settled automatically in <span className="text-gray-400">oldest-first (FIFO)</span> order. Any unused amount stays as unapplied customer credit.
+                              <p className="mt-3 text-[10px] text-muted-foreground leading-relaxed">
+                                Open invoices are settled automatically in <span className="text-muted-foreground">oldest-first (FIFO)</span> order. Any unused amount stays as unapplied customer credit.
                               </p>
                             )}
                           </div>
                         )}
 
                         {entryType === 'supplier_payment' && selectedPartyLabel && (
-                          <div className="bg-gradient-to-br from-gray-950/80 to-gray-900/50 border border-gray-800 rounded-xl p-4">
+                          <div className="bg-gradient-to-br from-gray-950/80 to-gray-900/50 border border-border rounded-xl p-4">
                             <div className="flex items-center justify-between mb-3">
-                              <span className="text-xs font-medium text-gray-400">{selectedPartyLabel.entity} details</span>
+                              <span className="text-xs font-medium text-muted-foreground">{selectedPartyLabel.entity} details</span>
                               <Badge variant="outline" className="border-emerald-500/40 text-emerald-300 bg-emerald-500/10">
                                 {selectedPartyLabel.badge}
                               </Badge>
@@ -1127,15 +1127,15 @@ export function AddEntryV2({
                                   </option>
                                 ))}
                               </select>
-                              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
+                              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" size={18} />
                             </div>
                             {supplierContactId && (
-                              <div className="mt-4 pt-4 border-t border-gray-800 space-y-2">
-                                <p className="text-lg font-bold text-white">{supplierName}</p>
-                                <div className="space-y-2 pt-2 border-t border-gray-800">
+                              <div className="mt-4 pt-4 border-t border-border space-y-2">
+                                <p className="text-lg font-bold text-foreground">{supplierName}</p>
+                                <div className="space-y-2 pt-2 border-t border-border">
                                   {glBalancesOk && (
                                     <div className="flex items-center justify-between gap-2">
-                                      <span className="text-xs text-gray-400">Due (GL — Accounts Payable)</span>
+                                      <span className="text-xs text-muted-foreground">Due (GL — Accounts Payable)</span>
                                       <span className="text-xl font-bold text-yellow-400 tabular-nums shrink-0">
                                         {formatCurrency(suppliers.find((x) => x.id === supplierContactId)?.dueGl ?? 0)}
                                       </span>
@@ -1143,7 +1143,7 @@ export function AddEntryV2({
                                   )}
                                   {operationalBalancesOk && (
                                     <div className="flex items-center justify-between gap-2">
-                                      <span className="text-xs text-gray-400">Due (open-doc — bills / opening)</span>
+                                      <span className="text-xs text-muted-foreground">Due (open-doc — bills / opening)</span>
                                       <span
                                         className={`text-xl font-bold tabular-nums shrink-0 ${glBalancesOk ? 'text-slate-300' : 'text-yellow-400'}`}
                                       >
@@ -1153,7 +1153,7 @@ export function AddEntryV2({
                                   )}
                                   {!glBalancesOk && !operationalBalancesOk && (
                                     <div className="flex items-center justify-between gap-2">
-                                      <span className="text-xs text-gray-400">{selectedPartyLabel.dueLabel}</span>
+                                      <span className="text-xs text-muted-foreground">{selectedPartyLabel.dueLabel}</span>
                                       <span className="text-xl font-bold text-yellow-400 tabular-nums">{formatCurrency(selectedPartyDue ?? 0)}</span>
                                     </div>
                                   )}
@@ -1182,9 +1182,9 @@ export function AddEntryV2({
                         )}
 
                         {entryType === 'worker_payment' && selectedPartyLabel && (
-                          <div className="bg-gradient-to-br from-gray-950/80 to-gray-900/50 border border-gray-800 rounded-xl p-4">
+                          <div className="bg-gradient-to-br from-gray-950/80 to-gray-900/50 border border-border rounded-xl p-4">
                             <div className="flex items-center justify-between mb-3">
-                              <span className="text-xs font-medium text-gray-400">{selectedPartyLabel.entity} details</span>
+                              <span className="text-xs font-medium text-muted-foreground">{selectedPartyLabel.entity} details</span>
                               <Badge variant="outline" className="border-violet-500/40 text-violet-300 bg-violet-500/10">
                                 {selectedPartyLabel.badge}
                               </Badge>
@@ -1210,15 +1210,15 @@ export function AddEntryV2({
                                   </option>
                                 ))}
                               </select>
-                              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
+                              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" size={18} />
                             </div>
                             {workerId && (
-                              <div className="mt-4 pt-4 border-t border-gray-800 space-y-2">
-                                <p className="text-lg font-bold text-white">{workerName}</p>
-                                <div className="space-y-2 pt-2 border-t border-gray-800">
+                              <div className="mt-4 pt-4 border-t border-border space-y-2">
+                                <p className="text-lg font-bold text-foreground">{workerName}</p>
+                                <div className="space-y-2 pt-2 border-t border-border">
                                   {glBalancesOk && (
                                     <div className="flex items-center justify-between gap-2">
-                                      <span className="text-xs text-gray-400">Due (GL — worker payable / advance)</span>
+                                      <span className="text-xs text-muted-foreground">Due (GL — worker payable / advance)</span>
                                       <span className="text-xl font-bold text-yellow-400 tabular-nums shrink-0">
                                         {formatCurrency(workers.find((x) => x.id === workerId)?.dueGl ?? 0)}
                                       </span>
@@ -1226,7 +1226,7 @@ export function AddEntryV2({
                                   )}
                                   {operationalBalancesOk && (
                                     <div className="flex items-center justify-between gap-2">
-                                      <span className="text-xs text-gray-400">Due (open-doc — studio / opening)</span>
+                                      <span className="text-xs text-muted-foreground">Due (open-doc — studio / opening)</span>
                                       <span
                                         className={`text-xl font-bold tabular-nums shrink-0 ${glBalancesOk ? 'text-slate-300' : 'text-yellow-400'}`}
                                       >
@@ -1236,7 +1236,7 @@ export function AddEntryV2({
                                   )}
                                   {!glBalancesOk && !operationalBalancesOk && (
                                     <div className="flex items-center justify-between gap-2">
-                                      <span className="text-xs text-gray-400">{selectedPartyLabel.dueLabel}</span>
+                                      <span className="text-xs text-muted-foreground">{selectedPartyLabel.dueLabel}</span>
                                       <span className="text-xl font-bold text-yellow-400 tabular-nums">{formatCurrency(selectedPartyDue ?? 0)}</span>
                                     </div>
                                   )}
@@ -1265,9 +1265,9 @@ export function AddEntryV2({
                         )}
 
                         {entryType === 'courier_payment' && selectedPartyLabel && (
-                          <div className="bg-gradient-to-br from-gray-950/80 to-gray-900/50 border border-gray-800 rounded-xl p-4">
+                          <div className="bg-gradient-to-br from-gray-950/80 to-gray-900/50 border border-border rounded-xl p-4">
                             <div className="flex items-center justify-between mb-3">
-                              <span className="text-xs font-medium text-gray-400">{selectedPartyLabel.entity} details</span>
+                              <span className="text-xs font-medium text-muted-foreground">{selectedPartyLabel.entity} details</span>
                               <Badge variant="outline" className="border-cyan-500/40 text-cyan-300 bg-cyan-500/10">
                                 {selectedPartyLabel.badge}
                               </Badge>
@@ -1295,15 +1295,15 @@ export function AddEntryV2({
                                   </option>
                                 ))}
                               </select>
-                              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
+                              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" size={18} />
                             </div>
                             {courierId && (
-                              <div className="mt-4 pt-4 border-t border-gray-800 space-y-2">
-                                <p className="text-lg font-bold text-white">{courierName}</p>
-                                <div className="space-y-2 pt-2 border-t border-gray-800">
+                              <div className="mt-4 pt-4 border-t border-border space-y-2">
+                                <p className="text-lg font-bold text-foreground">{courierName}</p>
+                                <div className="space-y-2 pt-2 border-t border-border">
                                   {glBalancesOk && (
                                     <div className="flex items-center justify-between gap-2">
-                                      <span className="text-xs text-gray-400">Due (GL — AP for linked contact)</span>
+                                      <span className="text-xs text-muted-foreground">Due (GL — AP for linked contact)</span>
                                       <span className="text-xl font-bold text-yellow-400 tabular-nums shrink-0">
                                         {formatCurrency(couriers.find((x) => x.id === courierId)?.dueGl ?? 0)}
                                       </span>
@@ -1311,7 +1311,7 @@ export function AddEntryV2({
                                   )}
                                   {operationalBalancesOk && (
                                     <div className="flex items-center justify-between gap-2">
-                                      <span className="text-xs text-gray-400">Due (open-doc AP)</span>
+                                      <span className="text-xs text-muted-foreground">Due (open-doc AP)</span>
                                       <span
                                         className={`text-xl font-bold tabular-nums shrink-0 ${glBalancesOk ? 'text-slate-300' : 'text-yellow-400'}`}
                                       >
@@ -1321,7 +1321,7 @@ export function AddEntryV2({
                                   )}
                                   {!glBalancesOk && !operationalBalancesOk && (
                                     <div className="flex items-center justify-between gap-2">
-                                      <span className="text-xs text-gray-400">{selectedPartyLabel.dueLabel}</span>
+                                      <span className="text-xs text-muted-foreground">{selectedPartyLabel.dueLabel}</span>
                                       <span className="text-xl font-bold text-yellow-400 tabular-nums">{formatCurrency(selectedPartyDue ?? 0)}</span>
                                     </div>
                                   )}
@@ -1339,7 +1339,7 @@ export function AddEntryV2({
                                   </p>
                                 )}
                                 {!(couriers.find((c) => c.id === courierId)?.contact_id) && (selectedPartyDue ?? 0) === 0 && (
-                                  <p className="text-[10px] text-gray-500">Link courier to supplier contact for AP due from summaries.</p>
+                                  <p className="text-[10px] text-muted-foreground">Link courier to supplier contact for AP due from summaries.</p>
                                 )}
                               </div>
                             )}
@@ -1383,9 +1383,9 @@ export function AddEntryV2({
                               />
                             </div>
                             {(debitAccountId || creditAccountId) && (
-                              <div className="mt-3 space-y-2 rounded-lg border border-gray-800 bg-gray-900/50 px-3 py-2 text-xs">
+                              <div className="mt-3 space-y-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs">
                                 {debitAccountId && (
-                                  <div className="flex justify-between gap-2 text-gray-400">
+                                  <div className="flex justify-between gap-2 text-muted-foreground">
                                     <span>Debit (GL balance)</span>
                                     <span className="font-mono text-emerald-400 tabular-nums">
                                       {formatCurrency(glBalanceByAccountId.get(debitAccountId) ?? 0)}
@@ -1393,7 +1393,7 @@ export function AddEntryV2({
                                   </div>
                                 )}
                                 {creditAccountId && (
-                                  <div className="flex justify-between gap-2 text-gray-400">
+                                  <div className="flex justify-between gap-2 text-muted-foreground">
                                     <span>Credit (GL balance)</span>
                                     <span className="font-mono text-emerald-400 tabular-nums">
                                       {formatCurrency(glBalanceByAccountId.get(creditAccountId) ?? 0)}
@@ -1417,7 +1417,7 @@ export function AddEntryV2({
                                   </option>
                                 ))}
                               </select>
-                              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
+                              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" size={18} />
                             </div>
                             {isExpenseSalary && (
                               <>
@@ -1439,7 +1439,7 @@ export function AddEntryV2({
                                       </option>
                                     ))}
                                   </select>
-                                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
+                                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" size={18} />
                                 </div>
                                 <div className="grid grid-cols-2 gap-3 mb-4">
                                   <div>
@@ -1462,7 +1462,7 @@ export function AddEntryV2({
                             Amount <span className="text-red-400">*</span>
                           </Label>
                           <div className="relative">
-                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 text-lg font-semibold">{currencyPrefix}</span>
+                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground text-lg font-semibold">{currencyPrefix}</span>
                             <input
                               type="number"
                               min={0}
@@ -1470,7 +1470,7 @@ export function AddEntryV2({
                               value={amount === 0 ? '' : amount}
                               onChange={(e) => setAmount(parseFloat(e.target.value) || 0)}
                               placeholder="0.00"
-                              className="w-full bg-gray-900 border-2 border-gray-700 rounded-lg pl-14 pr-4 py-3 text-white text-xl font-bold placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors"
+                              className="w-full bg-card border-2 border-border rounded-lg pl-14 pr-4 py-3 text-foreground text-xl font-bold placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors"
                             />
                           </div>
                           {entryType === 'customer_receipt' &&
@@ -1479,8 +1479,8 @@ export function AddEntryV2({
                             (selectedPartyDue ?? 0) > 0 &&
                             amount <= (selectedPartyDue ?? 0) && (
                               <div className="flex items-center justify-between mt-2 text-xs">
-                                <span className="text-gray-400">Remaining receivable (after this)</span>
-                                <span className="text-green-400 font-semibold">{formatCurrency(Math.max(0, (selectedPartyDue ?? 0) - amount))}</span>
+                                <span className="text-muted-foreground">Remaining receivable (after this)</span>
+                                <span className="text-[var(--erp-money-positive)] font-semibold">{formatCurrency(Math.max(0, (selectedPartyDue ?? 0) - amount))}</span>
                               </div>
                             )}
                         </div>
@@ -1501,13 +1501,13 @@ export function AddEntryV2({
                                   type="button"
                                   onClick={() => setPaymentMethod(m)}
                                   className={`flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-lg border-2 transition-all ${
-                                    paymentMethod === m ? 'border-blue-500 bg-blue-500/10' : 'border-gray-700 bg-gray-900/50 hover:border-gray-600'
+                                    paymentMethod === m ? 'border-blue-500 bg-blue-500/10' : 'border-border bg-muted/40 hover:border-gray-600'
                                   }`}
                                 >
-                                  {m === 'Cash' && <Wallet size={18} className={paymentMethod === m ? 'text-blue-400' : 'text-gray-400'} />}
-                                  {m === 'Bank' && <Building2 size={18} className={paymentMethod === m ? 'text-blue-400' : 'text-gray-400'} />}
-                                  {m === 'Mobile Wallet' && <CreditCard size={18} className={paymentMethod === m ? 'text-blue-400' : 'text-gray-400'} />}
-                                  <span className={`text-xs font-medium ${paymentMethod === m ? 'text-blue-400' : 'text-gray-400'}`}>
+                                  {m === 'Cash' && <Wallet size={18} className={paymentMethod === m ? 'text-blue-400' : 'text-muted-foreground'} />}
+                                  {m === 'Bank' && <Building2 size={18} className={paymentMethod === m ? 'text-blue-400' : 'text-muted-foreground'} />}
+                                  {m === 'Mobile Wallet' && <CreditCard size={18} className={paymentMethod === m ? 'text-blue-400' : 'text-muted-foreground'} />}
+                                  <span className={`text-xs font-medium ${paymentMethod === m ? 'text-blue-400' : 'text-muted-foreground'}`}>
                                     {m === 'Mobile Wallet' ? 'Wallet' : m}
                                   </span>
                                 </button>
@@ -1553,8 +1553,8 @@ export function AddEntryV2({
                                 if (amount > bal && amount > 0) {
                                   return (
                                     <div className="space-y-2 mt-3">
-                                      <div className="flex items-center justify-between rounded-lg border border-gray-800 bg-gray-900/80 px-3 py-2">
-                                        <span className="text-xs text-gray-400">Account balance (GL)</span>
+                                      <div className="flex items-center justify-between rounded-lg border border-border bg-card px-3 py-2">
+                                        <span className="text-xs text-muted-foreground">Account balance (GL)</span>
                                         <span className="text-sm font-bold text-emerald-400 tabular-nums">{formatCurrency(bal)}</span>
                                       </div>
                                       <div className="flex items-center gap-2 text-orange-400 text-xs bg-orange-500/10 border border-orange-500/20 rounded-lg p-2">
@@ -1566,11 +1566,11 @@ export function AddEntryV2({
                                 }
                                 return (
                                   <div className="mt-3 space-y-2">
-                                    <div className="text-xs text-gray-400">
-                                      Selected: <span className="text-white font-medium">{acc.name}</span>
+                                    <div className="text-xs text-muted-foreground">
+                                      Selected: <span className="text-foreground font-medium">{acc.name}</span>
                                     </div>
                                     <div className="flex items-center justify-between rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2">
-                                      <span className="text-xs text-gray-400">Account balance (GL)</span>
+                                      <span className="text-xs text-muted-foreground">Account balance (GL)</span>
                                       <span className="text-base font-bold text-emerald-400 tabular-nums">{formatCurrency(bal)}</span>
                                     </div>
                                   </div>
@@ -1597,12 +1597,12 @@ export function AddEntryV2({
                           <div className={cardInnerClass}>
                             <Label className={labelClass}>Attachments (Optional)</Label>
                             <label className="block cursor-pointer">
-                              <div className="border-2 border-dashed border-gray-700 rounded-lg p-4 hover:border-blue-500 hover:bg-gray-900/50 transition-all text-center">
-                                <Upload className="mx-auto mb-2 text-gray-500" size={24} />
-                                <p className="text-xs text-gray-400 mb-0.5">
+                              <div className="border-2 border-dashed border-border rounded-lg p-4 hover:border-blue-500 hover:bg-muted/40 transition-all text-center">
+                                <Upload className="mx-auto mb-2 text-muted-foreground" size={24} />
+                                <p className="text-xs text-muted-foreground mb-0.5">
                                   <span className="text-blue-400 font-medium">Click to upload</span> or drag and drop
                                 </p>
-                                <p className="text-xs text-gray-600">{isProcessingEntryAttachments ? 'Compressing…' : 'PDF, PNG, JPG up to 10MB'}</p>
+                                <p className="text-xs text-muted-foreground">{isProcessingEntryAttachments ? 'Compressing…' : 'PDF, PNG, JPG up to 10MB'}</p>
                               </div>
                               <input
                                 type="file"
@@ -1633,13 +1633,13 @@ export function AddEntryV2({
                                 {entryAttachmentFiles.map((file, index) => (
                                   <div
                                     key={`${file.name}-${index}`}
-                                    className="flex items-center justify-between bg-gray-900 border border-gray-700 rounded-lg p-2"
+                                    className="flex items-center justify-between bg-card border border-border rounded-lg p-2"
                                   >
                                     <div className="flex items-center gap-2 flex-1 min-w-0">
                                       <FileText className="text-blue-400 flex-shrink-0" size={16} />
                                       <div className="min-w-0 flex-1">
-                                        <p className="text-xs text-white font-medium truncate">{file.name}</p>
-                                        <p className="text-xs text-gray-500">{(file.size / 1024).toFixed(1)} KB</p>
+                                        <p className="text-xs text-foreground font-medium truncate">{file.name}</p>
+                                        <p className="text-xs text-muted-foreground">{(file.size / 1024).toFixed(1)} KB</p>
                                       </div>
                                     </div>
                                     <button
@@ -1664,15 +1664,15 @@ export function AddEntryV2({
                             onChange={(e) => setDescription(e.target.value)}
                             placeholder="Optional remarks…"
                             rows={5}
-                            className="w-full bg-gray-900 border-2 border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors resize-none min-h-[120px]"
+                            className="w-full bg-card border-2 border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors resize-none min-h-[120px]"
                           />
                         </div>
 
                         <div className="bg-gradient-to-br from-blue-950/30 to-gray-900/50 border border-blue-900/30 rounded-xl p-4 flex items-start gap-3">
                           <Info className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
                           <div className="text-sm">
-                            <p className="font-semibold text-white mb-1.5">Posting preview</p>
-                            <ul className="text-gray-400 space-y-1 text-xs">
+                            <p className="font-semibold text-foreground mb-1.5">Posting preview</p>
+                            <ul className="text-muted-foreground space-y-1 text-xs">
                               <li className="flex items-center gap-2">
                                 <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
                                 {preview.paymentRow ? 'Payments row (Roznamcha)' : 'No payments row'}
@@ -1693,19 +1693,19 @@ export function AddEntryV2({
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between gap-3 pt-5 mt-5 border-t border-gray-800">
-                      <div className="text-xs text-gray-400 min-w-0">
+                    <div className="flex items-center justify-between gap-3 pt-5 mt-5 border-t border-border">
+                      <div className="text-xs text-muted-foreground min-w-0">
                         {entryAttachmentFiles.length > 0 ? (
                           <span className="flex items-center gap-1.5">
                             <FileText size={12} />
                             {entryAttachmentFiles.length} new file{entryAttachmentFiles.length > 1 ? 's' : ''}
                           </span>
                         ) : (
-                          <p className="text-gray-500 hidden sm:block">Esc to close · double-entry enforced in service layer</p>
+                          <p className="text-muted-foreground hidden sm:block">Esc to close · double-entry enforced in service layer</p>
                         )}
                       </div>
                       <div className="flex gap-3 ml-auto shrink-0">
-                        <Button variant="outline" className="border-gray-700 text-gray-300 hover:bg-gray-800 px-5" onClick={onClose} disabled={saving}>
+                        <Button variant="outline" className="border-border text-muted-foreground hover:bg-muted px-5" onClick={onClose} disabled={saving}>
                           Cancel
                         </Button>
                         <Button className="bg-blue-600 hover:bg-blue-500 text-white min-w-[140px] font-semibold" onClick={handleSubmit} disabled={saving || !canSave || Boolean(editLoadError)}>

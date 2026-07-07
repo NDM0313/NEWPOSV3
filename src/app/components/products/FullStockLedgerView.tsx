@@ -7,13 +7,20 @@ import { Label } from '../ui/label';
 import { productService } from '@/app/services/productService';
 import { branchService, Branch } from '@/app/services/branchService';
 import { useSupabase } from '@/app/context/SupabaseContext';
-import { useSales } from '@/app/context/SalesContext';
-import { usePurchases } from '@/app/context/PurchaseContext';
 import { useSettings } from '@/app/context/SettingsContext';
 import { toast } from 'sonner';
 import { cn } from '../ui/utils';
 import { formatStockReference } from '@/app/utils/formatters';
 import { formatRelativeListDateTime } from '@/app/utils/localDate';
+import { formatQty } from '@/app/utils/quantity';
+import {
+  buildStockMovementEnrichment,
+  isPurchaseReferenceType,
+  isSaleReferenceType,
+  resolveMovementInvoiceNo,
+  resolveMovementPartyName,
+  type StockMovementEnrichment,
+} from '@/app/lib/stockMovementReferenceEnrichment';
 import { ViewSaleDetailsDrawer } from '../sales/ViewSaleDetailsDrawer';
 import { ViewPurchaseDetailsDrawer } from '../purchases/ViewPurchaseDetailsDrawer';
 import { StockLedgerClassicPrintView } from './StockLedgerClassicPrintView';
@@ -75,8 +82,6 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
   currentStock,
 }) => {
   const { companyId, branchId: contextBranchId } = useSupabase();
-  const { getSaleById } = useSales();
-  const { getPurchaseById } = usePurchases();
   const { canManageProducts } = useCheckPermission();
   const { inventorySettings, modules } = useSettings();
   const enablePacking = inventorySettings.enablePacking ?? false;
@@ -99,7 +104,8 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
   const [viewSaleOpen, setViewSaleOpen] = useState(false);
   const [viewPurchaseOpen, setViewPurchaseOpen] = useState(false);
   const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null);
-  const [selectedPurchase, setSelectedPurchase] = useState<any>(null);
+  const [selectedPurchaseId, setSelectedPurchaseId] = useState<string | null>(null);
+  const [refEnrichment, setRefEnrichment] = useState<StockMovementEnrichment | null>(null);
   const [printOrientation, setPrintOrientation] = useState<'portrait' | 'landscape'>('landscape');
   const [showClassicPrintView, setShowClassicPrintView] = useState(false);
   const [companyName, setCompanyName] = useState<string>('');
@@ -305,6 +311,13 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
       });
       
       setMovements(filteredData);
+      try {
+        const enrichment = await buildStockMovementEnrichment(filteredData);
+        setRefEnrichment(enrichment);
+      } catch (enrichErr) {
+        console.warn('[FULL LEDGER] Reference enrichment failed:', enrichErr);
+        setRefEnrichment(null);
+      }
 
       // Calculate running balance - START FROM 0 (like normal ledger)
       // Ledger format: Opening Balance (0) + All Movements = Current Balance
@@ -543,7 +556,7 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
     
     // Purchase/Return (usually IN)
     if (typeLower === 'purchase' || typeLower === 'return' || typeLower === 'sell_return' || typeLower === 'rental_return') {
-      return isIn ? 'text-green-400 bg-green-900/20 border-green-900/50' : 'text-red-400 bg-red-900/20 border-red-900/50';
+      return isIn ? 'text-[var(--erp-money-positive)] bg-green-900/20 border-green-900/50' : 'text-red-400 bg-red-900/20 border-red-900/50';
     }
     
     // Sale/Purchase Return (usually OUT)
@@ -556,16 +569,16 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
       return 'text-purple-400 bg-purple-900/20 border-purple-900/50';
     }
     
-    return 'text-gray-400 bg-gray-900/20 border-gray-800';
+    return 'text-muted-foreground bg-card/20 border-border';
   };
   
   // Handle reference click to open sale/purchase detail or show adjustment info
   const handleReferenceClick = async (movement: StockMovement) => {
-    const refType = movement.reference_type?.toLowerCase();
+    const refType = movement.reference_type?.toLowerCase() ?? '';
     const refId = movement.reference_id;
 
     if (!refId) {
-      if (refType?.includes('adjustment') || refType?.includes('audit')) {
+      if (refType.includes('adjustment') || refType.includes('audit')) {
         toast.info(movement.notes ? `Adjustment: ${movement.notes}` : 'Stock adjustment – no linked document.');
       } else {
         toast.info('This movement has no linked document to open.');
@@ -574,29 +587,21 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
     }
 
     try {
-      if (refType === 'sale') {
-        // Try to get sale from context
-        const sale = getSaleById(refId);
-        if (sale) {
-          setSelectedSaleId(sale.id);
-          setViewSaleOpen(true);
-        } else {
-          toast.info('Opening sale record...');
-          // Could fetch from service if needed
-        }
-      } else if (refType === 'purchase') {
-        // Try to get purchase from context
-        const purchase = getPurchaseById(refId);
-        if (purchase) {
-          setSelectedPurchase(purchase);
-          setViewPurchaseOpen(true);
-        } else {
-          toast.info('Opening purchase record...');
-          // Could fetch from service if needed
-        }
-      } else {
-        toast.info(`Reference type: ${refType || 'N/A'}`);
+      if (isSaleReferenceType(refType)) {
+        setSelectedSaleId(refId);
+        setViewSaleOpen(true);
+        return;
       }
+      if (isPurchaseReferenceType(refType)) {
+        setSelectedPurchaseId(refId);
+        setViewPurchaseOpen(true);
+        return;
+      }
+      if (refType.includes('adjustment') || refType.includes('audit')) {
+        toast.info(movement.notes ? `Adjustment: ${movement.notes}` : 'Adjustment – no additional details.');
+        return;
+      }
+      toast.info(`Reference type: ${refType || 'N/A'}`);
     } catch (error) {
       console.error('[FULL LEDGER] Error opening reference:', error);
       toast.error('Failed to open reference');
@@ -659,8 +664,7 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
                 currentBalance: totals.currentBalance,
               }}
               getMovementTypeLabel={getMovementTypeLabel}
-              getSaleById={getSaleById}
-              getPurchaseById={getPurchaseById}
+              refEnrichment={refEnrichment}
               onClose={() => setShowClassicPrintView(false)}
               initialOrientation={printOrientation}
             />
@@ -669,26 +673,26 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
         </div>
       )}
       {!showClassicPrintView && (
-      <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-      <div className="relative bg-[#0B0F17] rounded-xl border border-gray-800 w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl animate-in slide-in-from-bottom-4 duration-300">
+      <div className="fixed inset-0 z-[60] bg-[var(--erp-overlay)] backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+      <div className="relative bg-background rounded-xl border border-border w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl animate-in slide-in-from-bottom-4 duration-300">
         {loading ? (
           <div
             className="absolute inset-0 z-[80] bg-black/50 backdrop-blur-[1px] flex flex-col items-center justify-center gap-3 pointer-events-auto"
             aria-busy
           >
             <Loader2 size={40} className="text-blue-400 animate-spin" />
-            <span className="text-sm text-gray-300">Loading ledger…</span>
+            <span className="text-sm text-muted-foreground">Loading ledger…</span>
           </div>
         ) : null}
         {/* Header */}
-        <div className="px-6 py-5 border-b border-gray-800 bg-[#111827] flex items-center justify-between shrink-0">
+        <div className="px-6 py-5 border-b border-border bg-background flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
               <FileText size={20} className="text-blue-500" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-white">Full Stock Ledger View</h2>
-              <p className="text-xs text-gray-400">
+              <h2 className="text-lg font-semibold text-foreground">Full Stock Ledger View</h2>
+              <p className="text-xs text-muted-foreground">
                 {productName} {productSku && `(${productSku})`}
                 {variationName && ` • ${variationName}`}
               </p>
@@ -699,7 +703,7 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
             size="icon"
             onClick={onClose}
             disabled={loading}
-            className="text-gray-400 hover:text-white hover:bg-gray-800 disabled:opacity-40 disabled:pointer-events-none"
+            className="text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-40 disabled:pointer-events-none"
           >
             <X size={20} />
           </Button>
@@ -707,15 +711,15 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
 
         {/* PART 2: Branch & Variation Filters */}
         {(variations.length > 0 || branches.length > 1) && (
-          <div className="px-6 py-4 border-b border-gray-800 bg-[#111827]/50 flex gap-4 shrink-0">
+          <div className="px-6 py-4 border-b border-border bg-background/50 flex gap-4 shrink-0">
             {variations.length > 0 && (
               <div className="flex-1">
-                <Label className="text-xs text-gray-400 mb-1.5 block">Variation</Label>
+                <Label className="text-xs text-muted-foreground mb-1.5 block">Variation</Label>
                 <Select
                   value={selectedVariationId || 'all'}
                   onValueChange={(value) => setSelectedVariationId(value === 'all' ? undefined : value)}
                 >
-                  <SelectTrigger className="h-9 bg-gray-900 border-gray-700 text-white text-sm">
+                  <SelectTrigger className="h-9 bg-popover border-border text-popover-foreground text-sm">
                     <SelectValue placeholder="All Variations" />
                   </SelectTrigger>
                   <SelectContent>
@@ -731,12 +735,12 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
             )}
             {branches.length > 1 && (
               <div className="flex-1">
-                <Label className="text-xs text-gray-400 mb-1.5 block">Branch / Location</Label>
+                <Label className="text-xs text-muted-foreground mb-1.5 block">Branch / Location</Label>
                 <Select
                   value={selectedBranchId || 'all'}
                   onValueChange={(value) => setSelectedBranchId(value === 'all' ? undefined : value)}
                 >
-                  <SelectTrigger className="h-9 bg-gray-900 border-gray-700 text-white text-sm">
+                  <SelectTrigger className="h-9 bg-popover border-border text-popover-foreground text-sm">
                     <SelectValue placeholder="All Branches" />
                   </SelectTrigger>
                   <SelectContent>
@@ -755,79 +759,79 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
 
         {/* PART 3: Top Summary Cards - Updated with proper breakdown */}
         <div className={cn(
-          "p-6 grid gap-4 border-b border-gray-800 bg-[#1F2937]/30",
+          "p-6 grid gap-4 border-b border-border bg-muted/40",
           rentalModuleEnabled ? "grid-cols-2 md:grid-cols-4 lg:grid-cols-5" : "grid-cols-2 md:grid-cols-4"
         )}>
-          <div className="bg-gray-900 border border-green-800 p-4 rounded-lg">
+          <div className="bg-card border border-green-800 p-4 rounded-lg">
             <div className="flex items-center gap-2 mb-2">
-              <ArrowDownRight size={16} className="text-green-400" />
-              <span className="text-xs text-gray-500 uppercase font-bold tracking-wider">Total Purchased</span>
+              <ArrowDownRight size={16} className="text-[var(--erp-money-positive)]" />
+              <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Total Purchased</span>
             </div>
-            <span className="text-2xl font-bold text-green-400">{totals.totalPurchased.toFixed(2)}</span>
+            <span className="text-2xl font-bold text-[var(--erp-money-positive)] tabular-nums">{formatQty(totals.totalPurchased)}</span>
             {enablePacking && (totals.totalPurchasedBox !== 0 || totals.totalPurchasedPiece !== 0) && (
-              <div className="text-xs text-gray-500 mt-1">
+              <div className="text-xs text-muted-foreground mt-1">
                 Box: {Math.round(totals.totalPurchasedBox)} · Pcs: {Math.round(totals.totalPurchasedPiece)}
               </div>
             )}
           </div>
-          <div className="bg-gray-900 border border-red-800 p-4 rounded-lg">
+          <div className="bg-card border border-red-800 p-4 rounded-lg">
             <div className="flex items-center gap-2 mb-2">
               <ArrowUpRight size={16} className="text-red-400" />
-              <span className="text-xs text-gray-500 uppercase font-bold tracking-wider">Total Sold</span>
+              <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Total Sold</span>
             </div>
-            <span className="text-2xl font-bold text-red-400">{totals.totalSold.toFixed(2)}</span>
+            <span className="text-2xl font-bold text-red-400 tabular-nums">{formatQty(totals.totalSold)}</span>
             {enablePacking && (totals.totalSoldBox !== 0 || totals.totalSoldPiece !== 0) && (
-              <div className="text-xs text-gray-500 mt-1">
+              <div className="text-xs text-muted-foreground mt-1">
                 Box: {Math.round(totals.totalSoldBox)} · Pcs: {Math.round(totals.totalSoldPiece)}
               </div>
             )}
           </div>
           {rentalModuleEnabled && (
-            <div className="bg-gray-900 border border-pink-800 p-4 rounded-lg">
+            <div className="bg-card border border-pink-800 p-4 rounded-lg">
               <div className="flex items-center gap-2 mb-2">
                 <Shirt size={16} className="text-pink-400" />
-                <span className="text-xs text-gray-500 uppercase font-bold tracking-wider">Total Rented</span>
+                <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Total Rented</span>
               </div>
-              <span className="text-2xl font-bold text-pink-400">{totals.totalRented.toFixed(2)}</span>
-              <div className="text-xs text-gray-500 mt-1">Qty rented out</div>
+              <span className="text-2xl font-bold text-pink-400 tabular-nums">{formatQty(totals.totalRented)}</span>
+              <div className="text-xs text-muted-foreground mt-1">Qty rented out</div>
             </div>
           )}
-          <div className="bg-gray-900 border border-yellow-800 p-4 rounded-lg">
+          <div className="bg-card border border-yellow-800 p-4 rounded-lg">
             <div className="flex items-center gap-2 mb-2">
               <Package size={16} className="text-yellow-400" />
-              <span className="text-xs text-gray-500 uppercase font-bold tracking-wider">Adjustments</span>
+              <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Adjustments</span>
             </div>
             <span className={cn(
               "text-2xl font-bold",
               totals.totalAdjustments >= 0 ? "text-yellow-400" : "text-orange-400"
             )}>
-              {totals.totalAdjustments >= 0 ? '+' : ''}{totals.totalAdjustments.toFixed(2)}
+              {totals.totalAdjustments >= 0 ? '+' : ''}{formatQty(totals.totalAdjustments)}
             </span>
-            <div className="text-xs text-gray-500 mt-1">
-              +{totals.totalAdjustmentPositive.toFixed(2)} / -{totals.totalAdjustmentNegative.toFixed(2)}
+            <div className="text-xs text-muted-foreground mt-1 tabular-nums">
+              +{formatQty(totals.totalAdjustmentPositive)} / -{formatQty(totals.totalAdjustmentNegative)}
             </div>
             {enablePacking && (totals.totalAdjustmentBox !== 0 || totals.totalAdjustmentPiece !== 0) && (
-              <div className="text-xs text-gray-500 mt-1">
+              <div className="text-xs text-muted-foreground mt-1">
                 Box: {(totals.totalAdjustmentBox >= 0 ? '+' : '') + Math.round(totals.totalAdjustmentBox)} · Pcs: {(totals.totalAdjustmentPiece >= 0 ? '+' : '') + Math.round(totals.totalAdjustmentPiece)}
               </div>
             )}
           </div>
-          <div className="bg-gray-900 border border-blue-800 p-4 rounded-lg relative overflow-hidden">
+          <div className="bg-card border border-blue-800 p-4 rounded-lg relative overflow-hidden">
             <div className="absolute inset-0 bg-blue-900/10 z-0"></div>
             <div className="flex items-center gap-2 mb-2 relative z-10">
               <FileText size={16} className="text-blue-400" />
               <span className="text-xs text-blue-300 uppercase font-bold tracking-wider">Current Stock</span>
             </div>
             <span className="text-2xl font-bold text-blue-400 relative z-10">
-              {totals.currentBalance.toFixed(2)}
+              {formatQty(totals.currentBalance)}
               {currentStock !== undefined && Math.abs(totals.currentBalance - currentStock) > 0.01 && (
-                <span className="text-xs text-yellow-400 ml-2 block mt-1">
-                  (Expected: {currentStock.toFixed(2)})
+                <span className="text-xs text-yellow-400 ml-2 block mt-1 tabular-nums">
+                  (Expected: {formatQty(currentStock)})
                 </span>
               )}
             </span>
             {enablePacking && (totals.currentBox !== 0 || totals.currentPiece !== 0) && (
-              <div className="text-xs text-gray-500 mt-1 relative z-10">
+              <div className="text-xs text-muted-foreground mt-1 relative z-10">
                 Box: {Math.round(totals.currentBox)} · Pcs: {Math.round(totals.currentPiece)}
               </div>
             )}
@@ -835,14 +839,14 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
         </div>
 
         {/* Table - scrollable area (up/down/left/right) */}
-        <div className="flex-1 min-h-0 bg-[#0B0F17] flex flex-col">
+        <div className="flex-1 min-h-0 bg-background flex flex-col">
           <div className="flex-1 min-h-0 overflow-auto p-6">
             {loading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 size={32} className="text-blue-500 animate-spin" />
               </div>
             ) : movements.length === 0 ? (
-              <div className="text-center py-12 text-gray-400">
+              <div className="text-center py-12 text-muted-foreground">
                 <FileText size={48} className="mx-auto mb-4 opacity-50" />
                 <p>No stock movements found</p>
                 {productSku?.toUpperCase().startsWith('CUSTOM-') ? (
@@ -852,17 +856,17 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
                       here when the bespoke work order is completed (reference{' '}
                       <span className="font-mono">bespoke_work_order</span>).
                     </p>
-                    <p className="text-gray-500">
-                      Fabric meters post separately on the <strong className="text-gray-400">fabric product</strong>{' '}
+                    <p className="text-muted-foreground">
+                      Fabric meters post separately on the <strong className="text-muted-foreground">fabric product</strong>{' '}
                       ledger (e.g. Design 3005) as OUT (−). If empty after WO complete, use Post stock on the work order
                       or re-save the sale so fabric lines are linked.
                     </p>
                   </div>
                 ) : (
-                  <div className="text-xs mt-2 text-gray-500 max-w-md mx-auto space-y-1">
+                  <div className="text-xs mt-2 text-muted-foreground max-w-md mx-auto space-y-1">
                     <p>No movements in selected filters.</p>
-                    <p>Try branch <strong className="text-gray-400">All branches</strong> and variation{' '}
-                      <strong className="text-gray-400">All</strong> (movements with no variation are hidden when one variation is selected).</p>
+                    <p>Try branch <strong className="text-muted-foreground">All branches</strong> and variation{' '}
+                      <strong className="text-muted-foreground">All</strong> (movements with no variation are hidden when one variation is selected).</p>
                     {selectedVariationId && (
                       <p className="text-amber-500/80">A specific variation is selected — switch to All variations if stock still looks empty.</p>
                     )}
@@ -872,21 +876,21 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="sticky top-0 bg-[#0B0F17] z-10">
-                    <tr className="border-b border-gray-800">
-                      <th className="text-left py-3 px-4 text-gray-400 font-semibold">Date & Time</th>
-                      <th className="text-left py-3 px-4 text-gray-400 font-semibold">Type</th>
-                      <th className="text-right py-3 px-4 text-gray-400 font-semibold">Quantity Change</th>
-                      {enablePacking && <th className="text-right py-3 px-4 text-gray-400 font-semibold">Box</th>}
-                      {enablePacking && <th className="text-right py-3 px-4 text-gray-400 font-semibold">Pcs</th>}
-                      {enablePacking && <th className="text-right py-3 px-4 text-gray-400 font-semibold">Available Box</th>}
-                      {enablePacking && <th className="text-right py-3 px-4 text-gray-400 font-semibold">Available Pcs</th>}
-                      <th className="text-right py-3 px-4 text-gray-400 font-semibold">New Quantity</th>
-                      <th className="text-left py-3 px-4 text-gray-400 font-semibold">Reference No</th>
-                      <th className="text-left py-3 px-4 text-gray-400 font-semibold">Customer/Supplier</th>
-                      <th className="text-left py-3 px-4 text-gray-400 font-semibold">Notes</th>
+                  <thead className="sticky top-0 bg-background z-10">
+                    <tr className="border-b border-border">
+                      <th className="text-left py-3 px-4 text-muted-foreground font-semibold">Date & Time</th>
+                      <th className="text-left py-3 px-4 text-muted-foreground font-semibold">Type</th>
+                      <th className="text-right py-3 px-4 text-muted-foreground font-semibold">Quantity Change</th>
+                      {enablePacking && <th className="text-right py-3 px-4 text-muted-foreground font-semibold">Box</th>}
+                      {enablePacking && <th className="text-right py-3 px-4 text-muted-foreground font-semibold">Pcs</th>}
+                      {enablePacking && <th className="text-right py-3 px-4 text-muted-foreground font-semibold">Available Box</th>}
+                      {enablePacking && <th className="text-right py-3 px-4 text-muted-foreground font-semibold">Available Pcs</th>}
+                      <th className="text-right py-3 px-4 text-muted-foreground font-semibold">New Quantity</th>
+                      <th className="text-left py-3 px-4 text-muted-foreground font-semibold">Reference No</th>
+                      <th className="text-left py-3 px-4 text-muted-foreground font-semibold">Customer/Supplier</th>
+                      <th className="text-left py-3 px-4 text-muted-foreground font-semibold">Notes</th>
                       {canManageProducts ? (
-                        <th className="text-right py-3 px-4 text-gray-400 font-semibold w-[72px]">Actions</th>
+                        <th className="text-right py-3 px-4 text-muted-foreground font-semibold w-[72px]">Actions</th>
                       ) : null}
                     </tr>
                   </thead>
@@ -906,31 +910,28 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
                       const isBespokeFabric =
                         movement.reference_type?.toLowerCase() === 'bespoke_work_order' &&
                         !isBespokeParent;
-                      const sale =
-                        movement.reference_type &&
-                        movement.reference_id &&
-                        movement.reference_type.toLowerCase() === 'sale'
-                          ? getSaleById(movement.reference_id)
-                          : null;
-                      const purchase = movement.reference_type && movement.reference_id && movement.reference_type.toLowerCase().includes('purchase') ? getPurchaseById(movement.reference_id) : null;
+                      const enrichedInvoiceNo = resolveMovementInvoiceNo(refEnrichment, movement);
                       const referenceNo = formatStockReference({
                         referenceType: movement.reference_type,
                         referenceId: movement.reference_id,
                         movementId: movement.id,
-                        saleInvoiceNo: sale?.invoiceNo,
-                        purchaseInvoiceNo: purchase?.purchaseNo,
+                        saleInvoiceNo: isSaleReferenceType(movement.reference_type)
+                          ? enrichedInvoiceNo
+                          : undefined,
+                        purchaseInvoiceNo: isPurchaseReferenceType(movement.reference_type)
+                          ? enrichedInvoiceNo
+                          : undefined,
                         notes: movement.notes,
                       });
-                      let customerSupplierName = '-';
-                      if (sale) customerSupplierName = sale.customerName || sale.customer_name || '-';
-                      else if (purchase) customerSupplierName = purchase.supplierName || purchase.supplier_name || '-';
+                      const partyName = resolveMovementPartyName(refEnrichment, movement);
+                      const customerSupplierName = partyName || '-';
 
                       return (
                         <tr
                           key={movement.id}
-                          className="border-b border-gray-800/50 hover:bg-gray-900/30 transition-colors"
+                          className="border-b border-border/50 hover:bg-muted/30 transition-colors"
                         >
-                          <td className="py-3 px-4 text-gray-300 whitespace-nowrap">{formatDate(movement.created_at)}</td>
+                          <td className="py-3 px-4 text-muted-foreground whitespace-nowrap">{formatDate(movement.created_at)}</td>
                           <td className="py-3 px-4">
                             <Badge
                               variant="outline"
@@ -946,22 +947,22 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
                                   : getMovementTypeLabel(movementType)}
                             </Badge>
                           </td>
-                          <td className={cn('py-3 px-4 text-right font-mono font-semibold whitespace-nowrap', isIn ? 'text-green-400' : 'text-red-400')}>
-                            {isIn ? '+' : ''}{qty.toFixed(2)}
+                          <td className={cn('py-3 px-4 text-right font-mono font-semibold whitespace-nowrap', isIn ? 'text-[var(--erp-money-positive)]' : 'text-red-400')}>
+                            {isIn ? '+' : ''}{formatQty(qty)}
                           </td>
                           {enablePacking && (
-                            <td className="py-3 px-4 text-right font-mono text-gray-300 whitespace-nowrap">
+                            <td className="py-3 px-4 text-right font-mono text-muted-foreground whitespace-nowrap">
                               {(movement as any).box_change != null ? (
-                                <span className={(movement as any).box_change >= 0 ? 'text-green-400' : 'text-red-400'}>
+                                <span className={(movement as any).box_change >= 0 ? 'text-[var(--erp-money-positive)]' : 'text-red-400'}>
                                   {(movement as any).box_change >= 0 ? '+' : ''}{Math.round(Number((movement as any).box_change))}
                                 </span>
                               ) : '-'}
                             </td>
                           )}
                           {enablePacking && (
-                            <td className="py-3 px-4 text-right font-mono text-gray-300 whitespace-nowrap">
+                            <td className="py-3 px-4 text-right font-mono text-muted-foreground whitespace-nowrap">
                               {(movement as any).piece_change != null ? (
-                                <span className={(movement as any).piece_change >= 0 ? 'text-green-400' : 'text-red-400'}>
+                                <span className={(movement as any).piece_change >= 0 ? 'text-[var(--erp-money-positive)]' : 'text-red-400'}>
                                   {(movement as any).piece_change >= 0 ? '+' : ''}{Math.round(Number((movement as any).piece_change))}
                                 </span>
                               ) : '-'}
@@ -978,7 +979,7 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
                             </td>
                           )}
                           <td className="py-3 px-4 text-right font-mono font-semibold text-blue-400 whitespace-nowrap">
-                            {balance.toFixed(2)}
+                            {formatQty(balance)}
                           </td>
                           <td className="py-3 px-4">
                             {movement.reference_type && movement.reference_id ? (
@@ -991,13 +992,13 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
                                 <ExternalLink size={12} />
                               </button>
                             ) : (
-                              <span className="text-gray-400 text-xs">{referenceNo}</span>
+                              <span className="text-muted-foreground text-xs">{referenceNo}</span>
                             )}
                           </td>
-                          <td className="py-3 px-4 text-gray-300 text-xs max-w-[140px] truncate" title={customerSupplierName}>
+                          <td className="py-3 px-4 text-muted-foreground text-xs max-w-[140px] truncate" title={customerSupplierName}>
                             {customerSupplierName}
                           </td>
-                          <td className="py-3 px-4 text-gray-500 text-xs min-w-[120px] max-w-[280px] break-words" title={movement.notes || ''}>
+                          <td className="py-3 px-4 text-muted-foreground text-xs min-w-[120px] max-w-[280px] break-words" title={movement.notes || ''}>
                             {movement.notes || '-'}
                           </td>
                           {canManageProducts ? (
@@ -1016,7 +1017,7 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
                                   Edit
                                 </button>
                               ) : (
-                                <span className="text-gray-600 text-xs">—</span>
+                                <span className="text-muted-foreground text-xs">—</span>
                               )}
                             </td>
                           ) : null}
@@ -1031,16 +1032,16 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="p-5 border-t border-gray-800 bg-gray-950 flex items-center justify-between flex-wrap gap-2">
-          <div className="text-xs text-gray-500">
+        <div className="p-5 border-t border-border bg-input-background flex items-center justify-between flex-wrap gap-2">
+          <div className="text-xs text-muted-foreground">
             Total {movements.length} {movements.length === 1 ? 'movement' : 'movements'}
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <Button variant="outline" size="sm" className="border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800" onClick={() => setShowClassicPrintView(true)}>
+            <Button variant="outline" size="sm" className="border-border text-muted-foreground hover:text-foreground hover:bg-muted" onClick={() => setShowClassicPrintView(true)}>
               <Printer size={14} className="mr-2" />
               Print / Save as PDF
             </Button>
-            <Button variant="outline" size="sm" className="border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800" onClick={onClose}>
+            <Button variant="outline" size="sm" className="border-border text-muted-foreground hover:text-foreground hover:bg-muted" onClick={onClose}>
               Close
             </Button>
           </div>
@@ -1072,14 +1073,14 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
       )}
 
       {/* Purchase Details Drawer */}
-      {selectedPurchase && (
+      {selectedPurchaseId && (
         <ViewPurchaseDetailsDrawer
           isOpen={viewPurchaseOpen}
           onClose={() => {
             setViewPurchaseOpen(false);
-            setSelectedPurchase(null);
+            setSelectedPurchaseId(null);
           }}
-          purchase={selectedPurchase}
+          purchaseId={selectedPurchaseId}
         />
       )}
 

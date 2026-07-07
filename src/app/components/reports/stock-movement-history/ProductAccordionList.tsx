@@ -62,7 +62,7 @@ export function ProductAccordionList({
 
   if (!summaries.length) {
     return (
-      <div className={cn('rounded-lg border border-gray-800 p-8 text-center text-gray-400', className)}>
+      <div className={cn('rounded-lg border border-border p-8 text-center text-muted-foreground', className)}>
         No products match the selected filters.
       </div>
     );
@@ -87,28 +87,28 @@ export function ProductAccordionList({
         const isLoading = loadingId === s.productId;
 
         return (
-          <div key={s.productId} className="rounded-lg border border-gray-800 overflow-hidden">
+          <div key={s.productId} className="rounded-lg border border-border overflow-hidden">
             <button
               type="button"
               onClick={() => toggle(s.productId)}
-              className="w-full flex items-center gap-3 px-4 py-3 bg-gray-900/60 hover:bg-gray-900 text-left"
+              className="w-full flex items-center gap-3 px-4 py-3 bg-muted/60 hover:bg-card text-left"
             >
-              {isOpen ? <ChevronDown size={18} className="text-gray-400 shrink-0" /> : <ChevronRight size={18} className="text-gray-400 shrink-0" />}
+              {isOpen ? <ChevronDown size={18} className="text-muted-foreground shrink-0" /> : <ChevronRight size={18} className="text-muted-foreground shrink-0" />}
               <div className="flex-1 min-w-0">
-                <span className="font-medium text-white">{s.productName}</span>
-                <span className="text-gray-500 ml-2 text-sm">{s.sku}</span>
+                <span className="font-medium text-foreground">{s.productName}</span>
+                <span className="text-muted-foreground ml-2 text-sm">{s.sku}</span>
               </div>
-              <span className="text-sm text-gray-400">{s.movementCountInPeriod} mov.</span>
-              <span className="text-sm font-semibold text-white tabular-nums">{formatQty(s.currentStock)}</span>
+              <span className="text-sm text-muted-foreground">{s.movementCountInPeriod} mov.</span>
+              <span className="text-sm font-semibold text-foreground tabular-nums">{formatQty(s.currentStock)}</span>
               <span className={cn('text-xs px-2 py-0.5 rounded border', stockStatusBadgeClass(s.status))}>
                 {stockStatusBadgeLabel(s.status)}
               </span>
             </button>
 
             {isOpen && (
-              <div className="p-4 border-t border-gray-800 space-y-4 bg-gray-950/30">
+              <div className="p-4 border-t border-border space-y-4 bg-muted/30">
                 {isLoading && (
-                  <div className="flex items-center gap-2 text-gray-400 py-4">
+                  <div className="flex items-center gap-2 text-muted-foreground py-4">
                     <Loader2 className="animate-spin" size={18} />
                     Loading movements…
                   </div>

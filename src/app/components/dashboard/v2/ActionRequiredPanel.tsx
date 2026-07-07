@@ -115,7 +115,7 @@ function AlertCard({
   const hiddenCount = Math.max(0, alert.count - previewRows.length);
 
   return (
-    <div className="rounded-xl border border-[#374151] bg-[#1F2937] flex flex-col min-w-0 overflow-hidden">
+    <div className="rounded-xl border border-border bg-card flex flex-col min-w-0 overflow-hidden">
       <div className="p-4 flex flex-col gap-3 flex-1">
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-start gap-3 min-w-0">
@@ -124,35 +124,35 @@ function AlertCard({
             </div>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h4 className="text-white font-medium text-sm">{alert.title}</h4>
-                <span className="text-xs font-semibold text-[#9CA3AF] tabular-nums">{alert.count}</span>
+                <h4 className="text-foreground font-medium text-sm">{alert.title}</h4>
+                <span className="text-xs font-semibold text-muted-foreground tabular-nums">{alert.count}</span>
               </div>
-              <p className="text-[#9CA3AF] text-xs mt-0.5">{alert.message}</p>
+              <p className="text-muted-foreground text-xs mt-0.5">{alert.message}</p>
             </div>
           </div>
           <SeverityBadge severity={alert.severity} />
         </div>
 
         {previewRows.length ? (
-          <div className="rounded-lg border border-[#374151]/80 bg-[#111827]/60 overflow-hidden">
+          <div className="rounded-lg border border-border/80 bg-background/60 overflow-hidden">
             <table className="w-full text-xs">
               <thead>
-                <tr className="text-[#6B7280] border-b border-[#374151]/80">
+                <tr className="text-[#6B7280] border-b border-border/80">
                   <th className="px-3 py-1.5 text-left font-medium">{previewColumnLabel(alert.kind)}</th>
                   <th className="px-3 py-1.5 text-right font-medium">{previewDetailLabel(alert.kind)}</th>
                 </tr>
               </thead>
               <tbody>
                 {previewRows.map((row, i) => (
-                  <tr key={i} className="border-b border-[#374151]/40 last:border-0">
-                    <td className="px-3 py-1.5 text-white truncate max-w-[140px]">{row.label}</td>
-                    <td className="px-3 py-1.5 text-right text-[#9CA3AF] tabular-nums shrink-0">{row.detail}</td>
+                  <tr key={i} className="border-b border-border/40 last:border-0">
+                    <td className="px-3 py-1.5 text-foreground truncate max-w-[140px]">{row.label}</td>
+                    <td className="px-3 py-1.5 text-right text-muted-foreground tabular-nums shrink-0">{row.detail}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
             {hiddenCount > 0 ? (
-              <p className="px-3 py-1.5 text-[10px] text-[#6B7280] border-t border-[#374151]/80">
+              <p className="px-3 py-1.5 text-[10px] text-[#6B7280] border-t border-border/80">
                 +{hiddenCount} more
               </p>
             ) : null}
@@ -161,7 +161,7 @@ function AlertCard({
       </div>
 
       {alert.viewTarget && onNavigate ? (
-        <div className="px-4 py-2 border-t border-[#374151] bg-[#111827]/40">
+        <div className="px-4 py-2 border-t border-border bg-background/40">
           <button
             type="button"
             onClick={() => onNavigate(alert.viewTarget!)}
@@ -195,7 +195,7 @@ export const ActionRequiredPanel: React.FC<Props> = ({ alerts, onNavigate }) => 
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <AlertTriangle className="w-4 h-4 text-amber-400" />
-          <h3 className="text-white font-semibold">Action Required</h3>
+          <h3 className="text-foreground font-semibold">Action Required</h3>
         </div>
         <span className="text-xs font-medium px-2 py-1 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/30">
           {alerts.length} alert{alerts.length === 1 ? '' : 's'}

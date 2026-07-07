@@ -111,7 +111,7 @@ export function CashFlowUnifiedPreviewPanel({
       <UnifiedLedgerEngineBanner mode={engineState.mode} />
 
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs text-gray-400">Preview basis:</span>
+        <span className="text-xs text-muted-foreground">Preview basis:</span>
         {PREVIEW_BASIS_OPTIONS.map((b) => (
           <button
             key={b}
@@ -119,7 +119,7 @@ export function CashFlowUnifiedPreviewPanel({
             className={`text-xs px-2 py-1 rounded border ${
               previewBasis === b
                 ? 'border-amber-500 text-amber-100 bg-amber-500/10'
-                : 'border-gray-700 text-gray-400'
+                : 'border-border text-muted-foreground'
             }`}
             onClick={() => onPreviewBasisChange(b)}
           >
@@ -147,13 +147,13 @@ export function CashFlowUnifiedPreviewPanel({
         </p>
       ) : null}
 
-      {loading ? <p className="text-sm text-gray-400">Loading unified preview…</p> : null}
+      {loading ? <p className="text-sm text-muted-foreground">Loading unified preview…</p> : null}
       {error ? <p className="text-sm text-red-400">{error}</p> : null}
 
       {diff && loadResult?.preview ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-          <div className="rounded-lg border border-gray-800 bg-gray-900/40 p-3 space-y-2">
-            <p className="text-xs text-gray-500 uppercase tracking-wide">Legacy (main)</p>
+          <div className="rounded-lg border border-border bg-card/40 p-3 space-y-2">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide">Legacy (main)</p>
             <p className="flex justify-between">
               <span>Cash In</span>
               <span className="tabular-nums">{formatCurrency(diff.legacyCashIn)}</span>
@@ -171,8 +171,8 @@ export function CashFlowUnifiedPreviewPanel({
               <span className="tabular-nums">{formatCurrency(diff.legacyClosing)}</span>
             </p>
           </div>
-          <div className="rounded-lg border border-gray-800 bg-gray-900/40 p-3 space-y-2">
-            <p className="text-xs text-gray-500 uppercase tracking-wide">Unified preview</p>
+          <div className="rounded-lg border border-border bg-card/40 p-3 space-y-2">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide">Unified preview</p>
             <p className="flex justify-between">
               <span>Cash In</span>
               <span className="tabular-nums">{formatCurrency(diff.previewCashIn)}</span>
@@ -221,7 +221,7 @@ export function CashFlowUnifiedPreviewPanel({
               </li>
             ) : null}
           </ul>
-          <p className="mt-2 text-xs text-gray-400">
+          <p className="mt-2 text-xs text-muted-foreground">
             NEEDS_FINANCE_GOLDEN_RE_CAPTURE after deploy. Loader swap NOT APPROVED.
           </p>
         </div>

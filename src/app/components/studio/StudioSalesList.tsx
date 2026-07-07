@@ -202,22 +202,22 @@ export const StudioSalesList = () => {
   // Status badge color
   const getStatusBadge = (status: StudioStatus) => {
     switch (status) {
-      case 'Pending': return 'bg-gray-500/20 text-gray-400 border-gray-700';
+      case 'Pending': return 'bg-gray-500/20 text-muted-foreground border-border';
       case 'In Progress': return 'bg-blue-500/20 text-blue-400 border-blue-700';
-      case 'Completed': return 'bg-green-500/20 text-green-400 border-green-700';
-      default: return 'bg-gray-500/20 text-gray-400 border-gray-700';
+      case 'Completed': return 'bg-green-500/20 text-[var(--erp-money-positive)] border-green-700';
+      default: return 'bg-gray-500/20 text-muted-foreground border-border';
     }
   };
 
   // Stage badge color
   const getStageBadge = (stage: CurrentStage) => {
     switch (stage) {
-      case 'Not Started': return 'bg-gray-500/20 text-gray-400 border-gray-700';
+      case 'Not Started': return 'bg-gray-500/20 text-muted-foreground border-border';
       case 'Dyeing': return 'bg-purple-500/20 text-purple-400 border-purple-700';
       case 'Handwork': return 'bg-pink-500/20 text-pink-400 border-pink-700';
       case 'Stitching': return 'bg-orange-500/20 text-orange-400 border-orange-700';
-      case 'Ready': return 'bg-green-500/20 text-green-400 border-green-700';
-      default: return 'bg-gray-500/20 text-gray-400 border-gray-700';
+      case 'Ready': return 'bg-green-500/20 text-[var(--erp-money-positive)] border-green-700';
+      default: return 'bg-gray-500/20 text-muted-foreground border-border';
     }
   };
 
@@ -234,20 +234,20 @@ export const StudioSalesList = () => {
       {/* HEADER */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Studio Sales</h1>
-          <p className="text-sm text-gray-400 mt-1">Manage fabric processing & production</p>
+          <h1 className="text-2xl font-bold text-foreground">Studio Sales</h1>
+          <p className="text-sm text-muted-foreground mt-1">Manage fabric processing & production</p>
         </div>
       </div>
 
       {/* SEARCH & FILTER BAR */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+      <div className="bg-card border border-border rounded-xl p-4">
         <div className="flex items-center justify-between gap-4">
           {/* LEFT: Search + Rows Selector */}
           <div className="flex items-center gap-3 flex-1">
             <select
               value={rowsPerPage}
               onChange={(e) => setRowsPerPage(Number(e.target.value))}
-              className="bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm w-24"
+              className="bg-input-background border border-border rounded-lg px-3 py-2 text-foreground text-sm w-24"
             >
               <option value={25}>25</option>
               <option value={50}>50</option>
@@ -258,13 +258,13 @@ export const StudioSalesList = () => {
             </select>
 
             <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
               <Input
                 type="text"
                 placeholder="Search by invoice, customer, fabric..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 bg-gray-950 border-gray-700 text-white h-10"
+                className="pl-10 bg-input-background border-border text-foreground h-10"
               />
             </div>
           </div>
@@ -276,16 +276,16 @@ export const StudioSalesList = () => {
               size="sm"
               onClick={() => setFilterOpen(!filterOpen)}
               className={cn(
-                "border-gray-700 text-gray-300 h-10",
+                "border-border text-muted-foreground h-10",
                 hasActiveFilters && "border-pink-500 text-pink-400 bg-pink-900/10"
               )}
             >
               <Filter size={16} className="mr-2" />
               Filter
-              {hasActiveFilters && <Badge className="ml-2 bg-pink-500 text-white text-[10px] px-1.5 py-0">ON</Badge>}
+              {hasActiveFilters && <Badge className="ml-2 bg-pink-500 text-foreground text-[10px] px-1.5 py-0">ON</Badge>}
             </Button>
 
-            <Button variant="outline" size="sm" className="border-gray-700 text-gray-300 h-10">
+            <Button variant="outline" size="sm" className="border-border text-muted-foreground h-10">
               <Download size={16} className="mr-2" />
               Export
             </Button>
@@ -294,13 +294,13 @@ export const StudioSalesList = () => {
 
         {/* FILTER PANEL */}
         {filterOpen && (
-          <div className="mt-4 pt-4 border-t border-gray-800 grid grid-cols-3 gap-4">
+          <div className="mt-4 pt-4 border-t border-border grid grid-cols-3 gap-4">
             <div>
-              <label className="text-xs text-gray-500 uppercase font-medium mb-2 block">Status</label>
+              <label className="text-xs text-muted-foreground uppercase font-medium mb-2 block">Status</label>
               <select
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value as any)}
-                className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+                className="w-full bg-input-background border border-border rounded-lg px-3 py-2 text-foreground text-sm"
               >
                 <option value="all">All Status</option>
                 <option value="Pending">Pending</option>
@@ -310,11 +310,11 @@ export const StudioSalesList = () => {
             </div>
 
             <div>
-              <label className="text-xs text-gray-500 uppercase font-medium mb-2 block">Current Stage</label>
+              <label className="text-xs text-muted-foreground uppercase font-medium mb-2 block">Current Stage</label>
               <select
                 value={filterStage}
                 onChange={(e) => setFilterStage(e.target.value as any)}
-                className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+                className="w-full bg-input-background border border-border rounded-lg px-3 py-2 text-foreground text-sm"
               >
                 <option value="all">All Stages</option>
                 <option value="Not Started">Not Started</option>
@@ -329,7 +329,7 @@ export const StudioSalesList = () => {
               <Button
                 variant="outline"
                 onClick={clearFilters}
-                className="w-full border-gray-700 text-gray-300 hover:bg-gray-800"
+                className="w-full border-border text-muted-foreground hover:bg-muted"
               >
                 <X size={16} className="mr-2" />
                 Clear All
@@ -340,11 +340,11 @@ export const StudioSalesList = () => {
       </div>
 
       {/* TABLE */}
-      <div className="border border-gray-800 rounded-xl overflow-hidden bg-gray-900/50">
+      <div className="border border-border rounded-xl overflow-hidden bg-muted/40">
         {/* Results Header */}
-        <div className="bg-gray-900/70 px-4 py-2 border-b border-gray-800 flex items-center justify-between">
-          <p className="text-xs text-gray-400">
-            Showing <span className="text-white font-medium">{displayedSales.length}</span> of <span className="text-white font-medium">{filteredSales.length}</span> sales
+        <div className="bg-card/70 px-4 py-2 border-b border-border flex items-center justify-between">
+          <p className="text-xs text-muted-foreground">
+            Showing <span className="text-foreground font-medium">{displayedSales.length}</span> of <span className="text-foreground font-medium">{filteredSales.length}</span> sales
           </p>
           {hasActiveFilters && (
             <span className="text-xs text-pink-400 flex items-center gap-1">
@@ -357,7 +357,7 @@ export const StudioSalesList = () => {
         {/* Table */}
         <div className="overflow-auto max-h-[600px]">
           <table className="w-full text-sm text-left">
-            <thead className="bg-gray-900 text-gray-400 font-medium border-b border-gray-800 sticky top-0 z-10">
+            <thead className="bg-card text-muted-foreground font-medium border-b border-border sticky top-0 z-10">
               <tr>
                 <th className="p-4 font-medium">Invoice No</th>
                 <th className="p-4 font-medium">Customer</th>
@@ -370,10 +370,10 @@ export const StudioSalesList = () => {
                 <th className="p-4 font-medium text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-800">
+            <tbody className="divide-y divide-border">
               {displayedSales.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="p-8 text-center text-gray-500">
+                  <td colSpan={9} className="p-8 text-center text-muted-foreground">
                     No studio sales found
                   </td>
                 </tr>
@@ -386,7 +386,7 @@ export const StudioSalesList = () => {
                   <tr 
                     key={sale.id} 
                     className={cn(
-                      "hover:bg-gray-800/50 transition-colors cursor-pointer",
+                      "hover:bg-muted/50 transition-colors cursor-pointer",
                       isOverdue && "bg-red-900/10",
                       isNear && !isOverdue && "bg-yellow-900/10"
                     )}
@@ -395,28 +395,28 @@ export const StudioSalesList = () => {
                     {/* Invoice No */}
                     <td className="p-4">
                       <div className="flex items-center gap-2">
-                        <p className="font-mono font-bold text-white hover:text-blue-400 transition-colors">
+                        <p className="font-mono font-bold text-foreground hover:text-blue-400 transition-colors">
                           {sale.invoiceNo}
                         </p>
-                        <ExternalLink size={14} className="text-gray-500" />
+                        <ExternalLink size={14} className="text-muted-foreground" />
                       </div>
                     </td>
 
                     {/* Customer */}
                     <td className="p-4">
-                      <p className="text-white font-medium">{sale.customerName}</p>
-                      <p className="text-xs text-gray-500">{sale.customerMobile}</p>
+                      <p className="text-foreground font-medium">{sale.customerName}</p>
+                      <p className="text-xs text-muted-foreground">{sale.customerMobile}</p>
                     </td>
 
                     {/* Product / Fabric */}
                     <td className="p-4">
-                      <p className="text-white">{sale.productName}</p>
-                      <p className="text-xs text-gray-500">{sale.fabricType} ({sale.meters}m)</p>
+                      <p className="text-foreground">{sale.productName}</p>
+                      <p className="text-xs text-muted-foreground">{sale.fabricType} ({sale.meters}m)</p>
                     </td>
 
                     {/* Sale Date */}
                     <td className="p-4">
-                      <p className="text-gray-300">{format(new Date(sale.saleDate), 'dd MMM yyyy')}</p>
+                      <p className="text-muted-foreground">{format(new Date(sale.saleDate), 'dd MMM yyyy')}</p>
                     </td>
 
                     {/* Deadline */}
@@ -426,8 +426,8 @@ export const StudioSalesList = () => {
                         isOverdue && "text-red-400",
                         deadlineStatus === 'today' && "text-orange-400",
                         deadlineStatus === 'near' && "text-yellow-400",
-                        deadlineStatus === 'normal' && "text-gray-300",
-                        deadlineStatus === 'completed' && "text-green-400"
+                        deadlineStatus === 'normal' && "text-muted-foreground",
+                        deadlineStatus === 'completed' && "text-[var(--erp-money-positive)]"
                       )}>
                         {format(new Date(sale.deadline), 'dd MMM yyyy')}
                       </p>
@@ -455,7 +455,7 @@ export const StudioSalesList = () => {
 
                     {/* Amount */}
                     <td className="p-4 text-right">
-                      <p className="text-white font-semibold">Rs {sale.amount.toLocaleString()}</p>
+                      <p className="text-foreground font-semibold">Rs {sale.amount.toLocaleString()}</p>
                     </td>
 
                     {/* Actions */}
@@ -465,19 +465,19 @@ export const StudioSalesList = () => {
                           <Button 
                             variant="ghost" 
                             size="sm"
-                            className="h-8 w-8 p-0 text-gray-400 hover:text-white"
+                            className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
                             onClick={(e) => e.stopPropagation()}
                           >
                             <MoreVertical size={16} />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700">
+                        <DropdownMenuContent align="end" className="bg-card border-border">
                           <DropdownMenuItem 
                             onClick={(e) => {
                               e.stopPropagation();
                               handleViewDetail(sale);
                             }}
-                            className="text-gray-300 hover:text-white hover:bg-gray-800 cursor-pointer"
+                            className="text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer"
                           >
                             <Eye size={14} className="mr-2" />
                             View Detail

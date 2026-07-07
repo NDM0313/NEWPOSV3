@@ -50,9 +50,9 @@ function severityClasses(action: TransactionAction): string {
     case 'view_trace':
       return 'text-sky-300 hover:text-sky-200 hover:bg-sky-500/10';
     case 'view_audit':
-      return 'text-gray-300 hover:text-white hover:bg-gray-800/80';
+      return 'text-muted-foreground hover:text-foreground hover:bg-muted/80';
     default:
-      return 'text-gray-300 hover:text-white hover:bg-gray-800/80';
+      return 'text-muted-foreground hover:text-foreground hover:bg-muted/80';
   }
 }
 
@@ -71,7 +71,7 @@ function dropdownItemClasses(action: TransactionAction): string {
     case 'view_trace':
       return 'text-sky-300 focus:text-sky-200 focus:bg-sky-900/20';
     default:
-      return 'text-gray-200 focus:text-white focus:bg-gray-700';
+      return 'text-gray-200 focus:text-foreground focus:bg-muted';
   }
 }
 
@@ -115,7 +115,7 @@ export function TransactionActionPanel({
             variant="ghost"
             size="icon"
             className={cn(
-              'h-8 w-8 shrink-0 text-gray-500 hover:text-white data-[state=open]:bg-gray-800',
+              'h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground data-[state=open]:bg-muted',
               className,
             )}
             disabled={disabled}
@@ -127,7 +127,7 @@ export function TransactionActionPanel({
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="end"
-          className="min-w-[11rem] bg-[#1F2937] border-gray-700 text-white"
+          className="min-w-[11rem] bg-card border-border text-foreground"
           onClick={(e) => e.stopPropagation()}
         >
           {actions.map((action, idx) => {
@@ -136,7 +136,7 @@ export function TransactionActionPanel({
               firstDestructiveIdx > 0 && idx === firstDestructiveIdx;
             return (
               <React.Fragment key={action.id}>
-                {showSeparator ? <DropdownMenuSeparator className="bg-gray-700" /> : null}
+                {showSeparator ? <DropdownMenuSeparator className="bg-muted" /> : null}
                 <DropdownMenuItem
                   className={cn('cursor-pointer', dropdownItemClasses(action))}
                   disabled={disabled || action.disabled}
@@ -176,7 +176,7 @@ export function TransactionActionPanel({
                 'gap-1 border-red-500/40 text-red-300',
               isModal &&
                 action.severity === 'secondary' &&
-                'gap-1 border-gray-600/40 text-gray-300',
+                'gap-1 border-gray-600/40 text-muted-foreground',
               isModal && action.severity === 'default' && 'gap-1'
             )}
             disabled={disabled || action.disabled}

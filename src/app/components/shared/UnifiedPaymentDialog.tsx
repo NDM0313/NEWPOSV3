@@ -176,12 +176,12 @@ function ExistingAttachmentImage({ att }: { att: { url: string; name: string } }
     });
     return () => { cancelled = true; };
   }, [att.url]);
-  if (!resolvedUrl) return <div className="h-24 bg-gray-800 rounded animate-pulse" />;
+  if (!resolvedUrl) return <div className="h-24 bg-muted rounded animate-pulse" />;
   return (
     <img
       src={resolvedUrl}
       alt={att.name}
-      className="max-w-md max-h-48 w-auto h-auto object-contain rounded border border-gray-700"
+      className="max-w-md max-h-48 w-auto h-auto object-contain rounded border border-border"
     />
   );
 }
@@ -551,7 +551,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
           entityLabel: 'Customer',
           actionButton: 'Receive Payment',
           successMessage: 'Payment received successfully',
-          badge: 'bg-green-500/10 text-green-400 border-green-500/20',
+          badge: 'bg-green-500/10 text-[var(--erp-money-positive)] border-green-500/20',
           icon: '💵'
         };
       case 'worker':
@@ -1472,7 +1472,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
       />
       <div className="relative z-10 flex min-h-full items-center justify-center p-4 pointer-events-none">
         <div
-          className="bg-gray-900 border border-gray-700/80 rounded-2xl shadow-2xl shadow-black/40 w-full max-w-4xl pointer-events-auto animate-in zoom-in-95 duration-200 my-6 max-h-[92vh] overflow-y-auto ring-1 ring-white/5"
+          className="bg-card border border-border/80 rounded-2xl shadow-2xl shadow-black/40 w-full max-w-4xl pointer-events-auto animate-in zoom-in-95 duration-200 my-6 max-h-[92vh] overflow-y-auto ring-1 ring-white/5"
           role="dialog"
           aria-modal="true"
           aria-busy={isProcessing}
@@ -1482,21 +1482,21 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
           className="min-w-0 border-0 p-0 m-0 block w-full rounded-2xl disabled:opacity-90"
         >
           {/* Header */}
-          <div className="flex items-center justify-between p-5 border-b border-gray-800 bg-gradient-to-r from-gray-900 via-gray-900 to-gray-800">
+          <div className="flex items-center justify-between p-5 border-b border-border bg-gradient-to-r from-gray-900 via-gray-900 to-gray-800">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-xl">
                 {labels.icon}
               </div>
               <div>
-                <h2 className="text-lg font-bold text-white">
+                <h2 className="text-lg font-bold text-foreground">
                   {editMode ? 'Edit Payment' : labels.title}
                 </h2>
-                <p className="text-xs text-gray-400 mt-0.5">Complete transaction details</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Complete transaction details</p>
               </div>
             </div>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-white transition-colors p-1.5 hover:bg-gray-800 rounded-lg"
+              className="text-muted-foreground hover:text-foreground transition-colors p-1.5 hover:bg-muted rounded-lg"
             >
               <X size={20} />
             </button>
@@ -1515,31 +1515,31 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
               <div className="space-y-4">
                 
                 {/* Entity Info Card */}
-                <div className="bg-gradient-to-br from-gray-950/80 to-gray-900/50 border border-gray-800 rounded-xl p-4">
+                <div className="bg-gradient-to-br from-gray-950/80 to-gray-900/50 border border-border rounded-xl p-4">
                   <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs font-medium text-gray-400">{labels.entityLabel} Details</span>
+                    <span className="text-xs font-medium text-muted-foreground">{labels.entityLabel} Details</span>
                     <Badge variant="outline" className={labels.badge}>
                       {context.toUpperCase()}
                     </Badge>
                   </div>
-                  <p className="text-lg font-bold text-white mb-1">{entityName}</p>
+                  <p className="text-lg font-bold text-foreground mb-1">{entityName}</p>
                   {editMode ? (
                     <div className="space-y-1.5 mb-2 text-[11px] leading-snug">
                       {linkedJournalEntryNo ? (
-                        <p className="text-gray-300">
-                          <span className="text-gray-500">Ledger entry</span>{' '}
+                        <p className="text-muted-foreground">
+                          <span className="text-muted-foreground">Ledger entry</span>{' '}
                           <span className="font-mono text-amber-200/90">{linkedJournalEntryNo}</span>
                         </p>
                       ) : null}
                       {referenceNo ? (
-                        <p className="text-gray-300">
-                          <span className="text-gray-500">Document / context</span>{' '}
+                        <p className="text-muted-foreground">
+                          <span className="text-muted-foreground">Document / context</span>{' '}
                           <span className="text-gray-100">{referenceNo}</span>
                         </p>
                       ) : null}
                       {paymentToEdit?.referenceNumber ? (
-                        <p className="text-gray-300">
-                          <span className="text-gray-500">Payment voucher</span>{' '}
+                        <p className="text-muted-foreground">
+                          <span className="text-muted-foreground">Payment voucher</span>{' '}
                           <span className="font-mono text-sky-200/90">{paymentToEdit.referenceNumber}</span>
                         </p>
                       ) : (
@@ -1548,17 +1548,17 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                     </div>
                   ) : (
                     referenceNo && (
-                      <p className="text-xs text-gray-500 font-mono bg-gray-900/50 px-2 py-1 rounded inline-block">
+                      <p className="text-xs text-muted-foreground font-mono bg-muted/40 px-2 py-1 rounded inline-block">
                         Ref: {referenceNo}
                       </p>
                     )
                   )}
-                  <div className="mt-4 pt-4 border-t border-gray-800 space-y-2">
+                  <div className="mt-4 pt-4 border-t border-border space-y-2">
                     {/* Show total amount if provided */}
                     {totalAmount !== undefined && totalAmount > 0 && (
                       <div className="flex items-center justify-between">
-                        <span className="text-xs text-gray-400">Total Amount</span>
-                        <span className="text-sm font-semibold text-white">
+                        <span className="text-xs text-muted-foreground">Total Amount</span>
+                        <span className="text-sm font-semibold text-foreground">
                           {formatCurrency(totalAmount)}
                         </span>
                       </div>
@@ -1566,19 +1566,19 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                     {/* Show paid amount if any */}
                     {paidAmount > 0 && (
                       <div className="flex items-center justify-between">
-                        <span className="text-xs text-gray-400">Already Paid</span>
-                        <span className="text-sm font-semibold text-green-400">
+                        <span className="text-xs text-muted-foreground">Already Paid</span>
+                        <span className="text-sm font-semibold text-[var(--erp-money-positive)]">
                           {formatCurrency(paidAmount)}
                         </span>
                       </div>
                     )}
-                    <div className="flex items-center justify-between pt-2 border-t border-gray-800">
-                      <span className="text-xs text-gray-400">Due / outstanding</span>
+                    <div className="flex items-center justify-between pt-2 border-t border-border">
+                      <span className="text-xs text-muted-foreground">Due / outstanding</span>
                       <span className="text-xl font-bold text-yellow-400">
                         {formatCurrency(effectiveOutstanding)}
                       </span>
                     </div>
-                    <p className="text-[10px] text-gray-500 pt-1">Amount owed on this document or party for this payment context.</p>
+                    <p className="text-[10px] text-muted-foreground pt-1">Amount owed on this document or party for this payment context.</p>
                   </div>
                 </div>
                 
@@ -1586,20 +1586,20 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                 {previousPayments.length > 0 && (
                   <div className="bg-gradient-to-br from-green-950/20 to-gray-900/50 border border-green-900/30 rounded-xl p-4">
                     <div className="flex items-center gap-2 mb-3">
-                      <History size={14} className="text-green-400" />
-                      <span className="text-xs font-semibold text-green-400 uppercase tracking-wide">
+                      <History size={14} className="text-[var(--erp-money-positive)]" />
+                      <span className="text-xs font-semibold text-[var(--erp-money-positive)] uppercase tracking-wide">
                         Already Received Payments ({previousPayments.length})
                       </span>
                     </div>
                     <div className="space-y-2 max-h-32 overflow-y-auto">
                       {previousPayments.map((payment, index) => (
-                        <div key={payment.id || index} className="flex items-center justify-between bg-gray-900/50 rounded-lg px-3 py-2">
+                        <div key={payment.id || index} className="flex items-center justify-between bg-muted/40 rounded-lg px-3 py-2">
                           <div className="flex items-center gap-3">
                             <div className="w-7 h-7 rounded-full bg-green-500/20 flex items-center justify-center">
-                              <Banknote size={12} className="text-green-400" />
+                              <Banknote size={12} className="text-[var(--erp-money-positive)]" />
                             </div>
                             <div>
-                              <p className="text-xs text-gray-400">
+                              <p className="text-xs text-muted-foreground">
                                 {new Date(payment.date).toLocaleDateString('en-GB', { 
                                   day: '2-digit', 
                                   month: 'short', 
@@ -1607,11 +1607,11 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                                 })}
                               </p>
                               {payment.accountName && (
-                                <p className="text-[10px] text-gray-500">{payment.method} • {payment.accountName}</p>
+                                <p className="text-[10px] text-muted-foreground">{payment.method} • {payment.accountName}</p>
                               )}
                             </div>
                           </div>
-                          <span className="text-sm font-semibold text-green-400">
+                          <span className="text-sm font-semibold text-[var(--erp-money-positive)]">
                             {formatCurrency(payment.amount)}
                           </span>
                         </div>
@@ -1621,12 +1621,12 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                 )}
 
                 {/* Payment Amount */}
-                <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
-                  <label className="block text-sm font-semibold text-gray-300 mb-2">
+                <div className="bg-muted/40 border border-border rounded-xl p-4">
+                  <label className="block text-sm font-semibold text-muted-foreground mb-2">
                     Payment Amount <span className="text-red-400">*</span>
                   </label>
                   <div className="relative">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 text-lg font-semibold">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground text-lg font-semibold">
                       {settings.company?.currency === 'PKR' || !settings.company?.currency ? 'Rs.' : settings.company.currency}
                     </span>
                     <input
@@ -1635,7 +1635,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                       onChange={handleAmountChange}
                       onFocus={handleAmountFocus}
                       placeholder="0.00"
-                      className="w-full bg-gray-900 border-2 border-gray-700 rounded-lg pl-14 pr-4 py-3 text-white text-xl font-bold placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors"
+                      className="w-full bg-card border-2 border-border rounded-lg pl-14 pr-4 py-3 text-foreground text-xl font-bold placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors"
                       min="0"
                       max={effectiveOutstanding}
                       step="0.01"
@@ -1649,8 +1649,8 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                   )}
                   {amount > 0 && amount <= effectiveOutstanding && (
                     <div className="flex items-center justify-between mt-2 text-xs">
-                      <span className="text-gray-400">Remaining Balance</span>
-                      <span className="text-green-400 font-semibold">
+                      <span className="text-muted-foreground">Remaining Balance</span>
+                      <span className="text-[var(--erp-money-positive)] font-semibold">
                         {formatCurrency(effectiveOutstanding - amount)}
                       </span>
                     </div>
@@ -1658,8 +1658,8 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                 </div>
 
                 {/* Payment Method - COMPACT */}
-                <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
-                  <label className="block text-sm font-semibold text-gray-300 mb-2">
+                <div className="bg-muted/40 border border-border rounded-xl p-4">
+                  <label className="block text-sm font-semibold text-muted-foreground mb-2">
                     Payment Method <span className="text-red-400">*</span>
                   </label>
                   <div className="grid grid-cols-3 gap-2">
@@ -1672,11 +1672,11 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                       className={`flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-lg border-2 transition-all ${
                         paymentMethod === 'Cash'
                           ? 'border-blue-500 bg-blue-500/10'
-                          : 'border-gray-700 bg-gray-900/50 hover:border-gray-600'
+                          : 'border-border bg-muted/40 hover:border-gray-600'
                       }`}
                     >
-                      <Wallet size={18} className={paymentMethod === 'Cash' ? 'text-blue-400' : 'text-gray-400'} />
-                      <span className={`text-xs font-medium ${paymentMethod === 'Cash' ? 'text-blue-400' : 'text-gray-400'}`}>
+                      <Wallet size={18} className={paymentMethod === 'Cash' ? 'text-blue-400' : 'text-muted-foreground'} />
+                      <span className={`text-xs font-medium ${paymentMethod === 'Cash' ? 'text-blue-400' : 'text-muted-foreground'}`}>
                         Cash
                       </span>
                     </button>
@@ -1690,11 +1690,11 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                       className={`flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-lg border-2 transition-all ${
                         paymentMethod === 'Bank'
                           ? 'border-blue-500 bg-blue-500/10'
-                          : 'border-gray-700 bg-gray-900/50 hover:border-gray-600'
+                          : 'border-border bg-muted/40 hover:border-gray-600'
                       }`}
                     >
-                      <Building2 size={18} className={paymentMethod === 'Bank' ? 'text-blue-400' : 'text-gray-400'} />
-                      <span className={`text-xs font-medium ${paymentMethod === 'Bank' ? 'text-blue-400' : 'text-gray-400'}`}>
+                      <Building2 size={18} className={paymentMethod === 'Bank' ? 'text-blue-400' : 'text-muted-foreground'} />
+                      <span className={`text-xs font-medium ${paymentMethod === 'Bank' ? 'text-blue-400' : 'text-muted-foreground'}`}>
                         Bank
                       </span>
                     </button>
@@ -1708,11 +1708,11 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                       className={`flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-lg border-2 transition-all ${
                         paymentMethod === 'Mobile Wallet'
                           ? 'border-blue-500 bg-blue-500/10'
-                          : 'border-gray-700 bg-gray-900/50 hover:border-gray-600'
+                          : 'border-border bg-muted/40 hover:border-gray-600'
                       }`}
                     >
-                      <CreditCard size={18} className={paymentMethod === 'Mobile Wallet' ? 'text-blue-400' : 'text-gray-400'} />
-                      <span className={`text-xs font-medium ${paymentMethod === 'Mobile Wallet' ? 'text-blue-400' : 'text-gray-400'}`}>
+                      <CreditCard size={18} className={paymentMethod === 'Mobile Wallet' ? 'text-blue-400' : 'text-muted-foreground'} />
+                      <span className={`text-xs font-medium ${paymentMethod === 'Mobile Wallet' ? 'text-blue-400' : 'text-muted-foreground'}`}>
                         Wallet
                       </span>
                     </button>
@@ -1720,9 +1720,9 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                 </div>
 
                 {/* Account Selection */}
-                <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
+                <div className="bg-muted/40 border border-border rounded-xl p-4">
                   <AccountPickerFieldLabel
-                    className="block text-sm font-semibold text-gray-300 mb-2"
+                    className="block text-sm font-semibold text-muted-foreground mb-2"
                     base="Select Account"
                     inOut={context === 'customer' ? 'IN' : 'OUT'}
                     required
@@ -1731,15 +1731,15 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                     <select
                       value={selectedAccount}
                       onChange={(e) => setSelectedAccount(e.target.value)}
-                      className="w-full bg-gray-900 border-2 border-gray-700 rounded-lg px-4 py-2.5 pr-10 text-white focus:outline-none focus:border-blue-500 transition-colors appearance-none"
+                      className="w-full bg-card border-2 border-border rounded-lg px-4 py-2.5 pr-10 text-foreground focus:outline-none focus:border-blue-500 transition-colors appearance-none"
                     >
-                      <option value="" className="text-gray-500">
+                      <option value="" className="text-muted-foreground">
                         {paymentMethod === 'Cash' && 'Select Cash Account'}
                         {paymentMethod === 'Bank' && 'Select Bank Account'}
                         {paymentMethod === 'Mobile Wallet' && 'Select Wallet Account'}
                       </option>
                       {getAccountsForPaymentSelect().map((account) => (
-                        <option key={account.id} value={account.id} className="text-white bg-gray-900">
+                        <option key={account.id} value={account.id} className="text-foreground bg-card">
                           {formatAccountSelectOptionLabel(account, {
                             postingSide: getPaymentLiquidityPostingSide(context === 'customer'),
                             balance: account.balance,
@@ -1749,7 +1749,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                         </option>
                       ))}
                     </select>
-                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" size={18} />
                   </div>
                   {getAccountsForPaymentSelect().length === 0 && (
                     <p className="text-xs text-amber-500/90 mt-1.5 flex items-center gap-1">
@@ -1758,7 +1758,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                     </p>
                   )}
                   {selectedAccount === '' && getAccountsForPaymentSelect().length > 0 && (
-                    <p className="text-xs text-gray-500 mt-1.5 flex items-center gap-1">
+                    <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
                       <AlertCircle size={11} />
                       Please select an account to proceed
                     </p>
@@ -1769,8 +1769,8 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                     if (account && amount > bal) {
                       return (
                         <div className="space-y-2 mt-3">
-                          <div className="flex items-center justify-between rounded-lg border border-gray-800 bg-gray-900/80 px-3 py-2">
-                            <span className="text-xs text-gray-400">Account balance (GL)</span>
+                          <div className="flex items-center justify-between rounded-lg border border-border bg-card px-3 py-2">
+                            <span className="text-xs text-muted-foreground">Account balance (GL)</span>
                             <span className="text-sm font-bold text-emerald-400 tabular-nums">{formatCurrency(bal)}</span>
                           </div>
                           <div className="flex items-center gap-2 text-orange-400 text-xs bg-orange-500/10 border border-orange-500/20 rounded-lg p-2">
@@ -1783,11 +1783,11 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                     if (account) {
                       return (
                         <div className="mt-3 space-y-2">
-                          <div className="text-xs text-gray-400">
-                            Selected: <span className="text-white font-medium">{account.name}</span>
+                          <div className="text-xs text-muted-foreground">
+                            Selected: <span className="text-foreground font-medium">{account.name}</span>
                           </div>
                           <div className="flex items-center justify-between rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2">
-                            <span className="text-xs text-gray-400">Account balance (GL)</span>
+                            <span className="text-xs text-muted-foreground">Account balance (GL)</span>
                             <span className="text-base font-bold text-emerald-400 tabular-nums">{formatCurrency(bal)}</span>
                           </div>
                         </div>
@@ -1802,7 +1802,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
               <div className="space-y-4">
                 
                 {/* Date & Time */}
-                <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
+                <div className="bg-muted/40 border border-border rounded-xl p-4">
                   <DateTimePicker
                     label="Payment Date & Time"
                     value={paymentDateTime}
@@ -1812,20 +1812,20 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                 </div>
 
                 {/* Attachments */}
-                <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
-                  <label className="block text-sm font-semibold text-gray-300 mb-2">
+                <div className="bg-muted/40 border border-border rounded-xl p-4">
+                  <label className="block text-sm font-semibold text-muted-foreground mb-2">
                     Attachments (Optional)
                   </label>
 
                   {/* Existing attachments (edit mode) – saved in DB; show image preview for images */}
                   {existingAttachments.length > 0 && (
                     <div className="mb-3 space-y-2">
-                      <p className="text-xs text-gray-500 mb-2">Saved attachments (included on save):</p>
+                      <p className="text-xs text-muted-foreground mb-2">Saved attachments (included on save):</p>
                       <div className="flex flex-col gap-2">
                         {existingAttachments.map((att, idx) => {
                           const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(att.name || '');
                           return (
-                            <div key={idx} className="flex flex-col gap-1.5 p-2 rounded-lg bg-gray-800/50 border border-gray-700">
+                            <div key={idx} className="flex flex-col gap-1.5 p-2 rounded-lg bg-muted/50 border border-border">
                               {isImage ? (
                                 <ExistingAttachmentImage att={att} />
                               ) : null}
@@ -1836,7 +1836,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                                   type="button"
                                   size="sm"
                                   variant="outline"
-                                  className="shrink-0 border-gray-600 text-gray-300 hover:bg-gray-700 text-xs h-7"
+                                  className="shrink-0 border-gray-600 text-muted-foreground hover:bg-muted text-xs h-7"
                                   onClick={async () => {
                                     const url = await getAttachmentOpenUrl(att.url);
                                     window.open(url, '_blank');
@@ -1854,9 +1854,9 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                   
                   {/* Upload Area */}
                   <label className={`block ${isProcessingAttachments ? 'cursor-wait opacity-70' : 'cursor-pointer'}`}>
-                    <div className="border-2 border-dashed border-gray-700 rounded-lg p-4 hover:border-blue-500 hover:bg-gray-900/50 transition-all text-center">
-                      <Upload className="mx-auto mb-2 text-gray-500" size={24} />
-                      <p className="text-xs text-gray-400 mb-0.5">
+                    <div className="border-2 border-dashed border-border rounded-lg p-4 hover:border-blue-500 hover:bg-muted/40 transition-all text-center">
+                      <Upload className="mx-auto mb-2 text-muted-foreground" size={24} />
+                      <p className="text-xs text-muted-foreground mb-0.5">
                         {isProcessingAttachments ? (
                           <span className="text-blue-400 font-medium">Compressing…</span>
                         ) : (
@@ -1865,7 +1865,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                           </>
                         )}
                       </p>
-                      <p className="text-xs text-gray-600">PDF, PNG, JPG up to 10MB</p>
+                      <p className="text-xs text-muted-foreground">PDF, PNG, JPG up to 10MB</p>
                     </div>
                     <input
                       type="file"
@@ -1883,13 +1883,13 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                       {attachments.map((file, index) => (
                         <div
                           key={index}
-                          className="flex items-center justify-between bg-gray-900 border border-gray-700 rounded-lg p-2"
+                          className="flex items-center justify-between bg-card border border-border rounded-lg p-2"
                         >
                           <div className="flex items-center gap-2 flex-1 min-w-0">
                             <FileText className="text-blue-400 flex-shrink-0" size={16} />
                             <div className="min-w-0 flex-1">
-                              <p className="text-xs text-white font-medium truncate">{file.name}</p>
-                              <p className="text-xs text-gray-500">{(file.size / 1024).toFixed(1)} KB</p>
+                              <p className="text-xs text-foreground font-medium truncate">{file.name}</p>
+                              <p className="text-xs text-muted-foreground">{(file.size / 1024).toFixed(1)} KB</p>
                             </div>
                           </div>
                           <button
@@ -1906,8 +1906,8 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                 </div>
 
                 {/* Notes */}
-                <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
-                  <label className="block text-sm font-semibold text-gray-300 mb-2">
+                <div className="bg-muted/40 border border-border rounded-xl p-4">
+                  <label className="block text-sm font-semibold text-muted-foreground mb-2">
                     Notes (Optional)
                   </label>
                   <textarea
@@ -1915,7 +1915,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                     onChange={(e) => setNotes(e.target.value)}
                     placeholder="Add payment notes, remarks, or additional details..."
                     rows={5}
-                    className="w-full bg-gray-900 border-2 border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors resize-none"
+                    className="w-full bg-card border-2 border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors resize-none"
                   />
                 </div>
               </div>
@@ -1923,8 +1923,8 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
           </div>
 
           {/* Footer */}
-          <div className="flex items-center justify-between p-5 border-t border-gray-800 bg-gray-950/50">
-            <div className="text-xs text-gray-400">
+          <div className="flex items-center justify-between p-5 border-t border-border bg-muted/40">
+            <div className="text-xs text-muted-foreground">
               {(existingAttachments.length > 0 || attachments.length > 0) && (
                 <span className="flex items-center gap-1.5">
                   <FileText size={12} />
@@ -1938,7 +1938,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
               <Button
                 variant="outline"
                 onClick={onClose}
-                className="border-gray-700 text-gray-300 hover:bg-gray-800 px-5 text-sm"
+                className="border-border text-muted-foreground hover:bg-muted px-5 text-sm"
                 disabled={isProcessing}
               >
                 Cancel

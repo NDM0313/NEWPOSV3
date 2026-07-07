@@ -40,16 +40,16 @@ function Section({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="border border-gray-800 rounded-lg overflow-hidden">
+    <div className="border border-border rounded-lg overflow-hidden">
       <button
         type="button"
-        className="w-full flex items-center gap-2 px-3 py-2 bg-gray-900/80 text-left text-sm font-medium text-gray-200 hover:bg-gray-800/80"
+        className="w-full flex items-center gap-2 px-3 py-2 bg-card text-left text-sm font-medium text-gray-200 hover:bg-muted/80"
         onClick={() => setOpen(!open)}
       >
         {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
         {title}
       </button>
-      {open && <div className="p-3 text-xs text-gray-400 space-y-2">{children}</div>}
+      {open && <div className="p-3 text-xs text-muted-foreground space-y-2">{children}</div>}
     </div>
   );
 }
@@ -68,7 +68,7 @@ function modeVisLine(label: string, vis: ReportModeVisibility) {
       <p>
         {label} — normal {inclBadge(vis.normal.included)} · audit {inclBadge(vis.audit.included)}
       </p>
-      <p className="text-gray-500 pl-2">{vis.normal.reason}</p>
+      <p className="text-muted-foreground pl-2">{vis.normal.reason}</p>
     </div>
   );
 }
@@ -91,8 +91,8 @@ function renderReportVisibility(vis: ReportVisibility, journalRt?: string | null
       <p>Dashboard: {vis.dashboard.note}</p>
       {vis.dashboard.impacted.length > 0 && <p>KPIs: {vis.dashboard.impacted.join(', ')}</p>}
       {suggested.length > 0 && (
-        <div className="border-t border-gray-800 pt-2 mt-2">
-          <p className="text-gray-300 font-medium">Suggested safe actions</p>
+        <div className="border-t border-border pt-2 mt-2">
+          <p className="text-muted-foreground font-medium">Suggested safe actions</p>
           <ul className="list-disc pl-4 mt-1">
             {suggested.map((s) => (
               <li key={s.id}>
@@ -149,7 +149,7 @@ export function TransactionTraceTab({ companyId, initialQuery = '' }: Props) {
 
   return (
     <div className="space-y-4">
-      <Card className="border-gray-800 bg-gray-900/40">
+      <Card className="border-border bg-card/40">
         <CardHeader>
           <CardTitle className="text-lg">Transaction trace</CardTitle>
           <CardDescription>
@@ -159,7 +159,7 @@ export function TransactionTraceTab({ companyId, initialQuery = '' }: Props) {
         <CardContent className="space-y-3">
           <div className="flex flex-wrap gap-2 items-end">
             <Select value={mode} onValueChange={(v) => setMode(v as TraceMode)}>
-              <SelectTrigger className="w-[180px] bg-gray-950 border-gray-700">
+              <SelectTrigger className="w-[180px] bg-input-background border-border">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -176,7 +176,7 @@ export function TransactionTraceTab({ companyId, initialQuery = '' }: Props) {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="HQ-RCV-0006, JE-0012, payment UUID…"
-              className="flex-1 min-w-[200px] bg-gray-950 border-gray-700"
+              className="flex-1 min-w-[200px] bg-input-background border-border"
               onKeyDown={(e) => e.key === 'Enter' && void run()}
             />
             <Button type="button" onClick={() => void run()} disabled={loading}>
@@ -211,9 +211,9 @@ export function TransactionTraceTab({ companyId, initialQuery = '' }: Props) {
           </Card>
 
           <div className="flex flex-wrap gap-2 items-center text-sm">
-            <span className="text-gray-500">Overall:</span>
+            <span className="text-muted-foreground">Overall:</span>
             <Badge>{trace.overall}</Badge>
-            <span className="text-gray-600">Mode: {trace.mode}</span>
+            <span className="text-muted-foreground">Mode: {trace.mode}</span>
           </div>
 
           <Section title="1 · Operational entities" defaultOpen>
@@ -236,7 +236,7 @@ export function TransactionTraceTab({ companyId, initialQuery = '' }: Props) {
               <p>No payment rows.</p>
             ) : (
               trace.payments.map((p) => (
-                <pre key={p.id} className="text-[10px] bg-gray-950 p-2 rounded overflow-x-auto">
+                <pre key={p.id} className="text-[10px] bg-input-background p-2 rounded overflow-x-auto">
                   {JSON.stringify(p, null, 2)}
                 </pre>
               ))
@@ -248,7 +248,7 @@ export function TransactionTraceTab({ companyId, initialQuery = '' }: Props) {
               <p>No rental_payment rows.</p>
             ) : (
               trace.rentalPayments.map((p) => (
-                <pre key={p.id} className="text-[10px] bg-gray-950 p-2 rounded overflow-x-auto">
+                <pre key={p.id} className="text-[10px] bg-input-background p-2 rounded overflow-x-auto">
                   {JSON.stringify(p, null, 2)}
                 </pre>
               ))
@@ -260,14 +260,14 @@ export function TransactionTraceTab({ companyId, initialQuery = '' }: Props) {
               <p>No journal entries.</p>
             ) : (
               trace.journals.map((j) => (
-                <div key={j.id} className="mb-3 border border-gray-800 rounded p-2">
+                <div key={j.id} className="mb-3 border border-border rounded p-2">
                   <p className="text-gray-200 font-medium">
                     {j.entry_no || j.id.slice(0, 8)} · {j.reference_type} · {j.entry_date}
                     {j.is_void ? ' (void)' : ''}
                   </p>
                   <table className="w-full mt-2">
                     <thead>
-                      <tr className="text-gray-500">
+                      <tr className="text-muted-foreground">
                         <th className="text-left">Code</th>
                         <th className="text-left">Account</th>
                         <th className="text-right">Dr</th>
@@ -315,8 +315,8 @@ export function TransactionTraceTab({ companyId, initialQuery = '' }: Props) {
             {visibilityRows.length > 0 ? (
               <div className="space-y-4">
                 {visibilityRows.map((row) => (
-                  <div key={row.journalId} className="rounded border border-gray-800 p-2 space-y-2">
-                    <p className="text-gray-300 font-medium">
+                  <div key={row.journalId} className="rounded border border-border p-2 space-y-2">
+                    <p className="text-muted-foreground font-medium">
                       {row.entryNo || row.journalId.slice(0, 8)}
                       {row.referenceType ? ` · ${row.referenceType}` : ''}
                     </p>
@@ -334,8 +334,8 @@ export function TransactionTraceTab({ companyId, initialQuery = '' }: Props) {
               <p>Run trace to evaluate report inclusion.</p>
             )}
             {trace.traceGuidance && (
-              <div className="mt-3 border-t border-gray-800 pt-2">
-                <p className="text-gray-300 font-medium">Diagnosis / next steps</p>
+              <div className="mt-3 border-t border-border pt-2">
+                <p className="text-muted-foreground font-medium">Diagnosis / next steps</p>
                 <ul className="list-disc pl-4 mt-1">
                   {trace.traceGuidance.nextSteps.map((s, i) => (
                     <li key={i}>{s}</li>

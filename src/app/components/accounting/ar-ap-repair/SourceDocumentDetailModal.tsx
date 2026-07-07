@@ -53,10 +53,10 @@ export function SourceDocumentDetailModal(props: {
 
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-      <DialogContent className="bg-gray-950 border-gray-800 text-white max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="bg-input-background border-border text-foreground max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Source document (read-only)</DialogTitle>
-          <DialogDescription className="text-gray-400">No data changes — trace and risk assessment only.</DialogDescription>
+          <DialogDescription className="text-muted-foreground">No data changes — trace and risk assessment only.</DialogDescription>
         </DialogHeader>
         {loading ? (
           <div className="flex justify-center py-8">
@@ -68,7 +68,7 @@ export function SourceDocumentDetailModal(props: {
               <PostabilityBadge label={diag.label} isNonFinal={diag.isNonFinal} />
               <RiskBadge level={diag.riskLevel} />
             </div>
-            <dl className="rounded-lg border border-gray-800 bg-gray-900/60 p-3 space-y-1.5">
+            <dl className="rounded-lg border border-border bg-muted/60 p-3 space-y-1.5">
               <Row label="Document" value={props.row.document_no || props.row.source_id} />
               <Row label="Type" value={props.row.source_type} />
               <Row label="Contact" value={props.row.contact_name || '—'} />
@@ -81,7 +81,7 @@ export function SourceDocumentDetailModal(props: {
             </dl>
             <Section title="GL posting status">
               {activeJe.length === 0 ? (
-                <p className="text-gray-400 text-xs">No active sale/purchase document JE.</p>
+                <p className="text-muted-foreground text-xs">No active sale/purchase document JE.</p>
               ) : (
                 activeJe.map((j) => (
                   <p key={j.id} className="text-xs font-mono text-blue-300">
@@ -90,12 +90,12 @@ export function SourceDocumentDetailModal(props: {
                 ))
               )}
               {voidJe.length > 0 && (
-                <p className="text-xs text-gray-500 mt-1">{voidJe.length} void JE(s) on file.</p>
+                <p className="text-xs text-muted-foreground mt-1">{voidJe.length} void JE(s) on file.</p>
               )}
             </Section>
             {Array.isArray(bundle?.enrichment?.attachments) && bundle.enrichment.attachments.length > 0 && (
               <Section title="Attachments">
-                <p className="text-xs text-gray-400">{bundle.enrichment.attachments.length} attachment(s) on source document.</p>
+                <p className="text-xs text-muted-foreground">{bundle.enrichment.attachments.length} attachment(s) on source document.</p>
               </Section>
             )}
             <Section title="Why in queue">{diag.queueReason}</Section>
@@ -103,7 +103,7 @@ export function SourceDocumentDetailModal(props: {
           </div>
         )}
         <DialogFooter className="gap-2">
-          <Button variant="outline" className="border-gray-700" onClick={() => props.onOpenChange(false)}>
+          <Button variant="outline" className="border-border" onClick={() => props.onOpenChange(false)}>
             Close
           </Button>
           {!props.readOnly && props.onOpenDryRun && (
@@ -120,7 +120,7 @@ export function SourceDocumentDetailModal(props: {
 function Row(props: { label: string; value: string }) {
   return (
     <div className="flex justify-between gap-4">
-      <dt className="text-gray-500 shrink-0">{props.label}</dt>
+      <dt className="text-muted-foreground shrink-0">{props.label}</dt>
       <dd className="text-gray-200 text-right break-all">{props.value}</dd>
     </div>
   );
@@ -129,8 +129,8 @@ function Row(props: { label: string; value: string }) {
 function Section(props: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <p className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold mb-1">{props.title}</p>
-      <div className="text-xs text-gray-300 leading-relaxed">{props.children}</div>
+      <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold mb-1">{props.title}</p>
+      <div className="text-xs text-muted-foreground leading-relaxed">{props.children}</div>
     </div>
   );
 }
@@ -147,10 +147,10 @@ export function UnmappedSourceDetailModal(props: {
 }) {
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-      <DialogContent className="bg-gray-950 border-gray-800 text-white max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="bg-input-background border-border text-foreground max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{props.title}</DialogTitle>
-          <DialogDescription className="text-gray-400">Read-only trace — Phase 2 safe UI.</DialogDescription>
+          <DialogDescription className="text-muted-foreground">Read-only trace — Phase 2 safe UI.</DialogDescription>
         </DialogHeader>
         {props.loading ? (
           <div className="flex justify-center py-8">
@@ -160,7 +160,7 @@ export function UnmappedSourceDetailModal(props: {
           props.children
         )}
         <DialogFooter className="gap-2 flex-wrap">
-          <Button variant="outline" className="border-gray-700" onClick={() => props.onOpenChange(false)}>
+          <Button variant="outline" className="border-border" onClick={() => props.onOpenChange(false)}>
             Close
           </Button>
           {props.onOpenTrace && (
@@ -238,7 +238,7 @@ export function UnmappedRowDetailModal(props: {
         {diag.isLikelyFalsePositive && diag.falsePositiveReason && (
           <p className="text-cyan-200/90 text-xs rounded-lg border border-cyan-500/30 bg-cyan-950/20 p-2">{diag.falsePositiveReason}</p>
         )}
-        <dl className="rounded-lg border border-gray-800 bg-gray-900/60 p-3 space-y-1.5">
+        <dl className="rounded-lg border border-border bg-muted/60 p-3 space-y-1.5">
           <Row label="JE" value={bundle?.journal?.entry_no || props.row.entry_no || '—'} />
           <Row label="Payment ref" value={bundle?.payment?.reference_number || '—'} />
           <Row label="Account" value={`${props.row.account_name} (${props.row.account_code})`} />

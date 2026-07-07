@@ -50,19 +50,19 @@ export const RentalPrintLayout: React.FC<RentalPrintLayoutProps> = ({ rental, on
         </div>
 
         <div className="border-t border-gray-300 pt-4">
-          <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Dates</p>
+          <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">Dates</p>
           <div className="grid grid-cols-3 gap-4 text-sm">
             <div>
-              <p className="text-gray-500">Pickup</p>
+              <p className="text-muted-foreground">Pickup</p>
               <p className="font-medium">{rental.startDate ? new Date(rental.startDate).toLocaleDateString() : '—'}</p>
             </div>
             <div>
-              <p className="text-gray-500">Expected Return</p>
+              <p className="text-muted-foreground">Expected Return</p>
               <p className="font-medium">{rental.expectedReturnDate ? new Date(rental.expectedReturnDate).toLocaleDateString() : '—'}</p>
             </div>
             {rental.actualReturnDate && (
               <div>
-                <p className="text-gray-500">Actual Return</p>
+                <p className="text-muted-foreground">Actual Return</p>
                 <p className="font-medium">{new Date(rental.actualReturnDate).toLocaleDateString()}</p>
               </div>
             )}
@@ -70,7 +70,7 @@ export const RentalPrintLayout: React.FC<RentalPrintLayoutProps> = ({ rental, on
         </div>
 
         <div className="border-t border-gray-300 pt-4">
-          <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Items</p>
+          <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">Items</p>
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr className="border-b border-gray-300">
@@ -94,7 +94,7 @@ export const RentalPrintLayout: React.FC<RentalPrintLayoutProps> = ({ rental, on
         </div>
 
         <div className="border-t border-gray-300 pt-4">
-          <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Summary</p>
+          <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">Summary</p>
           <div className="space-y-1 text-sm">
             <div className="flex justify-between">
               <span>Rental booking total:</span>
@@ -113,7 +113,7 @@ export const RentalPrintLayout: React.FC<RentalPrintLayoutProps> = ({ rental, on
               </>
             )}
             {rental.conditionType && String(rental.conditionType).toLowerCase() !== 'good' && (
-              <p className="text-xs text-gray-600 mt-2">
+              <p className="text-xs text-muted-foreground mt-2">
                 Condition: {String(rental.conditionType).replace(/_/g, ' ')}
                 {rental.damageNotes ? ` — ${rental.damageNotes}` : ''}
               </p>
@@ -133,7 +133,7 @@ export const RentalPrintLayout: React.FC<RentalPrintLayoutProps> = ({ rental, on
 
         {rental.notes && (
           <div className="border-t border-gray-300 pt-4">
-            <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Notes</p>
+            <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">Notes</p>
             <p className="text-sm">{rental.notes}</p>
           </div>
         )}

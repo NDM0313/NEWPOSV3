@@ -193,21 +193,21 @@ export function PayCourierModal({ open, onClose, companyId, branchId, onSuccess 
       <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[100] animate-in fade-in duration-200" onClick={onClose} />
       <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 pointer-events-none overflow-y-auto">
         <div
-          className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-3xl pointer-events-auto animate-in zoom-in-95 duration-200 my-8"
+          className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-3xl pointer-events-auto animate-in zoom-in-95 duration-200 my-8"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="flex items-center justify-between p-5 border-b border-gray-800 bg-gradient-to-r from-gray-900 via-gray-900 to-gray-800">
+          <div className="flex items-center justify-between p-5 border-b border-border bg-gradient-to-r from-gray-900 via-gray-900 to-gray-800">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center">
                 <Truck size={20} className="text-indigo-400" />
               </div>
               <div>
-                <h2 className="text-lg font-bold text-white">Pay Courier</h2>
-                <p className="text-xs text-gray-400 mt-0.5">Complete payment details</p>
+                <h2 className="text-lg font-bold text-foreground">Pay Courier</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">Complete payment details</p>
               </div>
             </div>
-            <button type="button" onClick={onClose} className="text-gray-400 hover:text-white transition-colors p-1.5 hover:bg-gray-800 rounded-lg">
+            <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors p-1.5 hover:bg-muted rounded-lg">
               <X size={20} />
             </button>
           </div>
@@ -217,19 +217,19 @@ export function PayCourierModal({ open, onClose, companyId, branchId, onSuccess 
               {/* LEFT COLUMN */}
               <div className="space-y-4">
                 {/* Courier Details */}
-                <div className="bg-gradient-to-br from-gray-950/80 to-gray-900/50 border border-gray-800 rounded-xl p-4">
+                <div className="bg-gradient-to-br from-gray-950/80 to-gray-900/50 border border-border rounded-xl p-4">
                   <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs font-medium text-gray-400">Courier Details</span>
+                    <span className="text-xs font-medium text-muted-foreground">Courier Details</span>
                     <Badge variant="outline" className="bg-indigo-500/10 text-indigo-400 border-indigo-500/20">
                       COURIER
                     </Badge>
                   </div>
-                  <label className="block text-xs text-gray-400 mb-1">Courier Name</label>
+                  <label className="block text-xs text-muted-foreground mb-1">Courier Name</label>
                   <select
                     value={courierId}
                     onChange={(e) => setCourierId(e.target.value)}
                     disabled={loadingCouriers}
-                    className="w-full bg-gray-900 border-2 border-gray-700 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:border-indigo-500"
+                    className="w-full bg-card border-2 border-border rounded-lg px-3 py-2.5 text-foreground focus:outline-none focus:border-indigo-500"
                   >
                     <option value="">Select courier</option>
                     {couriers.map((c) => (
@@ -239,26 +239,26 @@ export function PayCourierModal({ open, onClose, companyId, branchId, onSuccess 
                     ))}
                   </select>
                   {selectedCourier && (
-                    <p className="text-xs text-gray-500 font-mono bg-gray-900/50 px-2 py-1 rounded inline-block mt-2">
+                    <p className="text-xs text-muted-foreground font-mono bg-muted/40 px-2 py-1 rounded inline-block mt-2">
                       Ref: {selectedCourier.id.slice(0, 8)}
                     </p>
                   )}
                   {selectedCourier && (
-                    <div className="mt-4 pt-4 border-t border-gray-800 space-y-2">
+                    <div className="mt-4 pt-4 border-t border-border space-y-2">
                       {totalPayable > 0 && (
                         <div className="flex items-center justify-between">
-                          <span className="text-xs text-gray-400">Total Payable</span>
-                          <span className="text-sm font-semibold text-white">{formatCurrency(totalPayable)}</span>
+                          <span className="text-xs text-muted-foreground">Total Payable</span>
+                          <span className="text-sm font-semibold text-foreground">{formatCurrency(totalPayable)}</span>
                         </div>
                       )}
                       {totalPaid > 0 && (
                         <div className="flex items-center justify-between">
-                          <span className="text-xs text-gray-400">Already Paid</span>
-                          <span className="text-sm font-semibold text-green-400">{formatCurrency(totalPaid)}</span>
+                          <span className="text-xs text-muted-foreground">Already Paid</span>
+                          <span className="text-sm font-semibold text-[var(--erp-money-positive)]">{formatCurrency(totalPaid)}</span>
                         </div>
                       )}
-                      <div className="flex items-center justify-between pt-2 border-t border-gray-800">
-                        <span className="text-xs text-gray-400">Outstanding Balance</span>
+                      <div className="flex items-center justify-between pt-2 border-t border-border">
+                        <span className="text-xs text-muted-foreground">Outstanding Balance</span>
                         <span className="text-xl font-bold text-yellow-400">{formatCurrency(outstanding)}</span>
                       </div>
                     </div>
@@ -266,19 +266,19 @@ export function PayCourierModal({ open, onClose, companyId, branchId, onSuccess 
                 </div>
 
                 {/* Payment Amount */}
-                <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
-                  <label className="block text-sm font-semibold text-gray-300 mb-2">
+                <div className="bg-muted/40 border border-border rounded-xl p-4">
+                  <label className="block text-sm font-semibold text-muted-foreground mb-2">
                     Payment Amount <span className="text-red-400">*</span>
                   </label>
                   <div className="relative">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 text-lg font-semibold">{currencyLabel}</span>
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground text-lg font-semibold">{currencyLabel}</span>
                     <input
                       type="number"
                       value={amount === 0 ? '' : amount}
                       onChange={handleAmountChange}
                       onFocus={handleAmountFocus}
                       placeholder="0.00"
-                      className="w-full bg-gray-900 border-2 border-gray-700 rounded-lg pl-14 pr-4 py-3 text-white text-xl font-bold placeholder-gray-600 focus:outline-none focus:border-indigo-500"
+                      className="w-full bg-card border-2 border-border rounded-lg pl-14 pr-4 py-3 text-foreground text-xl font-bold placeholder-gray-600 focus:outline-none focus:border-indigo-500"
                       min={0}
                       max={outstanding}
                       step="0.01"
@@ -292,15 +292,15 @@ export function PayCourierModal({ open, onClose, companyId, branchId, onSuccess 
                   )}
                   {amount > 0 && amount <= outstanding && (
                     <div className="flex items-center justify-between mt-2 text-xs">
-                      <span className="text-gray-400">Remaining Balance</span>
-                      <span className="text-green-400 font-semibold">{formatCurrency(outstanding - amount)}</span>
+                      <span className="text-muted-foreground">Remaining Balance</span>
+                      <span className="text-[var(--erp-money-positive)] font-semibold">{formatCurrency(outstanding - amount)}</span>
                     </div>
                   )}
                 </div>
 
                 {/* Payment Method */}
-                <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
-                  <label className="block text-sm font-semibold text-gray-300 mb-2">
+                <div className="bg-muted/40 border border-border rounded-xl p-4">
+                  <label className="block text-sm font-semibold text-muted-foreground mb-2">
                     Payment Method <span className="text-red-400">*</span>
                   </label>
                   <div className="grid grid-cols-3 gap-2">
@@ -310,13 +310,13 @@ export function PayCourierModal({ open, onClose, companyId, branchId, onSuccess 
                         type="button"
                         onClick={() => setPaymentMethod(method)}
                         className={`flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-lg border-2 transition-all ${
-                          paymentMethod === method ? 'border-indigo-500 bg-indigo-500/10' : 'border-gray-700 bg-gray-900/50 hover:border-gray-600'
+                          paymentMethod === method ? 'border-indigo-500 bg-indigo-500/10' : 'border-border bg-muted/40 hover:border-gray-600'
                         }`}
                       >
-                        {method === 'Cash' && <Wallet size={18} className={paymentMethod === 'Cash' ? 'text-indigo-400' : 'text-gray-400'} />}
-                        {method === 'Bank' && <Building2 size={18} className={paymentMethod === 'Bank' ? 'text-indigo-400' : 'text-gray-400'} />}
-                        {method === 'Mobile Wallet' && <CreditCard size={18} className={paymentMethod === 'Mobile Wallet' ? 'text-indigo-400' : 'text-gray-400'} />}
-                        <span className={`text-xs font-medium ${paymentMethod === method ? 'text-indigo-400' : 'text-gray-400'}`}>
+                        {method === 'Cash' && <Wallet size={18} className={paymentMethod === 'Cash' ? 'text-indigo-400' : 'text-muted-foreground'} />}
+                        {method === 'Bank' && <Building2 size={18} className={paymentMethod === 'Bank' ? 'text-indigo-400' : 'text-muted-foreground'} />}
+                        {method === 'Mobile Wallet' && <CreditCard size={18} className={paymentMethod === 'Mobile Wallet' ? 'text-indigo-400' : 'text-muted-foreground'} />}
+                        <span className={`text-xs font-medium ${paymentMethod === method ? 'text-indigo-400' : 'text-muted-foreground'}`}>
                           {method === 'Mobile Wallet' ? 'Wallet' : method}
                         </span>
                       </button>
@@ -325,9 +325,9 @@ export function PayCourierModal({ open, onClose, companyId, branchId, onSuccess 
                 </div>
 
                 {/* Select Account */}
-                <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
+                <div className="bg-muted/40 border border-border rounded-xl p-4">
                   <AccountPickerFieldLabel
-                    className="block text-sm font-semibold text-gray-300 mb-2"
+                    className="block text-sm font-semibold text-muted-foreground mb-2"
                     base="Select Account"
                     inOut="OUT"
                     required
@@ -336,15 +336,15 @@ export function PayCourierModal({ open, onClose, companyId, branchId, onSuccess 
                     <select
                       value={selectedAccount}
                       onChange={(e) => setSelectedAccount(e.target.value)}
-                      className="w-full bg-gray-900 border-2 border-gray-700 rounded-lg px-4 py-2.5 pr-10 text-white focus:outline-none focus:border-indigo-500 appearance-none"
+                      className="w-full bg-card border-2 border-border rounded-lg px-4 py-2.5 pr-10 text-foreground focus:outline-none focus:border-indigo-500 appearance-none"
                     >
-                      <option value="" className="text-gray-500">
+                      <option value="" className="text-muted-foreground">
                         {paymentMethod === 'Cash' && 'Select Cash Account'}
                         {paymentMethod === 'Bank' && 'Select Bank Account'}
                         {paymentMethod === 'Mobile Wallet' && 'Select Wallet Account'}
                       </option>
                       {filteredAccounts.map((account) => (
-                        <option key={account.id} value={account.id} className="text-white bg-gray-900">
+                        <option key={account.id} value={account.id} className="text-foreground bg-card">
                           {formatAccountSelectOptionLabel(account, {
                             postingSide: 'credit',
                             balance: account.balance,
@@ -354,7 +354,7 @@ export function PayCourierModal({ open, onClose, companyId, branchId, onSuccess 
                         </option>
                       ))}
                     </select>
-                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" size={18} />
                   </div>
                   {selectedAccount && (() => {
                     const account = accounting.accounts.find((a) => a.id === selectedAccount);
@@ -368,8 +368,8 @@ export function PayCourierModal({ open, onClose, companyId, branchId, onSuccess 
                     }
                     if (account) {
                       return (
-                        <div className="mt-2 text-xs text-gray-400">
-                          Selected: <span className="text-white font-medium">{account.name}</span>
+                        <div className="mt-2 text-xs text-muted-foreground">
+                          Selected: <span className="text-foreground font-medium">{account.name}</span>
                         </div>
                       );
                     }
@@ -381,7 +381,7 @@ export function PayCourierModal({ open, onClose, companyId, branchId, onSuccess 
               {/* RIGHT COLUMN */}
               <div className="space-y-4">
                 {/* Payment Date & Time */}
-                <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
+                <div className="bg-muted/40 border border-border rounded-xl p-4">
                   <DateTimePicker
                     label="Payment Date & Time"
                     value={paymentDateTime}
@@ -391,27 +391,27 @@ export function PayCourierModal({ open, onClose, companyId, branchId, onSuccess 
                 </div>
 
                 {/* Attachments (optional) */}
-                <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
-                  <label className="block text-sm font-semibold text-gray-300 mb-2">Attachments (Optional)</label>
+                <div className="bg-muted/40 border border-border rounded-xl p-4">
+                  <label className="block text-sm font-semibold text-muted-foreground mb-2">Attachments (Optional)</label>
                   <label className="block cursor-pointer">
-                    <div className="border-2 border-dashed border-gray-700 rounded-lg p-4 hover:border-indigo-500 hover:bg-gray-900/50 transition-all text-center">
-                      <Upload className="mx-auto mb-2 text-gray-500" size={24} />
-                      <p className="text-xs text-gray-400 mb-0.5">
+                    <div className="border-2 border-dashed border-border rounded-lg p-4 hover:border-indigo-500 hover:bg-muted/40 transition-all text-center">
+                      <Upload className="mx-auto mb-2 text-muted-foreground" size={24} />
+                      <p className="text-xs text-muted-foreground mb-0.5">
                         <span className="text-indigo-400 font-medium">Click to upload</span> or drag and drop
                       </p>
-                      <p className="text-xs text-gray-600">PDF, PNG, JPG up to 10MB</p>
+                      <p className="text-xs text-muted-foreground">PDF, PNG, JPG up to 10MB</p>
                     </div>
                     <input type="file" multiple onChange={handleFileUpload} className="hidden" accept=".pdf,.png,.jpg,.jpeg" />
                   </label>
                   {attachments.length > 0 && (
                     <div className="mt-3 space-y-2">
                       {attachments.map((file, index) => (
-                        <div key={index} className="flex items-center justify-between bg-gray-900 border border-gray-700 rounded-lg p-2">
+                        <div key={index} className="flex items-center justify-between bg-card border border-border rounded-lg p-2">
                           <div className="flex items-center gap-2 flex-1 min-w-0">
                             <FileText className="text-indigo-400 flex-shrink-0" size={16} />
                             <div className="min-w-0 flex-1">
-                              <p className="text-xs text-white font-medium truncate">{file.name}</p>
-                              <p className="text-xs text-gray-500">{(file.size / 1024).toFixed(1)} KB</p>
+                              <p className="text-xs text-foreground font-medium truncate">{file.name}</p>
+                              <p className="text-xs text-muted-foreground">{(file.size / 1024).toFixed(1)} KB</p>
                             </div>
                           </div>
                           <button type="button" onClick={() => removeAttachment(index)} className="text-red-400 hover:text-red-300 p-1 hover:bg-red-500/10 rounded flex-shrink-0">
@@ -424,14 +424,14 @@ export function PayCourierModal({ open, onClose, companyId, branchId, onSuccess 
                 </div>
 
                 {/* Notes */}
-                <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
-                  <label className="block text-sm font-semibold text-gray-300 mb-2">Notes (Optional)</label>
+                <div className="bg-muted/40 border border-border rounded-xl p-4">
+                  <label className="block text-sm font-semibold text-muted-foreground mb-2">Notes (Optional)</label>
                   <textarea
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
                     placeholder="Add payment notes, reference, or additional details..."
                     rows={5}
-                    className="w-full bg-gray-900 border-2 border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500 resize-none"
+                    className="w-full bg-card border-2 border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-gray-600 focus:outline-none focus:border-indigo-500 resize-none"
                   />
                 </div>
               </div>
@@ -439,8 +439,8 @@ export function PayCourierModal({ open, onClose, companyId, branchId, onSuccess 
           </div>
 
           {/* Footer */}
-          <div className="flex items-center justify-between p-5 border-t border-gray-800 bg-gray-950/50">
-            <div className="text-xs text-gray-400">
+          <div className="flex items-center justify-between p-5 border-t border-border bg-muted/40">
+            <div className="text-xs text-muted-foreground">
               {attachments.length > 0 && (
                 <span className="flex items-center gap-1.5">
                   <FileText size={12} />
@@ -449,13 +449,13 @@ export function PayCourierModal({ open, onClose, companyId, branchId, onSuccess 
               )}
             </div>
             <div className="flex items-center gap-3">
-              <Button variant="outline" onClick={onClose} className="border-gray-700 text-gray-300 hover:bg-gray-800 px-5 text-sm" disabled={submitting}>
+              <Button variant="outline" onClick={onClose} className="border-border text-muted-foreground hover:bg-muted px-5 text-sm" disabled={submitting}>
                 Cancel
               </Button>
               <Button
                 onClick={handleSubmit}
                 disabled={!canSubmit}
-                className="bg-indigo-600 hover:bg-indigo-500 text-white min-w-[150px] px-5 py-2.5 text-sm font-semibold"
+                className="bg-indigo-600 hover:bg-indigo-500 text-foreground min-w-[150px] px-5 py-2.5 text-sm font-semibold"
               >
                 {submitting ? (
                   <span className="flex items-center gap-2">

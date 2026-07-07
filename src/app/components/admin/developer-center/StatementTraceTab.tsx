@@ -61,39 +61,39 @@ export function StatementTraceTab({ companyId, initialQuery = '' }: Props) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-2">
         <div className="flex-1 min-w-[180px]">
-          <label className="text-[10px] uppercase tracking-wider text-gray-500">Reference (q)</label>
+          <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Reference (q)</label>
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="HQ-RCV-0006 or SL-0012"
-            className="mt-1 bg-gray-950 border-gray-800"
+            className="mt-1 bg-input-background border-border"
           />
         </div>
         <div className="min-w-[200px]">
-          <label className="text-[10px] uppercase tracking-wider text-gray-500">Contact ID (optional)</label>
+          <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Contact ID (optional)</label>
           <Input
             value={contactId}
             onChange={(e) => setContactId(e.target.value)}
             placeholder="UUID — auto-resolve from q"
-            className="mt-1 bg-gray-950 border-gray-800 font-mono text-xs"
+            className="mt-1 bg-input-background border-border font-mono text-xs"
           />
         </div>
         <div>
-          <label className="text-[10px] uppercase tracking-wider text-gray-500">From</label>
+          <label className="text-[10px] uppercase tracking-wider text-muted-foreground">From</label>
           <Input
             type="date"
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value)}
-            className="mt-1 bg-gray-950 border-gray-800 w-[150px]"
+            className="mt-1 bg-input-background border-border w-[150px]"
           />
         </div>
         <div>
-          <label className="text-[10px] uppercase tracking-wider text-gray-500">To</label>
+          <label className="text-[10px] uppercase tracking-wider text-muted-foreground">To</label>
           <Input
             type="date"
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
-            className="mt-1 bg-gray-950 border-gray-800 w-[150px]"
+            className="mt-1 bg-input-background border-border w-[150px]"
           />
         </div>
         <Button type="button" size="sm" onClick={run} disabled={loading}>
@@ -104,7 +104,7 @@ export function StatementTraceTab({ companyId, initialQuery = '' }: Props) {
       </div>
 
       {snapshot && (
-        <Card className="border-gray-800 bg-gray-900/40">
+        <Card className="border-border bg-card/40">
           <CardHeader>
             <CardTitle className="text-base">Statement trace snapshot</CardTitle>
             <CardDescription>
@@ -113,18 +113,18 @@ export function StatementTraceTab({ companyId, initialQuery = '' }: Props) {
               {snapshot.query ? ` · Filter: ${snapshot.query}` : ''}
             </CardDescription>
             {snapshot.resolveHints.length > 0 && (
-              <p className="text-xs text-gray-500 mt-1">{snapshot.resolveHints.join(' · ')}</p>
+              <p className="text-xs text-muted-foreground mt-1">{snapshot.resolveHints.join(' · ')}</p>
             )}
           </CardHeader>
           <CardContent className="overflow-x-auto">
             {snapshot.candidates.length === 0 ? (
-              <p className="text-sm text-gray-500 py-4 text-center">
+              <p className="text-sm text-muted-foreground py-4 text-center">
                 No statement rows match. Resolve contact from q, widen dates, or check exclusion probes.
               </p>
             ) : (
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="text-left text-gray-500 border-b border-gray-800">
+                  <tr className="text-left text-muted-foreground border-b border-border">
                     <th className="py-2 pr-2">Source</th>
                     <th className="py-2 pr-2">Ref</th>
                     <th className="py-2 pr-2">Date</th>
@@ -137,11 +137,11 @@ export function StatementTraceTab({ companyId, initialQuery = '' }: Props) {
                 </thead>
                 <tbody>
                   {snapshot.candidates.map((row) => (
-                    <tr key={row.rowId} className="border-b border-gray-800/60 align-top">
-                      <td className="py-2 pr-2 font-mono text-gray-400">{row.source}</td>
+                    <tr key={row.rowId} className="border-b border-border/60 align-top">
+                      <td className="py-2 pr-2 font-mono text-muted-foreground">{row.source}</td>
                       <td className="py-2 pr-2 text-gray-200">{row.ref}</td>
-                      <td className="py-2 pr-2 text-gray-400">{row.date}</td>
-                      <td className="py-2 pr-2 text-gray-500">{row.documentType}</td>
+                      <td className="py-2 pr-2 text-muted-foreground">{row.date}</td>
+                      <td className="py-2 pr-2 text-muted-foreground">{row.documentType}</td>
                       <td className="py-2 pr-2">{row.debit || '—'}</td>
                       <td className="py-2 pr-2">{row.credit || '—'}</td>
                       <td className="py-2 pr-2">
@@ -151,7 +151,7 @@ export function StatementTraceTab({ companyId, initialQuery = '' }: Props) {
                           <Badge className="bg-amber-900/40 text-amber-300 border-amber-800">no</Badge>
                         )}
                       </td>
-                      <td className="py-2 text-gray-400 max-w-md">{row.reason}</td>
+                      <td className="py-2 text-muted-foreground max-w-md">{row.reason}</td>
                     </tr>
                   ))}
                 </tbody>

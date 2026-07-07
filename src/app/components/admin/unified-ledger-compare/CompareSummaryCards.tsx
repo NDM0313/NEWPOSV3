@@ -42,17 +42,17 @@ export function CompareSummaryCards({
         )}
       </div>
       {(oldEngineName || newEngineName) && (
-        <div className="text-sm text-gray-400 grid md:grid-cols-2 gap-2">
+        <div className="text-sm text-muted-foreground grid md:grid-cols-2 gap-2">
           {oldEngineName && (
             <p>
-              Old: <strong className="text-white">{oldEngineName}</strong>
+              Old: <strong className="text-foreground">{oldEngineName}</strong>
               {oldRowCount != null && ` (${oldRowCount} rows`}
               {oldQueryMs != null && `, ${oldQueryMs.toFixed(0)} ms)`}
             </p>
           )}
           {newEngineName && (
             <p>
-              New: <strong className="text-white">{newEngineName}</strong>
+              New: <strong className="text-foreground">{newEngineName}</strong>
               {newRowCount != null && ` (${newRowCount} rows`}
               {newQueryMs != null && `, ${newQueryMs.toFixed(0)} ms)`}
             </p>
@@ -77,9 +77,9 @@ function StatCard({
 }) {
   return (
     <div
-      className={`rounded-lg border p-3 ${highlight ? 'border-amber-500/50 bg-amber-500/10' : 'border-gray-800 bg-gray-900/50'}`}
+      className={`rounded-lg border p-3 ${highlight ? 'border-amber-500/50 bg-amber-500/10' : 'border-border bg-muted/40'}`}
     >
-      <div className="text-xs text-gray-500">{label}</div>
+      <div className="text-xs text-muted-foreground">{label}</div>
       <div className="text-lg font-mono mt-1">
         {text
           ? String(value)
@@ -100,18 +100,18 @@ export function CompareDiffTable({
 }) {
   if (!rows.length) {
     return (
-      <div className="rounded-lg border border-gray-800 p-3 text-sm text-gray-500">
+      <div className="rounded-lg border border-border p-3 text-sm text-muted-foreground">
         {title}: none
       </div>
     );
   }
   return (
-    <div className="rounded-lg border border-gray-800 overflow-hidden">
-      <div className="px-3 py-2 bg-gray-900/80 text-sm font-medium">{title}</div>
+    <div className="rounded-lg border border-border overflow-hidden">
+      <div className="px-3 py-2 bg-card text-sm font-medium">{title}</div>
       <div className="overflow-x-auto max-h-64">
         <table className="w-full text-xs">
           <thead>
-            <tr className="text-gray-500 border-b border-gray-800">
+            <tr className="text-muted-foreground border-b border-border">
               <th className="text-left p-2">Entry</th>
               <th className="text-left p-2">Date</th>
               <th className="text-left p-2">Type</th>
@@ -121,7 +121,7 @@ export function CompareDiffTable({
           </thead>
           <tbody>
             {rows.slice(0, 50).map((r, i) => (
-              <tr key={`${r.journalEntryId}-${i}`} className="border-b border-gray-800/50">
+              <tr key={`${r.journalEntryId}-${i}`} className="border-b border-border">
                 <td className="p-2">{r.entryNo || r.journalEntryId.slice(0, 8)}</td>
                 <td className="p-2">{r.entryDate}</td>
                 <td className="p-2">{r.referenceType || '—'}</td>
@@ -145,18 +145,18 @@ export function CompareAmountMismatchTable({
 }) {
   if (!rows.length) {
     return (
-      <div className="rounded-lg border border-gray-800 p-3 text-sm text-gray-500">
+      <div className="rounded-lg border border-border p-3 text-sm text-muted-foreground">
         {title}: none
       </div>
     );
   }
   return (
-    <div className="rounded-lg border border-gray-800 overflow-hidden">
-      <div className="px-3 py-2 bg-gray-900/80 text-sm font-medium">{title}</div>
+    <div className="rounded-lg border border-border overflow-hidden">
+      <div className="px-3 py-2 bg-card text-sm font-medium">{title}</div>
       <div className="overflow-x-auto max-h-64">
         <table className="w-full text-xs">
           <thead>
-            <tr className="text-gray-500 border-b border-gray-800">
+            <tr className="text-muted-foreground border-b border-border">
               <th className="text-left p-2">Key</th>
               <th className="text-left p-2">Entry</th>
               <th className="text-right p-2">Old Dr/Cr</th>
@@ -165,7 +165,7 @@ export function CompareAmountMismatchTable({
           </thead>
           <tbody>
             {rows.slice(0, 50).map((m) => (
-              <tr key={m.key} className="border-b border-gray-800/50">
+              <tr key={m.key} className="border-b border-border">
                 <td className="p-2 font-mono">{m.key.slice(0, 24)}</td>
                 <td className="p-2">{m.old.entryNo || m.old.journalEntryId.slice(0, 8)}</td>
                 <td className="p-2 text-right">

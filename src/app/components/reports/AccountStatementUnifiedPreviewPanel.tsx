@@ -112,10 +112,10 @@ export function AccountStatementUnifiedPreviewPanel({
           <h3 className="text-sm font-semibold text-amber-100">{compareLabels.panelTitle}</h3>
           <UnifiedLedgerPreviewBadge mode={engineState.mode} />
           {engineState.pilotEnabled ? (
-            <span className="text-xs text-gray-500 border border-gray-700 rounded px-1.5 py-0.5">pilot flag ON</span>
+            <span className="text-xs text-muted-foreground border border-border rounded px-1.5 py-0.5">pilot flag ON</span>
           ) : null}
           {!engineState.screenFlagEnabled ? (
-            <span className="text-xs text-gray-500">screen flag OFF</span>
+            <span className="text-xs text-muted-foreground">screen flag OFF</span>
           ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
@@ -157,15 +157,15 @@ export function AccountStatementUnifiedPreviewPanel({
       ) : null}
 
       {previewTarget.kind === 'none' ? (
-        <p className="text-sm text-gray-500">{previewTarget.reason}</p>
+        <p className="text-sm text-muted-foreground">{previewTarget.reason}</p>
       ) : null}
 
       <div className="flex flex-wrap items-center gap-3 text-sm">
-        <span className="text-gray-400">Preview basis lens:</span>
+        <span className="text-muted-foreground">Preview basis lens:</span>
         <select
           value={previewBasis}
           onChange={(e) => onPreviewBasisChange(e.target.value as UnifiedLedgerBasis)}
-          className="rounded border border-gray-700 bg-gray-900 px-2 py-1 text-sm text-white"
+          className="rounded border border-border bg-card px-2 py-1 text-sm text-foreground"
           disabled={engineState.killSwitchActive}
         >
           {PREVIEW_BASIS_OPTIONS.map((b) => (
@@ -195,13 +195,13 @@ export function AccountStatementUnifiedPreviewPanel({
       ) : null}
 
       {displayFiltersActive ? (
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-muted-foreground">
           Display filters (search, polarity, include flags, etc.) apply to the main table only. Compare uses full loaded
           entries.
         </p>
       ) : null}
 
-      {loading ? <p className="text-sm text-gray-400">{compareLabels.loadingText}</p> : null}
+      {loading ? <p className="text-sm text-muted-foreground">{compareLabels.loadingText}</p> : null}
       {error ? <p className="text-sm text-red-400">{error}</p> : null}
 
       {diff ? (
@@ -236,7 +236,7 @@ export function AccountStatementUnifiedPreviewPanel({
         <div className="space-y-2">
           <button
             type="button"
-            className="flex items-center gap-1 text-sm text-gray-400 hover:text-white"
+            className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
             onClick={() => setTableExpanded((v) => !v)}
           >
             {tableExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
@@ -254,7 +254,7 @@ export function AccountStatementUnifiedPreviewPanel({
       ) : null}
 
       {previewResult?.blockedByKillSwitch ? (
-        <p className="text-sm text-gray-500">No unified rows — preview blocked by kill switch.</p>
+        <p className="text-sm text-muted-foreground">No unified rows — preview blocked by kill switch.</p>
       ) : null}
     </div>
   );
@@ -273,7 +273,7 @@ function AccountStatementPreviewTable({
     <div className="overflow-x-auto max-h-80">
       <table className="w-full text-xs">
         <thead>
-          <tr className="text-gray-500 border-b border-gray-800 bg-gray-900/80">
+          <tr className="text-muted-foreground border-b border-border bg-card">
             <th className="text-left p-2">Date</th>
             <th className="text-left p-2">Reference</th>
             <th className="text-left p-2">Description</th>
@@ -284,7 +284,7 @@ function AccountStatementPreviewTable({
         </thead>
         <tbody>
           {rows.slice(0, 100).map((r, i) => (
-            <tr key={`${r.journal_entry_id}-${r.journal_line_id || i}`} className="border-b border-gray-800/50">
+            <tr key={`${r.journal_entry_id}-${r.journal_line_id || i}`} className="border-b border-border">
               <td className="p-2 whitespace-nowrap">{r.date ? formatDate(r.date) : '—'}</td>
               <td className="p-2">{r.reference_number || r.entry_no || '—'}</td>
               <td className="p-2 max-w-xs truncate" title={r.description}>

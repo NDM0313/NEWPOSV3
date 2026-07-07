@@ -74,11 +74,11 @@ export function PartyLedgerCompareTab(props: {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 rounded-xl border border-gray-800 bg-gray-900/40 p-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 rounded-xl border border-border bg-card/40 p-4">
         <label className="text-sm space-y-1">
           Party type
           <select
-            className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1.5"
+            className="w-full rounded bg-muted border border-border px-2 py-1.5"
             value={partyType}
             onChange={(e) => setPartyType(e.target.value as UnifiedPartyType)}
           >
@@ -90,7 +90,7 @@ export function PartyLedgerCompareTab(props: {
         <label className="text-sm space-y-1 md:col-span-2">
           Contact
           <select
-            className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1.5"
+            className="w-full rounded bg-muted border border-border px-2 py-1.5"
             value={contactId}
             onChange={(e) => setContactId(e.target.value)}
           >
@@ -120,7 +120,7 @@ export function PartyLedgerCompareTab(props: {
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <span className="text-xs text-gray-500 w-full">Golden presets:</span>
+        <span className="text-xs text-muted-foreground w-full">Golden presets:</span>
         {GOLDEN_TIE_OUT_CONTACT_PATTERNS.map((p) => (
           <Button key={p.label} size="sm" variant="secondary" onClick={() => loadGolden(p)}>
             {p.label}

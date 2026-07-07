@@ -103,10 +103,10 @@ export function TrialBalanceUnifiedPreviewPanel({
           <h3 className="text-sm font-semibold text-amber-100">{compareLabels.panelTitle}</h3>
           <UnifiedLedgerPreviewBadge mode={engineState.mode} />
           {engineState.pilotEnabled ? (
-            <span className="text-xs text-gray-500 border border-gray-700 rounded px-1.5 py-0.5">pilot flag ON</span>
+            <span className="text-xs text-muted-foreground border border-border rounded px-1.5 py-0.5">pilot flag ON</span>
           ) : null}
           {!engineState.screenFlagEnabled ? (
-            <span className="text-xs text-gray-500">screen flag OFF</span>
+            <span className="text-xs text-muted-foreground">screen flag OFF</span>
           ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
@@ -148,11 +148,11 @@ export function TrialBalanceUnifiedPreviewPanel({
       ) : null}
 
       <div className="flex flex-wrap items-center gap-3 text-sm">
-        <span className="text-gray-400">Preview basis lens:</span>
+        <span className="text-muted-foreground">Preview basis lens:</span>
         <select
           value={previewBasis}
           onChange={(e) => onPreviewBasisChange(e.target.value as UnifiedLedgerBasis)}
-          className="rounded border border-gray-700 bg-gray-900 px-2 py-1 text-sm text-white"
+          className="rounded border border-border bg-card px-2 py-1 text-sm text-foreground"
           disabled={engineState.killSwitchActive}
         >
           {PREVIEW_BASIS_OPTIONS.map((b) => (
@@ -169,13 +169,13 @@ export function TrialBalanceUnifiedPreviewPanel({
       />
 
       {periodDiffersFromAsOf ? (
-        <p className="text-xs text-gray-500">
-          Legacy sums activity from <strong className="text-gray-400">{startDate}</strong> to{' '}
-          <strong className="text-gray-400">{endDate}</strong>. Unified RPC uses{' '}
-          <strong className="text-gray-400">asOfDate = {endDate}</strong> only (admin compare parity).
+        <p className="text-xs text-muted-foreground">
+          Legacy sums activity from <strong className="text-muted-foreground">{startDate}</strong> to{' '}
+          <strong className="text-muted-foreground">{endDate}</strong>. Unified RPC uses{' '}
+          <strong className="text-muted-foreground">asOfDate = {endDate}</strong> only (admin compare parity).
         </p>
       ) : (
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-muted-foreground">
           Period: {startDate} to {endDate} · Branch: {branchLabel}. Unified RPC as-of: {endDate}.
         </p>
       )}
@@ -188,12 +188,12 @@ export function TrialBalanceUnifiedPreviewPanel({
       ) : null}
 
       {searchActive ? (
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-muted-foreground">
           Search / journal filters apply to the main table only. Compare uses full loaded legacy rows.
         </p>
       ) : null}
 
-      {loading ? <p className="text-sm text-gray-400">{compareLabels.loadingText}</p> : null}
+      {loading ? <p className="text-sm text-muted-foreground">{compareLabels.loadingText}</p> : null}
       {error ? <p className="text-sm text-red-400">{error}</p> : null}
 
       {diff ? (
@@ -208,7 +208,7 @@ export function TrialBalanceUnifiedPreviewPanel({
           newEngineName={`Unified RPC (${UNIFIED_LEDGER_BASIS_LABELS[previewBasis]})`}
           newQueryMs={previewResult?.meta.queryDurationMs}
           extra={
-            <div className="text-sm text-gray-400 grid md:grid-cols-2 gap-2">
+            <div className="text-sm text-muted-foreground grid md:grid-cols-2 gap-2">
               <p>
                 Old Dr/Cr: {diff.oldTotalDebit.toFixed(2)} / {diff.oldTotalCredit.toFixed(2)} (diff{' '}
                 {diff.oldDifference.toFixed(2)})
@@ -228,14 +228,14 @@ export function TrialBalanceUnifiedPreviewPanel({
       ) : null}
 
       {diff && diff.accountDiffs.length > 0 ? (
-        <div className="rounded-lg border border-gray-800 overflow-hidden">
-          <div className="px-3 py-2 bg-gray-900/80 text-sm font-medium">
+        <div className="rounded-lg border border-border overflow-hidden">
+          <div className="px-3 py-2 bg-card text-sm font-medium">
             Account diffs ({diff.accountDiffs.length})
           </div>
           <div className="overflow-x-auto max-h-64">
             <table className="w-full text-xs">
               <thead>
-                <tr className="text-gray-500 border-b border-gray-800">
+                <tr className="text-muted-foreground border-b border-border">
                   <th className="text-left p-2">Code</th>
                   <th className="text-left p-2">Name</th>
                   <th className="text-left p-2">Kind</th>
@@ -246,7 +246,7 @@ export function TrialBalanceUnifiedPreviewPanel({
               </thead>
               <tbody>
                 {diff.accountDiffs.slice(0, 50).map((d, i) => (
-                  <tr key={`${d.accountId}-${i}`} className="border-b border-gray-800/50">
+                  <tr key={`${d.accountId}-${i}`} className="border-b border-border">
                     <td className="p-2">{d.accountCode}</td>
                     <td className="p-2">{d.accountName}</td>
                     <td className="p-2">{d.kind}</td>
@@ -265,7 +265,7 @@ export function TrialBalanceUnifiedPreviewPanel({
         <div className="space-y-2">
           <button
             type="button"
-            className="flex items-center gap-1 text-sm text-gray-400 hover:text-white"
+            className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
             onClick={() => setTableExpanded((v) => !v)}
           >
             {tableExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
@@ -283,7 +283,7 @@ export function TrialBalanceUnifiedPreviewPanel({
       ) : null}
 
       {previewResult?.blockedByKillSwitch ? (
-        <p className="text-sm text-gray-500">No unified rows — preview blocked by kill switch.</p>
+        <p className="text-sm text-muted-foreground">No unified rows — preview blocked by kill switch.</p>
       ) : null}
     </div>
   );
@@ -300,7 +300,7 @@ function TrialBalancePreviewTable({
     <div className="overflow-x-auto max-h-80">
       <table className="w-full text-xs">
         <thead>
-          <tr className="text-gray-500 border-b border-gray-800 bg-gray-900/80">
+          <tr className="text-muted-foreground border-b border-border bg-card">
             <th className="text-left p-2">Code</th>
             <th className="text-left p-2">Account</th>
             <th className="text-left p-2">Type</th>
@@ -311,7 +311,7 @@ function TrialBalancePreviewTable({
         </thead>
         <tbody>
           {rows.slice(0, 100).map((r, i) => (
-            <tr key={`${r.account_code}-${i}`} className="border-b border-gray-800/50">
+            <tr key={`${r.account_code}-${i}`} className="border-b border-border">
               <td className="p-2 font-mono">{r.account_code}</td>
               <td className="p-2">{r.account_name}</td>
               <td className="p-2">{r.account_type}</td>

@@ -8,6 +8,14 @@ import { customerLedgerAPI } from '@/app/services/customerLedgerApi';
 import { contactService } from '@/app/services/contactService';
 import { accountService } from '@/app/services/accountService';
 import { studioService } from '@/app/services/studioService';
+import { fetchInBatches } from '@/app/lib/chunkInQuery';
+import {
+  LEDGER_V2_EMPTY,
+  parseTransferSettlementFromDescription,
+  pickCounterAccountLabel,
+  shouldReplacePaymentMethod,
+  type CounterAccountLine,
+} from '@/app/lib/ledgerStatementV2Enrichment';
 import { supabase } from '@/lib/supabase';
 import { resolveLedgerTransactionOpenRef } from '@/app/lib/ledgerTransactionOpenRef';
 import type {
@@ -31,10 +39,214 @@ function isUuid(s?: string | null): boolean {
 
 function displaySettlementAccount(e: AccountLedgerEntry): string {
   const counter = String(e.counter_account || '').trim();
-  const account = String(e.account_name || '').trim();
   if (counter && !isUuid(counter)) return counter;
-  if (account && !isUuid(account)) return account;
-  return '—';
+  const parsed = parseTransferSettlementFromDescription(e.description || '');
+  if (parsed) return parsed;
+  const fromNotes = parseTransferSettlementFromDescription(e.notes || '');
+  if (fromNotes) return fromNotes;
+  return LEDGER_V2_EMPTY;
+}
+
+export type LedgerV2EnrichmentOpts = {
+  statementType?: LedgerStatementV2Type;
+  viewedAccountId?: string | null;
+  viewedAccountNames?: string[];
+};
+
+const slice200 = <T>(arr: T[]) => arr.slice(0, 200);
+
+function collectPartyGlAccountNames(rows: LedgerStatementV2Row[]): string[] {
+  const names = new Set<string>();
+  for (const row of rows) {
+    const accountName = String(row.glEntry?.account_name || '').trim();
+    if (accountName && !isUuid(accountName)) names.add(accountName);
+    const bareName = accountName.replace(/\s*\([^)]*\)\s*$/, '').trim();
+    if (bareName) names.add(bareName);
+  }
+  return [...names];
+}
+
+async function resolveViewedAccountNames(
+  companyId: string,
+  opts?: LedgerV2EnrichmentOpts,
+): Promise<Set<string>> {
+  const names = new Set<string>();
+  (opts?.viewedAccountNames || []).forEach((n) => {
+    const t = String(n || '').trim();
+    if (t) names.add(t);
+  });
+  if (opts?.viewedAccountId) {
+    const { data } = await supabase
+      .from('accounts')
+      .select('name, code')
+      .eq('company_id', companyId)
+      .eq('id', opts.viewedAccountId)
+      .maybeSingle();
+    const name = String((data as { name?: string } | null)?.name || '').trim();
+    const code = String((data as { code?: string } | null)?.code || '').trim();
+    if (name) {
+      names.add(name);
+      if (code) names.add(`${name} (${code})`);
+    }
+  }
+  return names;
+}
+
+/** Batch-enrich Payment (settlement account) and Created by for V2 rows (legacy + unified loaders). */
+export async function enrichLedgerV2PaymentAndAuthorship(
+  rows: LedgerStatementV2Row[],
+  companyId: string,
+  opts?: LedgerV2EnrichmentOpts,
+): Promise<void> {
+  if (!rows.length) return;
+
+  const viewedAccountIds = new Set<string>();
+  if (opts?.viewedAccountId) viewedAccountIds.add(opts.viewedAccountId);
+
+  const viewedAccountNames = await resolveViewedAccountNames(companyId, opts);
+  if (opts?.statementType && opts.statementType !== 'account') {
+    collectPartyGlAccountNames(rows).forEach((n) => viewedAccountNames.add(n));
+  }
+
+  const jeIds = [...new Set(rows.map((r) => r.journalEntryId).filter(Boolean))] as string[];
+  let payIds = [...new Set(rows.map((r) => r.paymentId).filter(Boolean))] as string[];
+
+  const jeCreatedBy = new Map<string, string>();
+  const jePaymentId = new Map<string, string>();
+  const linesByJe = new Map<string, CounterAccountLine[]>();
+
+  if (jeIds.length) {
+    const { data: jeRows } = await supabase
+      .from('journal_entries')
+      .select('id, created_by, payment_id')
+      .eq('company_id', companyId)
+      .in('id', slice200(jeIds));
+    (jeRows || []).forEach((r: { id: string; created_by?: string | null; payment_id?: string | null }) => {
+      if (r.created_by) jeCreatedBy.set(r.id, String(r.created_by));
+      if (r.payment_id) {
+        const pid = String(r.payment_id);
+        jePaymentId.set(r.id, pid);
+        if (!payIds.includes(pid)) payIds.push(pid);
+      }
+    });
+
+    const lineRows = await fetchInBatches(jeIds, async (chunk) => {
+      const { data, error } = await supabase
+        .from('journal_entry_lines')
+        .select('id, journal_entry_id, account_id, account:accounts(id, name, code, type)')
+        .in('journal_entry_id', chunk);
+      if (error) throw error;
+      return data || [];
+    });
+
+    for (const line of lineRows as Array<{
+      id: string;
+      journal_entry_id: string;
+      account_id: string;
+      account?: { id?: string; name?: string; code?: string; type?: string } | null;
+    }>) {
+      const jeId = String(line.journal_entry_id || '');
+      if (!jeId) continue;
+      const acc = line.account;
+      const entry: CounterAccountLine = {
+        lineId: String(line.id),
+        accountId: String(line.account_id || acc?.id || ''),
+        name: String(acc?.name || ''),
+        code: String(acc?.code || ''),
+        type: String(acc?.type || ''),
+      };
+      const arr = linesByJe.get(jeId) || [];
+      arr.push(entry);
+      linesByJe.set(jeId, arr);
+    }
+  }
+
+  const paySettlement = new Map<string, string>();
+  const payCreatedBy = new Map<string, string>();
+  const payReceivedBy = new Map<string, string>();
+
+  if (payIds.length) {
+    const payments = await fetchInBatches(payIds, async (chunk) => {
+      const { data, error } = await supabase
+        .from('payments')
+        .select(
+          'id, payment_method, created_by, received_by, payment_account:accounts(name, code)',
+        )
+        .eq('company_id', companyId)
+        .in('id', chunk);
+      if (error) throw error;
+      return data || [];
+    });
+    payments.forEach((p: {
+      id: string;
+      payment_method?: string | null;
+      created_by?: string | null;
+      received_by?: string | null;
+      payment_account?: { name?: string; code?: string } | null;
+    }) => {
+      const acct = p.payment_account;
+      const acctName = acct?.name
+        ? acct.code
+          ? `${acct.name} (${acct.code})`
+          : acct.name
+        : '';
+      const settlement = acctName || String(p.payment_method || '').trim();
+      if (settlement) paySettlement.set(p.id, settlement);
+      if (p.created_by) payCreatedBy.set(p.id, String(p.created_by));
+      if (p.received_by) payReceivedBy.set(p.id, String(p.received_by));
+    });
+  }
+
+  for (const row of rows) {
+    const jeId = row.journalEntryId;
+    const paymentId = row.paymentId || (jeId ? jePaymentId.get(jeId) : undefined);
+    if (paymentId && !row.paymentId) row.paymentId = paymentId;
+
+    if (shouldReplacePaymentMethod(row.paymentMethod, viewedAccountNames)) {
+      let settlement: string | null = null;
+
+      const counterFromGl = String(row.glEntry?.counter_account || '').trim();
+      if (counterFromGl && !isUuid(counterFromGl)) settlement = counterFromGl;
+
+      if (!settlement && jeId) {
+        const excludeLineId =
+          row.glEntry?.journal_line_id ||
+          (row.id && row.id !== jeId && isUuid(row.id) ? row.id : undefined);
+        settlement = pickCounterAccountLabel(
+          linesByJe.get(jeId) || [],
+          excludeLineId,
+          viewedAccountIds,
+        );
+      }
+
+      if (!settlement && paymentId) settlement = paySettlement.get(paymentId) || null;
+
+      if (!settlement) settlement = parseTransferSettlementFromDescription(row.description);
+      if (!settlement && row.glEntry?.notes) {
+        settlement = parseTransferSettlementFromDescription(row.glEntry.notes);
+      }
+
+      row.paymentMethod = settlement || LEDGER_V2_EMPTY;
+    }
+
+    const createdByEmpty =
+      isLedgerV2Placeholder(row.createdBy) || (row.createdBy && isUuid(row.createdBy));
+    if (createdByEmpty) {
+      let author: string | undefined;
+      if (jeId && jeCreatedBy.has(jeId)) author = jeCreatedBy.get(jeId);
+      if (!author && paymentId) {
+        author = payReceivedBy.get(paymentId) || payCreatedBy.get(paymentId);
+      }
+      if (author) row.createdBy = author;
+    }
+  }
+
+  await enrichCreatedByNames(rows);
+}
+
+function isLedgerV2Placeholder(value?: string | null): boolean {
+  const v = String(value || '').trim();
+  return !v || v === LEDGER_V2_EMPTY;
 }
 
 async function resolveUserDisplayNames(userIds: string[]): Promise<Map<string, string>> {
@@ -165,7 +377,7 @@ export function glToRows(entries: AccountLedgerEntry[]): LedgerStatementV2Row[] 
       credit: round2(Number(e.credit) || 0),
       runningBalance: round2(Number(e.running_balance) || 0),
       paymentMethod: displaySettlementAccount(e),
-      createdBy: String(e.created_by || '—'),
+      createdBy: String(e.created_by || LEDGER_V2_EMPTY),
       hasAttachments: false,
       sourceKind: mapGlReferenceType(e.je_reference_type || e.document_type),
       sourceId: e.sale_id || e.payment_id || e.rental_id || undefined,
@@ -452,8 +664,11 @@ export async function getLedgerStatementV2(
   let rows = glToRows(entries);
   const opening = deriveOpeningFromGlRows(rows);
 
+  await enrichLedgerV2PaymentAndAuthorship(rows, companyId, {
+    statementType,
+    viewedAccountId: statementType === 'account' ? entityId : null,
+  });
   await enrichAttachmentFlags(rows);
-  await enrichCreatedByNames(rows);
 
   const summary = summarizeFromRows(rows, opening, statementType);
   return { entityLabel, basis: 'gl', rows, summary };

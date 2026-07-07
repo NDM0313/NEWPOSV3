@@ -89,7 +89,7 @@ const getCategoryBadgeStyle = (category: string) => {
     case 'Salaries': return 'bg-purple-500/10 text-purple-400 border-purple-500/20';
     case 'Utilities': return 'bg-orange-500/10 text-orange-400 border-orange-500/20';
     case 'Stitching': return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20';
-    default: return 'bg-gray-500/10 text-gray-400 border-gray-500/20';
+    default: return 'bg-gray-500/10 text-muted-foreground border-gray-500/20';
   }
 };
 
@@ -99,7 +99,7 @@ const getStatusBadgeStyle = (status: string) => {
     case 'approved': return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
     case 'paid': return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
     case 'rejected': return 'bg-red-500/10 text-red-400 border-red-500/20';
-    default: return 'bg-gray-500/10 text-gray-400 border-gray-500/20';
+    default: return 'bg-gray-500/10 text-muted-foreground border-gray-500/20';
   }
 };
 
@@ -605,10 +605,10 @@ export const ExpensesDashboard = () => {
     <div className="space-y-6 animate-in fade-in duration-500">
       
       {/* Header: title left, Add button right - always same row (like Accounting) */}
-      <div className="flex items-center justify-between gap-4 border-b border-gray-800 pb-4 flex-nowrap">
+      <div className="flex items-center justify-between gap-4 border-b border-border pb-4 flex-nowrap">
         <div className="min-w-0">
-          <h2 className="text-2xl md:text-3xl font-bold text-white tracking-tight">Expenses</h2>
-          <p className="text-gray-400 mt-0.5 text-sm">Track and manage business operational costs.</p>
+          <h2 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight">Expenses</h2>
+          <p className="text-muted-foreground mt-0.5 text-sm">Track and manage business operational costs.</p>
         </div>
         <div className="flex-shrink-0">
           {activeTab === 'categories' ? (
@@ -637,7 +637,7 @@ export const ExpensesDashboard = () => {
           onClick={() => setActiveTab('overview')}
           className={cn(
             "pb-2 text-sm font-medium transition-all relative",
-            activeTab === 'overview' ? "text-blue-400" : "text-gray-400 hover:text-gray-300"
+            activeTab === 'overview' ? "text-blue-400" : "text-muted-foreground hover:text-muted-foreground"
           )}
         >
           Overview
@@ -649,7 +649,7 @@ export const ExpensesDashboard = () => {
           onClick={() => setActiveTab('list')}
           className={cn(
             "pb-2 text-sm font-medium transition-all relative",
-            activeTab === 'list' ? "text-blue-400" : "text-gray-400 hover:text-gray-300"
+            activeTab === 'list' ? "text-blue-400" : "text-muted-foreground hover:text-muted-foreground"
           )}
         >
           All Expenses
@@ -661,7 +661,7 @@ export const ExpensesDashboard = () => {
           onClick={() => setActiveTab('categories')}
           className={cn(
             "pb-2 text-sm font-medium transition-all relative",
-            activeTab === 'categories' ? "text-blue-400" : "text-gray-400 hover:text-gray-300"
+            activeTab === 'categories' ? "text-blue-400" : "text-muted-foreground hover:text-muted-foreground"
           )}
         >
           Categories
@@ -680,11 +680,11 @@ export const ExpensesDashboard = () => {
         <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
           {/* Top Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-gray-900/50 border border-gray-800 p-6 rounded-xl flex flex-col justify-between">
+            <div className="bg-card border border-border p-6 rounded-xl flex flex-col justify-between">
               <div className="flex justify-between items-start">
                 <div>
-                  <p className="text-gray-400 text-sm font-medium">Total Monthly Expense</p>
-                  <h3 className="text-2xl font-bold text-white mt-2">
+                  <p className="text-muted-foreground text-sm font-medium">Total Monthly Expense</p>
+                  <h3 className="text-2xl font-bold text-foreground mt-2">
                     {formatCurrency(monthTotal)}
                   </h3>
                 </div>
@@ -693,15 +693,15 @@ export const ExpensesDashboard = () => {
                 </div>
               </div>
               <div className="mt-4 flex items-center gap-2 text-xs">
-                <span className="text-gray-500">{monthExpenses.length} expenses this month</span>
+                <span className="text-muted-foreground">{monthExpenses.length} expenses this month</span>
               </div>
             </div>
 
-            <div className="bg-gray-900/50 border border-gray-800 p-6 rounded-xl flex flex-col justify-between">
+            <div className="bg-card border border-border p-6 rounded-xl flex flex-col justify-between">
               <div className="flex justify-between items-start">
                 <div>
-                  <p className="text-gray-400 text-sm font-medium">Pending Expenses</p>
-                  <h3 className="text-2xl font-bold text-white mt-2">
+                  <p className="text-muted-foreground text-sm font-medium">Pending Expenses</p>
+                  <h3 className="text-2xl font-bold text-foreground mt-2">
                     {monthExpenses.filter(e => e.status === 'pending' || e.status === 'submitted').length}
                   </h3>
                 </div>
@@ -710,15 +710,15 @@ export const ExpensesDashboard = () => {
                 </div>
               </div>
               <div className="mt-4 flex items-center gap-2 text-xs">
-                <span className="text-gray-500">Require approval</span>
+                <span className="text-muted-foreground">Require approval</span>
               </div>
             </div>
 
-            <div className="bg-gray-900/50 border border-gray-800 p-6 rounded-xl flex flex-col justify-between">
+            <div className="bg-card border border-border p-6 rounded-xl flex flex-col justify-between">
               <div className="flex justify-between items-start">
                 <div>
-                  <p className="text-gray-400 text-sm font-medium">vs Prior Month</p>
-                  <h3 className="text-2xl font-bold text-white mt-2">
+                  <p className="text-muted-foreground text-sm font-medium">vs Prior Month</p>
+                  <h3 className="text-2xl font-bold text-foreground mt-2">
                     {priorMonthTotal > 0
                       ? `${monthTotal >= priorMonthTotal ? '+' : ''}${(((monthTotal - priorMonthTotal) / priorMonthTotal) * 100).toFixed(0)}%`
                       : monthTotal > 0 ? 'New' : '—'}
@@ -735,10 +735,10 @@ export const ExpensesDashboard = () => {
               <div className="mt-4">
                  {chartData.length > 0 && totalExpenseAmount > 0 && (
                    <>
-                     <div className="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden">
+                     <div className="w-full bg-muted h-1.5 rounded-full overflow-hidden">
                         <div className="bg-blue-500 h-full rounded-full" style={{ width: `${(chartData[0].value / totalExpenseAmount) * 100}%` }}></div>
                      </div>
-                     <p className="text-gray-500 text-xs mt-2">
+                     <p className="text-muted-foreground text-xs mt-2">
                        Top: {chartData[0].name} · {formatCurrency(priorMonthTotal)} prior month
                      </p>
                    </>
@@ -748,40 +748,40 @@ export const ExpensesDashboard = () => {
           </div>
 
           {monthCategoryBreakdown.length > 0 ? (
-            <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between">
-                <h3 className="text-lg font-bold text-white">This month by category</h3>
-                <span className="text-xs text-gray-500">{new Date().toLocaleString('en-PK', { month: 'long', year: 'numeric' })}</span>
+            <div className="bg-card border border-border rounded-xl overflow-hidden">
+              <div className="px-6 py-4 border-b border-border flex items-center justify-between">
+                <h3 className="text-lg font-bold text-foreground">This month by category</h3>
+                <span className="text-xs text-muted-foreground">{new Date().toLocaleString('en-PK', { month: 'long', year: 'numeric' })}</span>
               </div>
               <table className="w-full text-sm">
-                <thead className="text-xs text-gray-500 uppercase bg-gray-950/50">
+                <thead className="text-xs text-muted-foreground uppercase bg-muted/40">
                   <tr>
                     <th className="px-6 py-3 text-left font-medium">Category</th>
                     <th className="px-6 py-3 text-right font-medium">Count</th>
                     <th className="px-6 py-3 text-right font-medium">Amount</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-800">
+                <tbody className="divide-y divide-border">
                   {monthCategoryBreakdown.map((row) => (
                     <tr
                       key={row.label}
-                      className="hover:bg-gray-800/30 cursor-pointer"
+                      className="hover:bg-accent/30 cursor-pointer"
                       onClick={() => {
                         setCategoryFilter(row.categoryFilter);
                         setActiveTab('list');
                       }}
                     >
-                      <td className="px-6 py-3 text-white">{row.label}</td>
-                      <td className="px-6 py-3 text-right text-gray-400">{row.count}</td>
+                      <td className="px-6 py-3 text-foreground">{row.label}</td>
+                      <td className="px-6 py-3 text-right text-muted-foreground">{row.count}</td>
                       <td className="px-6 py-3 text-right font-medium text-red-400">-{formatCurrency(row.amount)}</td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot>
-                  <tr className="border-t border-gray-800 bg-gray-950/50">
-                    <td className="px-6 py-3 font-medium text-gray-400">Total</td>
-                    <td className="px-6 py-3 text-right text-gray-400">{monthExpenses.length}</td>
-                    <td className="px-6 py-3 text-right font-bold text-white">-{formatCurrency(monthTotal)}</td>
+                  <tr className="border-t border-border bg-muted/40">
+                    <td className="px-6 py-3 font-medium text-muted-foreground">Total</td>
+                    <td className="px-6 py-3 text-right text-muted-foreground">{monthExpenses.length}</td>
+                    <td className="px-6 py-3 text-right font-bold text-foreground">-{formatCurrency(monthTotal)}</td>
                   </tr>
                 </tfoot>
               </table>
@@ -789,8 +789,8 @@ export const ExpensesDashboard = () => {
           ) : null}
 
           {/* Donut Chart Section */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-8 flex flex-col items-center justify-center min-h-[400px]">
-            <h3 className="text-lg font-bold text-white mb-2 self-start">Expense Breakdown (this month)</h3>
+          <div className="bg-card border border-border rounded-xl p-8 flex flex-col items-center justify-center min-h-[400px]">
+            <h3 className="text-lg font-bold text-foreground mb-2 self-start">Expense Breakdown (this month)</h3>
             <div className="h-[300px] w-full max-w-lg relative min-h-[300px] shrink-0">
               <ResponsiveContainer width="100%" height={300} minWidth={0} minHeight={300}>
                 <PieChart>
@@ -808,7 +808,7 @@ export const ExpensesDashboard = () => {
                     ))}
                   </Pie>
                   <Tooltip 
-                    contentStyle={{ backgroundColor: '#1F2937', borderColor: '#374151', color: '#F3F4F6', borderRadius: '8px' }}
+                    contentStyle={{ backgroundColor: 'hsl(var(--popover))', borderColor: 'hsl(var(--border))', color: 'hsl(var(--popover-foreground))', borderRadius: '8px' }}
                     itemStyle={{ color: '#F3F4F6' }}
                     formatter={(value: number) => formatCurrency(value)}
                   />
@@ -816,15 +816,15 @@ export const ExpensesDashboard = () => {
                      verticalAlign="bottom" 
                      height={36} 
                      iconType="circle"
-                     formatter={(value) => <span className="text-gray-400 ml-1">{value}</span>}
+                     formatter={(value) => <span className="text-muted-foreground ml-1">{value}</span>}
                   />
                 </PieChart>
               </ResponsiveContainer>
               
               {/* Center Text - Real total from database */}
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[60%] text-center pointer-events-none">
-                 <p className="text-gray-500 text-sm">Total</p>
-                 <p className="text-3xl font-bold text-white">{formatCurrency(totalExpenseAmount)}</p>
+                 <p className="text-muted-foreground text-sm">Total</p>
+                 <p className="text-3xl font-bold text-foreground">{formatCurrency(totalExpenseAmount)}</p>
               </div>
             </div>
           </div>
@@ -853,9 +853,9 @@ export const ExpensesDashboard = () => {
                   value={diagnosticWatchId}
                   onChange={(e) => setDiagnosticWatchId(e.target.value)}
                   placeholder="Expense UUID or EXP-… to trace"
-                  className="flex-1 bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-gray-500"
+                  className="flex-1 bg-input-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
                 />
-                <p className="text-xs text-gray-400 max-w-xl">
+                <p className="text-xs text-muted-foreground max-w-xl">
                   Open DevTools → Console. Each filter pass logs the watched row; a summary effect logs pipeline
                   (operational list → filters → current page).
                 </p>
@@ -885,9 +885,9 @@ export const ExpensesDashboard = () => {
               onToggle: () => setFilterOpen(!filterOpen),
               activeCount: activeFilterCount,
               renderPanel: () => (
-                <div className="absolute right-0 top-12 w-96 bg-gray-900 border border-gray-700 rounded-lg shadow-2xl p-4 z-50">
+                <div className="absolute right-0 top-12 w-96 bg-card border border-border rounded-lg shadow-2xl p-4 z-50">
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-sm font-semibold text-white">Filters</h3>
+                    <h3 className="text-sm font-semibold text-foreground">Filters</h3>
                     <button
                       onClick={clearFilters}
                       className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
@@ -900,7 +900,7 @@ export const ExpensesDashboard = () => {
                     {/* Date Filter: From – To */}
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="text-xs text-gray-400 uppercase font-medium mb-2 block">
+                        <label className="text-xs text-muted-foreground uppercase font-medium mb-2 block">
                           From Date
                         </label>
                         <DatePicker
@@ -911,7 +911,7 @@ export const ExpensesDashboard = () => {
                         />
                       </div>
                       <div>
-                        <label className="text-xs text-gray-400 uppercase font-medium mb-2 block">
+                        <label className="text-xs text-muted-foreground uppercase font-medium mb-2 block">
                           To Date
                         </label>
                         <DatePicker
@@ -925,13 +925,13 @@ export const ExpensesDashboard = () => {
 
                     {/* Category Filter */}
                     <div>
-                      <label className="text-xs text-gray-400 uppercase font-medium mb-2 block">
+                      <label className="text-xs text-muted-foreground uppercase font-medium mb-2 block">
                         Category
                       </label>
                       <select
                         value={categoryFilter}
                         onChange={(e) => setCategoryFilter(e.target.value)}
-                        className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                        className="w-full bg-input-background border border-border rounded-lg px-3 py-2 text-foreground text-sm focus:outline-none focus:border-blue-500"
                       >
                         <option value="all">All Categories</option>
                         {categoryFilterOptions.map((cat) => (
@@ -942,13 +942,13 @@ export const ExpensesDashboard = () => {
 
                     {subCategoryFilterOptions.length > 0 && (
                       <div>
-                        <label className="text-xs text-gray-400 uppercase font-medium mb-2 block">
+                        <label className="text-xs text-muted-foreground uppercase font-medium mb-2 block">
                           Sub-category
                         </label>
                         <select
                           value={subCategoryFilter}
                           onChange={(e) => setSubCategoryFilter(e.target.value)}
-                          className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                          className="w-full bg-input-background border border-border rounded-lg px-3 py-2 text-foreground text-sm focus:outline-none focus:border-blue-500"
                         >
                           <option value="all">All sub-categories</option>
                           {subCategoryFilterOptions.map((sub) => (
@@ -960,13 +960,13 @@ export const ExpensesDashboard = () => {
 
                     {branches.length > 0 && (
                       <div>
-                        <label className="text-xs text-gray-400 uppercase font-medium mb-2 block">
+                        <label className="text-xs text-muted-foreground uppercase font-medium mb-2 block">
                           Branch
                         </label>
                         <select
                           value={branchFilter}
                           onChange={(e) => setBranchFilter(e.target.value)}
-                          className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                          className="w-full bg-input-background border border-border rounded-lg px-3 py-2 text-foreground text-sm focus:outline-none focus:border-blue-500"
                         >
                           <option value="all">All Branches</option>
                           {branches.map((b) => (
@@ -980,13 +980,13 @@ export const ExpensesDashboard = () => {
 
                     {/* Account Filter */}
                     <div>
-                      <label className="text-xs text-gray-400 uppercase font-medium mb-2 block">
+                      <label className="text-xs text-muted-foreground uppercase font-medium mb-2 block">
                         Payment Account
                       </label>
                       <select
                         value={accountFilter}
                         onChange={(e) => setAccountFilter(e.target.value)}
-                        className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                        className="w-full bg-input-background border border-border rounded-lg px-3 py-2 text-foreground text-sm focus:outline-none focus:border-blue-500"
                       >
                         <option value="all">All Accounts</option>
                         {accountFilterOptions.map((opt) => (
@@ -995,12 +995,12 @@ export const ExpensesDashboard = () => {
                       </select>
                     </div>
 
-                    <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                    <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
                       <input
                         type="checkbox"
                         checked={showReversedExpenses}
                         onChange={(e) => setShowReversedExpenses(e.target.checked)}
-                        className="rounded border-gray-600 bg-gray-950"
+                        className="rounded border-gray-600 bg-input-background"
                       />
                       Show reversed in journal (offset in GL)
                     </label>
@@ -1015,11 +1015,11 @@ export const ExpensesDashboard = () => {
             }}
           />
 
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden flex flex-col max-w-full">
+          <div className="bg-card border border-border rounded-xl overflow-hidden flex flex-col max-w-full">
            {/* Table */}
            <div className="overflow-x-auto flex-1 max-w-full">
               <table className="w-full table-fixed text-sm text-left">
-                 <thead className="text-xs text-gray-500 uppercase bg-gray-950/50 border-b border-gray-800">
+                 <thead className="text-xs text-muted-foreground uppercase bg-muted/40 border-b border-border">
                     <tr>
                        <th className="px-3 py-3 font-medium w-[8.5rem] min-w-[8.5rem]">Date</th>
                        <th className="px-3 py-3 font-medium w-[7.5rem] min-w-[7.5rem]">Reference #</th>
@@ -1031,32 +1031,32 @@ export const ExpensesDashboard = () => {
                        <th className="px-3 py-3 font-medium text-center w-[4rem]">Action</th>
                     </tr>
                  </thead>
-                 <tbody className="divide-y divide-gray-800">
+                 <tbody className="divide-y divide-border">
                     {loading ? (
                       <tr>
                         <td colSpan={8} className="px-3 py-12 text-center">
                           <Loader2 size={48} className="mx-auto text-blue-500 mb-3 animate-spin" />
-                          <p className="text-gray-400 text-sm">Loading expenses...</p>
+                          <p className="text-muted-foreground text-sm">Loading expenses...</p>
                         </td>
                       </tr>
                     ) : paginatedExpenses.length === 0 ? (
                       <tr>
                         <td colSpan={8} className="px-3 py-12 text-center">
-                          <Receipt size={48} className="mx-auto text-gray-600 mb-3" />
-                          <p className="text-gray-400 text-sm">No expenses found</p>
-                          <p className="text-gray-600 text-xs mt-1">Try adjusting your search or filters</p>
+                          <Receipt size={48} className="mx-auto text-muted-foreground mb-3" />
+                          <p className="text-muted-foreground text-sm">No expenses found</p>
+                          <p className="text-muted-foreground text-xs mt-1">Try adjusting your search or filters</p>
                         </td>
                       </tr>
                     ) : (
                       paginatedExpenses.map((expense) => (
-                       <tr key={expense.id} className="group hover:bg-gray-800/30 transition-colors">
-                          <td className="px-3 py-3 font-medium text-gray-300 whitespace-nowrap">
+                       <tr key={expense.id} className="group hover:bg-accent/30 transition-colors">
+                          <td className="px-3 py-3 font-medium text-muted-foreground whitespace-nowrap">
                              <div className="flex items-center gap-1.5">
-                                <Calendar size={14} className="text-gray-500 shrink-0" />
+                                <Calendar size={14} className="text-muted-foreground shrink-0" />
                                 <span className="tabular-nums">{new Date(expense.date).toLocaleDateString()}</span>
                              </div>
                           </td>
-                          <td className="px-3 py-3 text-gray-300 whitespace-nowrap tabular-nums">
+                          <td className="px-3 py-3 text-muted-foreground whitespace-nowrap tabular-nums">
                              {expense.expenseNo || '—'}
                           </td>
                           <td className="px-3 py-3 max-w-[8rem]">
@@ -1064,10 +1064,10 @@ export const ExpensesDashboard = () => {
                                 <span className="truncate">{expense.category}</span>
                              </Badge>
                           </td>
-                          <td className="px-3 py-3 text-gray-400 text-sm max-w-[8rem] truncate hidden md:table-cell">
+                          <td className="px-3 py-3 text-muted-foreground text-sm max-w-[8rem] truncate hidden md:table-cell">
                              {resolveExpenseBranchLabel(expense.location)}
                           </td>
-                          <td className="px-3 py-3 text-white max-w-[12rem]">
+                          <td className="px-3 py-3 text-foreground max-w-[12rem]">
                              <div className="flex items-center gap-1.5 min-w-0">
                                <span className="truncate">{expense.description}</span>
                                {(expense.receiptUrl || expense.receiptAttached) && expenseReceiptAttachments(expense) ? (
@@ -1086,29 +1086,29 @@ export const ExpensesDashboard = () => {
                                ) : null}
                              </div>
                           </td>
-                          <td className="px-3 py-3 text-gray-400 max-w-[8rem] truncate">
+                          <td className="px-3 py-3 text-muted-foreground max-w-[8rem] truncate">
                              {paymentDisplayForExpense(expense)}
                           </td>
-                          <td className="px-3 py-3 text-right text-white whitespace-nowrap tabular-nums">
+                          <td className="px-3 py-3 text-right text-foreground whitespace-nowrap tabular-nums">
                              -{formatCurrency(expense.amount)}
                           </td>
                           <td className="px-3 py-3 text-center">
                              <DropdownMenu>
                                <DropdownMenuTrigger asChild>
-                                 <Button variant="ghost" size="icon" className="h-8 w-8 text-gray-500 hover:text-white data-[state=open]:bg-gray-800">
+                                 <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground data-[state=open]:bg-muted">
                                    <MoreVertical size={16} />
                                  </Button>
                                </DropdownMenuTrigger>
-                               <DropdownMenuContent align="end" className="w-[160px] bg-[#1F2937] border-gray-700 text-white">
-                                 <DropdownMenuItem className="cursor-pointer hover:bg-gray-700 focus:bg-gray-700" onClick={() => handleExpenseAction(expense, 'view')}>
+                               <DropdownMenuContent align="end" className="w-[160px] bg-popover border-border text-foreground">
+                                 <DropdownMenuItem className="cursor-pointer hover:bg-muted focus:bg-muted" onClick={() => handleExpenseAction(expense, 'view')}>
                                    <Eye className="mr-2 h-4 w-4 text-blue-400" />
                                    <span>View Details</span>
                                  </DropdownMenuItem>
-                                 <DropdownMenuItem className="cursor-pointer hover:bg-gray-700 focus:bg-gray-700" onClick={() => handleExpenseAction(expense, 'edit')}>
-                                   <Pencil className="mr-2 h-4 w-4 text-gray-400" />
+                                 <DropdownMenuItem className="cursor-pointer hover:bg-muted focus:bg-muted" onClick={() => handleExpenseAction(expense, 'edit')}>
+                                   <Pencil className="mr-2 h-4 w-4 text-muted-foreground" />
                                    <span>Edit</span>
                                  </DropdownMenuItem>
-                                 <DropdownMenuSeparator className="bg-gray-700" />
+                                 <DropdownMenuSeparator className="bg-muted" />
                                  <DropdownMenuItem className="cursor-pointer hover:bg-red-900/20 focus:bg-red-900/20 text-red-400 hover:text-red-300" onClick={() => handleExpenseAction(expense, 'delete')}>
                                    <Trash className="mr-2 h-4 w-4" />
                                    <span>Delete</span>
@@ -1123,18 +1123,18 @@ export const ExpensesDashboard = () => {
               </table>
            </div>
            {/* Fixed summary bar – Total / Grand Total + entries count */}
-           <div className="border-t border-gray-800 bg-gray-950/80 px-6 py-3 flex items-center justify-between text-sm">
-             <span className="text-gray-400">
+           <div className="border-t border-border bg-input-background/80 px-6 py-3 flex items-center justify-between text-sm">
+             <span className="text-muted-foreground">
                {categoryFilter !== 'all' ? (
-                 <>Filter: <span className="text-white font-medium">{categoryFilter}</span></>
+                 <>Filter: <span className="text-foreground font-medium">{categoryFilter}</span></>
                ) : (
                  <>Grand Total</>
                )}
-               <span className="text-gray-500 ml-2">
+               <span className="text-muted-foreground ml-2">
                  · {filteredExpenses.length} {filteredExpenses.length === 1 ? 'entry' : 'entries'}
                </span>
              </span>
-             <span className="font-bold text-white text-lg">
+             <span className="font-bold text-foreground text-lg">
                {formatCurrency(summaryTotal)}
              </span>
            </div>
@@ -1195,22 +1195,22 @@ export const ExpensesDashboard = () => {
 
       {/* Delete / Cancel Expense Confirmation */}
       <AlertDialog open={deleteAlertOpen} onOpenChange={setDeleteAlertOpen}>
-        <AlertDialogContent className="bg-gray-900 border-gray-800 text-white">
+        <AlertDialogContent className="bg-card border-border text-foreground">
           <AlertDialogHeader>
             <AlertDialogTitle>
               {expenseDeleteOrCancelLabel(selectedExpense?.status)}
             </AlertDialogTitle>
-            <AlertDialogDescription className="text-gray-400">
+            <AlertDialogDescription className="text-muted-foreground">
               {isPostedExpenseStatus(selectedExpense?.status)
                 ? `Cancel expense ${selectedExpense?.expenseNo || selectedExpense?.id}? Accounting will be voided; the row stays for audit and is hidden from normal reports.`
                 : `Delete draft expense ${selectedExpense?.expenseNo || selectedExpense?.id}? This removes the row.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="bg-gray-800 border-gray-700 text-white hover:bg-gray-700">Back</AlertDialogCancel>
+            <AlertDialogCancel className="bg-muted border-border text-foreground hover:bg-muted">Back</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteExpense}
-              className="bg-red-600 hover:bg-red-700 text-white"
+              className="bg-red-600 hover:bg-red-700 text-foreground"
             >
               {isPostedExpenseStatus(selectedExpense?.status) ? 'Cancel Expense' : 'Delete'}
             </AlertDialogAction>

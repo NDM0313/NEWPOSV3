@@ -4,6 +4,7 @@ import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
 import { Popover, PopoverAnchor, PopoverContent } from '@/app/components/ui/popover';
+import { ErpFilterPanel } from '@/app/components/ui/erp-surfaces';
 import { cn } from '@/app/components/ui/utils';
 import type {
   MovementTypeFilter,
@@ -121,8 +122,8 @@ export function StockMovementFilterPanel({
   };
 
   return (
-    <div className="no-print rounded-lg border border-gray-800 bg-gray-900/50 p-4 space-y-4">
-      <div className="flex items-center gap-2 text-white font-medium">
+    <ErpFilterPanel className="no-print">
+      <div className="flex items-center gap-2 text-foreground font-medium">
         <Filter size={18} className="text-blue-400" />
         Filters
       </div>
@@ -135,7 +136,7 @@ export function StockMovementFilterPanel({
             onClick={() => onChange({ mode })}
             className={cn(
               'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
-              filters.mode === mode ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700',
+              filters.mode === mode ? 'bg-blue-600 text-white' : 'bg-muted text-muted-foreground hover:bg-muted',
             )}
           >
             {mode === 'single' ? 'Single Product' : 'All Products'}
@@ -145,11 +146,11 @@ export function StockMovementFilterPanel({
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div>
-          <Label className="text-gray-400">Branch</Label>
+          <Label className="text-muted-foreground">Branch</Label>
           <select
             value={filters.branchId || ''}
             onChange={(e) => onChange({ branchId: e.target.value || null })}
-            className="w-full mt-1 rounded-md bg-gray-950 border border-gray-700 px-3 py-2 text-sm text-white"
+            className="w-full mt-1 rounded-md bg-input-background border border-border px-3 py-2 text-sm text-foreground"
           >
             <option value="">All branches</option>
             {branches.map((b) => (
@@ -158,11 +159,11 @@ export function StockMovementFilterPanel({
           </select>
         </div>
         <div>
-          <Label className="text-gray-400">Movement type</Label>
+          <Label className="text-muted-foreground">Movement type</Label>
           <select
             value={filters.movementType}
             onChange={(e) => onChange({ movementType: e.target.value as MovementTypeFilter })}
-            className="w-full mt-1 rounded-md bg-gray-950 border border-gray-700 px-3 py-2 text-sm text-white"
+            className="w-full mt-1 rounded-md bg-input-background border border-border px-3 py-2 text-sm text-foreground"
           >
             {MOVEMENT_TYPES.map((t) => (
               <option key={t.value} value={t.value}>{t.label}</option>
@@ -176,7 +177,7 @@ export function StockMovementFilterPanel({
           <Popover open={productPickerOpen} onOpenChange={handlePickerOpenChange} modal={false}>
             <PopoverAnchor asChild>
               <div className="relative">
-                <Label className="text-gray-400">Product</Label>
+                <Label className="text-muted-foreground">Product</Label>
                 <Input
                   ref={inputRef}
                   placeholder="Search by name or SKU…"
@@ -194,7 +195,7 @@ export function StockMovementFilterPanel({
                     setProductPickerOpen(true);
                     onProductSearch(productTerm);
                   }}
-                  className="bg-gray-950 border-gray-700 mt-1"
+                  className="bg-input-background border-border mt-1"
                 />
                 {filters.productId && selectedProductLabel && !productTerm && (
                   <p className="text-xs text-emerald-400 mt-1">Selected: {selectedProductLabel}</p>
@@ -202,13 +203,13 @@ export function StockMovementFilterPanel({
               </div>
             </PopoverAnchor>
             <PopoverContent
-              className="w-[var(--radix-popover-trigger-width)] p-0 bg-gray-900 border-gray-700"
+              className="w-[var(--radix-popover-trigger-width)] p-0 bg-card border-border"
               align="start"
               onOpenAutoFocus={(e) => e.preventDefault()}
             >
               <div className="max-h-48 overflow-y-auto">
                 {productSearchResults.length === 0 ? (
-                  <p className="px-3 py-2 text-sm text-gray-500 italic">
+                  <p className="px-3 py-2 text-sm text-muted-foreground italic">
                     {productTerm.trim() ? 'No products found' : 'Loading products…'}
                   </p>
                 ) : (
@@ -216,11 +217,11 @@ export function StockMovementFilterPanel({
                     <button
                       key={p.id}
                       type="button"
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-800 text-gray-200"
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-muted text-gray-200"
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => handleSelectProduct(p)}
                     >
-                      {p.name} <span className="text-gray-500">({p.sku})</span>
+                      {p.name} <span className="text-muted-foreground">({p.sku})</span>
                     </button>
                   ))
                 )}
@@ -230,11 +231,11 @@ export function StockMovementFilterPanel({
 
           {showVariationPicker && productVariations.length > 0 && (
             <div>
-              <Label className="text-gray-400">Variation</Label>
+              <Label className="text-muted-foreground">Variation</Label>
               <select
                 value={filters.variationId || ''}
                 onChange={(e) => onVariationChange?.(e.target.value || null)}
-                className="w-full mt-1 rounded-md bg-gray-950 border border-gray-700 px-3 py-2 text-sm text-white"
+                className="w-full mt-1 rounded-md bg-input-background border border-border px-3 py-2 text-sm text-foreground"
               >
                 <option value="">All variations (combined)</option>
                 {productVariations.map((v) => (
@@ -249,11 +250,11 @@ export function StockMovementFilterPanel({
       {filters.mode === 'all' && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
-            <Label className="text-gray-400">Category</Label>
+            <Label className="text-muted-foreground">Category</Label>
             <select
               value={filters.categoryId || ''}
               onChange={(e) => onChange({ categoryId: e.target.value || null, subcategoryId: null })}
-              className="w-full mt-1 rounded-md bg-gray-950 border border-gray-700 px-3 py-2 text-sm text-white"
+              className="w-full mt-1 rounded-md bg-input-background border border-border px-3 py-2 text-sm text-foreground"
             >
               <option value="">All categories</option>
               {parentCategories.map((c) => (
@@ -262,12 +263,12 @@ export function StockMovementFilterPanel({
             </select>
           </div>
           <div>
-            <Label className="text-gray-400">Subcategory</Label>
+            <Label className="text-muted-foreground">Subcategory</Label>
             <select
               value={filters.subcategoryId || ''}
               onChange={(e) => onChange({ subcategoryId: e.target.value || null })}
               disabled={!filters.categoryId}
-              className="w-full mt-1 rounded-md bg-gray-950 border border-gray-700 px-3 py-2 text-sm text-white disabled:opacity-50"
+              className="w-full mt-1 rounded-md bg-input-background border border-border px-3 py-2 text-sm text-foreground disabled:opacity-50"
             >
               <option value="">All subcategories</option>
               {subcategories.map((c) => (
@@ -276,11 +277,11 @@ export function StockMovementFilterPanel({
             </select>
           </div>
           <div>
-            <Label className="text-gray-400">Brand</Label>
+            <Label className="text-muted-foreground">Brand</Label>
             <select
               value={filters.brandId || ''}
               onChange={(e) => onChange({ brandId: e.target.value || null })}
-              className="w-full mt-1 rounded-md bg-gray-950 border border-gray-700 px-3 py-2 text-sm text-white"
+              className="w-full mt-1 rounded-md bg-input-background border border-border px-3 py-2 text-sm text-foreground"
             >
               <option value="">All brands</option>
               {brands.map((b) => (
@@ -289,25 +290,25 @@ export function StockMovementFilterPanel({
             </select>
           </div>
           <div>
-            <Label className="text-gray-400">Supplier (from purchases)</Label>
+            <Label className="text-muted-foreground">Supplier (from purchases)</Label>
             <select
               value={filters.supplierId || ''}
               onChange={(e) => onChange({ supplierId: e.target.value || null })}
-              className="w-full mt-1 rounded-md bg-gray-950 border border-gray-700 px-3 py-2 text-sm text-white"
+              className="w-full mt-1 rounded-md bg-input-background border border-border px-3 py-2 text-sm text-foreground"
             >
               <option value="">All suppliers</option>
               {suppliers.map((s) => (
                 <option key={s.id} value={s.id}>{s.name}</option>
               ))}
             </select>
-            <p className="text-xs text-gray-500 mt-1">Products purchased from supplier in date range</p>
+            <p className="text-xs text-muted-foreground mt-1">Products purchased from supplier in date range</p>
           </div>
           <div>
-            <Label className="text-gray-400">Stock status</Label>
+            <Label className="text-muted-foreground">Stock status</Label>
             <select
               value={filters.stockStatus}
               onChange={(e) => onChange({ stockStatus: e.target.value as StockStatusFilter })}
-              className="w-full mt-1 rounded-md bg-gray-950 border border-gray-700 px-3 py-2 text-sm text-white"
+              className="w-full mt-1 rounded-md bg-input-background border border-border px-3 py-2 text-sm text-foreground"
             >
               {STOCK_STATUS.map((s) => (
                 <option key={s.value} value={s.value}>{s.label}</option>
@@ -317,7 +318,7 @@ export function StockMovementFilterPanel({
         </div>
       )}
 
-      <div className="flex flex-wrap gap-4 text-sm text-gray-300">
+      <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
         <label className="flex items-center gap-2 cursor-pointer">
           <input
             type="checkbox"
@@ -356,17 +357,17 @@ export function StockMovementFilterPanel({
           <Play size={16} />
           Run Report
         </Button>
-        <Button variant="outline" onClick={onReset} className="gap-2 border-gray-700 text-gray-300">
+        <Button variant="outline" onClick={onReset} className="gap-2 border-border text-muted-foreground">
           <RotateCcw size={16} />
           Reset
         </Button>
       </div>
 
       {exportSlot && (
-        <div className="pt-3 mt-3 border-t border-gray-800">
+        <div className="pt-3 mt-3 border-t border-border">
           {exportSlot}
         </div>
       )}
-    </div>
+    </ErpFilterPanel>
   );
 }

@@ -223,16 +223,16 @@ function SectionBlock({
   onPartyDrilldown?: (kind: 'ar' | 'ap') => void;
 }) {
   return (
-    <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-6">
-      <h3 className="text-lg font-semibold text-white mb-3">{title}</h3>
+    <div className="rounded-xl border border-border bg-muted/40 p-6">
+      <h3 className="text-lg font-semibold text-foreground mb-3">{title}</h3>
       <ul className="space-y-3">
         {grouped.map((g) => (
           <li key={g.groupLabel}>
-            <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">{g.groupLabel}</div>
+            <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">{g.groupLabel}</div>
             <ul className="space-y-1.5 pl-2">
               {g.items.map((i) => (
                 <li key={i.code || i.name} className={`flex justify-between items-center gap-2 text-sm ${i.amount < -0.005 ? 'bg-amber-500/10 -mx-2 px-2 rounded' : ''}`}>
-                  <span className="text-gray-300 flex items-center gap-2 min-w-0">
+                  <span className="text-muted-foreground flex items-center gap-2 min-w-0">
                     {i.name}
                     {i.amount < -0.005 && (
                       <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" title="Unusual negative balance — check ledger" />
@@ -249,19 +249,19 @@ function SectionBlock({
                       </Button>
                     )}
                   </span>
-                  <span className={`tabular-nums shrink-0 ${i.amount < -0.005 ? 'text-amber-300 font-medium' : 'text-white'}`}>
+                  <span className={`tabular-nums shrink-0 ${i.amount < -0.005 ? 'text-amber-300 font-medium' : 'text-foreground'}`}>
                     {formatCurrency(i.amount)}
                   </span>
                 </li>
               ))}
             </ul>
-            <p className="flex justify-between text-sm font-medium text-gray-300 border-t border-gray-700/50 mt-1.5 pt-1.5">
+            <p className="flex justify-between text-sm font-medium text-muted-foreground border-t border-border mt-1.5 pt-1.5">
               Subtotal <span className="tabular-nums">{formatCurrency(g.subtotal)}</span>
             </p>
           </li>
         ))}
       </ul>
-      <p className="flex justify-between font-medium text-white border-t border-gray-700 mt-3 pt-2">
+      <p className="flex justify-between font-medium text-foreground border-t border-border mt-3 pt-2">
         Total {title} <span className="tabular-nums">{formatCurrency(sectionTotal)}</span>
       </p>
     </div>
@@ -511,13 +511,13 @@ export const BalanceSheetPage: React.FC<{
   }
   if (!data) {
     return (
-      <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-6 text-center text-gray-400">
+      <div className="rounded-xl border border-border bg-muted/40 p-6 text-center text-muted-foreground">
         <p className="font-medium">{fetchError || 'No data for the selected period'}</p>
-        <p className="text-sm text-gray-500 mt-1">
+        <p className="text-sm text-muted-foreground mt-1">
           {fetchError ? 'Check your connection and try again.' : 'Adjust the date or ensure journal entries exist.'}
         </p>
         {fetchError ? (
-          <Button variant="outline" className="mt-4 border-gray-700" onClick={() => { setFetchError(null); setFetchRetryKey((k) => k + 1); }}>
+          <Button variant="outline" className="mt-4 border-border" onClick={() => { setFetchError(null); setFetchRetryKey((k) => k + 1); }}>
             Retry
           </Button>
         ) : null}
@@ -533,7 +533,7 @@ export const BalanceSheetPage: React.FC<{
       />
       {showUnifiedPreviewTools ? (
         <div className="flex flex-wrap items-center gap-3 no-print">
-          <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer w-fit">
+          <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer w-fit">
             <input
               type="checkbox"
               checked={unifiedPreviewEnabled}
@@ -544,7 +544,7 @@ export const BalanceSheetPage: React.FC<{
             Unified TB preview (Balance Sheet compare only)
           </label>
           {unifiedPreviewEnabled ? (
-            <Button type="button" variant="outline" size="sm" className="border-gray-700" onClick={() => void loadUnifiedPreview()}>
+            <Button type="button" variant="outline" size="sm" className="border-border" onClick={() => void loadUnifiedPreview()}>
               Refresh preview
             </Button>
           ) : null}
@@ -577,8 +577,8 @@ export const BalanceSheetPage: React.FC<{
       <div className="no-print flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2">
-            <Calendar className="h-4 w-4 text-gray-400" />
-            <label className="text-sm text-gray-400 whitespace-nowrap">As at date</label>
+            <Calendar className="h-4 w-4 text-muted-foreground" />
+            <label className="text-sm text-muted-foreground whitespace-nowrap">As at date</label>
             <DatePicker
               value={asOfDate}
               onChange={(v) => setAsOfDate(v)}
@@ -617,9 +617,9 @@ export const BalanceSheetPage: React.FC<{
           sectionTotal={data.equity.total}
         />
       </div>
-      <div className="rounded-xl border border-gray-700 bg-gray-800/30 p-4 flex justify-between items-center">
-        <span className="font-medium text-white">Total Liabilities + Equity</span>
-        <span className="text-white tabular-nums">{formatCurrency(data.totalLiabilitiesAndEquity)}</span>
+      <div className="rounded-xl border border-border bg-accent/30 p-4 flex justify-between items-center">
+        <span className="font-medium text-foreground">Total Liabilities + Equity</span>
+        <span className="text-foreground tabular-nums">{formatCurrency(data.totalLiabilitiesAndEquity)}</span>
       </div>
 
       {/* Trial Balance Imbalance diagnostic — shown only when non-zero */}
@@ -636,7 +636,7 @@ export const BalanceSheetPage: React.FC<{
               have unequal debit and credit sides. This is a data integrity issue, not a reporting formula issue.
             </p>
             <p className="text-amber-200/80 text-xs">
-              <strong>Fix:</strong> Go to <span className="font-medium text-white">AR/AP Diagnostics → Tie-out</span> (unbalanced JEs / TB difference rows)
+              <strong>Fix:</strong> Go to <span className="font-medium text-foreground">AR/AP Diagnostics → Tie-out</span> (unbalanced JEs / TB difference rows)
               to identify the specific entry/entries causing this imbalance, then reverse or manually adjust them.
             </p>
           </div>
@@ -644,7 +644,7 @@ export const BalanceSheetPage: React.FC<{
       )}
 
       <Dialog open={partyKind !== null} onOpenChange={(o) => !o && setPartyKind(null)}>
-        <DialogContent className="max-w-2xl bg-gray-900 border-gray-800 text-white">
+        <DialogContent className="max-w-2xl bg-card border-border text-foreground">
           <DialogHeader>
             <DialogTitle>
               {partyKind === 'ar' ? 'Receivables — party breakdown' : partyKind === 'ap' ? 'Payables — party breakdown' : 'Party breakdown'}
@@ -656,9 +656,9 @@ export const BalanceSheetPage: React.FC<{
             </div>
           ) : partyBreakdown?.partyRows?.length ? (
             <div className="space-y-2">
-              <div className="overflow-x-auto max-h-[360px] overflow-y-auto rounded-lg border border-gray-800">
+              <div className="overflow-x-auto max-h-[360px] overflow-y-auto rounded-lg border border-border">
                 <table className="w-full text-sm">
-                  <thead className="sticky top-0 bg-gray-900/95 text-gray-500 text-left">
+                  <thead className="sticky top-0 bg-card/95 text-muted-foreground text-left">
                     <tr>
                       <th className="py-2 px-3 font-medium">Code</th>
                       <th className="py-2 px-3 font-medium">Party</th>
@@ -671,7 +671,7 @@ export const BalanceSheetPage: React.FC<{
                       <tr
                         key={r.contactId}
                         className={cn(
-                          'border-t border-gray-800/80 cursor-pointer hover:bg-indigo-950/30 transition-colors',
+                          'border-t border-border/80 cursor-pointer hover:bg-indigo-950/30 transition-colors',
                           r.glAmount < -0.005 && 'bg-amber-950/10'
                         )}
                         onClick={() => openPartyLedgerV2(r)}
@@ -685,12 +685,12 @@ export const BalanceSheetPage: React.FC<{
                         role="button"
                         title="Open Account Statements for this party"
                       >
-                        <td className="py-2 px-3 font-mono text-xs text-gray-400">{formatPartyCode(r)}</td>
+                        <td className="py-2 px-3 font-mono text-xs text-muted-foreground">{formatPartyCode(r)}</td>
                         <td className="py-2 px-3 text-gray-200 truncate max-w-[220px]">{r.name}</td>
-                        <td className="py-2 px-3 text-right tabular-nums text-white shrink-0">
+                        <td className="py-2 px-3 text-right tabular-nums text-foreground shrink-0">
                           {formatCurrency(r.glAmount)}
                         </td>
-                        <td className="py-2 px-2 text-gray-500">
+                        <td className="py-2 px-2 text-muted-foreground">
                           <ChevronRight className="w-4 h-4" />
                         </td>
                       </tr>
@@ -698,10 +698,10 @@ export const BalanceSheetPage: React.FC<{
                   </tbody>
                 </table>
               </div>
-              <p className="text-xs text-gray-500">Click a row to open Account Statements for that party.</p>
+              <p className="text-xs text-muted-foreground">Click a row to open Account Statements for that party.</p>
             </div>
           ) : (
-            <p className="text-sm text-gray-500">No party rows or data unavailable (ensure GL mapping RPC is applied).</p>
+            <p className="text-sm text-muted-foreground">No party rows or data unavailable (ensure GL mapping RPC is applied).</p>
           )}
           {partyBreakdown?.partySectionNote && (
             <p className="text-xs text-amber-200/90">{partyBreakdown.partySectionNote}</p>

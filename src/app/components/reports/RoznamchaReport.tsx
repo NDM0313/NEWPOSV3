@@ -141,8 +141,8 @@ function AccountBadge({
     );
   return (
     <span className={cn(
-      'inline-flex items-center gap-1 bg-gray-800 px-2 py-1 rounded-md text-sm',
-      label === '—' ? 'text-gray-500' : 'text-gray-200'
+      'inline-flex items-center gap-1 bg-muted px-2 py-1 rounded-md text-sm',
+      label === '—' ? 'text-muted-foreground' : 'text-gray-200'
     )}>
       {icon} {label}
     </span>
@@ -649,7 +649,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
 
       {showUnifiedPreviewTools ? (
         <div className="flex flex-wrap items-center gap-3 no-print">
-          <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer w-fit">
+          <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer w-fit">
             <input
               type="checkbox"
               checked={unifiedPreviewEnabled}
@@ -691,12 +691,12 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
         />
       ) : null}
 
-      <p className="text-xs text-gray-500 border border-gray-800/80 rounded-lg px-3 py-2 bg-gray-950/40 max-w-3xl">
-        Cash / bank / wallet receive &amp; pay only — from <strong className="text-gray-400">payments</strong> and{' '}
-        <strong className="text-gray-400">rental_payments</strong> (not rental journal vouchers). One row per actual
-        movement. Incoming receipts (sale, rental, manual) show as <strong className="text-gray-400">RCV-*</strong>;{' '}
-        <strong className="text-gray-400">JE-*</strong> appears as a subtitle when linked.{' '}
-        <span className="text-gray-600">
+      <p className="text-xs text-muted-foreground border border-border/80 rounded-lg px-3 py-2 bg-input-background/40 max-w-3xl">
+        Cash / bank / wallet receive &amp; pay only — from <strong className="text-muted-foreground">payments</strong> and{' '}
+        <strong className="text-muted-foreground">rental_payments</strong> (not rental journal vouchers). One row per actual
+        movement. Incoming receipts (sale, rental, manual) show as <strong className="text-muted-foreground">RCV-*</strong>;{' '}
+        <strong className="text-muted-foreground">JE-*</strong> appears as a subtitle when linked.{' '}
+        <span className="text-muted-foreground">
           Match header date range to payment_date; use All Branches and All accounts if a line is missing.
         </span>
       </p>
@@ -792,14 +792,14 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
       <div className="space-y-6">
 
       {/* 1. FILTERS */}
-      <div className="no-print rounded-xl border border-gray-800 bg-gray-900/50 p-4">
-        <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Filters</h3>
+      <div className="no-print rounded-xl border border-border bg-muted/40 p-4">
+        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">Filters</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-6 gap-y-5 items-start">
           <div className="flex flex-col gap-2 min-w-0">
-            <Label className="text-xs text-gray-500 uppercase tracking-wide">Date range</Label>
+            <Label className="text-xs text-muted-foreground uppercase tracking-wide">Date range</Label>
             {useGlobalRange ? (
               <>
-                <p className="text-xs text-gray-500 leading-relaxed">
+                <p className="text-xs text-muted-foreground leading-relaxed">
                   Header: {globalStartDate?.slice(0, 10)} → {globalEndDate?.slice(0, 10)}
                   {!overrideGlobalDates ? ' (active)' : ''}
                 </p>
@@ -809,7 +809,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
                     checked={overrideGlobalDates}
                     onCheckedChange={setOverrideGlobalDates}
                   />
-                  <Label htmlFor="roznamcha-override-global-dates" className="text-sm text-gray-300 cursor-pointer">
+                  <Label htmlFor="roznamcha-override-global-dates" className="text-sm text-muted-foreground cursor-pointer">
                     Custom start / end (override)
                   </Label>
                 </div>
@@ -830,7 +830,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
                           type="button"
                           variant="outline"
                           size="sm"
-                          className="h-7 text-xs border-gray-700 text-gray-300 hover:bg-gray-800"
+                          className="h-7 text-xs border-border text-muted-foreground hover:bg-muted"
                           onClick={() => {
                             const t = new Date(); t.setHours(0,0,0,0);
                             if (days === -1) {
@@ -869,7 +869,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="h-7 text-xs border-gray-700 text-gray-300 hover:bg-gray-800"
+                      className="h-7 text-xs border-border text-muted-foreground hover:bg-muted"
                       onClick={() => {
                         const t = new Date(); t.setHours(0,0,0,0);
                         if (days === -1) {
@@ -893,14 +893,14 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
           </div>
 
           <div className="flex flex-col gap-2 min-w-0">
-            <Label className="text-xs text-gray-500 uppercase tracking-wide">Branch</Label>
+            <Label className="text-xs text-muted-foreground uppercase tracking-wide">Branch</Label>
             <BranchSelector variant="inline" showAllBranchesOption />
           </div>
 
           <div className="flex flex-col gap-2 min-w-0">
-            <Label className="text-xs text-gray-500 uppercase tracking-wide">Liquidity</Label>
+            <Label className="text-xs text-muted-foreground uppercase tracking-wide">Liquidity</Label>
             <Select value={accountFilter} onValueChange={(v: AccountFilter) => setAccountFilter(v)}>
-              <SelectTrigger className="w-full max-w-[200px] bg-gray-950 border-gray-700 text-white">
+              <SelectTrigger className="w-full max-w-[200px] bg-input-background border-border text-foreground">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -913,12 +913,12 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
           </div>
 
           <div className="flex flex-col gap-2 min-w-0">
-            <Label className="text-xs text-gray-500 uppercase tracking-wide">Ledger account</Label>
+            <Label className="text-xs text-muted-foreground uppercase tracking-wide">Ledger account</Label>
             <Select
               value={paymentLedgerAccountId || '__all__'}
               onValueChange={(v) => setPaymentLedgerAccountId(v === '__all__' ? '' : v)}
             >
-              <SelectTrigger className="w-full min-w-0 max-w-[320px] bg-gray-950 border-gray-700 text-white">
+              <SelectTrigger className="w-full min-w-0 max-w-[320px] bg-input-background border-border text-foreground">
                 <SelectValue placeholder="All payment accounts" />
               </SelectTrigger>
               <SelectContent className="max-h-72">
@@ -930,13 +930,13 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
                 ))}
               </SelectContent>
             </Select>
-            <span className="text-xs text-gray-600">One Cash/Bank/Wallet GL book (optional).</span>
+            <span className="text-xs text-muted-foreground">One Cash/Bank/Wallet GL book (optional).</span>
           </div>
 
           <div className="flex flex-col gap-2 min-w-0">
-            <Label className="text-xs text-gray-500 uppercase tracking-wide">Date order</Label>
+            <Label className="text-xs text-muted-foreground uppercase tracking-wide">Date order</Label>
             <Select value={dateSort} onValueChange={(v: 'asc' | 'desc') => setDateSort(v)}>
-              <SelectTrigger className="w-full max-w-[200px] bg-gray-950 border-gray-700 text-white">
+              <SelectTrigger className="w-full max-w-[200px] bg-input-background border-border text-foreground">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -947,9 +947,9 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
           </div>
 
           <div className="flex flex-col gap-2 min-w-0">
-            <Label className="text-xs text-gray-500 uppercase tracking-wide">Rows per page</Label>
+            <Label className="text-xs text-muted-foreground uppercase tracking-wide">Rows per page</Label>
             <Select value={String(pageSize)} onValueChange={(v) => setPageSize(Number(v))}>
-              <SelectTrigger className="w-full max-w-[120px] bg-gray-950 border-gray-700 text-white">
+              <SelectTrigger className="w-full max-w-[120px] bg-input-background border-border text-foreground">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -961,14 +961,14 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
           </div>
 
           <div className="flex flex-col gap-2 min-w-0 sm:col-span-2 lg:col-span-2">
-            <Label className="text-xs text-gray-500 uppercase tracking-wide">Search</Label>
+            <Label className="text-xs text-muted-foreground uppercase tracking-wide">Search</Label>
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
               <Input
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Ref, description, party, or amount…"
-                className="pl-9 bg-gray-950 border-gray-700 text-white h-10"
+                className="pl-9 bg-input-background border-border text-foreground h-10"
               />
             </div>
           </div>
@@ -980,16 +980,16 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
                 checked={includeVoidedReversed}
                 onCheckedChange={setIncludeVoidedReversed}
               />
-              <Label htmlFor="roznamcha-include-voided" className="text-sm text-gray-300 cursor-pointer leading-snug">
+              <Label htmlFor="roznamcha-include-voided" className="text-sm text-muted-foreground cursor-pointer leading-snug">
                 Include voided payments (audit)
               </Label>
             </div>
-            <span className="text-xs text-gray-600">
+            <span className="text-xs text-muted-foreground">
               Off by default: reversed/voided receipts do not affect Roznamcha totals.
             </span>
           </div>
         </div>
-        <p className="text-xs text-gray-500 mt-3 pt-3 border-t border-gray-800/80">
+        <p className="text-xs text-muted-foreground mt-3 pt-3 border-t border-border/80">
           Date: {dateFrom} → {dateTo}
           {useGlobalRange && !overrideGlobalDates ? ' (from top bar)' : ''}
           {useGlobalRange && overrideGlobalDates ? ' (custom override)' : ''}
@@ -1038,38 +1038,38 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
           </div>
 
           {/* 3. CASH SPLIT */}
-          <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-4">
-            <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Cash Split</h3>
+          <div className="rounded-xl border border-border bg-muted/40 p-4">
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">Cash Split</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="flex items-center justify-between rounded-lg bg-gray-950 border border-gray-800 px-4 py-3">
-                <span className="text-gray-400 flex items-center gap-2">
+              <div className="flex items-center justify-between rounded-lg bg-input-background border border-border px-4 py-3">
+                <span className="text-muted-foreground flex items-center gap-2">
                   <Wallet size={18} /> Cash
                 </span>
-                <span className="font-mono font-semibold text-white">
+                <span className="font-mono font-semibold text-foreground">
                   {data.cashSplit.cash.toLocaleString()}
                 </span>
               </div>
-              <div className="flex items-center justify-between rounded-lg bg-gray-950 border border-gray-800 px-4 py-3">
-                <span className="text-gray-400 flex items-center gap-2">
+              <div className="flex items-center justify-between rounded-lg bg-input-background border border-border px-4 py-3">
+                <span className="text-muted-foreground flex items-center gap-2">
                   <Building2 size={18} /> Bank
                 </span>
-                <span className="font-mono font-semibold text-white">
+                <span className="font-mono font-semibold text-foreground">
                   {data.cashSplit.bank.toLocaleString()}
                 </span>
               </div>
-              <div className="flex items-center justify-between rounded-lg bg-gray-950 border border-gray-800 px-4 py-3">
-                <span className="text-gray-400 flex items-center gap-2">
+              <div className="flex items-center justify-between rounded-lg bg-input-background border border-border px-4 py-3">
+                <span className="text-muted-foreground flex items-center gap-2">
                   <Smartphone size={18} /> Wallet
                 </span>
-                <span className="font-mono font-semibold text-white">
+                <span className="font-mono font-semibold text-foreground">
                   {data.cashSplit.wallet.toLocaleString()}
                 </span>
               </div>
-              <div className="flex items-center justify-between rounded-lg bg-gray-800 border border-gray-700 px-4 py-3">
-                <span className="text-gray-300 flex items-center gap-2">
+              <div className="flex items-center justify-between rounded-lg bg-muted border border-border px-4 py-3">
+                <span className="text-muted-foreground flex items-center gap-2">
                   <CreditCard size={18} /> Total
                 </span>
-                <span className="font-mono font-bold text-white">
+                <span className="font-mono font-bold text-foreground">
                   {data.cashSplit.total.toLocaleString()}
                 </span>
               </div>
@@ -1077,23 +1077,23 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
           </div>
 
           {/* 4. ROZNAMCHA TABLE */}
-          <div className="relative rounded-xl border border-gray-800 overflow-hidden bg-gray-900/50">
+          <div className="relative rounded-xl border border-border overflow-hidden bg-muted/40">
             {loading ? (
               <div
-                className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-gray-950/70 backdrop-blur-sm pointer-events-none"
+                className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-input-background/70 backdrop-blur-sm pointer-events-none"
                 aria-live="polite"
                 aria-busy="true"
               >
                 <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
-                <p className="text-sm text-gray-300">Loading roznamcha…</p>
+                <p className="text-sm text-muted-foreground">Loading roznamcha…</p>
               </div>
             ) : null}
-            <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider p-4 border-b border-gray-800">
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider p-4 border-b border-border">
               Roznamcha Table
             </h3>
             <div className="overflow-x-auto">
               <table className="w-full text-base leading-snug">
-                <thead className="bg-gray-900/80 text-gray-400 border-b border-gray-800">
+                <thead className="bg-card text-muted-foreground border-b border-border">
                   <tr>
                     <th className="px-4 py-3 text-left font-medium w-40">Date & Time</th>
                     <th className="px-4 py-3 text-left font-medium w-36">Ref / Journal</th>
@@ -1107,15 +1107,15 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
                     ) : null}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-800">
-                  <tr className="bg-gray-950/50">
-                    <td className="px-4 py-3 text-gray-400">Opening</td>
+                <tbody className="divide-y divide-border">
+                  <tr className="bg-muted/40">
+                    <td className="px-4 py-3 text-muted-foreground">Opening</td>
                     <td className="px-4 py-3">—</td>
-                    <td className="px-4 py-3 text-gray-300">Opening Balance</td>
+                    <td className="px-4 py-3 text-muted-foreground">Opening Balance</td>
                     <td className="px-4 py-3">—</td>
                     <td className="px-4 py-3 text-right">—</td>
                     <td className="px-4 py-3 text-right">—</td>
-                    <td className="px-4 py-3 text-right font-mono text-white">
+                    <td className="px-4 py-3 text-right font-mono text-foreground">
                       {data.summary.openingBalance.toLocaleString()}
                     </td>
                     {showRoznamchaActions ? <td className="px-2 py-3 w-12" /> : null}
@@ -1124,16 +1124,16 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
                     <tr
                       key={r.id}
                       className={cn(
-                        'hover:bg-gray-800/30 transition-colors',
+                        'hover:bg-accent/30 transition-colors',
                         roznamchaRowHasActionTarget(r) ? 'cursor-pointer' : '',
-                        i % 2 === 0 ? 'bg-gray-950/30' : 'bg-gray-900/20'
+                        i % 2 === 0 ? 'bg-muted/30' : 'bg-card/20'
                       )}
                       onClick={() => {
                         if (!roznamchaRowHasActionTarget(r) || actionBusy) return;
                         openFromRoznamchaRow(r);
                       }}
                     >
-                      <td className="px-4 py-3 text-gray-300 whitespace-nowrap">
+                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
                         {r.date && r.time ? (
                           <DateTimeDisplay
                             date={new Date(r.date + 'T' + (r.time.length === 5 ? r.time + ':00' : r.time))}
@@ -1143,14 +1143,14 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
                         )}
                       </td>
                       <td className="px-4 py-3 align-top min-w-[7rem]">
-                        <div className="font-mono text-gray-300">{roznamchaRefDisplay(r)}</div>
+                        <div className="font-mono text-muted-foreground">{roznamchaRefDisplay(r)}</div>
                         {roznamchaJournalSubtitle(r) ? (
-                          <div className="text-xs text-gray-500 mt-0.5 font-sans">{roznamchaJournalSubtitle(r)}</div>
+                          <div className="text-xs text-muted-foreground mt-0.5 font-sans">{roznamchaJournalSubtitle(r)}</div>
                         ) : null}
                       </td>
                       <td className="px-4 py-3 max-w-xs">
                         <div className="inline-flex items-start gap-1 max-w-full">
-                          <div className="font-medium text-white min-w-0">{roznamchaDetailsForDisplay(r)}</div>
+                          <div className="font-medium text-foreground min-w-0">{roznamchaDetailsForDisplay(r)}</div>
                           {roznamchaRowHasAttachments(r) ? (
                             <TransactionAttachmentIconButton
                               onClick={() => setAttachmentsDialogList(r.attachments ?? [])}
@@ -1158,7 +1158,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
                           ) : null}
                         </div>
                         {(r.referenceDisplay || r.partyLine || r.createdBy) && (
-                          <div className="text-xs text-gray-400 mt-0.5 leading-snug">
+                          <div className="text-xs text-muted-foreground mt-0.5 leading-snug">
                             {[
                               journalDescriptionForDisplay(r.referenceDisplay, ''),
                               r.partyLine,
@@ -1172,13 +1172,13 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
                       <td className="px-4 py-3">
                         <AccountBadge accountLabel={r.accountName ?? r.accountLabel} liquidity={r.accountType} />
                       </td>
-                      <td className="px-4 py-3 text-right font-mono text-green-400">
+                      <td className="px-4 py-3 text-right font-mono text-[var(--erp-money-positive)]">
                         {r.cashIn > 0 ? r.cashIn.toLocaleString() : '—'}
                       </td>
                       <td className="px-4 py-3 text-right font-mono text-red-400">
                         {r.cashOut > 0 ? r.cashOut.toLocaleString() : '—'}
                       </td>
-                      <td className="px-4 py-3 text-right font-mono text-white">
+                      <td className="px-4 py-3 text-right font-mono text-foreground">
                         {r.runningBalance.toLocaleString()}
                       </td>
                       {showRoznamchaActions ? (
@@ -1208,18 +1208,18 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
                     </tr>
                   ))}
                 </tbody>
-                <tfoot className="bg-gray-900 border-t-2 border-gray-700">
+                <tfoot className="bg-card border-t-2 border-border">
                   <tr>
-                    <td colSpan={4} className="px-4 py-3 font-bold text-white">
+                    <td colSpan={4} className="px-4 py-3 font-bold text-foreground">
                       Closing
                     </td>
-                    <td className="px-4 py-3 text-right font-bold text-green-400">
+                    <td className="px-4 py-3 text-right font-bold text-[var(--erp-money-positive)]">
                       {data.summary.cashIn.toLocaleString()}
                     </td>
                     <td className="px-4 py-3 text-right font-bold text-red-400">
                       {data.summary.cashOut.toLocaleString()}
                     </td>
-                    <td className="px-4 py-3 text-right font-bold text-white">
+                    <td className="px-4 py-3 text-right font-bold text-foreground">
                       {data.summary.closingBalance.toLocaleString()}
                     </td>
                     {showRoznamchaActions ? <td className="px-2 py-3 w-12" /> : null}
@@ -1228,15 +1228,15 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
               </table>
             </div>
             {totalPages > 1 && (
-              <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-t border-gray-800 bg-gray-900/80">
-                <p className="text-xs text-gray-400">
+              <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-t border-border bg-card">
+                <p className="text-xs text-muted-foreground">
                   Showing {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, totalRows)} of {totalRows}
                 </p>
                 <div className="flex items-center gap-1">
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-8 border-gray-700 text-gray-300"
+                    className="h-8 border-border text-muted-foreground"
                     disabled={currentPage <= 1}
                     onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                   >
@@ -1246,12 +1246,12 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
                     .filter((p) => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 2)
                     .map((p, idx, arr) => (
                       <React.Fragment key={p}>
-                        {idx > 0 && arr[idx - 1] !== p - 1 && <span className="px-1 text-gray-500">…</span>}
+                        {idx > 0 && arr[idx - 1] !== p - 1 && <span className="px-1 text-muted-foreground">…</span>}
                         <button
                           type="button"
                           className={cn(
                             'h-8 min-w-[2rem] rounded px-2 text-sm font-medium',
-                            p === currentPage ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                            p === currentPage ? 'bg-blue-600 text-white' : 'bg-muted text-muted-foreground hover:bg-muted'
                           )}
                           onClick={() => setCurrentPage(p)}
                         >
@@ -1262,7 +1262,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-8 border-gray-700 text-gray-300"
+                    className="h-8 border-border text-muted-foreground"
                     disabled={currentPage >= totalPages}
                     onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                   >
@@ -1276,10 +1276,10 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
       ) : null}
 
       {!loading && (!data || orderedRows.length === 0) && (
-        <div className="text-center py-16 rounded-xl border border-gray-800 bg-gray-900/30">
-          <BookOpen className="w-16 h-16 mx-auto mb-4 text-gray-600" />
-          <p className="text-gray-400">No cash transactions in this period</p>
-          <p className="text-sm text-gray-500 mt-1">Cash / Bank / Wallet receive &amp; pay only — one row per actual payment (not invoice totals).</p>
+        <div className="text-center py-16 rounded-xl border border-border bg-muted/30">
+          <BookOpen className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
+          <p className="text-muted-foreground">No cash transactions in this period</p>
+          <p className="text-sm text-muted-foreground mt-1">Cash / Bank / Wallet receive &amp; pay only — one row per actual payment (not invoice totals).</p>
         </div>
       )}
       </div>
@@ -1339,21 +1339,21 @@ function SummaryCard({
         'rounded-xl border p-4',
         variant === 'in' && 'border-green-800/50 bg-green-950/20',
         variant === 'out' && 'border-red-800/50 bg-red-950/20',
-        !variant && 'border-gray-800 bg-gray-900/50'
+        !variant && 'border-border bg-muted/40'
       )}
     >
-      <p className="text-gray-400 text-xs font-medium uppercase tracking-wider">{title}</p>
+      <p className="text-muted-foreground text-xs font-medium uppercase tracking-wider">{title}</p>
       <p
         className={cn(
           'text-xl font-bold mt-1 font-mono',
-          variant === 'in' && 'text-green-400',
+          variant === 'in' && 'text-[var(--erp-money-positive)]',
           variant === 'out' && 'text-red-400',
-          !variant && 'text-white'
+          !variant && 'text-foreground'
         )}
       >
         {value.toLocaleString()}
       </p>
-      <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p>
+      <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>
     </div>
   );
 }

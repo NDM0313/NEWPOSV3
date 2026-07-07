@@ -81,7 +81,7 @@ export const DashboardV2Page: React.FC = () => {
     if (!profileLoadComplete) {
       return (
         <div className="flex items-center justify-center min-h-[400px]">
-          <div className="flex flex-col items-center gap-3 text-[#9CA3AF]">
+          <div className="flex flex-col items-center gap-3 text-muted-foreground">
             <Loader2 className="w-8 h-8 animate-spin text-[#3B82F6]" />
             <span>Loading your profile…</span>
           </div>
@@ -91,11 +91,11 @@ export const DashboardV2Page: React.FC = () => {
     if (authConfigError) {
       return (
         <div className="flex items-center justify-center min-h-[400px]">
-          <div className="max-w-md p-8 rounded-xl bg-[#1F2937] border border-red-500/40 text-center">
+          <div className="max-w-md p-8 rounded-xl bg-card border border-red-500/40 text-center">
             <p className="text-red-400 text-sm mb-4">{authConfigError}</p>
             <button
               type="button"
-              className="text-[#9CA3AF] hover:text-white text-sm underline"
+              className="text-muted-foreground hover:text-foreground text-sm underline"
               onClick={async () => {
                 await signOut();
                 window.location.href = '/';
@@ -110,20 +110,20 @@ export const DashboardV2Page: React.FC = () => {
     if (user && connectionError) {
       return (
         <div className="flex items-center justify-center min-h-[400px]">
-          <div className="max-w-md p-8 rounded-xl bg-[#1F2937] border border-amber-500/40 text-center">
+          <div className="max-w-md p-8 rounded-xl bg-card border border-amber-500/40 text-center">
             <p className="text-amber-200 text-sm mb-4">
               {storageBlocked ? STORAGE_BLOCKED_MESSAGE : 'Could not load your company profile. Please try again.'}
             </p>
             <button
               type="button"
-              className="w-full mb-3 px-4 py-2 rounded-lg bg-[#3B82F6] text-white hover:bg-[#2563EB]"
+              className="w-full mb-3 px-4 py-2 rounded-lg bg-[#3B82F6] text-foreground hover:bg-[#2563EB]"
               onClick={retryConnection}
             >
               Retry
             </button>
             <button
               type="button"
-              className="text-[#9CA3AF] hover:text-white text-sm underline"
+              className="text-muted-foreground hover:text-foreground text-sm underline"
               onClick={async () => {
                 await signOut();
                 window.location.href = '/';
@@ -140,19 +140,19 @@ export const DashboardV2Page: React.FC = () => {
 
   return (
     <div className="space-y-6 max-w-full overflow-x-hidden">
-      <div className="sticky top-0 z-10 -mx-1 px-1 py-3 bg-[#111827]/95 backdrop-blur border-b border-[#374151] flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2 text-sm text-[#9CA3AF]">
+      <div className="sticky top-0 z-10 -mx-1 px-1 py-3 bg-background/95 backdrop-blur border-b border-border flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Store className="w-4 h-4" />
           <span>
-            <span className="text-white">{periodLabel}</span>
+            <span className="text-foreground">{periodLabel}</span>
             <span className="mx-2">·</span>
-            <span className="text-white">{branchLabel}</span>
+            <span className="text-foreground">{branchLabel}</span>
           </span>
         </div>
         <button
           type="button"
           onClick={() => refetch()}
-          className="ml-auto inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#1F2937] border border-[#374151] text-[#9CA3AF] hover:text-white text-sm"
+          className="ml-auto inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-card border border-border text-muted-foreground hover:text-foreground text-sm"
         >
           <RefreshCw className="w-3.5 h-3.5" />
           Refresh
@@ -185,8 +185,8 @@ export const DashboardV2Page: React.FC = () => {
           <OperationsPanel operations={data.operations} formatCurrency={formatCurrency} onNavigate={handleNavigate} />
 
           {data.limitations.length ? (
-            <div className="rounded-xl border border-[#374151] bg-[#1F2937]/50 p-4">
-              <div className="flex items-start gap-2 text-[#9CA3AF] text-xs">
+            <div className="rounded-xl border border-border bg-card/50 p-4">
+              <div className="flex items-start gap-2 text-muted-foreground text-xs">
                 <Info className="w-4 h-4 shrink-0 mt-0.5" />
                 <ul className="list-disc list-inside space-y-1">
                   {data.limitations.map((l, i) => (

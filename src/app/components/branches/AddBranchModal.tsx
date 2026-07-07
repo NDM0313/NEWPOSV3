@@ -270,12 +270,12 @@ export const AddBranchModal: React.FC<AddBranchModalProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="bg-gray-950 border-gray-800 text-white max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="bg-input-background border-border text-white max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold">
             {editingBranch ? 'Edit Branch' : 'Add New Branch'}
           </DialogTitle>
-          <DialogDescription className="text-gray-400">
+          <DialogDescription className="text-muted-foreground">
             {editingBranch ? 'Update branch information' : 'Create a new branch for your business'}
           </DialogDescription>
         </DialogHeader>
@@ -289,7 +289,7 @@ export const AddBranchModal: React.FC<AddBranchModalProps> = ({
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               placeholder="Main Branch"
-              className="bg-gray-900 border-gray-700 text-white"
+              className="bg-card border-border text-white"
               required
             />
           </div>
@@ -303,13 +303,13 @@ export const AddBranchModal: React.FC<AddBranchModalProps> = ({
               readOnly
               disabled
               placeholder="BR-0001"
-              className="bg-gray-800 border-gray-700 text-gray-400 cursor-not-allowed"
+              className="bg-muted border-border text-muted-foreground cursor-not-allowed"
             />
             {!editingBranch && (
-              <p className="text-xs text-gray-500">Code will be auto-generated when you enter branch name</p>
+              <p className="text-xs text-muted-foreground">Code will be auto-generated when you enter branch name</p>
             )}
             {editingBranch && (
-              <p className="text-xs text-gray-500">Branch code cannot be changed after creation</p>
+              <p className="text-xs text-muted-foreground">Branch code cannot be changed after creation</p>
             )}
           </div>
 
@@ -321,7 +321,7 @@ export const AddBranchModal: React.FC<AddBranchModalProps> = ({
               value={formData.phone}
               onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
               placeholder="+92 300 1234567"
-              className="bg-gray-900 border-gray-700 text-white"
+              className="bg-card border-border text-white"
             />
           </div>
 
@@ -333,7 +333,7 @@ export const AddBranchModal: React.FC<AddBranchModalProps> = ({
               value={formData.address}
               onChange={(e) => setFormData({ ...formData, address: e.target.value })}
               placeholder="Street address"
-              className="bg-gray-900 border-gray-700 text-white"
+              className="bg-card border-border text-white"
               rows={2}
             />
           </div>
@@ -371,7 +371,7 @@ export const AddBranchModal: React.FC<AddBranchModalProps> = ({
                 value={formData.city}
                 onChange={(e) => setFormData({ ...formData, city: e.target.value })}
                 placeholder="Karachi"
-                className="bg-gray-900 border-gray-700 text-white"
+                className="bg-card border-border text-white"
               />
             </div>
             <div className="space-y-2">
@@ -381,23 +381,23 @@ export const AddBranchModal: React.FC<AddBranchModalProps> = ({
                 value={formData.state}
                 onChange={(e) => setFormData({ ...formData, state: e.target.value })}
                 placeholder="Sindh"
-                className="bg-gray-900 border-gray-700 text-white"
+                className="bg-card border-border text-white"
               />
             </div>
           </div>
 
           {/* Default Accounts - linked to Accounting (Account) page */}
-          <div className="space-y-4 pt-4 border-t border-gray-800">
+          <div className="space-y-4 pt-4 border-t border-border">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <Label className="text-gray-200 font-medium">Default Accounts (Optional)</Label>
-                <p className="text-xs text-gray-500 mt-0.5">These accounts are from Accounting. Add or edit them on the Account page.</p>
+                <p className="text-xs text-muted-foreground mt-0.5">These accounts are from Accounting. Add or edit them on the Account page.</p>
               </div>
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                className="border-gray-600 text-gray-300 hover:text-white hover:bg-gray-800 shrink-0 gap-1.5"
+                className="border-gray-600 text-muted-foreground hover:text-foreground hover:bg-muted shrink-0 gap-1.5"
                 onClick={() => {
                   onClose();
                   setCurrentView('accounting');
@@ -408,10 +408,10 @@ export const AddBranchModal: React.FC<AddBranchModalProps> = ({
               </Button>
             </div>
             {loadingAccounts && (
-              <p className="text-xs text-gray-500">Loading accounts...</p>
+              <p className="text-xs text-muted-foreground">Loading accounts...</p>
             )}
             {!loadingAccounts && cashAccounts.length === 0 && bankAccounts.length === 0 && (
-              <div className="p-3 rounded-lg bg-gray-900/50 border border-gray-700 text-sm text-gray-400">
+              <div className="p-3 rounded-lg bg-muted/40 border border-border text-sm text-muted-foreground">
                 No accounts found. Add Cash and Bank accounts in Accounting to use them here.
                 <Button
                   type="button"
@@ -430,16 +430,16 @@ export const AddBranchModal: React.FC<AddBranchModalProps> = ({
             
             {/* Cash Account */}
             <div className="space-y-2">
-              <Label htmlFor="cashAccount" className="text-gray-300 text-sm">Cash Account</Label>
+              <Label htmlFor="cashAccount" className="text-muted-foreground text-sm">Cash Account</Label>
               <Select
                 value={formData.cashAccountId || undefined}
                 onValueChange={(value) => setFormData({ ...formData, cashAccountId: value || '' })}
                 disabled={loadingAccounts}
               >
-                <SelectTrigger className="bg-gray-900 border-gray-700 text-white">
+                <SelectTrigger className="bg-card border-border text-white">
                   <SelectValue placeholder={loadingAccounts ? "Loading..." : "Select cash account (optional)"} />
                 </SelectTrigger>
-                <SelectContent className="bg-gray-900 border-gray-800 text-white z-[120]" position="popper">
+                <SelectContent className="bg-card border-border text-white z-[120]" position="popper">
                   {loadingAccounts ? (
                     <SelectItem value="loading" disabled>Loading accounts...</SelectItem>
                   ) : cashAccounts.length === 0 ? (
@@ -457,16 +457,16 @@ export const AddBranchModal: React.FC<AddBranchModalProps> = ({
 
             {/* Bank Account */}
             <div className="space-y-2">
-              <Label htmlFor="bankAccount" className="text-gray-300 text-sm">Bank Account</Label>
+              <Label htmlFor="bankAccount" className="text-muted-foreground text-sm">Bank Account</Label>
               <Select
                 value={formData.bankAccountId || undefined}
                 onValueChange={(value) => setFormData({ ...formData, bankAccountId: value || '' })}
                 disabled={loadingAccounts}
               >
-                <SelectTrigger className="bg-gray-900 border-gray-700 text-white">
+                <SelectTrigger className="bg-card border-border text-white">
                   <SelectValue placeholder={loadingAccounts ? "Loading..." : "Select bank account (optional)"} />
                 </SelectTrigger>
-                <SelectContent className="bg-gray-900 border-gray-800 text-white z-[120]" position="popper">
+                <SelectContent className="bg-card border-border text-white z-[120]" position="popper">
                   {loadingAccounts ? (
                     <SelectItem value="loading" disabled>Loading accounts...</SelectItem>
                   ) : bankAccounts.length === 0 ? (
@@ -484,16 +484,16 @@ export const AddBranchModal: React.FC<AddBranchModalProps> = ({
 
             {/* POS Cash Drawer (also uses Cash accounts) */}
             <div className="space-y-2">
-              <Label htmlFor="posCashDrawer" className="text-gray-300 text-sm">POS Cash Drawer</Label>
+              <Label htmlFor="posCashDrawer" className="text-muted-foreground text-sm">POS Cash Drawer</Label>
               <Select
                 value={formData.posCashDrawerId || undefined}
                 onValueChange={(value) => setFormData({ ...formData, posCashDrawerId: value || '' })}
                 disabled={loadingAccounts}
               >
-                <SelectTrigger className="bg-gray-900 border-gray-700 text-white">
+                <SelectTrigger className="bg-card border-border text-white">
                   <SelectValue placeholder={loadingAccounts ? "Loading..." : "Select POS drawer account (optional)"} />
                 </SelectTrigger>
-                <SelectContent className="bg-gray-900 border-gray-800 text-white z-[120]" position="popper">
+                <SelectContent className="bg-card border-border text-white z-[120]" position="popper">
                   {loadingAccounts ? (
                     <SelectItem value="loading" disabled>Loading accounts...</SelectItem>
                   ) : cashAccounts.length === 0 ? (
@@ -511,10 +511,10 @@ export const AddBranchModal: React.FC<AddBranchModalProps> = ({
           </div>
 
           {/* Active Status */}
-          <div className="flex items-center justify-between p-4 bg-gray-900 border border-gray-800 rounded-lg">
+          <div className="flex items-center justify-between p-4 bg-card border border-border rounded-lg">
             <div>
               <Label htmlFor="is_active" className="text-gray-200">Active Status</Label>
-              <p className="text-xs text-gray-400">Branch is operational and visible</p>
+              <p className="text-xs text-muted-foreground">Branch is operational and visible</p>
             </div>
             <Switch
               id="is_active"
@@ -524,12 +524,12 @@ export const AddBranchModal: React.FC<AddBranchModalProps> = ({
           </div>
         </div>
 
-        <DialogFooter className="bg-gray-950 px-6 py-4 border-t border-gray-800 flex justify-end items-center gap-3">
+        <DialogFooter className="bg-input-background px-6 py-4 border-t border-border flex justify-end items-center gap-3">
           <Button
             type="button"
             variant="outline"
             onClick={onClose}
-            className="text-gray-300 hover:bg-gray-800 hover:text-white border-gray-700"
+            className="text-muted-foreground hover:bg-muted hover:text-foreground border-border"
             disabled={saving}
           >
             Cancel

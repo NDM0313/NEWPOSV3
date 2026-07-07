@@ -292,10 +292,10 @@ export const ProfitLossPage: React.FC<{
   }
   if (!data) {
     return (
-      <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-6 text-center text-gray-400">
+      <div className="rounded-xl border border-border bg-muted/40 p-6 text-center text-muted-foreground">
         <p className="font-medium">{fetchError || 'No data for the selected period'}</p>
         {fetchError ? (
-          <Button variant="outline" className="mt-4 border-gray-700" onClick={() => { setFetchError(null); setFetchRetryKey((k) => k + 1); }}>
+          <Button variant="outline" className="mt-4 border-border" onClick={() => { setFetchError(null); setFetchRetryKey((k) => k + 1); }}>
             Retry
           </Button>
         ) : null}
@@ -313,7 +313,7 @@ export const ProfitLossPage: React.FC<{
       />
       {showUnifiedPreviewTools ? (
         <div className="flex flex-wrap items-center gap-3 no-print">
-          <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer w-fit">
+          <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer w-fit">
             <input
               type="checkbox"
               checked={unifiedPreviewEnabled}
@@ -324,7 +324,7 @@ export const ProfitLossPage: React.FC<{
             Unified TB preview (P&L compare only)
           </label>
           {unifiedPreviewEnabled ? (
-            <Button type="button" variant="outline" size="sm" className="border-gray-700" onClick={() => void loadUnifiedPreview()}>
+            <Button type="button" variant="outline" size="sm" className="border-border" onClick={() => void loadUnifiedPreview()}>
               Refresh preview
             </Button>
           ) : null}
@@ -356,19 +356,19 @@ export const ProfitLossPage: React.FC<{
         onWhatsapp={handleWhatsApp}
       />
       <div className="no-print flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-gray-400">
+        <p className="text-sm text-muted-foreground">
           Period: {data.startDate} to {data.endDate}
           {comp && (
-            <span className="ml-2 text-gray-500">
+            <span className="ml-2 text-muted-foreground">
               • Compare: {comp.startDate} to {comp.endDate}
             </span>
           )}
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1.5">
-            <GitCompare size={14} className="text-gray-400" />
+            <GitCompare size={14} className="text-muted-foreground" />
             <Select value={comparePeriod} onValueChange={(v: 'none' | 'prior-month' | 'prior-quarter') => setComparePeriod(v)}>
-              <SelectTrigger className="w-[140px] h-8 text-xs border-gray-700 bg-gray-800">
+              <SelectTrigger className="w-[140px] h-8 text-xs border-border bg-muted">
                 <SelectValue placeholder="Compare" />
               </SelectTrigger>
               <SelectContent>
@@ -380,74 +380,74 @@ export const ProfitLossPage: React.FC<{
           </div>
         </div>
       </div>
-      <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-6 space-y-6 no-print">
+      <div className="rounded-xl border border-border bg-muted/40 p-6 space-y-6 no-print">
         <section>
-          <h3 className="text-lg font-semibold text-white mb-2">{data.revenue.label}</h3>
+          <h3 className="text-lg font-semibold text-foreground mb-2">{data.revenue.label}</h3>
           <ul className="space-y-1">
             {data.revenue.items.map((i) => (
               <li key={i.code || i.name} className="flex justify-between text-sm">
-                <span className="text-gray-300">{i.name}</span>
-                <span className="text-white">{formatCurrency(i.amount)}</span>
+                <span className="text-muted-foreground">{i.name}</span>
+                <span className="text-foreground">{formatCurrency(i.amount)}</span>
               </li>
             ))}
           </ul>
-          <p className="flex justify-between font-medium text-white border-t border-gray-700 mt-2 pt-2">
+          <p className="flex justify-between font-medium text-foreground border-t border-border mt-2 pt-2">
             Total Revenue
             <span className="flex items-center gap-4">
-              {comp && <span className="text-gray-500 text-xs">Prior: {formatCurrency(comp.revenue)}</span>}
+              {comp && <span className="text-muted-foreground text-xs">Prior: {formatCurrency(comp.revenue)}</span>}
               <span>{formatCurrency(data.revenue.total)}</span>
             </span>
           </p>
         </section>
         <section>
-          <h3 className="text-lg font-semibold text-white mb-2">{data.costOfSales.label}</h3>
+          <h3 className="text-lg font-semibold text-foreground mb-2">{data.costOfSales.label}</h3>
           <ul className="space-y-1">
             {data.costOfSales.items.map((i) => (
               <li key={i.code || i.name} className="flex justify-between text-sm">
-                <span className="text-gray-300">{i.name}</span>
-                <span className="text-white">{formatCurrency(i.amount)}</span>
+                <span className="text-muted-foreground">{i.name}</span>
+                <span className="text-foreground">{formatCurrency(i.amount)}</span>
               </li>
             ))}
           </ul>
-          <p className="flex justify-between text-gray-300 border-t border-gray-700 mt-2 pt-2">
+          <p className="flex justify-between text-muted-foreground border-t border-border mt-2 pt-2">
             Total Cost of Sales
             <span className="flex items-center gap-4">
-              {comp && <span className="text-gray-500 text-xs">Prior: {formatCurrency(comp.costOfSales)}</span>}
+              {comp && <span className="text-muted-foreground text-xs">Prior: {formatCurrency(comp.costOfSales)}</span>}
               <span>{formatCurrency(data.costOfSales.total)}</span>
             </span>
           </p>
-          <p className="flex justify-between font-medium text-green-400 mt-1">
+          <p className="flex justify-between font-medium text-[var(--erp-money-positive)] mt-1">
             Gross Profit
             <span className="flex items-center gap-4">
-              {comp && <span className="text-gray-500 text-xs">Prior: {formatCurrency(comp.grossProfit)}</span>}
+              {comp && <span className="text-muted-foreground text-xs">Prior: {formatCurrency(comp.grossProfit)}</span>}
               <span>{formatCurrency(data.grossProfit)}</span>
             </span>
           </p>
         </section>
         <section>
-          <h3 className="text-lg font-semibold text-white mb-2">{data.expenses.label}</h3>
+          <h3 className="text-lg font-semibold text-foreground mb-2">{data.expenses.label}</h3>
           <ul className="space-y-1">
             {data.expenses.items.map((i) => (
               <li key={i.code || i.name} className="flex justify-between text-sm">
-                <span className="text-gray-300">{i.name}</span>
-                <span className="text-white">{formatCurrency(i.amount)}</span>
+                <span className="text-muted-foreground">{i.name}</span>
+                <span className="text-foreground">{formatCurrency(i.amount)}</span>
               </li>
             ))}
           </ul>
-          <p className="flex justify-between text-gray-300 border-t border-gray-700 mt-2 pt-2">
+          <p className="flex justify-between text-muted-foreground border-t border-border mt-2 pt-2">
             Total Expenses
             <span className="flex items-center gap-4">
-              {comp && <span className="text-gray-500 text-xs">Prior: {formatCurrency(comp.expenses)}</span>}
+              {comp && <span className="text-muted-foreground text-xs">Prior: {formatCurrency(comp.expenses)}</span>}
               <span>{formatCurrency(data.expenses.total)}</span>
             </span>
           </p>
         </section>
-        <section className="border-t-2 border-gray-700 pt-4">
-          <p className="flex justify-between text-xl font-bold text-white">
+        <section className="border-t-2 border-border pt-4">
+          <p className="flex justify-between text-xl font-bold text-foreground">
             Net Profit
             <span className="flex items-center gap-4">
-              {comp && <span className="text-gray-500 text-sm font-normal">Prior: {formatCurrency(comp.netProfit)}</span>}
-              <span className={data.netProfit >= 0 ? 'text-green-400' : 'text-red-400'}>{formatCurrency(data.netProfit)}</span>
+              {comp && <span className="text-muted-foreground text-sm font-normal">Prior: {formatCurrency(comp.netProfit)}</span>}
+              <span className={data.netProfit >= 0 ? 'text-[var(--erp-money-positive)]' : 'text-red-400'}>{formatCurrency(data.netProfit)}</span>
             </span>
           </p>
         </section>

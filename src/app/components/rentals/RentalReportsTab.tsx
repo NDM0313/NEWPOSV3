@@ -307,7 +307,7 @@ export const RentalReportsTab = () => {
         previewContentRef={reportExport.printRef}
         previewDocumentType="ledger"
         previewReference="Rental Reports"
-        className="mb-0 border-b border-gray-800"
+        className="mb-0 border-b border-border"
       />
 
       {reportExport.previewOpen ? (
@@ -335,20 +335,20 @@ export const RentalReportsTab = () => {
       <div className="flex-1 p-4 md:p-6 space-y-6 overflow-y-auto">
         <div className="flex flex-wrap items-end gap-3">
           <div>
-            <label className="text-xs text-gray-400 block mb-1">From</label>
-            <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="bg-gray-900 border-gray-700 text-sm w-[160px]" />
+            <label className="text-xs text-muted-foreground block mb-1">From</label>
+            <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="bg-card border-border text-sm w-[160px]" />
           </div>
           <div>
-            <label className="text-xs text-gray-400 block mb-1">To</label>
-            <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="bg-gray-900 border-gray-700 text-sm w-[160px]" />
+            <label className="text-xs text-muted-foreground block mb-1">To</label>
+            <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="bg-card border-border text-sm w-[160px]" />
           </div>
           <div>
-            <label className="text-xs text-gray-400 block mb-1">Branch</label>
+            <label className="text-xs text-muted-foreground block mb-1">Branch</label>
             <Select value={branchFilter} onValueChange={setBranchFilter}>
-              <SelectTrigger className="w-[180px] bg-gray-900 border-gray-700 text-sm h-9">
+              <SelectTrigger className="w-[180px] bg-card border-border text-sm h-9">
                 <SelectValue placeholder="Branch" />
               </SelectTrigger>
-              <SelectContent className="bg-gray-900 border-gray-700">
+              <SelectContent className="bg-card border-border">
                 <SelectItem value="all">All branches</SelectItem>
                 {branches.map((b) => (
                   <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
@@ -361,19 +361,19 @@ export const RentalReportsTab = () => {
 
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
           {([
-            { label: 'Total Bookings', value: fmtCount(stats.total), color: 'text-white', icon: BarChart3 },
-            { label: 'Active', value: fmtCount(stats.active), color: 'text-green-400', icon: TrendingUp },
+            { label: 'Total Bookings', value: fmtCount(stats.total), color: 'text-foreground', icon: BarChart3 },
+            { label: 'Active', value: fmtCount(stats.active), color: 'text-[var(--erp-money-positive)]', icon: TrendingUp },
             { label: 'Returned', value: fmtCount(stats.returned), color: 'text-blue-400', icon: TrendingUp },
             { label: 'Overdue', value: fmtCount(stats.overdue), color: 'text-red-400', icon: TrendingUp },
-            { label: 'Cancelled', value: fmtCount(stats.cancelled), color: 'text-gray-400', icon: TrendingUp },
+            { label: 'Cancelled', value: fmtCount(stats.cancelled), color: 'text-muted-foreground', icon: TrendingUp },
             { label: 'Total Revenue', amount: stats.totalRevenue, color: 'text-blue-400', icon: BarChart3 },
             { label: 'Collected', amount: stats.totalCollected, color: 'text-emerald-400', icon: BarChart3 },
-            { label: 'Outstanding', amount: stats.totalOutstanding, color: stats.totalOutstanding > 0 ? 'text-red-400' : 'text-gray-400', icon: BarChart3 },
+            { label: 'Outstanding', amount: stats.totalOutstanding, color: stats.totalOutstanding > 0 ? 'text-red-400' : 'text-muted-foreground', icon: BarChart3 },
           ] as const).map((s) => (
-            <div key={s.label} className="bg-gray-900/60 border border-gray-800 rounded-lg px-4 py-3 min-w-0">
+            <div key={s.label} className="bg-muted/60 border border-border rounded-lg px-4 py-3 min-w-0">
               <div className="flex items-center gap-2 mb-1">
-                <s.icon size={14} className="text-gray-500 shrink-0" />
-                <p className="text-xs uppercase tracking-wide font-semibold text-gray-500 truncate">{s.label}</p>
+                <s.icon size={14} className="text-muted-foreground shrink-0" />
+                <p className="text-xs uppercase tracking-wide font-semibold text-muted-foreground truncate">{s.label}</p>
               </div>
               {'amount' in s && s.amount != null ? (
                 <AdaptiveCurrencyValue value={s.amount} className={cn('text-lg md:text-xl font-bold min-w-0', s.color)} as="p" />
@@ -384,15 +384,15 @@ export const RentalReportsTab = () => {
           ))}
         </div>
 
-        <div className="rounded-lg border border-gray-800 bg-gray-900/50 px-4 py-3 flex flex-wrap gap-6 text-sm">
-          <span className="text-gray-400">Collection rate: <strong className="text-emerald-400">{stats.collectionRate.toFixed(1)}%</strong></span>
-          <span className="text-gray-400">Period: <strong className="text-white">{startDate}</strong> → <strong className="text-white">{endDate}</strong></span>
-          <span className="text-gray-400">Branch: <strong className="text-white">{branchFilter === 'all' ? 'All' : branches.find((b) => b.id === branchFilter)?.name || branchFilter}</strong></span>
+        <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 flex flex-wrap gap-6 text-sm">
+          <span className="text-muted-foreground">Collection rate: <strong className="text-emerald-400">{stats.collectionRate.toFixed(1)}%</strong></span>
+          <span className="text-muted-foreground">Period: <strong className="text-foreground">{startDate}</strong> → <strong className="text-foreground">{endDate}</strong></span>
+          <span className="text-muted-foreground">Branch: <strong className="text-foreground">{branchFilter === 'all' ? 'All' : branches.find((b) => b.id === branchFilter)?.name || branchFilter}</strong></span>
         </div>
 
         {monthlyRevenue.length > 0 && (
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
-            <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+          <div className="bg-card border border-border rounded-xl p-6">
+            <h3 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
               <BarChart3 size={20} className="text-blue-400" /> Monthly Revenue
             </h3>
             <div className="h-[280px]">
@@ -415,13 +415,13 @@ export const RentalReportsTab = () => {
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-800 text-lg font-bold text-white flex items-center gap-2">
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="px-4 py-3 border-b border-border text-lg font-bold text-foreground flex items-center gap-2">
               <BarChart3 size={18} className="text-blue-400" /> Monthly Revenue
             </div>
             <div className="overflow-y-auto max-h-[320px]">
               <table className="w-full text-base leading-snug">
-                <thead className="bg-gray-950/80 text-sm uppercase text-gray-400 sticky top-0">
+                <thead className="bg-input-background/80 text-sm uppercase text-muted-foreground sticky top-0">
                   <tr>
                     <th className="text-left px-4 py-3 font-medium">Month</th>
                     <th className="text-right px-4 py-3 font-medium">Bookings</th>
@@ -429,74 +429,74 @@ export const RentalReportsTab = () => {
                     <th className="text-right px-4 py-3 font-medium">Collected</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-800/50">
+                <tbody className="divide-y divide-border">
                   {monthlyRevenue.map((m) => (
-                    <tr key={m.month} className="hover:bg-gray-800/20">
-                      <td className="px-4 py-2.5 text-white font-mono">{m.month}</td>
-                      <td className="px-4 py-2.5 text-right text-gray-300">{m.count}</td>
+                    <tr key={m.month} className="hover:bg-accent/20">
+                      <td className="px-4 py-2.5 text-foreground font-mono">{m.month}</td>
+                      <td className="px-4 py-2.5 text-right text-muted-foreground">{m.count}</td>
                       <td className="px-4 py-2.5 text-right text-blue-400 font-mono">{formatCurrency(m.revenue)}</td>
                       <td className="px-4 py-2.5 text-right text-emerald-400 font-mono">{formatCurrency(m.collected)}</td>
                     </tr>
                   ))}
                   {monthlyRevenue.length > 0 && (
-                    <tr className="bg-gray-950/60 font-semibold">
-                      <td className="px-4 py-2.5 text-white">Total</td>
-                      <td className="px-4 py-2.5 text-right text-white">{monthlyTotals.count}</td>
+                    <tr className="bg-input-background/60 font-semibold">
+                      <td className="px-4 py-2.5 text-foreground">Total</td>
+                      <td className="px-4 py-2.5 text-right text-foreground">{monthlyTotals.count}</td>
                       <td className="px-4 py-2.5 text-right text-blue-400 font-mono">{formatCurrency(monthlyTotals.revenue)}</td>
                       <td className="px-4 py-2.5 text-right text-emerald-400 font-mono">{formatCurrency(monthlyTotals.collected)}</td>
                     </tr>
                   )}
                   {monthlyRevenue.length === 0 && (
-                    <tr><td colSpan={4} className="px-4 py-8 text-center text-gray-500">No data for selected period</td></tr>
+                    <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">No data for selected period</td></tr>
                   )}
                 </tbody>
               </table>
             </div>
           </div>
 
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-800 text-lg font-bold text-white flex items-center gap-2">
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="px-4 py-3 border-b border-border text-lg font-bold text-foreground flex items-center gap-2">
               <Package size={18} className="text-pink-400" /> Most Rented Products
             </div>
             <div className="overflow-y-auto max-h-[320px]">
               <table className="w-full text-base leading-snug">
-                <thead className="bg-gray-950/80 text-sm uppercase text-gray-400 sticky top-0">
+                <thead className="bg-input-background/80 text-sm uppercase text-muted-foreground sticky top-0">
                   <tr>
                     <th className="text-left px-4 py-3 font-medium">Product</th>
                     <th className="text-right px-4 py-3 font-medium">Qty</th>
                     <th className="text-right px-4 py-3 font-medium">Revenue</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-800/50">
+                <tbody className="divide-y divide-border">
                   {mostRented.map((p, i) => (
-                    <tr key={p.name + i} className="hover:bg-gray-800/20">
-                      <td className="px-4 py-2.5 text-white">{p.name || '—'}</td>
+                    <tr key={p.name + i} className="hover:bg-accent/20">
+                      <td className="px-4 py-2.5 text-foreground">{p.name || '—'}</td>
                       <td className="px-4 py-2.5 text-right text-pink-400 font-bold">{p.count}</td>
-                      <td className="px-4 py-2.5 text-right text-gray-300 font-mono">{formatCurrency(p.revenue)}</td>
+                      <td className="px-4 py-2.5 text-right text-muted-foreground font-mono">{formatCurrency(p.revenue)}</td>
                     </tr>
                   ))}
                   {mostRented.length > 0 && (
-                    <tr className="bg-gray-950/60 font-semibold">
-                      <td className="px-4 py-2.5 text-white">Total (top 20)</td>
+                    <tr className="bg-input-background/60 font-semibold">
+                      <td className="px-4 py-2.5 text-foreground">Total (top 20)</td>
                       <td className="px-4 py-2.5 text-right text-pink-400">{productTotals.count}</td>
-                      <td className="px-4 py-2.5 text-right text-gray-300 font-mono">{formatCurrency(productTotals.revenue)}</td>
+                      <td className="px-4 py-2.5 text-right text-muted-foreground font-mono">{formatCurrency(productTotals.revenue)}</td>
                     </tr>
                   )}
                   {mostRented.length === 0 && (
-                    <tr><td colSpan={3} className="px-4 py-8 text-center text-gray-500">No data</td></tr>
+                    <tr><td colSpan={3} className="px-4 py-8 text-center text-muted-foreground">No data</td></tr>
                   )}
                 </tbody>
               </table>
             </div>
           </div>
 
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-800 text-lg font-bold text-white flex items-center gap-2">
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="px-4 py-3 border-b border-border text-lg font-bold text-foreground flex items-center gap-2">
               <Users size={18} className="text-amber-400" /> Top Customers
             </div>
             <div className="overflow-y-auto max-h-[320px]">
               <table className="w-full text-base leading-snug">
-                <thead className="bg-gray-950/80 text-sm uppercase text-gray-400 sticky top-0">
+                <thead className="bg-input-background/80 text-sm uppercase text-muted-foreground sticky top-0">
                   <tr>
                     <th className="text-left px-4 py-3 font-medium">Customer</th>
                     <th className="text-right px-4 py-3 font-medium">Bookings</th>
@@ -504,17 +504,17 @@ export const RentalReportsTab = () => {
                     <th className="text-right px-4 py-3 font-medium">Paid</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-800/50">
+                <tbody className="divide-y divide-border">
                   {customerFrequency.map((c, i) => (
-                    <tr key={c.name + i} className="hover:bg-gray-800/20">
-                      <td className="px-4 py-2.5 text-white">{c.name || '—'}</td>
+                    <tr key={c.name + i} className="hover:bg-accent/20">
+                      <td className="px-4 py-2.5 text-foreground">{c.name || '—'}</td>
                       <td className="px-4 py-2.5 text-right text-amber-400 font-bold">{c.bookings}</td>
-                      <td className="px-4 py-2.5 text-right text-gray-300 font-mono">{formatCurrency(c.totalSpent)}</td>
+                      <td className="px-4 py-2.5 text-right text-muted-foreground font-mono">{formatCurrency(c.totalSpent)}</td>
                       <td className="px-4 py-2.5 text-right text-emerald-400 font-mono">{formatCurrency(c.totalPaid)}</td>
                     </tr>
                   ))}
                   {customerFrequency.length === 0 && (
-                    <tr><td colSpan={4} className="px-4 py-8 text-center text-gray-500">No data</td></tr>
+                    <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">No data</td></tr>
                   )}
                 </tbody>
               </table>

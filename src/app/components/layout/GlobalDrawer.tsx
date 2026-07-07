@@ -96,7 +96,7 @@ export const GlobalDrawer = () => {
   
   // Custom classes for the sheet content
   // IMPORTANT: Responsive widths, isolated from global layout
-  let contentClasses = "border-l border-gray-800 bg-gray-950 text-white p-0 gap-0 "; 
+  let contentClasses = "border-l border-border bg-background text-foreground p-0 gap-0 "; 
   
   if (isMobile) {
     contentClasses += "h-[90vh] rounded-t-xl border-t"; // Bottom sheet style
@@ -224,7 +224,7 @@ export const GlobalDrawer = () => {
     // Render parent drawer (Sale/Purchase) with lower z-index
     const parentIsSale = parentDrawer === 'addSale' || parentDrawer === 'edit-sale';
     const parentIsPurchase = parentDrawer === 'addPurchase';
-    const parentContentClasses = "border-l border-gray-800 bg-gray-950 text-white p-0 gap-0 h-full !max-w-none w-full lg:w-[1200px] lg:max-w-[1200px] !z-[60] overflow-y-auto";
+    const parentContentClasses = "border-l border-border bg-background text-foreground p-0 gap-0 h-full !max-w-none w-full lg:w-[1200px] lg:max-w-[1200px] !z-[60] overflow-y-auto";
     
     return (
       <>
@@ -283,7 +283,7 @@ export const GlobalDrawer = () => {
   if (hasNestedProductDrawer) {
     const parentIsSale = parentDrawer === 'addSale' || parentDrawer === 'edit-sale';
     const parentIsPurchase = parentDrawer === 'addPurchase' || parentDrawer === 'edit-purchase';
-    const parentContentClasses = "border-l border-gray-800 bg-gray-950 text-white p-0 gap-0 h-full !max-w-none w-full lg:w-[1200px] lg:max-w-[1200px] !z-[60] overflow-y-auto";
+    const parentContentClasses = "border-l border-border bg-background text-foreground p-0 gap-0 h-full !max-w-none w-full lg:w-[1200px] lg:max-w-[1200px] !z-[60] overflow-y-auto";
     return (
       <>
         <Sheet open={true} onOpenChange={() => {}}>
@@ -735,9 +735,9 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div className="p-6 border-b border-gray-800 bg-gray-950 sticky top-0 z-10 shrink-0">
-        <h2 className="text-xl font-bold text-white">{drawerData?.contact ? 'Edit Contact' : 'Add New Contact'}</h2>
-        <p className="text-sm text-gray-400 mt-1">
+      <div className="p-6 border-b border-border bg-muted/40 sticky top-0 z-10 shrink-0">
+        <h2 className="text-xl font-bold text-foreground">{drawerData?.contact ? 'Edit Contact' : 'Add New Contact'}</h2>
+        <p className="text-sm text-muted-foreground mt-1">
           {drawerData?.contact
             ? (loadingEdit ? 'Loading contact...' : 'Update contact details below.')
             : drawerContactType 
@@ -755,7 +755,7 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
               className={`px-4 py-2 rounded-lg font-medium text-sm transition-all flex items-center gap-2 ${
                 contactRoles.customer
                   ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30 border-2 border-blue-500'
-                  : 'bg-gray-800 text-gray-400 hover:bg-gray-700 border-2 border-gray-700'
+                  : 'bg-muted text-muted-foreground hover:bg-accent border-2 border-border'
               } ${
                 (drawerContactType && drawerContactType !== 'customer')
                   ? 'opacity-50 cursor-not-allowed' 
@@ -777,8 +777,8 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
               disabled={drawerContactType && drawerContactType !== 'supplier'}
               className={`px-4 py-2 rounded-lg font-medium text-sm transition-all flex items-center gap-2 ${
                 contactRoles.supplier
-                  ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/30 border-2 border-purple-500'
-                  : 'bg-gray-800 text-gray-400 hover:bg-gray-700 border-2 border-gray-700'
+                  ? 'bg-purple-600 text-foreground shadow-lg shadow-purple-500/30 border-2 border-purple-500'
+                  : 'bg-muted text-muted-foreground hover:bg-accent border-2 border-border'
               } ${
                 (drawerContactType && drawerContactType !== 'supplier')
                   ? 'opacity-50 cursor-not-allowed' 
@@ -800,8 +800,8 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
               disabled={contactRoles.customer || contactRoles.supplier || (drawerContactType && drawerContactType !== 'worker')}
               className={`px-4 py-2 rounded-lg font-medium text-sm transition-all flex items-center gap-2 ${
                 contactRoles.worker
-                  ? 'bg-green-600 text-white shadow-lg shadow-green-500/30 border-2 border-green-500'
-                  : 'bg-gray-800 text-gray-400 hover:bg-gray-700 border-2 border-gray-700'
+                  ? 'bg-green-600 text-foreground shadow-lg shadow-green-500/30 border-2 border-green-500'
+                  : 'bg-muted text-muted-foreground hover:bg-accent border-2 border-border'
               } ${
                 (contactRoles.customer || contactRoles.supplier || (drawerContactType && drawerContactType !== 'worker'))
                   ? 'opacity-50 cursor-not-allowed' 
@@ -840,13 +840,13 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
           <div className="space-y-2">
             <Label htmlFor="contact-group" className="text-gray-200">Group / Category (Optional)</Label>
             {loadingGroups ? (
-              <div className="text-sm text-gray-400 py-2">Loading groups...</div>
+              <div className="text-sm text-muted-foreground py-2">Loading groups...</div>
             ) : contactGroups.length > 0 ? (
               <Select value={selectedGroupId} onValueChange={setSelectedGroupId}>
-                <SelectTrigger className="bg-gray-900 border-gray-800 text-white">
+                <SelectTrigger className="bg-input-background border-border text-foreground">
                   <SelectValue placeholder="Select a group (optional)" />
                 </SelectTrigger>
-                <SelectContent className="bg-gray-900 border-gray-800 text-white max-h-[280px] overflow-y-auto">
+                <SelectContent className="bg-input-background border-border text-foreground max-h-[280px] overflow-y-auto">
                   <SelectItem value="none">None</SelectItem>
                   {contactGroups.map((group) => (
                     <SelectItem key={group.id} value={group.id}>
@@ -856,11 +856,11 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
                 </SelectContent>
               </Select>
             ) : (
-              <div className="text-sm text-gray-500 italic py-2 px-3 bg-gray-900/50 rounded border border-gray-800">
+              <div className="text-sm text-muted-foreground italic py-2 px-3 bg-muted/50 rounded border border-border">
                 No groups available. Groups will appear here once created in settings.
               </div>
             )}
-            <p className="text-xs text-gray-500">Organize contacts into groups for easier management</p>
+            <p className="text-xs text-muted-foreground">Organize contacts into groups for easier management</p>
           </div>
         )}
 
@@ -890,7 +890,7 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
                   ? 'e.g. ABC Trading Company'
                   : 'e.g. Ahmed Retailers'
               } 
-              className="bg-gray-900 border-gray-800 text-white" 
+              className="bg-input-background border-border text-foreground" 
               required 
             />
           </div>
@@ -904,9 +904,9 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
               name="contact-person"
               defaultValue={defaultContactPerson}
               placeholder="e.g. John Doe (optional)" 
-              className="bg-gray-900 border-gray-800 text-white" 
+              className="bg-input-background border-border text-foreground" 
             />
-              <p className="text-xs text-gray-500">Primary contact person at supplier</p>
+              <p className="text-xs text-muted-foreground">Primary contact person at supplier</p>
             </div>
           )}
 
@@ -917,7 +917,7 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
               name="mobile"
               defaultValue={defaultPhone}
               placeholder="+92 300 1234567" 
-              className="bg-gray-900 border-gray-800 text-white" 
+              className="bg-input-background border-border text-foreground" 
               required 
             />
           </div>
@@ -930,7 +930,7 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
               type="email"
               defaultValue={defaultEmail}
               placeholder="contact@business.com" 
-              className="bg-gray-900 border-gray-800 text-white" 
+              className="bg-input-background border-border text-foreground" 
             />
           </div>
         </div>
@@ -955,9 +955,9 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
                       name="supplier-business-name"
                       defaultValue={defaultSupplierBusinessName}
                       placeholder="e.g. ABC Trading Company" 
-                      className="bg-gray-900 border-gray-800 text-white" 
+                      className="bg-input-background border-border text-foreground" 
                     />
-                    <p className="text-xs text-gray-500">Legal business name (if different from contact name)</p>
+                    <p className="text-xs text-muted-foreground">Legal business name (if different from contact name)</p>
                   </div>
                   
                   <div className="space-y-2">
@@ -967,22 +967,22 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
                       name="supplier-ntn"
                       defaultValue={defaultSupplierNtn}
                       placeholder="NTN-1234567" 
-                      className="bg-gray-900 border-gray-800 text-white" 
+                      className="bg-input-background border-border text-foreground" 
                     />
                   </div>
                   
                   <div className="space-y-2">
                     <Label htmlFor="supplier-payable-account" className="text-gray-200">Payable Account</Label>
                     <Select name="supplier-payable-account" defaultValue="">
-                      <SelectTrigger className="bg-gray-900 border-gray-800 text-white">
+                      <SelectTrigger className="bg-input-background border-border text-foreground">
                         <SelectValue placeholder="Select account (optional)" />
                       </SelectTrigger>
-                      <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                      <SelectContent className="bg-input-background border-border text-foreground">
                         {/* Accounts will be loaded dynamically if needed */}
                         {/* Note: Empty Select will show placeholder when no value selected */}
                       </SelectContent>
                     </Select>
-                    <p className="text-xs text-gray-500">Default account for supplier payments</p>
+                    <p className="text-xs text-muted-foreground">Default account for supplier payments</p>
                   </div>
                   
                 </div>
@@ -998,7 +998,7 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
               <span className="w-2 h-2 rounded-full bg-green-500"></span>
               Worker Role (required)
             </h3>
-            <p className="text-xs text-gray-500">Used for Studio: Dyeing / Stitching / Handwork task assignment.</p>
+            <p className="text-xs text-muted-foreground">Used for Studio: Dyeing / Stitching / Handwork task assignment.</p>
             {companyId ? (
               <WorkerRoleCombobox
                 companyId={companyId}
@@ -1021,17 +1021,17 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
                 key={`worker-rate-${drawerData?.contact?.uuid ?? 'new'}-${drawerData?.contact?.uuid ? (loadingEdit ? 'loading' : 'ready') : 'new'}`}
                 defaultValue={defaultWorkerRate}
                 placeholder="e.g. 500 per piece / day"
-                className="bg-gray-900 border-gray-700 text-white"
+                className="bg-popover border-border text-popover-foreground"
               />
-              <p className="text-xs text-gray-500">Standard payment rate for this worker</p>
+              <p className="text-xs text-muted-foreground">Standard payment rate for this worker</p>
             </div>
           </div>
         )}
 
         {/* Advanced Details Accordion */}
-        <Accordion type="multiple" className="border border-gray-800 rounded-lg">
-          <AccordionItem value="financial" className="border-b border-gray-800">
-            <AccordionTrigger className="px-4 hover:bg-gray-800/50">
+        <Accordion type="multiple" className="border border-border rounded-lg">
+          <AccordionItem value="financial" className="border-b border-border">
+            <AccordionTrigger className="px-4 hover:bg-accent/50">
               <span className="text-sm font-medium">Financial Details</span>
             </AccordionTrigger>
             {/* forceMount: opening-balance / credit-limit must submit even when accordion is collapsed */}
@@ -1048,9 +1048,9 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
                       type="number"
                       defaultValue={defaultOpeningBalance}
                       placeholder="0.00"
-                      className="bg-gray-900 border-gray-800 text-white"
+                      className="bg-input-background border-border text-foreground"
                     />
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-muted-foreground">
                       Posts to worker payable / advance (2010 / 1180) via opening journal sync.
                     </p>
                   </div>
@@ -1061,16 +1061,16 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
                     <Label htmlFor="opening-balance" className="text-gray-200">
                       Customer opening (receivable)
                     </Label>
-                    <p className="text-xs text-gray-400">You will receive from this contact</p>
+                    <p className="text-xs text-muted-foreground">You will receive from this contact</p>
                     <Input
                       id="opening-balance"
                       name="opening-balance"
                       type="number"
                       defaultValue={defaultOpeningBalance}
                       placeholder="0.00"
-                      className="bg-gray-900 border-gray-800 text-white"
+                      className="bg-input-background border-border text-foreground"
                     />
-                    <p className="text-[11px] text-gray-500">
+                    <p className="text-[11px] text-muted-foreground">
                       Accounting entry: Dr Accounts Receivable (1100) · Cr Owner Capital (3000)
                     </p>
                   </div>
@@ -1081,16 +1081,16 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
                     <Label htmlFor="supplier-opening-balance" className="text-gray-200">
                       Supplier opening (payable)
                     </Label>
-                    <p className="text-xs text-gray-400">You will pay to this contact</p>
+                    <p className="text-xs text-muted-foreground">You will pay to this contact</p>
                     <Input
                       id="supplier-opening-balance"
                       name="supplier-opening-balance"
                       type="number"
                       defaultValue={defaultSupplierOpeningBalance}
                       placeholder="0.00"
-                      className="bg-gray-900 border-gray-800 text-white"
+                      className="bg-input-background border-border text-foreground"
                     />
-                    <p className="text-[11px] text-gray-500">
+                    <p className="text-[11px] text-muted-foreground">
                       Accounting entry: Dr Owner Capital (3000) · Cr Accounts Payable (2000)
                     </p>
                   </div>
@@ -1105,16 +1105,16 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
                       <Label htmlFor="opening-balance-both" className="text-gray-200">
                         Customer opening (receivable / AR)
                       </Label>
-                      <p className="text-xs text-gray-400">You will receive from this contact</p>
+                      <p className="text-xs text-muted-foreground">You will receive from this contact</p>
                       <Input
                         id="opening-balance-both"
                         name="opening-balance"
                         type="number"
                         defaultValue={defaultOpeningBalance}
                         placeholder="0.00"
-                        className="bg-gray-900 border-gray-800 text-white"
+                        className="bg-input-background border-border text-foreground"
                       />
-                      <p className="text-[11px] text-gray-500">
+                      <p className="text-[11px] text-muted-foreground">
                         Dr Accounts Receivable (1100) · Cr Owner Capital (3000)
                       </p>
                     </div>
@@ -1122,16 +1122,16 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
                       <Label htmlFor="supplier-opening-balance-both" className="text-gray-200">
                         Supplier opening (payable / AP)
                       </Label>
-                      <p className="text-xs text-gray-400">You will pay to this contact</p>
+                      <p className="text-xs text-muted-foreground">You will pay to this contact</p>
                       <Input
                         id="supplier-opening-balance-both"
                         name="supplier-opening-balance"
                         type="number"
                         defaultValue={defaultSupplierOpeningBalance}
                         placeholder="0.00"
-                        className="bg-gray-900 border-gray-800 text-white"
+                        className="bg-input-background border-border text-foreground"
                       />
-                      <p className="text-[11px] text-gray-500">
+                      <p className="text-[11px] text-muted-foreground">
                         Dr Owner Capital (3000) · Cr Accounts Payable (2000)
                       </p>
                     </div>
@@ -1149,7 +1149,7 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
                       type="number"
                       defaultValue={defaultCreditLimit}
                       placeholder="0.00"
-                      className="bg-gray-900 border-gray-800 text-white"
+                      className="bg-input-background border-border text-foreground"
                     />
                   </div>
                   <div className="space-y-2">
@@ -1162,17 +1162,17 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
                       type="number"
                       defaultValue={defaultPayTerm}
                       placeholder="30"
-                      className="bg-gray-900 border-gray-800 text-white"
+                      className="bg-input-background border-border text-foreground"
                     />
                   </div>
                 </div>
-                <p className="text-xs text-gray-500">Payment terms: number of days to settle invoices where applicable.</p>
+                <p className="text-xs text-muted-foreground">Payment terms: number of days to settle invoices where applicable.</p>
               </div>
             </AccordionContent>
           </AccordionItem>
 
-          <AccordionItem value="tax" className="border-b border-gray-800">
-            <AccordionTrigger className="px-4 hover:bg-gray-800/50">
+          <AccordionItem value="tax" className="border-b border-border">
+            <AccordionTrigger className="px-4 hover:bg-accent/50">
               <span className="text-sm font-medium">Tax Information</span>
             </AccordionTrigger>
             <AccordionContent className="px-4 pb-4">
@@ -1184,7 +1184,7 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
                     name="tax-id"
                     defaultValue={defaultTaxId}
                     placeholder="NTN-1234567" 
-                    className="bg-gray-900 border-gray-800 text-white" 
+                    className="bg-input-background border-border text-foreground" 
                   />
                 </div>
                 <div className="space-y-2">
@@ -1193,7 +1193,7 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
                     id="gst"
                     name="gst"
                     placeholder="GST-1234567890" 
-                    className="bg-gray-900 border-gray-800 text-white" 
+                    className="bg-input-background border-border text-foreground" 
                   />
                 </div>
               </div>
@@ -1201,7 +1201,7 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
           </AccordionItem>
 
           <AccordionItem value="address">
-            <AccordionTrigger className="px-4 hover:bg-gray-800/50">
+            <AccordionTrigger className="px-4 hover:bg-accent/50">
               <span className="text-sm font-medium">Billing Address</span>
             </AccordionTrigger>
             <AccordionContent className="px-4 pb-4">
@@ -1213,7 +1213,7 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
                     name="address"
                     defaultValue={defaultAddress}
                     placeholder="Enter full address"
-                    className="bg-gray-900 border-gray-800 text-white min-h-[80px]" 
+                    className="bg-input-background border-border text-foreground min-h-[80px]" 
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
@@ -1224,16 +1224,16 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
                       name="city"
                       defaultValue={defaultCity}
                       placeholder="Karachi" 
-                      className="bg-gray-900 border-gray-800 text-white" 
+                      className="bg-input-background border-border text-foreground" 
                     />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="country" className="text-gray-200">Country</Label>
                     <Select value={country} onValueChange={setCountry}>
-                      <SelectTrigger className="bg-gray-900 border-gray-800 text-white">
+                      <SelectTrigger className="bg-input-background border-border text-foreground">
                         <SelectValue placeholder="Pakistan" />
                       </SelectTrigger>
-                      <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                      <SelectContent className="bg-input-background border-border text-foreground">
                         <SelectItem value="pk">Pakistan</SelectItem>
                         <SelectItem value="in">India</SelectItem>
                         <SelectItem value="bd">Bangladesh</SelectItem>
@@ -1246,19 +1246,19 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
           </AccordionItem>
         </Accordion>
 
-        <div className="p-6 border-t border-gray-800 bg-gray-950 sticky bottom-0 z-10 flex gap-4">
+        <div className="p-6 border-t border-border bg-muted/40 sticky bottom-0 z-10 flex gap-4">
           <Button 
             type="button" 
             variant="outline" 
             onClick={onClose}
-            className="flex-1 border-gray-700 text-gray-300"
+            className="flex-1 border-border text-muted-foreground"
           >
             Cancel
           </Button>
           <Button 
             type="submit" 
             disabled={saving}
-            className="flex-1 bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50"
+            className="flex-1 bg-blue-600 hover:bg-blue-500 text-foreground disabled:opacity-50"
           >
             {saving ? 'Saving...' : 'Save Contact'}
           </Button>

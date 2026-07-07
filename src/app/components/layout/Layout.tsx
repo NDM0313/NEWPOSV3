@@ -4,13 +4,15 @@ import { BottomNav } from './BottomNav';
 import { TopHeader } from './TopHeader';
 import { MobileNavDrawer } from './MobileNavDrawer';
 import { useSupabase, STORAGE_BLOCKED_MESSAGE } from '@/app/context/SupabaseContext';
+import { useErpTheme } from '@/app/hooks/useErpTheme';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 
 export const Layout = ({ children }: { children: React.ReactNode }) => {
   const { connectionError, storageBlocked, authConfigError, retryConnection } = useSupabase();
+  useErpTheme();
 
   return (
-    <div className="flex min-h-screen bg-[#111827] text-[#F9FAFB] font-sans selection:bg-[#3B82F6]/30 transition-colors overflow-x-hidden">
+    <div className="flex min-h-screen bg-background text-foreground font-sans selection:bg-primary/30 transition-colors overflow-x-hidden">
       <Sidebar />
       
       <div className="flex-1 flex flex-col min-w-0 max-w-full overflow-x-hidden">

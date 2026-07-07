@@ -100,8 +100,8 @@ export const CreateYourBusinessCard: React.FC<{
   if (showCreateForm) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <div className="max-w-md w-full p-8 rounded-xl bg-[#1F2937] border border-[#374151]">
-          <h2 className="text-xl font-bold text-white mb-2 text-center">Create your business</h2>
+        <div className="max-w-md w-full p-8 rounded-xl bg-card border border-border">
+          <h2 className="text-xl font-bold text-foreground mb-2 text-center">Create your business</h2>
           <p className="text-[#9CA3AF] text-sm mb-6 text-center">Enter your business name to get started. You can update all settings later.</p>
           {createError && <p className="text-red-400 text-sm mb-3 text-center">{createError}</p>}
           <input
@@ -110,14 +110,14 @@ export const CreateYourBusinessCard: React.FC<{
             value={businessName}
             onChange={(e) => setBusinessName(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleCreateBusiness()}
-            className="w-full px-4 py-2.5 rounded-lg bg-[#111827] border border-[#374151] text-white placeholder-[#6B7280] focus:outline-none focus:ring-2 focus:ring-[#3B82F6] mb-4"
+            className="w-full px-4 py-2.5 rounded-lg bg-background border border-border text-foreground placeholder-[#6B7280] focus:outline-none focus:ring-2 focus:ring-[#3B82F6] mb-4"
             autoFocus
             disabled={creating}
           />
           <div className="flex flex-col gap-2">
             <button
               type="button"
-              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-[#10B981] text-white font-medium hover:bg-[#059669] disabled:opacity-50"
+              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-[#10B981] text-foreground font-medium hover:bg-[#059669] disabled:opacity-50"
               onClick={handleCreateBusiness}
               disabled={creating || !businessName.trim()}
             >
@@ -126,7 +126,7 @@ export const CreateYourBusinessCard: React.FC<{
             </button>
             <button
               type="button"
-              className="w-full px-4 py-2 rounded-lg text-[#9CA3AF] hover:text-white text-sm"
+              className="w-full px-4 py-2 rounded-lg text-[#9CA3AF] hover:text-foreground text-sm"
               onClick={() => { setShowCreateForm(false); setCreateError(null); }}
               disabled={creating}
             >
@@ -140,16 +140,16 @@ export const CreateYourBusinessCard: React.FC<{
 
   return (
     <div className="flex items-center justify-center min-h-[400px]">
-      <div className="text-center max-w-md p-8 rounded-xl bg-[#1F2937] border border-[#374151]">
-        <h2 className="text-xl font-bold text-white mb-2">Create your business</h2>
+      <div className="text-center max-w-md p-8 rounded-xl bg-card border border-border">
+        <h2 className="text-xl font-bold text-foreground mb-2">Create your business</h2>
         <p className="text-[#9CA3AF] mb-6">
-          You're signed in but don't have a business yet. Sign out and use <strong className="text-white">Create New Business</strong> on the login page to get started.
+          You're signed in but don't have a business yet. Sign out and use <strong className="text-foreground">Create New Business</strong> on the login page to get started.
         </p>
         {fixError && <p className="text-red-400 text-sm mb-3">{fixError}</p>}
         <div className="flex flex-col gap-2">
           <button
             type="button"
-            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-[#10B981] text-white hover:bg-[#059669] disabled:opacity-50"
+            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-[#10B981] text-foreground hover:bg-[#059669] disabled:opacity-50"
             onClick={() => setShowCreateForm(true)}
             disabled={fixing}
           >
@@ -157,7 +157,7 @@ export const CreateYourBusinessCard: React.FC<{
           </button>
           <button
             type="button"
-            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-[#374151] text-[#9CA3AF] hover:bg-[#4B5563] hover:text-white disabled:opacity-50"
+            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-[#374151] text-[#9CA3AF] hover:bg-[#4B5563] hover:text-foreground disabled:opacity-50"
             onClick={handleFixAccount}
             disabled={fixing}
           >
@@ -166,7 +166,7 @@ export const CreateYourBusinessCard: React.FC<{
           </button>
           <button
             type="button"
-            className="w-full inline-flex items-center gap-2 justify-center px-4 py-2 rounded-lg text-[#6B7280] hover:text-white text-sm"
+            className="w-full inline-flex items-center gap-2 justify-center px-4 py-2 rounded-lg text-[#6B7280] hover:text-foreground text-sm"
             onClick={async () => {
               await signOut();
               window.location.href = '/';
@@ -555,11 +555,11 @@ export const DashboardLegacy = () => {
     if (authConfigError) {
       return (
         <div className="flex items-center justify-center min-h-[400px]">
-          <div className="max-w-md p-8 rounded-xl bg-[#1F2937] border border-red-500/40 text-center">
+          <div className="max-w-md p-8 rounded-xl bg-card border border-red-500/40 text-center">
             <p className="text-red-400 text-sm mb-4">{authConfigError}</p>
             <button
               type="button"
-              className="text-[#9CA3AF] hover:text-white text-sm underline"
+              className="text-[#9CA3AF] hover:text-foreground text-sm underline"
               onClick={async () => {
                 await signOut();
                 window.location.href = '/';
@@ -574,20 +574,20 @@ export const DashboardLegacy = () => {
     if (user && connectionError) {
       return (
         <div className="flex items-center justify-center min-h-[400px]">
-          <div className="max-w-md p-8 rounded-xl bg-[#1F2937] border border-amber-500/40 text-center">
+          <div className="max-w-md p-8 rounded-xl bg-card border border-amber-500/40 text-center">
             <p className="text-amber-200 text-sm mb-4">
               {storageBlocked ? STORAGE_BLOCKED_MESSAGE : 'Could not load your company profile. Please try again.'}
             </p>
             <button
               type="button"
-              className="w-full mb-3 px-4 py-2 rounded-lg bg-[#3B82F6] text-white hover:bg-[#2563EB]"
+              className="w-full mb-3 px-4 py-2 rounded-lg bg-[#3B82F6] text-foreground hover:bg-[#2563EB]"
               onClick={retryConnection}
             >
               Retry
             </button>
             <button
               type="button"
-              className="text-[#9CA3AF] hover:text-white text-sm underline"
+              className="text-[#9CA3AF] hover:text-foreground text-sm underline"
               onClick={async () => {
                 await signOut();
                 window.location.href = '/';
@@ -635,7 +635,7 @@ export const DashboardLegacy = () => {
       )}
 
       {!canExecutive && (
-        <div className="bg-[#111827]/50 border border-[#374151] p-6 rounded-xl">
+        <div className="bg-background/50 border border-border p-6 rounded-xl">
           <p className="text-sm text-[#9CA3AF]">
             Executive financial dashboard (company sales, cash/bank, GL receivables/payables) is available to Admin and Owner only.
           </p>
@@ -643,14 +643,14 @@ export const DashboardLegacy = () => {
       )}
 
       {canExecutive && (
-      <div className="bg-[#111827]/50 border border-[#374151] p-6 rounded-xl">
-        <h3 className="text-lg font-bold text-white mb-1">Executive summary</h3>
+      <div className="bg-background/50 border border-border p-6 rounded-xl">
+        <h3 className="text-lg font-bold text-foreground mb-1">Executive summary</h3>
         <p className="text-xs text-[#9CA3AF] mb-4">
-          Cards follow the <span className="text-gray-300">global date filter</span>
+          Cards follow the <span className="text-muted-foreground">global date filter</span>
           {periodStart && periodEnd ? ` (${dashboardRangeLabel})` : ''} ·{' '}
-          <span className="text-gray-300">Branch: {branchScopeLabel}</span>
+          <span className="text-muted-foreground">Branch: {branchScopeLabel}</span>
           {displayMetricsWithCashBank.cash_bank_scope === 'company' ? (
-            <span className="text-gray-500"> · Cash/bank = company-wide GL</span>
+            <span className="text-muted-foreground"> · Cash/bank = company-wide GL</span>
           ) : null}
           . Period net = sales − purchases − operating expenses (not the same as cash).
         </p>
@@ -685,12 +685,12 @@ export const DashboardLegacy = () => {
               <StatCard title="Payables (operational)" value={formatCurrency(displayMetricsWithCashBank.payables)} change="—" icon={ArrowUpRight} trend="down" iconColor="text-[#F59E0B]" />
             </div>
             <p className="text-[11px] text-[#6B7280] mb-4 leading-snug">
-              Receivables / Payables above: GL roll-up from <code className="text-gray-500">get_contact_party_gl_balances</code> for company or selected branch. This is chart/journal basis and intentionally different from raw SUM(<code className="text-gray-500">sales.due_amount</code>) document due.
-              <span className="text-gray-400">Accounting → Accounts</span>, and payables include supplier + worker/studio slice from the RPC.
+              Receivables / Payables above: GL roll-up from <code className="text-muted-foreground">get_contact_party_gl_balances</code> for company or selected branch. This is chart/journal basis and intentionally different from raw SUM(<code className="text-muted-foreground">sales.due_amount</code>) document due.
+              <span className="text-muted-foreground">Accounting → Accounts</span>, and payables include supplier + worker/studio slice from the RPC.
             </p>
             {(displayMetricsWithCashBank.sales_trend?.length > 0 || displayMetricsWithCashBank.expense_trend?.length > 0 || displayMetricsWithCashBank.profit_trend?.length > 0) && (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <div className="bg-[#1F2937]/50 rounded-lg p-4 border border-[#374151]">
+                <div className="bg-muted/50 rounded-lg p-4 border border-border">
                   <h4 className="text-sm font-medium text-[#9CA3AF] mb-2">Sales trend (range)</h4>
                   <div className="h-24">
                     <ResponsiveContainer width="100%" height="100%">
@@ -702,7 +702,7 @@ export const DashboardLegacy = () => {
                     </ResponsiveContainer>
                   </div>
                 </div>
-                <div className="bg-[#1F2937]/50 rounded-lg p-4 border border-[#374151]">
+                <div className="bg-muted/50 rounded-lg p-4 border border-border">
                   <h4 className="text-sm font-medium text-[#9CA3AF] mb-2">Outflows trend (purchases + OpEx)</h4>
                   <div className="h-24">
                     <ResponsiveContainer width="100%" height="100%">
@@ -714,7 +714,7 @@ export const DashboardLegacy = () => {
                     </ResponsiveContainer>
                   </div>
                 </div>
-                <div className="bg-[#1F2937]/50 rounded-lg p-4 border border-[#374151]">
+                <div className="bg-muted/50 rounded-lg p-4 border border-border">
                   <h4 className="text-sm font-medium text-[#9CA3AF] mb-2">Net profit trend (range)</h4>
                   <div className="h-24">
                     <ResponsiveContainer width="100%" height="100%">
@@ -734,8 +734,8 @@ export const DashboardLegacy = () => {
       )}
 
       {/* Quick access: module cards (same visibility as sidebar, including POS) */}
-      <div className="bg-[#111827]/50 border border-[#374151] p-6 rounded-xl">
-        <h3 className="text-lg font-bold text-white mb-4">Quick access</h3>
+      <div className="bg-background/50 border border-border p-6 rounded-xl">
+        <h3 className="text-lg font-bold text-foreground mb-4">Quick access</h3>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
           {hasPermission('sales.view') && (
             <ModuleCard icon={ShoppingCart} label="Sales" onClick={() => setCurrentView('sales')} />
@@ -793,8 +793,8 @@ export const DashboardLegacy = () => {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-[#111827]/50 border border-[#374151] p-6 rounded-xl">
-          <h3 className="text-lg font-bold text-white mb-6">Revenue & Profit</h3>
+        <div className="lg:col-span-2 bg-background/50 border border-border p-6 rounded-xl">
+          <h3 className="text-lg font-bold text-foreground mb-6">Revenue & Profit</h3>
           <Suspense
             fallback={
               <div className="w-full h-[320px] flex items-center justify-center text-[#9CA3AF]">
@@ -812,8 +812,8 @@ export const DashboardLegacy = () => {
 
           <div className="space-y-6">
            {/* Low Stock List */}
-          <div className="bg-[#111827]/50 border border-[#374151] p-6 rounded-xl flex-1">
-            <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+          <div className="bg-background/50 border border-border p-6 rounded-xl flex-1">
+            <h3 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
               <AlertTriangle size={18} className="text-red-500" />
               Critical Stock
             </h3>
@@ -825,9 +825,9 @@ export const DashboardLegacy = () => {
               <>
                 <div className="space-y-4">
                   {lowStockItems.map(item => (
-                    <div key={item.id} className="flex items-center justify-between p-3 bg-[#1F2937] rounded-lg border border-[#374151]">
+                    <div key={item.id} className="flex items-center justify-between p-3 bg-card rounded-lg border border-border">
                       <div>
-                        <p className="font-medium text-white text-sm">{item.name}</p>
+                        <p className="font-medium text-foreground text-sm">{item.name}</p>
                         <p className="text-xs text-[#9CA3AF]">SKU: {item.sku}</p>
                       </div>
                       <div className="text-right">
@@ -852,8 +852,8 @@ export const DashboardLegacy = () => {
           </div>
 
           {canExecutive && (
-          <div className="bg-[#111827]/50 border border-[#374151] p-6 rounded-xl">
-             <h3 className="text-lg font-bold text-white mb-6">Sales by Category</h3>
+          <div className="bg-background/50 border border-border p-6 rounded-xl">
+             <h3 className="text-lg font-bold text-foreground mb-6">Sales by Category</h3>
              {loading ? (
                <div className="h-40 flex items-center justify-center">
                  <Loader2 className="w-8 h-8 animate-spin text-[#3B82F6]" />
@@ -895,17 +895,17 @@ const ModuleCard = ({ icon: Icon, label, onClick }: { icon: any; label: string; 
   <button
     type="button"
     onClick={onClick}
-    className="flex items-center gap-3 p-4 rounded-xl border border-[#374151] bg-[#1F2937]/50 hover:border-[#3B82F6]/50 hover:bg-[#1F2937] transition-all text-left"
+    className="flex items-center gap-3 p-4 rounded-xl border border-border bg-muted/50 hover:border-primary/50 hover:bg-card transition-all text-left"
   >
     <div className="p-2 rounded-lg bg-[#3B82F6]/20 text-[#60A5FA]">
       <Icon size={20} />
     </div>
-    <span className="font-medium text-white">{label}</span>
+    <span className="font-medium text-foreground">{label}</span>
   </button>
 );
 
 const StatCard = ({ title, value, change, icon: Icon, trend, iconColor }: any) => (
-  <div className="bg-[#111827]/50 border border-[#374151] rounded-xl p-4 md:p-6 relative overflow-hidden group hover:border-[#3B82F6]/50 transition-all duration-300">
+  <div className="bg-background/50 border border-border rounded-xl p-4 md:p-6 relative overflow-hidden group hover:border-primary/50 transition-all duration-300">
     <div className="flex justify-between items-start mb-2 md:mb-4">
       <div className={`p-2 rounded-lg bg-[#374151]/50 ${iconColor || 'text-[#3B82F6]'}`}>
         <Icon size={20} className={iconColor} />
@@ -917,6 +917,6 @@ const StatCard = ({ title, value, change, icon: Icon, trend, iconColor }: any) =
       </span>
     </div>
     <h3 className="text-[#9CA3AF] text-xs md:text-sm font-medium">{title}</h3>
-    <p className="text-lg md:text-2xl font-bold text-white mt-1">{value}</p>
+    <p className="text-lg md:text-2xl font-bold text-foreground mt-1">{value}</p>
   </div>
 );

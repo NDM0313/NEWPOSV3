@@ -40,9 +40,9 @@ import {
 } from '@/app/services/bespokeFabricStockService';
 
 const statusStyles: Record<BespokeWorkOrderStatus, string> = {
-  draft: 'bg-gray-500/20 text-gray-300 border-gray-500/30',
+  draft: 'bg-gray-500/20 text-muted-foreground border-gray-500/30',
   in_progress: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  completed: 'bg-green-500/20 text-green-400 border-green-500/30',
+  completed: 'bg-green-500/20 text-[var(--erp-money-positive)] border-green-500/30',
   cancelled: 'bg-red-500/20 text-red-400 border-red-500/30',
 };
 
@@ -191,20 +191,20 @@ export function ViewBespokeWorkOrderDrawer({
   return (
     <>
       <div className="fixed inset-0 z-[60] bg-black/60" onClick={onClose} aria-hidden />
-      <div className="fixed right-0 top-0 h-full w-full md:w-[640px] bg-gray-950 shadow-2xl z-[61] overflow-hidden flex flex-col border-l border-gray-800">
-        <div className="shrink-0 px-6 py-4 border-b border-gray-800 flex items-center justify-between bg-gray-900/50">
+      <div className="fixed right-0 top-0 h-full w-full md:w-[640px] bg-input-background shadow-2xl z-[61] overflow-hidden flex flex-col border-l border-border">
+        <div className="shrink-0 px-6 py-4 border-b border-border flex items-center justify-between bg-muted/40">
           <div className="flex items-center gap-3 min-w-0">
             <div className="p-2 rounded-lg bg-violet-500/10 border border-violet-500/30">
               <Scissors className="h-5 w-5 text-violet-400" />
             </div>
             <div className="min-w-0">
-              <h2 className="text-lg font-semibold text-white truncate">
+              <h2 className="text-lg font-semibold text-foreground truncate">
                 {workOrder?.work_order_no ?? 'Work order'}
               </h2>
-              <p className="text-xs text-gray-500">Bespoke production job</p>
+              <p className="text-xs text-muted-foreground">Bespoke production job</p>
             </div>
           </div>
-          <Button variant="ghost" size="icon" className="text-gray-400 hover:text-white shrink-0" onClick={onClose}>
+          <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground shrink-0" onClick={onClose}>
             <X size={20} />
           </Button>
         </div>
@@ -215,7 +215,7 @@ export function ViewBespokeWorkOrderDrawer({
               <Loader2 className="h-8 w-8 animate-spin text-violet-400" />
             </div>
           ) : !workOrder ? (
-            <p className="text-sm text-gray-500 text-center py-12">Work order not found.</p>
+            <p className="text-sm text-muted-foreground text-center py-12">Work order not found.</p>
           ) : (
             <>
               <div className="flex flex-wrap items-center gap-2">
@@ -223,7 +223,7 @@ export function ViewBespokeWorkOrderDrawer({
                   {workOrder.status.replace('_', ' ')}
                 </Badge>
                 {workOrder.branch?.name && (
-                  <Badge variant="outline" className="text-xs text-gray-400 border-gray-700">
+                  <Badge variant="outline" className="text-xs text-muted-foreground border-border">
                     <Building2 className="h-3 w-3 mr-1" />
                     {workOrder.branch.name}
                   </Badge>
@@ -231,14 +231,14 @@ export function ViewBespokeWorkOrderDrawer({
               </div>
 
               <section className="space-y-3">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Worker / supplier</h3>
-                <div className="rounded-lg border border-gray-800 bg-gray-900/40 p-4 space-y-2">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Worker / supplier</h3>
+                <div className="rounded-lg border border-border bg-card/40 p-4 space-y-2">
                   <div className="flex items-center gap-2 text-white">
                     <User className="h-4 w-4 text-violet-400" />
                     <span className="font-medium">{workOrder.tailor?.name ?? '—'}</span>
                   </div>
                   {workOrder.tailor?.phone && (
-                    <div className="flex items-center gap-2 text-sm text-gray-400">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Phone className="h-3.5 w-3.5" />
                       {workOrder.tailor.phone}
                     </div>
@@ -247,11 +247,11 @@ export function ViewBespokeWorkOrderDrawer({
               </section>
 
               <section className="space-y-3">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Linked sale</h3>
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Linked sale</h3>
                 <button
                   type="button"
                   onClick={openLinkedSale}
-                  className="w-full text-left rounded-lg border border-gray-800 bg-gray-900/40 p-4 hover:bg-gray-800/40 transition-colors group"
+                  className="w-full text-left rounded-lg border border-border bg-card/40 p-4 hover:bg-muted/40 transition-colors group"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div>
@@ -259,34 +259,34 @@ export function ViewBespokeWorkOrderDrawer({
                         {workOrder.sale?.invoice_no ?? workOrder.sale_id.slice(0, 8)}
                       </p>
                       {workOrder.sale?.customer_name && (
-                        <p className="text-sm text-gray-400 mt-0.5">{workOrder.sale.customer_name}</p>
+                        <p className="text-sm text-muted-foreground mt-0.5">{workOrder.sale.customer_name}</p>
                       )}
                     </div>
-                    <ExternalLink className="h-4 w-4 text-gray-500 group-hover:text-blue-400 shrink-0" />
+                    <ExternalLink className="h-4 w-4 text-muted-foreground group-hover:text-blue-400 shrink-0" />
                   </div>
                 </button>
               </section>
 
               {workOrder.parent_item?.product_name && (
                 <section className="space-y-2">
-                  <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Line item</h3>
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Line item</h3>
                   <p className="text-sm text-gray-200">{workOrder.parent_item.product_name}</p>
                 </section>
               )}
 
-              <Separator className="bg-gray-800" />
+              <Separator className="bg-muted" />
 
               <section className="space-y-3">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Design instructions</h3>
-                <div className="rounded-lg border border-gray-800 bg-gray-900/40 p-4">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Design instructions</h3>
+                <div className="rounded-lg border border-border bg-card/40 p-4">
                   {instructionBullets.length === 0 ? (
-                    <p className="text-sm text-gray-500 italic">No instructions recorded.</p>
+                    <p className="text-sm text-muted-foreground italic">No instructions recorded.</p>
                   ) : (
                     <BespokeInstructionBullets customizationDetails={workOrder.instructions_snapshot} />
                   )}
                   {workOrder.notes && (
-                    <p className="mt-3 text-sm text-gray-400">
-                      <span className="text-gray-500 font-medium">Internal notes:</span> {workOrder.notes}
+                    <p className="mt-3 text-sm text-muted-foreground">
+                      <span className="text-muted-foreground font-medium">Internal notes:</span> {workOrder.notes}
                     </p>
                   )}
                 </div>
@@ -297,27 +297,27 @@ export function ViewBespokeWorkOrderDrawer({
                   <DollarSign className="h-4 w-4" />
                   <span className="text-sm font-medium">Production cost</span>
                 </div>
-                <p className="text-2xl font-bold text-white mt-1 tabular-nums">
+                <p className="text-2xl font-bold text-foreground mt-1 tabular-nums">
                   {formatCurrency(Number(workOrder.production_cost) || 0)}
                 </p>
               </section>
 
               <section className="grid grid-cols-2 gap-3 text-sm">
-                <div className="rounded-lg border border-gray-800 bg-gray-900/30 p-3">
-                  <div className="flex items-center gap-1.5 text-gray-500 text-xs mb-1">
+                <div className="rounded-lg border border-border bg-muted/30 p-3">
+                  <div className="flex items-center gap-1.5 text-muted-foreground text-xs mb-1">
                     <Calendar className="h-3 w-3" />
                     Created
                   </div>
-                  <p className="text-gray-300">
+                  <p className="text-muted-foreground">
                     {workOrder.created_at ? formatDateTime(workOrder.created_at) : '—'}
                   </p>
                 </div>
-                <div className="rounded-lg border border-gray-800 bg-gray-900/30 p-3">
-                  <div className="flex items-center gap-1.5 text-gray-500 text-xs mb-1">
+                <div className="rounded-lg border border-border bg-muted/30 p-3">
+                  <div className="flex items-center gap-1.5 text-muted-foreground text-xs mb-1">
                     <CheckCircle2 className="h-3 w-3" />
                     Completed
                   </div>
-                  <p className="text-gray-300">
+                  <p className="text-muted-foreground">
                     {workOrder.completed_at ? formatDateTime(workOrder.completed_at) : '—'}
                   </p>
                 </div>
@@ -332,15 +332,15 @@ export function ViewBespokeWorkOrderDrawer({
 
               {workOrder.journal_entry_id && (
                 <section className="space-y-2">
-                  <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Accounting</h3>
-                  <div className="flex items-center gap-2 text-sm text-gray-300 rounded-lg border border-gray-800 bg-gray-900/40 p-3">
-                    <FileText className="h-4 w-4 text-green-400" />
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Accounting</h3>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground rounded-lg border border-border bg-card/40 p-3">
+                    <FileText className="h-4 w-4 text-[var(--erp-money-positive)]" />
                     Journal:{' '}
-                    <span className="font-mono text-green-400">
+                    <span className="font-mono text-[var(--erp-money-positive)]">
                       {workOrder.journal_entry?.entry_no ?? workOrder.journal_entry_id.slice(0, 8)}
                     </span>
                   </div>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-muted-foreground">
                     Dr 5000 Cost of Production · Cr worker/supplier payable
                   </p>
                 </section>
@@ -350,13 +350,13 @@ export function ViewBespokeWorkOrderDrawer({
         </div>
 
         {workOrder && (
-          <div className="shrink-0 px-6 py-4 border-t border-gray-800 bg-gray-900/50 flex flex-wrap gap-2">
-            <Button variant="outline" className="border-gray-700" onClick={() => setPrintOpen(true)}>
+          <div className="shrink-0 px-6 py-4 border-t border-border bg-muted/40 flex flex-wrap gap-2">
+            <Button variant="outline" className="border-border" onClick={() => setPrintOpen(true)}>
               <Printer className="h-4 w-4 mr-2" />
               Print job card
             </Button>
             {canEdit && (
-              <Button variant="outline" className="border-gray-700" onClick={() => setEditOpen(true)}>
+              <Button variant="outline" className="border-border" onClick={() => setEditOpen(true)}>
                 <Pencil className="h-4 w-4 mr-2" />
                 Edit
               </Button>

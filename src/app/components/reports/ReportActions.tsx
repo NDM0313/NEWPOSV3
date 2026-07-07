@@ -47,9 +47,9 @@ export const ReportActions = ({
   const handlePreview = onPreview ?? onOpenPdfPreview;
   const showLegacyPreview = Boolean(previewContentRef && previewDocumentType && !handlePreview);
   return (
-    <div className={cn("flex flex-col sm:flex-row items-start sm:items-center justify-between bg-gray-900/95 backdrop-blur-sm border-b border-gray-800 p-4 mb-6 gap-4", className)}>
+    <div className={cn("flex flex-col sm:flex-row items-start sm:items-center justify-between bg-card/95 backdrop-blur-sm border-b border-border p-4 mb-6 gap-4", className)}>
       {title && (
-        <h3 className="text-lg font-bold text-white flex items-center gap-2">
+        <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
           <FileText className="text-blue-500" size={20} />
           {title}
         </h3>
@@ -63,7 +63,7 @@ export const ReportActions = ({
             reference={previewReference}
             format={previewFormat}
             label="Preview"
-            className="border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800 gap-2"
+            className="border-border text-muted-foreground hover:text-foreground hover:bg-muted gap-2"
           />
         )}
         {handlePreview && !showLegacyPreview && (
@@ -72,7 +72,7 @@ export const ReportActions = ({
             size="sm"
             onClick={handlePreview}
             disabled={pdfLoading}
-            className="border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800 gap-2"
+            className="border-border text-muted-foreground hover:text-foreground hover:bg-muted gap-2"
           >
             <FileText size={16} />
             <span className="hidden sm:inline">{pdfLoading ? 'Loading…' : 'Preview'}</span>
@@ -83,7 +83,7 @@ export const ReportActions = ({
           size="sm" 
           onClick={handlePrint}
           disabled={pdfLoading}
-          className="border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800 gap-2"
+          className="border-border text-muted-foreground hover:text-foreground hover:bg-muted gap-2"
         >
           <Printer size={16} />
           <span className="hidden sm:inline">{pdfLoading ? 'Loading…' : 'Print'}</span>
@@ -94,7 +94,7 @@ export const ReportActions = ({
           size="sm" 
           onClick={handlePdf}
           disabled={!handlePdf || pdfLoading}
-          className="border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800 gap-2"
+          className="border-border text-muted-foreground hover:text-foreground hover:bg-muted gap-2"
         >
           <FileText size={16} className="text-red-400" />
           <span className="hidden sm:inline">{pdfLoading ? 'Loading…' : 'PDF'}</span>
@@ -104,9 +104,9 @@ export const ReportActions = ({
           variant="outline" 
           size="sm" 
           onClick={onExcel}
-          className="border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800 gap-2"
+          className="border-border text-muted-foreground hover:text-foreground hover:bg-muted gap-2"
         >
-          <FileSpreadsheet size={16} className="text-green-400" />
+          <FileSpreadsheet size={16} className="text-[var(--erp-money-positive)]" />
           <span className="hidden sm:inline">Excel</span>
         </Button>
 
@@ -115,7 +115,7 @@ export const ReportActions = ({
             variant="outline"
             size="sm"
             onClick={onCsv}
-            className="border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800 gap-2"
+            className="border-border text-muted-foreground hover:text-foreground hover:bg-muted gap-2"
           >
             <FileText size={16} className="text-cyan-400" />
             <span className="hidden sm:inline">CSV</span>
@@ -127,7 +127,7 @@ export const ReportActions = ({
             variant="outline" 
             size="sm" 
             onClick={onWhatsapp}
-            className="border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800 gap-2"
+            className="border-border text-muted-foreground hover:text-foreground hover:bg-muted gap-2"
           >
             <MessageCircle size={16} className="text-green-500" />
             <span className="hidden sm:inline">WhatsApp</span>

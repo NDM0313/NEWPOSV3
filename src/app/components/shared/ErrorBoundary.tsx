@@ -43,14 +43,14 @@ export class ErrorBoundary extends Component<Props, State> {
       if (this.props.fallback) return this.props.fallback;
 
       return (
-        <div className="min-h-[400px] flex items-center justify-center p-8 bg-gray-950">
+        <div className="min-h-[400px] flex items-center justify-center p-8 bg-input-background">
           <div className="max-w-md w-full text-center space-y-6">
             <div className="w-16 h-16 mx-auto rounded-full bg-red-500/10 flex items-center justify-center">
               <AlertTriangle className="w-8 h-8 text-red-500" />
             </div>
             <div>
-              <h2 className="text-xl font-semibold text-white mb-2">Something went wrong</h2>
-              <p className="text-gray-400 text-sm mb-4">
+              <h2 className="text-xl font-semibold text-foreground mb-2">Something went wrong</h2>
+              <p className="text-muted-foreground text-sm mb-4">
                 {this.state.error.name === 'SecurityError' &&
                 (this.state.error.message.includes('localStorage') ||
                   this.state.error.message.includes('sessionStorage'))

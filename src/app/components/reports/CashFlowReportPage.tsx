@@ -96,12 +96,12 @@ const SOURCE_MODULE_OPTIONS: Array<{ value: CashFlowSourceModule | 'all'; label:
 
 function statusBadgeClass(status: CashFlowRow['status']): string {
   if (status === 'reversed') return 'bg-amber-950/50 text-amber-300 border-amber-800/60';
-  if (status === 'voided') return 'bg-gray-800 text-gray-400 border-gray-700';
+  if (status === 'voided') return 'bg-muted text-muted-foreground border-border';
   return 'bg-emerald-950/40 text-emerald-300 border-emerald-800/50';
 }
 
 function auditBadgeClass(): string {
-  return 'bg-blue-950/40 text-blue-300 border-blue-800/50';
+  return 'bg-primary/10 text-blue-700 dark:text-blue-300 border-primary/30';
 }
 
 export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowReportPageProps) {
@@ -526,35 +526,35 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
       return (
         <tr>
           <td colSpan={10} className="p-10 text-center">
-            <p className="text-gray-400 font-medium">{emptyMessage}</p>
-            <p className="text-xs text-gray-600 mt-2">Try widening the date range or switching to Audit mode.</p>
+            <p className="text-muted-foreground font-medium">{emptyMessage}</p>
+            <p className="text-xs text-muted-foreground mt-2">Try widening the date range or switching to Audit mode.</p>
           </td>
         </tr>
       );
     }
     return rows.map((r) => (
-      <tr key={r.id} className="border-t border-gray-800/80 hover:bg-gray-900/40">
-        <td className="p-3 text-gray-300 whitespace-nowrap align-middle">
+      <tr key={r.id} className="border-t border-border/80 hover:bg-card/40">
+        <td className="p-3 text-muted-foreground whitespace-nowrap align-middle">
           {formatRoznamchaRowDateTimeDisplay(r.date, r.time || '')}
         </td>
         <td className="p-3 align-middle min-w-0">
-          <div className="font-medium text-white leading-snug">{r.reference}</div>
+          <div className="font-medium text-foreground leading-snug">{r.reference}</div>
           {r.journalEntryNo && (
-            <div className="text-xs text-gray-500 font-mono">{r.journalEntryNo}</div>
+            <div className="text-xs text-muted-foreground font-mono">{r.journalEntryNo}</div>
           )}
-          <div className="text-xs text-gray-500 mt-0.5 leading-snug inline-flex items-start gap-1 max-w-full">
+          <div className="text-xs text-muted-foreground mt-0.5 leading-snug inline-flex items-start gap-1 max-w-full">
             <span>{journalDescriptionForDisplay(r.details, r.sourceModuleLabel)}</span>
             {(r.attachments?.length ?? 0) > 0 ? (
               <TransactionAttachmentIconButton onClick={() => void openRowAttachments(r)} />
             ) : null}
           </div>
         </td>
-        <td className="p-3 text-gray-300 align-middle min-w-[200px] max-w-[280px] break-words leading-snug">
+        <td className="p-3 text-muted-foreground align-middle min-w-[200px] max-w-[280px] break-words leading-snug">
           {resolveCashFlowPartyDisplay(r) || '—'}
         </td>
-        <td className="p-3 text-gray-300 align-middle min-w-[120px]">
+        <td className="p-3 text-muted-foreground align-middle min-w-[120px]">
           <span className="inline-flex items-center gap-1">
-            <Wallet className="w-3 h-3 shrink-0 text-gray-500" />
+            <Wallet className="w-3 h-3 shrink-0 text-muted-foreground" />
             <span className="leading-snug">{r.cashAccount}</span>
           </span>
         </td>
@@ -564,14 +564,14 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
         <td className="p-3 text-right text-red-400 tabular-nums whitespace-nowrap align-middle">
           {r.cashOut > 0 ? formatCurrency(r.cashOut) : '—'}
         </td>
-        <td className="p-3 text-right text-white tabular-nums font-medium whitespace-nowrap align-middle">
+        <td className="p-3 text-right text-foreground tabular-nums font-medium whitespace-nowrap align-middle">
           {formatCurrency(r.runningBalance)}
         </td>
-        <td className="p-3 text-gray-400 text-[11px] leading-tight align-middle w-[72px] max-w-[88px]">
+        <td className="p-3 text-muted-foreground text-[11px] leading-tight align-middle w-[72px] max-w-[88px]">
           {r.sourceModuleLabel}
         </td>
         <td className="p-3 whitespace-nowrap align-middle">{renderStatusBadges(r)}</td>
-        <td className="p-3 text-gray-400 text-xs whitespace-nowrap align-middle">{r.branchName || '—'}</td>
+        <td className="p-3 text-muted-foreground text-xs whitespace-nowrap align-middle">{r.branchName || '—'}</td>
       </tr>
     ));
   };
@@ -589,7 +589,7 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
 
       {showUnifiedPreviewTools ? (
         <div className="flex flex-wrap items-center gap-3 no-print">
-          <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer w-fit">
+          <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer w-fit">
             <input
               type="checkbox"
               checked={unifiedPreviewEnabled}
@@ -604,7 +604,7 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
               type="button"
               variant="outline"
               size="sm"
-              className="border-gray-700"
+              className="border-border"
               onClick={() => void loadUnifiedPreview()}
             >
               Refresh preview
@@ -706,15 +706,15 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
         ) : null}
       </div>
 
-      <div className="no-print rounded-xl border border-gray-800 bg-gray-900/50 p-4 space-y-4">
-        <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Filters</h3>
+      <div className="no-print rounded-xl border border-border bg-muted/40 p-4 space-y-4">
+        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Filters</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           <div className="space-y-2 min-w-0">
-            <Label className="text-xs text-gray-500">Date range</Label>
+            <Label className="text-xs text-muted-foreground">Date range</Label>
             {useGlobalRange && (
               <div className="flex items-center gap-2 mb-1">
                 <Switch checked={overrideGlobalDates} onCheckedChange={setOverrideGlobalDates} id="cf-override-dates" />
-                <Label htmlFor="cf-override-dates" className="text-xs text-gray-400 cursor-pointer">
+                <Label htmlFor="cf-override-dates" className="text-xs text-muted-foreground cursor-pointer">
                   Override header dates
                 </Label>
               </div>
@@ -723,22 +723,22 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
               <DateRangePicker value={dateRange} onChange={setDateRange} placeholder="Period" />
             )}
             {useGlobalRange && !overrideGlobalDates && (
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-muted-foreground">
                 {globalStartDate?.slice(0, 10)} → {globalEndDate?.slice(0, 10)} (header)
               </p>
             )}
           </div>
 
           <div className="space-y-2 min-w-0">
-            <Label className="text-xs text-gray-500">Branch</Label>
-            <p className="text-sm text-gray-300">{branchLabel}</p>
-            <p className="text-xs text-gray-600">Accounting header branch selector.</p>
+            <Label className="text-xs text-muted-foreground">Branch</Label>
+            <p className="text-sm text-muted-foreground">{branchLabel}</p>
+            <p className="text-xs text-muted-foreground">Accounting header branch selector.</p>
           </div>
 
           <div className="space-y-2 min-w-0">
-            <Label className="text-xs text-gray-500">Liquidity</Label>
+            <Label className="text-xs text-muted-foreground">Liquidity</Label>
             <Select value={accountFilter} onValueChange={(v: AccountFilter) => setAccountFilter(v)}>
-              <SelectTrigger className="w-full bg-gray-950 border-gray-700 text-white">
+              <SelectTrigger className="w-full bg-input-background border-border text-foreground">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -751,12 +751,12 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
           </div>
 
           <div className="space-y-2 min-w-0">
-            <Label className="text-xs text-gray-500">Cash/bank account</Label>
+            <Label className="text-xs text-muted-foreground">Cash/bank account</Label>
             <Select
               value={paymentLedgerAccountId || '__all__'}
               onValueChange={(v) => setPaymentLedgerAccountId(v === '__all__' ? '' : v)}
             >
-              <SelectTrigger className="w-full bg-gray-950 border-gray-700 text-white">
+              <SelectTrigger className="w-full bg-input-background border-border text-foreground">
                 <SelectValue placeholder="All accounts" />
               </SelectTrigger>
               <SelectContent className="max-h-72">
@@ -771,12 +771,12 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
           </div>
 
           <div className="space-y-2 min-w-0">
-            <Label className="text-xs text-gray-500">Source module</Label>
+            <Label className="text-xs text-muted-foreground">Source module</Label>
             <Select
               value={sourceModuleFilter}
               onValueChange={(v) => setSourceModuleFilter(v as CashFlowSourceModule | 'all')}
             >
-              <SelectTrigger className="w-full bg-gray-950 border-gray-700 text-white">
+              <SelectTrigger className="w-full bg-input-background border-border text-foreground">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -790,10 +790,10 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
           </div>
 
           <div className="space-y-2 min-w-0">
-            <Label className="text-xs text-gray-500">Mode</Label>
+            <Label className="text-xs text-muted-foreground">Mode</Label>
             <div className="flex items-center gap-2">
               <Switch id="cf-audit" checked={auditMode} onCheckedChange={setAuditMode} />
-              <Label htmlFor="cf-audit" className="text-sm text-gray-300 cursor-pointer">
+              <Label htmlFor="cf-audit" className="text-sm text-muted-foreground cursor-pointer">
                 Audit mode
               </Label>
             </div>
@@ -801,12 +801,12 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
           </div>
 
           <div className="space-y-2 sm:col-span-2 min-w-0">
-            <Label className="text-xs text-gray-500">Search</Label>
+            <Label className="text-xs text-muted-foreground">Search</Label>
             <Input
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Reference, party, module…"
-              className="bg-gray-950 border-gray-700 text-white w-full"
+              className="bg-input-background border-border text-foreground w-full"
             />
           </div>
         </div>
@@ -815,13 +815,13 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
       {loading && !data ? (
         <div className="flex flex-col items-center justify-center py-16 gap-3">
           <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
-          <p className="text-sm text-gray-400">Loading cash flow…</p>
+          <p className="text-sm text-muted-foreground">Loading cash flow…</p>
         </div>
       ) : loadError ? (
         <div className="rounded-xl border border-red-900/50 bg-red-950/20 p-8 text-center space-y-4">
           <AlertCircle className="w-10 h-10 text-red-400 mx-auto" />
           <p className="text-red-300 font-medium">Could not load cash flow</p>
-          <p className="text-sm text-gray-400 max-w-md mx-auto">{loadError}</p>
+          <p className="text-sm text-muted-foreground max-w-md mx-auto">{loadError}</p>
           <Button variant="outline" className="border-gray-600" onClick={() => void load()}>
             <RefreshCw className="w-4 h-4 mr-2" />
             Retry
@@ -842,11 +842,11 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
           {glSummary && (
             <div className="space-y-2">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">
+                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
                   GL cash flow summary
                 </h3>
                 <ReportBasisBadge basis={auditMode ? 'official_gl' : 'effective_party'} />
-                <span className="text-xs text-gray-600">{glModeNote}</span>
+                <span className="text-xs text-muted-foreground">{glModeNote}</span>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {[
@@ -863,12 +863,12 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
                     key={card.label}
                     className="rounded-xl border border-violet-900/40 bg-violet-950/20 p-3 sm:p-4 print:border-gray-300 print:bg-white"
                   >
-                    <p className="text-xs text-gray-500 uppercase tracking-wide print:text-gray-600">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide print:text-muted-foreground">
                       {card.label}
                     </p>
                     <p
                       className={cn(
-                        'text-lg sm:text-xl font-bold mt-1 text-white print:text-black',
+                        'text-lg sm:text-xl font-bold mt-1 text-foreground print:text-black',
                         card.accent
                       )}
                     >
@@ -881,26 +881,26 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
           )}
 
           {tieOut && (
-            <div className="rounded-xl border border-gray-700/80 bg-gray-900/50 p-4 space-y-3 print:border-gray-300 print:bg-white">
-              <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider print:text-black">
+            <div className="rounded-xl border border-border/80 bg-muted/40 p-4 space-y-3 print:border-gray-300 print:bg-white">
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider print:text-black">
                 Tie-out / Difference
               </h3>
-              <p className="text-xs text-gray-500 leading-relaxed print:text-gray-700">{CASH_FLOW_TIEOUT_EXPLANATION}</p>
+              <p className="text-xs text-muted-foreground leading-relaxed print:text-gray-700">{CASH_FLOW_TIEOUT_EXPLANATION}</p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="rounded-lg border border-gray-800 p-3 print:border-gray-300">
-                  <p className="text-xs text-gray-500 uppercase">Operational Net Movement</p>
-                  <p className="text-lg font-bold text-white mt-1 print:text-black">
+                <div className="rounded-lg border border-border p-3 print:border-gray-300">
+                  <p className="text-xs text-muted-foreground uppercase">Operational Net Movement</p>
+                  <p className="text-lg font-bold text-foreground mt-1 print:text-black">
                     {formatCurrency(tieOut.operationalNetMovement)}
                   </p>
                 </div>
-                <div className="rounded-lg border border-gray-800 p-3 print:border-gray-300">
-                  <p className="text-xs text-gray-500 uppercase">GL Summary Net Movement</p>
-                  <p className="text-lg font-bold text-white mt-1 print:text-black">
+                <div className="rounded-lg border border-border p-3 print:border-gray-300">
+                  <p className="text-xs text-muted-foreground uppercase">GL Summary Net Movement</p>
+                  <p className="text-lg font-bold text-foreground mt-1 print:text-black">
                     {formatCurrency(tieOut.glNetMovement)}
                   </p>
                 </div>
-                <div className="rounded-lg border border-gray-800 p-3 print:border-gray-300">
-                  <p className="text-xs text-gray-500 uppercase">Difference</p>
+                <div className="rounded-lg border border-border p-3 print:border-gray-300">
+                  <p className="text-xs text-muted-foreground uppercase">Difference</p>
                   <p
                     className={cn(
                       'text-lg font-bold mt-1 print:text-black',
@@ -917,8 +917,8 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
               </div>
               {tieOutHints.length > 0 && (
                 <div className="no-print space-y-1">
-                  <p className="text-[10px] uppercase text-gray-500 font-semibold">Diagnostic hints</p>
-                  <ul className="text-xs text-gray-500 space-y-0.5">
+                  <p className="text-[10px] uppercase text-muted-foreground font-semibold">Diagnostic hints</p>
+                  <ul className="text-xs text-muted-foreground space-y-0.5">
                     {tieOutHints.map((h) => (
                       <li key={h.code}>
                         {h.label}: {h.count} row(s)
@@ -930,7 +930,7 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
             </div>
           )}
 
-          <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">
+          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
             Operational cash movement
           </h3>
 
@@ -944,10 +944,10 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
             ].map((card) => (
               <div
                 key={card.label}
-                className="rounded-xl border border-gray-800 bg-gray-900/60 p-3 sm:p-4 print:border-gray-300 print:bg-white"
+                className="rounded-xl border border-border bg-muted/60 p-3 sm:p-4 print:border-gray-300 print:bg-white"
               >
-                <p className="text-xs text-gray-500 uppercase tracking-wide print:text-gray-600">{card.label}</p>
-                <p className={cn('text-lg sm:text-xl font-bold mt-1 text-white print:text-black', card.accent)}>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide print:text-muted-foreground">{card.label}</p>
+                <p className={cn('text-lg sm:text-xl font-bold mt-1 text-foreground print:text-black', card.accent)}>
                   {formatCurrency(card.value)}
                 </p>
               </div>
@@ -955,20 +955,20 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
           </div>
 
           {(runningBalanceNote || auditModeNote) && (
-            <div className="no-print space-y-1 text-xs text-gray-500">
+            <div className="no-print space-y-1 text-xs text-muted-foreground">
               {runningBalanceNote && <p>{runningBalanceNote}</p>}
             </div>
           )}
 
-          <div className="relative rounded-xl border border-gray-800 overflow-hidden print:border-gray-300">
+          <div className="relative rounded-xl border border-border overflow-hidden print:border-gray-300">
             {loading ? (
               <div
-                className="no-print absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-gray-950/70 backdrop-blur-sm pointer-events-none"
+                className="no-print absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-input-background/70 backdrop-blur-sm pointer-events-none"
                 aria-live="polite"
                 aria-busy="true"
               >
                 <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
-                <p className="text-sm text-gray-300">Loading cash flow…</p>
+                <p className="text-sm text-muted-foreground">Loading cash flow…</p>
               </div>
             ) : null}
             <div className="overflow-x-auto -mx-px">
@@ -986,7 +986,7 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
                   <col className="w-[96px]" />
                 </colgroup>
                 <thead>
-                  <tr className="bg-gray-900/80 text-gray-400 text-left text-xs uppercase tracking-wide print:bg-gray-100 print:text-gray-700">
+                  <tr className="bg-card text-muted-foreground text-left text-xs uppercase tracking-wide print:bg-gray-100 print:text-gray-700">
                     <th className="p-3 align-middle">Date</th>
                     <th className="p-3 align-middle">Reference</th>
                     <th className="p-3 align-middle">Party</th>
@@ -1009,14 +1009,14 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
                 </tbody>
               </table>
             </div>
-            <p className="text-xs text-gray-600 p-3 border-t border-gray-800 no-print">
+            <p className="text-xs text-muted-foreground p-3 border-t border-border no-print">
               {filteredRows.length} row(s) · {modeLabel} mode · Read-only
             </p>
           </div>
         </div>
       ) : (
-        <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-8 text-center space-y-4">
-          <p className="text-gray-400">No cash flow data for the selected period.</p>
+        <div className="rounded-xl border border-border bg-card/40 p-8 text-center space-y-4">
+          <p className="text-muted-foreground">No cash flow data for the selected period.</p>
           <Button variant="outline" className="border-gray-600" onClick={() => void load()}>
             <RefreshCw className="w-4 h-4 mr-2" />
             Retry

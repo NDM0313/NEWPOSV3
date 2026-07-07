@@ -119,7 +119,7 @@ export function BarcodeLabelSettingsPanel({
 
   if (loading) {
     return (
-      <div className="flex items-center gap-2 text-gray-400 py-8">
+      <div className="flex items-center gap-2 text-muted-foreground py-8">
         <Loader2 className="animate-spin" size={18} />
         Loading label defaults…
       </div>
@@ -133,8 +133,8 @@ export function BarcodeLabelSettingsPanel({
           <Barcode className="text-purple-400" size={22} />
         </div>
         <div>
-          <h4 className="text-lg font-semibold text-white">Barcode label printing</h4>
-          <p className="text-sm text-gray-400">
+          <h4 className="text-lg font-semibold text-foreground">Barcode label printing</h4>
+          <p className="text-sm text-muted-foreground">
             Default content and A4 sheet layout when printing labels from Products
           </p>
         </div>
@@ -142,8 +142,8 @@ export function BarcodeLabelSettingsPanel({
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <div className="space-y-4">
-          <div className="rounded-xl border border-gray-800 bg-gray-950 p-5 space-y-3">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Label content</p>
+          <div className="rounded-xl border border-border bg-input-background p-5 space-y-3">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Label content</p>
             <BarcodeLabelContentFields
               idPrefix="settings"
               options={fieldOptions}
@@ -159,8 +159,8 @@ export function BarcodeLabelSettingsPanel({
               branchName={branchName}
             />
           </div>
-          <div className="rounded-xl border border-gray-800 bg-gray-950 p-5 space-y-3">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Default sheet layout</p>
+          <div className="rounded-xl border border-border bg-input-background p-5 space-y-3">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Default sheet layout</p>
             <BarcodeLabelSheetLayoutFields
               presetId={presetId}
               onPresetChange={setPresetId}
@@ -186,8 +186,8 @@ export function BarcodeLabelSettingsPanel({
           </Button>
         </div>
 
-        <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-5 space-y-4">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Preview</p>
+        <div className="rounded-xl border border-border bg-muted/40 p-5 space-y-4">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Preview</p>
           <BarcodeLabelPreviewCard
             job={SAMPLE_LABEL_PREVIEW_JOB}
             companyName={companyName}

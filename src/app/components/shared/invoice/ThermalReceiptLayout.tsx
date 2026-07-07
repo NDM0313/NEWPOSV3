@@ -238,7 +238,7 @@ export const ThermalReceiptLayout: React.FC<ThermalReceiptLayoutProps> = ({
 
             <div
 
-              className="bg-gray-200 rounded mx-auto mb-2 flex items-center justify-center text-gray-500"
+              className="bg-gray-200 rounded mx-auto mb-2 flex items-center justify-center text-muted-foreground"
 
               style={{ width: logoPx, height: logoPx, fontSize: 8 * fontScale }}
 
@@ -264,7 +264,7 @@ export const ThermalReceiptLayout: React.FC<ThermalReceiptLayoutProps> = ({
 
           {companyAddress ? (
 
-            <p className="text-gray-600 mt-1 break-words" style={{ fontSize: `${basePx}px` }}>
+            <p className="text-muted-foreground mt-1 break-words" style={{ fontSize: `${basePx}px` }}>
 
               {companyAddress}
 
@@ -274,7 +274,7 @@ export const ThermalReceiptLayout: React.FC<ThermalReceiptLayoutProps> = ({
 
           {companyPhone ? (
 
-            <p className="text-gray-600" style={{ fontSize: `${basePx}px` }}>
+            <p className="text-muted-foreground" style={{ fontSize: `${basePx}px` }}>
 
               Tel: {companyPhone}
 
@@ -318,7 +318,7 @@ export const ThermalReceiptLayout: React.FC<ThermalReceiptLayoutProps> = ({
 
           <div className="w-full mb-2 text-left min-w-0" style={{ fontSize: `${basePx}px` }}>
 
-            <span className="text-gray-500">Cashier:</span>{' '}
+            <span className="text-muted-foreground">Cashier:</span>{' '}
 
             <span className="font-semibold break-words">{cashierName}</span>
 
@@ -330,13 +330,13 @@ export const ThermalReceiptLayout: React.FC<ThermalReceiptLayoutProps> = ({
 
         <div className="w-full mb-3 text-left min-w-0" style={{ fontSize: `${basePx}px` }}>
 
-          <span className="text-gray-500">Customer:</span>{' '}
+          <span className="text-muted-foreground">Customer:</span>{' '}
 
           <span className="font-semibold break-words">{customerName}</span>
 
           {customerPhone ? (
 
-            <p className="text-gray-600 mt-0.5 break-words">{customerPhone}</p>
+            <p className="text-muted-foreground mt-0.5 break-words">{customerPhone}</p>
 
           ) : null}
 
@@ -392,7 +392,7 @@ export const ThermalReceiptLayout: React.FC<ThermalReceiptLayoutProps> = ({
 
                   {item.sku ? (
 
-                    <div className="text-gray-500" style={{ fontSize: `${basePx - 1}px` }}>
+                    <div className="text-muted-foreground" style={{ fontSize: `${basePx - 1}px` }}>
 
                       {item.sku}
 
@@ -464,7 +464,7 @@ export const ThermalReceiptLayout: React.FC<ThermalReceiptLayoutProps> = ({
 
         {footerNote ? (
 
-          <p className="mt-2 text-gray-600 break-words" style={{ fontSize: `${basePx - 1}px` }}>
+          <p className="mt-2 text-muted-foreground break-words" style={{ fontSize: `${basePx - 1}px` }}>
 
             {footerNote}
 
@@ -478,7 +478,7 @@ export const ThermalReceiptLayout: React.FC<ThermalReceiptLayoutProps> = ({
 
           <div
 
-            className="mt-3 mx-auto border border-gray-300 flex items-center justify-center text-gray-500"
+            className="mt-3 mx-auto border border-gray-300 flex items-center justify-center text-muted-foreground"
 
             style={{ width: logoPx + 8, height: logoPx + 8, fontSize: 8 * fontScale }}
 
@@ -494,13 +494,13 @@ export const ThermalReceiptLayout: React.FC<ThermalReceiptLayoutProps> = ({
 
 
 
-        <p className="mt-3 text-center text-gray-500" style={{ fontSize: `${basePx - 1}px` }}>
+        <p className="mt-3 text-center text-muted-foreground" style={{ fontSize: `${basePx - 1}px` }}>
 
           Thank you for your business!
 
         </p>
 
-        <p className="mt-1 text-center text-gray-400" style={{ fontSize: `${basePx - 2}px` }}>
+        <p className="mt-1 text-center text-muted-foreground" style={{ fontSize: `${basePx - 2}px` }}>
 
           Generated {new Date().toLocaleString()}
 

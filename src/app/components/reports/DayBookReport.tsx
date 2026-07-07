@@ -607,23 +607,23 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
 
       <div className="space-y-6">
 
-      <div className="no-print flex flex-wrap items-end gap-3 rounded-xl border border-gray-800 bg-gray-900/50 p-4">
+      <div className="no-print flex flex-wrap items-end gap-3 rounded-xl border border-border bg-muted/40 p-4">
         <div className="flex flex-col gap-1.5 min-w-[12rem] flex-1">
-          <Label className="text-xs text-gray-500 uppercase tracking-wide">Search</Label>
+          <Label className="text-xs text-muted-foreground uppercase tracking-wide">Search</Label>
           <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Voucher, account, description, amount…"
-              className="pl-9 bg-gray-950 border-gray-700 text-gray-200"
+              className="pl-9 bg-input-background border-border text-gray-200"
             />
           </div>
         </div>
         <div className="flex flex-col gap-1.5 min-w-[10rem]">
-          <Label className="text-xs text-gray-500 uppercase tracking-wide">Type</Label>
+          <Label className="text-xs text-muted-foreground uppercase tracking-wide">Type</Label>
           <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v as typeof typeFilter)}>
-            <SelectTrigger className="bg-gray-950 border-gray-700 text-gray-200">
+            <SelectTrigger className="bg-input-background border-border text-gray-200">
               <SelectValue placeholder="All types" />
             </SelectTrigger>
             <SelectContent>
@@ -641,7 +641,7 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
             type="button"
             variant="outline"
             size="sm"
-            className="border-gray-700 text-gray-300"
+            className="border-border text-muted-foreground"
             onClick={() => {
               setSearchTerm('');
               setTypeFilter('all');
@@ -655,7 +655,7 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
       {!useGlobalRange && (
         <div className="no-print flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-400">Date Range:</span>
+            <span className="text-sm text-muted-foreground">Date Range:</span>
             <DateRangePicker
               value={dateRange}
               onChange={setDateRange}
@@ -665,12 +665,12 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
         </div>
       )}
       {useGlobalRange && (
-        <p className="text-sm text-gray-400">Using global date range from top bar</p>
+        <p className="text-sm text-muted-foreground">Using global date range from top bar</p>
       )}
       <div className="flex flex-wrap items-center gap-3 py-2">
         <div className="flex items-center gap-2">
           <Switch id="daybook-audit-mode" checked={auditMode} onCheckedChange={setAuditMode} />
-          <Label htmlFor="daybook-audit-mode" className="text-sm text-gray-400 cursor-pointer">
+          <Label htmlFor="daybook-audit-mode" className="text-sm text-muted-foreground cursor-pointer">
             Audit mode (all rows equal weight)
           </Label>
         </div>
@@ -683,15 +683,15 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
         )}
       </div>
       <p
-        className="text-xs text-gray-500 border border-gray-800/80 rounded-lg px-3 py-2 bg-gray-950/40"
+        className="text-xs text-muted-foreground border border-border/80 rounded-lg px-3 py-2 bg-input-background/40"
         role="status"
       >
-        <span className="text-gray-600">Branch scope:</span>{' '}
+        <span className="text-muted-foreground">Branch scope:</span>{' '}
         {!contextBranchId || contextBranchId === 'all' ? (
           <>All branches — every journal line for this company in the date range.</>
         ) : (
           <>
-            Selected branch plus company-wide journal entries (null <code className="text-gray-400">branch_id</code>),
+            Selected branch plus company-wide journal entries (null <code className="text-muted-foreground">branch_id</code>),
             consistent with GL account ledger filtering.
           </>
         )}
@@ -710,14 +710,14 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
       {loading ? (
         <div className="flex flex-col items-center justify-center gap-3 py-16">
           <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
-          <p className="text-sm text-gray-400">Loading day book…</p>
+          <p className="text-sm text-muted-foreground">Loading day book…</p>
         </div>
       ) : (
         <>
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-base leading-snug">
-                <thead className="bg-gray-900/80 text-gray-400 border-b border-gray-800">
+                <thead className="bg-card text-muted-foreground border-b border-border">
                   <tr>
                     {([
                       { key: 'date' as const, label: 'Txn date / posted', className: 'w-44', align: 'left' },
@@ -745,7 +745,7 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
                               }
                             }}
                             className={cn(
-                              'flex items-center gap-1 w-full group hover:text-gray-300 transition-colors focus:outline-none focus:ring-0',
+                              'flex items-center gap-1 w-full group hover:text-muted-foreground transition-colors focus:outline-none focus:ring-0',
                               align === 'right' && 'justify-end',
                               align === 'center' && 'justify-center'
                             )}
@@ -761,29 +761,29 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
                       );
                     })}
                     {onEditJournalEntry && (
-                      <th className="px-4 py-3 text-right font-medium text-gray-400 w-24">Edit</th>
+                      <th className="px-4 py-3 text-right font-medium text-muted-foreground w-24">Edit</th>
                     )}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-800">
+                <tbody className="divide-y divide-border">
                   {paginatedEntries.map((e, i) => (
                   <tr
                     key={e.id}
                     className={cn(
-                      'hover:bg-gray-800/30',
-                      i % 2 === 0 ? 'bg-gray-950/30' : 'bg-gray-900/20',
+                      'hover:bg-accent/30',
+                      i % 2 === 0 ? 'bg-muted/30' : 'bg-card/20',
                       !auditMode &&
                         (e.presentationKind === 'liquidity_transfer' || e.presentationKind === 'amount_delta') &&
                         'opacity-60'
                     )}
                   >
-                    <td className="px-4 py-3 text-gray-300 whitespace-nowrap">
+                    <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
                       <div className="flex flex-col gap-0.5">
-                        <DateTimeDisplay date={e.entryDate} dateOnly className="text-gray-300" />
+                        <DateTimeDisplay date={e.entryDate} dateOnly className="text-muted-foreground" />
                         <DateTimeDisplay date={e.createdAt} className="opacity-80 scale-95 origin-top-left" />
                       </div>
                     </td>
-                    <td className="px-4 py-3 font-mono text-gray-300">
+                    <td className="px-4 py-3 font-mono text-muted-foreground">
                       {onVoucherClick ? (
                         <button
                           type="button"
@@ -799,29 +799,29 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
                     <td className="px-4 py-3 text-[11px]">
                       <span
                         className={cn(
-                          'inline-block rounded px-2 py-0.5 border text-gray-300',
+                          'inline-block rounded px-2 py-0.5 border text-muted-foreground',
                           e.presentationKind === 'liquidity_transfer' && 'border-sky-600/50 text-sky-300/95',
                           e.presentationKind === 'amount_delta' && 'border-amber-600/50 text-amber-200/90',
                           e.presentationKind === 'business_primary' && 'border-emerald-700/50 text-emerald-200/90',
                           !['liquidity_transfer', 'amount_delta', 'business_primary'].includes(e.presentationKind) &&
-                            'border-gray-700 text-gray-400'
+                            'border-border text-muted-foreground'
                         )}
                       >
                         {presentationLabel(e.presentationKind)}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-xs text-gray-300 max-w-[14rem] leading-snug">
-                      <span className="text-gray-500">From </span>
+                    <td className="px-4 py-3 text-xs text-muted-foreground max-w-[14rem] leading-snug">
+                      <span className="text-muted-foreground">From </span>
                       <span className="text-gray-200">{e.fromAccount}</span>
-                      <span className="text-gray-600 mx-1">→</span>
+                      <span className="text-muted-foreground mx-1">→</span>
                       <span className="text-sky-300/90">{e.toAccount}</span>
                     </td>
-                    <td className="px-4 py-3 text-[11px] text-gray-400 max-w-[12rem] leading-snug" title={e.economicMeaning}>
+                    <td className="px-4 py-3 text-[11px] text-muted-foreground max-w-[12rem] leading-snug" title={e.economicMeaning}>
                       {e.economicMeaning}
                     </td>
-                    <td className="px-4 py-3 text-white">{e.account}</td>
-                    <td className="px-4 py-3 text-gray-400 max-w-xs truncate" title={e.description}>{e.description}</td>
-                    <td className="px-4 py-3 text-right font-mono text-green-400">
+                    <td className="px-4 py-3 text-foreground">{e.account}</td>
+                    <td className="px-4 py-3 text-muted-foreground max-w-xs truncate" title={e.description}>{e.description}</td>
+                    <td className="px-4 py-3 text-right font-mono text-[var(--erp-money-positive)]">
                       {e.debit > 0 ? e.debit.toLocaleString() : '—'}
                     </td>
                     <td className="px-4 py-3 text-right font-mono text-red-400">
@@ -832,11 +832,11 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
                         className={cn(
                           'px-2 py-0.5 rounded text-xs font-medium',
                           e.type === 'Sale' && 'bg-blue-500/20 text-blue-400',
-                          e.type === 'Purchase' && 'bg-green-500/20 text-green-400',
+                          e.type === 'Purchase' && 'bg-green-500/20 text-[var(--erp-money-positive)]',
                           e.type === 'Payment' && 'bg-purple-500/20 text-purple-400',
                           e.type === 'Expense' && 'bg-red-500/20 text-red-400',
                           e.type === 'Rental' && 'bg-amber-500/20 text-amber-400',
-                          !['Sale', 'Purchase', 'Payment', 'Expense', 'Rental'].includes(e.type) && 'bg-gray-500/20 text-gray-400'
+                          !['Sale', 'Purchase', 'Payment', 'Expense', 'Rental'].includes(e.type) && 'bg-gray-500/20 text-muted-foreground'
                         )}
                       >
                         {e.type}
@@ -856,19 +856,19 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
                             {e.paymentId ? 'Edit payment' : 'Edit'}
                           </Button>
                         ) : (
-                          <span className="text-gray-600 text-sm tabular-nums">—</span>
+                          <span className="text-muted-foreground text-sm tabular-nums">—</span>
                         )}
                       </td>
                     )}
                   </tr>
                 ))}
               </tbody>
-              <tfoot className="bg-gray-900 border-t-2 border-gray-700">
+              <tfoot className="bg-card border-t-2 border-border">
                 <tr>
-                  <td colSpan={5} className="px-4 py-3 font-bold text-white">
+                  <td colSpan={5} className="px-4 py-3 font-bold text-foreground">
                     Totals (raw journal lines)
                   </td>
-                  <td className="px-4 py-3 text-right font-bold text-green-400">
+                  <td className="px-4 py-3 text-right font-bold text-[var(--erp-money-positive)]">
                     ₨ {totalDebit.toLocaleString()}
                   </td>
                   <td className="px-4 py-3 text-right font-bold text-red-400">
@@ -881,15 +881,15 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
             </table>
             </div>
             {totalPages > 1 && (
-              <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-t border-gray-800 bg-gray-900/80">
-                <p className="text-xs text-gray-400">
+              <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-t border-border bg-card">
+                <p className="text-xs text-muted-foreground">
                   Showing {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, sortedEntries.length)} of {sortedEntries.length}
                 </p>
                 <div className="flex items-center gap-1">
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-8 border-gray-700 text-gray-300"
+                    className="h-8 border-border text-muted-foreground"
                     disabled={currentPage <= 1}
                     onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                   >
@@ -899,12 +899,12 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
                     .filter((p) => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 2)
                     .map((p, idx, arr) => (
                       <React.Fragment key={p}>
-                        {idx > 0 && arr[idx - 1] !== p - 1 && <span className="px-1 text-gray-500">…</span>}
+                        {idx > 0 && arr[idx - 1] !== p - 1 && <span className="px-1 text-muted-foreground">…</span>}
                         <button
                           type="button"
                           className={cn(
                             'h-8 min-w-[2rem] rounded px-2 text-sm font-medium',
-                            p === currentPage ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                            p === currentPage ? 'bg-blue-600 text-white' : 'bg-muted text-muted-foreground hover:bg-muted'
                           )}
                           onClick={() => setCurrentPage(p)}
                         >
@@ -915,7 +915,7 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-8 border-gray-700 text-gray-300"
+                    className="h-8 border-border text-muted-foreground"
                     disabled={currentPage >= totalPages}
                     onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                   >
@@ -928,9 +928,9 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
 
           {isBalanced ? (
             <div className="p-4 bg-green-900/20 border border-green-500/30 rounded-xl space-y-1">
-              <p className="text-green-400 text-center font-medium">✓ Debit = Credit – Balanced Day Book</p>
+              <p className="text-[var(--erp-money-positive)] text-center font-medium">✓ Debit = Credit – Balanced Day Book</p>
               {voidRowCount > 0 && auditMode && (
-                <p className="text-gray-500 text-center text-xs">
+                <p className="text-muted-foreground text-center text-xs">
                   Balance excludes {voidRowCount} voided line(s). Turn off Audit mode to hide void vouchers from the list.
                 </p>
               )}
@@ -946,7 +946,7 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
                   </span>
                 )}
               </p>
-              <p className="text-gray-400 text-center text-xs">
+              <p className="text-muted-foreground text-center text-xs">
                 Balance uses active (non-void) journal lines only.
                 {voidRowCount > 0 && auditMode
                   ? ` ${voidRowCount} voided line(s) in the table are excluded from this check.`
@@ -968,7 +968,7 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
                       {unbalancedVoucherDetails.slice(0, 20).map((row) => (
                         <tr key={row.voucher} className="border-t border-amber-900/30">
                           <td className="px-3 py-2 font-mono text-amber-100">{row.voucher}</td>
-                          <td className="px-3 py-2 text-right font-mono text-green-400">₨ {row.debit.toLocaleString()}</td>
+                          <td className="px-3 py-2 text-right font-mono text-[var(--erp-money-positive)]">₨ {row.debit.toLocaleString()}</td>
                           <td className="px-3 py-2 text-right font-mono text-red-400">₨ {row.credit.toLocaleString()}</td>
                           <td className="px-3 py-2 text-right font-mono text-amber-300">₨ {row.diff.toLocaleString()}</td>
                         </tr>
@@ -984,8 +984,8 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
 
       {!loading && entries.length === 0 && (
         <div className="text-center py-16">
-          <BookOpen className="w-16 h-16 mx-auto mb-4 text-gray-600" />
-          <p className="text-gray-400">No transactions in this period</p>
+          <BookOpen className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
+          <p className="text-muted-foreground">No transactions in this period</p>
         </div>
       )}
       </div>

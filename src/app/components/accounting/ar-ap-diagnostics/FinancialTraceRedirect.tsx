@@ -13,7 +13,7 @@ export function FinancialTraceRedirect() {
   }, [setCurrentView]);
 
   return (
-    <div className="min-h-[40vh] flex items-center justify-center bg-[#0B0F19]">
+    <div className="min-h-[40vh] flex items-center justify-center bg-secondary">
       <Loader2 className="w-8 h-8 animate-spin text-cyan-400" />
     </div>
   );

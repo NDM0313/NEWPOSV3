@@ -135,12 +135,12 @@ function MetricCard({
   return (
     <div
       className={cn(
-        'rounded-lg border p-4 bg-gray-900/40',
-        warn ? 'border-amber-500/50' : 'border-gray-700'
+        'rounded-lg border p-4 bg-card/40',
+        warn ? 'border-amber-500/50' : 'border-border'
       )}
     >
       <div className="flex items-center justify-between gap-2 mb-1">
-        <p className="text-xs text-gray-400 uppercase tracking-wide">{label}</p>
+        <p className="text-xs text-muted-foreground uppercase tracking-wide">{label}</p>
         {basis && <BasisBadge basis={basis} />}
       </div>
       <p className={cn('text-xl font-semibold tabular-nums', warn && 'text-amber-200')}>{value}</p>
@@ -527,7 +527,7 @@ export function FinancialTraceDiagnosticsPanel({
 
   if (!access.canAccess) {
     return (
-      <div className="p-8 text-center text-gray-400">
+      <div className="p-8 text-center text-muted-foreground">
         <ShieldCheck className="h-10 w-10 mx-auto mb-3 opacity-50" />
         <p>Financial Trace Center requires accounting admin / developer / auditor access.</p>
         <Button variant="ghost" className="mt-4" onClick={() => setCurrentView('dashboard')}>
@@ -545,7 +545,7 @@ export function FinancialTraceDiagnosticsPanel({
   return (
     <div className={cn('flex flex-col text-gray-100 print:bg-white print:text-black', embedded ? 'min-h-0' : 'h-full bg-[#0a0a0f]')}>
       {!embedded ? (
-        <div className="border-b border-gray-800 px-4 py-3 flex flex-wrap items-center gap-3 print:hidden">
+        <div className="border-b border-border px-4 py-3 flex flex-wrap items-center gap-3 print:hidden">
           <Button variant="ghost" size="sm" onClick={() => setCurrentView('accounting')}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
@@ -554,7 +554,7 @@ export function FinancialTraceDiagnosticsPanel({
               <FileSearch className="h-5 w-5 text-cyan-400" />
               Financial Truth Center
             </h1>
-            <p className="text-xs text-gray-500">Read-only tie-out and diagnosis — no repairs, no Phase 3 apply</p>
+            <p className="text-xs text-muted-foreground">Read-only tie-out and diagnosis — no repairs, no Phase 3 apply</p>
           </div>
           <Badge variant="outline" className="border-emerald-500/40 text-emerald-300">
             Read-only
@@ -588,7 +588,7 @@ export function FinancialTraceDiagnosticsPanel({
       ) : (
         <Tabs value={tab} onValueChange={(v) => setTab(v as FinancialTraceTabId)} className="flex-1 flex flex-col min-h-0">
           {tabsToShow.length > 1 ? (
-            <TabsList className={cn('bg-gray-900/80 border border-gray-800 flex-wrap h-auto print:hidden', embedded ? 'mb-2' : 'mx-4 mt-3')}>
+            <TabsList className={cn('bg-card border border-border flex-wrap h-auto print:hidden', embedded ? 'mb-2' : 'mx-4 mt-3')}>
               {tabsToShow.map((tid) => (
                 <TabsTrigger key={tid} value={tid}>
                   {TRACE_TAB_LABELS[tid]}
@@ -600,7 +600,7 @@ export function FinancialTraceDiagnosticsPanel({
           <TabsContent value="tieout" className="flex-1 overflow-auto p-4 space-y-4">
             {tieOut ? (
               <>
-                <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                   <span>As of {tieOut.asOfDate}</span>
                   <span>·</span>
                   <span>P&amp;L period {tieOut.periodStart} → {tieOut.profitAndLoss.endDate}</span>
@@ -660,8 +660,8 @@ export function FinancialTraceDiagnosticsPanel({
                   />
                 </div>
 
-                <div className="rounded-lg border border-gray-700 overflow-hidden">
-                  <div className="px-4 py-2 border-b border-gray-700 bg-gray-900/60 flex items-center gap-2">
+                <div className="rounded-lg border border-border overflow-hidden">
+                  <div className="px-4 py-2 border-b border-border bg-muted/60 flex items-center gap-2">
                     <Scale className="h-4 w-4 text-cyan-400" />
                     <p className="text-sm font-medium">Difference rows</p>
                   </div>
@@ -671,7 +671,7 @@ export function FinancialTraceDiagnosticsPanel({
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead>
-                          <tr className="text-left text-xs text-gray-500 border-b border-gray-800">
+                          <tr className="text-left text-xs text-muted-foreground border-b border-border">
                             <th className="p-3">Pair</th>
                             <th className="p-3 text-right">Left</th>
                             <th className="p-3 text-right">Right</th>
@@ -683,18 +683,18 @@ export function FinancialTraceDiagnosticsPanel({
                         </thead>
                         <tbody>
                           {tieOut.differences.map((row) => (
-                            <tr key={row.id} className="border-b border-gray-800/80 hover:bg-gray-900/40">
+                            <tr key={row.id} className="border-b border-border/80 hover:bg-card/40">
                               <td className="p-3">
                                 <p className="font-medium text-gray-200">{row.label}</p>
-                                <p className="text-xs text-gray-500">{row.leftLabel} vs {row.rightLabel}</p>
+                                <p className="text-xs text-muted-foreground">{row.leftLabel} vs {row.rightLabel}</p>
                               </td>
                               <td className="p-3 text-right tabular-nums">{formatCurrency(row.leftAmount)}</td>
                               <td className="p-3 text-right tabular-nums">{formatCurrency(row.rightAmount)}</td>
                               <td className={cn('p-3 text-right tabular-nums font-medium', Math.abs(row.difference) >= 0.01 && 'text-amber-200')}>
                                 {formatCurrency(row.difference)}
                               </td>
-                              <td className="p-3 text-xs text-gray-400">{row.reasonLabel}</td>
-                              <td className="p-3 text-xs text-gray-500 max-w-[200px]">{row.recommendedAction}</td>
+                              <td className="p-3 text-xs text-muted-foreground">{row.reasonLabel}</td>
+                              <td className="p-3 text-xs text-muted-foreground max-w-[200px]">{row.recommendedAction}</td>
                               <td className="p-3">
                                 <Button variant="outline" size="sm" className="border-gray-600 text-xs" onClick={() => handleTieOutDrilldown(row.drilldown)}>
                                   Open
@@ -709,8 +709,8 @@ export function FinancialTraceDiagnosticsPanel({
                 </div>
 
                 {regressionQuickLinks.length > 0 && (
-                  <div className="rounded-lg border border-gray-700 p-4 space-y-2">
-                    <p className="text-sm font-medium text-gray-300">Known regression cases</p>
+                  <div className="rounded-lg border border-border p-4 space-y-2">
+                    <p className="text-sm font-medium text-muted-foreground">Known regression cases</p>
                     <div className="flex flex-wrap gap-2">
                       {regressionQuickLinks.map((c) => (
                         <Button
@@ -738,7 +738,7 @@ export function FinancialTraceDiagnosticsPanel({
                 <CrossLinkBar embedded={embedded} onNavigate={navigateCross} onOpenDeveloperCenter={openDeveloperCenter} />
               </>
             ) : (
-              <p className="text-sm text-gray-500">Tie-out data unavailable.</p>
+              <p className="text-sm text-muted-foreground">Tie-out data unavailable.</p>
             )}
           </TabsContent>
 
@@ -829,51 +829,51 @@ export function FinancialTraceDiagnosticsPanel({
                 value={searchQ}
                 onChange={(e) => setSearchQ(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && runSearch()}
-                className="bg-gray-900 border-gray-700"
+                className="bg-card border-border"
               />
               <Button onClick={runSearch} disabled={partyLoading}>
                 <Search className="h-4 w-4" />
               </Button>
             </div>
             {searchHits.length > 0 && (
-              <div className="rounded-lg border border-gray-700 divide-y divide-gray-800">
+              <div className="rounded-lg border border-border divide-y divide-border">
                 {searchHits.map((h) => (
                   <button
                     key={`${h.kind}-${h.id}`}
                     type="button"
-                    className="w-full text-left px-3 py-2 hover:bg-gray-800/60 flex justify-between"
+                    className="w-full text-left px-3 py-2 hover:bg-muted/60 flex justify-between"
                     onClick={() => h.contactId && loadParty(h.contactId)}
                   >
                     <span>
-                      <span className="text-xs text-gray-500 uppercase mr-2">{h.kind}</span>
+                      <span className="text-xs text-muted-foreground uppercase mr-2">{h.kind}</span>
                       {h.label}
                     </span>
-                    <span className="text-gray-500 text-sm">{h.sublabel}</span>
+                    <span className="text-muted-foreground text-sm">{h.sublabel}</span>
                   </button>
                 ))}
               </div>
             )}
             {partyTrace && (
-              <div className="rounded-lg border border-gray-700 p-4 space-y-3">
+              <div className="rounded-lg border border-border p-4 space-y-3">
                 <h3 className="font-medium">{partyTrace.contact.name}</h3>
                 {partyTrace.arAccount && (
-                  <p className="text-sm text-gray-400">
+                  <p className="text-sm text-muted-foreground">
                     {partyTrace.arAccount.code} — {partyTrace.arAccount.name}
                   </p>
                 )}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
                   <div>
-                    <p className="text-gray-500">Account ledger closing</p>
+                    <p className="text-muted-foreground">Account ledger closing</p>
                     <p className="font-mono">{formatCurrency(partyTrace.accountLedgerClosing ?? 0)}</p>
                     <BasisBadge basis="gl" />
                   </div>
                   <div>
-                    <p className="text-gray-500">Party statement closing</p>
+                    <p className="text-muted-foreground">Party statement closing</p>
                     <p className="font-mono">{formatCurrency(partyTrace.customerStatementClosing ?? 0)}</p>
                     <BasisBadge basis="gl" />
                   </div>
                   <div>
-                    <p className="text-gray-500">Ledger V2 official</p>
+                    <p className="text-muted-foreground">Ledger V2 official</p>
                     <p className="font-mono">{formatCurrency(partyTrace.ledgerV2Closing ?? 0)}</p>
                     <BasisBadge basis="gl" />
                   </div>
@@ -895,7 +895,7 @@ export function FinancialTraceDiagnosticsPanel({
                 value={rentalQ}
                 onChange={(e) => setRentalQ(e.target.value)}
                 placeholder="REN-0002"
-                className="bg-gray-900 border-gray-700"
+                className="bg-card border-border"
               />
               <Button onClick={loadRental} disabled={rentalLoading}>
                 {rentalLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Trace'}
@@ -907,7 +907,7 @@ export function FinancialTraceDiagnosticsPanel({
                   <h3 className="font-medium text-cyan-200">
                     {(rentalTrace.rental.booking_no as string) ?? rentalQ} — {rentalTrace.contactName}
                   </h3>
-                  <p className="text-sm text-gray-400 mt-1">
+                  <p className="text-sm text-muted-foreground mt-1">
                     Paid {formatCurrency(Number(rentalTrace.rental.paid_amount) || 0)} / Total{' '}
                     {formatCurrency(Number(rentalTrace.rental.total_amount) || 0)} — Due{' '}
                     {formatCurrency(Number(rentalTrace.rental.due_amount) || 0)}
@@ -921,13 +921,13 @@ export function FinancialTraceDiagnosticsPanel({
                       <CodeBadge code="D7" />
                     </p>
                   )}
-                  <p className="text-xs text-gray-500 mt-2">
+                  <p className="text-xs text-muted-foreground mt-2">
                     Roznamcha: verify HQ-RCV refs in Accounting → Roznamcha (cash flow surface, not GL tie-out).
                   </p>
                 </div>
-                <div className="rounded-lg border border-gray-700 overflow-x-auto">
+                <div className="rounded-lg border border-border overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead className="bg-gray-900/80 text-gray-400 text-left">
+                    <thead className="bg-card text-muted-foreground text-left">
                       <tr>
                         <th className="p-2">Reference</th>
                         <th className="p-2">Amount</th>
@@ -946,7 +946,7 @@ export function FinancialTraceDiagnosticsPanel({
                           ),
                         });
                         return (
-                          <tr key={rp.id} className="border-t border-gray-800">
+                          <tr key={rp.id} className="border-t border-border">
                             <td className="p-2 font-mono">{rp.reference}</td>
                             <td className="p-2">{formatCurrency(rp.amount)}</td>
                             <td className="p-2">
@@ -965,9 +965,9 @@ export function FinancialTraceDiagnosticsPanel({
                   </table>
                 </div>
                 {rentalTrace.paymentsTableRows.length === 0 && (
-                  <p className="text-sm text-gray-500">
-                    No <code className="text-gray-400">payments</code> table rows — canonical stream is{' '}
-                    <code className="text-gray-400">rental_payments</code> (<CodeBadge code="D4" />).
+                  <p className="text-sm text-muted-foreground">
+                    No <code className="text-muted-foreground">payments</code> table rows — canonical stream is{' '}
+                    <code className="text-muted-foreground">rental_payments</code> (<CodeBadge code="D4" />).
                   </p>
                 )}
                 <p className="text-sm text-amber-200/90 border border-amber-500/30 rounded p-3">
@@ -980,9 +980,9 @@ export function FinancialTraceDiagnosticsPanel({
           </TabsContent>
 
           <TabsContent value="metadata" className="flex-1 overflow-auto p-4 space-y-3">
-            <p className="text-sm text-gray-400">D3 — metadata whitelist / false positives. No GL repair recommended.</p>
+            <p className="text-sm text-muted-foreground">D3 — metadata whitelist / false positives. No GL repair recommended.</p>
             {metadataRows.map(({ row, cls, meta }) => (
-              <div key={row.journal_line_id} className="rounded-lg border border-gray-700 p-3 space-y-2">
+              <div key={row.journal_line_id} className="rounded-lg border border-border p-3 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-mono">{row.entry_no}</span>
                   <CodeBadge code="D3" />
@@ -990,9 +990,9 @@ export function FinancialTraceDiagnosticsPanel({
                     {cls.label}
                   </Badge>
                 </div>
-                <p className="text-sm text-gray-400">{cls.detail}</p>
+                <p className="text-sm text-muted-foreground">{cls.detail}</p>
                 {meta?.reference_number && (
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-muted-foreground">
                     Payment {meta.reference_number} ({meta.reference_type})
                   </p>
                 )}
@@ -1002,23 +1002,23 @@ export function FinancialTraceDiagnosticsPanel({
           </TabsContent>
 
           <TabsContent value="non-final" className="flex-1 overflow-auto p-4 space-y-3">
-            <p className="text-sm text-gray-400">D2 — order-stage sales; not postable until finalized.</p>
+            <p className="text-sm text-muted-foreground">D2 — order-stage sales; not postable until finalized.</p>
             {nonFinalRows.map(({ row, cls, status }) => (
-              <div key={`${row.source_type}-${row.source_id}`} className="rounded-lg border border-gray-700 p-3">
+              <div key={`${row.source_type}-${row.source_id}`} className="rounded-lg border border-border p-3">
                 <div className="flex flex-wrap gap-2 items-center">
                   <span className="font-mono">{row.document_no}</span>
                   <CodeBadge code="D2" />
                   <Badge variant="outline">{status ?? 'order'}</Badge>
                 </div>
                 <p className="text-sm mt-2">{cls.label}</p>
-                <p className="text-xs text-gray-500 mt-1">{formatCurrency(row.amount)} — {row.reason}</p>
+                <p className="text-xs text-muted-foreground mt-1">{formatCurrency(row.amount)} — {row.reason}</p>
               </div>
             ))}
             <CrossLinkBar onNavigate={navigateCross} />
           </TabsContent>
 
           <TabsContent value="deeper" className="flex-1 overflow-auto p-4 space-y-4">
-            <p className="text-sm text-gray-400">
+            <p className="text-sm text-muted-foreground">
               D7 — escalate for manual review. GL-correction cases move to Resolved when fingerprint JE exists.
             </p>
             {resolvedDeeperRows.length > 0 ? (
@@ -1029,12 +1029,12 @@ export function FinancialTraceDiagnosticsPanel({
                 </summary>
                 <div className="pt-3 space-y-2">
                   {resolvedDeeperRows.map((c) => (
-                    <div key={c.id} className="text-sm text-gray-300 border-t border-emerald-500/15 pt-2 first:border-0 first:pt-0">
+                    <div key={c.id} className="text-sm text-muted-foreground border-t border-emerald-500/15 pt-2 first:border-0 first:pt-0">
                       <span className="text-emerald-200 font-medium">{c.title}</span>
                       {resolvedTraceEntryNos[c.id] ? (
-                        <span className="text-gray-500 ml-2 font-mono">→ {resolvedTraceEntryNos[c.id]}</span>
+                        <span className="text-muted-foreground ml-2 font-mono">→ {resolvedTraceEntryNos[c.id]}</span>
                       ) : null}
-                      <p className="text-xs text-gray-500 mt-0.5">Additive correction applied — source JEs unchanged.</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Additive correction applied — source JEs unchanged.</p>
                     </div>
                   ))}
                 </div>
@@ -1048,14 +1048,14 @@ export function FinancialTraceDiagnosticsPanel({
                     <CodeBadge key={code} code={code} />
                   ))}
                 </div>
-                <p className="text-sm text-gray-300">{c.summary}</p>
+                <p className="text-sm text-muted-foreground">{c.summary}</p>
                 <p className="text-sm text-amber-200">{c.statusLabel}</p>
                 {c.glCorrectionDefectId ? (
                   <p className="text-xs text-violet-300/90">
                     Fix in AR/AP Reconciliation Center → Hybrid Repair (confirm: APPLY GL CORRECTION).
                   </p>
                 ) : (
-                  <p className="text-xs text-gray-500">Recommended: manual review in AR/AP Reconciliation (status-only).</p>
+                  <p className="text-xs text-muted-foreground">Recommended: manual review in AR/AP Reconciliation (status-only).</p>
                 )}
                 <Button
                   variant="outline"

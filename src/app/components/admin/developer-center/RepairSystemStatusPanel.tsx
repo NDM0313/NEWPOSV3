@@ -60,7 +60,7 @@ export function RepairSystemStatusPanel({
   }, [load, refreshToken]);
 
   return (
-    <Card className="border-gray-800 bg-gray-900/50">
+    <Card className="border-border bg-muted/40">
       <CardHeader className="pb-2">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
@@ -85,7 +85,7 @@ export function RepairSystemStatusPanel({
       </CardHeader>
       <CardContent className="space-y-2 text-xs">
         {error && <p className="text-red-400">{error}</p>}
-        {!status && !error && loading && <p className="text-gray-500">Checking repair system…</p>}
+        {!status && !error && loading && <p className="text-muted-foreground">Checking repair system…</p>}
         {status && (
           <ul className="space-y-1.5">
             {status.checklist.map((row) => (
@@ -96,8 +96,8 @@ export function RepairSystemStatusPanel({
                   <XCircle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
                 )}
                 <div>
-                  <span className="text-gray-300 font-medium">{row.label}</span>
-                  <span className="text-gray-500 ml-2">{row.detail}</span>
+                  <span className="text-muted-foreground font-medium">{row.label}</span>
+                  <span className="text-muted-foreground ml-2">{row.detail}</span>
                 </div>
               </li>
             ))}

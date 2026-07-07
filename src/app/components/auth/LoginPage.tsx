@@ -78,7 +78,7 @@ export const LoginPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-[#111827]">
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-background">
       <div className="w-full max-w-sm">
         {/* Logo - Mobile style */}
         <div className="mb-8 text-center">

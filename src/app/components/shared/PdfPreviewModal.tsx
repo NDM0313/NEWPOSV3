@@ -185,7 +185,7 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
         `}</style>
       )}
 
-      <div className="bg-slate-900 text-white px-4 py-3 flex items-center justify-between border-b border-slate-700 no-print gap-3">
+      <div className="bg-slate-900 text-foreground px-4 py-3 flex items-center justify-between border-b border-slate-700 no-print gap-3">
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium truncate">{title}</p>
           <p className="text-xs text-slate-400 truncate">
@@ -197,7 +197,7 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
           <select
             value={orientation}
             onChange={(e) => onOrientationChange?.(e.target.value as PdfPreviewOrientation)}
-            className="h-8 px-2 rounded bg-slate-800 border border-slate-600 text-white text-sm shrink-0"
+            className="h-8 px-2 rounded bg-slate-800 border border-slate-600 text-foreground text-sm shrink-0"
             aria-label="Page orientation"
           >
             <option value="portrait">Portrait</option>
@@ -230,7 +230,7 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
         <button
           onClick={handleShareWhatsApp}
           disabled={!!busy}
-          className="h-10 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-medium flex items-center gap-2 disabled:opacity-60"
+          className="h-10 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-foreground font-medium flex items-center gap-2 disabled:opacity-60"
           type="button"
         >
           {busy === 'share' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
@@ -239,7 +239,7 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
         <button
           onClick={handleShareEmail}
           disabled={!!busy}
-          className="h-10 px-4 rounded-lg bg-slate-600 hover:bg-slate-700 text-white font-medium flex items-center gap-2 disabled:opacity-60"
+          className="h-10 px-4 rounded-lg bg-slate-600 hover:bg-slate-700 text-foreground font-medium flex items-center gap-2 disabled:opacity-60"
           type="button"
         >
           <Mail className="w-4 h-4" />
@@ -257,7 +257,7 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
         <button
           onClick={handlePrint}
           disabled={!!busy}
-          className="h-10 px-4 rounded-lg bg-slate-500 hover:bg-slate-600 text-white font-medium flex items-center gap-2 disabled:opacity-60"
+          className="h-10 px-4 rounded-lg bg-slate-500 hover:bg-slate-600 text-foreground font-medium flex items-center gap-2 disabled:opacity-60"
           type="button"
         >
           <Printer className="w-4 h-4" />

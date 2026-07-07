@@ -514,9 +514,14 @@ export const shipmentAccountingService = {
   ) {
     let query = supabase
       .from('courier_ledger')
-      .select('company_id, date, courier_name, account_id, courier_id, shipment_id, reference_type, entry_no, document_no, payment_ref, entry_kind, description, debit, credit, balance', { count: 'exact' })
+      .select(
+        'journal_entry_id, journal_entry_line_id, company_id, date, courier_name, account_id, courier_id, shipment_id, reference_type, entry_no, document_no, payment_ref, entry_kind, description, debit, credit, balance',
+        { count: 'exact' },
+      )
       .eq('company_id', companyId)
-      .order('date', { ascending: false });
+      .order('date', { ascending: true })
+      .order('journal_entry_id', { ascending: true })
+      .order('journal_entry_line_id', { ascending: true });
 
     if (courierId) query = query.eq('courier_id', courierId);
     const limit = options?.limit ?? 100;

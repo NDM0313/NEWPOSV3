@@ -135,23 +135,23 @@ export const EditStockAdjustmentDialog: React.FC<EditStockAdjustmentDialogProps>
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="bg-[#111827] border-gray-800 text-white max-w-md">
+      <DialogContent className="bg-background border-border text-foreground max-w-md">
         <DialogHeader>
           <DialogTitle>Edit stock adjustment</DialogTitle>
         </DialogHeader>
 
         {movement ? (
           <div className="space-y-4">
-            <div className="bg-gray-900/80 border border-gray-800 rounded-lg p-3 flex gap-3">
+            <div className="bg-card border border-border rounded-lg p-3 flex gap-3">
               <Package className="text-blue-400 shrink-0 mt-0.5" size={20} />
               <div className="min-w-0 text-sm">
-                <p className="font-medium text-white truncate">{productName}</p>
-                {productSku ? <p className="text-gray-500 text-xs">SKU: {productSku}</p> : null}
+                <p className="font-medium text-foreground truncate">{productName}</p>
+                {productSku ? <p className="text-muted-foreground text-xs">SKU: {productSku}</p> : null}
                 {movement.branch?.name ? (
-                  <p className="text-gray-400 text-xs mt-1">Branch: {movement.branch.name}</p>
+                  <p className="text-muted-foreground text-xs mt-1">Branch: {movement.branch.name}</p>
                 ) : null}
                 {movement.variation?.name || movement.variation?.sku ? (
-                  <p className="text-gray-400 text-xs">
+                  <p className="text-muted-foreground text-xs">
                     Variation: {movement.variation?.name || movement.variation?.sku}
                   </p>
                 ) : null}
@@ -160,37 +160,37 @@ export const EditStockAdjustmentDialog: React.FC<EditStockAdjustmentDialogProps>
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label className="text-gray-300">Type</Label>
+                <Label className="text-muted-foreground">Type</Label>
                 <Select value={type} onValueChange={(v: AdjustmentType) => setType(v)}>
-                  <SelectTrigger className="bg-gray-900 border-gray-800 text-white">
+                  <SelectTrigger className="bg-card border-border text-foreground">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-gray-900 border-gray-700 text-white">
+                  <SelectContent className="bg-popover border-border text-popover-foreground">
                     <SelectItem value="add">Add stock</SelectItem>
                     <SelectItem value="subtract">Subtract stock</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label className="text-gray-300">Quantity</Label>
+                <Label className="text-muted-foreground">Quantity</Label>
                 <Input
                   type="number"
                   min={0}
                   step="any"
                   value={quantity || ''}
                   onChange={(e) => setQuantity(Number(e.target.value) || 0)}
-                  className="bg-gray-900 border-gray-800 text-white"
+                  className="bg-card border-border text-foreground"
                 />
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label className="text-gray-300">Reason</Label>
+              <Label className="text-muted-foreground">Reason</Label>
               <Select value={reason} onValueChange={(v: AdjustmentReason) => setReason(v)}>
-                <SelectTrigger className="bg-gray-900 border-gray-800 text-white">
+                <SelectTrigger className="bg-card border-border text-foreground">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="bg-gray-900 border-gray-700 text-white">
+                <SelectContent className="bg-popover border-border text-popover-foreground">
                   {(Object.keys(REASON_LABELS) as AdjustmentReason[]).map((k) => (
                     <SelectItem key={k} value={k}>
                       {REASON_LABELS[k]}
@@ -208,17 +208,17 @@ export const EditStockAdjustmentDialog: React.FC<EditStockAdjustmentDialogProps>
             />
 
             <div className="space-y-2">
-              <Label className="text-gray-300">Notes</Label>
+              <Label className="text-muted-foreground">Notes</Label>
               <Textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                className="bg-gray-900 border-gray-800 text-white resize-none"
+                className="bg-card border-border text-foreground resize-none"
                 rows={2}
               />
             </div>
 
             {quantity > 0 ? (
-              <p className="text-xs text-gray-400">
+              <p className="text-xs text-muted-foreground">
                 Stock after edit:{' '}
                 <span className={projectedBalance < 0 ? 'text-red-400' : 'text-emerald-400'}>
                   {projectedBalance.toFixed(2)} {unit}

@@ -46,14 +46,14 @@ function Card({
   accent?: string;
 }) {
   return (
-    <div className="rounded-xl border border-[#374151] bg-[#1F2937] p-4 flex flex-col gap-2 min-w-0">
+    <div className="rounded-xl border border-border bg-card p-4 flex flex-col gap-2 min-w-0">
       <div className="flex items-start justify-between">
-        <span className="text-[#9CA3AF] text-sm">{title}</span>
-        <div className={`p-2 rounded-lg ${accent ?? 'bg-[#111827]'}`}>
-          <Icon className="w-4 h-4 text-[#9CA3AF]" />
+        <span className="text-muted-foreground text-sm">{title}</span>
+        <div className={`p-2 rounded-lg ${accent ?? 'bg-background'}`}>
+          <Icon className="w-4 h-4 text-muted-foreground" />
         </div>
       </div>
-      <AdaptiveCurrencyValue value={amount} className="text-2xl font-bold text-white" />
+      <AdaptiveCurrencyValue value={amount} className="text-2xl font-bold text-foreground" />
       <div className="flex items-center justify-between text-xs text-[#6B7280]">
         <span>{subtitle}</span>
         <TrendBadge pct={trend} />
@@ -68,7 +68,7 @@ export const BusinessHealthGrid: React.FC<Props> = ({ snapshot, showMoney }) => 
 
   if (!showMoney) {
     return (
-      <div className="rounded-xl border border-[#374151] bg-[#1F2937] p-6 text-[#9CA3AF] text-sm">
+      <div className="rounded-xl border border-border bg-card p-6 text-muted-foreground text-sm">
         Operational alerts and stock are shown below. Financial summary requires admin or owner access.
       </div>
     );
@@ -111,14 +111,14 @@ export const BusinessHealthGrid: React.FC<Props> = ({ snapshot, showMoney }) => 
         amount={summary.cashBalance}
         subtitle="Company-wide GL"
         icon={Wallet}
-        accent={summary.cashBalance < 0 ? 'bg-red-500/10' : 'bg-[#111827]'}
+        accent={summary.cashBalance < 0 ? 'bg-red-500/10' : 'bg-background'}
       />
       <Card
         title="Bank"
         amount={summary.bankBalance}
         subtitle="Company-wide GL"
         icon={Building2}
-        accent={summary.bankBalance < 0 ? 'bg-red-500/10' : 'bg-[#111827]'}
+        accent={summary.bankBalance < 0 ? 'bg-red-500/10' : 'bg-background'}
       />
       <Card
         title="Receivables"

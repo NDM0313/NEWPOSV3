@@ -111,9 +111,9 @@ export function BespokeWorkOrdersPanel({
   };
 
   return (
-    <div className="mt-4 border border-gray-800 rounded-lg p-4 bg-gray-900/40">
+    <div className="mt-4 border border-border rounded-lg p-4 bg-card/40">
       <h3 className="text-sm font-semibold text-violet-300 mb-2">Bespoke work orders</h3>
-      <p className="text-xs text-gray-500 mb-3">
+      <p className="text-xs text-muted-foreground mb-3">
         Internal production cost (hidden from customer invoice). Complete job posts payable, COGS, and stock OUT (like purchase Received).
       </p>
 
@@ -140,13 +140,13 @@ export function BespokeWorkOrdersPanel({
       )}
 
       {orders.length === 0 ? (
-        <p className="text-xs text-gray-600">No work orders yet.</p>
+        <p className="text-xs text-muted-foreground">No work orders yet.</p>
       ) : (
         <ul className="space-y-2">
           {orders.map((wo) => (
             <li
               key={wo.id}
-              className="flex flex-wrap items-center justify-between gap-2 p-2 rounded bg-gray-950 border border-gray-800"
+              className="flex flex-wrap items-center justify-between gap-2 p-2 rounded bg-input-background border border-border"
             >
               <button
                 type="button"
@@ -157,7 +157,7 @@ export function BespokeWorkOrdersPanel({
                 <Badge variant="outline" className="ml-2 text-[10px]">
                   {wo.status}
                 </Badge>
-                <p className="text-xs text-gray-500 mt-0.5">
+                <p className="text-xs text-muted-foreground mt-0.5">
                   Cost: {formatCurrency(Number(wo.production_cost))}
                   {wo.tailor?.name ? ` · ${wo.tailor.name}` : ''}
                 </p>

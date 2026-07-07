@@ -111,7 +111,7 @@ const DEFAULT_PAYMENT_CONFIG = { bg: 'bg-red-500/20', text: 'text-red-400', bord
 const getPaymentStatusConfig = (status: string) => {
   switch (String(status || '').toLowerCase()) {
     case 'paid':
-      return { bg: 'bg-green-500/20', text: 'text-green-400', border: 'border-green-500/30', icon: CheckCircle, label: 'Paid' };
+      return { bg: 'bg-green-500/20', text: 'text-[var(--erp-money-positive)]', border: 'border-green-500/30', icon: CheckCircle, label: 'Paid' };
     case 'partial':
       return { bg: 'bg-yellow-500/20', text: 'text-yellow-400', border: 'border-yellow-500/30', icon: Clock, label: 'Partial' };
     case 'unpaid':
@@ -424,7 +424,7 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
       {/* Main Modal */}
       <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()} modal={true}>
         <DialogContent 
-          className="bg-gray-900 border-gray-700 text-white sm:max-w-[700px] max-h-[90vh] overflow-hidden flex flex-col"
+          className="bg-card border-border text-foreground sm:max-w-[700px] max-h-[90vh] overflow-hidden flex flex-col"
           onInteractOutside={(e) => {
             // Prevent closing when clicking outside if delete confirmation is open
             if (deleteConfirmOpen) {
@@ -432,15 +432,15 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
             }
           }}
         >
-          <DialogHeader className="border-b border-gray-800 pb-4">
+          <DialogHeader className="border-b border-border pb-4">
             <DialogTitle className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
                   <Receipt size={20} className="text-blue-400" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold text-white">Payment Details</h2>
-                  <p className="text-xs text-gray-400">Invoice {invoice.invoiceNo}</p>
+                  <h2 className="text-lg font-bold text-foreground">Payment Details</h2>
+                  <p className="text-xs text-muted-foreground">Invoice {invoice.invoiceNo}</p>
                 </div>
               </div>
               <Badge className={cn('text-xs font-medium capitalize gap-1 h-7 px-3', statusConfig?.bg ?? DEFAULT_PAYMENT_CONFIG.bg, statusConfig?.text ?? DEFAULT_PAYMENT_CONFIG.text, statusConfig?.border ?? DEFAULT_PAYMENT_CONFIG.border)}>
@@ -452,24 +452,24 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
 
           <div className="flex-1 overflow-y-auto py-4 space-y-4">
             {/* Invoice Summary Card */}
-            <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
+            <div className="bg-muted/50 rounded-xl p-4 border border-border">
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-gray-700 flex items-center justify-center">
-                    <User size={16} className="text-gray-400" />
+                  <div className="w-9 h-9 rounded-lg bg-muted flex items-center justify-center">
+                    <User size={16} className="text-muted-foreground" />
                   </div>
                   <div>
-                    <p className="text-xs text-gray-500">Customer</p>
-                    <p className="text-sm font-medium text-white">{invoice.customerName || 'Walk-in Customer'}</p>
+                    <p className="text-xs text-muted-foreground">Customer</p>
+                    <p className="text-sm font-medium text-foreground">{invoice.customerName || 'Walk-in Customer'}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-gray-700 flex items-center justify-center">
-                    <Calendar size={16} className="text-gray-400" />
+                  <div className="w-9 h-9 rounded-lg bg-muted flex items-center justify-center">
+                    <Calendar size={16} className="text-muted-foreground" />
                   </div>
                   <div>
-                    <p className="text-xs text-gray-500">Invoice Date</p>
-                    <p className="text-sm font-medium text-white">{formatDate(invoice.date)}</p>
+                    <p className="text-xs text-muted-foreground">Invoice Date</p>
+                    <p className="text-sm font-medium text-foreground">{formatDate(invoice.date)}</p>
                   </div>
                 </div>
               </div>
@@ -477,10 +477,10 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
               {/* Payment Progress */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-400">Payment Progress</span>
-                  <span className="text-white font-semibold">{progressPercent.toFixed(0)}%</span>
+                  <span className="text-muted-foreground">Payment Progress</span>
+                  <span className="text-foreground font-semibold">{progressPercent.toFixed(0)}%</span>
                 </div>
-                <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+                <div className="h-2 bg-muted rounded-full overflow-hidden">
                   <div
                     className={cn(
                       'h-full rounded-full transition-all duration-500',
@@ -490,13 +490,13 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
                   />
                 </div>
                 <div className="grid grid-cols-3 gap-2 pt-2">
-                  <div className="text-center p-2 bg-gray-900/50 rounded-lg">
-                    <p className="text-xs text-gray-500">Total</p>
-                    <p className="text-sm font-bold text-white">{formatCurrency(invoice.total)}</p>
+                  <div className="text-center p-2 bg-muted/40 rounded-lg">
+                    <p className="text-xs text-muted-foreground">Total</p>
+                    <p className="text-sm font-bold text-foreground">{formatCurrency(invoice.total)}</p>
                   </div>
                   <div className="text-center p-2 bg-green-500/10 rounded-lg border border-green-500/20">
-                    <p className="text-xs text-green-400">Paid</p>
-                    <p className="text-sm font-bold text-green-400">{formatCurrency(displayedPaid)}</p>
+                    <p className="text-xs text-[var(--erp-money-positive)]">Paid</p>
+                    <p className="text-sm font-bold text-[var(--erp-money-positive)]">{formatCurrency(displayedPaid)}</p>
                   </div>
                   <div className="text-center p-2 bg-red-500/10 rounded-lg border border-red-500/20">
                     <p className="text-xs text-red-400">Due</p>
@@ -507,18 +507,18 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
             </div>
 
             {/* Payment History Section */}
-            <div className="bg-gray-800/30 rounded-xl border border-gray-700 overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700 bg-gray-800/50">
+            <div className="bg-accent/30 rounded-xl border border-border overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/50">
                 <div className="flex items-center gap-2">
                   <History size={16} className="text-blue-400" />
-                  <h3 className="text-sm font-semibold text-white">Payment History</h3>
-                  <Badge className="bg-gray-700 text-gray-300 text-xs">{payments.length}</Badge>
+                  <h3 className="text-sm font-semibold text-foreground">Payment History</h3>
+                  <Badge className="bg-muted text-muted-foreground text-xs">{payments.length}</Badge>
                 </div>
                 {displayedDue > 0 && invoice.status !== 'cancelled' && saleInvoiceStatusAllowsAddPayment(invoice.status) && (
                   <Button
                     size="sm"
                     onClick={onAddPayment}
-                    className="bg-green-600 hover:bg-green-500 text-white h-8 gap-1.5"
+                    className="bg-green-600 hover:bg-green-500 text-foreground h-8 gap-1.5"
                   >
                     <Plus size={14} />
                     Add Payment
@@ -529,20 +529,20 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
               {loadingPayments ? (
                 <div className="p-8 text-center">
                   <Loader2 className="w-8 h-8 animate-spin text-blue-400 mx-auto mb-3" />
-                  <p className="text-sm text-gray-400">Loading payment history...</p>
+                  <p className="text-sm text-muted-foreground">Loading payment history...</p>
                 </div>
               ) : payments.length === 0 ? (
                 <div className="p-8 text-center">
-                  <div className="w-16 h-16 rounded-full bg-gray-800 flex items-center justify-center mx-auto mb-3">
-                    <DollarSign size={24} className="text-gray-600" />
+                  <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-3">
+                    <DollarSign size={24} className="text-muted-foreground" />
                   </div>
-                  <p className="text-gray-400 text-sm mb-1">No payments recorded yet</p>
-                  <p className="text-gray-500 text-xs mb-4">Click "Add Payment" to record a payment</p>
+                  <p className="text-muted-foreground text-sm mb-1">No payments recorded yet</p>
+                  <p className="text-muted-foreground text-xs mb-4">Click "Add Payment" to record a payment</p>
                   {displayedDue > 0 && invoice.status !== 'cancelled' && saleInvoiceStatusAllowsAddPayment(invoice.status) && (
                     <Button
                       size="sm"
                       onClick={onAddPayment}
-                      className="bg-green-600 hover:bg-green-500 text-white"
+                      className="bg-green-600 hover:bg-green-500 text-foreground"
                     >
                       <Plus size={14} className="mr-1" />
                       Add First Payment
@@ -552,7 +552,7 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
               ) : (
                 <div className="divide-y divide-gray-700/50">
                   {/* Table Header */}
-                  <div className="grid grid-cols-12 gap-2 px-4 py-2 bg-gray-900/30 text-xs font-medium text-gray-500 uppercase">
+                  <div className="grid grid-cols-12 gap-2 px-4 py-2 bg-muted/30 text-xs font-medium text-muted-foreground uppercase">
                     <div className="col-span-2">Date</div>
                     <div className="col-span-2">Reference</div>
                     <div className="col-span-2 text-right">Amount</div>
@@ -570,15 +570,15 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
                     return (
                       <div
                         key={payment.id || index}
-                        className="grid grid-cols-12 gap-2 px-4 py-3 items-center hover:bg-gray-800/30 transition-colors"
+                        className="grid grid-cols-12 gap-2 px-4 py-3 items-center hover:bg-accent/30 transition-colors"
                       >
                         <div className="col-span-2">
-                          <p className="text-sm text-white">{formatDate(payment.date)}</p>
+                          <p className="text-sm text-foreground">{formatDate(payment.date)}</p>
                         </div>
                         <div className="col-span-2">
-                          <p className="text-xs font-mono text-gray-400 break-words">{payment.referenceNo || '—'}</p>
+                          <p className="text-xs font-mono text-muted-foreground break-words">{payment.referenceNo || '—'}</p>
                           {payment.referenceSubtitle && (
-                            <p className="text-[10px] text-gray-500 mt-0.5">{payment.referenceSubtitle}</p>
+                            <p className="text-[10px] text-muted-foreground mt-0.5">{payment.referenceSubtitle}</p>
                           )}
                           {payment.allocationBadge && (
                             <Badge className="mt-1 text-[9px] font-medium bg-violet-500/15 text-violet-300 border border-violet-500/30">
@@ -587,7 +587,7 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
                           )}
                         </div>
                         <div className="col-span-2 text-right">
-                          <p className="text-sm font-semibold text-green-400">
+                          <p className="text-sm font-semibold text-[var(--erp-money-positive)]">
                             {formatCurrency(payment.amount)}
                           </p>
                           {showAdjusted && (
@@ -598,14 +598,14 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
                         </div>
                         <div className="col-span-2">
                           <div className="flex items-center gap-1.5">
-                            <MethodIcon size={12} className="text-gray-500" />
-                            <span className="text-xs text-gray-300 capitalize">{payment.method}</span>
+                            <MethodIcon size={12} className="text-muted-foreground" />
+                            <span className="text-xs text-muted-foreground capitalize">{payment.method}</span>
                           </div>
                         </div>
                         <div className="col-span-2">
-                          <p className="text-xs text-gray-400 truncate">{payment.accountName || '—'}</p>
+                          <p className="text-xs text-muted-foreground truncate">{payment.accountName || '—'}</p>
                           {payment.receivedBy != null && payment.receivedBy !== '' && (
-                            <p className="text-xs text-gray-500 mt-0.5">Received by: {payment.receivedBy}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">Received by: {payment.receivedBy}</p>
                           )}
                         </div>
                         <div className="col-span-2 flex items-center justify-center gap-1">
@@ -619,7 +619,7 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
                                   toast.error(e?.message || 'Cannot open payment editor for this line');
                                 }
                               }}
-                              className="p-1.5 rounded-lg hover:bg-gray-700 text-gray-400 hover:text-blue-400 transition-colors"
+                              className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-blue-400 transition-colors"
                               title="Edit payment (allocation lines edit the parent receipt/payment)"
                             >
                               <Edit2 size={14} />
@@ -628,7 +628,7 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
                           {onDeletePayment && (
                             <button
                               onClick={() => handleDeleteClick(payment)}
-                              className="p-1.5 rounded-lg hover:bg-gray-700 text-gray-400 hover:text-red-400 transition-colors"
+                              className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-red-400 transition-colors"
                               title="Cancel Payment"
                             >
                               <Trash2 size={14} />
@@ -636,7 +636,7 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
                           )}
                           {payment.notes && (
                             <button
-                              className="p-1.5 rounded-lg hover:bg-gray-700 text-gray-400 hover:text-white transition-colors"
+                              className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
                               title={payment.notes}
                             >
                               <FileText size={14} />
@@ -654,7 +654,7 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
                                 });
                                 if (list.length) setAttachmentsDialogList(list);
                               }}
-                              className="p-1.5 rounded-lg hover:bg-gray-700 text-gray-400 hover:text-amber-400 transition-colors"
+                              className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-amber-400 transition-colors"
                               title={`${payment.attachments.length} attachment(s)`}
                             >
                               <Paperclip size={14} />
@@ -671,9 +671,9 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
             {/* Additional Info - use displayedDue (from actual payments or invoice) */}
             {displayedDue === 0 && displayedPaid > 0 && (
               <div className="flex items-center gap-3 p-4 bg-green-500/10 border border-green-500/30 rounded-xl">
-                <CheckCircle size={20} className="text-green-400" />
+                <CheckCircle size={20} className="text-[var(--erp-money-positive)]" />
                 <div>
-                  <p className="text-sm font-medium text-green-400">Fully Paid</p>
+                  <p className="text-sm font-medium text-[var(--erp-money-positive)]">Fully Paid</p>
                   <p className="text-xs text-green-300/70">This invoice has been completely paid.</p>
                 </div>
               </div>
@@ -681,15 +681,15 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
           </div>
 
           {/* Footer */}
-          <div className="border-t border-gray-800 pt-4 flex items-center justify-between">
-            <div className="text-xs text-gray-500">
+          <div className="border-t border-border pt-4 flex items-center justify-between">
+            <div className="text-xs text-muted-foreground">
               {payments.length} payment{payments.length !== 1 ? 's' : ''} recorded
             </div>
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
                 onClick={onClose}
-                className="bg-gray-800 hover:bg-gray-700 text-white border-gray-700"
+                className="bg-muted hover:bg-muted text-foreground border-border"
               >
                 Close
               </Button>
@@ -699,7 +699,7 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
               {invoice.due > 0 && invoice.status !== 'cancelled' && saleInvoiceStatusAllowsAddPayment(invoice.status) && (
                 <Button
                   onClick={onAddPayment}
-                  className="bg-green-600 hover:bg-green-500 text-white"
+                  className="bg-green-600 hover:bg-green-500 text-foreground"
                 >
                   <Plus size={16} className="mr-1" />
                   Add Payment
@@ -726,7 +726,7 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
         }
       }} modal={true}>
         <AlertDialogContent 
-          className="bg-gray-900 border-gray-700"
+          className="bg-card border-border"
           onInteractOutside={(e) => {
             // Prevent closing when deleting
             if (isDeleting) {
@@ -735,11 +735,11 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
           }}
         >
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-white flex items-center gap-2">
+            <AlertDialogTitle className="text-foreground flex items-center gap-2">
               <AlertCircle size={20} className="text-red-400" />
               Cancel Payment
             </AlertDialogTitle>
-            <AlertDialogDescription className="text-gray-400">
+            <AlertDialogDescription className="text-muted-foreground">
               {paymentToDelete && (
                 <>
                   Are you sure you want to delete this payment of{' '}
@@ -757,14 +757,14 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel 
-              className="bg-gray-800 hover:bg-gray-700 text-white border-gray-700"
+              className="bg-muted hover:bg-muted text-foreground border-border"
               disabled={isDeleting}
             >
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleConfirmDelete}
-              className="bg-red-600 hover:bg-red-500 text-white"
+              className="bg-red-600 hover:bg-red-500 text-foreground"
               disabled={isDeleting}
             >
               {isDeleting ? (
@@ -785,9 +785,9 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
 
       {/* Attachments dialog: standard size (same as product image preview), preview + name viewable */}
       <Dialog open={!!attachmentsDialogList} onOpenChange={(open) => !open && setAttachmentsDialogList(null)}>
-        <DialogContent className="bg-gray-900 border-gray-700 text-white w-full max-w-2xl min-h-[320px] max-h-[90vh] flex flex-col p-4 sm:p-6">
+        <DialogContent className="bg-card border-border text-foreground w-full max-w-2xl min-h-[320px] max-h-[90vh] flex flex-col p-4 sm:p-6">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-white">
+            <DialogTitle className="flex items-center gap-2 text-foreground">
               <Paperclip size={20} className="text-amber-400" />
               Attachments
             </DialogTitle>

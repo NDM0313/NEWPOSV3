@@ -25,11 +25,11 @@ function RecentList({
   onNavigate?: (view: string) => void;
 }) {
   return (
-    <div className="rounded-xl border border-[#374151] bg-[#1F2937] overflow-hidden">
-      <div className="px-4 py-3 border-b border-[#374151] flex items-center justify-between">
+    <div className="rounded-xl border border-border bg-card overflow-hidden">
+      <div className="px-4 py-3 border-b border-border flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Icon className="w-4 h-4 text-[#9CA3AF]" />
-          <h4 className="text-white font-medium text-sm">{title}</h4>
+          <Icon className="w-4 h-4 text-muted-foreground" />
+          <h4 className="text-foreground font-medium text-sm">{title}</h4>
         </div>
         {viewTarget && onNavigate && items.length ? (
           <button type="button" onClick={() => onNavigate(viewTarget)} className="text-xs text-[#3B82F6]">
@@ -41,8 +41,8 @@ function RecentList({
         <ul className="divide-y divide-[#374151]">
           {items.map((r) => (
             <li key={r.id} className="px-4 py-2 flex justify-between text-sm">
-              <span className="text-white truncate mr-2">{r.label}</span>
-              <span className="text-[#9CA3AF] shrink-0">
+              <span className="text-foreground truncate mr-2">{r.label}</span>
+              <span className="text-muted-foreground shrink-0">
                 {formatCurrency(r.amount)} · {r.date}
               </span>
             </li>
@@ -60,7 +60,7 @@ export const OperationsPanel: React.FC<Props> = ({ operations, formatCurrency, o
 
   return (
     <div className="space-y-4">
-      <h3 className="text-white font-semibold">Operations</h3>
+      <h3 className="text-foreground font-semibold">Operations</h3>
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
         <RecentList
           title="Recent Sales"
@@ -97,10 +97,10 @@ export const OperationsPanel: React.FC<Props> = ({ operations, formatCurrency, o
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="rounded-xl border border-[#374151] bg-[#1F2937] overflow-hidden">
-          <div className="px-4 py-3 border-b border-[#374151] flex items-center gap-2">
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
+          <div className="px-4 py-3 border-b border-border flex items-center gap-2">
             <Package className="w-4 h-4 text-amber-400" />
-            <h4 className="text-white font-medium text-sm">Low / Out of Stock ({operations.lowStock.length})</h4>
+            <h4 className="text-foreground font-medium text-sm">Low / Out of Stock ({operations.lowStock.length})</h4>
             {onNavigate ? (
               <button type="button" onClick={() => onNavigate('inventory')} className="text-xs text-[#3B82F6] ml-auto">
                 Inventory
@@ -110,7 +110,7 @@ export const OperationsPanel: React.FC<Props> = ({ operations, formatCurrency, o
           {lowStock.length ? (
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-[#9CA3AF] text-left border-b border-[#374151]">
+                <tr className="text-muted-foreground text-left border-b border-border">
                   <th className="px-4 py-2">Product</th>
                   <th className="px-4 py-2 text-right">Stock</th>
                   <th className="px-4 py-2 text-right">Status</th>
@@ -118,12 +118,12 @@ export const OperationsPanel: React.FC<Props> = ({ operations, formatCurrency, o
               </thead>
               <tbody>
                 {lowStock.map((r) => (
-                  <tr key={r.id} className="border-b border-[#374151]/50 text-white">
+                  <tr key={r.id} className="border-b border-border/50 text-foreground">
                     <td className="px-4 py-2">{r.name}</td>
                     <td className="px-4 py-2 text-right tabular-nums">
                       {formatQty(r.stock)} / {formatQty(r.minStock)}
                     </td>
-                    <td className="px-4 py-2 text-right capitalize text-[#9CA3AF]">{r.status}</td>
+                    <td className="px-4 py-2 text-right capitalize text-muted-foreground">{r.status}</td>
                   </tr>
                 ))}
               </tbody>
@@ -133,10 +133,10 @@ export const OperationsPanel: React.FC<Props> = ({ operations, formatCurrency, o
           )}
         </div>
 
-        <div className="rounded-xl border border-[#374151] bg-[#1F2937] overflow-hidden">
-          <div className="px-4 py-3 border-b border-[#374151] flex items-center gap-2">
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
+          <div className="px-4 py-3 border-b border-border flex items-center gap-2">
             <Calendar className="w-4 h-4 text-blue-400" />
-            <h4 className="text-white font-medium text-sm">Rentals Due / Overdue</h4>
+            <h4 className="text-foreground font-medium text-sm">Rentals Due / Overdue</h4>
             {onNavigate ? (
               <button type="button" onClick={() => onNavigate('rentals')} className="text-xs text-[#3B82F6] ml-auto">
                 Rentals
@@ -147,8 +147,8 @@ export const OperationsPanel: React.FC<Props> = ({ operations, formatCurrency, o
             <ul className="divide-y divide-[#374151]">
               {operations.rentals.slice(0, 8).map((r) => (
                 <li key={r.id} className="px-4 py-2 flex justify-between text-sm">
-                  <span className="text-white">{r.bookingNo}</span>
-                  <span className="text-[#9CA3AF]">
+                  <span className="text-foreground">{r.bookingNo}</span>
+                  <span className="text-muted-foreground">
                     {r.status} · {formatCurrency(r.dueAmount)} · {r.returnDate}
                   </span>
                 </li>

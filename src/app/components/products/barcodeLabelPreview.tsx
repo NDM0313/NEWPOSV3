@@ -81,7 +81,7 @@ export function BarcodeLabelPreviewCard({
       {showCompany && companyName && (
         <p
           className={cn(
-            'font-bold uppercase text-gray-600',
+            'font-bold uppercase text-muted-foreground',
             compact ? 'text-[5px]' : large ? 'text-[10px]' : 'text-[8px]'
           )}
         >
@@ -89,7 +89,7 @@ export function BarcodeLabelPreviewCard({
         </p>
       )}
       {showBranch && branchName && (
-        <p className={cn('text-gray-500', compact ? 'text-[5px]' : large ? 'text-[10px]' : 'text-[8px]')}>
+        <p className={cn('text-muted-foreground', compact ? 'text-[5px]' : large ? 'text-[10px]' : 'text-[8px]')}>
           {branchName}
         </p>
       )}
@@ -99,7 +99,7 @@ export function BarcodeLabelPreviewCard({
         </p>
       )}
       {showVariation && job?.variationName && (
-        <p className={cn('text-gray-600', compact ? 'text-[5px]' : 'text-[9px]')}>{job.variationName}</p>
+        <p className={cn('text-muted-foreground', compact ? 'text-[5px]' : 'text-[9px]')}>{job.variationName}</p>
       )}
       <BarcodeBars compact={compact} large={large} />
       <p
@@ -111,7 +111,7 @@ export function BarcodeLabelPreviewCard({
         {code}
       </p>
       {showPacking && job?.packingSummary && (
-        <p className={cn('text-gray-600', compact ? 'text-[5px]' : large ? 'text-xs' : 'text-[9px]')}>
+        <p className={cn('text-muted-foreground', compact ? 'text-[5px]' : large ? 'text-xs' : 'text-[9px]')}>
           {job.packingSummary}
         </p>
       )}
@@ -151,7 +151,7 @@ export function A4SheetMiniPreview({
 
   return (
     <div className="space-y-2">
-      <p className={cn('text-gray-500 leading-snug', largeSheet ? 'text-xs' : 'text-[10px]')}>
+      <p className={cn('text-muted-foreground leading-snug', largeSheet ? 'text-xs' : 'text-[10px]')}>
         Printing {totalLabels} label{totalLabels === 1 ? '' : 's'} · up to {perPage} per A4 page ({cols}×{rows}{' '}
         grid) · {sheets} sheet{sheets === 1 ? '' : 's'}
       </p>

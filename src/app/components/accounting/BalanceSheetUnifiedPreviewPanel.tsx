@@ -88,7 +88,7 @@ export function BalanceSheetUnifiedPreviewPanel({
       <UnifiedLedgerEngineBanner mode={engineState.mode} />
 
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs text-gray-400">Preview basis:</span>
+        <span className="text-xs text-muted-foreground">Preview basis:</span>
         {PREVIEW_BASIS_OPTIONS.map((b) => (
           <button
             key={b}
@@ -96,7 +96,7 @@ export function BalanceSheetUnifiedPreviewPanel({
             className={`text-xs px-2 py-1 rounded border ${
               previewBasis === b
                 ? 'border-amber-500 text-amber-100 bg-amber-500/10'
-                : 'border-gray-700 text-gray-400'
+                : 'border-border text-muted-foreground'
             }`}
             onClick={() => onPreviewBasisChange(b)}
           >
@@ -110,13 +110,13 @@ export function BalanceSheetUnifiedPreviewPanel({
         detail={`${unifiedBasisBannerLabel(previewBasis)} — derived from get_unified_trial_balance. Legacy getBalanceSheet remains main.`}
       />
 
-      {loading ? <p className="text-sm text-gray-400">Loading unified preview…</p> : null}
+      {loading ? <p className="text-sm text-muted-foreground">Loading unified preview…</p> : null}
       {error ? <p className="text-sm text-red-400">{error}</p> : null}
 
       {diff && loadResult?.preview ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-          <div className="rounded-lg border border-gray-800 bg-gray-900/40 p-3 space-y-2">
-            <p className="text-xs text-gray-500 uppercase tracking-wide">Legacy (main)</p>
+          <div className="rounded-lg border border-border bg-card/40 p-3 space-y-2">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide">Legacy (main)</p>
             <p className="flex justify-between">
               <span>Total Assets</span>
               <span className="tabular-nums">{formatCurrency(diff.legacyTotalAssets)}</span>
@@ -130,8 +130,8 @@ export function BalanceSheetUnifiedPreviewPanel({
               <span className="tabular-nums">{formatCurrency(diff.legacyDifference)}</span>
             </p>
           </div>
-          <div className="rounded-lg border border-gray-800 bg-gray-900/40 p-3 space-y-2">
-            <p className="text-xs text-gray-500 uppercase tracking-wide">Unified preview</p>
+          <div className="rounded-lg border border-border bg-card/40 p-3 space-y-2">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide">Unified preview</p>
             <p className="flex justify-between">
               <span>Total Assets</span>
               <span className="tabular-nums">{formatCurrency(diff.previewTotalAssets)}</span>
@@ -163,7 +163,7 @@ export function BalanceSheetUnifiedPreviewPanel({
             <li>Equity Δ {formatCurrency(diff.equityDelta)}</li>
             <li>L+E Δ {formatCurrency(diff.liabilitiesAndEquityDelta)}</li>
           </ul>
-          <p className="mt-2 text-xs text-gray-400">NEEDS_FINANCE_GOLDEN_APPROVAL before any loader swap.</p>
+          <p className="mt-2 text-xs text-muted-foreground">NEEDS_FINANCE_GOLDEN_APPROVAL before any loader swap.</p>
         </div>
       ) : null}
     </div>

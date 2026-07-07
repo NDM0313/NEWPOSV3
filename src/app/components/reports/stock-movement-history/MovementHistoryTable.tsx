@@ -14,7 +14,7 @@ interface Props {
 export function MovementHistoryTable({ rows, emptyMessage, className, showVariationColumn }: Props) {
   if (!rows.length) {
     return (
-      <div className={cn('rounded-lg border border-gray-800 bg-gray-900/40 p-8 text-center text-gray-400', className)}>
+      <div className={cn('rounded-lg border border-border bg-card/40 p-8 text-center text-muted-foreground', className)}>
         {emptyMessage || 'No stock movements in the selected period.'}
       </div>
     );
@@ -24,9 +24,9 @@ export function MovementHistoryTable({ rows, emptyMessage, className, showVariat
   const fmtBalance = (n: number) => formatQty(n);
 
   return (
-    <div className={cn('overflow-x-auto rounded-lg border border-gray-800', className)}>
+    <div className={cn('overflow-x-auto rounded-lg border border-border', className)}>
       <table className="w-full text-sm">
-        <thead className="bg-gray-900/80 text-gray-400 uppercase text-xs">
+        <thead className="bg-card text-muted-foreground uppercase text-xs">
           <tr>
             <th className="px-3 py-2 text-left">Date</th>
             <th className="px-3 py-2 text-left">Branch</th>
@@ -44,22 +44,22 @@ export function MovementHistoryTable({ rows, emptyMessage, className, showVariat
           {rows.map((r) => (
             <tr
               key={r.id}
-              className={cn('border-t border-gray-800/80', movementRowColorClass(r.movementType, r.quantity))}
+              className={cn('border-t border-border/80', movementRowColorClass(r.movementType, r.quantity))}
             >
-              <td className="px-3 py-2 text-gray-300 whitespace-nowrap">
+              <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">
                 {new Date(r.date).toLocaleString()}
               </td>
-              <td className="px-3 py-2 text-gray-400">{r.branchName || '—'}</td>
+              <td className="px-3 py-2 text-muted-foreground">{r.branchName || '—'}</td>
               {showVariationColumn && (
                 <td className="px-3 py-2 text-purple-300">{r.variationLabel || '—'}</td>
               )}
               <td className="px-3 py-2 font-medium">{r.movementTypeLabel}</td>
-              <td className="px-3 py-2 text-gray-300">{r.reference || '—'}</td>
-              <td className="px-3 py-2 text-gray-400">{r.party || '—'}</td>
+              <td className="px-3 py-2 text-muted-foreground">{r.reference || '—'}</td>
+              <td className="px-3 py-2 text-muted-foreground">{r.party || '—'}</td>
               <td className="px-3 py-2 text-right text-emerald-400 tabular-nums">{fmtInOut(r.qtyIn)}</td>
               <td className="px-3 py-2 text-right text-red-400 tabular-nums">{fmtInOut(r.qtyOut)}</td>
-              <td className="px-3 py-2 text-right font-semibold text-white tabular-nums">{fmtBalance(r.runningBalance)}</td>
-              <td className="px-3 py-2 text-gray-500 max-w-[200px] truncate">{r.notes || '—'}</td>
+              <td className="px-3 py-2 text-right font-semibold text-foreground tabular-nums">{fmtBalance(r.runningBalance)}</td>
+              <td className="px-3 py-2 text-muted-foreground max-w-[200px] truncate">{r.notes || '—'}</td>
             </tr>
           ))}
         </tbody>

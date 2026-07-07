@@ -40,7 +40,27 @@ import { purchaseService } from '@/app/services/purchaseService';
 import { branchService, Branch } from '@/app/services/branchService';
 import { Pagination } from '@/app/components/ui/pagination';
 import { ListToolbar } from '@/app/components/ui/list-toolbar';
+import {
+  ErpPage,
+  ErpPageDescription,
+  ErpPageHeader,
+  ErpPageTitle,
+  ErpDataGridBody,
+  ErpDataGridCell,
+  ErpDataGridHeader,
+  ErpDataGridHeaderRow,
+  ErpDataGridRow,
+  ErpDataGridShell,
+  ErpTable,
+  ErpTableBody,
+  ErpTableCell,
+  ErpTableHead,
+  ErpTableHeaderCell,
+  ErpTableRow,
+  ErpTableScroll,
+} from '@/app/components/ui/erp-surfaces';
 import { formatDateAndTime } from '@/app/components/ui/utils';
+import { formatQty } from '@/app/utils/quantity';
 import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDialog';
 import { UnifiedLedgerView } from '@/app/components/shared/UnifiedLedgerView';
 import { ViewPurchaseDetailsDrawer } from './ViewPurchaseDetailsDrawer';
@@ -810,6 +830,13 @@ export const PurchasesPage = () => {
     addedBy: 'text-left',
   };
 
+  const gridCellAlign = (key: string): 'left' | 'center' | 'right' => {
+    const a = alignments[key] || 'text-left';
+    if (a === 'text-right') return 'right';
+    if (a === 'text-center') return 'center';
+    return 'left';
+  };
+
   // Column order state - defines order of columns (same as Sale/Products; reorder in Columns dropdown)
   const [columnOrder, setColumnOrder] = useState([
     'actions',
@@ -1022,7 +1049,7 @@ export const PurchasesPage = () => {
 
   const getPaymentStatusBadge = (status: PaymentStatus) => {
     const config: Record<string, { bg: string; text: string; border: string }> = {
-      paid: { bg: 'bg-green-500/20', text: 'text-green-400', border: 'border-green-500/30' },
+      paid: { bg: 'bg-green-500/20', text: 'text-[var(--erp-money-positive)]', border: 'border-green-500/30' },
       partial: { bg: 'bg-yellow-500/20', text: 'text-yellow-400', border: 'border-yellow-500/30' },
       unpaid: { bg: 'bg-red-500/20', text: 'text-red-400', border: 'border-red-500/30' },
     };
@@ -1042,9 +1069,9 @@ export const PurchasesPage = () => {
       case 'date': {
         const dateTime = formatDateAndTime(purchase.date);
         return (
-          <div className="flex flex-col text-sm text-gray-400">
+          <div className="flex flex-col text-sm text-muted-foreground">
             <span>{dateTime.date}</span>
-            <span className="text-xs text-gray-500">{dateTime.time}</span>
+            <span className="text-xs text-muted-foreground/80">{dateTime.time}</span>
           </div>
         );
       }
@@ -1069,13 +1096,13 @@ export const PurchasesPage = () => {
           </div>
         );
       case 'reference':
-        return <div className="text-sm text-gray-400">{purchase.reference || '-'}</div>;
+        return <div className="text-sm text-muted-foreground">{purchase.reference || '-'}</div>;
       case 'supplier':
         return (
           <div className="min-w-0">
-            <div className="text-sm font-medium text-white truncate leading-[1.3]">{purchase.supplier}</div>
-            <div className="flex items-center gap-1 text-xs text-gray-500 leading-[1.3] mt-0.5">
-              <Phone size={10} className="text-gray-600" />
+            <div className="text-sm font-medium text-foreground truncate leading-[1.3]">{purchase.supplier}</div>
+            <div className="flex items-center gap-1 text-xs text-muted-foreground leading-[1.3] mt-0.5">
+              <Phone size={10} className="text-muted-foreground/70" />
               <span>{purchase.supplierContact}</span>
             </div>
           </div>
@@ -1103,8 +1130,8 @@ export const PurchasesPage = () => {
         }
         
         return (
-          <div className="flex items-center gap-1.5 text-xs text-gray-400">
-            <MapPin size={12} className="text-gray-600" />
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <MapPin size={12} className="text-muted-foreground/70" />
             <span className="truncate">{locationText || '—'}</span>
           </div>
         );
@@ -1133,7 +1160,7 @@ export const PurchasesPage = () => {
               </PopoverTrigger>
               <PopoverContent
                 align="start"
-                className="w-auto p-0 border-gray-700 bg-gray-900 text-white"
+                className="w-auto p-0 border-border bg-popover text-popover-foreground"
                 onClick={(e) => e.stopPropagation()}
               >
                 <PurchaseLifecycleMenuBlock
@@ -1202,25 +1229,25 @@ export const PurchasesPage = () => {
       }
       case 'items':
         return (
-          <div className="flex items-center justify-center gap-1 text-gray-300">
-            <Package size={12} className="text-gray-500" />
+          <div className="flex items-center justify-center gap-1 text-foreground">
+            <Package size={12} className="text-muted-foreground" />
             <span className="text-sm font-medium">{purchase.items}</span>
           </div>
         );
       case 'grandTotal':
         return (
-          <div className="text-sm font-semibold text-white tabular-nums">{formatCurrency(purchase.grandTotal)}</div>
+          <div className="text-sm font-semibold text-foreground tabular-nums">{formatCurrency(purchase.grandTotal)}</div>
         );
       case 'paymentDue': {
         if (isPurchaseNonPostedCommercial(purchase.status)) {
-          return <span className="text-sm text-gray-500 tabular-nums">—</span>;
+          return <span className="text-sm text-muted-foreground tabular-nums">—</span>;
         }
         const paymentClosed = isPaymentClosedForPurchase(purchase);
         const canPay = canAddPaymentToPurchase(purchase, purchase.paymentDue ?? 0);
         if (paymentClosed) {
           return (
             <span
-              className="text-sm text-gray-500 tabular-nums cursor-default"
+              className="text-sm text-muted-foreground tabular-nums cursor-default"
               title={getEffectivePurchaseStatus(purchase) === 'cancelled' ? 'Purchase order is cancelled' : 'Closed'}
             >
               Closed
@@ -1238,13 +1265,13 @@ export const PurchasesPage = () => {
           purchase.paymentDue > 0 ? (
             <div className="text-sm font-semibold text-red-400 tabular-nums">{formatCurrency(purchase.paymentDue)}</div>
           ) : (
-            <div className="text-sm text-gray-600">-</div>
+            <div className="text-sm text-muted-foreground">-</div>
           )
         );
       }
       case 'paymentStatus': {
         if (isPurchaseNonPostedCommercial(purchase.status)) {
-          return <span className="text-xs text-gray-500">—</span>;
+          return <span className="text-xs text-muted-foreground">—</span>;
         }
         const paymentClosed = isPaymentClosedForPurchase(purchase);
         const isCancelled = getEffectivePurchaseStatus(purchase) === 'cancelled';
@@ -1271,29 +1298,28 @@ export const PurchasesPage = () => {
         );
       }
       case 'addedBy':
-        return <div className="text-xs text-gray-400">{purchase.addedBy}</div>;
+        return <div className="text-xs text-muted-foreground">{purchase.addedBy}</div>;
       default:
         return null;
     }
     } catch (_) {
-      return <span className="text-gray-500 text-xs">—</span>;
+      return <span className="text-muted-foreground text-xs">—</span>;
     }
   };
 
   return (
-    <div className="h-screen flex flex-col bg-[#0B0F19]">
-      {/* Page Header - Fixed */}
-      <div className="shrink-0 px-6 py-4 border-b border-gray-800">
-        <div className="flex items-center justify-between">
+    <ErpPage className="h-screen">
+      <ErpPageHeader className="flex-col items-stretch gap-0">
+        <div className="flex items-center justify-between w-full">
           <div>
-            <h1 className="text-2xl font-bold text-white">Purchases</h1>
-            <p className="text-sm text-gray-400 mt-0.5">Manage purchase orders and supplier transactions</p>
+            <ErpPageTitle>Purchases</ErpPageTitle>
+            <ErpPageDescription>Manage purchase orders and supplier transactions</ErpPageDescription>
           </div>
           <div className="flex gap-2">
             {activeMainTab === 'purchases' && (
-              <Button 
+              <Button
                 onClick={() => openDrawer('addPurchase')}
-                className="bg-orange-600 hover:bg-orange-500 text-white h-10 gap-2"
+                className="bg-orange-600 hover:bg-orange-500 text-foreground h-10 gap-2"
               >
                 <Plus size={16} />
                 Add Purchase
@@ -1301,14 +1327,13 @@ export const PurchasesPage = () => {
             )}
           </div>
         </div>
-        {/* Main tabs: Purchases | Returns */}
-        <div className="flex items-center gap-1 mt-4 p-1 bg-gray-950 border border-gray-800 rounded-lg inline-flex">
+        <div className="flex items-center gap-1 mt-4 p-1 bg-muted border border-border rounded-lg inline-flex w-full sm:w-auto">
           <button
             type="button"
             onClick={() => setActiveMainTab('purchases')}
             className={cn(
               'px-4 py-2 rounded-md text-sm font-medium transition-all',
-              activeMainTab === 'purchases' ? 'bg-orange-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'
+              activeMainTab === 'purchases' ? 'bg-orange-600 text-white' : 'text-muted-foreground hover:text-foreground hover:bg-accent'
             )}
           >
             Purchases
@@ -1318,91 +1343,93 @@ export const PurchasesPage = () => {
             onClick={() => setActiveMainTab('returns')}
             className={cn(
               'px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2',
-              activeMainTab === 'returns' ? 'bg-orange-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'
+              activeMainTab === 'returns' ? 'bg-orange-600 text-white' : 'text-muted-foreground hover:text-foreground hover:bg-accent'
             )}
           >
             <RotateCcw size={14} />
             Returns
           </button>
         </div>
-      </div>
+      </ErpPageHeader>
 
       {/* Returns tab content */}
       {activeMainTab === 'returns' && (
         <div className="flex-1 flex flex-col overflow-hidden px-6 py-4">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-white">Purchase Returns</h2>
+            <h2 className="text-lg font-semibold text-foreground">Purchase Returns</h2>
             <Button
               onClick={() => setStandalonePurchaseReturnFormOpen(true)}
-              className="bg-orange-600 hover:bg-orange-500 text-white h-10 gap-2"
+              className="bg-orange-600 hover:bg-orange-500 text-foreground h-10 gap-2"
             >
               <Plus size={16} />
               Create new return
             </Button>
           </div>
-          <div className="flex-1 overflow-x-auto overflow-y-auto rounded-xl border border-gray-800 bg-gray-900/50">
+          <div className="flex-1 overflow-x-auto overflow-y-auto">
+            <ErpDataGridShell minWidth="600px" className="h-full">
             {loadingPurchaseReturns ? (
-              <div className="py-12 text-center text-gray-400">Loading...</div>
+              <div className="py-12 text-center text-muted-foreground">Loading...</div>
             ) : purchaseReturnsList.length === 0 ? (
-              <div className="py-12 text-center text-gray-500">No purchase returns. Click &quot;Create new return&quot; to add one.</div>
+              <div className="py-12 text-center text-muted-foreground">No purchase returns. Click &quot;Create new return&quot; to add one.</div>
             ) : (
-              <table className="w-full min-w-[600px]">
-                <thead className="bg-gray-900/50 border-b border-gray-800 sticky top-0">
+              <ErpTableScroll>
+              <ErpTable className="min-w-[600px]">
+                <ErpTableHead className="sticky top-0">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs text-gray-400 uppercase font-medium">Date</th>
-                    <th className="px-4 py-3 text-left text-xs text-gray-400 uppercase font-medium">Return #</th>
-                    <th className="px-4 py-3 text-left text-xs text-gray-400 uppercase font-medium">Supplier</th>
-                    <th className="px-4 py-3 text-left text-xs text-gray-400 uppercase font-medium">Invoice</th>
-                    <th className="px-4 py-3 text-center text-xs text-gray-400 uppercase font-medium">Status</th>
-                    <th className="px-4 py-3 text-right text-xs text-gray-400 uppercase font-medium">Total</th>
-                    <th className="px-4 py-3 text-right text-xs text-gray-400 uppercase font-medium">Actions</th>
+                    <ErpTableHeaderCell>Date</ErpTableHeaderCell>
+                    <ErpTableHeaderCell>Return #</ErpTableHeaderCell>
+                    <ErpTableHeaderCell>Supplier</ErpTableHeaderCell>
+                    <ErpTableHeaderCell>Invoice</ErpTableHeaderCell>
+                    <ErpTableHeaderCell align="center">Status</ErpTableHeaderCell>
+                    <ErpTableHeaderCell align="right">Total</ErpTableHeaderCell>
+                    <ErpTableHeaderCell align="right">Actions</ErpTableHeaderCell>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-800">
+                </ErpTableHead>
+                <ErpTableBody>
                   {purchaseReturnsList.map((ret: any) => (
-                    <tr key={ret.id} className="hover:bg-gray-800/30">
-                      <td className="px-4 py-3 text-sm text-gray-300">{formatDateAndTime(ret.return_date).date}</td>
-                      <td className="px-4 py-3 text-sm font-mono text-purple-400">{ret.return_no || `PRET-${ret.id?.slice(0, 8)}`}</td>
-                      <td className="px-4 py-3 text-sm text-white">{ret.supplier_name}</td>
-                      <td className="px-4 py-3 text-sm text-gray-400">{ret.original_purchase_id ? ret.original_purchase_id.slice(0, 8) : '—'}</td>
-                      <td className="px-4 py-3 text-center">
+                    <ErpTableRow key={ret.id}>
+                      <ErpTableCell>{formatDateAndTime(ret.return_date).date}</ErpTableCell>
+                      <ErpTableCell className="font-mono text-purple-400">{ret.return_no || `PRET-${ret.id?.slice(0, 8)}`}</ErpTableCell>
+                      <ErpTableCell>{ret.supplier_name}</ErpTableCell>
+                      <ErpTableCell className="text-muted-foreground">{ret.original_purchase_id ? ret.original_purchase_id.slice(0, 8) : '—'}</ErpTableCell>
+                      <ErpTableCell align="center">
                         <Badge className={
                           String(ret?.status).toLowerCase() === 'void'
-                            ? 'bg-gray-500/20 text-gray-400 border-gray-500/30'
+                            ? 'bg-gray-500/20 text-muted-foreground border-gray-500/30'
                             : ret.status === 'final'
-                              ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                              ? 'bg-green-500/20 text-[var(--erp-money-positive)] border-green-500/30'
                               : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
                         }>
                           {String(ret?.status).toLowerCase() === 'void' ? 'Voided' : ret.status === 'final' ? 'Final' : 'Draft'}
                         </Badge>
-                      </td>
-                      <td className="px-4 py-3 text-right text-sm font-semibold text-red-400">{formatCurrency(ret.total ?? 0)}</td>
-                      <td className="px-4 py-3 text-right">
+                      </ErpTableCell>
+                      <ErpTableCell align="right" className="font-semibold text-destructive">{formatCurrency(ret.total ?? 0)}</ErpTableCell>
+                      <ErpTableCell align="right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="sm" className="h-8 w-8 p-0"><MoreVertical size={14} /></Button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700 text-white w-56">
-                            <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer" onClick={() => { setSelectedPurchaseReturn(ret); setViewPurchaseReturnDetailsOpen(true); }}>
+                          <DropdownMenuContent align="end" className="bg-popover border-border text-popover-foreground w-56">
+                            <DropdownMenuItem className="hover:bg-accent cursor-pointer" onClick={() => { setSelectedPurchaseReturn(ret); setViewPurchaseReturnDetailsOpen(true); }}>
                               <Eye size={14} className="mr-2 text-blue-400" />
                               View Return Details
                             </DropdownMenuItem>
                             {ret.original_purchase_id && (
                               <DropdownMenuItem
-                                className="hover:bg-gray-800 cursor-pointer"
+                                className="hover:bg-accent cursor-pointer"
                                 onClick={() => {
                                   setOriginalPurchaseIdToView(ret.original_purchase_id);
                                   setViewDetailsOpen(true);
                                 }}
                               >
-                                <FileText size={14} className="mr-2 text-green-400" />
+                                <FileText size={14} className="mr-2 text-[var(--erp-money-positive)]" />
                                 View Original Purchase
                               </DropdownMenuItem>
                             )}
                             {String(ret?.status).toLowerCase() !== 'final' && String(ret?.status).toLowerCase() !== 'void' && (
                               <>
                                 <DropdownMenuSeparator />
-                                <DropdownMenuItem className="hover:bg-gray-800 text-red-400 cursor-pointer" onClick={() => { setPurchaseReturnToDelete(ret); setDeletePurchaseReturnDialogOpen(true); }}>
+                                <DropdownMenuItem className="hover:bg-accent text-red-400 cursor-pointer" onClick={() => { setPurchaseReturnToDelete(ret); setDeletePurchaseReturnDialogOpen(true); }}>
                                   <Trash2 size={14} className="mr-2" /> Delete Return
                                 </DropdownMenuItem>
                               </>
@@ -1411,7 +1438,7 @@ export const PurchasesPage = () => {
                               <>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
-                                  className="hover:bg-gray-800 text-amber-400 cursor-pointer"
+                                  className="hover:bg-accent text-amber-400 cursor-pointer"
                                   onClick={() => { setReturnToVoidPurchase(ret); setVoidPurchaseReturnDialogOpen(true); }}
                                 >
                                   <RotateCcw size={14} className="mr-2" />
@@ -1423,7 +1450,7 @@ export const PurchasesPage = () => {
                               <>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
-                                  className="hover:bg-gray-800 text-cyan-400 cursor-pointer"
+                                  className="hover:bg-accent text-cyan-400 cursor-pointer"
                                   onClick={() => {
                                     setReturnToRestoreDraft(ret);
                                     setRestorePurchaseReturnDialogOpen(true);
@@ -1438,7 +1465,7 @@ export const PurchasesPage = () => {
                               <>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
-                                  className="hover:bg-gray-800 text-emerald-400 cursor-pointer"
+                                  className="hover:bg-accent text-emerald-400 cursor-pointer"
                                   disabled={finalizeDraftReturnBusyId === ret.id}
                                   onClick={() => finalizeDraftPurchaseReturn(ret)}
                                 >
@@ -1449,7 +1476,7 @@ export const PurchasesPage = () => {
                             )}
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
-                              className="hover:bg-gray-800 cursor-pointer"
+                              className="hover:bg-accent cursor-pointer"
                               onClick={async () => {
                                 if (!companyId) return;
                                 try {
@@ -1465,7 +1492,7 @@ export const PurchasesPage = () => {
                               Print Return
                             </DropdownMenuItem>
                             <DropdownMenuItem
-                              className="hover:bg-gray-800 cursor-pointer"
+                              className="hover:bg-accent cursor-pointer"
                               onClick={() => toast.info('Export return functionality coming soon')}
                             >
                               <Download size={14} className="mr-2 text-blue-400" />
@@ -1473,12 +1500,14 @@ export const PurchasesPage = () => {
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                      </td>
-                    </tr>
+                      </ErpTableCell>
+                    </ErpTableRow>
                   ))}
-                </tbody>
-              </table>
+                </ErpTableBody>
+              </ErpTable>
+              </ErpTableScroll>
             )}
+            </ErpDataGridShell>
           </div>
         </div>
       )}
@@ -1487,15 +1516,15 @@ export const PurchasesPage = () => {
       {activeMainTab === 'purchases' && (
         <>
       {/* Summary Cards - Fixed */}
-      <div className="shrink-0 px-6 py-4 bg-[#0F1419] border-b border-gray-800">
+      <div className="shrink-0 px-6 py-4 border-b border-border">
         <div className="grid grid-cols-4 gap-4">
           {/* Total Purchase */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 min-w-0">
+          <div className="bg-card border border-border rounded-xl p-4 min-w-0">
             <div className="flex items-start justify-between mb-3">
               <div className="min-w-0">
-                <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Purchase</p>
-                <AdaptiveCurrencyValue value={summary.totalPurchase} className="text-2xl font-bold text-white mt-1" as="p" />
-                <p className="text-xs text-gray-500 mt-1">This month</p>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Total Purchase</p>
+                <AdaptiveCurrencyValue value={summary.totalPurchase} className="text-2xl font-bold text-foreground mt-1" as="p" />
+                <p className="text-xs text-muted-foreground mt-1">This month</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-orange-500/10 flex items-center justify-center">
                 <ShoppingBag size={24} className="text-orange-500" />
@@ -1504,13 +1533,13 @@ export const PurchasesPage = () => {
           </div>
 
           {/* Amount Due */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 min-w-0">
+          <div className="bg-card border border-border rounded-xl p-4 min-w-0">
             <div className="flex items-start justify-between mb-3">
               <div className="min-w-0">
-                <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Amount Due</p>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Amount Due</p>
                 <AdaptiveCurrencyValue value={summary.totalDue} className="text-2xl font-bold text-red-400 mt-1" as="p" />
-                <p className="text-xs text-gray-500 mt-1">Pending payments</p>
-                <p className="text-[10px] text-gray-500 mt-2 leading-snug">
+                <p className="text-xs text-muted-foreground mt-1">Pending payments</p>
+                <p className="text-[10px] text-muted-foreground mt-2 leading-snug">
                   Listed POs: supplier document due. Not Contacts mixed payables or GL AP 2000 alone — use supplier-only operational vs AP 2000 on Contacts reconciliation.
                 </p>
               </div>
@@ -1521,12 +1550,12 @@ export const PurchasesPage = () => {
           </div>
 
           {/* Returns */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 min-w-0">
+          <div className="bg-card border border-border rounded-xl p-4 min-w-0">
             <div className="flex items-start justify-between mb-3">
               <div className="min-w-0">
-                <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Returns</p>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Returns</p>
                 <AdaptiveCurrencyValue value={summary.returns} className="text-2xl font-bold text-yellow-400 mt-1" as="p" />
-                <p className="text-xs text-gray-500 mt-1">2 items returned</p>
+                <p className="text-xs text-muted-foreground mt-1">2 items returned</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-yellow-500/10 flex items-center justify-center">
                 <Package size={24} className="text-yellow-500" />
@@ -1535,12 +1564,12 @@ export const PurchasesPage = () => {
           </div>
 
           {/* Purchase Orders */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+          <div className="bg-card border border-border rounded-xl p-4">
             <div className="flex items-start justify-between mb-3">
               <div>
-                <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Purchase Orders</p>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Purchase Orders</p>
                 <p className="text-2xl font-bold text-blue-400 mt-1">{summary.orderCount}</p>
-                <p className="text-xs text-gray-500 mt-1">In list</p>
+                <p className="text-xs text-muted-foreground mt-1">In list</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center">
                 <FileText size={24} className="text-blue-500" />
@@ -1551,7 +1580,7 @@ export const PurchasesPage = () => {
       </div>
 
       {/* Status tabs: All | Draft | Ordered | Received | Final */}
-      <div className="shrink-0 px-6 pt-2 pb-1 flex items-center gap-1 border-b border-gray-800/50">
+      <div className="shrink-0 px-6 pt-2 pb-1 flex items-center gap-1 border-b border-border/50">
         {[
           { value: 'all' as const, label: 'All' },
           { value: 'draft' as const, label: 'Draft' },
@@ -1565,7 +1594,7 @@ export const PurchasesPage = () => {
             onClick={() => setStatusFilter(tab.value)}
             className={cn(
               'px-3 py-2 rounded-t-md text-sm font-medium transition-all',
-              statusFilter === tab.value ? 'bg-gray-800 text-white border-t border-x border-gray-700 -mb-px' : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
+              statusFilter === tab.value ? 'bg-muted text-foreground border-t border-x border-border -mb-px' : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
             )}
           >
             {tab.label}
@@ -1604,9 +1633,9 @@ export const PurchasesPage = () => {
           onToggle: () => setFilterOpen(!filterOpen),
           activeCount: activeFilterCount,
           renderPanel: () => (
-            <div className="absolute right-0 top-12 w-80 bg-gray-900 border border-gray-700 rounded-lg shadow-2xl p-4 z-50">
+            <div className="absolute right-0 top-12 w-80 bg-card border border-border rounded-lg shadow-2xl p-4 z-50">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-semibold text-white">Advanced Filters</h3>
+                <h3 className="text-sm font-semibold text-foreground">Advanced Filters</h3>
                 <button
                   onClick={clearAllFilters}
                   className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
@@ -1618,7 +1647,7 @@ export const PurchasesPage = () => {
               <div className="space-y-4 max-h-[500px] overflow-y-auto">
                 {/* Date Filter */}
                 <div>
-                  <label className="text-xs text-gray-400 mb-2 block font-medium">Date Range</label>
+                  <label className="text-xs text-muted-foreground mb-2 block font-medium">Date Range</label>
                   <div className="space-y-2">
                     {[
                       { value: 'all', label: 'All Dates' },
@@ -1634,9 +1663,9 @@ export const PurchasesPage = () => {
                           name="date"
                           checked={dateFilter === opt.value}
                           onChange={() => setDateFilter(opt.value)}
-                          className="w-4 h-4 bg-gray-950 border-gray-700"
+                          className="w-4 h-4 bg-input-background border-border"
                         />
-                        <span className="text-sm text-gray-300">{opt.label}</span>
+                        <span className="text-sm text-muted-foreground">{opt.label}</span>
                       </label>
                     ))}
                   </div>
@@ -1644,7 +1673,7 @@ export const PurchasesPage = () => {
 
                 {/* Supplier Filter */}
                 <div>
-                  <label className="text-xs text-gray-400 mb-2 block font-medium">Supplier</label>
+                  <label className="text-xs text-muted-foreground mb-2 block font-medium">Supplier</label>
                   <div className="space-y-2">
                     {[
                       { value: 'all', label: 'All Suppliers' },
@@ -1659,9 +1688,9 @@ export const PurchasesPage = () => {
                           name="supplier"
                           checked={supplierFilter === opt.value}
                           onChange={() => setSupplierFilter(opt.value)}
-                          className="w-4 h-4 bg-gray-950 border-gray-700"
+                          className="w-4 h-4 bg-input-background border-border"
                         />
-                        <span className="text-sm text-gray-300">{opt.label}</span>
+                        <span className="text-sm text-muted-foreground">{opt.label}</span>
                       </label>
                     ))}
                   </div>
@@ -1669,7 +1698,7 @@ export const PurchasesPage = () => {
 
                 {/* Purchase Status Filter */}
                 <div>
-                  <label className="text-xs text-gray-400 mb-2 block font-medium">Purchase Status</label>
+                  <label className="text-xs text-muted-foreground mb-2 block font-medium">Purchase Status</label>
                   <div className="space-y-2">
                     {[
                       { value: 'all', label: 'All Status' },
@@ -1685,9 +1714,9 @@ export const PurchasesPage = () => {
                           name="status"
                           checked={statusFilter === opt.value}
                           onChange={() => setStatusFilter(opt.value as any)}
-                          className="w-4 h-4 bg-gray-950 border-gray-700"
+                          className="w-4 h-4 bg-input-background border-border"
                         />
-                        <span className="text-sm text-gray-300">{opt.label}</span>
+                        <span className="text-sm text-muted-foreground">{opt.label}</span>
                       </label>
                     ))}
                   </div>
@@ -1695,7 +1724,7 @@ export const PurchasesPage = () => {
 
                 {/* Payment Status Filter */}
                 <div>
-                  <label className="text-xs text-gray-400 mb-2 block font-medium">Payment Status</label>
+                  <label className="text-xs text-muted-foreground mb-2 block font-medium">Payment Status</label>
                   <div className="space-y-2">
                     {[
                       { value: 'all', label: 'All Status' },
@@ -1709,9 +1738,9 @@ export const PurchasesPage = () => {
                           name="paymentStatus"
                           checked={paymentStatusFilter === opt.value}
                           onChange={() => setPaymentStatusFilter(opt.value as any)}
-                          className="w-4 h-4 bg-gray-950 border-gray-700"
+                          className="w-4 h-4 bg-input-background border-border"
                         />
-                        <span className="text-sm text-gray-300">{opt.label}</span>
+                        <span className="text-sm text-muted-foreground">{opt.label}</span>
                       </label>
                     ))}
                   </div>
@@ -1719,7 +1748,7 @@ export const PurchasesPage = () => {
 
                 {/* Branch Filter */}
                 <div>
-                  <label className="text-xs text-gray-400 mb-2 block font-medium">Branch</label>
+                  <label className="text-xs text-muted-foreground mb-2 block font-medium">Branch</label>
                   <div className="space-y-2">
                     {[
                       { value: 'all', label: 'All Branches' },
@@ -1733,9 +1762,9 @@ export const PurchasesPage = () => {
                           name="branch"
                           checked={branchFilter === opt.value}
                           onChange={() => setBranchFilter(opt.value)}
-                          className="w-4 h-4 bg-gray-950 border-gray-700"
+                          className="w-4 h-4 bg-input-background border-border"
                         />
-                        <span className="text-sm text-gray-300">{opt.label}</span>
+                        <span className="text-sm text-muted-foreground">{opt.label}</span>
                       </label>
                     ))}
                   </div>
@@ -1777,84 +1806,79 @@ export const PurchasesPage = () => {
 
       {/* Purchases Table - Scrollable */}
       <div className="flex-1 overflow-auto px-6 py-4">
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-          <div className="overflow-x-auto">
-            <div className="min-w-[1400px]">
-              {/* Table Header - full-width background (w-max so it spans full table width when scrolling) */}
-              <div className="sticky top-0 z-10 min-w-[1400px] w-max bg-gray-900 border-b border-gray-800">
-                <div className="grid gap-3 px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider"
+        <ErpDataGridShell minWidth="1400px">
+          <ErpDataGridHeader minWidth="1400px">
+            <ErpDataGridHeaderRow style={{ gridTemplateColumns: gridTemplateColumns }}>
+              {columnOrder.map(key => {
+                if (!visibleColumns[key as keyof typeof visibleColumns]) return null;
+                if (key === 'actions') {
+                  return <div key="actions" className="text-center">Actions</div>;
+                }
+                const isSortable = columnLabels[key] != null;
+                const isActive = sortKey === key;
+                return (
+                  <div
+                    key={key}
+                    className={cn(
+                      alignments[key] || 'text-left',
+                      isSortable && 'cursor-pointer select-none hover:text-foreground',
+                      isSortable && 'flex items-center gap-0.5',
+                      alignments[key] === 'text-right' && 'justify-end',
+                      alignments[key] === 'text-center' && 'justify-center',
+                      alignments[key] === 'text-left' && 'justify-start'
+                    )}
+                    onClick={() => isSortable && handleSort(key as PurchaseSortKey)}
+                  >
+                    {columnLabels[key]}
+                    {isSortable && isActive && (sortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}
+                  </div>
+                );
+              })}
+            </ErpDataGridHeaderRow>
+          </ErpDataGridHeader>
+
+          <ErpDataGridBody className="min-w-[1400px]">
+            {paginatedPurchases.length === 0 ? (
+              <div className="py-12 text-center">
+                <ShoppingBag size={48} className="mx-auto text-muted-foreground mb-3" />
+                <p className="text-muted-foreground text-sm">No purchases found</p>
+                <p className="text-muted-foreground/70 text-xs mt-1">Try adjusting your search or filters</p>
+              </div>
+            ) : (
+              paginatedPurchases.map((purchase) => (
+                <ErpDataGridRow
+                  key={purchase.id}
+                  className="h-16 min-w-[1400px]"
                   style={{ gridTemplateColumns: gridTemplateColumns }}
+                  onMouseEnter={() => setHoveredRow(purchase.id)}
+                  onMouseLeave={() => setHoveredRow(null)}
                 >
                   {columnOrder.map(key => {
                     if (!visibleColumns[key as keyof typeof visibleColumns]) return null;
                     if (key === 'actions') {
-                      return <div key="actions" className="text-center">Actions</div>;
-                    }
-                    const isSortable = columnLabels[key] != null;
-                    const isActive = sortKey === key;
-                    return (
-                      <div
-                        key={key}
-                        className={cn(
-                          alignments[key] || 'text-left',
-                          isSortable && 'cursor-pointer select-none hover:text-gray-300',
-                          isSortable && 'flex items-center gap-0.5',
-                          alignments[key] === 'text-right' && 'justify-end',
-                          alignments[key] === 'text-center' && 'justify-center',
-                          alignments[key] === 'text-left' && 'justify-start'
-                        )}
-                        onClick={() => isSortable && handleSort(key as PurchaseSortKey)}
-                      >
-                        {columnLabels[key]}
-                        {isSortable && isActive && (sortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Table Body - w-max so row lines span full table width (no short lines on right) */}
-              <div className="min-w-[1400px] w-max">
-                {paginatedPurchases.length === 0 ? (
-                  <div className="py-12 text-center">
-                    <ShoppingBag size={48} className="mx-auto text-gray-600 mb-3" />
-                    <p className="text-gray-400 text-sm">No purchases found</p>
-                    <p className="text-gray-600 text-xs mt-1">Try adjusting your search or filters</p>
-                  </div>
-                ) : (
-                  paginatedPurchases.map((purchase) => (
-                    <div
-                      key={purchase.id}
-                      onMouseEnter={() => setHoveredRow(purchase.id)}
-                      onMouseLeave={() => setHoveredRow(null)}
-                      className="grid gap-3 px-4 h-16 min-w-[1400px] w-max hover:bg-gray-800/30 transition-colors items-center border-b border-gray-800 last:border-b-0"
-                      style={{ gridTemplateColumns: gridTemplateColumns }}
-                    >
-                      {columnOrder.map(key => {
-                        if (!visibleColumns[key as keyof typeof visibleColumns]) return null;
-                        if (key === 'actions') {
-                          return (
-                            <div key="actions" className="flex items-center justify-center gap-1">
-                              <DropdownMenu>
+                      return (
+                        <ErpDataGridCell key="actions" align="center">
+                          <div className="flex items-center justify-center gap-1">
+                            <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <button 
                               className={cn(
-                                "w-8 h-8 rounded-lg bg-gray-800/50 hover:bg-gray-700 transition-all flex items-center justify-center text-gray-400 hover:text-white",
+                                "w-8 h-8 rounded-lg bg-muted/50 hover:bg-accent transition-all flex items-center justify-center text-muted-foreground hover:text-foreground",
                                 hoveredRow === purchase.id ? "opacity-100" : "opacity-0"
                               )}
                             >
                               <MoreVertical size={16} />
                             </button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700 text-white w-52">
+                          <DropdownMenuContent align="end" className="bg-popover border-border text-popover-foreground w-52">
                             <DropdownMenuItem 
                               onClick={() => handleViewDetails(purchase)}
-                              className="hover:bg-gray-800 cursor-pointer"
+                              className="hover:bg-accent cursor-pointer"
                             >
                               <Eye size={14} className="mr-2 text-blue-400" />
                               View Details
                             </DropdownMenuItem>
-                            <DropdownMenuSeparator className="bg-gray-700" />
+                            <DropdownMenuSeparator className="bg-muted" />
                             <div className="px-0 py-1">
                               <PurchaseLifecycleMenuBlock
                                 variant="menu"
@@ -1862,23 +1886,23 @@ export const PurchasesPage = () => {
                                 onPick={(a) => void runPurchaseLifecycleFromUi(purchase, a)}
                               />
                             </div>
-                            <DropdownMenuSeparator className="bg-gray-700" />
+                            <DropdownMenuSeparator className="bg-muted" />
                             {getEffectivePurchaseStatus(purchase) !== 'cancelled' && (
                             <DropdownMenuItem 
                               onClick={() => handleEdit(purchase)}
-                              className="hover:bg-gray-800 cursor-pointer"
+                              className="hover:bg-accent cursor-pointer"
                             >
-                              <Edit size={14} className="mr-2 text-green-400" />
+                              <Edit size={14} className="mr-2 text-[var(--erp-money-positive)]" />
                               Edit Purchase
                             </DropdownMenuItem>
                             )}
-                            <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer" onClick={() => handlePrintPO(purchase)}>
+                            <DropdownMenuItem className="hover:bg-accent cursor-pointer" onClick={() => handlePrintPO(purchase)}>
                               <FileText size={14} className="mr-2 text-purple-400" />
                               Print PO
                             </DropdownMenuItem>
                             {canPrintPurchaseLabels(purchase) && (
                               <DropdownMenuItem
-                                className="hover:bg-gray-800 cursor-pointer"
+                                className="hover:bg-accent cursor-pointer"
                                 disabled={labelLoading}
                                 onClick={() => void openPurchaseLabels(purchase.uuid)}
                               >
@@ -1890,11 +1914,11 @@ export const PurchasesPage = () => {
                                 Print barcode labels
                               </DropdownMenuItem>
                             )}
-                            <DropdownMenuSeparator className="bg-gray-700" />
+                            <DropdownMenuSeparator className="bg-muted" />
                             
                             {/* 🎯 MAKE PAYMENT - When payment allowed by effective status */}
                             {canAddPaymentToPurchase(purchase, purchase.paymentDue ?? 0) && (
-                              <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer" onClick={() => handleMakePayment(purchase)}>
+                              <DropdownMenuItem className="hover:bg-accent cursor-pointer" onClick={() => handleMakePayment(purchase)}>
                                 <DollarSign size={14} className="mr-2 text-yellow-400" />
                                 Make Payment
                               </DropdownMenuItem>
@@ -1902,14 +1926,14 @@ export const PurchasesPage = () => {
                             
                             {/* 🎯 CANCEL PO - Only for final; hidden when already cancelled */}
                             {purchase.status === 'final' && getEffectivePurchaseStatus(purchase) !== 'cancelled' && (
-                              <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer text-amber-400" onClick={() => { setSelectedPurchase(purchase); setCancelPurchaseDialogOpen(true); }}>
+                              <DropdownMenuItem className="hover:bg-accent cursor-pointer text-amber-400" onClick={() => { setSelectedPurchase(purchase); setCancelPurchaseDialogOpen(true); }}>
                                 <XCircle size={14} className="mr-2" />
                                 Cancel PO
                               </DropdownMenuItem>
                             )}
                             
                             {/* 🎯 VIEW LEDGER */}
-                            <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer" onClick={() => handleViewLedger(purchase)}>
+                            <DropdownMenuItem className="hover:bg-accent cursor-pointer" onClick={() => handleViewLedger(purchase)}>
                               <Receipt size={14} className="mr-2 text-blue-400" />
                               View Ledger
                             </DropdownMenuItem>
@@ -1918,7 +1942,7 @@ export const PurchasesPage = () => {
                             {(purchase.status === 'final' || purchase.status === 'received') && getEffectivePurchaseStatus(purchase) !== 'cancelled' &&
                              !(purchase.hasReturn || purchasesWithReturns.has(purchase.uuid)) && (
                               <DropdownMenuItem 
-                                className="hover:bg-gray-800 cursor-pointer" 
+                                className="hover:bg-accent cursor-pointer" 
                                 onClick={() => {
                                   setSelectedPurchaseForReturn(purchase);
                                   setPurchaseReturnFormOpen(true);
@@ -1930,32 +1954,21 @@ export const PurchasesPage = () => {
                             )}
                           </DropdownMenuContent>
                         </DropdownMenu>
-                            </div>
-                          );
-                        }
-                        const alignment = alignments[key] || 'text-left';
-                        return (
-                          <div
-                            key={key}
-                            className={cn(
-                              alignment,
-                              'flex items-center',
-                              alignment === 'text-right' && 'justify-end',
-                              alignment === 'text-center' && 'justify-center',
-                              alignment === 'text-left' && 'justify-start'
-                            )}
-                          >
-                            {renderPurchaseCell(purchase, key)}
                           </div>
-                        );
-                      })}
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
+                        </ErpDataGridCell>
+                      );
+                    }
+                    return (
+                      <ErpDataGridCell key={key} align={gridCellAlign(key)}>
+                        {renderPurchaseCell(purchase, key)}
+                      </ErpDataGridCell>
+                    );
+                  })}
+                </ErpDataGridRow>
+              ))
+            )}
+          </ErpDataGridBody>
+        </ErpDataGridShell>
       </div>
 
       {/* Pagination Footer - Fixed */}
@@ -2159,19 +2172,19 @@ export const PurchasesPage = () => {
       {/* Delete Confirmation Dialog */}
       {selectedPurchase && (
         <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-          <AlertDialogContent className="bg-gray-900 border-gray-700 text-white max-w-md">
+          <AlertDialogContent className="bg-popover border-border text-popover-foreground max-w-md">
             <AlertDialogHeader>
               <AlertDialogTitle className="text-red-400 flex items-center gap-2">
                 <AlertCircle size={20} />
                 Delete Purchase Order
               </AlertDialogTitle>
-              <AlertDialogDescription className="text-gray-300 space-y-3 mt-4">
+              <AlertDialogDescription className="text-muted-foreground space-y-3 mt-4">
                 <p>
-                  Are you sure you want to permanently delete <strong className="text-white">{selectedPurchase.poNo}</strong>?
+                  Are you sure you want to permanently delete <strong className="text-foreground">{selectedPurchase.poNo}</strong>?
                 </p>
                 <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 space-y-2">
                   <p className="text-sm font-semibold text-red-400">⚠️ This will permanently delete:</p>
-                  <ul className="text-xs text-gray-300 space-y-1 list-disc list-inside ml-2">
+                  <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside ml-2">
                     <li>Purchase record and all items</li>
                     <li>All payments (cash/bank) and accounting entries</li>
                     <li>Stock movements (stock will be reversed)</li>
@@ -2185,12 +2198,12 @@ export const PurchasesPage = () => {
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel className="bg-gray-800 border-gray-700 text-white hover:bg-gray-700">
+              <AlertDialogCancel className="bg-muted border-border text-foreground hover:bg-accent">
                 Cancel
               </AlertDialogCancel>
               <AlertDialogAction
                 onClick={confirmDelete}
-                className="bg-red-600 hover:bg-red-700 text-white"
+                className="bg-red-600 hover:bg-red-700 text-foreground"
               >
                 Yes, Delete Purchase
               </AlertDialogAction>
@@ -2202,27 +2215,27 @@ export const PurchasesPage = () => {
       {/* Cancel Purchase Order Confirmation Dialog */}
       {selectedPurchase && (
         <AlertDialog open={cancelPurchaseDialogOpen} onOpenChange={setCancelPurchaseDialogOpen}>
-          <AlertDialogContent className="bg-gray-900 border-gray-700 text-white max-w-md">
+          <AlertDialogContent className="bg-popover border-border text-popover-foreground max-w-md">
             <AlertDialogHeader>
               <AlertDialogTitle className="text-amber-400 flex items-center gap-2">
                 <XCircle size={20} />
                 Cancel Purchase Order
               </AlertDialogTitle>
-              <AlertDialogDescription className="text-gray-300 space-y-3 mt-4">
+              <AlertDialogDescription className="text-muted-foreground space-y-3 mt-4">
                 <p>
-                  Are you sure you want to cancel <strong className="text-white">{selectedPurchase.poNo}</strong>?
+                  Are you sure you want to cancel <strong className="text-foreground">{selectedPurchase.poNo}</strong>?
                 </p>
                 <p className="text-sm text-amber-300/90">A reversal entry will be created. This action cannot be undone.</p>
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel className="bg-gray-800 border-gray-700 text-white hover:bg-gray-700" disabled={cancellingPurchase}>
+              <AlertDialogCancel className="bg-muted border-border text-foreground hover:bg-accent" disabled={cancellingPurchase}>
                 Cancel
               </AlertDialogCancel>
               <AlertDialogAction
                 onClick={handleCancelPurchase}
                 disabled={cancellingPurchase}
-                className="bg-amber-600 hover:bg-amber-500 text-white"
+                className="bg-amber-600 hover:bg-amber-500 text-foreground"
               >
                 {cancellingPurchase ? 'Cancelling...' : 'Cancel PO'}
               </AlertDialogAction>
@@ -2242,44 +2255,44 @@ export const PurchasesPage = () => {
 
       {/* Purchase Returns List Dialog */}
       <Dialog open={purchaseReturnsDialogOpen} onOpenChange={setPurchaseReturnsDialogOpen}>
-        <DialogContent className="bg-[#0B0F19] border-gray-800 text-white max-w-4xl max-h-[85vh] overflow-hidden flex flex-col">
+        <DialogContent className="bg-background border-border text-foreground max-w-4xl max-h-[85vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-white">
+            <DialogTitle className="flex items-center gap-2 text-foreground">
               <RotateCcw size={20} className="text-purple-400" />
               Purchase Returns
             </DialogTitle>
           </DialogHeader>
           <div className="overflow-y-auto flex-1 min-h-0">
             {loadingPurchaseReturns ? (
-              <div className="py-12 text-center text-gray-400">Loading...</div>
+              <div className="py-12 text-center text-muted-foreground">Loading...</div>
             ) : purchaseReturnsList.length === 0 ? (
-              <div className="py-12 text-center text-gray-500">No purchase returns found.</div>
+              <div className="py-12 text-center text-muted-foreground">No purchase returns found.</div>
             ) : (
               <table className="w-full">
-                <thead className="bg-gray-900/50 border-b border-gray-800">
+                <thead className="bg-muted/40 border-b border-border">
                   <tr>
-                    <th className="px-4 py-2 text-left text-xs text-gray-400 uppercase">Date</th>
-                    <th className="px-4 py-2 text-left text-xs text-gray-400 uppercase">Return #</th>
-                    <th className="px-4 py-2 text-left text-xs text-gray-400 uppercase">Supplier</th>
-                    <th className="px-4 py-2 text-left text-xs text-gray-400 uppercase">Original PO</th>
-                    <th className="px-4 py-2 text-center text-xs text-gray-400 uppercase">Status</th>
-                    <th className="px-4 py-2 text-right text-xs text-gray-400 uppercase">Total</th>
-                    <th className="px-4 py-2 text-right text-xs text-gray-400 uppercase">Actions</th>
+                    <th className="px-4 py-2 text-left text-xs text-muted-foreground uppercase">Date</th>
+                    <th className="px-4 py-2 text-left text-xs text-muted-foreground uppercase">Return #</th>
+                    <th className="px-4 py-2 text-left text-xs text-muted-foreground uppercase">Supplier</th>
+                    <th className="px-4 py-2 text-left text-xs text-muted-foreground uppercase">Original PO</th>
+                    <th className="px-4 py-2 text-center text-xs text-muted-foreground uppercase">Status</th>
+                    <th className="px-4 py-2 text-right text-xs text-muted-foreground uppercase">Total</th>
+                    <th className="px-4 py-2 text-right text-xs text-muted-foreground uppercase">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-800">
+                <tbody className="divide-y divide-border">
                   {purchaseReturnsList.map((ret: any) => (
-                    <tr key={ret.id} className="hover:bg-gray-800/30">
-                      <td className="px-4 py-2 text-sm text-gray-300">{formatDateAndTime(ret.return_date).date}</td>
+                    <tr key={ret.id} className="hover:bg-accent/30">
+                      <td className="px-4 py-2 text-sm text-muted-foreground">{formatDateAndTime(ret.return_date).date}</td>
                       <td className="px-4 py-2 text-sm font-mono text-purple-400">{ret.return_no || `PRET-${ret.id?.slice(0, 8)}`}</td>
-                      <td className="px-4 py-2 text-sm text-white">{ret.supplier_name}</td>
-                      <td className="px-4 py-2 text-sm text-gray-400">{ret.original_purchase_id?.slice(0, 8)}</td>
+                      <td className="px-4 py-2 text-sm text-foreground">{ret.supplier_name}</td>
+                      <td className="px-4 py-2 text-sm text-muted-foreground">{ret.original_purchase_id?.slice(0, 8)}</td>
                       <td className="px-4 py-2 text-center">
                         <Badge className={
                           String(ret?.status).toLowerCase() === 'void'
-                            ? 'bg-gray-500/20 text-gray-400 border-gray-500/30'
+                            ? 'bg-gray-500/20 text-muted-foreground border-gray-500/30'
                             : ret.status === 'final'
-                              ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                              ? 'bg-green-500/20 text-[var(--erp-money-positive)] border-green-500/30'
                               : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
                         }>
                           {String(ret?.status).toLowerCase() === 'void' ? 'Voided' : ret.status === 'final' ? 'FINAL / LOCKED' : 'Draft'}
@@ -2291,37 +2304,37 @@ export const PurchasesPage = () => {
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="sm" className="h-8 w-8 p-0"><MoreVertical size={14} /></Button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700 text-white w-56">
-                            <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer" onClick={() => { setPurchaseReturnsDialogOpen(false); setSelectedPurchaseReturn(ret); setViewPurchaseReturnDetailsOpen(true); }}>
+                          <DropdownMenuContent align="end" className="bg-popover border-border text-popover-foreground w-56">
+                            <DropdownMenuItem className="hover:bg-accent cursor-pointer" onClick={() => { setPurchaseReturnsDialogOpen(false); setSelectedPurchaseReturn(ret); setViewPurchaseReturnDetailsOpen(true); }}>
                               <Eye size={14} className="mr-2 text-blue-400" />
                               View Return Details
                             </DropdownMenuItem>
                             {ret.original_purchase_id && (
                               <DropdownMenuItem
-                                className="hover:bg-gray-800 cursor-pointer"
+                                className="hover:bg-accent cursor-pointer"
                                 onClick={() => {
                                   setPurchaseReturnsDialogOpen(false);
                                   setOriginalPurchaseIdToView(ret.original_purchase_id);
                                   setViewDetailsOpen(true);
                                 }}
                               >
-                                <FileText size={14} className="mr-2 text-green-400" />
+                                <FileText size={14} className="mr-2 text-[var(--erp-money-positive)]" />
                                 View Original Purchase
                               </DropdownMenuItem>
                             )}
                             {String(ret?.status).toLowerCase() !== 'final' && String(ret?.status).toLowerCase() !== 'void' && (
-                              <DropdownMenuItem className="hover:bg-gray-800 text-red-400 cursor-pointer" onClick={() => { setPurchaseReturnToDelete(ret); setDeletePurchaseReturnDialogOpen(true); }}>
+                              <DropdownMenuItem className="hover:bg-accent text-red-400 cursor-pointer" onClick={() => { setPurchaseReturnToDelete(ret); setDeletePurchaseReturnDialogOpen(true); }}>
                                 <Trash2 size={14} className="mr-2" /> Delete Return
                               </DropdownMenuItem>
                             )}
                             {String(ret?.status).toLowerCase() === 'final' && (
-                              <DropdownMenuItem className="hover:bg-gray-800 text-amber-400 cursor-pointer" onClick={() => { setReturnToVoidPurchase(ret); setVoidPurchaseReturnDialogOpen(true); }}>
+                              <DropdownMenuItem className="hover:bg-accent text-amber-400 cursor-pointer" onClick={() => { setReturnToVoidPurchase(ret); setVoidPurchaseReturnDialogOpen(true); }}>
                                 <RotateCcw size={14} className="mr-2" /> Void / Cancel Return
                               </DropdownMenuItem>
                             )}
                             {String(ret?.status).toLowerCase() === 'void' && (
                               <DropdownMenuItem
-                                className="hover:bg-gray-800 text-cyan-400 cursor-pointer"
+                                className="hover:bg-accent text-cyan-400 cursor-pointer"
                                 onClick={() => {
                                   setPurchaseReturnsDialogOpen(false);
                                   setReturnToRestoreDraft(ret);
@@ -2333,7 +2346,7 @@ export const PurchasesPage = () => {
                             )}
                             {String(ret?.status).toLowerCase() === 'draft' && (
                               <DropdownMenuItem
-                                className="hover:bg-gray-800 text-emerald-400 cursor-pointer"
+                                className="hover:bg-accent text-emerald-400 cursor-pointer"
                                 disabled={finalizeDraftReturnBusyId === ret.id}
                                 onClick={() => {
                                   setPurchaseReturnsDialogOpen(false);
@@ -2344,9 +2357,9 @@ export const PurchasesPage = () => {
                                 {finalizeDraftReturnBusyId === ret.id ? 'Finalizing…' : 'Finalize & post (stock + GL)'}
                               </DropdownMenuItem>
                             )}
-                            <DropdownMenuSeparator className="bg-gray-700" />
+                            <DropdownMenuSeparator className="bg-muted" />
                             <DropdownMenuItem
-                              className="hover:bg-gray-800 cursor-pointer"
+                              className="hover:bg-accent cursor-pointer"
                               onClick={async () => {
                                 if (!companyId) return;
                                 try {
@@ -2361,7 +2374,7 @@ export const PurchasesPage = () => {
                               <Printer size={14} className="mr-2 text-purple-400" />
                               Print Return
                             </DropdownMenuItem>
-                            <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer" onClick={() => toast.info('Export return functionality coming soon')}>
+                            <DropdownMenuItem className="hover:bg-accent cursor-pointer" onClick={() => toast.info('Export return functionality coming soon')}>
                               <Download size={14} className="mr-2 text-blue-400" />
                               Export Return
                             </DropdownMenuItem>
@@ -2380,9 +2393,9 @@ export const PurchasesPage = () => {
       {/* View Purchase Return Details — same layout as Sale Return View */}
       {selectedPurchaseReturn && (
         <Dialog open={viewPurchaseReturnDetailsOpen} onOpenChange={setViewPurchaseReturnDetailsOpen}>
-          <DialogContent className="bg-[#0B0F19] border-gray-800 text-white !w-[800px] !max-w-[800px] sm:!max-w-[800px] max-h-[90vh] overflow-y-auto">
-            <DialogHeader className="border-b border-gray-800 pb-4">
-              <DialogTitle className="text-2xl font-bold text-white flex items-center gap-2">
+          <DialogContent className="bg-background border-border text-foreground !w-[800px] !max-w-[800px] sm:!max-w-[800px] max-h-[90vh] overflow-y-auto">
+            <DialogHeader className="border-b border-border pb-4">
+              <DialogTitle className="text-2xl font-bold text-foreground flex items-center gap-2">
                 <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
                   <RotateCcw size={20} className="text-purple-400" />
                 </div>
@@ -2394,31 +2407,31 @@ export const PurchasesPage = () => {
             </DialogHeader>
             <div className="space-y-6 mt-4">
               {/* Return Header Info */}
-              <div className="grid grid-cols-2 gap-4 p-4 bg-[#0F1419] rounded-lg border border-gray-800">
+              <div className="grid grid-cols-2 gap-4 p-4 bg-muted/30 rounded-lg border border-border">
                 <div>
-                  <p className="text-xs text-gray-400 uppercase mb-1">Return Date</p>
-                  <p className="text-sm text-white font-medium">{formatDateAndTime(selectedPurchaseReturn.return_date || selectedPurchaseReturn.created_at).date} {formatDateAndTime(selectedPurchaseReturn.return_date || selectedPurchaseReturn.created_at).time}</p>
+                  <p className="text-xs text-muted-foreground uppercase mb-1">Return Date</p>
+                  <p className="text-sm text-foreground font-medium">{formatDateAndTime(selectedPurchaseReturn.return_date || selectedPurchaseReturn.created_at).date} {formatDateAndTime(selectedPurchaseReturn.return_date || selectedPurchaseReturn.created_at).time}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-gray-400 uppercase mb-1">Status</p>
+                  <p className="text-xs text-muted-foreground uppercase mb-1">Status</p>
                   <Badge className={
-                    String(selectedPurchaseReturn.status).toLowerCase() === 'void' ? 'bg-gray-500/20 text-gray-400 border-gray-500/30' :
-                    selectedPurchaseReturn.status === 'final' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
+                    String(selectedPurchaseReturn.status).toLowerCase() === 'void' ? 'bg-gray-500/20 text-muted-foreground border-gray-500/30' :
+                    selectedPurchaseReturn.status === 'final' ? 'bg-green-500/20 text-[var(--erp-money-positive)] border-green-500/30' : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
                   }>
                     {String(selectedPurchaseReturn.status).toLowerCase() === 'void' ? 'Voided' : selectedPurchaseReturn.status === 'final' ? 'FINAL / LOCKED' : 'Draft'}
                   </Badge>
                 </div>
                 <div>
-                  <p className="text-xs text-gray-400 uppercase mb-1">Supplier</p>
-                  <p className="text-sm text-white font-medium">{selectedPurchaseReturn.supplier_name}</p>
+                  <p className="text-xs text-muted-foreground uppercase mb-1">Supplier</p>
+                  <p className="text-sm text-foreground font-medium">{selectedPurchaseReturn.supplier_name}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-gray-400 uppercase mb-1">Location</p>
-                  <p className="text-sm text-white">{branchMap.get(selectedPurchaseReturn.branch_id) || '—'}</p>
+                  <p className="text-xs text-muted-foreground uppercase mb-1">Location</p>
+                  <p className="text-sm text-foreground">{branchMap.get(selectedPurchaseReturn.branch_id) || '—'}</p>
                 </div>
                 {selectedPurchaseReturn.original_purchase_id && (
                   <div>
-                    <p className="text-xs text-gray-400 uppercase mb-1">Original Purchase</p>
+                    <p className="text-xs text-muted-foreground uppercase mb-1">Original Purchase</p>
                     <button
                       type="button"
                       onClick={() => {
@@ -2434,61 +2447,61 @@ export const PurchasesPage = () => {
                 )}
                 {selectedPurchaseReturn.reason && (
                   <div className="col-span-2">
-                    <p className="text-xs text-gray-400 uppercase mb-1">Reason</p>
-                    <p className="text-sm text-white">{selectedPurchaseReturn.reason}</p>
+                    <p className="text-xs text-muted-foreground uppercase mb-1">Reason</p>
+                    <p className="text-sm text-foreground">{selectedPurchaseReturn.reason}</p>
                   </div>
                 )}
                 {selectedPurchaseReturn.notes && (
                   <div className="col-span-2">
-                    <p className="text-xs text-gray-400 uppercase mb-1">Notes</p>
-                    <p className="text-sm text-gray-300">{selectedPurchaseReturn.notes}</p>
+                    <p className="text-xs text-muted-foreground uppercase mb-1">Notes</p>
+                    <p className="text-sm text-muted-foreground">{selectedPurchaseReturn.notes}</p>
                   </div>
                 )}
               </div>
 
               {/* Return Items */}
               <div>
-                <h3 className="text-lg font-semibold text-white mb-3">Return Items</h3>
+                <h3 className="text-lg font-semibold text-foreground mb-3">Return Items</h3>
                 {selectedPurchaseReturn.items && selectedPurchaseReturn.items.length > 0 ? (
-                  <div className="bg-[#0F1419] border border-gray-800 rounded-lg overflow-hidden">
+                  <div className="bg-muted/30 border border-border rounded-lg overflow-hidden">
                     <table className="w-full">
-                      <thead className="bg-[#0B0F19] border-b border-gray-800">
+                      <thead className="bg-secondary border-b border-border">
                         <tr>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Product</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">SKU</th>
-                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase">Qty</th>
-                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase">Unit Price</th>
-                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase">Total</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Product</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">SKU</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-muted-foreground uppercase">Qty</th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase">Unit Price</th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase">Total</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-800">
+                      <tbody className="divide-y divide-border">
                         {selectedPurchaseReturn.items.map((item: any, idx: number) => (
-                          <tr key={idx} className="hover:bg-[#0B0F19] transition-colors">
-                            <td className="px-4 py-3 text-sm text-white">{item.product_name}</td>
-                            <td className="px-4 py-3 text-sm text-gray-400 font-mono">{item.sku}</td>
-                            <td className="px-4 py-3 text-sm text-gray-300 text-center">{item.quantity}</td>
-                            <td className="px-4 py-3 text-sm text-gray-300 text-right tabular-nums">{formatCurrency(item.unit_price ?? 0)}</td>
+                          <tr key={idx} className="hover:bg-secondary transition-colors">
+                            <td className="px-4 py-3 text-sm text-foreground">{item.product_name}</td>
+                            <td className="px-4 py-3 text-sm text-muted-foreground font-mono">{item.sku}</td>
+                            <td className="px-4 py-3 text-sm text-muted-foreground text-center tabular-nums">{formatQty(item.quantity)}</td>
+                            <td className="px-4 py-3 text-sm text-muted-foreground text-right tabular-nums">{formatCurrency(item.unit_price ?? 0)}</td>
                             <td className="px-4 py-3 text-sm font-semibold text-red-400 text-right tabular-nums">-{formatCurrency(item.total ?? 0)}</td>
                           </tr>
                         ))}
                       </tbody>
-                      <tfoot className="bg-[#0B0F19] border-t border-gray-800">
+                      <tfoot className="bg-secondary border-t border-border">
                         <tr>
-                          <td colSpan={4} className="px-4 py-3 text-sm font-semibold text-gray-300 text-right">Total Return Amount:</td>
+                          <td colSpan={4} className="px-4 py-3 text-sm font-semibold text-muted-foreground text-right">Total Return Amount:</td>
                           <td className="px-4 py-3 text-lg font-bold text-red-400 text-right tabular-nums">-{formatCurrency(selectedPurchaseReturn.total ?? 0)}</td>
                         </tr>
                       </tfoot>
                     </table>
                   </div>
                 ) : (
-                  <div className="text-center py-8 text-gray-400">
-                    <Package size={48} className="mx-auto mb-3 text-gray-600" />
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Package size={48} className="mx-auto mb-3 text-muted-foreground" />
                     <p>No items found in this return</p>
                   </div>
                 )}
               </div>
             </div>
-            <DialogFooter className="mt-6 border-t border-gray-800 pt-4 flex flex-wrap gap-2 justify-end">
+            <DialogFooter className="mt-6 border-t border-border pt-4 flex flex-wrap gap-2 justify-end">
               {selectedPurchaseReturn && String(selectedPurchaseReturn.status).toLowerCase() === 'void' && (
                 <Button
                   variant="outline"
@@ -2504,7 +2517,7 @@ export const PurchasesPage = () => {
               )}
               {selectedPurchaseReturn && String(selectedPurchaseReturn.status).toLowerCase() === 'draft' && (
                 <Button
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-foreground"
                   disabled={finalizeDraftReturnBusyId === selectedPurchaseReturn.id}
                   onClick={() => finalizeDraftPurchaseReturn(selectedPurchaseReturn)}
                 >
@@ -2515,7 +2528,7 @@ export const PurchasesPage = () => {
               <Button
                 variant="outline"
                 onClick={() => setViewPurchaseReturnDetailsOpen(false)}
-                className="border-gray-800 text-gray-300 hover:text-white hover:bg-gray-800"
+                className="border-border text-muted-foreground hover:text-foreground hover:bg-accent"
               >
                 Close
               </Button>
@@ -2598,15 +2611,15 @@ export const PurchasesPage = () => {
 
       {/* Delete Purchase Return (draft only) */}
       <AlertDialog open={deletePurchaseReturnDialogOpen} onOpenChange={setDeletePurchaseReturnDialogOpen}>
-        <AlertDialogContent className="bg-gray-900 border-gray-700 text-white">
+        <AlertDialogContent className="bg-popover border-border text-popover-foreground">
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Purchase Return?</AlertDialogTitle>
-            <AlertDialogDescription className="text-gray-300">
+            <AlertDialogDescription className="text-muted-foreground">
               Only draft returns can be deleted. Delete return {purchaseReturnToDelete?.return_no || purchaseReturnToDelete?.id?.slice(0, 8)}?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="border-gray-700">Cancel</AlertDialogCancel>
+            <AlertDialogCancel className="border-border">Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-red-600 hover:bg-red-700"
               onClick={async () => {
@@ -2631,16 +2644,16 @@ export const PurchasesPage = () => {
 
       {/* Void Purchase Return (final only) — same as Sale Return */}
       <AlertDialog open={voidPurchaseReturnDialogOpen} onOpenChange={(open) => { setVoidPurchaseReturnDialogOpen(open); if (!open) setReturnToVoidPurchase(null); }}>
-        <AlertDialogContent className="bg-gray-900 border-gray-700 text-white">
+        <AlertDialogContent className="bg-popover border-border text-popover-foreground">
           <AlertDialogHeader>
             <AlertDialogTitle>Void / Cancel Return?</AlertDialogTitle>
-            <AlertDialogDescription className="text-gray-300">
-              This will <span className="font-semibold text-amber-400">void</span> return <span className="font-semibold text-white">{returnToVoidPurchase?.return_no || `PR-${returnToVoidPurchase?.id?.slice(0, 8)}`}</span>.
+            <AlertDialogDescription className="text-muted-foreground">
+              This will <span className="font-semibold text-amber-400">void</span> return <span className="font-semibold text-foreground">{returnToVoidPurchase?.return_no || `PR-${returnToVoidPurchase?.id?.slice(0, 8)}`}</span>.
               Stock will be reversed (returned items will be added back to inventory). Supplier payable will be increased again. The return will be marked as void and kept for audit. Continue?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="border-gray-700 text-gray-300 hover:bg-gray-800" disabled={voidingPurchaseReturn}>
+            <AlertDialogCancel className="border-border text-muted-foreground hover:bg-accent" disabled={voidingPurchaseReturn}>
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
@@ -2680,10 +2693,10 @@ export const PurchasesPage = () => {
 
       {/* Restore voided purchase return → draft (clear stock rows so finalize can run again) */}
       <AlertDialog open={restorePurchaseReturnDialogOpen} onOpenChange={(open) => { setRestorePurchaseReturnDialogOpen(open); if (!open) setReturnToRestoreDraft(null); }}>
-        <AlertDialogContent className="bg-gray-900 border-gray-700 text-white">
+        <AlertDialogContent className="bg-popover border-border text-popover-foreground">
           <AlertDialogHeader>
             <AlertDialogTitle>Restore return to draft?</AlertDialogTitle>
-            <AlertDialogDescription className="text-gray-300">
+            <AlertDialogDescription className="text-muted-foreground">
               <span className="font-semibold text-cyan-400">{returnToRestoreDraft?.return_no || returnToRestoreDraft?.id?.slice(0, 8)}</span>
               {' '}will become <strong>draft</strong>. Stock movements for this return (original + void reversal) will be removed so you can run <strong>Finalize &amp; post</strong> again without double stock.
               <br /><br />
@@ -2691,7 +2704,7 @@ export const PurchasesPage = () => {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="border-gray-700 text-gray-300 hover:bg-gray-800" disabled={restoringPurchaseReturn}>
+            <AlertDialogCancel className="border-border text-muted-foreground hover:bg-accent" disabled={restoringPurchaseReturn}>
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
@@ -2751,6 +2764,6 @@ export const PurchasesPage = () => {
         companyName={labelCompanyName}
         branchName={labelBranchName}
       />
-    </div>
+    </ErpPage>
   );
 };

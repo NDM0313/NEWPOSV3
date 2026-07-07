@@ -1007,7 +1007,7 @@ export const ProductLedger = () => {
   // ─── Badge helper ──────────────────────────────────────────
   const typeBadge = (type: TxnType) => {
     const map: Record<TxnType, { icon: typeof ArrowDownRight; color: string }> = {
-      'Purchase':        { icon: ArrowDownRight,  color: 'bg-green-500/10 text-green-400 border-green-500/20' },
+      'Purchase':        { icon: ArrowDownRight,  color: 'bg-green-500/10 text-[var(--erp-money-positive)] border-green-500/20' },
       'Purchase Return': { icon: CornerUpLeft,    color: 'bg-orange-500/10 text-orange-400 border-orange-500/20' },
       'Sale':            { icon: ArrowUpRight,    color: 'bg-red-500/10 text-red-400 border-red-500/20' },
       'Sale Return':     { icon: CornerDownRight, color: 'bg-amber-500/10 text-amber-400 border-amber-500/20' },
@@ -1029,39 +1029,39 @@ export const ProductLedger = () => {
     <div className="space-y-4">
       {/* Title */}
       <div className="flex items-center justify-between">
-        <h3 className="text-xl font-bold text-white">Product Stock Card</h3>
+        <h3 className="text-xl font-bold text-foreground">Product Stock Card</h3>
         {rows.length > 0 && (
-          <Button variant="outline" size="sm" onClick={() => window.print()} className="border-gray-700 text-gray-300">
+          <Button variant="outline" size="sm" onClick={() => window.print()} className="border-border text-muted-foreground">
             <Printer className="h-4 w-4 mr-1" /> Print
           </Button>
         )}
       </div>
 
       {/* ── Filters ── */}
-      <div className="bg-gray-900/60 border border-gray-800 rounded-xl p-4 space-y-3">
+      <div className="bg-muted/60 border border-border rounded-xl p-4 space-y-3">
         <div className={cn('grid grid-cols-1 gap-3', branches.length > 1 ? 'md:grid-cols-4' : 'md:grid-cols-3')}>
           {/* Product */}
           <div className={cn('relative', branches.length > 1 ? 'md:col-span-2' : 'md:col-span-2')}>
-            <label className="text-[10px] text-gray-500 uppercase tracking-wider mb-1 block">Product</label>
+            <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1 block">Product</label>
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder={productsLoading ? 'Loading...' : 'All Products — type to search...'}
                 value={selectedProduct ? `${selectedProduct.name} (${selectedProduct.sku})` : searchQuery}
                 onChange={e => { setSearchQuery(e.target.value); if (selectedProductId) { setSelectedProductId(''); setRows([]); setRedFlags([]); } setShowDropdown(false); }}
                 onFocus={() => { if (selectedProductId) setShowDropdown(true); }}
                 onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
-                className="pl-10 bg-gray-950 border-gray-700 text-white h-9 text-sm"
+                className="pl-10 bg-input-background border-border text-foreground h-9 text-sm"
               />
-              {selectedProductId && <button onClick={() => { setSelectedProductId(''); setSearchQuery(''); setRows([]); setRedFlags([]); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white text-xs">×</button>}
+              {selectedProductId && <button onClick={() => { setSelectedProductId(''); setSearchQuery(''); setRows([]); setRedFlags([]); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-xs">×</button>}
             </div>
             {showDropdown && !selectedProductId && filteredProducts.length > 0 && (
-              <div className="absolute z-50 w-full mt-1 max-h-56 overflow-y-auto bg-gray-900 border border-gray-700 rounded-lg shadow-xl">
+              <div className="absolute z-50 w-full mt-1 max-h-56 overflow-y-auto bg-card border border-border rounded-lg shadow-xl">
                 {filteredProducts.map(p => (
-                  <button key={p.id} onClick={() => { setSelectedProductId(p.id); setSearchQuery(''); setShowDropdown(false); }} className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2 text-sm">
-                    <Package className="h-3.5 w-3.5 text-gray-500 flex-shrink-0" />
-                    <span className="text-white">{p.name}</span>
-                    <span className="text-gray-500 font-mono text-xs ml-auto">{p.sku}</span>
+                  <button key={p.id} onClick={() => { setSelectedProductId(p.id); setSearchQuery(''); setShowDropdown(false); }} className="w-full text-left px-3 py-2 hover:bg-muted flex items-center gap-2 text-sm">
+                    <Package className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                    <span className="text-foreground">{p.name}</span>
+                    <span className="text-muted-foreground font-mono text-xs ml-auto">{p.sku}</span>
                   </button>
                 ))}
               </div>
@@ -1070,8 +1070,8 @@ export const ProductLedger = () => {
 
           {/* Variation */}
           <div>
-            <label className="text-[10px] text-gray-500 uppercase tracking-wider mb-1 block">Variation</label>
-            <select value={selectedVariationId} onChange={e => setSelectedVariationId(e.target.value)} className="w-full h-9 bg-gray-950 border border-gray-700 rounded-md text-white text-sm px-2" disabled={variations.length === 0}>
+            <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1 block">Variation</label>
+            <select value={selectedVariationId} onChange={e => setSelectedVariationId(e.target.value)} className="w-full h-9 bg-input-background border border-border rounded-md text-foreground text-sm px-2" disabled={variations.length === 0}>
               <option value="">{variations.length > 0 ? 'All Variations' : 'N/A'}</option>
               {variations.map(v => <option key={v.id} value={v.id}>{v.label} ({v.sku})</option>)}
             </select>
@@ -1080,8 +1080,8 @@ export const ProductLedger = () => {
           {/* Branch — only show if multiple branches exist */}
           {branches.length > 1 && (
             <div>
-              <label className="text-[10px] text-gray-500 uppercase tracking-wider mb-1 block">Branch</label>
-              <select value={selectedBranchId} onChange={e => setSelectedBranchId(e.target.value)} className="w-full h-9 bg-gray-950 border border-gray-700 rounded-md text-white text-sm px-2">
+              <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1 block">Branch</label>
+              <select value={selectedBranchId} onChange={e => setSelectedBranchId(e.target.value)} className="w-full h-9 bg-input-background border border-border rounded-md text-foreground text-sm px-2">
                 <option value="">All Branches</option>
                 {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
@@ -1091,21 +1091,21 @@ export const ProductLedger = () => {
 
         {/* Type filter */}
         <div className="flex flex-wrap items-center gap-2">
-          <button onClick={() => setShowTypeFilter(!showTypeFilter)} className="text-xs text-gray-400 hover:text-white flex items-center gap-1">
+          <button onClick={() => setShowTypeFilter(!showTypeFilter)} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
             <Filter className="h-3 w-3" /> Transaction Types
           </button>
           {showTypeFilter && ALL_TXN_TYPES.map(t => (
-            <button key={t} onClick={() => toggleType(t)} className={cn('px-2 py-0.5 rounded text-[10px] font-medium border transition-colors', enabledTypes.has(t) ? 'bg-blue-600/20 text-blue-300 border-blue-500/30' : 'bg-gray-800 text-gray-500 border-gray-700')}>
+            <button key={t} onClick={() => toggleType(t)} className={cn('px-2 py-0.5 rounded text-[10px] font-medium border transition-colors', enabledTypes.has(t) ? 'bg-blue-600/20 text-blue-300 border-blue-500/30' : 'bg-muted text-muted-foreground border-border')}>
               {t}
             </button>
           ))}
           {showTypeFilter && (
-            <button onClick={() => setEnabledTypes(new Set(ALL_TXN_TYPES))} className="text-[10px] text-gray-500 hover:text-white underline ml-2">All</button>
+            <button onClick={() => setEnabledTypes(new Set(ALL_TXN_TYPES))} className="text-[10px] text-muted-foreground hover:text-foreground underline ml-2">All</button>
           )}
         </div>
 
         {/* Date range indicator */}
-        <div className="text-[10px] text-gray-500">Period: {startDate} — {endDate}</div>
+        <div className="text-[10px] text-muted-foreground">Period: {startDate} — {endDate}</div>
       </div>
 
       {/* ── All Products Summary (default view) ── */}
@@ -1114,41 +1114,41 @@ export const ProductLedger = () => {
           {allSummaryLoading && (
             <div className="text-center py-16">
               <Loader2 className="h-8 w-8 animate-spin mx-auto text-blue-400" />
-              <p className="text-gray-500 text-sm mt-2">Loading all products...</p>
+              <p className="text-muted-foreground text-sm mt-2">Loading all products...</p>
             </div>
           )}
           {!allSummaryLoading && filteredAllSummary.length > 0 && (
-            <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+            <div className="bg-card border border-border rounded-xl overflow-hidden">
               {/* Grand totals header with transaction breakdown */}
-              <div className="px-4 py-3 border-b border-gray-800 space-y-2">
+              <div className="px-4 py-3 border-b border-border space-y-2">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                  <span className="text-sm font-medium text-gray-300">All Products — {filteredAllSummary.length} items{searchQuery ? ` (filtered)` : ''}</span>
-                  <span className="text-[10px] text-gray-600 hidden sm:inline">Click a row for full ledger</span>
+                  <span className="text-sm font-medium text-muted-foreground">All Products — {filteredAllSummary.length} items{searchQuery ? ` (filtered)` : ''}</span>
+                  <span className="text-[10px] text-muted-foreground hidden sm:inline">Click a row for full ledger</span>
                 </div>
                 <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
-                  <div className="bg-gray-950/60 rounded-lg px-3 py-2">
-                    <p className="text-[8px] text-gray-500 uppercase">Total Stock</p>
-                    <p className="text-sm font-bold text-white font-mono tabular-nums">{formatQty(allProductsGrandTotals.stock)}</p>
+                  <div className="bg-input-background/60 rounded-lg px-3 py-2">
+                    <p className="text-[8px] text-muted-foreground uppercase">Total Stock</p>
+                    <p className="text-sm font-bold text-foreground font-mono tabular-nums">{formatQty(allProductsGrandTotals.stock)}</p>
                   </div>
-                  <div className="bg-gray-950/60 rounded-lg px-3 py-2">
-                    <p className="text-[8px] text-gray-500 uppercase">Stock Value</p>
+                  <div className="bg-input-background/60 rounded-lg px-3 py-2">
+                    <p className="text-[8px] text-muted-foreground uppercase">Stock Value</p>
                     <p className="text-sm font-bold text-emerald-400 font-mono">{fmtRs(allProductsGrandTotals.stockValue)}</p>
                   </div>
-                  <div className="bg-gray-950/60 rounded-lg px-3 py-2">
+                  <div className="bg-input-background/60 rounded-lg px-3 py-2">
                     <p className="text-[8px] text-green-600 uppercase">Purchases</p>
-                    <p className="text-sm font-bold text-green-400 font-mono">{fmt(allProductsGrandTotals.purchaseQty)} <span className="text-[10px] text-gray-500">({fmtRs(allProductsGrandTotals.purchaseValue)})</span></p>
+                    <p className="text-sm font-bold text-[var(--erp-money-positive)] font-mono">{fmt(allProductsGrandTotals.purchaseQty)} <span className="text-[10px] text-muted-foreground">({fmtRs(allProductsGrandTotals.purchaseValue)})</span></p>
                   </div>
-                  <div className="bg-gray-950/60 rounded-lg px-3 py-2">
+                  <div className="bg-input-background/60 rounded-lg px-3 py-2">
                     <p className="text-[8px] text-red-600 uppercase">Sales</p>
-                    <p className="text-sm font-bold text-red-400 font-mono">{fmt(allProductsGrandTotals.saleQty)} <span className="text-[10px] text-gray-500">({fmtRs(allProductsGrandTotals.saleValue)})</span></p>
+                    <p className="text-sm font-bold text-red-400 font-mono">{fmt(allProductsGrandTotals.saleQty)} <span className="text-[10px] text-muted-foreground">({fmtRs(allProductsGrandTotals.saleValue)})</span></p>
                   </div>
-                  <div className="bg-gray-950/60 rounded-lg px-3 py-2">
+                  <div className="bg-input-background/60 rounded-lg px-3 py-2">
                     <p className="text-[8px] text-amber-600 uppercase">Returns</p>
                     <p className="text-xs font-bold text-amber-400 font-mono">
                       SR: {fmt(allProductsGrandTotals.saleReturnQty)} | PR: {fmt(allProductsGrandTotals.purchaseReturnQty)}
                     </p>
                   </div>
-                  <div className="bg-gray-950/60 rounded-lg px-3 py-2">
+                  <div className="bg-input-background/60 rounded-lg px-3 py-2">
                     <p className="text-[8px] text-blue-600 uppercase">Adjustments</p>
                     <p className="text-sm font-bold text-blue-400 font-mono">{fmt(allProductsGrandTotals.adjustmentQty)}</p>
                   </div>
@@ -1156,7 +1156,7 @@ export const ProductLedger = () => {
               </div>
               <div className="overflow-x-auto max-h-[65vh]">
                 <table className="w-full text-base text-left leading-snug">
-                  <thead className="bg-gray-950/80 text-gray-400 font-medium border-b border-gray-800 sticky top-0">
+                  <thead className="bg-input-background/80 text-muted-foreground font-medium border-b border-border sticky top-0">
                     <tr>
                       <th className="px-3 py-2.5">Product</th>
                       <th className="px-3 py-2.5">SKU</th>
@@ -1169,35 +1169,35 @@ export const ProductLedger = () => {
                       <th className="px-3 py-2.5 text-right">Stock Value</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-800/50">
+                  <tbody className="divide-y divide-border">
                     {filteredAllSummary.map(p => (
                       <tr key={p.productId}
                         onClick={() => { setSelectedProductId(p.productId); setSearchQuery(''); setShowDropdown(false); }}
                         className="hover:bg-blue-900/20 cursor-pointer transition-colors">
-                        <td className="px-3 py-2 text-white font-medium">{p.name}</td>
-                        <td className="px-3 py-2 font-mono text-gray-400">{p.sku}</td>
-                        <td className="px-3 py-2 text-gray-500">{p.category || '—'}</td>
-                        <td className={cn('px-3 py-2 text-right font-mono font-bold tabular-nums', p.stock < 0 ? 'text-red-400' : 'text-white')}>{formatQty(p.stock)}</td>
-                        <td className="px-3 py-2 text-right font-mono text-green-400">{p.purchaseQty > 0 ? fmt(p.purchaseQty) : '—'}</td>
-                        <td className="px-3 py-2 text-right font-mono text-green-400">{p.purchaseValue > 0 ? fmtRs(p.purchaseValue) : '—'}</td>
+                        <td className="px-3 py-2 text-foreground font-medium">{p.name}</td>
+                        <td className="px-3 py-2 font-mono text-muted-foreground">{p.sku}</td>
+                        <td className="px-3 py-2 text-muted-foreground">{p.category || '—'}</td>
+                        <td className={cn('px-3 py-2 text-right font-mono font-bold tabular-nums', p.stock < 0 ? 'text-red-400' : 'text-foreground')}>{formatQty(p.stock)}</td>
+                        <td className="px-3 py-2 text-right font-mono text-[var(--erp-money-positive)]">{p.purchaseQty > 0 ? fmt(p.purchaseQty) : '—'}</td>
+                        <td className="px-3 py-2 text-right font-mono text-[var(--erp-money-positive)]">{p.purchaseValue > 0 ? fmtRs(p.purchaseValue) : '—'}</td>
                         <td className="px-3 py-2 text-right font-mono text-red-400">{p.saleQty > 0 ? fmt(p.saleQty) : '—'}</td>
                         <td className="px-3 py-2 text-right font-mono text-red-400">{p.saleValue > 0 ? fmtRs(p.saleValue) : '—'}</td>
-                        <td className="px-3 py-2 text-right font-mono text-white">{p.stockValue > 0 ? fmtRs(p.stockValue) : '—'}</td>
+                        <td className="px-3 py-2 text-right font-mono text-foreground">{p.stockValue > 0 ? fmtRs(p.stockValue) : '—'}</td>
                       </tr>
                     ))}
                   </tbody>
-                  <tfoot className="bg-gray-950 border-t-2 border-gray-700 text-base font-semibold sticky bottom-0">
-                    <tr className="text-gray-300">
-                      <td colSpan={3} className="px-3 py-2.5 text-gray-400 uppercase tracking-wide">
+                  <tfoot className="bg-input-background border-t-2 border-border text-base font-semibold sticky bottom-0">
+                    <tr className="text-muted-foreground">
+                      <td colSpan={3} className="px-3 py-2.5 text-muted-foreground uppercase tracking-wide">
                         Total ({filteredAllSummary.length} {filteredAllSummary.length === 1 ? 'product' : 'products'})
                       </td>
-                      <td className={cn('px-3 py-2.5 text-right font-mono text-white', allProductsGrandTotals.stock < 0 && 'text-red-400')}>
+                      <td className={cn('px-3 py-2.5 text-right font-mono text-foreground', allProductsGrandTotals.stock < 0 && 'text-red-400')}>
                         {formatQty(allProductsGrandTotals.stock)}
                       </td>
-                      <td className="px-3 py-2.5 text-right font-mono text-green-400">
+                      <td className="px-3 py-2.5 text-right font-mono text-[var(--erp-money-positive)]">
                         {allProductsGrandTotals.purchaseQty > 0 ? fmt(allProductsGrandTotals.purchaseQty) : '—'}
                       </td>
-                      <td className="px-3 py-2.5 text-right font-mono text-green-400">
+                      <td className="px-3 py-2.5 text-right font-mono text-[var(--erp-money-positive)]">
                         {allProductsGrandTotals.purchaseValue > 0 ? fmtRs(allProductsGrandTotals.purchaseValue) : '—'}
                       </td>
                       <td className="px-3 py-2.5 text-right font-mono text-red-400">
@@ -1216,7 +1216,7 @@ export const ProductLedger = () => {
             </div>
           )}
           {!allSummaryLoading && allProductsSummary.length === 0 && products.length > 0 && (
-            <div className="text-center py-16 text-gray-500">
+            <div className="text-center py-16 text-muted-foreground">
               <Package className="h-12 w-12 mx-auto mb-3 opacity-20" />
               <p>No product movements found</p>
             </div>
@@ -1227,48 +1227,48 @@ export const ProductLedger = () => {
       {loading && (
         <div className="text-center py-16">
           <Loader2 className="h-8 w-8 animate-spin mx-auto text-blue-400" />
-          <p className="text-gray-500 text-sm mt-2">Loading stock card...</p>
+          <p className="text-muted-foreground text-sm mt-2">Loading stock card...</p>
         </div>
       )}
 
       {/* ── Summary header — 11 metrics ── */}
       {selectedProduct && rows.length > 0 && !loading && (
-        <div className="bg-gradient-to-r from-gray-900 to-gray-800 border border-gray-700 p-5 rounded-xl">
+        <div className="bg-gradient-to-r from-gray-900 to-gray-800 border border-border p-5 rounded-xl">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 mb-3">
             <div>
-              <h2 className="text-xl font-bold text-white">{selectedProduct.name}</h2>
-              <p className="text-gray-400 font-mono text-xs">{selectedProduct.sku}{selectedProduct.category ? ` • ${selectedProduct.category}` : ''}</p>
+              <h2 className="text-xl font-bold text-foreground">{selectedProduct.name}</h2>
+              <p className="text-muted-foreground font-mono text-xs">{selectedProduct.sku}{selectedProduct.category ? ` • ${selectedProduct.category}` : ''}</p>
             </div>
             <div className="flex items-center gap-5">
               <div className="text-right">
-                <p className="text-gray-500 text-[10px] uppercase">Current Stock</p>
-                <p className="text-2xl font-bold text-white">{fmt(summary.closingStock)}</p>
+                <p className="text-muted-foreground text-[10px] uppercase">Current Stock</p>
+                <p className="text-2xl font-bold text-foreground">{fmt(summary.closingStock)}</p>
               </div>
               <div className="text-right">
-                <p className="text-gray-500 text-[10px] uppercase">Stock Value</p>
-                <p className="text-lg font-bold text-white">{fmtRs(summary.closingValue)}</p>
+                <p className="text-muted-foreground text-[10px] uppercase">Stock Value</p>
+                <p className="text-lg font-bold text-foreground">{fmtRs(summary.closingValue)}</p>
               </div>
               <div className="text-right">
-                <p className="text-gray-500 text-[10px] uppercase">Gross Profit</p>
+                <p className="text-muted-foreground text-[10px] uppercase">Gross Profit</p>
                 <p className={cn('text-lg font-bold', summary.grossProfit >= 0 ? 'text-emerald-400' : 'text-red-400')}>{fmtRs(summary.grossProfit)}</p>
               </div>
             </div>
           </div>
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-11 gap-2">
             {([
-              { label: 'Purchase Qty', value: fmt(summary.totalPurchaseQty), color: 'text-green-400' },
-              { label: 'Purchase Value', value: fmtRs(summary.totalPurchaseValue), color: 'text-green-400' },
+              { label: 'Purchase Qty', value: fmt(summary.totalPurchaseQty), color: 'text-[var(--erp-money-positive)]' },
+              { label: 'Purchase Value', value: fmtRs(summary.totalPurchaseValue), color: 'text-[var(--erp-money-positive)]' },
               { label: 'Sale Qty', value: fmt(summary.totalSaleQty), color: 'text-red-400' },
               { label: 'Sale Value', value: fmtRs(summary.totalSaleValue), color: 'text-red-400' },
               { label: 'Sale Return', value: fmt(summary.saleReturnQty), color: 'text-orange-400' },
               { label: 'Purchase Return', value: fmt(summary.purchaseReturnQty), color: 'text-orange-400' },
               { label: 'Adjustments', value: fmt(summary.adjustmentQty), color: 'text-blue-400' },
-              { label: 'Avg Cost (WAC)', value: fmtRs(summary.avgCost), color: 'text-white' },
+              { label: 'Avg Cost (WAC)', value: fmtRs(summary.avgCost), color: 'text-foreground' },
               { label: 'Last Purchase', value: fmtRs(summary.lastPurchasePrice), color: 'text-blue-400' },
               { label: 'Last Sale', value: fmtRs(summary.lastSalePrice), color: 'text-cyan-400' },
             ] as { label: string; value: string; color: string }[]).map(s => (
-              <div key={s.label} className="bg-gray-950/50 rounded-lg px-2.5 py-2">
-                <p className="text-[8px] text-gray-500 uppercase leading-tight">{s.label}</p>
+              <div key={s.label} className="bg-muted/40 rounded-lg px-2.5 py-2">
+                <p className="text-[8px] text-muted-foreground uppercase leading-tight">{s.label}</p>
                 <p className={cn('text-xs font-bold mt-0.5', s.color)}>{s.value || '—'}</p>
               </div>
             ))}
@@ -1278,7 +1278,7 @@ export const ProductLedger = () => {
 
       {/* ── Tab Navigation ── */}
       {selectedProduct && !loading && (
-        <div className="flex items-center gap-2 bg-gray-900/60 border border-gray-800 rounded-lg p-1">
+        <div className="flex items-center gap-2 bg-muted/60 border border-border rounded-lg p-1">
           {([
             { key: 'stock-card' as const, label: 'Stock Card', icon: FileText },
             { key: 'profit-analysis' as const, label: 'Profit Analysis', icon: TrendingUp },
@@ -1289,7 +1289,7 @@ export const ProductLedger = () => {
               className={cn('px-4 py-2 text-sm font-medium flex items-center gap-1.5 rounded-md transition-colors',
                 activeTab === tab.key
                   ? 'bg-blue-600 text-white shadow-md'
-                  : 'text-gray-400 hover:bg-gray-800 hover:text-white')}>
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground')}>
               <tab.icon size={14} />{tab.label}
             </button>
           ))}
@@ -1298,14 +1298,14 @@ export const ProductLedger = () => {
 
       {/* ── TAB 1: Stock Card ── */}
       {selectedProduct && !loading && activeTab === 'stock-card' && (rows.length === 0 ? (
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-8 text-center text-gray-500 text-sm">
+        <div className="bg-card border border-border rounded-xl p-8 text-center text-muted-foreground text-sm">
           Is date range mein is product ki koi stock movement nahi mili. Agar sirf rental history dekhni hai to &quot;Rental History&quot; tab use karein.
         </div>
       ) : (
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden print:bg-white print:text-black">
+        <div className="bg-card border border-border rounded-xl overflow-hidden print:bg-white print:text-black">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-base leading-snug">
-              <thead className="bg-gray-950/80 text-gray-400 font-medium border-b border-gray-800 sticky top-0">
+              <thead className="bg-input-background/80 text-muted-foreground font-medium border-b border-border sticky top-0">
                 <tr>
                   <th className="px-2 py-2.5 whitespace-nowrap">Date</th>
                   <th className="px-2 py-2.5 whitespace-nowrap">Voucher #</th>
@@ -1319,50 +1319,50 @@ export const ProductLedger = () => {
                   <th className="px-2 py-2.5 text-right whitespace-nowrap">Amount</th>
                   <th className="px-2 py-2.5 text-right whitespace-nowrap">Discount</th>
                   <th className="px-2 py-2.5 text-right whitespace-nowrap">Net Amount</th>
-                  <th className="px-2 py-2.5 text-right whitespace-nowrap bg-gray-900/60">Balance Qty</th>
-                  <th className="px-2 py-2.5 text-right whitespace-nowrap bg-gray-900/60">Stock Value</th>
+                  <th className="px-2 py-2.5 text-right whitespace-nowrap bg-muted/60">Balance Qty</th>
+                  <th className="px-2 py-2.5 text-right whitespace-nowrap bg-muted/60">Stock Value</th>
                   <th className="px-2 py-2.5 text-right whitespace-nowrap">Profit</th>
                   <th className="px-2 py-2.5 whitespace-nowrap">Remarks</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-800/50">
+              <tbody className="divide-y divide-border">
                 {rows.map(row => (
-                  <tr key={row.id} className="hover:bg-gray-800/20 transition-colors">
-                    <td className="px-2 py-2 text-gray-300 whitespace-nowrap">{row.date}</td>
+                  <tr key={row.id} className="hover:bg-accent/20 transition-colors">
+                    <td className="px-2 py-2 text-muted-foreground whitespace-nowrap">{row.date}</td>
                     <td className="px-2 py-2 text-blue-400 font-mono whitespace-nowrap">{row.voucherNo || '—'}</td>
                     <td className="px-2 py-2">{typeBadge(row.type)}</td>
                     {selectedProduct?.has_variations && <td className="px-2 py-2 text-cyan-400 text-[10px] max-w-[100px] truncate">{row.variationLabel || '—'}</td>}
-                    <td className="px-2 py-2 text-white font-medium max-w-[160px] truncate">{row.partyName}</td>
-                    <td className="px-2 py-2 text-right font-mono text-green-400">{row.qtyIn > 0 ? `+${fmt(row.qtyIn)}` : ''}</td>
+                    <td className="px-2 py-2 text-foreground font-medium max-w-[160px] truncate">{row.partyName}</td>
+                    <td className="px-2 py-2 text-right font-mono text-[var(--erp-money-positive)]">{row.qtyIn > 0 ? `+${fmt(row.qtyIn)}` : ''}</td>
                     <td className="px-2 py-2 text-right font-mono text-red-400">{row.qtyOut > 0 ? `-${fmt(row.qtyOut)}` : ''}</td>
-                    <td className="px-2 py-2 text-right font-mono text-gray-400">{row.purchaseRate > 0 ? fmt(row.purchaseRate) : ''}</td>
-                    <td className="px-2 py-2 text-right font-mono text-gray-400">{row.saleRate > 0 ? fmt(row.saleRate) : ''}</td>
-                    <td className={cn('px-2 py-2 text-right font-mono', row.qtyOut > 0 ? 'text-red-400' : 'text-gray-300')}>{row.amount > 0 ? (row.qtyOut > 0 ? `-${fmt(row.amount)}` : fmt(row.amount)) : ''}</td>
+                    <td className="px-2 py-2 text-right font-mono text-muted-foreground">{row.purchaseRate > 0 ? fmt(row.purchaseRate) : ''}</td>
+                    <td className="px-2 py-2 text-right font-mono text-muted-foreground">{row.saleRate > 0 ? fmt(row.saleRate) : ''}</td>
+                    <td className={cn('px-2 py-2 text-right font-mono', row.qtyOut > 0 ? 'text-red-400' : 'text-muted-foreground')}>{row.amount > 0 ? (row.qtyOut > 0 ? `-${fmt(row.amount)}` : fmt(row.amount)) : ''}</td>
                     <td className="px-2 py-2 text-right font-mono text-amber-400">{row.discount > 0 ? fmt(row.discount) : ''}</td>
-                    <td className={cn('px-2 py-2 text-right font-mono', row.qtyOut > 0 ? 'text-red-400' : 'text-white')}>{row.netAmount > 0 ? (row.qtyOut > 0 ? `-${fmt(row.netAmount)}` : fmt(row.netAmount)) : ''}</td>
-                    <td className={cn('px-2 py-2 text-right font-mono font-bold bg-gray-900/30', row.runningQty < 0 ? 'text-red-400' : 'text-white')}>{fmt(row.runningQty)}</td>
-                    <td className={cn('px-2 py-2 text-right font-mono bg-gray-900/30', row.runningValue < 0 ? 'text-red-400' : 'text-gray-300')}>{fmtRs(row.runningValue)}</td>
+                    <td className={cn('px-2 py-2 text-right font-mono', row.qtyOut > 0 ? 'text-red-400' : 'text-foreground')}>{row.netAmount > 0 ? (row.qtyOut > 0 ? `-${fmt(row.netAmount)}` : fmt(row.netAmount)) : ''}</td>
+                    <td className={cn('px-2 py-2 text-right font-mono font-bold bg-muted/30', row.runningQty < 0 ? 'text-red-400' : 'text-foreground')}>{fmt(row.runningQty)}</td>
+                    <td className={cn('px-2 py-2 text-right font-mono bg-muted/30', row.runningValue < 0 ? 'text-red-400' : 'text-muted-foreground')}>{fmtRs(row.runningValue)}</td>
                     <td className="px-2 py-2 text-right font-mono">
                       {row.grossProfit !== 0
                         ? <span className={row.grossProfit > 0 ? 'text-emerald-400 font-bold' : 'text-red-400 font-bold'}>{row.grossProfit > 0 ? '+' : ''}{fmt(row.grossProfit)}</span>
                         : ''}
                     </td>
-                    <td className="px-2 py-2 text-gray-500 max-w-[120px] truncate text-[10px]">{row.remarks}</td>
+                    <td className="px-2 py-2 text-muted-foreground max-w-[120px] truncate text-[10px]">{row.remarks}</td>
                   </tr>
                 ))}
               </tbody>
               {/* Totals row */}
-              <tfoot className="bg-gray-950 border-t-2 border-gray-700 font-bold text-base">
+              <tfoot className="bg-input-background border-t-2 border-border font-bold text-base">
                 <tr>
-                  <td colSpan={selectedProduct?.has_variations ? 5 : 4} className="px-2 py-2.5 text-gray-400 uppercase text-[10px]">Totals</td>
-                  <td className="px-2 py-2.5 text-right font-mono text-green-400">{fmt(totals.qtyIn)}</td>
+                  <td colSpan={selectedProduct?.has_variations ? 5 : 4} className="px-2 py-2.5 text-muted-foreground uppercase text-[10px]">Totals</td>
+                  <td className="px-2 py-2.5 text-right font-mono text-[var(--erp-money-positive)]">{fmt(totals.qtyIn)}</td>
                   <td className="px-2 py-2.5 text-right font-mono text-red-400">{fmt(totals.qtyOut)}</td>
                   <td colSpan={2}></td>
-                  <td className="px-2 py-2.5 text-right font-mono text-gray-300">{fmt(totals.amount)}</td>
+                  <td className="px-2 py-2.5 text-right font-mono text-muted-foreground">{fmt(totals.amount)}</td>
                   <td className="px-2 py-2.5 text-right font-mono text-amber-400">{fmt(totals.discount)}</td>
-                  <td className="px-2 py-2.5 text-right font-mono text-white">{fmt(totals.netAmount)}</td>
-                  <td className="px-2 py-2.5 text-right font-mono text-white bg-gray-900/30">{fmt(rows[rows.length - 1]?.runningQty ?? 0)}</td>
-                  <td className="px-2 py-2.5 text-right font-mono text-gray-300 bg-gray-900/30">{fmtRs(rows[rows.length - 1]?.runningValue ?? 0)}</td>
+                  <td className="px-2 py-2.5 text-right font-mono text-foreground">{fmt(totals.netAmount)}</td>
+                  <td className="px-2 py-2.5 text-right font-mono text-foreground bg-muted/30">{fmt(rows[rows.length - 1]?.runningQty ?? 0)}</td>
+                  <td className="px-2 py-2.5 text-right font-mono text-muted-foreground bg-muted/30">{fmtRs(rows[rows.length - 1]?.runningValue ?? 0)}</td>
                   <td className="px-2 py-2.5 text-right font-mono">
                     <span className={totals.grossProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}>{fmt(totals.grossProfit)}</span>
                   </td>
@@ -1371,7 +1371,7 @@ export const ProductLedger = () => {
               </tfoot>
             </table>
           </div>
-          <div className="px-3 py-2 border-t border-gray-800 text-[10px] text-gray-500 flex justify-between">
+          <div className="px-3 py-2 border-t border-border text-[10px] text-muted-foreground flex justify-between">
             <span>{rows.length} transactions</span>
             <span>Period: {startDate} to {endDate}</span>
           </div>
@@ -1380,7 +1380,7 @@ export const ProductLedger = () => {
 
       {/* ── TAB 2: Profit Analysis ── */}
       {selectedProduct && !loading && activeTab === 'profit-analysis' && (rows.length === 0 ? (
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-8 text-center text-gray-500 text-sm">
+        <div className="bg-card border border-border rounded-xl p-8 text-center text-muted-foreground text-sm">
           Profit analysis ke liye is range mein kam az kam ek stock movement honi chahiye.
         </div>
       ) : (
@@ -1388,24 +1388,24 @@ export const ProductLedger = () => {
           {/* Sale summary cards */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             {([
-              { label: 'Total Sale Qty', value: fmt(summary.totalSaleQty), color: 'text-white' },
-              { label: 'Total Sale Amount', value: fmtRs(profitAnalysis.totalRevenue), color: 'text-white' },
+              { label: 'Total Sale Qty', value: fmt(summary.totalSaleQty), color: 'text-foreground' },
+              { label: 'Total Sale Amount', value: fmtRs(profitAnalysis.totalRevenue), color: 'text-foreground' },
               { label: 'Total Cost', value: fmtRs(profitAnalysis.totalCost), color: 'text-red-400' },
               { label: 'Gross Profit', value: fmtRs(profitAnalysis.totalProfit), color: profitAnalysis.totalProfit >= 0 ? 'text-emerald-400' : 'text-red-400' },
               { label: 'Profit Margin', value: `${profitAnalysis.marginPct.toFixed(1)}%`, color: profitAnalysis.marginPct >= 0 ? 'text-emerald-400' : 'text-red-400' },
             ] as { label: string; value: string; color: string }[]).map(s => (
-              <div key={s.label} className="bg-gray-900/60 border border-gray-800 rounded-lg px-4 py-3">
-                <p className="text-[10px] text-gray-500 uppercase">{s.label}</p>
+              <div key={s.label} className="bg-muted/60 border border-border rounded-lg px-4 py-3">
+                <p className="text-[10px] text-muted-foreground uppercase">{s.label}</p>
                 <p className={cn('text-lg font-bold', s.color)}>{s.value}</p>
               </div>
             ))}
           </div>
 
           {/* Customer-wise sale table */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-            <div className="px-4 py-2.5 border-b border-gray-800 text-sm font-medium text-gray-300">Customer-wise Sale Breakdown</div>
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="px-4 py-2.5 border-b border-border text-sm font-medium text-muted-foreground">Customer-wise Sale Breakdown</div>
             <table className="w-full text-base text-left leading-snug">
-              <thead className="bg-gray-950/80 text-gray-400 border-b border-gray-800">
+              <thead className="bg-input-background/80 text-muted-foreground border-b border-border">
                 <tr>
                   <th className="px-4 py-2">Customer</th>
                   <th className="px-4 py-2 text-right">Qty Sold</th>
@@ -1415,27 +1415,27 @@ export const ProductLedger = () => {
                   <th className="px-4 py-2 text-right">Margin %</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-800/50">
+              <tbody className="divide-y divide-border">
                 {profitAnalysis.customerRows.map(c => (
-                  <tr key={c.name} className="hover:bg-gray-800/20">
-                    <td className="px-4 py-2 text-white font-medium">{c.name}</td>
+                  <tr key={c.name} className="hover:bg-accent/20">
+                    <td className="px-4 py-2 text-foreground font-medium">{c.name}</td>
                     <td className="px-4 py-2 text-right font-mono">{fmt(c.qty)}</td>
                     <td className="px-4 py-2 text-right font-mono">{fmtRs(c.revenue)}</td>
                     <td className="px-4 py-2 text-right font-mono text-red-400">{fmtRs(Math.round(c.cost))}</td>
                     <td className="px-4 py-2 text-right font-mono"><span className={c.profit >= 0 ? 'text-emerald-400 font-bold' : 'text-red-400 font-bold'}>{fmtRs(Math.round(c.profit))}</span></td>
-                    <td className="px-4 py-2 text-right font-mono text-gray-400">{c.marginPct.toFixed(1)}%</td>
+                    <td className="px-4 py-2 text-right font-mono text-muted-foreground">{c.marginPct.toFixed(1)}%</td>
                   </tr>
                 ))}
-                {profitAnalysis.customerRows.length === 0 && <tr><td colSpan={6} className="px-4 py-6 text-center text-gray-500">No sales in this period</td></tr>}
+                {profitAnalysis.customerRows.length === 0 && <tr><td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">No sales in this period</td></tr>}
               </tbody>
             </table>
           </div>
 
           {/* Month-wise sale table */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-            <div className="px-4 py-2.5 border-b border-gray-800 text-sm font-medium text-gray-300">Month-wise Sale Breakdown</div>
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="px-4 py-2.5 border-b border-border text-sm font-medium text-muted-foreground">Month-wise Sale Breakdown</div>
             <table className="w-full text-base text-left leading-snug">
-              <thead className="bg-gray-950/80 text-gray-400 border-b border-gray-800">
+              <thead className="bg-input-background/80 text-muted-foreground border-b border-border">
                 <tr>
                   <th className="px-4 py-2">Month</th>
                   <th className="px-4 py-2 text-right">Qty Sold</th>
@@ -1445,15 +1445,15 @@ export const ProductLedger = () => {
                   <th className="px-4 py-2 text-right">Margin %</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-800/50">
+              <tbody className="divide-y divide-border">
                 {profitAnalysis.monthRows.map(m => (
-                  <tr key={m.month} className="hover:bg-gray-800/20">
-                    <td className="px-4 py-2 text-white font-medium font-mono">{m.month}</td>
+                  <tr key={m.month} className="hover:bg-accent/20">
+                    <td className="px-4 py-2 text-foreground font-medium font-mono">{m.month}</td>
                     <td className="px-4 py-2 text-right font-mono">{fmt(m.qty)}</td>
                     <td className="px-4 py-2 text-right font-mono">{fmtRs(m.revenue)}</td>
                     <td className="px-4 py-2 text-right font-mono text-red-400">{fmtRs(Math.round(m.cost))}</td>
                     <td className="px-4 py-2 text-right font-mono"><span className={m.profit >= 0 ? 'text-emerald-400 font-bold' : 'text-red-400 font-bold'}>{fmtRs(Math.round(m.profit))}</span></td>
-                    <td className="px-4 py-2 text-right font-mono text-gray-400">{m.marginPct.toFixed(1)}%</td>
+                    <td className="px-4 py-2 text-right font-mono text-muted-foreground">{m.marginPct.toFixed(1)}%</td>
                   </tr>
                 ))}
               </tbody>
@@ -1464,16 +1464,16 @@ export const ProductLedger = () => {
 
       {/* ── TAB 3: Source Trace ── */}
       {selectedProduct && !loading && activeTab === 'source-trace' && (rows.length === 0 ? (
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-8 text-center text-gray-500 text-sm">
+        <div className="bg-card border border-border rounded-xl p-8 text-center text-muted-foreground text-sm">
           Source trace ke liye is range mein purchase / sale movements honi chahiye.
         </div>
       ) : (
         <div className="space-y-4">
           {/* Supplier-wise purchases */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-            <div className="px-4 py-2.5 border-b border-gray-800 text-sm font-medium text-green-400">Supplier Purchase Trace</div>
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="px-4 py-2.5 border-b border-border text-sm font-medium text-[var(--erp-money-positive)]">Supplier Purchase Trace</div>
             <table className="w-full text-base text-left leading-snug">
-              <thead className="bg-gray-950/80 text-gray-400 border-b border-gray-800">
+              <thead className="bg-input-background/80 text-muted-foreground border-b border-border">
                 <tr>
                   <th className="px-4 py-2">Supplier</th>
                   <th className="px-4 py-2 text-right">Qty Purchased</th>
@@ -1482,26 +1482,26 @@ export const ProductLedger = () => {
                   <th className="px-4 py-2">Invoice(s)</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-800/50">
+              <tbody className="divide-y divide-border">
                 {sourceTrace.supplierRows.map(s => (
-                  <tr key={s.name} className="hover:bg-gray-800/20">
-                    <td className="px-4 py-2 text-white font-medium">{s.name}</td>
-                    <td className="px-4 py-2 text-right font-mono text-green-400">+{fmt(s.qty)}</td>
+                  <tr key={s.name} className="hover:bg-accent/20">
+                    <td className="px-4 py-2 text-foreground font-medium">{s.name}</td>
+                    <td className="px-4 py-2 text-right font-mono text-[var(--erp-money-positive)]">+{fmt(s.qty)}</td>
                     <td className="px-4 py-2 text-right font-mono">{fmtRs(Math.round(s.amount))}</td>
-                    <td className="px-4 py-2 text-right font-mono text-gray-400">{fmtRs(s.avgRate)}</td>
+                    <td className="px-4 py-2 text-right font-mono text-muted-foreground">{fmtRs(s.avgRate)}</td>
                     <td className="px-4 py-2 text-blue-400 font-mono text-[10px]">{s.vouchers.join(', ') || '—'}</td>
                   </tr>
                 ))}
-                {sourceTrace.supplierRows.length === 0 && <tr><td colSpan={5} className="px-4 py-6 text-center text-gray-500">No purchases in this period</td></tr>}
+                {sourceTrace.supplierRows.length === 0 && <tr><td colSpan={5} className="px-4 py-6 text-center text-muted-foreground">No purchases in this period</td></tr>}
               </tbody>
             </table>
           </div>
 
           {/* Customer-wise sales */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-            <div className="px-4 py-2.5 border-b border-gray-800 text-sm font-medium text-red-400">Customer Sale Trace</div>
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="px-4 py-2.5 border-b border-border text-sm font-medium text-red-400">Customer Sale Trace</div>
             <table className="w-full text-base text-left leading-snug">
-              <thead className="bg-gray-950/80 text-gray-400 border-b border-gray-800">
+              <thead className="bg-input-background/80 text-muted-foreground border-b border-border">
                 <tr>
                   <th className="px-4 py-2">Customer</th>
                   <th className="px-4 py-2 text-right">Qty Sold</th>
@@ -1510,27 +1510,27 @@ export const ProductLedger = () => {
                   <th className="px-4 py-2">Invoice(s)</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-800/50">
+              <tbody className="divide-y divide-border">
                 {sourceTrace.customerRows.map(c => (
-                  <tr key={c.name} className="hover:bg-gray-800/20">
-                    <td className="px-4 py-2 text-white font-medium">{c.name}</td>
+                  <tr key={c.name} className="hover:bg-accent/20">
+                    <td className="px-4 py-2 text-foreground font-medium">{c.name}</td>
                     <td className="px-4 py-2 text-right font-mono text-red-400">-{fmt(c.qty)}</td>
                     <td className="px-4 py-2 text-right font-mono">{fmtRs(Math.round(c.amount))}</td>
-                    <td className="px-4 py-2 text-right font-mono text-gray-400">{fmtRs(c.avgRate)}</td>
+                    <td className="px-4 py-2 text-right font-mono text-muted-foreground">{fmtRs(c.avgRate)}</td>
                     <td className="px-4 py-2 text-blue-400 font-mono text-[10px]">{c.vouchers.join(', ') || '—'}</td>
                   </tr>
                 ))}
-                {sourceTrace.customerRows.length === 0 && <tr><td colSpan={5} className="px-4 py-6 text-center text-gray-500">No sales in this period</td></tr>}
+                {sourceTrace.customerRows.length === 0 && <tr><td colSpan={5} className="px-4 py-6 text-center text-muted-foreground">No sales in this period</td></tr>}
               </tbody>
             </table>
           </div>
 
           {/* Return trace */}
           {sourceTrace.returns.length > 0 && (
-            <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-              <div className="px-4 py-2.5 border-b border-gray-800 text-sm font-medium text-amber-400">Return Trace</div>
+            <div className="bg-card border border-border rounded-xl overflow-hidden">
+              <div className="px-4 py-2.5 border-b border-border text-sm font-medium text-amber-400">Return Trace</div>
               <table className="w-full text-base text-left leading-snug">
-                <thead className="bg-gray-950/80 text-gray-400 border-b border-gray-800">
+                <thead className="bg-input-background/80 text-muted-foreground border-b border-border">
                   <tr>
                     <th className="px-4 py-2">Date</th>
                     <th className="px-4 py-2">Type</th>
@@ -1541,16 +1541,16 @@ export const ProductLedger = () => {
                     <th className="px-4 py-2">Remarks</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-800/50">
+                <tbody className="divide-y divide-border">
                   {sourceTrace.returns.map(r => (
-                    <tr key={r.id} className="hover:bg-gray-800/20">
-                      <td className="px-4 py-2 text-gray-300">{r.date}</td>
+                    <tr key={r.id} className="hover:bg-accent/20">
+                      <td className="px-4 py-2 text-muted-foreground">{r.date}</td>
                       <td className="px-4 py-2">{typeBadge(r.type)}</td>
-                      <td className="px-4 py-2 text-white">{r.partyName}</td>
+                      <td className="px-4 py-2 text-foreground">{r.partyName}</td>
                       <td className="px-4 py-2 text-right font-mono">{r.qtyIn > 0 ? `+${fmt(r.qtyIn)}` : `-${fmt(r.qtyOut)}`}</td>
                       <td className="px-4 py-2 text-right font-mono">{fmtRs(r.netAmount)}</td>
                       <td className="px-4 py-2 text-blue-400 font-mono">{r.voucherNo || '—'}</td>
-                      <td className="px-4 py-2 text-gray-500 text-[10px]">{r.remarks}</td>
+                      <td className="px-4 py-2 text-muted-foreground text-[10px]">{r.remarks}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1571,8 +1571,8 @@ export const ProductLedger = () => {
               const isWarn = f.startsWith('warn:');
               const text = isWarn ? f.slice(5) : f;
               return (
-                <li key={i} className={cn('text-xs flex items-start gap-2', isWarn ? 'text-amber-300/80' : 'text-gray-400')}>
-                  <span className={cn('mt-0.5', isWarn ? 'text-amber-500' : 'text-gray-500')}>{isWarn ? '⚠' : 'ℹ'}</span> {text}
+                <li key={i} className={cn('text-xs flex items-start gap-2', isWarn ? 'text-amber-300/80' : 'text-muted-foreground')}>
+                  <span className={cn('mt-0.5', isWarn ? 'text-amber-500' : 'text-muted-foreground')}>{isWarn ? '⚠' : 'ℹ'}</span> {text}
                 </li>
               );
             })}
@@ -1601,35 +1601,35 @@ export const ProductLedger = () => {
 
         return (
           <div className="space-y-4">
-            <div className="rounded-lg border border-gray-800 bg-gray-950/40 px-3 py-2 text-xs text-gray-400 space-y-1">
+            <div className="rounded-lg border border-border bg-input-background/40 px-3 py-2 text-xs text-muted-foreground space-y-1">
               <p>
-                <span className="text-gray-300 font-medium">Filter window: </span>
+                <span className="text-muted-foreground font-medium">Filter window: </span>
                 {rentalRangeLabel}
                 {globalFilter?.getDateRangeLabel ? (
-                  <span className="text-gray-500"> ({globalFilter.getDateRangeLabel()})</span>
+                  <span className="text-muted-foreground"> ({globalFilter.getDateRangeLabel()})</span>
                 ) : null}
               </p>
-              <p className="text-[11px] leading-relaxed text-gray-500">
-                Neeche wali table sirf is window ke andar <strong className="text-gray-400">pickup / return timestamps</strong> par filter hai.
+              <p className="text-[11px] leading-relaxed text-muted-foreground">
+                Neeche wali table sirf is window ke andar <strong className="text-muted-foreground">pickup / return timestamps</strong> par filter hai.
                 Upar wale boxes poori rental pipeline dikhate hain (book → pickup → return), branch filter ke mutabiq.
               </p>
             </div>
 
             {life && (
               <div className="space-y-2">
-                <h4 className="text-sm font-semibold text-gray-300">Rental pipeline (poori history — is product par kitni dafa kya hua)</h4>
+                <h4 className="text-sm font-semibold text-muted-foreground">Rental pipeline (poori history — is product par kitni dafa kya hua)</h4>
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                   {[
                     { label: 'کل بکنگز / Total bookings', sub: 'Is SKU par alag rental orders', value: String(life.totalBookings), color: 'text-blue-300' },
                     { label: 'مکمل واپسی / Full cycles', sub: 'Stock out + stock wapas (return)', value: String(life.completedFullCycles), color: 'text-emerald-300' },
                     { label: 'کسٹمر کے پاس / Out', sub: 'Pickup ho chuka, return abhi pending', value: String(life.withCustomerPendingReturn), color: 'text-amber-300' },
                     { label: 'بک، پک اپ بقیہ / Booked', sub: 'Abhi stock out nahi hua', value: String(life.awaitingPickupNotOut), color: 'text-cyan-300' },
-                    { label: 'Cancelled', sub: 'Manzookh', value: String(life.cancelled), color: 'text-gray-500' },
-                    { label: 'Other', sub: 'Unknown / mixed state', value: String(life.other), color: 'text-gray-500' },
+                    { label: 'Cancelled', sub: 'Manzookh', value: String(life.cancelled), color: 'text-muted-foreground' },
+                    { label: 'Other', sub: 'Unknown / mixed state', value: String(life.other), color: 'text-muted-foreground' },
                   ].map((c, i) => (
-                    <div key={i} className="bg-gray-800/50 border border-gray-700 rounded-lg p-3">
-                      <p className="text-[10px] text-gray-400 uppercase leading-tight">{c.label}</p>
-                      <p className="text-[9px] text-gray-600 mt-0.5 leading-tight">{c.sub}</p>
+                    <div key={i} className="bg-muted/50 border border-border rounded-lg p-3">
+                      <p className="text-[10px] text-muted-foreground uppercase leading-tight">{c.label}</p>
+                      <p className="text-[9px] text-muted-foreground mt-0.5 leading-tight">{c.sub}</p>
                       <p className={cn('text-xl font-bold mt-1', c.color)}>{c.value}</p>
                     </div>
                   ))}
@@ -1642,12 +1642,12 @@ export const ProductLedger = () => {
                 { label: 'Product rental_count (DB)', value: String(rentalCountLife), color: 'text-blue-400' },
                 { label: 'Pickups (is window)', value: String(pickupsInPeriod), color: 'text-amber-300' },
                 { label: 'Returns (is window)', value: String(returnsInPeriod), color: 'text-emerald-300' },
-                { label: 'Rentals touched (window)', value: String(uniqRentals), color: 'text-white' },
-                { label: 'Line total (returns in window)', value: formatCurrency(lineOnReturns), color: 'text-green-400' },
-                { label: 'Damage (returns in window)', value: formatCurrency(totalDamage), color: totalDamage > 0 ? 'text-red-400' : 'text-gray-400' },
+                { label: 'Rentals touched (window)', value: String(uniqRentals), color: 'text-foreground' },
+                { label: 'Line total (returns in window)', value: formatCurrency(lineOnReturns), color: 'text-[var(--erp-money-positive)]' },
+                { label: 'Damage (returns in window)', value: formatCurrency(totalDamage), color: totalDamage > 0 ? 'text-red-400' : 'text-muted-foreground' },
               ].map((c, i) => (
-                <div key={i} className="bg-gray-800/50 border border-gray-700 rounded-lg p-3">
-                  <p className="text-[10px] text-gray-500 uppercase leading-tight">{c.label}</p>
+                <div key={i} className="bg-muted/50 border border-border rounded-lg p-3">
+                  <p className="text-[10px] text-muted-foreground uppercase leading-tight">{c.label}</p>
                   <p className={cn('text-base font-bold mt-0.5', c.color)}>{c.value}</p>
                 </div>
               ))}
@@ -1658,15 +1658,15 @@ export const ProductLedger = () => {
               </p>
             )}
 
-            <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-              <h4 className="text-sm font-semibold text-gray-400 mb-2">Product Health (depreciation)</h4>
-              <div className="w-full bg-gray-700 rounded-full h-3">
+            <div className="bg-card border border-border rounded-xl p-4">
+              <h4 className="text-sm font-semibold text-muted-foreground mb-2">Product Health (depreciation)</h4>
+              <div className="w-full bg-muted rounded-full h-3">
                 <div
                   className={cn('h-3 rounded-full transition-all', residualPct > 50 ? 'bg-emerald-500' : residualPct > 25 ? 'bg-amber-500' : residualPct > 0 ? 'bg-orange-500' : 'bg-red-500')}
                   style={{ width: `${Math.min(100, residualPct)}%` }}
                 />
               </div>
-              <div className="flex justify-between mt-1 text-xs text-gray-500">
+              <div className="flex justify-between mt-1 text-xs text-muted-foreground">
                 <span>{residualPct}% value remaining</span>
                 <span>{rentalCountLife} rentals logged · {depPerRental}% / rental</span>
               </div>
@@ -1675,15 +1675,15 @@ export const ProductLedger = () => {
               )}
             </div>
 
-            <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+            <div className="bg-card border border-border rounded-xl overflow-hidden">
               {rentalHistoryLoading ? (
-                <div className="flex items-center justify-center gap-2 py-12 text-gray-400 text-sm">
+                <div className="flex items-center justify-center gap-2 py-12 text-muted-foreground text-sm">
                   <Loader2 className="animate-spin" size={18} /> Rental history load ho rahi hai…
                 </div>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-base min-w-[960px] leading-snug">
-                    <thead className="bg-gray-950/80 text-gray-500 uppercase border-b border-gray-800">
+                    <thead className="bg-input-background/80 text-muted-foreground uppercase border-b border-border">
                       <tr>
                         <th className="px-3 py-2 whitespace-nowrap">Rental #</th>
                         <th className="px-3 py-2 whitespace-nowrap">Customer</th>
@@ -1701,12 +1701,12 @@ export const ProductLedger = () => {
                         <th className="px-3 py-2 min-w-[140px]">Remarks</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-800/50">
+                    <tbody className="divide-y divide-border">
                       {rentalHistoryRows.length === 0 && (
                         <tr>
-                          <td colSpan={14} className="text-center text-gray-500">
+                          <td colSpan={14} className="text-center text-muted-foreground">
                             <div className="space-y-2 py-10 px-4">
-                              <p className="font-medium text-gray-400">Is time window mein koi rental match nahi hui.</p>
+                              <p className="font-medium text-muted-foreground">Is time window mein koi rental match nahi hui.</p>
                               <p className="text-[11px] max-w-lg mx-auto leading-relaxed">
                                 Upar Rental pipeline wale boxes poori history se aate hain — agar wahan complete cycles dikhen lekin yahan table khali ho to filter window chhoti hai; header se date range barha kar dubara check karein.
                               </p>
@@ -1715,16 +1715,16 @@ export const ProductLedger = () => {
                         </tr>
                       )}
                       {rentalHistoryRows.map(r => (
-                        <tr key={r.id} className="hover:bg-gray-800/20">
+                        <tr key={r.id} className="hover:bg-accent/20">
                           <td className="px-3 py-2 text-blue-400 font-mono whitespace-nowrap">{r.rentalNo}</td>
-                          <td className="px-3 py-2 text-white max-w-[140px] truncate">{r.customerName}</td>
-                          <td className="px-3 py-2 text-gray-400 max-w-[100px] truncate">{r.branchLabel}</td>
+                          <td className="px-3 py-2 text-foreground max-w-[140px] truncate">{r.customerName}</td>
+                          <td className="px-3 py-2 text-muted-foreground max-w-[100px] truncate">{r.branchLabel}</td>
                           <td className="px-3 py-2 text-right font-mono text-gray-200">{fmt(r.qty)}</td>
-                          <td className="px-3 py-2 text-right font-mono text-gray-300">{formatCurrency(r.itemLineTotal)}</td>
-                          <td className="px-3 py-2 text-right font-mono text-gray-400">{formatCurrency(r.rentalBookingTotal)}</td>
-                          <td className="px-3 py-2 text-gray-400 whitespace-nowrap font-mono text-[10px]">{r.pickupDate || '—'}</td>
-                          <td className="px-3 py-2 text-gray-400 whitespace-nowrap font-mono text-[10px]">{r.expectedReturn || '—'}</td>
-                          <td className="px-3 py-2 text-gray-400 whitespace-nowrap font-mono text-[10px]">{r.returnDate || r.actualReturn || '—'}</td>
+                          <td className="px-3 py-2 text-right font-mono text-muted-foreground">{formatCurrency(r.itemLineTotal)}</td>
+                          <td className="px-3 py-2 text-right font-mono text-muted-foreground">{formatCurrency(r.rentalBookingTotal)}</td>
+                          <td className="px-3 py-2 text-muted-foreground whitespace-nowrap font-mono text-[10px]">{r.pickupDate || '—'}</td>
+                          <td className="px-3 py-2 text-muted-foreground whitespace-nowrap font-mono text-[10px]">{r.expectedReturn || '—'}</td>
+                          <td className="px-3 py-2 text-muted-foreground whitespace-nowrap font-mono text-[10px]">{r.returnDate || r.actualReturn || '—'}</td>
                           <td className="px-3 py-2 whitespace-nowrap">
                             <span className={cn(
                               'px-1.5 py-0.5 rounded text-[10px] font-medium',
@@ -1732,15 +1732,15 @@ export const ProductLedger = () => {
                               r.displayStatus === 'Pending' ? 'bg-amber-900/50 text-amber-200' :
                               r.displayStatus === 'Booked' ? 'bg-cyan-900/50 text-cyan-200' :
                               r.displayStatus === 'Cancelled' ? 'bg-red-900/50 text-red-200' :
-                              'bg-gray-800/50 text-gray-400'
+                              'bg-muted/50 text-muted-foreground'
                             )}>
                               {r.displayStatus}
                             </span>
                           </td>
                           <td className="px-3 py-2 text-right font-mono text-red-400/90">{r.damageCharges > 0 ? formatCurrency(r.damageCharges) : '—'}</td>
-                          <td className="px-3 py-2 text-gray-400">{r.penaltyPaid ? 'Paid / yes' : '—'}</td>
-                          <td className="px-3 py-2 text-gray-500 max-w-[100px] truncate text-[10px]">{r.conditionType || '—'}</td>
-                          <td className="px-3 py-2 text-gray-500 text-[10px] max-w-[200px]">{r.damageNotes || '—'}</td>
+                          <td className="px-3 py-2 text-muted-foreground">{r.penaltyPaid ? 'Paid / yes' : '—'}</td>
+                          <td className="px-3 py-2 text-muted-foreground max-w-[100px] truncate text-[10px]">{r.conditionType || '—'}</td>
+                          <td className="px-3 py-2 text-muted-foreground text-[10px] max-w-[200px]">{r.damageNotes || '—'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1753,7 +1753,7 @@ export const ProductLedger = () => {
       })()}
 
       {selectedProduct && rows.length === 0 && !loading && activeTab !== 'rental-history' && (
-        <div className="text-center py-12 text-gray-500">
+        <div className="text-center py-12 text-muted-foreground">
           <p>Is product ki koi transaction nahi mili is date range mein</p>
         </div>
       )}

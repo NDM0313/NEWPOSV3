@@ -24,8 +24,8 @@ function riskBadge(level: string) {
 function LabelRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="grid grid-cols-[120px_1fr] gap-2 py-0.5">
-      <span className="text-gray-500">{label}</span>
-      <span className="text-gray-300 break-all">{value}</span>
+      <span className="text-muted-foreground">{label}</span>
+      <span className="text-muted-foreground break-all">{value}</span>
     </div>
   );
 }
@@ -40,7 +40,7 @@ export function TraceRepairCandidateCard({ candidate, sourceTab, onSendToQueue }
   if (!label || !candidate.queueItem) return null;
 
   return (
-    <div className="rounded-lg border border-gray-800 bg-gray-950/40 p-3 space-y-2">
+    <div className="rounded-lg border border-border bg-input-background/40 p-3 space-y-2">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm font-medium text-gray-200">{label.title}</span>
         {riskBadge(label.riskLevel)}
@@ -63,7 +63,7 @@ export function TraceRepairCandidateCard({ candidate, sourceTab, onSendToQueue }
       <LabelRow
         label="Never changes"
         value={
-          <ul className="list-disc ml-4 space-y-0.5 text-gray-400">
+          <ul className="list-disc ml-4 space-y-0.5 text-muted-foreground">
             {label.whatWillNeverChange.map((c) => (
               <li key={c}>{c}</li>
             ))}
@@ -99,7 +99,7 @@ export function TraceRepairCandidatesPanel({
 
   if (queueable.length === 0) {
     return (
-      <p className="text-xs text-gray-500">
+      <p className="text-xs text-muted-foreground">
         {candidates[0]?.reason || 'No safe repair available'}
       </p>
     );

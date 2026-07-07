@@ -74,19 +74,19 @@ export default function AccountingDeveloperCenterPage() {
   if (!allowed) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[50vh] text-center px-4">
-        <Lock className="w-12 h-12 text-gray-600 mb-4" />
-        <h1 className="text-xl font-semibold text-white mb-2">Access denied</h1>
-        <p className="text-gray-400 max-w-md">
+        <Lock className="w-12 h-12 text-muted-foreground mb-4" />
+        <h1 className="text-xl font-semibold text-foreground mb-2">Access denied</h1>
+        <p className="text-muted-foreground max-w-md">
           Accounting Developer Center requires admin, super-admin, developer, or accounting_auditor role.
         </p>
-        <p className="text-xs text-gray-600 mt-4">Your role: {userRole || 'unknown'}</p>
+        <p className="text-xs text-muted-foreground mt-4">Your role: {userRole || 'unknown'}</p>
       </div>
     );
   }
 
   if (!companyId) {
     return (
-      <div className="p-8 text-gray-400 text-center">Select a company context to use Developer Center.</div>
+      <div className="p-8 text-muted-foreground text-center">Select a company context to use Developer Center.</div>
     );
   }
 
@@ -94,11 +94,11 @@ export default function AccountingDeveloperCenterPage() {
     <div className="p-4 md:p-6 max-w-[1400px] mx-auto space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
             <Shield className="w-7 h-7 text-violet-400" />
             Accounting Developer Center
           </h1>
-          <p className="text-sm text-gray-400 mt-1">
+          <p className="text-sm text-muted-foreground mt-1">
             COA health, trace diagnostics (C2–C6), Repair Queue (D), Opening Balance preview & Audit Log (E).
           </p>
         </div>
@@ -117,7 +117,7 @@ export default function AccountingDeveloperCenterPage() {
             <ArrowLeft className="w-4 h-4" />
             Back to ERP
           </Button>
-          <span className="text-xs text-gray-500 flex items-center gap-1" title="docs/accounting/coa-developer-center/">
+          <span className="text-xs text-muted-foreground flex items-center gap-1" title="docs/accounting/coa-developer-center/">
             <BookOpen className="w-3 h-3" />
             docs/accounting/coa-developer-center/
           </span>
@@ -126,7 +126,7 @@ export default function AccountingDeveloperCenterPage() {
 
       <div className="rounded-lg border border-violet-900/40 bg-violet-950/20 px-3 py-2 text-xs text-violet-200/90 space-y-1">
         <p>Phase F controlled repairs: dry-run, confirm phrase, and audit log for every apply. No SQL editor or mass updates.</p>
-        <p className="text-gray-400">
+        <p className="text-muted-foreground">
           For AR/AP variance and exception queues, start at{' '}
           <button
             type="button"
@@ -144,7 +144,7 @@ export default function AccountingDeveloperCenterPage() {
 
       <RepairQueueProvider>
       <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
-        <TabsList className="bg-gray-900 border border-gray-800 flex-wrap h-auto gap-1 p-1">
+        <TabsList className="bg-card border border-border flex-wrap h-auto gap-1 p-1">
           <TabsTrigger value="coa">COA Health</TabsTrigger>
           <TabsTrigger value="trace">Transaction Trace</TabsTrigger>
           {PHASE_C_SHELL_TABS.map((t) => (
@@ -160,7 +160,7 @@ export default function AccountingDeveloperCenterPage() {
           {DISABLED_PLACEHOLDER_TABS.map((label) => (
             <span
               key={label}
-              className="inline-flex items-center px-3 py-1.5 text-xs text-gray-600 opacity-50 cursor-not-allowed rounded-md"
+              className="inline-flex items-center px-3 py-1.5 text-xs text-muted-foreground opacity-50 cursor-not-allowed rounded-md"
               title="Not implemented"
             >
               {label}

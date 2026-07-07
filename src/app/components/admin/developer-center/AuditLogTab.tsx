@@ -43,21 +43,21 @@ export function AuditLogTab({ companyId }: Props) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-2">
         <div>
-          <label className="text-[10px] uppercase tracking-wider text-gray-500">From</label>
+          <label className="text-[10px] uppercase tracking-wider text-muted-foreground">From</label>
           <Input
             type="date"
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value)}
-            className="mt-1 bg-gray-950 border-gray-800 w-[150px]"
+            className="mt-1 bg-input-background border-border w-[150px]"
           />
         </div>
         <div>
-          <label className="text-[10px] uppercase tracking-wider text-gray-500">To</label>
+          <label className="text-[10px] uppercase tracking-wider text-muted-foreground">To</label>
           <Input
             type="date"
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
-            className="mt-1 bg-gray-950 border-gray-800 w-[150px]"
+            className="mt-1 bg-input-background border-border w-[150px]"
           />
         </div>
         <Button type="button" size="sm" onClick={run} disabled={loading}>
@@ -68,7 +68,7 @@ export function AuditLogTab({ companyId }: Props) {
       </div>
 
       {snapshot && (
-        <Card className="border-gray-800 bg-gray-900/40">
+        <Card className="border-border bg-card/40">
           <CardHeader>
             <CardTitle className="text-base">Audit log ({snapshot.rows.length})</CardTitle>
             <CardDescription>
@@ -78,11 +78,11 @@ export function AuditLogTab({ companyId }: Props) {
           </CardHeader>
           <CardContent className="overflow-x-auto">
             {snapshot.rows.length === 0 ? (
-              <p className="text-sm text-gray-500 py-4 text-center">No audit rows in range.</p>
+              <p className="text-sm text-muted-foreground py-4 text-center">No audit rows in range.</p>
             ) : (
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="text-left text-gray-500 border-b border-gray-800">
+                  <tr className="text-left text-muted-foreground border-b border-border">
                     <th className="py-2 pr-2">Time</th>
                     <th className="py-2 pr-2">Action</th>
                     <th className="py-2 pr-2">Source</th>
@@ -94,19 +94,19 @@ export function AuditLogTab({ companyId }: Props) {
                 </thead>
                 <tbody>
                   {snapshot.rows.map((row) => (
-                    <tr key={row.id} className="border-b border-gray-800/60 align-top">
-                      <td className="py-2 pr-2 text-gray-400 whitespace-nowrap">
+                    <tr key={row.id} className="border-b border-border/60 align-top">
+                      <td className="py-2 pr-2 text-muted-foreground whitespace-nowrap">
                         {row.timestamp.slice(0, 19).replace('T', ' ')}
                       </td>
-                      <td className="py-2 pr-2 text-gray-300">{row.action}</td>
-                      <td className="py-2 pr-2 font-mono text-gray-500">{row.source}</td>
-                      <td className="py-2 pr-2 text-gray-400">
+                      <td className="py-2 pr-2 text-muted-foreground">{row.action}</td>
+                      <td className="py-2 pr-2 font-mono text-muted-foreground">{row.source}</td>
+                      <td className="py-2 pr-2 text-muted-foreground">
                         {row.entityType}
-                        <span className="block font-mono text-[10px] text-gray-600">{row.entityId.slice(0, 8)}…</span>
+                        <span className="block font-mono text-[10px] text-muted-foreground">{row.entityId.slice(0, 8)}…</span>
                       </td>
-                      <td className="py-2 pr-2 text-gray-500 max-w-[120px] truncate">{row.before}</td>
-                      <td className="py-2 pr-2 text-gray-500 max-w-[120px] truncate">{row.after}</td>
-                      <td className="py-2 text-gray-400 max-w-xs">{row.reasonCode}</td>
+                      <td className="py-2 pr-2 text-muted-foreground max-w-[120px] truncate">{row.before}</td>
+                      <td className="py-2 pr-2 text-muted-foreground max-w-[120px] truncate">{row.after}</td>
+                      <td className="py-2 text-muted-foreground max-w-xs">{row.reasonCode}</td>
                     </tr>
                   ))}
                 </tbody>

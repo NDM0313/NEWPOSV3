@@ -36,37 +36,37 @@ export const PaymentDeleteConfirmationModal: React.FC<PaymentDeleteConfirmationM
 }) => {
   return (
     <AlertDialog open={isOpen} onOpenChange={onClose}>
-      <AlertDialogContent className="bg-gray-900 border-gray-700 text-white max-w-md">
+      <AlertDialogContent className="bg-card border-border text-foreground max-w-md">
         <AlertDialogHeader>
           <div className="flex items-center gap-3 mb-2">
             <div className="h-12 w-12 bg-red-500/10 rounded-full flex items-center justify-center flex-shrink-0">
               <AlertTriangle className="text-red-500 h-6 w-6" />
             </div>
-            <AlertDialogTitle className="text-xl font-bold text-white">
+            <AlertDialogTitle className="text-xl font-bold text-foreground">
               Cancel Payment
             </AlertDialogTitle>
           </div>
-          <AlertDialogDescription className="text-gray-300 space-y-3 pt-2">
+          <AlertDialogDescription className="text-muted-foreground space-y-3 pt-2">
             <p className="text-sm leading-relaxed">
               This payment will be <strong className="text-amber-400">cancelled</strong> with an accounting reversal. The audit trail is preserved.
             </p>
             
-            <div className="bg-gray-800/50 rounded-lg p-3 space-y-2 text-sm border border-gray-700">
+            <div className="bg-muted/50 rounded-lg p-3 space-y-2 text-sm border border-border">
               <div className="flex justify-between">
-                <span className="text-gray-400">Amount:</span>
-                <span className="text-white font-semibold">Rs. {paymentAmount.toLocaleString()}</span>
+                <span className="text-muted-foreground">Amount:</span>
+                <span className="text-foreground font-semibold">Rs. {paymentAmount.toLocaleString()}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-400">Method:</span>
-                <span className="text-white capitalize">{paymentMethod}</span>
+                <span className="text-muted-foreground">Method:</span>
+                <span className="text-foreground capitalize">{paymentMethod}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-400">Date:</span>
-                <span className="text-white">{new Date(paymentDate).toLocaleDateString()}</span>
+                <span className="text-muted-foreground">Date:</span>
+                <span className="text-foreground">{new Date(paymentDate).toLocaleDateString()}</span>
               </div>
               {referenceNumber && (
                 <div className="flex justify-between">
-                  <span className="text-gray-400">Reference:</span>
+                  <span className="text-muted-foreground">Reference:</span>
                   <span className="text-blue-400 font-mono text-xs">{referenceNumber}</span>
                 </div>
               )}
@@ -74,7 +74,7 @@ export const PaymentDeleteConfirmationModal: React.FC<PaymentDeleteConfirmationM
 
             <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 space-y-1.5 text-xs">
               <p className="text-yellow-400 font-semibold">⚠️ What will happen:</p>
-              <ul className="list-disc list-inside space-y-1 text-gray-300 ml-2">
+              <ul className="list-disc list-inside space-y-1 text-muted-foreground ml-2">
                 <li>Payment will be voided (not hard-deleted when posted)</li>
                 <li>Accounting reversal entry may be created</li>
                 <li>Paid & Due amounts will be recalculated</li>
@@ -91,14 +91,14 @@ export const PaymentDeleteConfirmationModal: React.FC<PaymentDeleteConfirmationM
           <AlertDialogCancel
             onClick={onClose}
             disabled={isLoading}
-            className="bg-gray-800 border-gray-700 text-white hover:bg-gray-700 focus:ring-gray-600"
+            className="bg-muted border-border text-foreground hover:bg-muted focus:ring-gray-600"
           >
             Cancel
           </AlertDialogCancel>
           <AlertDialogAction
             onClick={onConfirm}
             disabled={isLoading}
-            className="bg-red-600 hover:bg-red-700 text-white focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="bg-red-600 hover:bg-red-700 text-foreground focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isLoading ? (
               <span className="flex items-center gap-2">

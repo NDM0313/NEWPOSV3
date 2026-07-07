@@ -50,9 +50,9 @@ export function StockMovementHistoryPrintPreview({
         <ReportBrandHeader brand={brand} fieldVisibility={fieldVisibility} title={title} subtitle={subtitle} />
       )}
 
-      <p className="text-xs text-gray-600 mb-1">Generated: {generatedAt}</p>
-      <p className="text-xs text-gray-600 mb-4">Filters: {filterSummary}</p>
-      <p className="text-xs text-gray-500 mb-6 italic">
+      <p className="text-xs text-muted-foreground mb-1">Generated: {generatedAt}</p>
+      <p className="text-xs text-muted-foreground mb-4">Filters: {filterSummary}</p>
+      <p className="text-xs text-muted-foreground mb-6 italic">
         Data source: stock_movements ledger (read-only). Current stock = SUM(quantity) from movements;
         inventory_balance used only when no movement rows exist.
       </p>
@@ -92,7 +92,7 @@ export function StockMovementHistoryPrintPreview({
               <tbody>
                 {section.isEmpty || section.rows.length === 0 ? (
                   <tr>
-                    <td colSpan={colSpan} className="border border-gray-300 px-2 py-2 text-gray-500 italic">
+                    <td colSpan={colSpan} className="border border-gray-300 px-2 py-2 text-muted-foreground italic">
                       No stock movement found for this product.
                     </td>
                   </tr>
@@ -121,7 +121,7 @@ export function StockMovementHistoryPrintPreview({
       })}
 
       {showFooter && (
-        <p className="text-xs text-gray-400 text-center mt-6 pt-4 border-t border-gray-200">
+        <p className="text-xs text-muted-foreground text-center mt-6 pt-4 border-t border-gray-200">
           Stock Ledger by Product — {sections.length} product(s)
         </p>
       )}

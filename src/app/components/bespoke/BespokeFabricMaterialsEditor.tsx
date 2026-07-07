@@ -127,7 +127,7 @@ export function BespokeFabricMaterialsEditor({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <Label className="text-gray-300">Fabric / materials (Meter / Yard stock)</Label>
+        <Label className="text-muted-foreground">Fabric / materials (Meter / Yard stock)</Label>
         <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={addRow}>
           <Plus size={12} className="mr-1" />
           Add fabric
@@ -137,10 +137,10 @@ export function BespokeFabricMaterialsEditor({
       {rows.map((row, index) => (
         <div
           key={`fabric-row-${index}`}
-          className="grid grid-cols-[1fr_100px_32px] gap-2 items-end border border-gray-800 rounded-lg p-2 bg-gray-950/50"
+          className="grid grid-cols-[1fr_100px_32px] gap-2 items-end border border-border rounded-lg p-2 bg-muted/40"
         >
           <div>
-            <Label className="text-[10px] text-gray-500 mb-1 block">Product</Label>
+            <Label className="text-[10px] text-muted-foreground mb-1 block">Product</Label>
             <Popover
               open={openRowIndex === index}
               onOpenChange={(open) => {
@@ -153,8 +153,8 @@ export function BespokeFabricMaterialsEditor({
                   type="button"
                   variant="outline"
                   className={cn(
-                    'w-full justify-between h-8 text-xs font-normal bg-gray-950 border-gray-700',
-                    !row.product_id && 'text-gray-500',
+                    'w-full justify-between h-8 text-xs font-normal bg-input-background border-border',
+                    !row.product_id && 'text-muted-foreground',
                   )}
                 >
                   <span className="truncate text-left">
@@ -165,8 +165,8 @@ export function BespokeFabricMaterialsEditor({
                   <ChevronsUpDown className="h-3 w-3 shrink-0 opacity-50" />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-[320px] p-0 bg-gray-950 border-gray-700" align="start">
-                <Command shouldFilter={false} className="bg-gray-950 text-white">
+              <PopoverContent className="w-[320px] p-0 bg-input-background border-border" align="start">
+                <Command shouldFilter={false} className="bg-input-background text-white">
                   <CommandInput
                     placeholder="Search by name or SKU…"
                     value={searchTerm}
@@ -175,14 +175,14 @@ export function BespokeFabricMaterialsEditor({
                   />
                   <CommandList>
                     {loading ? (
-                      <div className="flex items-center justify-center py-4 text-gray-400 text-sm">
+                      <div className="flex items-center justify-center py-4 text-muted-foreground text-sm">
                         <Loader2 className="h-4 w-4 animate-spin mr-2" />
                         Loading…
                       </div>
                     ) : (
                       <>
                         {options.length === 0 ? (
-                          <div className="py-6 px-3 text-center text-sm text-gray-400">
+                          <div className="py-6 px-3 text-center text-sm text-muted-foreground">
                             {emptyMessage}
                           </div>
                         ) : (
@@ -196,7 +196,7 @@ export function BespokeFabricMaterialsEditor({
                               >
                                 <div className="flex flex-col">
                                   <span className="text-sm">{p.name}</span>
-                                  <span className="text-xs text-gray-400">
+                                  <span className="text-xs text-muted-foreground">
                                     {p.sku} · {p.unit_code}
                                     {p.stock != null ? ` · Stock ${formatQty(p.stock)}` : ''}
                                   </span>
@@ -213,7 +213,7 @@ export function BespokeFabricMaterialsEditor({
             </Popover>
           </div>
           <div>
-            <Label className="text-[10px] text-gray-500 mb-1 block">
+            <Label className="text-[10px] text-muted-foreground mb-1 block">
               Qty ({row.unit_code || 'm'})
             </Label>
             <Input
@@ -225,7 +225,7 @@ export function BespokeFabricMaterialsEditor({
                 const v = e.target.value === '' ? 0 : parseFloat(e.target.value) || 0;
                 updateRow(index, { quantity: v });
               }}
-              className="h-8 bg-gray-950 border-gray-700 text-white text-xs"
+              className="h-8 bg-input-background border-border text-white text-xs"
               placeholder="4.5"
             />
           </div>

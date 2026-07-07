@@ -40,14 +40,14 @@ function Step({
           state === 'done' && 'text-emerald-400',
           state === 'active' && 'text-violet-400',
           state === 'warn' && 'text-amber-400',
-          state === 'pending' && 'text-gray-600'
+          state === 'pending' && 'text-muted-foreground'
         )}
       />
       <div className="min-w-0">
-        <p className={cn('text-xs font-medium', state === 'pending' ? 'text-gray-500' : 'text-gray-200')}>
+        <p className={cn('text-xs font-medium', state === 'pending' ? 'text-muted-foreground' : 'text-gray-200')}>
           {label}
         </p>
-        <p className="text-[10px] text-gray-500 leading-snug">{detail}</p>
+        <p className="text-[10px] text-muted-foreground leading-snug">{detail}</p>
       </div>
     </div>
   );
@@ -114,7 +114,7 @@ export function ArApRepairProgressStrip({
         <div className="flex items-center gap-2">
           <Wrench className="w-4 h-4 text-violet-400" />
           <h3 className="text-sm font-semibold text-violet-100">Repair progress</h3>
-          {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-500" /> : null}
+          {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" /> : null}
         </div>
         <div className="flex flex-wrap gap-2 text-[10px]">
           {onScrollToHybrid && (openApplyableCount ?? 0) > 0 ? (

@@ -96,21 +96,21 @@ export function OpeningBalanceToolsTab({ companyId, initialQuery = '' }: Props) 
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-2">
         <div className="flex-1 min-w-[200px]">
-          <label className="text-[10px] uppercase tracking-wider text-gray-500">Contact filter (q)</label>
+          <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Contact filter (q)</label>
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Customer name or contact UUID"
-            className="mt-1 bg-gray-950 border-gray-800"
+            className="mt-1 bg-input-background border-border"
           />
         </div>
         <div>
-          <label className="text-[10px] uppercase tracking-wider text-gray-500">Effective date (apply)</label>
+          <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Effective date (apply)</label>
           <Input
             type="date"
             value={effectiveDate}
             onChange={(e) => setEffectiveDate(e.target.value)}
-            className="mt-1 bg-gray-950 border-gray-800 w-[150px]"
+            className="mt-1 bg-input-background border-border w-[150px]"
           />
         </div>
         <Button type="button" size="sm" onClick={run} disabled={loading}>
@@ -121,7 +121,7 @@ export function OpeningBalanceToolsTab({ companyId, initialQuery = '' }: Props) 
       </div>
 
       {snapshot && (
-        <Card className="border-gray-800 bg-gray-900/40">
+        <Card className="border-border bg-card/40">
           <CardHeader>
             <CardTitle className="text-base">Opening balance gaps ({gaps.length})</CardTitle>
             <CardDescription>
@@ -131,11 +131,11 @@ export function OpeningBalanceToolsTab({ companyId, initialQuery = '' }: Props) 
           </CardHeader>
           <CardContent className="overflow-x-auto">
             {snapshot.rows.length === 0 ? (
-              <p className="text-sm text-gray-500 py-4 text-center">No opening balance legs match filter.</p>
+              <p className="text-sm text-muted-foreground py-4 text-center">No opening balance legs match filter.</p>
             ) : (
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="text-left text-gray-500 border-b border-gray-800">
+                  <tr className="text-left text-muted-foreground border-b border-border">
                     <th className="py-2 pr-2">Entity</th>
                     <th className="py-2 pr-2">Type</th>
                     <th className="py-2 pr-2">Operational</th>
@@ -149,15 +149,15 @@ export function OpeningBalanceToolsTab({ companyId, initialQuery = '' }: Props) 
                 </thead>
                 <tbody>
                   {snapshot.rows.map((row) => (
-                    <tr key={row.rowId} className="border-b border-gray-800/60 align-top">
+                    <tr key={row.rowId} className="border-b border-border/60 align-top">
                       <td className="py-2 pr-2 text-gray-200">{row.entityName}</td>
-                      <td className="py-2 pr-2 font-mono text-gray-500">{row.entityType}</td>
+                      <td className="py-2 pr-2 font-mono text-muted-foreground">{row.entityType}</td>
                       <td className="py-2 pr-2">{row.operationalOpening}</td>
-                      <td className="py-2 pr-2 text-gray-400">{row.jeEntryNo || '—'}</td>
+                      <td className="py-2 pr-2 text-muted-foreground">{row.jeEntryNo || '—'}</td>
                       <td className="py-2 pr-2">{row.jeAmount ?? '—'}</td>
                       <td className="py-2 pr-2">{row.gap}</td>
                       <td className="py-2 pr-2">{statusBadge(row.status)}</td>
-                      <td className="py-2 pr-2 text-gray-400 max-w-xs">{row.reason}</td>
+                      <td className="py-2 pr-2 text-muted-foreground max-w-xs">{row.reason}</td>
                       <td className="py-2">
                         {repairActionForRow(row) ? (
                           <Button
@@ -170,7 +170,7 @@ export function OpeningBalanceToolsTab({ companyId, initialQuery = '' }: Props) 
                             Send to queue
                           </Button>
                         ) : (
-                          <span className="text-gray-600">—</span>
+                          <span className="text-muted-foreground">—</span>
                         )}
                       </td>
                     </tr>
@@ -184,12 +184,12 @@ export function OpeningBalanceToolsTab({ companyId, initialQuery = '' }: Props) 
 
       {gaps.some((r) => r.status === 'orphan_je') && (
         <div className="max-w-md">
-          <label className="text-[10px] uppercase tracking-wider text-gray-500">Orphan JE review note</label>
+          <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Orphan JE review note</label>
           <Input
             value={reviewNote}
             onChange={(e) => setReviewNote(e.target.value)}
             placeholder="Admin review note (required for orphan apply)"
-            className="mt-1 bg-gray-950 border-gray-800 text-sm"
+            className="mt-1 bg-input-background border-border text-sm"
           />
         </div>
       )}

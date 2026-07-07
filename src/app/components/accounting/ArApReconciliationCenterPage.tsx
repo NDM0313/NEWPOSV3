@@ -110,7 +110,7 @@ function statusBadgeClass(status: IntegrityLabSummary['status']): string {
     case 'manual_adjustment':
       return 'bg-violet-500/15 text-violet-200 border-violet-500/40';
     default:
-      return 'bg-gray-500/15 text-gray-300 border-gray-600';
+      return 'bg-gray-500/15 text-muted-foreground border-gray-600';
   }
 }
 
@@ -124,7 +124,7 @@ function FixStatusButton(props: {
       type="button"
       disabled={props.disabled}
       onClick={props.onClick}
-      className="max-w-[140px] bg-gray-900 border border-gray-700 rounded px-2 py-1 text-[11px] text-gray-200 text-left hover:bg-gray-800 disabled:opacity-50"
+      className="max-w-[140px] bg-card border border-border rounded px-2 py-1 text-[11px] text-gray-200 text-left hover:bg-muted disabled:opacity-50"
       title="Change status (requires reason)"
     >
       {props.value.replace(/_/g, ' ')}
@@ -531,7 +531,7 @@ export function ArApReconciliationCenterPage() {
 
   const renderUnpostedTable = (rows: UnpostedDocumentRow[], emptyLabel: string) => (
     <table className="w-full text-sm">
-      <thead className="text-left text-gray-500 border-b border-gray-800">
+      <thead className="text-left text-muted-foreground border-b border-border">
         <tr>
           <th className="p-2 min-w-[200px]">Document</th>
           <th className="p-2">Label</th>
@@ -543,10 +543,10 @@ export function ArApReconciliationCenterPage() {
           <th className="p-2 w-40">Actions</th>
         </tr>
       </thead>
-      <tbody className="divide-y divide-gray-800/80">
+      <tbody className="divide-y divide-border/80">
         {rows.length === 0 ? (
           <tr>
-            <td colSpan={8} className="p-6 text-center text-gray-500">
+            <td colSpan={8} className="p-6 text-center text-muted-foreground">
               {emptyLabel}
             </td>
           </tr>
@@ -557,7 +557,7 @@ export function ArApReconciliationCenterPage() {
             const diag = diagnoseUnpostedRow(r, st);
             const repairCls = classifyUnpostedForRepair(r, diag);
             return (
-              <tr key={key} className="hover:bg-gray-800/20">
+              <tr key={key} className="hover:bg-accent/20">
                 <td className="p-2 align-top">
                   <AccountingRefDisplayCell ui={unpostedDocumentUiRef(r)} />
                 </td>
@@ -567,9 +567,9 @@ export function ArApReconciliationCenterPage() {
                     <RiskBadge level={diag.riskLevel} />
                   </div>
                 </td>
-                <td className="p-2 text-gray-300">{r.contact_name || '—'}</td>
+                <td className="p-2 text-muted-foreground">{r.contact_name || '—'}</td>
                 <td className="p-2 text-right tabular-nums">{formatCurrency(Number(r.amount) || 0)}</td>
-                <td className="p-2 text-gray-400">{r.document_date || '—'}</td>
+                <td className="p-2 text-muted-foreground">{r.document_date || '—'}</td>
                 <td className="p-2">
                   <FixStatusButton
                     value={getStatus(key)}
@@ -647,10 +647,10 @@ export function ArApReconciliationCenterPage() {
 
   if (!access.canAccess) {
     return (
-      <div className="min-h-screen bg-[#0B0F19] text-white p-8 flex flex-col items-center justify-center gap-4">
+      <div className="min-h-screen bg-secondary text-foreground p-8 flex flex-col items-center justify-center gap-4">
         <ShieldAlert className="w-12 h-12 text-amber-400" />
         <h1 className="text-xl font-semibold">Access denied</h1>
-        <p className="text-gray-400 text-sm max-w-md text-center">
+        <p className="text-muted-foreground text-sm max-w-md text-center">
           AR/AP Reconciliation Center is available to Admin, Developer, Super Admin, and Accounting Auditor roles only.
           Sales staff cannot access this page in Phase 2.
         </p>
@@ -663,14 +663,14 @@ export function ArApReconciliationCenterPage() {
 
   if (!companyId) {
     return (
-      <div className="p-8 text-center text-gray-400">
+      <div className="p-8 text-center text-muted-foreground">
         <p>Select a company to use the Reconciliation Center.</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#0B0F19] text-white p-4 md:p-8 space-y-6">
+    <div className="min-h-screen bg-secondary text-foreground p-4 md:p-8 space-y-6">
       <SourceDocumentDetailModal
         open={!!sourceDetailRow}
         onOpenChange={(o) => !o && setSourceDetailRow(null)}
@@ -766,14 +766,14 @@ export function ArApReconciliationCenterPage() {
 
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="space-y-2">
-          <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white -ml-2 gap-1.5" onClick={() => setCurrentView('contacts')}>
+          <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground -ml-2 gap-1.5" onClick={() => setCurrentView('contacts')}>
             <ArrowLeft size={16} /> Back to Contacts
           </Button>
           <div className="flex flex-wrap items-center gap-3">
             <Scale className="w-8 h-8 text-blue-400" />
             <div>
               <h1 className="text-2xl font-bold tracking-tight">AR/AP Diagnostics &amp; Repair</h1>
-              <p className="text-sm text-gray-400 max-w-2xl">
+              <p className="text-sm text-muted-foreground max-w-2xl">
                 One hub for exception queues, hybrid repair, financial tie-out, party trace, and journal hygiene.
                 Advanced COA repairs: Accounting Developer Center.
               </p>
@@ -781,14 +781,14 @@ export function ArApReconciliationCenterPage() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <label className="text-xs text-gray-500 uppercase font-semibold shrink-0">As of</label>
+          <label className="text-xs text-muted-foreground uppercase font-semibold shrink-0">As of</label>
           <DatePicker
             value={asOfDate}
             onChange={(v) => setAsOfDate(v)}
             className="w-40"
           />
           {hubTab === 'queues' ? (
-            <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
+            <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
               <input type="checkbox" checked={hideResolved} onChange={(e) => setHideResolved(e.target.checked)} className="rounded border-gray-600" />
               Hide resolved
             </label>
@@ -812,20 +812,20 @@ export function ArApReconciliationCenterPage() {
       </div>
 
       <Tabs value={hubTab} onValueChange={(v) => setHubTabAndSync(v as ArApDiagnosticsHubTab)} className="space-y-4">
-        <TabsList className="bg-gray-900 border border-gray-800 flex-wrap h-auto">
-          <TabsTrigger value="queues" className="data-[state=active]:bg-gray-800">
+        <TabsList className="flex-wrap h-auto">
+          <TabsTrigger value="queues" className="data-[state=active]:bg-muted">
             Overview &amp; Queues
           </TabsTrigger>
-          <TabsTrigger value="tie-out" className="data-[state=active]:bg-gray-800">
+          <TabsTrigger value="tie-out" className="data-[state=active]:bg-muted">
             <FileSearch className="w-3.5 h-3.5 mr-1.5" /> Tie-out
           </TabsTrigger>
-          <TabsTrigger value="party-rental" className="data-[state=active]:bg-gray-800">
+          <TabsTrigger value="party-rental" className="data-[state=active]:bg-muted">
             Party &amp; Rental Trace
           </TabsTrigger>
-          <TabsTrigger value="metadata" className="data-[state=active]:bg-gray-800">
+          <TabsTrigger value="metadata" className="data-[state=active]:bg-muted">
             Metadata &amp; Docs
           </TabsTrigger>
-          <TabsTrigger value="journal-hygiene" className="data-[state=active]:bg-gray-800">
+          <TabsTrigger value="journal-hygiene" className="data-[state=active]:bg-muted">
             Journal hygiene
           </TabsTrigger>
         </TabsList>
@@ -841,11 +841,11 @@ export function ArApReconciliationCenterPage() {
         onOpenGlCorrectionDraft={(defectId) => setGlCorrectionDefectId(defectId)}
       />
 
-      <div className="rounded-xl border border-blue-500/30 bg-blue-950/20 p-3 text-xs text-blue-100/90 flex gap-2">
+      <div className="rounded-xl border border-blue-500/30 bg-primary/5 p-3 text-xs text-primary dark:text-blue-100 flex gap-2">
         <ShieldAlert className="w-4 h-4 shrink-0 text-blue-400 mt-0.5" />
         <div>
           <p className="font-semibold">AR/AP repair — scoped apply</p>
-          <p className="text-gray-400 mt-0.5">
+          <p className="text-muted-foreground mt-0.5">
             GL posting/reverse/repost is intentionally disabled for safety. Use Fix Link for metadata-only trace
             fixes (contact mapping — GL amounts unchanged). Fix Link saves contact mapping metadata only (including
             trace-only rows).
@@ -884,7 +884,7 @@ export function ArApReconciliationCenterPage() {
 
       {summary && (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-gray-500 uppercase font-semibold">Status</span>
+          <span className="text-xs text-muted-foreground uppercase font-semibold">Status</span>
           <Badge className={cn('border text-sm font-medium', statusBadgeClass(summary.status))}>{summary.statusLabels.join(' · ')}</Badge>
         </div>
       )}
@@ -893,9 +893,9 @@ export function ArApReconciliationCenterPage() {
         <AlertTriangle className="w-5 h-5 shrink-0 text-amber-400 mt-0.5" />
         <div>
           <p className="font-semibold text-amber-100">Worker Payable vs Supplier AP</p>
-          <p className="text-gray-400 text-xs mt-1 leading-relaxed">
-            Lines on account code <strong className="text-gray-300">2010</strong> or named “Worker Payable” appear only in the{' '}
-            <strong className="text-gray-300">Worker payable unmapped</strong> queue. Supplier AP cleanup uses the customer/supplier section — counts are split in the summary.
+          <p className="text-muted-foreground text-xs mt-1 leading-relaxed">
+            Lines on account code <strong className="text-muted-foreground">2010</strong> or named “Worker Payable” appear only in the{' '}
+            <strong className="text-muted-foreground">Worker payable unmapped</strong> queue. Supplier AP cleanup uses the customer/supplier section — counts are split in the summary.
           </p>
         </div>
       </div>
@@ -906,7 +906,7 @@ export function ArApReconciliationCenterPage() {
         </div>
       ) : summary ? (
         <>
-          <p className="text-xs text-gray-500 leading-relaxed">
+          <p className="text-xs text-muted-foreground leading-relaxed">
             Effective variance excludes cancelled, voided, and audit-only GL chains (same rules as Account Statements
             effective mode). Audit/raw variance uses full posted GL.
           </p>
@@ -1045,15 +1045,15 @@ export function ArApReconciliationCenterPage() {
           </div>
         </>
       ) : (
-        <p className="text-gray-500 text-sm">Could not load summary. Apply migrations 20260328–20260330.</p>
+        <p className="text-muted-foreground text-sm">Could not load summary. Apply migrations 20260328–20260330.</p>
       )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="bg-gray-900 border border-gray-800">
-          <TabsTrigger value="queues" className="data-[state=active]:bg-gray-800">
+        <TabsList>
+          <TabsTrigger value="queues" className="data-[state=active]:bg-muted">
             Exception queues
           </TabsTrigger>
-          <TabsTrigger value="about" className="data-[state=active]:bg-gray-800">
+          <TabsTrigger value="about" className="data-[state=active]:bg-muted">
             Flows & rules
           </TabsTrigger>
         </TabsList>
@@ -1092,7 +1092,7 @@ export function ArApReconciliationCenterPage() {
 
           <QueueSection id="unmapped-queue-2" title="2 · Customer / supplier AR & supplier AP (unmapped lines)" icon={<Users className="w-5 h-5 text-amber-400" />} rows={unmappedCsVisible.length}>
             <table className="w-full text-sm">
-              <thead className="text-left text-gray-500 border-b border-gray-800">
+              <thead className="text-left text-muted-foreground border-b border-border">
                 <tr>
                   <th className="p-2 min-w-[200px]">Document</th>
                   <th className="p-2">Bucket</th>
@@ -1104,10 +1104,10 @@ export function ArApReconciliationCenterPage() {
                   <th className="p-2 w-40">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-800/80">
+              <tbody className="divide-y divide-border/80">
                 {unmappedCsVisible.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="p-6 text-center text-gray-500">
+                    <td colSpan={8} className="p-6 text-center text-muted-foreground">
                       No rows.
                     </td>
                   </tr>
@@ -1117,7 +1117,7 @@ export function ArApReconciliationCenterPage() {
                     const diag = unmappedDiagByKey.get(key) ?? diagnoseUnmappedLine(r);
                     const repairCls = classifyUnmappedJournalLine(r, diag);
                     return (
-                      <tr key={key} className="hover:bg-gray-800/20">
+                      <tr key={key} className="hover:bg-accent/20">
                         <td className="p-2 align-top">
                           <AccountingRefDisplayCell ui={jeUiByJournalId.get(r.journal_entry_id)} />
                         </td>
@@ -1126,7 +1126,7 @@ export function ArApReconciliationCenterPage() {
                           {r.ap_sub_bucket ? ` · ${r.ap_sub_bucket}` : ''}
                         </td>
                         <td className="p-2 text-xs">
-                          {r.account_name} <span className="text-gray-600">{r.account_code}</span>
+                          {r.account_name} <span className="text-muted-foreground">{r.account_code}</span>
                         </td>
                         <td className="p-2 text-right tabular-nums">{formatCurrency(Number(r.debit) || 0)}</td>
                         <td className="p-2 text-right tabular-nums">{formatCurrency(Number(r.credit) || 0)}</td>
@@ -1197,7 +1197,7 @@ export function ArApReconciliationCenterPage() {
             subtitle="Payment on_account with matching AR contact — not sent to repair by default"
           >
             <table className="w-full text-sm">
-              <thead className="text-left text-gray-500 border-b border-gray-800">
+              <thead className="text-left text-muted-foreground border-b border-border">
                 <tr>
                   <th className="p-2 min-w-[200px]">Document</th>
                   <th className="p-2">Label</th>
@@ -1207,10 +1207,10 @@ export function ArApReconciliationCenterPage() {
                   <th className="p-2 w-36">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-800/80">
+              <tbody className="divide-y divide-border/80">
                 {unmappedCsFalsePositive.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="p-6 text-center text-gray-500">
+                    <td colSpan={6} className="p-6 text-center text-muted-foreground">
                       No heuristic false positives.
                     </td>
                   </tr>
@@ -1218,7 +1218,7 @@ export function ArApReconciliationCenterPage() {
                   unmappedCsFalsePositive.map((r) => {
                     const key = unmappedLineItemKey(r);
                     return (
-                      <tr key={key} className="hover:bg-gray-800/20 opacity-90">
+                      <tr key={key} className="hover:bg-accent/20 opacity-90">
                         <td className="p-2 align-top">
                           <AccountingRefDisplayCell ui={jeUiByJournalId.get(r.journal_entry_id)} />
                         </td>
@@ -1226,7 +1226,7 @@ export function ArApReconciliationCenterPage() {
                           <FalsePositiveBadge />
                         </td>
                         <td className="p-2 text-xs">
-                          {r.account_name} <span className="text-gray-600">{r.account_code}</span>
+                          {r.account_name} <span className="text-muted-foreground">{r.account_code}</span>
                         </td>
                         <td className="p-2 text-right tabular-nums">{formatCurrency(Number(r.credit) || 0)}</td>
                         <td className="p-2">
@@ -1263,7 +1263,7 @@ export function ArApReconciliationCenterPage() {
             subtitle="Ledger correct — JE payment vs payment rental metadata only (e.g. RCV-0008 / Saqib)"
           >
             <table className="w-full text-sm">
-              <thead className="text-left text-gray-500 border-b border-gray-800">
+              <thead className="text-left text-muted-foreground border-b border-border">
                 <tr>
                   <th className="p-2 min-w-[200px]">Document</th>
                   <th className="p-2">Label</th>
@@ -1273,10 +1273,10 @@ export function ArApReconciliationCenterPage() {
                   <th className="p-2 w-36">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-800/80">
+              <tbody className="divide-y divide-border/80">
                 {unmappedCsMetadataReview.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="p-6 text-center text-gray-500">
+                    <td colSpan={6} className="p-6 text-center text-muted-foreground">
                       No metadata-review rows.
                     </td>
                   </tr>
@@ -1285,7 +1285,7 @@ export function ArApReconciliationCenterPage() {
                     const key = unmappedLineItemKey(r);
                     const diag = unmappedDiagByKey.get(key);
                     return (
-                      <tr key={key} className="hover:bg-gray-800/20 opacity-90">
+                      <tr key={key} className="hover:bg-accent/20 opacity-90">
                         <td className="p-2 align-top">
                           <AccountingRefDisplayCell ui={jeUiByJournalId.get(r.journal_entry_id)} />
                         </td>
@@ -1296,7 +1296,7 @@ export function ArApReconciliationCenterPage() {
                           )}
                         </td>
                         <td className="p-2 text-xs">
-                          {r.account_name} <span className="text-gray-600">{r.account_code}</span>
+                          {r.account_name} <span className="text-muted-foreground">{r.account_code}</span>
                         </td>
                         <td className="p-2 text-right tabular-nums">{formatCurrency(Number(r.credit) || 0)}</td>
                         <td className="p-2">
@@ -1332,7 +1332,7 @@ export function ArApReconciliationCenterPage() {
             subtitle="JV-000207 class — correction already posted; source JE unchanged"
           >
             <table className="w-full text-sm">
-              <thead className="text-left text-gray-500 border-b border-gray-800">
+              <thead className="text-left text-muted-foreground border-b border-border">
                 <tr>
                   <th className="p-2 min-w-[200px]">Document</th>
                   <th className="p-2">Label</th>
@@ -1341,10 +1341,10 @@ export function ArApReconciliationCenterPage() {
                   <th className="p-2 w-36">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-800/80">
+              <tbody className="divide-y divide-border/80">
                 {unmappedCsAppliedGlCorrection.length === 0 && appliedGlCorrections.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="p-6 text-center text-gray-500">
+                    <td colSpan={5} className="p-6 text-center text-muted-foreground">
                       No applied GL corrections in audit queue.
                     </td>
                   </tr>
@@ -1354,7 +1354,7 @@ export function ArApReconciliationCenterPage() {
                       const key = unmappedLineItemKey(r);
                       const diag = unmappedDiagByKey.get(key);
                       return (
-                        <tr key={key} className="hover:bg-gray-800/20 opacity-90">
+                        <tr key={key} className="hover:bg-accent/20 opacity-90">
                           <td className="p-2 align-top">
                             <AccountingRefDisplayCell ui={jeUiByJournalId.get(r.journal_entry_id)} />
                           </td>
@@ -1364,7 +1364,7 @@ export function ArApReconciliationCenterPage() {
                               <p className="text-[10px] text-emerald-200/80 leading-snug max-w-xs">{diag.appliedGlCorrectionReason}</p>
                             ) : null}
                           </td>
-                          <td className="p-2 text-[10px] text-gray-500 font-mono">{r.reference_type || 'gl_correction'}</td>
+                          <td className="p-2 text-[10px] text-muted-foreground font-mono">{r.reference_type || 'gl_correction'}</td>
                           <td className="p-2">
                             <FixStatusButton
                               value={getStatus(key)}
@@ -1387,14 +1387,14 @@ export function ArApReconciliationCenterPage() {
                       );
                     })}
                     {appliedGlCorrections.map((row) => (
-                      <tr key={`audit-${row.journal_entry_id}`} className="hover:bg-gray-800/20 opacity-80">
-                        <td className="p-2 text-gray-300 font-mono text-xs">{row.entry_no || row.journal_entry_id.slice(0, 8)}</td>
+                      <tr key={`audit-${row.journal_entry_id}`} className="hover:bg-accent/20 opacity-80">
+                        <td className="p-2 text-muted-foreground font-mono text-xs">{row.entry_no || row.journal_entry_id.slice(0, 8)}</td>
                         <td className="p-2">
                           <AppliedGlCorrectionBadge />
-                          <p className="text-[10px] text-gray-500 mt-1 max-w-xs">{row.description || 'Applied developer repair'}</p>
+                          <p className="text-[10px] text-muted-foreground mt-1 max-w-xs">{row.description || 'Applied developer repair'}</p>
                         </td>
-                        <td className="p-2 text-[10px] text-gray-600 font-mono break-all">{row.action_fingerprint}</td>
-                        <td className="p-2 text-xs text-gray-500">—</td>
+                        <td className="p-2 text-[10px] text-muted-foreground font-mono break-all">{row.action_fingerprint}</td>
+                        <td className="p-2 text-xs text-muted-foreground">—</td>
                         <td className="p-2">
                           <Button
                             type="button"
@@ -1435,7 +1435,7 @@ export function ArApReconciliationCenterPage() {
 
           <QueueSection id="unmapped-queue-3" title="3 · Worker payable unmapped (2010 / Worker Payable only)" icon={<ClipboardList className="w-5 h-5 text-rose-400" />} rows={unmappedWpVisible.length}>
             <table className="w-full text-sm">
-              <thead className="text-left text-gray-500 border-b border-gray-800">
+              <thead className="text-left text-muted-foreground border-b border-border">
                 <tr>
                   <th className="p-2 min-w-[200px]">Document</th>
                   <th className="p-2">Account</th>
@@ -1445,10 +1445,10 @@ export function ArApReconciliationCenterPage() {
                   <th className="p-2 w-40">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-800/80">
+              <tbody className="divide-y divide-border/80">
                 {unmappedWpVisible.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="p-6 text-center text-gray-500">
+                    <td colSpan={6} className="p-6 text-center text-muted-foreground">
                       No worker-payable unmapped lines.
                     </td>
                   </tr>
@@ -1456,12 +1456,12 @@ export function ArApReconciliationCenterPage() {
                   unmappedWpVisible.map((r) => {
                     const key = unmappedLineItemKey(r);
                     return (
-                      <tr key={key} className="hover:bg-gray-800/20">
+                      <tr key={key} className="hover:bg-accent/20">
                         <td className="p-2 align-top">
                           <AccountingRefDisplayCell ui={jeUiByJournalId.get(r.journal_entry_id)} />
                         </td>
                         <td className="p-2 text-xs">
-                          {r.account_name} <span className="text-gray-600">{r.account_code}</span>
+                          {r.account_name} <span className="text-muted-foreground">{r.account_code}</span>
                         </td>
                         <td className="p-2 text-right tabular-nums">{formatCurrency(Number(r.debit) || 0)}</td>
                         <td className="p-2 text-right tabular-nums">{formatCurrency(Number(r.credit) || 0)}</td>
@@ -1506,7 +1506,7 @@ export function ArApReconciliationCenterPage() {
 
           <QueueSection id="manual-queue-4" title="4 · Manual reconciliation / suspense" icon={<ShieldAlert className="w-5 h-5 text-violet-400" />} rows={manualVisible.length}>
             <table className="w-full text-sm">
-              <thead className="text-left text-gray-500 border-b border-gray-800">
+              <thead className="text-left text-muted-foreground border-b border-border">
                 <tr>
                   <th className="p-2 min-w-[200px]">Document</th>
                   <th className="p-2">Date</th>
@@ -1517,10 +1517,10 @@ export function ArApReconciliationCenterPage() {
                   <th className="p-2 w-32">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-800/80">
+              <tbody className="divide-y divide-border/80">
                 {manualVisible.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="p-6 text-center text-gray-500">
+                    <td colSpan={7} className="p-6 text-center text-muted-foreground">
                       No rows.
                     </td>
                   </tr>
@@ -1528,14 +1528,14 @@ export function ArApReconciliationCenterPage() {
                   manualVisible.map((r) => {
                     const key = manualJeItemKey(r);
                     return (
-                      <tr key={key} className="hover:bg-gray-800/20">
+                      <tr key={key} className="hover:bg-accent/20">
                         <td className="p-2 align-top">
                           <AccountingRefDisplayCell ui={jeUiByJournalId.get(r.journal_entry_id)} />
                         </td>
-                        <td className="p-2 text-gray-400">{r.entry_date || '—'}</td>
+                        <td className="p-2 text-muted-foreground">{r.entry_date || '—'}</td>
                         <td className="p-2 text-right tabular-nums">{formatCurrency(Number(r.suspense_net_dr_minus_cr) || 0)}</td>
                         <td className="p-2 text-xs">{r.detection_kind}</td>
-                        <td className="p-2 text-gray-500 text-xs max-w-xs truncate" title={r.description || ''}>
+                        <td className="p-2 text-muted-foreground text-xs max-w-xs truncate" title={r.description || ''}>
                           {r.description}
                         </td>
                         <td className="p-2">
@@ -1572,7 +1572,7 @@ export function ArApReconciliationCenterPage() {
             </table>
           </QueueSection>
         </TabsContent>
-        <TabsContent value="about" className="prose prose-invert prose-sm max-w-none text-gray-400 space-y-3">
+        <TabsContent value="about" className="prose prose-invert prose-sm max-w-none text-muted-foreground space-y-3">
           <p>
             <strong className="text-gray-200">Phase 2 (current):</strong> dry-run wizards, trace panels, and status changes with required notes.
             Post, relink apply, and journal execute are disabled or gated — no GL mutations.
@@ -1658,7 +1658,7 @@ function RowActionsMenu(props: {
           <ExternalLink size={14} className="mr-1" /> Actions
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700 text-gray-200">
+      <DropdownMenuContent align="end" className="bg-card border-border text-gray-200">
         {props.items.map((item) => (
           <DropdownMenuItem
             key={item.label}
@@ -1693,7 +1693,7 @@ function SummaryCard(props: {
           : '—';
   const color =
     tone === 'green'
-      ? 'text-green-400'
+      ? 'text-[var(--erp-money-positive)]'
       : tone === 'red'
         ? 'text-red-400'
         : tone === 'warn'
@@ -1702,19 +1702,19 @@ function SummaryCard(props: {
             ? 'text-orange-300'
             : tone === 'violet'
               ? 'text-violet-300'
-              : 'text-white';
+              : 'text-foreground';
   const Wrapper = onClick ? 'button' : 'div';
   return (
     <Wrapper
       type={onClick ? 'button' : undefined}
       onClick={onClick}
       className={cn(
-        'rounded-xl border border-gray-800 bg-gray-900/50 p-4 text-left w-full',
-        onClick && 'hover:border-amber-500/40 hover:bg-gray-900/70 cursor-pointer transition-colors'
+        'rounded-xl border border-border bg-muted/40 p-4 text-left w-full',
+        onClick && 'hover:border-amber-500/40 hover:bg-card/70 cursor-pointer transition-colors'
       )}
     >
-      <p className="text-xs text-gray-500 uppercase font-semibold tracking-wide">{title}</p>
-      <p className="text-[10px] text-gray-600 mt-0.5">{subtitle}</p>
+      <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide">{title}</p>
+      <p className="text-[10px] text-muted-foreground mt-0.5">{subtitle}</p>
       <p className={cn('text-xl font-bold tabular-nums mt-2', color)}>{val}</p>
     </Wrapper>
   );
@@ -1729,12 +1729,12 @@ function QueueSection(props: {
   children: React.ReactNode;
 }) {
   return (
-    <div id={props.id} className="rounded-xl border border-gray-800 bg-gray-900/40 overflow-hidden scroll-mt-4">
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-800 bg-gray-900/80">
+    <div id={props.id} className="rounded-xl border border-border bg-card/40 overflow-hidden scroll-mt-4">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-border bg-card">
         {props.icon}
         <div>
-          <h2 className="text-sm font-semibold text-white">{props.title}</h2>
-          <p className="text-xs text-gray-500">
+          <h2 className="text-sm font-semibold text-foreground">{props.title}</h2>
+          <p className="text-xs text-muted-foreground">
             {props.rows} row(s) shown
             {props.subtitle ? ` · ${props.subtitle}` : ''}
           </p>

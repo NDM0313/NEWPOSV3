@@ -262,7 +262,7 @@ export function BespokeWorkOrderForm(props: BespokeWorkOrderFormProps) {
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="bg-gray-900 border-gray-700 text-white max-w-lg">
+        <DialogContent className="bg-card border-border text-white max-w-lg">
           <DialogHeader>
             <DialogTitle>{title}</DialogTitle>
           </DialogHeader>
@@ -270,15 +270,15 @@ export function BespokeWorkOrderForm(props: BespokeWorkOrderFormProps) {
             {isEdit && (
               <>
                 <div>
-                  <Label className="text-gray-300">Status</Label>
+                  <Label className="text-muted-foreground">Status</Label>
                   <Select
                     value={status}
                     onValueChange={(v) => setStatus(v as BespokeWorkOrderStatus)}
                   >
-                    <SelectTrigger className="bg-gray-950 border-gray-700 mt-1">
+                    <SelectTrigger className="bg-input-background border-border mt-1">
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent className="bg-gray-950 border-gray-800">
+                    <SelectContent className="bg-input-background border-border">
                       {EDIT_STATUS_OPTIONS.map((opt) => (
                         <SelectItem key={opt.value} value={opt.value}>
                           {opt.label}
@@ -289,7 +289,7 @@ export function BespokeWorkOrderForm(props: BespokeWorkOrderFormProps) {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <Label className="text-gray-300">Job created</Label>
+                    <Label className="text-muted-foreground">Job created</Label>
                     <div className="mt-1">
                       <CalendarDatePicker
                         value={createdDate}
@@ -300,7 +300,7 @@ export function BespokeWorkOrderForm(props: BespokeWorkOrderFormProps) {
                     </div>
                   </div>
                   <div>
-                    <Label className="text-gray-300">Job completed</Label>
+                    <Label className="text-muted-foreground">Job completed</Label>
                     <div className={status !== 'completed' ? 'mt-1 opacity-50 pointer-events-none' : 'mt-1'}>
                       <CalendarDatePicker
                         value={completedDate}
@@ -315,9 +315,9 @@ export function BespokeWorkOrderForm(props: BespokeWorkOrderFormProps) {
             )}
 
             <div>
-              <Label className="text-gray-300">Worker or supplier</Label>
+              <Label className="text-muted-foreground">Worker or supplier</Label>
               {loadingParties ? (
-                <div className="flex items-center gap-2 mt-2 text-sm text-gray-500">
+                <div className="flex items-center gap-2 mt-2 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Loading workers and suppliers…
                 </div>
@@ -329,10 +329,10 @@ export function BespokeWorkOrderForm(props: BespokeWorkOrderFormProps) {
                 </p>
               ) : (
                 <Select value={partyContactId} onValueChange={setPartyContactId}>
-                  <SelectTrigger className="bg-gray-950 border-gray-700 mt-1">
+                  <SelectTrigger className="bg-input-background border-border mt-1">
                     <SelectValue placeholder="Select worker or supplier" />
                   </SelectTrigger>
-                  <SelectContent className="bg-gray-950 border-gray-800">
+                  <SelectContent className="bg-input-background border-border">
                     {parties.map((p) => (
                       <SelectItem key={p.id} value={p.id}>
                         {formatPartyOption(p)}
@@ -343,23 +343,23 @@ export function BespokeWorkOrderForm(props: BespokeWorkOrderFormProps) {
               )}
             </div>
             <div>
-              <Label className="text-gray-300">Production cost (internal)</Label>
+              <Label className="text-muted-foreground">Production cost (internal)</Label>
               <Input
                 type="number"
                 min={0}
                 value={productionCost}
                 onChange={(e) => setProductionCost(e.target.value)}
-                className="bg-gray-950 border-gray-700 mt-1"
+                className="bg-input-background border-border mt-1"
                 placeholder="e.g. 25000"
                 disabled={loadingParties}
               />
             </div>
             <div>
-              <Label className="text-gray-300">Notes (optional)</Label>
+              <Label className="text-muted-foreground">Notes (optional)</Label>
               <Textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                className="bg-gray-950 border-gray-700 mt-1"
+                className="bg-input-background border-border mt-1"
                 disabled={loadingParties}
               />
             </div>
@@ -380,7 +380,7 @@ export function BespokeWorkOrderForm(props: BespokeWorkOrderFormProps) {
             )}
 
             {isEdit && (
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-muted-foreground">
                 Changing status from Completed to Pending or In progress reverses stock and voids
                 the production journal. Completed jobs still update the journal in place when you
                 only change cost or worker.
@@ -399,16 +399,16 @@ export function BespokeWorkOrderForm(props: BespokeWorkOrderFormProps) {
       </Dialog>
 
       <AlertDialog open={cancelConfirmOpen} onOpenChange={setCancelConfirmOpen}>
-        <AlertDialogContent className="bg-gray-900 border-gray-700 text-white">
+        <AlertDialogContent className="bg-card border-border text-white">
           <AlertDialogHeader>
             <AlertDialogTitle>Cancel stock post?</AlertDialogTitle>
-            <AlertDialogDescription className="text-gray-400">
+            <AlertDialogDescription className="text-muted-foreground">
               Reverse fabric and custom-order stock movements for this job. The work order stays
               completed until you change status.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="border-gray-700">Keep stock</AlertDialogCancel>
+            <AlertDialogCancel className="border-border">Keep stock</AlertDialogCancel>
             <AlertDialogAction
               className="bg-red-600 hover:bg-red-500"
               onClick={(e) => {

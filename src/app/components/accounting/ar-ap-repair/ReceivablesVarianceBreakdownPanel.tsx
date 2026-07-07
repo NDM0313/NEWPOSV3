@@ -136,7 +136,7 @@ export function ReceivablesVarianceBreakdownPanel({
           <h3 className={cn('text-sm font-semibold', isFullyReconciled ? 'text-emerald-100' : 'text-amber-100')}>
             Receivables variance breakdown
           </h3>
-          <p className="text-xs text-gray-400 mt-0.5">
+          <p className="text-xs text-muted-foreground mt-0.5">
             Explains Operational − GL raw gap
             {varianceTotal != null ? ` (${formatCurrency(varianceTotal)})` : ''}
             {resolveSnapshot && resolveSnapshot.openGlCorrectionCount > 0
@@ -144,7 +144,7 @@ export function ReceivablesVarianceBreakdownPanel({
               : null}
           </p>
         </div>
-        {open ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
+        {open ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
       </button>
 
       {open ? (
@@ -160,14 +160,14 @@ export function ReceivablesVarianceBreakdownPanel({
               <p>
                 GL corrections applied and variance reconciled. Contacts GL roll-up should match after refresh.
                 {resolveSnapshot?.hqSlEntryNo ? (
-                  <span className="block text-gray-400 mt-1 font-mono">HQ-SL fix: {resolveSnapshot.hqSlEntryNo}</span>
+                  <span className="block text-muted-foreground mt-1 font-mono">HQ-SL fix: {resolveSnapshot.hqSlEntryNo}</span>
                 ) : null}
               </p>
             </div>
           ) : null}
 
           {isDocumentedResidual && !isFullyReconciled ? (
-            <div className="rounded-lg border border-blue-600/40 bg-blue-950/25 p-3 text-xs text-blue-100/90 flex gap-2">
+            <div className="rounded-lg border border-blue-600/40 bg-primary/10 p-3 text-xs text-primary dark:text-blue-100 flex gap-2">
               <Info className="w-4 h-4 shrink-0 text-blue-400 mt-0.5" />
               <p>
                 HQ-SL GL correction applied ({resolveSnapshot?.hqSlEntryNo ?? 'JV'}). ~Rs 1 raw party GL residual from
@@ -228,7 +228,7 @@ export function ReceivablesVarianceBreakdownPanel({
               </div>
 
               {structural1100NetsZero ? (
-                <div className="rounded-lg border border-blue-600/40 bg-blue-950/25 p-3 text-xs text-blue-100/90 flex gap-2">
+                <div className="rounded-lg border border-blue-600/40 bg-primary/10 p-3 text-xs text-primary dark:text-blue-100 flex gap-2">
                   <Info className="w-4 h-4 shrink-0 text-blue-400 mt-0.5" />
                   <p>
                     Structural 1100 scope pair ({formatCurrency(unmapped1100)} + {formatCurrency(subtreeGap)}) nets to
@@ -244,10 +244,10 @@ export function ReceivablesVarianceBreakdownPanel({
                 </p>
               ) : null}
 
-              <div className="overflow-x-auto rounded-lg border border-gray-800">
+              <div className="overflow-x-auto rounded-lg border border-border">
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="text-gray-500 border-b border-gray-800 bg-gray-900/40">
+                    <tr className="text-muted-foreground border-b border-border bg-card/40">
                       <th className="text-left py-2 px-3">Bucket</th>
                       <th className="text-right py-2 px-3">Amount</th>
                       <th className="text-right py-2 px-3">Count</th>
@@ -256,17 +256,17 @@ export function ReceivablesVarianceBreakdownPanel({
                   </thead>
                   <tbody>
                     {breakdown.buckets.map((bucket) => (
-                      <tr key={bucket.key} className="border-b border-gray-800/70">
-                        <td className="py-2 px-3 text-gray-300">{bucket.label}</td>
+                      <tr key={bucket.key} className="border-b border-border/70">
+                        <td className="py-2 px-3 text-muted-foreground">{bucket.label}</td>
                         <td
                           className={cn(
                             'py-2 px-3 text-right tabular-nums',
-                            Math.abs(bucket.amount) < 0.01 ? 'text-gray-500' : 'text-amber-200'
+                            Math.abs(bucket.amount) < 0.01 ? 'text-muted-foreground' : 'text-amber-200'
                           )}
                         >
                           {formatCurrency(bucket.amount)}
                         </td>
-                        <td className="py-2 px-3 text-right text-gray-500">{bucket.lineCount || '—'}</td>
+                        <td className="py-2 px-3 text-right text-muted-foreground">{bucket.lineCount || '—'}</td>
                         <td className="py-2 px-3 text-right">
                           {bucket.sampleJournalEntryIds.length > 0 ? (
                             <div className="flex flex-wrap gap-1 justify-end">
@@ -296,15 +296,15 @@ export function ReceivablesVarianceBreakdownPanel({
 
               {breakdown.negativeClampedContacts.length > 0 ? (
                 <div>
-                  <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
+                  <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
                     {hasOrderAdvanceLinks
                       ? 'Order advances on AR (needs finalize)'
                       : 'Negative AR contacts (zeroed in operational sum)'}
                   </h4>
-                  <div className="overflow-x-auto rounded-lg border border-gray-800">
+                  <div className="overflow-x-auto rounded-lg border border-border">
                     <table className="w-full text-xs">
                       <thead>
-                        <tr className="text-gray-500 border-b border-gray-800">
+                        <tr className="text-muted-foreground border-b border-border">
                           <th className="text-left py-2 px-3">Contact</th>
                           <th className="text-right py-2 px-3">Signed AR</th>
                           <th className="text-right py-2 px-3">Clamped loss</th>
@@ -313,11 +313,11 @@ export function ReceivablesVarianceBreakdownPanel({
                       </thead>
                       <tbody>
                         {breakdown.negativeClampedContacts.map((c) => (
-                          <tr key={c.contactId} className="border-b border-gray-800/70 align-top">
-                            <td className="py-2 px-3 text-gray-300">
+                          <tr key={c.contactId} className="border-b border-border/70 align-top">
+                            <td className="py-2 px-3 text-muted-foreground">
                               <div>{c.contactName}</div>
                               {c.linkedUnpostedSales.map((s) => (
-                                <div key={s.saleId} className="text-[10px] text-gray-500 mt-1">
+                                <div key={s.saleId} className="text-[10px] text-muted-foreground mt-1">
                                   {c.contactName} · {s.invoiceNo} {s.status || 'order'} · advance{' '}
                                   {formatCurrency(s.paidAmount)}
                                 </div>
@@ -351,7 +351,7 @@ export function ReceivablesVarianceBreakdownPanel({
                                     type="button"
                                     variant="outline"
                                     size="sm"
-                                    className="h-7 text-[10px] border-gray-600 text-gray-300"
+                                    className="h-7 text-[10px] border-gray-600 text-muted-foreground"
                                     onClick={() => onOpenPartyLedger(c.contactId, c.contactName)}
                                   >
                                     Party statement
@@ -362,7 +362,7 @@ export function ReceivablesVarianceBreakdownPanel({
                                     type="button"
                                     variant="ghost"
                                     size="sm"
-                                    className="h-7 text-[10px] text-blue-300"
+                                    className="h-7 text-[10px] text-blue-700 dark:text-blue-300"
                                     onClick={onGoToFinancialTrace}
                                   >
                                     HQ-SL resolved (trace)
@@ -379,7 +379,7 @@ export function ReceivablesVarianceBreakdownPanel({
               ) : null}
             </>
           ) : (
-            <p className="text-xs text-gray-500 py-4">
+            <p className="text-xs text-muted-foreground py-4">
               {breakdown?.error || 'Variance breakdown unavailable — apply migration 20260619120000_ar_ap_variance_breakdown.sql'}
             </p>
           )}
@@ -396,8 +396,8 @@ export function ReceivablesVarianceBreakdownPanel({
 
 function Stat({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
-    <div className="rounded border border-gray-800 bg-gray-950/50 p-2">
-      <p className="text-[10px] text-gray-500">{label}</p>
+    <div className="rounded border border-border bg-muted/40 p-2">
+      <p className="text-[10px] text-muted-foreground">{label}</p>
       <p className={cn('tabular-nums text-sm', highlight ? 'text-amber-200 font-medium' : 'text-gray-200')}>{value}</p>
     </div>
   );

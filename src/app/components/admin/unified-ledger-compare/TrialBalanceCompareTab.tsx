@@ -40,7 +40,7 @@ export function TrialBalanceCompareTab(props: {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-gray-400">
+      <p className="text-sm text-muted-foreground">
         Compare legacy <code className="text-amber-300">getTrialBalance</code> vs{' '}
         <code className="text-amber-300">get_unified_trial_balance</code> (shadow only).
         Both sides use <strong className="text-amber-200">official_gl</strong> — legacy TB has no
@@ -66,7 +66,7 @@ export function TrialBalanceCompareTab(props: {
             oldQueryMs={result.oldQueryMs}
             newQueryMs={result.newQueryMs}
             extra={
-              <div className="text-sm text-gray-400 grid md:grid-cols-2 gap-2">
+              <div className="text-sm text-muted-foreground grid md:grid-cols-2 gap-2">
                 <p>
                   Old Dr/Cr: {result.oldTotalDebit.toFixed(2)} / {result.oldTotalCredit.toFixed(2)} (
                   {result.oldAccountCount} accounts)
@@ -84,14 +84,14 @@ export function TrialBalanceCompareTab(props: {
           />
 
           {result.accountDiffs.length > 0 && (
-            <div className="rounded-lg border border-gray-800 overflow-hidden">
-              <div className="px-3 py-2 bg-gray-900/80 text-sm font-medium">
+            <div className="rounded-lg border border-border overflow-hidden">
+              <div className="px-3 py-2 bg-card text-sm font-medium">
                 Account diffs ({result.accountDiffs.length})
               </div>
               <div className="overflow-x-auto max-h-64">
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="text-gray-500 border-b border-gray-800">
+                    <tr className="text-muted-foreground border-b border-border">
                       <th className="text-left p-2">Code</th>
                       <th className="text-left p-2">Name</th>
                       <th className="text-left p-2">Kind</th>
@@ -102,7 +102,7 @@ export function TrialBalanceCompareTab(props: {
                   </thead>
                   <tbody>
                     {result.accountDiffs.slice(0, 50).map((d, i) => (
-                      <tr key={`${d.accountId}-${i}`} className="border-b border-gray-800/50">
+                      <tr key={`${d.accountId}-${i}`} className="border-b border-border">
                         <td className="p-2">{d.accountCode}</td>
                         <td className="p-2">{d.accountName}</td>
                         <td className="p-2">{d.kind}</td>

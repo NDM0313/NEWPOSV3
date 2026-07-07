@@ -111,16 +111,16 @@ function PreviewHeader({
               className="w-14 h-14 object-contain shrink-0 rounded"
             />
           ) : (
-            <div className="w-14 h-14 bg-gray-200 rounded flex items-center justify-center text-[10px] text-gray-500 shrink-0">
+            <div className="w-14 h-14 bg-gray-200 rounded flex items-center justify-center text-[10px] text-muted-foreground shrink-0">
               LOGO
             </div>
           )
         )}
         <div className={`flex-1 min-w-0 ${flexPosition(layout.header.companyDetailsPosition)}`}>
           {fields.showCompanyAddress && <div className="font-semibold text-base" style={{ fontSize: '16px' }}>{MOCK_INVOICE.companyName}</div>}
-          {fields.showCompanyAddress && <div className="text-gray-600 text-xs mt-0.5">{MOCK_INVOICE.address}</div>}
-          {fields.showPhone && <div className="text-gray-600 text-xs">{MOCK_INVOICE.phone}</div>}
-          {fields.showEmail && <div className="text-gray-600 text-xs">{MOCK_INVOICE.email}</div>}
+          {fields.showCompanyAddress && <div className="text-muted-foreground text-xs mt-0.5">{MOCK_INVOICE.address}</div>}
+          {fields.showPhone && <div className="text-muted-foreground text-xs">{MOCK_INVOICE.phone}</div>}
+          {fields.showEmail && <div className="text-muted-foreground text-xs">{MOCK_INVOICE.email}</div>}
         </div>
       </div>
       <div className={`flex mt-2 ${flexPosition(layout.header.invoiceTitlePosition)}`}>
@@ -153,27 +153,27 @@ export function PrintingPreviewPanel({
     <>
       <div className="grid grid-cols-2 gap-4 mb-3 text-xs">
         <div>
-          <span className="text-gray-500">Invoice No</span>
+          <span className="text-muted-foreground">Invoice No</span>
           <span className="ml-2">{MOCK_INVOICE.invoiceNo}</span>
         </div>
         <div className="text-right">
-          <span className="text-gray-500">Date</span>
+          <span className="text-muted-foreground">Date</span>
           <span className="ml-2">{MOCK_INVOICE.date}</span>
         </div>
         {fields.showCustomerAddress && (
           <>
             <div className="col-span-2">
-              <span className="text-gray-500">Customer</span>
+              <span className="text-muted-foreground">Customer</span>
               <span className="ml-2">{MOCK_INVOICE.customer}</span>
             </div>
-            <div className="col-span-2 text-gray-600">{MOCK_INVOICE.customerAddress}</div>
+            <div className="col-span-2 text-muted-foreground">{MOCK_INVOICE.customerAddress}</div>
           </>
         )}
       </div>
       <div className="flex-1 min-h-0 overflow-hidden">
         <table className="w-full border-collapse text-xs" style={{ fontSize: '12px' }}>
           <thead>
-            <tr className="border-b-2 border-gray-800">
+            <tr className="border-b-2 border-border">
               <th className={`${layout.table.alignment === 'left' ? 'text-left' : layout.table.alignment === 'center' ? 'text-center' : 'text-right'} py-1.5 font-semibold`}>Product</th>
               {fields.showSku && <th className="text-left py-1.5 font-semibold">SKU</th>}
               <th className="text-right py-1.5 font-semibold">Qty</th>
@@ -188,7 +188,7 @@ export function PrintingPreviewPanel({
             {MOCK_INVOICE.items.map((row, i) => (
               <tr key={i} className="border-b border-gray-200">
                 <td className="py-1">{row.product}</td>
-                {fields.showSku && <td className="py-1 text-gray-600">{row.sku}</td>}
+                {fields.showSku && <td className="py-1 text-muted-foreground">{row.sku}</td>}
                 <td className="text-right py-1">{row.qty}</td>
                 <td className="text-right py-1">{row.rate.toLocaleString()}</td>
                 {fields.showDiscount && <td className="text-right py-1">{row.discount > 0 ? row.discount : '—'}</td>}
@@ -202,9 +202,9 @@ export function PrintingPreviewPanel({
       </div>
       <div className={`flex ${flexPosition(layout.table.alignment)} mt-2 text-xs`}>
         <div className="text-right space-y-0.5">
-          <div className="flex justify-end gap-6"><span className="text-gray-500">Subtotal</span><span>{MOCK_INVOICE.subtotal.toLocaleString()}</span></div>
-          {fields.showDiscount && <div className="flex justify-end gap-6"><span className="text-gray-500">Discount</span><span>{MOCK_INVOICE.discount.toLocaleString()}</span></div>}
-          {fields.showTax && <div className="flex justify-end gap-6"><span className="text-gray-500">Tax</span><span>{MOCK_INVOICE.tax.toLocaleString()}</span></div>}
+          <div className="flex justify-end gap-6"><span className="text-muted-foreground">Subtotal</span><span>{MOCK_INVOICE.subtotal.toLocaleString()}</span></div>
+          {fields.showDiscount && <div className="flex justify-end gap-6"><span className="text-muted-foreground">Discount</span><span>{MOCK_INVOICE.discount.toLocaleString()}</span></div>}
+          {fields.showTax && <div className="flex justify-end gap-6"><span className="text-muted-foreground">Tax</span><span>{MOCK_INVOICE.tax.toLocaleString()}</span></div>}
           <div className="flex justify-end gap-6 font-semibold border-t border-gray-300 pt-1 mt-1"><span>Total</span><span>{MOCK_INVOICE.total.toLocaleString()}</span></div>
         </div>
       </div>
@@ -214,25 +214,25 @@ export function PrintingPreviewPanel({
   const renderReceipt = () => (
     <>
       <div className="space-y-2 mb-4 text-xs">
-        <div className="flex justify-between"><span className="text-gray-500">Receipt No</span><span>{MOCK_RECEIPT.receiptNo}</span></div>
-        <div className="flex justify-between"><span className="text-gray-500">Date</span><span>{MOCK_RECEIPT.date}</span></div>
+        <div className="flex justify-between"><span className="text-muted-foreground">Receipt No</span><span>{MOCK_RECEIPT.receiptNo}</span></div>
+        <div className="flex justify-between"><span className="text-muted-foreground">Date</span><span>{MOCK_RECEIPT.date}</span></div>
         {fields.showCustomerAddress && (
           <>
-            <div className="flex justify-between"><span className="text-gray-500">Customer</span><span>{MOCK_RECEIPT.customer}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Customer</span><span>{MOCK_RECEIPT.customer}</span></div>
           </>
         )}
         <div className="flex justify-between font-semibold text-base pt-2 border-t border-gray-200">
           <span>Amount</span><span>{MOCK_RECEIPT.amount.toLocaleString()}</span>
         </div>
-        <div className="flex justify-between"><span className="text-gray-500">Method</span><span>{MOCK_RECEIPT.method}</span></div>
-        <div className="flex justify-between"><span className="text-gray-500">Reference</span><span>{MOCK_RECEIPT.reference}</span></div>
+        <div className="flex justify-between"><span className="text-muted-foreground">Method</span><span>{MOCK_RECEIPT.method}</span></div>
+        <div className="flex justify-between"><span className="text-muted-foreground">Reference</span><span>{MOCK_RECEIPT.reference}</span></div>
       </div>
       {fields.showNotes && (
-        <div className="pt-2 border-t border-gray-200 text-xs text-gray-600">{MOCK_RECEIPT.notes}</div>
+        <div className="pt-2 border-t border-gray-200 text-xs text-muted-foreground">{MOCK_RECEIPT.notes}</div>
       )}
       {fields.showSignature && (
         <div className={`flex ${flexPosition(layout.footer.signaturePosition)} mt-4 pt-2 border-t border-gray-200`}>
-          <span className="text-xs text-gray-500">Authorized Signature</span>
+          <span className="text-xs text-muted-foreground">Authorized Signature</span>
         </div>
       )}
     </>
@@ -242,18 +242,18 @@ export function PrintingPreviewPanel({
     <>
       <div className="grid grid-cols-2 gap-4 mb-3 text-xs">
         <div>
-          <span className="text-gray-500">Order / Invoice</span>
+          <span className="text-muted-foreground">Order / Invoice</span>
           <span className="ml-2">{MOCK_PACKING.orderNo}</span>
         </div>
         <div className="text-right">
-          <span className="text-gray-500">Date</span>
+          <span className="text-muted-foreground">Date</span>
           <span className="ml-2">{MOCK_PACKING.date}</span>
         </div>
       </div>
       <div className="flex-1 min-h-0 overflow-hidden">
         <table className="w-full border-collapse text-xs" style={{ fontSize: '12px' }}>
           <thead>
-            <tr className="border-b-2 border-gray-800">
+            <tr className="border-b-2 border-border">
               <th className="text-left py-1.5 font-semibold">Product</th>
               {fields.showSku && <th className="text-left py-1.5 font-semibold">SKU</th>}
               <th className="text-right py-1.5 font-semibold">Pieces</th>
@@ -265,7 +265,7 @@ export function PrintingPreviewPanel({
             {MOCK_PACKING.items.map((row, i) => (
               <tr key={i} className="border-b border-gray-200">
                 <td className="py-1">{row.product}</td>
-                {fields.showSku && <td className="py-1 text-gray-600">{row.sku}</td>}
+                {fields.showSku && <td className="py-1 text-muted-foreground">{row.sku}</td>}
                 <td className="text-right py-1">{row.pieces}</td>
                 <td className="text-right py-1">{row.cartons}</td>
                 <td className="text-right py-1">{row.weight}</td>
@@ -299,21 +299,21 @@ export function PrintingPreviewPanel({
   };
 
   return (
-    <div className="flex flex-col h-full min-h-0 rounded-xl border border-gray-700 bg-gray-900">
-      <div className="p-3 border-b border-gray-800 shrink-0">
-        <label className="text-xs font-medium text-gray-400 uppercase tracking-wider block mb-1.5">
+    <div className="flex flex-col h-full min-h-0 rounded-xl border border-border bg-card">
+      <div className="p-3 border-b border-border shrink-0">
+        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider block mb-1.5">
           Document preview
         </label>
         <select
           value={previewDocument}
           onChange={(e) => onPreviewDocumentChange(e.target.value as DocumentTemplateId)}
-          className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm"
+          className="w-full bg-muted border border-border text-foreground rounded-lg px-3 py-2 text-sm"
         >
           {PREVIEW_DOCUMENT_OPTIONS.map((opt) => (
             <option key={opt.id} value={opt.id}>{opt.label}</option>
           ))}
         </select>
-        <p className="text-[11px] text-gray-500 mt-1.5">
+        <p className="text-[11px] text-muted-foreground mt-1.5">
           {previewDocument === 'ledger_statement'
             ? 'Same 7-column layout as Account Statements PDF. Orientation: Reports & Export tab.'
             : 'Toggles (e.g. Show SKU) update this preview live.'}
@@ -353,7 +353,7 @@ export function PrintingPreviewPanel({
             {renderContent()}
             {/* Footer for invoice-type and packing */}
             {(previewDocument === 'sales_invoice' || previewDocument === 'purchase_invoice' || previewDocument === 'packing_list') && (
-              <footer className="mt-4 pt-3 border-t border-gray-300 text-xs text-gray-600">
+              <footer className="mt-4 pt-3 border-t border-gray-300 text-xs text-muted-foreground">
                 {fields.showNotes && previewDocument !== 'packing_list' && (
                   <div className={`flex ${flexPosition(layout.footer.notesPosition)} mb-2`}>
                     <span>{MOCK_INVOICE.notes}</span>
@@ -370,7 +370,7 @@ export function PrintingPreviewPanel({
         </div>
       </div>
       )}
-      <div className="px-3 py-2 border-t border-gray-800 text-[11px] text-gray-500 shrink-0">
+      <div className="px-3 py-2 border-t border-border text-[11px] text-muted-foreground shrink-0">
         A4 {previewDocument === 'ledger_statement' ? ledgerPrintOptions.orientation : pageSetup.orientation} · Live preview (matches print)
       </div>
     </div>

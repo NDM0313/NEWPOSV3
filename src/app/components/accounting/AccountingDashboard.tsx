@@ -172,7 +172,7 @@ const REF_TYPE_COLORS: Record<string, string> = {
   purchase_return: 'bg-pink-900/50 text-pink-300',
   purchase_reversal: 'bg-red-900/30 text-red-400',
   payment: 'bg-green-900/50 text-green-300',
-  payment_adjustment: 'bg-green-900/30 text-green-400',
+  payment_adjustment: 'bg-green-900/30 text-[var(--erp-money-positive)]',
   shipment: 'bg-amber-900/50 text-amber-300',
   stock_adjustment: 'bg-yellow-900/40 text-yellow-300',
   opening_balance_contact_ar: 'bg-cyan-900/40 text-cyan-300',
@@ -181,7 +181,7 @@ const REF_TYPE_COLORS: Record<string, string> = {
   opening_balance_inventory: 'bg-cyan-900/40 text-cyan-300',
   opening_balance_contact_worker: 'bg-cyan-900/40 text-cyan-300',
   commission_batch: 'bg-teal-900/50 text-teal-300',
-  manual: 'bg-gray-800 text-gray-400',
+  manual: 'bg-muted text-muted-foreground',
 };
 
 function refTypeBadgeLabel(rt: string): string {
@@ -354,8 +354,8 @@ function journalRowPresentation(entry: AccountingEntry): {
   if (entry.source === 'Sale' || entry.module === 'Sales') {
     return {
       typeLabel: 'Income',
-      amountClass: 'text-green-400',
-      badgeClass: 'bg-green-500/20 text-green-400 border-green-500/30',
+      amountClass: 'text-[var(--erp-money-positive)]',
+      badgeClass: 'bg-green-500/20 text-[var(--erp-money-positive)] border-green-500/30',
     };
   }
   if (entry.source === 'Payment') {
@@ -367,8 +367,8 @@ function journalRowPresentation(entry: AccountingEntry): {
   }
   return {
     typeLabel: 'Journal',
-    amountClass: 'text-gray-300',
-    badgeClass: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
+    amountClass: 'text-muted-foreground',
+    badgeClass: 'bg-gray-500/20 text-muted-foreground border-gray-500/30',
   };
 }
 
@@ -508,7 +508,7 @@ const AR_ACCOUNTS = new Set(['Accounts Receivable']);
 const AP_ACCOUNTS = new Set(['Accounts Payable', 'Worker Payable']);
 
 const ReportTabSuspenseFallback = ({ label }: { label: string }) => (
-  <div className="flex flex-col items-center justify-center gap-2 py-12 text-gray-400">
+  <div className="flex flex-col items-center justify-center gap-2 py-12 text-muted-foreground">
     <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
     <span className="text-sm">{label}</span>
   </div>
@@ -1107,11 +1107,11 @@ export const AccountingDashboard = () => {
   // Permission gate – Accounting restricted to authorized roles
   if (!canAccessAccounting) {
     return (
-      <div className="h-screen flex items-center justify-center bg-[#0B0F19]">
+      <div className="h-screen flex items-center justify-center bg-secondary">
         <div className="text-center max-w-md">
           <Shield className="w-16 h-16 mx-auto text-amber-500/60 mb-4" />
-          <h2 className="text-xl font-semibold text-white mb-2">Access Restricted</h2>
-          <p className="text-gray-400 text-sm">You do not have permission to view Accounting. Contact your administrator.</p>
+          <h2 className="text-xl font-semibold text-foreground mb-2">Access Restricted</h2>
+          <p className="text-muted-foreground text-sm">You do not have permission to view Accounting. Contact your administrator.</p>
         </div>
       </div>
     );
@@ -1120,13 +1120,13 @@ export const AccountingDashboard = () => {
   // Ledger full screen removed — use Party Ledger (sidebar) or Account Statements tab.
 
   return (
-    <div className="flex flex-col bg-[#0B0F19] min-h-0 min-w-0 w-full max-w-full">
+    <div className="flex flex-col bg-secondary min-h-0 min-w-0 w-full max-w-full">
       {/* Page Header — no h-screen/overflow-hidden so outer main can scroll the full page */}
-      <div className="shrink-0 px-6 py-4 border-b border-gray-800 bg-[#0F1419]">
+      <div className="shrink-0 px-6 py-4 border-b border-border bg-muted/40">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="min-w-0">
-            <h1 className="text-2xl font-bold text-white">Accounting</h1>
-            <p className="text-sm text-gray-400 mt-0.5">Financial transactions and reporting</p>
+            <h1 className="text-2xl font-bold text-foreground">Accounting</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">Financial transactions and reporting</p>
           </div>
           {canAccessAccounting && canPostAccounting && (
             <Button
@@ -1144,19 +1144,19 @@ export const AccountingDashboard = () => {
       </div>
 
       {/* Summary Cards */}
-      <div className="shrink-0 px-6 py-4 bg-[#0F1419] border-b border-gray-800 min-w-0">
+      <div className="shrink-0 px-6 py-4 bg-muted/40 border-b border-border min-w-0">
         <ReportBasisBanner
           basis="official_gl"
           detail="Top cards use Official Posted GL (same as Trial Balance / P&L): void excluded, correction journals included. Operational document due is on Receivables / Payables tabs."
         />
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mt-3">
           {/* Total Income */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 min-w-0">
+          <div className="bg-card border border-border rounded-xl p-4 min-w-0">
             <div className="flex items-start justify-between mb-3">
               <div className="min-w-0">
-                <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Income</p>
-                <AdaptiveCurrencyValue value={displaySummary.totalIncome} className="text-2xl font-bold text-green-400 mt-1" as="p" />
-                <p className="text-xs text-gray-500 mt-1">Official Posted GL basis</p>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Total Income</p>
+                <AdaptiveCurrencyValue value={displaySummary.totalIncome} className="text-2xl font-bold text-[var(--erp-money-positive)] mt-1" as="p" />
+                <p className="text-xs text-muted-foreground mt-1">Official Posted GL basis</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
                 <TrendingUp size={24} className="text-green-500" />
@@ -1165,12 +1165,12 @@ export const AccountingDashboard = () => {
           </div>
 
           {/* Total Expense */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 min-w-0">
+          <div className="bg-card border border-border rounded-xl p-4 min-w-0">
             <div className="flex items-start justify-between mb-3">
               <div className="min-w-0">
-                <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Expense</p>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Total Expense</p>
                 <AdaptiveCurrencyValue value={displaySummary.totalExpense} className="text-2xl font-bold text-red-400 mt-1" as="p" />
-                <p className="text-xs text-gray-500 mt-1">Official Posted GL basis</p>
+                <p className="text-xs text-muted-foreground mt-1">Official Posted GL basis</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center">
                 <TrendingDown size={24} className="text-red-500" />
@@ -1179,19 +1179,19 @@ export const AccountingDashboard = () => {
           </div>
 
           {/* Net Profit */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 min-w-0">
+          <div className="bg-card border border-border rounded-xl p-4 min-w-0">
             <div className="flex items-start justify-between mb-3">
               <div className="min-w-0">
-                <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Net Profit</p>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Net Profit</p>
                 <AdaptiveCurrencyValue
                   value={displaySummary.netProfit}
                   className={cn(
                     'text-2xl font-bold mt-1',
-                    displaySummary.netProfit >= 0 ? 'text-green-400' : 'text-red-400'
+                    displaySummary.netProfit >= 0 ? 'text-[var(--erp-money-positive)]' : 'text-red-400'
                   )}
                   as="p"
                 />
-                <p className="text-xs text-gray-500 mt-1">Official Posted GL basis</p>
+                <p className="text-xs text-muted-foreground mt-1">Official Posted GL basis</p>
               </div>
               <div className={cn(
                 "w-12 h-12 rounded-full flex items-center justify-center",
@@ -1203,12 +1203,12 @@ export const AccountingDashboard = () => {
           </div>
 
           {/* Receivables */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 min-w-0">
+          <div className="bg-card border border-border rounded-xl p-4 min-w-0">
             <div className="flex items-start justify-between mb-3">
               <div className="min-w-0">
-                <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Receivables</p>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Receivables</p>
                 <AdaptiveCurrencyValue value={displaySummary.totalReceivable} className="text-2xl font-bold text-blue-400 mt-1" as="p" />
-                <p className="text-xs text-gray-500 mt-1">AR control 1100 — Official GL</p>
+                <p className="text-xs text-muted-foreground mt-1">AR control 1100 — Official GL</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center">
                 <Users size={24} className="text-blue-500" />
@@ -1217,12 +1217,12 @@ export const AccountingDashboard = () => {
           </div>
 
           {/* Payables */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 min-w-0">
+          <div className="bg-card border border-border rounded-xl p-4 min-w-0">
             <div className="flex items-start justify-between mb-3">
               <div className="min-w-0">
-                <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Payables</p>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Payables</p>
                 <AdaptiveCurrencyValue value={displaySummary.totalPayable} className="text-2xl font-bold text-orange-400 mt-1" as="p" />
-                <p className="text-xs text-gray-500 mt-1">AP control 2000 — Official GL</p>
+                <p className="text-xs text-muted-foreground mt-1">AP control 2000 — Official GL</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-orange-500/10 flex items-center justify-center">
                 <Building2 size={24} className="text-orange-500" />
@@ -1230,16 +1230,16 @@ export const AccountingDashboard = () => {
             </div>
           </div>
         </div>
-        <p className="text-[11px] text-gray-600 mt-3 max-w-6xl leading-relaxed">
-          <span className="font-medium text-gray-500">Semantics map — </span>
-          Top cards load from <code className="text-gray-500">accountingReportsService</code> (Trial Balance / P&amp;L source). Operational follow-up uses{' '}
-          <span className="text-gray-400">Receivables / Payables</span> tabs and AR/AP Reconciliation (effective vs raw GL). See{' '}
-          <span className="text-gray-400">Financial Truth Center → Tie-out</span> for company-wide differences.
+        <p className="text-[11px] text-muted-foreground mt-3 max-w-6xl leading-relaxed">
+          <span className="font-medium text-muted-foreground">Semantics map — </span>
+          Top cards load from <code className="text-muted-foreground">accountingReportsService</code> (Trial Balance / P&amp;L source). Operational follow-up uses{' '}
+          <span className="text-muted-foreground">Receivables / Payables</span> tabs and AR/AP Reconciliation (effective vs raw GL). See{' '}
+          <span className="text-muted-foreground">Financial Truth Center → Tie-out</span> for company-wide differences.
         </p>
       </div>
 
       {/* Tabs */}
-      <div className="shrink-0 px-6 border-b border-gray-800 min-w-0 overflow-x-auto overflow-y-hidden overscroll-x-contain">
+      <div className="shrink-0 px-6 border-b border-border min-w-0 overflow-x-auto overflow-y-hidden overscroll-x-contain">
         <div className="flex gap-1 -mb-px flex-nowrap w-max min-w-full">
           {tabs.map(tab => {
             const Icon = tab.icon;
@@ -1251,7 +1251,7 @@ export const AccountingDashboard = () => {
                   "flex items-center gap-2 px-4 py-3 text-sm font-medium transition-all border-b-2",
                   activeTab === tab.key
                     ? "text-blue-400 border-blue-400"
-                    : "text-gray-500 border-transparent hover:text-gray-300 hover:border-gray-700"
+                    : "text-muted-foreground border-transparent hover:text-muted-foreground hover:border-border"
                 )}
               >
                 <Icon size={16} />
@@ -1263,13 +1263,13 @@ export const AccountingDashboard = () => {
       </div>
 
       {/* Tab Content — journal table uses its own 2-axis scroll viewport */}
-      <div className="px-6 py-4 bg-[#0B0F19] min-w-0">
+      <div className="px-6 py-4 bg-secondary min-w-0">
         {activeTab === 'journal_entries' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div>
-                <h3 className="text-lg font-bold text-white">Journal Entries</h3>
-                <p className="text-sm text-gray-400">
+                <h3 className="text-lg font-bold text-foreground">Journal Entries</h3>
+                <p className="text-sm text-muted-foreground">
                   {journalViewMode === 'grouped'
                     ? 'One row per document (e.g. sale); open a row to see original + edit adjustments.'
                     : 'All raw journal entries – audit view.'}
@@ -1280,7 +1280,7 @@ export const AccountingDashboard = () => {
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500">View:</span>
+                <span className="text-xs text-muted-foreground">View:</span>
                 <Button
                   variant={journalViewMode === 'grouped' ? 'default' : 'outline'}
                   size="sm"
@@ -1302,18 +1302,18 @@ export const AccountingDashboard = () => {
 
             <div className="flex flex-wrap items-center gap-2">
               <div className="relative flex-1 min-w-[260px] max-w-[680px]">
-                <Search className="w-4 h-4 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <Search className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <Input
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   placeholder="Search by reference, description, account, model/type, module..."
-                  className="pl-9 pr-10 h-9 bg-gray-900/70 border-gray-700 text-sm text-gray-100 placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-blue-500/50"
+                  className="pl-9 pr-10 h-9 bg-card/70 border-border text-sm text-gray-100 placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-blue-500/50"
                 />
                 {searchTerm.trim() ? (
                   <button
                     type="button"
                     onClick={() => setSearchTerm('')}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-gray-400 hover:text-gray-200 hover:bg-gray-800/80"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-gray-200 hover:bg-muted/80"
                     aria-label="Clear journal search"
                     title="Clear search"
                   >
@@ -1321,7 +1321,7 @@ export const AccountingDashboard = () => {
                   </button>
                 ) : null}
               </div>
-              <Badge variant="outline" className="text-xs text-gray-300 border-gray-700">
+              <Badge variant="outline" className="text-xs text-muted-foreground border-border">
                 {listForPagination.length} result{listForPagination.length === 1 ? '' : 's'}
               </Badge>
             </div>
@@ -1329,7 +1329,7 @@ export const AccountingDashboard = () => {
             {/* Filter pills by transaction type */}
             <div className="flex flex-wrap gap-1.5">
               {[
-                { key: 'all', label: 'All', color: 'bg-gray-700' },
+                { key: 'all', label: 'All', color: 'bg-muted' },
                 { key: 'sale', label: 'Sales', color: 'bg-blue-900/60' },
                 { key: 'sale_return', label: 'Sale Returns', color: 'bg-orange-900/60' },
                 { key: 'purchase', label: 'Purchases', color: 'bg-purple-900/60' },
@@ -1347,8 +1347,8 @@ export const AccountingDashboard = () => {
                   className={cn(
                     'px-3 py-1 rounded-full text-xs font-medium transition-all',
                     typeFilter === f.key
-                      ? `${f.color} text-white ring-1 ring-white/20`
-                      : 'bg-gray-800/50 text-gray-500 hover:text-gray-300 hover:bg-gray-800'
+                      ? `${f.color} text-foreground ring-1 ring-white/20`
+                      : 'bg-muted/50 text-muted-foreground hover:text-muted-foreground hover:bg-muted'
                   )}
                 >
                   {f.label}
@@ -1358,46 +1358,46 @@ export const AccountingDashboard = () => {
             </div>
 
             {/* Journal Entries Table with pagination */}
-            <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+            <div className="bg-card border border-border rounded-xl overflow-hidden">
               {accounting.loading && filteredTransactions.length === 0 ? (
                 <div className="flex flex-col items-center justify-center gap-3 py-16">
                   <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
-                  <p className="text-sm text-gray-400">Loading journal entries…</p>
+                  <p className="text-sm text-muted-foreground">Loading journal entries…</p>
                 </div>
               ) : filteredTransactions.length === 0 ? (
                 <div className="text-center py-12">
-                  <FileText size={48} className="mx-auto text-gray-600 mb-3" />
+                  <FileText size={48} className="mx-auto text-muted-foreground mb-3" />
                   {searchTerm.trim() || typeFilter !== 'all' ? (
                     <>
-                      <p className="text-gray-400 text-sm font-medium">No journal entries match your filters</p>
-                      <p className="text-gray-500 text-xs mt-1">
+                      <p className="text-muted-foreground text-sm font-medium">No journal entries match your filters</p>
+                      <p className="text-muted-foreground text-xs mt-1">
                         Try a different keyword, clear search, or switch transaction type.
                       </p>
                     </>
                   ) : (
                     <>
-                      <p className="text-gray-400 text-sm font-medium">No journal entries in this period</p>
-                      <p className="text-gray-500 text-xs mt-1 max-w-md mx-auto">
-                        The list follows the <span className="text-gray-400">date range in the top header</span>. Widen it (e.g. From
+                      <p className="text-muted-foreground text-sm font-medium">No journal entries in this period</p>
+                      <p className="text-muted-foreground text-xs mt-1 max-w-md mx-auto">
+                        The list follows the <span className="text-muted-foreground">date range in the top header</span>. Widen it (e.g. From
                         start or Last 90 days) if you expect older data. Embedded previews can use different saved filters than your
                         main browser.
                       </p>
-                      <p className="text-gray-500 text-xs mt-2">If the range is already wide, create a sale, record a payment, or add a manual entry.</p>
+                      <p className="text-muted-foreground text-xs mt-2">If the range is already wide, create a sale, record a payment, or add a manual entry.</p>
                     </>
                   )}
                 </div>
               ) : (
                 <>
                 {accounting.backgroundSync ? (
-                  <div className="flex items-center justify-center gap-2 py-2 text-xs text-blue-400 border-b border-gray-800">
+                  <div className="flex items-center justify-center gap-2 py-2 text-xs text-blue-400 border-b border-border">
                     <Loader2 className="w-4 h-4 animate-spin" />
                     Refreshing journal entries…
                   </div>
                 ) : null}
                 <div className="overflow-auto max-h-[calc(100dvh-18rem)] overscroll-contain touch-pan-x touch-pan-y [-webkit-overflow-scrolling:touch]">
                   <table className="w-full min-w-[1280px] border-collapse">
-                    <thead className="bg-gray-900 border-b border-gray-800 sticky top-0 z-10 shadow-[0_1px_0_0_rgba(31,41,55,1)]">
-                      <tr className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    <thead className="bg-card border-b border-border sticky top-0 z-10 shadow-[0_1px_0_0_rgba(31,41,55,1)]">
+                      <tr className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                         {(['date', 'reference', 'module', 'description', 'type', 'paymentMethod', 'amount', 'source'] as const).map((key) => {
                           const label = key === 'paymentMethod' ? 'Payment Method' : key.charAt(0).toUpperCase() + key.slice(1);
                           const isActive = journalSortKey === key;
@@ -1414,7 +1414,7 @@ export const AccountingDashboard = () => {
                                     setJournalSortDir('desc');
                                   }
                                 }}
-                                className="flex items-center gap-1 w-full group hover:text-gray-300 transition-colors focus:outline-none focus:ring-0"
+                                className="flex items-center gap-1 w-full group hover:text-muted-foreground transition-colors focus:outline-none focus:ring-0"
                                 style={alignRight ? { justifyContent: 'flex-end' } : undefined}
                               >
                                 {label}
@@ -1465,18 +1465,18 @@ export const AccountingDashboard = () => {
                             return (
                               <tr
                                 key={group.rootKey}
-                                className="border-b border-gray-800 hover:bg-gray-800/30 transition-colors cursor-pointer"
+                                className="border-b border-border hover:bg-accent/30 transition-colors cursor-pointer"
                                 onClick={() => {
                                   if (busy) return;
                                   openJournalEntryDetailFromEntry(entry, group.entries);
                                 }}
                               >
-                                <td className="px-4 py-3 text-sm text-gray-300 whitespace-nowrap">
+                                <td className="px-4 py-3 text-sm text-muted-foreground whitespace-nowrap">
                                   {entry.date ? (
                                     <div className="flex flex-col gap-0.5">
-                                      <DateTimeDisplay date={entry.date} dateOnly className="text-gray-300" />
+                                      <DateTimeDisplay date={entry.date} dateOnly className="text-muted-foreground" />
                                       {(entry.metadata as { createdAt?: string } | undefined)?.createdAt ? (
-                                        <span className="text-[10px] text-gray-600">
+                                        <span className="text-[10px] text-muted-foreground">
                                           Posted{' '}
                                           {new Date(
                                             (entry.metadata as { createdAt?: string }).createdAt!
@@ -1502,7 +1502,7 @@ export const AccountingDashboard = () => {
                                     >
                                       {voucherLabel}
                                       {adjustmentCount > 0 && (
-                                        <span className="ml-1.5 text-gray-500 font-normal">(+{adjustmentCount})</span>
+                                        <span className="ml-1.5 text-muted-foreground font-normal">(+{adjustmentCount})</span>
                                       )}
                                     </button>
                                     {groupEntryHasAttachments(group.entries) ? (
@@ -1526,13 +1526,13 @@ export const AccountingDashboard = () => {
                                     {module}
                                   </Badge>
                                 </td>
-                                <td className="px-4 py-3 text-sm text-gray-300 max-w-xs">
+                                <td className="px-4 py-3 text-sm text-muted-foreground max-w-xs">
                                   <span className="truncate inline-flex items-center max-w-full">
                                     {entry.description || 'No description'}
                                     {saleCancellationJournalBadge(entry)}
                                   </span>
                                   {adjustmentCount > 0 && (
-                                    <span className="text-gray-500 ml-1">(edit trail)</span>
+                                    <span className="text-muted-foreground ml-1">(edit trail)</span>
                                   )}
                                 </td>
                                 <td className="px-4 py-3">
@@ -1540,14 +1540,14 @@ export const AccountingDashboard = () => {
                                     {pres.typeLabel}
                                   </Badge>
                                 </td>
-                                <td className="px-4 py-3 text-sm text-gray-400 capitalize">{paymentMethod}</td>
+                                <td className="px-4 py-3 text-sm text-muted-foreground capitalize">{paymentMethod}</td>
                                 <td className={cn('px-4 py-3 text-sm font-semibold text-right tabular-nums', pres.amountClass)}>
                                   {formatCurrency(Math.abs(amount))}
                                 </td>
                                 <td className="px-4 py-3">
-                                  {(() => { const rt = ((entry.metadata as any)?.referenceType || entry.source || 'manual').toLowerCase(); return <span className={`text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap ${REF_TYPE_COLORS[rt] || 'bg-gray-800 text-gray-400'}`}>{refTypeBadgeLabel(rt)}</span>; })()}
+                                  {(() => { const rt = ((entry.metadata as any)?.referenceType || entry.source || 'manual').toLowerCase(); return <span className={`text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap ${REF_TYPE_COLORS[rt] || 'bg-muted text-muted-foreground'}`}>{refTypeBadgeLabel(rt)}</span>; })()}
                                 </td>
-                                <td className="px-4 py-3 text-sm text-gray-300 tabular-nums">{group.entries.length}</td>
+                                <td className="px-4 py-3 text-sm text-muted-foreground tabular-nums">{group.entries.length}</td>
                                 <td className="px-4 py-3">
                                   <div className="flex flex-wrap items-center gap-1">
                                     <Badge
@@ -1566,7 +1566,7 @@ export const AccountingDashboard = () => {
                                           : 'Posted'}
                                     </Badge>
                                     {entry.metadata?.paymentChainIsHistorical ? (
-                                      <Badge className="bg-gray-700/80 text-gray-300 border-gray-600 text-[10px]">
+                                      <Badge className="bg-muted/80 text-muted-foreground border-gray-600 text-[10px]">
                                         Historical
                                       </Badge>
                                     ) : null}
@@ -1578,12 +1578,12 @@ export const AccountingDashboard = () => {
                                   </div>
                                 </td>
                                 <td
-                                  className="px-4 py-3 text-xs text-gray-400 max-w-[min(280px,40vw)]"
+                                  className="px-4 py-3 text-xs text-muted-foreground max-w-[min(280px,40vw)]"
                                   title={`Debit: ${acPair.debit} → Credit: ${acPair.credit}`}
                                 >
-                                  <span className="text-gray-500">Debit:</span>{' '}
+                                  <span className="text-muted-foreground">Debit:</span>{' '}
                                   <span className="text-gray-200">{acPair.debit}</span>
-                                  <span className="text-gray-600 mx-1">→</span>
+                                  <span className="text-muted-foreground mx-1">→</span>
                                   <span className="text-blue-400 font-medium">Credit: {acPair.credit}</span>
                                 </td>
                                 {canPostAccounting && (
@@ -1622,7 +1622,7 @@ export const AccountingDashboard = () => {
                                           <Button
                                             variant="ghost"
                                             size="sm"
-                                            className="h-8 text-gray-300 hover:text-white hover:bg-gray-800/80"
+                                            className="h-8 text-muted-foreground hover:text-foreground hover:bg-muted/80"
                                             disabled={busy}
                                             onClick={() => {
                                               if (busy) return;
@@ -1793,18 +1793,18 @@ export const AccountingDashboard = () => {
                             return (
                               <tr
                                 key={entry.id}
-                                className="border-b border-gray-800 hover:bg-gray-800/30 transition-colors cursor-pointer"
+                                className="border-b border-border hover:bg-accent/30 transition-colors cursor-pointer"
                                 onClick={() => {
                                   if (busy) return;
                                   openJournalEntryDetailFromEntry(entry, null);
                                 }}
                               >
-                                <td className="px-4 py-3 text-sm text-gray-300 whitespace-nowrap">
+                                <td className="px-4 py-3 text-sm text-muted-foreground whitespace-nowrap">
                                   {entry.date ? (
                                     <div className="flex flex-col gap-0.5">
-                                      <DateTimeDisplay date={entry.date} dateOnly className="text-gray-300" />
+                                      <DateTimeDisplay date={entry.date} dateOnly className="text-muted-foreground" />
                                       {(entry.metadata as { createdAt?: string } | undefined)?.createdAt ? (
-                                        <span className="text-[10px] text-gray-600">
+                                        <span className="text-[10px] text-muted-foreground">
                                           Posted{' '}
                                           {new Date(
                                             (entry.metadata as { createdAt?: string }).createdAt!
@@ -1851,7 +1851,7 @@ export const AccountingDashboard = () => {
                                     {module}
                                   </Badge>
                                 </td>
-                                <td className="px-4 py-3 text-sm text-gray-300 max-w-xs">
+                                <td className="px-4 py-3 text-sm text-muted-foreground max-w-xs">
                                   <span className="truncate inline-flex items-center max-w-full">
                                     {entry.description || 'No description'}
                                     {saleCancellationJournalBadge(entry)}
@@ -1862,14 +1862,14 @@ export const AccountingDashboard = () => {
                                     {pres.typeLabel}
                                   </Badge>
                                 </td>
-                                <td className="px-4 py-3 text-sm text-gray-400 capitalize">{paymentMethod}</td>
+                                <td className="px-4 py-3 text-sm text-muted-foreground capitalize">{paymentMethod}</td>
                                 <td className={cn('px-4 py-3 text-sm font-semibold text-right tabular-nums', pres.amountClass)}>
                                   {formatCurrency(Math.abs(amount))}
                                 </td>
                                 <td className="px-4 py-3">
-                                  {(() => { const rt = ((entry.metadata as any)?.referenceType || entry.source || 'manual').toLowerCase(); return <span className={`text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap ${REF_TYPE_COLORS[rt] || 'bg-gray-800 text-gray-400'}`}>{refTypeBadgeLabel(rt)}</span>; })()}
+                                  {(() => { const rt = ((entry.metadata as any)?.referenceType || entry.source || 'manual').toLowerCase(); return <span className={`text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap ${REF_TYPE_COLORS[rt] || 'bg-muted text-muted-foreground'}`}>{refTypeBadgeLabel(rt)}</span>; })()}
                                 </td>
-                                <td className="px-4 py-3 text-sm text-gray-300 tabular-nums">1</td>
+                                <td className="px-4 py-3 text-sm text-muted-foreground tabular-nums">1</td>
                                 <td className="px-4 py-3">
                                   <div className="flex flex-wrap items-center gap-1">
                                     <Badge
@@ -1888,7 +1888,7 @@ export const AccountingDashboard = () => {
                                           : 'Posted'}
                                     </Badge>
                                     {entry.metadata?.paymentChainIsHistorical ? (
-                                      <Badge className="bg-gray-700/80 text-gray-300 border-gray-600 text-[10px]">
+                                      <Badge className="bg-muted/80 text-muted-foreground border-gray-600 text-[10px]">
                                         Historical
                                       </Badge>
                                     ) : null}
@@ -1901,12 +1901,12 @@ export const AccountingDashboard = () => {
                                   </div>
                                 </td>
                                 <td
-                                  className="px-4 py-3 text-xs text-gray-400 max-w-[min(280px,40vw)]"
+                                  className="px-4 py-3 text-xs text-muted-foreground max-w-[min(280px,40vw)]"
                                   title={`Debit: ${acFlat.debit} → Credit: ${acFlat.credit}`}
                                 >
-                                  <span className="text-gray-500">Debit:</span>{' '}
+                                  <span className="text-muted-foreground">Debit:</span>{' '}
                                   <span className="text-gray-200">{acFlat.debit}</span>
-                                  <span className="text-gray-600 mx-1">→</span>
+                                  <span className="text-muted-foreground mx-1">→</span>
                                   <span className="text-blue-400 font-medium">Credit: {acFlat.credit}</span>
                                 </td>
                                 {canPostAccounting && (
@@ -1941,7 +1941,7 @@ export const AccountingDashboard = () => {
                                           <Button
                                             variant="ghost"
                                             size="sm"
-                                            className="h-8 text-gray-300 hover:text-white hover:bg-gray-800/80"
+                                            className="h-8 text-muted-foreground hover:text-foreground hover:bg-muted/80"
                                             disabled={busy}
                                             onClick={() => {
                                               if (busy) return;
@@ -2086,15 +2086,15 @@ export const AccountingDashboard = () => {
                   </table>
                 </div>
                 {totalJournalPages > 1 && (
-                  <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-t border-gray-800 bg-gray-900/80">
-                    <p className="text-xs text-gray-400">
+                  <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-t border-border bg-card">
+                    <p className="text-xs text-muted-foreground">
                       Showing {(currentPage - 1) * JOURNAL_PAGE_SIZE + 1}–{Math.min(currentPage * JOURNAL_PAGE_SIZE, listForPagination.length)} of {listForPagination.length}
                     </p>
                     <div className="flex items-center gap-1">
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-8 border-gray-700 text-gray-300"
+                        className="h-8 border-border text-muted-foreground"
                         disabled={currentPage <= 1}
                         onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                       >
@@ -2104,12 +2104,12 @@ export const AccountingDashboard = () => {
                         .filter((p) => p === 1 || p === totalJournalPages || Math.abs(p - currentPage) <= 2)
                         .map((p, idx, arr) => (
                           <React.Fragment key={p}>
-                            {idx > 0 && arr[idx - 1] !== p - 1 && <span className="px-1 text-gray-500">…</span>}
+                            {idx > 0 && arr[idx - 1] !== p - 1 && <span className="px-1 text-muted-foreground">…</span>}
                             <button
                               type="button"
                               className={cn(
                                 'h-8 min-w-[2rem] rounded px-2 text-sm font-medium',
-                                p === currentPage ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                                p === currentPage ? 'bg-blue-600 text-white' : 'bg-muted text-muted-foreground hover:bg-muted'
                               )}
                               onClick={() => setCurrentPage(p)}
                             >
@@ -2120,7 +2120,7 @@ export const AccountingDashboard = () => {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-8 border-gray-700 text-gray-300"
+                        className="h-8 border-border text-muted-foreground"
                         disabled={currentPage >= totalJournalPages}
                         onClick={() => setCurrentPage((p) => Math.min(totalJournalPages, p + 1))}
                       >
@@ -2137,8 +2137,8 @@ export const AccountingDashboard = () => {
 
         {activeTab === 'daybook' && (
           <div className="space-y-4">
-            <h3 className="text-lg font-bold text-white">Day Book (Journal)</h3>
-            <p className="text-sm text-gray-400 mb-4">Click voucher number to open transaction detail</p>
+            <h3 className="text-lg font-bold text-foreground">Day Book (Journal)</h3>
+            <p className="text-sm text-muted-foreground mb-4">Click voucher number to open transaction detail</p>
             <Suspense fallback={<ReportTabSuspenseFallback label="Loading day book…" />}>
               <DayBookReport
                 onVoucherClick={(voucher) => {
@@ -2157,8 +2157,8 @@ export const AccountingDashboard = () => {
         {activeTab === 'roznamcha' && (
           <div className="space-y-4">
             <div>
-              <h3 className="text-lg font-bold text-white">Roznamcha (Daily Cash Book)</h3>
-              <p className="text-sm text-gray-400 mt-1">
+              <h3 className="text-lg font-bold text-foreground">Roznamcha (Daily Cash Book)</h3>
+              <p className="text-sm text-muted-foreground mt-1">
                 Filter by date, branch, liquidity (cash/bank/wallet), a specific ledger account, row order, and page size.
                 Party lines show customer, supplier, or expense context next to each reference.
               </p>
@@ -2175,8 +2175,8 @@ export const AccountingDashboard = () => {
         {activeTab === 'cash_flow' && (
           <div className="space-y-4">
             <div>
-              <h3 className="text-lg font-bold text-white">Cash Flow</h3>
-              <p className="text-sm text-gray-400 mt-1">
+              <h3 className="text-lg font-bold text-foreground">Cash Flow</h3>
+              <p className="text-sm text-muted-foreground mt-1">
                 Operational cash and bank movements by source module. Read-only — use Normal mode for live balances;
                 Audit mode for voided and reversal trails.
               </p>
@@ -2196,22 +2196,22 @@ export const AccountingDashboard = () => {
             {/* Header with Mode Toggle & Create Button */}
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-bold text-white">Accounts</h3>
-                <p className="text-sm text-gray-400">
+                <h3 className="text-lg font-bold text-foreground">Accounts</h3>
+                <p className="text-sm text-muted-foreground">
                   {accountsViewMode === 'operational'
                     ? 'Operational View: Cash, Bank, Wallet, expense/income, AR/AP, worker payables & advances, Committees & Dasti (1170), partner equity (3003/3005) — expand rows with the chevron'
                     : 'Professional View: Full Chart of Accounts'}
                 </p>
               </div>
               <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2 bg-gray-900/50 border border-gray-800 rounded-lg px-3 py-1.5">
+                <div className="flex items-center gap-2 bg-card border border-border rounded-lg px-3 py-1.5">
                   <button
                     onClick={() => setAccountsViewMode('operational')}
                     className={cn(
                       "text-xs font-medium px-2 py-1 rounded transition-colors",
                       accountsViewMode === 'operational'
                         ? "bg-blue-600 text-white"
-                        : "text-gray-400 hover:text-gray-300"
+                        : "text-muted-foreground hover:text-muted-foreground"
                     )}
                   >
                     Operational
@@ -2222,18 +2222,18 @@ export const AccountingDashboard = () => {
                       "text-xs font-medium px-2 py-1 rounded transition-colors",
                       accountsViewMode === 'professional'
                         ? "bg-blue-600 text-white"
-                        : "text-gray-400 hover:text-gray-300"
+                        : "text-muted-foreground hover:text-muted-foreground"
                     )}
                   >
                     Professional
                   </button>
                   {accountsViewMode === 'professional' && (
-                    <label className="flex items-center gap-1.5 text-xs text-gray-400 cursor-pointer">
+                    <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
                       <input
                         type="checkbox"
                         checked={showSubAccounts}
                         onChange={(e) => setShowSubAccounts(e.target.checked)}
-                        className="rounded border-gray-600 bg-gray-800 text-blue-500"
+                        className="rounded border-gray-600 bg-muted text-blue-500"
                       />
                       Show sub-accounts
                     </label>
@@ -2251,10 +2251,10 @@ export const AccountingDashboard = () => {
             </div>
 
             {accounting.accounts.length === 0 ? (
-              <div className="rounded-xl border border-gray-800 bg-gray-900/50 text-center py-12">
-                <Wallet size={48} className="mx-auto text-gray-600 mb-3" />
-                <p className="text-gray-400 text-sm">No accounts found</p>
-                <p className="text-gray-600 text-xs mt-1">Create your first account to get started</p>
+              <div className="rounded-xl border border-border bg-muted/40 text-center py-12">
+                <Wallet size={48} className="mx-auto text-muted-foreground mb-3" />
+                <p className="text-muted-foreground text-sm">No accounts found</p>
+                <p className="text-muted-foreground text-xs mt-1">Create your first account to get started</p>
                 <Button
                   onClick={() => setIsAddAccountOpen(true)}
                   className="mt-4 bg-blue-600 hover:bg-blue-500 text-white"
@@ -2315,7 +2315,7 @@ export const AccountingDashboard = () => {
                           'p-1 rounded-md border shrink-0 transition-colors',
                           coaPartyPanelAccountId === account.id
                             ? 'text-violet-200 bg-violet-500/20 border-violet-500/40'
-                            : 'text-gray-400 hover:bg-gray-800 hover:text-violet-200 border-gray-700/80'
+                            : 'text-muted-foreground hover:bg-muted hover:text-violet-200 border-border/80'
                         )}
                       >
                         <Users className="w-4 h-4" />
@@ -2440,24 +2440,24 @@ export const AccountingDashboard = () => {
         )}
 
         {activeTab === 'receivables' && (
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-            <div className="px-4 py-2 border-b border-gray-800 text-[11px] text-gray-500 space-y-0.5">
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="px-4 py-2 border-b border-border text-[11px] text-muted-foreground space-y-0.5">
               <p>
-                <span className="text-gray-400">Operational receivables</span> — unpaid sales invoices / customer due for collection follow-up (not GL 1100).
+                <span className="text-muted-foreground">Operational receivables</span> — unpaid sales invoices / customer due for collection follow-up (not GL 1100).
               </p>
               <p>Opening balances &amp; GL truth: Accounts, Account Statements, Contacts GL, TB / BS.</p>
             </div>
             {sales.sales.filter(s => s.due > 0).length === 0 ? (
               <div className="text-center py-12">
-                <TrendingUp size={48} className="mx-auto text-gray-600 mb-3" />
-                <p className="text-gray-400 text-sm">No receivables</p>
-                <p className="text-gray-600 text-xs mt-1">All customers are paid up</p>
+                <TrendingUp size={48} className="mx-auto text-muted-foreground mb-3" />
+                <p className="text-muted-foreground text-sm">No receivables</p>
+                <p className="text-muted-foreground text-xs mt-1">All customers are paid up</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  <thead className="bg-gray-900 border-b border-gray-800">
-                    <tr className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  <thead className="bg-card border-b border-border">
+                    <tr className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                       <th className="px-4 py-3 text-left">Customer</th>
                       <th className="px-4 py-3 text-left">Invoice No</th>
                       <th className="px-4 py-3 text-left">Date</th>
@@ -2473,21 +2473,21 @@ export const AccountingDashboard = () => {
                       .map((sale) => (
                         <tr 
                           key={sale.id} 
-                          className="border-b border-gray-800 hover:bg-gray-800/30 transition-colors"
+                          className="border-b border-border hover:bg-accent/30 transition-colors"
                         >
-                          <td className="px-4 py-3 text-sm text-gray-300 font-medium">
+                          <td className="px-4 py-3 text-sm text-muted-foreground font-medium">
                             {sale.customerName}
                           </td>
                           <td className="px-4 py-3 text-sm text-blue-400 font-mono">
                             {sale.invoiceNo}
                           </td>
-                          <td className="px-4 py-3 text-sm text-gray-400">
+                          <td className="px-4 py-3 text-sm text-muted-foreground">
                             {new Date(sale.date).toLocaleDateString()}
                           </td>
-                          <td className="px-4 py-3 text-sm text-gray-300 text-right">
+                          <td className="px-4 py-3 text-sm text-muted-foreground text-right">
                             {formatCurrency(sale.total)}
                           </td>
-                          <td className="px-4 py-3 text-sm text-green-400 text-right">
+                          <td className="px-4 py-3 text-sm text-[var(--erp-money-positive)] text-right">
                             {formatCurrency(sale.paid)}
                           </td>
                           <td className="px-4 py-3 text-sm text-red-400 font-semibold text-right">
@@ -2496,7 +2496,7 @@ export const AccountingDashboard = () => {
                           <td className="px-4 py-3 text-xs">
                             <Badge className={
                               sale.paymentStatus === 'paid' 
-                                ? 'bg-green-500/10 text-green-400 border-green-500/30'
+                                ? 'bg-green-500/10 text-[var(--erp-money-positive)] border-green-500/30'
                                 : sale.paymentStatus === 'partial'
                                 ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30'
                                 : 'bg-red-500/10 text-red-400 border-red-500/30'
@@ -2514,14 +2514,14 @@ export const AccountingDashboard = () => {
         )}
 
         {activeTab === 'payables' && (
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
-              <span className="text-sm text-gray-400">Supplier & Courier payables</span>
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+              <span className="text-sm text-muted-foreground">Supplier & Courier payables</span>
               {canPostAccounting && (
                 <Button
                   variant="outline"
                   size="sm"
-                  className="border-gray-600 text-gray-300 hover:bg-gray-800 hover:text-white gap-1.5"
+                  className="border-gray-600 text-muted-foreground hover:bg-muted hover:text-foreground gap-1.5"
                   onClick={() => setPayCourierOpen(true)}
                 >
                   <Truck size={14} />
@@ -2529,23 +2529,23 @@ export const AccountingDashboard = () => {
                 </Button>
               )}
             </div>
-            <div className="px-4 py-2 border-b border-gray-800 text-[11px] text-gray-500 space-y-0.5">
+            <div className="px-4 py-2 border-b border-border text-[11px] text-muted-foreground space-y-0.5">
               <p>
-                <span className="text-gray-400">Operational payables</span> — unpaid purchase bills / supplier due for payment scheduling (not GL 2000).
+                <span className="text-muted-foreground">Operational payables</span> — unpaid purchase bills / supplier due for payment scheduling (not GL 2000).
               </p>
               <p>Opening balances &amp; GL truth: Accounts, Account Statements, Contacts GL, TB / BS.</p>
             </div>
             {purchases.purchases.filter(p => p.due > 0).length === 0 ? (
               <div className="text-center py-12">
-                <TrendingDown size={48} className="mx-auto text-gray-600 mb-3" />
-                <p className="text-gray-400 text-sm">No payables</p>
-                <p className="text-gray-600 text-xs mt-1">All suppliers are paid up</p>
+                <TrendingDown size={48} className="mx-auto text-muted-foreground mb-3" />
+                <p className="text-muted-foreground text-sm">No payables</p>
+                <p className="text-muted-foreground text-xs mt-1">All suppliers are paid up</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  <thead className="bg-gray-900 border-b border-gray-800">
-                    <tr className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  <thead className="bg-card border-b border-border">
+                    <tr className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                       <th className="px-4 py-3 text-left">Supplier</th>
                       <th className="px-4 py-3 text-left">PO No</th>
                       <th className="px-4 py-3 text-left">Date</th>
@@ -2561,21 +2561,21 @@ export const AccountingDashboard = () => {
                       .map((purchase) => (
                         <tr 
                           key={purchase.id} 
-                          className="border-b border-gray-800 hover:bg-gray-800/30 transition-colors"
+                          className="border-b border-border hover:bg-accent/30 transition-colors"
                         >
-                          <td className="px-4 py-3 text-sm text-gray-300 font-medium">
+                          <td className="px-4 py-3 text-sm text-muted-foreground font-medium">
                             {purchase.supplierName}
                           </td>
                           <td className="px-4 py-3 text-sm text-blue-400 font-mono">
                             {purchase.purchaseNo}
                           </td>
-                          <td className="px-4 py-3 text-sm text-gray-400">
+                          <td className="px-4 py-3 text-sm text-muted-foreground">
                             {new Date(purchase.date).toLocaleDateString()}
                           </td>
-                          <td className="px-4 py-3 text-sm text-gray-300 text-right">
+                          <td className="px-4 py-3 text-sm text-muted-foreground text-right">
                             {formatCurrency(purchase.total)}
                           </td>
-                          <td className="px-4 py-3 text-sm text-green-400 text-right">
+                          <td className="px-4 py-3 text-sm text-[var(--erp-money-positive)] text-right">
                             {formatCurrency(purchase.paid)}
                           </td>
                           <td className="px-4 py-3 text-sm text-red-400 font-semibold text-right">
@@ -2584,7 +2584,7 @@ export const AccountingDashboard = () => {
                           <td className="px-4 py-3 text-xs">
                             <Badge className={
                               purchase.paymentStatus === 'paid' 
-                                ? 'bg-green-500/10 text-green-400 border-green-500/30'
+                                ? 'bg-green-500/10 text-[var(--erp-money-positive)] border-green-500/30'
                                 : purchase.paymentStatus === 'partial'
                                 ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30'
                                 : 'bg-red-500/10 text-red-400 border-red-500/30'
@@ -2602,19 +2602,19 @@ export const AccountingDashboard = () => {
         )}
 
         {activeTab === 'courier' && (
-          <Suspense fallback={<div className="flex items-center justify-center py-12 text-gray-400">Loading…</div>}>
+          <Suspense fallback={<div className="flex items-center justify-center py-12 text-muted-foreground">Loading…</div>}>
             <CourierReportsTab />
           </Suspense>
         )}
 
         {activeTab === 'deposits' && settingsModules.rentalModuleEnabled && (
-          <Suspense fallback={<div className="flex items-center justify-center py-12 text-gray-400">Loading…</div>}>
+          <Suspense fallback={<div className="flex items-center justify-center py-12 text-muted-foreground">Loading…</div>}>
             <DepositsTab />
           </Suspense>
         )}
 
         {activeTab === 'studio' && (
-          <Suspense fallback={<div className="flex items-center justify-center py-12 text-gray-400">Loading…</div>}>
+          <Suspense fallback={<div className="flex items-center justify-center py-12 text-muted-foreground">Loading…</div>}>
             <StudioCostsTab />
           </Suspense>
         )}
@@ -2623,19 +2623,19 @@ export const AccountingDashboard = () => {
           <div className="space-y-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h3 className="text-lg font-bold text-white">Account Statements</h3>
-                <p className="text-sm text-gray-400 mt-0.5">
-                  GL statements — print, PDF, share. Use <strong className="text-gray-300 font-medium">Advanced</strong> for effective/audit filters and control-account rollup rules.
+                <h3 className="text-lg font-bold text-foreground">Account Statements</h3>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  GL statements — print, PDF, share. Use <strong className="text-muted-foreground font-medium">Advanced</strong> for effective/audit filters and control-account rollup rules.
                 </p>
               </div>
-              <div className="flex rounded-lg border border-gray-700 overflow-hidden shrink-0">
+              <div className="flex rounded-lg border border-border overflow-hidden shrink-0">
                 <button
                   type="button"
                   className={cn(
                     'px-3 py-1.5 text-xs font-medium transition-colors',
                     accountStatementsViewMode === 'standard'
                       ? 'bg-blue-600 text-white'
-                      : 'bg-gray-900 text-gray-400 hover:text-gray-200'
+                      : 'bg-card text-muted-foreground hover:text-gray-200'
                   )}
                   onClick={() => setAccountStatementsViewMode('standard')}
                 >
@@ -2644,10 +2644,10 @@ export const AccountingDashboard = () => {
                 <button
                   type="button"
                   className={cn(
-                    'px-3 py-1.5 text-xs font-medium transition-colors border-l border-gray-700',
+                    'px-3 py-1.5 text-xs font-medium transition-colors border-l border-border',
                     accountStatementsViewMode === 'advanced'
-                      ? 'bg-amber-700/80 text-white'
-                      : 'bg-gray-900 text-gray-400 hover:text-gray-200'
+                      ? 'bg-amber-700/80 text-foreground'
+                      : 'bg-card text-muted-foreground hover:text-gray-200'
                   )}
                   onClick={() => setAccountStatementsViewMode('advanced')}
                 >
@@ -2657,7 +2657,7 @@ export const AccountingDashboard = () => {
             </div>
             <div className="flex flex-wrap items-end gap-4 pt-1">
               <div className="space-y-1">
-                <Label htmlFor="account-statement-from" className="text-xs text-gray-400">
+                <Label htmlFor="account-statement-from" className="text-xs text-muted-foreground">
                   From
                 </Label>
                 <DatePicker
@@ -2668,7 +2668,7 @@ export const AccountingDashboard = () => {
                 />
               </div>
               <div className="space-y-1">
-                <Label htmlFor="account-statement-to" className="text-xs text-gray-400">
+                <Label htmlFor="account-statement-to" className="text-xs text-muted-foreground">
                   To
                 </Label>
                 <DatePicker
@@ -2678,9 +2678,9 @@ export const AccountingDashboard = () => {
                   className="w-[11.5rem]"
                 />
               </div>
-              <p className="text-xs text-gray-500 pb-2">
+              <p className="text-xs text-muted-foreground pb-2">
                 Standard and Advanced use these dates. Global filter updates the defaults. Statements include{' '}
-                <strong className="text-gray-400 font-medium">all branches</strong> — use the Branch column on each row.
+                <strong className="text-muted-foreground font-medium">all branches</strong> — use the Branch column on each row.
               </p>
             </div>
             {accountStatementsViewMode === 'standard' ? (
@@ -2741,10 +2741,10 @@ export const AccountingDashboard = () => {
 
       {/* Edit Account Dialog */}
       <Dialog open={isEditAccountOpen} onOpenChange={setIsEditAccountOpen}>
-        <DialogContent className="bg-gray-950 border-gray-800 text-white max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="bg-input-background border-border text-foreground max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Account</DialogTitle>
-            <DialogDescription className="text-gray-400">
+            <DialogDescription className="text-muted-foreground">
               Update account information
             </DialogDescription>
           </DialogHeader>
@@ -2901,32 +2901,32 @@ const AccountEditForm = ({ account, onSave, onCancel }: { account: any; onSave: 
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <Label className="text-gray-300 mb-2 block">Account Name *</Label>
+          <Label className="text-muted-foreground mb-2 block">Account Name *</Label>
           <Input
             value={formData.name}
             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            className="bg-gray-900 border-gray-700 text-white"
+            className="bg-card border-border text-foreground"
             required
           />
         </div>
         <div>
-          <Label className="text-gray-300 mb-2 block">Account Code</Label>
+          <Label className="text-muted-foreground mb-2 block">Account Code</Label>
           <Input
             value={formData.code}
             onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-            className="bg-gray-900 border-gray-700 text-white"
+            className="bg-card border-border text-foreground"
           />
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <Label className="text-gray-300 mb-2 block">Account Type *</Label>
+          <Label className="text-muted-foreground mb-2 block">Account Type *</Label>
           <Select value={formData.type} onValueChange={(value) => setFormData({ ...formData, type: value })}>
-            <SelectTrigger className="bg-gray-900 border-gray-700 text-white">
+            <SelectTrigger className="bg-card border-border text-foreground">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="bg-gray-900 border-gray-700 text-white">
+            <SelectContent className="bg-popover border-border text-popover-foreground">
               <SelectItem value="Cash">Cash</SelectItem>
               <SelectItem value="Bank">Bank</SelectItem>
               <SelectItem value="Mobile Wallet">Mobile Wallet</SelectItem>
@@ -2934,12 +2934,12 @@ const AccountEditForm = ({ account, onSave, onCancel }: { account: any; onSave: 
           </Select>
         </div>
         <div>
-          <Label className="text-gray-300 mb-2 block">Category *</Label>
+          <Label className="text-muted-foreground mb-2 block">Category *</Label>
           <Select value={formData.account_type} onValueChange={(value) => setFormData({ ...formData, account_type: value })}>
-            <SelectTrigger className="bg-gray-900 border-gray-700 text-white">
+            <SelectTrigger className="bg-card border-border text-foreground">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="bg-gray-900 border-gray-700 text-white">
+            <SelectContent className="bg-popover border-border text-popover-foreground">
               <SelectItem value="Asset">Asset</SelectItem>
               <SelectItem value="Liability">Liability</SelectItem>
               <SelectItem value="Expense">Expense</SelectItem>
@@ -2955,7 +2955,7 @@ const AccountEditForm = ({ account, onSave, onCancel }: { account: any; onSave: 
             checked={formData.is_active}
             onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
           />
-          <Label className="text-gray-300">Active</Label>
+          <Label className="text-muted-foreground">Active</Label>
         </div>
         {formData.type === 'Cash' && (
           <div className="flex items-center gap-2">
@@ -2963,7 +2963,7 @@ const AccountEditForm = ({ account, onSave, onCancel }: { account: any; onSave: 
               checked={formData.is_default_cash}
               onCheckedChange={(checked) => setFormData({ ...formData, is_default_cash: checked })}
             />
-            <Label className="text-gray-300">Default Cash</Label>
+            <Label className="text-muted-foreground">Default Cash</Label>
           </div>
         )}
         {formData.type === 'Bank' && (
@@ -2972,13 +2972,13 @@ const AccountEditForm = ({ account, onSave, onCancel }: { account: any; onSave: 
               checked={formData.is_default_bank}
               onCheckedChange={(checked) => setFormData({ ...formData, is_default_bank: checked })}
             />
-            <Label className="text-gray-300">Default Bank</Label>
+            <Label className="text-muted-foreground">Default Bank</Label>
           </div>
         )}
       </div>
 
       <DialogFooter>
-        <Button type="button" variant="ghost" onClick={onCancel} className="text-gray-400 hover:text-white">
+        <Button type="button" variant="ghost" onClick={onCancel} className="text-muted-foreground hover:text-foreground">
           Cancel
         </Button>
         <Button type="submit" className="bg-blue-600 hover:bg-blue-500 text-white">

@@ -47,13 +47,13 @@ export const Pagination = ({
   };
 
   return (
-    <div className="flex items-center justify-between px-6 py-3 bg-[#0F1419] border-t border-gray-800">
+    <div className="flex items-center justify-between px-6 py-3 bg-muted/40 border-t border-border">
       {/* Left: Items count */}
-      <div className="flex items-center gap-4 text-sm text-gray-400">
+      <div className="flex items-center gap-4 text-sm text-muted-foreground">
         <div>
-          Showing <span className="text-white font-semibold">{startItem}</span> to{' '}
-          <span className="text-white font-semibold">{endItem}</span> of{' '}
-          <span className="text-white font-semibold">{totalItems}</span> results
+          Showing <span className="text-foreground font-semibold">{startItem}</span> to{' '}
+          <span className="text-foreground font-semibold">{endItem}</span> of{' '}
+          <span className="text-foreground font-semibold">{totalItems}</span> results
         </div>
       </div>
 
@@ -65,7 +65,7 @@ export const Pagination = ({
           size="sm"
           onClick={() => onPageChange(1)}
           disabled={currentPage === 1}
-          className="h-8 w-8 p-0 bg-gray-900 border-gray-700 text-gray-400 hover:bg-gray-800 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+          className="h-8 w-8 p-0 bg-popover border-border text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <ChevronsLeft size={16} />
         </Button>
@@ -76,7 +76,7 @@ export const Pagination = ({
           size="sm"
           onClick={() => onPageChange(currentPage - 1)}
           disabled={currentPage === 1}
-          className="h-8 w-8 p-0 bg-gray-900 border-gray-700 text-gray-400 hover:bg-gray-800 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+          className="h-8 w-8 p-0 bg-popover border-border text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <ChevronLeft size={16} />
         </Button>
@@ -85,7 +85,7 @@ export const Pagination = ({
         {getPageNumbers().map((page, index) => {
           if (page === '...') {
             return (
-              <span key={`ellipsis-${index}`} className="px-2 text-gray-600">...</span>
+              <span key={`ellipsis-${index}`} className="px-2 text-muted-foreground">...</span>
             );
           }
           
@@ -96,7 +96,7 @@ export const Pagination = ({
               size="sm"
               onClick={() => onPageChange(page as number)}
               className={cn(
-                "h-8 min-w-[32px] px-2 bg-gray-900 border-gray-700 text-gray-400 hover:bg-gray-800 hover:text-white",
+                "h-8 min-w-[32px] px-2 bg-popover border-border text-muted-foreground hover:bg-muted hover:text-foreground",
                 currentPage === page && "bg-blue-600 border-blue-600 text-white hover:bg-blue-500"
               )}
             >
@@ -111,7 +111,7 @@ export const Pagination = ({
           size="sm"
           onClick={() => onPageChange(currentPage + 1)}
           disabled={currentPage === totalPages}
-          className="h-8 w-8 p-0 bg-gray-900 border-gray-700 text-gray-400 hover:bg-gray-800 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+          className="h-8 w-8 p-0 bg-popover border-border text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <ChevronRight size={16} />
         </Button>
@@ -122,7 +122,7 @@ export const Pagination = ({
           size="sm"
           onClick={() => onPageChange(totalPages)}
           disabled={currentPage === totalPages}
-          className="h-8 w-8 p-0 bg-gray-900 border-gray-700 text-gray-400 hover:bg-gray-800 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+          className="h-8 w-8 p-0 bg-popover border-border text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <ChevronsRight size={16} />
         </Button>

@@ -91,10 +91,10 @@ function CandidateTable({
   if (rows.length === 0) return null;
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-gray-800">
+    <div className="overflow-x-auto rounded-lg border border-border">
       <table className="w-full text-xs">
         <thead>
-          <tr className="text-gray-500 border-b border-gray-800 bg-gray-900/50">
+          <tr className="text-muted-foreground border-b border-border bg-muted/40">
             <th className="text-left py-2 px-3">Category</th>
             <th className="text-left py-2 px-3">Issue</th>
             <th className="text-right py-2 px-3">Amount</th>
@@ -109,19 +109,19 @@ function CandidateTable({
             const canTrace = Boolean(journalEntryId);
 
             return (
-              <tr key={row.id} className="border-b border-gray-800/80 hover:bg-gray-900/30">
-                <td className="py-2 px-3 text-gray-400">{categoryLabel(row.category)}</td>
+              <tr key={row.id} className="border-b border-border/80 hover:bg-muted/30">
+                <td className="py-2 px-3 text-muted-foreground">{categoryLabel(row.category)}</td>
                 <td className="py-2 px-3">
                   <div className="text-gray-200">{row.title}</div>
-                  {row.description ? <div className="text-gray-500 mt-0.5">{row.description}</div> : null}
+                  {row.description ? <div className="text-muted-foreground mt-0.5">{row.description}</div> : null}
                   {entryNo ? (
-                    <div className="text-gray-600 mt-0.5 font-mono text-[10px]">Source: {entryNo}</div>
+                    <div className="text-muted-foreground mt-0.5 font-mono text-[10px]">Source: {entryNo}</div>
                   ) : null}
                   {row.blockedReason ? (
                     <div className="text-amber-400/90 mt-0.5">{row.blockedReason}</div>
                   ) : null}
                 </td>
-                <td className="py-2 px-3 text-right tabular-nums text-gray-300">{formatCurrency(row.amount)}</td>
+                <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">{formatCurrency(row.amount)}</td>
                 <td className="py-2 px-3">
                   <Badge className={cn('text-[10px]', riskBadgeClass(row.riskLevel))}>{row.riskLevel}</Badge>
                 </td>
@@ -131,7 +131,7 @@ function CandidateTable({
                       <Button
                         size="sm"
                         variant="outline"
-                        className="h-7 text-[11px] border-gray-700"
+                        className="h-7 text-[11px] border-border"
                         onClick={() => onTraceJe(row)}
                       >
                         <Search className="w-3 h-3 mr-1" />
@@ -141,7 +141,7 @@ function CandidateTable({
                     <Button
                       size="sm"
                       variant="outline"
-                      className="h-7 text-[11px] border-gray-700"
+                      className="h-7 text-[11px] border-border"
                       onClick={() => onFixDraft(row)}
                     >
                       Fix Entry (Draft)
@@ -376,14 +376,14 @@ export function HybridRepairPanel({
           <Wrench className="w-5 h-5 text-violet-400 mt-0.5 shrink-0" />
           <div>
             <h3 className="text-sm font-semibold text-violet-100">Hybrid Repair (Admin Only)</h3>
-            <p className="text-xs text-gray-400 mt-0.5 max-w-2xl">
+            <p className="text-xs text-muted-foreground mt-0.5 max-w-2xl">
               Safe repairs: additive GL correction JVs (orphan AR + rental 1100 leakage per line) and expense payment
               sync. The top 1100 residual row is a summary only — fix each rental leakage row below (or use Auto-Fix).
             </p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <label className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer select-none">
+          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
             <input
               type="checkbox"
               checked={autoFix}
@@ -403,7 +403,7 @@ export function HybridRepairPanel({
               Run Full Reconciliation Fix ({autoEligible.length})
             </Button>
           ) : null}
-          <Button size="sm" variant="outline" className="border-gray-700" onClick={() => void loadCandidates()}>
+          <Button size="sm" variant="outline" className="border-border" onClick={() => void loadCandidates()}>
             Refresh
           </Button>
         </div>
@@ -422,7 +422,7 @@ export function HybridRepairPanel({
           <Loader2 className="w-6 h-6 animate-spin text-violet-400" />
         </div>
       ) : candidates.length === 0 ? (
-        <p className="text-xs text-gray-500 py-2">No repair candidates detected for current company scope.</p>
+        <p className="text-xs text-muted-foreground py-2">No repair candidates detected for current company scope.</p>
       ) : (
         <div className="space-y-4">
           {diagnosticRows.length > 0 ? (
@@ -470,31 +470,31 @@ export function HybridRepairPanel({
                   onClick={() => setDiagExplainOpen((v) => !v)}
                 >
                   <span>Why ~{formatCurrency(diagnosticResidual)} diagnostic vs actionable repairs?</span>
-                  <span className="text-gray-500">{diagExplainOpen ? '▾' : '▸'}</span>
+                  <span className="text-muted-foreground">{diagExplainOpen ? '▾' : '▸'}</span>
                 </button>
                 {diagExplainOpen ? (
-                  <div className="text-gray-400 space-y-1.5 leading-relaxed">
+                  <div className="text-muted-foreground space-y-1.5 leading-relaxed">
                     <p>
-                      <strong className="text-gray-300">Control 1100 header TB:</strong>{' '}
+                      <strong className="text-muted-foreground">Control 1100 header TB:</strong>{' '}
                       {diagnosticSnapshot?.glAccountBalance != null
                         ? formatCurrency(diagnosticSnapshot.glAccountBalance)
                         : '—'}
                     </p>
                     <p>
-                      <strong className="text-gray-300">Party-attributed subtree sum:</strong>{' '}
+                      <strong className="text-muted-foreground">Party-attributed subtree sum:</strong>{' '}
                       {diagnosticSnapshot?.partyAttributedGlSum != null
                         ? formatCurrency(diagnosticSnapshot.partyAttributedGlSum)
                         : '—'}
                     </p>
                     <p>
-                      <strong className="text-gray-300">Rental 1100 repair eligible (below):</strong>{' '}
+                      <strong className="text-muted-foreground">Rental 1100 repair eligible (below):</strong>{' '}
                       {formatCurrency(rentalRepairTotal)} ({rentalPendingCount} rows)
                     </p>
                     <p>
-                      <strong className="text-gray-300">Batch auto-fix eligible total:</strong>{' '}
+                      <strong className="text-muted-foreground">Batch auto-fix eligible total:</strong>{' '}
                       {formatCurrency(batchEligibleTotal)}
                     </p>
-                    <p className="text-[11px] text-gray-500">
+                    <p className="text-[11px] text-muted-foreground">
                       The diagnostic residual is structural (control id vs AR-CUS subtree). Rental GL corrections fix
                       per-line leakage — they do not zero this summary row. Use receivables variance breakdown for the
                       ~50k Operational vs GL gap.
@@ -508,15 +508,15 @@ export function HybridRepairPanel({
                   <tbody>
                     {diagnosticRows.map((row) => (
                       <tr key={row.id} className="border-b border-amber-900/30 last:border-0">
-                        <td className="py-2 px-3 text-gray-300 max-w-xl">
+                        <td className="py-2 px-3 text-muted-foreground max-w-xl">
                           <div>{row.title}</div>
-                          {row.description ? <div className="text-gray-500 mt-0.5">{row.description}</div> : null}
+                          {row.description ? <div className="text-muted-foreground mt-0.5">{row.description}</div> : null}
                         </td>
                         <td className="py-2 px-3 text-right tabular-nums text-amber-100 whitespace-nowrap">
                           {formatCurrency(row.amount)}
                         </td>
                         <td
-                          className="py-2 px-3 text-right text-[10px] text-gray-500 max-w-[220px]"
+                          className="py-2 px-3 text-right text-[10px] text-muted-foreground max-w-[220px]"
                           title="This row measures control 1100 header vs subtree — not a per-line repair target."
                         >
                           {rentalPendingCount > 0
@@ -555,16 +555,16 @@ export function HybridRepairPanel({
         </div>
       )}
 
-      <p className="text-[10px] text-gray-500">
+      <p className="text-[10px] text-muted-foreground">
         {applyableCount} applyable · {autoEligible.length} auto-fix eligible · Use Trace JE on rental rows before
         posting
       </p>
 
       <Dialog open={batchOpen} onOpenChange={(o) => !batchRunning && setBatchOpen(o)}>
-        <DialogContent className="bg-[#0B0F19] border-gray-800 text-white max-w-lg">
+        <DialogContent className="bg-background border-border text-foreground max-w-lg">
           <DialogHeader>
             <DialogTitle>Run Full Reconciliation Fix</DialogTitle>
-            <DialogDescription className="text-gray-400">
+            <DialogDescription className="text-muted-foreground">
               Applies {autoEligible.length} safe repair(s) sequentially. Diagnostic summary rows are skipped.
             </DialogDescription>
           </DialogHeader>
@@ -573,7 +573,7 @@ export function HybridRepairPanel({
               Progress: {batchProgress.done}/{batchProgress.total} — {batchProgress.title}
             </p>
           ) : null}
-          <ul className="text-xs text-gray-300 max-h-48 overflow-y-auto space-y-1 border border-gray-800 rounded p-2">
+          <ul className="text-xs text-muted-foreground max-h-48 overflow-y-auto space-y-1 border border-border rounded p-2">
             {autoEligible.length > 20 ? (
               <li>
                 • {autoEligible.length} corrections totaling{' '}
@@ -585,7 +585,7 @@ export function HybridRepairPanel({
             )}
           </ul>
           <DialogFooter>
-            <Button variant="outline" className="border-gray-700" disabled={batchRunning} onClick={() => setBatchOpen(false)}>
+            <Button variant="outline" className="border-border" disabled={batchRunning} onClick={() => setBatchOpen(false)}>
               Cancel
             </Button>
             <Button className="bg-violet-600 gap-1.5" disabled={batchRunning} onClick={() => void runBatch()}>
@@ -597,10 +597,10 @@ export function HybridRepairPanel({
       </Dialog>
 
       <Dialog open={!!batchResult} onOpenChange={(o) => !o && setBatchResult(null)}>
-        <DialogContent className="bg-[#0B0F19] border-gray-800 text-white max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogContent className="bg-background border-border text-foreground max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Batch repair summary</DialogTitle>
-            <DialogDescription className="text-gray-400">
+            <DialogDescription className="text-muted-foreground">
               {batchResult
                 ? `${batchResult.applied.length} applied · ${batchResult.skipped.length} skipped · ${batchResult.errors.length} errors`
                 : ''}
@@ -617,8 +617,8 @@ export function HybridRepairPanel({
             </div>
           ) : null}
           {batchResult?.skipped.length ? (
-            <div className="space-y-1 text-xs text-gray-400 border border-gray-800 rounded p-2 max-h-32 overflow-y-auto">
-              <p className="font-medium text-gray-300">Skipped ({batchResult.skipped.length})</p>
+            <div className="space-y-1 text-xs text-muted-foreground border border-border rounded p-2 max-h-32 overflow-y-auto">
+              <p className="font-medium text-muted-foreground">Skipped ({batchResult.skipped.length})</p>
               {batchResult.skipped.slice(0, 15).map((s) => (
                 <p key={s.id}>
                   {s.id}: {s.reason}
@@ -636,22 +636,22 @@ export function HybridRepairPanel({
       </Dialog>
 
       <Dialog open={!!glConfirmOpen} onOpenChange={(o) => !o && setGlConfirmOpen(null)}>
-        <DialogContent className="bg-[#0B0F19] border-gray-800 text-white max-w-md">
+        <DialogContent className="bg-background border-border text-foreground max-w-md">
           <DialogHeader>
             <DialogTitle>Approve GL Correction</DialogTitle>
-            <DialogDescription className="text-gray-400">
+            <DialogDescription className="text-muted-foreground">
               Posts additive journal voucher only. Type confirm phrase exactly.
             </DialogDescription>
           </DialogHeader>
-          <p className="text-xs text-gray-300">{glConfirmOpen?.title}</p>
+          <p className="text-xs text-muted-foreground">{glConfirmOpen?.title}</p>
           <Input
             placeholder={GL_CORRECTION_CONFIRM_PHRASE}
             value={glConfirmPhrase}
             onChange={(e) => setGlConfirmPhrase(e.target.value)}
-            className="bg-gray-900 border-gray-700"
+            className="bg-card border-border"
           />
           <DialogFooter>
-            <Button variant="outline" className="border-gray-700" onClick={() => setGlConfirmOpen(null)}>
+            <Button variant="outline" className="border-border" onClick={() => setGlConfirmOpen(null)}>
               Cancel
             </Button>
             <Button

@@ -35,7 +35,7 @@ function OptionRow({ id, checked, onCheckedChange, label }: OptionRowProps) {
         onCheckedChange={(c) => onCheckedChange(c === true)}
         className="mt-0.5 shrink-0 border-gray-500 data-[state=checked]:bg-blue-600"
       />
-      <Label htmlFor={id} className="flex-1 min-w-0 text-sm font-normal leading-snug text-gray-300 cursor-pointer pt-0.5">
+      <Label htmlFor={id} className="flex-1 min-w-0 text-sm font-normal leading-snug text-muted-foreground cursor-pointer pt-0.5">
         {label}
       </Label>
     </div>
@@ -118,7 +118,7 @@ export function BarcodeLabelSheetLayoutFields({
   return (
     <div className="space-y-3">
       <div>
-        <Label className="text-xs text-gray-400">Sheet preset</Label>
+        <Label className="text-xs text-muted-foreground">Sheet preset</Label>
         <select
           value={presetId}
           onChange={(e) => {
@@ -130,7 +130,7 @@ export function BarcodeLabelSheetLayoutFields({
               onMaxLabelsPerSheetChange(p.maxLabelsPerSheet);
             }
           }}
-          className="mt-1 w-full h-9 rounded bg-gray-950 border border-gray-700 text-white text-sm px-2"
+          className="mt-1 w-full h-9 rounded bg-input-background border border-border text-foreground text-sm px-2"
         >
           {BARCODE_LABEL_PRESETS.map((p) => (
             <option key={p.id} value={p.id}>
@@ -139,7 +139,7 @@ export function BarcodeLabelSheetLayoutFields({
           ))}
         </select>
         {preset?.description ? (
-          <p className="text-[10px] text-gray-500 mt-1 leading-snug">{preset.description}</p>
+          <p className="text-[10px] text-muted-foreground mt-1 leading-snug">{preset.description}</p>
         ) : null}
       </div>
       <div className="flex gap-1">
@@ -154,8 +154,8 @@ export function BarcodeLabelSheetLayoutFields({
             className={cn(
               'flex-1 py-1.5 rounded text-xs font-medium border transition-colors',
               a4Columns === n
-                ? 'bg-blue-600 border-blue-500 text-white'
-                : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'
+                ? 'bg-blue-600 border-blue-500 text-foreground'
+                : 'bg-muted border-border text-muted-foreground hover:border-gray-600'
             )}
           >
             {n} cols
@@ -163,7 +163,7 @@ export function BarcodeLabelSheetLayoutFields({
         ))}
       </div>
       <div>
-        <Label className="text-xs text-gray-400">Labels per A4 page</Label>
+        <Label className="text-xs text-muted-foreground">Labels per A4 page</Label>
         <input
           type="number"
           min={6}
@@ -174,10 +174,10 @@ export function BarcodeLabelSheetLayoutFields({
             onMaxLabelsPerSheetChange(n);
             onPresetChange(presetIdFromLayout(a4Columns, n));
           }}
-          className="mt-1 w-full h-9 rounded bg-gray-950 border border-gray-700 text-white text-sm px-2"
+          className="mt-1 w-full h-9 rounded bg-input-background border border-border text-foreground text-sm px-2"
         />
-        <p className="text-[10px] text-gray-500 mt-1">{gridSummary(a4Columns, maxLabelsPerSheet)}</p>
-        <p className="text-[10px] text-gray-600 mt-0.5">
+        <p className="text-[10px] text-muted-foreground mt-1">{gridSummary(a4Columns, maxLabelsPerSheet)}</p>
+        <p className="text-[10px] text-muted-foreground mt-0.5">
           Grid ≈ {a4Columns} columns × {gridRows} rows
         </p>
       </div>

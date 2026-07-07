@@ -69,26 +69,26 @@ export function SearchableAccountSelect({
           aria-expanded={open}
           disabled={disabled}
           className={cn(
-            'w-full h-auto min-h-[2.75rem] justify-between font-normal bg-gray-900 border-2 border-gray-700 rounded-lg px-4 py-2.5 text-white hover:bg-gray-900 hover:text-white',
+            'w-full h-auto min-h-[2.75rem] justify-between font-normal bg-card border-2 border-border rounded-lg px-4 py-2.5 text-foreground hover:bg-card hover:text-foreground',
             className,
           )}
         >
           {selected ? (
             <span className="truncate text-left">{formatOptionLabel(selected)}</span>
           ) : (
-            <span className="text-gray-500">{placeholder}</span>
+            <span className="text-muted-foreground">{placeholder}</span>
           )}
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        className="w-[var(--radix-popover-trigger-width)] min-w-[280px] p-0 bg-gray-900 border-gray-800 text-white"
+        className="w-[var(--radix-popover-trigger-width)] min-w-[280px] p-0 bg-card border-border text-foreground"
         align="start"
       >
-        <Command shouldFilter={false} className="bg-gray-900 text-white">
+        <Command shouldFilter={false} className="bg-card text-foreground">
           <CommandInput
             placeholder={searchPlaceholder}
-            className="h-9 border-none focus:ring-0 text-white"
+            className="h-9 border-none focus:ring-0 text-foreground"
             value={search}
             onValueChange={setSearch}
           />
@@ -104,7 +104,7 @@ export function SearchableAccountSelect({
                     setOpen(false);
                     setSearch('');
                   }}
-                  className="text-white hover:bg-gray-800 cursor-pointer"
+                  className="text-foreground hover:bg-muted cursor-pointer"
                 >
                   <Check
                     className={cn('mr-2 h-4 w-4 shrink-0', value === a.id ? 'opacity-100' : 'opacity-0')}

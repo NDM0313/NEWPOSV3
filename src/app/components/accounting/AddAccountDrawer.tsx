@@ -271,14 +271,14 @@ export const AddAccountDrawer = ({ isOpen, onClose, onSuccess }: AddAccountDrawe
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex justify-end animate-in fade-in duration-200">
-      <div className="w-full max-w-md bg-[#0B0F17] h-full shadow-2xl flex flex-col border-l border-gray-800 animate-in slide-in-from-right duration-300">
-        <div className="px-6 py-5 border-b border-gray-800 bg-[#111827] flex items-center justify-between">
+    <div className="fixed inset-0 z-50 bg-[var(--erp-overlay)] backdrop-blur-sm flex justify-end animate-in fade-in duration-200">
+      <div className="w-full max-w-md bg-background h-full shadow-2xl flex flex-col border-l border-border animate-in slide-in-from-right duration-300">
+        <div className="px-6 py-5 border-b border-border bg-background flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold text-white tracking-tight">Create Account</h2>
-            <p className="text-sm text-gray-400">Operational or full chart of accounts.</p>
+            <h2 className="text-lg font-bold text-foreground tracking-tight">Create Account</h2>
+            <p className="text-sm text-muted-foreground">Operational or full chart of accounts.</p>
           </div>
-          <Button variant="ghost" size="icon" onClick={onClose} className="text-gray-400 hover:text-white hover:bg-gray-800">
+          <Button variant="ghost" size="icon" onClick={onClose} className="text-muted-foreground hover:text-foreground hover:bg-muted">
             <X className="h-5 w-5" />
           </Button>
         </div>
@@ -286,46 +286,46 @@ export const AddAccountDrawer = ({ isOpen, onClose, onSuccess }: AddAccountDrawe
         <form onSubmit={handleSubmit} className="flex flex-col h-full">
           <div className="flex-1 p-6 overflow-y-auto">
             <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'operational' | 'professional')} className="w-full">
-              <TabsList className="grid w-full grid-cols-2 bg-gray-800 border border-gray-700">
-                <TabsTrigger value="operational" className="data-[state=active]:bg-gray-700 text-gray-300 data-[state=active]:text-white">
+              <TabsList className="grid w-full grid-cols-2 bg-muted border border-border">
+                <TabsTrigger value="operational" className="data-[state=active]:bg-muted text-muted-foreground data-[state=active]:text-foreground">
                   Operational
                 </TabsTrigger>
-                <TabsTrigger value="professional" className="data-[state=active]:bg-gray-700 text-gray-300 data-[state=active]:text-white">
+                <TabsTrigger value="professional" className="data-[state=active]:bg-muted text-muted-foreground data-[state=active]:text-foreground">
                   Professional
                 </TabsTrigger>
               </TabsList>
 
               <TabsContent value="operational" className="mt-6 space-y-6">
                 <div className="space-y-3">
-                  <Label className="text-xs text-gray-500 uppercase tracking-wider">Account role *</Label>
+                  <Label className="text-xs text-muted-foreground uppercase tracking-wider">Account role *</Label>
                   <Select value={operationalRole} onValueChange={(v: OperationalRole) => setOperationalRole(v)}>
-                    <SelectTrigger className="bg-gray-800 border-gray-700 text-white h-12">
+                    <SelectTrigger className="bg-muted border-border text-foreground h-12">
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent className="bg-gray-800 border-gray-700 text-white">
+                    <SelectContent className="bg-muted border-border text-foreground">
                       {OPERATIONAL_ROLES.map((r) => (
                         <SelectItem key={r.value} value={r.value}>
                           <div className="flex items-center gap-2">
-                            <r.icon size={16} className="text-gray-400" />
+                            <r.icon size={16} className="text-muted-foreground" />
                             {r.label}
                           </div>
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-muted-foreground">
                     Cash / Bank / Wallet / AR / AP sub-accounts are linked under the canonical group (1000, 1010, 1020, 1100, 2000) for
                     chart and Balance Sheet grouping. Expense and Income stay top-level unless you use Professional → parent.
                   </p>
                 </div>
 
                 <div className="space-y-3">
-                  <Label className="text-xs text-gray-500 uppercase tracking-wider">Account name *</Label>
+                  <Label className="text-xs text-muted-foreground uppercase tracking-wider">Account name *</Label>
                   <Input
                     value={accountName}
                     onChange={(e) => setAccountName(e.target.value)}
                     placeholder="e.g. Meezan Bank, Shop Cash, JazzCash"
-                    className="bg-gray-800 border-gray-700 text-white h-11"
+                    className="bg-muted border-border text-foreground h-11"
                     required
                   />
                 </div>
@@ -333,49 +333,49 @@ export const AddAccountDrawer = ({ isOpen, onClose, onSuccess }: AddAccountDrawe
                 {/* Operational: code is auto-assigned (1000/1010/1020 or next available); no field shown */}
 
                 <div className="space-y-3">
-                  <Label className="text-xs text-gray-500 uppercase tracking-wider">Note</Label>
+                  <Label className="text-xs text-muted-foreground uppercase tracking-wider">Note</Label>
                   <Textarea
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
                     placeholder="Optional notes (e.g. branch, purpose)"
-                    className="bg-gray-800 border-gray-700 text-white min-h-[80px] resize-y"
+                    className="bg-muted border-border text-foreground min-h-[80px] resize-y"
                     rows={3}
                   />
                 </div>
 
                 <div className="space-y-3">
-                  <Label className="text-xs text-gray-500 uppercase tracking-wider">Opening balance</Label>
+                  <Label className="text-xs text-muted-foreground uppercase tracking-wider">Opening balance</Label>
                   <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-bold">$</span>
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-bold">$</span>
                     <Input
                       type="number"
                       value={openingBalance}
                       onChange={(e) => setOpeningBalance(parseFloat(e.target.value) || 0)}
                       placeholder="0.00"
                       step="0.01"
-                      className="bg-gray-800 border-gray-700 text-white h-11 pl-8"
+                      className="bg-muted border-border text-foreground h-11 pl-8"
                     />
                   </div>
                   {Math.abs(openingBalance) >= 0.01 ? (
                     <div className="space-y-2 pt-1">
-                      <Label className="text-xs text-gray-500 uppercase tracking-wider">
+                      <Label className="text-xs text-muted-foreground uppercase tracking-wider">
                         Opening balance effective date
                       </Label>
                       <DatePicker
                         value={openingBalanceDate}
                         onChange={(v) => setOpeningBalanceDate(v)}
                       />
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-muted-foreground">
                         Journal entry date for this opening balance (when it applies in the ledger).
                       </p>
                     </div>
                   ) : null}
                 </div>
 
-                <div className="flex items-center justify-between bg-gray-900 border border-gray-800 p-4 rounded-lg">
+                <div className="flex items-center justify-between bg-card border border-border p-4 rounded-lg">
                   <div>
-                    <Label className="text-base text-white">Active</Label>
-                    <p className="text-xs text-gray-500">Account can be used in ledger and payments.</p>
+                    <Label className="text-base text-foreground">Active</Label>
+                    <p className="text-xs text-muted-foreground">Account can be used in ledger and payments.</p>
                   </div>
                   <Switch checked={isActive} onCheckedChange={setIsActive} className="data-[state=checked]:bg-green-600" />
                 </div>
@@ -383,12 +383,12 @@ export const AddAccountDrawer = ({ isOpen, onClose, onSuccess }: AddAccountDrawe
 
               <TabsContent value="professional" className="mt-6 space-y-6">
                 <div className="space-y-3">
-                  <Label className="text-xs text-gray-500 uppercase tracking-wider">Category *</Label>
+                  <Label className="text-xs text-muted-foreground uppercase tracking-wider">Category *</Label>
                   <Select value={professionalCategory} onValueChange={(v: ProfessionalCategory) => setProfessionalCategory(v)}>
-                    <SelectTrigger className="bg-gray-800 border-gray-700 text-white h-12">
+                    <SelectTrigger className="bg-muted border-border text-foreground h-12">
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent className="bg-gray-800 border-gray-700 text-white">
+                    <SelectContent className="bg-muted border-border text-foreground">
                       {PROFESSIONAL_CATEGORIES.map((c) => (
                         <SelectItem key={c.value} value={c.value}>
                           {c.label}
@@ -399,16 +399,16 @@ export const AddAccountDrawer = ({ isOpen, onClose, onSuccess }: AddAccountDrawe
                 </div>
 
                 <div className="space-y-3">
-                  <Label className="text-xs text-gray-500 uppercase tracking-wider">Parent account</Label>
+                  <Label className="text-xs text-muted-foreground uppercase tracking-wider">Parent account</Label>
                   <Select
                     value={parentId || '__none__'}
                     onValueChange={(v) => setParentId(v === '__none__' ? null : v)}
                     disabled={loadingAccounts}
                   >
-                    <SelectTrigger className="bg-gray-800 border-gray-700 text-white h-11">
+                    <SelectTrigger className="bg-muted border-border text-foreground h-11">
                       <SelectValue placeholder="None (top-level)" />
                     </SelectTrigger>
-                    <SelectContent className="bg-gray-800 border-gray-700 text-white max-h-[min(60vh,20rem)]">
+                    <SelectContent className="bg-muted border-border text-foreground max-h-[min(60vh,20rem)]">
                       <SelectItem value="__none__">None (top-level)</SelectItem>
                       {filterManualCoaParentCandidates(existingAccounts, (a) =>
                         accountMatchesProfessionalCategory(a, professionalCategory)
@@ -419,77 +419,77 @@ export const AddAccountDrawer = ({ isOpen, onClose, onSuccess }: AddAccountDrawe
                         ))}
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-gray-500">Sub-accounts must have the same category as the parent.</p>
+                  <p className="text-xs text-muted-foreground">Sub-accounts must have the same category as the parent.</p>
                 </div>
 
                 <div className="space-y-3">
-                  <Label className="text-xs text-gray-500 uppercase tracking-wider">Account name *</Label>
+                  <Label className="text-xs text-muted-foreground uppercase tracking-wider">Account name *</Label>
                   <Input
                     value={accountName}
                     onChange={(e) => setAccountName(e.target.value)}
                     placeholder="e.g. Current Assets, Cost of Sales"
-                    className="bg-gray-800 border-gray-700 text-white h-11"
+                    className="bg-muted border-border text-foreground h-11"
                     required
                   />
                 </div>
 
                 <div className="space-y-3">
-                  <Label className="text-xs text-gray-500 uppercase tracking-wider">Account code</Label>
+                  <Label className="text-xs text-muted-foreground uppercase tracking-wider">Account code</Label>
                   <Input
                     value={accountCode}
                     onChange={(e) => setAccountCode(e.target.value)}
                     placeholder="Leave blank to auto-fill from parent"
-                    className="bg-gray-800 border-gray-700 text-white h-11 font-mono"
+                    className="bg-muted border-border text-foreground h-11 font-mono"
                   />
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-muted-foreground">
                     Optional — with a parent selected, the next free code is suggested. Top-level without a code uses an auto code. Must stay unique.
                   </p>
                 </div>
 
                 <div className="space-y-3">
-                  <Label className="text-xs text-gray-500 uppercase tracking-wider">Note</Label>
+                  <Label className="text-xs text-muted-foreground uppercase tracking-wider">Note</Label>
                   <Textarea
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
                     placeholder="Optional notes (e.g. sub-ledger, reporting)"
-                    className="bg-gray-800 border-gray-700 text-white min-h-[80px] resize-y"
+                    className="bg-muted border-border text-foreground min-h-[80px] resize-y"
                     rows={3}
                   />
                 </div>
 
                 <div className="space-y-3">
-                  <Label className="text-xs text-gray-500 uppercase tracking-wider">Opening balance</Label>
+                  <Label className="text-xs text-muted-foreground uppercase tracking-wider">Opening balance</Label>
                   <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-bold">$</span>
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-bold">$</span>
                     <Input
                       type="number"
                       value={openingBalance}
                       onChange={(e) => setOpeningBalance(parseFloat(e.target.value) || 0)}
                       placeholder="0.00"
                       step="0.01"
-                      className="bg-gray-800 border-gray-700 text-white h-11 pl-8"
+                      className="bg-muted border-border text-foreground h-11 pl-8"
                     />
                   </div>
                   {Math.abs(openingBalance) >= 0.01 ? (
                     <div className="space-y-2 pt-1">
-                      <Label className="text-xs text-gray-500 uppercase tracking-wider">
+                      <Label className="text-xs text-muted-foreground uppercase tracking-wider">
                         Opening balance effective date
                       </Label>
                       <DatePicker
                         value={openingBalanceDate}
                         onChange={(v) => setOpeningBalanceDate(v)}
                       />
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-muted-foreground">
                         Journal entry date for this opening balance (when it applies in the ledger).
                       </p>
                     </div>
                   ) : null}
                 </div>
 
-                <div className="flex items-center justify-between bg-gray-900 border border-gray-800 p-4 rounded-lg">
+                <div className="flex items-center justify-between bg-card border border-border p-4 rounded-lg">
                   <div>
-                    <Label className="text-base text-white">Active</Label>
-                    <p className="text-xs text-gray-500">Account appears in ledger and journal entries.</p>
+                    <Label className="text-base text-foreground">Active</Label>
+                    <p className="text-xs text-muted-foreground">Account appears in ledger and journal entries.</p>
                   </div>
                   <Switch checked={isActive} onCheckedChange={setIsActive} className="data-[state=checked]:bg-green-600" />
                 </div>
@@ -497,7 +497,7 @@ export const AddAccountDrawer = ({ isOpen, onClose, onSuccess }: AddAccountDrawe
             </Tabs>
           </div>
 
-          <div className="p-6 border-t border-gray-800 bg-[#111827] space-y-3 shrink-0">
+          <div className="p-6 border-t border-border bg-background space-y-3 shrink-0">
             <Button
               type="submit"
               disabled={isSaving}
@@ -505,7 +505,7 @@ export const AddAccountDrawer = ({ isOpen, onClose, onSuccess }: AddAccountDrawe
             >
               {isSaving ? 'Creating...' : 'Create Account'}
             </Button>
-            <Button type="button" variant="outline" onClick={onClose} className="w-full border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800 h-12">
+            <Button type="button" variant="outline" onClick={onClose} className="w-full border-border text-muted-foreground hover:text-foreground hover:bg-muted h-12">
               Cancel
             </Button>
           </div>

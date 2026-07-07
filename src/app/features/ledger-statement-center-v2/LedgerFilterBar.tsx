@@ -1,4 +1,5 @@
 import { SearchableSelect } from '@/app/components/ui/searchable-select';
+import { ErpFilterPanel } from '@/app/components/ui/erp-surfaces';
 import type {
   LedgerEntityOption,
   LedgerStatementV2Type,
@@ -46,6 +47,9 @@ const TX_OPTIONS: { value: LedgerTransactionTypeFilter; label: string }[] = [
   { value: 'discount', label: 'Discount' },
 ];
 
+const selectClass =
+  'w-full bg-input-background border border-border rounded-lg px-3 py-2 text-sm text-foreground';
+
 export function LedgerFilterBar(props: LedgerFilterBarProps) {
   const entityOptions = props.entities.map((e) => ({
     id: e.id,
@@ -53,11 +57,11 @@ export function LedgerFilterBar(props: LedgerFilterBarProps) {
   }));
 
   return (
-    <div className="rounded-xl border border-gray-800 bg-[#0F1419] p-4 space-y-4">
-      <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+    <ErpFilterPanel>
+      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         <span className="uppercase tracking-wide">Period</span>
-        <span className="text-gray-300 font-medium">{props.dateRangeLabel}</span>
-        <span className="text-gray-600">
+        <span className="text-foreground font-medium">{props.dateRangeLabel}</span>
+        <span>
           ·{' '}
           {props.periodSource === 'tab'
             ? 'period from Account Statements dates above (all branches)'
@@ -67,11 +71,11 @@ export function LedgerFilterBar(props: LedgerFilterBarProps) {
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
         <div>
-          <label className="text-xs text-gray-500 uppercase tracking-wide mb-1.5 block">Statement type</label>
+          <label className="text-xs text-muted-foreground uppercase tracking-wide mb-1.5 block">Statement type</label>
           <select
             value={props.statementType}
             onChange={(e) => props.onStatementTypeChange(e.target.value as LedgerStatementV2Type)}
-            className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+            className={selectClass}
           >
             {TYPE_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
@@ -81,7 +85,7 @@ export function LedgerFilterBar(props: LedgerFilterBarProps) {
           </select>
         </div>
         <div className="md:col-span-2">
-          <label className="text-xs text-gray-500 uppercase tracking-wide mb-1.5 block">Party / account</label>
+          <label className="text-xs text-muted-foreground uppercase tracking-wide mb-1.5 block">Party / account</label>
           <SearchableSelect
             value={props.entityId}
             onValueChange={props.onEntityChange}
@@ -95,16 +99,16 @@ export function LedgerFilterBar(props: LedgerFilterBarProps) {
           />
         </div>
         <div>
-          <label className="text-xs text-gray-500 uppercase tracking-wide mb-1.5 block">Branch</label>
+          <label className="text-xs text-muted-foreground uppercase tracking-wide mb-1.5 block">Branch</label>
           <select
             value="all"
             disabled
             title="Matches Accounting → Account Statements (all branches; see Branch column per row)"
-            className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-500 cursor-not-allowed opacity-80"
+            className={`${selectClass} text-muted-foreground cursor-not-allowed opacity-80`}
           >
             <option value="all">All branches (GL scope)</option>
           </select>
-          <p className="text-[10px] text-gray-600 mt-1 leading-snug">
+          <p className="text-[10px] text-muted-foreground mt-1 leading-snug">
             Matches Accounting → Account Statements. Branch shown on each row.
           </p>
         </div>
@@ -113,11 +117,11 @@ export function LedgerFilterBar(props: LedgerFilterBarProps) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 flex-1 min-w-0">
           <div>
-            <label className="text-xs text-gray-500 uppercase tracking-wide mb-1.5 block">Transaction type</label>
+            <label className="text-xs text-muted-foreground uppercase tracking-wide mb-1.5 block">Transaction type</label>
             <select
               value={props.transactionType}
               onChange={(e) => props.onTransactionTypeChange(e.target.value as LedgerTransactionTypeFilter)}
-              className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+              className={selectClass}
             >
               {TX_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
@@ -127,13 +131,13 @@ export function LedgerFilterBar(props: LedgerFilterBarProps) {
             </select>
           </div>
           <div>
-            <label className="text-xs text-gray-500 uppercase tracking-wide mb-1.5 block">Search</label>
+            <label className="text-xs text-muted-foreground uppercase tracking-wide mb-1.5 block">Search</label>
             <input
               type="search"
               value={props.search}
               onChange={(e) => props.onSearchChange(e.target.value)}
               placeholder="Ref, amount, notes…"
-              className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-gray-600"
+              className={`${selectClass} placeholder:text-muted-foreground`}
             />
           </div>
         </div>
@@ -150,8 +154,8 @@ export function LedgerFilterBar(props: LedgerFilterBarProps) {
       </div>
 
       {props.loading ? (
-        <p className="text-xs text-gray-500 text-right">Loading statement…</p>
+        <p className="text-xs text-muted-foreground text-right">Loading statement…</p>
       ) : null}
-    </div>
+    </ErpFilterPanel>
   );
 }

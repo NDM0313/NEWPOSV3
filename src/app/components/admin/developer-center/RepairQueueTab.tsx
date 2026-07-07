@@ -190,7 +190,7 @@ export function RepairQueueTab({ companyId }: Props) {
         </Card>
       )}
 
-      <Card className="border-gray-800 bg-gray-900/40">
+      <Card className="border-border bg-card/40">
         <CardHeader>
           <CardTitle className="text-base">Expense payment mismatches</CardTitle>
           <CardDescription>
@@ -201,52 +201,52 @@ export function RepairQueueTab({ companyId }: Props) {
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <div className="space-y-1">
-              <Label className="text-xs text-gray-500">Expense no</Label>
+              <Label className="text-xs text-muted-foreground">Expense no</Label>
               <Input
                 value={expenseFilters.expenseNo || ''}
                 onChange={(e) => setExpenseFilters((f) => ({ ...f, expenseNo: e.target.value }))}
                 placeholder="EXP-0021"
-                className="bg-gray-950 border-gray-700 h-8 text-sm"
+                className="bg-input-background border-border h-8 text-sm"
               />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs text-gray-500">Payment ref</Label>
+              <Label className="text-xs text-muted-foreground">Payment ref</Label>
               <Input
                 value={expenseFilters.paymentRef || ''}
                 onChange={(e) => setExpenseFilters((f) => ({ ...f, paymentRef: e.target.value }))}
                 placeholder="PAY-…"
-                className="bg-gray-950 border-gray-700 h-8 text-sm"
+                className="bg-input-background border-border h-8 text-sm"
               />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs text-gray-500">Branch ID</Label>
+              <Label className="text-xs text-muted-foreground">Branch ID</Label>
               <Input
                 value={expenseFilters.branchId || ''}
                 onChange={(e) => setExpenseFilters((f) => ({ ...f, branchId: e.target.value }))}
                 placeholder="Optional branch UUID"
-                className="bg-gray-950 border-gray-700 h-8 text-sm"
+                className="bg-input-background border-border h-8 text-sm"
               />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs text-gray-500">Date from</Label>
+              <Label className="text-xs text-muted-foreground">Date from</Label>
               <Input
                 type="date"
                 value={expenseFilters.dateFrom || ''}
                 onChange={(e) => setExpenseFilters((f) => ({ ...f, dateFrom: e.target.value }))}
-                className="bg-gray-950 border-gray-700 h-8 text-sm"
+                className="bg-input-background border-border h-8 text-sm"
               />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs text-gray-500">Date to</Label>
+              <Label className="text-xs text-muted-foreground">Date to</Label>
               <Input
                 type="date"
                 value={expenseFilters.dateTo || ''}
                 onChange={(e) => setExpenseFilters((f) => ({ ...f, dateTo: e.target.value }))}
-                className="bg-gray-950 border-gray-700 h-8 text-sm"
+                className="bg-input-background border-border h-8 text-sm"
               />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs text-gray-500">Min mismatch (Rs)</Label>
+              <Label className="text-xs text-muted-foreground">Min mismatch (Rs)</Label>
               <Input
                 type="number"
                 min={0}
@@ -258,7 +258,7 @@ export function RepairQueueTab({ companyId }: Props) {
                   }))
                 }
                 placeholder="e.g. 100"
-                className="bg-gray-950 border-gray-700 h-8 text-sm"
+                className="bg-input-background border-border h-8 text-sm"
               />
             </div>
           </div>
@@ -272,14 +272,14 @@ export function RepairQueueTab({ companyId }: Props) {
               Search
             </Button>
           </div>
-          <p className="text-xs text-gray-500">{expenseScanNote}</p>
+          <p className="text-xs text-muted-foreground">{expenseScanNote}</p>
           <div className="overflow-x-auto">
             {expenseMismatches.length === 0 ? (
-              <p className="text-sm text-gray-500">No results yet — run Scan recent or Search.</p>
+              <p className="text-sm text-muted-foreground">No results yet — run Scan recent or Search.</p>
             ) : (
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="text-left text-gray-500 border-b border-gray-800">
+                  <tr className="text-left text-muted-foreground border-b border-border">
                     <th className="py-2 pr-2">Expense</th>
                     <th className="py-2 pr-2">Payment</th>
                     <th className="py-2 pr-2">Expense amt</th>
@@ -297,21 +297,21 @@ export function RepairQueueTab({ companyId }: Props) {
                     const preview = expensePaymentCandidateToDryRunPreview(row);
                     const repairCls = classifyExpensePaymentMismatch(row);
                     return (
-                      <tr key={row.expenseId} className="border-b border-gray-800/60">
+                      <tr key={row.expenseId} className="border-b border-border/60">
                         <td className="py-2 pr-2 text-gray-200 font-mono">{row.expenseNo}</td>
-                        <td className="py-2 pr-2 text-gray-400">{row.paymentRef || '—'}</td>
+                        <td className="py-2 pr-2 text-muted-foreground">{row.paymentRef || '—'}</td>
                         <td className="py-2 pr-2">{row.expenseAmount.toLocaleString()}</td>
                         <td className="py-2 pr-2">{(row.paymentAmount ?? 0).toLocaleString()}</td>
                         <td className="py-2 pr-2">{row.jeLiquidityAmount.toLocaleString()}</td>
                         <td className="py-2 pr-2">{row.proposedAfterAmount.toLocaleString()}</td>
-                        <td className="py-2 pr-2 text-gray-400 max-w-[120px] truncate" title={repairCls.issueType}>
+                        <td className="py-2 pr-2 text-muted-foreground max-w-[120px] truncate" title={repairCls.issueType}>
                           {repairCls.issueType}
                         </td>
                         <td className="py-2 pr-2">
                           <ActionableRepairStatusBadge status={repairCls.status} />
                         </td>
                         <td className="py-2 pr-2">
-                          <Badge variant="outline" className="text-[10px] border-gray-700">
+                          <Badge variant="outline" className="text-[10px] border-border">
                             {repairCls.riskLevel}
                           </Badge>
                         </td>
@@ -351,18 +351,18 @@ export function RepairQueueTab({ companyId }: Props) {
 
       {snapshot && (
         <>
-          <Card className="border-gray-800 bg-gray-900/40">
+          <Card className="border-border bg-card/40">
             <CardHeader>
               <CardTitle className="text-base">Integrity Lab issues ({snapshot.issues.length})</CardTitle>
               <CardDescription>Read-only previews — apply via Developer Integrity Lab unless queued below.</CardDescription>
             </CardHeader>
             <CardContent className="overflow-x-auto max-h-64">
               {snapshot.issuePreviews.length === 0 ? (
-                <p className="text-sm text-gray-500">No open issues.</p>
+                <p className="text-sm text-muted-foreground">No open issues.</p>
               ) : (
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="text-left text-gray-500 border-b border-gray-800">
+                    <tr className="text-left text-muted-foreground border-b border-border">
                       <th className="py-2 pr-2">Rule</th>
                       <th className="py-2 pr-2">Before</th>
                       <th className="py-2">After (preview)</th>
@@ -370,10 +370,10 @@ export function RepairQueueTab({ companyId }: Props) {
                   </thead>
                   <tbody>
                     {snapshot.issuePreviews.slice(0, 20).map((p, i) => (
-                      <tr key={i} className="border-b border-gray-800/60">
-                        <td className="py-2 pr-2 text-gray-300">{p.title}</td>
-                        <td className="py-2 pr-2 text-gray-500 max-w-xs">{p.beforeSummary}</td>
-                        <td className="py-2 text-gray-400 max-w-xs">{p.afterSummary}</td>
+                      <tr key={i} className="border-b border-border/60">
+                        <td className="py-2 pr-2 text-muted-foreground">{p.title}</td>
+                        <td className="py-2 pr-2 text-muted-foreground max-w-xs">{p.beforeSummary}</td>
+                        <td className="py-2 text-muted-foreground max-w-xs">{p.afterSummary}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -382,7 +382,7 @@ export function RepairQueueTab({ companyId }: Props) {
             </CardContent>
           </Card>
 
-          <Card className="border-gray-800 bg-gray-900/40">
+          <Card className="border-border bg-card/40">
             <CardHeader>
               <CardTitle className="text-base">Numbering dry-run ({outOfSync.length} out of sync)</CardTitle>
               <CardDescription>
@@ -392,7 +392,7 @@ export function RepairQueueTab({ companyId }: Props) {
             <CardContent className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="text-left text-gray-500 border-b border-gray-800">
+                  <tr className="text-left text-muted-foreground border-b border-border">
                     <th className="py-2 pr-2">Type</th>
                     <th className="py-2 pr-2">Seq last</th>
                     <th className="py-2 pr-2">DB max</th>
@@ -402,7 +402,7 @@ export function RepairQueueTab({ companyId }: Props) {
                 </thead>
                 <tbody>
                   {snapshot.numberingRows.map((row) => (
-                    <tr key={row.documentType} className="border-b border-gray-800/60">
+                    <tr key={row.documentType} className="border-b border-border/60">
                       <td className="py-2 pr-2 text-gray-200">{row.label}</td>
                       <td className="py-2 pr-2">{row.sequenceLast}</td>
                       <td className="py-2 pr-2">{row.databaseMax}</td>
@@ -425,7 +425,7 @@ export function RepairQueueTab({ companyId }: Props) {
                             Send to queue
                           </Button>
                         ) : (
-                          <span className="text-gray-500">{row.previewAction}</span>
+                          <span className="text-muted-foreground">{row.previewAction}</span>
                         )}
                       </td>
                     </tr>
@@ -438,7 +438,7 @@ export function RepairQueueTab({ companyId }: Props) {
       )}
 
       {items.length === 0 && (
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-muted-foreground">
           Queue is empty. Send repairs from COA Health, trace tabs, expense search, or numbering table above.
         </p>
       )}

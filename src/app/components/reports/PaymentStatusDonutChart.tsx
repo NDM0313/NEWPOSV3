@@ -27,7 +27,7 @@ export function PaymentStatusDonutChart({
 
   if (totalCount === 0) {
     return (
-      <div className={`flex items-center justify-center text-sm text-gray-500 ${heightClass}`}>
+      <div className={`flex items-center justify-center text-sm text-muted-foreground ${heightClass}`}>
         No payment data in period
       </div>
     );
@@ -71,9 +71,9 @@ export function PaymentStatusDonutChart({
         </PieChart>
       </ChartContainer>
       <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center pb-10">
-        <p className="text-[10px] text-gray-500 uppercase tracking-wide">Total</p>
-        <p className="text-lg font-bold text-white tabular-nums">{formatCurrency(totalAmount)}</p>
-        <p className="text-[10px] text-gray-500">{totalCount} invoice(s)</p>
+        <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Total</p>
+        <p className="text-lg font-bold text-foreground tabular-nums">{formatCurrency(totalAmount)}</p>
+        <p className="text-[10px] text-muted-foreground">{totalCount} invoice(s)</p>
       </div>
     </div>
   );

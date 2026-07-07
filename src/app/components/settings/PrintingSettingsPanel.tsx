@@ -91,8 +91,8 @@ function resolveTab(subTabId: string): PrintingMode {
 
 function SectionCard({ title, icon, children }: { title: string; icon?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <section className="bg-gray-950 border border-gray-800 rounded-lg p-5 space-y-4">
-      <h4 className="text-white font-semibold flex items-center gap-2">{icon}{title}</h4>
+    <section className="bg-input-background border border-border rounded-lg p-5 space-y-4">
+      <h4 className="text-foreground font-semibold flex items-center gap-2">{icon}{title}</h4>
       {children}
     </section>
   );
@@ -121,7 +121,7 @@ export function PrintingSettingsPanel({
 
   if (loading) {
     return (
-      <div className="p-8 text-center text-gray-400">Loading printing settings…</div>
+      <div className="p-8 text-center text-muted-foreground">Loading printing settings…</div>
     );
   }
 
@@ -132,8 +132,8 @@ export function PrintingSettingsPanel({
           <Printer className="text-slate-400" size={24} />
         </div>
         <div>
-          <h3 className="text-xl font-bold text-white">Documents & Printing</h3>
-          <p className="text-sm text-gray-400">
+          <h3 className="text-xl font-bold text-foreground">Documents & Printing</h3>
+          <p className="text-sm text-muted-foreground">
             A4 invoices alag, Thermal receipts alag, Reports alag — Save ke baad apply hota hai.
           </p>
         </div>
@@ -159,21 +159,21 @@ export function PrintingSettingsPanel({
           {tab === 'a4Documents' && (
             <>
               <AppliesToBanner targets="Sales/Purchase Invoice, Ledger, Receipt, Quotation, Proforma, Packing, Courier — unified A4 engine." />
-              <p className="text-xs text-gray-500 -mt-3">
-                Ledger PDF orientation and report header/footer: use <strong className="text-gray-400">Reports &amp; Export</strong> tab.
+              <p className="text-xs text-muted-foreground -mt-3">
+                Ledger PDF orientation and report header/footer: use <strong className="text-muted-foreground">Reports &amp; Export</strong> tab.
                 A4 page orientation here applies to invoices; ledger uses report export orientation (A4 orientation as fallback).
               </p>
 
               <SectionCard title="Page setup" icon={<Layout size={18} />}>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <Label className="text-gray-300">Page size (A4 only)</Label>
+                    <Label className="text-muted-foreground">Page size (A4 only)</Label>
                     <select
                       value={A4_PAGE_SIZES.includes(merged.pageSetup.pageSize) ? merged.pageSetup.pageSize : 'A4'}
                       onChange={(e) =>
                         update('pageSetup', { ...merged.pageSetup, pageSize: e.target.value as PageSetup['pageSize'] })
                       }
-                      className="mt-1 w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2"
+                      className="mt-1 w-full bg-muted border border-border text-foreground rounded-lg px-3 py-2"
                     >
                       {A4_PAGE_SIZES.map((s) => (
                         <option key={s} value={s}>{s}</option>
@@ -181,13 +181,13 @@ export function PrintingSettingsPanel({
                     </select>
                   </div>
                   <div>
-                    <Label className="text-gray-300">Orientation</Label>
+                    <Label className="text-muted-foreground">Orientation</Label>
                     <select
                       value={merged.pageSetup.orientation}
                       onChange={(e) =>
                         update('pageSetup', { ...merged.pageSetup, orientation: e.target.value as PageSetup['orientation'] })
                       }
-                      className="mt-1 w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2"
+                      className="mt-1 w-full bg-muted border border-border text-foreground rounded-lg px-3 py-2"
                     >
                       <option value="portrait">Portrait</option>
                       <option value="landscape">Landscape</option>
@@ -195,11 +195,11 @@ export function PrintingSettingsPanel({
                   </div>
                 </div>
                 <div>
-                  <Label className="text-gray-300 mb-2 block">Margins (mm)</Label>
+                  <Label className="text-muted-foreground mb-2 block">Margins (mm)</Label>
                   <div className="grid grid-cols-4 gap-2">
                     {(['top', 'bottom', 'left', 'right'] as const).map((side) => (
                       <div key={side}>
-                        <Label className="text-xs text-gray-500 capitalize">{side}</Label>
+                        <Label className="text-xs text-muted-foreground capitalize">{side}</Label>
                         <Input
                           type="number"
                           min={0}
@@ -210,7 +210,7 @@ export function PrintingSettingsPanel({
                               margins: { ...merged.pageSetup.margins, [side]: Number(e.target.value) || 0 },
                             })
                           }
-                          className="mt-0.5 bg-gray-800 border-gray-700 text-white"
+                          className="mt-0.5 bg-muted border-border text-foreground"
                         />
                       </div>
                     ))}
@@ -219,7 +219,7 @@ export function PrintingSettingsPanel({
               </SectionCard>
 
               <SectionCard title="Header & footer fields" icon={<ToggleLeft size={18} />}>
-                <p className="text-xs text-gray-500 -mt-2">Company logo/address also used on tabular reports (Reports tab).</p>
+                <p className="text-xs text-muted-foreground -mt-2">Company logo/address also used on tabular reports (Reports tab).</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {([
                     ['showLogo', 'Logo'],
@@ -238,7 +238,7 @@ export function PrintingSettingsPanel({
                     ['showStudioCost', 'Studio cost'],
                   ] as const).map(([key, label]) => (
                     <div key={key} className="flex items-center justify-between">
-                      <Label className="text-gray-300 text-sm">{label}</Label>
+                      <Label className="text-muted-foreground text-sm">{label}</Label>
                       <Switch
                         checked={merged.fields[key] ?? false}
                         onCheckedChange={(v) => update('fields', { ...merged.fields, [key]: v })}
@@ -256,7 +256,7 @@ export function PrintingSettingsPanel({
                     ['invoiceTitlePosition', 'Invoice title', merged.layout.header.invoiceTitlePosition],
                   ] as const).map(([key, label, val]) => (
                     <div key={key}>
-                      <Label className="text-gray-300 text-sm">{label}</Label>
+                      <Label className="text-muted-foreground text-sm">{label}</Label>
                       <select
                         value={val}
                         onChange={(e) =>
@@ -265,7 +265,7 @@ export function PrintingSettingsPanel({
                             header: { ...merged.layout.header, [key]: e.target.value },
                           })
                         }
-                        className="mt-1 w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm"
+                        className="mt-1 w-full bg-muted border border-border text-foreground rounded-lg px-3 py-2 text-sm"
                       >
                         <option value="left">Left</option>
                         <option value="center">Center</option>
@@ -281,7 +281,7 @@ export function PrintingSettingsPanel({
                     ['notesPosition', 'Notes'],
                   ] as const).map(([key, label]) => (
                     <div key={key}>
-                      <Label className="text-gray-300 text-sm">{label} position</Label>
+                      <Label className="text-muted-foreground text-sm">{label} position</Label>
                       <select
                         value={merged.layout.footer[key]}
                         onChange={(e) =>
@@ -290,7 +290,7 @@ export function PrintingSettingsPanel({
                             footer: { ...merged.layout.footer, [key]: e.target.value },
                           })
                         }
-                        className="mt-1 w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm"
+                        className="mt-1 w-full bg-muted border border-border text-foreground rounded-lg px-3 py-2 text-sm"
                       >
                         <option value="left">Left</option>
                         <option value="center">Center</option>
@@ -305,11 +305,11 @@ export function PrintingSettingsPanel({
                 <AppliesToBanner targets="Invoice PDF download only — not tabular Stock/Product Sell reports." className="mb-2" />
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <Label className="text-gray-300">Font family</Label>
+                    <Label className="text-muted-foreground">Font family</Label>
                     <select
                       value={merged.pdf.fontFamily}
                       onChange={(e) => update('pdf', { ...merged.pdf, fontFamily: e.target.value })}
-                      className="mt-1 w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2"
+                      className="mt-1 w-full bg-muted border border-border text-foreground rounded-lg px-3 py-2"
                     >
                       <option value="Inter">Inter</option>
                       <option value="Roboto">Roboto</option>
@@ -317,18 +317,18 @@ export function PrintingSettingsPanel({
                     </select>
                   </div>
                   <div>
-                    <Label className="text-gray-300">Font size (px)</Label>
+                    <Label className="text-muted-foreground">Font size (px)</Label>
                     <Input
                       type="number"
                       min={10}
                       max={14}
                       value={merged.pdf.fontSize}
                       onChange={(e) => update('pdf', { ...merged.pdf, fontSize: Number(e.target.value) || 12 })}
-                      className="mt-1 bg-gray-800 border-gray-700 text-white"
+                      className="mt-1 bg-muted border-border text-foreground"
                     />
                   </div>
                   <div className="flex items-center justify-between col-span-2">
-                    <Label className="text-gray-300">Include watermark</Label>
+                    <Label className="text-muted-foreground">Include watermark</Label>
                     <Switch
                       checked={merged.pdf.includeWatermark}
                       onCheckedChange={(v) => update('pdf', { ...merged.pdf, includeWatermark: v })}
@@ -339,11 +339,11 @@ export function PrintingSettingsPanel({
 
               <SectionCard title="Defaults" icon={<FileText size={18} />}>
                 <div>
-                  <Label className="text-gray-300">Default invoice type</Label>
+                  <Label className="text-muted-foreground">Default invoice type</Label>
                   <select
                     value={merged.defaultInvoiceType}
                     onChange={(e) => update('defaultInvoiceType', e.target.value as InvoiceTypeId)}
-                    className="mt-1 w-full max-w-md bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2"
+                    className="mt-1 w-full max-w-md bg-muted border border-border text-foreground rounded-lg px-3 py-2"
                   >
                     {(Object.keys(INVOICE_TYPE_LABELS) as InvoiceTypeId[]).map((id) => (
                       <option key={id} value={id}>{INVOICE_TYPE_LABELS[id]}</option>
@@ -358,19 +358,19 @@ export function PrintingSettingsPanel({
           {tab === 'thermalReceipts' && (
             <>
               <AppliesToBanner targets="POS receipt, thermal sale print — NOT tabular reports or A4 invoices." />
-              <p className="text-xs text-gray-400">
+              <p className="text-xs text-muted-foreground">
                 Company logo and address come from Settings → Company profile.
               </p>
 
               <SectionCard title="Thermal paper" icon={<Thermometer size={18} />}>
                 <div>
-                  <Label className="text-gray-300">Roll width</Label>
+                  <Label className="text-muted-foreground">Roll width</Label>
                   <select
                     value={merged.thermal.paperSize ?? '58mm'}
                     onChange={(e) =>
                       update('thermal', { ...merged.thermal, paperSize: e.target.value as '58mm' | '80mm' })
                     }
-                    className="mt-1 w-full max-w-xs bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2"
+                    className="mt-1 w-full max-w-xs bg-muted border border-border text-foreground rounded-lg px-3 py-2"
                   >
                     <option value="58mm">58mm</option>
                     <option value="80mm">80mm</option>
@@ -382,7 +382,7 @@ export function PrintingSettingsPanel({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {(['showLogo', 'showQR', 'showCashier', 'compactMode'] as const).map((key) => (
                     <div key={key} className="flex items-center justify-between">
-                      <Label className="text-gray-300">
+                      <Label className="text-muted-foreground">
                         {key === 'showQR' ? 'Show QR' : key === 'showCashier' ? 'Show cashier' : key === 'compactMode' ? 'Compact mode' : 'Show logo'}
                       </Label>
                       <Switch
@@ -395,23 +395,23 @@ export function PrintingSettingsPanel({
               </SectionCard>
 
               <SectionCard title="POS automation (silent print)" icon={<Printer size={18} />}>
-                <p className="text-xs text-gray-400">
+                <p className="text-xs text-muted-foreground">
                   {getPosPrintAutomationHint(merged.thermal)}
                 </p>
                 <div className="space-y-3 mt-3">
                   <div>
-                    <Label className="text-gray-300">Preferred POS printer name</Label>
+                    <Label className="text-muted-foreground">Preferred POS printer name</Label>
                     <Input
                       value={merged.thermal.posPrinterDeviceName ?? POS_SILENT_PRINT_GUIDE.suggestedDeviceName}
                       onChange={(e) =>
                         update('thermal', { ...merged.thermal, posPrinterDeviceName: e.target.value })
                       }
                       placeholder={POS_SILENT_PRINT_GUIDE.suggestedDeviceName}
-                      className="mt-1 bg-gray-800 border-gray-700 text-white max-w-md"
+                      className="mt-1 bg-muted border-border text-foreground max-w-md"
                     />
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-xs text-muted-foreground mt-1">
                       Set this as the Windows default printer. Chrome/Edge shortcut flag:{' '}
-                      <code className="text-gray-400">{POS_SILENT_PRINT_GUIDE.chromeFlag}</code>
+                      <code className="text-muted-foreground">{POS_SILENT_PRINT_GUIDE.chromeFlag}</code>
                     </p>
                   </div>
                   <label className="flex items-start gap-2 cursor-pointer">
@@ -424,11 +424,11 @@ export function PrintingSettingsPanel({
                           kioskPrintingHintAcknowledged: e.target.checked,
                         })
                       }
-                      className="mt-1 rounded border-gray-600 bg-gray-800 text-blue-500"
+                      className="mt-1 rounded border-gray-600 bg-muted text-blue-500"
                     />
-                    <span className="text-sm text-gray-300">
+                    <span className="text-sm text-muted-foreground">
                       I understand silent print requires launching the browser with{' '}
-                      <code className="text-gray-400">{POS_SILENT_PRINT_GUIDE.chromeFlag}</code> — not
+                      <code className="text-muted-foreground">{POS_SILENT_PRINT_GUIDE.chromeFlag}</code> — not
                       controllable from this web app alone.
                     </span>
                   </label>
@@ -436,8 +436,8 @@ export function PrintingSettingsPanel({
               </SectionCard>
 
               {printer ? (
-                <p className="text-xs text-gray-500">
-                  Current legacy printer_mode: <strong className="text-gray-300">{printer.config.mode}</strong>
+                <p className="text-xs text-muted-foreground">
+                  Current legacy printer_mode: <strong className="text-muted-foreground">{printer.config.mode}</strong>
                   {printer.config.mode === 'thermal' ? ` · ${printer.config.paperSize}` : ''}
                   — synced when you Save on this tab.
                 </p>
@@ -453,7 +453,7 @@ export function PrintingSettingsPanel({
               <SectionCard title="Report layout" icon={<Layout size={18} />}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="flex items-center justify-between">
-                    <Label className="text-gray-300 text-sm">Show report header</Label>
+                    <Label className="text-muted-foreground text-sm">Show report header</Label>
                     <Switch
                       checked={merged.reportExport.showReportHeader !== false}
                       onCheckedChange={(v) =>
@@ -462,7 +462,7 @@ export function PrintingSettingsPanel({
                     />
                   </div>
                   <div className="flex items-center justify-between">
-                    <Label className="text-gray-300 text-sm">Show report footer (page numbers)</Label>
+                    <Label className="text-muted-foreground text-sm">Show report footer (page numbers)</Label>
                     <Switch
                       checked={merged.reportExport.showReportFooter !== false}
                       onCheckedChange={(v) =>
@@ -471,7 +471,7 @@ export function PrintingSettingsPanel({
                     />
                   </div>
                   <div>
-                    <Label className="text-gray-300 text-sm">Report font size (px)</Label>
+                    <Label className="text-muted-foreground text-sm">Report font size (px)</Label>
                     <Input
                       type="number"
                       min={9}
@@ -483,14 +483,14 @@ export function PrintingSettingsPanel({
                           reportFontSize: Number(e.target.value) || 11,
                         })
                       }
-                      className="mt-1 bg-gray-800 border-gray-700 text-white max-w-[120px]"
+                      className="mt-1 bg-muted border-border text-foreground max-w-[120px]"
                     />
                   </div>
                 </div>
               </SectionCard>
 
               <SectionCard title="Report header fields" icon={<BarChart3 size={18} />}>
-                <p className="text-xs text-gray-500 -mt-2">
+                <p className="text-xs text-muted-foreground -mt-2">
                   Logo, address, phone, email — only when header is on. Brand data from Company profile.
                 </p>
                 <div
@@ -500,7 +500,7 @@ export function PrintingSettingsPanel({
                 >
                   {REPORT_FIELD_KEYS.map((key) => (
                     <div key={key} className="flex items-center justify-between">
-                      <Label className="text-gray-300 text-sm">
+                      <Label className="text-muted-foreground text-sm">
                         {key.replace(/^show/, '').replace(/([A-Z])/g, ' $1').trim()}
                       </Label>
                       <Switch
@@ -515,7 +515,7 @@ export function PrintingSettingsPanel({
               <SectionCard title="Default orientation" icon={<Layout size={18} />}>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <Label className="text-gray-300">Stock Report</Label>
+                    <Label className="text-muted-foreground">Stock Report</Label>
                     <select
                       value={merged.reportExport.stockReportOrientation}
                       onChange={(e) =>
@@ -524,14 +524,14 @@ export function PrintingSettingsPanel({
                           stockReportOrientation: e.target.value as 'portrait' | 'landscape',
                         })
                       }
-                      className="mt-1 w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2"
+                      className="mt-1 w-full bg-muted border border-border text-foreground rounded-lg px-3 py-2"
                     >
                       <option value="landscape">Landscape (recommended)</option>
                       <option value="portrait">Portrait</option>
                     </select>
                   </div>
                   <div>
-                    <Label className="text-gray-300">Ledger Statement (V2)</Label>
+                    <Label className="text-muted-foreground">Ledger Statement (V2)</Label>
                     <select
                       value={merged.reportExport.ledgerReportOrientation ?? 'portrait'}
                       onChange={(e) =>
@@ -540,14 +540,14 @@ export function PrintingSettingsPanel({
                           ledgerReportOrientation: e.target.value as 'portrait' | 'landscape',
                         })
                       }
-                      className="mt-1 w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2"
+                      className="mt-1 w-full bg-muted border border-border text-foreground rounded-lg px-3 py-2"
                     >
                       <option value="portrait">Portrait (recommended)</option>
                       <option value="landscape">Landscape</option>
                     </select>
                   </div>
                   <div>
-                    <Label className="text-gray-300">Product Sell Report</Label>
+                    <Label className="text-muted-foreground">Product Sell Report</Label>
                     <select
                       value={merged.reportExport.productSellOrientation}
                       onChange={(e) =>
@@ -556,14 +556,14 @@ export function PrintingSettingsPanel({
                           productSellOrientation: e.target.value as 'portrait' | 'landscape',
                         })
                       }
-                      className="mt-1 w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2"
+                      className="mt-1 w-full bg-muted border border-border text-foreground rounded-lg px-3 py-2"
                     >
                       <option value="portrait">Portrait</option>
                       <option value="landscape">Landscape</option>
                     </select>
                   </div>
                   <div>
-                    <Label className="text-gray-300">Roznamcha (Daily Cash Book)</Label>
+                    <Label className="text-muted-foreground">Roznamcha (Daily Cash Book)</Label>
                     <select
                       value={merged.reportExport.roznamchaOrientation ?? 'landscape'}
                       onChange={(e) =>
@@ -572,14 +572,14 @@ export function PrintingSettingsPanel({
                           roznamchaOrientation: e.target.value as 'portrait' | 'landscape',
                         })
                       }
-                      className="mt-1 w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2"
+                      className="mt-1 w-full bg-muted border border-border text-foreground rounded-lg px-3 py-2"
                     >
                       <option value="landscape">Landscape (recommended)</option>
                       <option value="portrait">Portrait</option>
                     </select>
                   </div>
                   <div>
-                    <Label className="text-gray-300">Cash Flow</Label>
+                    <Label className="text-muted-foreground">Cash Flow</Label>
                     <select
                       value={merged.reportExport.cashFlowOrientation ?? 'landscape'}
                       onChange={(e) =>
@@ -588,14 +588,14 @@ export function PrintingSettingsPanel({
                           cashFlowOrientation: e.target.value as 'portrait' | 'landscape',
                         })
                       }
-                      className="mt-1 w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2"
+                      className="mt-1 w-full bg-muted border border-border text-foreground rounded-lg px-3 py-2"
                     >
                       <option value="landscape">Landscape (recommended)</option>
                       <option value="portrait">Portrait</option>
                     </select>
                   </div>
                   <div>
-                    <Label className="text-gray-300">Journal Day Book</Label>
+                    <Label className="text-muted-foreground">Journal Day Book</Label>
                     <select
                       value={merged.reportExport.dayBookOrientation ?? 'landscape'}
                       onChange={(e) =>
@@ -604,14 +604,14 @@ export function PrintingSettingsPanel({
                           dayBookOrientation: e.target.value as 'portrait' | 'landscape',
                         })
                       }
-                      className="mt-1 w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2"
+                      className="mt-1 w-full bg-muted border border-border text-foreground rounded-lg px-3 py-2"
                     >
                       <option value="landscape">Landscape (recommended)</option>
                       <option value="portrait">Portrait</option>
                     </select>
                   </div>
                   <div>
-                    <Label className="text-gray-300">Financial reports (TB / P&L / BS)</Label>
+                    <Label className="text-muted-foreground">Financial reports (TB / P&L / BS)</Label>
                     <select
                       value={merged.reportExport.financialReportOrientation ?? 'portrait'}
                       onChange={(e) =>
@@ -620,7 +620,7 @@ export function PrintingSettingsPanel({
                           financialReportOrientation: e.target.value as 'portrait' | 'landscape',
                         })
                       }
-                      className="mt-1 w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2"
+                      className="mt-1 w-full bg-muted border border-border text-foreground rounded-lg px-3 py-2"
                     >
                       <option value="portrait">Portrait (recommended)</option>
                       <option value="landscape">Landscape</option>
@@ -630,7 +630,7 @@ export function PrintingSettingsPanel({
               </SectionCard>
 
               <SectionCard title="CSV & Excel" icon={<FileDown size={18} />}>
-                <p className="text-sm text-gray-400">
+                <p className="text-sm text-muted-foreground">
                   Export columns match what you show in the report table (column picker). Hidden columns are excluded automatically.
                 </p>
               </SectionCard>
@@ -643,7 +643,7 @@ export function PrintingSettingsPanel({
               <button
                 type="button"
                 onClick={() => setAdvancedOpen((o) => !o)}
-                className="w-full flex items-center justify-between bg-gray-950 border border-gray-800 rounded-lg px-4 py-3 text-left text-white hover:bg-gray-900"
+                className="w-full flex items-center justify-between bg-input-background border border-border rounded-lg px-4 py-3 text-left text-foreground hover:bg-card"
               >
                 <span className="font-medium text-sm">Power-user options</span>
                 <ChevronDown size={18} className={`transition-transform ${advancedOpen ? 'rotate-180' : ''}`} />
@@ -656,7 +656,7 @@ export function PrintingSettingsPanel({
                       {(Object.keys(DOCUMENT_LABELS) as DocumentTemplateId[]).map((id) => (
                         <label
                           key={id}
-                          className="flex items-center gap-2 p-2 rounded-lg border border-gray-800 hover:bg-gray-800/50 cursor-pointer text-sm"
+                          className="flex items-center gap-2 p-2 rounded-lg border border-border hover:bg-muted/50 cursor-pointer text-sm"
                         >
                           <input
                             type="checkbox"
@@ -667,9 +667,9 @@ export function PrintingSettingsPanel({
                                 : merged.documentTemplates.filter((x) => x !== id);
                               update('documentTemplates', next);
                             }}
-                            className="rounded border-gray-600 bg-gray-800 text-blue-500"
+                            className="rounded border-gray-600 bg-muted text-blue-500"
                           />
-                          <span className="text-white">{DOCUMENT_LABELS[id]}</span>
+                          <span className="text-foreground">{DOCUMENT_LABELS[id]}</span>
                         </label>
                       ))}
                     </div>
@@ -698,7 +698,7 @@ export function PrintingSettingsPanel({
               )}
 
               {!advancedOpen && (
-                <p className="text-sm text-gray-500 text-center py-4">
+                <p className="text-sm text-muted-foreground text-center py-4">
                   Expand above for document type toggles, legacy invoice templates, and old printer config.
                 </p>
               )}
@@ -709,7 +709,7 @@ export function PrintingSettingsPanel({
 
       {/* RIGHT: Preview */}
       {(showA4Preview || showReportPreview || showThermalPreview) && (
-        <div className="xl:sticky xl:top-24 xl:self-start min-w-0 flex flex-col border border-gray-800 rounded-xl bg-gray-900/50 overflow-hidden">
+        <div className="xl:sticky xl:top-24 xl:self-start min-w-0 flex flex-col border border-border rounded-xl bg-muted/40 overflow-hidden">
           {showA4Preview && (
             <PrintingPreviewPanel
               settings={settings}

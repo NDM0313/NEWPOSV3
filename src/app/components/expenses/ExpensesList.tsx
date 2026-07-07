@@ -337,13 +337,13 @@ export const ExpensesList = () => {
   };
 
   return (
-    <div className="p-6 bg-[#111827] min-h-screen">
+    <div className="p-6 bg-background min-h-screen">
       {/* Header */}
       <div className="mb-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-white mb-2">Expenses Management</h1>
-            <p className="text-gray-400">Track and manage all business expenses</p>
+            <h1 className="text-3xl font-bold text-foreground mb-2">Expenses Management</h1>
+            <p className="text-muted-foreground">Track and manage all business expenses</p>
           </div>
           <Button className="bg-blue-600 hover:bg-blue-500 shadow-lg shadow-blue-900/20">
             <Plus className="mr-2 h-4 w-4" />
@@ -365,58 +365,58 @@ export const ExpensesList = () => {
       />
 
       {/* Expenses Table */}
-      <div className="mt-6 bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+      <div className="mt-6 bg-card border border-border rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-gray-950 border-b border-gray-800">
+            <thead className="bg-input-background border-b border-border">
               <tr>
                 {isColumnVisible('action') && (
-                  <th className="text-left p-4 text-gray-400 font-semibold text-sm uppercase tracking-wide">Action</th>
+                  <th className="text-left p-4 text-muted-foreground font-semibold text-sm uppercase tracking-wide">Action</th>
                 )}
                 {isColumnVisible('date') && (
-                  <th className="text-left p-4 text-gray-400 font-semibold text-sm uppercase tracking-wide">Date</th>
+                  <th className="text-left p-4 text-muted-foreground font-semibold text-sm uppercase tracking-wide">Date</th>
                 )}
                 {isColumnVisible('referenceNo') && (
-                  <th className="text-left p-4 text-gray-400 font-semibold text-sm uppercase tracking-wide">Reference No</th>
+                  <th className="text-left p-4 text-muted-foreground font-semibold text-sm uppercase tracking-wide">Reference No</th>
                 )}
                 {isColumnVisible('recurringDetails') && (
-                  <th className="text-left p-4 text-gray-400 font-semibold text-sm uppercase tracking-wide">Recurring</th>
+                  <th className="text-left p-4 text-muted-foreground font-semibold text-sm uppercase tracking-wide">Recurring</th>
                 )}
                 {isColumnVisible('expenseCategory') && (
-                  <th className="text-left p-4 text-gray-400 font-semibold text-sm uppercase tracking-wide">Category</th>
+                  <th className="text-left p-4 text-muted-foreground font-semibold text-sm uppercase tracking-wide">Category</th>
                 )}
                 {isColumnVisible('subcategory') && (
-                  <th className="text-left p-4 text-gray-400 font-semibold text-sm uppercase tracking-wide">Subcategory</th>
+                  <th className="text-left p-4 text-muted-foreground font-semibold text-sm uppercase tracking-wide">Subcategory</th>
                 )}
                 {isColumnVisible('location') && (
-                  <th className="text-left p-4 text-gray-400 font-semibold text-sm uppercase tracking-wide">Location</th>
+                  <th className="text-left p-4 text-muted-foreground font-semibold text-sm uppercase tracking-wide">Location</th>
                 )}
                 {isColumnVisible('payment') && (
-                  <th className="text-left p-4 text-gray-400 font-semibold text-sm uppercase tracking-wide">Payment</th>
+                  <th className="text-left p-4 text-muted-foreground font-semibold text-sm uppercase tracking-wide">Payment</th>
                 )}
                 {isColumnVisible('tax') && (
-                  <th className="text-center p-4 text-gray-400 font-semibold text-sm uppercase tracking-wide">Tax %</th>
+                  <th className="text-center p-4 text-muted-foreground font-semibold text-sm uppercase tracking-wide">Tax %</th>
                 )}
                 {isColumnVisible('status') && (
-                  <th className="text-center p-4 text-gray-400 font-semibold text-sm uppercase tracking-wide">Status</th>
+                  <th className="text-center p-4 text-muted-foreground font-semibold text-sm uppercase tracking-wide">Status</th>
                 )}
                 {isColumnVisible('totalAmount') && (
-                  <th className="text-right p-4 text-gray-400 font-semibold text-sm uppercase tracking-wide">Total Amount</th>
+                  <th className="text-right p-4 text-muted-foreground font-semibold text-sm uppercase tracking-wide">Total Amount</th>
                 )}
                 {isColumnVisible('paymentDue') && (
-                  <th className="text-center p-4 text-gray-400 font-semibold text-sm uppercase tracking-wide">Payment Due</th>
+                  <th className="text-center p-4 text-muted-foreground font-semibold text-sm uppercase tracking-wide">Payment Due</th>
                 )}
                 {isColumnVisible('expenseFor') && (
-                  <th className="text-left p-4 text-gray-400 font-semibold text-sm uppercase tracking-wide">Expense For</th>
+                  <th className="text-left p-4 text-muted-foreground font-semibold text-sm uppercase tracking-wide">Expense For</th>
                 )}
                 {isColumnVisible('contact') && (
-                  <th className="text-left p-4 text-gray-400 font-semibold text-sm uppercase tracking-wide">Contact</th>
+                  <th className="text-left p-4 text-muted-foreground font-semibold text-sm uppercase tracking-wide">Contact</th>
                 )}
                 {isColumnVisible('expenseNote') && (
-                  <th className="text-left p-4 text-gray-400 font-semibold text-sm uppercase tracking-wide">Note</th>
+                  <th className="text-left p-4 text-muted-foreground font-semibold text-sm uppercase tracking-wide">Note</th>
                 )}
                 {isColumnVisible('addedBy') && (
-                  <th className="text-left p-4 text-gray-400 font-semibold text-sm uppercase tracking-wide">Added By</th>
+                  <th className="text-left p-4 text-muted-foreground font-semibold text-sm uppercase tracking-wide">Added By</th>
                 )}
               </tr>
             </thead>
@@ -424,7 +424,7 @@ export const ExpensesList = () => {
               {expenses.map((expense, index) => (
                 <tr
                   key={expense.id}
-                  className="border-b border-gray-800 hover:bg-gray-800/50 transition-colors"
+                  className="border-b border-border hover:bg-muted/50 transition-colors"
                 >
                   {isColumnVisible('action') && (
                     <td className="p-4">
@@ -433,34 +433,34 @@ export const ExpensesList = () => {
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-8 w-8 p-0 text-gray-400 hover:text-white hover:bg-gray-800"
+                            className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-muted"
                           >
                             <MoreVertical size={16} />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="bg-gray-900 border-gray-800 text-white">
+                        <DropdownMenuContent align="end" className="bg-card border-border text-foreground">
                           <DropdownMenuItem
                             onClick={() => handleView(expense)}
-                            className="hover:bg-gray-800 cursor-pointer"
+                            className="hover:bg-muted cursor-pointer"
                           >
                             <Eye size={14} className="mr-2" />
                             View Details
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() => handleEdit(expense)}
-                            className="hover:bg-gray-800 cursor-pointer"
+                            className="hover:bg-muted cursor-pointer"
                           >
                             <Edit size={14} className="mr-2" />
                             Edit
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() => handleDuplicate(expense)}
-                            className="hover:bg-gray-800 cursor-pointer"
+                            className="hover:bg-muted cursor-pointer"
                           >
                             <Copy size={14} className="mr-2" />
                             Duplicate
                           </DropdownMenuItem>
-                          <DropdownMenuSeparator className="bg-gray-800" />
+                          <DropdownMenuSeparator className="bg-muted" />
                           <DropdownMenuItem
                             onClick={() => handleDeleteOrCancel(expense)}
                             className="hover:bg-red-900/20 text-red-400 cursor-pointer"
@@ -474,15 +474,15 @@ export const ExpensesList = () => {
                   )}
                   {isColumnVisible('date') && (
                     <td className="p-4">
-                      <div className="flex items-center gap-2 text-gray-300">
-                        <Calendar size={14} className="text-gray-500" />
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Calendar size={14} className="text-muted-foreground" />
                         {expense.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                       </div>
                     </td>
                   )}
                   {isColumnVisible('referenceNo') && (
                     <td className="p-4">
-                      <div className="font-medium text-white">{expense.referenceNo}</div>
+                      <div className="font-medium text-foreground">{expense.referenceNo}</div>
                     </td>
                   )}
                   {isColumnVisible('recurringDetails') && (
@@ -490,7 +490,7 @@ export const ExpensesList = () => {
                       <Badge className={
                         expense.recurringDetails === 'Monthly' ? 'bg-purple-500/20 text-purple-400 border-purple-500/30' :
                         expense.recurringDetails === 'Weekly' ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' :
-                        'bg-gray-700 text-gray-300 border-gray-600'
+                        'bg-muted text-muted-foreground border-gray-600'
                       }>
                         {expense.recurringDetails === 'One-time' ? (
                           <AlertCircle size={12} className="mr-1" />
@@ -504,17 +504,17 @@ export const ExpensesList = () => {
                   {isColumnVisible('expenseCategory') && (
                     <td className="p-4">
                       <div className="flex items-center gap-2">
-                        <Tag size={14} className="text-gray-500" />
-                        <span className="text-gray-300">{expense.expenseCategory}</span>
+                        <Tag size={14} className="text-muted-foreground" />
+                        <span className="text-muted-foreground">{expense.expenseCategory}</span>
                       </div>
                     </td>
                   )}
                   {isColumnVisible('subcategory') && (
-                    <td className="p-4 text-gray-400 text-sm">{expense.subcategory}</td>
+                    <td className="p-4 text-muted-foreground text-sm">{expense.subcategory}</td>
                   )}
                   {isColumnVisible('location') && (
                     <td className="p-4">
-                      <div className="flex items-center gap-2 text-gray-400 text-sm">
+                      <div className="flex items-center gap-2 text-muted-foreground text-sm">
                         <MapPin size={14} />
                         {expense.location}
                       </div>
@@ -522,8 +522,8 @@ export const ExpensesList = () => {
                   )}
                   {isColumnVisible('payment') && (
                     <td className="p-4">
-                      <div className="flex items-center gap-2 text-gray-300 text-sm">
-                        <CreditCard size={14} className="text-gray-500" />
+                      <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                        <CreditCard size={14} className="text-muted-foreground" />
                         {expense.paymentMethod}
                       </div>
                     </td>
@@ -535,7 +535,7 @@ export const ExpensesList = () => {
                           {expense.tax}%
                         </Badge>
                       ) : (
-                        <span className="text-gray-600 text-sm">—</span>
+                        <span className="text-muted-foreground text-sm">—</span>
                       )}
                     </td>
                   )}
@@ -546,7 +546,7 @@ export const ExpensesList = () => {
                   )}
                   {isColumnVisible('totalAmount') && (
                     <td className="p-4 text-right">
-                      <div className="font-semibold text-white">
+                      <div className="font-semibold text-foreground">
                         ₨{expense.totalAmount.toLocaleString()}
                       </div>
                     </td>
@@ -562,16 +562,16 @@ export const ExpensesList = () => {
                           {expense.paymentDue.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                         </div>
                       ) : (
-                        <span className="text-gray-600 text-sm">—</span>
+                        <span className="text-muted-foreground text-sm">—</span>
                       )}
                     </td>
                   )}
                   {isColumnVisible('expenseFor') && (
-                    <td className="p-4 text-gray-300 text-sm">{expense.expenseFor}</td>
+                    <td className="p-4 text-muted-foreground text-sm">{expense.expenseFor}</td>
                   )}
                   {isColumnVisible('contact') && (
                     <td className="p-4">
-                      <div className="flex items-center gap-2 text-gray-400 text-sm">
+                      <div className="flex items-center gap-2 text-muted-foreground text-sm">
                         <User size={14} />
                         {expense.contact}
                       </div>
@@ -579,7 +579,7 @@ export const ExpensesList = () => {
                   )}
                   {isColumnVisible('expenseNote') && (
                     <td className="p-4">
-                      <div className="flex items-center gap-2 text-gray-400 text-sm max-w-xs truncate">
+                      <div className="flex items-center gap-2 text-muted-foreground text-sm max-w-xs truncate">
                         <FileText size={14} />
                         {expense.expenseNote}
                       </div>
@@ -587,7 +587,7 @@ export const ExpensesList = () => {
                   )}
                   {isColumnVisible('addedBy') && (
                     <td className="p-4">
-                      <Badge className="bg-gray-700 text-gray-300 border-gray-600">
+                      <Badge className="bg-muted text-muted-foreground border-gray-600">
                         {expense.addedBy}
                       </Badge>
                     </td>
@@ -599,20 +599,20 @@ export const ExpensesList = () => {
         </div>
 
         {/* Pagination */}
-        <div className="flex items-center justify-between p-4 border-t border-gray-800 bg-gray-950">
-          <div className="text-sm text-gray-400">
-            Showing <span className="font-medium text-white">1</span> to{' '}
-            <span className="font-medium text-white">{expenses.length}</span> of{' '}
-            <span className="font-medium text-white">{expenses.length}</span> results
+        <div className="flex items-center justify-between p-4 border-t border-border bg-input-background">
+          <div className="text-sm text-muted-foreground">
+            Showing <span className="font-medium text-foreground">1</span> to{' '}
+            <span className="font-medium text-foreground">{expenses.length}</span> of{' '}
+            <span className="font-medium text-foreground">{expenses.length}</span> results
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" disabled className="border-gray-800 text-gray-500">
+            <Button variant="outline" size="sm" disabled className="border-border text-muted-foreground">
               Previous
             </Button>
-            <Button variant="outline" size="sm" className="border-gray-800 text-white bg-blue-600 hover:bg-blue-500">
+            <Button variant="outline" size="sm" className="border-border text-foreground bg-blue-600 hover:bg-blue-500">
               1
             </Button>
-            <Button variant="outline" size="sm" disabled className="border-gray-800 text-gray-500">
+            <Button variant="outline" size="sm" disabled className="border-border text-muted-foreground">
               Next
             </Button>
           </div>

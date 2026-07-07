@@ -421,15 +421,15 @@ export const TrialBalancePage: React.FC<{
   if (!data) {
     return (
       <div
-        className="rounded-xl border border-gray-800 bg-gray-900/50 p-6 text-center text-gray-400"
+        className="rounded-xl border border-border bg-muted/40 p-6 text-center text-muted-foreground"
         data-trial-balance-main-loader={mainLoaderSource}
       >
         <p className="font-medium">{fetchError || 'No data for the selected period'}</p>
-        <p className="text-sm text-gray-500 mt-1">
+        <p className="text-sm text-muted-foreground mt-1">
           {fetchError ? 'Check your connection and try again.' : 'Adjust the date range or ensure journal entries exist.'}
         </p>
         {fetchError ? (
-          <Button variant="outline" className="mt-4 border-gray-700" onClick={() => { setFetchError(null); setFetchRetryKey((k) => k + 1); }}>
+          <Button variant="outline" className="mt-4 border-border" onClick={() => { setFetchError(null); setFetchRetryKey((k) => k + 1); }}>
             Retry
           </Button>
         ) : null}
@@ -445,7 +445,7 @@ export const TrialBalancePage: React.FC<{
 
       {showUnifiedPreviewTools ? (
         <div className="flex flex-wrap items-center gap-3 no-print">
-          <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer w-fit">
+          <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer w-fit">
             <input
               type="checkbox"
               checked={unifiedPreviewEnabled}
@@ -491,11 +491,11 @@ export const TrialBalancePage: React.FC<{
           <AlertTriangle className="w-5 h-5 shrink-0 text-amber-400 mt-0.5" />
           <div>
             <p className="font-semibold text-amber-100">Credit-heavy asset account(s)</p>
-            <p className="text-gray-400 text-sm mt-1 leading-relaxed">
-              Trial Balance uses <strong className="text-gray-300">Balance = Debits − Credits</strong> per account. For receivables/cash/bank,
-              a <strong className="text-gray-300">negative</strong> balance means total credits posted to that account exceed debits (e.g. reversed entries,
-              receipts mis-posted, or journals not tied to sales). This does <strong className="text-gray-300">not</strong> match the Contacts “receivables” column,
-              which is built from <strong className="text-gray-300">open invoice dues</strong> only. Use <strong className="text-gray-300">Ledger</strong> on the row to trace lines.
+            <p className="text-muted-foreground text-sm mt-1 leading-relaxed">
+              Trial Balance uses <strong className="text-muted-foreground">Balance = Debits − Credits</strong> per account. For receivables/cash/bank,
+              a <strong className="text-muted-foreground">negative</strong> balance means total credits posted to that account exceed debits (e.g. reversed entries,
+              receipts mis-posted, or journals not tied to sales). This does <strong className="text-muted-foreground">not</strong> match the Contacts “receivables” column,
+              which is built from <strong className="text-muted-foreground">open invoice dues</strong> only. Use <strong className="text-muted-foreground">Ledger</strong> on the row to trace lines.
             </p>
             <ul className="mt-2 text-sm font-mono text-amber-200/90 space-y-0.5">
               {creditHeavyAssetRows.map((r) => (
@@ -543,12 +543,12 @@ export const TrialBalancePage: React.FC<{
       </div>
       <div className="no-print flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-3">
-          <label className="text-sm text-gray-500 flex items-center gap-2">
+          <label className="text-sm text-muted-foreground flex items-center gap-2">
             AR / AP view
             <select
               value={arApMode}
               onChange={(e) => setArApMode(e.target.value as TrialBalanceArApMode)}
-              className="bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm text-white"
+              className="bg-muted border border-border rounded px-2 py-1.5 text-sm text-foreground"
             >
               <option value="flat">All accounts (GL lines)</option>
               <option value="summary">Summary (AR + AP rolled to control)</option>
@@ -556,7 +556,7 @@ export const TrialBalancePage: React.FC<{
             </select>
           </label>
         </div>
-        <p className="text-sm text-gray-400">
+        <p className="text-sm text-muted-foreground">
           Period: {startDate} to {endDate}
           {data.rows.length > 0 && (
             <span className="ml-2">
@@ -569,17 +569,17 @@ export const TrialBalancePage: React.FC<{
         </p>
       </div>
 
-      <div className="no-print rounded-xl border border-gray-800 bg-gray-900/50 p-4 space-y-3">
+      <div className="no-print rounded-xl border border-border bg-muted/40 p-4 space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           <div className="flex flex-col gap-2 min-w-0 sm:col-span-2 lg:col-span-2">
-            <Label className="text-xs text-gray-500 uppercase tracking-wide">Search</Label>
+            <Label className="text-xs text-muted-foreground uppercase tracking-wide">Search</Label>
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
               <Input
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Code, account, amount…"
-                className="pl-9 bg-gray-950 border-gray-700 text-white h-10"
+                className="pl-9 bg-input-background border-border text-foreground h-10"
               />
               {journalSearchLoading ? (
                 <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-blue-400 animate-spin" />
@@ -593,46 +593,46 @@ export const TrialBalancePage: React.FC<{
                 checked={journalSearchEnabled}
                 onCheckedChange={setJournalSearchEnabled}
               />
-              <Label htmlFor="tb-journal-search" className="text-sm text-gray-300 cursor-pointer leading-snug">
+              <Label htmlFor="tb-journal-search" className="text-sm text-muted-foreground cursor-pointer leading-snug">
                 Search journal lines (ref / description)
               </Label>
             </div>
             {journalSearchEnabled ? (
-              <span className="text-xs text-gray-600">
+              <span className="text-xs text-muted-foreground">
                 Also matches entry no, document no, description, and payment ref in this period.
               </span>
             ) : null}
           </div>
         </div>
         {isSearchActive ? (
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-muted-foreground">
             Showing {filteredRows.length} of {data.rows.length} accounts
           </p>
         ) : null}
       </div>
 
-      <div className="overflow-auto rounded-xl border border-gray-800 bg-gray-900/50 no-print">
+      <div className="overflow-auto rounded-xl border border-border bg-muted/40 no-print">
         <table className="w-full text-base leading-snug">
-          <thead className="border-b border-gray-800 bg-gray-800/50">
+          <thead className="border-b border-border bg-muted/50">
             <tr>
-              <th className="p-3 text-left font-medium text-gray-300">Code</th>
-              <th className="p-3 text-left font-medium text-gray-300">Account</th>
-              <th className="p-3 text-left font-medium text-gray-300">Type</th>
-              <th className="p-3 text-right font-medium text-gray-300">Debit</th>
-              <th className="p-3 text-right font-medium text-gray-300">Credit</th>
+              <th className="p-3 text-left font-medium text-muted-foreground">Code</th>
+              <th className="p-3 text-left font-medium text-muted-foreground">Account</th>
+              <th className="p-3 text-left font-medium text-muted-foreground">Type</th>
+              <th className="p-3 text-right font-medium text-muted-foreground">Debit</th>
+              <th className="p-3 text-right font-medium text-muted-foreground">Credit</th>
               <th
-                className="p-3 text-right font-medium text-gray-300"
+                className="p-3 text-right font-medium text-muted-foreground"
                 title="Period net (Dr−Cr). For amount owed, use Balance Basis Guide or party GL statement."
               >
                 Period net (Dr−Cr)
               </th>
-              <th className="p-3 w-40 font-medium text-gray-300">Actions</th>
+              <th className="p-3 w-40 font-medium text-muted-foreground">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-800">
+          <tbody className="divide-y divide-border">
             {filteredRows.length === 0 ? (
               <tr>
-                <td colSpan={7} className="p-6 text-center text-gray-500">
+                <td colSpan={7} className="p-6 text-center text-muted-foreground">
                   {isSearchActive ? 'No accounts match your search.' : 'No journal entries in this period.'}
                 </td>
               </tr>
@@ -646,14 +646,14 @@ export const TrialBalancePage: React.FC<{
                 return (
                 <tr
                   key={row.account_id}
-                  className={creditHeavyAsset ? 'bg-amber-500/10 hover:bg-amber-500/15' : 'hover:bg-gray-800/30'}
+                  className={creditHeavyAsset ? 'bg-amber-500/10 hover:bg-amber-500/15' : 'hover:bg-accent/30'}
                 >
-                  <td className="p-3 font-mono text-gray-300">
+                  <td className="p-3 font-mono text-muted-foreground">
                     <span style={{ paddingLeft: (row.presentationIndent || 0) * 16 }} className="inline-block">
                       {row.account_code}
                     </span>
                   </td>
-                  <td className="p-3 text-white">
+                  <td className="p-3 text-foreground">
                     <span
                       style={{ paddingLeft: (row.presentationIndent || 0) * 16 }}
                       className="inline-block"
@@ -666,10 +666,10 @@ export const TrialBalancePage: React.FC<{
                       {row.account_name}
                     </span>
                   </td>
-                  <td className="p-3 text-gray-400">{row.account_type}</td>
-                  <td className="p-3 text-right text-gray-300">{row.debit ? formatCurrency(row.debit) : '—'}</td>
-                  <td className="p-3 text-right text-gray-300">{row.credit ? formatCurrency(row.credit) : '—'}</td>
-                  <td className="p-3 text-right font-medium text-white">{formatCurrency(row.balance)}</td>
+                  <td className="p-3 text-muted-foreground">{row.account_type}</td>
+                  <td className="p-3 text-right text-muted-foreground">{row.debit ? formatCurrency(row.debit) : '—'}</td>
+                  <td className="p-3 text-right text-muted-foreground">{row.credit ? formatCurrency(row.credit) : '—'}</td>
+                  <td className="p-3 text-right font-medium text-foreground">{formatCurrency(row.balance)}</td>
                   <td className="p-3">
                     <div className="flex flex-col gap-1 items-start">
                       <Button
@@ -698,12 +698,12 @@ export const TrialBalancePage: React.FC<{
             )}
           </tbody>
           {filteredRows.length > 0 && (
-            <tfoot className="border-t-2 border-gray-700 bg-gray-800/50">
+            <tfoot className="border-t-2 border-border bg-muted/50">
               <tr>
-                <td colSpan={3} className="p-3 font-medium text-white">Total</td>
-                <td className="p-3 text-right font-medium text-white">{formatCurrency(displayTotals.totalDebit)}</td>
-                <td className="p-3 text-right font-medium text-white">{formatCurrency(displayTotals.totalCredit)}</td>
-                <td className="p-3 text-right font-medium text-white">{formatCurrency(displayTotals.totalDebit - displayTotals.totalCredit)}</td>
+                <td colSpan={3} className="p-3 font-medium text-foreground">Total</td>
+                <td className="p-3 text-right font-medium text-foreground">{formatCurrency(displayTotals.totalDebit)}</td>
+                <td className="p-3 text-right font-medium text-foreground">{formatCurrency(displayTotals.totalCredit)}</td>
+                <td className="p-3 text-right font-medium text-foreground">{formatCurrency(displayTotals.totalDebit - displayTotals.totalCredit)}</td>
                 <td className="p-3" />
               </tr>
             </tfoot>

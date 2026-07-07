@@ -107,7 +107,7 @@ export const UserProfilePage = ({ onClose }: { onClose?: () => void }) => {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-gray-400">Loading profile...</div>
+        <div className="text-muted-foreground">Loading profile...</div>
       </div>
     );
   }
@@ -115,16 +115,16 @@ export const UserProfilePage = ({ onClose }: { onClose?: () => void }) => {
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       {/* Header */}
-      <div className="flex justify-between items-start border-b border-gray-800 pb-4">
+      <div className="flex justify-between items-start border-b border-border pb-4">
         <div>
           <h2 className="text-3xl font-bold text-white tracking-tight flex items-center gap-3">
             <User size={32} className="text-blue-500" />
             User Profile
           </h2>
-          <p className="text-gray-400 mt-1">Manage your account information</p>
+          <p className="text-muted-foreground mt-1">Manage your account information</p>
         </div>
         {onClose && (
-          <Button variant="ghost" onClick={onClose} className="text-gray-400 hover:text-white">
+          <Button variant="ghost" onClick={onClose} className="text-muted-foreground hover:text-foreground">
             <X size={20} />
           </Button>
         )}
@@ -138,7 +138,7 @@ export const UserProfilePage = ({ onClose }: { onClose?: () => void }) => {
             variant="ghost"
             size="sm"
             onClick={() => void loadUserProfile()}
-            className="text-amber-100 hover:text-white shrink-0"
+            className="text-amber-100 hover:text-foreground shrink-0"
           >
             <RefreshCw size={14} className="mr-1" />
             Retry
@@ -148,17 +148,17 @@ export const UserProfilePage = ({ onClose }: { onClose?: () => void }) => {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Profile Card */}
-        <Card className="bg-gray-900/50 border-gray-800 p-6">
+        <Card className="bg-muted/40 border-border p-6">
           <div className="flex flex-col items-center text-center space-y-4">
             <div className="w-24 h-24 rounded-full bg-gradient-to-br from-purple-500 via-blue-500 to-emerald-500 flex items-center justify-center text-white text-3xl font-bold shadow-lg">
               {formData.full_name ? formData.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : 'U'}
             </div>
             <div>
               <h3 className="text-xl font-bold text-white">{formData.full_name || 'User'}</h3>
-              <p className="text-sm text-gray-400">{user?.email}</p>
+              <p className="text-sm text-muted-foreground">{user?.email}</p>
             </div>
             {userData?.created_at && (
-              <div className="text-xs text-gray-500">
+              <div className="text-xs text-muted-foreground">
                 <Calendar size={12} className="inline mr-1" />
                 Joined {new Date(userData.created_at).toLocaleDateString()}
               </div>
@@ -168,58 +168,58 @@ export const UserProfilePage = ({ onClose }: { onClose?: () => void }) => {
 
         {/* Form */}
         <div className="md:col-span-2 space-y-6">
-          <Card className="bg-gray-900/50 border-gray-800 p-6">
-            <h3 className="text-lg font-semibold text-white mb-4">Personal Information</h3>
+          <Card className="bg-muted/40 border-border p-6">
+            <h3 className="text-lg font-semibold text-foreground mb-4">Personal Information</h3>
             
             <div className="space-y-4">
               <div>
-                <Label className="text-gray-300 mb-2 block flex items-center gap-2">
+                <Label className="text-muted-foreground mb-2 block flex items-center gap-2">
                   <User size={16} />
                   Full Name
                 </Label>
                 <Input
                   value={formData.full_name}
                   onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                  className="bg-gray-950 border-gray-700 text-white"
+                  className="bg-input-background border-border text-white"
                   placeholder="Enter your full name"
                 />
               </div>
 
               <div>
-                <Label className="text-gray-300 mb-2 block flex items-center gap-2">
+                <Label className="text-muted-foreground mb-2 block flex items-center gap-2">
                   <Mail size={16} />
                   Email
                 </Label>
                 <Input
                   value={user?.email || ''}
                   disabled
-                  className="bg-gray-950 border-gray-700 text-gray-500"
+                  className="bg-input-background border-border text-muted-foreground"
                 />
-                <p className="text-xs text-gray-500 mt-1">Email cannot be changed</p>
+                <p className="text-xs text-muted-foreground mt-1">Email cannot be changed</p>
               </div>
 
               <div>
-                <Label className="text-gray-300 mb-2 block flex items-center gap-2">
+                <Label className="text-muted-foreground mb-2 block flex items-center gap-2">
                   <Phone size={16} />
                   Phone
                 </Label>
                 <Input
                   value={formData.phone}
                   onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  className="bg-gray-950 border-gray-700 text-white"
+                  className="bg-input-background border-border text-white"
                   placeholder="Enter phone number"
                 />
               </div>
 
               <div>
-                <Label className="text-gray-300 mb-2 block flex items-center gap-2">
+                <Label className="text-muted-foreground mb-2 block flex items-center gap-2">
                   <Building2 size={16} />
                   Company
                 </Label>
                 <Input
                   value={userData?.company_id || companyId || ''}
                   disabled
-                  className="bg-gray-950 border-gray-700 text-gray-500"
+                  className="bg-input-background border-border text-muted-foreground"
                 />
               </div>
             </div>
@@ -234,7 +234,7 @@ export const UserProfilePage = ({ onClose }: { onClose?: () => void }) => {
                 {saving ? 'Saving...' : 'Save Changes'}
               </Button>
               {onClose && (
-                <Button variant="ghost" onClick={onClose} className="text-gray-400 hover:text-white">
+                <Button variant="ghost" onClick={onClose} className="text-muted-foreground hover:text-foreground">
                   Cancel
                 </Button>
               )}

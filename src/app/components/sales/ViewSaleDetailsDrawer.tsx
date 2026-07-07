@@ -568,7 +568,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
   if (loading) {
     return (
       <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center">
-        <div className="text-white">Loading sale details...</div>
+        <div className="text-foreground">Loading sale details...</div>
       </div>
     );
   }
@@ -576,7 +576,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
   if (!sale) {
     return (
       <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center">
-        <div className="text-white">Sale not found</div>
+        <div className="text-foreground">Sale not found</div>
         <Button onClick={onClose} className="ml-4">Close</Button>
       </div>
     );
@@ -587,7 +587,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
   const isReturned = effectiveStatus === 'returned';
   const isPartiallyReturned = effectiveStatus === 'partially_returned';
   const statusBadgeConfig = getSaleStatusBadgeConfig(sale);
-  const badge = statusBadgeConfig?.bg != null ? statusBadgeConfig : { bg: 'bg-gray-500/20', text: 'text-gray-400', border: 'border-gray-500/30', label: 'Draft' };
+  const badge = statusBadgeConfig?.bg != null ? statusBadgeConfig : { bg: 'bg-gray-500/20', text: 'text-muted-foreground', border: 'border-gray-500/30', label: 'Draft' };
   // Studio: show production cost for legacy; when we have generated invoice item, show its total (final sale with profit)
   const studioCostLegacy = Number(sale.studioCharges ?? 0) || Number(studioSummary?.totalStudioCost ?? 0);
   const genId = (studioSummary as { generatedInvoiceItemId?: string | null } | null)?.generatedInvoiceItemId;
@@ -615,11 +615,11 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
       case 'final': return 'bg-green-500/10 text-green-500 border-green-500/20';
       case 'order': return 'bg-blue-500/10 text-blue-500 border-blue-500/20';
       case 'quotation': return 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20';
-      case 'draft': return 'bg-gray-500/10 text-gray-500 border-gray-500/20';
+      case 'draft': return 'bg-gray-500/10 text-muted-foreground border-gray-500/20';
       case 'cancelled': return 'bg-amber-500/10 text-amber-500 border-amber-500/20';
       case 'returned': return 'bg-green-500/10 text-green-500 border-green-500/20';
       case 'partially_returned': return 'bg-blue-500/10 text-blue-500 border-blue-500/20';
-      default: return 'bg-gray-500/10 text-gray-500 border-gray-500/20';
+      default: return 'bg-gray-500/10 text-muted-foreground border-gray-500/20';
     }
   };
 
@@ -628,7 +628,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
       case 'Paid': return 'bg-green-500/10 text-green-500';
       case 'Partial': return 'bg-yellow-500/10 text-yellow-500';
       case 'Unpaid': return 'bg-red-500/10 text-red-500';
-      default: return 'bg-gray-500/10 text-gray-500';
+      default: return 'bg-gray-500/10 text-muted-foreground';
     }
   };
 
@@ -637,8 +637,8 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
       case 'Delivered': return 'bg-green-500/10 text-green-500';
       case 'Shipped': return 'bg-blue-500/10 text-blue-500';
       case 'Processing': return 'bg-yellow-500/10 text-yellow-500';
-      case 'Pending': return 'bg-gray-500/10 text-gray-500';
-      default: return 'bg-gray-500/10 text-gray-500';
+      case 'Pending': return 'bg-gray-500/10 text-muted-foreground';
+      default: return 'bg-gray-500/10 text-muted-foreground';
     }
   };
 
@@ -651,7 +651,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
       />
 
       {/* Drawer */}
-      <div className="fixed right-0 top-0 h-full w-full md:w-[1100px] bg-gray-950 shadow-2xl z-50 overflow-hidden flex flex-col border-l border-gray-800">
+      <div className="fixed right-0 top-0 h-full w-full md:w-[1100px] bg-input-background shadow-2xl z-50 overflow-hidden flex flex-col border-l border-border">
         {/* Cancelled banner - top of drawer when sale is cancelled */}
         {isCancelled && (
           <div className="shrink-0 bg-amber-500/20 border-b border-amber-500/30 px-6 py-3 flex items-center gap-2">
@@ -661,10 +661,10 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
           </div>
         )}
         {/* Header */}
-        <div className="bg-gray-900/80 border-b border-gray-800 px-6 py-4 flex items-center justify-between shrink-0">
+        <div className="bg-card/95 border-b border-border px-6 py-4 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-4">
             <div>
-              <h2 className="text-xl font-bold text-white flex items-center gap-3 flex-wrap">
+              <h2 className="text-xl font-bold text-foreground flex items-center gap-3 flex-wrap">
                 {sale.invoiceNo}
                 <Badge className={cn("text-xs font-semibold border", badge.bg, badge.text, badge.border)}>
                   {badge.label}
@@ -676,7 +676,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                   </Badge>
                 )}
               </h2>
-              <p className="text-sm text-gray-400 mt-0.5">
+              <p className="text-sm text-muted-foreground mt-0.5">
                 Sale Transaction Details
               </p>
             </div>
@@ -687,7 +687,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
             <Button
               variant="ghost"
               size="sm"
-              className="text-gray-400 hover:text-white hover:bg-gray-800"
+              className="text-muted-foreground hover:text-foreground hover:bg-muted"
               onClick={handlePrintA4}
             >
               <Printer size={16} className="mr-2" />
@@ -699,51 +699,51 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="text-gray-400 hover:text-white hover:bg-gray-800"
+                  className="text-muted-foreground hover:text-foreground hover:bg-muted"
                 >
                   <MoreVertical size={16} />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="bg-gray-900 border-gray-800 text-white w-52">
+              <DropdownMenuContent align="end" className="bg-popover border-border text-popover-foreground w-52">
                 {!isCancelled && (
-                  <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer" onClick={() => onEdit?.(sale.id)}>
+                  <DropdownMenuItem className="hover:bg-muted cursor-pointer" onClick={() => onEdit?.(sale.id)}>
                     <Edit size={14} className="mr-2" />
                     Edit Sale
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuSub>
-                  <DropdownMenuSubTrigger className="hover:bg-gray-800 cursor-pointer">
+                  <DropdownMenuSubTrigger className="hover:bg-muted cursor-pointer">
                     <Share2 size={14} className="mr-2" />
                     Share
                   </DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent className="bg-gray-900 border-gray-800 text-white">
-                    <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer" onClick={handleShareWhatsApp}>Share via WhatsApp</DropdownMenuItem>
-                    <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer" onClick={handleSharePdf}>Share PDF</DropdownMenuItem>
+                  <DropdownMenuSubContent className="bg-popover border-border text-popover-foreground">
+                    <DropdownMenuItem className="hover:bg-muted cursor-pointer" onClick={handleShareWhatsApp}>Share via WhatsApp</DropdownMenuItem>
+                    <DropdownMenuItem className="hover:bg-muted cursor-pointer" onClick={handleSharePdf}>Share PDF</DropdownMenuItem>
                   </DropdownMenuSubContent>
                 </DropdownMenuSub>
                 <DropdownMenuSub>
-                  <DropdownMenuSubTrigger className="hover:bg-gray-800 cursor-pointer">
+                  <DropdownMenuSubTrigger className="hover:bg-muted cursor-pointer">
                     <Printer size={14} className="mr-2" />
                     Print
                   </DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent className="bg-gray-900 border-gray-800 text-white">
-                    <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer" onClick={handlePrintA4}>Print A4 (Regular)</DropdownMenuItem>
-                    <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer" onClick={handlePrintThermal}>Print Thermal (80mm/58mm)</DropdownMenuItem>
+                  <DropdownMenuSubContent className="bg-popover border-border text-popover-foreground">
+                    <DropdownMenuItem className="hover:bg-muted cursor-pointer" onClick={handlePrintA4}>Print A4 (Regular)</DropdownMenuItem>
+                    <DropdownMenuItem className="hover:bg-muted cursor-pointer" onClick={handlePrintThermal}>Print Thermal (80mm/58mm)</DropdownMenuItem>
                   </DropdownMenuSubContent>
                 </DropdownMenuSub>
-                <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer" onClick={handleDownloadPdf}>
+                <DropdownMenuItem className="hover:bg-muted cursor-pointer" onClick={handleDownloadPdf}>
                   <Download size={14} className="mr-2" />
                   Download PDF
                 </DropdownMenuItem>
                 {!isCancelled && companyId && (
-                  <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer" onClick={() => setShowPackingListWorkflow(true)}>
+                  <DropdownMenuItem className="hover:bg-muted cursor-pointer" onClick={() => setShowPackingListWorkflow(true)}>
                     <Package size={14} className="mr-2" />
                     Packing List
                   </DropdownMenuItem>
                 )}
-                <DropdownMenuSeparator className="bg-gray-700" />
+                <DropdownMenuSeparator className="bg-muted" />
                 {!isCancelled && (
-                  <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer text-red-400" onClick={() => onDelete?.(sale.id)}>
+                  <DropdownMenuItem className="hover:bg-muted cursor-pointer text-red-400" onClick={() => onDelete?.(sale.id)}>
                     <Trash2 size={14} className="mr-2" />
                     Delete
                   </DropdownMenuItem>
@@ -754,7 +754,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
             <Button
               variant="ghost"
               size="icon"
-              className="text-gray-400 hover:text-white"
+              className="text-muted-foreground hover:text-foreground"
               onClick={onClose}
             >
               <X size={20} />
@@ -764,13 +764,13 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
 
         {/* Workflow: next step (e.g. Retail: Sale → Payment → Receipt) */}
         {sale && !isCancelled && !hidePaymentCommercial && (
-          <div className="px-6 py-2 border-b border-gray-800/80 bg-gray-900/30 flex items-center gap-2">
+          <div className="px-6 py-2 border-b border-border/80 bg-muted/30 flex items-center gap-2">
             <WorkflowNextStepBanner currentStepId="sale" compact />
           </div>
         )}
 
         {/* Tabs */}
-        <div className="bg-gray-900/50 border-b border-gray-800 px-6 shrink-0">
+        <div className="bg-muted/40 border-b border-border px-6 shrink-0">
           <div className="flex gap-1">
             {(
               hidePaymentCommercial
@@ -791,7 +791,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                   "px-4 py-3 text-sm font-medium transition-colors relative",
                   activeTab === tab.id
                     ? "text-blue-400"
-                    : "text-gray-500 hover:text-gray-300"
+                    : "text-muted-foreground hover:text-muted-foreground"
                 )}
               >
                 {tab.label}
@@ -810,23 +810,23 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
               {/* Customer & Transaction Info */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Customer Info */}
-                <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">
-                  <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-4 flex items-center gap-2">
+                <div className="bg-card border border-border rounded-xl p-5">
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4 flex items-center gap-2">
                     <User size={16} />
                     Customer Information
                   </h3>
                   <div className="space-y-3">
                     <div>
-                      <p className="text-xs text-gray-500 mb-1">Customer Name</p>
-                      <p className="text-white font-medium">{sale.customerName}</p>
+                      <p className="text-xs text-muted-foreground mb-1">Customer Name</p>
+                      <p className="text-foreground font-medium">{sale.customerName}</p>
                       {customerCode && (
-                        <p className="text-sm text-gray-400">Code: {customerCode}</p>
+                        <p className="text-sm text-muted-foreground">Code: {customerCode}</p>
                       )}
                     </div>
                     <div>
-                      <p className="text-xs text-gray-500 mb-1">Contact Number</p>
-                      <p className="text-white flex items-center gap-2">
-                        <Phone size={14} className="text-gray-500" />
+                      <p className="text-xs text-muted-foreground mb-1">Contact Number</p>
+                      <p className="text-foreground flex items-center gap-2">
+                        <Phone size={14} className="text-muted-foreground" />
                         {sale.contactNumber}
                       </p>
                     </div>
@@ -834,56 +834,56 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                 </div>
 
                 {/* Transaction Info */}
-                <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">
-                  <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-4 flex items-center gap-2">
+                <div className="bg-card border border-border rounded-xl p-5">
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4 flex items-center gap-2">
                     <FileText size={16} />
                     Transaction Details
                   </h3>
                   <div className="space-y-3">
                     <div>
-                      <span className="text-xs text-gray-500 block mb-1">Date</span>
-                      <div className="text-white flex items-center gap-2">
-                        <Calendar size={14} className="text-gray-500" />
+                      <span className="text-xs text-muted-foreground block mb-1">Date</span>
+                      <div className="text-foreground flex items-center gap-2">
+                        <Calendar size={14} className="text-muted-foreground" />
                         <div>
                           <div>{new Date(sale.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div>
-                          <div className="text-xs text-gray-500 mt-0.5">
+                          <div className="text-xs text-muted-foreground mt-0.5">
                             {new Date(sale.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}
                           </div>
                         </div>
                       </div>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-xs text-gray-500">Location</span>
-                      <span className="text-white flex items-center gap-2">
-                        <Building2 size={14} className="text-gray-500" />
+                      <span className="text-xs text-muted-foreground">Location</span>
+                      <span className="text-foreground flex items-center gap-2">
+                        <Building2 size={14} className="text-muted-foreground" />
                         {branchMap.get(sale.location) || sale.location}
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-xs text-gray-500">Created At</span>
-                      <span className="text-white">{new Date(sale.createdAt).toLocaleString()}</span>
+                      <span className="text-xs text-muted-foreground">Created At</span>
+                      <span className="text-foreground">{new Date(sale.createdAt).toLocaleString()}</span>
                     </div>
                     {sale.createdBy && (
                       <div className="flex justify-between">
-                        <span className="text-xs text-gray-500">Created By</span>
-                        <span className="text-white flex items-center gap-2">
-                          <User size={14} className="text-gray-500" />
+                        <span className="text-xs text-muted-foreground">Created By</span>
+                        <span className="text-foreground flex items-center gap-2">
+                          <User size={14} className="text-muted-foreground" />
                           {sale.createdBy}
                         </span>
                       </div>
                     )}
                     {sale.updatedAt && (
                       <div className="flex justify-between">
-                        <span className="text-xs text-gray-500">Last Updated</span>
-                        <span className="text-white">{new Date(sale.updatedAt).toLocaleString()}</span>
+                        <span className="text-xs text-muted-foreground">Last Updated</span>
+                        <span className="text-foreground">{new Date(sale.updatedAt).toLocaleString()}</span>
                       </div>
                     )}
                     {((sale as any).is_studio || (sale.invoiceNo || '').startsWith('STD-') || (sale.invoiceNo || '').startsWith('ST-')) && (() => {
                       const studioDue = (sale as any).deadline || getStudioDeadlineFromNotes((sale as any).notes);
                       return studioDue ? (
                         <div className="flex justify-between">
-                          <span className="text-xs text-gray-500">Studio / Due Date</span>
-                          <span className="text-white">{new Date(studioDue).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                          <span className="text-xs text-muted-foreground">Studio / Due Date</span>
+                          <span className="text-foreground">{new Date(studioDue).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
                         </div>
                       ) : null;
                     })()}
@@ -891,22 +891,22 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                       const finalReturns = saleReturns.filter((r: any) => String(r.status || '').toLowerCase() === 'final');
                       const sumFinal = finalReturns.reduce((s, r: any) => s + (Number(r.total) || 0), 0);
                       return (
-                        <div className="flex justify-between gap-3 border-t border-gray-800/60 pt-3 mt-1">
-                          <span className="text-xs text-gray-500 shrink-0">Sale returns</span>
-                          <span className="text-white text-sm text-right">
+                        <div className="flex justify-between gap-3 border-t border-border/60 pt-3 mt-1">
+                          <span className="text-xs text-muted-foreground shrink-0">Sale returns</span>
+                          <span className="text-foreground text-sm text-right">
                             {loadingSaleReturns ? (
-                              <span className="text-gray-500">Loading…</span>
+                              <span className="text-muted-foreground">Loading…</span>
                             ) : saleReturns.length === 0 ? (
-                              <span className="text-gray-500">None loaded</span>
+                              <span className="text-muted-foreground">None loaded</span>
                             ) : (
                               <>
                                 <span className="font-medium text-purple-300">{saleReturns.length}</span>
-                                <span className="text-gray-400"> credit note(s)</span>
+                                <span className="text-muted-foreground"> credit note(s)</span>
                                 {sumFinal > 0 && (
                                   <>
-                                    <span className="text-gray-500"> · </span>
+                                    <span className="text-muted-foreground"> · </span>
                                     <span className="text-amber-200 tabular-nums">Returned {formatCurrency(sumFinal)}</span>
-                                    <span className="text-gray-500"> (final)</span>
+                                    <span className="text-muted-foreground"> (final)</span>
                                   </>
                                 )}
                               </>
@@ -921,26 +921,26 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
 
               {/* Salesman & Commission (when applicable) — Salesman = commission/report ownership; Created By = who created the record */}
               {(salesmanId || (sale as any).commissionAmount > 0) && (
-                <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">
-                  <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-4 flex items-center gap-2">
+                <div className="bg-card border border-border rounded-xl p-5">
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4 flex items-center gap-2">
                     <UserCheck size={16} />
                     Salesman & Commission
                   </h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                     <div>
-                      <p className="text-xs text-gray-500 mb-1">Salesman (commission/report)</p>
-                      <p className="text-white font-medium">{salesmanName ?? (salesmanId ? '…' : '—')}</p>
+                      <p className="text-xs text-muted-foreground mb-1">Salesman (commission/report)</p>
+                      <p className="text-foreground font-medium">{salesmanName ?? (salesmanId ? '…' : '—')}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-500 mb-1">Commission %</p>
-                      <p className="text-white">{(sale as any).commissionPercent != null ? `${Number((sale as any).commissionPercent)}%` : '—'}</p>
+                      <p className="text-xs text-muted-foreground mb-1">Commission %</p>
+                      <p className="text-foreground">{(sale as any).commissionPercent != null ? `${Number((sale as any).commissionPercent)}%` : '—'}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-500 mb-1">Commission Amount</p>
-                      <p className="text-white font-medium text-green-400">{formatCurrency(Number((sale as any).commissionAmount) || 0)}</p>
+                      <p className="text-xs text-muted-foreground mb-1">Commission Amount</p>
+                      <p className="text-foreground font-medium text-[var(--erp-money-positive)]">{formatCurrency(Number((sale as any).commissionAmount) || 0)}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-500 mb-1">Commission Status</p>
+                      <p className="text-xs text-muted-foreground mb-1">Commission Status</p>
                       <span className={cn(
                         'text-sm font-medium',
                         (sale as any).commissionStatus === 'posted' ? 'text-blue-400' : 'text-amber-400'
@@ -955,22 +955,22 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
               {/* Status Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {hidePaymentCommercial ? (
-                  <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-                    <p className="text-xs text-gray-500 mb-2">Payments</p>
-                    <p className="text-sm text-gray-400">
-                      Customer balance and payment tracking start when this document is a <strong className="text-gray-300">final invoice</strong>.
+                  <div className="bg-card border border-border rounded-xl p-4">
+                    <p className="text-xs text-muted-foreground mb-2">Payments</p>
+                    <p className="text-sm text-muted-foreground">
+                      Customer balance and payment tracking start when this document is a <strong className="text-muted-foreground">final invoice</strong>.
                     </p>
                   </div>
                 ) : (
-                  <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-                    <p className="text-xs text-gray-500 mb-2">Payment Status</p>
+                  <div className="bg-card border border-border rounded-xl p-4">
+                    <p className="text-xs text-muted-foreground mb-2">Payment Status</p>
                     <Badge className={cn("text-sm font-semibold", getPaymentStatusColor(sale.paymentStatus === 'paid' ? 'Paid' : sale.paymentStatus === 'partial' ? 'Partial' : 'Unpaid'))}>
                       {sale.paymentStatus === 'paid' ? 'Paid' : sale.paymentStatus === 'partial' ? 'Partial' : 'Unpaid'}
                     </Badge>
                   </div>
                 )}
-                <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-                  <p className="text-xs text-gray-500 mb-2">Shipping Status</p>
+                <div className="bg-card border border-border rounded-xl p-4">
+                  <p className="text-xs text-muted-foreground mb-2">Shipping Status</p>
                   <Badge className={cn("text-sm font-semibold", getShippingStatusColor(sale.shippingStatus === 'delivered' ? 'Delivered' : sale.shippingStatus === 'processing' ? 'Processing' : sale.shippingStatus === 'cancelled' ? 'Cancelled' : 'Pending'))}>
                     <Truck size={14} className="mr-1" />
                     {sale.shippingStatus === 'delivered' ? 'Delivered' : sale.shippingStatus === 'processing' ? 'Processing' : sale.shippingStatus === 'cancelled' ? 'Cancelled' : 'Pending'}
@@ -980,19 +980,19 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
 
               {/* Sale Returns — amounts, lines, reason (not only invoice metadata) */}
               {((sale as any).hasReturn || (sale as any).returnCount > 0 || (sale as any).returnDue > 0 || saleReturns.length > 0 || loadingSaleReturns) && (
-                <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-                  <div className="px-5 py-3 bg-gray-950/50 border-b border-gray-800 flex items-center justify-between gap-2 flex-wrap">
+                <div className="bg-card border border-border rounded-xl overflow-hidden">
+                  <div className="px-5 py-3 bg-muted/40 border-b border-border flex items-center justify-between gap-2 flex-wrap">
                     <div className="flex items-center gap-2">
                       <RotateCcw size={16} className="text-purple-400" />
-                      <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Sale returns</h3>
-                      {loadingSaleReturns && <span className="text-xs text-gray-500">Loading…</span>}
+                      <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Sale returns</h3>
+                      {loadingSaleReturns && <span className="text-xs text-muted-foreground">Loading…</span>}
                     </div>
                     {!loadingSaleReturns && saleReturns.length > 0 && (() => {
                       const sumFinal = saleReturns
                         .filter((r: any) => String(r.status || '').toLowerCase() === 'final')
                         .reduce((s, r: any) => s + (Number(r.total) || 0), 0);
                       return sumFinal > 0 ? (
-                        <span className="text-xs text-gray-400">
+                        <span className="text-xs text-muted-foreground">
                           Total returned (final): <span className="text-amber-200 font-semibold tabular-nums">{formatCurrency(sumFinal)}</span>
                         </span>
                       ) : null;
@@ -1000,32 +1000,32 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                   </div>
                   <div className="p-4">
                     {loadingSaleReturns ? (
-                      <p className="text-sm text-gray-500">Loading returns…</p>
+                      <p className="text-sm text-muted-foreground">Loading returns…</p>
                     ) : saleReturns.length === 0 ? (
-                      <p className="text-sm text-gray-500">No return documents linked to this invoice yet.</p>
+                      <p className="text-sm text-muted-foreground">No return documents linked to this invoice yet.</p>
                     ) : (
                       <ul className="space-y-3">
                         {saleReturns.map((ret: any) => {
                           const retStatus = (ret.status || '').toString().toLowerCase();
                           const statusLabel =
                             retStatus === 'void' ? 'Void' : retStatus === 'final' ? 'Final' : 'Draft';
-                          const statusClass = retStatus === 'void' ? 'bg-gray-500/20 text-gray-400 border-gray-500/30' : retStatus === 'final' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
+                          const statusClass = retStatus === 'void' ? 'bg-gray-500/20 text-muted-foreground border-gray-500/30' : retStatus === 'final' ? 'bg-green-500/20 text-[var(--erp-money-positive)] border-green-500/30' : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
                           const lineCount = Array.isArray(ret.items) ? ret.items.length : 0;
                           const amt = Number(ret.total) || 0;
                           return (
-                            <li key={ret.id} className="rounded-lg border border-gray-800/80 bg-gray-950/40 p-3 space-y-2">
+                            <li key={ret.id} className="rounded-lg border border-border/80 bg-input-background/40 p-3 space-y-2">
                               <div className="flex flex-wrap items-center justify-between gap-2">
-                                <span className="text-sm font-semibold text-white font-mono">{ret.return_no || ret.id?.slice?.(0, 8) || '—'}</span>
+                                <span className="text-sm font-semibold text-foreground font-mono">{ret.return_no || ret.id?.slice?.(0, 8) || '—'}</span>
                                 <Badge className={cn('text-xs border', statusClass)}>{statusLabel}</Badge>
                               </div>
-                              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400">
+                              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                                 <span>Date: <span className="text-gray-200">{ret.return_date ? new Date(ret.return_date).toLocaleString() : '—'}</span></span>
                                 <span>Lines: <span className="text-gray-200">{lineCount}</span></span>
                                 <span className="text-amber-200/90 font-semibold tabular-nums">Amount: {formatCurrency(amt)}</span>
                               </div>
                               {(ret.reason || ret.notes) && (
-                                <p className="text-xs text-gray-500 line-clamp-3">
-                                  <span className="text-gray-600">Note: </span>
+                                <p className="text-xs text-muted-foreground line-clamp-3">
+                                  <span className="text-muted-foreground">Note: </span>
                                   {String(ret.reason || '').trim()}
                                   {ret.reason && ret.notes ? ' · ' : ''}
                                   {String(ret.notes || '').trim()}
@@ -1041,9 +1041,9 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
               )}
 
               {/* Items Table — same structure as ViewPurchaseDetailsDrawer (UI + data from API) */}
-              <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-                <div className="px-5 py-3 bg-gray-950/50 border-b border-gray-800 flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-2">
+              <div className="bg-card border border-border rounded-xl overflow-hidden">
+                <div className="px-5 py-3 bg-muted/40 border-b border-border flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
                     <Package size={16} />
                     Items ({sale.items.length})
                   </h3>
@@ -1051,15 +1051,15 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
-                      <TableRow className="border-gray-800 hover:bg-transparent">
-                        <TableHead className="text-gray-400">Product</TableHead>
-                        <TableHead className="text-gray-400">SKU</TableHead>
-                        <TableHead className="text-gray-400">Variation</TableHead>
-                        {enablePacking && <TableHead className="text-gray-400">Packing</TableHead>}
-                        <TableHead className="text-gray-400 text-right">Unit Price</TableHead>
-                        <TableHead className="text-gray-400 text-center">Qty</TableHead>
-                        <TableHead className="text-gray-400">Unit</TableHead>
-                        <TableHead className="text-gray-400 text-right">Total</TableHead>
+                      <TableRow className="border-border hover:bg-transparent">
+                        <TableHead className="text-muted-foreground">Product</TableHead>
+                        <TableHead className="text-muted-foreground">SKU</TableHead>
+                        <TableHead className="text-muted-foreground">Variation</TableHead>
+                        {enablePacking && <TableHead className="text-muted-foreground">Packing</TableHead>}
+                        <TableHead className="text-muted-foreground text-right">Unit Price</TableHead>
+                        <TableHead className="text-muted-foreground text-center">Qty</TableHead>
+                        <TableHead className="text-muted-foreground">Unit</TableHead>
+                        <TableHead className="text-muted-foreground text-right">Total</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1102,12 +1102,12 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                         const unitDisplay = item.unit ?? 'piece';
                         const finalSku = variationSku || displaySku;
                         return (
-                          <TableRow key={item.id} className="border-gray-800">
+                          <TableRow key={item.id} className="border-border">
                             <TableCell>
                               <div>
-                                <p className="font-medium text-white">{productName}</p>
+                                <p className="font-medium text-foreground">{productName}</p>
                                 {finalSku && finalSku !== 'N/A' && (
-                                  <p className="text-xs text-gray-500">SKU: {finalSku}</p>
+                                  <p className="text-xs text-muted-foreground">SKU: {finalSku}</p>
                                 )}
                                 {enableBespoke &&
                                   !(item as { bespokeParentItemId?: string | null }).bespokeParentItemId && (
@@ -1121,27 +1121,27 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                                 )}
                               </div>
                             </TableCell>
-                            <TableCell className="text-gray-400">{finalSku}</TableCell>
+                            <TableCell className="text-muted-foreground">{finalSku}</TableCell>
                             <TableCell>
                               {variationText ? (
-                                <span className="text-gray-300 text-sm">{variationText}</span>
+                                <span className="text-muted-foreground text-sm">{variationText}</span>
                               ) : (
-                                <span className="text-gray-600">—</span>
+                                <span className="text-muted-foreground">—</span>
                               )}
                             </TableCell>
                             {enablePacking && (
-                              <TableCell className="text-gray-400">
+                              <TableCell className="text-muted-foreground">
                                 <span>{packingText}</span>
                               </TableCell>
                             )}
-                            <TableCell className="text-right text-white">
+                            <TableCell className="text-right text-foreground">
 {formatCurrency(Number(item.price || 0))}
                             </TableCell>
-                            <TableCell className="text-center text-white font-medium">
+                            <TableCell className="text-center text-foreground font-medium">
                               {qty}
                             </TableCell>
-                            <TableCell className="text-gray-400">{unitDisplay}</TableCell>
-                            <TableCell className="text-right text-white font-medium">
+                            <TableCell className="text-muted-foreground">{unitDisplay}</TableCell>
+                            <TableCell className="text-right text-foreground font-medium">
 {formatCurrency(Number(item.price || 0) * qty)}
                             </TableCell>
                           </TableRow>
@@ -1184,33 +1184,33 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
 
               {/* Studio Cost Summary – real-time from studio_productions + stages */}
               {(studioSummary?.hasStudio || (sale as any).studioCharges) && (
-                <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+                <div className="bg-card border border-border rounded-xl overflow-hidden">
                   <button
                     type="button"
                     onClick={() => setShowStudioBreakdown(!showStudioBreakdown)}
-                    className="w-full px-5 py-3 bg-gray-950/50 border-b border-gray-800 flex items-center justify-between text-left hover:bg-gray-800/30 transition-colors"
+                    className="w-full px-5 py-3 bg-muted/40 border-b border-border flex items-center justify-between text-left hover:bg-accent/30 transition-colors"
                   >
-                    <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-2">
+                    <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
                       <Scissors size={16} className="text-amber-400" />
                       Studio Cost Summary
                     </h3>
-                    {showStudioBreakdown ? <ChevronUp size={16} className="text-gray-500" /> : <ChevronDown size={16} className="text-gray-500" />}
+                    {showStudioBreakdown ? <ChevronUp size={16} className="text-muted-foreground" /> : <ChevronDown size={16} className="text-muted-foreground" />}
                   </button>
                   {showStudioBreakdown && (
                     <div className="p-5 space-y-3">
                       {loadingStudioSummary ? (
-                        <p className="text-sm text-gray-500">Loading studio data...</p>
+                        <p className="text-sm text-muted-foreground">Loading studio data...</p>
                       ) : studioSummary?.hasStudio ? (
                         <>
                           <div className="flex justify-between text-sm">
-                            <span className="text-gray-400">Production Status</span>
-                            <span className={studioSummary.productionStatus === 'completed' ? 'text-green-400 font-medium' : 'text-amber-400 font-medium'}>
+                            <span className="text-muted-foreground">Production Status</span>
+                            <span className={studioSummary.productionStatus === 'completed' ? 'text-[var(--erp-money-positive)] font-medium' : 'text-amber-400 font-medium'}>
                               {studioSummary.productionStatus === 'completed' ? 'Completed' : studioSummary.productionStatus === 'in_progress' ? 'In Progress' : 'Pending'}
                             </span>
                           </div>
                           <div className="flex justify-between text-sm">
-                            <span className="text-gray-400">Production Cost</span>
-                            <span className="text-white font-semibold">{formatCurrency(studioSummary.totalStudioCost)}</span>
+                            <span className="text-muted-foreground">Production Cost</span>
+                            <span className="text-foreground font-semibold">{formatCurrency(studioSummary.totalStudioCost)}</span>
                           </div>
                           {(() => {
                             const genId = (studioSummary as any).generatedInvoiceItemId;
@@ -1222,43 +1222,43 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                               <>
                                 {genId && (
                                   <div className="flex justify-between text-sm">
-                                    <span className="text-gray-400">Final Sale Price</span>
-                                    <span className="text-white">{formatCurrency(finalSalePrice)}</span>
+                                    <span className="text-muted-foreground">Final Sale Price</span>
+                                    <span className="text-foreground">{formatCurrency(finalSalePrice)}</span>
                                   </div>
                                 )}
                                 {genId && finalSalePrice > 0 && (
                                   <div className="flex justify-between text-sm">
-                                    <span className="text-green-400 font-medium">Profit</span>
-                                    <span className="text-green-400 font-medium">{formatCurrency(profit)}</span>
+                                    <span className="text-[var(--erp-money-positive)] font-medium">Profit</span>
+                                    <span className="text-[var(--erp-money-positive)] font-medium">{formatCurrency(profit)}</span>
                                   </div>
                                 )}
                               </>
                             );
                           })()}
                           <div className="flex justify-between text-sm">
-                            <span className="text-gray-400">Tasks Completed</span>
-                            <span className="text-white">{studioSummary.tasksCompleted} / {studioSummary.tasksTotal}</span>
+                            <span className="text-muted-foreground">Tasks Completed</span>
+                            <span className="text-foreground">{studioSummary.tasksCompleted} / {studioSummary.tasksTotal}</span>
                           </div>
                           {studioSummary.productionDurationDays != null && (
                             <div className="flex justify-between text-sm">
-                              <span className="text-gray-400">Production Duration</span>
-                              <span className="text-white">{studioSummary.productionDurationDays} Day{studioSummary.productionDurationDays !== 1 ? 's' : ''}</span>
+                              <span className="text-muted-foreground">Production Duration</span>
+                              <span className="text-foreground">{studioSummary.productionDurationDays} Day{studioSummary.productionDurationDays !== 1 ? 's' : ''}</span>
                             </div>
                           )}
                           {studioSummary.completedAt && (
                             <div className="flex justify-between text-sm">
-                              <span className="text-gray-400">Completed On</span>
-                              <span className="text-white">{new Date(studioSummary.completedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                              <span className="text-muted-foreground">Completed On</span>
+                              <span className="text-foreground">{new Date(studioSummary.completedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
                             </div>
                           )}
                           {(studioSummary.breakdown.length > 0 || (sale.total ?? 0) > 0) && (
                             <>
-                              <Separator className="bg-gray-800" />
-                              <p className="text-xs text-gray-500 uppercase tracking-wide">Breakdown</p>
+                              <Separator className="bg-muted" />
+                              <p className="text-xs text-muted-foreground uppercase tracking-wide">Breakdown</p>
                               {studioSummary.breakdown.map((row) => (
                                 <div key={row.stageType} className="flex justify-between text-sm">
-                                  <span className="text-gray-400">{row.label}</span>
-                                  <span className="text-white">{formatCurrency(row.amount)}</span>
+                                  <span className="text-muted-foreground">{row.label}</span>
+                                  <span className="text-foreground">{formatCurrency(row.amount)}</span>
                                 </div>
                               ))}
                             </>
@@ -1266,8 +1266,8 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                         </>
                       ) : (sale as any).studioCharges > 0 ? (
                         <div className="flex justify-between text-sm">
-                          <span className="text-gray-400">Total Studio Cost</span>
-                          <span className="text-white font-semibold">{formatCurrency((sale as any).studioCharges)}</span>
+                          <span className="text-muted-foreground">Total Studio Cost</span>
+                          <span className="text-foreground font-semibold">{formatCurrency((sale as any).studioCharges)}</span>
                         </div>
                       ) : null}
                     </div>
@@ -1277,59 +1277,59 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
 
               {/* Studio Production V3 – Production Breakdown (when Show Production Detail enabled) */}
               {(sale as any)?.source === 'studio_production_v3' && (sale as any)?.show_studio_breakdown && (
-                <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-                  <div className="px-5 py-3 bg-gray-950/50 border-b border-gray-800">
-                    <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-2">
+                <div className="bg-card border border-border rounded-xl overflow-hidden">
+                  <div className="px-5 py-3 bg-muted/40 border-b border-border">
+                    <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
                       <Scissors size={16} className="text-emerald-400" />
                       Production Breakdown
                     </h3>
                   </div>
                   <div className="p-5 space-y-2">
                     {loadingStudioV3Breakdown ? (
-                      <p className="text-sm text-gray-500">Loading breakdown…</p>
+                      <p className="text-sm text-muted-foreground">Loading breakdown…</p>
                     ) : studioV3Breakdown.length > 0 ? (
                       <>
                         {studioV3Breakdown.map((row, i) => (
                           <div key={i} className="flex justify-between text-sm">
-                            <span className="text-gray-400">
+                            <span className="text-muted-foreground">
                               {row.type === 'profit' ? 'Studio Profit' : row.stage_name}
                             </span>
-                            <span className="text-white">{formatCurrency(Number(row.worker_cost) || 0)}</span>
+                            <span className="text-foreground">{formatCurrency(Number(row.worker_cost) || 0)}</span>
                           </div>
                         ))}
                       </>
                     ) : (
-                      <p className="text-sm text-gray-500">No breakdown stored.</p>
+                      <p className="text-sm text-muted-foreground">No breakdown stored.</p>
                     )}
                   </div>
                 </div>
               )}
 
               {/* Payment Summary */}
-              <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-                <div className="px-5 py-3 bg-gray-950/50 border-b border-gray-800">
-                  <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-2">
+              <div className="bg-card border border-border rounded-xl overflow-hidden">
+                <div className="px-5 py-3 bg-muted/40 border-b border-border">
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
                     <DollarSign size={16} />
                     Payment Summary
                   </h3>
                 </div>
                 <div className="p-5 space-y-3">
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-400">Subtotal</span>
-                    <span className="text-white font-medium">{formatCurrency(sale.subtotal ?? 0)}</span>
+                    <span className="text-muted-foreground">Subtotal</span>
+                    <span className="text-foreground font-medium">{formatCurrency(sale.subtotal ?? 0)}</span>
                   </div>
                   
                   {(sale.discount ?? 0) > 0 && (
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-400">Discount</span>
+                      <span className="text-muted-foreground">Discount</span>
                       <span className="text-red-400 font-medium">- {formatCurrency(sale.discount)}</span>
                     </div>
                   )}
                   
                   {(sale.tax ?? 0) > 0 && (
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-400">Tax</span>
-                      <span className="text-white font-medium">{formatCurrency(sale.tax)}</span>
+                      <span className="text-muted-foreground">Tax</span>
+                      <span className="text-foreground font-medium">{formatCurrency(sale.tax)}</span>
                     </div>
                   )}
                   
@@ -1351,27 +1351,27 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                         {shippingRows.length > 0
                           ? shippingRows.map((c, idx) => (
                               <div key={c.id || `ship-${idx}`} className="flex justify-between text-sm">
-                                <span className="text-gray-400">{formatSaleChargeLabel('shipping')}</span>
-                                <span className="text-white font-medium">{formatCurrency(Number(c.amount) || 0)}</span>
+                                <span className="text-muted-foreground">{formatSaleChargeLabel('shipping')}</span>
+                                <span className="text-foreground font-medium">{formatCurrency(Number(c.amount) || 0)}</span>
                               </div>
                             ))
                           : shippingFallback > 0 ? (
                               <div className="flex justify-between text-sm">
-                                <span className="text-gray-400">Shipping</span>
-                                <span className="text-white font-medium">{formatCurrency(shippingFallback)}</span>
+                                <span className="text-muted-foreground">Shipping</span>
+                                <span className="text-foreground font-medium">{formatCurrency(shippingFallback)}</span>
                               </div>
                             ) : null}
                         {extraRows.length > 0
                           ? extraRows.map((c, idx) => (
                               <div key={c.id || `extra-${idx}`} className="flex justify-between text-sm">
-                                <span className="text-gray-400">{formatSaleChargeDisplayLabel(c)}</span>
-                                <span className="text-white font-medium">{formatCurrency(Number(c.amount) || 0)}</span>
+                                <span className="text-muted-foreground">{formatSaleChargeDisplayLabel(c)}</span>
+                                <span className="text-foreground font-medium">{formatCurrency(Number(c.amount) || 0)}</span>
                               </div>
                             ))
                           : extraFallback > 0 ? (
                               <div className="flex justify-between text-sm">
-                                <span className="text-gray-400">Extra charges</span>
-                                <span className="text-white font-medium">{formatCurrency(extraFallback)}</span>
+                                <span className="text-muted-foreground">Extra charges</span>
+                                <span className="text-foreground font-medium">{formatCurrency(extraFallback)}</span>
                               </div>
                             ) : null}
                       </>
@@ -1380,44 +1380,44 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                   
                   {(sale as any).otherCharges > 0 && (
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-400">Other Charges</span>
-                      <span className="text-white font-medium">{formatCurrency((sale as any).otherCharges)}</span>
+                      <span className="text-muted-foreground">Other Charges</span>
+                      <span className="text-foreground font-medium">{formatCurrency((sale as any).otherCharges)}</span>
                     </div>
                   )}
                   
-                  <Separator className="bg-gray-800" />
+                  <Separator className="bg-muted" />
                   
                   {studioCost > 0 ? (
                     <>
                       <div className="flex justify-between text-sm">
-                        <span className="text-gray-400">Sale Amount</span>
-                        <span className="text-white font-medium">{formatCurrency(studioLineTotalFromInvoice > 0 ? Math.max(0, (sale.total ?? 0) - studioLineTotalFromInvoice) : (sale.total ?? 0))}</span>
+                        <span className="text-muted-foreground">Sale Amount</span>
+                        <span className="text-foreground font-medium">{formatCurrency(studioLineTotalFromInvoice > 0 ? Math.max(0, (sale.total ?? 0) - studioLineTotalFromInvoice) : (sale.total ?? 0))}</span>
                       </div>
                       <div className="flex justify-between text-sm">
-                        <span className="text-gray-400">+ Production Cost</span>
+                        <span className="text-muted-foreground">+ Production Cost</span>
                         <span className="text-amber-400 font-medium">{formatCurrency(studioCost)}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-gray-300 font-semibold">Grand Total</span>
-                        <span className="text-white text-xl font-bold">{formatCurrency(grandTotal)}</span>
+                        <span className="text-muted-foreground font-semibold">Grand Total</span>
+                        <span className="text-foreground text-xl font-bold">{formatCurrency(grandTotal)}</span>
                       </div>
                     </>
                   ) : (
                     <div className="flex justify-between">
-                      <span className="text-gray-300 font-semibold">Grand Total</span>
-                      <span className="text-white text-xl font-bold">{formatCurrency(sale.total ?? 0)}</span>
+                      <span className="text-muted-foreground font-semibold">Grand Total</span>
+                      <span className="text-foreground text-xl font-bold">{formatCurrency(sale.total ?? 0)}</span>
                     </div>
                   )}
                   
                   {!hidePaymentCommercial && (
                     <>
                       <div className="flex justify-between text-sm">
-                        <span className="text-gray-400">Total Paid</span>
-                        <span className="text-green-400 font-medium">{formatCurrency(totalPaidDisplay)}</span>
+                        <span className="text-muted-foreground">Total Paid</span>
+                        <span className="text-[var(--erp-money-positive)] font-medium">{formatCurrency(totalPaidDisplay)}</span>
                       </div>
 
                       <div className="flex justify-between">
-                        <span className="text-gray-400 font-medium">Amount Due</span>
+                        <span className="text-muted-foreground font-medium">Amount Due</span>
                         <span className="text-red-400 text-lg font-bold">{formatCurrency(dueAmount)}</span>
                       </div>
                     </>
@@ -1425,7 +1425,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
 
                   {(sale.returnDue ?? 0) > 0 && (
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-400">Return Due</span>
+                      <span className="text-muted-foreground">Return Due</span>
                       <span className="text-yellow-400 font-medium">{formatCurrency(sale.returnDue)}</span>
                     </div>
                   )}
@@ -1434,9 +1434,9 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
 
               {/* Notes */}
               {sale.notes && (
-                <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">
-                  <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Notes</h3>
-                  <p className="text-white text-sm leading-relaxed">{sale.notes}</p>
+                <div className="bg-card border border-border rounded-xl p-5">
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Notes</h3>
+                  <p className="text-foreground text-sm leading-relaxed">{sale.notes}</p>
                 </div>
               )}
 
@@ -1454,8 +1454,8 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                 
                 
                 return (
-                  <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">
-                    <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3 flex items-center gap-2">
+                  <div className="bg-card border border-border rounded-xl p-5">
+                    <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
                       <Paperclip size={16} />
                       Attachments ({Array.isArray(sale.attachments) ? sale.attachments.length : 1})
                     </h3>
@@ -1508,7 +1508,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
             <div className="space-y-4">
               {/* Add Payment Button - hidden when cancelled/returned; shown for final or partially_returned with due */}
               <div className="flex justify-between items-center flex-wrap gap-2">
-                <h3 className="text-lg font-semibold text-white">Payment History</h3>
+                <h3 className="text-lg font-semibold text-foreground">Payment History</h3>
                 {canAddPayment && (
                   <div className="flex items-center gap-2">
                     <Button
@@ -1524,14 +1524,14 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                 )}
               </div>
               {canAddPayment && (
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-muted-foreground">
                   To record <strong>COD received from courier</strong>: use Add Payment and add note &quot;COD received from courier&quot;.
                 </p>
               )}
 
               {/* CRITICAL FIX: Payment Summary with Cash/Bank Breakdown */}
               {loadingPayments ? (
-                <div className="text-center py-12 text-gray-400">Loading payments...</div>
+                <div className="text-center py-12 text-muted-foreground">Loading payments...</div>
               ) : payments.length > 0 ? (
                 <div className="space-y-4">
                   {/* Summary Cards by Payment Method */}
@@ -1539,11 +1539,11 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                     {/* Cash Payments Summary */}
                     {payments.filter(p => p.method === 'cash').length > 0 && (
                       <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-4">
-                        <p className="text-xs text-gray-400 mb-1">Paid (Cash)</p>
-                        <p className="text-2xl font-bold text-green-400">
+                        <p className="text-xs text-muted-foreground mb-1">Paid (Cash)</p>
+                        <p className="text-2xl font-bold text-[var(--erp-money-positive)]">
 {formatCurrency(payments.filter(p => p.method === 'cash').reduce((sum, p) => sum + p.amount, 0))}
                         </p>
-                        <p className="text-xs text-gray-500 mt-1">
+                        <p className="text-xs text-muted-foreground mt-1">
                           {payments.filter(p => p.method === 'cash').length} payment(s)
                         </p>
                       </div>
@@ -1552,11 +1552,11 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                     {/* Bank Payments Summary */}
                     {payments.filter(p => p.method === 'bank' || p.method === 'card').length > 0 && (
                       <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4">
-                        <p className="text-xs text-gray-400 mb-1">Paid (Bank/Card)</p>
+                        <p className="text-xs text-muted-foreground mb-1">Paid (Bank/Card)</p>
                         <p className="text-2xl font-bold text-blue-400">
 {formatCurrency(payments.filter(p => p.method === 'bank' || p.method === 'card').reduce((sum, p) => sum + p.amount, 0))}
                         </p>
-                        <p className="text-xs text-gray-500 mt-1">
+                        <p className="text-xs text-muted-foreground mt-1">
                           {payments.filter(p => p.method === 'bank' || p.method === 'card').length} payment(s)
                         </p>
                       </div>
@@ -1565,11 +1565,11 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                     {/* Other Payments Summary */}
                     {payments.filter(p => p.method === 'other' || (p.method !== 'cash' && p.method !== 'bank' && p.method !== 'card')).length > 0 && (
                       <div className="bg-purple-500/10 border border-purple-500/20 rounded-xl p-4">
-                        <p className="text-xs text-gray-400 mb-1">Paid (Other)</p>
+                        <p className="text-xs text-muted-foreground mb-1">Paid (Other)</p>
                         <p className="text-2xl font-bold text-purple-400">
 {formatCurrency(payments.filter(p => p.method === 'other' || (p.method !== 'cash' && p.method !== 'bank' && p.method !== 'card')).reduce((sum, p) => sum + p.amount, 0))}
                         </p>
-                        <p className="text-xs text-gray-500 mt-1">
+                        <p className="text-xs text-muted-foreground mt-1">
                           {payments.filter(p => p.method === 'other' || (p.method !== 'cash' && p.method !== 'bank' && p.method !== 'card')).length} payment(s)
                         </p>
                       </div>
@@ -1577,19 +1577,19 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                   </div>
                   
                   {/* Total Paid Summary - use sum of payment records when loaded (matches mobile, avoids DB paid_amount drift) */}
-                  <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">
+                  <div className="bg-card border border-border rounded-xl p-5">
                     <div className="flex justify-between items-center mb-4">
                       <div>
-                        <p className="text-white font-semibold text-xl">
+                        <p className="text-foreground font-semibold text-xl">
                           {formatCurrency(totalPaidDisplay)}
                         </p>
-                        <p className="text-sm text-gray-400 mt-1">
+                        <p className="text-sm text-muted-foreground mt-1">
                           Total Paid Amount
                         </p>
                       </div>
                       <Badge className={cn(
                         "text-sm font-semibold",
-                        sale.paymentStatus === 'paid' ? "bg-green-500/10 text-green-400 border-green-500/20" :
+                        sale.paymentStatus === 'paid' ? "bg-green-500/10 text-[var(--erp-money-positive)] border-green-500/20" :
                         sale.paymentStatus === 'partial' ? "bg-yellow-500/10 text-yellow-400 border-yellow-500/20" :
                         "bg-red-500/10 text-red-400 border-red-500/20"
                       )}>
@@ -1598,8 +1598,8 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                     </div>
                     
 {dueAmount > 0 && canAddPayment && (
-                    <div className="flex justify-between text-sm pt-3 border-t border-gray-800">
-                        <span className="text-gray-400">Amount Due:</span>
+                    <div className="flex justify-between text-sm pt-3 border-t border-border">
+                        <span className="text-muted-foreground">Amount Due:</span>
                         <span className="text-red-400 font-medium">
 {formatCurrency(dueAmount)}
                         </span>
@@ -1609,16 +1609,16 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                   
                   {/* Individual Payment Breakdown */}
                 <div className="space-y-3">
-                    <h4 className="text-sm font-semibold text-gray-400 uppercase">Payment Details</h4>
+                    <h4 className="text-sm font-semibold text-muted-foreground uppercase">Payment Details</h4>
                     {payments.map((payment) => (
                     <div 
                       key={payment.id}
-                        className="bg-gray-900/50 border border-gray-800 rounded-xl p-4"
+                        className="bg-card border border-border rounded-xl p-4"
                       >
                         <div className="flex justify-between items-start mb-2">
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-1 flex-wrap">
-                              <p className="text-white font-semibold">
+                              <p className="text-foreground font-semibold">
 {formatCurrency(payment.amount)}
                           </p>
                               {(() => {
@@ -1635,12 +1635,12 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                                 return null;
                               })()}
                               {payment.referenceNo && (
-                                <code className="text-xs bg-gray-800 px-2 py-0.5 rounded text-blue-400 border border-gray-700">
+                                <code className="text-xs bg-muted px-2 py-0.5 rounded text-blue-400 border border-border">
                                   {payment.referenceNo}
                                 </code>
                               )}
                             </div>
-                            <p className="text-sm text-gray-400">
+                            <p className="text-sm text-muted-foreground">
                             {new Date(payment.date).toLocaleDateString('en-US', { 
                               month: 'short', 
                               day: 'numeric', 
@@ -1648,14 +1648,14 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                             })}
                           </p>
                             {payment.accountName && (
-                              <p className="text-xs text-gray-500 mt-1">
+                              <p className="text-xs text-muted-foreground mt-1">
                                 Account: {payment.accountName}
                               </p>
                             )}
                             {payment.notes && (
-                              <p className="text-xs text-gray-400 mt-2 flex items-start gap-1.5">
-                                <FileText size={12} className="text-gray-500 shrink-0 mt-0.5" />
-                                <span><span className="text-gray-500">Note:</span> {payment.notes}</span>
+                              <p className="text-xs text-muted-foreground mt-2 flex items-start gap-1.5">
+                                <FileText size={12} className="text-muted-foreground shrink-0 mt-0.5" />
+                                <span><span className="text-muted-foreground">Note:</span> {payment.notes}</span>
                               </p>
                             )}
                         </div>
@@ -1674,7 +1674,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                                   });
                                   if (list.length) setAttachmentsDialogList(list);
                                 }}
-                                className="p-1.5 rounded-lg hover:bg-amber-500/20 text-gray-400 hover:text-amber-400 transition-colors"
+                                className="p-1.5 rounded-lg hover:bg-amber-500/20 text-muted-foreground hover:text-amber-400 transition-colors"
                                 title={`${Array.isArray(payment.attachments) ? payment.attachments.length : 1} attachment(s)`}
                               >
                                 <Paperclip size={14} />
@@ -1682,7 +1682,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                             )}
                             <Badge className={cn(
                               "text-xs font-semibold",
-                              payment.method === 'cash' ? "bg-green-500/10 text-green-400 border-green-500/20" :
+                              payment.method === 'cash' ? "bg-green-500/10 text-[var(--erp-money-positive)] border-green-500/20" :
                               payment.method === 'bank' || payment.method === 'card' ? "bg-blue-500/10 text-blue-400 border-blue-500/20" :
                               "bg-purple-500/10 text-purple-400 border-purple-500/20"
                             )}>
@@ -1701,7 +1701,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                                   toast.error(e?.message || 'Cannot edit this payment line');
                                 }
                               }}
-                              className="p-1.5 rounded-lg hover:bg-blue-500/20 text-gray-400 hover:text-blue-400 transition-colors"
+                              className="p-1.5 rounded-lg hover:bg-blue-500/20 text-muted-foreground hover:text-blue-400 transition-colors"
                               title="Edit payment (allocation lines edit the parent receipt)"
                             >
                               <Edit size={14} />
@@ -1711,7 +1711,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                                 setPaymentToDelete(payment);
                                 setDeleteConfirmationOpen(true);
                               }}
-                              className="p-1.5 rounded-lg hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              className="p-1.5 rounded-lg hover:bg-red-500/20 text-muted-foreground hover:text-red-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                               title="Cancel Payment"
                               disabled={isDeletingPayment || loadingPayments}
                             >
@@ -1723,8 +1723,8 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                         </div>
                         {/* Note: shown above; attachments section below */}
                         {(payment.attachments && (Array.isArray(payment.attachments) ? payment.attachments.length > 0 : !!payment.attachments)) && (
-                          <div className="mt-3 pt-3 border-t border-gray-800 flex flex-wrap items-center gap-2">
-                            <span className="text-xs text-gray-500 flex items-center gap-1">
+                          <div className="mt-3 pt-3 border-t border-border flex flex-wrap items-center gap-2">
+                            <span className="text-xs text-muted-foreground flex items-center gap-1">
                               <Paperclip size={12} /> Attachments:
                             </span>
                             {Array.isArray(payment.attachments) ? (
@@ -1768,18 +1768,18 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                   </div>
                 </div>
               ) : totalPaidDisplay > 0 ? (
-                <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">
-                  <p className="text-white font-semibold text-lg">
+                <div className="bg-card border border-border rounded-xl p-5">
+                  <p className="text-foreground font-semibold text-lg">
                     {formatCurrency(totalPaidDisplay)}
                   </p>
-                  <p className="text-sm text-gray-400 mt-1">
+                  <p className="text-sm text-muted-foreground mt-1">
                     Total paid amount (payment details loading...)
                   </p>
                 </div>
               ) : (
                 <div className="text-center py-12">
                   <CreditCard size={48} className="mx-auto text-gray-700 mb-4" />
-                  <p className="text-gray-500">No payments recorded yet</p>
+                  <p className="text-muted-foreground">No payments recorded yet</p>
                 </div>
               )}
             </div>
@@ -1787,17 +1787,17 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
 
           {activeTab === 'history' && (
             <div className="space-y-3">
-              <h3 className="text-lg font-semibold text-white mb-4">Activity Timeline</h3>
+              <h3 className="text-lg font-semibold text-foreground mb-4">Activity Timeline</h3>
               
               {loadingActivityLogs ? (
-                <div className="text-center py-12 text-gray-400">Loading activity logs...</div>
+                <div className="text-center py-12 text-muted-foreground">Loading activity logs...</div>
               ) : activityLogs.length > 0 ? (
               <div className="space-y-4">
                   {activityLogs.map((log, index) => {
                     const getIcon = () => {
                       switch (log.action) {
                         case 'create':
-                          return <FileText size={16} className="text-gray-500" />;
+                          return <FileText size={16} className="text-muted-foreground" />;
                         case 'status_change':
                           return <CheckCircle2 size={16} className="text-green-500" />;
                         case 'payment_added':
@@ -1813,14 +1813,14 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                         case 'delete':
                           return <Trash2 size={16} className="text-red-500" />;
                         default:
-                          return <Clock size={16} className="text-gray-500" />;
+                          return <Clock size={16} className="text-muted-foreground" />;
                       }
                     };
 
                     const getBgColor = () => {
                       switch (log.action) {
                         case 'create':
-                          return 'bg-gray-700/20';
+                          return 'bg-muted/20';
                         case 'status_change':
                           return 'bg-green-500/20';
                         case 'payment_added':
@@ -1836,7 +1836,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                         case 'delete':
                           return 'bg-red-500/20';
                         default:
-                          return 'bg-gray-700/20';
+                          return 'bg-muted/20';
                       }
                     };
 
@@ -1847,28 +1847,28 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                             {getIcon()}
                     </div>
                           {index < activityLogs.length - 1 && (
-                    <div className="w-0.5 h-full bg-gray-800 mt-2" />
+                    <div className="w-0.5 h-full bg-muted mt-2" />
                           )}
                   </div>
                   <div className="flex-1 pb-6">
-                          <p className="text-white font-medium">
+                          <p className="text-foreground font-medium">
                             {log.description || activityLogService.formatActivityLog(log)}
                           </p>
-                          <p className="text-sm text-gray-400 mt-1">
+                          <p className="text-sm text-muted-foreground mt-1">
                             {new Date(log.created_at).toLocaleString()}
                           </p>
                           {log.performed_by_name && (
-                            <p className="text-sm text-gray-500 mt-1">
+                            <p className="text-sm text-muted-foreground mt-1">
                               By: {log.performed_by_name}
                             </p>
                           )}
                           {log.field && log.old_value !== undefined && log.new_value !== undefined && (
-                            <p className="text-sm text-gray-500 mt-1">
+                            <p className="text-sm text-muted-foreground mt-1">
                               {log.field}: {String(log.old_value)} → {String(log.new_value)}
                             </p>
                           )}
                           {log.amount && (
-                            <p className="text-sm text-gray-500 mt-1">
+                            <p className="text-sm text-muted-foreground mt-1">
                               Amount: {formatCurrency(log.amount)} {log.payment_method && `via ${log.payment_method}`}
                             </p>
                           )}
@@ -1880,7 +1880,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
               ) : (
                 <div className="text-center py-12">
                   <Clock size={48} className="mx-auto text-gray-700 mb-4" />
-                  <p className="text-gray-500">No activity logs found</p>
+                  <p className="text-muted-foreground">No activity logs found</p>
                   </div>
               )}
             </div>
@@ -1889,10 +1889,10 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
 
         {/* Footer Actions - Add Payment when allowed by effective status (final/partially_returned with due) */}
 {activeTab === 'details' && canAddPayment && (
-          <div className="border-t border-gray-800 px-6 py-4 bg-gray-900/50 shrink-0">
+          <div className="border-t border-border px-6 py-4 bg-muted/40 shrink-0">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-400">Amount Due</p>
+                <p className="text-sm text-muted-foreground">Amount Due</p>
                 <p className="text-2xl font-bold text-red-400">{formatCurrency(dueAmount)}</p>
               </div>
           <Button
@@ -1909,7 +1909,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
 
       {/* Print / PDF / Share – single document engine (Phase A) */}
       {showPrintLayout && sale && companyId && (
-        <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4 thermal-print-overlay">
+        <div className="fixed inset-0 z-[100] bg-[var(--erp-overlay)] flex items-center justify-center p-4 thermal-print-overlay">
           <div
             className={`bg-white rounded-lg w-full max-h-[90vh] overflow-auto ${
               printLayoutType === 'Thermal' ? 'thermal-print-modal-shell' : 'max-w-4xl'
@@ -2060,9 +2060,9 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
 
       {/* Attachments dialog: same as Payment History — size, preview, click to zoom */}
       <Dialog open={!!attachmentsDialogList} onOpenChange={(open) => !open && setAttachmentsDialogList(null)}>
-        <DialogContent className="bg-gray-900 border-gray-700 text-white w-full max-w-2xl min-h-[320px] max-h-[90vh] flex flex-col p-4 sm:p-6">
+        <DialogContent className="bg-popover border-border text-popover-foreground w-full max-w-2xl min-h-[320px] max-h-[90vh] flex flex-col p-4 sm:p-6">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-white">
+            <DialogTitle className="flex items-center gap-2 text-foreground">
               <Paperclip size={20} className="text-amber-400" />
               Attachments
             </DialogTitle>

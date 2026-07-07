@@ -189,7 +189,7 @@ export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
   return (
     <div className="w-full">
       {label && (
-        <label className="block text-sm font-medium text-gray-300 mb-2">
+        <label className="block text-sm font-medium text-muted-foreground mb-2">
           {label}
           {required && <span className="text-red-500 ml-1">*</span>}
         </label>
@@ -199,21 +199,21 @@ export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
           <Button
             variant="outline"
             className={cn(
-              "w-full justify-start text-left font-normal bg-gray-900 border-gray-800 text-white hover:bg-gray-800 hover:text-white",
-              !hasValue && "text-gray-500"
+              "w-full justify-start text-left font-normal bg-input-background border-border text-foreground hover:bg-accent hover:text-foreground",
+              !hasValue && "text-muted-foreground"
             )}
           >
             <Calendar className="mr-2 h-4 w-4" />
             <span className="flex-1 truncate">{displayText}</span>
             {hasValue && (
               <X
-                className="ml-2 h-4 w-4 text-gray-500 hover:text-white"
+                className="ml-2 h-4 w-4 text-muted-foreground hover:text-foreground"
                 onClick={handleClear}
               />
             )}
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-auto p-0 bg-gray-900 border-gray-800" align="start">
+        <PopoverContent className="w-auto p-0 bg-popover border-border" align="start">
           <div className="p-4">
             {/* Month Navigation */}
             <div className="flex items-center justify-between mb-4">
@@ -221,18 +221,18 @@ export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
                 variant="ghost"
                 size="icon"
                 onClick={prevMonth}
-                className="h-8 w-8 text-gray-400 hover:text-white hover:bg-gray-800"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent"
               >
                 <ChevronLeft size={18} />
               </Button>
-              <div className="text-sm font-semibold text-white">
+              <div className="text-sm font-semibold text-foreground">
                 {MONTHS[currentMonth.getMonth()]} {currentMonth.getFullYear()}
               </div>
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={nextMonth}
-                className="h-8 w-8 text-gray-400 hover:text-white hover:bg-gray-800"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent"
               >
                 <ChevronRight size={18} />
               </Button>
@@ -242,7 +242,7 @@ export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
             <div className="w-64">
               <div className="grid grid-cols-7 gap-1 mb-2">
                 {DAYS.map((day) => (
-                  <div key={day} className="text-center text-xs font-medium text-gray-500 py-2">
+                  <div key={day} className="text-center text-xs font-medium text-muted-foreground py-2">
                     {day}
                   </div>
                 ))}
@@ -265,7 +265,7 @@ export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
                       className={cn(
                         "h-9 text-sm rounded transition-colors",
                         isSelected && "bg-blue-600 text-white font-semibold",
-                        !isSelected && !isDisabled && "text-gray-300 hover:bg-gray-800",
+                        !isSelected && !isDisabled && "text-muted-foreground hover:bg-accent",
                         isToday && !isSelected && "border border-blue-500",
                         isDisabled && "text-gray-700 cursor-not-allowed opacity-50"
                       )}
@@ -279,9 +279,9 @@ export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
 
             {/* Time Selection (Optional) */}
             {showTime && (
-              <div className="mt-4 pt-4 border-t border-gray-800">
+              <div className="mt-4 pt-4 border-t border-border">
                 <div className="space-y-2">
-                  <label className="text-xs font-medium text-gray-400 flex items-center gap-1">
+                  <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
                     <Clock size={12} />
                     Select Time
                   </label>
@@ -289,14 +289,14 @@ export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
                     type="time"
                     value={selectedTime}
                     onChange={(e) => setSelectedTime(e.target.value)}
-                    className="w-full px-3 py-2 bg-gray-950 border border-gray-800 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-3 py-2 bg-input-background border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
               </div>
             )}
 
             {/* Footer */}
-            <div className="mt-4 pt-4 border-t border-gray-800 flex items-center justify-between">
+            <div className="mt-4 pt-4 border-t border-border flex items-center justify-between">
               <Button
                 variant="ghost"
                 size="sm"
@@ -310,7 +310,7 @@ export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
                   variant="outline"
                   size="sm"
                   onClick={handleClear}
-                  className="border-gray-700 text-gray-400 hover:text-white hover:bg-gray-800"
+                  className="border-border text-muted-foreground hover:text-foreground hover:bg-accent"
                 >
                   Clear
                 </Button>
@@ -318,7 +318,7 @@ export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
                   size="sm"
                   onClick={handleConfirm}
                   disabled={!selectedDate}
-                  className="bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="bg-blue-600 hover:bg-blue-500 text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Confirm
                 </Button>

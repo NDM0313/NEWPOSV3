@@ -83,7 +83,7 @@ export function KnownGlCorrectionSection({ companyId, readOnly, canApplyGlRepair
         <Wrench className="w-5 h-5 text-amber-400" />
         <div>
           <h3 className="font-semibold text-amber-100">Known GL correction candidates</h3>
-          <p className="text-xs text-gray-400">
+          <p className="text-xs text-muted-foreground">
             Orphan party AR from wrong-account sale reversals. Dry-run = preview only; click Apply GL Correction + phrase
             to post JE.
           </p>
@@ -111,7 +111,7 @@ export function KnownGlCorrectionSection({ companyId, readOnly, canApplyGlRepair
                     {appliedEntryNo[d.defectId] || 'correction JE active'}
                   </Badge>
                 </div>
-                <p className="text-xs text-gray-400">
+                <p className="text-xs text-muted-foreground">
                   GL correction already posted for this defect. No further action needed.
                 </p>
               </div>

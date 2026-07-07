@@ -94,13 +94,13 @@ export function RowTracePanel(props: {
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <button type="button" className="absolute inset-0 bg-black/60" aria-label="Close trace" onClick={props.onClose} />
-      <aside className="relative w-full max-w-md bg-gray-950 border-l border-gray-800 shadow-xl overflow-y-auto max-h-full">
-        <div className="sticky top-0 bg-gray-950/95 border-b border-gray-800 p-4 flex items-start justify-between gap-2 z-10">
+      <aside className="relative w-full max-w-md bg-input-background border-l border-border shadow-xl overflow-y-auto max-h-full">
+        <div className="sticky top-0 bg-input-background/95 border-b border-border p-4 flex items-start justify-between gap-2 z-10">
           <div>
-            <h2 className="text-lg font-semibold text-white">Row trace</h2>
-            <p className="text-xs text-gray-500">Read-only — Phase 2</p>
+            <h2 className="text-lg font-semibold text-foreground">Row trace</h2>
+            <p className="text-xs text-muted-foreground">Read-only — Phase 2</p>
           </div>
-          <Button variant="ghost" size="icon" className="shrink-0 text-gray-400" onClick={props.onClose}>
+          <Button variant="ghost" size="icon" className="shrink-0 text-muted-foreground" onClick={props.onClose}>
             <X className="w-5 h-5" />
           </Button>
         </div>
@@ -140,7 +140,7 @@ export function RowTracePanel(props: {
                   </Section>
                   <Section title="Linked JEs">
                     {(unposted.linkedJournals || []).length === 0 ? (
-                      <p className="text-gray-500 text-xs">None</p>
+                      <p className="text-muted-foreground text-xs">None</p>
                     ) : (
                       unposted.linkedJournals.map((j) => (
                         <p key={j.id} className="text-xs font-mono">
@@ -163,7 +163,7 @@ export function RowTracePanel(props: {
                         <KV k="Pay ref type" v={unmapped.payment.reference_type || '—'} />
                       </>
                     ) : (
-                      <p className="text-gray-500 text-xs">No payment linked</p>
+                      <p className="text-muted-foreground text-xs">No payment linked</p>
                     )}
                   </Section>
                   <Section title="JE header">
@@ -174,7 +174,7 @@ export function RowTracePanel(props: {
                         <KV k="Branch" v={unmapped.journal.branch_id?.slice(0, 8) || '—'} />
                       </>
                     ) : (
-                      <p className="text-gray-500 text-xs">Could not load JE</p>
+                      <p className="text-muted-foreground text-xs">Could not load JE</p>
                     )}
                   </Section>
                   <Section title="Account / contact mapping">
@@ -187,7 +187,7 @@ export function RowTracePanel(props: {
                   {unmapped.journal?.lines?.length ? (
                     <Section title="JE lines">
                       <table className="w-full text-[10px]">
-                        <thead className="text-gray-500">
+                        <thead className="text-muted-foreground">
                           <tr>
                             <th className="text-left p-1">Account</th>
                             <th className="text-right p-1">Dr</th>
@@ -196,7 +196,7 @@ export function RowTracePanel(props: {
                         </thead>
                         <tbody>
                           {unmapped.journal.lines.map((l) => (
-                            <tr key={l.id} className="border-t border-gray-800">
+                            <tr key={l.id} className="border-t border-border">
                               <td className="p-1">{l.account_code}</td>
                               <td className="p-1 text-right">{formatCurrency(Number(l.debit) || 0)}</td>
                               <td className="p-1 text-right">{formatCurrency(Number(l.credit) || 0)}</td>
@@ -231,8 +231,8 @@ export function RowTracePanel(props: {
 function Section(props: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <p className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold mb-1.5">{props.title}</p>
-      <div className="text-xs text-gray-300 space-y-0.5">{props.children}</div>
+      <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold mb-1.5">{props.title}</p>
+      <div className="text-xs text-muted-foreground space-y-0.5">{props.children}</div>
     </div>
   );
 }
@@ -240,7 +240,7 @@ function Section(props: { title: string; children: React.ReactNode }) {
 function KV(props: { k: string; v: string }) {
   return (
     <p>
-      <span className="text-gray-500">{props.k}:</span> {props.v}
+      <span className="text-muted-foreground">{props.k}:</span> {props.v}
     </p>
   );
 }

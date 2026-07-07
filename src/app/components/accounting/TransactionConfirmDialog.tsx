@@ -38,20 +38,20 @@ export function TransactionConfirmDialog({
         if (!next) onCancel();
       }}
     >
-      <AlertDialogContent className="bg-gray-900 border-gray-800 text-white">
+      <AlertDialogContent className="bg-card border-border text-foreground">
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
-          <AlertDialogDescription className="text-gray-400">{description}</AlertDialogDescription>
+          <AlertDialogDescription className="text-muted-foreground">{description}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel
-            className="bg-gray-800 border-gray-700 text-white hover:bg-gray-700"
+            className="bg-muted border-border text-foreground hover:bg-muted"
             onClick={onCancel}
           >
             {cancelLabel}
           </AlertDialogCancel>
           <AlertDialogAction
-            className="bg-red-600 hover:bg-red-700 text-white"
+            className="bg-red-600 hover:bg-red-700 text-foreground"
             onClick={onConfirm}
           >
             {confirmLabel}

@@ -101,45 +101,45 @@ export function PartyLedgerDiscountModal({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
-      <DialogContent className="sm:max-w-md bg-gray-900 text-white border-gray-800">
+      <DialogContent className="sm:max-w-md bg-background text-foreground border-border">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-white">
+          <DialogTitle className="flex items-center gap-2 text-foreground">
             <Percent size={18} className="text-blue-400" />
             {title}
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4 pt-2">
-          <p className="text-sm text-gray-400">
-            Party: <span className="text-white font-medium">{partyName}</span>
+          <p className="text-sm text-muted-foreground">
+            Party: <span className="text-foreground font-medium">{partyName}</span>
           </p>
-          <p className="text-xs text-gray-500 rounded-lg bg-gray-800/60 border border-gray-700 px-3 py-2">
+          <p className="text-xs text-muted-foreground rounded-lg bg-muted/40 border border-border px-3 py-2">
             {coaSummary} — reduces {partyType === 'customer' ? 'customer' : 'supplier'} balance by{' '}
             {amount ? formatCurrency(Number(amount) || 0) : 'the entered amount'}.
           </p>
           {error ? <p className="text-sm text-red-400">{error}</p> : null}
           <div>
-            <Label className="text-gray-400">Amount *</Label>
+            <Label className="text-muted-foreground">Amount *</Label>
             <Input
               type="number"
               min={0}
               step="0.01"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              className="mt-1 bg-gray-800 border-gray-700 text-white"
+              className="mt-1 bg-input-background border-border text-foreground"
               disabled={loading}
               placeholder="0.00"
             />
           </div>
           <div>
-            <Label className="text-gray-400">Date</Label>
+            <Label className="text-muted-foreground">Date</Label>
             <DatePicker value={entryDate} onChange={setEntryDate} disabled={loading} />
           </div>
           <div>
-            <Label className="text-gray-400">Notes (optional)</Label>
+            <Label className="text-muted-foreground">Notes (optional)</Label>
             <Textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="mt-1 bg-gray-800 border-gray-700 text-white min-h-[72px]"
+              className="mt-1 bg-input-background border-border text-foreground min-h-[72px]"
               disabled={loading}
               placeholder="Reason or reference…"
             />
@@ -150,7 +150,7 @@ export function PartyLedgerDiscountModal({
               variant="outline"
               onClick={handleClose}
               disabled={loading}
-              className="border-gray-700 text-white hover:bg-gray-800"
+              className="border-border text-foreground hover:bg-accent"
             >
               Cancel
             </Button>

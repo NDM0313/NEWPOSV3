@@ -866,20 +866,20 @@ export const POS = () => {
   }, [paymentDialogSaleId, paymentDialogInvoiceNo]);
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[#111827] text-white">
+    <div className="flex h-screen w-screen overflow-hidden bg-background text-white">
       {/* Left Section: Products */}
       <div className="flex-1 flex flex-col min-w-0">
         
         {/* TOP DASHBOARD STATS */}
-        <div className="h-auto border-b border-gray-800 bg-gradient-to-r from-gray-900 to-gray-900/95 backdrop-blur-sm shrink-0">
+        <div className="h-auto border-b border-border bg-gradient-to-r from-gray-900 to-gray-900/95 backdrop-blur-sm shrink-0">
           {/* Header Row */}
-          <div className="px-6 py-3 flex items-center justify-between border-b border-gray-800/50">
+          <div className="px-6 py-3 flex items-center justify-between border-b border-border">
             <div className="flex items-center gap-4">
               <Button 
                 variant="ghost" 
                 size="icon" 
                 onClick={() => setCurrentView('dashboard')} 
-                className="text-gray-400 hover:text-white hover:bg-gray-800 rounded-xl"
+                className="text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl"
               >
                 <ArrowLeft size={20} />
               </Button>
@@ -887,14 +887,14 @@ export const POS = () => {
                 <h1 className="text-xl font-bold bg-gradient-to-r from-blue-400 to-blue-600 bg-clip-text text-transparent">
                   POS Terminal
                 </h1>
-                <p className="text-xs text-gray-500">Point of Sale System</p>
+                <p className="text-xs text-muted-foreground">Point of Sale System</p>
               </div>
             </div>
 
             {/* Branch (POS has no TopHeader — required for checkout) */}
             <div className="flex items-center gap-3 min-w-0">
               {showPosBranchPicker ? (
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-800/50 rounded-lg border border-gray-700">
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-muted/50 rounded-lg border border-border">
                   <Building2 size={14} className="text-blue-400 shrink-0" />
                   <Select
                     key={posBranchReady ? branchId! : 'pos-branch-unset'}
@@ -905,7 +905,7 @@ export const POS = () => {
                     <SelectTrigger className="h-7 min-w-[140px] max-w-[200px] border-0 bg-transparent p-0 text-xs text-gray-200 shadow-none focus:ring-0">
                       <SelectValue placeholder="Select branch" />
                     </SelectTrigger>
-                    <SelectContent className="bg-gray-950 border-gray-800 text-white">
+                    <SelectContent className="bg-input-background border-border text-white">
                       {posBranches.map((b) => (
                         <SelectItem key={b.id} value={b.id}>
                           {b.name}
@@ -915,9 +915,9 @@ export const POS = () => {
                   </Select>
                 </div>
               ) : posBranches.length === 1 && posBranchReady ? (
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-800/50 rounded-lg border border-gray-700">
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-muted/50 rounded-lg border border-border">
                   <Building2 size={14} className="text-blue-400 shrink-0" />
-                  <span className="text-xs text-gray-300 truncate max-w-[180px]">
+                  <span className="text-xs text-muted-foreground truncate max-w-[180px]">
                     {posBranches[0].name}
                   </span>
                 </div>
@@ -931,13 +931,13 @@ export const POS = () => {
 
             {/* Date & Time */}
             <div className="flex items-center gap-4 shrink-0">
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-800/50 rounded-lg border border-gray-700">
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-muted/50 rounded-lg border border-border">
                 <Calendar size={14} className="text-blue-400" />
-                <span className="text-xs text-gray-300">{currentDate}</span>
+                <span className="text-xs text-muted-foreground">{currentDate}</span>
               </div>
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-800/50 rounded-lg border border-gray-700">
-                <Clock size={14} className="text-green-400" />
-                <span className="text-xs text-gray-300">{currentTime}</span>
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-muted/50 rounded-lg border border-border">
+                <Clock size={14} className="text-[var(--erp-money-positive)]" />
+                <span className="text-xs text-muted-foreground">{currentTime}</span>
               </div>
             </div>
           </div>
@@ -947,55 +947,55 @@ export const POS = () => {
             {/* Total Sales Today (from DB) */}
             <div className="bg-gradient-to-br from-blue-900/30 to-blue-900/10 border border-blue-900/50 rounded-xl p-3">
               <div className="flex items-center justify-between mb-1">
-                <span className="text-xs text-gray-400 uppercase font-medium">Total Sales Today</span>
+                <span className="text-xs text-muted-foreground uppercase font-medium">Total Sales Today</span>
                 <TrendingUp size={14} className="text-blue-400" />
               </div>
-              <p className="text-2xl font-bold text-white">{formatCurrency(todayStats.total)}</p>
+              <p className="text-2xl font-bold text-foreground">{formatCurrency(todayStats.total)}</p>
               <p className="text-xs text-blue-400 mt-0.5">{todayStats.count} transactions</p>
             </div>
 
             {/* Category Count */}
             <div className="bg-gradient-to-br from-purple-900/30 to-purple-900/10 border border-purple-900/50 rounded-xl p-3">
               <div className="flex items-center justify-between mb-1">
-                <span className="text-xs text-gray-400 uppercase font-medium">Categories</span>
+                <span className="text-xs text-muted-foreground uppercase font-medium">Categories</span>
                 <Tag size={14} className="text-purple-400" />
               </div>
-              <p className="text-2xl font-bold text-white">{categories.length - 1}</p>
+              <p className="text-2xl font-bold text-foreground">{categories.length - 1}</p>
               <p className="text-xs text-purple-400 mt-0.5">Active categories</p>
             </div>
 
             {/* Products Count */}
             <div className="bg-gradient-to-br from-green-900/30 to-green-900/10 border border-green-900/50 rounded-xl p-3">
               <div className="flex items-center justify-between mb-1">
-                <span className="text-xs text-gray-400 uppercase font-medium">Products</span>
-                <Package size={14} className="text-green-400" />
+                <span className="text-xs text-muted-foreground uppercase font-medium">Products</span>
+                <Package size={14} className="text-[var(--erp-money-positive)]" />
               </div>
-              <p className="text-2xl font-bold text-white">{products.length}</p>
-              <p className="text-xs text-green-400 mt-0.5">In stock</p>
+              <p className="text-2xl font-bold text-foreground">{products.length}</p>
+              <p className="text-xs text-[var(--erp-money-positive)] mt-0.5">In stock</p>
             </div>
 
             {/* Current Cart */}
             <div className="bg-gradient-to-br from-orange-900/30 to-orange-900/10 border border-orange-900/50 rounded-xl p-3">
               <div className="flex items-center justify-between mb-1">
-                <span className="text-xs text-gray-400 uppercase font-medium">Current Cart</span>
+                <span className="text-xs text-muted-foreground uppercase font-medium">Current Cart</span>
                 <ShoppingCart size={14} className="text-orange-400" />
               </div>
-              <p className="text-2xl font-bold text-white">{cartCount}</p>
+              <p className="text-2xl font-bold text-foreground">{cartCount}</p>
               <p className="text-xs text-orange-400 mt-0.5">{formatCurrency(total)} total</p>
             </div>
           </div>
         </div>
 
         {/* Search Bar & Customer Selection */}
-        <div className="px-6 py-4 border-b border-gray-800 bg-gray-900/30 shrink-0">
+        <div className="px-6 py-4 border-b border-border bg-muted/30 shrink-0">
           <div className="flex items-center gap-3">
             {/* Product Search */}
             <div className="flex-1 relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
               <Input
                 type="text"
                 placeholder="Search products by name..."
-                className="w-full bg-gray-800/50 border-gray-700 rounded-xl pl-10 pr-4 h-10 text-white placeholder:text-gray-500"
+                className="w-full bg-muted/50 border-border rounded-xl pl-10 pr-4 h-10 text-white placeholder:text-muted-foreground"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
@@ -1010,12 +1010,12 @@ export const POS = () => {
                   aria-expanded={customerOpen}
                   disabled={isViewMode}
                   className={cn(
-                    "w-[280px] justify-between bg-gray-800/50 border-gray-700 text-white h-10",
-                    isViewMode ? "opacity-60 cursor-not-allowed" : "hover:bg-gray-800"
+                    "w-[280px] justify-between bg-muted/50 border-border text-white h-10",
+                    isViewMode ? "opacity-60 cursor-not-allowed" : "hover:bg-muted"
                   )}
                 >
                   <div className="flex items-center gap-2">
-                    <User size={14} className="text-gray-400" />
+                    <User size={14} className="text-muted-foreground" />
                     <span className="text-sm">
                       {isViewMode && viewingSale ? (viewingSale.customerName || 'Walk-in Customer') : (selectedCustomerData?.name || "Select customer")}
                     </span>
@@ -1023,14 +1023,14 @@ export const POS = () => {
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-[280px] p-0 bg-gray-900 border-gray-800" align="start">
-                <Command className="bg-gray-900 border-0">
+              <PopoverContent className="w-[280px] p-0 bg-card border-border" align="start">
+                <Command className="bg-card border-0">
                   <CommandInput 
                     placeholder="Search customer..." 
-                    className="h-9 bg-gray-950 border-gray-800 text-white placeholder:text-gray-500"
+                    className="h-9 bg-input-background border-border text-white placeholder:text-muted-foreground"
                   />
                   <CommandList>
-                    <CommandEmpty className="py-6 text-center text-sm text-gray-500">No customer found.</CommandEmpty>
+                    <CommandEmpty className="py-6 text-center text-sm text-muted-foreground">No customer found.</CommandEmpty>
                     <CommandGroup>
                       {customers.map((customer) => (
                         <CommandItem
@@ -1040,7 +1040,7 @@ export const POS = () => {
                             setSelectedCustomer(customer.id);
                             setCustomerOpen(false);
                           }}
-                          className="text-white hover:bg-gray-800 cursor-pointer"
+                          className="text-white hover:bg-muted cursor-pointer"
                         >
                           <Check
                             className={cn(
@@ -1060,7 +1060,7 @@ export const POS = () => {
         </div>
 
         {/* Category Pills */}
-        <div className="px-6 py-3 border-b border-gray-800 bg-gray-900/30 shrink-0">
+        <div className="px-6 py-3 border-b border-border bg-muted/30 shrink-0">
           <div className="flex items-center gap-3 overflow-x-auto scrollbar-hide">
             {categories.map((cat) => {
               const Icon = cat.icon;
@@ -1073,7 +1073,7 @@ export const POS = () => {
                     "flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all whitespace-nowrap border",
                     isActive 
                       ? "bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-900/30" 
-                      : "bg-gray-800/50 text-gray-400 hover:text-white border-gray-700 hover:border-gray-600 hover:bg-gray-800"
+                      : "bg-muted/50 text-muted-foreground hover:text-foreground border-border hover:border-gray-600 hover:bg-muted"
                   )}
                 >
                   <Icon size={16} />
@@ -1085,7 +1085,7 @@ export const POS = () => {
         </div>
 
         {/* Products Grid */}
-        <div className="flex-1 overflow-y-auto p-6 bg-[#111827]">
+        <div className="flex-1 overflow-y-auto p-6 bg-background">
           {loading ? (
             <div className="flex items-center justify-center h-full">
               <Loader2 size={48} className="text-blue-500 animate-spin" />
@@ -1095,9 +1095,9 @@ export const POS = () => {
             <AnimatePresence>
                 {filteredProducts.length === 0 ? (
                   <div className="col-span-full text-center py-12">
-                    <Package size={48} className="mx-auto text-gray-600 mb-3" />
-                    <p className="text-gray-400 text-sm">No products found</p>
-                    <p className="text-gray-600 text-xs mt-1">Try adjusting your search or category</p>
+                    <Package size={48} className="mx-auto text-muted-foreground mb-3" />
+                    <p className="text-muted-foreground text-sm">No products found</p>
+                    <p className="text-muted-foreground text-xs mt-1">Try adjusting your search or category</p>
                   </div>
                 ) : (
                   filteredProducts.map((product) => (
@@ -1113,7 +1113,7 @@ export const POS = () => {
                   onClick={() => onProductClick(product)}
                   disabled={isViewMode}
                   className={cn(
-                    "relative aspect-square p-4 rounded-xl flex flex-col justify-between items-start text-left transition-all border border-gray-700/50 bg-gradient-to-br group overflow-hidden",
+                    "relative aspect-square p-4 rounded-xl flex flex-col justify-between items-start text-left transition-all border border-border bg-gradient-to-br group overflow-hidden",
                     isViewMode ? "opacity-60 cursor-not-allowed" : "hover:border-blue-500/50 shadow-lg hover:shadow-xl hover:shadow-blue-900/30",
                     product.imageUrl ? 'from-gray-900 to-gray-950' : (product.color || 'from-gray-800 to-gray-900')
                   )}
@@ -1145,7 +1145,7 @@ export const POS = () => {
                     <h3 className="font-bold text-white text-base leading-tight mb-0.5 group-hover:text-blue-300 transition-colors">
                       {product.name}
                     </h3>
-                    <p className="text-[10px] text-gray-400">{product.category}</p>
+                    <p className="text-[10px] text-muted-foreground">{product.category}</p>
                   </div>
 
                   {/* Price Section */}
@@ -1174,11 +1174,11 @@ export const POS = () => {
       </div>
 
       {/* RIGHT SECTION: CART & PAYMENT (RED MARKED AREA) */}
-      <div className="w-[420px] bg-gray-900 border-l border-gray-800 flex flex-col shrink-0">
+      <div className="w-[420px] bg-card border-l border-border flex flex-col shrink-0">
         
         {/* Invoice: number + Prev/Next + Edit (inline only) + New sale */}
         <div className={cn(
-          "px-5 py-3 border-b border-gray-800 shrink-0",
+          "px-5 py-3 border-b border-border shrink-0",
           editMode ? "bg-amber-900/20 border-amber-800/50" : "bg-gradient-to-r from-purple-900/20 to-blue-900/20"
         )}>
           {editMode && (
@@ -1190,13 +1190,13 @@ export const POS = () => {
           <div className="flex items-center justify-between gap-2 mb-2">
             <div className="flex items-center gap-2 min-w-0">
               <Hash size={16} className="text-purple-400 shrink-0" />
-              <span className="text-xs text-gray-400 uppercase font-medium shrink-0">Invoice</span>
+              <span className="text-xs text-muted-foreground uppercase font-medium shrink-0">Invoice</span>
             </div>
             <div className="flex items-center gap-1 shrink-0">
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg"
                 disabled={posSalesList.length === 0 || editMode}
                 onClick={() => {
                   if (posSalesList.length === 0 || editMode) return;
@@ -1212,7 +1212,7 @@ export const POS = () => {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg"
                 disabled={posSalesList.length === 0 || editMode}
                 onClick={() => {
                   if (posSalesList.length === 0 || editMode) return;
@@ -1228,7 +1228,7 @@ export const POS = () => {
           </div>
           </div>
           <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-900/70 rounded-lg border border-purple-900/50 min-w-0 flex-1">
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-card/70 rounded-lg border border-purple-900/50 min-w-0 flex-1">
               <Receipt size={14} className="text-purple-400 shrink-0" />
               <span className="text-sm font-mono font-bold text-white truncate">{invoiceNumber}</span>
             </div>
@@ -1247,7 +1247,7 @@ export const POS = () => {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-8 shrink-0 text-xs text-gray-400 hover:text-white"
+                  className="h-8 shrink-0 text-xs text-muted-foreground hover:text-foreground"
                   onClick={() => {
                     setEditMode(false);
                     setSelectedSaleIndex(-1);
@@ -1262,14 +1262,14 @@ export const POS = () => {
             ) : null}
           </div>
           {posSalesList.length > 0 && (
-            <p className="text-[10px] text-gray-500 mt-1.5">
+            <p className="text-[10px] text-muted-foreground mt-1.5">
               {selectedSaleIndex === -1 ? 'New order' : `${selectedSaleIndex + 1} / ${posSalesList.length} POS sales`}
             </p>
           )}
         </div>
 
         {/* Cart / View Header */}
-        <div className="h-14 px-5 flex items-center justify-between border-b border-gray-800 bg-gray-950/50 shrink-0">
+        <div className="h-14 px-5 flex items-center justify-between border-b border-border bg-muted/40 shrink-0">
           <div className="flex items-center gap-2">
             <ShoppingCart size={18} className="text-blue-400" />
             <h2 className="font-bold text-white text-lg">
@@ -1296,36 +1296,36 @@ export const POS = () => {
           {loadingSale && selectedSaleId ? (
             <div className="flex flex-col items-center justify-center h-full text-center">
               <Loader2 size={40} className="text-blue-500 animate-spin mb-3" />
-              <p className="text-gray-400 text-sm">Loading sale...</p>
+              <p className="text-muted-foreground text-sm">Loading sale...</p>
             </div>
           ) : selectedSaleIndex >= 0 && viewingSale?.items?.length && !editMode ? (
             <div className="space-y-3">
-              <p className="text-xs text-gray-500 mb-2">Read-only. Click Edit to modify this invoice.</p>
+              <p className="text-xs text-muted-foreground mb-2">Read-only. Click Edit to modify this invoice.</p>
               {viewingSale.items.map((item: SaleItem, i: number) => (
-                <div key={item.productId + i} className="bg-gray-800/50 border border-gray-700 rounded-xl p-3">
+                <div key={item.productId + i} className="bg-muted/50 border border-border rounded-xl p-3">
                   <div className="flex items-start justify-between">
                     <div>
-                      <h4 className="font-semibold text-white text-sm mb-1">{item.productName}</h4>
-                      <p className="text-xs text-gray-500">{formatCurrency(item.price || 0)} × {item.quantity}</p>
+                      <h4 className="font-semibold text-foreground text-sm mb-1">{item.productName}</h4>
+                      <p className="text-xs text-muted-foreground">{formatCurrency(item.price || 0)} × {item.quantity}</p>
                     </div>
                     <p className="font-bold text-blue-400 text-sm">{formatCurrency(item.total || 0)}</p>
                   </div>
                 </div>
               ))}
-              <div className="pt-3 border-t border-gray-700 space-y-1 text-sm">
-                <div className="flex justify-between text-gray-400"><span>Subtotal</span><span>{formatCurrency(viewingSale.subtotal || 0)}</span></div>
-                {(viewingSale.discount || 0) > 0 && <div className="flex justify-between text-green-400"><span>Discount</span><span>-{formatCurrency(viewingSale.discount || 0)}</span></div>}
+              <div className="pt-3 border-t border-border space-y-1 text-sm">
+                <div className="flex justify-between text-muted-foreground"><span>Subtotal</span><span>{formatCurrency(viewingSale.subtotal || 0)}</span></div>
+                {(viewingSale.discount || 0) > 0 && <div className="flex justify-between text-[var(--erp-money-positive)]"><span>Discount</span><span>-{formatCurrency(viewingSale.discount || 0)}</span></div>}
                 <div className="flex justify-between font-bold text-white pt-2"><span>Total</span><span>{formatCurrency(viewingSale.total || 0)}</span></div>
-                <div className="flex justify-between text-green-400"><span>Paid</span><span>{formatCurrency(viewingSalePayments.length > 0 ? viewingSalePayments.reduce((s, p) => s + (p.amount || 0), 0) : (viewingSale.paid || 0))}</span></div>
+                <div className="flex justify-between text-[var(--erp-money-positive)]"><span>Paid</span><span>{formatCurrency(viewingSalePayments.length > 0 ? viewingSalePayments.reduce((s, p) => s + (p.amount || 0), 0) : (viewingSale.paid || 0))}</span></div>
               </div>
             </div>
           ) : cart.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center">
-              <div className="bg-gray-800/50 rounded-full p-6 mb-4">
-                <ShoppingCart size={48} className="text-gray-600" />
+              <div className="bg-muted/50 rounded-full p-6 mb-4">
+                <ShoppingCart size={48} className="text-muted-foreground" />
               </div>
-              <p className="text-gray-500 font-medium">Cart is empty</p>
-              <p className="text-xs text-gray-600 mt-1">Add products or select a POS sale to edit</p>
+              <p className="text-muted-foreground font-medium">Cart is empty</p>
+              <p className="text-xs text-muted-foreground mt-1">Add products or select a POS sale to edit</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -1336,23 +1336,23 @@ export const POS = () => {
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
-                  className="bg-gray-800/50 border border-gray-700 rounded-xl p-3"
+                  className="bg-muted/50 border border-border rounded-xl p-3"
                 >
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex-1">
-                      <h4 className="font-semibold text-white text-sm mb-1">{item.name}</h4>
+                      <h4 className="font-semibold text-foreground text-sm mb-1">{item.name}</h4>
                       {/* EDITABLE PRICE */}
                       <div className="flex items-center gap-2">
-                        <DollarSign size={12} className="text-gray-500" />
+                        <DollarSign size={12} className="text-muted-foreground" />
                         <Input
                           type="number"
                           step="0.01"
                           value={getLineUnitPrice(item)}
                           onChange={(e) => updateCustomPrice(item.id, e.target.value)}
-                          className="bg-gray-900 border-gray-700 text-white h-7 w-20 text-xs px-2"
+                          className="bg-card border-border text-white h-7 w-20 text-xs px-2"
                           placeholder="Price"
                         />
-                        <span className="text-xs text-gray-500">× {item.qty}</span>
+                        <span className="text-xs text-muted-foreground">× {item.qty}</span>
                         {item.isBespokeInjected && (
                           <span className="text-[10px] text-amber-400/90">Fabric line</span>
                         )}
@@ -1373,10 +1373,10 @@ export const POS = () => {
                   
                   {/* Quantity Controls */}
                   <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 bg-gray-900 rounded-lg border border-gray-700 p-1">
+                    <div className="flex items-center gap-2 bg-card rounded-lg border border-border p-1">
                       <button
                         onClick={() => updateQty(item.id, -1)}
-                        className="text-white hover:bg-gray-800 rounded p-1.5 transition-colors"
+                        className="text-white hover:bg-muted rounded p-1.5 transition-colors"
                       >
                         <Minus size={14} />
                       </button>
@@ -1385,7 +1385,7 @@ export const POS = () => {
                       </span>
                       <button
                         onClick={() => updateQty(item.id, 1)}
-                        className="text-white hover:bg-gray-800 rounded p-1.5 transition-colors"
+                        className="text-white hover:bg-muted rounded p-1.5 transition-colors"
                       >
                         <Plus size={14} />
                       </button>
@@ -1425,10 +1425,10 @@ export const POS = () => {
 
         {/* PAYMENT SECTION: New order (Cash/Card) or Edit mode (Save/Cancel) */}
         {(editMode && cart.length > 0) || (selectedSaleIndex === -1 && cart.length > 0) ? (
-          <div className="border-t border-gray-800 bg-gray-950/70 backdrop-blur-sm shrink-0">
+          <div className="border-t border-border bg-input-background/70 backdrop-blur-sm shrink-0">
             {/* Extra Expenses (stitching etc. → sale_charges) */}
-            <div className="px-5 py-4 border-b border-gray-800">
-              <Label className="text-xs text-gray-400 uppercase font-medium mb-2 block flex items-center gap-2">
+            <div className="px-5 py-4 border-b border-border">
+              <Label className="text-xs text-muted-foreground uppercase font-medium mb-2 block flex items-center gap-2">
                 <DollarSign size={12} className="text-purple-400" />
                 Extra Expenses
                 {expensesTotal > 0 && (
@@ -1437,10 +1437,10 @@ export const POS = () => {
               </Label>
               <div className="flex gap-2 mb-2 flex-wrap">
                 <Select value={newExpenseType} onValueChange={(v) => setNewExpenseType(v as POSExtraExpense['type'])}>
-                  <SelectTrigger className="w-[110px] bg-gray-900 border-gray-700 text-white h-8 text-xs">
+                  <SelectTrigger className="w-[110px] bg-card border-border text-white h-8 text-xs">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-gray-950 border-gray-800 text-white">
+                  <SelectContent className="bg-input-background border-border text-white">
                     <SelectItem value="stitching">Stitching</SelectItem>
                     <SelectItem value="lining">Lining</SelectItem>
                     <SelectItem value="dying">Dying</SelectItem>
@@ -1451,7 +1451,7 @@ export const POS = () => {
                 <Input
                   type="number"
                   placeholder="Amount"
-                  className="bg-gray-900 border-gray-700 text-white h-8 w-[90px] text-xs"
+                  className="bg-card border-border text-white h-8 w-[90px] text-xs"
                   value={newExpenseAmount > 0 ? newExpenseAmount : ''}
                   onChange={(e) => setNewExpenseAmount(parseFloat(e.target.value) || 0)}
                 />
@@ -1462,11 +1462,11 @@ export const POS = () => {
               {extraExpenses.length > 0 && (
                 <div className="space-y-1">
                   {extraExpenses.map((exp) => (
-                    <div key={exp.id} className="flex justify-between items-center text-xs bg-gray-900/80 rounded px-2 py-1.5 border border-gray-800">
-                      <span className="text-gray-300 capitalize">{exp.type}</span>
+                    <div key={exp.id} className="flex justify-between items-center text-xs bg-card rounded px-2 py-1.5 border border-border">
+                      <span className="text-muted-foreground capitalize">{exp.type}</span>
                       <div className="flex items-center gap-2">
-                        <span className="text-white">{formatCurrency(exp.amount)}</span>
-                        <button type="button" onClick={() => removeExtraExpense(exp.id)} className="text-gray-500 hover:text-red-400">
+                        <span className="text-foreground">{formatCurrency(exp.amount)}</span>
+                        <button type="button" onClick={() => removeExtraExpense(exp.id)} className="text-muted-foreground hover:text-red-400">
                           <X size={12} />
                         </button>
                       </div>
@@ -1477,15 +1477,15 @@ export const POS = () => {
             </div>
 
             {/* Discount Section */}
-            <div className="px-5 py-4 border-b border-gray-800">
-              <Label className="text-xs text-gray-400 uppercase font-medium mb-2 block">Discount</Label>
+            <div className="px-5 py-4 border-b border-border">
+              <Label className="text-xs text-muted-foreground uppercase font-medium mb-2 block">Discount</Label>
               <div className="flex gap-2">
-                <div className="flex bg-gray-900 rounded-lg border border-gray-700 p-1">
+                <div className="flex bg-card rounded-lg border border-border p-1">
                   <button
                     onClick={() => setDiscountType('percentage')}
                     className={cn(
                       "px-3 py-1.5 rounded text-xs font-medium transition-all",
-                      discountType === 'percentage' ? "bg-blue-600 text-white" : "text-gray-400 hover:text-white"
+                      discountType === 'percentage' ? "bg-blue-600 text-white" : "text-muted-foreground hover:text-foreground"
                     )}
                   >
                     <Percent size={12} className="inline mr-1" />%
@@ -1494,49 +1494,49 @@ export const POS = () => {
                     onClick={() => setDiscountType('amount')}
                     className={cn(
                       "px-3 py-1.5 rounded text-xs font-medium transition-all",
-                      discountType === 'amount' ? "bg-blue-600 text-white" : "text-gray-400 hover:text-white"
+                      discountType === 'amount' ? "bg-blue-600 text-white" : "text-muted-foreground hover:text-foreground"
                     )}
                   >
                     <DollarSign size={12} className="inline mr-1" />{currencySymbol}
                   </button>
                 </div>
                 <div className="flex-1 relative">
-                  {discountType === 'percentage' ? <Percent size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" /> : <DollarSign size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />}
+                  {discountType === 'percentage' ? <Percent size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /> : <DollarSign size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />}
                   <Input
                     type="number"
                     placeholder={discountType === 'percentage' ? "0" : "0.00"}
                     value={discountValue}
                     onChange={(e) => setDiscountValue(e.target.value)}
-                    className="bg-gray-900 border-gray-700 text-white h-9 pl-8 pr-3"
+                    className="bg-card border-border text-white h-9 pl-8 pr-3"
                   />
                 </div>
               </div>
               {discountAmount > 0 && (
-                <p className="text-xs text-green-400 mt-2">Discount applied: -{formatCurrency(discountAmount)}{discountType === 'percentage' && ` (${discountValue}%)`}</p>
+                <p className="text-xs text-[var(--erp-money-positive)] mt-2">Discount applied: -{formatCurrency(discountAmount)}{discountType === 'percentage' && ` (${discountValue}%)`}</p>
               )}
             </div>
 
             {/* Totals (no automatic tax; same as standard Sale module) */}
-            <div className="px-5 py-4 space-y-2 border-b border-gray-800">
-              <div className="flex justify-between text-sm"><span className="text-gray-400">Subtotal</span><span className="text-white font-medium">{formatCurrency(subtotal)}</span></div>
-              {discountAmount > 0 && <div className="flex justify-between text-sm"><span className="text-gray-400">Discount</span><span className="text-green-400 font-medium">-{formatCurrency(discountAmount)}</span></div>}
-              {expensesTotal > 0 && <div className="flex justify-between text-sm"><span className="text-gray-400">Extra expenses</span><span className="text-purple-300 font-medium">{formatCurrency(expensesTotal)}</span></div>}
-              <div className="flex justify-between items-center pt-2 border-t border-gray-700">
-                <span className="text-base font-semibold text-white">Total</span>
+            <div className="px-5 py-4 space-y-2 border-b border-border">
+              <div className="flex justify-between text-sm"><span className="text-muted-foreground">Subtotal</span><span className="text-white font-medium">{formatCurrency(subtotal)}</span></div>
+              {discountAmount > 0 && <div className="flex justify-between text-sm"><span className="text-muted-foreground">Discount</span><span className="text-[var(--erp-money-positive)] font-medium">-{formatCurrency(discountAmount)}</span></div>}
+              {expensesTotal > 0 && <div className="flex justify-between text-sm"><span className="text-muted-foreground">Extra expenses</span><span className="text-purple-300 font-medium">{formatCurrency(expensesTotal)}</span></div>}
+              <div className="flex justify-between items-center pt-2 border-t border-border">
+                <span className="text-base font-semibold text-foreground">Total</span>
                 <span className="text-2xl font-bold text-blue-400">{formatCurrency(total)}</span>
               </div>
             </div>
 
             {/* Amount Difference + Editable Payment – only in EDIT MODE (view mode = hidden) */}
             {editMode && viewingSale && (
-              <div className="px-5 py-3 border-b border-gray-800 bg-amber-900/10 border-amber-800/30 rounded-lg mx-2 mb-2">
+              <div className="px-5 py-3 border-b border-border bg-amber-900/10 border-amber-800/30 rounded-lg mx-2 mb-2">
                 <p className="text-xs text-amber-400/90 font-semibold uppercase mb-2">Amount difference</p>
                 <div className="space-y-1.5 text-sm mb-3">
-                  <div className="flex justify-between text-gray-400"><span>Old total</span><span>{formatCurrency(viewingSale.total ?? 0)}</span></div>
+                  <div className="flex justify-between text-muted-foreground"><span>Old total</span><span>{formatCurrency(viewingSale.total ?? 0)}</span></div>
                   <div className="flex justify-between text-white"><span>New total</span><span>{formatCurrency(total)}</span></div>
                   <div className={cn(
                     "flex justify-between font-semibold pt-1.5 border-t border-amber-800/40",
-                    total - (viewingSale.total ?? 0) >= 0 ? "text-green-400" : "text-red-400"
+                    total - (viewingSale.total ?? 0) >= 0 ? "text-[var(--erp-money-positive)]" : "text-red-400"
                   )}>
                     <span>Difference</span>
                     <span>{total - (viewingSale.total ?? 0) >= 0 ? '+' : ''}{(total - (viewingSale.total ?? 0)).toFixed(2)}</span>
@@ -1545,14 +1545,14 @@ export const POS = () => {
                 <p className="text-xs text-amber-400/90 font-semibold uppercase mb-2">Payment received (editable)</p>
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
-                    <DollarSign size={14} className="text-gray-500 shrink-0" />
+                    <DollarSign size={14} className="text-muted-foreground shrink-0" />
                     <Input
                       type="number"
                       step="0.01"
                       min={0}
                       value={editPaidAmount}
                       onChange={(e) => setEditPaidAmount(parseFloat(e.target.value) || 0)}
-                      className="bg-gray-900 border-gray-700 text-white h-9 flex-1"
+                      className="bg-card border-border text-white h-9 flex-1"
                       placeholder="Amount received"
                     />
                   </div>
@@ -1561,7 +1561,7 @@ export const POS = () => {
                       type="button"
                       variant="outline"
                       size="sm"
-                      className={cn("flex-1 h-8 text-xs", editPaymentMethod === 'Cash' ? "bg-green-900/40 border-green-700 text-green-300" : "border-gray-600 text-gray-400")}
+                      className={cn("flex-1 h-8 text-xs", editPaymentMethod === 'Cash' ? "bg-green-900/40 border-green-700 text-green-300" : "border-gray-600 text-muted-foreground")}
                       onClick={() => setEditPaymentMethod('Cash')}
                     >
                       <Banknote size={12} className="mr-1" /> Cash
@@ -1570,15 +1570,15 @@ export const POS = () => {
                       type="button"
                       variant="outline"
                       size="sm"
-                      className={cn("flex-1 h-8 text-xs", editPaymentMethod === 'Card' ? "bg-blue-900/40 border-blue-700 text-blue-300" : "border-gray-600 text-gray-400")}
+                      className={cn("flex-1 h-8 text-xs", editPaymentMethod === 'Card' ? "bg-blue-900/40 border-blue-700 text-blue-300" : "border-gray-600 text-muted-foreground")}
                       onClick={() => setEditPaymentMethod('Card')}
                     >
                       <CreditCard size={12} className="mr-1" /> Card
                     </Button>
                   </div>
                   <div className="flex justify-between text-sm pt-1 border-t border-amber-800/40">
-                    <span className="text-gray-400">Due</span>
-                    <span className={cn(Math.max(0, total - editPaidAmount) > 0 ? "text-amber-400 font-medium" : "text-green-400")}>
+                    <span className="text-muted-foreground">Due</span>
+                    <span className={cn(Math.max(0, total - editPaidAmount) > 0 ? "text-amber-400 font-medium" : "text-[var(--erp-money-positive)]")}>
                       {formatCurrency(Math.max(0, total - editPaidAmount))}
                     </span>
                   </div>
@@ -1598,7 +1598,7 @@ export const POS = () => {
                   </Button>
                   <Button
                     variant="outline"
-                    className="border-gray-600 text-gray-300 hover:bg-gray-800 h-12 rounded-xl"
+                    className="border-gray-600 text-muted-foreground hover:bg-muted h-12 rounded-xl"
                     onClick={exitEditMode}
                   >
                     Cancel
@@ -1631,10 +1631,10 @@ export const POS = () => {
       {/* Variation selection modal */}
       {variationModalProduct && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setVariationModalProduct(null)}>
-          <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-xl max-w-md w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
-            <div className="px-5 py-4 border-b border-gray-700">
+          <div className="bg-card border border-border rounded-xl shadow-xl max-w-md w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-border">
               <h3 className="font-bold text-white">Select variation</h3>
-              <p className="text-sm text-gray-400 mt-0.5">{variationModalProduct.name}</p>
+              <p className="text-sm text-muted-foreground mt-0.5">{variationModalProduct.name}</p>
             </div>
             <div className="overflow-y-auto p-4 space-y-2">
               {variationModalProduct.variations?.map((v) => {
@@ -1648,22 +1648,22 @@ export const POS = () => {
                     onClick={() => addToCart(variationModalProduct, v)}
                     className={cn(
                       "w-full flex items-center justify-between p-3 rounded-xl border text-left transition-all",
-                      disabled ? "opacity-50 cursor-not-allowed border-gray-700 bg-gray-800/50" : "border-gray-700 hover:border-blue-500 bg-gray-800/50 hover:bg-gray-800"
+                      disabled ? "opacity-50 cursor-not-allowed border-border bg-muted/50" : "border-border hover:border-blue-500 bg-muted/50 hover:bg-muted"
                     )}
                   >
                     <div>
-                      <span className="font-medium text-white">{v.name || v.sku || 'Variation'}</span>
-                      {v.sku && <span className="text-xs text-gray-500 ml-2">{v.sku}</span>}
+                      <span className="font-medium text-foreground">{v.name || v.sku || 'Variation'}</span>
+                      {v.sku && <span className="text-xs text-muted-foreground ml-2">{v.sku}</span>}
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="text-xs text-gray-400">Stock: {stock}</span>
+                      <span className="text-xs text-muted-foreground">Stock: {stock}</span>
                       <span className="font-semibold text-blue-400">{formatCurrency(isWholesale ? (v.wholesale_price ?? 0) : (v.retail_price ?? 0))}</span>
                     </div>
                   </button>
                 );
               })}
             </div>
-            <div className="px-5 py-3 border-t border-gray-700">
+            <div className="px-5 py-3 border-t border-border">
               <Button variant="outline" className="w-full border-gray-600" onClick={() => setVariationModalProduct(null)}>Cancel</Button>
             </div>
           </div>

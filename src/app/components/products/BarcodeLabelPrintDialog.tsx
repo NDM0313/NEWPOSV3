@@ -219,46 +219,46 @@ export function BarcodeLabelPrintDialog({
           'p-0 gap-0 flex flex-col overflow-hidden',
           'w-[min(96vw,1400px)] max-w-[96vw] sm:max-w-[96vw]',
           'h-[min(92vh,920px)] max-h-[92vh] min-h-[min(720px,85vh)]',
-          'bg-gray-900 text-white border-gray-700'
+          'bg-card text-foreground border-border'
         )}
       >
-        <DialogHeader className="p-4 border-b border-gray-800 shrink-0 text-left">
+        <DialogHeader className="p-4 border-b border-border shrink-0 text-left">
           <DialogTitle className="flex items-center gap-2 text-lg">
             <BarcodeIcon className="text-blue-500 shrink-0" size={22} />
             <span className="truncate">{title}</span>
           </DialogTitle>
-          <p className="text-xs text-gray-500 mt-0.5">
+          <p className="text-xs text-muted-foreground mt-0.5">
             {totalLabels} label{totalLabels === 1 ? '' : 's'} · {selectedRows.length} product
             {selectedRows.length === 1 ? '' : 's'} · A4 print
           </p>
-          <p className="text-xs text-gray-400">Configure labels and preview before printing</p>
+          <p className="text-xs text-muted-foreground">Configure labels and preview before printing</p>
         </DialogHeader>
 
         <div className="flex flex-1 min-h-0 flex-col lg:flex-row overflow-hidden">
           {/* Products */}
-          <div className="flex-1 min-w-0 flex flex-col border-b lg:border-b-0 lg:border-r border-gray-800 min-h-[240px] lg:min-h-0">
-            <div className="px-4 py-3 border-b border-gray-800 shrink-0 space-y-2">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Products to print</p>
+          <div className="flex-1 min-w-0 flex flex-col border-b lg:border-b-0 lg:border-r border-border min-h-[240px] lg:min-h-0">
+            <div className="px-4 py-3 border-b border-border shrink-0 space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Products to print</p>
               <div className="relative">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   value={productFilter}
                   onChange={(e) => setProductFilter(e.target.value)}
                   placeholder="Filter by name or SKU…"
-                  className="pl-9 h-9 bg-gray-950 border-gray-700 text-white text-sm"
+                  className="pl-9 h-9 bg-input-background border-border text-foreground text-sm"
                 />
               </div>
               <div className="flex gap-2 text-xs">
                 <button type="button" onClick={() => toggleAll(true)} className="text-blue-400 font-medium">
                   Select all
                 </button>
-                <span className="text-gray-600">|</span>
-                <button type="button" onClick={() => toggleAll(false)} className="text-gray-400">
+                <span className="text-muted-foreground">|</span>
+                <button type="button" onClick={() => toggleAll(false)} className="text-muted-foreground">
                   Clear
                 </button>
               </div>
             </div>
-            <div className="hidden sm:grid grid-cols-[auto_1fr_auto_auto] gap-2 px-4 py-2 text-[10px] uppercase tracking-wide text-gray-500 border-b border-gray-800 shrink-0">
+            <div className="hidden sm:grid grid-cols-[auto_1fr_auto_auto] gap-2 px-4 py-2 text-[10px] uppercase tracking-wide text-muted-foreground border-b border-border shrink-0">
               <span />
               <span>Product</span>
               <span className="text-center">Labels</span>
@@ -266,7 +266,7 @@ export function BarcodeLabelPrintDialog({
             </div>
             <div className="flex-1 overflow-y-auto p-3 space-y-2 min-h-0">
               {filteredRows.length === 0 ? (
-                <p className="text-sm text-gray-500 text-center py-8">No products match filter</p>
+                <p className="text-sm text-muted-foreground text-center py-8">No products match filter</p>
               ) : (
                 filteredRows.map((row) => {
                   const code = (row.barcode || row.sku || '').trim();
@@ -276,7 +276,7 @@ export function BarcodeLabelPrintDialog({
                       key={row.lineKey}
                       className={cn(
                         'rounded-lg border p-3',
-                        noCode ? 'border-red-500/40 bg-red-500/5' : 'border-gray-700 bg-gray-800/50',
+                        noCode ? 'border-red-500/40 bg-red-500/5' : 'border-border bg-muted/50',
                         previewLineKey === row.lineKey && 'ring-1 ring-blue-500/50'
                       )}
                     >
@@ -291,7 +291,7 @@ export function BarcodeLabelPrintDialog({
                           className="flex-1 min-w-0 text-left"
                           onClick={() => setPreviewLineKey(row.lineKey)}
                         >
-                          <p className="text-sm font-medium text-white truncate">{row.productName}</p>
+                          <p className="text-sm font-medium text-foreground truncate">{row.productName}</p>
                           {row.variationName && (
                             <p className="text-[10px] text-purple-400 truncate">{row.variationName}</p>
                           )}
@@ -318,7 +318,7 @@ export function BarcodeLabelPrintDialog({
                                 labelCount: Math.max(1, Math.min(500, parseInt(e.target.value, 10) || 1)),
                               })
                             }
-                            className="w-11 h-8 text-center rounded bg-gray-950 border border-gray-700 text-white text-sm"
+                            className="w-11 h-8 text-center rounded bg-input-background border border-border text-foreground text-sm"
                           />
                           <Button
                             type="button"
@@ -332,11 +332,11 @@ export function BarcodeLabelPrintDialog({
                             <Plus size={14} />
                           </Button>
                         </div>
-                        <p className="hidden sm:block text-xs text-gray-500 font-mono w-24 truncate shrink-0">
+                        <p className="hidden sm:block text-xs text-muted-foreground font-mono w-24 truncate shrink-0">
                           {code || '—'}
                         </p>
                       </div>
-                      <p className="sm:hidden text-xs text-gray-500 font-mono mt-1 truncate">{code || 'No SKU'}</p>
+                      <p className="sm:hidden text-xs text-muted-foreground font-mono mt-1 truncate">{code || 'No SKU'}</p>
                     </div>
                   );
                 })
@@ -345,9 +345,9 @@ export function BarcodeLabelPrintDialog({
           </div>
 
           {/* Settings */}
-          <div className="w-full lg:w-80 shrink-0 p-4 space-y-4 overflow-y-auto border-b lg:border-b-0 lg:border-r border-gray-800 bg-gray-950/40 max-h-[50vh] lg:max-h-none">
-            <div className="rounded-xl border border-gray-800 bg-gray-900/60 p-4 space-y-3">
-              <p className="text-xs text-gray-500 uppercase tracking-wide">On each label</p>
+          <div className="w-full lg:w-80 shrink-0 p-4 space-y-4 overflow-y-auto border-b lg:border-b-0 lg:border-r border-border bg-input-background/40 max-h-[50vh] lg:max-h-none">
+            <div className="rounded-xl border border-border bg-muted/60 p-4 space-y-3">
+              <p className="text-xs text-muted-foreground uppercase tracking-wide">On each label</p>
               <BarcodeLabelContentFields
                 idPrefix="dlg"
                 options={fieldOptions}
@@ -363,8 +363,8 @@ export function BarcodeLabelPrintDialog({
                 branchName={branchName}
               />
             </div>
-            <div className="rounded-xl border border-gray-800 bg-gray-900/60 p-4 space-y-3">
-              <p className="text-xs text-gray-500 uppercase tracking-wide">Sheet layout</p>
+            <div className="rounded-xl border border-border bg-muted/60 p-4 space-y-3">
+              <p className="text-xs text-muted-foreground uppercase tracking-wide">Sheet layout</p>
               <BarcodeLabelSheetLayoutFields
                 presetId={presetId}
                 onPresetChange={setPresetId}
@@ -391,15 +391,15 @@ export function BarcodeLabelPrintDialog({
           </div>
 
           {/* Preview */}
-          <div className="w-full lg:w-[360px] shrink-0 p-4 space-y-4 overflow-y-auto bg-gray-950/60 lg:sticky lg:top-0 lg:self-start max-h-[50vh] lg:max-h-full">
+          <div className="w-full lg:w-[360px] shrink-0 p-4 space-y-4 overflow-y-auto bg-input-background/60 lg:sticky lg:top-0 lg:self-start max-h-[50vh] lg:max-h-full">
             <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Label preview</p>
-              <p className="text-[10px] text-gray-500 mb-3">Updates as you change options</p>
+              <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Label preview</p>
+              <p className="text-[10px] text-muted-foreground mb-3">Updates as you change options</p>
               {printablePreviewLines.length > 1 && (
                 <select
                   value={previewLineKey ?? ''}
                   onChange={(e) => setPreviewLineKey(e.target.value)}
-                  className="w-full mb-3 h-9 rounded bg-gray-950 border border-gray-700 text-white text-sm px-2"
+                  className="w-full mb-3 h-9 rounded bg-input-background border border-border text-foreground text-sm px-2"
                 >
                   {printablePreviewLines.map((r) => (
                     <option key={r.lineKey} value={r.lineKey}>
@@ -418,7 +418,7 @@ export function BarcodeLabelPrintDialog({
               />
             </div>
             <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Sheet preview</p>
+              <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">Sheet preview</p>
               <A4SheetMiniPreview
                 totalLabels={totalLabels}
                 maxLabelsPerSheet={maxLabelsPerSheet}
@@ -434,8 +434,8 @@ export function BarcodeLabelPrintDialog({
           </div>
         </div>
 
-        <DialogFooter className="p-4 border-t border-gray-800 shrink-0 gap-2 flex-wrap sm:flex-nowrap">
-          <Button variant="ghost" onClick={onClose} disabled={busy} className="text-gray-400">
+        <DialogFooter className="p-4 border-t border-border shrink-0 gap-2 flex-wrap sm:flex-nowrap">
+          <Button variant="ghost" onClick={onClose} disabled={busy} className="text-muted-foreground">
             Cancel
           </Button>
           <Button

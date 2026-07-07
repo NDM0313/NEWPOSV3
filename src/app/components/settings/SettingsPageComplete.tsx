@@ -115,18 +115,18 @@ export const SettingsPageComplete = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-start border-b border-gray-800 pb-4">
+      <div className="flex justify-between items-start border-b border-border pb-4">
         <div>
-          <h2 className="text-3xl font-bold text-white tracking-tight flex items-center gap-3">
+          <h2 className="text-3xl font-bold text-foreground tracking-tight flex items-center gap-3">
             <SettingsIcon size={32} className="text-blue-500" />
             System Settings
           </h2>
-          <p className="text-gray-400 mt-1">Configure all aspects of your ERP system</p>
+          <p className="text-muted-foreground mt-1">Configure all aspects of your ERP system</p>
         </div>
         
         <Button 
           onClick={handleSave}
-          className="bg-green-600 hover:bg-green-500 text-white gap-2"
+          className="bg-green-600 hover:bg-green-500 text-foreground gap-2"
           disabled={!hasUnsavedChanges}
         >
           <Save size={16} />
@@ -144,20 +144,20 @@ export const SettingsPageComplete = () => {
               "p-4 rounded-xl border-2 transition-all text-left",
               activeTab === tab.id
                 ? "border-blue-500 bg-blue-500/10"
-                : "border-gray-800 bg-gray-900/50 hover:bg-gray-800/50 hover:border-gray-700"
+                : "border-border bg-muted/40 hover:bg-muted/50 hover:border-border"
             )}
           >
             <div className="flex items-center gap-3">
               <div className={cn(
                 "p-2 rounded-lg",
-                activeTab === tab.id ? "bg-blue-500/20" : "bg-gray-800"
+                activeTab === tab.id ? "bg-blue-500/20" : "bg-muted"
               )}>
-                <tab.icon size={20} className={activeTab === tab.id ? "text-blue-400" : "text-gray-400"} />
+                <tab.icon size={20} className={activeTab === tab.id ? "text-blue-400" : "text-muted-foreground"} />
               </div>
               <div>
                 <p className={cn(
                   "font-medium text-sm",
-                  activeTab === tab.id ? "text-white" : "text-gray-400"
+                  activeTab === tab.id ? "text-foreground" : "text-muted-foreground"
                 )}>
                   {tab.label}
                 </p>
@@ -168,7 +168,7 @@ export const SettingsPageComplete = () => {
       </div>
 
       {/* Tab Content Container */}
-      <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-8">
+      <div className="bg-card border border-border rounded-xl p-8">
         
         {/* COMPANY INFO TAB */}
         {activeTab === 'company' && (
@@ -178,27 +178,27 @@ export const SettingsPageComplete = () => {
                 <Building2 className="text-blue-500" size={24} />
               </div>
               <div>
-                <h3 className="text-xl font-bold text-white">Company Information</h3>
-                <p className="text-sm text-gray-400">Basic business details and contact information</p>
+                <h3 className="text-xl font-bold text-foreground">Company Information</h3>
+                <p className="text-sm text-muted-foreground">Basic business details and contact information</p>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-6">
               <div>
-                <Label className="text-gray-300 mb-2 block">Business Name</Label>
+                <Label className="text-muted-foreground mb-2 block">Business Name</Label>
                 <Input
                   value={companyForm.businessName}
                   onChange={(e) => {
                     setCompanyForm({ ...companyForm, businessName: e.target.value });
                     setHasUnsavedChanges(true);
                   }}
-                  className="bg-gray-950 border-gray-700 text-white"
+                  className="bg-input-background border-border text-foreground"
                   placeholder="Din Collection"
                 />
               </div>
 
               <div>
-                <Label className="text-gray-300 mb-2 block">Email</Label>
+                <Label className="text-muted-foreground mb-2 block">Email</Label>
                 <Input
                   type="email"
                   value={companyForm.businessEmail}
@@ -206,52 +206,52 @@ export const SettingsPageComplete = () => {
                     setCompanyForm({ ...companyForm, businessEmail: e.target.value });
                     setHasUnsavedChanges(true);
                   }}
-                  className="bg-gray-950 border-gray-700 text-white"
+                  className="bg-input-background border-border text-foreground"
                   placeholder="contact@dincollection.com"
                 />
               </div>
 
               <div>
-                <Label className="text-gray-300 mb-2 block">Phone</Label>
+                <Label className="text-muted-foreground mb-2 block">Phone</Label>
                 <Input
                   value={companyForm.businessPhone}
                   onChange={(e) => {
                     setCompanyForm({ ...companyForm, businessPhone: e.target.value });
                     setHasUnsavedChanges(true);
                   }}
-                  className="bg-gray-950 border-gray-700 text-white"
+                  className="bg-input-background border-border text-foreground"
                   placeholder="+92 300 1234567"
                 />
               </div>
 
               <div>
-                <Label className="text-gray-300 mb-2 block">Tax ID / NTN</Label>
+                <Label className="text-muted-foreground mb-2 block">Tax ID / NTN</Label>
                 <Input
                   value={companyForm.taxId}
                   onChange={(e) => {
                     setCompanyForm({ ...companyForm, taxId: e.target.value });
                     setHasUnsavedChanges(true);
                   }}
-                  className="bg-gray-950 border-gray-700 text-white"
+                  className="bg-input-background border-border text-foreground"
                   placeholder="TAX-123456"
                 />
               </div>
 
               <div className="col-span-2">
-                <Label className="text-gray-300 mb-2 block">Business Address</Label>
+                <Label className="text-muted-foreground mb-2 block">Business Address</Label>
                 <Input
                   value={companyForm.businessAddress}
                   onChange={(e) => {
                     setCompanyForm({ ...companyForm, businessAddress: e.target.value });
                     setHasUnsavedChanges(true);
                   }}
-                  className="bg-gray-950 border-gray-700 text-white"
+                  className="bg-input-background border-border text-foreground"
                   placeholder="Main Branch, Lahore, Pakistan"
                 />
               </div>
 
               <div>
-                <Label className="text-gray-300 mb-2 block">Default Currency</Label>
+                <Label className="text-muted-foreground mb-2 block">Default Currency</Label>
                 <Select 
                   value={companyForm.currency} 
                   onValueChange={(val) => {
@@ -259,10 +259,10 @@ export const SettingsPageComplete = () => {
                     setHasUnsavedChanges(true);
                   }}
                 >
-                  <SelectTrigger className="bg-gray-950 border-gray-700 text-white">
+                  <SelectTrigger className="bg-input-background border-border text-foreground">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-gray-900 border-gray-700 text-white">
+                  <SelectContent className="bg-popover border-border text-popover-foreground">
                     <SelectItem value="PKR">PKR - Pakistani Rupee</SelectItem>
                     <SelectItem value="USD">USD - US Dollar</SelectItem>
                     <SelectItem value="EUR">EUR - Euro</SelectItem>
@@ -282,56 +282,56 @@ export const SettingsPageComplete = () => {
                   <MapPin className="text-green-500" size={24} />
                 </div>
                 <div>
-                  <h3 className="text-xl font-bold text-white">Branch Management</h3>
-                  <p className="text-sm text-gray-400">Manage multiple locations and their settings</p>
+                  <h3 className="text-xl font-bold text-foreground">Branch Management</h3>
+                  <p className="text-sm text-muted-foreground">Manage multiple locations and their settings</p>
                 </div>
               </div>
-              <Button className="bg-green-600 hover:bg-green-500 text-white gap-2">
+              <Button className="bg-green-600 hover:bg-green-500 text-foreground gap-2">
                 <MapPin size={16} /> Add New Branch
               </Button>
             </div>
 
             <div className="grid gap-4">
               {settings.branches.map((branch) => (
-                <div key={branch.id} className="bg-gray-950 border border-gray-800 rounded-lg p-5">
+                <div key={branch.id} className="bg-input-background border border-border rounded-lg p-5">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-2">
-                        <h4 className="text-white font-bold text-lg">{branch.branchName}</h4>
+                        <h4 className="text-foreground font-bold text-lg">{branch.branchName}</h4>
                         <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">
                           {branch.branchCode}
                         </Badge>
                         {branch.isDefault && (
-                          <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
+                          <Badge className="bg-green-500/20 text-[var(--erp-money-positive)] border-green-500/30">
                             Default
                           </Badge>
                         )}
                         {branch.isActive ? (
-                          <Badge className="bg-green-500/20 text-green-400 border-green-500/30">Active</Badge>
+                          <Badge className="bg-green-500/20 text-[var(--erp-money-positive)] border-green-500/30">Active</Badge>
                         ) : (
-                          <Badge className="bg-gray-500/20 text-gray-400 border-gray-500/30">Inactive</Badge>
+                          <Badge className="bg-gray-500/20 text-muted-foreground border-gray-500/30">Inactive</Badge>
                         )}
                       </div>
-                      <p className="text-sm text-gray-400 mb-1">{branch.address}</p>
-                      <p className="text-sm text-gray-500">{branch.phone}</p>
+                      <p className="text-sm text-muted-foreground mb-1">{branch.address}</p>
+                      <p className="text-sm text-muted-foreground">{branch.phone}</p>
                       
                       <div className="grid grid-cols-3 gap-3 mt-4">
-                        <div className="bg-gray-900 p-3 rounded-lg border border-gray-800">
-                          <p className="text-xs text-gray-500 mb-1">Cash Account</p>
-                          <p className="text-sm text-white font-medium">{branch.cashAccount}</p>
+                        <div className="bg-card p-3 rounded-lg border border-border">
+                          <p className="text-xs text-muted-foreground mb-1">Cash Account</p>
+                          <p className="text-sm text-foreground font-medium">{branch.cashAccount}</p>
                         </div>
-                        <div className="bg-gray-900 p-3 rounded-lg border border-gray-800">
-                          <p className="text-xs text-gray-500 mb-1">Bank Account</p>
-                          <p className="text-sm text-white font-medium">{branch.bankAccount}</p>
+                        <div className="bg-card p-3 rounded-lg border border-border">
+                          <p className="text-xs text-muted-foreground mb-1">Bank Account</p>
+                          <p className="text-sm text-foreground font-medium">{branch.bankAccount}</p>
                         </div>
-                        <div className="bg-gray-900 p-3 rounded-lg border border-gray-800">
-                          <p className="text-xs text-gray-500 mb-1">POS Drawer</p>
-                          <p className="text-sm text-white font-medium">{branch.posCashDrawer}</p>
+                        <div className="bg-card p-3 rounded-lg border border-border">
+                          <p className="text-xs text-muted-foreground mb-1">POS Drawer</p>
+                          <p className="text-sm text-foreground font-medium">{branch.posCashDrawer}</p>
                         </div>
                       </div>
                     </div>
                     
-                    <Button variant="outline" className="border-gray-700 text-gray-300">
+                    <Button variant="outline" className="border-border text-muted-foreground">
                       Edit
                     </Button>
                   </div>
@@ -349,39 +349,39 @@ export const SettingsPageComplete = () => {
                 <Store className="text-purple-500" size={24} />
               </div>
               <div>
-                <h3 className="text-xl font-bold text-white">POS Settings</h3>
-                <p className="text-sm text-gray-400">Configure point of sale behavior and defaults</p>
+                <h3 className="text-xl font-bold text-foreground">POS Settings</h3>
+                <p className="text-sm text-muted-foreground">Configure point of sale behavior and defaults</p>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-6">
               <div>
-                <Label className="text-gray-300 mb-2 block">Default Cash Account</Label>
+                <Label className="text-muted-foreground mb-2 block">Default Cash Account</Label>
                 <Input
                   value={posForm.defaultCashAccount}
                   onChange={(e) => {
                     setPOSForm({ ...posForm, defaultCashAccount: e.target.value });
                     setHasUnsavedChanges(true);
                   }}
-                  className="bg-gray-950 border-gray-700 text-white"
+                  className="bg-input-background border-border text-foreground"
                 />
               </div>
 
               <div>
-                <Label className="text-gray-300 mb-2 block">Invoice Prefix</Label>
+                <Label className="text-muted-foreground mb-2 block">Invoice Prefix</Label>
                 <Input
                   value={posForm.invoicePrefix}
                   onChange={(e) => {
                     setPOSForm({ ...posForm, invoicePrefix: e.target.value });
                     setHasUnsavedChanges(true);
                   }}
-                  className="bg-gray-950 border-gray-700 text-white"
+                  className="bg-input-background border-border text-foreground"
                   placeholder="INV-"
                 />
               </div>
 
               <div>
-                <Label className="text-gray-300 mb-2 block">Default Tax Rate (%)</Label>
+                <Label className="text-muted-foreground mb-2 block">Default Tax Rate (%)</Label>
                 <Input
                   type="number"
                   value={posForm.defaultTaxRate}
@@ -389,12 +389,12 @@ export const SettingsPageComplete = () => {
                     setPOSForm({ ...posForm, defaultTaxRate: Number(e.target.value) });
                     setHasUnsavedChanges(true);
                   }}
-                  className="bg-gray-950 border-gray-700 text-white"
+                  className="bg-input-background border-border text-foreground"
                 />
               </div>
 
               <div>
-                <Label className="text-gray-300 mb-2 block">Max Discount (%)</Label>
+                <Label className="text-muted-foreground mb-2 block">Max Discount (%)</Label>
                 <Input
                   type="number"
                   value={posForm.maxDiscountPercent}
@@ -402,18 +402,18 @@ export const SettingsPageComplete = () => {
                     setPOSForm({ ...posForm, maxDiscountPercent: Number(e.target.value) });
                     setHasUnsavedChanges(true);
                   }}
-                  className="bg-gray-950 border-gray-700 text-white"
+                  className="bg-input-background border-border text-foreground"
                 />
               </div>
             </div>
 
-            <div className="space-y-4 pt-4 border-t border-gray-800">
-              <h4 className="text-white font-semibold mb-3">POS Behavior</h4>
+            <div className="space-y-4 pt-4 border-t border-border">
+              <h4 className="text-foreground font-semibold mb-3">POS Behavior</h4>
               
-              <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+              <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                 <div>
-                  <p className="text-white font-medium">Credit Sale Allowed</p>
-                  <p className="text-sm text-gray-400">Allow sales on credit without immediate payment</p>
+                  <p className="text-foreground font-medium">Credit Sale Allowed</p>
+                  <p className="text-sm text-muted-foreground">Allow sales on credit without immediate payment</p>
                 </div>
                 <Switch
                   checked={posForm.creditSaleAllowed}
@@ -424,10 +424,10 @@ export const SettingsPageComplete = () => {
                 />
               </div>
 
-              <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+              <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                 <div>
-                  <p className="text-white font-medium">Auto Print Receipt</p>
-                  <p className="text-sm text-gray-400">Automatically print receipt after sale</p>
+                  <p className="text-foreground font-medium">Auto Print Receipt</p>
+                  <p className="text-sm text-muted-foreground">Automatically print receipt after sale</p>
                 </div>
                 <Switch
                   checked={posForm.autoPrintReceipt}
@@ -438,10 +438,10 @@ export const SettingsPageComplete = () => {
                 />
               </div>
 
-              <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+              <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                 <div>
-                  <p className="text-white font-medium">Negative Stock Allowed</p>
-                  <p className="text-sm text-gray-400">Allow selling items with zero or negative stock</p>
+                  <p className="text-foreground font-medium">Negative Stock Allowed</p>
+                  <p className="text-sm text-muted-foreground">Allow selling items with zero or negative stock</p>
                 </div>
                 <Switch
                   checked={posForm.negativeStockAllowed}
@@ -452,10 +452,10 @@ export const SettingsPageComplete = () => {
                 />
               </div>
 
-              <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+              <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                 <div>
-                  <p className="text-white font-medium">Allow Discount</p>
-                  <p className="text-sm text-gray-400">Enable discount option in POS</p>
+                  <p className="text-foreground font-medium">Allow Discount</p>
+                  <p className="text-sm text-muted-foreground">Enable discount option in POS</p>
                 </div>
                 <Switch
                   checked={posForm.allowDiscount}
@@ -477,26 +477,26 @@ export const SettingsPageComplete = () => {
                 <ShoppingCart className="text-blue-500" size={24} />
               </div>
               <div>
-                <h3 className="text-xl font-bold text-white">Sales Settings</h3>
-                <p className="text-sm text-gray-400">Configure sales module behavior and defaults</p>
+                <h3 className="text-xl font-bold text-foreground">Sales Settings</h3>
+                <p className="text-sm text-muted-foreground">Configure sales module behavior and defaults</p>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-6">
               <div>
-                <Label className="text-gray-300 mb-2 block">Invoice Prefix</Label>
+                <Label className="text-muted-foreground mb-2 block">Invoice Prefix</Label>
                 <Input
                   value={salesForm.invoicePrefix}
                   onChange={(e) => {
                     setSalesForm({ ...salesForm, invoicePrefix: e.target.value });
                     setHasUnsavedChanges(true);
                   }}
-                  className="bg-gray-950 border-gray-700 text-white"
+                  className="bg-input-background border-border text-foreground"
                 />
               </div>
 
               <div>
-                <Label className="text-gray-300 mb-2 block">Default Payment Method</Label>
+                <Label className="text-muted-foreground mb-2 block">Default Payment Method</Label>
                 <Select
                   value={salesForm.defaultPaymentMethod}
                   onValueChange={(val: any) => {
@@ -504,10 +504,10 @@ export const SettingsPageComplete = () => {
                     setHasUnsavedChanges(true);
                   }}
                 >
-                  <SelectTrigger className="bg-gray-950 border-gray-700 text-white">
+                  <SelectTrigger className="bg-input-background border-border text-foreground">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-gray-900 border-gray-700 text-white">
+                  <SelectContent className="bg-popover border-border text-popover-foreground">
                     <SelectItem value="Cash">Cash</SelectItem>
                     <SelectItem value="Bank">Bank Transfer</SelectItem>
                     <SelectItem value="Mobile Wallet">Mobile Wallet</SelectItem>
@@ -516,7 +516,7 @@ export const SettingsPageComplete = () => {
               </div>
 
               <div>
-                <Label className="text-gray-300 mb-2 block">Auto Due Days</Label>
+                <Label className="text-muted-foreground mb-2 block">Auto Due Days</Label>
                 <Input
                   type="number"
                   value={salesForm.autoDueDays}
@@ -524,18 +524,18 @@ export const SettingsPageComplete = () => {
                     setSalesForm({ ...salesForm, autoDueDays: Number(e.target.value) });
                     setHasUnsavedChanges(true);
                   }}
-                  className="bg-gray-950 border-gray-700 text-white"
+                  className="bg-input-background border-border text-foreground"
                 />
               </div>
             </div>
 
-            <div className="space-y-4 pt-4 border-t border-gray-800">
-              <h4 className="text-white font-semibold mb-3">Sales Behavior</h4>
+            <div className="space-y-4 pt-4 border-t border-border">
+              <h4 className="text-foreground font-semibold mb-3">Sales Behavior</h4>
               
-              <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+              <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                 <div>
-                  <p className="text-white font-medium">Partial Payment Allowed</p>
-                  <p className="text-sm text-gray-400">Allow customers to pay in installments</p>
+                  <p className="text-foreground font-medium">Partial Payment Allowed</p>
+                  <p className="text-sm text-muted-foreground">Allow customers to pay in installments</p>
                 </div>
                 <Switch
                   checked={salesForm.partialPaymentAllowed}
@@ -546,10 +546,10 @@ export const SettingsPageComplete = () => {
                 />
               </div>
 
-              <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+              <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                 <div>
-                  <p className="text-white font-medium">Auto Ledger Entry</p>
-                  <p className="text-sm text-gray-400">Automatically post sales to accounting ledger</p>
+                  <p className="text-foreground font-medium">Auto Ledger Entry</p>
+                  <p className="text-sm text-muted-foreground">Automatically post sales to accounting ledger</p>
                 </div>
                 <Switch
                   checked={salesForm.autoLedgerEntry}
@@ -560,10 +560,10 @@ export const SettingsPageComplete = () => {
                 />
               </div>
 
-              <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+              <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                 <div>
-                  <p className="text-white font-medium">Allow Credit Sale</p>
-                  <p className="text-sm text-gray-400">Enable credit sales to customers</p>
+                  <p className="text-foreground font-medium">Allow Credit Sale</p>
+                  <p className="text-sm text-muted-foreground">Enable credit sales to customers</p>
                 </div>
                 <Switch
                   checked={salesForm.allowCreditSale}
@@ -574,10 +574,10 @@ export const SettingsPageComplete = () => {
                 />
               </div>
 
-              <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+              <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                 <div>
-                  <p className="text-white font-medium">Require Customer Info</p>
-                  <p className="text-sm text-gray-400">Make customer details mandatory for sales</p>
+                  <p className="text-foreground font-medium">Require Customer Info</p>
+                  <p className="text-sm text-muted-foreground">Make customer details mandatory for sales</p>
                 </div>
                 <Switch
                   checked={salesForm.requireCustomerInfo}
@@ -599,26 +599,26 @@ export const SettingsPageComplete = () => {
                 <ShoppingBag className="text-orange-500" size={24} />
               </div>
               <div>
-                <h3 className="text-xl font-bold text-white">Purchase Settings</h3>
-                <p className="text-sm text-gray-400">Configure purchase order workflow and defaults</p>
+                <h3 className="text-xl font-bold text-foreground">Purchase Settings</h3>
+                <p className="text-sm text-muted-foreground">Configure purchase order workflow and defaults</p>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-6">
               <div>
-                <Label className="text-gray-300 mb-2 block">Default Supplier Payable Account</Label>
+                <Label className="text-muted-foreground mb-2 block">Default Supplier Payable Account</Label>
                 <Input
                   value={purchaseForm.defaultSupplierPayableAccount}
                   onChange={(e) => {
                     setPurchaseForm({ ...purchaseForm, defaultSupplierPayableAccount: e.target.value });
                     setHasUnsavedChanges(true);
                   }}
-                  className="bg-gray-950 border-gray-700 text-white"
+                  className="bg-input-background border-border text-foreground"
                 />
               </div>
 
               <div>
-                <Label className="text-gray-300 mb-2 block">Default Payment Terms (Days)</Label>
+                <Label className="text-muted-foreground mb-2 block">Default Payment Terms (Days)</Label>
                 <Input
                   type="number"
                   value={purchaseForm.defaultPaymentTerms}
@@ -626,18 +626,18 @@ export const SettingsPageComplete = () => {
                     setPurchaseForm({ ...purchaseForm, defaultPaymentTerms: Number(e.target.value) });
                     setHasUnsavedChanges(true);
                   }}
-                  className="bg-gray-950 border-gray-700 text-white"
+                  className="bg-input-background border-border text-foreground"
                 />
               </div>
             </div>
 
-            <div className="space-y-4 pt-4 border-t border-gray-800">
-              <h4 className="text-white font-semibold mb-3">Purchase Workflow</h4>
+            <div className="space-y-4 pt-4 border-t border-border">
+              <h4 className="text-foreground font-semibold mb-3">Purchase Workflow</h4>
               
-              <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+              <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                 <div>
-                  <p className="text-white font-medium">Over Receive Allowed</p>
-                  <p className="text-sm text-gray-400">Allow receiving more quantity than ordered</p>
+                  <p className="text-foreground font-medium">Over Receive Allowed</p>
+                  <p className="text-sm text-muted-foreground">Allow receiving more quantity than ordered</p>
                 </div>
                 <Switch
                   checked={purchaseForm.overReceiveAllowed}
@@ -648,10 +648,10 @@ export const SettingsPageComplete = () => {
                 />
               </div>
 
-              <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+              <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                 <div>
-                  <p className="text-white font-medium">Purchase Approval Required</p>
-                  <p className="text-sm text-gray-400">Require manager approval before placing order</p>
+                  <p className="text-foreground font-medium">Purchase Approval Required</p>
+                  <p className="text-sm text-muted-foreground">Require manager approval before placing order</p>
                 </div>
                 <Switch
                   checked={purchaseForm.purchaseApprovalRequired}
@@ -662,10 +662,10 @@ export const SettingsPageComplete = () => {
                 />
               </div>
 
-              <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+              <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                 <div>
-                  <p className="text-white font-medium">GRN Required</p>
-                  <p className="text-sm text-gray-400">Require Goods Receipt Note before invoice</p>
+                  <p className="text-foreground font-medium">GRN Required</p>
+                  <p className="text-sm text-muted-foreground">Require Goods Receipt Note before invoice</p>
                 </div>
                 <Switch
                   checked={purchaseForm.grnRequired}
@@ -676,10 +676,10 @@ export const SettingsPageComplete = () => {
                 />
               </div>
 
-              <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+              <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                 <div>
-                  <p className="text-white font-medium">Auto Post to Inventory</p>
-                  <p className="text-sm text-gray-400">Automatically update stock on purchase receipt</p>
+                  <p className="text-foreground font-medium">Auto Post to Inventory</p>
+                  <p className="text-sm text-muted-foreground">Automatically update stock on purchase receipt</p>
                 </div>
                 <Switch
                   checked={purchaseForm.autoPostToInventory}
@@ -701,14 +701,14 @@ export const SettingsPageComplete = () => {
                 <Package className="text-teal-500" size={24} />
               </div>
               <div>
-                <h3 className="text-xl font-bold text-white">Inventory Settings</h3>
-                <p className="text-sm text-gray-400">Configure stock management and valuation methods</p>
+                <h3 className="text-xl font-bold text-foreground">Inventory Settings</h3>
+                <p className="text-sm text-muted-foreground">Configure stock management and valuation methods</p>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-6">
               <div>
-                <Label className="text-gray-300 mb-2 block">Low Stock Threshold</Label>
+                <Label className="text-muted-foreground mb-2 block">Low Stock Threshold</Label>
                 <Input
                   type="number"
                   value={inventoryForm.lowStockThreshold}
@@ -716,12 +716,12 @@ export const SettingsPageComplete = () => {
                     setInventoryForm({ ...inventoryForm, lowStockThreshold: Number(e.target.value) });
                     setHasUnsavedChanges(true);
                   }}
-                  className="bg-gray-950 border-gray-700 text-white"
+                  className="bg-input-background border-border text-foreground"
                 />
               </div>
 
               <div>
-                <Label className="text-gray-300 mb-2 block">Reorder Alert Days</Label>
+                <Label className="text-muted-foreground mb-2 block">Reorder Alert Days</Label>
                 <Input
                   type="number"
                   value={inventoryForm.reorderAlertDays}
@@ -729,12 +729,12 @@ export const SettingsPageComplete = () => {
                     setInventoryForm({ ...inventoryForm, reorderAlertDays: Number(e.target.value) });
                     setHasUnsavedChanges(true);
                   }}
-                  className="bg-gray-950 border-gray-700 text-white"
+                  className="bg-input-background border-border text-foreground"
                 />
               </div>
 
               <div className="col-span-2">
-                <Label className="text-gray-300 mb-2 block">Valuation Method</Label>
+                <Label className="text-muted-foreground mb-2 block">Valuation Method</Label>
                 <Select
                   value={inventoryForm.valuationMethod}
                   onValueChange={(val: any) => {
@@ -742,10 +742,10 @@ export const SettingsPageComplete = () => {
                     setHasUnsavedChanges(true);
                   }}
                 >
-                  <SelectTrigger className="bg-gray-950 border-gray-700 text-white">
+                  <SelectTrigger className="bg-input-background border-border text-foreground">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-gray-900 border-gray-700 text-white">
+                  <SelectContent className="bg-popover border-border text-popover-foreground">
                     <SelectItem value="FIFO">FIFO (First In First Out)</SelectItem>
                     <SelectItem value="LIFO">LIFO (Last In First Out)</SelectItem>
                     <SelectItem value="Weighted Average">Weighted Average</SelectItem>
@@ -754,13 +754,13 @@ export const SettingsPageComplete = () => {
               </div>
             </div>
 
-            <div className="space-y-4 pt-4 border-t border-gray-800">
-              <h4 className="text-white font-semibold mb-3">Inventory Control</h4>
+            <div className="space-y-4 pt-4 border-t border-border">
+              <h4 className="text-foreground font-semibold mb-3">Inventory Control</h4>
               
-              <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+              <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                 <div>
-                  <p className="text-white font-medium">Negative Stock Allowed</p>
-                  <p className="text-sm text-gray-400">Allow stock to go below zero</p>
+                  <p className="text-foreground font-medium">Negative Stock Allowed</p>
+                  <p className="text-sm text-muted-foreground">Allow stock to go below zero</p>
                 </div>
                 <Switch
                   checked={inventoryForm.negativeStockAllowed}
@@ -771,10 +771,10 @@ export const SettingsPageComplete = () => {
                 />
               </div>
 
-              <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+              <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                 <div>
-                  <p className="text-white font-medium">Auto Reorder Enabled</p>
-                  <p className="text-sm text-gray-400">Automatically create purchase orders when stock is low</p>
+                  <p className="text-foreground font-medium">Auto Reorder Enabled</p>
+                  <p className="text-sm text-muted-foreground">Automatically create purchase orders when stock is low</p>
                 </div>
                 <Switch
                   checked={inventoryForm.autoReorderEnabled}
@@ -785,10 +785,10 @@ export const SettingsPageComplete = () => {
                 />
               </div>
 
-              <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+              <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                 <div>
-                  <p className="text-white font-medium">Barcode Required</p>
-                  <p className="text-sm text-gray-400">Require barcode for all products</p>
+                  <p className="text-foreground font-medium">Barcode Required</p>
+                  <p className="text-sm text-muted-foreground">Require barcode for all products</p>
                 </div>
                 <Switch
                   checked={inventoryForm.barcodeRequired}
@@ -810,14 +810,14 @@ export const SettingsPageComplete = () => {
                 <Shirt className="text-pink-500" size={24} />
               </div>
               <div>
-                <h3 className="text-xl font-bold text-white">Rental Settings</h3>
-                <p className="text-sm text-gray-400">Configure rental module policies and fees</p>
+                <h3 className="text-xl font-bold text-foreground">Rental Settings</h3>
+                <p className="text-sm text-muted-foreground">Configure rental module policies and fees</p>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-6">
               <div>
-                <Label className="text-gray-300 mb-2 block">Default Late Fee Per Day (Rs)</Label>
+                <Label className="text-muted-foreground mb-2 block">Default Late Fee Per Day (Rs)</Label>
                 <Input
                   type="number"
                   value={rentalForm.defaultLateFeePerDay}
@@ -825,12 +825,12 @@ export const SettingsPageComplete = () => {
                     setRentalForm({ ...rentalForm, defaultLateFeePerDay: Number(e.target.value) });
                     setHasUnsavedChanges(true);
                   }}
-                  className="bg-gray-950 border-gray-700 text-white"
+                  className="bg-input-background border-border text-foreground"
                 />
               </div>
 
               <div>
-                <Label className="text-gray-300 mb-2 block">Grace Period (Days)</Label>
+                <Label className="text-muted-foreground mb-2 block">Grace Period (Days)</Label>
                 <Input
                   type="number"
                   value={rentalForm.gracePeriodDays}
@@ -838,12 +838,12 @@ export const SettingsPageComplete = () => {
                     setRentalForm({ ...rentalForm, gracePeriodDays: Number(e.target.value) });
                     setHasUnsavedChanges(true);
                   }}
-                  className="bg-gray-950 border-gray-700 text-white"
+                  className="bg-input-background border-border text-foreground"
                 />
               </div>
 
               <div>
-                <Label className="text-gray-300 mb-2 block">Advance Percentage (%)</Label>
+                <Label className="text-muted-foreground mb-2 block">Advance Percentage (%)</Label>
                 <Input
                   type="number"
                   value={rentalForm.advancePercentage}
@@ -851,12 +851,12 @@ export const SettingsPageComplete = () => {
                     setRentalForm({ ...rentalForm, advancePercentage: Number(e.target.value) });
                     setHasUnsavedChanges(true);
                   }}
-                  className="bg-gray-950 border-gray-700 text-white"
+                  className="bg-input-background border-border text-foreground"
                 />
               </div>
 
               <div>
-                <Label className="text-gray-300 mb-2 block">Security Deposit Amount (Rs)</Label>
+                <Label className="text-muted-foreground mb-2 block">Security Deposit Amount (Rs)</Label>
                 <Input
                   type="number"
                   value={rentalForm.securityDepositAmount}
@@ -864,18 +864,18 @@ export const SettingsPageComplete = () => {
                     setRentalForm({ ...rentalForm, securityDepositAmount: Number(e.target.value) });
                     setHasUnsavedChanges(true);
                   }}
-                  className="bg-gray-950 border-gray-700 text-white"
+                  className="bg-input-background border-border text-foreground"
                 />
               </div>
             </div>
 
-            <div className="space-y-4 pt-4 border-t border-gray-800">
-              <h4 className="text-white font-semibold mb-3">Rental Policies</h4>
+            <div className="space-y-4 pt-4 border-t border-border">
+              <h4 className="text-foreground font-semibold mb-3">Rental Policies</h4>
               
-              <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+              <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                 <div>
-                  <p className="text-white font-medium">Advance Required</p>
-                  <p className="text-sm text-gray-400">Require advance payment for rental bookings</p>
+                  <p className="text-foreground font-medium">Advance Required</p>
+                  <p className="text-sm text-muted-foreground">Require advance payment for rental bookings</p>
                 </div>
                 <Switch
                   checked={rentalForm.advanceRequired}
@@ -886,10 +886,10 @@ export const SettingsPageComplete = () => {
                 />
               </div>
 
-              <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+              <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                 <div>
-                  <p className="text-white font-medium">Security Deposit Required</p>
-                  <p className="text-sm text-gray-400">Require refundable security deposit</p>
+                  <p className="text-foreground font-medium">Security Deposit Required</p>
+                  <p className="text-sm text-muted-foreground">Require refundable security deposit</p>
                 </div>
                 <Switch
                   checked={rentalForm.securityDepositRequired}
@@ -900,10 +900,10 @@ export const SettingsPageComplete = () => {
                 />
               </div>
 
-              <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+              <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                 <div>
-                  <p className="text-white font-medium">Damage Charge Enabled</p>
-                  <p className="text-sm text-gray-400">Allow charging for damaged items</p>
+                  <p className="text-foreground font-medium">Damage Charge Enabled</p>
+                  <p className="text-sm text-muted-foreground">Allow charging for damaged items</p>
                 </div>
                 <Switch
                   checked={rentalForm.damageChargeEnabled}
@@ -914,10 +914,10 @@ export const SettingsPageComplete = () => {
                 />
               </div>
 
-              <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+              <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                 <div>
-                  <p className="text-white font-medium">Auto Extend Allowed</p>
-                  <p className="text-sm text-gray-400">Allow customers to extend rental period</p>
+                  <p className="text-foreground font-medium">Auto Extend Allowed</p>
+                  <p className="text-sm text-muted-foreground">Allow customers to extend rental period</p>
                 </div>
                 <Switch
                   checked={rentalForm.autoExtendAllowed}
@@ -939,14 +939,14 @@ export const SettingsPageComplete = () => {
                 <Calculator className="text-yellow-500" size={24} />
               </div>
               <div>
-                <h3 className="text-xl font-bold text-white">Accounting Settings</h3>
-                <p className="text-sm text-gray-400">Configure fiscal year and accounting policies</p>
+                <h3 className="text-xl font-bold text-foreground">Accounting Settings</h3>
+                <p className="text-sm text-muted-foreground">Configure fiscal year and accounting policies</p>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-6">
               <div>
-                <Label className="text-gray-300 mb-2 block">Fiscal Year Start</Label>
+                <Label className="text-muted-foreground mb-2 block">Fiscal Year Start</Label>
                 <DatePicker
                   value={accountingForm.fiscalYearStart}
                   onChange={(v) => {
@@ -957,7 +957,7 @@ export const SettingsPageComplete = () => {
               </div>
 
               <div>
-                <Label className="text-gray-300 mb-2 block">Fiscal Year End</Label>
+                <Label className="text-muted-foreground mb-2 block">Fiscal Year End</Label>
                 <DatePicker
                   value={accountingForm.fiscalYearEnd}
                   onChange={(v) => {
@@ -968,20 +968,20 @@ export const SettingsPageComplete = () => {
               </div>
 
               <div>
-                <Label className="text-gray-300 mb-2 block">Default Currency</Label>
+                <Label className="text-muted-foreground mb-2 block">Default Currency</Label>
                 <Input
                   value={accountingForm.defaultCurrency}
                   onChange={(e) => {
                     setAccountingForm({ ...accountingForm, defaultCurrency: e.target.value });
                     setHasUnsavedChanges(true);
                   }}
-                  className="bg-gray-950 border-gray-700 text-white"
+                  className="bg-input-background border-border text-foreground"
                   placeholder="PKR"
                 />
               </div>
 
               <div>
-                <Label className="text-gray-300 mb-2 block">Default Tax Rate (%)</Label>
+                <Label className="text-muted-foreground mb-2 block">Default Tax Rate (%)</Label>
                 <Input
                   type="number"
                   value={accountingForm.defaultTaxRate}
@@ -989,12 +989,12 @@ export const SettingsPageComplete = () => {
                     setAccountingForm({ ...accountingForm, defaultTaxRate: Number(e.target.value) });
                     setHasUnsavedChanges(true);
                   }}
-                  className="bg-gray-950 border-gray-700 text-white"
+                  className="bg-input-background border-border text-foreground"
                 />
               </div>
 
               <div className="col-span-2">
-                <Label className="text-gray-300 mb-2 block">Tax Calculation Method</Label>
+                <Label className="text-muted-foreground mb-2 block">Tax Calculation Method</Label>
                 <Select
                   value={accountingForm.taxCalculationMethod}
                   onValueChange={(val: any) => {
@@ -1002,10 +1002,10 @@ export const SettingsPageComplete = () => {
                     setHasUnsavedChanges(true);
                   }}
                 >
-                  <SelectTrigger className="bg-gray-950 border-gray-700 text-white">
+                  <SelectTrigger className="bg-input-background border-border text-foreground">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-gray-900 border-gray-700 text-white">
+                  <SelectContent className="bg-popover border-border text-popover-foreground">
                     <SelectItem value="Inclusive">Tax Inclusive (Price includes tax)</SelectItem>
                     <SelectItem value="Exclusive">Tax Exclusive (Tax added on top)</SelectItem>
                   </SelectContent>
@@ -1013,7 +1013,7 @@ export const SettingsPageComplete = () => {
               </div>
 
               <div className="col-span-2">
-                <Label className="text-gray-300 mb-2 block">Lock Accounting Date (Optional)</Label>
+                <Label className="text-muted-foreground mb-2 block">Lock Accounting Date (Optional)</Label>
                 <DatePicker
                   value={accountingForm.lockAccountingDate || ''}
                   onChange={(v) => {
@@ -1021,17 +1021,17 @@ export const SettingsPageComplete = () => {
                     setHasUnsavedChanges(true);
                   }}
                 />
-                <p className="text-xs text-gray-500 mt-1">No entries can be created before this date</p>
+                <p className="text-xs text-muted-foreground mt-1">No entries can be created before this date</p>
               </div>
             </div>
 
-            <div className="space-y-4 pt-4 border-t border-gray-800">
-              <h4 className="text-white font-semibold mb-3">Accounting Policies</h4>
+            <div className="space-y-4 pt-4 border-t border-border">
+              <h4 className="text-foreground font-semibold mb-3">Accounting Policies</h4>
               
-              <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+              <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                 <div>
-                  <p className="text-white font-medium">Manual Journal Enabled</p>
-                  <p className="text-sm text-gray-400">Allow creating manual journal entries</p>
+                  <p className="text-foreground font-medium">Manual Journal Enabled</p>
+                  <p className="text-sm text-muted-foreground">Allow creating manual journal entries</p>
                 </div>
                 <Switch
                   checked={accountingForm.manualJournalEnabled}
@@ -1042,10 +1042,10 @@ export const SettingsPageComplete = () => {
                 />
               </div>
 
-              <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+              <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                 <div>
-                  <p className="text-white font-medium">Multi Currency Enabled</p>
-                  <p className="text-sm text-gray-400">Enable transactions in multiple currencies</p>
+                  <p className="text-foreground font-medium">Multi Currency Enabled</p>
+                  <p className="text-sm text-muted-foreground">Enable transactions in multiple currencies</p>
                 </div>
                 <Switch
                   checked={accountingForm.multiCurrencyEnabled}
@@ -1063,7 +1063,7 @@ export const SettingsPageComplete = () => {
         {/* (These are already implemented in SettingsPageNew.tsx) */}
         
         {activeTab === 'accounts' && (
-          <div className="text-center text-gray-400 py-12">
+          <div className="text-center text-muted-foreground py-12">
             <p>Default Accounts settings (already implemented in SettingsPageNew)</p>
           </div>
         )}
@@ -1075,15 +1075,15 @@ export const SettingsPageComplete = () => {
                 <Hash className="text-cyan-500" size={24} />
               </div>
               <div>
-                <h3 className="text-xl font-bold text-white">Numbering</h3>
-                <p className="text-sm text-gray-400">Rules, sequence sync, and audit log</p>
+                <h3 className="text-xl font-bold text-foreground">Numbering</h3>
+                <p className="text-sm text-muted-foreground">Rules, sequence sync, and audit log</p>
               </div>
             </div>
-            <div className="flex flex-wrap gap-2 border-b border-gray-800 pb-4">
+            <div className="flex flex-wrap gap-2 border-b border-border pb-4">
               <Button
                 variant={numberingSubTab === 'rules' ? 'default' : 'ghost'}
                 size="sm"
-                className={numberingSubTab === 'rules' ? 'bg-cyan-600 hover:bg-cyan-500' : 'text-gray-400 hover:text-white'}
+                className={numberingSubTab === 'rules' ? 'bg-cyan-600 hover:bg-cyan-500' : 'text-muted-foreground hover:text-foreground'}
                 onClick={() => setNumberingSubTab('rules')}
               >
                 Numbering Rules
@@ -1091,7 +1091,7 @@ export const SettingsPageComplete = () => {
               <Button
                 variant={numberingSubTab === 'maintenance' ? 'default' : 'ghost'}
                 size="sm"
-                className={numberingSubTab === 'maintenance' ? 'bg-cyan-600 hover:bg-cyan-500' : 'text-gray-400 hover:text-white'}
+                className={numberingSubTab === 'maintenance' ? 'bg-cyan-600 hover:bg-cyan-500' : 'text-muted-foreground hover:text-foreground'}
                 onClick={() => setNumberingSubTab('maintenance')}
               >
                 Numbering Maintenance
@@ -1099,7 +1099,7 @@ export const SettingsPageComplete = () => {
               <Button
                 variant={numberingSubTab === 'audit' ? 'default' : 'ghost'}
                 size="sm"
-                className={numberingSubTab === 'audit' ? 'bg-cyan-600 hover:bg-cyan-500' : 'text-gray-400 hover:text-white'}
+                className={numberingSubTab === 'audit' ? 'bg-cyan-600 hover:bg-cyan-500' : 'text-muted-foreground hover:text-foreground'}
                 onClick={() => setNumberingSubTab('audit')}
               >
                 Number Audit Log
@@ -1114,13 +1114,13 @@ export const SettingsPageComplete = () => {
         {activeTab === 'couriers' && <CourierManagementPanel />}
 
         {activeTab === 'users' && (
-          <div className="text-center text-gray-400 py-12">
+          <div className="text-center text-muted-foreground py-12">
             <p>User Management (already implemented in SettingsPageNew)</p>
           </div>
         )}
 
         {activeTab === 'permissions' && (
-          <div className="text-center text-gray-400 py-12">
+          <div className="text-center text-muted-foreground py-12">
             <p>Permissions settings (already implemented in SettingsPageNew)</p>
           </div>
         )}
@@ -1132,8 +1132,8 @@ export const SettingsPageComplete = () => {
                 <ToggleLeft className="text-lime-500" size={24} />
               </div>
               <div>
-                <h3 className="text-xl font-bold text-white">Module Toggles</h3>
-                <p className="text-sm text-gray-400">Enable or disable system modules</p>
+                <h3 className="text-xl font-bold text-foreground">Module Toggles</h3>
+                <p className="text-sm text-muted-foreground">Enable or disable system modules</p>
               </div>
             </div>
 

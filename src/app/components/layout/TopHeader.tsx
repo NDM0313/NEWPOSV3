@@ -153,7 +153,7 @@ export const TopHeader = () => {
     : 'User';
 
   return (
-    <header className="h-14 md:h-16 bg-gray-900/95 backdrop-blur-md border-b border-gray-800 flex items-center justify-between px-4 md:px-6 sticky top-0 z-50 shadow-sm">
+    <header className="h-14 md:h-16 bg-sidebar/95 backdrop-blur-md border-b border-sidebar-border flex items-center justify-between px-4 md:px-6 sticky top-0 z-50 shadow-sm text-sidebar-foreground">
       {/* LEFT SECTION: Mobile Menu + Branch Selector */}
       <div className="flex items-center gap-4">
         {/* Mobile Menu Toggle - opens full nav drawer */}
@@ -246,7 +246,7 @@ export const TopHeader = () => {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button 
-              className="flex items-center gap-2 px-4 py-2 h-9 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-semibold rounded-xl shadow-lg shadow-blue-900/30 transition-all border-0"
+              className="flex items-center gap-2 px-4 py-2 h-9 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-foreground font-semibold rounded-xl shadow-lg shadow-blue-900/30 transition-all border-0"
             >
               <Plus size={18} strokeWidth={2.5} />
               <span className="hidden sm:inline">Create New</span>
@@ -464,7 +464,7 @@ export const TopHeader = () => {
               variant="ghost"
               className="flex items-center gap-2 px-2 md:px-3 py-2 h-9 md:h-10 bg-accent hover:bg-muted border border-border rounded-xl transition-all touch-manipulation"
             >
-              <div className="w-7 h-7 md:w-8 md:h-8 rounded-lg bg-gradient-to-br from-purple-500 via-blue-500 to-emerald-500 flex items-center justify-center text-white font-bold text-sm shadow-sm shrink-0">
+              <div className="w-7 h-7 md:w-8 md:h-8 rounded-lg bg-gradient-to-br from-purple-500 via-blue-500 to-emerald-500 flex items-center justify-center text-foreground font-bold text-sm shadow-sm shrink-0">
                 {userInitial}
               </div>
               <div className="hidden xl:flex flex-col items-start">
@@ -481,7 +481,7 @@ export const TopHeader = () => {
             {/* User Info Header */}
             <div className="px-3 py-3 mb-2 bg-accent rounded-lg border border-border">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 via-blue-500 to-emerald-500 flex items-center justify-center text-white font-bold shadow-sm">
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 via-blue-500 to-emerald-500 flex items-center justify-center text-foreground font-bold shadow-sm">
                   {userInitial}
                 </div>
                 <div>
@@ -533,8 +533,8 @@ export const TopHeader = () => {
 
       {/* User Profile Modal - rendered at root via Portal for correct stacking/positioning */}
       {showProfile && createPortal(
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-gray-900 border border-gray-800 rounded-xl p-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--erp-overlay)] backdrop-blur-sm p-4">
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-popover border border-border rounded-xl p-6">
             <UserProfilePage onClose={() => setShowProfile(false)} />
           </div>
         </div>,
@@ -549,12 +549,12 @@ export const TopHeader = () => {
 
       {/* Custom Date Range Picker — global filter */}
       {showCustomDatePicker && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
-          <div className="absolute top-[1px] left-1/2 -translate-x-1/2 bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-md w-full mx-4">
-            <h3 className="text-lg font-semibold text-white mb-4">Select Custom Date Range</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--erp-overlay)] backdrop-blur-sm">
+          <div className="absolute top-[1px] left-1/2 -translate-x-1/2 bg-popover border border-border rounded-xl p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold text-foreground mb-4">Select Custom Date Range</h3>
             <div className="space-y-4">
               <div>
-                <Label className="text-gray-300 mb-2 block">Start Date</Label>
+                <Label className="text-muted-foreground mb-2 block">Start Date</Label>
                 <DatePicker
                   value={startDateObj ? formatLocalDateYYYYMMDD(startDateObj) : ''}
                   onChange={(v) => {
@@ -567,7 +567,7 @@ export const TopHeader = () => {
                 />
               </div>
               <div>
-                <Label className="text-gray-300 mb-2 block">End Date</Label>
+                <Label className="text-muted-foreground mb-2 block">End Date</Label>
                 <DatePicker
                   value={endDateObj ? formatLocalDateYYYYMMDD(endDateObj) : ''}
                   onChange={(v) => {
@@ -590,14 +590,14 @@ export const TopHeader = () => {
                       toast.error('Please select both start and end dates');
                     }
                   }}
-                  className="flex-1 bg-blue-600 hover:bg-blue-500 text-white"
+                  className="flex-1 bg-blue-600 hover:bg-blue-500 text-foreground"
                 >
                   Apply
                 </Button>
                 <Button
                   variant="ghost"
                   onClick={() => setShowCustomDatePicker(false)}
-                  className="text-gray-400 hover:text-white"
+                  className="text-muted-foreground hover:text-foreground"
                 >
                   Cancel
                 </Button>

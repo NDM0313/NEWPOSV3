@@ -87,19 +87,19 @@ export function ReportExportPreviewPanel({
   const isLandscape = resolvedOrientation === 'landscape';
 
   return (
-    <div className="border border-gray-700 rounded-xl overflow-hidden bg-gray-950 p-3">
+    <div className="border border-border rounded-xl overflow-hidden bg-input-background p-3">
       <div className="flex items-center gap-2 mb-2">
         <button
           type="button"
           onClick={() => setTab('ledger')}
-          className={`text-xs px-2 py-1 rounded ${tab === 'ledger' ? 'bg-gray-700 text-white' : 'text-gray-400'}`}
+          className={`text-xs px-2 py-1 rounded ${tab === 'ledger' ? 'bg-muted text-foreground' : 'text-muted-foreground'}`}
         >
           Ledger statement
         </button>
         <button
           type="button"
           onClick={() => setTab('cashbook')}
-          className={`text-xs px-2 py-1 rounded ${tab === 'cashbook' ? 'bg-gray-700 text-white' : 'text-gray-400'}`}
+          className={`text-xs px-2 py-1 rounded ${tab === 'cashbook' ? 'bg-muted text-foreground' : 'text-muted-foreground'}`}
         >
           Roznamcha / Cash book
         </button>

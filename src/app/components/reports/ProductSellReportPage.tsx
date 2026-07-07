@@ -136,7 +136,7 @@ function CustomerCell({ name, code }: { name: string; code: string }) {
         {name}
       </div>
       {showCode ? (
-        <div className="text-xs font-mono text-gray-500 truncate" title={code}>
+        <div className="text-xs font-mono text-muted-foreground truncate" title={code}>
           {code}
         </div>
       ) : null}
@@ -499,7 +499,7 @@ export const ProductSellReportPage: React.FC<Props> = ({ startDate, endDate, bra
       case 'invoice':
         return <span className="font-mono text-blue-300">{l.invoiceNo}</span>;
       case 'billNo':
-        return <span className="font-mono text-gray-400">{l.billNo}</span>;
+        return <span className="font-mono text-muted-foreground">{l.billNo}</span>;
       case 'branch':
         return (
           <span className="truncate max-w-[100px] block" title={l.branchName}>
@@ -515,7 +515,7 @@ export const ProductSellReportPage: React.FC<Props> = ({ startDate, endDate, bra
       case 'sku':
         return <span className="font-mono">{l.sku}</span>;
       case 'total':
-        return <span className="font-medium text-white">{formatCurrency(l.lineTotal)}</span>;
+        return <span className="font-medium text-foreground">{formatCurrency(l.lineTotal)}</span>;
       case 'unitPrice':
       case 'discount':
       case 'tax':
@@ -540,7 +540,7 @@ export const ProductSellReportPage: React.FC<Props> = ({ startDate, endDate, bra
 
   const renderGroupedCell = (row: Record<string, string | number>, key: string) => {
     const v = groupedCellValue(row, key);
-    if (key === 'name') return <span className="font-medium text-white">{v}</span>;
+    if (key === 'name') return <span className="font-medium text-foreground">{v}</span>;
     if (typeof v === 'number' && key !== 'lineCount' && key !== 'qty') {
       const cls = key === 'margin' ? (v >= 0 ? 'text-emerald-400' : 'text-red-400') : key === 'cost' ? 'text-amber-200/90' : '';
       return <span className={cn('tabular-nums', cls)}>{formatCurrency(v)}</span>;
@@ -562,7 +562,7 @@ export const ProductSellReportPage: React.FC<Props> = ({ startDate, endDate, bra
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-gray-400 gap-2">
+      <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-2">
         <Loader2 className="h-10 w-10 animate-spin text-blue-400" />
         <span>Loading product sell report…</span>
       </div>
@@ -650,7 +650,7 @@ export const ProductSellReportPage: React.FC<Props> = ({ startDate, endDate, bra
         </div>
       )}
 
-      <div className="flex flex-wrap gap-2 border-b border-gray-800 pb-3 no-print">
+      <div className="flex flex-wrap gap-2 border-b border-border pb-3 no-print">
         {TABS.map((t) => (
           <button
             key={t.key}
@@ -660,7 +660,7 @@ export const ProductSellReportPage: React.FC<Props> = ({ startDate, endDate, bra
               'px-3 py-2 rounded-lg text-sm font-medium transition-colors border border-transparent',
               view === t.key
                 ? 'bg-blue-600 text-white border-blue-500'
-                : 'bg-gray-800/80 text-gray-400 hover:text-white hover:bg-gray-800 border-gray-700',
+                : 'bg-muted/80 text-muted-foreground hover:text-foreground hover:bg-muted border-border',
             )}
           >
             {t.label}
@@ -690,10 +690,10 @@ export const ProductSellReportPage: React.FC<Props> = ({ startDate, endDate, bra
         }}
       />
 
-      <div className="overflow-x-auto rounded-xl border border-gray-800 bg-gray-900/40 print:bg-white print:text-black">
+      <div className="overflow-x-auto rounded-xl border border-border bg-card/40 print:bg-white print:text-black">
         {(view === 'detailed' || view === 'detailed_with_purchase') && (
           <table className="w-full text-left text-base min-w-[900px] leading-snug">
-            <thead className="bg-gray-950/90 text-gray-400 uppercase tracking-wide border-b border-gray-800">
+            <thead className="bg-input-background/90 text-muted-foreground uppercase tracking-wide border-b border-border">
               <tr>
                 {activeColumns
                   .filter((c) => visibleCols.includes(c.key))
@@ -707,16 +707,16 @@ export const ProductSellReportPage: React.FC<Props> = ({ startDate, endDate, bra
                   ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-800 text-gray-200">
+            <tbody className="divide-y divide-border text-gray-200">
               {detailSlice.length === 0 ? (
                 <tr>
-                  <td colSpan={visibleCols.length || 1} className="px-4 py-10 text-center text-gray-500">
+                  <td colSpan={visibleCols.length || 1} className="px-4 py-10 text-center text-muted-foreground">
                     No line items in this period
                   </td>
                 </tr>
               ) : (
                 detailSlice.map((l) => (
-                  <tr key={l.rowKey} className="hover:bg-gray-800/40">
+                  <tr key={l.rowKey} className="hover:bg-muted/40">
                     {visibleCols.map((key) => (
                       <td
                         key={key}
@@ -733,12 +733,12 @@ export const ProductSellReportPage: React.FC<Props> = ({ startDate, endDate, bra
               )}
             </tbody>
             {detailSlice.length > 0 && visibleCols.includes('total') ? (
-              <tfoot className="bg-gray-950/95 border-t border-gray-800 text-gray-300 font-semibold">
+              <tfoot className="bg-input-background/95 border-t border-border text-muted-foreground font-semibold">
                 <tr>
                   {visibleCols.map((key, idx) => {
                     if (key === 'total') {
                       return (
-                        <td key={key} className="px-2 py-2 text-right tabular-nums text-white">
+                        <td key={key} className="px-2 py-2 text-right tabular-nums text-foreground">
                           {formatCurrency(totals.revenue)}
                         </td>
                       );
@@ -831,13 +831,13 @@ export const ProductSellReportPage: React.FC<Props> = ({ startDate, endDate, bra
       </div>
 
       {(view === 'detailed' || view === 'detailed_with_purchase') && filteredLines.length > 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-gray-400 no-print">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground no-print">
           <span>
             Showing {(page - 1) * pageSize + 1} to {Math.min(page * pageSize, filteredLines.length)} of{' '}
             {filteredLines.length} entries
           </span>
           <div className="flex items-center gap-2">
-            <span className="text-gray-500">
+            <span className="text-muted-foreground">
               Page {page} of {totalPages}
             </span>
             <Button
@@ -846,7 +846,7 @@ export const ProductSellReportPage: React.FC<Props> = ({ startDate, endDate, bra
               size="sm"
               disabled={page <= 1}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="border-gray-700"
+              className="border-border"
             >
               Previous
             </Button>
@@ -856,7 +856,7 @@ export const ProductSellReportPage: React.FC<Props> = ({ startDate, endDate, bra
               size="sm"
               disabled={page >= totalPages}
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              className="border-gray-700"
+              className="border-border"
             >
               Next
             </Button>
@@ -864,9 +864,9 @@ export const ProductSellReportPage: React.FC<Props> = ({ startDate, endDate, bra
         </div>
       )}
 
-      <p className="text-[10px] text-gray-600 no-print">
-        Cost and margin use current <code className="text-gray-500">products.cost_price</code> (or legacy{' '}
-        <code className="text-gray-500">cost</code>) × quantity — informational, not historical FIFO cost.
+      <p className="text-[10px] text-muted-foreground no-print">
+        Cost and margin use current <code className="text-muted-foreground">products.cost_price</code> (or legacy{' '}
+        <code className="text-muted-foreground">cost</code>) × quantity — informational, not historical FIFO cost.
       </p>
     </div>
   );
@@ -888,7 +888,7 @@ function GroupedTable({
   const visible = columns.filter((c) => visibleCols.includes(c.key));
   return (
     <table className="w-full text-left text-base min-w-[640px] leading-snug">
-      <thead className="bg-gray-950/90 text-gray-400 border-b border-gray-800">
+      <thead className="bg-input-background/90 text-muted-foreground border-b border-border">
         <tr>
           {visible.map((c) => (
             <th
@@ -900,16 +900,16 @@ function GroupedTable({
           ))}
         </tr>
       </thead>
-      <tbody className="divide-y divide-gray-800">
+      <tbody className="divide-y divide-border">
         {rows.length === 0 ? (
           <tr>
-            <td colSpan={visible.length || 1} className="px-4 py-8 text-center text-gray-500">
+            <td colSpan={visible.length || 1} className="px-4 py-8 text-center text-muted-foreground">
               {emptyLabel}
             </td>
           </tr>
         ) : (
           rows.map((r, i) => (
-            <tr key={i} className="text-gray-200 hover:bg-gray-800/30">
+            <tr key={i} className="text-gray-200 hover:bg-accent/30">
               {visible.map((c) => (
                 <td
                   key={c.key}

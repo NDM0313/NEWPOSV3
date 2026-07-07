@@ -117,19 +117,19 @@ export const MobileNavDrawer = () => {
     <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
       <SheetContent
         side="left"
-        className="w-[min(320px,85vw)] max-w-full p-0 bg-gray-900 border-gray-800 flex flex-col [&>button]:hidden"
+        className="w-[min(320px,85vw)] max-w-full p-0 bg-sidebar border-sidebar-border flex flex-col [&>button]:hidden"
       >
         {/* Header - Figma-style clean */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800 shrink-0">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-sidebar-border shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-bold shadow-lg shadow-blue-900/30">
+            <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center text-primary-foreground font-bold shadow-lg shadow-primary/30">
               E
             </div>
-            <span className="font-semibold text-lg text-white tracking-tight">ERP Master</span>
+            <span className="font-semibold text-lg text-sidebar-foreground tracking-tight">ERP Master</span>
           </div>
           <button
             onClick={() => setMobileNavOpen(false)}
-            className="p-2.5 rounded-xl text-gray-400 hover:text-white hover:bg-gray-800 transition-colors touch-manipulation"
+            className="p-2.5 rounded-xl text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors touch-manipulation"
             aria-label="Close menu"
           >
             <X size={22} strokeWidth={2} />
@@ -150,7 +150,7 @@ export const MobileNavDrawer = () => {
                     onClick={() => toggleExpand(item.id)}
                     className={clsx(
                       'w-full flex items-center justify-between py-3.5 px-4 rounded-xl transition-all min-h-[48px] touch-manipulation',
-                      isActive ? 'bg-blue-600/20 text-blue-400' : 'text-gray-300 hover:bg-gray-800/80'
+                      isActive ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-sidebar-accent/80'
                     )}
                   >
                     <div className="flex items-center gap-3">
@@ -164,7 +164,7 @@ export const MobileNavDrawer = () => {
                     </div>
                     <ChevronDown
                       size={20}
-                      className={clsx('text-gray-500 transition-transform', isExpanded && 'rotate-180')}
+                      className={clsx('text-muted-foreground transition-transform', isExpanded && 'rotate-180')}
                     />
                   </button>
                   {isExpanded && (
@@ -176,8 +176,8 @@ export const MobileNavDrawer = () => {
                           className={clsx(
                             'w-full text-left py-2.5 px-3 rounded-lg text-sm font-medium transition-colors min-h-[44px] touch-manipulation',
                             currentView === child.id
-                              ? 'text-blue-400 bg-blue-500/10'
-                              : 'text-gray-400 hover:text-white hover:bg-gray-800/60'
+                              ? 'text-primary bg-primary/10'
+                              : 'text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/60'
                           )}
                         >
                           {child.label}
@@ -196,8 +196,8 @@ export const MobileNavDrawer = () => {
                 className={clsx(
                   'w-full flex items-center gap-3 py-3.5 px-4 rounded-xl transition-all min-h-[48px] touch-manipulation',
                   isActive
-                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20'
-                    : 'text-gray-300 hover:bg-gray-800/80 hover:text-white'
+                    ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20'
+                    : 'text-muted-foreground hover:bg-sidebar-accent/80 hover:text-sidebar-foreground'
                 )}
               >
                 <item.icon size={22} strokeWidth={1.5} className="shrink-0" />

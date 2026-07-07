@@ -62,9 +62,9 @@ export function LedgerSummaryCards({
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
       {cards.map((c) => (
-        <div key={c.label} className="rounded-lg border border-gray-800 bg-[#0F1419] px-3 py-3">
-          <p className="text-[10px] uppercase tracking-wide text-gray-500">{c.label}</p>
-          <p className="text-base font-semibold text-white tabular-nums mt-1">{formatCurrency(c.value)}</p>
+        <div key={c.label} className="rounded-lg border border-border bg-card px-3 py-3">
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{c.label}</p>
+          <p className="text-base font-semibold text-foreground tabular-nums mt-1">{formatCurrency(c.value)}</p>
         </div>
       ))}
     </div>

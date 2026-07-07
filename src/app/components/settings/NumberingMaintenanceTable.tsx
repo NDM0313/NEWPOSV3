@@ -121,20 +121,20 @@ export function NumberingMaintenanceTable() {
     <div className="space-y-6">
       <div className="rounded-lg border border-cyan-500/25 bg-cyan-950/20 px-4 py-3 flex gap-3">
         <Info className="w-5 h-5 text-cyan-400 shrink-0 mt-0.5" />
-        <div className="text-sm text-gray-300 space-y-1">
+        <div className="text-sm text-muted-foreground space-y-1">
           <p>
-            <strong className="text-white">Phase B — unified PAY:</strong> Purchase, supplier, worker, and courier
+            <strong className="text-foreground">Phase B — unified PAY:</strong> Purchase, supplier, worker, and courier
             outgoing payments share one <span className="font-mono text-cyan-300">PAY-</span> counter. Customer receipts
             stay <span className="font-mono text-cyan-300">RCV-</span>; expense cash stays <span className="font-mono text-cyan-300">EXP-</span>.
           </p>
-          <p className="text-gray-500 text-xs">
+          <p className="text-muted-foreground text-xs">
             Purane WPY vouchers historical hain — naye worker payments ab PAY use karte hain. Legacy counters neeche
             sirf read-only dikhte hain.
           </p>
         </div>
       </div>
 
-      <p className="text-sm text-gray-400">
+      <p className="text-sm text-muted-foreground">
         Effective max uses all prefix variants (RCV-0008 and HQ-RCV-0008 share one numeric sequence). Counter rows
         include sentinel + branch rows. Fix advances all rows to the effective max — never decreases.
       </p>
@@ -143,7 +143,7 @@ export function NumberingMaintenanceTable() {
           onClick={analyze}
           disabled={analyzing || !companyId}
           variant="outline"
-          className="border-gray-600 text-gray-300 hover:bg-gray-800 gap-2"
+          className="border-gray-600 text-muted-foreground hover:bg-muted gap-2"
         >
           {analyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
           Analyze Numbers
@@ -160,16 +160,16 @@ export function NumberingMaintenanceTable() {
         <Button
           onClick={fixAll}
           disabled={rows.filter((r) => r.status === 'out_of_sync').length === 0 || fixing !== null}
-          className="bg-amber-600 hover:bg-amber-500 text-white gap-2"
+          className="bg-amber-600 hover:bg-amber-500 text-foreground gap-2"
         >
           {fixing === 'all' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wrench className="w-4 h-4" />}
           Fix All Sequences
         </Button>
       </div>
-      <div className="rounded-xl border border-gray-800 overflow-hidden">
+      <div className="rounded-xl border border-border overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-gray-900/80 text-gray-400 border-b border-gray-800">
+            <thead className="bg-card text-muted-foreground border-b border-border">
               <tr>
                 <th className="px-4 py-3 text-left font-medium min-w-[200px]">Document Type</th>
                 <th className="px-4 py-3 text-right font-medium w-28">Counter Max</th>
@@ -179,20 +179,20 @@ export function NumberingMaintenanceTable() {
                 <th className="px-4 py-3 text-left font-medium w-24">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-800">
+            <tbody className="divide-y divide-border">
               {rows.length === 0 && !analyzing && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
                     Click &quot;Analyze Numbers&quot; to scan the database.
                   </td>
                 </tr>
               )}
               {rows.map((r) => (
-                <tr key={r.document_type} className="hover:bg-gray-800/30 bg-gray-950/30">
-                  <td className="px-4 py-3 text-white font-medium">
+                <tr key={r.document_type} className="hover:bg-accent/30 bg-muted/30">
+                  <td className="px-4 py-3 text-foreground font-medium">
                     <div>{r.label}</div>
                     {r.document_type === 'PAYMENT' && (
-                      <p className="text-xs text-gray-500 font-normal mt-1 font-sans">
+                      <p className="text-xs text-muted-foreground font-normal mt-1 font-sans">
                         Database max uses PAY-* vouchers only; old WPY-* vouchers are historical.
                         {r.legacy_wpy_max != null && r.legacy_wpy_max > 0
                           ? ` (max WPY in DB: ${r.legacy_wpy_max})`
@@ -206,17 +206,17 @@ export function NumberingMaintenanceTable() {
                       </p>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-right font-mono text-gray-300">
+                  <td className="px-4 py-3 text-right font-mono text-muted-foreground">
                     {r.sequence_last}
                     {r.sequence_min_row != null && r.sequence_min_row < r.sequence_last && (
                       <span className="block text-xs text-amber-500/80">min row {r.sequence_min_row}</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-right font-mono text-gray-300">{r.database_max}</td>
+                  <td className="px-4 py-3 text-right font-mono text-muted-foreground">{r.database_max}</td>
                   <td className="px-4 py-3 text-right font-mono text-cyan-300">{r.effective_max}</td>
                   <td className="px-4 py-3">
                     {r.status === 'ok' ? (
-                      <span className="inline-flex items-center gap-1 text-green-400">
+                      <span className="inline-flex items-center gap-1 text-[var(--erp-money-positive)]">
                         <CheckCircle className="w-4 h-4" /> OK
                       </span>
                     ) : (
@@ -247,24 +247,24 @@ export function NumberingMaintenanceTable() {
 
       {legacyRows.length > 0 && (
         <div className="space-y-2">
-          <h4 className="text-sm font-medium text-gray-400">Deprecated legacy counters (read-only)</h4>
-          <div className="rounded-xl border border-gray-800/80 overflow-hidden opacity-90">
+          <h4 className="text-sm font-medium text-muted-foreground">Deprecated legacy counters (read-only)</h4>
+          <div className="rounded-xl border border-border/80 overflow-hidden opacity-90">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-900/60 text-gray-500 border-b border-gray-800">
+                <thead className="bg-muted/60 text-muted-foreground border-b border-border">
                   <tr>
                     <th className="px-4 py-2 text-left font-medium">Counter</th>
                     <th className="px-4 py-2 text-right font-medium w-28">Last number</th>
                     <th className="px-4 py-2 text-left font-medium w-28">Status</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-800/80">
+                <tbody className="divide-y divide-border/80">
                   {legacyRows.map((lr) => (
-                    <tr key={lr.document_type} className="bg-gray-950/20">
-                      <td className="px-4 py-2 text-gray-400">{lr.label}</td>
-                      <td className="px-4 py-2 text-right font-mono text-gray-500">{lr.sequence_last}</td>
+                    <tr key={lr.document_type} className="bg-input-background/20">
+                      <td className="px-4 py-2 text-muted-foreground">{lr.label}</td>
+                      <td className="px-4 py-2 text-right font-mono text-muted-foreground">{lr.sequence_last}</td>
                       <td className="px-4 py-2">
-                        <span className="text-xs uppercase tracking-wide text-gray-500 border border-gray-700 rounded px-2 py-0.5">
+                        <span className="text-xs uppercase tracking-wide text-muted-foreground border border-border rounded px-2 py-0.5">
                           Deprecated
                         </span>
                       </td>
@@ -275,7 +275,7 @@ export function NumberingMaintenanceTable() {
             </div>
           </div>
           {payRow && legacyRows.some((l) => l.document_type === 'SUPPLIER_PAYMENT') && (
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted-foreground">
               Use &quot;Sync PAY counter (merge legacy)&quot; to fold the supplier legacy counter into PAY without changing
               old voucher numbers.
             </p>

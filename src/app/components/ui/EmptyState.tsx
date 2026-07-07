@@ -23,18 +23,18 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
   return (
     <div className={cn(
       "flex flex-col items-center justify-center h-[60vh] text-center p-8",
-      "bg-gray-900/50 border-2 border-dashed border-gray-800 rounded-xl",
+      "bg-muted/40 border-2 border-dashed border-border rounded-xl",
       className
     )}>
-      <div className="bg-gray-800 p-4 rounded-full mb-6 ring-4 ring-gray-800/50">
-        <Icon size={48} className="text-gray-500" />
+      <div className="bg-muted p-4 rounded-full mb-6 ring-4 ring-gray-800/50">
+        <Icon size={48} className="text-muted-foreground" />
       </div>
-      <h3 className="text-xl font-bold text-white mb-2">{title}</h3>
-      <p className="text-gray-400 max-w-sm mb-8">{description}</p>
+      <h3 className="text-xl font-bold text-foreground mb-2">{title}</h3>
+      <p className="text-muted-foreground max-w-sm mb-8">{description}</p>
       <Button 
         variant="outline" 
         onClick={onAction}
-        className="border-gray-700 text-blue-400 hover:text-blue-300 hover:bg-gray-800 hover:border-blue-500/50 transition-all"
+        className="border-border text-blue-400 hover:text-blue-300 hover:bg-muted hover:border-blue-500/50 transition-all"
       >
         {actionLabel}
       </Button>

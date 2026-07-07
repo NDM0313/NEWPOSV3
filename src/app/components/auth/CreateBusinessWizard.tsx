@@ -347,7 +347,7 @@ export const CreateBusinessWizard: React.FC<CreateBusinessWizardProps> = ({ onSu
 
   if (phase === 'creating') {
     return (
-      <div className="min-h-screen bg-[#111827] flex items-center justify-center p-8">
+      <div className="min-h-screen bg-background flex items-center justify-center p-8">
         <div className="text-center space-y-4">
           <Loader2 className="h-10 w-10 animate-spin text-blue-500 mx-auto" />
           <p className="text-gray-400">Creating your business…</p>
@@ -358,7 +358,7 @@ export const CreateBusinessWizard: React.FC<CreateBusinessWizardProps> = ({ onSu
 
   if (phase === 'otp') {
     return (
-      <div className="min-h-screen bg-[#111827] flex items-center justify-center p-8">
+      <div className="min-h-screen bg-background flex items-center justify-center p-8">
         <div className="w-full max-w-md bg-gray-900 border border-gray-800 rounded-2xl p-8 space-y-6">
           <div className="flex items-center gap-3 text-blue-400">
             <KeyRound size={28} />
@@ -431,7 +431,7 @@ export const CreateBusinessWizard: React.FC<CreateBusinessWizardProps> = ({ onSu
   }
 
   return (
-    <div className="min-h-screen bg-[#111827] flex items-center justify-center p-8">
+    <div className="min-h-screen bg-background flex items-center justify-center p-8">
       <div className="w-full max-w-5xl max-h-[90vh] overflow-y-auto">
         <div className="text-center mb-8">
           <h1 className="text-2xl md:text-3xl font-bold text-white mb-1">Create Business</h1>

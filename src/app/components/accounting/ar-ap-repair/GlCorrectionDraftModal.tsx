@@ -145,10 +145,10 @@ export function GlCorrectionDraftModal({ open, onOpenChange, defectId, onQueue, 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl bg-[#0B0F19] border-gray-800 text-white max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl bg-secondary border-border text-foreground max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>GL Correction Draft — Dry Run</DialogTitle>
-          <DialogDescription className="text-gray-400">
+          <DialogDescription className="text-muted-foreground">
             Preview additive correction JE only. Existing JE rows are never edited or deleted.
           </DialogDescription>
         </DialogHeader>
@@ -174,7 +174,7 @@ export function GlCorrectionDraftModal({ open, onOpenChange, defectId, onQueue, 
 
             <div className="rounded border border-rose-800/50 bg-rose-950/25 p-3 text-rose-100/90 text-xs">
               <p className="font-medium">This creates a new correction journal entry. It does not edit history.</p>
-              <p className="text-gray-400 mt-1">
+              <p className="text-muted-foreground mt-1">
                 Source journal lines remain unchanged. Broad AR/AP post/reverse/repost stays disabled.
               </p>
             </div>
@@ -182,7 +182,7 @@ export function GlCorrectionDraftModal({ open, onOpenChange, defectId, onQueue, 
             <Section title="Original wrong rows (unchanged)">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="text-gray-500 border-b border-gray-800">
+                  <tr className="text-muted-foreground border-b border-border">
                     <th className="text-left py-1">JE</th>
                     <th className="text-left py-1">Account</th>
                     <th className="text-right py-1">Dr</th>
@@ -200,14 +200,14 @@ export function GlCorrectionDraftModal({ open, onOpenChange, defectId, onQueue, 
                   ))}
                 </tbody>
               </table>
-              <p className="text-[11px] text-gray-500 mt-1">{preview.originalWrongRows[0]?.note}</p>
+              <p className="text-[11px] text-muted-foreground mt-1">{preview.originalWrongRows[0]?.note}</p>
             </Section>
 
             <Section title="New correction JE preview">
-              <p className="text-gray-400 text-xs mb-2">{preview.newCorrectionJePreview.description}</p>
+              <p className="text-muted-foreground text-xs mb-2">{preview.newCorrectionJePreview.description}</p>
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="text-gray-500 border-b border-gray-800">
+                  <tr className="text-muted-foreground border-b border-border">
                     <th className="text-left py-1">Account</th>
                     <th className="text-right py-1">Dr</th>
                     <th className="text-right py-1">Cr</th>
@@ -223,7 +223,7 @@ export function GlCorrectionDraftModal({ open, onOpenChange, defectId, onQueue, 
                   ))}
                 </tbody>
                 <tfoot>
-                  <tr className="border-t border-gray-800 font-medium">
+                  <tr className="border-t border-border font-medium">
                     <td className="py-1">Totals</td>
                     <td className="py-1 text-right">{preview.newCorrectionJePreview.totalDebit}</td>
                     <td className="py-1 text-right">{preview.newCorrectionJePreview.totalCredit}</td>
@@ -244,7 +244,7 @@ export function GlCorrectionDraftModal({ open, onOpenChange, defectId, onQueue, 
                 <BalanceCell label="Normal statement before" value={preview.balances.normalStatementBefore} />
                 <BalanceCell label="Normal statement after" value={preview.balances.normalStatementAfter} />
               </div>
-              <p className="text-[11px] text-gray-500 mt-2">{preview.balances.auditImpact}</p>
+              <p className="text-[11px] text-muted-foreground mt-2">{preview.balances.auditImpact}</p>
             </Section>
 
             {!glCorrectionRpcAvailable ? (
@@ -252,8 +252,8 @@ export function GlCorrectionDraftModal({ open, onOpenChange, defectId, onQueue, 
                 <ShieldAlert className="w-4 h-4 shrink-0" />
                 <div>
                   <p className="font-medium">Apply requires migration on database</p>
-                  <p className="text-gray-400 mt-1">{preview.blockedApplyReason}</p>
-                  <p className="text-gray-500 mt-1 font-mono text-[10px]">
+                  <p className="text-muted-foreground mt-1">{preview.blockedApplyReason}</p>
+                  <p className="text-muted-foreground mt-1 font-mono text-[10px]">
                     migrations/20260618140000_hybrid_repair_gl_correction_targets.sql
                   </p>
                 </div>
@@ -261,12 +261,12 @@ export function GlCorrectionDraftModal({ open, onOpenChange, defectId, onQueue, 
             ) : null}
 
             <div className="space-y-2">
-              <label className="text-xs text-gray-500">Confirm phrase</label>
+              <label className="text-xs text-muted-foreground">Confirm phrase</label>
               <Input
                 value={confirmPhrase}
                 onChange={(e) => setConfirmPhrase(e.target.value)}
                 placeholder={GL_CORRECTION_CONFIRM_PHRASE}
-                className="bg-gray-950 border-gray-700 font-mono text-sm"
+                className="bg-input-background border-border font-mono text-sm"
               />
               {!isValidRepairConfirmPhrase(confirmPhrase, GL_CORRECTION_CONFIRM_PHRASE) && confirmPhrase ? (
                 <p className="text-xs text-red-400">Phrase must match exactly: {GL_CORRECTION_CONFIRM_PHRASE}</p>
@@ -274,7 +274,7 @@ export function GlCorrectionDraftModal({ open, onOpenChange, defectId, onQueue, 
             </div>
 
             {applyGate.blocked && applyGate.reasons.length ? (
-              <ul className="text-xs text-gray-400 space-y-1">
+              <ul className="text-xs text-muted-foreground space-y-1">
                 {applyGate.reasons.map((r) => (
                   <li key={r.code}>• {r.message}</li>
                 ))}
@@ -282,12 +282,12 @@ export function GlCorrectionDraftModal({ open, onOpenChange, defectId, onQueue, 
             ) : null}
           </div>
         ) : (
-          <p className="text-gray-500 text-sm">Could not load dry-run.</p>
+          <p className="text-muted-foreground text-sm">Could not load dry-run.</p>
         )}
 
         {preview ? (
-          <p className="text-[11px] text-gray-500 border-t border-gray-800 pt-3">
-            <strong className="text-gray-400">Dry-run = preview only.</strong> Click Apply GL Correction + confirm phrase
+          <p className="text-[11px] text-muted-foreground border-t border-border pt-3">
+            <strong className="text-muted-foreground">Dry-run = preview only.</strong> Click Apply GL Correction + confirm phrase
             to post the correction JE.
           </p>
         ) : null}
@@ -319,7 +319,7 @@ export function GlCorrectionDraftModal({ open, onOpenChange, defectId, onQueue, 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">{title}</h4>
+      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">{title}</h4>
       {children}
     </div>
   );
@@ -327,9 +327,9 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function BalanceCell({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded border border-gray-800 p-2 bg-gray-950/50">
-      <p className="text-gray-500 text-[10px]">{label}</p>
-      <p className="tabular-nums text-white">Rs {value.toLocaleString()}</p>
+    <div className="rounded border border-border p-2 bg-muted/40">
+      <p className="text-muted-foreground text-[10px]">{label}</p>
+      <p className="tabular-nums text-foreground">Rs {value.toLocaleString()}</p>
     </div>
   );
 }

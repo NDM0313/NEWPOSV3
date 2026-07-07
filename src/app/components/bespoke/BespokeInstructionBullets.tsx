@@ -28,11 +28,11 @@ export function BespokeInstructionBullets({
   }
 
   return (
-    <ul className="mt-1.5 space-y-0.5 text-[11px] text-gray-400 list-disc list-inside pl-0.5">
+    <ul className="mt-1.5 space-y-0.5 text-[11px] text-muted-foreground list-disc list-inside pl-0.5">
       {bullets.map((b) => (
         <li key={`${b.label}-${b.value}`}>
-          <span className="text-gray-500">{b.label}:</span>{' '}
-          <span className="text-gray-300">{b.value}</span>
+          <span className="text-muted-foreground">{b.label}:</span>{' '}
+          <span className="text-muted-foreground">{b.value}</span>
         </li>
       ))}
     </ul>

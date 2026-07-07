@@ -182,9 +182,9 @@ export const PurchaseReturnForm: React.FC<PurchaseReturnFormProps> = ({ purchase
   if (loading) {
     return (
       <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-        <div className="bg-gray-900 border border-gray-700 rounded-xl p-8">
+        <div className="bg-card border border-border rounded-xl p-8">
           <Loader2 className="animate-spin text-blue-500 mx-auto mb-4" size={32} />
-          <p className="text-gray-400 text-center">Loading purchase...</p>
+          <p className="text-muted-foreground text-center">Loading purchase...</p>
         </div>
       </div>
     );
@@ -192,15 +192,15 @@ export const PurchaseReturnForm: React.FC<PurchaseReturnFormProps> = ({ purchase
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 overflow-y-auto p-4">
-      <div className="bg-[#0B0F19] border border-gray-800 rounded-2xl w-[80%] min-w-[1000px] max-w-6xl min-h-[85vh] max-h-[95vh] overflow-hidden flex flex-col shadow-2xl">
+      <div className="bg-secondary border border-border rounded-2xl w-[80%] min-w-[1000px] max-w-6xl min-h-[85vh] max-h-[95vh] overflow-hidden flex flex-col shadow-2xl">
         {/* Header — Figma: same as Sales Return */}
-        <div className="shrink-0 bg-gray-900/80 border-b border-gray-800 px-6 py-5 flex items-center justify-between">
+        <div className="shrink-0 bg-card border-b border-border px-6 py-5 flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-bold text-white tracking-tight">
-              Purchase Return <span className="text-gray-400 font-normal">· Ref: {purchaseRef}</span>
+            <h2 className="text-2xl font-bold text-foreground tracking-tight">
+              Purchase Return <span className="text-muted-foreground font-normal">· Ref: {purchaseRef}</span>
             </h2>
             <div className="flex items-center gap-4 mt-2">
-              <span className="text-sm text-gray-500"># Return No: New</span>
+              <span className="text-sm text-muted-foreground"># Return No: New</span>
               <span className="flex items-center gap-2 text-amber-400/90 text-sm font-medium">
                 <AlertCircle size={16} className="shrink-0" />
                 Controlled Reversal
@@ -209,10 +209,10 @@ export const PurchaseReturnForm: React.FC<PurchaseReturnFormProps> = ({ purchase
           </div>
           <div className="flex items-center gap-3">
             <div>
-              <span className="text-xs text-gray-500 block mb-0.5">Return Date</span>
-              <CalendarDatePicker value={returnDate} onChange={(d) => d && setReturnDate(d)} className="bg-gray-800 border-gray-700 text-white h-9 w-[160px]" />
+              <span className="text-xs text-muted-foreground block mb-0.5">Return Date</span>
+              <CalendarDatePicker value={returnDate} onChange={(d) => d && setReturnDate(d)} className="bg-muted border-border text-foreground h-9 w-[160px]" />
             </div>
-            <Button variant="ghost" size="icon" onClick={onClose} className="text-gray-400 hover:text-white rounded-full">
+            <Button variant="ghost" size="icon" onClick={onClose} className="text-muted-foreground hover:text-foreground rounded-full">
               <X size={22} />
             </Button>
           </div>
@@ -222,12 +222,12 @@ export const PurchaseReturnForm: React.FC<PurchaseReturnFormProps> = ({ purchase
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">
             <div className="rounded-2xl p-3 min-w-0 bg-green-500/10 border border-green-500/30 shadow-sm relative overflow-hidden">
               <div className="absolute top-0 right-0 w-16 h-16 bg-green-500/10 rounded-full -translate-y-1/2 translate-x-1/2" />
-              <div className="flex items-center gap-1.5 text-green-400 mb-1.5 relative">
+              <div className="flex items-center gap-1.5 text-[var(--erp-money-positive)] mb-1.5 relative">
                 <TrendingUp size={16} className="shrink-0" />
                 <span className="text-[10px] font-bold uppercase tracking-wider">Original Purchase</span>
               </div>
-              <p className="text-lg font-bold text-green-400 tracking-tight relative">{formatCurrency(originalAmount)}</p>
-              <p className="text-[9px] text-gray-500 mt-0.5 relative">Reference</p>
+              <p className="text-lg font-bold text-[var(--erp-money-positive)] tracking-tight relative">{formatCurrency(originalAmount)}</p>
+              <p className="text-[9px] text-muted-foreground mt-0.5 relative">Reference</p>
             </div>
             <div className="rounded-2xl p-3 min-w-0 bg-red-500/10 border border-red-500/30 shadow-sm relative overflow-hidden">
               <div className="absolute top-0 right-0 w-16 h-16 bg-red-500/10 rounded-full -translate-y-1/2 translate-x-1/2" />
@@ -236,7 +236,7 @@ export const PurchaseReturnForm: React.FC<PurchaseReturnFormProps> = ({ purchase
                 <span className="text-[10px] font-bold uppercase tracking-wider">Return Amount</span>
               </div>
               <p className="text-lg font-bold text-red-400 tracking-tight relative">{formatCurrency(returnAmount)}</p>
-              <p className="text-[9px] text-gray-500 mt-0.5 relative">From items</p>
+              <p className="text-[9px] text-muted-foreground mt-0.5 relative">From items</p>
             </div>
             <div className="rounded-2xl p-3 min-w-0 bg-blue-500/10 border border-blue-500/30 shadow-sm relative overflow-hidden">
               <div className="absolute top-0 right-0 w-16 h-16 bg-blue-500/10 rounded-full -translate-y-1/2 translate-x-1/2" />
@@ -246,18 +246,18 @@ export const PurchaseReturnForm: React.FC<PurchaseReturnFormProps> = ({ purchase
               <div className="flex items-center gap-1.5 text-blue-400 mb-1.5 relative">
                 <span className="text-[10px] font-bold uppercase tracking-wider">Net After Return</span>
               </div>
-              <p className="text-lg font-bold text-white tracking-tight relative">{formatCurrency(netAfterReturn)}</p>
+              <p className="text-lg font-bold text-foreground tracking-tight relative">{formatCurrency(netAfterReturn)}</p>
             </div>
           </div>
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex flex-wrap items-end gap-3 flex-1 min-w-0 max-w-md">
               <div className="min-w-[140px] w-[140px] shrink-0">
-                <Label className="text-gray-500 text-xs mb-1 block">Reason (optional)</Label>
-                <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Defective, Wrong item" className="bg-gray-800 border-gray-700 text-white text-sm h-9" />
+                <Label className="text-muted-foreground text-xs mb-1 block">Reason (optional)</Label>
+                <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Defective, Wrong item" className="bg-muted border-border text-foreground text-sm h-9" />
               </div>
               <div className="flex-1 min-w-[200px]">
-                <Label className="text-gray-500 text-xs mb-1 block">Notes (optional)</Label>
-                <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Additional notes" className="bg-gray-800 border-gray-700 text-white text-sm h-9 w-[652px]" />
+                <Label className="text-muted-foreground text-xs mb-1 block">Notes (optional)</Label>
+                <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Additional notes" className="bg-muted border-border text-foreground text-sm h-9 w-[652px]" />
               </div>
             </div>
             <Button
@@ -276,40 +276,40 @@ export const PurchaseReturnForm: React.FC<PurchaseReturnFormProps> = ({ purchase
               <AlertCircle size={18} className="text-amber-400" />
             </div>
             <p className="text-sm text-blue-100">
-              <span className="font-semibold text-white">Return Reversal Mode:</span> Items are loaded from original purchase {purchaseRef}. Adjust return quantities as needed. Stock will be updated automatically upon finalization.
+              <span className="font-semibold text-foreground">Return Reversal Mode:</span> Items are loaded from original purchase {purchaseRef}. Adjust return quantities as needed. Stock will be updated automatically upon finalization.
             </p>
           </div>
 
           <div>
-              <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-                <Box size={18} className="text-gray-500" />
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
+                <Box size={18} className="text-muted-foreground" />
                 Items Entry
               </h3>
               <Input
                 placeholder="Search products by name, SKU... ⌘K"
                 value={itemSearch}
                 onChange={(e) => setItemSearch(e.target.value)}
-                className="mb-4 bg-gray-800/80 border-gray-700 text-white placeholder:text-gray-500 rounded-lg h-10"
+                className="mb-4 bg-muted/80 border-border text-foreground placeholder:text-muted-foreground rounded-lg h-10"
               />
-              <div className="bg-gray-800/50 border border-gray-700 rounded-xl overflow-hidden">
+              <div className="bg-muted/50 border border-border rounded-xl overflow-hidden">
                 <table className="w-full">
-                  <thead className="bg-gray-900/50 border-b border-gray-700">
+                  <thead className="bg-muted/40 border-b border-border">
                     <tr>
-                      <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-400 uppercase w-8">#</th>
-                      <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-400 uppercase">Name</th>
-                      <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-400 uppercase">SKU</th>
-                      <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-400 uppercase">Variation</th>
-                      {enablePacking && <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-400 uppercase">Packing</th>}
-                      <th className="px-3 py-2.5 text-center text-xs font-medium text-gray-400 uppercase">Qty</th>
-                      <th className="px-3 py-2.5 text-right text-xs font-medium text-gray-400 uppercase">Unit Price</th>
-                      <th className="px-3 py-2.5 text-right text-xs font-medium text-gray-400 uppercase">Return Amount</th>
-                      <th className="px-3 py-2.5 text-center text-xs font-medium text-gray-400 uppercase w-16">Action</th>
+                      <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase w-8">#</th>
+                      <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase">Name</th>
+                      <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase">SKU</th>
+                      <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase">Variation</th>
+                      {enablePacking && <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase">Packing</th>}
+                      <th className="px-3 py-2.5 text-center text-xs font-medium text-muted-foreground uppercase">Qty</th>
+                      <th className="px-3 py-2.5 text-right text-xs font-medium text-muted-foreground uppercase">Unit Price</th>
+                      <th className="px-3 py-2.5 text-right text-xs font-medium text-muted-foreground uppercase">Return Amount</th>
+                      <th className="px-3 py-2.5 text-center text-xs font-medium text-muted-foreground uppercase w-16">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-700">
                     {filteredItems.length === 0 ? (
                       <tr>
-                        <td colSpan={enablePacking ? 9 : 8} className="px-4 py-8 text-center text-gray-500">
+                        <td colSpan={enablePacking ? 9 : 8} className="px-4 py-8 text-center text-muted-foreground">
                           <Package size={32} className="mx-auto mb-2 opacity-50" />
                           <p>{itemSearch ? 'No items match search' : 'No items in this purchase'}</p>
                         </td>
@@ -332,20 +332,20 @@ export const PurchaseReturnForm: React.FC<PurchaseReturnFormProps> = ({ purchase
                           : '—';
 
                         return (
-                          <tr key={item.id} className={cn("hover:bg-gray-800/30", !canReturn && "opacity-50")}>
-                            <td className="px-3 py-2.5 text-gray-500 text-sm">{idx + 1}</td>
-                            <td className="px-3 py-2.5 font-medium text-white">{item.product_name}</td>
-                            <td className="px-3 py-2.5 text-gray-400 text-sm font-mono">{item.variation?.sku || item.sku}</td>
-                            <td className="px-3 py-2.5 text-gray-400 text-sm">{variationText || '—'}</td>
-                            {enablePacking && <td className="px-3 py-2.5 text-gray-400 text-sm">{packingDisplay}</td>}
+                          <tr key={item.id} className={cn("hover:bg-accent/30", !canReturn && "opacity-50")}>
+                            <td className="px-3 py-2.5 text-muted-foreground text-sm">{idx + 1}</td>
+                            <td className="px-3 py-2.5 font-medium text-foreground">{item.product_name}</td>
+                            <td className="px-3 py-2.5 text-muted-foreground text-sm font-mono">{item.variation?.sku || item.sku}</td>
+                            <td className="px-3 py-2.5 text-muted-foreground text-sm">{variationText || '—'}</td>
+                            {enablePacking && <td className="px-3 py-2.5 text-muted-foreground text-sm">{packingDisplay}</td>}
                             <td className="px-3 py-2.5">
                               <div className="flex items-center justify-center gap-1">
                                 <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleQuantityChange(index, item.return_quantity - 1)} disabled={!canReturn || item.return_quantity <= 0}><Minus size={12} /></Button>
-                                <Input type="number" min={0} max={maxReturn} value={item.return_quantity} onChange={(e) => handleQuantityChange(index, parseFloat(e.target.value) || 0)} disabled={!canReturn} className="w-16 text-center bg-gray-900 border-gray-700 text-white h-8 text-sm" />
+                                <Input type="number" min={0} max={maxReturn} value={item.return_quantity} onChange={(e) => handleQuantityChange(index, parseFloat(e.target.value) || 0)} disabled={!canReturn} className="w-16 text-center bg-card border-border text-foreground h-8 text-sm" />
                                 <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleQuantityChange(index, item.return_quantity + 1)} disabled={!canReturn || item.return_quantity >= maxReturn}><Plus size={12} /></Button>
                               </div>
                             </td>
-                            <td className="px-3 py-2.5 text-right text-gray-300 text-sm">{Number(item.unit_price).toLocaleString()}</td>
+                            <td className="px-3 py-2.5 text-right text-muted-foreground text-sm">{Number(item.unit_price).toLocaleString()}</td>
                             <td className="px-3 py-2.5 text-right text-red-400 font-medium text-sm">
                               {(item.return_quantity * item.unit_price) > 0 ? `-${(item.return_quantity * item.unit_price).toLocaleString()}` : '0'}
                             </td>
@@ -355,16 +355,16 @@ export const PurchaseReturnForm: React.FC<PurchaseReturnFormProps> = ({ purchase
                       })
                     )}
                   </tbody>
-                  <tfoot className="bg-gray-900/60 border-t border-gray-700">
+                  <tfoot className="bg-muted/60 border-t border-border">
                     <tr>
-                      <td colSpan={enablePacking ? 5 : 4} className="px-4 py-3 text-sm text-gray-400">
+                      <td colSpan={enablePacking ? 5 : 4} className="px-4 py-3 text-sm text-muted-foreground">
                         {filteredItems.length} Item{filteredItems.length !== 1 ? 's' : ''}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-400 text-center font-medium">
+                      <td className="px-4 py-3 text-sm text-muted-foreground text-center font-medium">
                         Qty: {filteredItems.reduce((s, i) => s + i.return_quantity, 0)}
                       </td>
                       <td className="px-4 py-3" />
-                      <td className="px-4 py-3 text-right text-green-400 font-bold text-sm">
+                      <td className="px-4 py-3 text-right text-[var(--erp-money-positive)] font-bold text-sm">
                         Total: -{returnAmount.toLocaleString()}
                       </td>
                       <td className="px-4 py-3" />

@@ -216,7 +216,7 @@ export function AccountingIntegrityTestLab({ onOpenJournalTrace }: AccountingInt
 
   if (!companyId) {
     return (
-      <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-6 text-gray-400">
+      <div className="rounded-xl border border-border bg-muted/40 p-6 text-muted-foreground">
         Select a company first.
       </div>
     );
@@ -224,7 +224,7 @@ export function AccountingIntegrityTestLab({ onOpenJournalTrace }: AccountingInt
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12 text-gray-400">
+      <div className="flex items-center justify-center py-12 text-muted-foreground">
         <Loader2 className="w-8 h-8 animate-spin" />
       </div>
     );
@@ -235,15 +235,15 @@ export function AccountingIntegrityTestLab({ onOpenJournalTrace }: AccountingInt
 
   return (
     <div className="space-y-6 max-w-[1600px]">
-      <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-4 space-y-3">
-        <p className="text-sm text-gray-300 leading-relaxed">
-          <span className="font-medium text-white">Yeh tab kis liye hai:</span> yahan sirf <span className="text-amber-200/90">tez diagnosis</span> hai —
+      <div className="rounded-xl border border-border bg-card/40 p-4 space-y-3">
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          <span className="font-medium text-foreground">Yeh tab kis liye hai:</span> yahan sirf <span className="text-amber-200/90">tez diagnosis</span> hai —
           duplicate journal groups, orphan adjustments (jahan sale/payment delete ho chuka lekin JE zinda ho), aur Phase 8 live mismatch signals.
-          Void <span className="text-gray-400">safe audit trail</span> ke sath hota hai; delete nahi.
+          Void <span className="text-muted-foreground">safe audit trail</span> ke sath hota hai; delete nahi.
         </p>
-        <p className="text-xs text-gray-500 leading-relaxed">
-          <span className="font-medium text-gray-400">Poori tracing / developer tools alag hain:</span>{' '}
-          Sidebar → <span className="text-gray-400">Accounting Integrity Lab</span> (Phase 2 QA, zyada checks){devLabAllowed ? ', aur Developer Integrity Lab (RULE scan, fix queue).' : '.'}
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          <span className="font-medium text-muted-foreground">Poori tracing / developer tools alag hain:</span>{' '}
+          Sidebar → <span className="text-muted-foreground">Accounting Integrity Lab</span> (Phase 2 QA, zyada checks){devLabAllowed ? ', aur Developer Integrity Lab (RULE scan, fix queue).' : '.'}
         </p>
         <div className="flex flex-wrap gap-2">
           <Button
@@ -277,13 +277,13 @@ export function AccountingIntegrityTestLab({ onOpenJournalTrace }: AccountingInt
             <ShieldAlert className="w-5 h-5 text-amber-400" />
           </div>
           <div className="min-w-0">
-            <h2 className="text-lg font-bold text-white">Accounting Integrity Test Lab</h2>
-            <p className="text-xs text-gray-400">
+            <h2 className="text-lg font-bold text-foreground">Accounting Integrity Test Lab</h2>
+            <p className="text-xs text-muted-foreground">
               PF-14.5B: duplicates & orphans; void safely. Neeche har row par poora ID + copy; journal trace icon se Journal Entries (audit) filter.
             </p>
           </div>
         </div>
-        <Button variant="outline" size="sm" className="border-gray-700 text-gray-300 shrink-0" onClick={load} disabled={loading}>
+        <Button variant="outline" size="sm" className="border-border text-muted-foreground shrink-0" onClick={load} disabled={loading}>
           <RefreshCw className="w-4 h-4 mr-2" />
           Refresh
         </Button>
@@ -291,31 +291,31 @@ export function AccountingIntegrityTestLab({ onOpenJournalTrace }: AccountingInt
 
       {/* Summary cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-4">
-          <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Duplicate groups</div>
-          <div className="text-2xl font-bold text-white mt-1">{dupes.length}</div>
-          <div className="text-xs text-gray-500 mt-1">Same ref + description, count &gt; 1</div>
+        <div className="rounded-xl border border-border bg-muted/40 p-4">
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Duplicate groups</div>
+          <div className="text-2xl font-bold text-foreground mt-1">{dupes.length}</div>
+          <div className="text-xs text-muted-foreground mt-1">Same ref + description, count &gt; 1</div>
         </div>
-        <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-4">
-          <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Orphan entries</div>
-          <div className="text-2xl font-bold text-white mt-1">{orphans.length}</div>
-          <div className="text-xs text-gray-500 mt-1">Missing sale/payment link</div>
+        <div className="rounded-xl border border-border bg-muted/40 p-4">
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Orphan entries</div>
+          <div className="text-2xl font-bold text-foreground mt-1">{orphans.length}</div>
+          <div className="text-xs text-muted-foreground mt-1">Missing sale/payment link</div>
         </div>
-        <div className="rounded-xl border border-gray-700/60 bg-gray-950/40 p-4">
-          <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Voided history (info)</div>
-          <div className="text-2xl font-bold text-gray-300 mt-1">
+        <div className="rounded-xl border border-border/60 bg-input-background/40 p-4">
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Voided history (info)</div>
+          <div className="text-2xl font-bold text-muted-foreground mt-1">
             {summary?.voidedCountByType.reduce((s, t) => s + t.count, 0) ?? 0}
           </div>
-          <div className="text-xs text-gray-500 mt-1">Browse-only — not an actionable hygiene queue</div>
+          <div className="text-xs text-muted-foreground mt-1">Browse-only — not an actionable hygiene queue</div>
         </div>
-        <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-4 min-w-0 sm:col-span-2 lg:col-span-1">
-          <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Active JEs by type</div>
-          <div className="text-[11px] text-gray-300 mt-1 max-h-28 overflow-y-auto leading-snug space-y-0.5 font-mono">
+        <div className="rounded-xl border border-border bg-muted/40 p-4 min-w-0 sm:col-span-2 lg:col-span-1">
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Active JEs by type</div>
+          <div className="text-[11px] text-muted-foreground mt-1 max-h-28 overflow-y-auto leading-snug space-y-0.5 font-mono">
             {summary?.activeCountByType.length
               ? summary.activeCountByType.map((t) => (
-                  <div key={t.reference_type} className="flex justify-between gap-2 border-b border-gray-800/40 pb-0.5">
-                    <span className="text-gray-400 truncate">{t.reference_type}</span>
-                    <span className="text-white shrink-0">{t.count}</span>
+                  <div key={t.reference_type} className="flex justify-between gap-2 border-b border-border/40 pb-0.5">
+                    <span className="text-muted-foreground truncate">{t.reference_type}</span>
+                    <span className="text-foreground shrink-0">{t.count}</span>
                   </div>
                 ))
               : '—'}
@@ -324,21 +324,21 @@ export function AccountingIntegrityTestLab({ onOpenJournalTrace }: AccountingInt
       </div>
 
       {/* 1. Exact duplicate candidates */}
-      <div className="rounded-xl border border-gray-800 bg-gray-900/50 overflow-hidden">
-        <div className="flex items-center justify-between p-4 border-b border-gray-800">
+      <div className="rounded-xl border border-border bg-muted/40 overflow-hidden">
+        <div className="flex items-center justify-between p-4 border-b border-border">
           <div className="flex items-center gap-2">
             <Copy className="w-5 h-5 text-blue-400" />
-            <h3 className="font-semibold text-white">Exact duplicate candidates</h3>
+            <h3 className="font-semibold text-foreground">Exact duplicate candidates</h3>
           </div>
-          <p className="text-xs text-gray-400">Keep earliest; void rest. No delete.</p>
+          <p className="text-xs text-muted-foreground">Keep earliest; void rest. No delete.</p>
         </div>
         <div className="overflow-x-auto">
           {dupes.length === 0 ? (
-            <div className="p-6 text-center text-gray-500 text-sm">No duplicate groups found.</div>
+            <div className="p-6 text-center text-muted-foreground text-sm">No duplicate groups found.</div>
           ) : (
             <table className="w-full text-sm min-w-[720px]">
               <thead>
-                <tr className="border-b border-gray-800 text-left text-gray-400">
+                <tr className="border-b border-border text-left text-muted-foreground">
                   <th className="px-4 py-3 w-[100px]">Type</th>
                   <th className="px-4 py-3 min-w-[200px]">Root / doc ID</th>
                   <th className="px-4 py-3 min-w-[220px]">Journal IDs (group)</th>
@@ -350,7 +350,7 @@ export function AccountingIntegrityTestLab({ onOpenJournalTrace }: AccountingInt
               </thead>
               <tbody>
                 {dupes.map((g) => (
-                  <tr key={g.je_ids[0]} className="border-b border-gray-800/50 hover:bg-gray-800/30 align-top">
+                  <tr key={g.je_ids[0]} className="border-b border-border hover:bg-accent/30 align-top">
                     <td className="px-4 py-3 font-mono text-xs whitespace-nowrap">{g.reference_type}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-start gap-1 min-w-0">
@@ -372,7 +372,7 @@ export function AccountingIntegrityTestLab({ onOpenJournalTrace }: AccountingInt
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-start gap-1 min-w-0">
-                        <span className="font-mono text-[11px] text-gray-300 break-all">{g.je_ids.join(', ')}</span>
+                        <span className="font-mono text-[11px] text-muted-foreground break-all">{g.je_ids.join(', ')}</span>
                         <Button
                           type="button"
                           variant="ghost"
@@ -386,11 +386,11 @@ export function AccountingIntegrityTestLab({ onOpenJournalTrace }: AccountingInt
                         <TraceIconButton title="Journal: first JE in group" fragment={g.je_ids[0] || ''} onOpenJournalTrace={onOpenJournalTrace} />
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-gray-300 text-xs break-words" title={g.description}>
+                    <td className="px-4 py-3 text-muted-foreground text-xs break-words" title={g.description}>
                       {g.description}
                     </td>
                     <td className="px-4 py-3 text-amber-400 whitespace-nowrap">{g.count}</td>
-                    <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{g.earliest_created_at?.slice(0, 10)}</td>
+                    <td className="px-4 py-3 text-muted-foreground text-xs whitespace-nowrap">{g.earliest_created_at?.slice(0, 10)}</td>
                     <td className="px-4 py-3">
                       <Button
                         size="sm"
@@ -412,11 +412,11 @@ export function AccountingIntegrityTestLab({ onOpenJournalTrace }: AccountingInt
       </div>
 
       {/* 2. Orphan / uncertain entries */}
-      <div className="rounded-xl border border-gray-800 bg-gray-900/50 overflow-hidden">
-        <div className="flex items-center justify-between p-4 border-b border-gray-800">
+      <div className="rounded-xl border border-border bg-muted/40 overflow-hidden">
+        <div className="flex items-center justify-between p-4 border-b border-border">
           <div className="flex items-center gap-2">
             <FileWarning className="w-5 h-5 text-amber-400" />
-            <h3 className="font-semibold text-white">Orphan / uncertain entries</h3>
+            <h3 className="font-semibold text-foreground">Orphan / uncertain entries</h3>
           </div>
           {orphans.length > 0 && (
             <Button
@@ -433,11 +433,11 @@ export function AccountingIntegrityTestLab({ onOpenJournalTrace }: AccountingInt
         </div>
         <div className="overflow-x-auto">
           {orphans.length === 0 ? (
-            <div className="p-6 text-center text-gray-500 text-sm">No orphan entries found.</div>
+            <div className="p-6 text-center text-muted-foreground text-sm">No orphan entries found.</div>
           ) : (
             <table className="w-full text-sm min-w-[800px]">
               <thead>
-                <tr className="border-b border-gray-800 text-left text-gray-400">
+                <tr className="border-b border-border text-left text-muted-foreground">
                   <th className="px-4 py-3">Entry no</th>
                   <th className="px-4 py-3">JE id</th>
                   <th className="px-4 py-3">Type</th>
@@ -449,7 +449,7 @@ export function AccountingIntegrityTestLab({ onOpenJournalTrace }: AccountingInt
               </thead>
               <tbody>
                 {orphans.map((o) => (
-                  <tr key={o.id} className="border-b border-gray-800/50 hover:bg-gray-800/30 align-top">
+                  <tr key={o.id} className="border-b border-border hover:bg-accent/30 align-top">
                     <td className="px-4 py-3 font-mono text-xs whitespace-nowrap">{o.entry_no ?? '—'}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-start gap-1 min-w-0">
@@ -470,7 +470,7 @@ export function AccountingIntegrityTestLab({ onOpenJournalTrace }: AccountingInt
                     <td className="px-4 py-3 font-mono text-xs whitespace-nowrap">{o.reference_type}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-start gap-1 min-w-0">
-                        <span className="font-mono text-[11px] text-gray-300 break-all">{o.reference_id ?? '—'}</span>
+                        <span className="font-mono text-[11px] text-muted-foreground break-all">{o.reference_id ?? '—'}</span>
                         {o.reference_id ? (
                           <Button
                             type="button"
@@ -486,8 +486,8 @@ export function AccountingIntegrityTestLab({ onOpenJournalTrace }: AccountingInt
                         <TraceIconButton title="Journal: filter by reference id" fragment={o.reference_id || ''} onOpenJournalTrace={onOpenJournalTrace} />
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-gray-300 text-xs break-words">{o.description ?? '—'}</td>
-                    <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{o.created_at?.slice(0, 10)}</td>
+                    <td className="px-4 py-3 text-muted-foreground text-xs break-words">{o.description ?? '—'}</td>
+                    <td className="px-4 py-3 text-muted-foreground text-xs whitespace-nowrap">{o.created_at?.slice(0, 10)}</td>
                     <td className="px-4 py-3">
                       <Button
                         size="sm"
@@ -508,13 +508,13 @@ export function AccountingIntegrityTestLab({ onOpenJournalTrace }: AccountingInt
       </div>
 
       {/* Phase 8 – Live data repair (detection + safe sync) */}
-      <div className="rounded-xl border border-gray-800 bg-gray-900/50 overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
-          <span className="font-medium text-white">Phase 8 – Live data repair</span>
+      <div className="rounded-xl border border-border bg-muted/40 overflow-hidden">
+        <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+          <span className="font-medium text-foreground">Phase 8 – Live data repair</span>
           <Button
             size="sm"
             variant="outline"
-            className="border-gray-600 text-gray-300"
+            className="border-gray-600 text-muted-foreground"
             onClick={loadPhase8}
             disabled={!companyId || phase8Loading}
           >
@@ -525,34 +525,34 @@ export function AccountingIntegrityTestLab({ onOpenJournalTrace }: AccountingInt
         <div className="p-4 space-y-4">
           {phase8Summary && (
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-sm">
-              <div className="rounded-lg bg-gray-800/50 p-2">
-                <p className="text-gray-500">TB difference</p>
-                <p className={phase8Summary.trialBalanceDifference === 0 ? 'text-green-400' : 'text-amber-400'}>{phase8Summary.trialBalanceDifference}</p>
+              <div className="rounded-lg bg-muted/50 p-2">
+                <p className="text-muted-foreground">TB difference</p>
+                <p className={phase8Summary.trialBalanceDifference === 0 ? 'text-[var(--erp-money-positive)]' : 'text-amber-400'}>{phase8Summary.trialBalanceDifference}</p>
               </div>
-              <div className="rounded-lg bg-gray-800/50 p-2">
-                <p className="text-gray-500">Unbalanced JEs</p>
-                <p className={phase8Summary.unbalancedCount === 0 ? 'text-green-400' : 'text-amber-400'}>{phase8Summary.unbalancedCount}</p>
+              <div className="rounded-lg bg-muted/50 p-2">
+                <p className="text-muted-foreground">Unbalanced JEs</p>
+                <p className={phase8Summary.unbalancedCount === 0 ? 'text-[var(--erp-money-positive)]' : 'text-amber-400'}>{phase8Summary.unbalancedCount}</p>
               </div>
-              <div className="rounded-lg bg-gray-800/50 p-2">
-                <p className="text-gray-500">Account mismatches</p>
-                <p className={phase8Summary.accountMismatchCount === 0 ? 'text-green-400' : 'text-amber-400'}>{phase8Summary.accountMismatchCount}</p>
+              <div className="rounded-lg bg-muted/50 p-2">
+                <p className="text-muted-foreground">Account mismatches</p>
+                <p className={phase8Summary.accountMismatchCount === 0 ? 'text-[var(--erp-money-positive)]' : 'text-amber-400'}>{phase8Summary.accountMismatchCount}</p>
               </div>
-              <div className="rounded-lg bg-gray-800/50 p-2">
-                <p className="text-gray-500">AR vs receivables</p>
-                <p className={phase8Summary.receivablesDifference === 0 ? 'text-green-400' : 'text-amber-400'}>{phase8Summary.receivablesDifference}</p>
+              <div className="rounded-lg bg-muted/50 p-2">
+                <p className="text-muted-foreground">AR vs receivables</p>
+                <p className={phase8Summary.receivablesDifference === 0 ? 'text-[var(--erp-money-positive)]' : 'text-amber-400'}>{phase8Summary.receivablesDifference}</p>
               </div>
-              <div className="rounded-lg bg-gray-800/50 p-2">
-                <p className="text-gray-500">AP vs payables</p>
-                <p className={phase8Summary.payablesDifference === 0 ? 'text-green-400' : 'text-amber-400'}>{phase8Summary.payablesDifference}</p>
+              <div className="rounded-lg bg-muted/50 p-2">
+                <p className="text-muted-foreground">AP vs payables</p>
+                <p className={phase8Summary.payablesDifference === 0 ? 'text-[var(--erp-money-positive)]' : 'text-amber-400'}>{phase8Summary.payablesDifference}</p>
               </div>
             </div>
           )}
           {phase8Unbalanced.length > 0 && (
             <div className="overflow-x-auto">
-              <p className="text-gray-400 text-sm font-medium mb-2">Unbalanced journal entries (review manually)</p>
+              <p className="text-muted-foreground text-sm font-medium mb-2">Unbalanced journal entries (review manually)</p>
               <table className="w-full text-sm min-w-[520px]">
                 <thead>
-                  <tr className="text-left text-gray-500">
+                  <tr className="text-left text-muted-foreground">
                     <th className="pb-1 pr-2">Entry</th>
                     <th className="pb-1 min-w-[200px]">JE id (copy / journal)</th>
                     <th className="pb-1">Debit</th>
@@ -562,11 +562,11 @@ export function AccountingIntegrityTestLab({ onOpenJournalTrace }: AccountingInt
                 </thead>
                 <tbody>
                   {phase8Unbalanced.slice(0, 10).map((u) => (
-                    <tr key={u.id} className="border-t border-gray-800/50 align-top">
+                    <tr key={u.id} className="border-t border-border align-top">
                       <td className="py-1 font-mono whitespace-nowrap pr-2">{u.entry_no ?? '—'}</td>
                       <td className="py-1">
                         <div className="flex items-start gap-1 min-w-0">
-                          <span className="font-mono text-[11px] break-all text-gray-300">{u.id}</span>
+                          <span className="font-mono text-[11px] break-all text-muted-foreground">{u.id}</span>
                           <Button
                             type="button"
                             variant="ghost"
@@ -587,17 +587,17 @@ export function AccountingIntegrityTestLab({ onOpenJournalTrace }: AccountingInt
                   ))}
                 </tbody>
               </table>
-              {phase8Unbalanced.length > 10 && <p className="text-gray-500 text-xs mt-1">+{phase8Unbalanced.length - 10} more</p>}
+              {phase8Unbalanced.length > 10 && <p className="text-muted-foreground text-xs mt-1">+{phase8Unbalanced.length - 10} more</p>}
             </div>
           )}
           {phase8Mismatches.length > 0 && (
             <div>
-              <p className="text-gray-400 text-sm font-medium mb-2">Account balance vs journal (safe repair: sync from journal)</p>
+              <p className="text-muted-foreground text-sm font-medium mb-2">Account balance vs journal (safe repair: sync from journal)</p>
               <table className="w-full text-sm">
-                <thead><tr className="text-left text-gray-500"><th className="pb-1">Account</th><th className="pb-1">Stored</th><th className="pb-1">Journal</th><th className="pb-1">Diff</th></tr></thead>
+                <thead><tr className="text-left text-muted-foreground"><th className="pb-1">Account</th><th className="pb-1">Stored</th><th className="pb-1">Journal</th><th className="pb-1">Diff</th></tr></thead>
                 <tbody>
                   {phase8Mismatches.slice(0, 10).map((m) => (
-                    <tr key={m.account_id} className="border-t border-gray-800/50"><td className="py-1">{m.account_code} {m.account_name}</td><td>{m.stored_balance}</td><td>{m.journal_balance}</td><td className="text-amber-400">{m.difference}</td></tr>
+                    <tr key={m.account_id} className="border-t border-border"><td className="py-1">{m.account_code} {m.account_name}</td><td>{m.stored_balance}</td><td>{m.journal_balance}</td><td className="text-amber-400">{m.difference}</td></tr>
                   ))}
                 </tbody>
               </table>
@@ -607,19 +607,19 @@ export function AccountingIntegrityTestLab({ onOpenJournalTrace }: AccountingInt
             </div>
           )}
           {phase8Recv != null && (
-            <p className="text-gray-400 text-sm">Receivables: document due = {phase8Recv.document_total_due}, AR (journal) = {phase8Recv.ar_balance_from_journal}, difference = {phase8Recv.difference}</p>
+            <p className="text-muted-foreground text-sm">Receivables: document due = {phase8Recv.document_total_due}, AR (journal) = {phase8Recv.ar_balance_from_journal}, difference = {phase8Recv.difference}</p>
           )}
           {phase8Pay != null && (
-            <p className="text-gray-400 text-sm">Payables: document due = {phase8Pay.document_total_due}, AP (journal) = {phase8Pay.ap_balance_from_journal}, difference = {phase8Pay.difference}</p>
+            <p className="text-muted-foreground text-sm">Payables: document due = {phase8Pay.document_total_due}, AP (journal) = {phase8Pay.ap_balance_from_journal}, difference = {phase8Pay.difference}</p>
           )}
         </div>
       </div>
 
       {/* Ledger impact note */}
-      <div className="rounded-xl border border-gray-800 bg-gray-900/30 p-4 flex items-start gap-3">
+      <div className="rounded-xl border border-border bg-muted/30 p-4 flex items-start gap-3">
         <Info className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
-        <div className="text-sm text-gray-400">
-          <p className="font-medium text-gray-300">Ledger impact</p>
+        <div className="text-sm text-muted-foreground">
+          <p className="font-medium text-muted-foreground">Ledger impact</p>
           <p className="mt-1">Voided entries are excluded from Journal Entries, Day Book, Account Ledger, and running balances. They remain in the database for audit. After voiding, refresh the main accounting views to see corrected totals.</p>
         </div>
       </div>

@@ -148,12 +148,12 @@ export function RemainingBalanceReport({ branchId }: Props) {
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-[200px] max-w-sm">
-          <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-gray-500" />
+          <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-muted-foreground" />
           <Input
             placeholder="Search name or code…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 bg-gray-900 border-gray-700"
+            className="pl-9 bg-card border-border"
           />
         </div>
         <div className="flex gap-1">
@@ -163,14 +163,14 @@ export function RemainingBalanceReport({ branchId }: Props) {
               type="button"
               onClick={() => setTypeFilter(t)}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium ${
-                typeFilter === t ? 'bg-cyan-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'
+                typeFilter === t ? 'bg-cyan-600 text-white' : 'bg-muted text-muted-foreground hover:text-foreground'
               }`}
             >
               {t === 'all' ? 'All' : t === 'customers' ? 'Customers' : 'Suppliers'}
             </button>
           ))}
         </div>
-        <label className="flex items-center gap-2 text-xs text-gray-400">
+        <label className="flex items-center gap-2 text-xs text-muted-foreground">
           <input type="checkbox" checked={hideZero} onChange={(e) => setHideZero(e.target.checked)} />
           Hide zero balances
         </label>
@@ -182,17 +182,17 @@ export function RemainingBalanceReport({ branchId }: Props) {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-        <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-3">
-          <div className="text-gray-500 text-xs">Total receivable due</div>
+        <div className="rounded-lg border border-border bg-muted/40 p-3">
+          <div className="text-muted-foreground text-xs">Total receivable due</div>
           <div className="text-lg font-semibold text-cyan-300 tabular-nums">{formatCurrency(totals.receivable)}</div>
         </div>
-        <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-3">
-          <div className="text-gray-500 text-xs">Total payable due</div>
+        <div className="rounded-lg border border-border bg-muted/40 p-3">
+          <div className="text-muted-foreground text-xs">Total payable due</div>
           <div className="text-lg font-semibold text-amber-300 tabular-nums">{formatCurrency(totals.payable)}</div>
         </div>
-        <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-3">
-          <div className="text-gray-500 text-xs">Parties with balance</div>
-          <div className="text-lg font-semibold text-white tabular-nums">{rows.length}</div>
+        <div className="rounded-lg border border-border bg-muted/40 p-3">
+          <div className="text-muted-foreground text-xs">Parties with balance</div>
+          <div className="text-lg font-semibold text-foreground tabular-nums">{rows.length}</div>
         </div>
       </div>
 
@@ -205,10 +205,10 @@ export function RemainingBalanceReport({ branchId }: Props) {
           <Loader2 className="w-8 h-8 animate-spin text-cyan-400" />
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-gray-800">
+        <div className="overflow-x-auto rounded-lg border border-border">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-gray-500 border-b border-gray-800 bg-gray-900/50 text-left">
+              <tr className="text-muted-foreground border-b border-border bg-muted/40 text-left">
                 <th className="py-2 px-3">Contact</th>
                 <th className="py-2 px-3">Code</th>
                 <th className="py-2 px-3">Type</th>
@@ -220,23 +220,23 @@ export function RemainingBalanceReport({ branchId }: Props) {
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-gray-500">
+                  <td colSpan={6} className="py-8 text-center text-muted-foreground">
                     No open balances for current filters.
                   </td>
                 </tr>
               ) : (
                 rows.map((r) => (
-                  <tr key={r.contactId} className="border-b border-gray-800/80 hover:bg-gray-900/30">
+                  <tr key={r.contactId} className="border-b border-border/80 hover:bg-muted/30">
                     <td className="py-2 px-3 text-gray-200">{r.name}</td>
-                    <td className="py-2 px-3 text-gray-500 font-mono text-xs">{r.contactCode || '—'}</td>
-                    <td className="py-2 px-3 text-gray-400 capitalize">{r.contactType}</td>
+                    <td className="py-2 px-3 text-muted-foreground font-mono text-xs">{r.contactCode || '—'}</td>
+                    <td className="py-2 px-3 text-muted-foreground capitalize">{r.contactType}</td>
                     <td className="py-2 px-3 text-right tabular-nums text-cyan-300">
                       {r.receivableDue > 0 ? formatCurrency(r.receivableDue) : '—'}
                     </td>
                     <td className="py-2 px-3 text-right tabular-nums text-amber-300">
                       {r.payableDue > 0 ? formatCurrency(r.payableDue) : '—'}
                     </td>
-                    <td className="py-2 px-3 text-right tabular-nums text-gray-300">
+                    <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">
                       {formatCurrency(r.netFollowUp)}
                     </td>
                   </tr>

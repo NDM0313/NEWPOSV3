@@ -5,6 +5,7 @@
 
 import type { LedgerStatementV2Row } from '@/app/features/ledger-statement-center-v2/types';
 import type { UnifiedLedgerRow } from '@/app/services/unifiedLedgerService';
+import { LEDGER_V2_EMPTY } from '@/app/lib/ledgerStatementV2Enrichment';
 
 function normalizeDocType(t: string): string {
   return String(t || '')
@@ -41,11 +42,12 @@ export function mapUnifiedRowToLedgerV2(row: UnifiedLedgerRow): LedgerStatementV
     debit: row.debit,
     credit: row.credit,
     runningBalance: row.runningBalance,
-    paymentMethod: row.accountName?.trim() || '—',
-    createdBy: '—',
+    paymentMethod: LEDGER_V2_EMPTY,
+    createdBy: LEDGER_V2_EMPTY,
     hasAttachments: false,
     sourceKind: mapGlReferenceTypeToSourceKind(refType),
     sourceId: row.paymentId ?? undefined,
+    paymentId: row.paymentId ?? undefined,
   };
 }
 

@@ -374,13 +374,13 @@ export const NewRentalBooking = () => {
       <div className="mb-6 bg-gradient-to-r from-[#800020] to-[#5a0016] rounded-xl p-6 border border-[#800020]/30">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-white mb-2">New Rental Booking</h1>
-            <p className="text-gray-300">Bridal & Groom Wear Rental Management</p>
+            <h1 className="text-3xl font-bold text-foreground mb-2">New Rental Booking</h1>
+            <p className="text-muted-foreground">Bridal & Groom Wear Rental Management</p>
           </div>
           <div className="text-right">
-            <div className="text-sm text-gray-300 mb-1">Invoice Number</div>
-            <div className="text-2xl font-bold text-white mb-2">{invoiceNumber}</div>
-            <div className="flex items-center gap-2 text-sm text-gray-300">
+            <div className="text-sm text-muted-foreground mb-1">Invoice Number</div>
+            <div className="text-2xl font-bold text-foreground mb-2">{invoiceNumber}</div>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Calendar size={16} />
               Booking Date: {bookingDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
             </div>
@@ -392,15 +392,15 @@ export const NewRentalBooking = () => {
         {/* LEFT COLUMN: Inventory & Dates */}
         <div className="col-span-7 space-y-6">
           {/* Customer Selection */}
-          <div className="bg-[#1a1a1a] border border-gray-800 rounded-xl p-6">
-            <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+          <div className="bg-[#1a1a1a] border border-border rounded-xl p-6">
+            <h3 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
               <User size={20} className="text-[#800020]" />
               Customer Selection
             </h3>
             
             <div className="space-y-4">
               <div>
-                <Label className="text-gray-400 mb-2 block">Customer Type</Label>
+                <Label className="text-muted-foreground mb-2 block">Customer Type</Label>
                 <Select
                   value={selectedCustomer.id}
                   onValueChange={(value) => {
@@ -412,12 +412,12 @@ export const NewRentalBooking = () => {
                     }
                   }}
                 >
-                  <SelectTrigger className="bg-[#121212] border-gray-700 text-white">
+                  <SelectTrigger className="bg-[#121212] border-border text-foreground">
                     <SelectValue placeholder="Select customer" />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#1a1a1a] border-gray-700">
+                  <SelectContent className="bg-[#1a1a1a] border-border">
                     {customers.map(customer => (
-                      <SelectItem key={customer.id} value={customer.id} className="text-white hover:bg-gray-800">
+                      <SelectItem key={customer.id} value={customer.id} className="text-foreground hover:bg-muted">
                         {customer.name} {customer.type === 'registered' && customer.phone && `(${customer.phone})`}
                       </SelectItem>
                     ))}
@@ -428,21 +428,21 @@ export const NewRentalBooking = () => {
               {selectedCustomer && selectedCustomer.type === 'walk-in' && (
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label className="text-gray-400 mb-2 block">Customer Name *</Label>
+                    <Label className="text-muted-foreground mb-2 block">Customer Name *</Label>
                     <Input
                       value={customerName}
                       onChange={(e) => setCustomerName(e.target.value)}
                       placeholder="Enter name"
-                      className="bg-[#121212] border-gray-700 text-white"
+                      className="bg-[#121212] border-border text-foreground"
                     />
                   </div>
                   <div>
-                    <Label className="text-gray-400 mb-2 block">Phone Number *</Label>
+                    <Label className="text-muted-foreground mb-2 block">Phone Number *</Label>
                     <Input
                       value={customerPhone}
                       onChange={(e) => setCustomerPhone(e.target.value)}
                       placeholder="+92 300 1234567"
-                      className="bg-[#121212] border-gray-700 text-white"
+                      className="bg-[#121212] border-border text-foreground"
                     />
                   </div>
                 </div>
@@ -451,9 +451,9 @@ export const NewRentalBooking = () => {
           </div>
 
           {/* STEP A: Rental Timeline (Priority) */}
-          <div className="bg-[#1a1a1a] border border-gray-800 rounded-xl p-6">
+          <div className="bg-[#1a1a1a] border border-border rounded-xl p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+              <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
                 <Clock size={20} className="text-[#800020]" />
                 Step A: Select Rental Dates
               </h3>
@@ -497,25 +497,25 @@ export const NewRentalBooking = () => {
 
               {/* Visual Timeline */}
               {pickupDate && returnDate && (
-                <div className="bg-[#121212] border border-gray-700 rounded-lg p-4 relative">
+                <div className="bg-[#121212] border border-border rounded-lg p-4 relative">
                   <div className="absolute top-1/2 left-8 right-8 border-t-2 border-dashed border-[#800020]/30 -z-0"></div>
                   <ArrowRight className="absolute top-1/2 right-4 -translate-y-1/2 text-[#800020] -z-0" size={20} />
                   
                   <div className="flex items-center justify-between relative z-10">
                     <div className="bg-[#1a1a1a] px-4 py-2 rounded-lg border border-emerald-500/30">
-                      <div className="text-xs text-gray-500 mb-1">Pickup</div>
+                      <div className="text-xs text-muted-foreground mb-1">Pickup</div>
                       <div className="font-semibold text-emerald-400">
                         {pickupDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                       </div>
                     </div>
                     
                     <div className="bg-[#800020]/20 px-4 py-2 rounded-lg border border-[#800020]/40">
-                      <div className="text-xs text-gray-500 mb-1">Duration</div>
-                      <div className="font-bold text-white">{rentalDays} Days</div>
+                      <div className="text-xs text-muted-foreground mb-1">Duration</div>
+                      <div className="font-bold text-foreground">{rentalDays} Days</div>
                     </div>
                     
                     <div className="bg-[#1a1a1a] px-4 py-2 rounded-lg border border-blue-500/30">
-                      <div className="text-xs text-gray-500 mb-1">Return</div>
+                      <div className="text-xs text-muted-foreground mb-1">Return</div>
                       <div className="font-semibold text-blue-400">
                         {returnDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                       </div>
@@ -538,7 +538,7 @@ export const NewRentalBooking = () => {
               {!datesLocked && pickupDate && returnDate && (
                 <Button
                   onClick={handleLockDates}
-                  className="w-full bg-[#800020] hover:bg-[#600018] text-white font-semibold"
+                  className="w-full bg-[#800020] hover:bg-[#600018] text-foreground font-semibold"
                 >
                   <Lock size={16} className="mr-2" />
                   Lock Dates & Proceed to Inventory
@@ -549,23 +549,23 @@ export const NewRentalBooking = () => {
 
           {/* STEP B: Product Selection (Locked until dates selected) */}
           <div className={cn(
-            "bg-[#1a1a1a] border border-gray-800 rounded-xl p-6 transition-opacity",
+            "bg-[#1a1a1a] border border-border rounded-xl p-6 transition-opacity",
             !datesLocked && "opacity-50 pointer-events-none"
           )}>
-            <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+            <h3 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
               <Package size={20} className="text-[#800020]" />
-              Step B: Select Items {!datesLocked && <Badge className="bg-gray-700 text-gray-400">Locked</Badge>}
+              Step B: Select Items {!datesLocked && <Badge className="bg-muted text-muted-foreground">Locked</Badge>}
             </h3>
 
             {/* Search */}
             <div className="mb-4">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
                 <Input
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   placeholder="Search by SKU or Product Name..."
-                  className="pl-10 bg-[#121212] border-gray-700 text-white"
+                  className="pl-10 bg-[#121212] border-border text-foreground"
                   disabled={!datesLocked}
                 />
               </div>
@@ -574,12 +574,12 @@ export const NewRentalBooking = () => {
             {/* Product Cards */}
             <div className="space-y-3 max-h-[600px] overflow-y-auto">
               {loading ? (
-                <div className="text-center py-8 text-gray-500">
+                <div className="text-center py-8 text-muted-foreground">
                   <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#800020]"></div>
                   <p className="mt-2">Loading…</p>
                 </div>
               ) : filteredProducts.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
+                <div className="text-center py-8 text-muted-foreground">
                   <p className="font-medium">No rentable products found</p>
                   <p className="text-xs mt-1">Add products and enable rental in product settings, or check filters.</p>
                 </div>
@@ -593,18 +593,18 @@ export const NewRentalBooking = () => {
                     className={cn(
                       "bg-[#121212] border rounded-lg p-4 transition-all",
                       availability.available
-                        ? "border-gray-700 hover:border-emerald-500/50"
+                        ? "border-border hover:border-emerald-500/50"
                         : "border-red-500/50 bg-red-500/5",
                       isSelected && "border-[#800020] bg-[#800020]/10"
                     )}
                   >
                     <div className="flex gap-4">
                       {/* Image */}
-                      <div className="w-24 h-24 rounded-lg bg-gray-800 flex items-center justify-center overflow-hidden flex-shrink-0">
+                      <div className="w-24 h-24 rounded-lg bg-muted flex items-center justify-center overflow-hidden flex-shrink-0">
                         {product.image ? (
                           <ProductImage src={product.image} alt={product.name} className="w-full h-full object-cover" />
                         ) : (
-                          <ImageIcon size={32} className="text-gray-600" />
+                          <ImageIcon size={32} className="text-muted-foreground" />
                         )}
                       </div>
 
@@ -612,10 +612,10 @@ export const NewRentalBooking = () => {
                       <div className="flex-1">
                         <div className="flex items-start justify-between mb-2">
                           <div>
-                            <h4 className="font-semibold text-white mb-1">{product.name}</h4>
-                            <div className="flex items-center gap-3 text-sm text-gray-400">
+                            <h4 className="font-semibold text-foreground mb-1">{product.name}</h4>
+                            <div className="flex items-center gap-3 text-sm text-muted-foreground">
                               <span>SKU: {product.sku}</span>
-                              <Badge className="bg-gray-700 text-gray-300 border-gray-600 text-xs">
+                              <Badge className="bg-muted text-muted-foreground border-gray-600 text-xs">
                                 {product.category}
                               </Badge>
                             </div>
@@ -647,15 +647,15 @@ export const NewRentalBooking = () => {
                         <div className="flex items-center justify-between mt-3">
                           <div className="flex items-center gap-4">
                             <div>
-                              <div className="text-xs text-gray-500">Retail Value</div>
-                              <div className="text-sm text-gray-400">₨{product.retailValue.toLocaleString()}</div>
+                              <div className="text-xs text-muted-foreground">Retail Value</div>
+                              <div className="text-sm text-muted-foreground">₨{product.retailValue.toLocaleString()}</div>
                             </div>
                             <div>
-                              <div className="text-xs text-gray-500">Rent (3 days)</div>
-                              <div className="text-lg font-bold text-white">₨{product.rentPrice.toLocaleString()}</div>
+                              <div className="text-xs text-muted-foreground">Rent (3 days)</div>
+                              <div className="text-lg font-bold text-foreground">₨{product.rentPrice.toLocaleString()}</div>
                             </div>
                             <div>
-                              <div className="text-xs text-gray-500">Per Extra Day</div>
+                              <div className="text-xs text-muted-foreground">Per Extra Day</div>
                               <div className="text-sm font-semibold text-orange-400">+₨{product.perDayPrice.toLocaleString()}</div>
                             </div>
                           </div>
@@ -665,8 +665,8 @@ export const NewRentalBooking = () => {
                               onClick={() => handleAddItem(product)}
                               disabled={isSelected}
                               className={cn(
-                                "bg-[#800020] hover:bg-[#600018] text-white",
-                                isSelected && "bg-gray-700 text-gray-400 cursor-not-allowed"
+                                "bg-[#800020] hover:bg-[#600018] text-foreground",
+                                isSelected && "bg-muted text-muted-foreground cursor-not-allowed"
                               )}
                             >
                               {isSelected ? 'Added' : 'Add to Booking'}
@@ -686,15 +686,15 @@ export const NewRentalBooking = () => {
         <div className="col-span-5 space-y-6">
           {/* Selected Items */}
           {selectedItems.length > 0 && (
-            <div className="bg-[#1a1a1a] border border-gray-800 rounded-xl p-6">
-              <h3 className="text-lg font-bold text-white mb-4">Selected Items ({selectedItems.length})</h3>
+            <div className="bg-[#1a1a1a] border border-border rounded-xl p-6">
+              <h3 className="text-lg font-bold text-foreground mb-4">Selected Items ({selectedItems.length})</h3>
               <div className="space-y-3">
                 {selectedItems.map(item => (
-                  <div key={item.product.id} className="bg-[#121212] border border-gray-700 rounded-lg p-3">
+                  <div key={item.product.id} className="bg-[#121212] border border-border rounded-lg p-3">
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex-1">
-                        <div className="font-semibold text-white text-sm">{item.product.name}</div>
-                        <div className="text-xs text-gray-500">SKU: {item.product.sku}</div>
+                        <div className="font-semibold text-foreground text-sm">{item.product.name}</div>
+                        <div className="text-xs text-muted-foreground">SKU: {item.product.sku}</div>
                       </div>
                       <Button
                         onClick={() => handleRemoveItem(item.product.id)}
@@ -706,8 +706,8 @@ export const NewRentalBooking = () => {
                       </Button>
                     </div>
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-400">Base Rent (3 days)</span>
-                      <span className="font-semibold text-white">₨{item.product.rentPrice.toLocaleString()}</span>
+                      <span className="text-muted-foreground">Base Rent (3 days)</span>
+                      <span className="font-semibold text-foreground">₨{item.product.rentPrice.toLocaleString()}</span>
                     </div>
                     {rentalDays > 3 && (
                       <div className="flex items-center justify-between text-sm mt-1">
@@ -722,8 +722,8 @@ export const NewRentalBooking = () => {
           )}
 
           {/* Booking Notes */}
-          <div className="bg-[#1a1a1a] border border-gray-800 rounded-xl p-6">
-            <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+          <div className="bg-[#1a1a1a] border border-border rounded-xl p-6">
+            <h3 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
               <FileText size={20} className="text-[#800020]" />
               Booking Notes
             </h3>
@@ -731,13 +731,13 @@ export const NewRentalBooking = () => {
               value={bookingNotes}
               onChange={(e) => setBookingNotes(e.target.value)}
               placeholder="Measurements, alteration requests, special instructions..."
-              className="bg-[#121212] border-gray-700 text-white min-h-[100px]"
+              className="bg-[#121212] border-border text-foreground min-h-[100px]"
             />
           </div>
 
           {/* Payment Breakdown Card */}
-          <div className="bg-gradient-to-br from-[#1a1a1a] to-[#0f0f0f] border border-gray-800 rounded-xl p-6">
-            <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+          <div className="bg-gradient-to-br from-[#1a1a1a] to-[#0f0f0f] border border-border rounded-xl p-6">
+            <h3 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
               <DollarSign size={20} className="text-[#800020]" />
               Payment Breakdown
             </h3>
@@ -745,27 +745,27 @@ export const NewRentalBooking = () => {
             <div className="space-y-4">
               {/* Total Rent */}
               <div className="bg-[#800020]/10 border border-[#800020]/30 rounded-lg p-4">
-                <div className="text-sm text-gray-400 mb-1">Total Rental Amount</div>
-                <div className="text-4xl font-bold text-white">₨{totalRent.toLocaleString()}</div>
-                <div className="text-xs text-gray-500 mt-1">
+                <div className="text-sm text-muted-foreground mb-1">Total Rental Amount</div>
+                <div className="text-4xl font-bold text-foreground">₨{totalRent.toLocaleString()}</div>
+                <div className="text-xs text-muted-foreground mt-1">
                   For {rentalDays} days ({selectedItems.length} items)
                 </div>
               </div>
 
               {/* Advance Payment */}
               <div>
-                <Label className="text-gray-400 mb-2 block">
+                <Label className="text-muted-foreground mb-2 block">
                   <span>Advance to collect (intent)</span>
-                  <span className="block text-xs text-gray-500 font-normal mt-0.5">Recorded only after you confirm the payment dialog.</span>
+                  <span className="block text-xs text-muted-foreground font-normal mt-0.5">Recorded only after you confirm the payment dialog.</span>
                 </Label>
                 <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">₨</span>
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">₨</span>
                   <Input
                     type="number"
                     value={advanceAmount}
                     onChange={(e) => setAdvanceAmount(Number(e.target.value))}
                     placeholder="0"
-                    className="pl-8 bg-[#121212] border-gray-700 text-white"
+                    className="pl-8 bg-[#121212] border-border text-foreground"
                   />
                 </div>
               </div>
@@ -773,7 +773,7 @@ export const NewRentalBooking = () => {
               {/* Balance Due */}
               <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-4">
                 <div className="flex items-center justify-between mb-2">
-                  <div className="text-sm text-gray-400">Balance Due at Pickup</div>
+                  <div className="text-sm text-muted-foreground">Balance Due at Pickup</div>
                   {pickupDate && (
                     <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs">
                       {pickupDate.toLocaleDateString()}
@@ -784,14 +784,14 @@ export const NewRentalBooking = () => {
                   ₨{balanceDueConfirmed > 0 ? balanceDueConfirmed.toLocaleString() : '0'}
                 </div>
                 {advanceAmount > 0.009 && (
-                  <p className="text-xs text-gray-500 mt-2">
+                  <p className="text-xs text-muted-foreground mt-2">
                     If advance of ₨{advanceAmount.toLocaleString()} is collected in the payment step, estimated due becomes ₨
                     {estimatedAfterAdvance.toLocaleString()}.
                   </p>
                 )}
               </div>
 
-              <p className="text-xs text-gray-500 mt-2">Security & documents handled at pickup</p>
+              <p className="text-xs text-muted-foreground mt-2">Security & documents handled at pickup</p>
             </div>
           </div>
 
@@ -801,7 +801,7 @@ export const NewRentalBooking = () => {
               onClick={handleSaveBooking}
               disabled={selectedItems.length === 0 || !datesLocked || saving || loading}
               aria-busy={saving}
-              className="w-full bg-[#800020] hover:bg-[#600018] text-white font-bold py-6 text-lg shadow-lg shadow-[#800020]/20 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-[#800020] hover:bg-[#600018] text-foreground font-bold py-6 text-lg shadow-lg shadow-[#800020]/20 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <CheckCircle2 size={20} className="mr-2" />
               {saving ? 'Saving...' : 'Confirm Booking'}
@@ -810,7 +810,7 @@ export const NewRentalBooking = () => {
             <Button
               variant="outline"
               disabled={selectedItems.length === 0}
-              className="w-full border-gray-700 text-white hover:bg-gray-800"
+              className="w-full border-border text-foreground hover:bg-muted"
             >
               <Printer size={18} className="mr-2" />
               Print Receipt
@@ -820,10 +820,10 @@ export const NewRentalBooking = () => {
       </div>
 
       <Dialog open={advancePromptOpen} onOpenChange={(o) => !o && setAdvancePromptOpen(false)}>
-        <DialogContent className="bg-gray-950 border-gray-800 text-white sm:max-w-md">
+        <DialogContent className="bg-input-background border-border text-foreground sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Collect advance now?</DialogTitle>
-            <DialogDescription className="text-gray-400">
+            <DialogDescription className="text-muted-foreground">
               Booking is saved. Record advance to a specific account, continue without payment, or dismiss.
             </DialogDescription>
           </DialogHeader>

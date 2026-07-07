@@ -1756,7 +1756,7 @@ export const AccountLedgerReportPage: React.FC<{
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-12">
         <Loader2 className="h-8 w-8 animate-spin text-blue-400" />
-        <p className="text-sm text-gray-400">Loading accounts…</p>
+        <p className="text-sm text-muted-foreground">Loading accounts…</p>
       </div>
     );
   }
@@ -1765,21 +1765,21 @@ export const AccountLedgerReportPage: React.FC<{
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-16">
         <Loader2 className="h-10 w-10 animate-spin text-blue-400" />
-        <p className="text-sm text-gray-400">Loading account statement…</p>
+        <p className="text-sm text-muted-foreground">Loading account statement…</p>
       </div>
     );
   }
 
   return (
     <div className="space-y-4" data-account-statement-main-loader={mainLoaderSource}>
-      <div className="rounded-xl border border-gray-800 bg-gray-900/60 p-4 space-y-3">
+      <div className="rounded-xl border border-border bg-muted/60 p-4 space-y-3">
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
           <div>
-            <label className="text-xs text-gray-400">Statement Type</label>
+            <label className="text-xs text-muted-foreground">Statement Type</label>
             <select
               value={statementType}
               onChange={(e) => setStatementType(e.target.value as StatementType)}
-              className="mt-1 w-full bg-gray-800 border border-gray-700 rounded px-2 py-2 text-sm text-white"
+              className="mt-1 w-full bg-muted border border-border rounded px-2 py-2 text-sm text-foreground"
             >
               <option value="gl">General Ledger Statement</option>
               <option value="customer">Customer Statement</option>
@@ -1790,11 +1790,11 @@ export const AccountLedgerReportPage: React.FC<{
             </select>
           </div>
           <div>
-            <label className="text-xs text-gray-400">Category</label>
+            <label className="text-xs text-muted-foreground">Category</label>
             <select
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
-              className="mt-1 w-full bg-gray-800 border border-gray-700 rounded px-2 py-2 text-sm text-white"
+              className="mt-1 w-full bg-muted border border-border rounded px-2 py-2 text-sm text-foreground"
             >
               <option value="all">All categories</option>
               {ACCOUNT_CATEGORY_ORDER.map((c) => (
@@ -1804,7 +1804,7 @@ export const AccountLedgerReportPage: React.FC<{
           </div>
           {(statementType === 'gl' || statementType === 'cash_bank' || statementType === 'account_contact') && (
             <div className="lg:col-span-2">
-              <label className="text-xs text-gray-400">Account</label>
+              <label className="text-xs text-muted-foreground">Account</label>
               <SearchableSelect
                 value={selectedAccountId}
                 onValueChange={setSelectedAccountId}
@@ -1812,7 +1812,7 @@ export const AccountLedgerReportPage: React.FC<{
                 placeholder="Select account"
                 searchPlaceholder="Search accounts by name or code..."
                 emptyText={accountSelectOptions.length === 0 ? 'No accounts in this category.' : 'No account found.'}
-                className="mt-1 bg-gray-800 border-gray-700"
+                className="mt-1 bg-muted border-border"
                 filterFn={(option, search) => {
                   const q = search.trim().toLowerCase();
                   if (!q) return true;
@@ -1828,11 +1828,11 @@ export const AccountLedgerReportPage: React.FC<{
           {(statementType === 'customer' || statementType === 'supplier' || statementType === 'account_contact') && (
             <>
               <div>
-                <label className="text-xs text-gray-400">Contact Type</label>
+                <label className="text-xs text-muted-foreground">Contact Type</label>
                 <select
                   value={selectedContactType}
                   onChange={(e) => setSelectedContactType(e.target.value as ContactType | 'all')}
-                  className="mt-1 w-full bg-gray-800 border border-gray-700 rounded px-2 py-2 text-sm text-white"
+                  className="mt-1 w-full bg-muted border border-border rounded px-2 py-2 text-sm text-foreground"
                   disabled={statementType === 'customer' || statementType === 'supplier'}
                 >
                   <option value="all">All</option>
@@ -1841,7 +1841,7 @@ export const AccountLedgerReportPage: React.FC<{
                 </select>
               </div>
               <div className="lg:col-span-2">
-                <label className="text-xs text-gray-400">Contact</label>
+                <label className="text-xs text-muted-foreground">Contact</label>
                 <SearchableSelect
                   value={selectedContactId}
                   onValueChange={setSelectedContactId}
@@ -1849,7 +1849,7 @@ export const AccountLedgerReportPage: React.FC<{
                   placeholder="Select contact"
                   searchPlaceholder="Search by name or reference (e.g. Haseeb, CUS-)..."
                   emptyText={contactSelectOptions.length === 0 ? 'No contacts loaded.' : 'No contact found.'}
-                  className="mt-1 bg-gray-800 border-gray-700"
+                  className="mt-1 bg-muted border-border"
                   filterFn={(option, search) => {
                     const q = search.trim().toLowerCase();
                     if (!q) return true;
@@ -1864,11 +1864,11 @@ export const AccountLedgerReportPage: React.FC<{
           )}
           {statementType === 'worker' && (
             <div className="lg:col-span-2">
-              <label className="text-xs text-gray-400">Worker</label>
+              <label className="text-xs text-muted-foreground">Worker</label>
               <select
                 value={selectedWorkerId}
                 onChange={(e) => setSelectedWorkerId(e.target.value)}
-                className="mt-1 w-full bg-gray-800 border border-gray-700 rounded px-2 py-2 text-sm text-white"
+                className="mt-1 w-full bg-muted border border-border rounded px-2 py-2 text-sm text-foreground"
               >
                 <option value="">Select worker</option>
                 {workers
@@ -1885,42 +1885,42 @@ export const AccountLedgerReportPage: React.FC<{
 
         <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-8 gap-3 items-end">
           <div>
-            <label className="text-xs text-gray-400">Source module</label>
-            <select value={sourceModuleFilter} onChange={(e) => setSourceModuleFilter(e.target.value)} className="mt-1 w-full bg-gray-800 border border-gray-700 rounded px-2 py-2 text-sm text-white">
+            <label className="text-xs text-muted-foreground">Source module</label>
+            <select value={sourceModuleFilter} onChange={(e) => setSourceModuleFilter(e.target.value)} className="mt-1 w-full bg-muted border border-border rounded px-2 py-2 text-sm text-foreground">
               {sourceModules.map((m) => <option key={m} value={m}>{m === 'all' ? 'All' : m}</option>)}
             </select>
           </div>
           <div>
-            <label className="text-xs text-gray-400">Transaction type</label>
-            <select value={transactionTypeFilter} onChange={(e) => setTransactionTypeFilter(e.target.value)} className="mt-1 w-full bg-gray-800 border border-gray-700 rounded px-2 py-2 text-sm text-white">
+            <label className="text-xs text-muted-foreground">Transaction type</label>
+            <select value={transactionTypeFilter} onChange={(e) => setTransactionTypeFilter(e.target.value)} className="mt-1 w-full bg-muted border border-border rounded px-2 py-2 text-sm text-foreground">
               {transactionTypes.map((m) => <option key={m} value={m}>{m === 'all' ? 'All' : m}</option>)}
             </select>
           </div>
           <div>
-            <label className="text-xs text-gray-400">Polarity</label>
-            <select value={polarity} onChange={(e) => setPolarity(e.target.value as any)} className="mt-1 w-full bg-gray-800 border border-gray-700 rounded px-2 py-2 text-sm text-white">
+            <label className="text-xs text-muted-foreground">Polarity</label>
+            <select value={polarity} onChange={(e) => setPolarity(e.target.value as any)} className="mt-1 w-full bg-muted border border-border rounded px-2 py-2 text-sm text-foreground">
               <option value="all">All</option>
               <option value="debit">Only debit</option>
               <option value="credit">Only credit</option>
             </select>
           </div>
           <div className="md:col-span-2">
-            <label className="text-xs text-gray-400">Search</label>
-            <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Reference / description / party" className="mt-1 w-full bg-gray-800 border border-gray-700 rounded px-2 py-2 text-sm text-white" />
+            <label className="text-xs text-muted-foreground">Search</label>
+            <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Reference / description / party" className="mt-1 w-full bg-muted border border-border rounded px-2 py-2 text-sm text-foreground" />
           </div>
-          <label className="text-xs text-gray-300 flex items-center gap-2"><input type="checkbox" checked={includeReversals} onChange={(e) => setIncludeReversals(e.target.checked)} /> Include reversals</label>
-          <label className="text-xs text-gray-300 flex items-center gap-2"><input type="checkbox" checked={includeManualEntries} onChange={(e) => setIncludeManualEntries(e.target.checked)} /> Include manual</label>
-          <label className="text-xs text-gray-300 flex items-center gap-2"><input type="checkbox" checked={includeAdjustments} onChange={(e) => setIncludeAdjustments(e.target.checked)} /> Include adjustments</label>
+          <label className="text-xs text-muted-foreground flex items-center gap-2"><input type="checkbox" checked={includeReversals} onChange={(e) => setIncludeReversals(e.target.checked)} /> Include reversals</label>
+          <label className="text-xs text-muted-foreground flex items-center gap-2"><input type="checkbox" checked={includeManualEntries} onChange={(e) => setIncludeManualEntries(e.target.checked)} /> Include manual</label>
+          <label className="text-xs text-muted-foreground flex items-center gap-2"><input type="checkbox" checked={includeAdjustments} onChange={(e) => setIncludeAdjustments(e.target.checked)} /> Include adjustments</label>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 py-1 border-t border-gray-800/80 pt-3">
+        <div className="flex flex-wrap items-center gap-3 py-1 border-t border-border/80 pt-3">
           <div className="flex items-center gap-2">
             <Switch
               id="statement-pres-audit"
               checked={statementPresentationAudit}
               onCheckedChange={setStatementPresentationAudit}
             />
-            <Label htmlFor="statement-pres-audit" className="text-xs text-gray-300 cursor-pointer">
+            <Label htmlFor="statement-pres-audit" className="text-xs text-muted-foreground cursor-pointer">
               Row presentation: audit (full weight)
             </Label>
           </div>
@@ -1967,7 +1967,7 @@ export const AccountLedgerReportPage: React.FC<{
 
       {showUnifiedPreviewTools ? (
         <div className="flex flex-wrap items-center gap-3">
-          <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer w-fit">
+          <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer w-fit">
             <input
               type="checkbox"
               checked={unifiedPreviewEnabled}
@@ -2029,7 +2029,7 @@ export const AccountLedgerReportPage: React.FC<{
         </div>
       )}
 
-      <p className="text-sm text-gray-400">
+      <p className="text-sm text-muted-foreground">
         {selectedAccount && `${selectedAccount.code || ''} ${selectedAccount.name}`.trim()}
         {selectedPartyName
           ? applied.statementType === 'worker'
@@ -2046,76 +2046,76 @@ export const AccountLedgerReportPage: React.FC<{
       ) : null}
 
       <div className={cn('grid grid-cols-2 md:grid-cols-5 gap-3', loading && 'opacity-60 pointer-events-none')}>
-        <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-3">
-          <p className="text-xs text-gray-400">Opening Balance</p>
+        <div className="rounded-lg border border-border bg-muted/40 p-3">
+          <p className="text-xs text-muted-foreground">Opening Balance</p>
           <p
             className={cn(
               'text-lg font-semibold',
-              openingBalanceAttention !== 'none' ? 'text-rose-300' : 'text-white'
+              openingBalanceAttention !== 'none' ? 'text-rose-300' : 'text-foreground'
             )}
             title={partyBalanceAttentionTitle(openingBalanceAttention)}
           >
             {formatCurrency(summary.openingBalance)}
           </p>
         </div>
-        <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-3"><p className="text-xs text-gray-400">Total Debit</p><p className="text-lg font-semibold text-emerald-400">{formatCurrency(summary.totalDebit)}</p></div>
-        <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-3"><p className="text-xs text-gray-400">Total Credit</p><p className="text-lg font-semibold text-rose-400">{formatCurrency(summary.totalCredit)}</p></div>
-        <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-3">
-          <p className="text-xs text-gray-400">Closing Balance</p>
+        <div className="rounded-lg border border-border bg-muted/40 p-3"><p className="text-xs text-muted-foreground">Total Debit</p><p className="text-lg font-semibold text-emerald-400">{formatCurrency(summary.totalDebit)}</p></div>
+        <div className="rounded-lg border border-border bg-muted/40 p-3"><p className="text-xs text-muted-foreground">Total Credit</p><p className="text-lg font-semibold text-rose-400">{formatCurrency(summary.totalCredit)}</p></div>
+        <div className="rounded-lg border border-border bg-muted/40 p-3">
+          <p className="text-xs text-muted-foreground">Closing Balance</p>
           <p
             className={cn(
               'text-lg font-semibold',
-              closingBalanceAttention !== 'none' ? 'text-rose-300' : 'text-white'
+              closingBalanceAttention !== 'none' ? 'text-rose-300' : 'text-foreground'
             )}
             title={partyBalanceAttentionTitle(closingBalanceAttention)}
           >
             {formatCurrency(summary.closingBalance)}
           </p>
         </div>
-        <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-3"><p className="text-xs text-gray-400">Transaction Count</p><p className="text-lg font-semibold text-white">{summary.txCount}</p></div>
+        <div className="rounded-lg border border-border bg-muted/40 p-3"><p className="text-xs text-muted-foreground">Transaction Count</p><p className="text-lg font-semibold text-foreground">{summary.txCount}</p></div>
       </div>
 
-      <div className="overflow-auto rounded-xl border border-gray-800 bg-gray-900/50">
+      <div className="overflow-auto rounded-xl border border-border bg-muted/40">
         {loading ? (
           <div className="flex flex-col items-center justify-center gap-2 py-12">
             <Loader2 className="h-6 w-6 animate-spin text-blue-400" />
-            <p className="text-xs text-gray-400">Refreshing statement…</p>
+            <p className="text-xs text-muted-foreground">Refreshing statement…</p>
           </div>
         ) : (
           <table className="w-full text-base leading-snug">
-            <thead className="border-b border-gray-800 bg-gray-800/50">
+            <thead className="border-b border-border bg-muted/50">
               <tr>
-                <th className="p-3 text-left font-medium text-gray-300">Date</th>
-                <th className="p-3 text-left font-medium text-gray-300">Reference</th>
-                <th className="p-3 text-left font-medium text-gray-300">Branch</th>
-                <th className="p-3 text-left font-medium text-gray-300 max-w-[7rem]" title="Which product area posted this line (sales, purchases, accounting, …).">
+                <th className="p-3 text-left font-medium text-muted-foreground">Date</th>
+                <th className="p-3 text-left font-medium text-muted-foreground">Reference</th>
+                <th className="p-3 text-left font-medium text-muted-foreground">Branch</th>
+                <th className="p-3 text-left font-medium text-muted-foreground max-w-[7rem]" title="Which product area posted this line (sales, purchases, accounting, …).">
                   Module
                 </th>
-                <th className="p-3 text-left font-medium text-gray-300 w-36">Presentation</th>
-                <th className="p-3 text-left font-medium text-gray-300">Contact / Party</th>
-                <th className="p-3 text-left font-medium text-gray-300 min-w-[20rem] w-[24rem] max-w-[32rem]">
+                <th className="p-3 text-left font-medium text-muted-foreground w-36">Presentation</th>
+                <th className="p-3 text-left font-medium text-muted-foreground">Contact / Party</th>
+                <th className="p-3 text-left font-medium text-muted-foreground min-w-[20rem] w-[24rem] max-w-[32rem]">
                   Description
                 </th>
-                <th className="p-3 text-left font-medium text-gray-300 max-w-[9rem]">Counter (GL)</th>
-                <th className="p-3 text-left font-medium text-gray-300 max-w-[10rem]">From → To</th>
-                <th className="p-3 text-left font-medium text-gray-300 max-w-[10rem]">Economic meaning</th>
-                <th className="p-3 text-left font-medium text-gray-300">Economic event</th>
+                <th className="p-3 text-left font-medium text-muted-foreground max-w-[9rem]">Counter (GL)</th>
+                <th className="p-3 text-left font-medium text-muted-foreground max-w-[10rem]">From → To</th>
+                <th className="p-3 text-left font-medium text-muted-foreground max-w-[10rem]">Economic meaning</th>
+                <th className="p-3 text-left font-medium text-muted-foreground">Economic event</th>
                 <th
-                  className="p-3 text-left font-medium text-gray-300 max-w-[9rem]"
+                  className="p-3 text-left font-medium text-muted-foreground max-w-[9rem]"
                   title="What business record this journal line is tied to (same information as the former “Source type” + “Edit target” columns, shown once)."
                 >
                   JE link type
                 </th>
                 <th
-                  className="p-3 text-left font-medium text-gray-300 max-w-[14rem]"
+                  className="p-3 text-left font-medium text-muted-foreground max-w-[14rem]"
                   title="Cash, bank, or wallet from the linked payment record; if none, the offsetting GL account."
                 >
                   Settlement / payment account
                 </th>
-                <th className="p-3 text-right font-medium text-gray-300">Debit</th>
-                <th className="p-3 text-right font-medium text-gray-300">Credit</th>
+                <th className="p-3 text-right font-medium text-muted-foreground">Debit</th>
+                <th className="p-3 text-right font-medium text-muted-foreground">Credit</th>
                 <th
-                  className="p-3 text-right font-medium text-gray-300"
+                  className="p-3 text-right font-medium text-muted-foreground"
                   title={
                     applied.statementType === 'customer'
                       ? 'Positive: customer owes you (normal AR). Red row: negative balance — credit in customer’s favour (you may owe them).'
@@ -2127,18 +2127,18 @@ export const AccountLedgerReportPage: React.FC<{
                   Balance
                 </th>
                 <th
-                  className="p-3 text-left font-medium text-gray-300 max-w-[10rem]"
+                  className="p-3 text-left font-medium text-muted-foreground max-w-[10rem]"
                   title="Journal document_type / row state (e.g. Reversed in audit mode). Not the same as Module or JE link type."
                 >
                   Document type
                 </th>
-                <th className="p-3 text-right font-medium text-gray-300">Actions</th>
+                <th className="p-3 text-right font-medium text-muted-foreground">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-800">
+            <tbody className="divide-y divide-border">
               {presentedEntries.length === 0 ? (
                 <tr>
-                  <td colSpan={18} className="p-6 text-center text-gray-500 max-w-3xl mx-auto text-sm leading-relaxed">
+                  <td colSpan={18} className="p-6 text-center text-muted-foreground max-w-3xl mx-auto text-sm leading-relaxed">
                     {emptyPeriodMessage}
                   </td>
                 </tr>
@@ -2149,23 +2149,23 @@ export const AccountLedgerReportPage: React.FC<{
                   <tr
                     key={`${e.journal_entry_id}-${i}`}
                     className={cn(
-                      'hover:bg-gray-800/30',
+                      'hover:bg-accent/30',
                       !statementPresentationAudit &&
                         (e.presentationKind === 'liquidity_transfer' || e.presentationKind === 'amount_delta') &&
                         'opacity-60'
                     )}
                   >
-                    <td className="p-3 text-gray-300">
+                    <td className="p-3 text-muted-foreground">
                       <div className="flex flex-col leading-tight">
                         <DateTimeDisplay date={e.date} dateOnly />
                         {e.created_at ? (
-                          <span className="text-[10px] text-gray-500 font-normal italic mt-0.5">
+                          <span className="text-[10px] text-muted-foreground font-normal italic mt-0.5">
                             {formatTime(e.created_at)}
                           </span>
                         ) : null}
                       </div>
                     </td>
-                    <td className="p-3 font-mono text-gray-300 align-top">
+                    <td className="p-3 font-mono text-muted-foreground align-top">
                       <div className="flex flex-col gap-0.5 items-start max-w-[14rem]">
                         {e.journal_entry_id ? (
                           <button
@@ -2196,26 +2196,26 @@ export const AccountLedgerReportPage: React.FC<{
                         })()}
                       </div>
                     </td>
-                    <td className="p-3 text-gray-400 text-xs">{e.branch_name || e.branch_id || '—'}</td>
-                    <td className="p-3 text-gray-300 max-w-[7rem] break-words" title={e.source_module || undefined}>
+                    <td className="p-3 text-muted-foreground text-xs">{e.branch_name || e.branch_id || '—'}</td>
+                    <td className="p-3 text-muted-foreground max-w-[7rem] break-words" title={e.source_module || undefined}>
                       {e.source_module || '—'}
                     </td>
                     <td className="p-3 text-[11px]">
                       <span
                         className={cn(
-                          'inline-block rounded px-2 py-0.5 border text-gray-300',
+                          'inline-block rounded px-2 py-0.5 border text-muted-foreground',
                           e.presentationKind === 'liquidity_transfer' && 'border-sky-600/50 text-sky-300/95',
                           e.presentationKind === 'amount_delta' && 'border-amber-600/50 text-amber-200/90',
                           e.presentationKind === 'business_primary' && 'border-emerald-700/50 text-emerald-200/90',
                           e.presentationKind === 'reversal' && 'border-rose-700/50 text-rose-200/90',
                           !['liquidity_transfer', 'amount_delta', 'business_primary', 'reversal'].includes(e.presentationKind) &&
-                            'border-gray-700 text-gray-400'
+                            'border-border text-muted-foreground'
                         )}
                       >
                         {presentationLabel(e.presentationKind)}
                       </span>
                     </td>
-                    <td className="p-3 text-white">
+                    <td className="p-3 text-foreground">
                       {e.payment_id
                         ? resolveStatementPartyDisplay({
                             entry: e,
@@ -2228,31 +2228,31 @@ export const AccountLedgerReportPage: React.FC<{
                           }) || '—'
                         : '—'}
                     </td>
-                    <td className="p-3 text-white min-w-[20rem] w-[24rem] max-w-[32rem] whitespace-normal break-words align-top leading-snug">
+                    <td className="p-3 text-foreground min-w-[20rem] w-[24rem] max-w-[32rem] whitespace-normal break-words align-top leading-snug">
                       {e.description}
                     </td>
-                    <td className="p-3 text-xs text-gray-400 max-w-[9rem] leading-snug">{e.counter_account || '—'}</td>
-                    <td className="p-3 text-xs text-gray-300 max-w-[10rem] leading-snug">
+                    <td className="p-3 text-xs text-muted-foreground max-w-[9rem] leading-snug">{e.counter_account || '—'}</td>
+                    <td className="p-3 text-xs text-muted-foreground max-w-[10rem] leading-snug">
                       {(() => {
                         const flow = deriveFromToForLedgerLine(e);
                         return (
                           <>
-                            <span className="text-gray-500">From </span>
+                            <span className="text-muted-foreground">From </span>
                             {flow.from}
-                            <span className="text-gray-600 mx-1">→</span>
+                            <span className="text-muted-foreground mx-1">→</span>
                             {flow.to}
                           </>
                         );
                       })()}
                     </td>
-                    <td className="p-3 text-[11px] text-gray-400 max-w-[10rem] leading-snug">
+                    <td className="p-3 text-[11px] text-muted-foreground max-w-[10rem] leading-snug">
                       {netEconomicMeaning(e, e.presentationKind)}
                     </td>
-                    <td className="p-3 text-[10px] font-mono text-gray-500" title={e.economic_event_id ? String(e.economic_event_id) : ''}>
+                    <td className="p-3 text-[10px] font-mono text-muted-foreground" title={e.economic_event_id ? String(e.economic_event_id) : ''}>
                       {e.economic_event_id ? `${String(e.economic_event_id).slice(0, 8)}…` : '—'}
                     </td>
                     <td
-                      className="p-3 text-[11px] text-gray-300 max-w-[9rem] align-top leading-snug"
+                      className="p-3 text-[11px] text-muted-foreground max-w-[9rem] align-top leading-snug"
                       title={
                         e.je_reference_type
                           ? `Raw journal reference type: ${e.je_reference_type}`
@@ -2266,7 +2266,7 @@ export const AccountLedgerReportPage: React.FC<{
                       {e.je_reference_type &&
                       editTargetTypeLabel(e.je_reference_type).replace(/\s/g, '_').toLowerCase() !==
                         e.je_reference_type.toLowerCase() ? (
-                        <div className="text-[10px] font-mono text-gray-500 mt-0.5 break-all">{e.je_reference_type}</div>
+                        <div className="text-[10px] font-mono text-muted-foreground mt-0.5 break-all">{e.je_reference_type}</div>
                       ) : null}
                     </td>
                     <td className="p-3 max-w-[14rem]">
@@ -2274,28 +2274,28 @@ export const AccountLedgerReportPage: React.FC<{
                         const sd = settlementAccountForRow(e, paymentSettlementById, settlementColumnOpts);
                         return (
                           <div title={sd.glLineNote ? `GL line: ${sd.glLineNote}` : undefined}>
-                            <div className="text-white font-medium leading-snug">{sd.primary}</div>
+                            <div className="text-foreground font-medium leading-snug">{sd.primary}</div>
                             {sd.glLineNote ? (
-                              <div className="text-[11px] text-gray-500 mt-0.5 leading-snug">GL line: {sd.glLineNote}</div>
+                              <div className="text-[11px] text-muted-foreground mt-0.5 leading-snug">GL line: {sd.glLineNote}</div>
                             ) : null}
                           </div>
                         );
                       })()}
                     </td>
-                    <td className="p-3 text-right text-gray-300">{e.displayDebit ? formatCurrency(e.displayDebit) : '—'}</td>
-                    <td className="p-3 text-right text-gray-300">{e.displayCredit ? formatCurrency(e.displayCredit) : '—'}</td>
+                    <td className="p-3 text-right text-muted-foreground">{e.displayDebit ? formatCurrency(e.displayDebit) : '—'}</td>
+                    <td className="p-3 text-right text-muted-foreground">{e.displayCredit ? formatCurrency(e.displayCredit) : '—'}</td>
                     <td
                       className={cn(
                         'p-3 text-right tabular-nums',
                         rowBalAtt === 'none'
-                          ? 'font-medium text-white'
+                          ? 'font-medium text-foreground'
                           : 'font-semibold text-rose-300 bg-rose-950/35'
                       )}
                       title={partyBalanceAttentionTitle(rowBalAtt)}
                     >
                       {formatCurrency(e.displayRunningBalance)}
                     </td>
-                    <td className="p-3 text-gray-400 text-xs">{e.displayStatus}</td>
+                    <td className="p-3 text-muted-foreground text-xs">{e.displayStatus}</td>
                     <td className="p-3 text-right">
                       {e.journal_entry_id ? (
                         <div className="flex flex-wrap justify-end gap-1">
@@ -2303,7 +2303,7 @@ export const AccountLedgerReportPage: React.FC<{
                             type="button"
                             variant="ghost"
                             size="sm"
-                            className="h-8 gap-1 text-gray-300 hover:text-white"
+                            className="h-8 gap-1 text-muted-foreground hover:text-foreground"
                             onClick={() => {
                               const d = ledgerTransactionOpenEventDetail(e, false);
                               openStatementTransaction(d.referenceNumber, false, d.journalEntryId);
@@ -2324,7 +2324,7 @@ export const AccountLedgerReportPage: React.FC<{
                           </Button>
                         </div>
                       ) : (
-                        <span className="text-xs text-gray-500">—</span>
+                        <span className="text-xs text-muted-foreground">—</span>
                       )}
                     </td>
                   </tr>
@@ -2336,18 +2336,18 @@ export const AccountLedgerReportPage: React.FC<{
         )}
       </div>
 
-      <div className="rounded-xl border border-gray-800 bg-gray-900/60 p-4">
-        <h4 className="text-sm font-semibold text-white mb-2">Grand Totals</h4>
+      <div className="rounded-xl border border-border bg-muted/60 p-4">
+        <h4 className="text-sm font-semibold text-foreground mb-2">Grand Totals</h4>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-          <div><p className="text-gray-400">Period Debit Total</p><p className="text-emerald-400 font-semibold">{formatCurrency(summary.totalDebit)}</p></div>
-          <div><p className="text-gray-400">Period Credit Total</p><p className="text-rose-400 font-semibold">{formatCurrency(summary.totalCredit)}</p></div>
-          <div><p className="text-gray-400">Net Movement</p><p className="text-white font-semibold">{formatCurrency(summary.netMovement)}</p></div>
+          <div><p className="text-muted-foreground">Period Debit Total</p><p className="text-emerald-400 font-semibold">{formatCurrency(summary.totalDebit)}</p></div>
+          <div><p className="text-muted-foreground">Period Credit Total</p><p className="text-rose-400 font-semibold">{formatCurrency(summary.totalCredit)}</p></div>
+          <div><p className="text-muted-foreground">Net Movement</p><p className="text-foreground font-semibold">{formatCurrency(summary.netMovement)}</p></div>
           <div>
-            <p className="text-gray-400">Closing Balance</p>
+            <p className="text-muted-foreground">Closing Balance</p>
             <p
               className={cn(
                 'font-semibold',
-                closingBalanceAttention !== 'none' ? 'text-rose-300' : 'text-white'
+                closingBalanceAttention !== 'none' ? 'text-rose-300' : 'text-foreground'
               )}
               title={partyBalanceAttentionTitle(closingBalanceAttention)}
             >

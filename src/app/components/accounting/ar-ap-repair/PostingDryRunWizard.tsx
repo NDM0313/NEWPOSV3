@@ -81,15 +81,15 @@ export function PostingDryRunWizard(props: {
 
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-      <DialogContent className="bg-gray-950 border-gray-800 text-white max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="bg-input-background border-border text-foreground max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Posting dry-run (preview only)</DialogTitle>
-          <DialogDescription className="text-gray-400">
+          <DialogDescription className="text-muted-foreground">
             Phase 2 — apply is disabled. No journal will be created.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex gap-1 text-[10px] text-gray-500 mb-2">
+        <div className="flex gap-1 text-[10px] text-muted-foreground mb-2">
           {STEPS.map((s, i) => (
             <span key={s} className={i === step ? 'text-blue-400 font-semibold' : ''}>
               {i + 1}. {s}
@@ -113,16 +113,16 @@ export function PostingDryRunWizard(props: {
                   </div>
                 )}
                 <p>
-                  <span className="text-gray-500">Document:</span> {props.row.document_no}
+                  <span className="text-muted-foreground">Document:</span> {props.row.document_no}
                 </p>
                 <p>
-                  <span className="text-gray-500">Contact:</span> {props.row.contact_name}
+                  <span className="text-muted-foreground">Contact:</span> {props.row.contact_name}
                 </p>
                 <p>
-                  <span className="text-gray-500">Status:</span> {status || '—'}
+                  <span className="text-muted-foreground">Status:</span> {status || '—'}
                 </p>
                 <p>
-                  <span className="text-gray-500">Open amount:</span> {formatCurrency(Number(props.row.amount) || 0)}
+                  <span className="text-muted-foreground">Open amount:</span> {formatCurrency(Number(props.row.amount) || 0)}
                 </p>
               </div>
             )}
@@ -134,7 +134,7 @@ export function PostingDryRunWizard(props: {
                     <ShieldAlert className="w-5 h-5 text-slate-400 shrink-0" />
                     <div>
                       <p className="font-medium text-slate-200">Non-final document — no posting required yet</p>
-                      <p className="text-xs text-gray-400 mt-1">
+                      <p className="text-xs text-muted-foreground mt-1">
                         This document is not final. Posting is blocked until the document is finalized.
                       </p>
                     </div>
@@ -157,12 +157,12 @@ export function PostingDryRunWizard(props: {
             {step === 2 && (
               <div className="space-y-2">
                 {diag?.isNonFinal || !diag?.isPostable ? (
-                  <p className="text-gray-400 text-xs">Proposed JE not shown — document not postable.</p>
+                  <p className="text-muted-foreground text-xs">Proposed JE not shown — document not postable.</p>
                 ) : proposedLines.length === 0 ? (
-                  <p className="text-gray-400 text-xs">No illustrative lines (zero total).</p>
+                  <p className="text-muted-foreground text-xs">No illustrative lines (zero total).</p>
                 ) : (
-                  <table className="w-full text-xs border border-gray-800 rounded-lg overflow-hidden">
-                    <thead className="bg-gray-900 text-gray-500">
+                  <table className="w-full text-xs border border-border rounded-lg overflow-hidden">
+                    <thead className="bg-card text-muted-foreground">
                       <tr>
                         <th className="text-left p-2">Account</th>
                         <th className="text-right p-2">Dr</th>
@@ -171,10 +171,10 @@ export function PostingDryRunWizard(props: {
                     </thead>
                     <tbody>
                       {proposedLines.map((l, idx) => (
-                        <tr key={idx} className="border-t border-gray-800">
+                        <tr key={idx} className="border-t border-border">
                           <td className="p-2">
                             {l.account_label}
-                            <span className="block text-gray-600">{l.description}</span>
+                            <span className="block text-muted-foreground">{l.description}</span>
                           </td>
                           <td className="p-2 text-right tabular-nums">{l.debit ? formatCurrency(l.debit) : '—'}</td>
                           <td className="p-2 text-right tabular-nums">{l.credit ? formatCurrency(l.credit) : '—'}</td>
@@ -194,7 +194,7 @@ export function PostingDryRunWizard(props: {
             {step === 3 && (
               <div className="rounded-lg border border-amber-500/30 bg-amber-950/20 p-3 text-xs text-amber-100">
                 <p className="font-semibold">Phase 2 — apply disabled</p>
-                <p className="mt-1 text-gray-400">
+                <p className="mt-1 text-muted-foreground">
                   Posting to GL will require typed confirmation in Phase 3. No changes were made to journals, payments, or
                   documents.
                 </p>
@@ -207,7 +207,7 @@ export function PostingDryRunWizard(props: {
         <DialogFooter className="gap-2 flex-wrap justify-between sm:justify-end">
           <div className="flex gap-2">
             {step > 0 && (
-              <Button variant="outline" className="border-gray-700" onClick={() => setStep((s) => s - 1)}>
+              <Button variant="outline" className="border-border" onClick={() => setStep((s) => s - 1)}>
                 Back
               </Button>
             )}
@@ -217,7 +217,7 @@ export function PostingDryRunWizard(props: {
               </Button>
             )}
           </div>
-          <Button variant="outline" className="border-gray-700" onClick={() => props.onOpenChange(false)}>
+          <Button variant="outline" className="border-border" onClick={() => props.onOpenChange(false)}>
             Close
           </Button>
         </DialogFooter>

@@ -608,7 +608,7 @@ export function StockMovementHistoryReportPage({
 
   return (
 
-    <div className="flex flex-col h-full min-h-0 bg-[#0B0F19]">
+    <div className="flex flex-col h-full min-h-0 bg-secondary">
 
       {reportExport.previewOpen && reportExport.brand && (
 
@@ -670,9 +670,9 @@ export function StockMovementHistoryReportPage({
 
 
 
-      <div className="shrink-0 px-6 py-4 border-b border-gray-800">
+      <div className="shrink-0 px-6 py-4 border-b border-border">
 
-        <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+        <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
 
           <BookOpen className="text-blue-400" size={24} />
 
@@ -680,7 +680,7 @@ export function StockMovementHistoryReportPage({
 
         </h1>
 
-        <p className="text-sm text-gray-400 mt-0.5">
+        <p className="text-sm text-muted-foreground mt-0.5">
 
           Complete stock movement history from the ledger — opening balance, running totals, and current stock
 
@@ -731,7 +731,7 @@ export function StockMovementHistoryReportPage({
 
         {loading && (
 
-          <div className="flex items-center justify-center py-12 text-gray-400 gap-2">
+          <div className="flex items-center justify-center py-12 text-muted-foreground gap-2">
 
             <Loader2 className="animate-spin" size={24} />
 
@@ -811,7 +811,7 @@ export function StockMovementHistoryReportPage({
 
         {!loading && hasRun && filters.mode === 'single' && !singleSection && (
 
-          <p className="text-gray-400 text-center py-8">Product not found or no data available.</p>
+          <p className="text-muted-foreground text-center py-8">Product not found or no data available.</p>
 
         )}
 

@@ -110,9 +110,9 @@ export const SalesProfitPage: React.FC<{
   }
   if (!data) {
     return (
-      <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-6 text-center text-gray-400">
+      <div className="rounded-xl border border-border bg-muted/40 p-6 text-center text-muted-foreground">
         <p className="font-medium">No data for the selected period</p>
-        <p className="text-sm text-gray-500 mt-1">Adjust the date range or ensure sales exist.</p>
+        <p className="text-sm text-muted-foreground mt-1">Adjust the date range or ensure sales exist.</p>
       </div>
     );
   }
@@ -132,19 +132,19 @@ export const SalesProfitPage: React.FC<{
           onWhatsapp={handleWhatsApp}
         />
       </div>
-      <div className="no-print flex flex-wrap items-center gap-4 rounded-lg border border-gray-800 bg-gray-900/40 px-3 py-2">
+      <div className="no-print flex flex-wrap items-center gap-4 rounded-lg border border-border bg-card/40 px-3 py-2">
         <div className="flex items-center gap-2">
           <Switch checked={overrideBranch} onCheckedChange={setOverrideBranch} id="sp-override-branch" />
-          <Label htmlFor="sp-override-branch" className="text-xs text-gray-400 cursor-pointer">
+          <Label htmlFor="sp-override-branch" className="text-xs text-muted-foreground cursor-pointer">
             Override header branch
           </Label>
         </div>
         {overrideBranch ? (
           <Select value={branchOverride} onValueChange={setBranchOverride}>
-            <SelectTrigger className="w-[200px] bg-gray-950 border-gray-700 h-9">
+            <SelectTrigger className="w-[200px] bg-input-background border-border h-9">
               <SelectValue placeholder="Branch" />
             </SelectTrigger>
-            <SelectContent className="bg-gray-900 border-gray-700">
+            <SelectContent className="bg-card border-border">
               <SelectItem value="all">All branches</SelectItem>
               {branches.map((b) => (
                 <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
@@ -152,56 +152,56 @@ export const SalesProfitPage: React.FC<{
             </SelectContent>
           </Select>
         ) : (
-          <span className="text-sm text-gray-400">Branch: {branchLabel}</span>
+          <span className="text-sm text-muted-foreground">Branch: {branchLabel}</span>
         )}
       </div>
-      <p className="no-print text-sm text-gray-400">
+      <p className="no-print text-sm text-muted-foreground">
         Period: {data.startDate} to {data.endDate} • Branch: {branchLabel} • Total Revenue: {formatCurrency(data.totalRevenue)} • Total Profit: {formatCurrency(data.totalProfit)}
       </p>
-      <div className="overflow-auto rounded-xl border border-gray-800 bg-gray-900/50 no-print">
+      <div className="overflow-auto rounded-xl border border-border bg-muted/40 no-print">
         <table className="w-full text-base leading-snug">
-          <thead className="border-b border-gray-800 bg-gray-800/50">
+          <thead className="border-b border-border bg-muted/50">
             <tr>
-              <th className="p-3 text-left font-medium text-gray-300">Invoice</th>
-              <th className="p-3 text-left font-medium text-gray-300">Date</th>
-              <th className="p-3 text-left font-medium text-gray-300">Branch</th>
-              <th className="p-3 text-left font-medium text-gray-300">Customer</th>
-              <th className="p-3 text-right font-medium text-gray-300">Revenue</th>
-              <th className="p-3 text-right font-medium text-gray-300">Cost</th>
-              <th className="p-3 text-right font-medium text-gray-300">Profit</th>
-              <th className="p-3 text-right font-medium text-gray-300">Margin %</th>
+              <th className="p-3 text-left font-medium text-muted-foreground">Invoice</th>
+              <th className="p-3 text-left font-medium text-muted-foreground">Date</th>
+              <th className="p-3 text-left font-medium text-muted-foreground">Branch</th>
+              <th className="p-3 text-left font-medium text-muted-foreground">Customer</th>
+              <th className="p-3 text-right font-medium text-muted-foreground">Revenue</th>
+              <th className="p-3 text-right font-medium text-muted-foreground">Cost</th>
+              <th className="p-3 text-right font-medium text-muted-foreground">Profit</th>
+              <th className="p-3 text-right font-medium text-muted-foreground">Margin %</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-800">
+          <tbody className="divide-y divide-border">
             {data.rows.length === 0 ? (
               <tr>
-                <td colSpan={8} className="p-6 text-center text-gray-500">
+                <td colSpan={8} className="p-6 text-center text-muted-foreground">
                   No sales in this period.
                 </td>
               </tr>
             ) : (
               data.rows.map((row) => (
-                <tr key={row.sale_id} className="hover:bg-gray-800/30">
-                  <td className="p-3 font-mono text-white">{row.invoice_no}</td>
-                  <td className="p-3 text-gray-300">{row.sale_date}</td>
-                  <td className="p-3 text-gray-300">{row.branch_name || '—'}</td>
-                  <td className="p-3 text-gray-300">{row.customer_name}</td>
-                  <td className="p-3 text-right text-white tabular-nums">{formatCurrency(row.revenue)}</td>
-                  <td className="p-3 text-right text-gray-300 tabular-nums">{formatCurrency(row.cost)}</td>
-                  <td className="p-3 text-right text-green-400 tabular-nums">{formatCurrency(row.profit)}</td>
-                  <td className="p-3 text-right text-gray-300 tabular-nums">{row.margin_pct.toFixed(1)}%</td>
+                <tr key={row.sale_id} className="hover:bg-accent/30">
+                  <td className="p-3 font-mono text-foreground">{row.invoice_no}</td>
+                  <td className="p-3 text-muted-foreground">{row.sale_date}</td>
+                  <td className="p-3 text-muted-foreground">{row.branch_name || '—'}</td>
+                  <td className="p-3 text-muted-foreground">{row.customer_name}</td>
+                  <td className="p-3 text-right text-foreground tabular-nums">{formatCurrency(row.revenue)}</td>
+                  <td className="p-3 text-right text-muted-foreground tabular-nums">{formatCurrency(row.cost)}</td>
+                  <td className="p-3 text-right text-[var(--erp-money-positive)] tabular-nums">{formatCurrency(row.profit)}</td>
+                  <td className="p-3 text-right text-muted-foreground tabular-nums">{row.margin_pct.toFixed(1)}%</td>
                 </tr>
               ))
             )}
           </tbody>
           {data.rows.length > 0 && (
-            <tfoot className="border-t-2 border-gray-700 bg-gray-800/50">
+            <tfoot className="border-t-2 border-border bg-muted/50">
               <tr>
-                <td colSpan={4} className="p-3 font-medium text-white">Total</td>
-                <td className="p-3 text-right font-medium text-white tabular-nums">{formatCurrency(data.totalRevenue)}</td>
-                <td className="p-3 text-right font-medium text-white tabular-nums">{formatCurrency(data.totalCost)}</td>
-                <td className="p-3 text-right font-medium text-green-400 tabular-nums">{formatCurrency(data.totalProfit)}</td>
-                <td className="p-3 text-right font-medium text-white">—</td>
+                <td colSpan={4} className="p-3 font-medium text-foreground">Total</td>
+                <td className="p-3 text-right font-medium text-foreground tabular-nums">{formatCurrency(data.totalRevenue)}</td>
+                <td className="p-3 text-right font-medium text-foreground tabular-nums">{formatCurrency(data.totalCost)}</td>
+                <td className="p-3 text-right font-medium text-[var(--erp-money-positive)] tabular-nums">{formatCurrency(data.totalProfit)}</td>
+                <td className="p-3 text-right font-medium text-foreground">—</td>
               </tr>
             </tfoot>
           )}

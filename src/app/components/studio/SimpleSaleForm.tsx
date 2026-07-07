@@ -135,21 +135,21 @@ export const SimpleSaleForm: React.FC<SimpleSaleFormProps> = ({ onSave, onCancel
   };
 
   return (
-    <div className="min-h-screen bg-[#111827] p-6">
+    <div className="min-h-screen bg-background p-6">
       <div className="max-w-5xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+            <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
               <ShoppingCart className="text-purple-400" size={28} />
               Simple Sale & Fabric Creation
             </h2>
-            <p className="text-gray-400 mt-1">Create sale invoice with fabric customization</p>
+            <p className="text-muted-foreground mt-1">Create sale invoice with fabric customization</p>
           </div>
           <Button
             variant="outline"
             onClick={onCancel}
-            className="bg-gray-900 border-gray-800 text-gray-300"
+            className="bg-card border-border text-muted-foreground"
           >
             <X size={16} className="mr-2" />
             Cancel
@@ -160,36 +160,36 @@ export const SimpleSaleForm: React.FC<SimpleSaleFormProps> = ({ onSave, onCancel
           {/* Left: Form */}
           <div className="col-span-2 space-y-6">
             {/* Customer Info */}
-            <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-              <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <div className="bg-card border border-border rounded-xl p-6">
+              <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
                 <User size={20} className="text-purple-400" />
                 Customer Information
               </h3>
               <div className="space-y-4">
                 <div>
-                  <Label className="text-gray-400 mb-2 block">Customer Name *</Label>
+                  <Label className="text-muted-foreground mb-2 block">Customer Name *</Label>
                   <Input
                     placeholder="Enter customer name"
                     value={customerName}
                     onChange={(e) => setCustomerName(e.target.value)}
-                    className="bg-gray-800 border-gray-700 text-white"
+                    className="bg-muted border-border text-foreground"
                   />
                 </div>
                 <div>
-                  <Label className="text-gray-400 mb-2 block">Phone Number *</Label>
+                  <Label className="text-muted-foreground mb-2 block">Phone Number *</Label>
                   <Input
                     placeholder="+92 300 1234567"
                     value={customerPhone}
                     onChange={(e) => setCustomerPhone(e.target.value)}
-                    className="bg-gray-800 border-gray-700 text-white"
+                    className="bg-muted border-border text-foreground"
                   />
                 </div>
               </div>
             </div>
 
             {/* Fabric Selection */}
-            <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-              <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <div className="bg-card border border-border rounded-xl p-6">
+              <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
                 <Palette size={20} className="text-purple-400" />
                 Select Fabric *
               </h3>
@@ -201,38 +201,38 @@ export const SimpleSaleForm: React.FC<SimpleSaleFormProps> = ({ onSave, onCancel
                     className={`relative rounded-lg overflow-hidden border-2 transition-all ${
                       selectedFabric === fabric.id
                         ? 'border-purple-500 shadow-lg shadow-purple-500/20'
-                        : 'border-gray-700 hover:border-gray-600'
+                        : 'border-border hover:border-gray-600'
                     }`}
                   >
                     <img src={fabric.image} alt={fabric.name} className="w-full h-24 object-cover" />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
                     <div className="absolute bottom-0 left-0 right-0 p-2">
-                      <div className="text-white text-xs font-semibold">{fabric.name}</div>
+                      <div className="text-foreground text-xs font-semibold">{fabric.name}</div>
                       <div className="text-purple-400 text-xs">₹{fabric.price}/m</div>
                     </div>
                     {selectedFabric === fabric.id && (
                       <div className="absolute top-2 right-2 w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center">
-                        <Check size={14} className="text-white" />
+                        <Check size={14} className="text-foreground" />
                       </div>
                     )}
                   </button>
                 ))}
               </div>
               <div>
-                <Label className="text-gray-400 mb-2 block">Quantity (meters)</Label>
+                <Label className="text-muted-foreground mb-2 block">Quantity (meters)</Label>
                 <Input
                   type="number"
                   min="1"
                   value={quantity}
                   onChange={(e) => setQuantity(Number(e.target.value))}
-                  className="bg-gray-800 border-gray-700 text-white"
+                  className="bg-muted border-border text-foreground"
                 />
               </div>
             </div>
 
             {/* Lace Options */}
-            <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-              <h3 className="text-lg font-semibold text-white mb-4">Add Lace (Optional)</h3>
+            <div className="bg-card border border-border rounded-xl p-6">
+              <h3 className="text-lg font-semibold text-foreground mb-4">Add Lace (Optional)</h3>
               <div className="grid grid-cols-2 gap-3 mb-3">
                 {LACE_OPTIONS.map(lace => (
                   <button
@@ -240,8 +240,8 @@ export const SimpleSaleForm: React.FC<SimpleSaleFormProps> = ({ onSave, onCancel
                     onClick={() => setSelectedLace(selectedLace === lace.id ? null : lace.id)}
                     className={`p-3 rounded-lg border-2 transition-all text-left ${
                       selectedLace === lace.id
-                        ? 'bg-purple-500/20 border-purple-500 text-white'
-                        : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'
+                        ? 'bg-purple-500/20 border-purple-500 text-foreground'
+                        : 'bg-muted border-border text-muted-foreground hover:border-gray-600'
                     }`}
                   >
                     <div className="font-semibold text-sm">{lace.name}</div>
@@ -256,20 +256,20 @@ export const SimpleSaleForm: React.FC<SimpleSaleFormProps> = ({ onSave, onCancel
                   placeholder="Lace quantity (meters)"
                   value={laceQuantity}
                   onChange={(e) => setLaceQuantity(Number(e.target.value))}
-                  className="bg-gray-800 border-gray-700 text-white"
+                  className="bg-muted border-border text-foreground"
                 />
               )}
             </div>
 
             {/* Dyeing & Colors */}
-            <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-              <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <div className="bg-card border border-border rounded-xl p-6">
+              <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
                 <Droplet size={20} className="text-purple-400" />
                 Dyeing & Colors
               </h3>
               <div className="space-y-4">
                 <div>
-                  <Label className="text-gray-400 mb-2 block">Dyeing Type</Label>
+                  <Label className="text-muted-foreground mb-2 block">Dyeing Type</Label>
                   <div className="grid grid-cols-3 gap-3">
                     {DYEING_TYPES.map(type => (
                       <button
@@ -277,8 +277,8 @@ export const SimpleSaleForm: React.FC<SimpleSaleFormProps> = ({ onSave, onCancel
                         onClick={() => setSelectedDyeing(type.id)}
                         className={`p-3 rounded-lg border-2 transition-all ${
                           selectedDyeing === type.id
-                            ? 'bg-purple-500/20 border-purple-500 text-white'
-                            : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'
+                            ? 'bg-purple-500/20 border-purple-500 text-foreground'
+                            : 'bg-muted border-border text-muted-foreground hover:border-gray-600'
                         }`}
                       >
                         <div className="font-semibold text-sm">{type.name}</div>
@@ -291,7 +291,7 @@ export const SimpleSaleForm: React.FC<SimpleSaleFormProps> = ({ onSave, onCancel
                 {selectedDyeing !== 'none' && (
                   <>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Primary Color *</Label>
+                      <Label className="text-muted-foreground mb-2 block">Primary Color *</Label>
                       <div className="flex gap-2">
                         {COLOR_PALETTE.map(color => (
                           <button
@@ -300,7 +300,7 @@ export const SimpleSaleForm: React.FC<SimpleSaleFormProps> = ({ onSave, onCancel
                             className={`w-10 h-10 rounded-lg border-2 transition-all ${
                               primaryColor === color.value
                                 ? 'border-white shadow-lg scale-110'
-                                : 'border-gray-700 hover:border-gray-500'
+                                : 'border-border hover:border-gray-500'
                             }`}
                             style={{ backgroundColor: color.value }}
                             title={color.name}
@@ -311,7 +311,7 @@ export const SimpleSaleForm: React.FC<SimpleSaleFormProps> = ({ onSave, onCancel
 
                     {selectedDyeing === 'gradient' && (
                       <div>
-                        <Label className="text-gray-400 mb-2 block">Secondary Color (for Gradient)</Label>
+                        <Label className="text-muted-foreground mb-2 block">Secondary Color (for Gradient)</Label>
                         <div className="flex gap-2">
                           {COLOR_PALETTE.map(color => (
                             <button
@@ -320,7 +320,7 @@ export const SimpleSaleForm: React.FC<SimpleSaleFormProps> = ({ onSave, onCancel
                               className={`w-10 h-10 rounded-lg border-2 transition-all ${
                                 secondaryColor === color.value
                                   ? 'border-white shadow-lg scale-110'
-                                  : 'border-gray-700 hover:border-gray-500'
+                                  : 'border-border hover:border-gray-500'
                               }`}
                               style={{ backgroundColor: color.value }}
                               title={color.name}
@@ -335,38 +335,38 @@ export const SimpleSaleForm: React.FC<SimpleSaleFormProps> = ({ onSave, onCancel
             </div>
 
             {/* Workflow Routing */}
-            <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-              <h3 className="text-lg font-semibold text-white mb-4">Workflow Routing</h3>
+            <div className="bg-card border border-border rounded-xl p-6">
+              <h3 className="text-lg font-semibold text-foreground mb-4">Workflow Routing</h3>
               <div className="space-y-3">
                 <label className="flex items-center gap-3 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={needsTailoring}
                     onChange={(e) => setNeedsTailoring(e.target.checked)}
-                    className="w-5 h-5 rounded border-gray-700 bg-gray-800"
+                    className="w-5 h-5 rounded border-border bg-muted"
                   />
-                  <span className="text-gray-300">Needs Tailoring</span>
+                  <span className="text-muted-foreground">Needs Tailoring</span>
                 </label>
                 <label className="flex items-center gap-3 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={needsHandcraft}
                     onChange={(e) => setNeedsHandcraft(e.target.checked)}
-                    className="w-5 h-5 rounded border-gray-700 bg-gray-800"
+                    className="w-5 h-5 rounded border-border bg-muted"
                   />
-                  <span className="text-gray-300">Needs Handcraft</span>
+                  <span className="text-muted-foreground">Needs Handcraft</span>
                 </label>
               </div>
             </div>
 
             {/* Notes */}
-            <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-              <Label className="text-gray-400 mb-2 block">Additional Notes</Label>
+            <div className="bg-card border border-border rounded-xl p-6">
+              <Label className="text-muted-foreground mb-2 block">Additional Notes</Label>
               <Textarea
                 placeholder="Any special instructions or notes..."
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                className="bg-gray-800 border-gray-700 text-white resize-none"
+                className="bg-muted border-border text-foreground resize-none"
                 rows={3}
               />
             </div>
@@ -375,13 +375,13 @@ export const SimpleSaleForm: React.FC<SimpleSaleFormProps> = ({ onSave, onCancel
           {/* Right: Summary */}
           <div className="space-y-4">
             <div className="bg-gradient-to-br from-purple-900/30 to-blue-900/30 border border-purple-500/30 rounded-xl p-6 sticky top-6">
-              <h3 className="text-lg font-semibold text-white mb-4">Order Summary</h3>
+              <h3 className="text-lg font-semibold text-foreground mb-4">Order Summary</h3>
               
-              <div className="space-y-3 mb-4 pb-4 border-b border-gray-700">
+              <div className="space-y-3 mb-4 pb-4 border-b border-border">
                 {selectedFabric && (
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-400">{FABRICS.find(f => f.id === selectedFabric)?.name} ({quantity}m)</span>
-                    <span className="text-white font-semibold">
+                    <span className="text-muted-foreground">{FABRICS.find(f => f.id === selectedFabric)?.name} ({quantity}m)</span>
+                    <span className="text-foreground font-semibold">
                       ₹{((FABRICS.find(f => f.id === selectedFabric)?.price || 0) * quantity).toLocaleString()}
                     </span>
                   </div>
@@ -389,8 +389,8 @@ export const SimpleSaleForm: React.FC<SimpleSaleFormProps> = ({ onSave, onCancel
                 
                 {selectedLace && (
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-400">{LACE_OPTIONS.find(l => l.id === selectedLace)?.name} ({laceQuantity}m)</span>
-                    <span className="text-white font-semibold">
+                    <span className="text-muted-foreground">{LACE_OPTIONS.find(l => l.id === selectedLace)?.name} ({laceQuantity}m)</span>
+                    <span className="text-foreground font-semibold">
                       ₹{((LACE_OPTIONS.find(l => l.id === selectedLace)?.price || 0) * laceQuantity).toLocaleString()}
                     </span>
                   </div>
@@ -398,8 +398,8 @@ export const SimpleSaleForm: React.FC<SimpleSaleFormProps> = ({ onSave, onCancel
                 
                 {selectedDyeing !== 'none' && (
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-400">{DYEING_TYPES.find(d => d.id === selectedDyeing)?.name} ({quantity}m)</span>
-                    <span className="text-white font-semibold">
+                    <span className="text-muted-foreground">{DYEING_TYPES.find(d => d.id === selectedDyeing)?.name} ({quantity}m)</span>
+                    <span className="text-foreground font-semibold">
                       ₹{((DYEING_TYPES.find(d => d.id === selectedDyeing)?.price || 0) * quantity).toLocaleString()}
                     </span>
                   </div>
@@ -407,21 +407,21 @@ export const SimpleSaleForm: React.FC<SimpleSaleFormProps> = ({ onSave, onCancel
               </div>
 
               <div className="flex justify-between items-center mb-6">
-                <span className="text-gray-400 font-semibold">Total Amount</span>
-                <span className="text-2xl font-bold text-white">₹{calculateTotal().toLocaleString()}</span>
+                <span className="text-muted-foreground font-semibold">Total Amount</span>
+                <span className="text-2xl font-bold text-foreground">₹{calculateTotal().toLocaleString()}</span>
               </div>
 
               {selectedDyeing !== 'none' && (
                 <div className="mb-4">
-                  <Label className="text-gray-400 mb-2 block text-xs">Color Preview</Label>
+                  <Label className="text-muted-foreground mb-2 block text-xs">Color Preview</Label>
                   <div className="flex gap-2">
                     <div
-                      className="w-12 h-12 rounded-lg border-2 border-gray-700"
+                      className="w-12 h-12 rounded-lg border-2 border-border"
                       style={{ backgroundColor: primaryColor }}
                     />
                     {secondaryColor && (
                       <div
-                        className="w-12 h-12 rounded-lg border-2 border-gray-700"
+                        className="w-12 h-12 rounded-lg border-2 border-border"
                         style={{ backgroundColor: secondaryColor }}
                       />
                     )}
@@ -431,7 +431,7 @@ export const SimpleSaleForm: React.FC<SimpleSaleFormProps> = ({ onSave, onCancel
 
               {(needsTailoring || needsHandcraft || selectedDyeing !== 'none') && (
                 <div className="mb-4">
-                  <Label className="text-gray-400 mb-2 block text-xs">Workflow Steps</Label>
+                  <Label className="text-muted-foreground mb-2 block text-xs">Workflow Steps</Label>
                   <div className="space-y-1">
                     {selectedDyeing !== 'none' && (
                       <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">
@@ -455,7 +455,7 @@ export const SimpleSaleForm: React.FC<SimpleSaleFormProps> = ({ onSave, onCancel
               <Button
                 onClick={handleSubmit}
                 disabled={!customerName || !customerPhone || !selectedFabric}
-                className="w-full bg-purple-600 hover:bg-purple-500 text-white disabled:opacity-50"
+                className="w-full bg-purple-600 hover:bg-purple-500 text-foreground disabled:opacity-50"
               >
                 <Check size={16} className="mr-2" />
                 Create Sale Invoice

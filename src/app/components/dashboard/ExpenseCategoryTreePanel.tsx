@@ -72,7 +72,7 @@ function CategoryTreeRows({
     return (
       <li key={node.id}>
         <div
-          className="flex items-center justify-between gap-3 py-3 border-b border-gray-800/60 last:border-b-0"
+          className="flex items-center justify-between gap-3 py-3 border-b border-border/60 last:border-b-0"
           style={{ paddingLeft: pl, paddingRight: 20 }}
         >
           <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -80,7 +80,7 @@ function CategoryTreeRows({
               <button
                 type="button"
                 onClick={() => onToggleExpand(node.id)}
-                className="shrink-0 p-0.5 text-gray-500 hover:text-white"
+                className="shrink-0 p-0.5 text-muted-foreground hover:text-foreground"
                 aria-label={expanded ? 'Collapse' : 'Expand'}
               >
                 <ChevronRight
@@ -93,10 +93,10 @@ function CategoryTreeRows({
             )}
             <div className="min-w-0">
               <p className="text-sm text-gray-200">
-                {depth > 0 ? <span className="text-gray-500 mr-2">↳</span> : null}
+                {depth > 0 ? <span className="text-muted-foreground mr-2">↳</span> : null}
                 {pathLabel}
               </p>
-              <p className="text-xs text-gray-500" style={{ marginLeft: depth > 0 ? 20 : 0 }}>
+              <p className="text-xs text-muted-foreground" style={{ marginLeft: depth > 0 ? 20 : 0 }}>
                 {nodeCount} expense{nodeCount === 1 ? '' : 's'}
                 {nodeAmount > 0 ? ` · Rs. ${nodeAmount.toLocaleString()}` : ''}
               </p>
@@ -118,7 +118,7 @@ function CategoryTreeRows({
               variant="ghost"
               size="icon"
               onClick={() => onEdit(node)}
-              className="h-8 w-8 text-gray-500 hover:text-white"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground"
             >
               <Pencil size={14} />
             </Button>
@@ -126,7 +126,7 @@ function CategoryTreeRows({
               variant="ghost"
               size="icon"
               onClick={() => onDelete({ ...node, count: nodeCount, children: node.children })}
-              className="h-8 w-8 text-gray-500 hover:text-red-400"
+              className="h-8 w-8 text-muted-foreground hover:text-red-400"
             >
               <Trash size={14} />
             </Button>
@@ -140,7 +140,7 @@ function CategoryTreeRows({
   };
 
   return (
-    <ul className="divide-y divide-gray-800/60">
+    <ul className="divide-y divide-border/60">
       {nodes.map((node) => renderNode(node, depthStart))}
     </ul>
   );
@@ -174,9 +174,9 @@ export function ExpenseCategoryTreePanel({
       <button
         type="button"
         onClick={onAddMain}
-        className="border border-dashed border-gray-800 rounded-xl p-8 flex flex-col items-center justify-center gap-3 text-gray-500 hover:text-white hover:border-gray-600 hover:bg-gray-900/30 transition-all w-full min-h-[160px]"
+        className="border border-dashed border-border rounded-xl p-8 flex flex-col items-center justify-center gap-3 text-muted-foreground hover:text-foreground hover:border-gray-600 hover:bg-muted/30 transition-all w-full min-h-[160px]"
       >
-        <div className="w-12 h-12 rounded-full bg-gray-900 flex items-center justify-center">
+        <div className="w-12 h-12 rounded-full bg-card flex items-center justify-center">
           <Plus size={24} />
         </div>
         <span className="font-medium">Add your first category</span>
@@ -199,15 +199,15 @@ export function ExpenseCategoryTreePanel({
         return (
           <div
             key={main.id}
-            className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden hover:border-gray-700 transition-colors"
+            className="bg-card border border-border rounded-xl overflow-hidden hover:border-border transition-colors"
           >
-            <div className="flex items-start justify-between gap-3 p-5 border-b border-gray-800/80">
+            <div className="flex items-start justify-between gap-3 p-5 border-b border-border/80">
               <div className="flex items-start gap-3 min-w-0 flex-1">
                 {hasChildren ? (
                   <button
                     type="button"
                     onClick={() => toggleExpand(main.id)}
-                    className="mt-1 shrink-0 p-1 text-gray-500 hover:text-white"
+                    className="mt-1 shrink-0 p-1 text-muted-foreground hover:text-foreground"
                     aria-label={mainExpanded ? 'Collapse' : 'Expand'}
                   >
                     <ChevronRight
@@ -216,15 +216,15 @@ export function ExpenseCategoryTreePanel({
                     />
                   </button>
                 ) : null}
-                <div className="p-3 bg-gray-950 rounded-lg border border-gray-800 text-gray-400 shrink-0">
+                <div className="p-3 bg-input-background rounded-lg border border-border text-muted-foreground shrink-0">
                   <Icon size={24} />
                 </div>
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <h3 className="font-bold text-white text-lg truncate">{main.name}</h3>
+                    <h3 className="font-bold text-foreground text-lg truncate">{main.name}</h3>
                     <div className={cn('w-2 h-2 rounded-full shrink-0', colorClass)} />
                   </div>
-                  <p className="text-sm text-gray-500">
+                  <p className="text-sm text-muted-foreground">
                     Main category · {mainCount} this month
                     {mainAmount > 0 ? ` · Rs. ${mainAmount.toLocaleString()}` : ''}
                   </p>
@@ -246,7 +246,7 @@ export function ExpenseCategoryTreePanel({
                   variant="ghost"
                   size="sm"
                   onClick={() => onEdit(main)}
-                  className="h-8 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white text-xs"
+                  className="h-8 bg-muted hover:bg-muted text-muted-foreground hover:text-foreground text-xs"
                 >
                   <Pencil size={12} className="mr-1" />
                   Edit
@@ -276,11 +276,11 @@ export function ExpenseCategoryTreePanel({
                 onDelete={onDelete}
               />
             ) : hasChildren ? (
-              <p className="px-5 py-3 text-xs text-gray-500">
+              <p className="px-5 py-3 text-xs text-muted-foreground">
                 {main.children.length} subcategories — expand to view
               </p>
             ) : (
-              <p className="px-5 py-3 text-xs text-gray-500">
+              <p className="px-5 py-3 text-xs text-muted-foreground">
                 No subcategories — use Subcategory to add types (e.g. Dying) or tailor names under{' '}
                 {main.name}.
               </p>
@@ -292,9 +292,9 @@ export function ExpenseCategoryTreePanel({
       <button
         type="button"
         onClick={onAddMain}
-        className="border border-dashed border-gray-800 rounded-xl p-5 flex flex-col items-center justify-center gap-3 text-gray-500 hover:text-white hover:border-gray-600 hover:bg-gray-900/30 transition-all min-h-[120px] w-full"
+        className="border border-dashed border-border rounded-xl p-5 flex flex-col items-center justify-center gap-3 text-muted-foreground hover:text-foreground hover:border-gray-600 hover:bg-muted/30 transition-all min-h-[120px] w-full"
       >
-        <div className="w-10 h-10 rounded-full bg-gray-900 flex items-center justify-center">
+        <div className="w-10 h-10 rounded-full bg-card flex items-center justify-center">
           <Plus size={20} />
         </div>
         <span className="font-medium text-sm">Add main category</span>

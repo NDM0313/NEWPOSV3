@@ -84,10 +84,10 @@ export function StatusChangeModal(props: {
         props.onOpenChange(o);
       }}
     >
-      <DialogContent className="bg-gray-950 border-gray-800 text-white max-w-md">
+      <DialogContent className="bg-input-background border-border text-foreground max-w-md">
         <DialogHeader>
           <DialogTitle>{props.title}</DialogTitle>
-          {props.description && <DialogDescription className="text-gray-400">{props.description}</DialogDescription>}
+          {props.description && <DialogDescription className="text-muted-foreground">{props.description}</DialogDescription>}
         </DialogHeader>
         {resolvedBlocked && (
           <p className="text-amber-300 text-xs rounded border border-amber-500/30 bg-amber-950/20 p-2">
@@ -98,12 +98,12 @@ export function StatusChangeModal(props: {
         <div className="space-y-2">
           {props.intent?.kind === 'set' && (
             <div className="space-y-1">
-              <Label className="text-gray-400 text-xs">New status</Label>
+              <Label className="text-muted-foreground text-xs">New status</Label>
               <select
                 value={pickedStatus}
                 disabled={props.readOnly}
                 onChange={(e) => setPickedStatus(e.target.value as ArApFixStatus)}
-                className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-200"
+                className="w-full bg-card border border-border rounded px-2 py-1.5 text-sm text-gray-200"
               >
                 {FIX_STATUS_OPTIONS.map((s) => (
                   <option key={s} value={s}>
@@ -113,20 +113,20 @@ export function StatusChangeModal(props: {
               </select>
             </div>
           )}
-          <Label className="text-gray-400 text-xs">Reason / note (required, min 3 characters)</Label>
+          <Label className="text-muted-foreground text-xs">Reason / note (required, min 3 characters)</Label>
           <Input
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder="Why this status change?"
-            className="bg-gray-900 border-gray-700"
+            className="bg-card border-border"
             disabled={props.readOnly}
           />
-          <p className="text-gray-600 text-[10px]">
-            New status: <span className="font-mono text-gray-400">{effectiveStatus().replace(/_/g, ' ')}</span>
+          <p className="text-muted-foreground text-[10px]">
+            New status: <span className="font-mono text-muted-foreground">{effectiveStatus().replace(/_/g, ' ')}</span>
           </p>
         </div>
         <DialogFooter>
-          <Button variant="outline" className="border-gray-700" onClick={() => props.onOpenChange(false)}>
+          <Button variant="outline" className="border-border" onClick={() => props.onOpenChange(false)}>
             Cancel
           </Button>
           <Button

@@ -113,12 +113,12 @@ function matchesRentalListFilter(r: RentalUI, filter: RentalListFilter, today: s
 }
 
 const STATUS_CLASS: Record<RentalStatus, string> = {
-  draft: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
+  draft: 'bg-gray-500/20 text-muted-foreground border-gray-500/30',
   booked: 'bg-pink-500/20 text-pink-400 border-pink-500/30',
   rented: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  returned: 'bg-green-500/20 text-green-400 border-green-500/30',
+  returned: 'bg-green-500/20 text-[var(--erp-money-positive)] border-green-500/30',
   overdue: 'bg-red-500/20 text-red-400 border-red-500/30',
-  cancelled: 'bg-gray-600/20 text-gray-500 border-gray-600/30',
+  cancelled: 'bg-gray-600/20 text-muted-foreground border-gray-600/30',
 };
 
 export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPageProps = {}) => {
@@ -377,16 +377,16 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
   };
 
   return (
-    <div className="h-full flex flex-col bg-[#0B0F19]">
+    <div className="h-full flex flex-col bg-secondary">
       {!embedded && (
-        <div className="shrink-0 px-6 py-4 border-b border-gray-800">
+        <div className="shrink-0 px-6 py-4 border-b border-border">
           <div className="flex justify-between items-center">
             <div>
-              <h1 className="text-2xl font-bold text-white">Rentals</h1>
-              <p className="text-sm text-gray-400 mt-0.5">Manage rental orders and returns</p>
+              <h1 className="text-2xl font-bold text-foreground">Rentals</h1>
+              <p className="text-sm text-muted-foreground mt-0.5">Manage rental orders and returns</p>
             </div>
             <Button
-              className="bg-pink-600 hover:bg-pink-500 text-white h-10 gap-2"
+              className="bg-pink-600 hover:bg-pink-500 text-foreground h-10 gap-2"
               onClick={() => (onAddRental ? onAddRental() : toast.info('Add Rental – open from Rental list view'))}
             >
               <Plus size={16} />
@@ -396,44 +396,44 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
         </div>
       )}
 
-      <div className="shrink-0 px-6 py-4 bg-[#0F1419] border-b border-gray-800 space-y-3">
-        <p className="text-[11px] text-gray-500 leading-relaxed max-w-4xl">
-          <strong className="text-gray-400">Basis:</strong> Rental document totals and due —{' '}
+      <div className="shrink-0 px-6 py-4 bg-muted/40 border-b border-border space-y-3">
+        <p className="text-[11px] text-muted-foreground leading-relaxed max-w-4xl">
+          <strong className="text-muted-foreground">Basis:</strong> Rental document totals and due —{' '}
           <span className="text-pink-300/90">operational</span> (rental orders). Not GL AR 1100 or canonical P&amp;L unless posted to those accounts.
         </p>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4">
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 min-w-0">
-            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Rental (Month)</p>
-            <AdaptiveCurrencyValue value={summary.totalAmount} className="text-2xl font-bold text-white mt-1" as="p" />
+          <div className="bg-card border border-border rounded-xl p-4 min-w-0">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Total Rental (Month)</p>
+            <AdaptiveCurrencyValue value={summary.totalAmount} className="text-2xl font-bold text-foreground mt-1" as="p" />
           </div>
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 min-w-0">
-            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Amount Due</p>
+          <div className="bg-card border border-border rounded-xl p-4 min-w-0">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Amount Due</p>
             <AdaptiveCurrencyValue value={summary.totalDue} className="text-2xl font-bold text-red-400 mt-1" as="p" />
           </div>
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Today Pickups</p>
+          <div className="bg-card border border-border rounded-xl p-4">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Today Pickups</p>
             <p className="text-2xl font-bold text-pink-400 mt-1">{summary.todayPickups}</p>
           </div>
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Today Returns</p>
+          <div className="bg-card border border-border rounded-xl p-4">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Today Returns</p>
             <p className="text-2xl font-bold text-amber-400 mt-1">{summary.todayReturns}</p>
           </div>
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Active Rentals</p>
+          <div className="bg-card border border-border rounded-xl p-4">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Active Rentals</p>
             <p className="text-2xl font-bold text-blue-400 mt-1">{summary.active}</p>
           </div>
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Overdue</p>
+          <div className="bg-card border border-border rounded-xl p-4">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Overdue</p>
             <p className="text-2xl font-bold text-red-500 mt-1">{summary.overdue}</p>
           </div>
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Utilization %</p>
+          <div className="bg-card border border-border rounded-xl p-4">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Utilization %</p>
             <p className="text-2xl font-bold text-cyan-400 mt-1">{summary.utilization}%</p>
           </div>
         </div>
       </div>
 
-      <div className="shrink-0 px-6 pt-2 pb-1 flex items-center gap-1 border-b border-gray-800/50 overflow-x-auto">
+      <div className="shrink-0 px-6 pt-2 pb-1 flex items-center gap-1 border-b border-border overflow-x-auto">
         {LIST_FILTER_TABS.map((tab) => (
           <button
             key={tab.value}
@@ -442,8 +442,8 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
             className={cn(
               'px-3 py-2 rounded-t-md text-sm font-medium transition-all whitespace-nowrap',
               listFilter === tab.value
-                ? 'bg-gray-800 text-white border-t border-x border-gray-700 -mb-px'
-                : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
+                ? 'bg-muted text-foreground border-t border-x border-border -mb-px'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
             )}
           >
             {tab.label}
@@ -487,20 +487,20 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
             dateFilterMode !== 'created' ? dateFilterMode : null,
           ].filter(Boolean).length,
           renderPanel: () => (
-            <div className="absolute right-0 top-12 w-64 max-h-[min(70vh,22rem)] overflow-y-auto bg-gray-900 border border-gray-700 rounded-lg shadow-xl p-4 z-50">
-              <p className="text-sm font-semibold text-white mb-2">Filters</p>
-              <label className="text-xs text-gray-400">Date filter basis</label>
+            <div className="absolute right-0 top-12 w-64 max-h-[min(70vh,22rem)] overflow-y-auto bg-card border border-border rounded-lg shadow-xl p-4 z-50">
+              <p className="text-sm font-semibold text-foreground mb-2">Filters</p>
+              <label className="text-xs text-muted-foreground">Date filter basis</label>
               <select
-                className="w-full mt-1 bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-white text-sm"
+                className="w-full mt-1 bg-muted border border-border rounded px-2 py-1.5 text-foreground text-sm"
                 value={dateFilterMode}
                 onChange={(e) => setDateFilterMode(e.target.value as 'pickup' | 'created')}
               >
                 <option value="pickup">Pickup / start date</option>
                 <option value="created">Booking / created date</option>
               </select>
-              <label className="text-xs text-gray-400 mt-2 block">Branch</label>
+              <label className="text-xs text-muted-foreground mt-2 block">Branch</label>
               <select
-                className="w-full mt-1 bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-white text-sm"
+                className="w-full mt-1 bg-muted border border-border rounded px-2 py-1.5 text-foreground text-sm"
                 value={branchFilter}
                 onChange={(e) => setBranchFilter(e.target.value)}
               >
@@ -511,9 +511,9 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                   </option>
                 ))}
               </select>
-              <label className="text-xs text-gray-400 mt-2 block">Salesman</label>
+              <label className="text-xs text-muted-foreground mt-2 block">Salesman</label>
               <select
-                className="w-full mt-1 bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-white text-sm"
+                className="w-full mt-1 bg-muted border border-border rounded px-2 py-1.5 text-foreground text-sm"
                 value={salesmanFilter}
                 onChange={(e) => setSalesmanFilter(e.target.value)}
               >
@@ -530,12 +530,12 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
       />
 
       <div className="flex-1 overflow-auto px-6 py-4">
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+        <div className="bg-card border border-border rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
             <div className="min-w-[1560px]">
-              <div className="sticky top-0 z-[1] min-w-[1560px] w-max bg-gray-900 border-b border-gray-800">
+              <div className="sticky top-0 z-[1] min-w-[1560px] w-max bg-card border-b border-border">
                 <div
-                  className="grid gap-3 px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider"
+                  className="grid gap-3 px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider"
                   style={{ gridTemplateColumns: gridTemplateColumns }}
                 >
                       {columnOrder.map((key) => {
@@ -556,17 +556,17 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                 {loading && rentals.length === 0 ? (
                   <div className="py-12 text-center">
                     <Loader2 size={48} className="mx-auto text-pink-500 mb-3 animate-spin" />
-                    <p className="text-gray-400 text-sm">Loading rentals…</p>
+                    <p className="text-muted-foreground text-sm">Loading rentals…</p>
                   </div>
                 ) : paginatedRentals.length === 0 ? (
                   <div className="py-12 text-center">
-                    <ShoppingBag size={48} className="mx-auto text-gray-600 mb-3" />
-                    <p className="text-gray-400 text-sm">{emptyListMessage ?? 'No rentals found'}</p>
+                    <ShoppingBag size={48} className="mx-auto text-muted-foreground mb-3" />
+                    <p className="text-muted-foreground text-sm">{emptyListMessage ?? 'No rentals found'}</p>
                     {loadFailed && rentals.length === 0 && (
                       <Button
                         variant="outline"
                         size="sm"
-                        className="mt-4 border-gray-700 text-gray-300"
+                        className="mt-4 border-border text-muted-foreground"
                         onClick={() => void refreshRentals()}
                       >
                         <RefreshCw size={14} className="mr-2" />
@@ -580,7 +580,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                       key={r.id}
                       onMouseEnter={() => setHoveredRow(r.id)}
                       onMouseLeave={() => setHoveredRow(null)}
-                      className="grid gap-3 px-4 h-14 min-w-[1560px] w-max hover:bg-gray-800/30 items-center border-b border-gray-800 last:border-b-0"
+                      className="grid gap-3 px-4 h-14 min-w-[1560px] w-max hover:bg-accent/30 items-center border-b border-border last:border-b-0"
                       style={{ gridTemplateColumns: gridTemplateColumns }}
                     >
                       {columnOrder.map((key) => {
@@ -598,11 +598,11 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                             );
                             break;
                           case 'customer':
-                            cell = <span className="text-sm text-white truncate">{r.customerName}</span>;
+                            cell = <span className="text-sm text-foreground truncate">{r.customerName}</span>;
                             break;
                           case 'product':
                             cell = (
-                              <span className="text-sm text-gray-300 truncate" title={r.items?.[0]?.productName || ''}>
+                              <span className="text-sm text-muted-foreground truncate" title={r.items?.[0]?.productName || ''}>
                                 {r.items?.[0]?.productName || '—'}
                               </span>
                             );
@@ -611,7 +611,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                             const lines = r.items ?? [];
                             const it = lines[0];
                             if (!it) {
-                              cell = <span className="text-xs text-gray-500">—</span>;
+                              cell = <span className="text-xs text-muted-foreground">—</span>;
                               break;
                             }
                             const sku = (it.sku || '').trim();
@@ -628,7 +628,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                             const extra = lines.length > 1 ? ` +${lines.length - 1}` : '';
                             const full = (detail || '—') + extra;
                             cell = (
-                              <span className="text-xs text-gray-400 truncate block" title={full}>
+                              <span className="text-xs text-muted-foreground truncate block" title={full}>
                                 {detail || '—'}
                                 {extra ? <span className="text-pink-400/90">{extra}</span> : null}
                               </span>
@@ -636,31 +636,31 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                             break;
                           }
                           case 'branch':
-                            cell = <span className="text-xs text-gray-400 truncate">{r.location || '—'}</span>;
+                            cell = <span className="text-xs text-muted-foreground truncate">{r.location || '—'}</span>;
                             break;
                           case 'createdAt':
                             cell = r.createdAt ? (
-                              <DateTimeDisplay date={r.createdAt} dateOnly className="text-sm text-gray-400" />
+                              <DateTimeDisplay date={r.createdAt} dateOnly className="text-sm text-muted-foreground" />
                             ) : (
-                              <span className="text-sm text-gray-500">—</span>
+                              <span className="text-sm text-muted-foreground">—</span>
                             );
                             break;
                           case 'salesman':
                             cell = (
-                              <span className="text-sm text-gray-400 truncate" title={r.salesmanName || ''}>
+                              <span className="text-sm text-muted-foreground truncate" title={r.salesmanName || ''}>
                                 {r.salesmanName || '—'}
                               </span>
                             );
                             break;
                           case 'startDate':
-                            cell = <span className="text-sm text-gray-400">{formatLongDate(r.startDate)}</span>;
+                            cell = <span className="text-sm text-muted-foreground">{formatLongDate(r.startDate)}</span>;
                             break;
                           case 'expectedReturn':
-                            cell = <span className="text-sm text-gray-400">{formatLongDate(r.expectedReturnDate)}</span>;
+                            cell = <span className="text-sm text-muted-foreground">{formatLongDate(r.expectedReturnDate)}</span>;
                             break;
                           case 'actualReturn':
                             cell = (
-                              <span className="text-sm text-gray-400">
+                              <span className="text-sm text-muted-foreground">
                                 {r.actualReturnDate ? formatLongDate(r.actualReturnDate) : '—'}
                               </span>
                             );
@@ -693,7 +693,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                                       variant="outline"
                                       className={cn(
                                         "h-8 border-green-500/50 hover:bg-green-500/20 hover:border-green-500",
-                                        r.status === 'overdue' ? "text-red-400" : "text-green-400"
+                                        r.status === 'overdue' ? "text-red-400" : "text-[var(--erp-money-positive)]"
                                       )}
                                       onClick={() => handleReturn(r)}
                                     >
@@ -706,7 +706,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                                   </div>
                                 )}
                                 {['draft', 'returned', 'cancelled'].includes(r.status) && (
-                                  <span className="text-xs text-gray-500">—</span>
+                                  <span className="text-xs text-muted-foreground">—</span>
                                 )}
                               </div>
                             );
@@ -716,7 +716,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                             const displayTotal = r.totalAmount + dmg;
                             cell = (
                               <span
-                                className="text-sm font-semibold text-white tabular-nums"
+                                className="text-sm font-semibold text-foreground tabular-nums"
                                 title={dmg > 0 ? `Booking ${formatCurrency(r.totalAmount)} + damage/penalty ${formatCurrency(dmg)}` : undefined}
                               >
                                 {formatCurrency(displayTotal)}
@@ -737,8 +737,8 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                                 onClick={openPayment}
                                 onKeyDown={(e) => canAddPayment && (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), openPayment())}
                                 className={cn(
-                                  'text-sm text-gray-300 tabular-nums w-full text-right',
-                                  canAddPayment && 'cursor-pointer hover:text-white hover:underline'
+                                  'text-sm text-muted-foreground tabular-nums w-full text-right',
+                                  canAddPayment && 'cursor-pointer hover:text-foreground hover:underline'
                                 )}
                                 title={penaltyReceived ? `Booking paid ${formatCurrency(r.paidAmount)} + penalty received ${formatCurrency(dmg)}` : undefined}
                               >
@@ -767,7 +767,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                                 title={penaltyStillOwed ? `Booking due ${formatCurrency(r.dueAmount)} + penalty on account ${formatCurrency(dmgDue)}` : undefined}
                               >
                                 {paymentStatus === 'paid' ? (
-                                  <Badge className="text-[10px] bg-green-500/20 text-green-400 border-green-500/30 gap-1 inline-flex">
+                                  <Badge className="text-[10px] bg-green-500/20 text-[var(--erp-money-positive)] border-green-500/30 gap-1 inline-flex">
                                     <CheckCircle2 size={10} />
                                     Paid
                                   </Badge>
@@ -781,7 +781,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                                   </Badge>
                                 )}
                                 {displayDue > 0 && (
-                                  <span className="ml-1 text-xs text-gray-400 tabular-nums">{formatCurrency(displayDue)}</span>
+                                  <span className="ml-1 text-xs text-muted-foreground tabular-nums">{formatCurrency(displayDue)}</span>
                                 )}
                               </div>
                             );
@@ -797,14 +797,14 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <button
-                              className="w-8 h-8 rounded-lg bg-gray-800/50 hover:bg-gray-700 flex items-center justify-center text-gray-400 hover:text-white"
+                              className="w-8 h-8 rounded-lg bg-muted/50 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground"
                             >
                               <MoreVertical size={16} />
                             </button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700 text-white w-52">
+                          <DropdownMenuContent align="end" className="bg-card border-border text-foreground w-52">
                             <DropdownMenuItem
-                              className="hover:bg-gray-800 cursor-pointer"
+                              className="hover:bg-muted cursor-pointer"
                               onClick={() => {
                                 setSelectedRental(r);
                                 setViewDetailsOpen(true);
@@ -815,27 +815,27 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                             </DropdownMenuItem>
                             {(r.status === 'draft' || r.status === 'booked') && (
                               <DropdownMenuItem
-                                className="hover:bg-gray-800 cursor-pointer"
+                                className="hover:bg-muted cursor-pointer"
                                 onClick={() => onEditRental?.(r)}
                               >
-                                <Edit size={14} className="mr-2 text-green-400" />
+                                <Edit size={14} className="mr-2 text-[var(--erp-money-positive)]" />
                                 Edit
                               </DropdownMenuItem>
                             )}
                             {(r.status === 'rented' || r.status === 'overdue') && (
                               <DropdownMenuItem
-                                className="hover:bg-gray-800 cursor-pointer"
+                                className="hover:bg-muted cursor-pointer"
                                 onClick={() => {
                                   setSelectedRental(r);
                                   setPaymentDialogOpen(true);
                                 }}
                               >
-                                <DollarSign size={14} className="mr-2 text-green-400" />
+                                <DollarSign size={14} className="mr-2 text-[var(--erp-money-positive)]" />
                                 Add Payment
                               </DropdownMenuItem>
                             )}
                             <DropdownMenuItem
-                              className="hover:bg-gray-800 cursor-pointer"
+                              className="hover:bg-muted cursor-pointer"
                               onClick={() => {
                                 setSelectedRental(r);
                                 setViewPaymentsOpen(true);
@@ -845,7 +845,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                               View Payments
                             </DropdownMenuItem>
                             <DropdownMenuItem
-                              className="hover:bg-gray-800 cursor-pointer"
+                              className="hover:bg-muted cursor-pointer"
                               onClick={() => {
                                 setSelectedRental(r);
                                 setViewDetailsPrintMode(true);
@@ -857,9 +857,9 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                             </DropdownMenuItem>
                             {(r.status === 'draft' || r.status === 'booked') && (
                               <>
-                                <DropdownMenuSeparator className="bg-gray-700" />
+                                <DropdownMenuSeparator className="bg-muted" />
                                 <DropdownMenuItem
-                                  className="hover:bg-gray-800 cursor-pointer text-red-400"
+                                  className="hover:bg-muted cursor-pointer text-red-400"
                                   onClick={() => {
                                     setSelectedRental(r);
                                     setDeleteDialogOpen(true);
@@ -1029,15 +1029,15 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
       />
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent className="bg-gray-900 border-gray-700">
+        <AlertDialogContent className="bg-card border-border">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-white">Delete Rental</AlertDialogTitle>
+            <AlertDialogTitle className="text-foreground">Delete Rental</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to delete rental <strong>{selectedRental?.rentalNo}</strong>? Only draft or booked rentals can be deleted.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="bg-gray-800 text-white border-gray-700">Cancel</AlertDialogCancel>
+            <AlertDialogCancel className="bg-muted text-foreground border-border">Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={confirmDelete} className="bg-red-600 hover:bg-red-500">
               Delete
             </AlertDialogAction>

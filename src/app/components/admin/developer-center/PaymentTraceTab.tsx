@@ -62,8 +62,8 @@ export function PaymentTraceTab({ companyId, initialQuery = '' }: Props) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-2">
         <div className="flex-1 min-w-[200px]">
-          <label className="text-[10px] uppercase tracking-wider text-gray-500">Payment ref (q)</label>
-          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="HQ-RCV-0006 or PAY-0042" className="mt-1 bg-gray-950 border-gray-800" />
+          <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Payment ref (q)</label>
+          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="HQ-RCV-0006 or PAY-0042" className="mt-1 bg-input-background border-border" />
         </div>
         <Button type="button" size="sm" onClick={run} disabled={loading}>
           <Search className={`w-4 h-4 mr-1 ${loading ? 'animate-pulse' : ''}`} />
@@ -92,7 +92,7 @@ export function PaymentTraceTab({ companyId, initialQuery = '' }: Props) {
       )}
 
       {view && (
-        <Card className="border-gray-800 bg-gray-900/40">
+        <Card className="border-border bg-card/40">
           <CardHeader>
             <CardTitle className="text-base">Payment-first trace</CardTitle>
             <CardDescription>
@@ -101,13 +101,13 @@ export function PaymentTraceTab({ companyId, initialQuery = '' }: Props) {
           </CardHeader>
           <CardContent className="space-y-4">
             {view.sections.map((section) => (
-              <div key={section.id} className="border border-gray-800 rounded-lg p-3">
+              <div key={section.id} className="border border-border rounded-lg p-3">
                 <h3 className="text-sm font-medium text-gray-200 mb-2">{section.title}</h3>
                 <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs">
                   {section.rows.map((row, i) => (
                     <React.Fragment key={`${section.id}-${i}`}>
-                      <dt className="text-gray-500">{row.label}</dt>
-                      <dd className="text-gray-300 font-mono break-all">{row.value}</dd>
+                      <dt className="text-muted-foreground">{row.label}</dt>
+                      <dd className="text-muted-foreground font-mono break-all">{row.value}</dd>
                     </React.Fragment>
                   ))}
                 </dl>

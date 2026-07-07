@@ -93,21 +93,21 @@ export default function UnifiedLedgerTieOutPage() {
 
   if (!canAccess) {
     return (
-      <div className="p-8 text-white">
+      <div className="p-8 text-foreground">
         <h1 className="text-xl font-semibold">Unified Ledger Compare</h1>
-        <p className="text-gray-400 mt-2">Developer / admin access required.</p>
+        <p className="text-muted-foreground mt-2">Developer / admin access required.</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#0B0F19] text-white p-4 md:p-8 space-y-6">
+    <div className="min-h-screen bg-secondary text-foreground p-4 md:p-8 space-y-6">
       <div>
         <h1 className="text-2xl font-bold flex flex-wrap items-center gap-2">
           Unified Ledger Compare Center
           <UnifiedLedgerPreviewBadge mode={engineState.mode} />
         </h1>
-        <p className="text-gray-400 text-sm mt-1">
+        <p className="text-muted-foreground text-sm mt-1">
           Admin-only old-vs-new preview. Production statement screens unchanged.
           {localOverride !== null && (
             <span className="ml-2 text-xs text-amber-400">
@@ -122,7 +122,7 @@ export default function UnifiedLedgerTieOutPage() {
         <ReportBasisBanner basis={reportBasis} detail={`RPC lens: ${unifiedBasisLabel(basis)}`} />
       </div>
 
-      <div className="rounded-lg border border-gray-800 bg-gray-900/30 px-3 py-2 text-xs text-gray-500 grid md:grid-cols-3 gap-2">
+      <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground grid md:grid-cols-3 gap-2">
         <span>Kill switch: {engineState.killSwitchActive ? 'ON' : 'OFF'}</span>
         <span>Company engine: {engineState.companyEngineEnabled ? 'ON' : 'OFF'}</span>
         <span>Pilot: {engineState.pilotEnabled ? 'ON' : 'OFF'}</span>
@@ -164,15 +164,15 @@ export default function UnifiedLedgerTieOutPage() {
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 rounded-xl border border-gray-800 bg-gray-900/40 p-4">
-        <p className="text-xs text-gray-500 lg:col-span-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 rounded-xl border border-border bg-card/40 p-4">
+        <p className="text-xs text-muted-foreground lg:col-span-5">
           Leave <strong>From</strong> empty for lifetime golden compare (Phase 1.8 — both dates sent as null).
           Set From + To for period-scoped compare.
         </p>
         <label className="text-sm space-y-1">
           Basis
           <select
-            className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1.5"
+            className="w-full rounded bg-muted border border-border px-2 py-1.5"
             value={basis}
             onChange={(e) => setBasis(e.target.value as UnifiedLedgerBasis)}
           >
@@ -186,7 +186,7 @@ export default function UnifiedLedgerTieOutPage() {
         <label className="text-sm space-y-1">
           Branch
           <select
-            className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1.5"
+            className="w-full rounded bg-muted border border-border px-2 py-1.5"
             value={branchId ?? ''}
             onChange={(e) => setBranchId(e.target.value || null)}
           >
@@ -202,7 +202,7 @@ export default function UnifiedLedgerTieOutPage() {
           From
           <input
             type="date"
-            className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1.5"
+            className="w-full rounded bg-muted border border-border px-2 py-1.5"
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value)}
           />
@@ -211,7 +211,7 @@ export default function UnifiedLedgerTieOutPage() {
           To
           <input
             type="date"
-            className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1.5"
+            className="w-full rounded bg-muted border border-border px-2 py-1.5"
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
           />
@@ -219,7 +219,7 @@ export default function UnifiedLedgerTieOutPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as UnifiedLedgerCompareTabId)}>
-        <TabsList className="flex flex-wrap h-auto gap-1 bg-gray-900/60">
+        <TabsList className="flex flex-wrap h-auto gap-1 bg-muted/60">
           {TABS.map((t) => (
             <TabsTrigger key={t.id} value={t.id} className="text-xs sm:text-sm">
               {t.label}

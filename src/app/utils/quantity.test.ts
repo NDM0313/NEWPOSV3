@@ -5,6 +5,7 @@ import { formatQty, formatQtyFixed } from './quantity';
 test('formatQty removes float noise with 2 decimals', () => {
   assert.equal(formatQty(-2498.2999999999997), '-2498.30');
   assert.doesNotMatch(formatQty(-2498.2999999999997), /999999/);
+  assert.equal(formatQty(-298.0000000000001), '-298.00');
 });
 
 test('formatQty always shows 2 decimal places', () => {

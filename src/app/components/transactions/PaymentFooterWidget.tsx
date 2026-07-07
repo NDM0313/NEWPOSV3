@@ -146,10 +146,10 @@ export function PaymentFooterWidget({
     transactionType === "sale" ? "Deposit Into Account" : "Pay From Account";
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-lg p-6 space-y-6">
+    <div className="bg-card border border-border rounded-lg p-6 space-y-6">
       {/* Row 1: Payment Method Tabs */}
       <div>
-        <Label className="text-gray-400 text-xs mb-3 block">
+        <Label className="text-muted-foreground text-xs mb-3 block">
           Payment Method
         </Label>
         <div className="grid grid-cols-4 gap-3">
@@ -167,7 +167,7 @@ export function PaymentFooterWidget({
                   ${
                     isActive
                       ? "border-blue-600 bg-blue-600/10"
-                      : "border-gray-700 bg-gray-800/50 hover:border-gray-600"
+                      : "border-border bg-muted/50 hover:border-gray-600"
                   }
                 `}
               >
@@ -180,7 +180,7 @@ export function PaymentFooterWidget({
                   <span className="text-2xl">{method.emoji}</span>
                   <span
                     className={`text-sm font-medium ${
-                      isActive ? "text-blue-400" : "text-gray-400"
+                      isActive ? "text-blue-400" : "text-muted-foreground"
                     }`}
                   >
                     {method.label}
@@ -201,11 +201,11 @@ export function PaymentFooterWidget({
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Input A: Received Amount */}
         <div className="space-y-2">
-          <Label htmlFor="amount" className="text-gray-400 text-xs">
+          <Label htmlFor="amount" className="text-muted-foreground text-xs">
             {transactionType === "sale" ? "Received Amount" : "Paid Amount"}
           </Label>
           <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
               {currency}
             </span>
             <Input
@@ -217,20 +217,20 @@ export function PaymentFooterWidget({
                 const value = e.target.value.replace(/[^0-9]/g, "");
                 setAmount(value);
               }}
-              className="pl-10 bg-gray-800 border-gray-700 text-white text-lg font-semibold h-12 focus:border-blue-600 focus:ring-blue-600/20"
+              className="pl-10 bg-muted border-border text-foreground text-lg font-semibold h-12 focus:border-blue-600 focus:ring-blue-600/20"
             />
           </div>
         </div>
 
         {/* Input B: Account Selector */}
         <div className="space-y-2">
-          <Label htmlFor="account" className="text-gray-400 text-xs">
+          <Label htmlFor="account" className="text-muted-foreground text-xs">
             {accountLabel}
           </Label>
           <Select value={selectedAccount} onValueChange={setSelectedAccount}>
             <SelectTrigger
               id="account"
-              className="bg-gray-800 border-gray-700 text-white h-12 focus:border-blue-600 focus:ring-blue-600/20"
+              className="bg-muted border-border text-foreground h-12 focus:border-blue-600 focus:ring-blue-600/20"
             >
               <SelectValue placeholder="Select account...">
                 {selectedAccount && (
@@ -241,10 +241,10 @@ export function PaymentFooterWidget({
                           ?.icon
                       }
                     </span>
-                    <span className="font-medium text-white">
+                    <span className="font-medium text-foreground">
                       {accounts.find((acc) => acc.id === selectedAccount)?.name}
                     </span>
-                    <span className="text-xs text-gray-500 ml-auto">
+                    <span className="text-xs text-muted-foreground ml-auto">
                       (Bal:{" "}
                       {formatCurrency(
                         accounts.find((acc) => acc.id === selectedAccount)
@@ -256,22 +256,22 @@ export function PaymentFooterWidget({
                 )}
               </SelectValue>
             </SelectTrigger>
-            <SelectContent className="bg-gray-800 border-gray-700">
+            <SelectContent className="bg-muted border-border">
               {getFilteredAccounts().map((account) => (
                 <SelectItem
                   key={account.id}
                   value={account.id}
-                  className="text-white hover:bg-gray-700 focus:bg-gray-700 cursor-pointer py-3"
+                  className="text-foreground hover:bg-muted focus:bg-muted cursor-pointer py-3"
                 >
                   <div className="flex items-center gap-3 w-full">
                     <span className="text-lg">{account.icon}</span>
                     <div className="flex-1 min-w-0">
-                      <div className="font-medium text-white">
+                      <div className="font-medium text-foreground">
                         {formatAccountSelectOptionLabel(account, {
                           postingSide: getPaymentLiquidityPostingSide(transactionType === 'sale'),
                         })}
                       </div>
-                      <div className="text-xs text-gray-400">
+                      <div className="text-xs text-muted-foreground">
                         Balance: {formatCurrency(account.balance)}
                       </div>
                     </div>
@@ -284,13 +284,13 @@ export function PaymentFooterWidget({
 
         {/* Input C: Reference */}
         <div className="space-y-2">
-          <Label htmlFor="reference" className="text-gray-400 text-xs">
+          <Label htmlFor="reference" className="text-muted-foreground text-xs">
             {selectedMethod === "cheque"
               ? "Cheque Number"
               : selectedMethod === "bank"
               ? "Transaction ID"
               : "Reference"}
-            <span className="text-gray-600 ml-1">(Optional)</span>
+            <span className="text-muted-foreground ml-1">(Optional)</span>
           </Label>
           <Input
             id="reference"
@@ -304,15 +304,15 @@ export function PaymentFooterWidget({
             }
             value={reference}
             onChange={(e) => setReference(e.target.value)}
-            className="bg-gray-800 border-gray-700 text-white h-12 focus:border-blue-600 focus:ring-blue-600/20"
+            className="bg-muted border-border text-foreground h-12 focus:border-blue-600 focus:ring-blue-600/20"
           />
         </div>
       </div>
 
       {/* Summary Info */}
       {amount && selectedAccount && (
-        <div className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg border border-gray-700">
-          <div className="flex items-center gap-2 text-sm text-gray-400">
+        <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg border border-border">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <span className="text-lg">
               {paymentMethods.find((m) => m.id === selectedMethod)?.emoji}
             </span>
@@ -321,7 +321,7 @@ export function PaymentFooterWidget({
             </span>
           </div>
           {reference && (
-            <div className="text-xs text-gray-500">Ref: {reference}</div>
+            <div className="text-xs text-muted-foreground">Ref: {reference}</div>
           )}
         </div>
       )}

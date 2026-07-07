@@ -137,7 +137,7 @@ export function RepairActionPanel({ companyId, item, systemStatus, onRemove, onA
   }
 
   return (
-    <Card className="border-gray-800 bg-gray-900/40">
+    <Card className="border-border bg-card/40">
       <CardHeader className="pb-2">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
@@ -157,18 +157,18 @@ export function RepairActionPanel({ companyId, item, systemStatus, onRemove, onA
         </div>
       </CardHeader>
       <CardContent className="space-y-3 text-xs">
-        <p className="text-gray-400">{action.description}</p>
+        <p className="text-muted-foreground">{action.description}</p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div className="rounded border border-gray-800 bg-gray-950/60 p-2">
-            <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">Before snapshot</div>
-            <pre className="text-[10px] text-gray-400 whitespace-pre-wrap break-all max-h-40 overflow-auto">
+          <div className="rounded border border-border bg-input-background/60 p-2">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Before snapshot</div>
+            <pre className="text-[10px] text-muted-foreground whitespace-pre-wrap break-all max-h-40 overflow-auto">
               {dryRun ? JSON.stringify(dryRun.before, null, 2) : 'Run dry-run to load'}
             </pre>
           </div>
-          <div className="rounded border border-gray-800 bg-gray-950/60 p-2">
-            <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">After preview</div>
-            <pre className="text-[10px] text-gray-400 whitespace-pre-wrap break-all max-h-40 overflow-auto">
+          <div className="rounded border border-border bg-input-background/60 p-2">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">After preview</div>
+            <pre className="text-[10px] text-muted-foreground whitespace-pre-wrap break-all max-h-40 overflow-auto">
               {dryRun ? JSON.stringify(dryRun.afterPreview, null, 2) : 'Run dry-run to load'}
             </pre>
           </div>
@@ -202,7 +202,7 @@ export function RepairActionPanel({ companyId, item, systemStatus, onRemove, onA
           </Button>
           <div className="flex-1 min-w-[220px]">
             <label
-              className="text-[10px] uppercase tracking-wider text-gray-500 block mb-1"
+              className="text-[10px] uppercase tracking-wider text-muted-foreground block mb-1"
               htmlFor={`confirm-phrase-${item.queueId}`}
             >
               Confirm phrase
@@ -214,7 +214,7 @@ export function RepairActionPanel({ companyId, item, systemStatus, onRemove, onA
               placeholder={expectedPhrase}
               autoComplete="off"
               spellCheck={false}
-              className="h-9 bg-gray-950 border-gray-800 font-mono text-xs"
+              className="h-9 bg-input-background border-border font-mono text-xs"
               disabled={!canApply}
             />
           </div>
@@ -230,7 +230,7 @@ export function RepairActionPanel({ companyId, item, systemStatus, onRemove, onA
         </div>
 
         {!dryRun?.ok && canApply && (
-          <p className="text-[10px] text-gray-500">
+          <p className="text-[10px] text-muted-foreground">
             {dryRun && !dryRun.ok
               ? 'Dry-run blocked — remove item, re-send to queue, then dry-run again'
               : 'Run dry-run first — type phrase exactly as shown in placeholder'}
@@ -242,22 +242,22 @@ export function RepairActionPanel({ companyId, item, systemStatus, onRemove, onA
         )}
 
         {resultMessage && (
-          <p className="text-gray-300 flex items-center gap-1">
+          <p className="text-muted-foreground flex items-center gap-1">
             <CheckCircle2 className="w-3 h-3 text-emerald-400" />
             {resultMessage}
-            {auditId && <span className="text-gray-500 ml-2">Audit: {auditId}</span>}
+            {auditId && <span className="text-muted-foreground ml-2">Audit: {auditId}</span>}
           </p>
         )}
 
-        <details className="text-gray-500">
+        <details className="text-muted-foreground">
           <summary className="cursor-pointer">What changes / never changes</summary>
           <ul className="list-disc ml-4 mt-1 space-y-0.5">
             {action.whatItChanges.map((c) => (
               <li key={c}>{c}</li>
             ))}
           </ul>
-          <p className="mt-2 text-gray-600">Never: {action.whatItNeverChanges.join('; ')}</p>
-          <p className="mt-1 text-gray-600">Rollback: {action.rollbackNote}</p>
+          <p className="mt-2 text-muted-foreground">Never: {action.whatItNeverChanges.join('; ')}</p>
+          <p className="mt-1 text-muted-foreground">Rollback: {action.rollbackNote}</p>
         </details>
       </CardContent>
     </Card>
