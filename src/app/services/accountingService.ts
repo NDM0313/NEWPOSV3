@@ -1838,7 +1838,7 @@ export const accountingService = {
           *,
           account:accounts(id, name, code, type)
         ),
-        payment:payments(id, reference_number, notes, amount, payment_method, payment_date, contact_id, payment_account_id, contact:contacts(name)),
+        payment:payments(id, reference_number, reference_type, payment_type, notes, amount, payment_method, payment_date, contact_id, payment_account_id, contact:contacts(name)),
         branch:branches(id, name, code)
       `)
       .eq('id', journalEntryId)
@@ -2019,7 +2019,7 @@ export const accountingService = {
             *,
             account:accounts(id, name, code, type)
           ),
-          payment:payments(id, reference_number, notes, amount, payment_method, payment_date, contact_id, payment_account_id, contact:contacts(name)),
+          payment:payments(id, reference_number, reference_type, payment_type, notes, amount, payment_method, payment_date, contact_id, payment_account_id, contact:contacts(name)),
           branch:branches(id, name, code)
         `)
         .eq('company_id', companyId)
@@ -2116,7 +2116,7 @@ export const accountingService = {
           *,
           account:accounts(id, name, code, type)
         ),
-        payment:payments(id, reference_number, notes, amount, payment_method, payment_date, contact_id, payment_account_id, contact:contacts(name)),
+        payment:payments(id, reference_number, reference_type, payment_type, notes, amount, payment_method, payment_date, contact_id, payment_account_id, contact:contacts(name)),
         branch:branches(id, name, code)
       `)
       .eq('company_id', companyId)
@@ -2149,7 +2149,7 @@ export const accountingService = {
               *,
               account:accounts(id, name, code, type)
             ),
-            payment:payments(id, reference_number, notes, amount, payment_method, payment_date, contact_id, payment_account_id, contact:contacts(name)),
+            payment:payments(id, reference_number, reference_type, payment_type, notes, amount, payment_method, payment_date, contact_id, payment_account_id, contact:contacts(name)),
             branch:branches(id, name, code)
           `)
           .eq('company_id', companyId)
@@ -2268,7 +2268,7 @@ export const accountingService = {
               *,
               account:accounts(id, name, code, type)
             ),
-          payment:payments(id, reference_number, notes, amount, payment_method, payment_date, contact_id, payment_account_id, contact:contacts(name)),
+          payment:payments(id, reference_number, reference_type, payment_type, notes, amount, payment_method, payment_date, contact_id, payment_account_id, contact:contacts(name)),
             branch:branches(id, name, code)
           `)
           .eq('company_id', companyId)
@@ -2312,7 +2312,7 @@ export const accountingService = {
             *,
             account:accounts(id, name, code, type)
           ),
-          payment:payments(id, reference_number, notes, amount, payment_method, payment_date, contact_id, payment_account_id, contact:contacts(name)),
+          payment:payments(id, reference_number, reference_type, payment_type, notes, amount, payment_method, payment_date, contact_id, payment_account_id, contact:contacts(name)),
           branch:branches(id, name, code)
         `)
         .eq('company_id', companyId)
@@ -2339,7 +2339,7 @@ export const accountingService = {
             *,
             account:accounts(id, name, code, type)
           ),
-          payment:payments(id, reference_number, notes, amount, payment_method, payment_date, contact_id, payment_account_id, contact:contacts(name)),
+          payment:payments(id, reference_number, reference_type, payment_type, notes, amount, payment_method, payment_date, contact_id, payment_account_id, contact:contacts(name)),
           branch:branches(id, name, code)
         `)
         .eq('company_id', companyId)

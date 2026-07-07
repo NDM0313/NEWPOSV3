@@ -7,7 +7,7 @@
 
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { enrichRowsWithTransactionAttachments } from '../lib/roznamchaAttachments';
-import { isLiquidityPaymentAccount, paymentMethodForLiquidityAccount } from '../lib/liquidityPaymentAccount';
+import { isRoznamchaLiquidityAccount, paymentMethodForLiquidityAccount } from '../lib/liquidityPaymentAccount';
 import {
   buildCounterpartyByDirectionFromJeLines,
   buildExpenseCounterpartyByDirectionFromJeLines,
@@ -419,7 +419,7 @@ async function loadLiquidityDebitAccountByJeId(
   (jeLines || []).forEach((line: any) => {
     const rawAcc = line.account;
     const acc = Array.isArray(rawAcc) ? rawAcc[0] : rawAcc;
-    if (!acc || !isLiquidityPaymentAccount(acc)) return;
+    if (!acc || !isRoznamchaLiquidityAccount(acc)) return;
     const debit = Number(line.debit) || 0;
     if (debit <= 0) return;
     const jeId = String(line.journal_entry_id || '');
@@ -719,6 +719,11 @@ export function classifyRoznamchaLiquidity(
   accountName: string | null | undefined,
   accountCode?: string | null | undefined
 ): { liquidity: RoznamchaLiquidity | null; shortLabel: string } {
+  const accRef = { code: accountCode, type: accountType, name: accountName };
+  if (!isRoznamchaLiquidityAccount(accRef)) {
+    return { liquidity: null, shortLabel: '—' };
+  }
+
   const m = (paymentMethod || '').toLowerCase().trim();
   const t = String(accountType || '').toLowerCase().trim();
   const n = (accountName || '').toLowerCase().trim();
@@ -764,7 +769,14 @@ export function classifyRoznamchaLiquidity(
     }
   }
 
-  return { liquidity: null, shortLabel: '—' };
+  const inferred = paymentMethodForLiquidityAccount(accRef);
+  if (inferred === 'bank') {
+    return { liquidity: 'bank', shortLabel: 'Bank' };
+  }
+  if (inferred === 'other') {
+    return { liquidity: 'wallet', shortLabel: walletDisplayLabel(accountName, paymentMethod) };
+  }
+  return { liquidity: 'cash', shortLabel: 'Cash' };
 }
 
 /** Map auth_user_id or users.id → display name for Roznamcha "by …" subtitle. */
@@ -926,7 +938,7 @@ async function fetchPaymentRows(
 
   const [accRes, expRes, jeRes, jeByPaymentRes, contactRes, expenseCatRes] = await Promise.all([
     accountIds.length > 0
-      ? supabase.from('accounts').select('id, name, type, code').in('id', accountIds)
+      ? supabase.from('accounts').select('id, name, type, code, linked_contact_id').in('id', accountIds)
       : Promise.resolve({ data: [] as { id: string; name: string; type: string; code?: string | null }[] }),
     expenseEntityIds.length > 0
       ? supabase
@@ -957,13 +969,14 @@ async function fetchPaymentRows(
     supabase.from('expense_categories').select('id, name, parent_id').eq('company_id', companyId),
   ]);
 
-  const accountById = new Map<string, { name: string; type: string; code: string | null }>();
+  const accountById = new Map<string, { name: string; type: string; code: string | null; linked_contact_id?: string | null }>();
   (accRes.data || []).forEach((a: any) => {
     if (a?.id) {
       accountById.set(a.id, {
         name: (a.name || '').trim(),
         type: String(a.type || ''),
         code: a.code != null ? String(a.code).trim() : null,
+        linked_contact_id: a.linked_contact_id ?? null,
       });
     }
   });
@@ -1057,10 +1070,13 @@ async function fetchPaymentRows(
   });
 
   const rows: RoznamchaRow[] = [];
+  const roznamchaBackingPayments: Array<{ reference_id?: string | null }> = [];
   for (const p of paymentList) {
     const aid = (p as any).payment_account_id as string | null | undefined;
     const meta = aid ? accountById.get(aid) : undefined;
     const methodRaw = String((p as any).payment_method || '');
+    if (meta && !isRoznamchaLiquidityAccount(meta)) continue;
+
     const { liquidity, shortLabel } = classifyRoznamchaLiquidity(
       methodRaw,
       meta?.type,
@@ -1075,6 +1091,10 @@ async function fetchPaymentRows(
       if (accountFilter === 'bank' && liquidity !== 'bank') continue;
       if (accountFilter === 'wallet' && liquidity !== 'wallet') continue;
     }
+
+    roznamchaBackingPayments.push({
+      reference_id: (p as any).reference_id ?? null,
+    });
 
     const amount = Number(p.amount) || 0;
     const direction = getDirection((p as any).payment_type);
@@ -1439,7 +1459,7 @@ async function fetchPaymentRows(
   );
   rows.push(...rentalPayRows);
 
-  return { rows, branchFilteredPayments: paymentList };
+  return { rows, branchFilteredPayments: roznamchaBackingPayments };
 }
 async function fetchRentalPaymentRows(
   companyId: string,
@@ -1780,7 +1800,7 @@ function mapJournalLiquidityLinesToRows(
     for (const line of je.lines || []) {
       const rawAcc = line.account as { id: string; name: string; type: string; code: string | null } | { id: string; name: string; type: string; code: string | null }[] | null | undefined;
       const acc = Array.isArray(rawAcc) ? rawAcc[0] : rawAcc;
-      if (!acc || !isLiquidityPaymentAccount(acc)) continue;
+      if (!acc || !isRoznamchaLiquidityAccount(acc)) continue;
       const debit = Number(line.debit) || 0;
       const credit = Number(line.credit) || 0;
       if (debit <= 0 && credit <= 0) continue;
@@ -2333,7 +2353,7 @@ async function recoverOrphanRentalPaymentJeRows(
     for (const line of je.lines || []) {
       const rawAcc = line.account as { id: string; name: string; type: string; code: string | null } | { id: string; name: string; type: string; code: string | null }[] | null | undefined;
       const acc = Array.isArray(rawAcc) ? rawAcc[0] : rawAcc;
-      if (!acc || !isLiquidityPaymentAccount(acc)) continue;
+      if (!acc || !isRoznamchaLiquidityAccount(acc)) continue;
       const debit = Number(line.debit) || 0;
       if (debit <= 0) continue;
       const { liquidity, shortLabel } = classifyRoznamchaLiquidity('', acc.type, acc.name, acc.code);

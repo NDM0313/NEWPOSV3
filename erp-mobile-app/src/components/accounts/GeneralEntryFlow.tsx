@@ -143,7 +143,7 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
         branchId: effectiveBranchId,
         entryDate: entryData.date,
         description: desc,
-        referenceType: 'general',
+        referenceType: 'journal',
         lines: [
           { accountId: entryData.debitAccountId, debit: entryData.amount, credit: 0 },
           { accountId: entryData.creditAccountId, debit: 0, credit: entryData.amount },

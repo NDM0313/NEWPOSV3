@@ -69,10 +69,10 @@ function normPayment(p: unknown): PaymentRowLike | null {
   return x;
 }
 
-/** Legacy rows use reference_type=manual; Add Entry V2 uses journal — both are pure manual JEs. */
+/** Legacy rows use reference_type=manual; Add Entry V2 uses journal; mobile uses general — all pure manual JEs. */
 export function isPureManualJournalReferenceType(referenceType: string | null | undefined): boolean {
   const rt = String(referenceType || '').toLowerCase();
-  return rt === 'journal' || rt === 'manual';
+  return rt === 'journal' || rt === 'manual' || rt === 'general';
 }
 
 export function inferTransactionKind(transaction: JournalTransactionLike, paymentObj: unknown): TransactionKind {

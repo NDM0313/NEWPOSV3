@@ -1063,6 +1063,7 @@ async function fetchPaymentRows(
   });
 
   const rows: RoznamchaRow[] = [];
+  const roznamchaBackingPayments: Array<{ reference_id?: string | null }> = [];
   for (const p of paymentList) {
     const aid = (p as any).payment_account_id as string | null | undefined;
     const meta = aid ? accountById.get(aid) : undefined;
@@ -1083,6 +1084,10 @@ async function fetchPaymentRows(
       if (accountFilter === 'bank' && liquidity !== 'bank') continue;
       if (accountFilter === 'wallet' && liquidity !== 'wallet') continue;
     }
+
+    roznamchaBackingPayments.push({
+      reference_id: (p as any).reference_id ?? null,
+    });
 
     const amount = Number(p.amount) || 0;
     const direction = getDirection((p as any).payment_type);
@@ -1454,7 +1459,7 @@ async function fetchPaymentRows(
   );
   rows.push(...rentalPayRows);
 
-  return { rows, branchFilteredPayments: paymentList };
+  return { rows, branchFilteredPayments: roznamchaBackingPayments };
 }
 
 /** Fetch rental_payments rows (customer cash-IN) and map to RoznamchaRow. */

@@ -780,7 +780,7 @@ export async function updateJournalEntryInPlace(
 
   const { data: je, error: jeErr } = await supabase
     .from('journal_entries')
-    .select('id, reference_type, reference_id')
+    .select('id, reference_type, reference_id, entry_no, branch_id, payment_id')
     .eq('company_id', payload.companyId)
     .eq('id', payload.journalEntryId)
     .maybeSingle();
@@ -834,6 +834,58 @@ export async function updateJournalEntryInPlace(
       })
       .eq('id', je.reference_id as string)
       .eq('company_id', payload.companyId);
+  }
+
+  const lineInputs = [
+    { accountId: payload.debitAccountId, debit: amount, credit: 0 },
+    { accountId: payload.creditAccountId, debit: 0, credit: amount },
+  ];
+  const entryNo = String(je.entry_no || '').trim();
+  const paymentId = String(je.payment_id || '').trim();
+  const isManualJournal =
+    refType === 'journal' || refType === 'manual' || refType === 'general' || refType === 'transfer';
+
+  if (isManualJournal) {
+    try {
+      const {
+        syncLiquidityPaymentForJournal,
+        syncExistingLiquidityPaymentsForJournal,
+        ensurePaymentsForLiquidityJournal,
+      } = await import('../lib/journalLiquidityPayment');
+      if (paymentId) {
+        await syncLiquidityPaymentForJournal({
+          companyId: payload.companyId,
+          paymentId,
+          entryNo,
+          entryDate: payload.entryDate,
+          description: payload.description,
+          lines: lineInputs,
+        });
+      } else {
+        const { syncedCount } = await syncExistingLiquidityPaymentsForJournal({
+          companyId: payload.companyId,
+          journalEntryId: payload.journalEntryId,
+          entryNo,
+          entryDate: payload.entryDate,
+          description: payload.description,
+          lines: lineInputs,
+        });
+        if (syncedCount === 0) {
+          await ensurePaymentsForLiquidityJournal({
+            companyId: payload.companyId,
+            branchId: je.branch_id ?? null,
+            journalEntryId: payload.journalEntryId,
+            entryNo,
+            entryDate: payload.entryDate,
+            description: payload.description,
+            lines: lineInputs,
+            createdBy: null,
+          });
+        }
+      }
+    } catch {
+      /* best-effort roznamcha payment sync */
+    }
   }
 
   return { data: { id: payload.journalEntryId }, error: null };
