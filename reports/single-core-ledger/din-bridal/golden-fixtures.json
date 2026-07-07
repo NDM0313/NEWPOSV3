@@ -1,10 +1,10 @@
 {
   "company": "DIN BRIDAL",
   "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
-  "captured_from": "Operator-approved fixture refresh — Official Calendar Day 6 live activity drift (2026-07-06)",
+  "captured_from": "Operator-approved fixture refresh — Official Calendar Day 7 valid-date run (2026-07-07)",
   "capture_method": "unified_browser_monitoring",
-  "finance_sign_off_ref": "reports/single-core-engine-calendar-stability-official-20260706/option-a-fixture-refresh-approval-note.md",
-  "operator_approval": "Nadeem — fixture-only Option A (Official Calendar Day 6)",
+  "finance_sign_off_ref": "reports/single-core-engine-calendar-stability-official-20260707/option-a-fixture-refresh-approval-note.md",
+  "operator_approval": "Nadeem — fixture-only Option A (Official Calendar Day 7)",
   "status": "GOLDEN_CAPTURE_COMPLETE",
   "golden_party": {
     "name": "MR REHAN ALI",
@@ -16,36 +16,36 @@
     "ledger_v2_golden_party_closing_pkr": 530000,
     "account_statement_golden_party_closing_pkr": 530000,
     "party_ledger_golden_party_closing_pkr": 530000,
-    "trial_balance_debit_pkr": 25303077,
-    "trial_balance_credit_pkr": 25303077,
-    "roznamcha_cash_in_pkr": 3335850,
-    "roznamcha_cash_out_pkr": 1294607,
-    "roznamcha_closing_pkr_proxy": 2041243,
-    "roznamcha_closing_pkr": 2041243
+    "trial_balance_debit_pkr": 26330077,
+    "trial_balance_credit_pkr": 26330077,
+    "roznamcha_cash_in_pkr": 2850850,
+    "roznamcha_cash_out_pkr": 1794607,
+    "roznamcha_closing_pkr_proxy": 1056243,
+    "roznamcha_closing_pkr": 1056243
   },
   "notes": [
-    "Fixture-only refresh — legitimate live activity since accelerated Day 6 fixture (2026-07-05).",
-    "TB 23,688,377 → 25,303,077 PKR; Roznamcha Cash In 2,507,350 → 3,335,850; Cash Out 1,164,607 → 1,294,607; Closing 1,342,743 → 2,041,243.",
+    "Fixture-only refresh — legitimate live activity since Official Day 6 fixture.",
+    "Valid-date monitoring artifact: three-company-monitoring-2026-07-07T06-28-37-319Z.json",
+    "Invalid 2026-07-06 bypass sample values NOT used.",
     "Party MR REHAN ALI closing unchanged at 530000.",
-    "Source monitoring artifact: three-company-monitoring-2026-07-06T07-27-36-908Z.json",
-    "No production GL mutation; no repairs; no migrations."
+    "No production GL mutation from fixture refresh; JE-0310 void separate operator correction."
   ],
-  "browser_capture_at": "2026-07-06T07-27-36-908Z",
-  "browser_capture_evidence": "reports/single-core-engine-calendar-stability-official-20260706/",
+  "browser_capture_at": "2026-07-07T06-28-37-319Z",
+  "browser_capture_evidence": "reports/single-core-engine-calendar-stability-official-20260707/",
   "rpc_proxy_baseline": {
     "golden_party_closing_pkr": 530000,
     "ledger_v2_golden_party_closing_pkr": 530000,
     "account_statement_golden_party_closing_pkr": 530000,
     "party_ledger_golden_party_closing_pkr": 530000,
-    "trial_balance_debit_pkr": 25303077,
-    "trial_balance_credit_pkr": 25303077,
-    "roznamcha_cash_in_pkr": 3335850,
-    "roznamcha_cash_out_pkr": 1294607,
-    "roznamcha_closing_pkr_proxy": 2041243
+    "trial_balance_debit_pkr": 26330077,
+    "trial_balance_credit_pkr": 26330077,
+    "roznamcha_cash_in_pkr": 2850850,
+    "roznamcha_cash_out_pkr": 1794607,
+    "roznamcha_closing_pkr_proxy": 1056243
   },
   "date_range": {
     "start": "2000-01-01",
-    "end": "2026-07-06"
+    "end": "2026-07-07"
   },
   "branch_scope": "all"
 }

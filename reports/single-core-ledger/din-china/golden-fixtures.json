@@ -1,18 +1,18 @@
 {
   "company": "DIN CHINA",
   "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
-  "captured_from": "Phase 2.16 production monitoring",
-  "authoritative_evidence": "reports/single-core-ledger/phase-2-16-monitoring/final-production-verify.md",
+  "captured_from": "Official Calendar Day 7 valid-date run after JE-0310 void correction (2026-07-07)",
+  "authoritative_evidence": "reports/single-core-engine-calendar-stability-official-20260707/",
   "fixtures": {
     "mr_jalil_closing_pkr": 216299,
     "ledger_v2_mr_jalil_closing_pkr": 216299,
     "account_statement_mr_jalil_closing_pkr": 216299,
     "party_ledger_mr_jalil_closing_pkr": 216299,
-    "trial_balance_debit_pkr": 407957272.02,
-    "trial_balance_credit_pkr": 407957272.02,
-    "roznamcha_cash_in_pkr": 136158012,
-    "roznamcha_cash_out_pkr": 67042426,
-    "roznamcha_closing_pkr": 69115586
+    "trial_balance_debit_pkr": 393034072.02,
+    "trial_balance_credit_pkr": 393034072.02,
+    "roznamcha_cash_in_pkr": 84199230,
+    "roznamcha_cash_out_pkr": 58525317,
+    "roznamcha_closing_pkr": 25673913
   },
-  "note": "DIN CHINA golden values are not portable to other companies."
+  "note": "Fixture refresh after orphan JE-0310 void; monitoring artifact three-company-monitoring-2026-07-07T07-24-26-402Z.json"
 }

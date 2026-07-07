@@ -4,11 +4,11 @@
  */
 
 export const MR_JALIL_GOLDEN = 216_299;
-export const TB_GOLDEN = 407_957_272.02;
+export const TB_GOLDEN = 393_034_072.02;
 export const ROZNAMCHA_GOLDEN = {
-  cashIn: 136_158_012,
-  cashOut: 67_042_426,
-  closing: 69_115_586,
+  cashIn: 84_199_230,
+  cashOut: 58_525_317,
+  closing: 25_673_913,
 };
 export const DEFAULT_TOL = 0.01;
 

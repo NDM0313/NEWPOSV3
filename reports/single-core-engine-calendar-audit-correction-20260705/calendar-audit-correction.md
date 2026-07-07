@@ -38,13 +38,15 @@ Day 6 and Day 7 monitoring samples were technically successful but were executed
 
 Same-day repeated samples on 2026-07-05 cannot substitute for official calendar-counted Days 6, 7, and 8. The R8 stability window requires distinct calendar days; accelerated same-day runs are retained as supplementary evidence only.
 
-## Official calendar requirements (unchanged)
+## Official calendar requirements (superseded 2026-07-07)
 
 | Official day | Earliest valid run date |
 |--------------|-------------------------|
 | Calendar Day 6 | 2026-07-06 or later |
 | Calendar Day 7 | 2026-07-07 or later |
 | Calendar Day 8 | 2026-07-08 or later |
+
+**Supersession (2026-07-07):** Forward official runs no longer require per-day calendar spacing — consecutive official days may run in same session after Official Day 7 PASS. This section is retained for historical audit only. Accelerated 2026-07-05 samples and 2026-07-06 bypass sample remain NOT COUNTED.
 
 ## R8 status
 

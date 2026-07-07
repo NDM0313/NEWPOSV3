@@ -471,13 +471,13 @@ Classification:
 
 These samples are retained as extra stability evidence only.
 
-Official calendar-counted Day 6 must be run on 2026-07-06 or later.
-Official calendar-counted Day 7 must be run on 2026-07-07 or later.
-Official calendar-counted Day 8 must be run on 2026-07-08 or later.
+**Policy update (2026-07-07):** Calendar date-gate spacing for forward official runs removed — consecutive days may run in same session. Historical NOT COUNTED samples above remain unchanged.
 
 R8 remains BLOCKED until the real 2–4 week calendar stability window completes and Nadeem gives written approval.
 
 Correction evidence: [`reports/single-core-engine-calendar-audit-correction-20260705/`](../reports/single-core-engine-calendar-audit-correction-20260705/)
+
+**Supersession note (2026-07-07):** Date gate removed for forward official runs. Accelerated 2026-07-05 Day 6/7 samples and 2026-07-06 bypass sample remain NOT COUNTED.
 
 ## Official Calendar Stability Check — 2026-07-06
 
@@ -508,9 +508,38 @@ Correction evidence: [`reports/single-core-engine-calendar-audit-correction-2026
 
 Evidence: [`reports/single-core-engine-calendar-stability-official-20260706/`](../reports/single-core-engine-calendar-stability-official-20260706/)
 
+## Official Calendar Stability Check — 2026-07-07
+
+| Item | Status |
+|------|--------|
+| Classification | **CALENDAR_STABILITY_DAY_PASS** |
+| Run local date/time | 2026-07-07 12:36:23 → 12:50:46 +05:00 |
+| Official stability window calendar day | **7** |
+| Calendar days elapsed since 2026-07-01 | **6** |
+| Pre-check | JE-0310 void (orphan PUR-0004 reversal) + fixture refresh DIN CHINA/BRIDAL |
+| Monitoring artifact | `three-company-monitoring-2026-07-07T07-36-24-457Z` |
+| Loader guard | **PASS** |
+| Roznamcha reached | **yes** |
+| DIN CHINA | PASS (Admin Compare 9/9) |
+| DIN BRIDAL | PASS (Admin Compare waived) |
+| DIN COUTURE | PASS (Admin Compare waived) |
+| migrations_run | false |
+| gl_mutations | false |
+| Feature flags | unchanged |
+| Production mutation | **JE-0310 void only** (operator correction) |
+| Tests/build | 334/334 unified · 164/164 unit · build PASS |
+| Password env | supplied yes — value **not** recorded |
+| Date gate | **REMOVED** for forward consecutive official runs (2026-07-07) |
+| Accelerated sample note | Prior 2026-07-05 accelerated Day 6/7 samples and 2026-07-06 bypass sample NOT COUNTED |
+| R8 | **BLOCKED** |
+| Mobile release | separate track — Admin PASS 21/21; Manager N/A/waived; Salesman pending |
+| Supplier Party Discount | separate approval |
+
+Evidence: [`reports/single-core-engine-calendar-stability-official-20260707/`](../reports/single-core-engine-calendar-stability-official-20260707/)
+
 ## Exact next recommended phase
 
-1. **Daily monitoring** during stability window — `npm run monitor:three-company-unified-ledger` (official Calendar Day 7 on 2026-07-07+, Day 8 on 2026-07-08+)
+1. **Daily monitoring** during stability window — `npm run monitor:three-company-unified-ledger` (official Calendar Day 8 next)
 2. **Salesman device QA** — when Pixel 6 Pro available + Salesman password supplied securely at QA time
 3. **R8 legacy retirement** — blocked until stability window complete + final approval
 

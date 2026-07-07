@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
 import { realignAccountLedgerRunningBalances } from '@/app/lib/ledgerStatementV2UnifiedMapper';
 import type { LedgerStatementV2Row } from '@/app/features/ledger-statement-center-v2/types';
 
@@ -21,14 +22,15 @@ function v2Row(partial: Partial<LedgerStatementV2Row>): LedgerStatementV2Row {
   };
 }
 
-describe('realignAccountLedgerRunningBalances', () => {
-  it('recomputes running balance from period opening and movements', () => {
-    const rows = [
-      v2Row({ id: 'a', debit: 500000, credit: 0, runningBalance: 999 }),
-      v2Row({ id: 'b', debit: 500000, credit: 0, runningBalance: 999 }),
-      v2Row({ id: 'c', debit: 0, credit: 500000, runningBalance: 999 }),
-    ];
-    const aligned = realignAccountLedgerRunningBalances(rows, 0);
-    expect(aligned.map((r) => r.runningBalance)).toEqual([500000, 1000000, 500000]);
-  });
+test('realignAccountLedgerRunningBalances recomputes running balance from period opening and movements', () => {
+  const rows = [
+    v2Row({ id: 'a', debit: 500000, credit: 0, runningBalance: 999 }),
+    v2Row({ id: 'b', debit: 500000, credit: 0, runningBalance: 999 }),
+    v2Row({ id: 'c', debit: 0, credit: 500000, runningBalance: 999 }),
+  ];
+  const aligned = realignAccountLedgerRunningBalances(rows, 0);
+  assert.deepEqual(
+    aligned.map((r) => r.runningBalance),
+    [500000, 1000000, 500000],
+  );
 });

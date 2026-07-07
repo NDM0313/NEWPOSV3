@@ -1,4 +1,6 @@
-# Date Gate Bypass Note — Attempted Official Day 7
+# Date Gate Bypass Note — Attempted Official Day 7 (invalid same-date sample)
+
+**Superseded for counting purposes by valid-date attempt on 2026-07-07** (see `official-day7-attempt-summary.md`).
 
 **Local date:** 2026-07-06  
 **Official day attempted:** Day 7  
