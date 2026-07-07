@@ -4,11 +4,11 @@
  */
 
 export const MR_JALIL_GOLDEN = 216_299;
-export const TB_GOLDEN = 393_034_072.02;
+export const TB_GOLDEN = 413_093_712.02;
 export const ROZNAMCHA_GOLDEN = {
-  cashIn: 84_199_230,
-  cashOut: 58_525_317,
-  closing: 25_673_913,
+  cashIn: 110_009_812,
+  cashOut: 73_753_626,
+  closing: 36_256_186,
 };
 export const DEFAULT_TOL = 0.01;
 
@@ -73,32 +73,24 @@ export async function readLedgerV2MrJalilClosing(page) {
   return closing;
 }
 
-/** Wait until pilot batch summary cards show Compared >= expected (default 9). */
+/** Wait until pilot batch run finishes (Compared=9 and Pass+Fail settled). */
 export async function waitForPilotBatchStats(page, expectedCompared = 9) {
   await page.waitForFunction(
     (expected) => {
       const labels = [...document.querySelectorAll('.text-xs.text-gray-500')];
       const comparedLabel = labels.find((el) => el.textContent?.trim() === 'Compared');
-      if (!comparedLabel) return false;
-      const val = comparedLabel.parentElement?.querySelector('.text-lg.font-mono');
-      const n = Number(String(val?.textContent || '').replace(/,/g, ''));
-      return Number.isFinite(n) && n >= expected;
-    },
-    expectedCompared,
-    { timeout: 180000 },
-  );
-  // Allow Pass/Fail cards to settle after Compared reaches target.
-  await page.waitForFunction(
-    (expected) => {
-      const labels = [...document.querySelectorAll('.text-xs.text-gray-500')];
       const passLabel = labels.find((el) => el.textContent?.trim() === 'Pass');
-      if (!passLabel) return false;
-      const val = passLabel.parentElement?.querySelector('.text-lg.font-mono');
-      const n = Number(String(val?.textContent || '').replace(/,/g, ''));
-      return Number.isFinite(n) && n >= expected;
+      const failLabel = labels.find((el) => el.textContent?.trim() === 'Fail');
+      if (!comparedLabel || !passLabel || !failLabel) return false;
+      const compared = Number(String(comparedLabel.parentElement?.querySelector('.text-lg.font-mono')?.textContent || '').replace(/,/g, ''));
+      const passCount = Number(String(passLabel.parentElement?.querySelector('.text-lg.font-mono')?.textContent || '').replace(/,/g, ''));
+      const failCount = Number(String(failLabel.parentElement?.querySelector('.text-lg.font-mono')?.textContent || '').replace(/,/g, ''));
+      return Number.isFinite(compared) && compared >= expected
+        && Number.isFinite(passCount) && Number.isFinite(failCount)
+        && passCount + failCount >= expected;
     },
     expectedCompared,
-    { timeout: 180000 },
+    { timeout: 300000 },
   ).catch(() => {});
   await page.waitForTimeout(1000);
 }

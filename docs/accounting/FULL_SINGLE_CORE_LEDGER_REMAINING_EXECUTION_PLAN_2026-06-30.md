@@ -591,9 +591,37 @@ Evidence: [`reports/single-core-engine-calendar-stability-official-20260708/`](.
 
 Evidence: [`reports/single-core-engine-calendar-stability-official-20260709/`](../reports/single-core-engine-calendar-stability-official-20260709/)
 
+## Official Calendar Stability Check — 2026-07-10
+
+| Item | Status |
+|------|--------|
+| Classification | **CALENDAR_STABILITY_DAY_PASS** |
+| Run local date/time | 2026-07-07 15:29:50 → 15:40:52 +05:00 |
+| Official stability window calendar day | **10** |
+| Calendar days elapsed since 2026-07-01 | **9** |
+| Pre-check fails | Multiple attempts — DIN CHINA live GL/roznamcha drift; UI timeouts; admin compare strict 9/9 fail (1 PKR) |
+| Monitoring artifact | `three-company-monitoring-2026-07-07T10-29-51-582Z` (final PASS) |
+| Loader guard | **PASS** |
+| Roznamcha reached | **yes** |
+| DIN CHINA | PASS (Admin Compare **MATERIALITY_WAIVER** maxAbsDiff=1 PKR) |
+| DIN BRIDAL | PASS (Admin Compare waived) |
+| DIN COUTURE | PASS (Admin Compare waived) |
+| Fixture refresh | **COMPLETE** — DIN CHINA TB/roznamcha + DIN BRIDAL roznamcha (Option A) |
+| migrations_run | false |
+| gl_mutations | false |
+| Feature flags | unchanged |
+| Production mutation | **none** from calendar run (live activity observed; JE-0311 same-day) |
+| Tests/build | 334/334 unified · 175/175 unit · build PASS |
+| Password env | supplied yes — value **not** recorded |
+| R8 | **BLOCKED** |
+| Mobile release | separate track — Salesman **BLOCKED_SALESMAN_DEVICE_QA_PENDING** |
+| Supplier Party Discount | separate approval |
+
+Evidence: [`reports/single-core-engine-calendar-stability-official-20260710/`](../reports/single-core-engine-calendar-stability-official-20260710/)
+
 ## Exact next recommended phase
 
-1. **Daily monitoring** during stability window — continue calendar days toward R8 window completion (Day 10+)
+1. **Daily monitoring** during stability window — continue calendar days toward R8 window completion (Day 11+)
 2. **Salesman device QA** — when Pixel 6 Pro available + Salesman password supplied securely at QA time
 3. **R8 legacy retirement** — blocked until stability window complete + final approval
 

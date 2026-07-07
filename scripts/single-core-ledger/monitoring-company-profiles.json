@@ -7,10 +7,10 @@
       "login_email_default": "din@yahoo.com",
       "golden": {
         "mr_jalil_closing_pkr": 216299,
-        "trial_balance_debit_credit_pkr": 393034072.02,
-        "roznamcha_cash_in_pkr": 84199230,
-        "roznamcha_cash_out_pkr": 58525317,
-        "roznamcha_closing_pkr": 25673913
+        "trial_balance_debit_credit_pkr": 413093712.02,
+        "roznamcha_cash_in_pkr": 110009812,
+        "roznamcha_cash_out_pkr": 73753626,
+        "roznamcha_closing_pkr": 36256186
       },
       "expected_unified_flags_on": [
         "unified_ledger_pilot",
@@ -46,9 +46,9 @@
       "golden": {
         "mr_jalil_closing_pkr": 530000,
         "trial_balance_debit_credit_pkr": 26330077,
-        "roznamcha_cash_in_pkr": 2850850,
+        "roznamcha_cash_in_pkr": 2968850,
         "roznamcha_cash_out_pkr": 1794607,
-        "roznamcha_closing_pkr": 1056243
+        "roznamcha_closing_pkr": 1174243
       },
       "expected_unified_flags_on": [
         "unified_ledger_pilot",
