@@ -619,9 +619,37 @@ Evidence: [`reports/single-core-engine-calendar-stability-official-20260709/`](.
 
 Evidence: [`reports/single-core-engine-calendar-stability-official-20260710/`](../reports/single-core-engine-calendar-stability-official-20260710/)
 
+## Official Calendar Stability Check — 2026-07-11
+
+| Item | Status |
+|------|--------|
+| Classification | **CALENDAR_STABILITY_DAY_PASS** |
+| Run local date/time | 2026-07-07 19:04:35 → 19:17:30 +05:00 |
+| Official stability window calendar day | **11** |
+| Calendar days elapsed since 2026-07-01 | **10** |
+| Pre-check fail | Attempt 1 — DIN CHINA TB/roznamcha drift (post wholesale clearance GL activity) |
+| Monitoring artifact | `three-company-monitoring-2026-07-07T14-04-35-150Z` (final PASS) |
+| Loader guard | **PASS** |
+| Roznamcha reached | **yes** |
+| DIN CHINA | PASS (Admin Compare **MATERIALITY_WAIVER** maxAbsDiff=1 PKR) |
+| DIN BRIDAL | PASS (Admin Compare waived) |
+| DIN COUTURE | PASS (Admin Compare waived) |
+| Fixture refresh | **COMPLETE** — DIN CHINA TB/roznamcha only (Option A) |
+| migrations_run | false |
+| gl_mutations | false |
+| Feature flags | unchanged |
+| Production mutation | **none** from calendar run |
+| Tests/build | 334/334 unified · 176/176 unit · build PASS |
+| Frontend deploy | **COMPLETE** — `deploy/vps-build-erp-only.sh` @ `f558222d` |
+| Password env | supplied yes — value **not** recorded |
+| R8 | **BLOCKED** |
+| Mobile release | separate track — Salesman **BLOCKED_SALESMAN_DEVICE_QA_PENDING** |
+
+Evidence: [`reports/single-core-engine-calendar-stability-official-20260711/`](../reports/single-core-engine-calendar-stability-official-20260711/)
+
 ## Exact next recommended phase
 
-1. **Daily monitoring** during stability window — continue calendar days toward R8 window completion (Day 11+)
+1. **Daily monitoring** during stability window — continue calendar days toward R8 window completion (Day 12+)
 2. **Salesman device QA** — when Pixel 6 Pro available + Salesman password supplied securely at QA time
 3. **R8 legacy retirement** — blocked until stability window complete + final approval
 

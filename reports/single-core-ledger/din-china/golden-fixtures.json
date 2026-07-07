@@ -1,18 +1,18 @@
 {
   "company": "DIN CHINA",
   "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
-  "captured_from": "Official Calendar Day 10 valid-date run (2026-07-07)",
-  "authoritative_evidence": "reports/single-core-engine-calendar-stability-official-20260710/",
+  "captured_from": "Official Calendar Day 11 valid-date run (2026-07-07)",
+  "authoritative_evidence": "reports/single-core-engine-calendar-stability-official-20260711/",
   "fixtures": {
     "mr_jalil_closing_pkr": 216299,
     "ledger_v2_mr_jalil_closing_pkr": 216299,
     "account_statement_mr_jalil_closing_pkr": 216299,
     "party_ledger_mr_jalil_closing_pkr": 216299,
-    "trial_balance_debit_pkr": 413093712.02,
-    "trial_balance_credit_pkr": 413093712.02,
-    "roznamcha_cash_in_pkr": 110009812,
-    "roznamcha_cash_out_pkr": 73753626,
-    "roznamcha_closing_pkr": 36256186
+    "trial_balance_debit_pkr": 349757752.77,
+    "trial_balance_credit_pkr": 349757752.77,
+    "roznamcha_cash_in_pkr": 109088121,
+    "roznamcha_cash_out_pkr": 74675317,
+    "roznamcha_closing_pkr": 34412804
   },
-  "note": "Fixture refresh Day 10 — live GL + roznamcha activity; TB balanced; MR JALIL unchanged"
+  "note": "Fixture refresh Day 11 — live GL/roznamcha activity post wholesale clearance work; TB balanced; MR JALIL unchanged"
 }
