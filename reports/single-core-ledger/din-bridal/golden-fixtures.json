@@ -1,10 +1,10 @@
 {
   "company": "DIN BRIDAL",
   "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
-  "captured_from": "Official Calendar Day 13 Option A refresh pass-2 (2026-07-08)",
+  "captured_from": "Official Calendar Day 14 Option A refresh (2026-07-08)",
   "capture_method": "unified_browser_monitoring",
-  "finance_sign_off_ref": "reports/single-core-engine-calendar-stability-official-20260713/option-a-fixture-refresh-approval-note.md",
-  "operator_approval": "Nadeem — try again and complete task (Option A, 2026-07-08)",
+  "finance_sign_off_ref": "reports/single-core-engine-calendar-stability-official-20260714/option-a-fixture-refresh-approval-note.md",
+  "operator_approval": "Nadeem — try again and complete task (Option A continuing for Day 14)",
   "status": "GOLDEN_CAPTURE_COMPLETE",
   "golden_party": {
     "name": "MR REHAN ALI",
@@ -18,18 +18,18 @@
     "party_ledger_golden_party_closing_pkr": 530000,
     "trial_balance_debit_pkr": 26330077,
     "trial_balance_credit_pkr": 26330077,
-    "roznamcha_cash_in_pkr": 2968850,
+    "roznamcha_cash_in_pkr": 2850850,
     "roznamcha_cash_out_pkr": 1794607,
-    "roznamcha_closing_pkr_proxy": 1174243,
-    "roznamcha_closing_pkr": 1174243
+    "roznamcha_closing_pkr_proxy": 1056243,
+    "roznamcha_closing_pkr": 1056243
   },
   "notes": [
-    "Option A Day 13 — live roznamcha Cash In/Closing drift; TB and MR REHAN ALI unchanged.",
-    "Artifact: three-company-monitoring-2026-07-08T12-06-24-153Z.json",
+    "Option A Day 14 — live roznamcha Cash In/Closing drift vs Day 13 fixture; TB and MR REHAN ALI unchanged.",
+    "Artifact: three-company-monitoring-2026-07-08T12-39-24-941Z.json",
     "No production GL mutation from fixture refresh."
   ],
-  "browser_capture_at": "2026-07-08T12-06-24-153Z",
-  "browser_capture_evidence": "reports/single-core-engine-calendar-stability-official-20260713/",
+  "browser_capture_at": "2026-07-08T12-39-24-941Z",
+  "browser_capture_evidence": "reports/single-core-engine-calendar-stability-official-20260714/",
   "date_range": {
     "start": "2000-01-01",
     "end": "2026-07-08"

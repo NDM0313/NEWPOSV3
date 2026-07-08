@@ -1,18 +1,18 @@
 {
   "company": "DIN CHINA",
   "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
-  "captured_from": "Official Calendar Day 13 Option A refresh pass-2 (2026-07-08)",
-  "authoritative_evidence": "reports/single-core-engine-calendar-stability-official-20260713/",
+  "captured_from": "Official Calendar Day 14 Option A refresh (2026-07-08)",
+  "authoritative_evidence": "reports/single-core-engine-calendar-stability-official-20260714/",
   "fixtures": {
     "mr_jalil_closing_pkr": 216299,
     "ledger_v2_mr_jalil_closing_pkr": 216299,
     "account_statement_mr_jalil_closing_pkr": 216299,
     "party_ledger_mr_jalil_closing_pkr": 216299,
-    "trial_balance_debit_pkr": 353192001.7,
-    "trial_balance_credit_pkr": 353192001.7,
-    "roznamcha_cash_in_pkr": 109088121,
-    "roznamcha_cash_out_pkr": 74675317,
-    "roznamcha_closing_pkr": 34412804
+    "trial_balance_debit_pkr": 333268801.7,
+    "trial_balance_credit_pkr": 333268801.7,
+    "roznamcha_cash_in_pkr": 59762230,
+    "roznamcha_cash_out_pkr": 35651877,
+    "roznamcha_closing_pkr": 24110353
   },
-  "note": "Option A Day 13 pass-2 — further live TB/roznamcha activity after afternoon run; MR JALIL unchanged; Admin Compare materiality waiver 1 PKR"
+  "note": "Option A Day 14 — live TB/roznamcha totals moved after Day 13; MR JALIL unchanged; Admin Compare 9/9 strict PASS"
 }
