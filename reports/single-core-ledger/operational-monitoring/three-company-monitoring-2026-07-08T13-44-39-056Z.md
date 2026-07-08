@@ -1,7 +1,7 @@
 # Three-company operational monitoring
 
-**Generated:** 2026-07-08T14:05:57.285Z
-**Overall:** PASS
+**Generated:** 2026-07-08T13:55:08.788Z
+**Overall:** FAIL
 **Credential policy:** per-company preferred; generic fallback=true
 
 ## Read-only flag guard
@@ -12,11 +12,11 @@
 
 ### din-china
 
-- **Result:** PASS
+- **Result:** FAIL
 - **Login email:** din@yahoo.com
 - **Email source:** profile-default
 - **Password source:** per-company
-- **Checks:** 19/19 PASS
+- **Checks:** 15/19 PASS
 
 ### din-bridal
 
@@ -35,4 +35,4 @@
 - **Checks:** 18/19 PASS
 
 
-**JSON:** `reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-08T13-55-49-198Z.json`
+**JSON:** `reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-08T13-44-39-056Z.json`

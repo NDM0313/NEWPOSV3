@@ -1,7 +1,7 @@
 # Three-company operational monitoring
 
-**Generated:** 2026-07-08T14:05:57.285Z
-**Overall:** PASS
+**Generated:** 2026-07-08T13:36:52.723Z
+**Overall:** FAIL
 **Credential policy:** per-company preferred; generic fallback=true
 
 ## Read-only flag guard
@@ -28,11 +28,11 @@
 
 ### din-couture
 
-- **Result:** PASS
+- **Result:** FAIL
 - **Login email:** zhd@dincouture.pk
 - **Email source:** built-in-default
 - **Password source:** per-company
-- **Checks:** 18/19 PASS
+- **Checks:** 3/3 PASS
 
 
-**JSON:** `reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-08T13-55-49-198Z.json`
+**JSON:** `reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-08T13-21-37-601Z.json`

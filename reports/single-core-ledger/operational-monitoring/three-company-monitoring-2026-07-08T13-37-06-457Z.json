@@ -1,8 +1,8 @@
 {
   "run": "THREE_COMPANY_OPERATIONAL_MONITORING",
-  "generated_at": "2026-07-08T14:05:57.285Z",
-  "timestamp_slug": "2026-07-08T13-55-49-198Z",
-  "overall": "PASS",
+  "generated_at": "2026-07-08T13:44:12.749Z",
+  "timestamp_slug": "2026-07-08T13-37-06-457Z",
+  "overall": "FAIL",
   "credential_policy": "per-company-preferred",
   "generic_fallback_allowed": true,
   "flag_guard": {
@@ -30,8 +30,8 @@
       "email": "din@yahoo.com",
       "emailSource": "profile-default",
       "passwordSource": "per-company",
-      "exitCode": 0,
-      "pass": true,
+      "exitCode": 1,
+      "pass": false,
       "checks": [
         {
           "result": "PASS",
@@ -42,102 +42,17 @@
           "result": "PASS",
           "check": "no other company loaders ON",
           "notes": "count=0"
-        },
-        {
-          "result": "PASS",
-          "check": "admin login",
-          "notes": ""
-        },
-        {
-          "result": "PASS",
-          "check": "Roznamcha main loader unified",
-          "notes": "actual=unified"
-        },
-        {
-          "result": "PASS",
-          "check": "Roznamcha preview legacy_shadow",
-          "notes": "actual=legacy_shadow"
-        },
-        {
-          "result": "PASS",
-          "check": "Roznamcha Cash In golden",
-          "notes": "actual=109088121"
-        },
-        {
-          "result": "PASS",
-          "check": "Roznamcha Cash Out golden",
-          "notes": "actual=74675317"
-        },
-        {
-          "result": "PASS",
-          "check": "Roznamcha Closing golden",
-          "notes": "actual=34412804"
-        },
-        {
-          "result": "PASS",
-          "check": "Account Statement loader unified",
-          "notes": "actual=unified"
-        },
-        {
-          "result": "PASS",
-          "check": "Account Statement MR JALIL",
-          "notes": "closing=216299"
-        },
-        {
-          "result": "PASS",
-          "check": "Trial Balance loader unified",
-          "notes": "actual=unified"
-        },
-        {
-          "result": "PASS",
-          "check": "Trial Balance debit = credit",
-          "notes": "debit=353192001.7 credit=353192001.7"
-        },
-        {
-          "result": "PASS",
-          "check": "Trial Balance golden total",
-          "notes": "debit=353192001.7"
-        },
-        {
-          "result": "PASS",
-          "check": "Party Ledger loader unified",
-          "notes": "actual=unified"
-        },
-        {
-          "result": "PASS",
-          "check": "Party Ledger MR JALIL",
-          "notes": "closing=216299"
-        },
-        {
-          "result": "PASS",
-          "check": "Ledger V2 loader unified",
-          "notes": "actual=unified"
-        },
-        {
-          "result": "PASS",
-          "check": "Ledger V2 MR JALIL",
-          "notes": "closing=216299"
-        },
-        {
-          "result": "PASS",
-          "check": "Admin Compare Pilot Batch 9/9",
-          "notes": "compared=9 pass=0 fail=9 MATERIALITY_WAIVER maxAbsDiff=1"
-        },
-        {
-          "result": "PASS",
-          "check": "no material console/RPC errors",
-          "notes": "none"
         }
       ],
-      "phaseResult": "PASS"
+      "phaseResult": null
     },
     {
       "profileId": "din-bridal",
       "email": "ndm313@yahoo.com",
       "emailSource": "built-in-default",
       "passwordSource": "per-company",
-      "exitCode": 0,
-      "pass": true,
+      "exitCode": 1,
+      "pass": false,
       "checks": [
         {
           "result": "PASS",
@@ -165,7 +80,7 @@
           "notes": "actual=legacy_shadow"
         },
         {
-          "result": "PASS",
+          "result": "FAIL",
           "check": "Roznamcha Cash In golden",
           "notes": "actual=2968850"
         },
@@ -175,7 +90,7 @@
           "notes": "actual=1794607"
         },
         {
-          "result": "PASS",
+          "result": "FAIL",
           "check": "Roznamcha Closing golden",
           "notes": "actual=1174243"
         },
@@ -200,7 +115,7 @@
           "notes": "debit=26410077 credit=26410077"
         },
         {
-          "result": "PASS",
+          "result": "FAIL",
           "check": "Trial Balance golden total",
           "notes": "debit=26410077"
         },
@@ -235,7 +150,7 @@
           "notes": "none"
         }
       ],
-      "phaseResult": "PASS"
+      "phaseResult": "FAIL"
     },
     {
       "profileId": "din-couture",

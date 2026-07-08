@@ -730,10 +730,38 @@ Evidence: [`reports/single-core-engine-calendar-stability-official-20260713/`](.
 
 Evidence: [`reports/single-core-engine-calendar-stability-official-20260714/`](../reports/single-core-engine-calendar-stability-official-20260714/)
 
+## Official Calendar Stability Check — 2026-07-15
+
+| Item | Status |
+|------|--------|
+| Classification | **CALENDAR_STABILITY_DAY_PASS** |
+| Run local date/time | 2026-07-08 18:55:48 → 19:10:00 +05:00 |
+| Official stability window calendar day | **15** |
+| Calendar days elapsed since 2026-07-01 | **14** |
+| Monitoring artifact | `three-company-monitoring-2026-07-08T13-55-49-198Z` |
+| Loader guard | **PASS** |
+| Roznamcha reached | **yes** |
+| DIN CHINA | PASS (Admin Compare **MATERIALITY_WAIVER** maxAbsDiff=1 PKR) |
+| DIN BRIDAL | PASS (Admin Compare waived) |
+| DIN COUTURE | PASS (Admin Compare waived) |
+| Fixture refresh | **COMPLETE** — CHINA TB/roznamcha + BRIDAL TB/roznamcha (Option A) |
+| migrations_run | false |
+| gl_mutations | false |
+| Feature flags | unchanged |
+| Production mutation | **none** |
+| Tests/build | 334/334 unified · 176/176 unit · build PASS |
+| Password env | supplied yes — value **not** recorded |
+| Days 13–15 R8 readiness | [`OFFICIAL_CALENDAR_STABILITY_DAYS_13_15_R8_READINESS_2026-07-07.md`](OFFICIAL_CALENDAR_STABILITY_DAYS_13_15_R8_READINESS_2026-07-07.md) |
+| R8 | **BLOCKED** |
+| Mobile release | separate track — Salesman **BLOCKED_SALESMAN_DEVICE_QA_PENDING** |
+| Supplier Party Discount | separate approval |
+
+Evidence: [`reports/single-core-engine-calendar-stability-official-20260715/`](../reports/single-core-engine-calendar-stability-official-20260715/)
+
 ## Exact next recommended phase
 
-1. **Day 15** — complete official calendar stability R8 readiness checkpoint
+1. **R8 legacy retirement** — blocked until `NADEEM_APPROVES_R8_LEGACY_RETIREMENT` + runbook preflight
 2. **Salesman device QA** — when Pixel 6 Pro available + Salesman password supplied securely at QA time
-3. **R8 legacy retirement** — blocked until stability window complete + `NADEEM_APPROVES_R8_LEGACY_RETIREMENT`
+3. Continue optional daily monitoring beyond Day 15 if operator requests
 
 Do **not** auto-run GL repairs, supplier JE, or R8 retirement.
