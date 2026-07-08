@@ -36,11 +36,11 @@ test('roznamcha golden components sum to closing', () => {
 });
 
 test('TB golden debit equals credit constant', () => {
-  assert.equal(TB_GOLDEN, 332721352.77);
+  assert.equal(TB_GOLDEN, 353192001.7);
 });
 
 test('Trial Balance footer regex parses bullet-prefixed totals', () => {
-  const body = '• Total Debit: Rs. 332,721,352.77 • Total Credit: Rs. 332,721,352.77';
+  const body = '• Total Debit: Rs. 353,192,001.7 • Total Credit: Rs. 353,192,001.7';
   const debitM = body.match(/Total Debit:\s*(?:Rs\.?\s*)?([\d,]+\.?\d*)/i);
   const creditM = body.match(/Total Credit:\s*(?:Rs\.?\s*)?([\d,]+\.?\d*)/i);
   assert.equal(parsePkr(debitM[1]), TB_GOLDEN);

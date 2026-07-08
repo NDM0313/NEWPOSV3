@@ -1,8 +1,8 @@
 {
   "run": "THREE_COMPANY_OPERATIONAL_MONITORING",
-  "generated_at": "2026-07-08T12:28:45.654Z",
-  "timestamp_slug": "2026-07-08T12-18-09-526Z",
-  "overall": "PASS",
+  "generated_at": "2026-07-08T12:17:17.803Z",
+  "timestamp_slug": "2026-07-08T12-06-24-153Z",
+  "overall": "FAIL",
   "credential_policy": "per-company-preferred",
   "generic_fallback_allowed": true,
   "flag_guard": {
@@ -30,8 +30,8 @@
       "email": "din@yahoo.com",
       "emailSource": "profile-default",
       "passwordSource": "per-company",
-      "exitCode": 0,
-      "pass": true,
+      "exitCode": 1,
+      "pass": false,
       "checks": [
         {
           "result": "PASS",
@@ -59,17 +59,17 @@
           "notes": "actual=legacy_shadow"
         },
         {
-          "result": "PASS",
+          "result": "FAIL",
           "check": "Roznamcha Cash In golden",
           "notes": "actual=109088121"
         },
         {
-          "result": "PASS",
+          "result": "FAIL",
           "check": "Roznamcha Cash Out golden",
           "notes": "actual=74675317"
         },
         {
-          "result": "PASS",
+          "result": "FAIL",
           "check": "Roznamcha Closing golden",
           "notes": "actual=34412804"
         },
@@ -94,7 +94,7 @@
           "notes": "debit=353192001.7 credit=353192001.7"
         },
         {
-          "result": "PASS",
+          "result": "FAIL",
           "check": "Trial Balance golden total",
           "notes": "debit=353192001.7"
         },
@@ -129,15 +129,15 @@
           "notes": "none"
         }
       ],
-      "phaseResult": "PASS"
+      "phaseResult": "FAIL"
     },
     {
       "profileId": "din-bridal",
       "email": "ndm313@yahoo.com",
       "emailSource": "built-in-default",
       "passwordSource": "per-company",
-      "exitCode": 0,
-      "pass": true,
+      "exitCode": 1,
+      "pass": false,
       "checks": [
         {
           "result": "PASS",
@@ -165,7 +165,7 @@
           "notes": "actual=legacy_shadow"
         },
         {
-          "result": "PASS",
+          "result": "FAIL",
           "check": "Roznamcha Cash In golden",
           "notes": "actual=2968850"
         },
@@ -175,7 +175,7 @@
           "notes": "actual=1794607"
         },
         {
-          "result": "PASS",
+          "result": "FAIL",
           "check": "Roznamcha Closing golden",
           "notes": "actual=1174243"
         },
@@ -235,7 +235,7 @@
           "notes": "none"
         }
       ],
-      "phaseResult": "PASS"
+      "phaseResult": "FAIL"
     },
     {
       "profileId": "din-couture",
