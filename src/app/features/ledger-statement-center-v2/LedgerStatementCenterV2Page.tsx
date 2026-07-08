@@ -20,6 +20,7 @@ import { shareLedgerRowViaWhatsApp } from '@/app/services/ledgerStatementCenterV
 import { compareGlWithDocumentsV2 } from '@/app/services/ledgerStatementCenterV2Diagnostic';
 import { canAccessDeveloperIntegrityLab } from '@/app/lib/developerAccountingAccess';
 import { canAccessLedgerV2UnifiedPreview } from '@/app/lib/ledgerV2UnifiedPreviewAccess';
+import { shortenLedgerPaymentLabel } from '@/app/lib/ledgerStatementV2Enrichment';
 import { useUnifiedLedgerEngineState } from '@/app/hooks/useUnifiedLedgerEngineState';
 import { UNIFIED_LEDGER_SCREEN_IDS } from '@/app/lib/unifiedLedgerScreenFlags';
 import type { UnifiedLedgerBasis } from '@/app/lib/unifiedLedgerBasisFilter';
@@ -566,7 +567,7 @@ export function LedgerStatementCenterV2Page({
         case 'balance':
           return row.runningBalance;
         case 'payment':
-          return row.paymentMethod;
+          return shortenLedgerPaymentLabel(row.paymentMethod);
         case 'createdBy':
           return row.createdBy;
         default:
@@ -622,7 +623,7 @@ export function LedgerStatementCenterV2Page({
           debit: r.debit,
           credit: r.credit,
           runningBalance: r.runningBalance,
-          paymentMethod: r.paymentMethod,
+          paymentMethod: shortenLedgerPaymentLabel(r.paymentMethod),
           createdBy: r.createdBy,
         }))}
         formatCurrency={formatCurrency}

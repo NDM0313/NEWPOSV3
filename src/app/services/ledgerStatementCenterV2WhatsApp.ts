@@ -2,6 +2,7 @@
  * V2-only: build rich WhatsApp message for a single ledger row.
  * Read-only document enrichment — does not affect official GL balance.
  */
+import { shortenLedgerPaymentLabel } from '@/app/lib/ledgerStatementV2Enrichment';
 import { supabase } from '@/lib/supabase';
 import type { LedgerStatementV2Row } from '@/app/features/ledger-statement-center-v2/types';
 
@@ -121,7 +122,7 @@ export async function buildLedgerRowWhatsAppMessage(
   lines.push(`Running balance: ${fmtMoney(row.runningBalance, opts.formatCurrency)}`);
 
   if (row.paymentMethod && row.paymentMethod !== '—') {
-    lines.push(fmtLine('Payment method', row.paymentMethod)!);
+    lines.push(fmtLine('Payment method', shortenLedgerPaymentLabel(row.paymentMethod))!);
   }
   if (row.branch && row.branch !== '—') lines.push(fmtLine('Branch', row.branch)!);
   if (row.createdBy && row.createdBy !== '—') lines.push(fmtLine('Created by', row.createdBy)!);

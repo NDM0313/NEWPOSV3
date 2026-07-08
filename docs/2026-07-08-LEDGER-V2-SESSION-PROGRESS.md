@@ -44,18 +44,25 @@ Ledger Statement Center V2, courier ledger, appearance settings, and related fix
 - `npx tsx --test src/app/lib/ledgerStatementV2Enrichment.test.ts` — 9 tests pass
 - `graphify update .` run after code edits
 
+### Follow-up batch (9 Jul 2026)
+
+- Branch column enrichment from JE / sale / purchase / company-wide label
+- Short payment labels in CSV, PDF, and WhatsApp export
+- VPS verify script: all YAQOOB courier gates PASS
+
 ---
 
 ## Remaining / follow-up
 
-| Item | Notes |
+| Item | Status |
 |------|--------|
-| **Branch column `—`** | Not in scope for Payment/Created by; confirm if branch enrichment needed on unified RPC rows |
-| **Created by on legacy JEs** | Rows with no `journal_entries.created_by` and no linked `payment_id` (e.g. some courier transfers) stay `—` — data not stored |
-| **VPS migration deploy** | Apply `20260708120000_courier_ledger_step_columns.sql` on prod if not already; redeploy web bundle for UI changes |
-| **Courier ledger smoke test** | YAQOOB: ~34 step rows, 2031 net = 0, final balance = 0 after repair |
-| **Export/WhatsApp Payment text** | Still uses full `paymentMethod`; shorten there only if product asks |
-| **Unified RPC fields** | Optional future migration: `created_by`, `payment_id`, counter account in `get_unified_*_ledger` RPCs to reduce client batch fetches |
+| **Branch column `—`** | Done — `enrichLedgerV2BranchFromDocuments()` resolves JE branch, sale/purchase branch, or `All branches` for company-wide JEs |
+| **Created by on legacy JEs** | Data gap — rows with no `created_by` and no `payment_id` stay `—` (no safe backfill without audit migration) |
+| **VPS migration deploy** | Done — `courier_ledger` view has `journal_entry_id` / `journal_entry_line_id` on VPS |
+| **Courier ledger smoke test** | Done — all verify gates PASS (34 rows, balance 0, 2031 net 0) — see VPS run 9 Jul 2026 |
+| **Export/WhatsApp Payment text** | Done — `shortenLedgerPaymentLabel()` in CSV/PDF export + WhatsApp messages |
+| **Unified RPC fields** | Optional future migration: `created_by`, `payment_id`, counter account in `get_unified_*_ledger` RPCs |
+| **VPS frontend deploy** | Run `deploy-erp-domain.sh` on VPS after push to ship Ledger V2 UI changes to production |
 
 ---
 

@@ -55,6 +55,15 @@ export type LedgerV2EnrichmentOpts = {
 
 const slice200 = <T>(arr: T[]) => arr.slice(0, 200);
 
+const COMPANY_WIDE_BRANCH_LABEL = 'All branches';
+
+function formatBranchLabel(branch?: { name?: string | null; code?: string | null } | null): string {
+  const name = String(branch?.name || '').trim();
+  const code = String(branch?.code || '').trim();
+  if (!name && !code) return LEDGER_V2_EMPTY;
+  return code ? `${code} | ${name}` : name;
+}
+
 function collectPartyGlAccountNames(rows: LedgerStatementV2Row[]): string[] {
   const names = new Set<string>();
   for (const row of rows) {
@@ -113,20 +122,47 @@ export async function enrichLedgerV2PaymentAndAuthorship(
 
   const jeCreatedBy = new Map<string, string>();
   const jePaymentId = new Map<string, string>();
+  const jeBranchLabel = new Map<string, string>();
+  const jeCompanyWide = new Set<string>();
+  const saleRefByJe = new Map<string, string>();
+  const purchaseRefByJe = new Map<string, string>();
   const linesByJe = new Map<string, CounterAccountLine[]>();
 
   if (jeIds.length) {
     const { data: jeRows } = await supabase
       .from('journal_entries')
-      .select('id, created_by, payment_id')
+      .select(
+        'id, created_by, payment_id, branch_id, reference_type, reference_id, branch:branches(name, code)',
+      )
       .eq('company_id', companyId)
       .in('id', slice200(jeIds));
-    (jeRows || []).forEach((r: { id: string; created_by?: string | null; payment_id?: string | null }) => {
+    (jeRows || []).forEach(
+      (r: {
+        id: string;
+        created_by?: string | null;
+        payment_id?: string | null;
+        branch_id?: string | null;
+        reference_type?: string | null;
+        reference_id?: string | null;
+        branch?: { name?: string | null; code?: string | null } | null;
+      }) => {
       if (r.created_by) jeCreatedBy.set(r.id, String(r.created_by));
       if (r.payment_id) {
         const pid = String(r.payment_id);
         jePaymentId.set(r.id, pid);
         if (!payIds.includes(pid)) payIds.push(pid);
+      }
+      const branchLabel = formatBranchLabel(r.branch);
+      if (!isLedgerV2Placeholder(branchLabel)) {
+        jeBranchLabel.set(r.id, branchLabel);
+      } else if (!r.branch_id) {
+        jeCompanyWide.add(r.id);
+      }
+      const refType = normalizeDocType(r.reference_type || '');
+      const refId = r.reference_id != null ? String(r.reference_id) : '';
+      if (refId) {
+        if (refType.includes('purchase')) purchaseRefByJe.set(r.id, refId);
+        else if (refType.includes('sale')) saleRefByJe.set(r.id, refId);
       }
     });
 
@@ -239,9 +275,79 @@ export async function enrichLedgerV2PaymentAndAuthorship(
       }
       if (author) row.createdBy = author;
     }
+
+    if (isLedgerV2Placeholder(row.branch) && jeId) {
+      const branchLabel = jeBranchLabel.get(jeId);
+      if (branchLabel) row.branch = branchLabel;
+    }
   }
 
+  await enrichLedgerV2BranchFromDocuments(rows, saleRefByJe, purchaseRefByJe, jeCompanyWide);
   await enrichCreatedByNames(rows);
+}
+
+async function enrichLedgerV2BranchFromDocuments(
+  rows: LedgerStatementV2Row[],
+  saleRefByJe: Map<string, string>,
+  purchaseRefByJe: Map<string, string>,
+  jeCompanyWide: Set<string>,
+): Promise<void> {
+  const saleBranchById = new Map<string, string>();
+  const purchaseBranchById = new Map<string, string>();
+
+  const saleIds = [...new Set(saleRefByJe.values())];
+  if (saleIds.length) {
+    const { data } = await supabase
+      .from('sales')
+      .select('id, branch:branches(name, code)')
+      .in('id', slice200(saleIds));
+    (data || []).forEach((s: { id: string; branch?: { name?: string; code?: string } | null }) => {
+      const label = formatBranchLabel(s.branch);
+      if (!isLedgerV2Placeholder(label)) saleBranchById.set(s.id, label);
+    });
+  }
+
+  const purchaseIds = [...new Set(purchaseRefByJe.values())];
+  if (purchaseIds.length) {
+    const { data } = await supabase
+      .from('purchases')
+      .select('id, branch:branches(name, code)')
+      .in('id', slice200(purchaseIds));
+    (data || []).forEach((p: { id: string; branch?: { name?: string; code?: string } | null }) => {
+      const label = formatBranchLabel(p.branch);
+      if (!isLedgerV2Placeholder(label)) purchaseBranchById.set(p.id, label);
+    });
+  }
+
+  for (const row of rows) {
+    if (!isLedgerV2Placeholder(row.branch)) continue;
+    const jeId = row.journalEntryId;
+    if (!jeId) continue;
+
+    const glBranch = formatBranchLabel(
+      row.glEntry?.branch_name
+        ? { name: row.glEntry.branch_name, code: undefined }
+        : null,
+    );
+    if (!isLedgerV2Placeholder(glBranch)) {
+      row.branch = glBranch;
+      continue;
+    }
+
+    const saleId = saleRefByJe.get(jeId);
+    if (saleId && saleBranchById.has(saleId)) {
+      row.branch = saleBranchById.get(saleId)!;
+      continue;
+    }
+
+    const purchaseId = purchaseRefByJe.get(jeId);
+    if (purchaseId && purchaseBranchById.has(purchaseId)) {
+      row.branch = purchaseBranchById.get(purchaseId)!;
+      continue;
+    }
+
+    if (jeCompanyWide.has(jeId)) row.branch = COMPANY_WIDE_BRANCH_LABEL;
+  }
 }
 
 function isLedgerV2Placeholder(value?: string | null): boolean {
