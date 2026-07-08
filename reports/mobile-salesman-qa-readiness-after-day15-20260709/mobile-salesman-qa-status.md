@@ -1,27 +1,35 @@
 # Mobile Salesman QA Readiness — After Day 15
 
 **Date:** 2026-07-09  
-**Machine:** Home Mac (continuation)  
-**Status:** `ADB_NOT_INSTALLED`
+**Machine:** Home Mac  
+**Status:** `ADB_INSTALLED_DEVICE_NOT_CONNECTED`
 
-## Check performed
+## ADB setup
 
 ```bash
+brew install android-platform-tools
 which adb
 adb version
+adb kill-server && adb start-server
 adb devices
 ```
 
-**Result:** `adb not found` — Android platform-tools not installed on home Mac.
+| Check | Result |
+|-------|--------|
+| ADB installed | **yes** (`/usr/local/bin/adb`) |
+| ADB version | Android Debug Bridge version 1.0.41 / platform-tools 37.0.0-14910828 |
+| Device list | *(empty — no devices attached)* |
+| Pixel 6 Pro | **not connected** |
 
-| Requirement | Status |
-|-------------|--------|
-| ADB installed | **no** (`ADB_NOT_INSTALLED`) |
-| Pixel 6 Pro connected | not checked (adb unavailable) |
-| ADB authorized | not available |
-| Salesman password | not requested (adb gate blocks QA) |
+## Salesman QA
 
-See also: [`home-adb-status.md`](home-adb-status.md)
+| Item | Status |
+|------|--------|
+| Password requested | no (device gate blocks QA) |
+| Password value recorded | **no** |
+| QA run | **no** |
+| QA result | blocked — `ADB_INSTALLED_DEVICE_NOT_CONNECTED` |
+| Documented procedure | `reports/mobile-manager-salesman-device-qa-20260702/salesman-role-qa.md`, `docs/mobile_phase3_device_qa_runbook.md` |
 
 ## Role QA matrix
 
@@ -29,19 +37,24 @@ See also: [`home-adb-status.md`](home-adb-status.md)
 |------|--------|
 | Admin | PASS 21/21 (prior evidence) |
 | Manager | N/A / waived |
-| Salesman | **ADB_NOT_INSTALLED** → QA blocked |
+| Salesman | **ADB_INSTALLED_DEVICE_NOT_CONNECTED** |
 | Play Store | **NOT RELEASED** |
 
-## Next steps (operator)
+## Operator next steps
 
-1. Install Android platform-tools (`brew install android-platform-tools` or SDK platform-tools)
-2. Connect Pixel 6 Pro via USB; enable USB debugging; authorize host
-3. Re-run `adb devices` — expect one `device` line
-4. Provide Salesman password **shell-only** at QA time (never commit or log)
-5. Execute documented Salesman QA checklist from mobile QA reports
+1. Connect Pixel 6 Pro via USB
+2. Enable Developer options → USB debugging
+3. Approve “Allow USB debugging” on phone
+4. Re-run `adb devices` — expect one line with status `device`
+5. Provide Salesman password **shell-only** at QA time (never commit or log)
+6. Run documented Salesman QA checklist
 
 ## Safety
 
-- No APK/AAB built or uploaded
-- No Play Store submission
-- No passwords stored in this report
+- R8: not run
+- DB migrations: not run
+- Repairs: not run
+- Production GL/data mutation: no
+- APK/AAB uploaded: no
+- Play Store submission: no
+- Passwords stored in this report: no
