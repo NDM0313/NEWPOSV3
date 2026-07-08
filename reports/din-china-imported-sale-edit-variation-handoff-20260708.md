@@ -181,11 +181,11 @@ npm run test -- src/app/utils/saleLineVariation.test.ts
 
 ## 10. Quick checklist
 
-- [ ] `git pull` + deploy on VPS
-- [ ] Hard refresh ERP in browser
-- [ ] Edit DC-0018 qty → Update succeeds
-- [ ] Run SQL verify block
-- [ ] Backup tables
-- [ ] Run SQL apply block
-- [ ] Spot-check TR/WOOL sale + VELVET sale UI
+- [x] `git pull` + deploy on VPS (2026-07-08 — `a6641f79`, deploy OK)
+- [x] Hard refresh ERP in browser (after deploy)
+- [x] SQL verify — 0 simple products left with `has_variations=true`; TR/WOOL multi-var OK
+- [x] Backup tables `_bak_products_dc_var_fix_20260708`, `_bak_sales_items_dc_var_fix_20260708`
+- [x] SQL apply — **not needed** (verify returned 0 rows to fix)
+- [x] DC-0018 spot-check — sale `27439e2d-…`, VELVET qty `1070.78`, `variation_id` NULL, `has_variations` false
+- [ ] Edit DC-0018 in UI once more → Update (confirm no UUID error in browser)
 - [ ] Commit/push if working from office PC copy
