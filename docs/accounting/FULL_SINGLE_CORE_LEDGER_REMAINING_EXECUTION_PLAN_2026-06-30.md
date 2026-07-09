@@ -23,7 +23,7 @@
 | GL backlog C4 DIN BRIDAL 1100 | **COMPLETE** — Option C applied + TB golden refreshed | None |
 | Cash Flow 3B-M | **LIVE** | Rollback only with written approval |
 | BS/P&L loader swap | **COMPLETE** | Runtime wiring + frontend deploy + flags enabled 2026-07-01 — see `reports/bs-pl-runtime-wiring-swap-20260701/` |
-| Mobile parity | **PARTIAL** — Admin PASS 21/21; Manager **N/A/waived** (Admin+Salesman only); Salesman **pending** (password + Pixel) | [`reports/home-mac-mobile-qa-status-manager-waived-no-device-20260703/`](../reports/home-mac-mobile-qa-status-manager-waived-no-device-20260703/) |
+| Mobile parity | **PARTIAL → Salesman login PASS** — Admin PASS 21/21; Manager **N/A/waived**; Salesman **PASS** (login 2026-07-09); Play Store **NOT RELEASED** | [`reports/mobile-salesman-qa-readiness-after-day15-20260709/`](../reports/mobile-salesman-qa-readiness-after-day15-20260709/) |
 | DIN BRIDAL monitoring drift | **CLOSED** — legitimate live activity; fixture-only golden refresh **COMPLETE** (operator Nadeem Khan 2026-07-01) | None — monitoring PASS |
 | **Official calendar stability Days 7–12** | **COMPLETE** — 6/6 PASS; see [`OFFICIAL_CALENDAR_STABILITY_DAYS_7_12_SUMMARY_2026-07-07.md`](OFFICIAL_CALENDAR_STABILITY_DAYS_7_12_SUMMARY_2026-07-07.md) | Continue **Day 13+** toward R8 window |
 | R8 legacy retirement | **BLOCKED** | Stability window 2–4 weeks from 2026-07-01; final approval required |

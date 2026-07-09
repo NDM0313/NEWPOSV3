@@ -23,8 +23,8 @@ git push origin pwa-apk-ios-safe-point
 | **5** | PWA vs Native limits doc | ✅ |
 | **6** | Unified financial reports parity (Capacitor code) | ✅ **2026-07-01** — code complete |
 | **6b** | Internal QA debug APK (no Play Store) | ✅ **2026-07-01** — `BUILT_INTERNAL_QA` |
-| **6c** | On-device QA | **PARTIAL** — Admin PASS 21/21; Manager **N/A/waived** (Admin+Salesman only, operator 2026-07-03); Salesman **pending** |
-| **6d** | Release gate | **BLOCKED_SALESMAN_DEVICE_QA_PENDING** — Salesman password + Pixel 6 Pro adb (not available Home Mac 2026-07-03) |
+| **6c** | On-device QA | **PARTIAL** — Admin PASS 21/21; Manager **N/A/waived**; Salesman **PASS** (login 2026-07-09) |
+| **6d** | Release gate | **SALESMAN_QA_PASS_PLAY_STORE_STILL_NOT_RELEASED** — Play Store separate approval |
 
 ## Home Mac mobile QA scope — 2026-07-03
 
@@ -34,8 +34,8 @@ git push origin pwa-apk-ios-safe-point
 |-------|--------|
 | Admin QA | **PASS 21/21** |
 | Manager QA | **N/A / waived** |
-| Salesman QA | **pending** — password + Pixel device |
-| Device | **DEVICE_NOT_AVAILABLE_HOME_MAC** — Pixel 6 Pro not available |
+| Salesman QA | **PASS** (login 2026-07-09, Pixel 6 Pro) |
+| Device | **Pixel 6 Pro connected** (office 2026-07-09) |
 | Play Store | **NOT RELEASED** |
 | R8 | **BLOCKED** |
 

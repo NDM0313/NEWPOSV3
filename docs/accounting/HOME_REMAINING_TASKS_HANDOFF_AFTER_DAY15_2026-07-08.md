@@ -27,10 +27,9 @@
    - Do not run automatically
 
 2. Salesman mobile QA
-   - Status: BLOCKED_SALESMAN_DEVICE_QA_PENDING
-   - Required: Pixel 6 Pro connected + Salesman password shell-only
-   - Manager QA: N/A / waived
-   - Play Store: NOT RELEASED
+   - Status: **PASS** (login 2026-07-09) — `SALESMAN_QA_PASS_PLAY_STORE_STILL_NOT_RELEASED`
+   - Evidence: `reports/mobile-salesman-qa-readiness-after-day15-20260709/salesman-role-qa-pass.md`
+   - Play Store: NOT RELEASED (separate approval)
 
 3. Optional 1 PKR parity investigation
    - Status: optional
