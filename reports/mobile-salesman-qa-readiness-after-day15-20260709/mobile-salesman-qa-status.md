@@ -1,6 +1,21 @@
 # Mobile Salesman QA Readiness — After Day 15
 
-**Date:** 2026-07-09  
+**Date:** 2026-07-09 (updated office session)  
+**Status:** `BLOCKED_SALESMAN_DEVICE_QA_PENDING`
+
+## Office Windows (2026-07-09)
+
+| Item | Result |
+|------|--------|
+| Machine | Office Windows |
+| ADB | installed (platform-tools 36.0.0) |
+| `adb devices` | empty |
+| Pixel 6 Pro | not connected |
+| Status | `ADB_INSTALLED_DEVICE_NOT_CONNECTED` |
+| Evidence | [`office-adb-status.md`](office-adb-status.md) |
+
+## Home Mac (prior session)
+
 **Machine:** Home Mac  
 **Status:** `ADB_INSTALLED_DEVICE_NOT_CONNECTED`
 
