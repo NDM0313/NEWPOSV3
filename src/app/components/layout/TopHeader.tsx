@@ -549,8 +549,15 @@ export const TopHeader = () => {
 
       {/* Custom Date Range Picker — global filter */}
       {showCustomDatePicker && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--erp-overlay)] backdrop-blur-sm">
-          <div className="absolute top-[1px] left-1/2 -translate-x-1/2 bg-popover border border-border rounded-xl p-6 max-w-md w-full mx-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--erp-overlay)] backdrop-blur-sm"
+          onClick={() => setShowCustomDatePicker(false)}
+          role="presentation"
+        >
+          <div
+            className="absolute top-[1px] left-1/2 -translate-x-1/2 bg-popover border border-border rounded-xl p-6 max-w-md w-full mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h3 className="text-lg font-semibold text-foreground mb-4">Select Custom Date Range</h3>
             <div className="space-y-4">
               <div>

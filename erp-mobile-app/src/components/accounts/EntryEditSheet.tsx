@@ -2,6 +2,8 @@ import { useState, useEffect, useLayoutEffect } from 'react';
 import { X, Loader2, Save } from 'lucide-react';
 import { CustomSelect } from '../common';
 import { supabase } from '../../lib/supabase';
+import { getPaymentAccounts } from '../../api/accounts';
+import { isLiquidityPaymentAccount } from '../../lib/liquidityPaymentAccount';
 import { updateTransaction } from '../../api/transactionEdit';
 import { allowsDayBookUnifiedEdit } from '../../lib/journalEntryEditPolicy';
 import type { AccountEntry } from './AccountsDashboard';
@@ -58,14 +60,8 @@ export function EntryEditSheet({ entry, companyId, onClose, onSuccess }: Props) 
       }
       setLoading(true);
 
-      // 1) Load liquidity accounts (cash, bank, mobile_wallet) in parallel with other data
-      const accountsPromise = supabase
-        .from('accounts')
-        .select('id, name, type')
-        .eq('company_id', companyId)
-        .eq('is_active', true)
-        .in('type', ['cash', 'bank', 'mobile_wallet'])
-        .order('name');
+      // 1) Load liquidity accounts via shared payment-account API
+      const accountsPromise = getPaymentAccounts(companyId);
 
       // 2) Load journal lines
       const jLinesPromise = supabase
@@ -91,8 +87,13 @@ export function EntryEditSheet({ entry, companyId, onClose, onSuccess }: Props) 
 
       if (cancelled) return;
 
-      if (accRes.data) {
-        setAccounts(accRes.data);
+      const paymentAccountList = (accRes.data || []).map((a) => ({
+        id: a.id,
+        name: a.name,
+        type: a.type,
+      }));
+      if (paymentAccountList.length) {
+        setAccounts(paymentAccountList);
       }
       if (jLinesRes.data) {
         setJournalLines(jLinesRes.data);
@@ -132,7 +133,7 @@ export function EntryEditSheet({ entry, companyId, onClose, onSuccess }: Props) 
             setSelectedAccountId(savedAccId);
 
             // Check if saved account exists in already-fetched list
-            const alreadyInList = (accRes.data || []).some((a: any) => a.id === savedAccId);
+            const alreadyInList = paymentAccountList.some((a) => a.id === savedAccId);
             if (!alreadyInList) {
               // Fetch the saved account separately and prepend it to the list
               const { data: savedAcc } = await supabase
@@ -155,12 +156,18 @@ export function EntryEditSheet({ entry, companyId, onClose, onSuccess }: Props) 
       if (!isManualJournal && !paymentAccountResolved && jLinesRes.data?.length) {
         const lineRows = jLinesRes.data as { account_id: string; debit: number; credit: number }[];
         const ids = [...new Set(lineRows.map((l) => l.account_id).filter(Boolean))];
-        const { data: liqAccs } = await supabase
+        const { data: lineAccs } = await supabase
           .from('accounts')
-          .select('id, name, type')
+          .select('id, name, type, code')
           .eq('company_id', companyId)
-          .in('id', ids)
-          .in('type', ['cash', 'bank', 'mobile_wallet']);
+          .in('id', ids);
+        const liqAccs = (lineAccs || []).filter((a) =>
+          isLiquidityPaymentAccount({
+            code: a.code,
+            name: a.name,
+            type: a.type,
+          }),
+        );
         if (!cancelled && liqAccs?.length) {
           const lid = new Set(liqAccs.map((a) => a.id));
           const creditLiquidity = lineRows.find((l) => lid.has(l.account_id) && Number(l.credit) > 0);

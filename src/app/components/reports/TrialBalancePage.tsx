@@ -492,9 +492,14 @@ export const TrialBalancePage: React.FC<{
           <div>
             <p className="font-semibold text-amber-100">Credit-heavy asset account(s)</p>
             <p className="text-muted-foreground text-sm mt-1 leading-relaxed">
-              Trial Balance uses <strong className="text-muted-foreground">Balance = Debits − Credits</strong> per account. For receivables/cash/bank,
-              a <strong className="text-muted-foreground">negative</strong> balance means total credits posted to that account exceed debits (e.g. reversed entries,
-              receipts mis-posted, or journals not tied to sales). This does <strong className="text-muted-foreground">not</strong> match the Contacts “receivables” column,
+              Trial Balance uses <strong className="text-muted-foreground">Balance = Debits − Credits</strong>
+              {mainLoaderSource === 'unified' ? (
+                <>
+                  {' '}
+                  cumulative through the <strong className="text-muted-foreground">End date</strong> (header From does not change amounts). That number must match Account Statement Closing for the same GL account.
+                </>
+              ) : null}
+              . For cash/bank, a <strong className="text-muted-foreground">negative</strong> balance usually means money out (transfers, payments, courier) exceeded receipts — not a Trial Balance math error when Official GL ties to Account Statement. For receivables, negatives often mean reversed entries, receipts mis-posted, or journals not tied to sales. This does <strong className="text-muted-foreground">not</strong> match the Contacts “receivables” column,
               which is built from <strong className="text-muted-foreground">open invoice dues</strong> only. Use <strong className="text-muted-foreground">Ledger</strong> on the row to trace lines.
             </p>
             <ul className="mt-2 text-sm font-mono text-amber-200/90 space-y-0.5">
@@ -557,7 +562,16 @@ export const TrialBalancePage: React.FC<{
           </label>
         </div>
         <p className="text-sm text-muted-foreground">
-          Period: {startDate} to {endDate}
+          {mainLoaderSource === 'unified' ? (
+            <>
+              Balance as-of End: <span className="text-foreground font-medium">{endDate}</span>
+              {periodDiffersFromAsOf ? (
+                <span className="ml-1">(From {startDate} does not change Debit/Credit/Balance columns)</span>
+              ) : null}
+            </>
+          ) : (
+            <>Period: {startDate} to {endDate}</>
+          )}
           {data.rows.length > 0 && (
             <span className="ml-2">
               • Total Debit: {formatCurrency(displayTotals.totalDebit)} • Total Credit: {formatCurrency(displayTotals.totalCredit)}
@@ -568,6 +582,13 @@ export const TrialBalancePage: React.FC<{
           )}
         </p>
       </div>
+
+      {branchId ? (
+        <div className="no-print rounded-lg border border-border/80 bg-muted/30 px-4 py-2.5 text-xs text-muted-foreground leading-relaxed">
+          Header branch is set. Company-wide journals (no branch on the JE, e.g. capital transfers) are still included in
+          official GL so cash/bank Closing matches Account Statement. Sales/purchases/payments remain branch-scoped.
+        </div>
+      ) : null}
 
       <div className="no-print rounded-xl border border-border bg-muted/40 p-4 space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -622,9 +643,15 @@ export const TrialBalancePage: React.FC<{
               <th className="p-3 text-right font-medium text-muted-foreground">Credit</th>
               <th
                 className="p-3 text-right font-medium text-muted-foreground"
-                title="Period net (Dr−Cr). For amount owed, use Balance Basis Guide or party GL statement."
+                title={
+                  mainLoaderSource === 'unified'
+                    ? periodDiffersFromAsOf
+                      ? `As-of End date ${endDate} (Debit − Credit cumulative). Header From date does not change this column when unified loader is ON.`
+                      : `As-of ${endDate} (Debit − Credit). Matches Account Statement Closing for the same account.`
+                    : 'Period net (Dr−Cr) for From→To dates. For amount owed, use party GL statement.'
+                }
               >
-                Period net (Dr−Cr)
+                {mainLoaderSource === 'unified' ? 'Balance as-of End (Dr−Cr)' : 'Period net (Dr−Cr)'}
               </th>
               <th className="p-3 w-40 font-medium text-muted-foreground">Actions</th>
             </tr>

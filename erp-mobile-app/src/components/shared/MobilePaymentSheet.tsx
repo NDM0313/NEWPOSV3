@@ -40,6 +40,10 @@ import {
   getCurrentLocalTimestamp,
 } from '../../utils/localDate';
 import { isBranchSentinel, isRealBranchUuid } from '../../utils/branchId';
+import {
+  filterPaymentAccountsByMethod,
+  mobilePaymentMethodToLabel,
+} from '../../lib/paymentAccountFilters';
 import { useSubmitLock } from '../../contexts/LoadingContext';
 import { useWriteBranchSelection } from '../../hooks/useWriteBranchSelection';
 import { WriteBranchPickerField } from './WriteBranchPickerField';
@@ -367,12 +371,10 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
   }, [companyId, branchId, submitBranchId]);
 
   const filteredAccounts = useMemo(() => {
-    return accounts.filter((a) => {
-      if (paymentMethod === 'cash') return a.type === 'cash';
-      if (paymentMethod === 'bank') return a.type === 'bank';
-      if (paymentMethod === 'card') return a.type === 'bank';
-      return a.type === 'mobile_wallet';
-    });
+    return filterPaymentAccountsByMethod(
+      accounts,
+      mobilePaymentMethodToLabel(paymentMethod),
+    ) as PaymentAccountPick[];
   }, [accounts, paymentMethod]);
 
   useEffect(() => {

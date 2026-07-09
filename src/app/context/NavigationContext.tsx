@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useMemo, useEffect, ReactNode } from 'react';
 import { parseNavLocationFromUrl, type FinancialReportType } from '@/app/lib/navDeepLinks';
+import { clearStuckModalLocks, shouldClearStuckModalLocks } from '@/app/lib/clearStuckModalLocks';
 import type { LedgerStatementV2Initial } from '@/app/features/ledger-statement-center-v2/types';
 
 export type AccountingTabInitial = 'account_statements' | null;
@@ -337,6 +338,10 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
       setActiveDrawer('none');
       return null;
     });
+    // Release orphaned Radix scroll-lock if modal layers desync
+    window.setTimeout(() => {
+      if (shouldClearStuckModalLocks()) clearStuckModalLocks();
+    }, 400);
     // Note: Don't clear createdContactId here - let the parent form use it first
   }, []);
 

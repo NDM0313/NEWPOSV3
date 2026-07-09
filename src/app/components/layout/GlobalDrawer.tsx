@@ -331,10 +331,33 @@ export const GlobalDrawer = () => {
     );
   }
   
-  // Single drawer (normal case)
+  // Single drawer (normal case) — unmount when closed so Radix scroll-lock cannot stick on body
+  if (!isOpen) {
+    return (
+      <>
+        {enablePacking && packingModalData && (
+          <PackingEntryModal
+            open={packingModalOpen || false}
+            onOpenChange={(open) => {
+              if (!open) closePackingModal?.();
+            }}
+            onSave={(details) => {
+              if (packingModalData.onSave) {
+                packingModalData.onSave(details);
+              }
+              closePackingModal?.();
+            }}
+            initialData={packingModalData.initialData}
+            productName={packingModalData.productName}
+          />
+        )}
+      </>
+    );
+  }
+
   return (
     <>
-      <Sheet open={isOpen} onOpenChange={handleOpenChange}>
+      <Sheet open onOpenChange={handleOpenChange}>
         <SheetContent side={side} className={contentClasses}>
           {/* Hidden title for accessibility */}
           <SheetHeader className="sr-only">

@@ -474,6 +474,14 @@ export const AccountLedgerReportPage: React.FC<{
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [mainLoaderSource, setMainLoaderSource] = useState<'legacy' | 'unified'>('legacy');
+  /** Pure GL (non-party): summary cards use engine official totals so Closing matches Trial Balance as-of End. */
+  const [officialGlSummary, setOfficialGlSummary] = useState<{
+    openingBalance: number;
+    totalDebit: number;
+    totalCredit: number;
+    closingBalance: number;
+    txCount: number;
+  } | null>(null);
 
   const previewCompareSource = useMemo(
     () => resolveAccountStatementPreviewCompareSource(mainLoaderSource),
@@ -654,6 +662,7 @@ export const AccountLedgerReportPage: React.FC<{
         setMainLoaderSource(mainSource);
 
         let loaded: AccountLedgerEntry[] = [];
+        let nextOfficialGl: typeof officialGlSummary = null;
         if (mainSource === 'unified') {
           const target = resolveAccountStatementPreviewTarget({
             statementType: applied.statementType,
@@ -664,6 +673,7 @@ export const AccountLedgerReportPage: React.FC<{
           });
           if (target.kind === 'none') {
             setEntries([]);
+            setOfficialGlSummary(null);
             return;
           }
           const basis = defaultUnifiedBasisForAccountStatement(target, viewMode);
@@ -675,10 +685,38 @@ export const AccountLedgerReportPage: React.FC<{
             basis,
           });
           loaded = unified.rows;
+          if (target.kind === 'account') {
+            const body = (loaded || []).filter((e) => !isStatementOpeningRow(e));
+            nextOfficialGl = {
+              openingBalance: Number(unified.meta.periodOpeningBalance || 0),
+              totalDebit: body.reduce((s, e) => s + Number(e.debit || 0), 0),
+              totalCredit: body.reduce((s, e) => s + Number(e.credit || 0), 0),
+              closingBalance: Number(unified.closingBalance || 0),
+              txCount: body.length,
+            };
+          }
         } else {
           loaded = await loadAccountStatementLegacyMain(legacyParams);
+          if (applied.statementType === 'gl' && loaded?.length) {
+            const body = loaded.filter((e) => !isStatementOpeningRow(e));
+            const first = loaded[0];
+            const last = loaded[loaded.length - 1];
+            const firstMove = Number(first.debit || 0) - Number(first.credit || 0);
+            const opening =
+              isStatementOpeningRow(first)
+                ? Number(first.running_balance || 0)
+                : Number(first.running_balance || 0) - firstMove;
+            nextOfficialGl = {
+              openingBalance: opening,
+              totalDebit: body.reduce((s, e) => s + Number(e.debit || 0), 0),
+              totalCredit: body.reduce((s, e) => s + Number(e.credit || 0), 0),
+              closingBalance: Number(last.running_balance || 0),
+              txCount: body.length,
+            };
+          }
         }
 
+        setOfficialGlSummary(nextOfficialGl);
         setEntries(loaded || []);
         if (isDebugErpEnabled()) {
           console.log('[STATEMENT_FILTER_TRACE] fetch', {
@@ -1525,6 +1563,14 @@ export const AccountLedgerReportPage: React.FC<{
   ]);
 
   const summary = useMemo(() => {
+    // Pure GL: Closing = official posted GL as-of End (same Σ Dr−Cr as Trial Balance). Do not re-chain from filtered rows.
+    if (applied.statementType === 'gl' && officialGlSummary) {
+      return {
+        ...officialGlSummary,
+        netMovement: officialGlSummary.closingBalance - officialGlSummary.openingBalance,
+      };
+    }
+
     const apLiabilityStyle = applied.statementType === 'supplier';
     if (!presentedEntries.length) {
       return { openingBalance: 0, totalDebit: 0, totalCredit: 0, closingBalance: 0, netMovement: 0, txCount: 0 };
@@ -1534,7 +1580,6 @@ export const AccountLedgerReportPage: React.FC<{
     const rowsNoOpening = presentedEntries.filter((e) => !isStatementOpeningRow(e));
 
     // Supplier/AP liability: running balance uses credit − debit on each row (see getSupplierApGlJournalLedger).
-    // Summary cards use the SAME presented row set as the table after alignRunningBalances — no second formula for closing.
     const openingBalance =
       openingIdx >= 0
         ? Number(presentedEntries[openingIdx].displayRunningBalance ?? presentedEntries[openingIdx].running_balance ?? 0)
@@ -1551,7 +1596,7 @@ export const AccountLedgerReportPage: React.FC<{
     const netMovement = closingBalance - openingBalance;
 
     return { openingBalance, totalDebit, totalCredit, closingBalance, netMovement, txCount: rowsNoOpening.length };
-  }, [presentedEntries, applied.statementType]);
+  }, [presentedEntries, applied.statementType, officialGlSummary]);
 
   const openingBalanceAttention = partyBalanceAttention(applied.statementType, summary.openingBalance);
   const closingBalanceAttention = partyBalanceAttention(applied.statementType, summary.closingBalance);
@@ -1948,12 +1993,24 @@ export const AccountLedgerReportPage: React.FC<{
         basisLabel={
           applied.statementType === 'supplier'
             ? 'Supplier statement: GL on Accounts Payable (code 2000 and linked AP accounts) for this supplier — purchases, payments, openings, reversals per accountingService; summary uses the same rows as the table.'
-            : viewMode === 'effective'
-              ? 'Effective — rollup rules hide some reversals/adjustments; balance follows posted GL.'
-              : 'Audit — shows reversals/adjustments when the include checkboxes allow.'
+            : applied.statementType === 'gl'
+              ? 'Closing = official posted GL (Debit − Credit as of End date) — matches Trial Balance for this account. Table filters may hide rows without changing Closing.'
+              : viewMode === 'effective'
+                ? 'Effective — rollup rules hide some reversals/adjustments; balance follows posted GL.'
+                : 'Audit — shows reversals/adjustments when the include checkboxes allow.'
         }
       />
 
+      {applied.statementType === 'gl' && officialGlSummary ? (
+        <ReportBasisBanner
+          basis="official_gl"
+          detail={
+            displayFiltersActive && presentedEntries.length !== entries.length
+              ? `Summary Closing Rs stays official as-of ${endDate} (matches Trial Balance). Displayed rows are filtered.`
+              : `Summary Closing is Σ (Debit − Credit) through ${endDate} — same as Trial Balance net for this account.`
+          }
+        />
+      ) : null}
       {(applied.statementType === 'customer' || applied.statementType === 'supplier') && (
         <ReportBasisBanner
           basis={viewMode === 'effective' ? 'effective_party' : 'audit_full'}
@@ -2061,13 +2118,19 @@ export const AccountLedgerReportPage: React.FC<{
         <div className="rounded-lg border border-border bg-muted/40 p-3"><p className="text-xs text-muted-foreground">Total Debit</p><p className="text-lg font-semibold text-emerald-400">{formatCurrency(summary.totalDebit)}</p></div>
         <div className="rounded-lg border border-border bg-muted/40 p-3"><p className="text-xs text-muted-foreground">Total Credit</p><p className="text-lg font-semibold text-rose-400">{formatCurrency(summary.totalCredit)}</p></div>
         <div className="rounded-lg border border-border bg-muted/40 p-3">
-          <p className="text-xs text-muted-foreground">Closing Balance</p>
+          <p className="text-xs text-muted-foreground">
+            {applied.statementType === 'gl' ? 'Closing Balance (official GL)' : 'Closing Balance'}
+          </p>
           <p
             className={cn(
               'text-lg font-semibold',
               closingBalanceAttention !== 'none' ? 'text-rose-300' : 'text-foreground'
             )}
-            title={partyBalanceAttentionTitle(closingBalanceAttention)}
+            title={
+              applied.statementType === 'gl'
+                ? `Official posted GL as of ${endDate} (Debit − Credit). Matches Trial Balance for this account.`
+                : partyBalanceAttentionTitle(closingBalanceAttention)
+            }
           >
             {formatCurrency(summary.closingBalance)}
           </p>
@@ -2343,13 +2406,19 @@ export const AccountLedgerReportPage: React.FC<{
           <div><p className="text-muted-foreground">Period Credit Total</p><p className="text-rose-400 font-semibold">{formatCurrency(summary.totalCredit)}</p></div>
           <div><p className="text-muted-foreground">Net Movement</p><p className="text-foreground font-semibold">{formatCurrency(summary.netMovement)}</p></div>
           <div>
-            <p className="text-muted-foreground">Closing Balance</p>
+            <p className="text-muted-foreground">
+              {applied.statementType === 'gl' ? 'Closing (official GL)' : 'Closing Balance'}
+            </p>
             <p
               className={cn(
                 'font-semibold',
                 closingBalanceAttention !== 'none' ? 'text-rose-300' : 'text-foreground'
               )}
-              title={partyBalanceAttentionTitle(closingBalanceAttention)}
+              title={
+                applied.statementType === 'gl'
+                  ? `Official posted GL as of ${endDate} — matches Trial Balance`
+                  : partyBalanceAttentionTitle(closingBalanceAttention)
+              }
             >
               {formatCurrency(summary.closingBalance)}
             </p>

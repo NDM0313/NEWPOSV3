@@ -288,3 +288,9 @@
     scrollbar-color: #374151 #0B0F17;
   }
 }
+
+/* Closed Radix overlays must never capture clicks during exit animation */
+[data-slot='sheet-overlay'][data-state='closed'],
+[data-slot='dialog-overlay'][data-state='closed'] {
+  pointer-events: none !important;
+}

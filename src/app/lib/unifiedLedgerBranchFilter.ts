@@ -1,7 +1,8 @@
 /**
- * Strict branch filter for unified ledger (Phase 1.5).
+ * Strict branch filter for unified ledger (Phase 1.5 + 20260708190000).
  * Branch-specific ledgers must NOT include NULL-branch transactional rows.
- * Only verified opening/system reference types may pass with NULL branch_id.
+ * NULL branch_id may pass for openings/system seed and company-level journal /
+ * gl_correction families — mirrors `_unified_ledger_strict_branch_includes_row`.
  */
 
 const OPENING_REFERENCE_PREFIXES = ['opening_balance'] as const;
@@ -13,6 +14,14 @@ const OPENING_REFERENCE_EXACT = new Set([
   'opening_balance_contact_worker',
   'system_seed',
   'coa_opening',
+]);
+
+/** Company-wide JE families allowed with NULL branch under a branch filter (SQL 190000). */
+const NULL_BRANCH_COMPANY_WIDE_REFS = new Set([
+  'journal',
+  'manual_journal',
+  'gl_correction',
+  'correction_reversal',
 ]);
 
 export type BranchFilterRow = {
@@ -29,8 +38,10 @@ function normalizeRefType(ref: string | null | undefined): string {
 /** True when NULL branch_id is allowed under a branch-specific filter. */
 export function isVerifiedNullBranchRow(referenceType: string | null | undefined): boolean {
   const rt = normalizeRefType(referenceType);
-  if (!rt) return false;
+  // Empty reference_type allowed (matches SQL IN (..., ''))
+  if (!rt) return true;
   if (OPENING_REFERENCE_EXACT.has(rt)) return true;
+  if (NULL_BRANCH_COMPANY_WIDE_REFS.has(rt)) return true;
   return OPENING_REFERENCE_PREFIXES.some((p) => rt === p || rt.startsWith(`${p}_`));
 }
 

@@ -114,6 +114,20 @@ async function enrichPurchasesWithCreatorNames(purchases: any[]): Promise<void> 
   });
 }
 
+/** Attach supplier contact when list embed failed (PGRST201). */
+async function enrichPurchasesWithSupplierContacts(purchases: any[]): Promise<void> {
+  const ids = [...new Set((purchases || []).map((p: any) => p.supplier_id).filter(Boolean))] as string[];
+  if (ids.length === 0) return;
+  const { data: contacts } = await supabase.from('contacts').select('id, name, phone').in('id', ids);
+  const byId = new Map((contacts || []).map((c: any) => [c.id, c]));
+  purchases.forEach((p: any) => {
+    if (p.supplier_id && !p.supplier) {
+      const c = byId.get(p.supplier_id);
+      if (c) p.supplier = { name: c.name, phone: c.phone };
+    }
+  });
+}
+
 function buildPaymentNote(extraDescription?: string | null, bankTraceId?: string | null): string | null {
   const parts: string[] = [];
   const extra = String(extraDescription ?? '').trim();
@@ -534,9 +548,10 @@ export const purchaseService = {
   ): Promise<any[] | { data: any[]; total: number }> {
     const limit = opts?.limit ?? 50;
     const offset = opts?.offset ?? 0;
+    // Disambiguate contacts embed: purchases has FKs supplier_id + clearance_courier_id → contacts (PGRST201).
     const purchaseSelect = `
         *,
-        supplier:contacts!supplier_id(name, phone),
+        supplier:contacts!purchases_supplier_id_fkey(name, phone),
         branch:branches(id, name, code),
         items:purchase_items(
           *,
@@ -566,15 +581,13 @@ export const purchaseService = {
       }
     }
 
-    if (error && opts) throw error;
-
     // If error is about po_date column not existing, retry with created_at
     if (error && error.code === '42703' && error.message?.includes('po_date')) {
       const retryQuery = supabase
         .from('purchases')
         .select(`
           *,
-          supplier:contacts!supplier_id(name, phone),
+          supplier:contacts!purchases_supplier_id_fkey(name, phone),
           branch:branches(id, name, code),
           items:purchase_items(
             *,
@@ -595,7 +608,7 @@ export const purchaseService = {
           .from('purchases')
         .select(`
           *,
-          supplier:contacts!supplier_id(name, phone),
+          supplier:contacts!purchases_supplier_id_fkey(name, phone),
           branch:branches(id, name, code),
           items:purchase_items(
             *,
@@ -610,47 +623,51 @@ export const purchaseService = {
         const { data: finalData, error: finalError } = await finalQuery;
         if (finalError) throw finalError;
         if (finalData?.length) await enrichPurchasesWithCreatorNames(finalData);
-        return finalData;
+        return opts ? { data: finalData || [], total: finalData?.length ?? 0 } : finalData;
       }
-      return retryData;
+      return opts ? { data: retryData || [], total: retryData?.length ?? 0 } : retryData;
     }
     
-    // If error is about foreign key relationship or other issues, try without nested selects
-    if (error && (error.code === '42703' || error.code === '42P01' || error.code === 'PGRST116' || error.code === 'PGRST201')) {
-      // Try simpler query without nested relationships
+    // Ambiguous FK / missing nested relationship: fall back to header-only (+ optional supplier enrich)
+    if (error && (error.code === '42703' || error.code === '42P01' || error.code === 'PGRST116' || error.code === 'PGRST201' || error.code === 'PGRST200')) {
       let simpleQuery = supabase
         .from('purchases')
-        .select(`
-          *
-        `)
+        .select('*', opts ? { count: 'exact' } : undefined)
+        .eq('company_id', companyId)
         .order('created_at', { ascending: false });
       
       if (branchId) {
         simpleQuery = simpleQuery.eq('branch_id', branchId);
       }
+      if (opts) simpleQuery = simpleQuery.range(offset, offset + limit - 1);
       
-      const { data: simpleData, error: simpleError } = await simpleQuery;
+      let { data: simpleData, error: simpleError, count: simpleCount } = await simpleQuery;
       
       // If created_at doesn't exist, try without ordering
       if (simpleError && simpleError.code === '42703' && simpleError.message?.includes('created_at')) {
         let noOrderQuery = supabase
           .from('purchases')
-          .select(`
-            *
-          `);
+          .select('*', opts ? { count: 'exact' } : undefined)
+          .eq('company_id', companyId);
         
         if (branchId) {
           noOrderQuery = noOrderQuery.eq('branch_id', branchId);
         }
+        if (opts) noOrderQuery = noOrderQuery.range(offset, offset + limit - 1);
         
-        const { data: noOrderData, error: noOrderError } = await noOrderQuery;
-        if (noOrderError) throw noOrderError;
-        if (noOrderData?.length) await enrichPurchasesWithCreatorNames(noOrderData);
-        return noOrderData;
+        const noOrderResult = await noOrderQuery;
+        if (noOrderResult.error) throw noOrderResult.error;
+        simpleData = noOrderResult.data;
+        simpleError = noOrderResult.error;
+        simpleCount = noOrderResult.count;
       }
       
       if (simpleError) throw simpleError;
-      if (simpleData?.length) await enrichPurchasesWithCreatorNames(simpleData);
+      if (simpleData?.length) {
+        await enrichPurchasesWithCreatorNames(simpleData);
+        await enrichPurchasesWithSupplierContacts(simpleData);
+      }
+      if (opts) return { data: simpleData || [], total: simpleCount ?? 0 };
       return simpleData;
     }
     
@@ -770,7 +787,7 @@ export const purchaseService = {
     // NOTE: Do not list `attachments` after `*` — duplicate field in select often yields PostgREST 400 (`select=*` requests).
     const embeddedSelect = `
         *,
-        supplier:contacts!supplier_id(id, name, phone),
+        supplier:contacts!purchases_supplier_id_fkey(id, name, phone),
         items:purchase_items(
           *,
           product:products(id, name, sku, cost_price, has_variations, unit_id, category_id, min_stock, max_stock),

@@ -5,11 +5,13 @@ import { TopHeader } from './TopHeader';
 import { MobileNavDrawer } from './MobileNavDrawer';
 import { useSupabase, STORAGE_BLOCKED_MESSAGE } from '@/app/context/SupabaseContext';
 import { useErpTheme } from '@/app/hooks/useErpTheme';
+import { useClearStuckModalLocks } from '@/app/hooks/useClearStuckModalLocks';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 
 export const Layout = ({ children }: { children: React.ReactNode }) => {
   const { connectionError, storageBlocked, authConfigError, retryConnection } = useSupabase();
   useErpTheme();
+  useClearStuckModalLocks();
 
   return (
     <div className="flex min-h-screen bg-background text-foreground font-sans selection:bg-primary/30 transition-colors overflow-x-hidden">

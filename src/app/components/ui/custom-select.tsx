@@ -37,6 +37,10 @@ export const CustomSelect = ({ value, onChange, options }: CustomSelectProps) =>
     }
   }, [isOpen]);
 
+  useEffect(() => {
+    return () => setIsOpen(false);
+  }, []);
+
   return (
     <div className="relative">
       {/* Trigger Button */}
@@ -53,7 +57,7 @@ export const CustomSelect = ({ value, onChange, options }: CustomSelectProps) =>
       {isOpen && typeof document !== 'undefined' && createPortal(
         <>
           <div
-            className="fixed inset-0 z-[9998]"
+            className="fixed inset-0 z-[9998] bg-transparent"
             onClick={() => setIsOpen(false)}
             aria-hidden
           />

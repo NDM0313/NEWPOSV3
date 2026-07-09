@@ -11,6 +11,8 @@ function appendPayReferenceAllocationHint(message: string): string {
   return out;
 }
 import { getNextDocumentNumber } from './documentNumber';
+import { getAccountBalancesFromJournal } from './accountBalancesFromJournal';
+import { isLiquidityPaymentAccount } from '../lib/liquidityPaymentAccount';
 import { isBrowserOffline, listCacheGet, listCacheKeys, listCacheSet } from '../lib/listCache';
 import { resolveBranchUuidForWrite, safeRpcBranchId } from '../utils/branchId';
 import { getCurrentLocalTimestamp, toLocalDateString } from '../utils/localDate';
@@ -201,7 +203,38 @@ export async function getAccounts(companyId: string): Promise<{ data: AccountRow
   };
 }
 
-const PAYMENT_ACCOUNT_TYPES_LOWER = new Set(['cash', 'bank', 'mobile_wallet', 'wallet']);
+function mapPaymentAccountRow(r: Record<string, unknown>): AccountRow {
+  return {
+    id: String(r.id ?? ''),
+    code: String(r.code ?? '—'),
+    name: String(r.name ?? '—'),
+    type: String(r.type ?? '—'),
+    balance: Number(r.balance) || 0,
+    isDefaultCash: r.is_default_cash === true,
+    isDefaultBank: r.is_default_bank === true,
+  };
+}
+
+function isLiquidityPaymentAccountRow(acc: AccountRow): boolean {
+  return isLiquidityPaymentAccount({
+    code: acc.code,
+    name: acc.name,
+    type: acc.type,
+    is_active: true,
+  });
+}
+
+async function mergeJournalBalances(
+  companyId: string,
+  rows: AccountRow[],
+): Promise<AccountRow[]> {
+  const { map: journalBalances, error: jbErr } = await getAccountBalancesFromJournal(companyId);
+  if (jbErr) return rows;
+  return rows.map((acc) => ({
+    ...acc,
+    balance: journalBalances.get(acc.id) ?? 0,
+  }));
+}
 
 /** Payment accounts: cash, bank, mobile wallet only (no generic asset / AR / etc.). */
 export async function getPaymentAccounts(companyId: string): Promise<{ data: AccountRow[]; error: string | null }> {
@@ -209,7 +242,7 @@ export async function getPaymentAccounts(companyId: string): Promise<{ data: Acc
   const cacheKey = listCacheKeys.paymentAccounts(companyId);
   if (isBrowserOffline()) {
     const cached = await listCacheGet<AccountRow[]>(cacheKey);
-    const filtered = (cached ?? []).filter((a) => PAYMENT_ACCOUNT_TYPES_LOWER.has((a.type || '').toLowerCase()));
+    const filtered = (cached ?? []).filter((a) => isLiquidityPaymentAccountRow(a));
     return {
       data: filtered,
       error: filtered.length ? null : 'Offline: payment accounts not cached. Connect once while logged in.',
@@ -221,7 +254,6 @@ export async function getPaymentAccounts(companyId: string): Promise<{ data: Acc
     .eq('company_id', companyId)
     .eq('is_active', true)
     .or('is_group.eq.false,is_group.is.null')
-    .in('type', ['cash', 'bank', 'mobile_wallet', 'wallet'])
     .order('code');
   let rawRows: Record<string, unknown>[] = (withDefaults.data || []) as Record<string, unknown>[];
   let error = withDefaults.error;
@@ -232,21 +264,13 @@ export async function getPaymentAccounts(companyId: string): Promise<{ data: Acc
       .eq('company_id', companyId)
       .eq('is_active', true)
       .or('is_group.eq.false,is_group.is.null')
-      .in('type', ['cash', 'bank', 'mobile_wallet', 'wallet'])
       .order('code');
     rawRows = (fallback.data || []) as Record<string, unknown>[];
     error = fallback.error;
   }
   if (error) return { data: [], error: error.message };
-  const rows = rawRows.map((r) => ({
-    id: String(r.id ?? ''),
-    code: String(r.code ?? '—'),
-    name: String(r.name ?? '—'),
-    type: String(r.type ?? '—'),
-    balance: Number(r.balance) || 0,
-    isDefaultCash: r.is_default_cash === true,
-    isDefaultBank: r.is_default_bank === true,
-  }));
+  const liquidityRows = rawRows.map(mapPaymentAccountRow).filter(isLiquidityPaymentAccountRow);
+  const rows = await mergeJournalBalances(companyId, liquidityRows);
   void listCacheSet(cacheKey, rows);
   return { data: rows, error: null };
 }

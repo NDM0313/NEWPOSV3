@@ -20,6 +20,14 @@ function isBankSubAccountCode(digits: string): boolean {
   return digits.length >= 3 && digits.startsWith('101');
 }
 
+/** Canonical bank section children under group 1060 (DIN CHINA cleanup: 1061 MCB, 1062 FHD MZ, …). */
+function isBankSectionChildCode(code: string | null | undefined): boolean {
+  const c = String(code ?? '').trim();
+  if (!/^106[1-9]\d?$/.test(c)) return false;
+  const n = Number.parseInt(c, 10);
+  return n >= 1061 && n <= 1069;
+}
+
 function isWalletSubAccountCode(digits: string): boolean {
   return digits.length >= 3 && digits.startsWith('102');
 }
@@ -45,7 +53,6 @@ function isTtClearingAccountCode(digits: string, name: string): boolean {
 export function isPartyTtAgentWalletAccount(acc: LiquidityAccountRef | null | undefined): boolean {
   if (!acc) return false;
   const name = String(acc.name ?? '').trim();
-  const n = name.toLowerCase();
   if (/\bclearing\b/i.test(name)) return false;
   const digits = accountCodeDigits(acc.code);
   if (digits.length < 3 || !digits.startsWith('12')) return false;
@@ -78,6 +85,7 @@ export function isLiquidityPaymentAccount(acc: LiquidityAccountRef | null | unde
   if (['1000', '1010', '1020'].includes(code)) return true;
   if (isCashSubAccountCode(digits)) return true;
   if (isBankSubAccountCode(digits)) return true;
+  if (isBankSectionChildCode(code)) return true;
   if (isWalletSubAccountCode(digits)) return true;
   if (isTtClearingAccountCode(digits, name)) return true;
   if (['cash', 'bank', 'mobile_wallet', 'wallet', 'card', 'pos'].includes(type)) return true;
@@ -114,6 +122,7 @@ export function paymentMethodForLiquidityAccount(acc: LiquidityAccountRef | null
     type === 'card' ||
     code === '1010' ||
     isBankSubAccountCode(digits) ||
+    isBankSectionChildCode(code) ||
     name.includes('bank') ||
     nameLooksLikeTtClearingAccount(name) ||
     isTtClearingAccountCode(digits, name)

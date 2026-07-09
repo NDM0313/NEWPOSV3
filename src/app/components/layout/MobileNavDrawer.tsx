@@ -113,8 +113,10 @@ export const MobileNavDrawer = () => {
     setMobileNavOpen(false);
   };
 
+  if (!mobileNavOpen) return null;
+
   return (
-    <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+    <Sheet open onOpenChange={setMobileNavOpen}>
       <SheetContent
         side="left"
         className="w-[min(320px,85vw)] max-w-full p-0 bg-sidebar border-sidebar-border flex flex-col [&>button]:hidden"

@@ -1,4 +1,9 @@
--- Trial Balance tie-out (read-only) — Official Posted GL
+-- Trial Balance tie-out (read-only) — Official Posted GL (legacy raw JE sums)
+--
+-- Prefer scripts/sql/diag_unified_tb_leaf_as_tieout.sql for single-core / unified
+-- Trial Balance and Account Statement screens: that script uses get_unified_* RPCs
+-- and matches void + correction_reversal parity. This file's void-excluded raw sums
+-- do not match that contract.
 --
 -- Supabase SQL editor: run ONE section at a time.
 -- VPS psql:

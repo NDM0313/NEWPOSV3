@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, Loader2, Save } from 'lucide-react';
 import { CustomSelect } from '../../common';
 import type { TransactionDetail } from '../../../api/transactions';
+import { getPaymentAccounts } from '../../../api/accounts';
 import { supabase } from '../../../lib/supabase';
 import { updateTransaction } from '../../../api/transactionEdit';
 
@@ -30,30 +31,22 @@ export function TransactionEditSheet({ detail, companyId, onClose, onSuccess }: 
 
   useEffect(() => {
     let cancelled = false;
-    supabase
-      .from('accounts')
-      .select('id, name, type')
-      .eq('company_id', companyId)
-      .eq('is_active', true)
-      .in('type', ['cash', 'bank', 'mobile_wallet'])
-      .order('name')
-      .then(async ({ data }) => {
-        if (cancelled) return;
-        const list = data || [];
-        // Always include the currently saved account even if its type is outside the filter
-        const savedId = detail.paymentAccountId || '';
-        if (savedId && !list.some((a) => a.id === savedId)) {
-          const { data: savedAcc } = await supabase
-            .from('accounts')
-            .select('id, name, type')
-            .eq('id', savedId)
-            .maybeSingle();
-          if (savedAcc && !cancelled) {
-            list.unshift(savedAcc as { id: string; name: string; type: string });
-          }
+    getPaymentAccounts(companyId).then(async ({ data }) => {
+      if (cancelled) return;
+      const list = (data || []).map((a) => ({ id: a.id, name: a.name, type: a.type }));
+      const savedId = detail.paymentAccountId || '';
+      if (savedId && !list.some((a) => a.id === savedId)) {
+        const { data: savedAcc } = await supabase
+          .from('accounts')
+          .select('id, name, type')
+          .eq('id', savedId)
+          .maybeSingle();
+        if (savedAcc && !cancelled) {
+          list.unshift(savedAcc as { id: string; name: string; type: string });
         }
-        if (!cancelled) setAccounts(list.sort((a, b) => a.name.localeCompare(b.name)));
-      });
+      }
+      if (!cancelled) setAccounts(list.sort((a, b) => a.name.localeCompare(b.name)));
+    });
     return () => { cancelled = true; };
   }, [companyId, detail.paymentAccountId]);
 
