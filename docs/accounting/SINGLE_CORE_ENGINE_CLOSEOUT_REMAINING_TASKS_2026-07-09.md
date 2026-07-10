@@ -12,7 +12,7 @@
 | Production URL | https://erp.dincouture.pk |
 | Calendar Days 7–15 | **COMPLETE / PASS** |
 | VPS deploy (office) | **COMPLETE** — [`2026-07-09-OFFICE-VPS-DEPLOY-APPLY.md`](../2026-07-09-OFFICE-VPS-DEPLOY-APPLY.md) |
-| R8 status | **BLOCKED** — approval phrase not present |
+| R8 status | **OPERATIONAL COMPLETE (R8-R1)** — 2026-07-10 — see `reports/r8-legacy-retirement-execution-20260710/` |
 | Mobile Salesman QA | **PASS** (login) — Play Store **NOT RELEASED** |
 
 ## Completed
@@ -32,9 +32,9 @@
 
 ### 1. R8 legacy retirement
 
-- **Status:** BLOCKED
-- **Required:** `NADEEM_APPROVES_R8_LEGACY_RETIREMENT`
-- **Preflight:** `R8_LEGACY_RETIREMENT_PREFLIGHT_AFTER_DAY15_2026-07-09.md`
+- **Status:** **OPERATIONAL COMPLETE (R8-R1)** — 2026-07-10
+- **Evidence:** `reports/r8-legacy-retirement-execution-20260710/r8-execution-report.md`
+- **Note:** Legacy loader **code not deleted**; kill-switch + L1 SQL rollback retained
 
 ### 2. Play Store release
 
@@ -54,7 +54,7 @@
 
 | Gate | Result |
 |------|--------|
-| R8 run | no |
+| R8 run | yes (operational R8-R1; no legacy code deletion) |
 | DB migrations run | no |
 | Repairs run | no |
 | Production GL mutation | no |

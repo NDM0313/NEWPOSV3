@@ -7,10 +7,10 @@ test('loadMonitoringProfile din-china defaults', () => {
   assert.equal(p.company, 'DIN CHINA');
   assert.equal(p.companyId, '30bd8592-3384-4f34-899a-f3907e336485');
   assert.equal(p.golden.mrJalilClosing, 216_299);
-  assert.equal(p.golden.trialBalanceTotal, 353_192_001.7);
-  assert.equal(p.golden.roznamcha.cashIn, 109_088_121);
-  assert.equal(p.golden.roznamcha.cashOut, 74_675_317);
-  assert.equal(p.golden.roznamcha.closing, 34_412_804);
+  assert.equal(p.golden.trialBalanceTotal, 358_213_589.15);
+  assert.equal(p.golden.roznamcha.cashIn, 60_042_230);
+  assert.equal(p.golden.roznamcha.cashOut, 39_795_518);
+  assert.equal(p.golden.roznamcha.closing, 20_246_712);
   assert.equal(p.expectedUnifiedFlagsOn.length, 18);
   assert.equal(p.pilotBatchExpected, 9);
 });

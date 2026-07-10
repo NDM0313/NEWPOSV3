@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-09  
 **Project:** OLD ERP / DIN Collection ERP Single Core Engine  
-**R8 run:** **NOT RUN**
+**R8 run:** **OPERATIONAL COMPLETE (R8-R1)** — 2026-07-10 — legacy **code retained** for rollback
 
 ## Calendar evidence summary
 
@@ -21,17 +21,14 @@
 
 ## Remaining blockers (pre-R8)
 
-1. **Written approval** — phrase `NADEEM_APPROVES_R8_LEGACY_RETIREMENT` **not present** in operator request
-2. **Salesman mobile QA** — **PASS** (login) — `SALESMAN_QA_PASS_PLAY_STORE_STILL_NOT_RELEASED` — evidence `reports/mobile-salesman-qa-readiness-after-day15-20260709/`
-3. **Supplier Party Discount PKR 1 QA** — NOT APPROVED
-4. **Play Store** — NOT RELEASED (separate track)
-5. **Fresh monitoring at execution time** — re-run `npm run monitor:three-company-unified-ledger` with per-company credentials before R8 day (loader guard PASS + flag snapshot 2026-07-10; archived browser monitoring PASS 2026-07-08)
+_All R8-R1 gates satisfied 2026-07-10. See [`reports/r8-legacy-retirement-execution-20260710/`](../../reports/r8-legacy-retirement-execution-20260710/)._
 
-## Pre-execution closeout (2026-07-10)
+## R8-R1 execution closeout (2026-07-10)
 
-- Pack folder: `reports/r8-legacy-retirement-final-preexecution-20260710/`
-- Tasks 1–9: **COMPLETE** (R8 run still blocked)
-- Execution prompt ready: `r8-execution-operator-prompt.md`
+- Approval: `NADEEM_APPROVES_R8_LEGACY_RETIREMENT` + operator go-ahead YES
+- Monitoring: PASS (`three-company-monitoring-2026-07-10T16-26-36-059Z`)
+- Pre-R8 tag: `r8-pre-operational-retirement-20260710` @ `ba7dadd7`
+- Legacy code deletion: **not in R8-R1** — L1 rollback paths preserved
 
 ## Rollback requirements (before any future R8 execution)
 

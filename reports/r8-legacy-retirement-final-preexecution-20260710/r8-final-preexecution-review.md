@@ -9,9 +9,9 @@
 
 | Item | Value |
 |------|-------|
-| R8 run | **no** |
-| Approval phrase present in operator instruction | **no** |
-| Final decision | **`R8_BLOCKED_AWAITING_NADEEM_APPROVAL`** — pre-execution + monitoring **PASS** |
+| R8 run | **yes** (operational R8-R1; legacy code retained) |
+| Approval phrase present in operator instruction | **yes** (2026-07-10) |
+| Final decision | **`R8_OPERATIONAL_COMPLETE_R8R1`** |
 
 ---
 
