@@ -1,10 +1,17 @@
 # Post-standardization drift check — 4000 vs 4100
 
-**Date:** 2026-07-10  
+**Date:** 2026-07-10 (updated)  
 **Standardization commit:** `b7fa557d`  
-**Cutoff timestamp:** `2026-07-10T17:06:53Z` (ERP frontend deploy — nginx `Last-Modified` on https://erp.dincouture.pk)  
+**Observation commit:** `8c1dcf84`  
+**Cutoff timestamp:** `2026-07-10T17:06:53Z` (ERP frontend deploy of `b7fa557d`)  
 **Method:** Read-only production SQL  
 **DB mutation:** no
+
+## Drift status
+
+**`PASS_NO_DRIFT_NO_ACTIVITY`**
+
+No post-cutoff merchandise revenue postings on either **4000** or **4100**. No erroneous 4000 drift detected.
 
 ## Summary
 
@@ -14,7 +21,15 @@
 | New 4100 merchandise revenue JEs after cutoff | **0** |
 | New sale_return revenue debits on 4000 after cutoff | **0** |
 | New sale_return revenue debits on 4100 after cutoff | **0** |
-| **Drift check result** | **PASS** (vacuous — no post-deploy revenue postings yet; no erroneous 4000 drift) |
+| Post-cutoff sale document JEs | **0** |
+
+## Decision matrix
+
+| Condition | Status |
+|-----------|--------|
+| New sale posts to 4100 | `PASS_4100_POSTING_CONFIRMED` — **not yet observed** |
+| No sale exists after cutoff | `PASS_NO_DRIFT_NO_ACTIVITY` — **current** |
+| New sale posts to 4000 while 4100 exists | `FAIL_4000_POSTING_AFTER_STANDARDIZATION` — **not observed** |
 
 ## Companies checked
 
@@ -25,7 +40,7 @@
 | 4000 | 0 | 0 |
 | 4100 | 0 | 0 |
 
-All-time context: 4000 net Rs. 1,573,600 (3 sales); 4100 net Rs. 49,685,321.98 (92 sales + 4 returns)
+All-time: 4000 net Rs. 1,573,600; 4100 net Rs. 49,685,321.98
 
 ### DIN BRIDAL (`597a5292-14c8-4cd8-96bd-c61b5a0d8c92`)
 
@@ -34,7 +49,7 @@ All-time context: 4000 net Rs. 1,573,600 (3 sales); 4100 net Rs. 49,685,321.98 (
 | 4000 | 0 | 0 |
 | 4100 | 0 | 0 |
 
-All-time context: 4000 net Rs. 943,750 (26 sales); 4100 net Rs. 0 (no JE activity)
+All-time: 4000 net Rs. 943,750; 4100 net Rs. 0
 
 ### DIN COUTURE (`2ab65903-62a3-4bcf-bced-076b681e9b74`)
 
@@ -43,13 +58,13 @@ All-time context: 4000 net Rs. 943,750 (26 sales); 4100 net Rs. 0 (no JE activit
 | 4000 | 0 | 0 |
 | 4100 | 0 | 0 |
 
-All-time context: 4000 net Rs. 21,250 (1 sale); 4100 net Rs. 0
+All-time: 4000 net Rs. 21,250; 4100 net Rs. 0
 
 ## Interpretation
 
-- **PASS** — no new revenue posted to **4000** after deploy while **4100** exists
-- Observation window is short (~20 minutes between deploy and this check); absence of new sales is expected
-- Next finalized sale is the definitive live proof — expect **4100** credit
+- No bug indicated — observation window has not yet included a finalized sale
+- First real sale proof remains in `first-real-sale-4100-proof.md` (`PENDING_OBSERVATION`)
+- Re-check after next natural finalized sale
 
 ## Safety
 

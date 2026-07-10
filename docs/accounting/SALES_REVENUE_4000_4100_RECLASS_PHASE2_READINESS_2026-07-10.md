@@ -11,7 +11,7 @@
 - Historical reclass run: **no**
 - Transfer JE run: **no**
 - DB migration run: **no**
-- Live observation (post-deploy): **PENDING** — no finalized sale/return since deploy at 2026-07-10T17:06:53Z
+- Live observation (post-deploy): **PENDING** — no finalized sale/return since deploy at 2026-07-10T17:06:53Z (checked 2026-07-10; drift status `PASS_NO_DRIFT_NO_ACTIVITY`)
 
 ---
 

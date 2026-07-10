@@ -1,0 +1,49 @@
+# First Real Sale 4100 Proof
+
+**Status:** `PENDING_OBSERVATION`
+
+**Checked:** 2026-07-10 (read-only production SQL)  
+**Cutoff:** `2026-07-10T17:06:53Z` (deploy of `b7fa557d`)  
+**Standardization commit:** `b7fa557d`  
+**Observation readiness commit:** `8c1dcf84`
+
+No finalized sale journal entry exists after cutoff `2026-07-10T17:06:53Z`.
+
+## Result
+
+- New 4000 revenue after cutoff: **0**
+- New 4100 revenue after cutoff: **0**
+- Post-cutoff sale document JEs: **0**
+- No erroneous drift found
+- Real posting proof still **pending**
+
+## Query evidence
+
+- Production read-only SQL via `ssh dincouture-vps` → `docker exec supabase-db psql`
+- `reference_type = 'sale'`, `payment_id IS NULL`, `created_at >= cutoff`
+- Merchandise revenue lines checked for codes **4000** and **4100**
+
+## Most recent final sale per company (pre-cutoff context)
+
+| Company | Invoice | Created (UTC) | Revenue code (historical) |
+|---------|---------|---------------|---------------------------|
+| DIN COUTURE | SL-0001 | 2026-06-09 | 4000 |
+| DIN CHINA | SL-0003 | 2026-07-07 | 4000 |
+| DIN BRIDAL | SL-0035 | 2026-07-05 | 4000 |
+
+## Next
+
+Observe after the next **natural finalized production sale** created by a business user.
+
+When a sale appears, re-run read-only check and update this file:
+
+- **PASS** if revenue account = **4100**
+- **FAIL** if revenue account = **4000** while **4100** exists
+
+## Safety
+
+- DB migrations run: no
+- Transfer JE run: no
+- Repairs run: no
+- Production mutation by diagnostic: no
+- Artificial sale created: no
