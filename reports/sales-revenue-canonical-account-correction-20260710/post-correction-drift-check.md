@@ -15,14 +15,16 @@ One post-correction finalized sale confirmed revenue on **4000**. No erroneous *
 | New 4000 merchandise revenue JEs after correction deploy | **1** (Rs. 500.00) |
 | New 4100 merchandise revenue JEs after correction deploy | **0** |
 | Post-correction sale document JEs | **1** |
-| Post-correction sale_return JEs | **0** |
+| Post-correction sale_return JEs | **2** |
 | Sale references found | **SL-0010** → **JE-0316** |
+| Return references found | **RET-20260711-3835** → **JE-0318** |
 
 ## Detail
 
 | Company | Invoice | JE | Revenue code | Credit |
 |---------|---------|-----|--------------|--------|
-| DIN CHINA | SL-0010 | JE-0316 | **4000** | 500.00 |
+| DIN CHINA | SL-0010 | JE-0316 | **4000** | 500.00 (Cr) |
+| DIN CHINA | RET-20260711-3835 | JE-0318 | **4000** | 500.00 (Dr) |
 
 ## Expected behavior (verified)
 

@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-10  
 **Scope:** OLD ERP / DIN Collection ERP only  
-**Status:** **COMPLETE**
+**Status:** **COMPLETE** (sale + return verified)
 
 ## Outcome
 
@@ -10,7 +10,8 @@
 |------|--------|
 | Canonical future sales revenue | **4000** |
 | Fallback when 4000 absent | **4100** |
-| Production live posting proof | **PASS** — SL-0010 / JE-0316 |
+| Production sale posting proof | **PASS** — SL-0010 / JE-0316 |
+| Production return reversal proof | **PASS** — RET-20260711-3835 / JE-0318 |
 | Post-correction drift | **NO_DRIFT** |
 | Observation window | **CLOSED** |
 
@@ -27,6 +28,8 @@
 | 7. First real sale 4000 proof | `23fb615d` | complete |
 | 8. Final drift + closeout | this pack | complete |
 | 9. Three-company monitoring (post-proof) | `three-company-monitoring-2026-07-10T19-45-35-284Z.md` | **PASS** |
+| 10. Operator-approved test return | RET-20260711-3835 | complete |
+| 11. First real sale return 4000 proof | this pack | complete |
 
 ## Production proof (SL-0010)
 
@@ -40,6 +43,20 @@
 | Revenue | **4000** — Cr 500.00 |
 | 4100 credit | **none** |
 
+## Production proof (RET-20260711-3835)
+
+| Field | Value |
+|-------|-------|
+| Company | DIN CHINA |
+| Return | RET-20260711-3835 |
+| Original sale | SL-0010 |
+| Total | Rs. 500.00 |
+| Finalized | 2026-07-10T20:04:54Z |
+| Revenue JE | JE-0318 (balanced) |
+| Revenue reversal | **4000** — Dr 500.00 |
+| COGS/stock JE | JE-0317 — Inventory Dr 330 / COGS Cr 330 |
+| 4100 debit | **none** |
+
 ## What remains blocked (by design)
 
 | Item | Gate |
@@ -49,10 +66,10 @@
 | Play Store release | separate approval |
 | Account deactivation (4000/4100) | not approved |
 
-## Future sale returns
+## Sale return observation
 
-- New sale returns should reverse revenue on **4000** (same canonical helper)
-- No post-correction sale_return JEs yet — natural return observation remains open but **not blocking** closeout
+- Post-correction return revenue reversal on **4000** — **verified** (RET-20260711-3835)
+- Return observation window — **CLOSED**
 
 ## Safety attestation
 
@@ -70,6 +87,7 @@
 ## Evidence index
 
 - [`first-real-sale-4000-proof.md`](first-real-sale-4000-proof.md)
+- [`first-real-sale-return-4000-proof.md`](first-real-sale-return-4000-proof.md)
 - [`post-correction-drift-check.md`](post-correction-drift-check.md)
 - [`read-only-canonical-audit.md`](read-only-canonical-audit.md)
 - [`docs/accounting/SALES_REVENUE_CANONICAL_4000_CORRECTION_2026-07-10.md`](../../docs/accounting/SALES_REVENUE_CANONICAL_4000_CORRECTION_2026-07-10.md)

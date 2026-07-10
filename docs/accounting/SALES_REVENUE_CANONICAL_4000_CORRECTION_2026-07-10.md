@@ -39,9 +39,16 @@ APPROVE_SALES_REVENUE_4000_4100_RECLASS_PHASE2
 
 ## Production proof (2026-07-10)
 
+**Sale**
 - Invoice **SL-0010** (DIN CHINA) → JE **JE-0316** → revenue **4000** Cr 500.00
-- Status: **`PASS_4000_POSTING_CONFIRMED`** — see [`reports/sales-revenue-canonical-account-correction-20260710/`](../../reports/sales-revenue-canonical-account-correction-20260710/)
-- Closeout: [`closeout.md`](../../reports/sales-revenue-canonical-account-correction-20260710/closeout.md)
+- Status: **`PASS_4000_POSTING_CONFIRMED`**
+
+**Sale return**
+- Return **RET-20260711-3835** (SL-0010) → JE **JE-0318** → revenue **4000** Dr 500.00
+- Status: **`PASS_4000_RETURN_REVERSAL_CONFIRMED`**
+
+Evidence: [`reports/sales-revenue-canonical-account-correction-20260710/`](../../reports/sales-revenue-canonical-account-correction-20260710/)  
+Closeout: [`closeout.md`](../../reports/sales-revenue-canonical-account-correction-20260710/closeout.md)
 
 ## Safety
 - R8-R2: not started

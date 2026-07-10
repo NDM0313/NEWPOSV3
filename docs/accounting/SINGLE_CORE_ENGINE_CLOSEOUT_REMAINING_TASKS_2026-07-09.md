@@ -14,7 +14,7 @@
 | VPS deploy (office) | **COMPLETE** — [`2026-07-09-OFFICE-VPS-DEPLOY-APPLY.md`](../2026-07-09-OFFICE-VPS-DEPLOY-APPLY.md) |
 | R8 status | **OPERATIONAL COMPLETE (R8-R1)** — 2026-07-10 — see `reports/r8-legacy-retirement-execution-20260710/` |
 | Mobile Salesman QA | **PASS** (login) — Play Store **NOT RELEASED** |
-| Sales revenue 4000 canonical | **COMPLETE** — SL-0010 proof (`23fb615d`) — see `reports/sales-revenue-canonical-account-correction-20260710/closeout.md` |
+| Sales revenue 4000 canonical (sale + return) | **COMPLETE** — SL-0010 + RET-20260711-3835 — see `reports/sales-revenue-canonical-account-correction-20260710/closeout.md` |
 
 ## Completed
 
@@ -26,7 +26,7 @@
 | 1 PKR parity (read-only) | `reports/admin-compare-1pkr-parity-investigation-20260709/` |
 | Ledger V2 production deploy | `2026-07-09-LEDGER-V2-PRODUCTION-DEPLOY.md` + office redeploy `2026-07-09-OFFICE-VPS-DEPLOY-APPLY.md` |
 | Salesman mobile QA (login) | `reports/mobile-salesman-qa-readiness-after-day15-20260709/salesman-role-qa-pass.md` |
-| Sales revenue 4000 standardization + live proof | `reports/sales-revenue-canonical-account-correction-20260710/` (closeout `23fb615d`) |
+| Sales revenue 4000 standardization + live proof (sale + return) | `reports/sales-revenue-canonical-account-correction-20260710/` |
 | Manager mobile QA | N/A / waived |
 
 ## Remaining approval-gated only
