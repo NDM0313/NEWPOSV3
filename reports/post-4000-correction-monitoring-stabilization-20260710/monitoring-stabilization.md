@@ -52,10 +52,10 @@
 | Item | Value |
 |------|-------|
 | Cutoff | `2026-07-10T18:21:44Z` (4000 correction deploy) |
-| New finalized sale found | no |
-| New 4000 revenue | 0 |
-| New 4100 revenue | 0 |
-| Status | `PENDING_OBSERVATION` |
+| New finalized sale found | **yes** — SL-0010 |
+| New 4000 revenue | **Rs. 500.00** (JE-0316) |
+| New 4100 revenue | **0** |
+| Status | **`PASS_4000_POSTING_CONFIRMED`** |
 
 ## Safety
 

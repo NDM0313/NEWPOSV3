@@ -37,6 +37,12 @@ DIN CHINA historical **4100** may later be reclassed/rolled up to **4000** only 
 APPROVE_SALES_REVENUE_4000_4100_RECLASS_PHASE2
 ```
 
+## Production proof (2026-07-10)
+
+- Invoice **SL-0010** (DIN CHINA) → JE **JE-0316** → revenue **4000** Cr 500.00
+- Status: **`PASS_4000_POSTING_CONFIRMED`** — see [`reports/sales-revenue-canonical-account-correction-20260710/`](../../reports/sales-revenue-canonical-account-correction-20260710/)
+- Closeout: [`closeout.md`](../../reports/sales-revenue-canonical-account-correction-20260710/closeout.md)
+
 ## Safety
 - R8-R2: not started
 - DB migration: no

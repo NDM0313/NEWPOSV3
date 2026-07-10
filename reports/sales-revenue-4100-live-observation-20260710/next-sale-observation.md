@@ -1,6 +1,8 @@
 # Next finalized sale — live observation
 
-**Date:** 2026-07-10  
+> **SUPERSEDED** — Canonical account corrected to **4000** (`8adf5ff2`). Live proof collected in [`first-real-sale-4000-proof.md`](../sales-revenue-canonical-account-correction-20260710/first-real-sale-4000-proof.md) — SL-0010 / JE-0316.
+
+**Status:** `SUPERSEDED` (was `PENDING OBSERVATION`)  
 **Observation window start:** 2026-07-10T17:06:53Z (deploy of `b7fa557d`)  
 **Method:** Read-only production SQL via VPS  
 **DB mutation by this diagnostic:** no

@@ -1,6 +1,8 @@
 # Next sale return — live observation
 
-**Date:** 2026-07-10  
+> **SUPERSEDED for 4100-first policy** — Canonical revenue is **4000**. Future returns should debit **4000** via `getCanonicalSalesRevenueAccount()`. No post-correction returns observed yet; not blocking 4000 closeout.
+
+**Status:** `SUPERSEDED` (4100-first observation cancelled; 4000 return observation open)  
 **Observation window start:** 2026-07-10T17:06:53Z (deploy of `b7fa557d`)  
 **Method:** Read-only production SQL via VPS  
 **DB mutation by this diagnostic:** no

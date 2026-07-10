@@ -26,7 +26,7 @@
 
 ## Sales revenue watch
 
-Canonical account remains **4000**. Post-correction sale observation: `PENDING_OBSERVATION` (no new finalized sales yet).
+Canonical account remains **4000**. Post-correction sale observation: **`PASS_4000_POSTING_CONFIRMED`** — SL-0010 / JE-0316 credited **4000** (proof commit `23fb615d`). Observation window **closed**.
 
 ## Safety
 
