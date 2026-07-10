@@ -3,7 +3,7 @@ import { getCurrentLocalTimestamp, localNowDateString } from '@/app/utils/localD
  * Sale Accounting Service (Phase 4: one contract)
  *
  * Source lock: journal_entries + journal_entry_lines + accounts only.
- * COA: 1100 AR, 4000 Sales Revenue, 4010 Studio Service Revenue, 4110 Shipping Income, 4120 Extra Service Income,
+ * COA: 1100 AR, 4100 Sales Revenue (canonical; 4000 legacy fallback), 4010 Studio Service Revenue, 4110 Shipping Income, 4120 Extra Service Income,
  * 5200 Discount Allowed, 5300 Extra Expense (shop tailor payout — not customer invoice extra),
  * 5010 COGS–Inventory (physical goods COGS), 5000 Cost of Production (studio stage labor / worker accruals only), 1200 Inventory, 2000 AP.
  * Payment isolation: document JEs never touch payment_id; payment has its own flow.
@@ -18,6 +18,11 @@ import { supabase } from '@/lib/supabase';
 import { dispatchContactBalancesRefresh } from '@/app/lib/contactBalancesRefresh';
 import { dispatchAccountingInvalidated } from '@/app/lib/dataInvalidationBus';
 import { canPostAccountingForSaleStatus } from '@/app/lib/postingStatusGate';
+import {
+  CANONICAL_SALES_REVENUE_CODE,
+  FALLBACK_SALES_REVENUE_CODE,
+  getCanonicalSalesRevenueAccount,
+} from '@/app/lib/canonicalSalesRevenueAccount';
 import { accountHelperService } from './accountHelperService';
 import { accountingService, type JournalEntry, type JournalEntryLine } from './accountingService';
 import { resolveReceivablePostingAccountId } from './partySubledgerAccountService';
@@ -174,12 +179,14 @@ async function resolveArLineAccountForSale(companyId: string, saleId: string): P
   return ensureARAccount(companyId);
 }
 
-/** Ensure Sales Revenue (4000) exists for the company; create if missing. */
+/** Ensure canonical Sales Revenue (4100, else 4000) exists; auto-create 4100 if both missing. */
 async function ensureRevenueAccount(companyId: string): Promise<{ id: string } | null> {
-  let account = await accountHelperService.getAccountByCode('4000', companyId);
-  if (account?.id) return account;
+  try {
+    return await getCanonicalSalesRevenueAccount(companyId);
+  } catch {
+    // Neither 4100 nor 4000 — auto-create canonical 4100 (COA seed standard)
+  }
 
-  // Fallback: look by name
   const { data: byName } = await supabase
     .from('accounts')
     .select('id')
@@ -191,13 +198,12 @@ async function ensureRevenueAccount(companyId: string): Promise<{ id: string } |
 
   if (byName?.id) return byName;
 
-  // Auto-create if missing
   try {
     const { data: created, error } = await supabase
       .from('accounts')
       .insert({
         company_id: companyId,
-        code: '4000',
+        code: CANONICAL_SALES_REVENUE_CODE,
         name: 'Sales Revenue',
         type: 'Sales Revenue',
         balance: 0,
@@ -207,16 +213,20 @@ async function ensureRevenueAccount(companyId: string): Promise<{ id: string } |
       .single();
 
     if (!error && created?.id) {
-      console.log('[saleAccountingService] Created Sales Revenue (4000) account');
+      console.log(`[saleAccountingService] Created Sales Revenue (${CANONICAL_SALES_REVENUE_CODE}) account`);
       return created;
     }
   } catch (e) {
     console.warn('[saleAccountingService] Could not auto-create Sales Revenue account:', e);
   }
+
+  const legacy = await accountHelperService.getAccountByCode(FALLBACK_SALES_REVENUE_CODE, companyId);
+  if (legacy?.id) return legacy;
+
   return null;
 }
 
-/** Studio invoice lines credit here; merchandise stays on 4000. Auto-created if missing. */
+/** Studio invoice lines credit here; merchandise stays on canonical Sales Revenue (4100). Auto-created if missing. */
 async function ensureStudioServiceRevenueAccount(companyId: string): Promise<{ id: string } | null> {
   let account = await accountHelperService.getAccountByCode('4010', companyId);
   if (account?.id) return account;
@@ -246,7 +256,7 @@ async function ensureStudioServiceRevenueAccount(companyId: string): Promise<{ i
 }
 
 /**
- * Split product revenue credit between merchandise (4000) and studio service (4010) using sales_items line totals as weights.
+ * Split product revenue credit between merchandise (4100 canonical; 4000 fallback) and studio service (4010) using sales_items line totals as weights.
  * Studio line = is_studio_product OR linked product product_type production (RPC parity when flag missing).
  * Exported for PF-14 sale-edit in-place JE updates (must match createSaleJournalEntry).
  */
@@ -640,7 +650,7 @@ export const saleAccountingService = {
   /**
    * Create journal entry when sale is finalized (Phase 4: one contract).
    *
-   * Dr AR (1100) = total + shipping (full customer receivable). Cr: Sales Revenue (4000), Extra Service Income (4120),
+   * Dr AR (1100) = total + shipping (full customer receivable). Cr: Sales Revenue (4100 canonical), Extra Service Income (4120),
    * Shipping Income (4110), Dr Discount (5200) if any.
    * COGS: Dr COGS - Inventory (5010), Cr Inventory (1200).
    * Safe to call multiple times — duplicate is detected and skipped.

@@ -446,7 +446,7 @@ export interface SaleReturnParams {
   /** GL account id for cash/bank refund leg (metadata.creditAccountId). */
   refundAccountId?: string | null;
   /**
-   * Dr revenue line — prefer explicit id. When omitted, canonical **4000** (never name-loose match to rental).
+   * Dr revenue line — prefer explicit id. When omitted, canonical **4100** (4000 fallback only if 4100 absent).
    * Use 4200 only when the originating document is truly rental (caller must pass id for that case).
    */
   revenueDebitAccountId?: string | null;
@@ -1547,7 +1547,8 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
             (normalizedDebitAccount === 'Accounts Payable' && (accCode === '2000' || accName.toLowerCase().includes('payable'))) ||
             (normalizedDebitAccount === 'Worker Payable' && (accCode === '2010' || accName.toLowerCase().includes('worker'))) ||
             (normalizedDebitAccount === 'Sales Revenue' &&
-              (accCode === '4000' ||
+              (accCode === '4100' ||
+                accCode === '4000' ||
                 accCode === '4010' ||
                 (accName.toLowerCase().includes('sales') &&
                   (accName.toLowerCase().includes('revenue') || accName.toLowerCase().includes('income')) &&
@@ -1578,7 +1579,8 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
                   (accName.toLowerCase().includes('income') || accName.toLowerCase().includes('revenue'))))) ||
             (normalizedCreditAccount === 'Rental Damage Income' && (accName.toLowerCase().includes('rental') || accName.toLowerCase().includes('damage') || accName.toLowerCase().includes('income'))) ||
             (normalizedCreditAccount === 'Sales Revenue' &&
-              (accCode === '4000' ||
+              (accCode === '4100' ||
+                accCode === '4000' ||
                 accCode === '4010' ||
                 (accName.toLowerCase().includes('sales') &&
                   (accName.toLowerCase().includes('revenue') || accName.toLowerCase().includes('income')) &&
@@ -1663,7 +1665,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
                     (normalizedCreditAccount === 'Accounts Receivable' && (accCode === '1100' || accName.includes('receivable'))) ||
                     (normalizedCreditAccount === 'Accounts Payable' && (accCode === '2000' || accName.includes('payable'))) ||
                     (normalizedCreditAccount === 'Worker Payable' && (accCode === '2010' || accName.includes('worker'))) ||
-                    (normalizedCreditAccount === 'Sales Revenue' && (accCode === '4000' || accName.includes('sales') || accName.includes('revenue')))
+                    (normalizedCreditAccount === 'Sales Revenue' && (accCode === '4100' || accCode === '4000' || accName.includes('sales') || accName.includes('revenue')))
                   );
                 });
             
@@ -3172,8 +3174,8 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
         // Revenue account (Dr)
         let revenueAcctId = revenueDebitAccountId || undefined;
         if (!revenueAcctId) {
-          revenueAcctId = (await accountHelperService.getAccountByCode('4100', companyId!))?.id
-            || (await accountHelperService.getAccountByCode('4000', companyId!))?.id || undefined;
+          const { getCanonicalSalesRevenueAccountId } = await import('@/app/lib/canonicalSalesRevenueAccount');
+          revenueAcctId = await getCanonicalSalesRevenueAccountId(companyId!);
         }
 
         // Discount account (Cr)
@@ -3224,8 +3226,8 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     let debitAccountId: string | undefined = revenueDebitAccountId || undefined;
     if (!debitAccountId && companyId) {
       try {
-        const { accountHelperService } = await import('@/app/services/accountHelperService');
-        debitAccountId = (await accountHelperService.getAccountByCode('4000', companyId))?.id || undefined;
+        const { getCanonicalSalesRevenueAccountId } = await import('@/app/lib/canonicalSalesRevenueAccount');
+        debitAccountId = await getCanonicalSalesRevenueAccountId(companyId);
       } catch {
         debitAccountId = undefined;
       }
