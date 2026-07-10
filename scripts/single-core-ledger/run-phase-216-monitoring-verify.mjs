@@ -200,8 +200,13 @@ async function selectGoldenPartyLedgerV2(page) {
     await entityCombobox.click({ timeout: 30000 });
     const searchInput = page.locator('[cmdk-input], input[placeholder*="Search"]').last();
     await searchInput.fill(GOLDEN_PARTY_SEARCH);
-    await page.waitForTimeout(2000);
-    await page.locator('[cmdk-item]').filter({ hasText: GOLDEN_PARTY }).first().click({ timeout: 30000 });
+    await page.waitForTimeout(3000);
+    const partyItem = page.locator('[cmdk-item], [role="option"]').filter({ hasText: GOLDEN_PARTY_SEARCH });
+    if (await partyItem.count()) {
+      await partyItem.first().click({ timeout: 30000 });
+    } else {
+      await page.getByText(GOLDEN_PARTY, { exact: false }).first().click({ timeout: 30000 });
+    }
   }
   await page.waitForTimeout(15000);
 }

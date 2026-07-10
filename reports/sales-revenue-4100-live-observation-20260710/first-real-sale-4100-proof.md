@@ -1,6 +1,8 @@
 # First Real Sale 4100 Proof
 
-**Status:** `PENDING_OBSERVATION`
+> **SUPERSEDED** by [`first-real-sale-4000-proof.md`](../sales-revenue-canonical-account-correction-20260710/first-real-sale-4000-proof.md) — canonical account corrected to **4000**.
+
+**Status:** `SUPERSEDED` (was `PENDING_OBSERVATION`)
 
 **Checked:** 2026-07-10T17:53:00Z (read-only production SQL)  
 **Cutoff:** `2026-07-10T17:06:53Z` (deploy of `b7fa557d`)  

@@ -1,10 +1,6 @@
 # Post-correction drift check — 4000 canonical
 
-**Date:** 2026-07-10  
-**Correction commit:** `8adf5ff2`  
-**Deploy timestamp:** `2026-07-10T18:21:44Z` (nginx `Last-Modified` on https://erp.dincouture.pk)  
-**Method:** Read-only production SQL  
-**DB mutation:** no
+**Checked at:** `2026-07-10T18:30:00Z` (Next Step B re-check)
 
 ## Drift status
 
