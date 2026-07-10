@@ -446,7 +446,7 @@ export interface SaleReturnParams {
   /** GL account id for cash/bank refund leg (metadata.creditAccountId). */
   refundAccountId?: string | null;
   /**
-   * Dr revenue line — prefer explicit id. When omitted, canonical **4100** (4000 fallback only if 4100 absent).
+   * Dr revenue line — prefer explicit id. When omitted, canonical **4000** (4100 fallback only if 4000 absent).
    * Use 4200 only when the originating document is truly rental (caller must pass id for that case).
    */
   revenueDebitAccountId?: string | null;

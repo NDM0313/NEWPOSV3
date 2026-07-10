@@ -3,7 +3,7 @@ import { getCurrentLocalTimestamp, localNowDateString } from '@/app/utils/localD
  * Sale Accounting Service (Phase 4: one contract)
  *
  * Source lock: journal_entries + journal_entry_lines + accounts only.
- * COA: 1100 AR, 4100 Sales Revenue (canonical; 4000 legacy fallback), 4010 Studio Service Revenue, 4110 Shipping Income, 4120 Extra Service Income,
+ * COA: 1100 AR, 4000 Sales Revenue (canonical; 4100 import fallback), 4010 Studio Service Revenue, 4110 Shipping Income, 4120 Extra Service Income,
  * 5200 Discount Allowed, 5300 Extra Expense (shop tailor payout — not customer invoice extra),
  * 5010 COGS–Inventory (physical goods COGS), 5000 Cost of Production (studio stage labor / worker accruals only), 1200 Inventory, 2000 AP.
  * Payment isolation: document JEs never touch payment_id; payment has its own flow.
@@ -179,12 +179,12 @@ async function resolveArLineAccountForSale(companyId: string, saleId: string): P
   return ensureARAccount(companyId);
 }
 
-/** Ensure canonical Sales Revenue (4100, else 4000) exists; auto-create 4100 if both missing. */
+/** Ensure canonical Sales Revenue (4000, else 4100) exists; auto-create 4000 if both missing. */
 async function ensureRevenueAccount(companyId: string): Promise<{ id: string } | null> {
   try {
     return await getCanonicalSalesRevenueAccount(companyId);
   } catch {
-    // Neither 4100 nor 4000 — auto-create canonical 4100 (COA seed standard)
+    // Neither 4000 nor 4100 — auto-create canonical 4000 (live/native standard)
   }
 
   const { data: byName } = await supabase
@@ -226,7 +226,7 @@ async function ensureRevenueAccount(companyId: string): Promise<{ id: string } |
   return null;
 }
 
-/** Studio invoice lines credit here; merchandise stays on canonical Sales Revenue (4100). Auto-created if missing. */
+/** Studio invoice lines credit here; merchandise stays on canonical Sales Revenue (4000). Auto-created if missing. */
 async function ensureStudioServiceRevenueAccount(companyId: string): Promise<{ id: string } | null> {
   let account = await accountHelperService.getAccountByCode('4010', companyId);
   if (account?.id) return account;
@@ -256,7 +256,7 @@ async function ensureStudioServiceRevenueAccount(companyId: string): Promise<{ i
 }
 
 /**
- * Split product revenue credit between merchandise (4100 canonical; 4000 fallback) and studio service (4010) using sales_items line totals as weights.
+ * Split product revenue credit between merchandise (4000 canonical; 4100 fallback) and studio service (4010) using sales_items line totals as weights.
  * Studio line = is_studio_product OR linked product product_type production (RPC parity when flag missing).
  * Exported for PF-14 sale-edit in-place JE updates (must match createSaleJournalEntry).
  */
@@ -650,7 +650,7 @@ export const saleAccountingService = {
   /**
    * Create journal entry when sale is finalized (Phase 4: one contract).
    *
-   * Dr AR (1100) = total + shipping (full customer receivable). Cr: Sales Revenue (4100 canonical), Extra Service Income (4120),
+   * Dr AR (1100) = total + shipping (full customer receivable). Cr: Sales Revenue (4000 canonical), Extra Service Income (4120),
    * Shipping Income (4110), Dr Discount (5200) if any.
    * COGS: Dr COGS - Inventory (5010), Cr Inventory (1200).
    * Safe to call multiple times — duplicate is detected and skipped.

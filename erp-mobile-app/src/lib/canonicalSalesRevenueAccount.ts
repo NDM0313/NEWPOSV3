@@ -1,7 +1,7 @@
-/** Mobile mirror of web canonical Sales Revenue resolution (4100 → 4000 fallback). */
+/** Mobile mirror of web canonical Sales Revenue resolution (4000 → 4100 fallback). */
 
-export const CANONICAL_SALES_REVENUE_CODE = '4100';
-export const FALLBACK_SALES_REVENUE_CODE = '4000';
+export const CANONICAL_SALES_REVENUE_CODE = '4000';
+export const FALLBACK_SALES_REVENUE_CODE = '4100';
 
 export function resolveCanonicalSalesRevenueAccountIdFromMap(
   byCode: Map<string, string>,

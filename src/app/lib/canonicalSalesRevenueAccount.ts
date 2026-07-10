@@ -1,11 +1,11 @@
 /**
  * Canonical merchandise Sales Revenue account resolution.
- * Prefer COA code 4100; fallback 4000 only when 4100 is absent.
+ * Prefer COA code 4000 (live/native); fallback 4100 only when 4000 is absent (import compatibility).
  * Does not rewrite historical JEs or deactivate accounts.
  */
 
-export const CANONICAL_SALES_REVENUE_CODE = '4100';
-export const FALLBACK_SALES_REVENUE_CODE = '4000';
+export const CANONICAL_SALES_REVENUE_CODE = '4000';
+export const FALLBACK_SALES_REVENUE_CODE = '4100';
 
 export type CanonicalSalesRevenueAccount = {
   id: string;
@@ -25,16 +25,16 @@ export class CanonicalSalesRevenueAccountError extends Error {
 export function resolveCanonicalSalesRevenueFromAccounts(
   accounts: Array<{ id: string; code: string }>,
 ): CanonicalSalesRevenueAccount {
-  const by4100 = accounts.find((a) => a.code === CANONICAL_SALES_REVENUE_CODE);
-  if (by4100?.id) return { id: by4100.id, code: CANONICAL_SALES_REVENUE_CODE };
-  const by4000 = accounts.find((a) => a.code === FALLBACK_SALES_REVENUE_CODE);
-  if (by4000?.id) return { id: by4000.id, code: FALLBACK_SALES_REVENUE_CODE };
+  const by4000 = accounts.find((a) => a.code === CANONICAL_SALES_REVENUE_CODE);
+  if (by4000?.id) return { id: by4000.id, code: CANONICAL_SALES_REVENUE_CODE };
+  const by4100 = accounts.find((a) => a.code === FALLBACK_SALES_REVENUE_CODE);
+  if (by4100?.id) return { id: by4100.id, code: FALLBACK_SALES_REVENUE_CODE };
   throw new CanonicalSalesRevenueAccountError('unknown');
 }
 
 /**
  * Resolve active company Sales Revenue account for new sale/return postings.
- * 4100 first, 4000 fallback, clear error if neither exists.
+ * 4000 first, 4100 fallback, clear error if neither exists.
  */
 export async function getCanonicalSalesRevenueAccount(
   companyId: string,

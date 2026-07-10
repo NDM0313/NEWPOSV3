@@ -1,7 +1,9 @@
 # Sales Revenue 4000/4100 Standardization — 2026-07-10
 
+> **SUPERSEDED:** The earlier 4100-first decision was corrected by [`SALES_REVENUE_CANONICAL_4000_CORRECTION_2026-07-10.md`](./SALES_REVENUE_CANONICAL_4000_CORRECTION_2026-07-10.md) after operator confirmed 4100 is DIN CHINA import/conversion history, while live/native companies use 4000.
+
 ## Decision
-Canonical Sales Revenue account: **4100**
+Canonical Sales Revenue account: **4100** *(superseded — see correction doc)*
 
 ## Why
 - 4100 is the seeded/detail Sales Revenue account
