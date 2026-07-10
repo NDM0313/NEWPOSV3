@@ -2,8 +2,9 @@
 
 **Status:** `PENDING_OBSERVATION`
 
-**Checked:** 2026-07-10T18:45:00Z (read-only production SQL — monitoring stabilization pass)  
+**Checked:** 2026-07-10T19:10:00Z (read-only production SQL)  
 **Cutoff:** `2026-07-10T18:21:44Z` (deploy of `8adf5ff2` — 4000 canonical correction)  
+**Latest baseline commit:** `6281fcc4`  
 **Supersedes:** `first-real-sale-4100-proof.md` (4100-first policy reversed)
 
 No finalized sale journal entry exists after the 4000-correction deploy cutoff.
@@ -13,8 +14,20 @@ No finalized sale journal entry exists after the 4000-correction deploy cutoff.
 - New **4000** revenue after cutoff: **0**
 - New **4100** revenue after cutoff: **0**
 - Post-cutoff sale document JEs: **0**
+- Post-cutoff sale_return JEs: **0**
 - Sale references found: **none**
 - Real posting proof still **pending**
+
+## Sale detail (when found)
+
+| Field | Value |
+|-------|-------|
+| Company | n/a |
+| Branch | n/a |
+| Sale reference | n/a |
+| JE id | n/a |
+| JE balanced | n/a |
+| Revenue account | n/a |
 
 ## Expected (when next natural sale occurs)
 
