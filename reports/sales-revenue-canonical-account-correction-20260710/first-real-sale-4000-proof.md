@@ -2,7 +2,7 @@
 
 **Status:** `PENDING_OBSERVATION`
 
-**Checked:** 2026-07-10T18:30:00Z (read-only production SQL)  
+**Checked:** 2026-07-10T18:45:00Z (read-only production SQL — monitoring stabilization pass)  
 **Cutoff:** `2026-07-10T18:21:44Z` (deploy of `8adf5ff2` — 4000 canonical correction)  
 **Supersedes:** `first-real-sale-4100-proof.md` (4100-first policy reversed)
 

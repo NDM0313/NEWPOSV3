@@ -105,12 +105,50 @@ async function setWideRange(page) {
   await page.waitForTimeout(2000);
 }
 
-async function openAccountingTab(page, tabName) {
-  await page.goto(`${BASE}/?view=accounting`, { waitUntil: 'domcontentloaded', timeout: 120000 });
-  await page.getByRole('button', { name: /^Journal Entries$/ }).waitFor({ state: 'visible', timeout: 120000 });
-  const tab = page.getByRole('button', { name: new RegExp(`^${tabName}$`) });
-  await tab.scrollIntoViewIfNeeded();
-  await tab.click({ timeout: 60000 });
+async function waitForAccountingShell(page, timeoutMs = 120000) {
+  const journalTab = page.getByRole('button', { name: /^Journal Entries$/ });
+  const journalHeading = page.getByRole('heading', { name: /^Journal Entries$/ });
+  const roznamchaTab = page.getByRole('button', { name: /^Roznamcha$/ });
+  await Promise.race([
+    journalTab.first().waitFor({ state: 'visible', timeout: timeoutMs }),
+    journalHeading.first().waitFor({ state: 'visible', timeout: timeoutMs }),
+    roznamchaTab.first().waitFor({ state: 'visible', timeout: timeoutMs }),
+    page.waitForFunction(
+      () => /Journal Entries|Roznamcha|Day Book/i.test(document.body?.innerText ?? ''),
+      { timeout: timeoutMs },
+    ),
+  ]).catch(() => {});
+  return (await journalTab.count()) > 0 || (await journalHeading.count()) > 0;
+}
+
+async function openAccountingTab(page, tabName, attempt = 1) {
+  const maxAttempts = 3;
+  try {
+    await page.goto(`${BASE}/?view=accounting`, { waitUntil: 'domcontentloaded', timeout: 120000 });
+    await page.waitForLoadState('networkidle', { timeout: 45000 }).catch(() => {});
+    await page.waitForTimeout(attempt === 1 ? 2500 : 5000);
+    const shellReady = await waitForAccountingShell(page, 120000);
+    if (!shellReady) throw new Error('accounting_shell_not_ready');
+    const tab = page.getByRole('button', { name: new RegExp(`^${tabName}$`) });
+    await tab.first().waitFor({ state: 'visible', timeout: 90000 });
+    await tab.first().scrollIntoViewIfNeeded();
+    await tab.first().click({ timeout: 60000 });
+    if (tabName === 'Roznamcha') {
+      await page.locator('[data-roznamcha-main-loader]').first().waitFor({ timeout: 90000 }).catch(() => {});
+    } else if (tabName === 'Journal Entries') {
+      await page.getByRole('heading', { name: /^Journal Entries$/ }).first().waitFor({ timeout: 60000 }).catch(() => {});
+    } else if (tabName === 'Account Statements') {
+      await page.getByText('Account Statements', { exact: true }).first().waitFor({ timeout: 60000 }).catch(() => {});
+    }
+    await page.waitForTimeout(2000);
+  } catch (err) {
+    if (attempt >= maxAttempts) throw err;
+    console.log(
+      `journal_entries_navigation_retry attempt=${attempt + 1} tab=${tabName} reason=${String(err?.message || err)}`,
+    );
+    await page.waitForTimeout(4000);
+    return openAccountingTab(page, tabName, attempt + 1);
+  }
 }
 
 async function readRoznamchaSummary(page) {
