@@ -64,13 +64,39 @@ export async function readClosingBalance(page, options = {}) {
   return NaN;
 }
 
-/** Ledger V2 uses lowercase "Closing balance" on summary cards. */
+/** Ledger V2 summary closing — tries card labels then body fallback. */
 export async function readLedgerV2MrJalilClosing(page) {
-  await page.getByText('Closing balance', { exact: true }).first().waitFor({ timeout: 120000 }).catch(() => {});
+  await page.waitForFunction(
+    () => {
+      const cards = [...document.querySelectorAll('div.rounded-lg.border')];
+      return cards.some((c) => /Closing balance/i.test(c.textContent || '') && /[\d,]/.test(c.textContent || ''));
+    },
+    { timeout: 180000 },
+  ).catch(() => {});
   await page.waitForTimeout(1500);
-  let closing = await readStatCardValue(page, 'Closing balance');
-  if (!Number.isFinite(closing)) closing = await readClosingBalance(page, { labels: ['Closing balance'] });
-  return closing;
+  const cards = page.locator('div.rounded-lg.border').filter({ hasText: /Closing balance/i });
+  const count = await cards.count().catch(() => 0);
+  for (let i = 0; i < count; i += 1) {
+    const text = await cards.nth(i).innerText().catch(() => '');
+    const m = text.match(/Closing balance[\s\S]*?(-?[\d,]+\.?\d*)/i);
+    if (m) {
+      const n = parsePkr(m[1]);
+      if (Number.isFinite(n)) return n;
+    }
+  }
+  for (const label of ['Closing balance', 'Closing Balance', 'Current Receivable']) {
+    const v = await readStatCardValue(page, label);
+    if (Number.isFinite(v)) return v;
+  }
+  const fromBalance = await readClosingBalance(page, {
+    labels: ['Closing balance', 'Closing Balance', 'Current Receivable'],
+  });
+  if (Number.isFinite(fromBalance)) return fromBalance;
+  const body = await page.innerText('body');
+  const m =
+    body.match(/Closing balance[\s\n\r]+(?:Rs\.?\s*)?(-?[\d,]+\.?\d*)/i) ||
+    body.match(/Current Receivable[\s\n\r]+(?:Rs\.?\s*)?(-?[\d,]+\.?\d*)/i);
+  return m ? parsePkr(m[1]) : NaN;
 }
 
 /** Wait until pilot batch run finishes (Compared=9 and Pass+Fail settled). */

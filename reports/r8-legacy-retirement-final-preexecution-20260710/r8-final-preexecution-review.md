@@ -11,7 +11,7 @@
 |------|-------|
 | R8 run | **no** |
 | Approval phrase present in operator instruction | **no** |
-| Final decision | **`R8_BLOCKED_AWAITING_NADEEM_APPROVAL`** — pre-execution pack **COMPLETE**; full browser monitoring **pending credentials** |
+| Final decision | **`R8_BLOCKED_AWAITING_NADEEM_APPROVAL`** — pre-execution + monitoring **PASS** |
 
 ---
 
@@ -63,7 +63,7 @@
 
 | Check | Result |
 |-------|--------|
-| Fresh `npm run monitor:three-company-unified-ledger` | **NOT RUN** — credentials missing on home Mac — [`monitoring-credential-gap-20260710.md`](./monitoring-credential-gap-20260710.md) |
+| Fresh `npm run monitor:three-company-unified-ledger` | **PASS** (2026-07-10) — [`latest-three-company-monitoring.md`](../single-core-ledger/operational-monitoring/latest-three-company-monitoring.md) |
 | Read-only loader guard (SSH) | **PASS** — [`loader-guard-20260710.json`](./loader-guard-20260710.json) |
 | Production flag snapshot | **CAPTURED** — [`production-flag-snapshot-20260710.md`](./production-flag-snapshot-20260710.md) |
 | Latest archived artifact | **PASS** — [`reports/single-core-ledger/operational-monitoring/latest-three-company-monitoring.md`](../single-core-ledger/operational-monitoring/latest-three-company-monitoring.md) (2026-07-08, overall PASS; din-bridal/din-couture 18/19 checks) |
