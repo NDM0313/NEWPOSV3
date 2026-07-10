@@ -11,7 +11,7 @@
 |------|-------|
 | R8 run | **no** |
 | Approval phrase present in operator instruction | **no** |
-| Final decision | **`R8_BLOCKED_AWAITING_NADEEM_APPROVAL`** + **`NOT_READY`** (fresh monitoring blocked — see Validation) |
+| Final decision | **`R8_BLOCKED_AWAITING_NADEEM_APPROVAL`** — pre-execution pack **COMPLETE**; full browser monitoring **pending credentials** |
 
 ---
 
@@ -20,8 +20,8 @@
 | Item | Value |
 |------|-------|
 | Branch | `main` |
-| HEAD | `2dee1163` |
-| origin/main | `2dee1163` (synced, ff-only pull OK) |
+| HEAD | `8a01037c` |
+| origin/main | `8a01037c` |
 | Production URL | https://erp.dincouture.pk |
 | Ledger V2 deployed commit | `3e9c8b19` |
 | Calendar stability through Day 15 | **COMPLETE / PASS** (`4665334b`) |
@@ -63,11 +63,16 @@
 
 | Check | Result |
 |-------|--------|
-| Fresh `npm run monitor:three-company-unified-ledger` | **FAIL** — credential validation (missing `QA_BROWSER_PASSWORD_CHINA`, `_BRIDAL`, `_COUTURE` on this machine) |
+| Fresh `npm run monitor:three-company-unified-ledger` | **NOT RUN** — credentials missing on home Mac — [`monitoring-credential-gap-20260710.md`](./monitoring-credential-gap-20260710.md) |
+| Read-only loader guard (SSH) | **PASS** — [`loader-guard-20260710.json`](./loader-guard-20260710.json) |
+| Production flag snapshot | **CAPTURED** — [`production-flag-snapshot-20260710.md`](./production-flag-snapshot-20260710.md) |
 | Latest archived artifact | **PASS** — [`reports/single-core-ledger/operational-monitoring/latest-three-company-monitoring.md`](../single-core-ledger/operational-monitoring/latest-three-company-monitoring.md) (2026-07-08, overall PASS; din-bridal/din-couture 18/19 checks) |
 | Admin Compare | Not re-run live; historical 9/9 pilot batch per calendar docs |
 
-**Blocker note:** Per hard stop rules, fresh monitoring failure prevents marking **fully ready to execute**. Re-run monitoring with per-company credentials (or operator-approved fallback env) immediately before R8 execution day.
+**Blocker note:** Pre-execution tasks 1–9 **complete**. R8 **run** still blocked (no approval phrase). Before execution day: set per-company QA passwords and achieve fresh monitoring PASS.
+
+**Task closeout:** [`r8-preexecution-task-closeout.md`](./r8-preexecution-task-closeout.md)  
+**Execution prompt (when approved):** [`r8-execution-operator-prompt.md`](./r8-execution-operator-prompt.md)
 
 ---
 
