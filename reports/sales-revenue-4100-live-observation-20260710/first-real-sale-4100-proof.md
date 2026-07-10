@@ -2,10 +2,10 @@
 
 **Status:** `PENDING_OBSERVATION`
 
-**Checked:** 2026-07-10 (read-only production SQL)  
+**Checked:** 2026-07-10T17:53:00Z (read-only production SQL)  
 **Cutoff:** `2026-07-10T17:06:53Z` (deploy of `b7fa557d`)  
 **Standardization commit:** `b7fa557d`  
-**Observation readiness commit:** `8c1dcf84`
+**Latest observation commit:** `b74408d3`
 
 No finalized sale journal entry exists after cutoff `2026-07-10T17:06:53Z`.
 
@@ -14,6 +14,7 @@ No finalized sale journal entry exists after cutoff `2026-07-10T17:06:53Z`.
 - New 4000 revenue after cutoff: **0**
 - New 4100 revenue after cutoff: **0**
 - Post-cutoff sale document JEs: **0**
+- Sale references found: **none**
 - No erroneous drift found
 - Real posting proof still **pending**
 
@@ -22,6 +23,7 @@ No finalized sale journal entry exists after cutoff `2026-07-10T17:06:53Z`.
 - Production read-only SQL via `ssh dincouture-vps` → `docker exec supabase-db psql`
 - `reference_type = 'sale'`, `payment_id IS NULL`, `created_at >= cutoff`
 - Merchandise revenue lines checked for codes **4000** and **4100**
+- All three companies checked: DIN CHINA, DIN BRIDAL, DIN COUTURE
 
 ## Most recent final sale per company (pre-cutoff context)
 
@@ -37,8 +39,8 @@ Observe after the next **natural finalized production sale** created by a busine
 
 When a sale appears, re-run read-only check and update this file:
 
-- **PASS** if revenue account = **4100**
-- **FAIL** if revenue account = **4000** while **4100** exists
+- `PASS_4100_POSTING_CONFIRMED` if revenue account = **4100**
+- `FAIL_4000_POSTING_AFTER_STANDARDIZATION` if revenue account = **4000** while **4100** exists
 
 ## Safety
 

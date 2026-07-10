@@ -1,9 +1,10 @@
 # Post-standardization drift check — 4000 vs 4100
 
-**Date:** 2026-07-10 (updated)  
+**Date:** 2026-07-10 (re-checked)  
 **Standardization commit:** `b7fa557d`  
-**Observation commit:** `8c1dcf84`  
+**Latest observation commit:** `b74408d3`  
 **Cutoff timestamp:** `2026-07-10T17:06:53Z` (ERP frontend deploy of `b7fa557d`)  
+**Checked at:** `2026-07-10T17:53:00Z`  
 **Method:** Read-only production SQL  
 **DB mutation:** no
 
@@ -22,6 +23,7 @@ No post-cutoff merchandise revenue postings on either **4000** or **4100**. No e
 | New sale_return revenue debits on 4000 after cutoff | **0** |
 | New sale_return revenue debits on 4100 after cutoff | **0** |
 | Post-cutoff sale document JEs | **0** |
+| Sale references found | **none** |
 
 ## Decision matrix
 
@@ -62,8 +64,8 @@ All-time: 4000 net Rs. 21,250; 4100 net Rs. 0
 
 ## Interpretation
 
-- No bug indicated — observation window has not yet included a finalized sale
-- First real sale proof remains in `first-real-sale-4100-proof.md` (`PENDING_OBSERVATION`)
+- No bug indicated — no finalized sale since deploy
+- First real sale proof: `PENDING_OBSERVATION` in `first-real-sale-4100-proof.md`
 - Re-check after next natural finalized sale
 
 ## Safety
