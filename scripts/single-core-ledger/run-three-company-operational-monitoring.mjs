@@ -12,11 +12,20 @@
  *   ALLOW_GENERIC_MONITORING_CREDENTIAL_FALLBACK=true
  *
  * Generic QA_BROWSER_EMAIL is never used for multi-profile runs.
+ *
+ * Loads project-root .env.local when present (passwords never logged).
  */
+import dotenv from 'dotenv';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const envLocal = path.join(ROOT, '.env.local');
+if (fs.existsSync(envLocal)) {
+  dotenv.config({ path: envLocal });
+}
 import {
   validateThreeCompanyCredentials,
   formatCredentialSourceLog,
@@ -31,7 +40,6 @@ import { runReadOnlyFlagGuard } from './threeCompanyLoaderGuard.mjs';
 export { resolveProfileEmail } from './monitoringCredentials.mjs';
 export { buildTimestampSlug, parseMonitoringOutput } from './monitoringRunnerHelpers.mjs';
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const PROFILES_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), 'monitoring-company-profiles.json');
 const MONITOR_SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'run-unified-ledger-monitoring-verify.mjs');
 const OUT_DIR = path.join(ROOT, 'reports/single-core-ledger/operational-monitoring');
