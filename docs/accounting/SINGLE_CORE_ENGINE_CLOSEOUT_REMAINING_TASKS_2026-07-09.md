@@ -1,6 +1,6 @@
 # Single Core Engine Closeout — Remaining Tasks
 
-**Date:** 2026-07-09 (updated after Salesman login PASS)  
+**Date:** 2026-07-10 (R8 final pre-execution review)  
 **Scope:** OLD ERP / DIN Collection ERP only (not FX app)
 
 ## Baseline
@@ -8,7 +8,7 @@
 | Item | Value |
 |------|--------|
 | Branch | `main` |
-| HEAD / origin/main | `e983ae96`+ |
+| HEAD / origin/main | `2dee1163` |
 | Production URL | https://erp.dincouture.pk |
 | Calendar Days 7–15 | **COMPLETE / PASS** |
 | VPS deploy (office) | **COMPLETE** — [`2026-07-09-OFFICE-VPS-DEPLOY-APPLY.md`](../2026-07-09-OFFICE-VPS-DEPLOY-APPLY.md) |
@@ -21,6 +21,7 @@
 |-------|----------|
 | Days 7–15 calendar | `OFFICIAL_CALENDAR_STABILITY_DAYS_*` + execution plan |
 | R8 preflight pack | `R8_LEGACY_RETIREMENT_PREFLIGHT_AFTER_DAY15_2026-07-09.md` |
+| R8 final pre-execution review | `reports/r8-legacy-retirement-final-preexecution-20260710/` |
 | 1 PKR parity (read-only) | `reports/admin-compare-1pkr-parity-investigation-20260709/` |
 | Ledger V2 production deploy | `2026-07-09-LEDGER-V2-PRODUCTION-DEPLOY.md` + office redeploy `2026-07-09-OFFICE-VPS-DEPLOY-APPLY.md` |
 | Salesman mobile QA (login) | `reports/mobile-salesman-qa-readiness-after-day15-20260709/salesman-role-qa-pass.md` |

@@ -22,9 +22,10 @@
 ## Remaining blockers (pre-R8)
 
 1. **Written approval** — phrase `NADEEM_APPROVES_R8_LEGACY_RETIREMENT` **not present** in operator request
-2. **Salesman mobile QA** — `BLOCKED_SALESMAN_DEVICE_QA_PENDING`
+2. **Salesman mobile QA** — **PASS** (login) — `SALESMAN_QA_PASS_PLAY_STORE_STILL_NOT_RELEASED` — evidence `reports/mobile-salesman-qa-readiness-after-day15-20260709/`
 3. **Supplier Party Discount PKR 1 QA** — NOT APPROVED
 4. **Play Store** — NOT RELEASED (separate track)
+5. **Fresh monitoring at execution time** — re-run `npm run monitor:three-company-unified-ledger` with per-company credentials before R8 day (latest archived PASS: 2026-07-08)
 
 ## Rollback requirements (before any future R8 execution)
 
