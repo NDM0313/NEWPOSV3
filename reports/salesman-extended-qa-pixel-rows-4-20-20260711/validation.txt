@@ -9,6 +9,7 @@ Salesman extended QA post-signoff validation — 2026-07-11 (closeout commit)
 
 Closeout re-run note: monitoring re-run at 15:34Z showed din-china Ledger V2 MR JALIL flake (production read-only check); not related to docs-only closeout. Authoritative PASS retained from 13:54Z run in validation-monitoring.txt.
 
-Runtime code changed: no
-Deploy required: no
+Runtime code changed (salesman QA scope): no
+Closeout delivery commit: `6421c898` (`roznamcha entry`) — includes QA evidence plus unrelated roznamcha/runtime WIP in same push; salesman sign-off did not require those runtime edits.
+Deploy required (salesman QA closeout): no
 Deploy performed: no

@@ -8,8 +8,8 @@
 | Item | Value |
 |------|--------|
 | Branch | `main` |
-| HEAD (pre-closeout) | `511044a1` |
-| origin/main (pre-closeout) | `511044a1` |
+| HEAD | `6421c898` |
+| origin/main | `6421c898` |
 | Closeout baseline | `96890d0a` present in history |
 | Salesman QA pass commit | `44154031` (2026-07-09 office) |
 

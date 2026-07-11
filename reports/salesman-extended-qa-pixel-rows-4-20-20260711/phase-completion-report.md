@@ -26,9 +26,10 @@
 
 | Item | Value |
 |------|--------|
-| Runtime code changed | **no** |
+| Runtime code changed (salesman QA scope) | **no** |
+| Closeout delivery commit | `6421c898` — QA evidence + unrelated roznamcha/runtime bundled |
 | DB / GL mutation | **no** |
-| Deploy required | **no** |
+| Deploy required (salesman QA closeout) | **no** |
 | Deploy performed | **no** |
 
 ## Step 4 â€” Still gated (need approval strings)

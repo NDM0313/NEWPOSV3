@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-11
 **Scope:** OLD ERP / DIN Collection ERP only
-**HEAD:** `511044a1` (pre-closeout; updates on commit)
+**HEAD:** `6421c898` (closeout delivery; see `reports/salesman-extended-qa-pixel-rows-4-20-20260711/`)
 **Last updated:** 2026-07-11 (Salesman extended QA **PASS** â€” signed off)
 
 ---
