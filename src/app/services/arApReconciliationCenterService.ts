@@ -13,6 +13,9 @@ import {
   sumAuditOnlyPartyGlNet,
 } from '@/app/lib/arApEffectiveVariance';
 import { fetchPartyGlLinesForEffectiveVariance } from '@/app/services/arApEffectiveVarianceService';
+import { fetchPartyGlBalancesWithSource } from '@/app/services/arApUnifiedPartyBalanceService';
+import type { ArApPartyGlBalanceSource } from '@/app/services/arApUnifiedPartyBalanceService';
+import type { UnifiedLedgerBasis } from '@/app/lib/unifiedLedgerBasisFilter';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -73,6 +76,11 @@ export interface IntegrityLabSummary extends IntegrityLabSnapshotRow {
   party_gl_payables_clamped: number | null;
   /** party_gl_payables_signed − gl_ap_net_credit (control AP Cr−Dr). */
   party_gl_vs_control_variance: number | null;
+  /** Phase 2b — party GL rollup engine used for supplier sub-ledger cards. */
+  party_gl_balance_source: ArApPartyGlBalanceSource;
+  party_gl_balance_basis: UnifiedLedgerBasis;
+  /** Shadow legacy vs unified max per-contact delta (when unified active). */
+  party_gl_parity_max_delta?: number;
   status: IntegrityLabStatus;
   statusLabels: string[];
 }
@@ -196,7 +204,7 @@ export async function fetchIntegrityLabSummary(
   const end = (asOfDate ?? new Date().toISOString().slice(0, 10)).slice(0, 10);
   const b = safeBranchForFilter(branchId);
 
-  const [rpc, opRes, glSnap, partyGlMap] = await Promise.all([
+  const [rpc, opRes, glSnap, partyGlFetch] = await Promise.all([
     supabase.rpc('ar_ap_integrity_lab_snapshot', {
       p_company_id: companyId,
       p_branch_id: b,
@@ -204,7 +212,7 @@ export async function fetchIntegrityLabSummary(
     }),
     contactService.getContactBalancesSummary(companyId, branchId ?? null, end),
     accountingReportsService.getArApGlSnapshot(companyId, end, b ?? undefined),
-    contactService.getContactPartyGlBalancesMap(companyId, branchId ?? null, end),
+    fetchPartyGlBalancesWithSource(companyId, branchId, end, { includeShadowParity: true }),
   ]);
 
   const snap = pickSnapshotRow(rpc.data);
@@ -267,6 +275,7 @@ export async function fetchIntegrityLabSummary(
 
   let party_gl_payables_signed: number | null = null;
   let party_gl_payables_clamped: number | null = null;
+  const partyGlMap = partyGlFetch.map;
   if (partyGlMap && partyGlMap.size > 0) {
     let signed = 0;
     let clamped = 0;
@@ -313,6 +322,9 @@ export async function fetchIntegrityLabSummary(
     party_gl_payables_signed,
     party_gl_payables_clamped,
     party_gl_vs_control_variance,
+    party_gl_balance_source: partyGlFetch.source,
+    party_gl_balance_basis: partyGlFetch.basis,
+    party_gl_parity_max_delta: partyGlFetch.maxAbsPartyDelta,
     status,
     statusLabels: labels,
   };

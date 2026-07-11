@@ -16,6 +16,7 @@
 | Unified ledger tests | **336/336 PASS** | 2026-07-12 session |
 | Unit tests | **189/189 PASS** | 2026-07-12 session |
 | Three-company monitoring | **PASS** (all 3 companies) | `reports/din-china-phase-216-golden-refresh-20260712/` |
+| AR/AP Diagnostics Phase 2b | **COMPLETE** (party GL unified wire-up) | `reports/ar-ap-phase-2b-unified-wireup-20260712/` |
 
 ## Supplier PKR 1 QA
 
@@ -55,3 +56,4 @@ After **2026-08-09** (30-day soak from R8-R1):
 
 - Play Store when operator approves `PLAY_STORE_FINAL_UPLOAD_APPROVAL_REQUIRED`
 - DIN CHINA monitoring golden refreshed 2026-07-12 after RCV-0317 + Jul 11 GL batch tie-out
+- Contacts page party GL still uses legacy RPC — optional follow-up for full Phase 2b parity outside AR/AP center

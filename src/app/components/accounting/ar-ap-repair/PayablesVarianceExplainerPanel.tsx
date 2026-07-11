@@ -2,14 +2,33 @@ import React from 'react';
 import { ChevronDown, ChevronRight, Info } from 'lucide-react';
 import { cn } from '@/app/components/ui/utils';
 import type { IntegrityLabSummary } from '@/app/services/arApReconciliationCenterService';
+import type { ArApPartyGlBalanceSource } from '@/app/services/arApUnifiedPartyBalanceService';
+import type { UnifiedLedgerBasis } from '@/app/lib/unifiedLedgerBasisFilter';
+import { UNIFIED_LEDGER_BASIS_LABELS } from '@/app/lib/unifiedLedgerBasisFilter';
 
 type Props = {
   summary: IntegrityLabSummary;
   formatCurrency: (n: number) => string;
   defaultOpen?: boolean;
+  partyGlSource?: ArApPartyGlBalanceSource;
+  partyGlBasis?: UnifiedLedgerBasis;
 };
 
-export function PayablesVarianceExplainerPanel({ summary, formatCurrency, defaultOpen = true }: Props) {
+function partyGlRpcLabel(source: ArApPartyGlBalanceSource | undefined, basis?: UnifiedLedgerBasis): string {
+  if (source === 'unified') {
+    const basisLabel = basis ? UNIFIED_LEDGER_BASIS_LABELS[basis] : 'effective_party';
+    return `get_unified_contact_party_gl_balances (${basisLabel})`;
+  }
+  return 'get_contact_party_gl_balances';
+}
+
+export function PayablesVarianceExplainerPanel({
+  summary,
+  formatCurrency,
+  defaultOpen = true,
+  partyGlSource,
+  partyGlBasis,
+}: Props) {
   const [open, setOpen] = React.useState(defaultOpen);
 
   const operational = summary.operational_payables_full;
@@ -42,9 +61,9 @@ export function PayablesVarianceExplainerPanel({ summary, formatCurrency, defaul
               <strong>Operational payables</strong> = open purchase due from documents (
               <code className="text-blue-700 dark:text-blue-300/80">getContactBalancesSummary</code>).{' '}
               <strong>Party GL payables</strong> = supplier sub-ledger sum (
-              <code className="text-blue-700 dark:text-blue-300/80">get_contact_party_gl_balances</code>) — same as Contacts green/red
-              cards. <strong>Control GL</strong> = AP 2000 net Cr−Dr on the control account. Comparing operational to
-              control directly often looks wrong; use party GL for apples-to-apples with Contacts.
+              <code className="text-blue-700 dark:text-blue-300/80">{partyGlRpcLabel(partyGlSource, partyGlBasis)}</code>) — aligned with Party Ledger when unified loaders are ON.{' '}
+              <strong>Control GL</strong> = AP 2000 net Cr−Dr on the control account. Comparing operational to
+              control directly often looks wrong; use party GL for apples-to-apples with Contacts / Party Ledger.
             </p>
           </div>
 
@@ -57,7 +76,7 @@ export function PayablesVarianceExplainerPanel({ summary, formatCurrency, defaul
             <StatBox
               label="Party GL payables (signed)"
               value={partySigned != null ? formatCurrency(partySigned) : '—'}
-              note="get_contact_party_gl_balances"
+              note={partyGlRpcLabel(partyGlSource, partyGlBasis)}
               highlight
             />
             <StatBox

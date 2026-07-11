@@ -101,6 +101,17 @@ User-facing workspace to **separate** operational subledger signals, GL control 
 - **Snapshot RPC:** `p_branch_id NULL` = all branches; UUID = only JEs/documents with matching `branch_id` (NULL branch on JE excluded when filtering by branch — same as reconciliation migration).
 - **Operational full totals** in UI use `get_contact_balances_summary(company, branch)` — match Contacts page branch semantics.
 
+## Phase 2b — Unified party GL rollup (2026-07-12)
+
+When Party Ledger unified loaders are ON (`unified_ledger_loader_party_ledger` + engine + screen), AR/AP Diagnostics party GL summary cards use:
+
+- **RPC:** `get_unified_contact_party_gl_balances(company, branch, as_of, basis)` — default basis `effective_party`
+- **Fallback:** `get_contact_party_gl_balances` when kill switch active, loaders OFF, or RPC not deployed
+- **Shadow parity:** admin view compares legacy vs unified per-contact max delta (0.01 PKR tolerance)
+- **Unchanged:** exception queues, hybrid repair, control GL snapshot, operational document totals
+
+Evidence: `reports/ar-ap-phase-2b-unified-wireup-20260712/`
+
 ---
 
 ## Known limitations

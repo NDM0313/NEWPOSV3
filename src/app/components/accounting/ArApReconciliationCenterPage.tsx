@@ -96,6 +96,8 @@ import {
   classifyUnpostedDocument as classifyUnpostedForRepair,
   type ActionableRepairButton,
 } from '@/app/lib/actionableRepairClassifier';
+import { partyGlParityWithinTolerance } from '@/app/services/arApUnifiedPartyBalanceService';
+import { UNIFIED_LEDGER_BASIS_LABELS } from '@/app/lib/unifiedLedgerBasisFilter';
 
 function statusBadgeClass(status: IntegrityLabSummary['status']): string {
   switch (status) {
@@ -863,6 +865,41 @@ export function ArApReconciliationCenterPage() {
       <div className="space-y-2">
         <ReportBasisBanner basis="official_gl" detail="GL receivables/payables (raw) cards use Official Posted GL — all non-void posted lines." />
         <ReportBasisBanner basis="effective_party" detail="Effective variance cards subtract audit-only / cancelled chains (same rules as Account Statements effective mode)." />
+        {summary?.party_gl_balance_source === 'unified' ? (
+          <div className="rounded-lg border border-emerald-500/35 bg-emerald-950/20 px-3 py-2 text-xs text-emerald-100 flex flex-wrap items-center gap-2">
+            <span>
+              <strong>Party GL rollup:</strong> Unified Core Ledger —{' '}
+              {UNIFIED_LEDGER_BASIS_LABELS[summary.party_gl_balance_basis] ?? summary.party_gl_balance_basis}
+              {' '}via <code className="text-emerald-200/90">get_unified_contact_party_gl_balances</code>
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-[11px] border-emerald-600/50"
+              onClick={() => setCurrentView('party-ledger')}
+            >
+              Party Ledger
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-[11px] border-emerald-600/50"
+              onClick={() => {
+                window.history.pushState({}, '', '/admin/unified-ledger-compare');
+                window.dispatchEvent(new PopStateEvent('popstate'));
+              }}
+            >
+              Admin Compare
+            </Button>
+            {access.canUseHybridRepair &&
+            summary.party_gl_parity_max_delta != null &&
+            !partyGlParityWithinTolerance(summary.party_gl_parity_max_delta) ? (
+              <Badge className="bg-amber-500/20 text-amber-200 border-amber-500/40 text-[10px]">
+                Legacy shadow delta PKR {summary.party_gl_parity_max_delta.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+              </Badge>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       {companyId && access.canUseHybridRepair ? (
@@ -928,7 +965,11 @@ export function ArApReconciliationCenterPage() {
             <SummaryCard title="Operational payables" subtitle="Document due · not party GL" value={summary.operational_payables_full} formatCurrency={formatCurrency} tone="red" />
             <SummaryCard
               title="Party GL payables (signed)"
-              subtitle="get_contact_party_gl_balances — same as Contacts"
+              subtitle={
+                summary.party_gl_balance_source === 'unified'
+                  ? `get_unified_contact_party_gl_balances (${UNIFIED_LEDGER_BASIS_LABELS[summary.party_gl_balance_basis] ?? summary.party_gl_balance_basis})`
+                  : 'get_contact_party_gl_balances — same as Contacts'
+              }
               value={summary.party_gl_payables_signed}
               formatCurrency={formatCurrency}
               tone="green"
@@ -1027,7 +1068,12 @@ export function ArApReconciliationCenterPage() {
             }
           />
 
-          <PayablesVarianceExplainerPanel summary={summary} formatCurrency={formatCurrency} />
+          <PayablesVarianceExplainerPanel
+            summary={summary}
+            formatCurrency={formatCurrency}
+            partyGlSource={summary.party_gl_balance_source}
+            partyGlBasis={summary.party_gl_balance_basis}
+          />
 
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" className="border-violet-500/40 text-violet-200" onClick={() => void handleEnsureSuspense()} disabled={ensuringSuspense}>
