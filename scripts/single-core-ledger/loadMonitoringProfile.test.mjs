@@ -6,11 +6,11 @@ test('loadMonitoringProfile din-china defaults', () => {
   const p = loadMonitoringProfile('din-china');
   assert.equal(p.company, 'DIN CHINA');
   assert.equal(p.companyId, '30bd8592-3384-4f34-899a-f3907e336485');
-  assert.equal(p.golden.mrJalilClosing, 216_299);
-  assert.equal(p.golden.trialBalanceTotal, 358_213_589.15);
-  assert.equal(p.golden.roznamcha.cashIn, 60_042_230);
-  assert.equal(p.golden.roznamcha.cashOut, 39_795_518);
-  assert.equal(p.golden.roznamcha.closing, 20_246_712);
+  assert.equal(p.golden.mrJalilClosing, 116_299);
+  assert.equal(p.golden.trialBalanceTotal, 382_219_344.15);
+  assert.equal(p.golden.roznamcha.cashIn, 61_022_230);
+  assert.equal(p.golden.roznamcha.cashOut, 62_619_613);
+  assert.equal(p.golden.roznamcha.closing, -1_597_383);
   assert.equal(p.expectedUnifiedFlagsOn.length, 18);
   assert.equal(p.pilotBatchExpected, 9);
 });

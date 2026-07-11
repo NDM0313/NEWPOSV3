@@ -13,7 +13,8 @@ export const DIN_CHINA_COMPANY_NAME = 'DIN CHINA';
 
 export const MR_JALIL_CONTACT_ID = 'fe7ec33d-fd6d-4aa6-8d21-416e383b4c93';
 export const MR_JALIL_CONTACT_NAME = 'MR JALIL';
-export const MR_JALIL_EXPECTED_BALANCE = 216_299;
+/** Live production closing after RCV-0317 + JE-0003; refreshed 2026-07-12 — see reports/din-china-phase-216-golden-refresh-20260712/ */
+export const MR_JALIL_EXPECTED_BALANCE = 116_299;
 
 export const CLONE_REFERENCE = 'ledger_stage_20260625_prodcheck';
 export const GATE_A_STATUS = 'PASS 3/3';

@@ -27,8 +27,8 @@ test('parsePkr ignores label text and picks first number', () => {
 });
 
 test('withinTol accepts MR JALIL golden', () => {
-  assert.equal(withinTol(216299, MR_JALIL_GOLDEN), true);
-  assert.equal(withinTol(216299.005, MR_JALIL_GOLDEN), true);
+  assert.equal(withinTol(116299, MR_JALIL_GOLDEN), true);
+  assert.equal(withinTol(116299.005, MR_JALIL_GOLDEN), true);
 });
 
 test('roznamcha golden components sum to closing', () => {
@@ -36,11 +36,11 @@ test('roznamcha golden components sum to closing', () => {
 });
 
 test('TB golden debit equals credit constant', () => {
-  assert.equal(TB_GOLDEN, 353192001.7);
+  assert.equal(TB_GOLDEN, 382219344.15);
 });
 
 test('Trial Balance footer regex parses bullet-prefixed totals', () => {
-  const body = '• Total Debit: Rs. 353,192,001.7 • Total Credit: Rs. 353,192,001.7';
+  const body = '• Total Debit: Rs. 382,219,344.15 • Total Credit: Rs. 382,219,344.15';
   const debitM = body.match(/Total Debit:\s*(?:Rs\.?\s*)?([\d,]+\.?\d*)/i);
   const creditM = body.match(/Total Credit:\s*(?:Rs\.?\s*)?([\d,]+\.?\d*)/i);
   assert.equal(parsePkr(debitM[1]), TB_GOLDEN);

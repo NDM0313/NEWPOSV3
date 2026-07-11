@@ -3,12 +3,12 @@
  * Parsing only — no business logic changes.
  */
 
-export const MR_JALIL_GOLDEN = 216_299;
-export const TB_GOLDEN = 353_192_001.7;
+export const MR_JALIL_GOLDEN = 116_299;
+export const TB_GOLDEN = 382_219_344.15;
 export const ROZNAMCHA_GOLDEN = {
-  cashIn: 109_088_121,
-  cashOut: 74_675_317,
-  closing: 34_412_804,
+  cashIn: 61_022_230,
+  cashOut: 62_619_613,
+  closing: -1_597_383,
 };
 export const DEFAULT_TOL = 0.01;
 

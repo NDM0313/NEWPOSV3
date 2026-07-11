@@ -1,18 +1,18 @@
 {
   "company": "DIN CHINA",
   "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
-  "captured_from": "Official Calendar Day 15 Option A refresh (2026-07-08)",
-  "authoritative_evidence": "reports/single-core-engine-calendar-stability-official-20260715/",
+  "captured_from": "Phase 2.16 golden refresh after 2026-07-11 live GL batch (read-only tie-out)",
+  "authoritative_evidence": "reports/din-china-phase-216-golden-refresh-20260712/",
   "fixtures": {
-    "mr_jalil_closing_pkr": 216299,
-    "ledger_v2_mr_jalil_closing_pkr": 216299,
-    "account_statement_mr_jalil_closing_pkr": 216299,
-    "party_ledger_mr_jalil_closing_pkr": 216299,
-    "trial_balance_debit_pkr": 353192001.7,
-    "trial_balance_credit_pkr": 353192001.7,
-    "roznamcha_cash_in_pkr": 109088121,
-    "roznamcha_cash_out_pkr": 74675317,
-    "roznamcha_closing_pkr": 34412804
+    "mr_jalil_closing_pkr": 116299,
+    "ledger_v2_mr_jalil_closing_pkr": 116299,
+    "account_statement_mr_jalil_closing_pkr": 116299,
+    "party_ledger_mr_jalil_closing_pkr": 116299,
+    "trial_balance_debit_pkr": 382219344.15,
+    "trial_balance_credit_pkr": 382219344.15,
+    "roznamcha_cash_in_pkr": 61022230,
+    "roznamcha_cash_out_pkr": 62619613,
+    "roznamcha_closing_pkr": -1597383
   },
-  "note": "Option A Day 15 — live TB/roznamcha totals vs Day 14 fixture; MR JALIL unchanged; Admin Compare materiality waiver 1 PKR"
+  "note": "MR JALIL −100,000 from RCV-0317 (Rs. 100k receipt posted 2026-07-11; entry_date 2026-05-11). TB/roznamcha shift from Jul 11 backdated GL batch (23 JEs). JE-0028 supplier discount adds Rs. 2 to TB only (5210/AP Rs. 1 each). Admin Compare 9/9 unchanged."
 }

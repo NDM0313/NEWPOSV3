@@ -6,11 +6,11 @@
       "production_url": "https://erp.dincouture.pk",
       "login_email_default": "din@yahoo.com",
       "golden": {
-        "mr_jalil_closing_pkr": 216299,
-        "trial_balance_debit_credit_pkr": 358213589.15,
-        "roznamcha_cash_in_pkr": 60042230,
-        "roznamcha_cash_out_pkr": 39795518,
-        "roznamcha_closing_pkr": 20246712
+        "mr_jalil_closing_pkr": 116299,
+        "trial_balance_debit_credit_pkr": 382219344.15,
+        "roznamcha_cash_in_pkr": 61022230,
+        "roznamcha_cash_out_pkr": 62619613,
+        "roznamcha_closing_pkr": -1597383
       },
       "expected_unified_flags_on": [
         "unified_ledger_pilot",
