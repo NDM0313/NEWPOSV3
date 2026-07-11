@@ -1,7 +1,7 @@
 {
   "run": "THREE_COMPANY_OPERATIONAL_MONITORING",
-  "generated_at": "2026-07-11T12:22:29.565Z",
-  "timestamp_slug": "2026-07-11T12-09-48-753Z",
+  "generated_at": "2026-07-11T12:07:20.293Z",
+  "timestamp_slug": "2026-07-11T11-54-35-996Z",
   "overall": "PASS",
   "credential_policy": "per-company-preferred",
   "generic_fallback_allowed": true,
@@ -336,9 +336,9 @@
           "notes": "skipped for din-couture profile"
         },
         {
-          "result": "WAIVED",
+          "result": "PASS",
           "check": "no material console/RPC errors",
-          "notes": "[SUPABASE CONTEXT] Error ensuring default accounts: Error: Mandatory payment account 1000 missing after COA seed"
+          "notes": "none"
         }
       ],
       "phaseResult": "PASS"

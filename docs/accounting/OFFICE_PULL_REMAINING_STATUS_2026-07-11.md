@@ -10,7 +10,8 @@
 |------|--------|
 | Branch | `main` |
 | Pull | `git pull --ff-only origin main` — **18 commits** fast-forward |
-| HEAD / origin/main | `84eb1363` |
+| HEAD / origin/main | `694af3b9` |
+| Post-pull readiness closeout | **PASS** — [`OLD_ERP_REMAINING_APPROVAL_GATES_2026-07-11.md`](OLD_ERP_REMAINING_APPROVAL_GATES_2026-07-11.md) |
 | Working tree (pre-commit) | monitoring artifacts from post-pull verify only |
 
 ## Post-pull verification (read-only)

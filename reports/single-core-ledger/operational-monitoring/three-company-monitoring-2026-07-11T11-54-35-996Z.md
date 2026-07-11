@@ -1,6 +1,6 @@
 # Three-company operational monitoring
 
-**Generated:** 2026-07-11T12:22:29.565Z
+**Generated:** 2026-07-11T12:07:20.293Z
 **Overall:** PASS
 **Credential policy:** per-company preferred; generic fallback=true
 
@@ -32,7 +32,7 @@
 - **Login email:** zhd@dincouture.pk
 - **Email source:** built-in-default
 - **Password source:** per-company
-- **Checks:** 17/19 PASS
+- **Checks:** 18/19 PASS
 
 
-**JSON:** `reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-11T12-09-48-753Z.json`
+**JSON:** `reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-11T11-54-35-996Z.json`

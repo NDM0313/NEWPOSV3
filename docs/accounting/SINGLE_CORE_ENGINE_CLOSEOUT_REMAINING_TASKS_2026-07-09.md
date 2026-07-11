@@ -8,7 +8,8 @@
 | Item | Value |
 |------|--------|
 | Branch | `main` |
-| HEAD / origin/main | `84eb1363` |
+| HEAD / origin/main | `694af3b9` |
+| Remaining approval gates | [`OLD_ERP_REMAINING_APPROVAL_GATES_2026-07-11.md`](OLD_ERP_REMAINING_APPROVAL_GATES_2026-07-11.md) |
 | Production URL | https://erp.dincouture.pk |
 | Calendar Days 7–15 | **COMPLETE / PASS** |
 | Post-pull verify (2026-07-11) | **PASS** — [`OFFICE_PULL_REMAINING_STATUS_2026-07-11.md`](OFFICE_PULL_REMAINING_STATUS_2026-07-11.md) |
@@ -40,13 +41,25 @@
 
 ### 2. Play Store release
 
-- **Status:** NOT RELEASED — separate operator approval
+- **Status:** NOT RELEASED — preflight ready — `docs/mobile/PLAY_STORE_RELEASE_READINESS_2026-07-11.md`
+- **Blocker:** `PLAY_STORE_FINAL_UPLOAD_APPROVAL_REQUIRED`
 
 ### 3. Supplier Party Discount PKR 1 QA
 
-- **Status:** NOT APPROVED
+- **Status:** NOT APPROVED — runbook ready — `docs/accounting/SUPPLIER_PARTY_DISCOUNT_PKR1_QA_READINESS.md`
+- **Blocker:** `APPROVE_SUPPLIER_PARTY_DISCOUNT_PKR1_QA`
 
-### 4. Optional / future
+### 4. R8-R2 legacy code deletion
+
+- **Status:** NOT STARTED — plan ready — `docs/accounting/R8_R2_LEGACY_DELETION_READINESS_PLAN.md`
+- **Blocker:** `R8_R2_CODE_DELETION_APPROVAL_REQUIRED`
+
+### 5. Sales Revenue Phase 2 reclass
+
+- **Status:** BLOCKED — readiness plan — `docs/accounting/SALES_REVENUE_4000_4100_RECLASS_PHASE2_READINESS.md`
+- **Blocker:** `APPROVE_SALES_REVENUE_4000_4100_RECLASS_PHASE2`
+
+### 6. Optional / future
 
 - Created-by on old JEs — data gap; no backfill without audit approval
 - Unified RPC fields — optional migration; not approved

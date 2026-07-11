@@ -1,7 +1,7 @@
 # DIN CHINA production monitoring
 
 **Profile:** din-china
-**Date:** 2026-07-11T07:39:57.016Z
+**Date:** 2026-07-11T12:18:03.802Z
 **URL:** https://erp.dincouture.pk
 **Core gates:** PASS
 **Overall:** PASS
@@ -24,4 +24,5 @@
 - [PASS] Ledger V2 loader unified — actual=unified
 - [PASS] Ledger V2 MR JALIL — closing=216299
 - [PASS] Admin Compare Pilot Batch 9/9 — compared=9 pass=9 fail=0 maxAbsDiff=0
-- [PASS] no material console/RPC errors — none
+- [WAIVED] no material console/RPC errors — [SUPABASE CONTEXT] Error ensuring default accounts: Error: Mandatory payment account 1000 missing after COA seed
+    at Object.ensureDefaultAccounts (https://erp.dincouture.pk/assets/index-DLGA0NYj.js:241:13218)
