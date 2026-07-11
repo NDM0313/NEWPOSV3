@@ -1,0 +1,13 @@
+AR/AP Phase 2b production rollout — unified ledger tests
+Generated: 2026-07-12
+
+Command: npm run test:unified-ledger
+
+Result: 339/339 PASS
+Duration: ~3–5s (session)
+
+Includes Phase 2b coverage via arApPartyGlParity.test.ts:
+- Missing RPC fallback metadata
+- Kill-switch fallback path
+- Unified parity delta tolerance (0.01 PKR)
+- Admin parity chip inputs

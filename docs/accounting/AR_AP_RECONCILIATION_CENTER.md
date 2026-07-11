@@ -112,6 +112,19 @@ When Party Ledger unified loaders are ON (`unified_ledger_loader_party_ledger` +
 
 Evidence: `reports/ar-ap-phase-2b-unified-wireup-20260712/`
 
+### Rollout status (2026-07-12)
+
+| Status | Value |
+|--------|-------|
+| DEVELOPMENT COMPLETE | yes — commit `75c12cd7` |
+| GITHUB PUSHED | yes |
+| MIGRATION NOT APPROVED | yes — awaiting `APPROVE_AR_AP_PHASE2B_UNIFIED_RPC_PRODUCTION_MIGRATION` |
+| MIGRATION APPLIED | no |
+| PRODUCTION PARITY PASS | no — pre-migration `SKIP_RPC_NOT_DEPLOYED` |
+| FALLBACK RETAINED | yes — `get_contact_party_gl_balances` |
+
+Production rollout evidence: `reports/ar-ap-phase-2b-production-rollout-20260712/`
+
 ---
 
 ## Known limitations
