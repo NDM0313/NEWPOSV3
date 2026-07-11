@@ -1,7 +1,7 @@
 # DIN CHINA production monitoring
 
 **Profile:** din-china
-**Date:** 2026-07-10T16:14:53.564Z
+**Date:** 2026-07-11T07:39:57.016Z
 **URL:** https://erp.dincouture.pk
 **Core gates:** PASS
 **Overall:** PASS
@@ -12,13 +12,13 @@
 - [PASS] Roznamcha main loader unified — actual=unified
 - [PASS] Roznamcha preview legacy_shadow — actual=legacy_shadow
 - [PASS] Roznamcha Cash In golden — actual=60042230
-- [FAIL] Roznamcha Cash Out golden — actual=47495518 (effective=WAIVED)
-- [FAIL] Roznamcha Closing golden — actual=12546712 (effective=WAIVED)
+- [FAIL] Roznamcha Cash Out golden — actual=54819613 (effective=WAIVED)
+- [FAIL] Roznamcha Closing golden — actual=5222617 (effective=WAIVED)
 - [PASS] Account Statement loader unified — actual=unified
 - [PASS] Account Statement MR JALIL — closing=216299
 - [PASS] Trial Balance loader unified — actual=unified
-- [PASS] Trial Balance debit = credit — debit=365913589.15 credit=365913589.15
-- [FAIL] Trial Balance golden total — debit=365913589.15 (effective=WAIVED)
+- [PASS] Trial Balance debit = credit — debit=373239344.15 credit=373239344.15
+- [FAIL] Trial Balance golden total — debit=373239344.15 (effective=WAIVED)
 - [PASS] Party Ledger loader unified — actual=unified
 - [PASS] Party Ledger MR JALIL — closing=216299
 - [PASS] Ledger V2 loader unified — actual=unified

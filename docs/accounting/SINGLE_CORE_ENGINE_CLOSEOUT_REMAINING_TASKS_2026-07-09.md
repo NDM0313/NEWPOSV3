@@ -1,6 +1,6 @@
 # Single Core Engine Closeout — Remaining Tasks
 
-**Date:** 2026-07-10 (R8 final pre-execution review)  
+**Date:** 2026-07-11 (office post-pull closeout)  
 **Scope:** OLD ERP / DIN Collection ERP only (not FX app)
 
 ## Baseline
@@ -8,10 +8,11 @@
 | Item | Value |
 |------|--------|
 | Branch | `main` |
-| HEAD / origin/main | `2dee1163` |
+| HEAD / origin/main | `84eb1363` |
 | Production URL | https://erp.dincouture.pk |
 | Calendar Days 7–15 | **COMPLETE / PASS** |
-| VPS deploy (office) | **COMPLETE** — [`2026-07-09-OFFICE-VPS-DEPLOY-APPLY.md`](../2026-07-09-OFFICE-VPS-DEPLOY-APPLY.md) |
+| Post-pull verify (2026-07-11) | **PASS** — [`OFFICE_PULL_REMAINING_STATUS_2026-07-11.md`](OFFICE_PULL_REMAINING_STATUS_2026-07-11.md) |
+| VPS deploy (office) | **COMPLETE** — HEAD matches repo; no redeploy on pull |
 | R8 status | **OPERATIONAL COMPLETE (R8-R1)** — 2026-07-10 — see `reports/r8-legacy-retirement-execution-20260710/` |
 | Mobile Salesman QA | **PASS** (login) — Play Store **NOT RELEASED** |
 | Sales revenue 4000 canonical (sale + return) | **COMPLETE** — SL-0010 + RET-20260711-3835 — see `reports/sales-revenue-canonical-account-correction-20260710/closeout.md` |
