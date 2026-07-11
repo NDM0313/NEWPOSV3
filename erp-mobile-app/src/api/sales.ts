@@ -17,8 +17,10 @@ import {
 } from '../utils/storageAttachmentPipeline';
 import {
   buildCustomerSalePaymentAutoNotes,
+  composeCustomerPaymentNotesForRpc,
   composeSalePaymentNotes,
 } from '../utils/saleNotesComposition';
+import { dispatchMobileAccountingInvalidated } from '../lib/dataInvalidationBus';
 import { readSaleBillRef } from '../utils/saleBillRef';
 
 export interface CreateSaleInput {
@@ -772,6 +774,9 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
       paymentDate != null && String(paymentDate).trim() !== ''
         ? String(paymentDate).trim().slice(0, 10)
         : localNowDateString();
+    const paymentAccountName = paymentAccountId
+      ? await resolvePaymentAccountDisplayName(paymentAccountId)
+      : '';
     const composedPaymentNotes =
       paymentNotes?.trim() ||
       composeSalePaymentNotes({
@@ -779,7 +784,7 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
           partyName: customerName,
           invoiceRef: docNo,
           customerBillRef: billRef,
-          amount: paymentToRecord,
+          paymentAccountName,
           paymentMethod: paymentMethod || 'Cash',
         }),
         userNotes: notes,
@@ -1354,20 +1359,17 @@ export async function recordCustomerPayment(params: {
   }
   const dateVal = paymentDate || localNowDateString();
   const refTrim = referenceNumber != null ? String(referenceNumber).trim() : '';
-  const userNotes = notes?.trim() ?? '';
   const customerBillRef = readSaleBillRef(saleMeta);
   const partyName = String(saleMeta.customer_name ?? '').trim() || 'Customer';
   const invoiceRef = String(saleMeta.invoice_no ?? '').trim() || undefined;
-  const autoNotes = buildCustomerSalePaymentAutoNotes({
+  const paymentAccountName = await resolvePaymentAccountDisplayName(accountId);
+  const composedNotes = composeCustomerPaymentNotesForRpc({
     partyName,
     invoiceRef,
     customerBillRef,
-    amount,
-    paymentMethod,
-  });
-  const composedNotes = composeSalePaymentNotes({
-    autoNotes,
-    userNotes,
+    paymentAccountName,
+    paymentMethod: paymentMethodLabelForNotes(paymentMethod),
+    combinedNotes: notes,
     bankTraceId: refTrim || null,
   });
   const normalized = String(paymentMethod || 'cash').toLowerCase();
@@ -1436,15 +1438,21 @@ function mapPaymentMethodToRpc(paymentMethod: string): 'cash' | 'bank' | 'card' 
   return methodMap[normalized] || 'cash';
 }
 
-function composePaymentNotes(notes?: string | null, bankTraceId?: string | null): string {
-  const refTrim = bankTraceId != null ? String(bankTraceId).trim() : '';
-  const baseNotes = notes?.trim() ?? '';
-  return refTrim ? `${baseNotes ? `${baseNotes} | ` : ''}Bank Trace ID: ${refTrim}` : baseNotes;
+function paymentMethodLabelForNotes(method: string): string {
+  const m = String(method || 'cash').toLowerCase();
+  if (m === 'bank' || m === 'card') return 'Bank';
+  if (m === 'wallet' || m === 'mobile_wallet') return 'Mobile Wallet';
+  return 'Cash';
+}
+
+async function resolvePaymentAccountDisplayName(accountId: string): Promise<string> {
+  const { data } = await supabase.from('accounts').select('name').eq('id', accountId).maybeSingle();
+  return String((data as { name?: string } | null)?.name ?? '').trim();
 }
 
 /**
  * On-account customer receipt (no invoice): Dr Cash/Bank, Cr AR sub-ledger.
- * Same contract as web saleService.recordOnAccountPayment.
+ * Post-RPC patch mirrors web AddEntryV2 createCustomerReceiptEntry (manual_receipt + JE description).
  */
 export async function recordOnAccountCustomerPayment(params: {
   companyId: string;
@@ -1458,7 +1466,9 @@ export async function recordOnAccountCustomerPayment(params: {
   paymentAt?: string | null;
   notes?: string | null;
   bankTraceId?: string | null;
+  paymentAccountName?: string | null;
   createdBy?: string | null;
+  attachments?: PaymentAttachment[] | null;
 }): Promise<{ data: { payment_id: string; reference_number?: string } | null; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
   const {
@@ -1473,6 +1483,7 @@ export async function recordOnAccountCustomerPayment(params: {
     notes,
     bankTraceId,
     createdBy,
+    paymentAccountName: paymentAccountNameParam,
   } = params;
   if (!companyId || !contactId?.trim() || amount <= 0 || !accountId) {
     return { data: null, error: 'Company, customer, amount and account are required.' };
@@ -1484,7 +1495,15 @@ export async function recordOnAccountCustomerPayment(params: {
     return { data: null, error: e instanceof Error ? e.message : 'Branch required for payment.' };
   }
   const dateVal = paymentDate || localNowDateString();
-  const composedNotes = composePaymentNotes(notes, bankTraceId);
+  const paymentAccountName =
+    String(paymentAccountNameParam ?? '').trim() ||
+    (await resolvePaymentAccountDisplayName(accountId));
+  const composedNotes = composeCustomerPaymentNotesForRpc({
+    partyName: contactName,
+    paymentAccountName,
+    combinedNotes: notes,
+    bankTraceId,
+  });
   const enumMethod = mapPaymentMethodToRpc(paymentMethod);
   const { data, error } = await supabase.rpc('record_payment_with_accounting', {
     p_company_id: companyId,
@@ -1502,27 +1521,66 @@ export async function recordOnAccountCustomerPayment(params: {
     p_worker_stage_id: null,
   });
   if (error) return { data: null, error: error.message };
-  const res = data as { success?: boolean; payment_id?: string; reference_number?: string; error?: string } | null;
+  const res = data as {
+    success?: boolean;
+    payment_id?: string;
+    journal_entry_id?: string;
+    reference_number?: string;
+    error?: string;
+  } | null;
   if (!res?.success || !res.payment_id) {
     return { data: null, error: res?.error ?? 'Payment failed.' };
   }
   const paymentId = res.payment_id;
-  const patch: Record<string, unknown> = {
-    contact_id: contactId.trim(),
-    contact_name: contactName.trim(),
-    received_by: createdBy ?? null,
-  };
-  const upd = await supabase.from('payments').update(patch).eq('id', paymentId);
-  if (upd.error) {
+  const { paymentPatch, jePatch } = onAccountCustomerReceiptPostRpcPatches({
+    contactId,
+    contactName,
+    composedNotes,
+    createdBy,
+    attachments: params.attachments,
+  });
+  let payUpd = await supabase.from('payments').update(paymentPatch).eq('id', paymentId);
+  if (payUpd.error?.code === 'PGRST204' && String(payUpd.error.message || '').includes('attachments')) {
+    const { attachments: _a, ...rest } = paymentPatch;
+    payUpd = await supabase.from('payments').update(rest).eq('id', paymentId);
+  }
+  if (payUpd.error) {
     return {
       data: null,
-      error: `Payment recorded but contact link failed: ${upd.error.message}. Reconcile contact_id on payment ${paymentId}.`,
+      error: `Payment recorded but contact link failed: ${payUpd.error.message}. Reconcile contact_id on payment ${paymentId}.`,
     };
   }
+
+  let journalEntryId = res.journal_entry_id ?? null;
+  if (!journalEntryId) {
+    const { data: jeRow } = await supabase
+      .from('journal_entries')
+      .select('id')
+      .eq('payment_id', paymentId)
+      .maybeSingle();
+    journalEntryId = (jeRow as { id?: string } | null)?.id ?? null;
+  }
+  if (journalEntryId) {
+    const jeUpd = await supabase
+      .from('journal_entries')
+      .update(jePatch)
+      .eq('id', journalEntryId);
+    if (jeUpd.error) {
+      console.warn('[recordOnAccountCustomerPayment] manual receipt JE patch:', jeUpd.error.message);
+    }
+  }
+
   if (params.paymentAt) {
     const { patchPaymentCreatedAt } = await import('./paymentTimestamp');
     await patchPaymentCreatedAt(paymentId, params.paymentAt);
   }
+
+  dispatchMobileAccountingInvalidated({
+    companyId,
+    branchId: branchResolved,
+    reason: 'mobile-on-account-receipt',
+  });
+
   return {
     data: { payment_id: paymentId, reference_number: res.reference_number },
     error: null,
@@ -1530,6 +1588,38 @@ export async function recordOnAccountCustomerPayment(params: {
 }
 
 export type PaymentAttachment = { url: string; name: string };
+
+/** Post-RPC client patches for on-account customer receipt (web AddEntryV2 parity). */
+export function onAccountCustomerReceiptPostRpcPatches(params: {
+  contactId: string;
+  contactName: string;
+  composedNotes: string;
+  createdBy?: string | null;
+  attachments?: PaymentAttachment[] | null;
+}): {
+  paymentPatch: Record<string, unknown>;
+  jePatch: { reference_type: string; reference_id: string; description: string };
+} {
+  const contactIdTrim = params.contactId.trim();
+  const paymentPatch: Record<string, unknown> = {
+    contact_id: contactIdTrim,
+    contact_name: params.contactName.trim(),
+    received_by: params.createdBy ?? null,
+    reference_type: 'manual_receipt',
+    reference_id: null,
+  };
+  if (params.attachments?.length) {
+    paymentPatch.attachments = params.attachments;
+  }
+  return {
+    paymentPatch,
+    jePatch: {
+      reference_type: 'manual_receipt',
+      reference_id: contactIdTrim,
+      description: params.composedNotes,
+    },
+  };
+}
 
 /** Get payment history for a sale (including attachments for preview) */
 export async function getSalePayments(saleId: string): Promise<{

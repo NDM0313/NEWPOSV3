@@ -1,6 +1,5 @@
 import { useRecordCustomerPayment } from '../../hooks/useRecordCustomerPayment';
-import { uploadPaymentAttachments, updatePaymentAttachments } from '../../api/paymentAttachments';
-import { attachmentUploadWarningMessage } from '../../utils/storageUploadErrors';
+import { finalizePaymentAttachments } from '../../lib/finalizePaymentAttachments';
 import { addRentalPayment } from '../../api/rentals';
 import { recordSupplierPayment } from '../../api/accounts';
 import {
@@ -110,25 +109,13 @@ export function UnifiedPaymentSheet({
       });
       let attachmentWarning: string | null = null;
       if (success && paymentId && payload.attachments.length > 0) {
-        try {
-          const { results, failures } = await uploadPaymentAttachments(
-            companyId,
-            referenceId,
-            paymentId,
-            payload.attachments,
-          );
-          if (results.length > 0) {
-            const upd = await updatePaymentAttachments(paymentId, results);
-            if (upd.error) {
-              attachmentWarning = `Payment saved. Attachments uploaded but could not be linked: ${upd.error}`;
-            }
-          }
-          attachmentWarning =
-            attachmentUploadWarningMessage(results.length, payload.attachments.length, failures)
-            ?? attachmentWarning;
-        } catch (err) {
-          attachmentWarning = `Payment saved. Attachment upload failed: ${(err as Error)?.message ?? 'unknown error'}.`;
-        }
+        const fin = await finalizePaymentAttachments({
+          companyId,
+          storageSegment: referenceId,
+          paymentId,
+          files: payload.attachments,
+        });
+        attachmentWarning = fin.attachmentWarning;
       }
       return {
         success,
@@ -154,12 +141,23 @@ export function UnifiedPaymentSheet({
         notes: payload.notes || undefined,
         userId: userId ?? null,
       });
+      let attachmentWarning: string | null = null;
+      if (!error && paymentId && payload.attachments.length > 0) {
+        const fin = await finalizePaymentAttachments({
+          companyId,
+          storageSegment: referenceId,
+          paymentId,
+          files: payload.attachments,
+        });
+        attachmentWarning = fin.attachmentWarning;
+      }
       return {
         success: !error,
         error: error ?? null,
         paymentId: paymentId ?? null,
         referenceNumber: referenceNumber ?? null,
         partyAccountName: partyName ? `Receivable — ${partyName}` : null,
+        attachmentWarning,
       };
     }
 
@@ -180,12 +178,23 @@ export function UnifiedPaymentSheet({
         notes: payload.notes || undefined,
         userId: userId ?? undefined,
       });
+      let attachmentWarning: string | null = null;
+      if (data?.payment_id && payload.attachments.length > 0) {
+        const fin = await finalizePaymentAttachments({
+          companyId,
+          storageSegment: referenceId,
+          paymentId: data.payment_id,
+          files: payload.attachments,
+        });
+        attachmentWarning = fin.attachmentWarning;
+      }
       return {
         success: !error,
         error: error ?? null,
         paymentId: data?.payment_id ?? null,
         referenceNumber: data?.reference_number ?? null,
         partyAccountName: partyName ? `Payable — ${partyName}` : null,
+        attachmentWarning,
       };
     }
 

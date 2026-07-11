@@ -1,7 +1,7 @@
 # DIN BRIDAL production monitoring
 
 **Profile:** din-bridal
-**Date:** 2026-07-11T12:20:21.154Z
+**Date:** 2026-07-11T16:01:27.020Z
 **URL:** https://erp.dincouture.pk
 **Core gates:** PASS
 **Overall:** PASS
@@ -25,5 +25,4 @@
 - [PASS] Ledger V2 MR REHAN ALI — closing=530000
 - [WAIVED] Admin Compare Pilot Batch — skipped for din-bridal profile
 - [WAIVED] no material console/RPC errors — [SUPABASE CONTEXT] Error ensuring default accounts: Error: Mandatory payment account 1000 missing after COA seed
-    at Object.ensureDefaultAccounts (https://erp.dincouture.pk/assets/index-DLGA0NYj.js:241:13218) | [SUPABASE CONTEXT] Error ensuring default accounts: Error: Mandatory payment account 1000 missing after COA seed
-    at Object.ensureDefaultAccounts (https://erp.dincouture.pk/assets/index-DLGA0NYj.js:241:13218)
+    at Object.ensureDefaultAccounts (https://erp.dincouture.pk/assets/index-CSUXHLC6.js:241:13218)

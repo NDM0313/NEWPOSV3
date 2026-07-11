@@ -1166,12 +1166,12 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
             return;
           }
           try {
+            const selectedAccountDetails = accounting?.accounts.find((a) => a.id === selectedAccount);
             const customerPaymentNotes = composeCustomerPaymentNotesForRpc({
               partyName: entityName,
               invoiceRef: referenceNo,
               customerBillRef,
-              amount,
-              paymentMethod,
+              paymentAccountName: selectedAccountDetails?.name ?? '',
               combinedNotes: notes,
             });
             let attachmentPayload: { url: string; name: string }[] = [];

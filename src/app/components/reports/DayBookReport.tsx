@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useAccountingReportReload } from '@/app/hooks/useAccountingReportReload';
 import { supabase } from '@/lib/supabase';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useFormatDate } from '@/app/hooks/useFormatDate';
@@ -103,6 +104,7 @@ function journalEntriesBranchOrFilter(branchId: string | null | undefined): stri
 
 export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartDate, globalEndDate }: DayBookReportProps) => {
   const { companyId, branchId: contextBranchId } = useSupabase();
+  const reloadEpoch = useAccountingReportReload({ companyId, branchId: contextBranchId });
   const reportExport = useReportExport({ companyId, documentType: 'ledger', reportKind: 'day_book' });
   const [printOrientation, setPrintOrientation] = useState<PdfPreviewOrientation>('landscape');
   const { dateFormat, timeFormat, timezone } = useFormatDate();
@@ -363,7 +365,7 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
       }
     })();
     return () => { cancelled = true; };
-  }, [companyId, dateFrom, dateTo, branchOrFilter, auditMode, dateFormat, timeFormat, timezone]);
+  }, [companyId, dateFrom, dateTo, branchOrFilter, auditMode, dateFormat, timeFormat, timezone, reloadEpoch]);
 
   const getSortValue = (e: DayBookEntry, key: DayBookSortKey): string | number => {
     switch (key) {

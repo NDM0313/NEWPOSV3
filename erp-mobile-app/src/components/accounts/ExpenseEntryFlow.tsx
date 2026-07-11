@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import type { User } from '../../types';
-import { createExpense } from '../../api/expenses';
+import { createExpense, uploadExpenseReceipt } from '../../api/expenses';
 import { isRealBranchUuid } from '../../utils/branchId';
 import { useWriteBranchSelection } from '../../hooks/useWriteBranchSelection';
 import { WriteBranchPickerField } from '../shared/WriteBranchPickerField';
@@ -54,6 +54,16 @@ export function ExpenseEntryFlow({ onBack, onComplete, user, companyId, branchId
       return { success: false, error: 'Select a branch to record this expense.' };
     }
     const methodForApi = payload.method === 'wallet' ? 'other' : payload.method;
+    let receiptUrl: string | null = null;
+    let attachmentWarning: string | null = null;
+    if (payload.attachments.length > 0) {
+      const upload = await uploadExpenseReceipt(companyId, payload.attachments[0]);
+      if (upload.error) {
+        attachmentWarning = `Expense saved without receipt: ${upload.error}`;
+      } else {
+        receiptUrl = upload.url;
+      }
+    }
     const { data, error } = await createExpense({
       companyId,
       branchId: writeBranchId,
@@ -64,6 +74,7 @@ export function ExpenseEntryFlow({ onBack, onComplete, user, companyId, branchId
       userId: user.id,
       expenseDate: payload.paymentDate,
       paymentAccountId: payload.accountId,
+      receiptUrl,
     });
     return {
       success: !!data,
@@ -71,6 +82,7 @@ export function ExpenseEntryFlow({ onBack, onComplete, user, companyId, branchId
       paymentId: data?.id ?? null,
       referenceNumber: data?.expense_no ?? null,
       partyAccountName: category,
+      attachmentWarning,
     };
   };
 

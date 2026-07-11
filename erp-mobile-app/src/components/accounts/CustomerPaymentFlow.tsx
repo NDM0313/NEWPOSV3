@@ -4,6 +4,7 @@ import type { User } from '../../types';
 import { getAllCustomersWithBalance, type CustomerWithBalance } from '../../api/customerLedger';
 import { MobilePaymentSheet, type MobilePaymentSheetSubmitPayload } from '../shared/MobilePaymentSheet';
 import { useRecordOnAccountCustomerPayment } from '../../hooks/useRecordOnAccountCustomerPayment';
+import { finalizePaymentAttachments } from '../../lib/finalizePaymentAttachments';
 
 interface CustomerPaymentFlowProps {
   onBack: () => void;
@@ -69,14 +70,26 @@ export function CustomerPaymentFlow({
       paymentAt: payload.paymentAt,
       notes: payload.notes || null,
       bankTraceId: payload.reference?.trim() || null,
+      paymentAccountName: payload.accountName || null,
       createdBy: user.id ?? null,
     });
+    let attachmentWarning: string | null = null;
+    if (success && paymentId && payload.attachments.length > 0) {
+      const fin = await finalizePaymentAttachments({
+        companyId,
+        storageSegment: selectedCustomer.id,
+        paymentId,
+        files: payload.attachments,
+      });
+      attachmentWarning = fin.attachmentWarning;
+    }
     return {
       success,
       error: error ?? null,
       paymentId: paymentId ?? null,
       referenceNumber: referenceNumber ?? null,
       partyAccountName: selectedCustomer.name ? `Receivable — ${selectedCustomer.name}` : null,
+      attachmentWarning,
     };
   };
 

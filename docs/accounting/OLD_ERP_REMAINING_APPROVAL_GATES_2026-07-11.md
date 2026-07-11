@@ -1,9 +1,9 @@
-# OLD ERP — Remaining Approval Gates
+﻿# OLD ERP â€” Remaining Approval Gates
 
-**Date:** 2026-07-11  
-**Scope:** OLD ERP / DIN Collection ERP only  
-**HEAD:** `f7c66fd9`  
-**Last updated:** 2026-07-11 (Salesman extended QA attempt)
+**Date:** 2026-07-11
+**Scope:** OLD ERP / DIN Collection ERP only
+**HEAD:** `511044a1` (pre-closeout; updates on commit)
+**Last updated:** 2026-07-11 (Salesman extended QA **PASS** â€” signed off)
 
 ---
 
@@ -11,10 +11,11 @@
 
 | Track | Status | Evidence |
 |-------|--------|----------|
-| Calendar Days 7–15 | **COMPLETE / PASS** | `reports/single-core-engine-calendar-stability-official-202607*` |
+| Calendar Days 7â€“15 | **COMPLETE / PASS** | `reports/single-core-engine-calendar-stability-official-202607*` |
 | R8-R1 operational retirement | **COMPLETE** | `reports/r8-legacy-retirement-execution-20260710/` |
 | Ledger V2 production deploy | **COMPLETE** | `docs/2026-07-09-LEDGER-V2-PRODUCTION-DEPLOY.md` |
 | Salesman login QA | **PASS** | `reports/mobile-salesman-qa-readiness-after-day15-20260709/` |
+| **Salesman extended QA (rows 4â€“20)** | **PASS** | `reports/salesman-extended-qa-pixel-rows-4-20-20260711/` â€” `SALESMAN_EXTENDED_QA_PASS_PLAY_STORE_STILL_NOT_RELEASED` |
 | Monitoring flake hardening | **COMPLETE** | `6281fcc4`, `ba7dadd7`, three-company PASS |
 | Sales Revenue 4000 production proof | **COMPLETE** | SL-0010, RET-20260711-3835 |
 | Post-pull verify (2026-07-11 AM) | **PASS** | `reports/single-core-engine-calendar-stability-office-post-pull-verify-20260711/` |
@@ -23,7 +24,7 @@
 
 - Future/native Sales Revenue = **4000**
 - Account **4100** = DIN CHINA imported historical / fallback only
-- No historical 4100 → 4000 reclass has been run
+- No historical 4100 â†’ 4000 reclass has been run
 - Unified main loaders are canonical production path; legacy code retained for rollback only
 
 ---
@@ -39,19 +40,18 @@
 
 ---
 
-## DEVICE STATUS (2026-07-11 extended QA session)
+## DEVICE STATUS (2026-07-11 â€” signed off)
 
 | Check | Result |
 |-------|--------|
-| `adb devices` (after kill-server/start-server retry) | **empty** — no devices attached |
-| Pixel 6 Pro | **not connected** |
-| USB authorization | N/A |
-| Salesman extended QA rows 4–20 | **BLOCKED** — device gate (16 BLOCKED, 1 N/A) |
+| Pixel 6 Pro | `24281FDEE0023P` â€” connected during QA sessions |
+| Salesman extended QA rows 4â€“20 | **PASS** (operator attestation + device evidence) |
+| Classification | `SALESMAN_EXTENDED_QA_PASS_PLAY_STORE_STILL_NOT_RELEASED` |
 | Evidence | `reports/salesman-extended-qa-pixel-rows-4-20-20260711/` |
 
-Rows 1–3 (login path): **PASS** from 2026-07-09 office (`24281FDEE0023P`) — not re-run.
+Rows 1â€“3: **PASS** (2026-07-09). Rows 5â€“11: **N/A** (full-accounting reports not in Salesman scope). Rows 4, 12â€“20: **PASS**.
 
-Password: **not requested** (device gate).
+Password: **not requested** in sign-off session.
 
 ---
 
@@ -85,4 +85,4 @@ Do not use a single general approval to bypass individual gates.
 
 ## Stable state verdict
 
-All safe autonomous work for OLD ERP readiness is complete. Salesman extended QA rows 4–20 remain **device-blocked** until Pixel 6 Pro appears as `device` in adb. Further gated work requires operator approval strings above.
+All safe autonomous work for OLD ERP readiness is complete through **Salesman extended QA sign-off** and **2026-07-11 validation PASS**. Gated tracks below still require operator approval strings.

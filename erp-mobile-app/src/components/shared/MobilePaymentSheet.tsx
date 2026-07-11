@@ -402,10 +402,9 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
       partyName: partyName ?? 'Customer',
       invoiceRef: referenceNo,
       customerBillRef,
-      amount,
-      paymentMethod: METHOD_LABELS[paymentMethod],
+      paymentAccountName: selectedAccount?.name ?? '',
     });
-  }, [mode, partyName, referenceNo, customerBillRef, amount, paymentMethod]);
+  }, [mode, partyName, referenceNo, customerBillRef, accountId, selectedAccount?.name]);
 
   const dueDisplay = outstandingAmount ?? 0;
   const amountExceedsBalance =
@@ -445,8 +444,7 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
                 partyName: partyName ?? 'Customer',
                 invoiceRef: referenceNo,
                 customerBillRef,
-                amount,
-                paymentMethod: METHOD_LABELS[paymentMethod],
+                paymentAccountName: acct?.name ?? '',
               }),
               userNotes: notes.trim(),
               bankTraceId: reference.trim() || null,

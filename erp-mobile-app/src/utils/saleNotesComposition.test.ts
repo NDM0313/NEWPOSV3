@@ -11,12 +11,16 @@ test('mergeCustomerBillRefIntoNotes adds Bill/REF line', () => {
   assert.equal(mergeCustomerBillRefIntoNotes('N226', ''), `${BILL_REF_NOTE_PREFIX} N226`);
 });
 
-test('buildCustomerSalePaymentAutoNotes includes bill ref', () => {
+test('buildCustomerSalePaymentAutoNotes includes bill ref and account name', () => {
   const auto = buildCustomerSalePaymentAutoNotes({
     partyName: 'Ali',
     customerBillRef: 'N226',
+    paymentAccountName: 'FHD MZ',
   });
   assert.match(auto, /Bill\/REF: N226/);
+  assert.match(auto, /Account: FHD MZ/);
+  assert.doesNotMatch(auto, /Amount:/);
+  assert.doesNotMatch(auto, /Method:/);
 });
 
 test('composeSalePaymentNotes appends bank trace', () => {

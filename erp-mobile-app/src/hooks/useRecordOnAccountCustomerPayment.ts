@@ -13,6 +13,7 @@ export interface RecordOnAccountCustomerPaymentParams {
   paymentAt?: string | null;
   notes?: string | null;
   bankTraceId?: string | null;
+  paymentAccountName?: string | null;
   createdBy?: string | null;
 }
 

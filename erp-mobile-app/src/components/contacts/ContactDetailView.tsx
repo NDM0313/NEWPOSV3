@@ -11,6 +11,7 @@ import {
 } from '../../api/contacts';
 import { getPurchasesBySupplier, recordSupplierPayment } from '../../api/accounts';
 import { useRecordOnAccountCustomerPayment } from '../../hooks/useRecordOnAccountCustomerPayment';
+import { finalizePaymentAttachments } from '../../lib/finalizePaymentAttachments';
 import { MobilePaymentSheet, type MobilePaymentSheetSubmitPayload } from '../shared/MobilePaymentSheet';
 import type { User } from '../../types';
 
@@ -135,14 +136,26 @@ export function ContactDetailView({
       paymentAt: payload.paymentAt,
       notes: payload.notes || null,
       bankTraceId: payload.reference?.trim() || null,
+      paymentAccountName: payload.accountName || null,
       createdBy: user.id ?? null,
     });
+    let attachmentWarning: string | null = null;
+    if (success && paymentId && payload.attachments.length > 0) {
+      const fin = await finalizePaymentAttachments({
+        companyId,
+        storageSegment: contact.id,
+        paymentId,
+        files: payload.attachments,
+      });
+      attachmentWarning = fin.attachmentWarning;
+    }
     return {
       success,
       error: error ?? null,
       paymentId: paymentId ?? null,
       referenceNumber: referenceNumber ?? null,
       partyAccountName: contact.name ? `Receivable — ${contact.name}` : null,
+      attachmentWarning,
     };
   };
 
@@ -166,12 +179,23 @@ export function ContactDetailView({
       notes: payload.notes || undefined,
       userId: user.id,
     });
+    let attachmentWarning: string | null = null;
+    if (data?.payment_id && payload.attachments.length > 0) {
+      const fin = await finalizePaymentAttachments({
+        companyId,
+        storageSegment: supplierPurchaseId,
+        paymentId: data.payment_id,
+        files: payload.attachments,
+      });
+      attachmentWarning = fin.attachmentWarning;
+    }
     return {
       success: !error && !!data?.payment_id,
       error: error ?? null,
       paymentId: data?.payment_id ?? null,
       referenceNumber: data?.reference_number ?? null,
       partyAccountName: contact.name ? `Payable — ${contact.name}` : null,
+      attachmentWarning,
     };
   };
 

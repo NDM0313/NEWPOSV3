@@ -27,7 +27,9 @@ export function buildCustomerSalePaymentAutoNotes(params: {
   partyName: string;
   invoiceRef?: string | null;
   customerBillRef?: string | null;
-  amount?: number | null;
+  /** Selected cash/bank account display name (e.g. FHD MZ). */
+  paymentAccountName?: string | null;
+  /** @deprecated Fallback when account name unavailable */
   paymentMethod?: string | null;
 }): string {
   const party = String(params.partyName ?? '').trim() || 'Customer';
@@ -36,17 +38,13 @@ export function buildCustomerSalePaymentAutoNotes(params: {
   const parts: string[] = [`Customer receipt from ${party}.`];
   if (invoiceRef) parts.push(`Invoice: ${invoiceRef}.`);
   if (customerBillRef) parts.push(`${BILL_REF_NOTE_PREFIX} ${customerBillRef}.`);
-  const amount = params.amount;
-  if (amount != null && Number.isFinite(Number(amount)) && Number(amount) > 0) {
-    parts.push(
-      `Amount: Rs. ${Number(amount).toLocaleString(undefined, {
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 2,
-      })}.`,
-    );
+  const accountName = String(params.paymentAccountName ?? '').trim();
+  if (accountName) {
+    parts.push(`Account: ${accountName}.`);
+  } else {
+    const method = String(params.paymentMethod ?? '').trim();
+    if (method) parts.push(`Method: ${method}.`);
   }
-  const method = String(params.paymentMethod ?? '').trim();
-  if (method) parts.push(`Method: ${method}.`);
   return parts.join(' ').replace(/\s{2,}/g, ' ').trim();
 }
 
@@ -71,7 +69,7 @@ export function composeCustomerPaymentNotesForRpc(params: {
   partyName: string;
   invoiceRef?: string | null;
   customerBillRef?: string | null;
-  amount?: number | null;
+  paymentAccountName?: string | null;
   paymentMethod?: string | null;
   combinedNotes?: string | null;
   bankTraceId?: string | null;
@@ -80,7 +78,7 @@ export function composeCustomerPaymentNotesForRpc(params: {
     partyName: params.partyName,
     invoiceRef: params.invoiceRef,
     customerBillRef: params.customerBillRef,
-    amount: params.amount,
+    paymentAccountName: params.paymentAccountName,
     paymentMethod: params.paymentMethod,
   });
   const combined = String(params.combinedNotes ?? '').trim();

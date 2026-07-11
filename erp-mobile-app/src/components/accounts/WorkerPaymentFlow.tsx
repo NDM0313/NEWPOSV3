@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { ArrowLeft, Search } from 'lucide-react';
 import type { User } from '../../types';
 import { getWorkersWithPayable, recordWorkerPayment } from '../../api/accounts';
+import { finalizePaymentAttachments } from '../../lib/finalizePaymentAttachments';
 import {
   MobilePaymentSheet,
   type MobilePaymentSheetSubmitPayload,
@@ -79,12 +80,23 @@ export function WorkerPaymentFlow({ onBack, onComplete, user, companyId, branchI
       notes: payload.notes || undefined,
       paymentReference: payload.reference || undefined,
     });
+    let attachmentWarning: string | null = null;
+    if (data?.id && payload.attachments.length > 0) {
+      const fin = await finalizePaymentAttachments({
+        companyId,
+        storageSegment: selectedWorker.id,
+        paymentId: data.id,
+        files: payload.attachments,
+      });
+      attachmentWarning = fin.attachmentWarning;
+    }
     return {
       success: !error && !!data,
       error: error ?? null,
       paymentId: data?.id ?? null,
       referenceNumber: payload.reference || null,
       partyAccountName: `Worker Payable — ${selectedWorker.name}`,
+      attachmentWarning,
     };
   };
 

@@ -501,7 +501,7 @@ export function SalesModule({
               autoNotes: buildCustomerSalePaymentAutoNotes({
                 partyName: saleData.customer?.name ?? 'Walk-in',
                 customerBillRef: saleData.billRef,
-                amount: result.paidAmount,
+                paymentAccountName: result.accountName ?? '',
                 paymentMethod: result.paymentMethod,
               }),
               userNotes: mergedNotes,

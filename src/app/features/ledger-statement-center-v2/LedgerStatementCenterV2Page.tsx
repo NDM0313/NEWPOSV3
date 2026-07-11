@@ -22,6 +22,7 @@ import { canAccessDeveloperIntegrityLab } from '@/app/lib/developerAccountingAcc
 import { canAccessLedgerV2UnifiedPreview } from '@/app/lib/ledgerV2UnifiedPreviewAccess';
 import { shortenLedgerPaymentLabel } from '@/app/lib/ledgerStatementV2Enrichment';
 import { useUnifiedLedgerEngineState } from '@/app/hooks/useUnifiedLedgerEngineState';
+import { useAccountingReportReload } from '@/app/hooks/useAccountingReportReload';
 import { UNIFIED_LEDGER_SCREEN_IDS } from '@/app/lib/unifiedLedgerScreenFlags';
 import type { UnifiedLedgerBasis } from '@/app/lib/unifiedLedgerBasisFilter';
 import {
@@ -108,6 +109,7 @@ export function LedgerStatementCenterV2Page({
   periodLabel?: string;
 }) {
   const { companyId, userRole, branchId, user } = useSupabase();
+  const reloadEpoch = useAccountingReportReload({ companyId, branchId });
   const globalFilter = useGlobalFilter();
   const {
     startDate: globalFromDate,
@@ -436,7 +438,7 @@ export function LedgerStatementCenterV2Page({
   useEffect(() => {
     if (!companyId || !entityId) return;
     void loadStatement();
-  }, [companyId, entityId, statementType, fromDate, toDate, loadStatement]);
+  }, [companyId, entityId, statementType, fromDate, toDate, loadStatement, reloadEpoch]);
 
   useEffect(() => {
     const handler = (ev: Event) => {

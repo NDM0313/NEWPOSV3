@@ -1009,6 +1009,7 @@ export async function recordSupplierPayment(params: {
   reference?: string;
   notes?: string;
   userId?: string;
+  attachments?: { url: string; name: string }[] | null;
 }): Promise<{ data: { payment_id: string; reference_number?: string | null } | null; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
   let branchResolved: string;
@@ -1054,6 +1055,18 @@ export async function recordSupplierPayment(params: {
     if (params.paymentAt) {
       const { patchPaymentCreatedAt } = await import('./paymentTimestamp');
       await patchPaymentCreatedAt(res.payment_id, params.paymentAt);
+    }
+    if (params.attachments?.length) {
+      const patch = { attachments: params.attachments };
+      let upd = await supabase.from('payments').update(patch).eq('id', res.payment_id);
+      if (upd.error?.code === 'PGRST204' && String(upd.error.message || '').includes('attachments')) {
+        // attachments column unavailable — payment still valid
+      } else if (upd.error) {
+        return {
+          data: { payment_id: res.payment_id, reference_number: (res as { reference_number?: string | null }).reference_number ?? null },
+          error: `Payment recorded but attachments could not be linked: ${upd.error.message}`,
+        };
+      }
     }
     const rpcRef = (res as { reference_number?: string | null }).reference_number ?? null;
     return { data: { payment_id: res.payment_id, reference_number: rpcRef }, error: null };
@@ -1284,6 +1297,7 @@ export async function recordWorkerPayment(params: {
   paymentReference?: string;
   /** When paying a specific studio stage (Pay Now), matches web worker payment debit side. */
   stageId?: string | null;
+  attachments?: { url: string; name: string }[] | null;
 }): Promise<{ data: { id: string } | null; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
   if (!params.workerId || !params.paymentAccountId || Number(params.amount) <= 0) {
@@ -1341,6 +1355,16 @@ export async function recordWorkerPayment(params: {
   if (params.paymentAt) {
     const { patchPaymentCreatedAt } = await import('./paymentTimestamp');
     await patchPaymentCreatedAt(paymentId, params.paymentAt);
+  }
+
+  if (params.attachments?.length) {
+    const patch = { attachments: params.attachments };
+    const attUpd = await supabase.from('payments').update(patch).eq('id', paymentId);
+    if (attUpd.error?.code === 'PGRST204' && String(attUpd.error.message || '').includes('attachments')) {
+      // attachments column unavailable — payment still valid
+    } else if (attUpd.error) {
+      return { data: null, error: `Payment recorded but attachments could not be linked: ${attUpd.error.message}` };
+    }
   }
 
   const { data: existingLedger } = await supabase

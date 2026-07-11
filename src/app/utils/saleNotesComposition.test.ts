@@ -35,19 +35,28 @@ test('stripCustomerBillRefLine removes managed prefix only', () => {
   assert.equal(stripCustomerBillRefLine(`${BILL_REF_NOTE_PREFIX} N226\nNotes`), 'Notes');
 });
 
-test('buildCustomerSalePaymentAutoNotes includes bill ref', () => {
+test('buildCustomerSalePaymentAutoNotes includes bill ref and account name', () => {
   const auto = buildCustomerSalePaymentAutoNotes({
     partyName: 'Ali',
     invoiceRef: 'SL-001',
     customerBillRef: 'N226',
-    amount: 5000,
-    paymentMethod: 'Cash',
+    paymentAccountName: 'FHD MZ',
   });
   assert.match(auto, /Customer receipt from Ali/);
   assert.match(auto, /Invoice: SL-001/);
   assert.match(auto, /Bill\/REF: N226/);
-  assert.match(auto, /Rs\. 5,000/);
+  assert.match(auto, /Account: FHD MZ/);
+  assert.doesNotMatch(auto, /Amount:/);
+  assert.doesNotMatch(auto, /Method:/);
+});
+
+test('buildCustomerSalePaymentAutoNotes falls back to method when no account name', () => {
+  const auto = buildCustomerSalePaymentAutoNotes({
+    partyName: 'Ali',
+    paymentMethod: 'Cash',
+  });
   assert.match(auto, /Method: Cash/);
+  assert.doesNotMatch(auto, /Account:/);
 });
 
 test('composeSalePaymentNotes appends bank trace', () => {

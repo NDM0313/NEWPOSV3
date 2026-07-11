@@ -1,7 +1,7 @@
 # DIN COUTURE production monitoring
 
 **Profile:** din-couture
-**Date:** 2026-07-11T12:22:28.672Z
+**Date:** 2026-07-11T15:47:30.944Z
 **URL:** https://erp.dincouture.pk
 **Core gates:** PASS
 **Overall:** PASS
@@ -24,5 +24,4 @@
 - [PASS] Ledger V2 loader unified — actual=unified
 - [PASS] Ledger V2 DHARIA — closing=4488088
 - [WAIVED] Admin Compare Pilot Batch — skipped for din-couture profile
-- [WAIVED] no material console/RPC errors — [SUPABASE CONTEXT] Error ensuring default accounts: Error: Mandatory payment account 1000 missing after COA seed
-    at Object.ensureDefaultAccounts (https://erp.dincouture.pk/assets/index-DLGA0NYj.js:241:13218)
+- [PASS] no material console/RPC errors — none

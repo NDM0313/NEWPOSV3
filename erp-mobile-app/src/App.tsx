@@ -251,12 +251,24 @@ export default function App() {
     };
     document.addEventListener('pointerdown', onActivity);
     document.addEventListener('keydown', onActivity);
+    document.addEventListener('touchstart', onActivity, { passive: true });
+    document.addEventListener('touchmove', onActivity, { passive: true });
+    document.addEventListener('scroll', onActivity, { capture: true, passive: true });
+
+    const idlePoll = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      void checkLock();
+    }, 30_000);
 
     return () => {
       cancelled = true;
+      window.clearInterval(idlePoll);
       document.removeEventListener('visibilitychange', onVisibility);
       document.removeEventListener('pointerdown', onActivity);
       document.removeEventListener('keydown', onActivity);
+      document.removeEventListener('touchstart', onActivity);
+      document.removeEventListener('touchmove', onActivity);
+      document.removeEventListener('scroll', onActivity, true);
       appStateListener?.remove();
     };
   }, [user?.id, companyId, isPinLocked, isCounterLocked, requestCounterLock]);

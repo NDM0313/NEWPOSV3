@@ -1,6 +1,6 @@
 /**
  * PIN lock-on-resume helpers.
- * Re-prompt after app background or idle timeout (configurable in Settings).
+ * Re-prompt after idle timeout (configurable in Settings) or session max age.
  */
 
 import { getDevicePinMaxAgeMs } from './counterSessionPolicy';
@@ -20,7 +20,7 @@ const LAST_ACTIVITY_KEY = 'erp_mobile_pin_last_activity';
 export type PinIdleTimeoutId = 'off' | '1m' | '2m';
 
 export interface PinLockSettings {
-  /** Require PIN after returning from background. */
+  /** Legacy preference; re-lock timing is governed by idleTimeout (no immediate background lock). */
   lockOnBackground: boolean;
   /** Idle lock: off, 1 min, or 2 min without interaction. */
   idleTimeout: PinIdleTimeoutId;
@@ -33,8 +33,8 @@ function defaultSessionMaxAgeMs(): number {
 }
 
 const DEFAULTS: PinLockSettings = {
-  lockOnBackground: true,
-  idleTimeout: 'off',
+  lockOnBackground: false,
+  idleTimeout: '1m',
   sessionMaxAgeMs: defaultSessionMaxAgeMs(),
 };
 
@@ -44,37 +44,74 @@ function idleTimeoutMs(id: PinIdleTimeoutId): number | null {
   return null;
 }
 
+/** Configured idle duration; null when idle lock is off. */
+export function getEffectiveIdleTimeoutMs(idle: PinIdleTimeoutId): number | null {
+  return idleTimeoutMs(idle);
+}
+
+function isLegacyImmediateBackgroundSettings(
+  parsed: Partial<PinLockSettings & { enabled?: boolean }>,
+): boolean {
+  const lockOnBg =
+    typeof parsed.lockOnBackground === 'boolean'
+      ? parsed.lockOnBackground
+      : typeof parsed.enabled === 'boolean'
+        ? parsed.enabled
+        : true;
+  const idle =
+    parsed.idleTimeout === '1m' || parsed.idleTimeout === '2m' || parsed.idleTimeout === 'off'
+      ? parsed.idleTimeout
+      : 'off';
+  return lockOnBg === true && idle === 'off';
+}
+
+function parseStoredSettings(
+  parsed: Partial<PinLockSettings & { enabled?: boolean; timeoutMs?: number }>,
+): PinLockSettings {
+  const legacyEnabled = typeof parsed.enabled === 'boolean' ? parsed.enabled : true;
+  return {
+    lockOnBackground:
+      typeof parsed.lockOnBackground === 'boolean'
+        ? parsed.lockOnBackground
+        : legacyEnabled,
+    idleTimeout:
+      parsed.idleTimeout === '1m' || parsed.idleTimeout === '2m' || parsed.idleTimeout === 'off'
+        ? parsed.idleTimeout
+        : 'off',
+    sessionMaxAgeMs:
+      typeof parsed.sessionMaxAgeMs === 'number' && parsed.sessionMaxAgeMs > 0
+        ? parsed.sessionMaxAgeMs
+        : typeof parsed.timeoutMs === 'number' && parsed.timeoutMs > 0
+          ? parsed.timeoutMs
+          : defaultSessionMaxAgeMs(),
+  };
+}
+
 /** Migrate legacy settings shape (enabled + timeoutMs only). */
 export function getPinLockSettings(): PinLockSettings {
   try {
     const raw = safeLocalStorageGetItem(SETTINGS_KEY);
     if (!raw) {
       return {
-        lockOnBackground: true,
-        idleTimeout: 'off',
+        lockOnBackground: false,
+        idleTimeout: '1m',
         sessionMaxAgeMs: defaultSessionMaxAgeMs(),
       };
     }
     const parsed = JSON.parse(raw) as Partial<
       PinLockSettings & { enabled?: boolean; timeoutMs?: number }
     >;
-    const legacyEnabled = typeof parsed.enabled === 'boolean' ? parsed.enabled : true;
-    return {
-      lockOnBackground:
-        typeof parsed.lockOnBackground === 'boolean'
-          ? parsed.lockOnBackground
-          : legacyEnabled,
-      idleTimeout:
-        parsed.idleTimeout === '1m' || parsed.idleTimeout === '2m' || parsed.idleTimeout === 'off'
-          ? parsed.idleTimeout
-          : 'off',
-      sessionMaxAgeMs:
-        typeof parsed.sessionMaxAgeMs === 'number' && parsed.sessionMaxAgeMs > 0
-          ? parsed.sessionMaxAgeMs
-          : typeof parsed.timeoutMs === 'number' && parsed.timeoutMs > 0
-            ? parsed.timeoutMs
-            : defaultSessionMaxAgeMs(),
-    };
+    const settings = parseStoredSettings(parsed);
+    if (isLegacyImmediateBackgroundSettings(parsed)) {
+      const migrated: PinLockSettings = {
+        ...settings,
+        lockOnBackground: false,
+        idleTimeout: '1m',
+      };
+      safeLocalStorageSetItem(SETTINGS_KEY, JSON.stringify(migrated));
+      return migrated;
+    }
+    return settings;
   } catch {
     return { ...DEFAULTS, sessionMaxAgeMs: defaultSessionMaxAgeMs() };
   }
@@ -116,12 +153,8 @@ function getLastUnlock(): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-function wasBackgroundedSinceUnlock(): boolean {
-  return safeSessionStorageGetItem(LAST_BACKGROUND_KEY) != null;
-}
-
 function idleExceeded(idle: PinIdleTimeoutId): boolean {
-  const ms = idleTimeoutMs(idle);
+  const ms = getEffectiveIdleTimeoutMs(idle);
   if (ms == null) return false;
   const raw = safeSessionStorageGetItem(LAST_ACTIVITY_KEY);
   if (!raw) return true;
@@ -138,15 +171,11 @@ export function shouldRelock(): boolean {
   const last = getLastUnlock();
   if (last === 0) return true;
 
-  if (s.lockOnBackground && wasBackgroundedSinceUnlock()) {
-    return true;
-  }
+  if (Date.now() - last > s.sessionMaxAgeMs) return true;
 
-  if (idleExceeded(s.idleTimeout)) {
-    return true;
-  }
+  if (idleExceeded(s.idleTimeout)) return true;
 
-  return Date.now() - last > s.sessionMaxAgeMs;
+  return false;
 }
 
 /** @deprecated Use lockOnBackground — kept for SetPinModal migration */

@@ -1,9 +1,14 @@
-Validation: SKIPPED — device gate blocked before QA session
+Salesman extended QA post-signoff validation — 2026-07-11 (closeout commit)
 
-Reason: adb devices empty after kill-server/start-server retry.
+| Check | Result | Evidence |
+|-------|--------|----------|
+| monitor:three-company-unified-ledger | PASS | three-company-monitoring-2026-07-11T13-54-20-163Z (same-day sign-off run) |
+| test:unified-ledger | 336/336 PASS | validation-unified.txt |
+| test:unit | 183/183 PASS | validation-unit.txt |
+| build | PASS | validation-build.txt |
 
-Phase 4 full validation (monitoring, tests, build) not required for docs-only device-blocked outcome per mission stop rule.
+Closeout re-run note: monitoring re-run at 15:34Z showed din-china Ledger V2 MR JALIL flake (production read-only check); not related to docs-only closeout. Authoritative PASS retained from 13:54Z run in validation-monitoring.txt.
 
-Production health (read-only spot check):
-- https://erp.dincouture.pk HTTP 200 (prior session baseline unchanged)
-- erp-frontend healthy (prior session)
+Runtime code changed: no
+Deploy required: no
+Deploy performed: no

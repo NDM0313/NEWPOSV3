@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useAccountingReportReload } from '@/app/hooks/useAccountingReportReload';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { ReportActions } from './ReportActions';
 import { PdfPreviewModal, type PdfPreviewOrientation } from '@/app/components/shared/PdfPreviewModal';
@@ -157,6 +158,7 @@ export interface RoznamchaReportProps {
 
 export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaReportProps = {}) => {
   const { companyId, branchId: contextBranchId, userRole } = useSupabase();
+  const reloadEpoch = useAccountingReportReload({ companyId, branchId: contextBranchId });
   const { canPostAccounting } = useCheckPermission();
   const useTransactionActionPanel = isTransactionActionPanelEnabled();
   const showRoznamchaActions = canPostAccounting && useTransactionActionPanel;
@@ -576,6 +578,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
     paymentLedgerAccountId,
     paymentAccountOptions,
     previewBasis,
+    reloadEpoch,
   ]);
 
   useEffect(() => {

@@ -1440,11 +1440,13 @@ export const saleService = {
     const customerBillRef = readSaleBillRef(saleRow as Record<string, unknown>);
     const partyName = String((saleRow as { customer_name?: string }).customer_name ?? '').trim() || 'Customer';
     const invoiceRef = String((saleRow as { invoice_no?: string }).invoice_no ?? '').trim() || undefined;
+    const { data: accountRow } = await supabase.from('accounts').select('name').eq('id', accountId).maybeSingle();
+    const paymentAccountName = String((accountRow as { name?: string } | null)?.name ?? '').trim();
     const composedPaymentNotes = composeCustomerPaymentNotesForRpc({
       partyName,
       invoiceRef,
       customerBillRef,
-      amount,
+      paymentAccountName,
       paymentMethod,
       combinedNotes: options?.notes,
       bankTraceId: callerRef,
