@@ -1,0 +1,9 @@
+Validation: SKIPPED — device gate blocked before QA session
+
+Reason: adb devices empty after kill-server/start-server retry.
+
+Phase 4 full validation (monitoring, tests, build) not required for docs-only device-blocked outcome per mission stop rule.
+
+Production health (read-only spot check):
+- https://erp.dincouture.pk HTTP 200 (prior session baseline unchanged)
+- erp-frontend healthy (prior session)

@@ -2,7 +2,8 @@
 
 **Date:** 2026-07-11  
 **Scope:** OLD ERP / DIN Collection ERP only  
-**HEAD:** `694af3b9` (pre-session baseline; post-session commit TBD)
+**HEAD:** `f7c66fd9`  
+**Last updated:** 2026-07-11 (Salesman extended QA attempt)
 
 ---
 
@@ -38,16 +39,19 @@
 
 ---
 
-## DEVICE STATUS (2026-07-11 PM session)
+## DEVICE STATUS (2026-07-11 extended QA session)
 
 | Check | Result |
 |-------|--------|
-| `adb devices` | **empty** — no devices attached |
+| `adb devices` (after kill-server/start-server retry) | **empty** — no devices attached |
 | Pixel 6 Pro | **not connected** |
 | USB authorization | N/A |
-| Salesman extended QA rows 4–20 | **BLOCKED** — Pixel not connected |
+| Salesman extended QA rows 4–20 | **BLOCKED** — device gate (16 BLOCKED, 1 N/A) |
+| Evidence | `reports/salesman-extended-qa-pixel-rows-4-20-20260711/` |
 
-Rows 1–3 (login path): **PASS** from 2026-07-09 office (`24281FDEE0023P`).
+Rows 1–3 (login path): **PASS** from 2026-07-09 office (`24281FDEE0023P`) — not re-run.
+
+Password: **not requested** (device gate).
 
 ---
 

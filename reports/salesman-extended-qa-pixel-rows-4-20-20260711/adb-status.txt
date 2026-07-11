@@ -1,0 +1,16 @@
+adb version: 1.0.41 (platform-tools 36.0.0-13206524)
+adb kill-server / start-server: attempted
+adb devices -l:
+
+List of devices attached
+
+(empty)
+
+State: NO_DEVICE_ATTACHED
+Authorization: N/A
+Expected device: Pixel 6 Pro (24281FDEE0023P from 2026-07-09 session)
+Blocker: Pixel not visible to adb — USB not connected, debugging off, or cable/authorization pending
+
+Action taken:
+- Did not request Salesman password
+- Did not run checklist rows 4-20

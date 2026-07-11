@@ -65,6 +65,18 @@
 | Passwords committed | no |
 | Sensitive/unrelated files staged | no |
 
+## 2026-07-11 extended QA session (rows 4–20)
+
+| Item | Value |
+|------|--------|
+| adb devices | **empty** (retry after kill-server/start-server) |
+| Pixel connected | **no** |
+| Password requested | **no** |
+| Rows 4–20 executed | **no** — all **BLOCKED** (16) + row 5 **N/A** |
+| Evidence | `reports/salesman-extended-qa-pixel-rows-4-20-20260711/` |
+
+Login gate (rows 1–3) remains **PASS** from 2026-07-09. Reconnect Pixel and re-run when `adb devices` shows authorized `device`.
+
 ## 2026-07-10 session note
 
 Repo synced; ADB installed; Pixel 6 Pro not connected. Salesman mobile QA **release gate remains PASS** from 2026-07-09 office evidence. To extend full device checklist (rows 4–20), reconnect Pixel, authorize USB debugging, and re-run on device.
