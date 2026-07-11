@@ -85,4 +85,4 @@ Do not use a single general approval to bypass individual gates.
 
 ## Stable state verdict
 
-All safe autonomous work for OLD ERP readiness is complete. Further action requires operator approval strings above and/or physical Pixel connection for optional extended Salesman QA.
+All safe autonomous work for OLD ERP readiness is complete. Salesman extended QA rows 4–20 remain **device-blocked** until Pixel 6 Pro appears as `device` in adb. Further gated work requires operator approval strings above.
