@@ -118,10 +118,14 @@ Evidence: `reports/ar-ap-phase-2b-unified-wireup-20260712/`
 |--------|-------|
 | DEVELOPMENT COMPLETE | yes — commit `75c12cd7` |
 | GITHUB PUSHED | yes |
-| MIGRATION NOT APPROVED | yes — awaiting `APPROVE_AR_AP_PHASE2B_UNIFIED_RPC_PRODUCTION_MIGRATION` |
-| MIGRATION APPLIED | no |
-| PRODUCTION PARITY PASS | no — pre-migration `SKIP_RPC_NOT_DEPLOYED` |
+| MIGRATION APPROVED | yes — `APPROVE_AR_AP_PHASE2B_UNIFIED_RPC_PRODUCTION_MIGRATION` |
+| MIGRATION APPLIED | yes — prod since 2026-07-11 21:36:11Z |
+| PRODUCTION PARITY PASS | **no** — DIN BRIDAL FAIL (max AR delta 79850 under `effective_party`) |
+| FRONTEND ON VPS | `aff7c1d3` (pre-existing); post-FAIL session did **not** claim production-complete |
 | FALLBACK RETAINED | yes — `get_contact_party_gl_balances` |
+| Contacts page | still legacy RPC (unchanged) |
+
+DIN BRIDAL fail drivers: Walk-in Customer old (−80000 AR) + Walk-in Customer (+150 AR). Same company PASS on `official_gl` / `audit_full_history`.
 
 Production rollout evidence: `reports/ar-ap-phase-2b-production-rollout-20260712/`
 

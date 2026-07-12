@@ -1,63 +1,41 @@
 # AR/AP Phase 2b — Production rollout final report
 
-**Project:** OLD ERP / DIN Collection ERP (NEWPOSV3)
-**Date:** 2026-07-12
-**Operator gate:** Migration not approved
+**Project:** OLD ERP / DIN Collection ERP (NEWPOSV3)  
+**Date:** 2026-07-12  
+**Authoritative post-approval status:** see [`final-production-report.md`](final-production-report.md)
 
-## Status labels
+## Status labels (after approval + parity gate)
 
 | Label | Status |
 |-------|--------|
 | DEVELOPMENT COMPLETE | yes |
-| GITHUB PUSHED | pending → completed in this session |
-| MIGRATION NOT APPROVED | yes |
-| MIGRATION APPLIED | no |
-| PRODUCTION PARITY PASS | no (SKIP_RPC_NOT_DEPLOYED) |
+| GITHUB COMPLETE | yes |
+| MIGRATION APPROVED | yes — `APPROVE_AR_AP_PHASE2B_UNIFIED_RPC_PRODUCTION_MIGRATION` |
+| MIGRATION APPLIED | yes (prod 2026-07-11 21:36:11Z; confirmed 2026-07-12) |
+| PRODUCTION PARITY PASS | **no** — DIN BRIDAL FAIL |
+| FRONTEND DEPLOYED | VPS already on `aff7c1d3` — this session did not deploy after FAIL |
+| PRODUCTION UI VERIFIED | blocked |
 | FALLBACK RETAINED | yes |
+| PRODUCTION COMPLETE | **no** |
 
 ## Commits
 
 | Commit | Role |
 |--------|------|
 | `75c12cd7` | Phase 2b runtime + migration + tests + wireup evidence |
-| rollout evidence commit | Production rollout MD/TXT evidence + doc status updates |
+| `aff7c1d3` | Pre-approval rollout evidence |
+| follow-up docs commit | Post-approval parity FAIL evidence |
 
-## What was delivered
+## Gate result
 
-1. **Additive RPC** `get_unified_contact_party_gl_balances` — unified basis + branch rules, legacy-compatible columns.
-2. **Service** `arApUnifiedPartyBalanceService.ts` — feature-flagged unified path with kill-switch and missing-RPC fallback.
-3. **UI** AR/AP Diagnostics banners, admin parity chip, Payables variance explainer labels.
-4. **Tests** 339 unified + 189 unit — all PASS locally.
-5. **Read-only parity script** — pre-migration `SKIP_RPC_NOT_DEPLOYED` (expected).
+DIN COUTURE PASS · DIN BRIDAL **FAIL** (max AR delta 79850) · DIN CHINA PASS  
 
-## What was NOT done (by design)
+STOP RULE: no production-complete closeout; no GL mutation; no kill-switch toggle.
 
-- Production migration apply
-- GL mutation or repair scripts
-- VPS frontend deploy of Phase 2b runtime (optional after migration approval)
-- Removal of legacy `get_contact_party_gl_balances` fallback
-- Changes to exception queues, hybrid repair, Contacts page
-
-## Remaining blocker for production complete
-
-Operator must provide exact approval phrase:
-
-`APPROVE_AR_AP_PHASE2B_UNIFIED_RPC_PRODUCTION_MIGRATION`
-
-Then:
-
-1. Apply only `migrations/20260712120000_get_unified_contact_party_gl_balances.sql`
-2. Re-run parity script — expect PASS for DIN COUTURE, DIN BRIDAL, DIN CHINA
-3. Deploy Phase 2b frontend to VPS if not already on `75c12cd7+`
-4. Verify AR/AP Diagnostics unified banner + admin parity chip in production
-
-## Evidence folder
-
-`reports/ar-ap-phase-2b-production-rollout-20260712/`
-
-Files not created (migration not approved):
+## Evidence files
 
 - `migration-apply.txt`
 - `post-migration-rpc-status.txt`
-- `post-migration-parity.txt`
-- `monitoring.txt` (post-migration)
+- `post-migration-parity.txt` / `.json`
+- `deployment.txt`
+- `final-production-report.md`
