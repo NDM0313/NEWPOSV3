@@ -2,7 +2,7 @@
  * Global Filter Engine — DIN COUTURE ERP
  * Centralized date range and branch filters controlled from TopHeader.
  * State persists across module navigation (localStorage).
- * Defaults: Dashboard = Last 7 Days, other modules = Last 30 Days.
+ * Defaults: Current Financial Year when no saved dateRangeType.
  * Rentals list applies the header range to booking/created date (see RentalsPage dateFilterMode), not pickup date.
  */
 
@@ -329,7 +329,7 @@ export const GlobalFilterProvider: React.FC<{ children: ReactNode }> = ({ childr
 
   const effectiveDateType: GlobalDateRangeType = useMemo(() => {
     if (persisted.dateRangeType) return persisted.dateRangeType;
-    return currentModule === 'dashboard' ? 'last7days' : 'last30days';
+    return 'currentFinancialYear';
   }, [persisted.dateRangeType, currentModule]);
 
   const { startDate: startDateObj, endDate: endDateObj } = useMemo(

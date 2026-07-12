@@ -25,7 +25,7 @@ export function CashFlowReport({
   reportRefreshEpoch = 0,
 }: CashFlowReportProps) {
   const { canViewBalances } = usePermissions();
-  const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange('month'));
+  const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange());
   const [data, setData] = useState<CashFlowResult | null>(null);
   const [loaderSource, setLoaderSource] = useState<'legacy' | 'unified' | 'unavailable'>('unavailable');
   const [loading, setLoading] = useState(true);
@@ -91,7 +91,7 @@ export function CashFlowReport({
         stats={loading ? undefined : stats}
         rightExtras={<LoaderSourceBadge source={loaderSource} hidden={!canViewBalances} />}
       >
-        <DateRangeBar value={range} onChange={setRange} />
+        <DateRangeBar value={range} onChange={setRange} companyId={companyId} branchId={branchId} />
       </ReportHeader>
       <ReportShell loading={loading} error={error} empty={!data?.rows.length && !error}>
         {data && (

@@ -19,6 +19,7 @@ import { formatAmount, dateRangeLabel, formatDate } from './_shared/format';
 import { LoaderSourceBadge } from './_shared/LoaderSourceBadge';
 import { getAccountLedgerLines } from '../../../api/reports';
 import type { UnifiedLedgerRow } from '../../../types/unifiedReports';
+import { formatLedgerLinePresentation } from '../../../lib/ledgerLinePresentation';
 
 interface LedgerV2ReportProps {
   onBack: () => void;
@@ -37,7 +38,7 @@ export function LedgerV2Report({
   const [accounts, setAccounts] = useState<accountsApi.AccountRow[]>([]);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<accountsApi.AccountRow | null>(null);
-  const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange('month'));
+  const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange());
   const [rows, setRows] = useState<UnifiedLedgerRow[]>([]);
   const [closing, setClosing] = useState(0);
   const [loaderSource, setLoaderSource] = useState<'legacy' | 'unified'>('legacy');
@@ -96,21 +97,25 @@ export function LedgerV2Report({
         if (cancelled) return;
         if (legacy.error) setError(legacy.error);
         setRows(
-          legacy.lines.map((l) => ({
+          legacy.lines.map((l) => {
+            const pres = formatLedgerLinePresentation(l, { viewedAccountName: selected.name });
+            const description = pres.subline ? `${pres.title} · ${pres.subline}` : pres.title;
+            return {
             journalEntryLineId: l.id,
             journalEntryId: l.journalEntryId,
             entryDate: l.date,
             entryNo: l.entryNo,
             referenceType: l.referenceType,
-            description: l.description,
+            description,
             debit: l.debit,
             credit: l.credit,
             runningBalance: l.runningBalance,
             paymentId: l.paymentId ?? null,
             accountCode: selected.code,
             accountName: selected.name,
-            partyResolved: null,
-          })),
+            partyResolved: l.partyName ?? l.counterAccountName ?? null,
+          };
+          }),
         );
         setClosing(legacy.lines[legacy.lines.length - 1]?.runningBalance ?? legacy.openingBalance);
         setLoaderSource('legacy');
@@ -137,7 +142,7 @@ export function LedgerV2Report({
         subtitle={selected ? dateRangeLabel(range.from, range.to) : 'Unified GL account statements'}
         rightExtras={selected ? <LoaderSourceBadge source={loaderSource} hidden={!canViewBalances} /> : undefined}
       >
-        {selected && <DateRangeBar value={range} onChange={setRange} />}
+        {selected && <DateRangeBar value={range} onChange={setRange} companyId={companyId} branchId={branchId} />}
       </ReportHeader>
       <ReportShell loading={loading && !selected} error={error} empty={false}>
         {!selected ? (

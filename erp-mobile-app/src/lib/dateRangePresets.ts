@@ -121,7 +121,7 @@ export function buildDateRange(
   }
 }
 
-export function makeInitialDateRange(preset: DateRangePreset = 'month'): DateRangeValue {
+export function makeInitialDateRange(preset: DateRangePreset = 'currentFinancialYear'): DateRangeValue {
   return buildDateRange(preset);
 }
 

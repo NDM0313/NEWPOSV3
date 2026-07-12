@@ -25,7 +25,9 @@ import { usePdfPreview } from '../../shared/usePdfPreview';
 import { sortLedgerLinesAndRebuildRunningBalance } from '../../../lib/ledgerChronology';
 import { useAttachmentPreview } from '../../../hooks/useAttachmentPreview';
 import { LedgerActivityListRow } from './_shared/LedgerActivityListRow';
+import { isEasyReportHubMode, useReportHubMode } from './_shared/ReportHubModeContext';
 import { loadMergedAttachmentsForJournalEntry } from '../../../lib/loadMergedAttachments';
+import { toLedgerPreviewRow } from '../../../lib/ledgerLinePresentation';
 
 export type PartyLedgerKind = 'customer' | 'supplier' | 'worker';
 
@@ -62,12 +64,14 @@ const displayEntryNo = (value: string, fallbackType?: string) => {
 
 export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, reportRefreshEpoch = 0 }: PartyLedgerReportProps) {
   const cfg = KIND_LABELS[kind];
+  const hubMode = useReportHubMode();
+  const easyMode = isEasyReportHubMode(hubMode);
   const [parties, setParties] = useState<LocalParty[]>([]);
   const [loading, setLoading] = useState(!!companyId);
   const [listError, setListError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<LocalParty | null>(null);
-  const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange('month'));
+  const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange());
 
   const [lines, setLines] = useState<LedgerLine[]>([]);
   const [opening, setOpening] = useState(0);
@@ -417,7 +421,7 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
         title={selected.name}
         subtitle={detailPartySubtitle}
         stats={stats}
-        onShare={preview.openPreview}
+        onShare={easyMode ? undefined : preview.openPreview}
         sharing={preview.loading}
         gradient={cfg.gradient}
         onRefresh={() => {
@@ -426,7 +430,7 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
         }}
         refreshing={manualLedgerRefresh && detailLoading}
       >
-        <DateRangeBar value={range} onChange={setRange} />
+        <DateRangeBar value={range} onChange={setRange} companyId={companyId} branchId={branchId} />
       </ReportHeader>
 
       <ReportShell
@@ -447,6 +451,7 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
                 key={l.id}
                 line={l}
                 displayReference={displayEntryNo}
+                presentationOpts={{ viewedPartyName: selected.name }}
                 onAttachmentClick={() => void handleLineAttachmentPreview(l)}
               />
             ))}
@@ -472,15 +477,11 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
             openingBalance={opening}
             closingBalance={totals.closing}
             totals={{ debit: totals.debit, credit: totals.credit }}
-            rows={lines.map((l) => ({
-              date: l.date,
-              reference: displayEntryNo(l.entryNo, l.referenceType),
-              description: l.description,
-              debit: l.debit,
-              credit: l.credit,
-              balance: l.runningBalance,
-              hasAttachment: l.hasAttachments,
-            }))}
+            rows={lines.map((l) =>
+              toLedgerPreviewRow(l, displayEntryNo(l.entryNo, l.referenceType), {
+                viewedPartyName: selected.name,
+              }),
+            )}
             generatedBy={user.name || user.email || 'User'}
             generatedAt={new Date().toLocaleString('en-PK')}
           />

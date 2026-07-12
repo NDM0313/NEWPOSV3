@@ -86,6 +86,14 @@ export function DateRangeBar({
     };
   }, [companyId, branchId, fiscalYearConfigProp]);
 
+  useEffect(() => {
+    if (!fiscalYearConfig) return;
+    if (value.preset !== 'currentFinancialYear' && value.preset !== 'lastFinancialYear') return;
+    const next = buildDateRange(value.preset, undefined, fiscalYearConfig);
+    if (next.from === value.from && next.to === value.to) return;
+    onChange(next);
+  }, [fiscalYearConfig, value.preset, value.from, value.to, onChange]);
+
   const select = (preset: DateRangePreset) => {
     if (preset === 'custom') {
       setCustomOpen(true);
@@ -146,6 +154,6 @@ export function DateRangeBar({
   );
 }
 
-export function makeInitialRange(preset: DateRangePreset = 'month'): DateRangeValue {
+export function makeInitialRange(preset: DateRangePreset = 'currentFinancialYear'): DateRangeValue {
   return buildDateRange(preset);
 }

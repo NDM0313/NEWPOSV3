@@ -132,7 +132,7 @@ export function RentalModule({ onBack, user, companyId, branch }: RentalModulePr
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [menuRental, setMenuRental] = useState<RentalListItem | null>(null);
   const [activeTab, setActiveTab] = useState<RentalTab>('list');
-  const [dateRange, setDateRange] = useState<DateRangeValue>(() => makeInitialRange('last30'));
+  const [dateRange, setDateRange] = useState<DateRangeValue>(() => makeInitialRange());
   const [detailAction, setDetailAction] = useState<RentalDetailInitialAction | null>(null);
   const [metaEditRental, setMetaEditRental] = useState<RentalListItem | null>(null);
   const [metaBillRef, setMetaBillRef] = useState('');
@@ -544,6 +544,8 @@ export function RentalModule({ onBack, user, companyId, branch }: RentalModulePr
               onChange={setDateRange}
               variant="purple"
               hidePresets={RENTAL_HIDDEN_DATE_PRESETS}
+              companyId={companyId}
+              branchId={branch?.id ?? null}
             />
           </div>
         )}

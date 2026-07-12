@@ -27,6 +27,7 @@ import { useAttachmentPreview } from '../../../hooks/useAttachmentPreview';
 import { loadMergedAttachmentsForJournalEntry } from '../../../lib/loadMergedAttachments';
 import { AttachmentIndicatorButton } from '../../shared/AttachmentIndicatorButton';
 import { formatEventDateGroupLabel, getTransactionEventDateKey } from '../../../utils/transactionDisplayDate';
+import { formatLedgerLinePresentation, toLedgerPreviewRow } from '../../../lib/ledgerLinePresentation';
 
 interface AccountLedgerReportProps {
   onBack: () => void;
@@ -54,7 +55,7 @@ export function AccountLedgerReport({
   const [loading, setLoading] = useState(!!companyId);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<accountsApi.AccountRow | null>(null);
-  const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange('month'));
+  const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange());
 
   const [lines, setLines] = useState<LedgerLine[]>([]);
   const [opening, setOpening] = useState(0);
@@ -448,7 +449,7 @@ export function AccountLedgerReport({
         refreshing={manualLedgerRefresh && detailLoading}
         rightExtras={<LoaderSourceBadge source={ledgerLoaderSource} />}
       >
-        <DateRangeBar value={range} onChange={setRange} />
+        <DateRangeBar value={range} onChange={setRange} companyId={companyId} branchId={branchId} />
       </ReportHeader>
 
       {/* Floating running balance footer so the current balance is always visible. */}
@@ -499,6 +500,7 @@ export function AccountLedgerReport({
                     const amount = isIn ? l.debit : l.credit;
                     const time = l.createdAt ? new Date(l.createdAt).toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit' }) : '';
                     const refLabel = displayReferenceNumber(l.entryNo, l.referenceType);
+                    const pres = formatLedgerLinePresentation(l, { viewedAccountName: selected.name });
                     return (
                       <li key={l.id}>
                         <button
@@ -515,7 +517,10 @@ export function AccountLedgerReport({
                               {isIn ? <ArrowDownLeft className="w-4 h-4" /> : <ArrowUpRight className="w-4 h-4" />}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-semibold text-white truncate">{l.description || '—'}</p>
+                              <p className="text-sm font-semibold text-white truncate">{pres.title}</p>
+                              {pres.subline ? (
+                                <p className="text-[11px] text-[#9CA3AF] truncate">{pres.subline}</p>
+                              ) : null}
                               <p className="text-[11px] text-[#9CA3AF] truncate">
                                 {formatDate(l.date)}{time ? ` · ${time}` : ''} · {refLabel} · {(l.referenceType || '').replace(/_/g, ' ') || '—'}
                               </p>
@@ -576,15 +581,11 @@ export function AccountLedgerReport({
             openingBalance={opening}
             closingBalance={totals.closing}
             totals={{ debit: totals.debit, credit: totals.credit }}
-            rows={lines.map((l) => ({
-              date: l.date,
-              reference: displayReferenceNumber(l.entryNo, l.referenceType),
-              description: l.description,
-              debit: l.debit,
-              credit: l.credit,
-              balance: l.runningBalance,
-              hasAttachment: l.hasAttachments,
-            }))}
+            rows={lines.map((l) =>
+              toLedgerPreviewRow(l, displayReferenceNumber(l.entryNo, l.referenceType), {
+                viewedAccountName: selected.name,
+              }),
+            )}
             generatedBy={user.name || user.email || 'User'}
             generatedAt={new Date().toLocaleString('en-PK')}
           />

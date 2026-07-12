@@ -1,17 +1,30 @@
 import { useEffect, useMemo, useState } from 'react';
+import type { User } from '../../../types';
 import { usePermissions } from '../../../context/PermissionContext';
-import { ReportHeader } from './_shared/ReportHeader';
-import { ReportShell, ReportCard, ReportSectionTitle } from './_shared/ReportShell';
+import { ReportHeader, type ReportHeaderStat } from './_shared/ReportHeader';
+import { ReportShell } from './_shared/ReportShell';
 import { formatAmount } from './_shared/format';
 import { LoaderSourceBadge } from './_shared/LoaderSourceBadge';
+import {
+  FinancialSectionCard,
+  FinancialTotalsFooter,
+} from './_shared/FinancialStatementRows';
 import { loadMobileBalanceSheet } from '../../../api/unifiedReports';
 import type { BalanceSheetResult } from '../../../types/unifiedReports';
+import {
+  groupMobileBalanceSheetAssets,
+  groupMobileBalanceSheetLiabilities,
+} from '../../../lib/mobileBalanceSheetGrouping';
+import { PdfPreviewModal } from '../../shared/PdfPreviewModal';
+import { FinancialStatementPreviewPdf } from '../../shared/FinancialStatementPreviewPdf';
+import { usePdfPreview } from '../../shared/usePdfPreview';
 
 interface BalanceSheetReportProps {
   onBack: () => void;
   companyId: string | null;
   branchId?: string | null;
   reportRefreshEpoch?: number;
+  user: User;
 }
 
 function todayIso(): string {
@@ -23,8 +36,10 @@ export function BalanceSheetReport({
   companyId,
   branchId,
   reportRefreshEpoch = 0,
+  user,
 }: BalanceSheetReportProps) {
   const { canViewBalances } = usePermissions();
+  const preview = usePdfPreview(companyId);
   const [asOf, setAsOf] = useState(todayIso());
   const [data, setData] = useState<BalanceSheetResult | null>(null);
   const [loaderSource, setLoaderSource] = useState<'legacy' | 'unified' | 'unavailable'>('unavailable');
@@ -50,36 +65,71 @@ export function BalanceSheetReport({
     };
   }, [companyId, asOf, branchId, reportRefreshEpoch]);
 
-  const stats = useMemo(() => {
+  const assetGroups = useMemo(
+    () => (data ? groupMobileBalanceSheetAssets(data.assets.items) : []),
+    [data],
+  );
+  const liabilityGroups = useMemo(
+    () => (data ? groupMobileBalanceSheetLiabilities(data.liabilities.items) : []),
+    [data],
+  );
+
+  const stats = useMemo((): ReportHeaderStat[] => {
     if (!data || !canViewBalances) return [];
-    return [
+    const chips: ReportHeaderStat[] = [
       { label: 'Total Assets', value: `Rs. ${formatAmount(data.totalAssets, 2)}` },
       { label: 'L+E', value: `Rs. ${formatAmount(data.totalLiabilitiesAndEquity, 2)}` },
     ];
+    if (data.difference !== 0) {
+      chips.push({
+        label: 'Diff',
+        value: `Rs. ${formatAmount(data.difference, 2)}`,
+        color: data.difference === 0 ? 'text-[#BBF7D0]' : 'text-[#FCA5A5]',
+      });
+    }
+    return chips;
   }, [data, canViewBalances]);
 
-  const renderSection = (
-    title: string,
-    items: { name: string; amount: number; code?: string }[],
-    total: number,
-  ) => (
-    <div>
-      <ReportSectionTitle title={title} right={canViewBalances ? `Rs. ${formatAmount(total, 2)}` : '****'} />
-      <ReportCard className="divide-y divide-[#374151]">
-        {items.slice(0, 50).map((item, i) => (
-          <div key={`${item.code}-${i}`} className="px-3 py-2.5 flex justify-between gap-2 text-sm">
-            <span className="text-[#E5E7EB] truncate">{item.name}</span>
-            <span className="text-[#9CA3AF] shrink-0 font-mono text-xs">
-              {canViewBalances ? formatAmount(item.amount, 2) : '****'}
-            </span>
-          </div>
-        ))}
-        {items.length > 50 && (
-          <p className="px-3 py-2 text-xs text-[#6B7280]">+{items.length - 50} more lines</p>
-        )}
-      </ReportCard>
-    </div>
-  );
+  const pdfSections = useMemo(() => {
+    if (!data) return [];
+    return [
+      {
+        label: 'Assets',
+        items: data.assets.items,
+        total: data.assets.total,
+        subgroups: assetGroups,
+      },
+      {
+        label: 'Liabilities',
+        items: data.liabilities.items,
+        total: data.liabilities.total,
+        subgroups: liabilityGroups,
+      },
+      {
+        label: 'Equity',
+        items: data.equity.items,
+        total: data.equity.total,
+      },
+    ];
+  }, [data, assetGroups, liabilityGroups]);
+
+  const pdfFooterRows = useMemo(() => {
+    if (!data || !canViewBalances) return [];
+    return [
+      { label: 'Total Assets', value: `Rs. ${formatAmount(data.totalAssets, 2)}`, emphasize: true },
+      {
+        label: 'Total Liabilities + Equity',
+        value: `Rs. ${formatAmount(data.totalLiabilitiesAndEquity, 2)}`,
+        emphasize: true,
+      },
+      ...(data.difference !== 0
+        ? [{ label: 'Difference', value: `Rs. ${formatAmount(data.difference, 2)}`, emphasize: true }]
+        : []),
+    ];
+  }, [data, canViewBalances]);
+
+  const generatedBy = user.name || user.email || 'User';
+  const generatedAt = new Date().toLocaleString('en-PK');
 
   return (
     <div className="min-h-screen bg-[#111827] pb-24">
@@ -89,25 +139,80 @@ export function BalanceSheetReport({
         subtitle={`As of ${asOf}`}
         stats={loading ? undefined : stats}
         rightExtras={<LoaderSourceBadge source={loaderSource} hidden={!canViewBalances} />}
-      />
-      <div className="px-4 pb-2">
-        <label className="text-xs text-[#9CA3AF] block mb-1">As of date</label>
-        <input
-          type="date"
-          value={asOf}
-          onChange={(e) => setAsOf(e.target.value)}
-          className="w-full bg-[#1F2937] border border-[#374151] rounded-lg px-3 py-2 text-sm text-white"
-        />
-      </div>
+        onShare={canViewBalances ? preview.openPreview : undefined}
+        sharing={preview.loading}
+      >
+        <label className="block">
+          <span className="sr-only">As of date</span>
+          <input
+            type="date"
+            value={asOf}
+            onChange={(e) => setAsOf(e.target.value)}
+            className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-sm text-white"
+          />
+        </label>
+      </ReportHeader>
       <ReportShell loading={loading} error={error} empty={!data && !error} emptyLabel="No balance sheet data.">
         {data && (
           <div className="space-y-4">
-            {renderSection('Assets', data.assets.items, data.assets.total)}
-            {renderSection('Liabilities', data.liabilities.items, data.liabilities.total)}
-            {renderSection('Equity', data.equity.items, data.equity.total)}
+            <FinancialSectionCard
+              title="Assets"
+              subgroups={assetGroups}
+              total={data.assets.total}
+              canViewBalances={canViewBalances}
+            />
+            <FinancialSectionCard
+              title="Liabilities"
+              subgroups={liabilityGroups}
+              total={data.liabilities.total}
+              canViewBalances={canViewBalances}
+            />
+            <FinancialSectionCard
+              title="Equity"
+              items={data.equity.items}
+              total={data.equity.total}
+              canViewBalances={canViewBalances}
+            />
+            {canViewBalances && (
+              <FinancialTotalsFooter
+                title="Balance check"
+                cells={[
+                  { label: 'Total Assets', value: `Rs. ${formatAmount(data.totalAssets, 0)}` },
+                  {
+                    label: 'Liabilities + Equity',
+                    value: `Rs. ${formatAmount(data.totalLiabilitiesAndEquity, 0)}`,
+                  },
+                  {
+                    label: 'Difference',
+                    value: `Rs. ${formatAmount(data.difference, 0)}`,
+                    color: data.difference === 0 ? 'text-[#BBF7D0]' : 'text-[#FCA5A5]',
+                  },
+                ]}
+              />
+            )}
           </div>
         )}
       </ReportShell>
+
+      {preview.brand && data && (
+        <PdfPreviewModal
+          open={preview.open}
+          title="Balance Sheet"
+          filename={`Balance_Sheet_${asOf}.pdf`}
+          onClose={preview.close}
+          whatsAppFallbackText={`Balance Sheet · As of ${asOf}`}
+        >
+          <FinancialStatementPreviewPdf
+            brand={preview.brand}
+            title="Balance Sheet"
+            periodLabel={`As of ${asOf}`}
+            sections={pdfSections}
+            footerRows={pdfFooterRows}
+            generatedBy={generatedBy}
+            generatedAt={generatedAt}
+          />
+        </PdfPreviewModal>
+      )}
     </div>
   );
 }

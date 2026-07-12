@@ -167,7 +167,7 @@ export function DashboardModule({ onBack, user, companyId, branchId, onNewSale, 
 
   const effectiveProfileId = useEffectiveWorkerProfileId();
 
-  const [dateRange, setDateRange] = useState<DateRangeValue>(() => makeInitialRange('today'));
+  const [dateRange, setDateRange] = useState<DateRangeValue>(() => makeInitialRange());
 
   const [isRefreshing, setIsRefreshing] = useState(false);
 

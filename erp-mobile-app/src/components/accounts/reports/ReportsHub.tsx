@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -33,51 +33,105 @@ import { useAccountingAttachmentActions } from '../../../hooks/useAccountingAtta
 import { AttachmentIndicatorButton } from '../../shared/AttachmentIndicatorButton';
 import { LongPressCard } from '../../common/LongPressCard';
 import { canEditTransaction } from '../../../api/transactions';
+import { TransactionActivityRow } from './_shared/TransactionActivityRow';
+import {
+  resolveCopyPrefillFromTransactionRow,
+  type CopyTransactionPrefill,
+} from '../../../lib/copyTransactionPrefill';
+import { Copy } from 'lucide-react';
+import {
+  type LegacyReportKey,
+  type ReportHubMode,
+  type ReportHubSection,
+  type ReportCatalogEntry,
+  type ReportIconKey,
+  REPORT_SECTION_LABELS,
+  reportsBySection,
+} from '../../../lib/reportsHubCatalog';
 
-export type LegacyReportKey =
-  // party ledgers
-  | 'customer-ledger'
-  | 'supplier-ledger'
-  | 'worker-ledger'
-  // accounts
-  | 'account-ledger'
-  | 'daybook'
-  | 'cash-summary'
-  | 'bank-summary'
-  | 'wallet-summary'
-  | 'payables'
-  | 'receivables'
-  // unified financial statements
-  | 'balance-sheet'
-  | 'profit-loss'
-  | 'trial-balance'
-  | 'cash-flow'
-  | 'ledger-v2'
-  // operational
-  | 'sales-report'
-  | 'studio-sales'
-  | 'purchase-report'
-  | 'expense-report'
-  | 'studio-report'
-  | 'rental-report'
-  | 'inventory-report'
-  | 'courier-shipments';
+export type { LegacyReportKey, ReportHubMode };
+
+const SECTION_ORDER: ReportHubSection[] = [
+  'party-ledgers',
+  'financial-statements',
+  'cash-bank',
+  'receivables-payables',
+  'operations',
+];
+
+const REPORT_ICONS: Record<ReportIconKey, ReactNode> = {
+  users: <Users className="w-5 h-5 text-white" />,
+  briefcase: <Briefcase className="w-5 h-5 text-white" />,
+  'book-open': <BookOpen className="w-5 h-5 text-white" />,
+  scale: <Scale className="w-5 h-5 text-white" />,
+  'trending-up': <TrendingUp className="w-5 h-5 text-white" />,
+  'bar-chart': <BarChart3 className="w-5 h-5 text-white" />,
+  wallet: <Wallet className="w-5 h-5 text-white" />,
+  layers: <Layers className="w-5 h-5 text-white" />,
+  landmark: <Landmark className="w-5 h-5 text-white" />,
+  smartphone: <Smartphone className="w-5 h-5 text-white" />,
+  'calendar-clock': <CalendarClock className="w-5 h-5 text-white" />,
+  'arrow-down-left': <ArrowDownLeft className="w-5 h-5 text-white" />,
+  'arrow-up-right': <ArrowUpRight className="w-5 h-5 text-white" />,
+  receipt: <Receipt className="w-5 h-5 text-white" />,
+  'shopping-cart': <ShoppingCart className="w-5 h-5 text-white" />,
+  'trending-down': <TrendingDown className="w-5 h-5 text-white" />,
+  palette: <Palette className="w-5 h-5 text-white" />,
+  shirt: <Shirt className="w-5 h-5 text-white" />,
+  package: <Package className="w-5 h-5 text-white" />,
+  truck: <Truck className="w-5 h-5 text-white" />,
+};
 
 interface ReportsHubProps {
   onBack: () => void;
-  onOpenReport: (key: LegacyReportKey, opts?: { partyId?: string | null; accountId?: string | null; partyName?: string | null }) => void;
+  onOpenReport: (
+    key: LegacyReportKey,
+    opts?: { partyId?: string | null; accountId?: string | null; partyName?: string | null },
+  ) => void;
   companyId: string | null;
   branchId?: string | null;
   onNavigateToDocumentEdit?: (kind: 'sale' | 'purchase', documentId: string) => void;
-  /** Incremented when accounting data invalidates; refetches hub preview without remounting timeline. */
   reportRefreshEpoch?: number;
   fullAccounting?: boolean;
   canViewCustomerLedger?: boolean;
   canViewSupplierLedger?: boolean;
+  hubMode: ReportHubMode;
+  onHubModeChange: (mode: ReportHubMode) => void;
+  onCopyTransaction?: (prefill: CopyTransactionPrefill) => void;
 }
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+function ReportHubModeToggle({
+  mode,
+  onChange,
+}: {
+  mode: ReportHubMode;
+  onChange: (mode: ReportHubMode) => void;
+}) {
+  const options: { id: ReportHubMode; label: string }[] = [
+    { id: 'easy', label: 'Easy' },
+    { id: 'standard', label: 'Standard' },
+    { id: 'advanced', label: 'Advanced' },
+  ];
+  return (
+    <div className="flex rounded-lg border border-white/25 overflow-hidden bg-white/10">
+      {options.map((opt) => (
+        <button
+          key={opt.id}
+          type="button"
+          onClick={() => onChange(opt.id)}
+          className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+            mode === opt.id ? 'bg-white text-[#4F46E5]' : 'text-white/90 hover:bg-white/10'
+          } ${opt.id !== 'easy' ? 'border-l border-white/20' : ''}`}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 export function ReportsHub({
@@ -90,6 +144,9 @@ export function ReportsHub({
   fullAccounting = true,
   canViewCustomerLedger = true,
   canViewSupplierLedger = false,
+  hubMode,
+  onHubModeChange,
+  onCopyTransaction,
 }: ReportsHubProps) {
   const [view, setView] = useState<'hub' | 'timeline'>('hub');
   const [todayRows, setTodayRows] = useState<TransactionRow[]>([]);
@@ -97,6 +154,16 @@ export function ReportsHub({
   const [loading, setLoading] = useState(true);
   const [detailId, setDetailId] = useState<string | null>(null);
   const attachmentActions = useAccountingAttachmentActions(companyId, branchId);
+
+  const catalogSections = useMemo(
+    () =>
+      reportsBySection(hubMode, {
+        fullAccounting,
+        canViewCustomerLedger,
+        canViewSupplierLedger,
+      }),
+    [hubMode, fullAccounting, canViewCustomerLedger, canViewSupplierLedger],
+  );
 
   useEffect(() => {
     if (!companyId) {
@@ -146,6 +213,7 @@ export function ReportsHub({
         onBack={() => setView('hub')}
         onViewLedger={({ accountId }) => onOpenReport('account-ledger', { accountId })}
         onNavigateToDocumentEdit={onNavigateToDocumentEdit}
+        onCopyTransaction={onCopyTransaction}
       />
     );
   }
@@ -161,9 +229,17 @@ export function ReportsHub({
       <ReportHeader
         onBack={onBack}
         title="Reports"
-        subtitle="Unified financial activity & statements"
+        subtitle={
+          hubMode === 'easy'
+            ? 'Daily cash & customer activity'
+            : hubMode === 'advanced'
+              ? 'Full financial statements & operations'
+              : 'Unified financial activity & statements'
+        }
         stats={loading ? undefined : headerStats}
-      />
+      >
+        <ReportHubModeToggle mode={hubMode} onChange={onHubModeChange} />
+      </ReportHeader>
 
       <div className="p-4 space-y-5">
         {fullAccounting && (
@@ -206,15 +282,29 @@ export function ReportsHub({
                   {recentRows.slice(0, 5).map((t) => {
                     const editability = canEditTransaction(t.referenceType, 'payment_row');
                     const rowAttachParams = { transactionRow: t };
+                    const copyPrefill = resolveCopyPrefillFromTransactionRow(t);
+                    const showCopy = Boolean(onCopyTransaction && copyPrefill);
                     return (
                       <LongPressCard
                         key={t.id}
                         onTap={() => setDetailId(t.id)}
                         canEdit={false}
                         canDelete={false}
-                        customMenuItems={attachmentActions.buildLongPressMenuItems(rowAttachParams, {
-                          canAdd: editability.editable,
-                        })}
+                        customMenuItems={[
+                          ...attachmentActions.buildLongPressMenuItems(rowAttachParams, {
+                            canAdd: editability.editable,
+                          }),
+                          ...(showCopy && copyPrefill
+                            ? [
+                                {
+                                  label: 'Copy transaction',
+                                  icon: <Copy className="w-4 h-4" />,
+                                  onClick: () => onCopyTransaction!(copyPrefill),
+                                  show: true,
+                                },
+                              ]
+                            : []),
+                        ]}
                       >
                         <MiniTxRow
                           tx={t}
@@ -230,206 +320,19 @@ export function ReportsHub({
           </>
         )}
 
-        {(canViewCustomerLedger || canViewSupplierLedger) && (
-          <Section title="Party ledgers">
-            <div className="grid grid-cols-2 gap-3">
-              {canViewCustomerLedger && (
-                <ReportTile
-                  title="Customer Ledger"
-                  description="Per-customer AR statement"
-                  gradient="from-[#6366F1] to-[#4F46E5]"
-                  icon={<Users className="w-5 h-5 text-white" />}
-                  onClick={() => onOpenReport('customer-ledger')}
-                />
-              )}
-              {canViewSupplierLedger && (
-                <ReportTile
-                  title="Supplier Ledger"
-                  description="Per-supplier AP statement"
-                  gradient="from-[#F59E0B] to-[#D97706]"
-                  icon={<Briefcase className="w-5 h-5 text-white" />}
-                  onClick={() => onOpenReport('supplier-ledger')}
-                />
-              )}
-              {fullAccounting && (
-                <>
-                  <ReportTile
-                    title="Worker Ledger"
-                    description="Payables to workers"
-                    gradient="from-[#10B981] to-[#059669]"
-                    icon={<Users className="w-5 h-5 text-white" />}
-                    onClick={() => onOpenReport('worker-ledger')}
-                  />
-                  <ReportTile
-                    title="Account Ledger"
-                    description="Running balance per GL"
-                    gradient="from-[#8B5CF6] to-[#6366F1]"
-                    icon={<BookOpen className="w-5 h-5 text-white" />}
-                    onClick={() => onOpenReport('account-ledger')}
-                  />
-                </>
-              )}
-            </div>
-          </Section>
-        )}
-
-        {fullAccounting && (
-          <Section title="Financial statements">
-            <div className="grid grid-cols-2 gap-3">
-              <ReportTile
-                title="Balance Sheet"
-                description="Assets, liabilities & equity"
-                gradient="from-[#6366F1] to-[#4F46E5]"
-                icon={<Scale className="w-5 h-5 text-white" />}
-                onClick={() => onOpenReport('balance-sheet')}
-              />
-              <ReportTile
-                title="Profit & Loss"
-                description="Revenue, costs & net profit"
-                gradient="from-[#10B981] to-[#059669]"
-                icon={<TrendingUp className="w-5 h-5 text-white" />}
-                onClick={() => onOpenReport('profit-loss')}
-              />
-              <ReportTile
-                title="Trial Balance"
-                description="Debit / credit by account"
-                gradient="from-[#8B5CF6] to-[#6366F1]"
-                icon={<BarChart3 className="w-5 h-5 text-white" />}
-                onClick={() => onOpenReport('trial-balance')}
-              />
-              <ReportTile
-                title="Cash Flow"
-                description="Cash & bank movements"
-                gradient="from-[#0EA5E9] to-[#0284C7]"
-                icon={<Wallet className="w-5 h-5 text-white" />}
-                onClick={() => onOpenReport('cash-flow')}
-              />
-              <ReportTile
-                title="Ledger V2"
-                description="Unified GL account ledger"
-                gradient="from-[#475569] to-[#1E293B]"
-                icon={<Layers className="w-5 h-5 text-white" />}
-                onClick={() => onOpenReport('ledger-v2')}
-              />
-            </div>
-          </Section>
-        )}
-
-        {fullAccounting && (
-          <Section title="Cash & bank">
-            <div className="grid grid-cols-2 gap-3">
-              <ReportTile
-                title="Cash Summary"
-                description="Cash account movements"
-                gradient="from-[#10B981] to-[#059669]"
-                icon={<Wallet className="w-5 h-5 text-white" />}
-                onClick={() => onOpenReport('cash-summary')}
-              />
-              <ReportTile
-                title="Bank Summary"
-                description="Bank account activity"
-                gradient="from-[#0EA5E9] to-[#0284C7]"
-                icon={<Landmark className="w-5 h-5 text-white" />}
-                onClick={() => onOpenReport('bank-summary')}
-              />
-              <ReportTile
-                title="Wallet Summary"
-                description="Mobile wallets"
-                gradient="from-[#F97316] to-[#C2410C]"
-                icon={<Smartphone className="w-5 h-5 text-white" />}
-                onClick={() => onOpenReport('wallet-summary')}
-              />
-              <ReportTile
-                title="Day Book / Roznamcha"
-                description="Daily cash-in / cash-out"
-                gradient="from-[#3B82F6] to-[#2563EB]"
-                icon={<CalendarClock className="w-5 h-5 text-white" />}
-                onClick={() => onOpenReport('daybook')}
-              />
-            </div>
-          </Section>
-        )}
-
-        {(canViewCustomerLedger || canViewSupplierLedger) && (
-          <Section title="Receivables & payables">
-            <div className="grid grid-cols-2 gap-3">
-              {canViewCustomerLedger && (
-                <ReportTile
-                  title="Receivables"
-                  description="Customer outstanding + aging"
-                  gradient="from-[#EC4899] to-[#DB2777]"
-                  icon={<ArrowDownLeft className="w-5 h-5 text-white" />}
-                  onClick={() => onOpenReport('receivables')}
-                />
-              )}
-              {canViewSupplierLedger && (
-                <ReportTile
-                  title="Payables"
-                  description="Supplier dues + aging"
-                  gradient="from-[#F59E0B] to-[#D97706]"
-                  icon={<ArrowUpRight className="w-5 h-5 text-white" />}
-                  onClick={() => onOpenReport('payables')}
-                />
-              )}
-            </div>
-          </Section>
-        )}
-
-        {fullAccounting && (
-          <Section title="Operations">
-            <div className="grid grid-cols-2 gap-3">
-              <ReportTile
-                title="Sales Report"
-                description="Invoice & revenue activity"
-                gradient="from-[#6366F1] to-[#4F46E5]"
-                icon={<Receipt className="w-5 h-5 text-white" />}
-                onClick={() => onOpenReport('sales-report')}
-              />
-              <ReportTile
-                title="Purchase Report"
-                description="Purchase orders / GRNs"
-                gradient="from-[#F59E0B] to-[#D97706]"
-                icon={<ShoppingCart className="w-5 h-5 text-white" />}
-                onClick={() => onOpenReport('purchase-report')}
-              />
-              <ReportTile
-                title="Expense Report"
-                description="Expenses by category"
-                gradient="from-[#F43F5E] to-[#E11D48]"
-                icon={<TrendingDown className="w-5 h-5 text-white" />}
-                onClick={() => onOpenReport('expense-report')}
-              />
-              <ReportTile
-                title="Studio Report"
-                description="Custom productions"
-                gradient="from-[#8B5CF6] to-[#7C3AED]"
-                icon={<Palette className="w-5 h-5 text-white" />}
-                onClick={() => onOpenReport('studio-report')}
-              />
-              <ReportTile
-                title="Rental Report"
-                description="Rental bookings"
-                gradient="from-[#F97316] to-[#C2410C]"
-                icon={<Shirt className="w-5 h-5 text-white" />}
-                onClick={() => onOpenReport('rental-report')}
-              />
-              <ReportTile
-                title="Inventory Report"
-                description="Stock movements (in / out)"
-                gradient="from-[#475569] to-[#1E293B]"
-                icon={<Package className="w-5 h-5 text-white" />}
-                onClick={() => onOpenReport('inventory-report')}
-              />
-              <ReportTile
-                title="Courier Shipments"
-                description="Cargo bookings & tracking"
-                gradient="from-[#0EA5E9] to-[#0284C7]"
-                icon={<Truck className="w-5 h-5 text-white" />}
-                onClick={() => onOpenReport('courier-shipments')}
-              />
-            </div>
-          </Section>
-        )}
+        {SECTION_ORDER.map((sectionKey) => {
+          const tiles = catalogSections[sectionKey];
+          if (!tiles?.length) return null;
+          return (
+            <Section key={sectionKey} title={REPORT_SECTION_LABELS[sectionKey]}>
+              <div className="grid grid-cols-2 gap-3">
+                {tiles.map((entry) => (
+                  <CatalogReportTile key={entry.key} entry={entry} onOpen={() => onOpenReport(entry.key)} />
+                ))}
+              </div>
+            </Section>
+          );
+        })}
       </div>
 
       {detailId && companyId && (
@@ -463,27 +366,17 @@ function Section({ title, right, children }: { title: string; right?: React.Reac
   );
 }
 
-function ReportTile({
-  title,
-  description,
-  gradient,
-  icon,
-  onClick,
-}: {
-  title: string;
-  description: string;
-  gradient: string;
-  icon: React.ReactNode;
-  onClick: () => void;
-}) {
+function CatalogReportTile({ entry, onOpen }: { entry: ReportCatalogEntry; onOpen: () => void }) {
   return (
     <button
-      onClick={onClick}
+      onClick={onOpen}
       className="bg-[#1F2937] border border-[#374151] rounded-xl p-3.5 text-left hover:border-[#6366F1] transition-colors"
     >
-      <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${gradient} flex items-center justify-center mb-2`}>{icon}</div>
-      <p className="text-sm font-semibold text-white">{title}</p>
-      <p className="text-[11px] text-[#9CA3AF] mt-0.5">{description}</p>
+      <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${entry.gradient} flex items-center justify-center mb-2`}>
+        {REPORT_ICONS[entry.icon]}
+      </div>
+      <p className="text-sm font-semibold text-white">{entry.title}</p>
+      <p className="text-[11px] text-[#9CA3AF] mt-0.5">{entry.description}</p>
     </button>
   );
 }
@@ -497,36 +390,19 @@ function MiniTxRow({
   showAttachmentIcon?: boolean;
   onAttachmentClick?: () => void;
 }) {
-  const isReceived = tx.direction === 'received';
-  const iconBg = isReceived ? 'bg-[#10B981]/20 text-[#10B981]' : 'bg-[#EF4444]/20 text-[#EF4444]';
-  const Icon = isReceived ? ArrowDownLeft : ArrowUpRight;
-  const amountColor = isReceived ? 'text-[#10B981]' : 'text-[#EF4444]';
   const time = formatPaymentDateTime(tx.paymentDate, tx.createdAt).time;
   return (
     <li>
       <div className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-3 text-left hover:border-[#6366F1] transition-colors">
-        <div className="flex items-center gap-3">
-          <div className={`w-9 h-9 rounded-full flex items-center justify-center ${iconBg}`}>
-            <Icon className="w-4 h-4" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-white truncate">{tx.partyName || tx.partyAccountName || tx.referenceType}</p>
-            <p className="text-[11px] text-[#9CA3AF] truncate">
-              {tx.paymentAccountName || '—'} {isReceived ? '→' : '←'} {tx.partyAccountName || tx.partyName || '—'}
-            </p>
-          </div>
-          <div className="text-right shrink-0">
-            <div className="flex items-center justify-end gap-0.5">
-              {showAttachmentIcon && onAttachmentClick ? (
-                <AttachmentIndicatorButton onClick={() => onAttachmentClick()} size="sm" />
-              ) : null}
-              <p className={`text-sm font-bold ${amountColor}`}>
-                {isReceived ? '+' : '−'} Rs. {formatAmount(tx.amount, 0)}
-              </p>
-            </div>
-            <p className="text-[11px] text-[#9CA3AF]">{time}</p>
-          </div>
-        </div>
+        <TransactionActivityRow
+          tx={tx}
+          timeLabel={time}
+          attachmentSlot={
+            showAttachmentIcon && onAttachmentClick ? (
+              <AttachmentIndicatorButton onClick={() => onAttachmentClick()} size="sm" />
+            ) : null
+          }
+        />
       </div>
     </li>
   );
