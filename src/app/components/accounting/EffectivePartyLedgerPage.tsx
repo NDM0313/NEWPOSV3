@@ -32,6 +32,7 @@ import {
 } from '@/app/lib/resolvePartyLedgerPreviewCompareSource';
 import type { UnifiedLedgerRow } from '@/app/services/unifiedLedgerService';
 import { contactService } from '@/app/services/contactService';
+import { subscribeAccountingReportReload } from '@/app/hooks/useAccountingReportReload';
 import { ReportBasisBanner } from '@/app/components/accounting/ReportBasisBanner';
 import { canAccessPartyLedgerUnifiedPreview } from '@/app/lib/partyLedgerUnifiedPreviewAccess';
 import {
@@ -365,18 +366,19 @@ export const EffectivePartyLedgerPage: React.FC<EffectivePartyLedgerPageProps> =
   }, [contactId, loadData]);
 
   useEffect(() => {
-    const handler = () => { if (contactId) loadData(); };
-    window.addEventListener('accountingEntriesChanged', handler);
-    window.addEventListener('ledgerUpdated', handler);
-    window.addEventListener('paymentAdded', handler);
-    window.addEventListener('purchaseReturnsChanged', handler);
-    return () => {
-      window.removeEventListener('accountingEntriesChanged', handler);
-      window.removeEventListener('ledgerUpdated', handler);
-      window.removeEventListener('paymentAdded', handler);
-      window.removeEventListener('purchaseReturnsChanged', handler);
+    const handler = () => {
+      if (contactId) loadData();
     };
-  }, [contactId, loadData]);
+    window.addEventListener('purchaseReturnsChanged', handler);
+    const unsub = subscribeAccountingReportReload(handler, {
+      companyId,
+      branchId: branchId ?? null,
+    });
+    return () => {
+      window.removeEventListener('purchaseReturnsChanged', handler);
+      unsub();
+    };
+  }, [contactId, loadData, companyId, branchId]);
 
   const filteredRows = useMemo(() => {
     if (!result) return [];

@@ -61,10 +61,10 @@ async function findActiveOpeningEntry(
   companyId: string,
   referenceType: string,
   referenceId: string
-): Promise<{ id: string } | null> {
+): Promise<{ id: string; entry_date: string | null } | null> {
   const { data, error } = await supabase
     .from('journal_entries')
-    .select('id')
+    .select('id, entry_date')
     .eq('company_id', companyId)
     .eq('reference_type', referenceType)
     .eq('reference_id', referenceId)
@@ -76,7 +76,23 @@ async function findActiveOpeningEntry(
     console.warn('[openingBalanceJournalService] findActiveOpeningEntry:', error.message);
     return null;
   }
-  return data?.id ? { id: data.id as string } : null;
+  return data?.id ? { id: data.id as string, entry_date: (data as { entry_date?: string | null }).entry_date ?? null } : null;
+}
+
+async function patchOpeningEntryDateIfNeeded(
+  journalEntryId: string,
+  currentEntryDate: string | null | undefined,
+  desiredDate: string
+): Promise<void> {
+  const desired = String(desiredDate || '').trim().slice(0, 10);
+  if (!desired || !journalEntryId) return;
+  const current = String(currentEntryDate || '').slice(0, 10);
+  if (current === desired) return;
+  const { error: updErr } = await supabase
+    .from('journal_entries')
+    .update({ entry_date: desired, updated_at: new Date().toISOString() })
+    .eq('id', journalEntryId);
+  if (updErr) throw updErr;
 }
 
 async function voidJournalEntry(journalEntryId: string): Promise<void> {
@@ -409,7 +425,9 @@ export const openingBalanceJournalService = {
 
   /**
    * Post opening for a chart/GL account (cash/bank/wallet or any COA row).
-   * @param amount — signed is not used; pass absolute opening; use isDebitNatural for direction from category.
+   * Amount is always treated as absolute. Direction:
+   * - `primarySide` when set (debit | credit on the account line)
+   * - else category natural: Assets / Expenses / COS → debit; else credit
    */
   async syncChartAccountOpening(params: {
     companyId: string;
@@ -421,6 +439,8 @@ export const openingBalanceJournalService = {
     openingAmount: number;
     /** GL entry_date for the opening balance JE (defaults to today). */
     entryDate?: string;
+    /** Explicit COA side on the account; overrides category natural when set. */
+    primarySide?: 'debit' | 'credit';
   }): Promise<void> {
     const amt = roundMoney(Math.abs(params.openingAmount));
     if (amt < MONEY_EPS) {
@@ -439,8 +459,14 @@ export const openingBalanceJournalService = {
 
     const debitNatural =
       params.category === 'Assets' || params.category === 'Cost of Sales' || params.category === 'Expenses';
+    const onDebit =
+      params.primarySide === 'debit'
+        ? true
+        : params.primarySide === 'credit'
+          ? false
+          : debitNatural;
 
-    const primaryNet = debitNatural ? amt : -amt;
+    const primaryNet = onDebit ? amt : -amt;
     const ok = await reconcileOrVoidOpeningJe({
       companyId: params.companyId,
       referenceType: OPENING_BALANCE_REFERENCE.GL_ACCOUNT,
@@ -448,10 +474,24 @@ export const openingBalanceJournalService = {
       primaryAccountId: params.accountId,
       expectedPrimaryNet: primaryNet,
     });
-    if (ok) return;
+    if (ok) {
+      // Amount/side already match — still allow date-only edits (Edit Account OB date).
+      const desiredDate = String(params.entryDate || '').trim().slice(0, 10);
+      if (desiredDate) {
+        const existing = await findActiveOpeningEntry(
+          params.companyId,
+          OPENING_BALANCE_REFERENCE.GL_ACCOUNT,
+          params.accountId
+        );
+        if (existing?.id) {
+          await patchOpeningEntryDateIfNeeded(existing.id, existing.entry_date, desiredDate);
+        }
+      }
+      return;
+    }
 
     const label = [params.accountCode, params.accountName].filter(Boolean).join(' — ') || params.accountId;
-    const lines = debitNatural
+    const lines = onDebit
       ? [
           { account_id: params.accountId, debit: amt, credit: 0, description: `Opening balance — ${label}` },
           { account_id: equityId, debit: 0, credit: amt, description: 'Opening balance — offset (Owner Capital)' },

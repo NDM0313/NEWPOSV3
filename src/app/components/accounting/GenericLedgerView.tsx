@@ -12,6 +12,7 @@ import { ModernLedgerTabs } from '@/app/components/customer-ledger-test/modern-o
 import { ModernTransactionModal } from '@/app/components/customer-ledger-test/modern-original/ModernTransactionModal';
 import { buildTransactionsWithOpeningBalance } from '@/app/services/customerLedgerTypes';
 import { CONTACT_BALANCES_REFRESH_EVENT } from '@/app/lib/contactBalancesRefresh';
+import { subscribeAccountingReportReload } from '@/app/hooks/useAccountingReportReload';
 import {
   getSupplierOperationalLedgerData,
   getUserLedgerData,
@@ -153,12 +154,15 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
   useEffect(() => {
     const bump = () => setBalanceRefreshTick((t) => t + 1);
     window.addEventListener(CONTACT_BALANCES_REFRESH_EVENT, bump);
-    window.addEventListener('accountingEntriesChanged', bump);
+    const unsub = subscribeAccountingReportReload(bump, {
+      companyId,
+      branchId: branchId ?? null,
+    });
     return () => {
       window.removeEventListener(CONTACT_BALANCES_REFRESH_EVENT, bump);
-      window.removeEventListener('accountingEntriesChanged', bump);
+      unsub();
     };
-  }, []);
+  }, [companyId, branchId]);
 
   useEffect(() => {
     if (statementEngine !== 'gl' || !companyId || !entityId) return;
@@ -275,6 +279,14 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
     window.addEventListener('purchaseSaved', handlePurchaseSaved);
     window.addEventListener('paymentAdded', handlePaymentAdded);
     window.addEventListener('accountingEntriesChanged', handleAccountingEntriesChanged);
+    const unsubBus = subscribeAccountingReportReload(
+      () => {
+        if (ledgerType === 'supplier' || ledgerType === 'worker' || ledgerType === 'user') {
+          loadOperationalRef.current();
+        }
+      },
+      { companyId, branchId: branchId ?? null },
+    );
 
     return () => {
       window.removeEventListener('purchaseDeleted', handlePurchaseDelete);
@@ -283,8 +295,9 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
       window.removeEventListener('purchaseSaved', handlePurchaseSaved);
       window.removeEventListener('paymentAdded', handlePaymentAdded);
       window.removeEventListener('accountingEntriesChanged', handleAccountingEntriesChanged);
+      unsubBus();
     };
-  }, [ledgerType, entityId]);
+  }, [ledgerType, entityId, companyId, branchId]);
 
   const labels = TAB_LABELS[ledgerType];
   const displayTransactions = operationalData

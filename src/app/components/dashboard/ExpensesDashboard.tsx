@@ -71,12 +71,38 @@ import {
   logExpenseListTrace,
   setExpenseListDiagnosticsEnabled,
 } from '@/app/lib/expenseListDiagnostics';
+import { formatLocalDateYYYYMMDD, parseLocalDateInput } from '@/app/utils/localDate';
+
+function expenseLocalDateParts(dateStr: string): { y: number; m: number; d: number } | null {
+  const raw = String(dateStr ?? '').trim();
+  if (!raw) return null;
+  const ymd = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
+  if (ymd) {
+    return { y: Number(ymd[1]), m: Number(ymd[2]) - 1, d: Number(ymd[3]) };
+  }
+  const parsed = parseLocalDateInput(raw.slice(0, 10));
+  if (Number.isNaN(parsed.getTime())) return null;
+  return { y: parsed.getFullYear(), m: parsed.getMonth(), d: parsed.getDate() };
+}
+
+function isInCalendarMonth(dateStr: string, year: number, monthIndex: number): boolean {
+  const parts = expenseLocalDateParts(dateStr);
+  if (!parts) return false;
+  return parts.y === year && parts.m === monthIndex;
+}
 
 function isInCurrentCalendarMonth(dateStr: string): boolean {
-  if (!dateStr) return false;
-  const d = new Date(dateStr);
   const now = new Date();
-  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+  return isInCalendarMonth(dateStr, now.getFullYear(), now.getMonth());
+}
+
+function isInDateRangeInclusive(dateStr: string, fromYmd: string, toYmd: string): boolean {
+  const parts = expenseLocalDateParts(dateStr);
+  if (!parts) return false;
+  const key = formatLocalDateYYYYMMDD(new Date(parts.y, parts.m, parts.d));
+  if (fromYmd && key < fromYmd) return false;
+  if (toYmd && key > toYmd) return false;
+  return true;
 }
 
 function paymentDisplayForExpense(expense: { paymentAccountDisplay?: string; paymentMethod?: string }): string {
@@ -231,10 +257,33 @@ export const ExpensesDashboard = () => {
     return expenses.filter((e) => !reversedExpenseIds.has(e.id));
   }, [expenses, reversedExpenseIds, showReversedExpenses]);
 
-  const monthExpenses = useMemo(
-    () => operationalExpenses.filter((e) => isInCurrentCalendarMonth(e.date)),
-    [operationalExpenses],
-  );
+  const overviewUsesListDateRange = Boolean(fromDate.trim() || toDate.trim());
+
+  const monthExpenses = useMemo(() => {
+    if (overviewUsesListDateRange) {
+      const from = fromDate.trim();
+      const to = toDate.trim();
+      return operationalExpenses.filter((e) => isInDateRangeInclusive(e.date, from, to));
+    }
+    return operationalExpenses.filter((e) => isInCurrentCalendarMonth(e.date));
+  }, [operationalExpenses, overviewUsesListDateRange, fromDate, toDate]);
+
+  const overviewPeriodLabel = useMemo(() => {
+    if (overviewUsesListDateRange) {
+      const from = fromDate.trim() || '…';
+      const to = toDate.trim() || '…';
+      return `${from} → ${to}`;
+    }
+    return new Date().toLocaleString('en-PK', { month: 'long', year: 'numeric' });
+  }, [overviewUsesListDateRange, fromDate, toDate]);
+
+  const overviewEmptyHint = useMemo(() => {
+    if (monthExpenses.length > 0 || operationalExpenses.length === 0) return null;
+    if (overviewUsesListDateRange) {
+      return `No expenses in ${overviewPeriodLabel} — ${operationalExpenses.length} expense${operationalExpenses.length === 1 ? '' : 's'} loaded outside this range.`;
+    }
+    return `No expenses in ${overviewPeriodLabel} — ${operationalExpenses.length} older expense${operationalExpenses.length === 1 ? '' : 's'} loaded.`;
+  }, [monthExpenses.length, operationalExpenses.length, overviewUsesListDateRange, overviewPeriodLabel]);
 
   const accountFilterOptions = useMemo(() => {
     const byId = new Map<string, string>();
@@ -273,16 +322,14 @@ export const ExpensesDashboard = () => {
   }, [monthExpenses, categoriesFromDb]);
 
   const priorMonthTotal = useMemo(() => {
+    if (overviewUsesListDateRange) return 0;
     const now = new Date();
     const priorMonth = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
     const priorYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
     return operationalExpenses
-      .filter((e) => {
-        const d = new Date(e.date);
-        return d.getFullYear() === priorYear && d.getMonth() === priorMonth;
-      })
+      .filter((e) => isInCalendarMonth(e.date, priorYear, priorMonth))
       .reduce((s, e) => s + (e.amount || 0), 0);
-  }, [operationalExpenses]);
+  }, [operationalExpenses, overviewUsesListDateRange]);
 
   const monthTotal = useMemo(
     () => monthExpenses.reduce((sum, e) => sum + (e.amount || 0), 0),
@@ -683,7 +730,9 @@ export const ExpensesDashboard = () => {
             <div className="bg-card border border-border p-6 rounded-xl flex flex-col justify-between">
               <div className="flex justify-between items-start">
                 <div>
-                  <p className="text-muted-foreground text-sm font-medium">Total Monthly Expense</p>
+                  <p className="text-muted-foreground text-sm font-medium">
+                    {overviewUsesListDateRange ? 'Total Expense (filtered)' : 'Total Monthly Expense'}
+                  </p>
                   <h3 className="text-2xl font-bold text-foreground mt-2">
                     {formatCurrency(monthTotal)}
                   </h3>
@@ -693,7 +742,10 @@ export const ExpensesDashboard = () => {
                 </div>
               </div>
               <div className="mt-4 flex items-center gap-2 text-xs">
-                <span className="text-muted-foreground">{monthExpenses.length} expenses this month</span>
+                <span className="text-muted-foreground">
+                  {monthExpenses.length} expense{monthExpenses.length === 1 ? '' : 's'}
+                  {overviewUsesListDateRange ? ' in range' : ' this month'}
+                </span>
               </div>
             </div>
 
@@ -747,11 +799,19 @@ export const ExpensesDashboard = () => {
             </div>
           </div>
 
+          {overviewEmptyHint ? (
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 text-sm text-amber-200">
+              {overviewEmptyHint}
+            </div>
+          ) : null}
+
           {monthCategoryBreakdown.length > 0 ? (
             <div className="bg-card border border-border rounded-xl overflow-hidden">
               <div className="px-6 py-4 border-b border-border flex items-center justify-between">
-                <h3 className="text-lg font-bold text-foreground">This month by category</h3>
-                <span className="text-xs text-muted-foreground">{new Date().toLocaleString('en-PK', { month: 'long', year: 'numeric' })}</span>
+                <h3 className="text-lg font-bold text-foreground">
+                  {overviewUsesListDateRange ? 'Filtered range by category' : 'This month by category'}
+                </h3>
+                <span className="text-xs text-muted-foreground">{overviewPeriodLabel}</span>
               </div>
               <table className="w-full text-sm">
                 <thead className="text-xs text-muted-foreground uppercase bg-muted/40">
@@ -790,7 +850,9 @@ export const ExpensesDashboard = () => {
 
           {/* Donut Chart Section */}
           <div className="bg-card border border-border rounded-xl p-8 flex flex-col items-center justify-center min-h-[400px]">
-            <h3 className="text-lg font-bold text-foreground mb-2 self-start">Expense Breakdown (this month)</h3>
+            <h3 className="text-lg font-bold text-foreground mb-2 self-start">
+              Expense Breakdown ({overviewUsesListDateRange ? 'filtered' : 'this month'})
+            </h3>
             <div className="h-[300px] w-full max-w-lg relative min-h-[300px] shrink-0">
               <ResponsiveContainer width="100%" height={300} minWidth={0} minHeight={300}>
                 <PieChart>
@@ -1190,7 +1252,10 @@ export const ExpensesDashboard = () => {
         }}
         categoryToEdit={selectedCategory}
         initialParentId={categoryModalParentId}
-        onSuccess={loadCategoriesFromDb}
+        onSuccess={() => {
+          loadCategoriesFromDb();
+          void refreshExpenses();
+        }}
       />
 
       {/* Delete / Cancel Expense Confirmation */}

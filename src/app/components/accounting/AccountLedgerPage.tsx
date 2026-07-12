@@ -30,6 +30,7 @@ import {
   presentationKindForLine,
 } from '@/app/lib/accountFlowPresentation';
 import { presentationLabel } from '@/app/lib/journalLinePresentation';
+import { subscribeAccountingReportReload } from '@/app/hooks/useAccountingReportReload';
 
 interface AccountLedgerPageProps {
   accountId: string;
@@ -182,7 +183,7 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
     window.print();
   };
 
-  // Reload ledger when entries change (debounced — coalesce post-save event bursts).
+  // Reload ledger when entries change or header refresh fires (debounced).
   useEffect(() => {
     const scheduleRefresh = () => {
       if (ledgerRefreshTimerRef.current) clearTimeout(ledgerRefreshTimerRef.current);
@@ -191,12 +192,14 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
         void loadLedger();
       }, 400);
     };
-    window.addEventListener('accountingEntriesChanged', scheduleRefresh);
-    window.addEventListener('paymentAdded', scheduleRefresh);
+    const unsub = subscribeAccountingReportReload(scheduleRefresh, {
+      companyId,
+      branchId: selectedBranchId || null,
+      debounceMs: 200,
+    });
     return () => {
       if (ledgerRefreshTimerRef.current) clearTimeout(ledgerRefreshTimerRef.current);
-      window.removeEventListener('accountingEntriesChanged', scheduleRefresh);
-      window.removeEventListener('paymentAdded', scheduleRefresh);
+      unsub();
     };
   }, [accountId, companyId, selectedBranchId, dateRange, searchTerm]);
 

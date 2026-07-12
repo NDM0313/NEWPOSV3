@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback, Suspense, lazy } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef, Suspense, lazy } from 'react';
 import { 
   Receipt, 
   Wallet,
@@ -93,10 +93,18 @@ import { contactService } from '@/app/services/contactService';
 import { CONTACT_BALANCES_REFRESH_EVENT } from '@/app/lib/contactBalancesRefresh';
 import {
   DATA_INVALIDATED_EVENT,
+  dispatchAccountingInvalidated,
   type DataInvalidationDetail,
   shouldAcceptInvalidation,
 } from '@/app/lib/dataInvalidationBus';
 import { toast } from 'sonner';
+import { supabase } from '@/lib/supabase';
+import type { AccountCategory } from '@/app/services/chartAccountService';
+import { OPENING_BALANCE_REFERENCE } from '@/app/services/openingBalanceJournalService';
+import {
+  accountingTypeFilterEmptyMessage,
+  matchesAccountingTypeFilter,
+} from '@/app/lib/accountingJournalTypeFilter';
 import { getControlAccountKind } from '@/app/lib/accountControlKind';
 import { AccountsHierarchyList } from '@/app/components/accounting/AccountsHierarchyList';
 import { ControlLinkedPartiesSheet } from '@/app/components/accounting/ControlLinkedPartiesSheet';
@@ -446,6 +454,11 @@ export const AccountingDashboard = () => {
     return null;
   }, [accountStatementV2Initial, accountStatementPreselectId]);
 
+  const handleAccountStatementInitialConsumed = useCallback(() => {
+    setAccountStatementV2Initial(null);
+    setAccountStatementPreselectId(null);
+  }, [setAccountStatementV2Initial]);
+
   useEffect(() => {
     if (accountingTabInitial === 'account_statements') {
       setActiveTab('account_statements');
@@ -514,6 +527,8 @@ export const AccountingDashboard = () => {
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [departmentFilter, setDepartmentFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [openingSupplementalLoading, setOpeningSupplementalLoading] = useState(false);
+  const openingSupplementalFetchedRef = useRef<string>('');
 
   // Journal table sort: default by date+time descending (newest first)
   type JournalSortKey = 'date' | 'reference' | 'module' | 'description' | 'type' | 'paymentMethod' | 'amount' | 'source';
@@ -524,6 +539,74 @@ export const AccountingDashboard = () => {
   const transactions = useMemo(() => {
     return accounting.entries;
   }, [accounting.entries]);
+
+  const inMemoryOpeningCount = useMemo(
+    () => transactions.filter((t) => matchesAccountingTypeFilter(t, 'opening')).length,
+    [transactions],
+  );
+
+  // Opening chip: if date-windowed journal cache has no OB rows, fetch openings company-wide and merge.
+  useEffect(() => {
+    if (typeFilter !== 'opening' || !companyId) return;
+    if (inMemoryOpeningCount > 0) return;
+
+    const fetchKey = `${companyId}:${branchId || 'all'}:opening`;
+    if (openingSupplementalFetchedRef.current === fetchKey) return;
+    openingSupplementalFetchedRef.current = fetchKey;
+
+    let cancelled = false;
+    setOpeningSupplementalLoading(true);
+
+    void (async () => {
+      try {
+        let query = supabase
+          .from('journal_entries')
+          .select(
+            `
+            *,
+            lines:journal_entry_lines(
+              id,
+              journal_entry_id,
+              account_id,
+              debit,
+              credit,
+              description,
+              account:accounts(name, code, type)
+            )
+          `,
+          )
+          .eq('company_id', companyId)
+          .or(
+            'reference_type.like.opening_balance%,reference_type.eq.coa_opening,reference_type.eq.system_seed',
+          )
+          .order('entry_date', { ascending: false })
+          .limit(200);
+
+        if (branchId && branchId !== 'all') {
+          query = query.or(`branch_id.eq.${branchId},branch_id.is.null`);
+        }
+
+        const { data, error } = await query;
+        if (cancelled) return;
+        if (error) {
+          console.warn('[AccountingDashboard] Opening supplemental fetch failed:', error.message);
+          return;
+        }
+        const rows = ((data || []) as any[]).filter((e) => e.is_void !== true);
+        if (rows.length > 0) {
+          accounting.appendOrMergeEntries(rows);
+        }
+      } catch (e) {
+        console.warn('[AccountingDashboard] Opening supplemental fetch error:', e);
+      } finally {
+        if (!cancelled) setOpeningSupplementalLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [typeFilter, companyId, branchId, inMemoryOpeningCount, accounting.appendOrMergeEntries]);
 
   // Calculate summary stats from journal entries (uses module-level account sets above)
   const summary = useMemo(() => {
@@ -836,22 +919,9 @@ export const AccountingDashboard = () => {
   const filteredTransactions = useMemo(() => {
     let filtered = transactions;
 
-    // Type filter — supports both source-based and reference_type-based filtering.
+    // Type filter — exclusive reference_type allowlists (see accountingJournalTypeFilter).
     if (typeFilter !== 'all') {
-      filtered = filtered.filter(txn => {
-        const ref = ((txn.metadata as any)?.referenceType || '').toLowerCase();
-        if (typeFilter === 'sale') return ref === 'sale' || ref === 'sale_adjustment' || txn.source === 'Sale';
-        if (typeFilter === 'sale_return') return ref === 'sale_return' || ref === 'sale_reversal';
-        if (typeFilter === 'purchase') return ref === 'purchase' || ref === 'purchase_adjustment' || txn.source === 'Purchase';
-        if (typeFilter === 'purchase_return') return ref === 'purchase_return';
-        if (typeFilter === 'payment') return ref === 'payment' || ref === 'payment_adjustment' || (txn.metadata as any)?.paymentId || txn.source === 'Payment';
-        if (typeFilter === 'opening') return ref.startsWith('opening_balance');
-        if (typeFilter === 'shipment') return ref === 'shipment';
-        if (typeFilter === 'expense') return txn.source === 'Expense' || ref === 'expense';
-        if (typeFilter === 'cancel') return ref === 'sale_reversal' || ref === 'purchase_reversal' || ref.includes('cancel');
-        if (typeFilter === 'adjustment') return ref.includes('adjustment');
-        return true;
-      });
+      filtered = filtered.filter((txn) => matchesAccountingTypeFilter(txn, typeFilter));
     }
 
     // Multi-field search filter.
@@ -1223,14 +1293,23 @@ export const AccountingDashboard = () => {
                   <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
                   <p className="text-sm text-muted-foreground">Loading journal entries…</p>
                 </div>
+              ) : openingSupplementalLoading && typeFilter === 'opening' && filteredTransactions.length === 0 ? (
+                <div className="flex flex-col items-center justify-center gap-3 py-16">
+                  <Loader2 className="w-10 h-10 text-cyan-500 animate-spin" />
+                  <p className="text-sm text-muted-foreground">Loading opening balance journals…</p>
+                </div>
               ) : filteredTransactions.length === 0 ? (
                 <div className="text-center py-12">
                   <FileText size={48} className="mx-auto text-muted-foreground mb-3" />
                   {searchTerm.trim() || typeFilter !== 'all' ? (
                     <>
-                      <p className="text-muted-foreground text-sm font-medium">No journal entries match your filters</p>
+                      <p className="text-muted-foreground text-sm font-medium">
+                        {accountingTypeFilterEmptyMessage(typeFilter).title}
+                      </p>
                       <p className="text-muted-foreground text-xs mt-1">
-                        Try a different keyword, clear search, or switch transaction type.
+                        {searchTerm.trim()
+                          ? 'Try a different keyword, clear search, or switch transaction type.'
+                          : accountingTypeFilterEmptyMessage(typeFilter).hint}
                       </p>
                     </>
                   ) : (
@@ -2550,10 +2629,7 @@ export const AccountingDashboard = () => {
                 periodEnd={accountStatementEnd}
                 periodLabel={`${accountStatementStart} → ${accountStatementEnd}`}
                 initialLedgerEntity={accountStatementV2Entity}
-                onInitialLedgerConsumed={() => {
-                  setAccountStatementV2Initial(null);
-                  setAccountStatementPreselectId(null);
-                }}
+                onInitialLedgerConsumed={handleAccountStatementInitialConsumed}
               />
             ) : (
               <Suspense fallback={<ReportTabSuspenseFallback label="Loading account statement…" />}>
@@ -2610,13 +2686,52 @@ export const AccountingDashboard = () => {
           {editingAccount && (
             <AccountEditForm
               account={editingAccount}
-              onSave={async (updates) => {
+              companyId={companyId ?? ''}
+              branchId={branchId === 'all' ? null : branchId ?? null}
+              onSave={async (updates, opening) => {
+                const accountId = editingAccount.id!;
+                const accountCode = updates.code ?? editingAccount.code;
+                const accountName = updates.name ?? editingAccount.name;
                 try {
-                  await accountService.updateAccount(editingAccount.id!, updates);
-                  await accounting.refreshEntries();
+                  await accountService.updateAccount(accountId, updates);
                   toast.success('Account updated successfully');
                   setIsEditAccountOpen(false);
                   setEditingAccount(null);
+
+                  if (opening && companyId && opening.changed) {
+                    const ob = Math.round((Number(opening.amount) || 0) * 100) / 100;
+                    try {
+                      const { openingBalanceJournalService } = await import(
+                        '@/app/services/openingBalanceJournalService'
+                      );
+                      await openingBalanceJournalService.syncChartAccountOpening({
+                        companyId,
+                        branchId: branchId === 'all' ? undefined : branchId || undefined,
+                        accountId,
+                        accountCode,
+                        accountName,
+                        category: opening.category,
+                        openingAmount: ob,
+                        entryDate: opening.entryDate,
+                        primarySide: opening.primarySide,
+                      });
+                    } catch (e: any) {
+                      console.error('[EDIT ACCOUNT] Opening balance JE failed:', e);
+                      toast.error('Account saved but opening balance did not post to GL', {
+                        description: e?.message,
+                      });
+                    }
+                  }
+
+                  if (companyId) {
+                    dispatchAccountingInvalidated({
+                      companyId,
+                      branchId: branchId === 'all' ? null : branchId ?? null,
+                      entityId: accountId,
+                      reason: 'accounts-changed',
+                    });
+                  }
+                  void accounting.refreshEntries();
                 } catch (error: any) {
                   toast.error(`Failed to update account: ${error.message}`);
                 }
@@ -2729,31 +2844,176 @@ const TransactionDetailListener: React.FC<{
   return null;
 };
 
+function mapDbAccountTypeToOpeningCategory(type: string): AccountCategory {
+  const t = String(type || '').toLowerCase();
+  if (['asset', 'cash', 'bank', 'mobile wallet', 'mobile_wallet', 'receivable'].includes(t)) return 'Assets';
+  if (['liability', 'payable'].includes(t)) return 'Liabilities';
+  if (t === 'equity') return 'Equity';
+  if (t === 'revenue' || t === 'income') return 'Income';
+  return 'Expenses';
+}
+
+function naturalOpeningSide(category: AccountCategory): 'debit' | 'credit' {
+  return category === 'Assets' || category === 'Cost of Sales' || category === 'Expenses' ? 'debit' : 'credit';
+}
+
+type AccountEditOpeningPayload = {
+  amount: number;
+  entryDate: string;
+  changed: boolean;
+  category: AccountCategory;
+  primarySide: 'debit' | 'credit';
+};
+
 // Account Edit Form Component
-const AccountEditForm = ({ account, onSave, onCancel }: { account: any; onSave: (updates: any) => Promise<void>; onCancel: () => void }) => {
+const AccountEditForm = ({
+  account,
+  companyId,
+  branchId: _branchId,
+  onSave,
+  onCancel,
+}: {
+  account: any;
+  companyId: string;
+  branchId?: string | null;
+  onSave: (updates: any, opening?: AccountEditOpeningPayload) => Promise<void>;
+  onCancel: () => void;
+}) => {
+  const initialType = account.type || account.accountType || 'Cash';
+  const initialAccountType = account.account_type || 'Asset';
   const [formData, setFormData] = useState({
     name: account.name || '',
-    type: account.type || account.accountType || 'Cash',
-    account_type: account.account_type || 'Asset',
+    type: initialType,
+    account_type: initialAccountType,
     code: account.code || '',
-    is_active: account.isActive ?? true,
+    is_active: account.isActive ?? account.is_active ?? true,
     is_default_cash: account.is_default_cash ?? false,
     is_default_bank: account.is_default_bank ?? false,
     branch_id: account.branch_id || null,
   });
+  const [openingBalance, setOpeningBalance] = useState(0);
+  const [openingBalanceDate, setOpeningBalanceDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [openingSide, setOpeningSide] = useState<'debit' | 'credit'>(() =>
+    naturalOpeningSide(mapDbAccountTypeToOpeningCategory(String(initialType || initialAccountType))),
+  );
+  const [openingSideTouched, setOpeningSideTouched] = useState(false);
+  const [initialOpeningBalance, setInitialOpeningBalance] = useState(0);
+  const [initialOpeningDate, setInitialOpeningDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [initialOpeningSide, setInitialOpeningSide] = useState<'debit' | 'credit'>(() =>
+    naturalOpeningSide(mapDbAccountTypeToOpeningCategory(String(initialType || initialAccountType))),
+  );
+  const [loadingOpening, setLoadingOpening] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (openingSideTouched) return;
+    setOpeningSide(
+      naturalOpeningSide(mapDbAccountTypeToOpeningCategory(String(formData.type || formData.account_type))),
+    );
+  }, [formData.type, formData.account_type, openingSideTouched]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const accountId = String(account?.id || '');
+    if (!companyId || !accountId) {
+      setLoadingOpening(false);
+      return;
+    }
+    setLoadingOpening(true);
+    (async () => {
+      try {
+        const { data: je, error } = await supabase
+          .from('journal_entries')
+          .select('id, entry_date')
+          .eq('company_id', companyId)
+          .eq('reference_type', OPENING_BALANCE_REFERENCE.GL_ACCOUNT)
+          .eq('reference_id', accountId)
+          .or('is_void.is.null,is_void.eq.false')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (cancelled) return;
+        if (error || !je?.id) {
+          setOpeningBalance(0);
+          setInitialOpeningBalance(0);
+          const natural = naturalOpeningSide(
+            mapDbAccountTypeToOpeningCategory(String(formData.type || formData.account_type)),
+          );
+          setOpeningSide(natural);
+          setInitialOpeningSide(natural);
+          setOpeningSideTouched(false);
+          return;
+        }
+        const { data: lines } = await supabase
+          .from('journal_entry_lines')
+          .select('debit, credit')
+          .eq('journal_entry_id', je.id)
+          .eq('account_id', accountId);
+        if (cancelled) return;
+        const debit = (lines || []).reduce((s, l) => s + Number(l.debit || 0), 0);
+        const credit = (lines || []).reduce((s, l) => s + Number(l.credit || 0), 0);
+        const amount = Math.round(Math.abs(debit - credit) * 100) / 100;
+        const entryDate = String(je.entry_date || '').slice(0, 10) || new Date().toISOString().slice(0, 10);
+        const side: 'debit' | 'credit' = debit >= credit ? 'debit' : 'credit';
+        setOpeningBalance(amount);
+        setInitialOpeningBalance(amount);
+        setOpeningBalanceDate(entryDate);
+        setInitialOpeningDate(entryDate);
+        setOpeningSide(side);
+        setInitialOpeningSide(side);
+        setOpeningSideTouched(true);
+      } catch {
+        if (!cancelled) {
+          setOpeningBalance(0);
+          setInitialOpeningBalance(0);
+        }
+      } finally {
+        if (!cancelled) setLoadingOpening(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Load once per account; type defaults applied separately.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [account?.id, companyId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await onSave({
-      name: formData.name,
-      type: formData.type,
-      account_type: formData.account_type,
-      code: formData.code,
-      is_active: formData.is_active,
-      is_default_cash: formData.is_default_cash,
-      is_default_bank: formData.is_default_bank,
-      branch_id: formData.branch_id || null,
-    });
+    if (saving) return;
+    setSaving(true);
+    try {
+      const ob = Math.round(Math.abs(Number(openingBalance) || 0) * 100) / 100;
+      const dateChanged = openingBalanceDate !== initialOpeningDate;
+      const amountChanged = Math.abs(ob - initialOpeningBalance) >= 0.01;
+      const sideChanged = openingSide !== initialOpeningSide;
+      const changed =
+        amountChanged ||
+        sideChanged ||
+        (Math.abs(ob) >= 0.01 && dateChanged) ||
+        (initialOpeningBalance >= 0.01 && ob < 0.01);
+      await onSave(
+        {
+          name: formData.name,
+          type: formData.type,
+          account_type: formData.account_type,
+          code: formData.code,
+          is_active: formData.is_active,
+          is_default_cash: formData.is_default_cash,
+          is_default_bank: formData.is_default_bank,
+          branch_id: formData.branch_id || null,
+        },
+        {
+          amount: ob,
+          entryDate: openingBalanceDate,
+          changed,
+          category: mapDbAccountTypeToOpeningCategory(String(formData.type || formData.account_type)),
+          primarySide: openingSide,
+        },
+      );
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -2766,6 +3026,7 @@ const AccountEditForm = ({ account, onSave, onCancel }: { account: any; onSave: 
             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
             className="bg-card border-border text-foreground"
             required
+            disabled={saving}
           />
         </div>
         <div>
@@ -2774,6 +3035,7 @@ const AccountEditForm = ({ account, onSave, onCancel }: { account: any; onSave: 
             value={formData.code}
             onChange={(e) => setFormData({ ...formData, code: e.target.value })}
             className="bg-card border-border text-foreground"
+            disabled={saving}
           />
         </div>
       </div>
@@ -2781,7 +3043,11 @@ const AccountEditForm = ({ account, onSave, onCancel }: { account: any; onSave: 
       <div className="grid grid-cols-2 gap-4">
         <div>
           <Label className="text-muted-foreground mb-2 block">Account Type *</Label>
-          <Select value={formData.type} onValueChange={(value) => setFormData({ ...formData, type: value })}>
+          <Select
+            value={formData.type}
+            onValueChange={(value) => setFormData({ ...formData, type: value })}
+            disabled={saving}
+          >
             <SelectTrigger className="bg-card border-border text-foreground">
               <SelectValue />
             </SelectTrigger>
@@ -2794,7 +3060,11 @@ const AccountEditForm = ({ account, onSave, onCancel }: { account: any; onSave: 
         </div>
         <div>
           <Label className="text-muted-foreground mb-2 block">Category *</Label>
-          <Select value={formData.account_type} onValueChange={(value) => setFormData({ ...formData, account_type: value })}>
+          <Select
+            value={formData.account_type}
+            onValueChange={(value) => setFormData({ ...formData, account_type: value })}
+            disabled={saving}
+          >
             <SelectTrigger className="bg-card border-border text-foreground">
               <SelectValue />
             </SelectTrigger>
@@ -2808,11 +3078,83 @@ const AccountEditForm = ({ account, onSave, onCancel }: { account: any; onSave: 
         </div>
       </div>
 
+      <div className="space-y-2">
+        <Label className="text-muted-foreground mb-2 block">Opening Balance</Label>
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-bold">$</span>
+            <Input
+              type="number"
+              min={0}
+              value={openingBalance}
+              onChange={(e) => setOpeningBalance(Math.abs(parseFloat(e.target.value) || 0))}
+              placeholder="0.00"
+              step="0.01"
+              className="bg-card border-border text-foreground pl-8"
+              disabled={saving || loadingOpening}
+            />
+          </div>
+          <div className="inline-flex rounded-md border border-border overflow-hidden shrink-0">
+            <button
+              type="button"
+              disabled={saving || loadingOpening}
+              onClick={() => {
+                setOpeningSide('debit');
+                setOpeningSideTouched(true);
+              }}
+              className={cn(
+                'px-3 py-2 text-sm font-semibold transition-colors',
+                openingSide === 'debit'
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-card text-muted-foreground hover:bg-muted',
+              )}
+            >
+              DR
+            </button>
+            <button
+              type="button"
+              disabled={saving || loadingOpening}
+              onClick={() => {
+                setOpeningSide('credit');
+                setOpeningSideTouched(true);
+              }}
+              className={cn(
+                'px-3 py-2 text-sm font-semibold transition-colors border-l border-border',
+                openingSide === 'credit'
+                  ? 'bg-rose-600 text-white'
+                  : 'bg-card text-muted-foreground hover:bg-muted',
+              )}
+            >
+              CR
+            </button>
+          </div>
+        </div>
+        {loadingOpening ? (
+          <p className="text-xs text-muted-foreground">Loading existing opening balance…</p>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            Amount is always positive. DR/CR follows COA (Assets/Expenses natural DR; Liabilities/Income natural CR).
+            Choose the opposite side for contra / negative balances.
+          </p>
+        )}
+        {Math.abs(openingBalance) >= 0.01 ? (
+          <div className="space-y-2 pt-1">
+            <Label className="text-muted-foreground mb-2 block">Opening balance effective date</Label>
+            <DatePicker
+              value={openingBalanceDate}
+              onChange={(v) => setOpeningBalanceDate(v)}
+              disabled={saving}
+            />
+          </div>
+        ) : null}
+      </div>
+
       <div className="flex items-center gap-6">
         <div className="flex items-center gap-2">
           <Switch
             checked={formData.is_active}
             onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
+            disabled={saving}
           />
           <Label className="text-muted-foreground">Active</Label>
         </div>
@@ -2821,6 +3163,7 @@ const AccountEditForm = ({ account, onSave, onCancel }: { account: any; onSave: 
             <Switch
               checked={formData.is_default_cash}
               onCheckedChange={(checked) => setFormData({ ...formData, is_default_cash: checked })}
+              disabled={saving}
             />
             <Label className="text-muted-foreground">Default Cash</Label>
           </div>
@@ -2830,6 +3173,7 @@ const AccountEditForm = ({ account, onSave, onCancel }: { account: any; onSave: 
             <Switch
               checked={formData.is_default_bank}
               onCheckedChange={(checked) => setFormData({ ...formData, is_default_bank: checked })}
+              disabled={saving}
             />
             <Label className="text-muted-foreground">Default Bank</Label>
           </div>
@@ -2837,11 +3181,18 @@ const AccountEditForm = ({ account, onSave, onCancel }: { account: any; onSave: 
       </div>
 
       <DialogFooter>
-        <Button type="button" variant="ghost" onClick={onCancel} className="text-muted-foreground hover:text-foreground">
+        <Button type="button" variant="ghost" onClick={onCancel} className="text-muted-foreground hover:text-foreground" disabled={saving}>
           Cancel
         </Button>
-        <Button type="submit" className="bg-blue-600 hover:bg-blue-500 text-white">
-          Save Changes
+        <Button type="submit" className="bg-blue-600 hover:bg-blue-500 text-white" disabled={saving || loadingOpening}>
+          {saving ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              Saving…
+            </>
+          ) : (
+            'Save Changes'
+          )}
         </Button>
       </DialogFooter>
     </form>

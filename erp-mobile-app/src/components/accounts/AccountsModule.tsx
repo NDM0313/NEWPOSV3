@@ -3,12 +3,20 @@ import { ArrowLeft } from 'lucide-react';
 import type { User } from '../../types';
 import { usePermissions } from '../../context/PermissionContext';
 import { AccountsDashboard, type AccountEntry } from './AccountsDashboard';
-import { GeneralEntryFlow } from './GeneralEntryFlow';
+import { GeneralEntryFlow, type GeneralEntrySeed } from './GeneralEntryFlow';
 import { AccountTransferFlow } from './AccountTransferFlow';
 import { SupplierPaymentFlow } from './SupplierPaymentFlow';
 import { CustomerPaymentFlow } from './CustomerPaymentFlow';
 import { WorkerPaymentFlow } from './WorkerPaymentFlow';
+import { CourierPaymentFlow } from './CourierPaymentFlow';
 import { ExpenseEntryFlow } from './ExpenseEntryFlow';
+import { getJournalEntryById } from '../../api/accounts';
+import { supabase } from '../../lib/supabase';
+import {
+  buildGeneralEntrySeedFromJournalLines,
+  buildTransferSeedFromJournalLines,
+  duplicateViewForSourceKind,
+} from '../../lib/duplicateEntryRouting';
 import { ChartOfAccountsView } from './ChartOfAccountsView';
 import { AddAccountForm } from './AddAccountForm';
 import { ReportsHub, type LegacyReportKey } from './reports/ReportsHub';
@@ -36,6 +44,7 @@ import {
   shouldAcceptMobileInvalidation,
   type MobileInvalidationDetail,
 } from '../../lib/dataInvalidationBus';
+import { localNowDateString } from '../../utils/localDate';
 
 interface AccountsModuleProps {
   onBack: () => void;
@@ -59,6 +68,7 @@ type View =
   | 'supplier-payment'
   | 'client-payment'
   | 'worker-payment'
+  | 'courier-payment'
   | 'expense-entry'
   | 'reports'
   | 'chart'
@@ -127,6 +137,85 @@ export function AccountsModule({
   const [selectedEntry, setSelectedEntry] = useState<AccountEntry | null>(null);
   const [ledgerInitialAccountId, setLedgerInitialAccountId] = useState<string | null>(null);
   const [reportRefreshEpoch, setReportRefreshEpoch] = useState(0);
+  const [generalEntrySeed, setGeneralEntrySeed] = useState<GeneralEntrySeed | null>(null);
+  const [transferSeed, setTransferSeed] = useState<{
+    fromAccountId?: string;
+    fromAccountName?: string;
+    toAccountId?: string;
+    toAccountName?: string;
+    amount?: number;
+    date?: string;
+  } | null>(null);
+  const [duplicateContactId, setDuplicateContactId] = useState<string | null>(null);
+  const [duplicateWorkerId, setDuplicateWorkerId] = useState<string | null>(null);
+
+  const clearDuplicateSeeds = useCallback(() => {
+    setGeneralEntrySeed(null);
+    setTransferSeed(null);
+    setDuplicateContactId(null);
+    setDuplicateWorkerId(null);
+  }, []);
+
+  const backToDashboardFromFlow = useCallback(() => {
+    clearDuplicateSeeds();
+    setView('dashboard');
+  }, [clearDuplicateSeeds]);
+
+  const handleDuplicateEntry = useCallback(
+    async (entry: AccountEntry) => {
+      const target = duplicateViewForSourceKind(entry.sourceKind);
+      if (!target || !companyId) return;
+
+      clearDuplicateSeeds();
+
+      if (target === 'general-entry' || target === 'account-transfer') {
+        const { data } = await getJournalEntryById(companyId, entry.id);
+        const lines = data?.lines;
+        if (target === 'general-entry') {
+          const seed = buildGeneralEntrySeedFromJournalLines(lines, {
+            amount: entry.amount,
+            date: localNowDateString(),
+          });
+          setGeneralEntrySeed(seed);
+          setView('general-entry');
+          return;
+        }
+        const tSeed = buildTransferSeedFromJournalLines(lines, {
+          amount: entry.amount,
+          date: localNowDateString(),
+        });
+        setTransferSeed(tSeed);
+        setView('account-transfer');
+        return;
+      }
+
+      let contactId = entry.referenceId?.trim() || null;
+      let workerId: string | null = null;
+      if (entry.paymentId) {
+        const { data: pay } = await supabase
+          .from('payments')
+          .select('contact_id, worker_id')
+          .eq('id', entry.paymentId)
+          .maybeSingle();
+        const row = pay as { contact_id?: string | null; worker_id?: string | null } | null;
+        if (!contactId) contactId = row?.contact_id?.trim() || null;
+        workerId = row?.worker_id?.trim() || null;
+      }
+
+      if (target === 'client-payment' || target === 'supplier-payment') {
+        setDuplicateContactId(contactId);
+        setView(target);
+        return;
+      }
+      if (target === 'worker-payment') {
+        setDuplicateWorkerId(workerId || contactId);
+        setView(target);
+        return;
+      }
+      setView(target);
+    },
+    [companyId, clearDuplicateSeeds],
+  );
 
   useEffect(() => {
     if (canUseFullAccounting) return;
@@ -228,6 +317,7 @@ export function AccountsModule({
             onSupplierPayment={() => setView('supplier-payment')}
             onClientPayment={() => setView('client-payment')}
             onWorkerPayment={() => setView('worker-payment')}
+            onCourierPayment={() => setView('courier-payment')}
             onExpenseEntry={() => setView('expense-entry')}
             onViewReports={() => setView('reports')}
             onChartOfAccounts={() => setView('chart')}
@@ -236,6 +326,7 @@ export function AccountsModule({
               setView('entry-detail');
             }}
             onMyActivity={() => setView('my-activity')}
+            onDuplicateEntry={(entry) => void handleDuplicateEntry(entry)}
           />
         </div>
       </div>
@@ -244,32 +335,84 @@ export function AccountsModule({
 
   if (view === 'general-entry') {
     return (
-      <GeneralEntryFlow onBack={() => setView('dashboard')} onComplete={() => setView('dashboard')} user={user} companyId={companyId} branchId={branch?.id} />
+      <GeneralEntryFlow
+        onBack={backToDashboardFromFlow}
+        onComplete={backToDashboardFromFlow}
+        user={user}
+        companyId={companyId}
+        branchId={branch?.id}
+        seed={generalEntrySeed}
+      />
     );
   }
   if (view === 'account-transfer') {
     return (
-      <AccountTransferFlow onBack={() => setView('dashboard')} onComplete={() => setView('dashboard')} user={user} companyId={companyId} branchId={branch?.id} />
+      <AccountTransferFlow
+        onBack={backToDashboardFromFlow}
+        onComplete={backToDashboardFromFlow}
+        user={user}
+        companyId={companyId}
+        branchId={branch?.id}
+        seed={transferSeed}
+      />
     );
   }
   if (view === 'supplier-payment') {
     return (
-      <SupplierPaymentFlow onBack={() => setView('dashboard')} onComplete={() => setView('dashboard')} user={user} companyId={companyId} branchId={branch?.id} />
+      <SupplierPaymentFlow
+        onBack={backToDashboardFromFlow}
+        onComplete={backToDashboardFromFlow}
+        user={user}
+        companyId={companyId}
+        branchId={branch?.id}
+        initialContactId={duplicateContactId}
+      />
     );
   }
   if (view === 'client-payment') {
     return (
-      <CustomerPaymentFlow onBack={() => setView('dashboard')} onComplete={() => setView('dashboard')} user={user} companyId={companyId} branchId={branch?.id ?? null} />
+      <CustomerPaymentFlow
+        onBack={backToDashboardFromFlow}
+        onComplete={backToDashboardFromFlow}
+        user={user}
+        companyId={companyId}
+        branchId={branch?.id ?? null}
+        initialContactId={duplicateContactId}
+      />
     );
   }
   if (view === 'worker-payment') {
     return (
-      <WorkerPaymentFlow onBack={() => setView('dashboard')} onComplete={() => setView('dashboard')} user={user} companyId={companyId} branchId={branch?.id ?? null} />
+      <WorkerPaymentFlow
+        onBack={backToDashboardFromFlow}
+        onComplete={backToDashboardFromFlow}
+        user={user}
+        companyId={companyId}
+        branchId={branch?.id ?? null}
+        initialWorkerId={duplicateWorkerId}
+      />
+    );
+  }
+  if (view === 'courier-payment') {
+    return (
+      <CourierPaymentFlow
+        onBack={backToDashboardFromFlow}
+        onComplete={backToDashboardFromFlow}
+        user={user}
+        companyId={companyId}
+        branchId={branch?.id ?? null}
+      />
     );
   }
   if (view === 'expense-entry') {
     return (
-      <ExpenseEntryFlow onBack={() => setView('dashboard')} onComplete={() => setView('dashboard')} user={user} companyId={companyId} branchId={branch?.id} />
+      <ExpenseEntryFlow
+        onBack={backToDashboardFromFlow}
+        onComplete={backToDashboardFromFlow}
+        user={user}
+        companyId={companyId}
+        branchId={branch?.id}
+      />
     );
   }
   if (view === 'chart') {

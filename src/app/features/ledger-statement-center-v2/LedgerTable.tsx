@@ -9,6 +9,8 @@ interface LedgerTableProps {
   rows: LedgerStatementV2Row[];
   loading: boolean;
   rowActionsDisabled?: boolean;
+  /** When a key is false, that data column is hidden. Att. / Actions always shown. */
+  visibleColumns?: Record<string, boolean>;
   onOpenRow: (row: LedgerStatementV2Row) => void;
   onWhatsAppRow: (row: LedgerStatementV2Row) => void;
   onPreviewAttachments: (row: LedgerStatementV2Row) => void;
@@ -18,12 +20,14 @@ export function LedgerTable({
   rows,
   loading,
   rowActionsDisabled,
+  visibleColumns,
   onOpenRow,
   onWhatsAppRow,
   onPreviewAttachments,
 }: LedgerTableProps) {
   const { formatCurrency } = useFormatCurrency();
   const { formatDate } = useFormatDate();
+  const show = (key: string) => visibleColumns?.[key] !== false;
 
   if (loading) {
     return (
@@ -47,16 +51,18 @@ export function LedgerTable({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground bg-muted/40">
-              <th className="px-3 py-3 font-medium">Date</th>
-              <th className="px-3 py-3 font-medium">Reference</th>
-              <th className="px-3 py-3 font-medium">Type</th>
-              <th className="px-3 py-3 font-medium min-w-[160px]">Description</th>
-              <th className="px-3 py-3 font-medium">Branch</th>
-              <th className="px-3 py-3 font-medium text-right">Debit</th>
-              <th className="px-3 py-3 font-medium text-right">Credit</th>
-              <th className="px-3 py-3 font-medium text-right">Balance</th>
-              <th className="px-3 py-3 font-medium">Payment</th>
-              <th className="px-3 py-3 font-medium">Created by</th>
+              {show('date') ? <th className="px-3 py-3 font-medium">Date</th> : null}
+              {show('reference') ? <th className="px-3 py-3 font-medium">Reference</th> : null}
+              {show('type') ? <th className="px-3 py-3 font-medium">Type</th> : null}
+              {show('description') ? (
+                <th className="px-3 py-3 font-medium min-w-[160px]">Description</th>
+              ) : null}
+              {show('branch') ? <th className="px-3 py-3 font-medium">Branch</th> : null}
+              {show('debit') ? <th className="px-3 py-3 font-medium text-right">Debit</th> : null}
+              {show('credit') ? <th className="px-3 py-3 font-medium text-right">Credit</th> : null}
+              {show('balance') ? <th className="px-3 py-3 font-medium text-right">Balance</th> : null}
+              {show('payment') ? <th className="px-3 py-3 font-medium">Payment</th> : null}
+              {show('createdBy') ? <th className="px-3 py-3 font-medium">Created by</th> : null}
               <th className="px-3 py-3 font-medium text-center">Att.</th>
               <th className="px-3 py-3 font-medium">Actions</th>
             </tr>
@@ -68,67 +74,87 @@ export function LedgerTable({
               const paymentTitle = paymentShort !== paymentFull ? paymentFull : paymentShort;
 
               return (
-              <tr key={row.id} className="border-b border-border hover:bg-accent/50">
-                <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground">
-                  {row.date ? formatDate(row.date) : '—'}
-                </td>
-                <td className="px-3 py-2.5">
-                  <LedgerReferenceCell row={row} onOpen={onOpenRow} disabled={rowActionsDisabled} />
-                </td>
-                <td className="px-3 py-2.5 text-muted-foreground whitespace-nowrap">{row.transactionType}</td>
-                <td className="px-3 py-2.5 text-foreground max-w-xs truncate" title={row.description}>
-                  {row.description || '—'}
-                </td>
-                <td className="px-3 py-2.5 text-muted-foreground whitespace-nowrap">{row.branch}</td>
-                <td className="px-3 py-2.5 text-right tabular-nums text-foreground">
-                  {row.debit ? formatCurrency(row.debit) : '—'}
-                </td>
-                <td className="px-3 py-2.5 text-right tabular-nums text-foreground">
-                  {row.credit ? formatCurrency(row.credit) : '—'}
-                </td>
-                <td className="px-3 py-2.5 text-right tabular-nums font-medium text-foreground">
-                  {formatCurrency(row.runningBalance)}
-                </td>
-                <td className="px-3 py-2.5 text-muted-foreground whitespace-nowrap">
-                  {row.paymentId && paymentFull !== '—' ? (
-                    <button
-                      type="button"
-                      onClick={() => onOpenRow(row)}
-                      disabled={rowActionsDisabled}
-                      title={paymentTitle}
-                      className="text-blue-400 hover:text-blue-300 hover:underline text-left disabled:opacity-40 disabled:pointer-events-none"
+                <tr key={row.id} className="border-b border-border hover:bg-accent/50">
+                  {show('date') ? (
+                    <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground">
+                      {row.date ? formatDate(row.date) : '—'}
+                    </td>
+                  ) : null}
+                  {show('reference') ? (
+                    <td className="px-3 py-2.5">
+                      <LedgerReferenceCell row={row} onOpen={onOpenRow} disabled={rowActionsDisabled} />
+                    </td>
+                  ) : null}
+                  {show('type') ? (
+                    <td className="px-3 py-2.5 text-muted-foreground whitespace-nowrap">
+                      {row.transactionType}
+                    </td>
+                  ) : null}
+                  {show('description') ? (
+                    <td className="px-3 py-2.5 text-foreground max-w-xs truncate" title={row.description}>
+                      {row.description || '—'}
+                    </td>
+                  ) : null}
+                  {show('branch') ? (
+                    <td className="px-3 py-2.5 text-muted-foreground whitespace-nowrap">{row.branch}</td>
+                  ) : null}
+                  {show('debit') ? (
+                    <td className="px-3 py-2.5 text-right tabular-nums text-foreground">
+                      {row.debit ? formatCurrency(row.debit) : '—'}
+                    </td>
+                  ) : null}
+                  {show('credit') ? (
+                    <td className="px-3 py-2.5 text-right tabular-nums text-foreground">
+                      {row.credit ? formatCurrency(row.credit) : '—'}
+                    </td>
+                  ) : null}
+                  {show('balance') ? (
+                    <td className="px-3 py-2.5 text-right tabular-nums font-medium text-foreground">
+                      {formatCurrency(row.runningBalance)}
+                    </td>
+                  ) : null}
+                  {show('payment') ? (
+                    <td className="px-3 py-2.5 text-muted-foreground whitespace-nowrap">
+                      {row.paymentId && paymentFull !== '—' ? (
+                        <button
+                          type="button"
+                          onClick={() => onOpenRow(row)}
+                          disabled={rowActionsDisabled}
+                          title={paymentTitle}
+                          className="text-blue-400 hover:text-blue-300 hover:underline text-left disabled:opacity-40 disabled:pointer-events-none"
+                        >
+                          {paymentShort}
+                        </button>
+                      ) : (
+                        <span title={paymentFull !== '—' ? paymentTitle : undefined}>{paymentShort}</span>
+                      )}
+                    </td>
+                  ) : null}
+                  {show('createdBy') ? (
+                    <td
+                      className="px-3 py-2.5 text-muted-foreground whitespace-nowrap"
+                      title={row.createdBy !== '—' ? row.createdBy : undefined}
                     >
-                      {paymentShort}
-                    </button>
-                  ) : (
-                    <span title={paymentFull !== '—' ? paymentTitle : undefined}>
-                      {paymentShort}
-                    </span>
-                  )}
-                </td>
-                <td
-                  className="px-3 py-2.5 text-muted-foreground whitespace-nowrap"
-                  title={row.createdBy !== '—' ? row.createdBy : undefined}
-                >
-                  {row.createdBy}
-                </td>
-                <td className="px-3 py-2.5 text-center">
-                  <LedgerAttachmentIcon
-                    row={row}
-                    onPreview={onPreviewAttachments}
-                    disabled={rowActionsDisabled}
-                  />
-                </td>
-                <td className="px-3 py-2.5">
-                  <TransactionShareActions
-                    row={row}
-                    onView={onOpenRow}
-                    onWhatsApp={onWhatsAppRow}
-                    disabled={rowActionsDisabled}
-                  />
-                </td>
-              </tr>
-            );
+                      {row.createdBy}
+                    </td>
+                  ) : null}
+                  <td className="px-3 py-2.5 text-center">
+                    <LedgerAttachmentIcon
+                      row={row}
+                      onPreview={onPreviewAttachments}
+                      disabled={rowActionsDisabled}
+                    />
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <TransactionShareActions
+                      row={row}
+                      onView={onOpenRow}
+                      onWhatsApp={onWhatsAppRow}
+                      disabled={rowActionsDisabled}
+                    />
+                  </td>
+                </tr>
+              );
             })}
           </tbody>
         </table>

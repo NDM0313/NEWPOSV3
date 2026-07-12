@@ -1684,64 +1684,64 @@ export const SalesPage = () => {
 
       {activeMainTab === 'sales' && (
       <>
-      {/* Summary Cards - Fixed */}
-      <div className="shrink-0 px-6 py-4 border-b border-border">
-        <div className="grid grid-cols-4 gap-4">
+      {/* Summary Cards - Fixed (compact so more grid rows fit) */}
+      <div className="shrink-0 px-6 py-2 border-b border-border">
+        <div className="grid grid-cols-4 gap-3">
           {/* Total Sales */}
-          <div className="bg-card border border-border rounded-xl p-4 min-w-0">
-            <div className="flex items-start justify-between mb-3">
+          <div className="bg-card border border-border rounded-xl p-3 min-w-0">
+            <div className="flex items-start justify-between mb-1">
               <div className="min-w-0">
                 <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Total Sales</p>
-                <AdaptiveCurrencyValue value={summary.totalSales} className="text-2xl font-bold text-foreground mt-1" as="p" />
-                <p className="text-xs text-muted-foreground mt-1">All invoices</p>
+                <AdaptiveCurrencyValue value={summary.totalSales} className="text-lg font-bold text-foreground mt-0.5" as="p" />
+                <p className="text-xs text-muted-foreground mt-0.5">All invoices</p>
               </div>
-              <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center">
-                <ShoppingCart size={24} className="text-blue-500" />
+              <div className="w-9 h-9 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0">
+                <ShoppingCart size={18} className="text-blue-500" />
               </div>
             </div>
           </div>
 
           {/* Total Paid */}
-          <div className="bg-card border border-border rounded-xl p-4 min-w-0">
-            <div className="flex items-start justify-between mb-3">
+          <div className="bg-card border border-border rounded-xl p-3 min-w-0">
+            <div className="flex items-start justify-between mb-1">
               <div className="min-w-0">
                 <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Total Paid</p>
-                <AdaptiveCurrencyValue value={summary.totalPaid} className="text-2xl font-bold text-[var(--erp-money-positive)] mt-1" as="p" />
-                <p className="text-xs text-muted-foreground mt-1">Received amount</p>
+                <AdaptiveCurrencyValue value={summary.totalPaid} className="text-lg font-bold text-[var(--erp-money-positive)] mt-0.5" as="p" />
+                <p className="text-xs text-muted-foreground mt-0.5">Received amount</p>
               </div>
-              <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
-                <DollarSign size={24} className="text-green-500" />
+              <div className="w-9 h-9 rounded-full bg-green-500/10 flex items-center justify-center shrink-0">
+                <DollarSign size={18} className="text-green-500" />
               </div>
             </div>
           </div>
 
           {/* Total Due */}
-          <div className="bg-card border border-border rounded-xl p-4 min-w-0">
-            <div className="flex items-start justify-between mb-3">
+          <div className="bg-card border border-border rounded-xl p-3 min-w-0">
+            <div className="flex items-start justify-between mb-1">
               <div className="min-w-0">
                 <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Total Due</p>
-                <AdaptiveCurrencyValue value={summary.totalDue} className="text-2xl font-bold text-red-400 mt-1" as="p" />
-                <p className="text-xs text-muted-foreground mt-1">Pending payments</p>
-                <p className="text-[10px] text-muted-foreground mt-2 leading-snug">
+                <AdaptiveCurrencyValue value={summary.totalDue} className="text-lg font-bold text-red-400 mt-0.5" as="p" />
+                <p className="text-xs text-muted-foreground mt-0.5">Pending payments</p>
+                <p className="text-[10px] text-muted-foreground mt-1 leading-snug">
                   Listed final sales: effective due (product + shipment to customer + studio − paid). Not Contacts operational receivables or GL AR 1100 — use Contacts reconciliation or Financial reports to tie out.
                 </p>
               </div>
-              <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center">
-                <AlertCircle size={24} className="text-red-500" />
+              <div className="w-9 h-9 rounded-full bg-red-500/10 flex items-center justify-center shrink-0">
+                <AlertCircle size={18} className="text-red-500" />
               </div>
             </div>
           </div>
 
           {/* Invoices */}
-          <div className="bg-card border border-border rounded-xl p-4">
-            <div className="flex items-start justify-between mb-3">
+          <div className="bg-card border border-border rounded-xl p-3">
+            <div className="flex items-start justify-between mb-1">
               <div>
                 <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Total Invoices</p>
-                <p className="text-2xl font-bold text-foreground mt-1">{summary.invoiceCount}</p>
-                <p className="text-xs text-muted-foreground mt-1">Active orders</p>
+                <p className="text-lg font-bold text-foreground mt-0.5">{summary.invoiceCount}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Active orders</p>
               </div>
-              <div className="w-12 h-12 rounded-full bg-purple-500/10 flex items-center justify-center">
-                <FileText size={24} className="text-purple-500" />
+              <div className="w-9 h-9 rounded-full bg-purple-500/10 flex items-center justify-center shrink-0">
+                <FileText size={18} className="text-purple-500" />
               </div>
             </div>
           </div>
@@ -2292,8 +2292,8 @@ export const SalesPage = () => {
                   paginatedSales.map((sale) => (
                     <ErpDataGridRow
                       key={sale.id}
-                      className="relative h-16 min-w-[1400px]"
-                      style={{ gridTemplateColumns: gridTemplateColumns }}
+                      className="relative h-11 min-w-[1400px]"
+                      style={{ minHeight: '2.75rem', gridTemplateColumns: gridTemplateColumns }}
                       onMouseEnter={() => setHoveredRow(sale.id || sale.invoiceNo)}
                       onMouseLeave={() => setHoveredRow(null)}
                     >

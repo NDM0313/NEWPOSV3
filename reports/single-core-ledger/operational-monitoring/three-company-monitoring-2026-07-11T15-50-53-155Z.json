@@ -1,7 +1,7 @@
 {
   "run": "THREE_COMPANY_OPERATIONAL_MONITORING",
-  "generated_at": "2026-07-11T16:06:18.663Z",
-  "timestamp_slug": "2026-07-11T15-53-35-367Z",
+  "generated_at": "2026-07-11T16:03:37.133Z",
+  "timestamp_slug": "2026-07-11T15-50-53-155Z",
   "overall": "FAIL",
   "credential_policy": "per-company-preferred",
   "generic_fallback_allowed": true,
@@ -124,9 +124,9 @@
           "notes": "compared=9 pass=9 fail=0 maxAbsDiff=0"
         },
         {
-          "result": "PASS",
+          "result": "WAIVED",
           "check": "no material console/RPC errors",
-          "notes": "none"
+          "notes": "[SUPABASE CONTEXT] Error ensuring default accounts: Error: Mandatory payment account 1000 missing after COA seed"
         }
       ],
       "phaseResult": "FAIL"
@@ -136,8 +136,8 @@
       "email": "ndm313@yahoo.com",
       "emailSource": "built-in-default",
       "passwordSource": "per-company",
-      "exitCode": 1,
-      "pass": false,
+      "exitCode": 0,
+      "pass": true,
       "checks": [
         {
           "result": "PASS",
@@ -155,39 +155,39 @@
           "notes": ""
         },
         {
-          "result": "FAIL",
+          "result": "PASS",
           "check": "Roznamcha main loader unified",
-          "notes": "actual=legacy"
+          "notes": "actual=unified"
         },
         {
-          "result": "FAIL",
+          "result": "PASS",
           "check": "Roznamcha preview legacy_shadow",
-          "notes": "actual=unified_compare"
+          "notes": "actual=legacy_shadow"
         },
         {
-          "result": "FAIL",
+          "result": "PASS",
           "check": "Roznamcha Cash In golden",
-          "notes": "actual=0"
+          "notes": "actual=2850850"
         },
         {
-          "result": "FAIL",
+          "result": "PASS",
           "check": "Roznamcha Cash Out golden",
-          "notes": "actual=0"
+          "notes": "actual=1794607"
         },
         {
-          "result": "FAIL",
+          "result": "PASS",
           "check": "Roznamcha Closing golden",
-          "notes": "actual=0"
+          "notes": "actual=1056243"
         },
         {
-          "result": "FAIL",
+          "result": "PASS",
           "check": "Account Statement loader unified",
-          "notes": "actual=legacy"
+          "notes": "actual=unified"
         },
         {
-          "result": "FAIL",
+          "result": "PASS",
           "check": "Account Statement MR REHAN ALI",
-          "notes": "closing=0"
+          "notes": "closing=530000"
         },
         {
           "result": "PASS",
@@ -235,7 +235,7 @@
           "notes": "[SUPABASE CONTEXT] Error ensuring default accounts: Error: Mandatory payment account 1000 missing after COA seed"
         }
       ],
-      "phaseResult": "FAIL"
+      "phaseResult": "PASS"
     },
     {
       "profileId": "din-couture",
@@ -254,6 +254,36 @@
           "result": "PASS",
           "check": "no other company loaders ON",
           "notes": "count=0"
+        },
+        {
+          "result": "PASS",
+          "check": "admin login",
+          "notes": ""
+        },
+        {
+          "result": "PASS",
+          "check": "Roznamcha main loader unified",
+          "notes": "actual=unified"
+        },
+        {
+          "result": "PASS",
+          "check": "Roznamcha preview legacy_shadow",
+          "notes": "actual=legacy_shadow"
+        },
+        {
+          "result": "PASS",
+          "check": "Roznamcha Cash In golden",
+          "notes": "actual=85000"
+        },
+        {
+          "result": "PASS",
+          "check": "Roznamcha Cash Out golden",
+          "notes": "actual=34500"
+        },
+        {
+          "result": "PASS",
+          "check": "Roznamcha Closing golden",
+          "notes": "actual=50500"
         }
       ],
       "phaseResult": null

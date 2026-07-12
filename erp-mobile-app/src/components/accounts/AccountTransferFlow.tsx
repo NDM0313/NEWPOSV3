@@ -25,6 +25,14 @@ interface AccountTransferFlowProps {
   user: User;
   companyId?: string | null;
   branchId?: string | null;
+  seed?: {
+    fromAccountId?: string;
+    fromAccountName?: string;
+    toAccountId?: string;
+    toAccountName?: string;
+    amount?: number;
+    date?: string;
+  } | null;
 }
 
 interface AccountRow {
@@ -53,10 +61,11 @@ const getAccountIcon = (type: string) => {
   return '💰';
 };
 
-export function AccountTransferFlow({ onBack, onComplete, user, companyId, branchId }: AccountTransferFlowProps) {
+export function AccountTransferFlow({ onBack, onComplete, user, companyId, branchId, seed }: AccountTransferFlowProps) {
   const { canViewBalances } = usePermissions();
   const effectiveBranchId = isRealBranchUuid(branchId) ? branchId.trim() : null;
-  const [step, setStep] = useState(1);
+  const hasSeededAccounts = Boolean(seed?.fromAccountId && seed?.toAccountId);
+  const [step, setStep] = useState(hasSeededAccounts ? 3 : 1);
   const [searchQuery, setSearchQuery] = useState('');
   const [paymentAccounts, setPaymentAccounts] = useState<AccountRow[]>([]);
   const { run: runSave, busy: submitting } = useSubmitLock();
@@ -64,12 +73,12 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
   const [successData, setSuccessData] = useState<TransactionSuccessData | null>(null);
   const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
   const [transferData, setTransferData] = useState<TransferData>({
-    fromAccountId: '',
-    fromAccountName: '',
-    toAccountId: '',
-    toAccountName: '',
-    amount: 0,
-    date: localNowDateString(),
+    fromAccountId: seed?.fromAccountId ?? '',
+    fromAccountName: seed?.fromAccountName ?? '',
+    toAccountId: seed?.toAccountId ?? '',
+    toAccountName: seed?.toAccountName ?? '',
+    amount: seed?.amount && seed.amount > 0 ? seed.amount : 0,
+    date: seed?.date || localNowDateString(),
     reference: '',
     notes: '',
   });

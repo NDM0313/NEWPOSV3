@@ -20,6 +20,7 @@ import {
 } from '@/app/lib/accounting/statementEngineTypes';
 import { isPartySubledgerLeaf, nearestPartyControlAncestorId } from '@/app/lib/partyControlAccounts';
 import { CONTACT_BALANCES_REFRESH_EVENT } from '@/app/lib/contactBalancesRefresh';
+import { subscribeAccountingReportReload } from '@/app/hooks/useAccountingReportReload';
 import {
   journalEntryPresentationFromHeader,
   presentationLabel,
@@ -495,17 +496,16 @@ export const AccountLedgerReportPage: React.FC<{
 
   useEffect(() => {
     const bump = () => setJournalRefreshTick((n) => n + 1);
-    window.addEventListener('accountingEntriesChanged', bump);
-    window.addEventListener('paymentAdded', bump);
-    window.addEventListener('ledgerUpdated', bump);
     window.addEventListener(CONTACT_BALANCES_REFRESH_EVENT, bump);
+    const unsub = subscribeAccountingReportReload(bump, {
+      companyId,
+      branchId: branchId ?? null,
+    });
     return () => {
-      window.removeEventListener('accountingEntriesChanged', bump);
-      window.removeEventListener('paymentAdded', bump);
-      window.removeEventListener('ledgerUpdated', bump);
       window.removeEventListener(CONTACT_BALANCES_REFRESH_EVENT, bump);
+      unsub();
     };
-  }, []);
+  }, [companyId, branchId]);
 
   const isPartyStatement = applied.statementType === 'supplier' || applied.statementType === 'customer';
   const viewMode: 'effective' | 'audit' = (!applied.includeAdjustments && !applied.includeReversals) ? 'effective' : 'audit';
@@ -529,20 +529,36 @@ export const AccountLedgerReportPage: React.FC<{
             parent_id: a.parent_id ?? null,
           }))
         );
-        if (active.length > 0) {
-          const pre = initialAccountId?.trim();
-          const preValid = pre && active.some((a) => a.id === pre) ? pre : null;
-          const nextId =
-            preValid ||
-            (selectedAccountId && active.some((a) => a.id === selectedAccountId)
-              ? selectedAccountId
-              : active[0].id);
+        if (active.length === 0) return;
+
+        const pre = initialAccountId?.trim();
+        const preValid = pre && active.some((a) => a.id === pre) ? pre : null;
+
+        setApplied((prev) => {
+          const isParty =
+            prev.statementType === 'customer' ||
+            prev.statementType === 'supplier' ||
+            prev.statementType === 'worker';
+
+          let nextId = prev.selectedAccountId;
+          if (preValid) {
+            nextId = preValid;
+          } else if (prev.selectedAccountId && active.some((a) => a.id === prev.selectedAccountId)) {
+            nextId = prev.selectedAccountId;
+          } else if (isParty) {
+            nextId = '';
+          } else {
+            nextId = active[0].id;
+          }
+
           setSelectedAccountId(nextId);
-          setApplied((prev) => ({ ...prev, selectedAccountId: nextId }));
-        }
+          if (nextId === prev.selectedAccountId) return prev;
+          return { ...prev, selectedAccountId: nextId };
+        });
       })
       .finally(() => setLoadingAccounts(false));
-  }, [companyId, branchId, journalRefreshTick, initialAccountId]);
+    // journalRefreshTick intentionally omitted — entries reload separately; keep party/account selection stable.
+  }, [companyId, branchId, initialAccountId]);
 
   useEffect(() => {
     const pre = initialAccountId?.trim();

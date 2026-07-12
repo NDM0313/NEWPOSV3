@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Button } from "../ui/button";
-import { Printer, FileText, FileSpreadsheet, MessageCircle } from 'lucide-react';
+import { Printer, FileText, FileSpreadsheet, MessageCircle, Columns3 } from 'lucide-react';
 import { cn } from "../ui/utils";
 import { DocumentPreviewButton } from '@/app/components/shared/DocumentPreviewButton';
 import type { DocumentType } from '@/app/services/pdfExportService';
+import type { ColumnsManagerConfig } from '@/app/components/ui/list-toolbar';
 
 interface ReportActionsProps {
   title?: string;
@@ -24,6 +25,8 @@ interface ReportActionsProps {
   /** Reports always A4; defaults to a4. */
   previewFormat?: 'a4' | 'thermal';
   pdfLoading?: boolean;
+  /** Optional ListToolbar-style column visibility picker (left of Preview). */
+  columnsManager?: ColumnsManagerConfig;
 }
 
 export const ReportActions = ({ 
@@ -41,11 +44,26 @@ export const ReportActions = ({
   previewReference,
   previewFormat = 'a4',
   pdfLoading,
+  columnsManager,
 }: ReportActionsProps) => {
   const handlePdf = onOpenPdfPreview ?? onPdf;
   const handlePrint = onOpenPdfPreview ?? onPrint ?? (() => window.print());
   const handlePreview = onPreview ?? onOpenPdfPreview;
   const showLegacyPreview = Boolean(previewContentRef && previewDocumentType && !handlePreview);
+  const [columnVisibilityOpen, setColumnVisibilityOpen] = useState(false);
+  const columnsRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!columnVisibilityOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (columnsRef.current && !columnsRef.current.contains(e.target as Node)) {
+        setColumnVisibilityOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [columnVisibilityOpen]);
+
   return (
     <div className={cn("flex flex-col sm:flex-row items-start sm:items-center justify-between bg-card/95 backdrop-blur-sm border-b border-border p-4 mb-6 gap-4", className)}>
       {title && (
@@ -56,6 +74,50 @@ export const ReportActions = ({
       )}
       
       <div className="flex flex-wrap items-center gap-2">
+        {columnsManager ? (
+          <div ref={columnsRef} className="relative">
+            <Button
+              variant="outline"
+              onClick={() => setColumnVisibilityOpen(!columnVisibilityOpen)}
+              className="h-10 gap-2 bg-popover border-border"
+            >
+              <Columns3 size={16} />
+              Columns
+            </Button>
+
+            {columnVisibilityOpen ? (
+              <div className="absolute right-0 top-12 w-64 bg-card border border-border rounded-lg shadow-2xl p-4 z-50">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-semibold text-foreground">Show Columns</h3>
+                  <button
+                    type="button"
+                    onClick={columnsManager.onShowAll}
+                    className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                  >
+                    Show All
+                  </button>
+                </div>
+                <div className="space-y-1 max-h-[400px] overflow-y-auto">
+                  {columnsManager.columns.map((column) => (
+                    <label
+                      key={column.key}
+                      className="flex items-center gap-2 hover:bg-accent/50 p-2 rounded transition-colors cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={columnsManager.visibleColumns[column.key] !== false}
+                        onChange={() => columnsManager.onToggle(column.key)}
+                        className="w-4 h-4 rounded bg-muted border-border text-primary focus:ring-ring focus:ring-offset-background cursor-pointer"
+                      />
+                      <span className="text-sm text-muted-foreground">{column.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
         {showLegacyPreview && previewContentRef && (
           <DocumentPreviewButton
             contentRef={previewContentRef}

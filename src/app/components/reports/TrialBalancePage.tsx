@@ -11,6 +11,7 @@ import { useFinancialReportPrint } from './shared/useFinancialReportPrint';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useNavigation } from '@/app/context/NavigationContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { useAccountingReportReload } from '@/app/hooks/useAccountingReportReload';
 import { toast } from 'sonner';
 import {
   accountingReportsService,
@@ -90,6 +91,7 @@ export const TrialBalancePage: React.FC<{
   const financialPrint = useFinancialReportPrint(companyId);
   const { setCurrentView } = useNavigation();
   const { formatCurrency } = useFormatCurrency();
+  const reportReloadEpoch = useAccountingReportReload({ companyId, branchId: branchId ?? null });
   const [data, setData] = useState<TrialBalanceResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -172,7 +174,7 @@ export const TrialBalancePage: React.FC<{
         setLoading(false);
       }
     })();
-  }, [companyId, startDate, endDate, branchId, arApMode, fetchRetryKey, previewBasis]);
+  }, [companyId, startDate, endDate, branchId, arApMode, fetchRetryKey, previewBasis, reportReloadEpoch]);
 
   useEffect(() => {
     if (!journalSearchEnabled || !searchTerm.trim() || !companyId) {

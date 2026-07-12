@@ -13,6 +13,7 @@ import {
 } from '@/app/components/ui/dialog';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { useAccountingReportReload } from '@/app/hooks/useAccountingReportReload';
 import { toast } from 'sonner';
 import { accountingReportsService, BalanceSheetResult, type BalanceSheetLineItem } from '@/app/services/accountingReportsService';
 import type { BalanceSheetAssetGroup } from '@/app/lib/accountHierarchy';
@@ -275,6 +276,7 @@ export const BalanceSheetPage: React.FC<{
   const { companyId, userRole } = useSupabase();
   const { formatCurrency } = useFormatCurrency();
   const { openLedgerStatementV2 } = useNavigation();
+  const reportReloadEpoch = useAccountingReportReload({ companyId, branchId: branchId ?? null });
   const defaultDate = initialAsOfDate || new Date().toISOString().slice(0, 10);
   const [asOfDate, setAsOfDate] = useState(defaultDate);
   useEffect(() => {
@@ -425,7 +427,7 @@ export const BalanceSheetPage: React.FC<{
         setLoading(false);
       }
     })();
-  }, [companyId, asOfDate, branchId, fetchRetryKey, previewBasis]);
+  }, [companyId, asOfDate, branchId, fetchRetryKey, previewBasis, reportReloadEpoch]);
 
   const groupedAssets = useMemo(() => (data ? groupAssets(data.assets.items) : []), [data]);
   const groupedLiabilities = useMemo(() => (data ? groupLiabilities(data.liabilities.items) : []), [data]);

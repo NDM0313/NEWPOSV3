@@ -19,6 +19,7 @@ import {
 } from '@/app/lib/addAccountCoaPicker';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { toast } from 'sonner';
+import { cn } from '@/app/components/ui/utils';
 
 function mapDbAccountTypeToOpeningCategory(type: string): AccountCategory {
   const t = String(type || '').toLowerCase();
@@ -27,6 +28,10 @@ function mapDbAccountTypeToOpeningCategory(type: string): AccountCategory {
   if (t === 'equity') return 'Equity';
   if (t === 'revenue' || t === 'income') return 'Income';
   return 'Expenses';
+}
+
+function naturalOpeningSide(category: AccountCategory): 'debit' | 'credit' {
+  return category === 'Assets' || category === 'Cost of Sales' || category === 'Expenses' ? 'debit' : 'credit';
 }
 
 // Operational: only these roles; category is derived, no parent, no equity/fixed assets
@@ -77,6 +82,8 @@ export const AddAccountDrawer = ({ isOpen, onClose, onSuccess }: AddAccountDrawe
   const [notes, setNotes] = useState('');
   const [openingBalance, setOpeningBalance] = useState(0);
   const [openingBalanceDate, setOpeningBalanceDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [openingSide, setOpeningSide] = useState<'debit' | 'credit'>('debit');
+  const [openingSideTouched, setOpeningSideTouched] = useState(false);
   const [isActive, setIsActive] = useState(true);
 
   // Operational only
@@ -97,6 +104,19 @@ export const AddAccountDrawer = ({ isOpen, onClose, onSuccess }: AddAccountDrawe
       }).catch(() => setLoadingAccounts(false));
     }
   }, [isOpen, companyId]);
+
+  useEffect(() => {
+    if (openingSideTouched) return;
+    const typeKey = activeTab === 'operational' ? operationalRole : professionalCategory;
+    setOpeningSide(naturalOpeningSide(mapDbAccountTypeToOpeningCategory(typeKey)));
+  }, [activeTab, operationalRole, professionalCategory, openingSideTouched]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setOpeningSideTouched(false);
+      setOpeningSide(naturalOpeningSide(mapDbAccountTypeToOpeningCategory('bank')));
+    }
+  }, [isOpen]);
 
   /** Suggest next child code when parent is chosen and code field is empty. */
   useEffect(() => {
@@ -231,7 +251,7 @@ export const AddAccountDrawer = ({ isOpen, onClose, onSuccess }: AddAccountDrawe
       }
 
       const created = await accountService.createAccount(payload);
-      const ob = Math.round((Number(openingBalance) || 0) * 100) / 100;
+      const ob = Math.round(Math.abs(Number(openingBalance) || 0) * 100) / 100;
       if (created?.id && Math.abs(ob) >= 0.01) {
         try {
           const { openingBalanceJournalService } = await import('@/app/services/openingBalanceJournalService');
@@ -243,6 +263,7 @@ export const AddAccountDrawer = ({ isOpen, onClose, onSuccess }: AddAccountDrawe
             category: mapDbAccountTypeToOpeningCategory(String(payload.type)),
             openingAmount: ob,
             entryDate: openingBalanceDate,
+            primarySide: openingSide,
           });
         } catch (e: any) {
           console.error('[ADD ACCOUNT] Opening balance JE failed:', e);
@@ -256,6 +277,8 @@ export const AddAccountDrawer = ({ isOpen, onClose, onSuccess }: AddAccountDrawe
       setNotes('');
       setOpeningBalance(0);
       setOpeningBalanceDate(new Date().toISOString().slice(0, 10));
+      setOpeningSideTouched(false);
+      setOpeningSide(naturalOpeningSide(mapDbAccountTypeToOpeningCategory('bank')));
       setIsActive(true);
       setParentId(null);
       onSuccess?.();
@@ -345,17 +368,55 @@ export const AddAccountDrawer = ({ isOpen, onClose, onSuccess }: AddAccountDrawe
 
                 <div className="space-y-3">
                   <Label className="text-xs text-muted-foreground uppercase tracking-wider">Opening balance</Label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-bold">$</span>
-                    <Input
-                      type="number"
-                      value={openingBalance}
-                      onChange={(e) => setOpeningBalance(parseFloat(e.target.value) || 0)}
-                      placeholder="0.00"
-                      step="0.01"
-                      className="bg-muted border-border text-foreground h-11 pl-8"
-                    />
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-bold">$</span>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={openingBalance}
+                        onChange={(e) => setOpeningBalance(Math.abs(parseFloat(e.target.value) || 0))}
+                        placeholder="0.00"
+                        step="0.01"
+                        className="bg-muted border-border text-foreground h-11 pl-8"
+                      />
+                    </div>
+                    <div className="inline-flex rounded-md border border-border overflow-hidden shrink-0 h-11">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOpeningSide('debit');
+                          setOpeningSideTouched(true);
+                        }}
+                        className={cn(
+                          'px-3 text-sm font-semibold transition-colors',
+                          openingSide === 'debit'
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-muted text-muted-foreground hover:bg-card',
+                        )}
+                      >
+                        DR
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOpeningSide('credit');
+                          setOpeningSideTouched(true);
+                        }}
+                        className={cn(
+                          'px-3 text-sm font-semibold transition-colors border-l border-border',
+                          openingSide === 'credit'
+                            ? 'bg-rose-600 text-white'
+                            : 'bg-muted text-muted-foreground hover:bg-card',
+                        )}
+                      >
+                        CR
+                      </button>
+                    </div>
                   </div>
+                  <p className="text-xs text-muted-foreground">
+                    Positive amount + DR/CR (Assets/Expenses natural DR; Liabilities/Income natural CR).
+                  </p>
                   {Math.abs(openingBalance) >= 0.01 ? (
                     <div className="space-y-2 pt-1">
                       <Label className="text-xs text-muted-foreground uppercase tracking-wider">
@@ -459,17 +520,55 @@ export const AddAccountDrawer = ({ isOpen, onClose, onSuccess }: AddAccountDrawe
 
                 <div className="space-y-3">
                   <Label className="text-xs text-muted-foreground uppercase tracking-wider">Opening balance</Label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-bold">$</span>
-                    <Input
-                      type="number"
-                      value={openingBalance}
-                      onChange={(e) => setOpeningBalance(parseFloat(e.target.value) || 0)}
-                      placeholder="0.00"
-                      step="0.01"
-                      className="bg-muted border-border text-foreground h-11 pl-8"
-                    />
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-bold">$</span>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={openingBalance}
+                        onChange={(e) => setOpeningBalance(Math.abs(parseFloat(e.target.value) || 0))}
+                        placeholder="0.00"
+                        step="0.01"
+                        className="bg-muted border-border text-foreground h-11 pl-8"
+                      />
+                    </div>
+                    <div className="inline-flex rounded-md border border-border overflow-hidden shrink-0 h-11">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOpeningSide('debit');
+                          setOpeningSideTouched(true);
+                        }}
+                        className={cn(
+                          'px-3 text-sm font-semibold transition-colors',
+                          openingSide === 'debit'
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-muted text-muted-foreground hover:bg-card',
+                        )}
+                      >
+                        DR
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOpeningSide('credit');
+                          setOpeningSideTouched(true);
+                        }}
+                        className={cn(
+                          'px-3 text-sm font-semibold transition-colors border-l border-border',
+                          openingSide === 'credit'
+                            ? 'bg-rose-600 text-white'
+                            : 'bg-muted text-muted-foreground hover:bg-card',
+                        )}
+                      >
+                        CR
+                      </button>
+                    </div>
                   </div>
+                  <p className="text-xs text-muted-foreground">
+                    Positive amount + DR/CR (Assets/Expenses natural DR; Liabilities/Income natural CR).
+                  </p>
                   {Math.abs(openingBalance) >= 0.01 ? (
                     <div className="space-y-2 pt-1">
                       <Label className="text-xs text-muted-foreground uppercase tracking-wider">

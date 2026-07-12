@@ -15,9 +15,18 @@ interface SupplierPaymentFlowProps {
   companyId?: string | null;
   branchId?: string | null;
   onViewLedger?: (info: { paymentId: string | null; partyName: string | null }) => void;
+  initialContactId?: string | null;
 }
 
-export function SupplierPaymentFlow({ onBack, onComplete, user, companyId, branchId, onViewLedger }: SupplierPaymentFlowProps) {
+export function SupplierPaymentFlow({
+  onBack,
+  onComplete,
+  user,
+  companyId,
+  branchId,
+  onViewLedger,
+  initialContactId,
+}: SupplierPaymentFlowProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [suppliers, setSuppliers] = useState<SupplierWithPayable[]>([]);
   const [selectedSupplier, setSelectedSupplier] = useState<SupplierWithPayable | null>(null);
@@ -25,9 +34,13 @@ export function SupplierPaymentFlow({ onBack, onComplete, user, companyId, branc
   useEffect(() => {
     if (!companyId) return;
     getSuppliersWithPayable(companyId).then((sRes) => {
-      if (sRes.data) setSuppliers(sRes.data.filter((s) => s.totalPayable > 0));
+      const all = sRes.data ?? [];
+      const match = initialContactId ? all.find((s) => s.id === initialContactId) : undefined;
+      const list = all.filter((s) => s.totalPayable > 0 || (match && s.id === match.id));
+      setSuppliers(list);
+      if (match) setSelectedSupplier(match);
     });
-  }, [companyId]);
+  }, [companyId, initialContactId]);
 
   const filteredSuppliers = suppliers.filter(
     (s) => s.name.toLowerCase().includes(searchQuery.toLowerCase()) || s.phone.includes(searchQuery),

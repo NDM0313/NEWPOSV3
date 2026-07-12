@@ -16,6 +16,7 @@ interface WorkerPaymentFlowProps {
   companyId?: string | null;
   branchId?: string | null;
   onViewLedger?: (info: { paymentId: string | null; partyName: string | null }) => void;
+  initialWorkerId?: string | null;
 }
 
 interface Worker {
@@ -41,7 +42,15 @@ const WORKER_TYPES = [
 const getWorkerTypeLabel = (type: string) => WORKER_TYPES.find((t) => t.value === type)?.label || type;
 const getWorkerTypeIcon = (type: string) => WORKER_TYPES.find((t) => t.value === type)?.icon || '👤';
 
-export function WorkerPaymentFlow({ onBack, onComplete, user, companyId, branchId, onViewLedger }: WorkerPaymentFlowProps) {
+export function WorkerPaymentFlow({
+  onBack,
+  onComplete,
+  user,
+  companyId,
+  branchId,
+  onViewLedger,
+  initialWorkerId,
+}: WorkerPaymentFlowProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
   const [workers, setWorkers] = useState<Worker[]>([]);
@@ -50,9 +59,14 @@ export function WorkerPaymentFlow({ onBack, onComplete, user, companyId, branchI
   useEffect(() => {
     if (!companyId) return;
     getWorkersWithPayable(companyId).then((wRes) => {
-      if (wRes.data) setWorkers(wRes.data.map((w) => ({ ...w, type: w.type || 'worker' })));
+      const list = (wRes.data ?? []).map((w) => ({ ...w, type: w.type || 'worker' }));
+      setWorkers(list);
+      if (initialWorkerId) {
+        const match = list.find((w) => w.id === initialWorkerId);
+        if (match) setSelectedWorker(match);
+      }
     });
-  }, [companyId]);
+  }, [companyId, initialWorkerId]);
 
   const filteredWorkers = workers.filter((w) => {
     const matchesSearch = w.name.toLowerCase().includes(searchQuery.toLowerCase()) || (w.phone || '').includes(searchQuery);

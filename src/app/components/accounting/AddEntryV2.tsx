@@ -53,8 +53,14 @@ import { contactService } from '@/app/services/contactService';
 import { loadPartyFormBalances } from '@/app/services/partyFormBalanceService';
 import { warnIfUsingStoredBalanceAsTruth } from '@/app/services/accountingCanonicalGuard';
 import { dispatchContactBalancesRefresh } from '@/app/lib/contactBalancesRefresh';
-import { expenseCategoryService } from '@/app/services/expenseCategoryService';
+import { expenseCategoryService, type ExpenseCategoryTreeItem } from '@/app/services/expenseCategoryService';
+import {
+  findPathToCategory,
+  isExpenseSalaryCategory,
+  resolveExpenseCategoryIdFromLevels,
+} from '@/app/lib/expenseCategoryTreeUtils';
 import { courierService } from '@/app/services/courierService';
+import { shipmentAccountingService } from '@/app/services/shipmentAccountingService';
 import { studioService } from '@/app/services/studioService';
 import {
   createPureJournalEntry,
@@ -162,12 +168,19 @@ export function AddEntryV2({
   const [suppliers, setSuppliers] = useState<{ id: string; name: string; dueGl: number; dueOp: number }[]>([]);
   const [customers, setCustomers] = useState<{ id: string; name: string; dueGl: number; dueOp: number }[]>([]);
   const [workers, setWorkers] = useState<{ id: string; name: string; dueGl: number; dueOp: number }[]>([]);
-  const [couriers, setCouriers] = useState<{ id: string; name: string; contact_id?: string | null; dueGl: number; dueOp: number }[]>([]);
+  const [couriers, setCouriers] = useState<
+    { id: string; name: string; contact_id?: string | null; account_id?: string | null; dueGl: number; dueOp: number }[]
+  >([]);
   /** Journal-derived party balances (AR/AP/worker accounts) — includes manual receipts/payments. */
   const [glBalancesOk, setGlBalancesOk] = useState(false);
   /** Sales/purchases/worker_ledger RPC — open-document view. */
   const [operationalBalancesOk, setOperationalBalancesOk] = useState(false);
-  const [expenseCategories, setExpenseCategories] = useState<{ id: string; name: string; slug: string }[]>([]);
+  /** courier_summary (shipment payable) loaded for Courier Payment due. */
+  const [courierSummaryOk, setCourierSummaryOk] = useState(false);
+  const [expenseCategoryTree, setExpenseCategoryTree] = useState<ExpenseCategoryTreeItem[]>([]);
+  const [mainExpenseCategoryId, setMainExpenseCategoryId] = useState('');
+  const [subExpenseCategoryId, setSubExpenseCategoryId] = useState('');
+  const [leafExpenseCategoryId, setLeafExpenseCategoryId] = useState('');
   const [paymentAccountsList, setPaymentAccountsList] = useState<{ id: string; name: string; code?: string | null }[]>([]);
   const [salaryUsers, setSalaryUsers] = useState<{ id: string; full_name: string }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -195,7 +208,6 @@ export function AddEntryV2({
   const [workerName, setWorkerName] = useState('');
   const [courierId, setCourierId] = useState('');
   const [courierName, setCourierName] = useState('');
-  const [expenseCategorySlug, setExpenseCategorySlug] = useState('');
   const [expenseSalaryUserId, setExpenseSalaryUserId] = useState('');
   const [expenseSalaryUserName, setExpenseSalaryUserName] = useState('');
   const [expenseBonus, setExpenseBonus] = useState<number>(0);
@@ -225,26 +237,46 @@ export function AddEntryV2({
     const silent = Boolean(opts?.silent);
     if (!silent) setLoading(true);
     try {
-      const [{ byContactId, glRpcOk, operationalRpcOk }, acc, payAcc, allContacts, courierList, expCats, workerList] =
-        await Promise.all([
-          loadPartyFormBalances(companyId, branchId === 'all' ? null : branchId || null),
-          accountService.getAllAccounts(companyId, branchId === 'all' ? undefined : branchId || undefined),
-          accountService.getPaymentAccountsOnly(companyId),
-          contactService.getAllContacts(companyId),
-          courierService.getByCompanyId(companyId, false),
-          expenseCategoryService.getOperatingCategoriesForPicker(companyId),
-          studioService.getWorkersWithStats(companyId).catch(() => null as null),
-        ]);
+      const [
+        { byContactId, glRpcOk, operationalRpcOk },
+        acc,
+        payAcc,
+        allContacts,
+        courierList,
+        courierBalanceRows,
+        expCats,
+        workerList,
+      ] = await Promise.all([
+        loadPartyFormBalances(companyId, branchId === 'all' ? null : branchId || null),
+        accountService.getAllAccounts(companyId, branchId === 'all' ? undefined : branchId || undefined),
+        accountService.getPaymentAccountsOnly(companyId),
+        contactService.getAllContacts(companyId),
+        courierService.getByCompanyId(companyId, false),
+        shipmentAccountingService.getCourierBalances(companyId).catch(() => [] as Awaited<
+          ReturnType<typeof shipmentAccountingService.getCourierBalances>
+        >),
+        expenseCategoryService.getTree(companyId),
+        studioService.getWorkersWithStats(companyId).catch(() => null as null),
+      ]);
 
       setGlBalancesOk(glRpcOk);
       setOperationalBalancesOk(operationalRpcOk);
+      setCourierSummaryOk(Array.isArray(courierBalanceRows));
 
       const accList = (acc || []).map((a: any) => ({ id: a.id, name: a.name || '', code: a.code }));
+      const coaBalanceById = new Map<string, number>();
+      for (const a of acc || []) {
+        if (a?.id) coaBalanceById.set(a.id, Number((a as { balance?: number }).balance) || 0);
+      }
       setAccounts(accList);
       const payList = (payAcc || []).map((a: any) => ({ id: a.id, name: a.name || '', code: a.code }));
       setPaymentAccountsList(payList);
 
       const row = (id: string) => byContactId.get(id);
+      const courierDueById = new Map<string, number>();
+      for (const r of courierBalanceRows || []) {
+        if (r.courier_id) courierDueById.set(r.courier_id, Number(r.balance) || 0);
+      }
 
       const contacts = allContacts || [];
       setSuppliers(
@@ -272,10 +304,21 @@ export function AddEntryV2({
       setCouriers(
         (courierList || []).map((c: any) => {
           const cid = (c as any).contact_id as string | null | undefined;
+          const accountId = ((c as any).account_id as string | null | undefined) ?? null;
           const r = cid ? row(cid) : undefined;
-          const dueOp = cid && operationalRpcOk && r ? r.opPayable : cid && !operationalRpcOk ? Number(c.current_balance) || 0 : 0;
           const dueGl = cid && glRpcOk && r ? r.glApPayable : 0;
-          return { id: c.id, name: c.name || c.id, contact_id: cid ?? null, dueGl, dueOp };
+          const fromSummary = courierDueById.has(c.id) ? courierDueById.get(c.id)! : null;
+          const fromCoa = accountId ? Math.abs(coaBalanceById.get(accountId) ?? 0) : 0;
+          // Primary due = courier_summary (Pay Courier); fallback COA liability on courier account.
+          const dueOp = fromSummary != null ? fromSummary : fromCoa;
+          return {
+            id: c.id,
+            name: c.name || c.id,
+            contact_id: cid ?? null,
+            account_id: accountId,
+            dueGl,
+            dueOp,
+          };
         })
       );
 
@@ -290,13 +333,14 @@ export function AddEntryV2({
         })
       );
 
-      setExpenseCategories(expCats || []);
+      const tree = expCats || [];
+      setExpenseCategoryTree(tree);
       setPaymentAccountId((prev) => prev || (payList[0]?.id ?? ''));
       if (!editJournalEntryId) {
         setDebitAccountId((prev) => prev || accList[0]?.id || '');
         setCreditAccountId((prev) => prev || accList[accList.length - 1]?.id || accList[0]?.id || '');
       }
-      setExpenseCategorySlug((prev) => prev || (expCats || [])[0]?.slug || '');
+      setMainExpenseCategoryId((prev) => prev || tree[0]?.id || '');
       if (!operationalRpcOk) {
         warnIfUsingStoredBalanceAsTruth(
           'AddEntryV2',
@@ -406,7 +450,28 @@ export function AddEntryV2({
     initialToAccountId,
   ]);
 
-  const isExpenseSalary = expenseCategorySlug === 'salaries' || expenseCategorySlug === 'salary';
+  const selectedExpenseMain = expenseCategoryTree.find((m) => m.id === mainExpenseCategoryId);
+  const expenseSubOptions = selectedExpenseMain?.children ?? [];
+  const selectedExpenseSub = expenseSubOptions.find((s) => s.id === subExpenseCategoryId);
+  const expenseLeafOptions = selectedExpenseSub?.children ?? [];
+  const selectedExpenseLeaf = expenseLeafOptions.find((n) => n.id === leafExpenseCategoryId);
+  const deepestExpenseCategory = selectedExpenseLeaf ?? selectedExpenseSub ?? selectedExpenseMain;
+  const expenseCategorySlug = deepestExpenseCategory?.slug ?? '';
+  const resolvedExpenseCategoryId = resolveExpenseCategoryIdFromLevels(
+    mainExpenseCategoryId,
+    subExpenseCategoryId,
+    leafExpenseCategoryId,
+  );
+  const expenseCategoryPath = useMemo(() => {
+    if (!resolvedExpenseCategoryId) return null;
+    return findPathToCategory(expenseCategoryTree, resolvedExpenseCategoryId);
+  }, [expenseCategoryTree, resolvedExpenseCategoryId]);
+  const isExpenseSalary = useMemo(() => {
+    if (isExpenseSalaryCategory(expenseCategoryPath)) return true;
+    const slug = (expenseCategorySlug || '').toLowerCase();
+    return slug === 'salaries' || slug === 'salary' || slug === 'wages';
+  }, [expenseCategoryPath, expenseCategorySlug]);
+
   useEffect(() => {
     if (!companyId || !isExpenseSalary) return;
     userService.getUsersForSalary(companyId).then((list) =>
@@ -452,7 +517,7 @@ export function AddEntryV2({
       case 'courier_payment': {
         const c = couriers.find((x) => x.id === courierId);
         if (!c) return 0;
-        return glBalancesOk ? c.dueGl : c.dueOp;
+        return Number(c.dueOp) || Number(c.dueGl) || 0;
       }
       default:
         return null;
@@ -483,12 +548,12 @@ export function AddEntryV2({
         return {
           entity: 'Courier',
           badge: 'COURIER',
-          dueLabel: glBalancesOk ? 'Due (GL — AP for linked contact)' : 'Due (open-doc AP)',
+          dueLabel: courierSummaryOk ? 'Due (courier payable)' : 'Due (courier payable / COA)',
         };
       default:
         return null;
     }
-  }, [entryType, glBalancesOk]);
+  }, [entryType, glBalancesOk, courierSummaryOk]);
 
   const formatCustomerBalanceLabel = useCallback(
     (c: { dueGl: number; dueOp: number }) => {
@@ -599,7 +664,7 @@ export function AddEntryV2({
       case 'worker_payment':
         return !!(workerId && workerName && paymentAccountId);
       case 'expense_payment':
-        if (!expenseCategorySlug || !paymentAccountId) return false;
+        if (!resolvedExpenseCategoryId || !paymentAccountId) return false;
         if (isExpenseSalary && !expenseSalaryUserId) return false;
         if (!branchId || branchId === 'all') return false;
         return true;
@@ -608,7 +673,7 @@ export function AddEntryV2({
       default:
         return false;
     }
-  }, [entryType, amount, debitAccountId, creditAccountId, customerId, customerName, supplierContactId, supplierName, workerId, workerName, paymentAccountId, expenseCategorySlug, isExpenseSalary, expenseSalaryUserId, branchId, courierId, courierName]);
+  }, [entryType, amount, debitAccountId, creditAccountId, customerId, customerName, supplierContactId, supplierName, workerId, workerName, paymentAccountId, resolvedExpenseCategoryId, isExpenseSalary, expenseSalaryUserId, branchId, courierId, courierName]);
 
   const handleSubmit = async () => {
     if (!companyId) return;
@@ -739,7 +804,7 @@ export function AddEntryV2({
           break;
         }
         case 'expense_payment': {
-          if (!expenseCategorySlug || amount <= 0 || !paymentAccountId) {
+          if (!resolvedExpenseCategoryId || !expenseCategorySlug || amount <= 0 || !paymentAccountId) {
             toast.error('Select expense category, amount, and payment account');
             return;
           }
@@ -755,7 +820,11 @@ export function AddEntryV2({
           const paidFromAccount = paymentAccounts.find((a) => a.id === paymentAccountId);
           const paymentMethodName = paidFromAccount?.name || paymentMethod;
           const netAmount = amount + (expenseBonus || 0) - (expenseDeduction || 0);
-          const expenseDesc = description || (isExpenseSalary && expenseSalaryUserName ? `${expenseSalaryUserName} – Salary` : expenseCategories.find((c) => c.slug === expenseCategorySlug)?.name || expenseCategorySlug);
+          const expenseDesc =
+            description ||
+            (isExpenseSalary && expenseSalaryUserName
+              ? `${expenseSalaryUserName} – Salary`
+              : deepestExpenseCategory?.name || expenseCategorySlug);
           const notes = [expenseBonus ? `Bonus: ${expenseBonus}` : '', expenseDeduction ? `Deduction: ${expenseDeduction}` : ''].filter(Boolean).join('; ') || undefined;
           await createExpense(
             {
@@ -775,10 +844,17 @@ export function AddEntryV2({
               branchId: effectiveBranchId,
               payment_account_id: paymentAccountId,
               paidToUserId: isExpenseSalary && expenseSalaryUserId ? expenseSalaryUserId : undefined,
+              expense_category_id: resolvedExpenseCategoryId,
             }
           );
           if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-            console.log('[AddEntryV2] expense_payment saved:', { category: expenseCategorySlug, amount: netAmount, payment_account_id: paymentAccountId, paidToUserId: isExpenseSalary ? expenseSalaryUserId : null });
+            console.log('[AddEntryV2] expense_payment saved:', {
+              category: expenseCategorySlug,
+              expense_category_id: resolvedExpenseCategoryId,
+              amount: netAmount,
+              payment_account_id: paymentAccountId,
+              paidToUserId: isExpenseSalary ? expenseSalaryUserId : null,
+            });
           }
           toast.success('Expense saved');
           break;
@@ -840,7 +916,7 @@ export function AddEntryV2({
   const labelClass = 'block text-sm font-semibold text-muted-foreground mb-2';
   const cardInnerClass = 'bg-muted/40 border border-border rounded-xl p-4';
   const currencyPrefix =
-    settings.company?.currency === 'PKR' || !settings.company?.currency ? 'Rs.' : settings.company?.currency || currencySymbol;
+    settings.company?.currency === 'PKR' || !settings.company?.currency ? 'Rs.' : settings.company?.currency || 'Rs.';
 
   const modal = (
     <>
@@ -1287,10 +1363,10 @@ export function AddEntryV2({
                                 {couriers.map((c) => (
                                   <option key={c.id} value={c.id}>
                                     {c.name}
-                                    {glBalancesOk && operationalBalancesOk
-                                      ? ` — GL ${formatCurrency(c.dueGl)} · Doc ${formatCurrency(c.dueOp)}`
-                                      : (glBalancesOk ? c.dueGl : c.dueOp) > 0
-                                        ? ` — due: ${formatCurrency(glBalancesOk ? c.dueGl : c.dueOp)}`
+                                    {glBalancesOk && c.contact_id
+                                      ? ` — Courier ${formatCurrency(c.dueOp)} · GL ${formatCurrency(c.dueGl)}`
+                                      : c.dueOp > 0
+                                        ? ` — due: ${formatCurrency(c.dueOp)}`
                                         : ''}
                                   </option>
                                 ))}
@@ -1301,45 +1377,40 @@ export function AddEntryV2({
                               <div className="mt-4 pt-4 border-t border-border space-y-2">
                                 <p className="text-lg font-bold text-foreground">{courierName}</p>
                                 <div className="space-y-2 pt-2 border-t border-border">
-                                  {glBalancesOk && (
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-xs text-muted-foreground">
+                                      {selectedPartyLabel.dueLabel}
+                                    </span>
+                                    <span className="text-xl font-bold text-yellow-400 tabular-nums shrink-0">
+                                      {formatCurrency(couriers.find((x) => x.id === courierId)?.dueOp ?? 0)}
+                                    </span>
+                                  </div>
+                                  {glBalancesOk && Boolean(couriers.find((x) => x.id === courierId)?.contact_id) && (
                                     <div className="flex items-center justify-between gap-2">
-                                      <span className="text-xs text-muted-foreground">Due (GL — AP for linked contact)</span>
-                                      <span className="text-xl font-bold text-yellow-400 tabular-nums shrink-0">
+                                      <span className="text-xs text-muted-foreground">Due (GL — party AP)</span>
+                                      <span className="text-xl font-bold text-slate-300 tabular-nums shrink-0">
                                         {formatCurrency(couriers.find((x) => x.id === courierId)?.dueGl ?? 0)}
                                       </span>
                                     </div>
                                   )}
-                                  {operationalBalancesOk && (
-                                    <div className="flex items-center justify-between gap-2">
-                                      <span className="text-xs text-muted-foreground">Due (open-doc AP)</span>
-                                      <span
-                                        className={`text-xl font-bold tabular-nums shrink-0 ${glBalancesOk ? 'text-slate-300' : 'text-yellow-400'}`}
-                                      >
-                                        {formatCurrency(couriers.find((x) => x.id === courierId)?.dueOp ?? 0)}
-                                      </span>
-                                    </div>
-                                  )}
-                                  {!glBalancesOk && !operationalBalancesOk && (
-                                    <div className="flex items-center justify-between gap-2">
-                                      <span className="text-xs text-muted-foreground">{selectedPartyLabel.dueLabel}</span>
-                                      <span className="text-xl font-bold text-yellow-400 tabular-nums">{formatCurrency(selectedPartyDue ?? 0)}</span>
-                                    </div>
-                                  )}
                                 </div>
-                                {!glBalancesOk && (
+                                {!courierSummaryOk && (
                                   <p className="text-[10px] text-amber-500/90 flex items-start gap-1">
                                     <AlertCircle size={12} className="mt-0.5 shrink-0" />
-                                    GL courier AP needs <code className="text-amber-400/90">get_contact_party_gl_balances</code> and linked contact.
+                                    Courier summary unavailable — showing COA liability when linked account exists.
                                   </p>
                                 )}
-                                {!operationalBalancesOk && glBalancesOk && (
-                                  <p className="text-[10px] text-slate-500 flex items-start gap-1">
-                                    <Info size={12} className="mt-0.5 shrink-0" />
-                                    Open-doc AP unavailable — compare to Contacts when RPC is restored.
+                                {(couriers.find((c) => c.id === courierId)?.dueOp ?? 0) === 0 &&
+                                  (couriers.find((c) => c.id === courierId)?.dueGl ?? 0) === 0 && (
+                                  <p className="text-[10px] text-muted-foreground">
+                                    No outstanding courier payable for this courier yet.
                                   </p>
                                 )}
-                                {!(couriers.find((c) => c.id === courierId)?.contact_id) && (selectedPartyDue ?? 0) === 0 && (
-                                  <p className="text-[10px] text-muted-foreground">Link courier to supplier contact for AP due from summaries.</p>
+                                {amount > 0 && (selectedPartyDue ?? 0) > 0 && amount > (selectedPartyDue ?? 0) && (
+                                  <div className="flex items-center gap-2 text-amber-400 text-xs bg-amber-500/10 border border-amber-500/20 rounded-lg p-2">
+                                    <AlertCircle size={14} />
+                                    <span>Amount exceeds unpaid courier total — allowed if intentional.</span>
+                                  </div>
                                 )}
                               </div>
                             )}
@@ -1408,17 +1479,64 @@ export function AddEntryV2({
                         {entryType === 'expense_payment' && (
                           <div className={cardInnerClass}>
                             <Label className={labelClass}>Expense category</Label>
-                            <div className="relative mb-4">
-                              <select value={expenseCategorySlug} onChange={(e) => setExpenseCategorySlug(e.target.value)} className={`${inputClass} appearance-none pr-10`}>
-                                <option value="">Select category</option>
-                                {expenseCategories.map((c) => (
-                                  <option key={c.id} value={c.slug}>
+                            <div className="relative mb-3">
+                              <select
+                                value={mainExpenseCategoryId}
+                                onChange={(e) => {
+                                  setMainExpenseCategoryId(e.target.value);
+                                  setSubExpenseCategoryId('');
+                                  setLeafExpenseCategoryId('');
+                                }}
+                                className={`${inputClass} appearance-none pr-10`}
+                              >
+                                <option value="">Select main category</option>
+                                {expenseCategoryTree.map((c) => (
+                                  <option key={c.id} value={c.id}>
                                     {c.name}
                                   </option>
                                 ))}
                               </select>
                               <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" size={18} />
                             </div>
+                            {expenseSubOptions.length > 0 && (
+                              <div className="relative mb-3">
+                                <Label className={labelClass}>Sub category</Label>
+                                <select
+                                  value={subExpenseCategoryId}
+                                  onChange={(e) => {
+                                    setSubExpenseCategoryId(e.target.value);
+                                    setLeafExpenseCategoryId('');
+                                  }}
+                                  className={`${inputClass} appearance-none pr-10`}
+                                >
+                                  <option value="">— {selectedExpenseMain?.name} (main)</option>
+                                  {expenseSubOptions.map((c) => (
+                                    <option key={c.id} value={c.id}>
+                                      {c.name}
+                                    </option>
+                                  ))}
+                                </select>
+                                <ChevronDown className="absolute right-3 top-[2.4rem] -translate-y-1/2 text-muted-foreground pointer-events-none" size={18} />
+                              </div>
+                            )}
+                            {expenseLeafOptions.length > 0 && (
+                              <div className="relative mb-3">
+                                <Label className={labelClass}>Detail category</Label>
+                                <select
+                                  value={leafExpenseCategoryId}
+                                  onChange={(e) => setLeafExpenseCategoryId(e.target.value)}
+                                  className={`${inputClass} appearance-none pr-10`}
+                                >
+                                  <option value="">— {selectedExpenseSub?.name ?? selectedExpenseMain?.name} (parent)</option>
+                                  {expenseLeafOptions.map((c) => (
+                                    <option key={c.id} value={c.id}>
+                                      {c.name}
+                                    </option>
+                                  ))}
+                                </select>
+                                <ChevronDown className="absolute right-3 top-[2.4rem] -translate-y-1/2 text-muted-foreground pointer-events-none" size={18} />
+                              </div>
+                            )}
                             {isExpenseSalary && (
                               <>
                                 <Label className={labelClass}>Employee / User</Label>

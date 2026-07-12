@@ -1,6 +1,6 @@
 # Three-company operational monitoring
 
-**Generated:** 2026-07-11T16:06:18.663Z
+**Generated:** 2026-07-11T16:03:37.133Z
 **Overall:** FAIL
 **Credential policy:** per-company preferred; generic fallback=true
 
@@ -16,15 +16,15 @@
 - **Login email:** din@yahoo.com
 - **Email source:** profile-default
 - **Password source:** per-company
-- **Checks:** 12/19 PASS
+- **Checks:** 11/19 PASS
 
 ### din-bridal
 
-- **Result:** FAIL
+- **Result:** PASS
 - **Login email:** ndm313@yahoo.com
 - **Email source:** built-in-default
 - **Password source:** per-company
-- **Checks:** 10/19 PASS
+- **Checks:** 17/19 PASS
 
 ### din-couture
 
@@ -32,7 +32,7 @@
 - **Login email:** zhd@dincouture.pk
 - **Email source:** built-in-default
 - **Password source:** per-company
-- **Checks:** 2/2 PASS
+- **Checks:** 8/8 PASS
 
 
-**JSON:** `reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-11T15-53-35-367Z.json`
+**JSON:** `reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-11T15-50-53-155Z.json`

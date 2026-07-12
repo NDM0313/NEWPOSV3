@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, BookOpen } from 'lucide-react';
 import { toast } from 'sonner';
+import { COA_CODES } from '@/app/config/coaMapping';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useGlobalFilter } from '@/app/context/GlobalFilterContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
@@ -132,6 +133,9 @@ export function LedgerStatementCenterV2Page({
   const [entityId, setEntityId] = useState('');
   const [transactionType, setTransactionType] = useState<LedgerTransactionTypeFilter>('all');
   const [search, setSearch] = useState('');
+  const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(LEDGER_EXPORT_COLUMNS.map((c) => [c.key, true])),
+  );
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<LedgerStatementV2Result | null>(null);
   const [pdfOrientation, setPdfOrientation] = useState<PdfPreviewOrientation>('portrait');
@@ -140,6 +144,11 @@ export function LedgerStatementCenterV2Page({
 
   const rowActionLockRef = useRef(false);
   const pendingInitialEntityRef = useRef<typeof initialLedgerEntity>(null);
+  const onInitialLedgerConsumedRef = useRef(onInitialLedgerConsumed);
+  onInitialLedgerConsumedRef.current = onInitialLedgerConsumed;
+  const entityIdRef = useRef(entityId);
+  entityIdRef.current = entityId;
+  const entitiesScopeRef = useRef<{ companyId: string; statementType: LedgerStatementV2Type } | null>(null);
 
   useEffect(() => {
     if (initialLedgerEntity?.entityId) {
@@ -329,12 +338,23 @@ export function LedgerStatementCenterV2Page({
 
   useEffect(() => {
     if (!companyId) return;
+
+    const prevScope = entitiesScopeRef.current;
+    const scopeChanged =
+      !prevScope || prevScope.companyId !== companyId || prevScope.statementType !== statementType;
+    entitiesScopeRef.current = { companyId, statementType };
+
     setEntitiesLoading(true);
     const pending = pendingInitialEntityRef.current;
-    if (!pending || pending.statementType !== statementType) {
-      setEntityId('');
+
+    if (scopeChanged) {
+      // Clear selection only when company or statement type actually changes — not on parent re-renders.
+      if (!pending || pending.statementType !== statementType) {
+        setEntityId('');
+      }
+      setResult(null);
     }
-    setResult(null);
+
     listLedgerEntitiesV2(companyId, statementType)
       .then((list) => {
         setEntities(list);
@@ -342,9 +362,17 @@ export function LedgerStatementCenterV2Page({
           const found = list.some((e) => e.id === pending.entityId);
           if (found) {
             setEntityId(pending.entityId);
+          } else if (scopeChanged) {
+            setEntityId('');
           }
           pendingInitialEntityRef.current = null;
-          onInitialLedgerConsumed?.();
+          onInitialLedgerConsumedRef.current?.();
+          return;
+        }
+        const current = entityIdRef.current;
+        if (current && !list.some((e) => e.id === current)) {
+          setEntityId('');
+          setResult(null);
         }
       })
       .catch((err) => {
@@ -353,7 +381,7 @@ export function LedgerStatementCenterV2Page({
         setEntities([]);
       })
       .finally(() => setEntitiesLoading(false));
-  }, [companyId, statementType, onInitialLedgerConsumed]);
+  }, [companyId, statementType]);
 
   const entityLabel = useMemo(
     () => entities.find((e) => e.id === entityId)?.label || result?.entityLabel || '',
@@ -582,7 +610,7 @@ export function LedgerStatementCenterV2Page({
   const buildExportData = useCallback((): ExportData => {
     const snap = buildTabularPrintSnapshot({
       allColumns: LEDGER_EXPORT_COLUMNS,
-      visibleColumns: {},
+      visibleColumns,
       rows,
       cellValue,
     });
@@ -600,7 +628,7 @@ export function LedgerStatementCenterV2Page({
       headers: snap.columns.map((c) => c.label),
       rows: [...summaryLines, ...snap.rows],
     };
-  }, [rows, cellValue, summary, reportPdfTitle, entityLabel]);
+  }, [rows, cellValue, summary, reportPdfTitle, entityLabel, visibleColumns]);
 
   const pdfPreviewNode = useMemo(() => {
     if (!reportExport.brand || !summary) return null;
@@ -637,6 +665,7 @@ export function LedgerStatementCenterV2Page({
         fontSize={ledgerPrint.fontSize}
         fontFamily={ledgerPrint.fontFamily}
         margins={ledgerPrint.margins}
+        visibleColumns={visibleColumns}
       />
     );
   }, [
@@ -652,6 +681,7 @@ export function LedgerStatementCenterV2Page({
     formatCurrency,
     formatDate,
     pdfOrientation,
+    visibleColumns,
   ]);
 
   const handleBack = () => {
@@ -802,7 +832,9 @@ export function LedgerStatementCenterV2Page({
           onClose={() => setDiscountModalOpen(false)}
           onSuccess={() => {
             toast.success(
-              statementType === 'customer' ? 'Customer discount posted' : 'Supplier discount posted'
+              statementType === 'customer'
+                ? `Customer discount posted (Dr ${COA_CODES.DISCOUNT_ALLOWED} Discount Allowed · Cr party AR)`
+                : `Supplier discount posted (Dr party AP · Cr ${COA_CODES.DISCOUNT_RECEIVED} Discount Received)`,
             );
             void loadStatement();
           }}
@@ -846,6 +878,14 @@ export function LedgerStatementCenterV2Page({
               });
             }}
             pdfLoading={reportExport.loadingBrand}
+            columnsManager={{
+              columns: LEDGER_EXPORT_COLUMNS.map((c) => ({ key: c.key, label: c.label })),
+              visibleColumns,
+              onToggle: (key) =>
+                setVisibleColumns((prev) => ({ ...prev, [key]: !(prev[key] !== false) })),
+              onShowAll: () =>
+                setVisibleColumns(Object.fromEntries(LEDGER_EXPORT_COLUMNS.map((c) => [c.key, true]))),
+            }}
           />
 
           <LedgerSummaryCards statementType={statementType} summary={summary} />
@@ -880,6 +920,7 @@ export function LedgerStatementCenterV2Page({
               rows={rows}
               loading={loading}
               rowActionsDisabled={rowActionBusy}
+              visibleColumns={visibleColumns}
               onOpenRow={handleOpenRowDetail}
               onWhatsAppRow={handleWhatsAppRow}
               onPreviewAttachments={handlePreviewAttachments}

@@ -74,8 +74,8 @@ export function formatPostingFieldLabel(base: string, opts: PostingFieldLabelOpt
 export const POSTING_FIELD_TITLES = {
   transferFrom: formatPostingFieldLabel('Transfer From', { inOut: 'OUT' }),
   transferTo: formatPostingFieldLabel('Transfer To', { inOut: 'IN' }),
-  journalDebit: formatPostingFieldLabel('Select Debit Account', { drCr: 'Dr', inOut: 'IN/OUT' }),
-  journalCredit: formatPostingFieldLabel('Select Credit Account', { drCr: 'Cr', inOut: 'IN/OUT' }),
+  journalDebit: formatPostingFieldLabel('Select Debit Account', { drCr: 'Dr', inOut: 'IN' }),
+  journalCredit: formatPostingFieldLabel('Select Credit Account', { drCr: 'Cr', inOut: 'OUT' }),
   paymentReceipt: formatPostingFieldLabel('Payment account', { drCr: 'Dr', inOut: 'IN' }),
   paymentOut: formatPostingFieldLabel('Payment account', { drCr: 'Cr', inOut: 'OUT' }),
   selectAccountIn: formatPostingFieldLabel('Select account', { inOut: 'IN' }),
@@ -108,4 +108,30 @@ export function accountInOutBadgeLabel(
   forceInOut?: InOutDirection,
 ): InOutDirection {
   return getPostingInOutForSide(account, postingSide, forceInOut);
+}
+
+/** Tailwind classes for IN (green) / OUT (red) selection chrome and badges. */
+export function inOutSelectionClasses(inOut: InOutDirection): {
+  selected: string;
+  hover: string;
+  check: string;
+  chip: string;
+  badgeText: string;
+} {
+  if (inOut === 'IN') {
+    return {
+      selected: 'bg-[#10B981]/20 border-[#10B981]',
+      hover: 'hover:border-[#10B981]/50',
+      check: 'text-[#10B981]',
+      chip: 'bg-[#10B981]/10 border-[#10B981]/30',
+      badgeText: 'text-emerald-400',
+    };
+  }
+  return {
+    selected: 'bg-[#EF4444]/20 border-[#EF4444]',
+    hover: 'hover:border-[#EF4444]/50',
+    check: 'text-[#EF4444]',
+    chip: 'bg-[#EF4444]/10 border-[#EF4444]/30',
+    badgeText: 'text-[#EF4444]',
+  };
 }

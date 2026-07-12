@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { shipmentAccountingService } from '@/app/services/shipmentAccountingService';
 import { courierService } from '@/app/services/courierService';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { Truck, AlertCircle, RefreshCw } from 'lucide-react';
 
 interface CourierBalance {
@@ -13,12 +14,6 @@ interface CourierBalance {
 
 interface CourierLedgerPanelProps {
   companyId: string;
-}
-
-function fmt(amount: number) {
-  return new Intl.NumberFormat('en-PK', {
-    style: 'currency', currency: 'PKR', maximumFractionDigits: 0,
-  }).format(amount);
 }
 
 /** Merge master couriers with balance data so all company couriers show (newly added with 0 balance). */
@@ -61,6 +56,7 @@ function mergeCourierBalances(
 }
 
 export default function CourierLedgerPanel({ companyId }: CourierLedgerPanelProps) {
+  const { formatCurrency } = useFormatCurrency();
   const [balances, setBalances] = useState<CourierBalance[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -92,81 +88,110 @@ export default function CourierLedgerPanel({ companyId }: CourierLedgerPanelProp
 
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <Truck size={18} className="text-indigo-400" />
-          <h3 className="text-sm font-semibold text-white">Courier Balances</h3>
+          <Truck size={18} className="text-muted-foreground" />
+          <h3 className="text-sm font-semibold text-foreground">Courier Balances</h3>
         </div>
         <button
+          type="button"
           onClick={load}
-          className="text-xs text-gray-400 hover:text-white flex items-center gap-1 transition-colors"
+          className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
         >
           <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
           Refresh
         </button>
       </div>
 
-      {/* Summary card */}
       {!loading && !error && balances.length > 0 && (
-        <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-lg p-3 flex items-center justify-between">
-          <span className="text-xs text-gray-400">Total Courier Payable</span>
-          <span className="text-base font-bold text-indigo-300">{fmt(totalPayable)}</span>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="rounded-lg border border-border bg-muted/40 p-3">
+            <div className="text-[11px] uppercase tracking-wide font-medium text-muted-foreground">
+              Total Payable
+            </div>
+            <div className="mt-1 text-lg font-semibold tabular-nums text-foreground">
+              {formatCurrency(totalPayable)}
+            </div>
+          </div>
+          <div className="rounded-lg border border-border bg-muted/40 p-3">
+            <div className="text-[11px] uppercase tracking-wide font-medium text-muted-foreground">
+              Paid
+            </div>
+            <div className="mt-1 text-lg font-semibold tabular-nums text-[var(--erp-money-positive)]">
+              {formatCurrency(totalPaid)}
+            </div>
+          </div>
+          <div className="rounded-lg border border-border bg-muted/40 p-3">
+            <div className="text-[11px] uppercase tracking-wide font-medium text-muted-foreground">
+              Balance Due
+            </div>
+            <div
+              className={`mt-1 text-lg font-semibold tabular-nums ${
+                totalBalance > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-[var(--erp-money-positive)]'
+              }`}
+            >
+              {formatCurrency(totalBalance)}
+            </div>
+          </div>
         </div>
       )}
 
-      {/* Loading */}
       {loading && (
-        <div className="flex items-center gap-2 text-sm text-gray-400 py-4 justify-center">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground py-4 justify-center">
           <RefreshCw size={14} className="animate-spin" />
           Loading balances…
         </div>
       )}
 
-      {/* Error */}
       {error && (
-        <div className="flex items-center gap-2 text-sm text-red-400 py-2">
+        <div className="flex items-center gap-2 text-sm text-destructive py-2">
           <AlertCircle size={14} />
           {error}
         </div>
       )}
 
-      {/* Empty */}
       {!loading && !error && balances.length === 0 && (
-        <div className="text-sm text-gray-500 text-center py-4">
-          No courier balances yet.
-        </div>
+        <div className="text-sm text-muted-foreground text-center py-4">No courier balances yet.</div>
       )}
 
-      {/* Table */}
       {!loading && !error && balances.length > 0 && (
-        <div className="rounded-lg border border-white/10 overflow-hidden">
-          <table className="w-full text-xs">
+        <div className="rounded-lg border border-border overflow-hidden">
+          <table className="w-full text-sm">
             <thead>
-              <tr className="bg-white/5 text-gray-400 border-b border-white/10">
-                <th className="text-left px-3 py-2 font-medium">Courier</th>
-                <th className="text-right px-3 py-2 font-medium">Payable</th>
-                <th className="text-right px-3 py-2 font-medium">Paid</th>
-                <th className="text-right px-3 py-2 font-medium">Balance</th>
+              <tr className="bg-muted/40 text-muted-foreground border-b border-border text-xs uppercase tracking-wide">
+                <th className="text-left px-3 py-2.5 font-medium">Courier</th>
+                <th className="text-right px-3 py-2.5 font-medium">Payable</th>
+                <th className="text-right px-3 py-2.5 font-medium">Paid</th>
+                <th className="text-right px-3 py-2.5 font-medium">Balance</th>
               </tr>
             </thead>
             <tbody>
-              {balances.map((b, i) => (
+              {balances.map((b) => (
                 <tr
                   key={b.courier_id ?? b.courier_name}
-                  className={`border-b border-white/5 hover:bg-white/5 transition-colors ${i % 2 === 0 ? '' : 'bg-white/[0.02]'}`}
+                  className="border-b border-border hover:bg-accent/50 transition-colors"
                 >
-                  <td className="px-3 py-2">
-                    <div className="flex items-center gap-2">
-                      <Truck size={12} className="text-gray-500 shrink-0" />
-                      <span className="text-white font-medium truncate">{b.courier_name}</span>
+                  <td className="px-3 py-2.5">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Truck size={14} className="text-muted-foreground shrink-0" />
+                      <span className="text-foreground font-medium truncate">{b.courier_name}</span>
                     </div>
                   </td>
-                  <td className="px-3 py-2 text-right text-orange-300">{fmt(b.total_payable)}</td>
-                  <td className="px-3 py-2 text-right text-green-400">{fmt(b.total_paid)}</td>
-                  <td className="px-3 py-2 text-right">
-                    <span className={b.balance > 0 ? 'text-red-400 font-semibold' : 'text-green-400'}>
-                      {fmt(b.balance)}
+                  <td className="px-3 py-2.5 text-right tabular-nums text-foreground">
+                    {formatCurrency(b.total_payable)}
+                  </td>
+                  <td className="px-3 py-2.5 text-right tabular-nums text-[var(--erp-money-positive)]">
+                    {formatCurrency(b.total_paid)}
+                  </td>
+                  <td className="px-3 py-2.5 text-right tabular-nums">
+                    <span
+                      className={
+                        b.balance > 0
+                          ? 'text-amber-600 dark:text-amber-400 font-semibold'
+                          : 'text-[var(--erp-money-positive)]'
+                      }
+                    >
+                      {formatCurrency(b.balance)}
                     </span>
                   </td>
                 </tr>

@@ -11,10 +11,7 @@ import { ReportBrandHeader } from './ReportBrandHeader';
 
 import { ReportBrandFooter } from './ReportBrandFooter';
 
-import {
-  LEDGER_PRINT_HEADER_LABELS,
-  LEDGER_PRINT_HEADER_LABELS_WITH_OPTIONAL,
-} from './ledgerExportColumns';
+import { LEDGER_EXPORT_COLUMNS } from './ledgerExportColumns';
 
 export interface LedgerStatementReportRow {
   date: string;
@@ -50,8 +47,10 @@ export interface LedgerStatementReportPreviewProps {
   fontSize?: number;
   fontFamily?: string;
   margins?: PageMargins;
-  /** Show payment method + created-by columns (default: landscape). */
+  /** Show payment method + created-by columns (default: landscape). Ignored when visibleColumns is set. */
   showOptionalColumns?: boolean;
+  /** Same keys as LEDGER_EXPORT_COLUMNS / Columns picker. When set, drives which columns print. */
+  visibleColumns?: Record<string, boolean>;
 }
 
 const TH_STYLE: React.CSSProperties = {
@@ -64,8 +63,19 @@ const TH_STYLE: React.CSSProperties = {
   border: '1px solid #333',
 };
 
+const MONEY_KEYS = new Set(['debit', 'credit', 'balance']);
+const OPTIONAL_KEYS = new Set(['payment', 'createdBy']);
+
+type PreviewCol = { key: string; label: string; align: 'left' | 'right' };
+
+const PREVIEW_COLUMNS: PreviewCol[] = LEDGER_EXPORT_COLUMNS.map((c) => ({
+  key: c.key,
+  label: c.key === 'reference' ? 'Ref' : c.key === 'payment' ? 'Payment' : c.key === 'createdBy' ? 'Created By' : c.label,
+  align: c.align === 'right' ? 'right' : 'left',
+}));
+
 /**
- * A4 ledger statement PDF — 8-column print layout (Branch included).
+ * A4 ledger statement PDF — column set follows Columns picker when visibleColumns is passed.
  */
 export function LedgerStatementReportPreview({
   brand,
@@ -89,10 +99,27 @@ export function LedgerStatementReportPreview({
   fontFamily = 'Arial, Helvetica, sans-serif',
   margins,
   showOptionalColumns,
+  visibleColumns,
 }: LedgerStatementReportPreviewProps) {
-  const includeOptional = showOptionalColumns ?? orientation === 'landscape';
-  const headerLabels = includeOptional ? LEDGER_PRINT_HEADER_LABELS_WITH_OPTIONAL : LEDGER_PRINT_HEADER_LABELS;
-  const colCount = headerLabels.length;
+  const includeOptionalLegacy = showOptionalColumns ?? orientation === 'landscape';
+
+  const visibleCols = useMemo(() => {
+    return PREVIEW_COLUMNS.filter((col) => {
+      if (visibleColumns) {
+        return visibleColumns[col.key] !== false;
+      }
+      if (OPTIONAL_KEYS.has(col.key)) return includeOptionalLegacy;
+      return true;
+    });
+  }, [visibleColumns, includeOptionalLegacy]);
+
+  const colCount = visibleCols.length;
+  const beforeMoneyCount = visibleCols.filter((c) => !MONEY_KEYS.has(c.key) && !OPTIONAL_KEYS.has(c.key)).length;
+  const showDebit = visibleCols.some((c) => c.key === 'debit');
+  const showCredit = visibleCols.some((c) => c.key === 'credit');
+  const showBalance = visibleCols.some((c) => c.key === 'balance');
+  const afterMoneyCount = visibleCols.filter((c) => OPTIONAL_KEYS.has(c.key)).length;
+  const footerLabelSpan = Math.max(1, beforeMoneyCount);
 
   const landscapeClass = orientation === 'landscape' ? 'pdf-document-landscape' : '';
   const rootClass = ['pdf-document', landscapeClass, 'bg-white text-black'].filter(Boolean).join(' ');
@@ -108,50 +135,41 @@ export function LedgerStatementReportPreview({
       }
     : undefined;
 
-  const thAlign = (label: string): React.CSSProperties['textAlign'] =>
-    label === 'Debit' || label === 'Credit' || label === 'Balance' ? 'right' : 'left';
-
-  const renderRowCells = (row: LedgerStatementReportRow) => {
-    const cells: React.ReactNode[] = [
-      <td key="date" style={{ padding: '3px 4px', whiteSpace: 'nowrap' }}>
-        {row.date ? formatDate(row.date) : '—'}
-      </td>,
-      <td key="ref" style={{ padding: '3px 4px', fontFamily: 'monospace', fontSize: 9 }}>
-        {row.referenceNo}
-      </td>,
-      <td key="type" style={{ padding: '3px 4px', fontSize: 9 }}>
-        {row.transactionType}
-      </td>,
-      <td key="desc" style={{ padding: '3px 4px' }}>
-        {row.description || '—'}
-      </td>,
-      <td key="branch" style={{ padding: '3px 4px', fontSize: 9 }}>
-        {row.branch || '—'}
-      </td>,
-      <td key="debit" style={{ padding: '3px 4px', textAlign: 'right' }}>
-        {row.debit ? formatCurrency(row.debit) : '—'}
-      </td>,
-      <td key="credit" style={{ padding: '3px 4px', textAlign: 'right' }}>
-        {row.credit ? formatCurrency(row.credit) : '—'}
-      </td>,
-      <td key="bal" style={{ padding: '3px 4px', textAlign: 'right', fontWeight: 600 }}>
-        {formatCurrency(row.runningBalance)}
-      </td>,
-    ];
-    if (includeOptional) {
-      cells.push(
-        <td key="pay" style={{ padding: '3px 4px', fontSize: 9 }}>
-          {row.paymentMethod || '—'}
-        </td>,
-        <td key="by" style={{ padding: '3px 4px', fontSize: 9 }}>
-          {row.createdBy || '—'}
-        </td>,
-      );
+  const cellValue = (row: LedgerStatementReportRow, key: string): React.ReactNode => {
+    switch (key) {
+      case 'date':
+        return row.date ? formatDate(row.date) : '—';
+      case 'reference':
+        return row.referenceNo;
+      case 'type':
+        return row.transactionType;
+      case 'description':
+        return row.description || '—';
+      case 'branch':
+        return row.branch || '—';
+      case 'debit':
+        return row.debit ? formatCurrency(row.debit) : '—';
+      case 'credit':
+        return row.credit ? formatCurrency(row.credit) : '—';
+      case 'balance':
+        return formatCurrency(row.runningBalance);
+      case 'payment':
+        return row.paymentMethod || '—';
+      case 'createdBy':
+        return row.createdBy || '—';
+      default:
+        return '—';
     }
-    return cells;
   };
 
-  const footerLabelSpan = useMemo(() => colCount - 3, [colCount]);
+  const cellStyle = (key: string, align: 'left' | 'right'): React.CSSProperties => ({
+    padding: '3px 4px',
+    textAlign: align,
+    whiteSpace: key === 'date' ? 'nowrap' : undefined,
+    fontFamily: key === 'reference' ? 'monospace' : undefined,
+    fontSize: key === 'reference' || key === 'type' || key === 'branch' || OPTIONAL_KEYS.has(key) ? 9 : undefined,
+    fontWeight: key === 'balance' ? 600 : undefined,
+  });
 
   return (
     <div
@@ -219,43 +237,71 @@ export function LedgerStatementReportPreview({
         </tbody>
       </table>
 
-      <table className="pdf-ledger-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: tableFont }}>
-        <thead>
-          <tr>
-            {headerLabels.map((h) => (
-              <th key={h} style={{ ...TH_STYLE, textAlign: thAlign(h) }}>
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          <tr style={{ background: '#f3f4f6', fontWeight: 600 }}>
-            <td colSpan={colCount - 1} style={{ padding: '4px 5px', color: '#111' }}>
-              Opening balance
-            </td>
-            <td style={{ padding: '4px 5px', textAlign: 'right', color: '#111' }}>
-              {formatCurrency(openingBalance)}
-            </td>
-          </tr>
-          {rows.map((row, i) => (
-            <tr key={`${row.referenceNo}-${i}`} style={{ borderBottom: '1px solid #ddd' }}>
-              {renderRowCells(row)}
+      {colCount > 0 ? (
+        <table className="pdf-ledger-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: tableFont }}>
+          <thead>
+            <tr>
+              {visibleCols.map((col) => (
+                <th key={col.key} style={{ ...TH_STYLE, textAlign: col.align }}>
+                  {col.label}
+                </th>
+              ))}
             </tr>
-          ))}
-        </tbody>
-        <tfoot>
-          <tr style={{ background: '#f3f4f6', fontWeight: 700 }}>
-            <td colSpan={footerLabelSpan} style={{ padding: '5px 4px', textAlign: 'right', color: '#111' }}>
-              Totals / Closing balance
-            </td>
-            <td style={{ padding: '5px 4px', textAlign: 'right', color: '#111' }}>{formatCurrency(totalDebit)}</td>
-            <td style={{ padding: '5px 4px', textAlign: 'right', color: '#111' }}>{formatCurrency(totalCredit)}</td>
-            <td style={{ padding: '5px 4px', textAlign: 'right', color: '#111' }}>{formatCurrency(closingBalance)}</td>
-            {includeOptional ? <td colSpan={2} /> : null}
-          </tr>
-        </tfoot>
-      </table>
+          </thead>
+          <tbody>
+            <tr style={{ background: '#f3f4f6', fontWeight: 600 }}>
+              {colCount <= 1 ? (
+                <td style={{ padding: '4px 5px', color: '#111' }}>
+                  Opening balance {formatCurrency(openingBalance)}
+                </td>
+              ) : (
+                <>
+                  <td colSpan={colCount - 1} style={{ padding: '4px 5px', color: '#111' }}>
+                    Opening balance
+                  </td>
+                  <td style={{ padding: '4px 5px', textAlign: 'right', color: '#111' }}>
+                    {formatCurrency(openingBalance)}
+                  </td>
+                </>
+              )}
+            </tr>
+            {rows.map((row, i) => (
+              <tr key={`${row.referenceNo}-${i}`} style={{ borderBottom: '1px solid #ddd' }}>
+                {visibleCols.map((col) => (
+                  <td key={col.key} style={cellStyle(col.key, col.align)}>
+                    {cellValue(row, col.key)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr style={{ background: '#f3f4f6', fontWeight: 700 }}>
+              <td colSpan={footerLabelSpan} style={{ padding: '5px 4px', textAlign: 'right', color: '#111' }}>
+                Totals / Closing balance
+              </td>
+              {showDebit ? (
+                <td style={{ padding: '5px 4px', textAlign: 'right', color: '#111' }}>
+                  {formatCurrency(totalDebit)}
+                </td>
+              ) : null}
+              {showCredit ? (
+                <td style={{ padding: '5px 4px', textAlign: 'right', color: '#111' }}>
+                  {formatCurrency(totalCredit)}
+                </td>
+              ) : null}
+              {showBalance ? (
+                <td style={{ padding: '5px 4px', textAlign: 'right', color: '#111' }}>
+                  {formatCurrency(closingBalance)}
+                </td>
+              ) : null}
+              {afterMoneyCount > 0
+                ? Array.from({ length: afterMoneyCount }, (_, i) => <td key={`opt-${i}`} />)
+                : null}
+            </tr>
+          </tfoot>
+        </table>
+      ) : null}
 
       {showFooter ? <ReportBrandFooter currentPage={1} totalPages={1} /> : null}
     </div>

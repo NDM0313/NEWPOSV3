@@ -13,6 +13,8 @@ interface CustomerPaymentFlowProps {
   companyId?: string | null;
   branchId?: string | null;
   onViewLedger?: (info: { paymentId: string | null; partyName: string | null }) => void;
+  /** Prefill from Duplicate — select this customer when list loads. */
+  initialContactId?: string | null;
 }
 
 export function CustomerPaymentFlow({
@@ -22,6 +24,7 @@ export function CustomerPaymentFlow({
   companyId,
   branchId,
   onViewLedger,
+  initialContactId,
 }: CustomerPaymentFlowProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [customers, setCustomers] = useState<CustomerWithBalance[]>([]);
@@ -39,14 +42,19 @@ export function CustomerPaymentFlow({
     setLoading(true);
     getAllCustomersWithBalance(companyId, branchId ?? null).then(({ data, error }) => {
       if (cancelled) return;
-      setCustomers(data || []);
+      const list = data || [];
+      setCustomers(list);
       setLoadError(error);
       setLoading(false);
+      if (initialContactId) {
+        const match = list.find((c) => c.id === initialContactId);
+        if (match) setSelectedCustomer(match);
+      }
     });
     return () => {
       cancelled = true;
     };
-  }, [companyId, branchId]);
+  }, [companyId, branchId, initialContactId]);
 
   const filteredCustomers = customers.filter(
     (c) =>

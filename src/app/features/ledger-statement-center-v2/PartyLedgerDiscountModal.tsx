@@ -113,8 +113,8 @@ export function PartyLedgerDiscountModal({
             Party: <span className="text-foreground font-medium">{partyName}</span>
           </p>
           <p className="text-xs text-muted-foreground rounded-lg bg-muted/40 border border-border px-3 py-2">
-            {coaSummary} — reduces {partyType === 'customer' ? 'customer' : 'supplier'} balance by{' '}
-            {amount ? formatCurrency(Number(amount) || 0) : 'the entered amount'}.
+            Posts to COA: {coaSummary}. Reduces {partyType === 'customer' ? 'customer' : 'supplier'}{' '}
+            balance by {amount ? formatCurrency(Number(amount) || 0) : 'the entered amount'}.
           </p>
           {error ? <p className="text-sm text-red-400">{error}</p> : null}
           <div>

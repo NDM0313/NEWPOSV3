@@ -19,6 +19,7 @@ import { warnIfUsingStoredBalanceAsTruth } from '@/app/services/accountingCanoni
 import {
   DATA_INVALIDATED_EVENT,
   dispatchDataInvalidated,
+  isGlobalRefreshReason,
   type DataInvalidationDetail,
   shouldAcceptInvalidation,
 } from '@/app/lib/dataInvalidationBus';
@@ -520,6 +521,8 @@ const ENTRIES_FETCH_LIMIT = 500;
 /** Reload COA on invalidation only when the chart changed — not payments/sales/realtime noise. */
 function invalidationShouldReloadAccounts(reason?: string): boolean {
   if (!reason) return false;
+  // Header / focus refresh must reload the accounts list (Chart of Accounts).
+  if (isGlobalRefreshReason(reason)) return true;
   const r = reason.toLowerCase();
   if (
     /realtime-change|fallback-poll|contact-balance|sale-payment|saledocumentjournalcreated|accounting-entries-changed|manualreceipt|manualsupplier|sale:|rental:|payment-added|sales-context-payment/.test(
@@ -531,12 +534,15 @@ function invalidationShouldReloadAccounts(reason?: string): boolean {
   return /account-created|chart-of-accounts|coa-|new-account|accounts-changed/.test(r);
 }
 
-/** Full journal reload only when accounting module is open — skip fallback-poll noise. */
+/**
+ * Journal reload when accounting lists are active.
+ * Global refresh always schedules entries (ensureEntriesLoaded in coalesced path).
+ * Fallback poll allowed once bootstrapped so mobile→web updates without F5 when realtime is weak.
+ */
 function invalidationShouldReloadEntries(reason: string | undefined, entriesBootstrapped: boolean): boolean {
+  if (isGlobalRefreshReason(reason)) return true;
   if (!entriesBootstrapped) return false;
   if (!reason) return true;
-  const r = reason.toLowerCase();
-  if (/fallback-poll/.test(r)) return false;
   return true;
 }
 
@@ -1364,9 +1370,11 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
         if (!reloadEntries && !invalidationShouldReloadAccounts(detail?.reason)) {
           return;
         }
-        const handled = reloadEntries
-          ? await tryIncrementalJournalFromInvalidationRef.current(detail)
-          : false;
+        // Global refresh must always full-reload (incremental needs entityId).
+        const handled =
+          reloadEntries && !isGlobalRefreshReason(detail?.reason)
+            ? await tryIncrementalJournalFromInvalidationRef.current(detail)
+            : false;
         if (handled) return;
         const reloadAccounts = invalidationShouldReloadAccounts(detail?.reason);
         scheduleCoalescedRefreshRef.current({

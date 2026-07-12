@@ -17,7 +17,20 @@ import {
   buildGeneralJournalAutoDescription,
   composeJournalEntryDescription,
 } from '../../utils/journalEntryDescription';
-import { accountInOutBadgeLabel, POSTING_FIELD_TITLES } from '../../lib/accountPostingInOutLabel';
+import { accountInOutBadgeLabel, formatPostingFieldLabel, inOutSelectionClasses, POSTING_FIELD_TITLES } from '../../lib/accountPostingInOutLabel';
+
+export interface GeneralEntrySeed {
+  debitAccountId?: string;
+  debitAccountName?: string;
+  creditAccountId?: string;
+  creditAccountName?: string;
+  amount?: number;
+  date?: string;
+  userNotes?: string;
+  reference?: string;
+  /** When true, jump to amount/details step if both accounts are seeded. */
+  startAtDetails?: boolean;
+}
 
 interface GeneralEntryFlowProps {
   onBack: () => void;
@@ -25,6 +38,7 @@ interface GeneralEntryFlowProps {
   user: User;
   companyId?: string | null;
   branchId?: string | null;
+  seed?: GeneralEntrySeed | null;
 }
 
 interface AccountRow {
@@ -50,10 +64,11 @@ function isPostingAccount(a: { isGroup?: boolean }): boolean {
   return a.isGroup !== true;
 }
 
-export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId }: GeneralEntryFlowProps) {
+export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId, seed }: GeneralEntryFlowProps) {
   const { canViewBalances } = usePermissions();
   const effectiveBranchId = isRealBranchUuid(branchId) ? branchId.trim() : null;
-  const [step, setStep] = useState(1);
+  const hasSeededAccounts = Boolean(seed?.debitAccountId && seed?.creditAccountId);
+  const [step, setStep] = useState(hasSeededAccounts && seed?.startAtDetails !== false ? 3 : 1);
   const [searchQuery, setSearchQuery] = useState('');
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const { run: runSave, busy: submitting } = useSubmitLock();
@@ -61,14 +76,14 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
   const [successData, setSuccessData] = useState<TransactionSuccessData | null>(null);
   const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
   const [entryData, setEntryData] = useState<EntryData>({
-    debitAccountId: '',
-    debitAccountName: '',
-    creditAccountId: '',
-    creditAccountName: '',
-    amount: 0,
-    date: localNowDateString(),
-    userNotes: '',
-    reference: '',
+    debitAccountId: seed?.debitAccountId ?? '',
+    debitAccountName: seed?.debitAccountName ?? '',
+    creditAccountId: seed?.creditAccountId ?? '',
+    creditAccountName: seed?.creditAccountName ?? '',
+    amount: seed?.amount && seed.amount > 0 ? seed.amount : 0,
+    date: seed?.date || localNowDateString(),
+    userNotes: seed?.userNotes ?? '',
+    reference: seed?.reference ?? '',
   });
 
   useEffect(() => {
@@ -207,6 +222,25 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
       a.code.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const debitAccount = entryData.debitAccountId ? getAccount(entryData.debitAccountId) : undefined;
+  const creditAccount = entryData.creditAccountId ? getAccount(entryData.creditAccountId) : undefined;
+  const debitInOut = debitAccount
+    ? accountInOutBadgeLabel(debitAccount, 'debit')
+    : null;
+  const creditInOut = creditAccount
+    ? accountInOutBadgeLabel(creditAccount, 'credit')
+    : null;
+  const debitChip = debitInOut ? inOutSelectionClasses(debitInOut) : null;
+  const creditChip = creditInOut ? inOutSelectionClasses(creditInOut) : null;
+  const debitSummaryLabel = formatPostingFieldLabel('Debit Account', {
+    drCr: 'Dr',
+    inOut: debitInOut ?? 'IN',
+  });
+  const creditSummaryLabel = formatPostingFieldLabel('Credit Account', {
+    drCr: 'Cr',
+    inOut: creditInOut ?? 'OUT',
+  });
+
   return (
     <>
     <div className="min-h-screen pb-40 bg-[#111827]">
@@ -247,12 +281,18 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
             </div>
             <div className="space-y-2">
               {filteredAccounts.length > 0 ? (
-                filteredAccounts.map((account) => (
+                filteredAccounts.map((account) => {
+                  const inOut = accountInOutBadgeLabel(account, 'debit');
+                  const colors = inOutSelectionClasses(inOut);
+                  const selected = entryData.debitAccountId === account.id;
+                  return (
                   <button
                     key={account.id}
                     onClick={() => setEntryData({ ...entryData, debitAccountId: account.id, debitAccountName: account.name })}
                     className={`w-full p-4 rounded-xl border-2 text-left transition-all ${
-                      entryData.debitAccountId === account.id ? 'bg-[#EF4444]/20 border-[#EF4444]' : 'bg-[#1F2937] border-[#374151] hover:border-[#EF4444]/50'
+                      selected
+                        ? colors.selected
+                        : `bg-[#1F2937] border-[#374151] ${colors.hover}`
                     }`}
                   >
                     <div className="flex items-center justify-between">
@@ -260,24 +300,17 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
                         <p className="text-sm font-semibold text-white">{account.name}</p>
                         <p className="text-xs text-[#9CA3AF]">
                           {account.code} · {account.type} ·{' '}
-                          <span
-                            className={
-                              accountInOutBadgeLabel(account, 'debit') === 'IN'
-                                ? 'text-emerald-400'
-                                : 'text-amber-400'
-                            }
-                          >
-                            {accountInOutBadgeLabel(account, 'debit')}
-                          </span>
+                          <span className={colors.badgeText}>{inOut}</span>
                         </p>
                         {formatAccountBalanceInline(account.balance, canViewBalances) && (
                           <p className="text-xs text-[#6B7280] mt-1">{formatAccountBalanceInline(account.balance, canViewBalances)}</p>
                         )}
                       </div>
-                      {entryData.debitAccountId === account.id && <Check className="text-[#EF4444]" size={20} />}
+                      {selected && <Check className={colors.check} size={20} />}
                     </div>
                   </button>
-                ))
+                  );
+                })
               ) : (
                 <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-8 text-center">
                   <p className="text-sm text-[#9CA3AF]">No accounts found matching "{searchQuery}"</p>
@@ -293,8 +326,8 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
               <h2 className="text-sm font-semibold text-white mb-2">{POSTING_FIELD_TITLES.journalCredit}</h2>
               <p className="text-xs text-[#9CA3AF]">Which account should be credited?</p>
               {entryData.debitAccountName && (
-                <div className="mt-3 p-2 bg-[#EF4444]/10 border border-[#EF4444]/30 rounded-lg">
-                  <p className="text-xs text-[#9CA3AF]">Debit Account:</p>
+                <div className={`mt-3 p-2 border rounded-lg ${debitChip?.chip ?? 'bg-[#EF4444]/10 border-[#EF4444]/30'}`}>
+                  <p className="text-xs text-[#9CA3AF]">Debit Account{debitInOut ? ` · ${debitInOut}` : ''}:</p>
                   <p className="text-sm text-white font-medium">{entryData.debitAccountName}</p>
                 </div>
               )}
@@ -313,12 +346,18 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
               {filteredAccounts.filter((acc) => acc.id !== entryData.debitAccountId).length > 0 ? (
                 filteredAccounts
                   .filter((acc) => acc.id !== entryData.debitAccountId)
-                  .map((account) => (
+                  .map((account) => {
+                    const inOut = accountInOutBadgeLabel(account, 'credit');
+                    const colors = inOutSelectionClasses(inOut);
+                    const selected = entryData.creditAccountId === account.id;
+                    return (
                     <button
                       key={account.id}
                       onClick={() => setEntryData({ ...entryData, creditAccountId: account.id, creditAccountName: account.name })}
                       className={`w-full p-4 rounded-xl border-2 text-left transition-all ${
-                        entryData.creditAccountId === account.id ? 'bg-[#10B981]/20 border-[#10B981]' : 'bg-[#1F2937] border-[#374151] hover:border-[#10B981]/50'
+                        selected
+                          ? colors.selected
+                          : `bg-[#1F2937] border-[#374151] ${colors.hover}`
                       }`}
                     >
                       <div className="flex items-center justify-between">
@@ -326,24 +365,17 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
                           <p className="text-sm font-semibold text-white">{account.name}</p>
                           <p className="text-xs text-[#9CA3AF]">
                             {account.code} · {account.type} ·{' '}
-                            <span
-                              className={
-                                accountInOutBadgeLabel(account, 'credit') === 'IN'
-                                  ? 'text-emerald-400'
-                                  : 'text-amber-400'
-                              }
-                            >
-                              {accountInOutBadgeLabel(account, 'credit')}
-                            </span>
+                            <span className={colors.badgeText}>{inOut}</span>
                           </p>
                           {formatAccountBalanceInline(account.balance, canViewBalances) && (
                             <p className="text-xs text-[#6B7280] mt-1">{formatAccountBalanceInline(account.balance, canViewBalances)}</p>
                           )}
                         </div>
-                        {entryData.creditAccountId === account.id && <Check className="text-[#10B981]" size={20} />}
+                        {selected && <Check className={colors.check} size={20} />}
                       </div>
                     </button>
-                  ))
+                    );
+                  })
               ) : (
                 <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-8 text-center">
                   <p className="text-sm text-[#9CA3AF]">No accounts found matching "{searchQuery}"</p>
@@ -359,12 +391,12 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
             <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
               <h2 className="text-sm font-semibold text-white mb-3">Selected Accounts</h2>
               <div className="space-y-2">
-                <div className="p-3 bg-[#EF4444]/10 border border-[#EF4444]/30 rounded-lg">
-                  <p className="text-xs text-[#9CA3AF] mb-1">Debit Account (Dr · IN/OUT)</p>
+                <div className={`p-3 border rounded-lg ${debitChip?.chip ?? 'bg-[#10B981]/10 border-[#10B981]/30'}`}>
+                  <p className="text-xs text-[#9CA3AF] mb-1">{debitSummaryLabel}</p>
                   <p className="text-sm text-white font-semibold">{entryData.debitAccountName}</p>
                 </div>
-                <div className="p-3 bg-[#10B981]/10 border border-[#10B981]/30 rounded-lg">
-                  <p className="text-xs text-[#9CA3AF] mb-1">Credit Account (Cr · IN/OUT)</p>
+                <div className={`p-3 border rounded-lg ${creditChip?.chip ?? 'bg-[#EF4444]/10 border-[#EF4444]/30'}`}>
+                  <p className="text-xs text-[#9CA3AF] mb-1">{creditSummaryLabel}</p>
                   <p className="text-sm text-white font-semibold">{entryData.creditAccountName}</p>
                 </div>
               </div>

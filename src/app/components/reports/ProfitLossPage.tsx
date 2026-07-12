@@ -3,6 +3,7 @@ import { Loader2, GitCompare } from 'lucide-react';
 import { FinancialReportPrintShell } from './shared/FinancialReportPrintShell';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { useAccountingReportReload } from '@/app/hooks/useAccountingReportReload';
 import { accountingReportsService, ProfitLossResult } from '@/app/services/accountingReportsService';
 import { exportToExcel, ExportData } from '@/app/utils/exportUtils';
 import { shareViaWhatsApp } from '@/app/services/documentShareService';
@@ -87,6 +88,7 @@ export const ProfitLossPage: React.FC<{
 }> = ({ startDate, endDate, branchId }) => {
   const { companyId, userRole } = useSupabase();
   const { formatCurrency } = useFormatCurrency();
+  const reportReloadEpoch = useAccountingReportReload({ companyId, branchId: branchId ?? null });
   const [data, setData] = useState<ProfitLossResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -262,6 +264,7 @@ export const ProfitLossPage: React.FC<{
     compareOptions?.compareEnd,
     fetchRetryKey,
     previewBasis,
+    reportReloadEpoch,
   ]);
 
   const exportPeriodLabel = `${data?.startDate ?? startDate} to ${data?.endDate ?? endDate}`;
