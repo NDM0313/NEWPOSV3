@@ -11,7 +11,7 @@
 
 ## Status
 
-**IPA file:** building — `releases/erp-mobile-1.0.5-build21.ipa` (2026-07-13)
+**IPA file:** **BUILT** — `releases/erp-mobile-1.0.5-build21.ipa` (2026-07-13)
 
 ---
 
