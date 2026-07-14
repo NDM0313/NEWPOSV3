@@ -241,6 +241,7 @@ export function LedgerV2UnifiedPreviewPanel({
                 onOpenRow={noopRow}
                 onWhatsAppRow={noopRow}
                 onPreviewAttachments={noopRow}
+                onOpenSourceDocument={noopRow}
               />
             </div>
           ) : null}

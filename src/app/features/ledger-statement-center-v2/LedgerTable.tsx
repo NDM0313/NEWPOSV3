@@ -14,6 +14,7 @@ interface LedgerTableProps {
   onOpenRow: (row: LedgerStatementV2Row) => void;
   onWhatsAppRow: (row: LedgerStatementV2Row) => void;
   onPreviewAttachments: (row: LedgerStatementV2Row) => void;
+  onOpenSourceDocument?: (row: LedgerStatementV2Row) => void;
 }
 
 export function LedgerTable({
@@ -24,6 +25,7 @@ export function LedgerTable({
   onOpenRow,
   onWhatsAppRow,
   onPreviewAttachments,
+  onOpenSourceDocument,
 }: LedgerTableProps) {
   const { formatCurrency } = useFormatCurrency();
   const { formatDate } = useFormatDate();
@@ -150,6 +152,7 @@ export function LedgerTable({
                       row={row}
                       onView={onOpenRow}
                       onWhatsApp={onWhatsAppRow}
+                      onOpenSourceDocument={onOpenSourceDocument}
                       disabled={rowActionsDisabled}
                     />
                   </td>

@@ -6,8 +6,11 @@ import { toast } from 'sonner';
 import { COA_CODES } from '@/app/config/coaMapping';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useGlobalFilter } from '@/app/context/GlobalFilterContext';
+import { useNavigation } from '@/app/context/NavigationContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { useFormatDate } from '@/app/hooks/useFormatDate';
+import { buildLedgerRowSourceDocumentEntry } from '@/app/lib/ledgerStatementV2SourceDocument';
+import { openJournalSourceDocumentFromEntry } from '@/app/lib/openJournalSourceDocument';
 import {
   applyLedgerV2DisplayFilters,
   deriveLedgerV2Opening,
@@ -110,6 +113,7 @@ export function LedgerStatementCenterV2Page({
   periodLabel?: string;
 }) {
   const { companyId, userRole, branchId, user } = useSupabase();
+  const { openDrawer, setCurrentView } = useNavigation();
   const reloadEpoch = useAccountingReportReload({ companyId, branchId });
   const globalFilter = useGlobalFilter();
   const {
@@ -538,6 +542,25 @@ export function LedgerStatementCenterV2Page({
     [beginRowAction, endRowAction],
   );
 
+  const handleOpenSourceDocument = useCallback(
+    async (row: LedgerStatementV2Row) => {
+      if (!beginRowAction(row.id)) return;
+      try {
+        const entry = buildLedgerRowSourceDocumentEntry(row);
+        await openJournalSourceDocumentFromEntry(entry, {
+          openDrawer: openDrawer as (type: string, id?: string, data?: Record<string, unknown>) => void,
+          setCurrentView: setCurrentView as (view: string) => void,
+        });
+      } catch (err) {
+        console.error(err);
+        toast.error('Could not open source document');
+      } finally {
+        endRowAction();
+      }
+    },
+    [beginRowAction, endRowAction, openDrawer, setCurrentView],
+  );
+
   const handleWhatsAppRow = useCallback(
     async (row: LedgerStatementV2Row) => {
       if (!beginRowAction(row.id)) return;
@@ -924,6 +947,7 @@ export function LedgerStatementCenterV2Page({
               onOpenRow={handleOpenRowDetail}
               onWhatsAppRow={handleWhatsAppRow}
               onPreviewAttachments={handlePreviewAttachments}
+              onOpenSourceDocument={handleOpenSourceDocument}
             />
           </div>
 

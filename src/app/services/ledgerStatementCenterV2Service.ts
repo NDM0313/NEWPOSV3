@@ -629,18 +629,77 @@ async function loadGlEntries(
   );
 }
 
-async function enrichAttachmentFlags(rows: LedgerStatementV2Row[]): Promise<void> {
+function isSaleReferenceType(rt: string): boolean {
+  const n = normalizeDocType(rt);
+  if (n.includes('sale_return') || (n.includes('return') && n.includes('sale'))) return false;
+  return n.includes('sale');
+}
+
+function isPurchaseReferenceType(rt: string): boolean {
+  const n = normalizeDocType(rt);
+  if (n.includes('purchase_return') || (n.includes('return') && n.includes('purchase'))) return false;
+  return n.includes('purchase');
+}
+
+function isRentalReferenceType(rt: string): boolean {
+  return normalizeDocType(rt).includes('rental');
+}
+
+function hasAttachmentPayload(att: unknown): boolean {
+  return (Array.isArray(att) && att.length > 0) || (typeof att === 'string' && att.trim().length > 0);
+}
+
+/** Collect sale / purchase / rental ids from row GL + sourceKind (before JE refetch fills gaps). */
+function collectDocIdsFromRow(r: LedgerStatementV2Row): {
+  saleId?: string;
+  purchaseId?: string;
+  rentalId?: string;
+} {
+  const gl = r.glEntry;
+  const jeRt = String(gl?.je_reference_type || '');
+  const jeRid = gl?.je_reference_id ? String(gl.je_reference_id) : '';
+
+  let saleId = gl?.sale_id ? String(gl.sale_id) : undefined;
+  if (!saleId && r.sourceKind === 'sale' && r.sourceId) saleId = String(r.sourceId);
+  if (!saleId && jeRid && isSaleReferenceType(jeRt)) saleId = jeRid;
+
+  let purchaseId: string | undefined;
+  if (r.sourceKind === 'purchase' && r.sourceId) purchaseId = String(r.sourceId);
+  if (!purchaseId && jeRid && isPurchaseReferenceType(jeRt)) purchaseId = jeRid;
+
+  let rentalId = gl?.rental_id ? String(gl.rental_id) : undefined;
+  if (!rentalId && r.sourceKind === 'rental' && r.sourceId) rentalId = String(r.sourceId);
+  if (!rentalId && jeRid && isRentalReferenceType(jeRt)) rentalId = jeRid;
+
+  return { saleId, purchaseId, rentalId };
+}
+
+/**
+ * Mark `hasAttachments` from JE / payment / sale / purchase / rental attachment sets.
+ * Soft-caps batch lookups at 200 ids. Safe for legacy and unified main loaders.
+ */
+export async function enrichLedgerV2AttachmentFlags(rows: LedgerStatementV2Row[]): Promise<void> {
   const jeIds = [...new Set(rows.map((r) => r.journalEntryId).filter(Boolean))] as string[];
   const payIds = [...new Set(rows.map((r) => r.paymentId).filter(Boolean))] as string[];
-  const saleIds = [...new Set(rows.map((r) => r.glEntry?.sale_id).filter(Boolean))] as string[];
-  const rentalIds = [...new Set(rows.map((r) => r.glEntry?.rental_id).filter(Boolean))] as string[];
+
+  const saleIdSet = new Set<string>();
+  const purchaseIdSet = new Set<string>();
+  const rentalIdSet = new Set<string>();
+  for (const r of rows) {
+    const ids = collectDocIdsFromRow(r);
+    if (ids.saleId) saleIdSet.add(ids.saleId);
+    if (ids.purchaseId) purchaseIdSet.add(ids.purchaseId);
+    if (ids.rentalId) rentalIdSet.add(ids.rentalId);
+  }
 
   const jeHas = new Set<string>();
   const payHas = new Set<string>();
   const saleHas = new Set<string>();
   const rentalHas = new Set<string>();
   const purchaseHas = new Set<string>();
+  const jeSaleRefById = new Map<string, string>();
   const jePurchaseRefById = new Map<string, string>();
+  const jeRentalRefById = new Map<string, string>();
   const slice200 = <T>(arr: T[]) => arr.slice(0, 200);
 
   if (jeIds.length) {
@@ -650,9 +709,18 @@ async function enrichAttachmentFlags(rows: LedgerStatementV2Row[]): Promise<void
       .in('id', slice200(jeIds));
     (jeRows || []).forEach((r: { id: string; attachments?: unknown; reference_type?: string; reference_id?: string }) => {
       if (Array.isArray(r.attachments) && r.attachments.length > 0) jeHas.add(r.id);
-      const rt = normalizeDocType(r.reference_type || '');
-      if (rt.includes('purchase') && r.reference_id) {
-        jePurchaseRefById.set(r.id, String(r.reference_id));
+      if (!r.reference_id) return;
+      const rid = String(r.reference_id);
+      const rt = r.reference_type || '';
+      if (isSaleReferenceType(rt)) {
+        jeSaleRefById.set(r.id, rid);
+        saleIdSet.add(rid);
+      } else if (isPurchaseReferenceType(rt)) {
+        jePurchaseRefById.set(r.id, rid);
+        purchaseIdSet.add(rid);
+      } else if (isRentalReferenceType(rt)) {
+        jeRentalRefById.set(r.id, rid);
+        rentalIdSet.add(rid);
       }
     });
   }
@@ -662,42 +730,43 @@ async function enrichAttachmentFlags(rows: LedgerStatementV2Row[]): Promise<void
       if (Array.isArray(r.attachments) && r.attachments.length > 0) payHas.add(r.id);
     });
   }
+  const saleIds = [...saleIdSet];
   if (saleIds.length) {
     const { data } = await supabase.from('sales').select('id, attachments').in('id', slice200(saleIds));
     (data || []).forEach((r: { id: string; attachments?: unknown }) => {
-      const att = r.attachments;
-      if ((Array.isArray(att) && att.length > 0) || (typeof att === 'string' && att.trim())) saleHas.add(r.id);
+      if (hasAttachmentPayload(r.attachments)) saleHas.add(r.id);
     });
   }
+  const rentalIds = [...rentalIdSet];
   if (rentalIds.length) {
     const { data } = await supabase.from('rentals').select('id, attachments').in('id', slice200(rentalIds));
     (data || []).forEach((r: { id: string; attachments?: unknown }) => {
-      const att = r.attachments;
-      if ((Array.isArray(att) && att.length > 0) || (typeof att === 'string' && att.trim())) rentalHas.add(r.id);
+      if (hasAttachmentPayload(r.attachments)) rentalHas.add(r.id);
     });
   }
-  const purchaseIds = [...new Set(jePurchaseRefById.values())];
+  const purchaseIds = [...purchaseIdSet];
   if (purchaseIds.length) {
     const { data } = await supabase.from('purchases').select('id, attachments').in('id', slice200(purchaseIds));
     (data || []).forEach((r: { id: string; attachments?: unknown }) => {
-      const att = r.attachments;
-      if ((Array.isArray(att) && att.length > 0) || (typeof att === 'string' && att.trim())) purchaseHas.add(r.id);
+      if (hasAttachmentPayload(r.attachments)) purchaseHas.add(r.id);
     });
   }
 
   rows.forEach((r) => {
     if (r.journalEntryId && jeHas.has(r.journalEntryId)) r.hasAttachments = true;
     if (r.paymentId && payHas.has(r.paymentId)) r.hasAttachments = true;
-    if (!r.paymentId) {
-      const sid = r.glEntry?.sale_id;
-      if (sid && saleHas.has(sid)) r.hasAttachments = true;
-      const rid = r.glEntry?.rental_id;
-      if (rid && rentalHas.has(rid)) r.hasAttachments = true;
-      if (r.journalEntryId) {
-        const purchaseId = jePurchaseRefById.get(r.journalEntryId);
-        if (purchaseId && purchaseHas.has(purchaseId)) r.hasAttachments = true;
-      }
-    }
+
+    const fromRow = collectDocIdsFromRow(r);
+    const saleId =
+      fromRow.saleId || (r.journalEntryId ? jeSaleRefById.get(r.journalEntryId) : undefined);
+    const purchaseId =
+      fromRow.purchaseId || (r.journalEntryId ? jePurchaseRefById.get(r.journalEntryId) : undefined);
+    const rentalId =
+      fromRow.rentalId || (r.journalEntryId ? jeRentalRefById.get(r.journalEntryId) : undefined);
+
+    if (saleId && saleHas.has(saleId)) r.hasAttachments = true;
+    if (purchaseId && purchaseHas.has(purchaseId)) r.hasAttachments = true;
+    if (rentalId && rentalHas.has(rentalId)) r.hasAttachments = true;
   });
 }
 
@@ -774,7 +843,7 @@ export async function getLedgerStatementV2(
     statementType,
     viewedAccountId: statementType === 'account' ? entityId : null,
   });
-  await enrichAttachmentFlags(rows);
+  await enrichLedgerV2AttachmentFlags(rows);
 
   const summary = summarizeFromRows(rows, opening, statementType);
   return { entityLabel, basis: 'gl', rows, summary };
@@ -822,11 +891,35 @@ export async function getLedgerAttachmentsV2(
   if (row.journalEntryId) {
     const { data } = await supabase
       .from('journal_entries')
-      .select('attachments')
+      .select('attachments, reference_type, reference_id')
       .eq('id', row.journalEntryId)
       .maybeSingle();
-    const att = normalizeAttachments((data as { attachments?: unknown } | null)?.attachments);
+    const je = data as { attachments?: unknown; reference_type?: string; reference_id?: string } | null;
+    const att = normalizeAttachments(je?.attachments);
     if (att.length) return att;
+
+    // Prefer JE reference for source docs when row GL ids are thin.
+    if (je?.reference_id && !row.paymentId) {
+      const rid = String(je.reference_id);
+      const rt = je.reference_type || '';
+      if (isSaleReferenceType(rt)) {
+        const { data: sale } = await supabase.from('sales').select('attachments').eq('id', rid).maybeSingle();
+        const saleAtt = normalizeAttachments((sale as { attachments?: unknown } | null)?.attachments);
+        if (saleAtt.length) return saleAtt;
+      } else if (isPurchaseReferenceType(rt)) {
+        const { data: purchase } = await supabase
+          .from('purchases')
+          .select('attachments')
+          .eq('id', rid)
+          .maybeSingle();
+        const purchaseAtt = normalizeAttachments((purchase as { attachments?: unknown } | null)?.attachments);
+        if (purchaseAtt.length) return purchaseAtt;
+      } else if (isRentalReferenceType(rt)) {
+        const { data: rental } = await supabase.from('rentals').select('attachments').eq('id', rid).maybeSingle();
+        const rentalAtt = normalizeAttachments((rental as { attachments?: unknown } | null)?.attachments);
+        if (rentalAtt.length) return rentalAtt;
+      }
+    }
   }
   if (row.paymentId) {
     const { data } = await supabase.from('payments').select('attachments').eq('id', row.paymentId).maybeSingle();
@@ -834,32 +927,22 @@ export async function getLedgerAttachmentsV2(
     if (att.length) return att;
     return [];
   }
-  const e = row.glEntry;
-  if (e?.sale_id) {
-    const { data } = await supabase.from('sales').select('attachments').eq('id', e.sale_id).maybeSingle();
+
+  const ids = collectDocIdsFromRow(row);
+  if (ids.saleId) {
+    const { data } = await supabase.from('sales').select('attachments').eq('id', ids.saleId).maybeSingle();
     const att = normalizeAttachments((data as { attachments?: unknown } | null)?.attachments);
     if (att.length) return att;
   }
-  if (e?.rental_id) {
-    const { data } = await supabase.from('rentals').select('attachments').eq('id', e.rental_id).maybeSingle();
+  if (ids.rentalId) {
+    const { data } = await supabase.from('rentals').select('attachments').eq('id', ids.rentalId).maybeSingle();
     const att = normalizeAttachments((data as { attachments?: unknown } | null)?.attachments);
     if (att.length) return att;
   }
-  if (e?.journal_entry_id) {
-    const rt = normalizeDocType(e.je_reference_type || e.document_type || '');
-    if (rt.includes('purchase')) {
-      const { data: je } = await supabase
-        .from('journal_entries')
-        .select('reference_id')
-        .eq('id', e.journal_entry_id)
-        .maybeSingle();
-      const refId = (je as { reference_id?: string } | null)?.reference_id;
-      if (refId) {
-        const { data } = await supabase.from('purchases').select('attachments').eq('id', refId).maybeSingle();
-        const att = normalizeAttachments((data as { attachments?: unknown } | null)?.attachments);
-        if (att.length) return att;
-      }
-    }
+  if (ids.purchaseId) {
+    const { data } = await supabase.from('purchases').select('attachments').eq('id', ids.purchaseId).maybeSingle();
+    const att = normalizeAttachments((data as { attachments?: unknown } | null)?.attachments);
+    if (att.length) return att;
   }
   return [];
 }

@@ -10,7 +10,12 @@ import type {
 } from '@/app/features/ledger-statement-center-v2/types';
 import { defaultUnifiedBasisForV2Type } from '@/app/lib/ledgerStatementV2UnifiedPreviewDiff';
 import { isUnifiedLedgerKillSwitchActive } from '@/app/lib/unifiedLedgerEngineState';
-import { deriveLedgerV2Opening, enrichLedgerV2PaymentAndAuthorship, summarizeLedgerV2Rows } from '@/app/services/ledgerStatementCenterV2Service';
+import {
+  deriveLedgerV2Opening,
+  enrichLedgerV2AttachmentFlags,
+  enrichLedgerV2PaymentAndAuthorship,
+  summarizeLedgerV2Rows,
+} from '@/app/services/ledgerStatementCenterV2Service';
 import { fetchLedgerV2UnifiedRpc } from '@/app/services/ledgerStatementCenterV2UnifiedFetch';
 import { realignAccountLedgerRunningBalances } from '@/app/lib/ledgerStatementV2UnifiedMapper';
 
@@ -61,6 +66,7 @@ export async function getLedgerStatementV2UnifiedMain(
     statementType,
     viewedAccountId: statementType === 'account' ? entityId : null,
   });
+  await enrichLedgerV2AttachmentFlags(rows);
   const opening = deriveLedgerV2Opening(rows);
   const summary = summarizeLedgerV2Rows(rows, opening, statementType);
 
