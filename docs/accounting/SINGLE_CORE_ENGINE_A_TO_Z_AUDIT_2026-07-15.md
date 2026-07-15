@@ -4,7 +4,10 @@
 **Repo HEAD at original A-to-Z audit:** `5cf65f4c` (later docs commit `26fb7086`)
 **Evidence pack:** [`reports/single-core-engine-a-to-z-audit-20260715/`](../../reports/single-core-engine-a-to-z-audit-20260715/)
 **Follow-up (same day):** [`SINGLE_CORE_ENGINE_EVIDENCE_RECOVERY_2026-07-15.md`](SINGLE_CORE_ENGINE_EVIDENCE_RECOVERY_2026-07-15.md) · [`AR_AP_BRIDAL_EFFECTIVE_PARTY_INVESTIGATION_2026-07-15.md`](AR_AP_BRIDAL_EFFECTIVE_PARTY_INVESTIGATION_2026-07-15.md)
+**R8-R2 readiness (same day, no deletion):** [`R8_R2_FINAL_EXECUTION_READINESS_2026-07-15.md`](R8_R2_FINAL_EXECUTION_READINESS_2026-07-15.md) · [`reports/r8-r2-final-readiness-20260715/`](../../reports/r8-r2-final-readiness-20260715/) · [`R8_R2_EXECUTION_PROMPT_FOR_2026-08-09.md`](R8_R2_EXECUTION_PROMPT_FOR_2026-08-09.md)
 **Prior closeout (superseded where conflicting):** [`SINGLE_CORE_ENGINE_CLOSEOUT_FINAL_2026-07-12.md`](SINGLE_CORE_ENGINE_CLOSEOUT_FINAL_2026-07-12.md)
+
+> **Correction note (late 2026-07-15 readiness):** Kill-switch drill PASS remains **CLAIM RETRACTED**. Fresh operator-attended drill is required after soak. **No legacy deletion** performed on 2026-07-15. Soak = **5/30** elapsed; earliest deletion **2026-08-09**. AR/AP Phase 2b remains **production complete**.
 
 ---
 
@@ -12,9 +15,9 @@
 
 The Single Core Engine **eight money-report loaders are operationally live** on DIN CHINA / DIN BRIDAL / DIN COUTURE: production flags show **54 ON**, kill switch **OFF**, unified RPCs **active**, VPS git/runtime HEAD matched GitHub at inspect, `erp-frontend` healthy, HTTPS **200**.
 
-The program is **not technically closed** and **not fully retired**: R8-R2 deletion is deferred (soak from 2026-07-10, earliest **2026-08-09**); AR/AP Phase 2b remains **not production complete**. Play Store is **skipped** and is **not** a core blocker.
+The program is **not technically closed** and **not fully retired**: R8-R2 deletion is deferred (soak from 2026-07-10, earliest **2026-08-09**). Readiness package for one future deletion session is complete. Play Store is **skipped** and is **not** a core blocker.
 
-**Evidence recovery (2026-07-15):** JE-0028 and Sales Revenue Phase 2 non-reclass decision are **VERIFIED** live (original folders still **ORIGINAL EVIDENCE MISSING**). R8-R2 kill-switch drill PASS is **CLAIM RETRACTED** (no pack; readiness plan NOT DONE).
+**Evidence recovery (2026-07-15):** JE-0028 and Sales Revenue Phase 2 non-reclass decision are **VERIFIED** live (original folders still **ORIGINAL EVIDENCE MISSING**). R8-R2 kill-switch drill PASS is **CLAIM RETRACTED** (no pack; fresh drill still required after soak).
 
 **Bridal parity (2026-07-15):** `effective_party` FAIL Δ ~**79,850** company-sum fully explained (JE-0213 + JV-000203). Parity baseline switched to **`official_gl`** under `APPROVE_AR_AP_PHASE2B_PARITY_BASELINE_OFFICIAL_GL` (runtime `a5149971`, VPS deployed). AR/AP Phase 2b **PRODUCTION COMPLETE**.
 
@@ -80,7 +83,7 @@ See [`loader-matrix.md`](../../reports/single-core-engine-a-to-z-audit-20260715/
 | Cash Flow | UNIFIED CANONICAL |
 | Balance Sheet | UNIFIED CANONICAL |
 | Profit & Loss | UNIFIED CANONICAL |
-| AR/AP Center | HYBRID / PRODUCTION BLOCKED (parity) |
+| AR/AP Center | HYBRID / PRODUCTION COMPLETE (ops=`effective_party`, parity=`official_gl`) |
 | Contacts | LEGACY ACTIVE / OUT OF SCOPE |
 
 No ops company silently defaults to legacy while flags remain as snapshotted. Contacts always legacy.
@@ -115,15 +118,15 @@ See [`production-deployment-matrix.md`](../../reports/single-core-engine-a-to-z-
 
 See [`test-history.md`](../../reports/single-core-engine-a-to-z-audit-20260715/test-history.md).
 
-| Suite | 2026-07-15 |
-|-------|------------|
-| unified-ledger | **339/339 PASS** |
-| unit | **183/183 PASS** |
-| build | **PASS** |
-| monitoring | credential gate FAIL (not run) |
-| AR/AP parity | bridal FAIL via SSH SQL |
+| Suite | Midday audit | Late readiness (same day) |
+|-------|--------------|---------------------------|
+| unified-ledger | 339/339 PASS | **343/343 PASS** |
+| unit | 183/183 PASS | **183/183 PASS** |
+| build | PASS | **PASS** |
+| monitoring | credential gate (not run) | **CREDENTIAL_GATE** — last PASS 2026-07-12 (not FAIL) |
+| AR/AP parity | bridal `effective_party` FAIL | **official_gl PASS ×3** (max Δ 0) |
 
-Counts: 336→339 unified (+Phase 2b / suite growth); 182→183 unit; closeout **189** not reproduced on current script list.
+Counts: suite grew to **343** unified after AR/AP parity closeout tests; unit stable at 183.
 
 ---
 
@@ -153,16 +156,15 @@ See [`ar-ap-phase2b-status.md`](../../reports/single-core-engine-a-to-z-audit-20
 |------|--------|
 | Development | YES |
 | GitHub | YES |
-| Migration | YES |
+| Migration / RPC | YES |
 | Frontend deployed | YES |
-| COUTURE parity | YES |
-| CHINA parity | YES |
-| BRIDAL effective_party | **NO** |
-| official_gl / audit_full_history (bridal) | YES |
-| Production UI verified | NO |
-| Production complete | **NO** |
+| Production UI verified | YES |
+| COUTURE / BRIDAL / CHINA official_gl parity | YES (max Δ 0) |
+| Operational basis | `effective_party` |
+| Parity baseline | `official_gl` |
+| Production complete | **YES** |
 
-Blocker (explained): Walk-in Customer old Δ **80000** (JE-0213) + Walk-in Δ **150** (JV-000203) under **legacy vs effective_party** compare. See bridal investigation doc — recommend baseline **official_gl**.
+Known intentional EP exclusions (not blockers): JE-0213 Rs. 80,000; JV-000203 Rs. 150. See bridal investigation + official_gl parity closeout packs.
 
 ---
 
@@ -170,22 +172,22 @@ Blocker (explained): Walk-in Customer old Δ **80000** (JE-0213) + Walk-in Δ **
 
 See [`legacy-inventory.md`](../../reports/single-core-engine-a-to-z-audit-20260715/legacy-inventory.md).
 
-Four `*LegacyMainService.ts` wrappers; page branches for L2/CF/BS/P&L; hybrid `getCustomerLedger`; Contacts legacy RPC; shadow compare retained.
+Four `*LegacyMainService.ts` wrappers; page branches for L2/CF/BS/P&L; hybrid `getCustomerLedger`; Contacts legacy RPC; shadow compare retained. Authoritative future deletion inventory: [`reports/r8-r2-final-readiness-20260715/legacy-inventory.md`](../../reports/r8-r2-final-readiness-20260715/legacy-inventory.md).
 
 ---
 
 ## 13. R8 status
 
-See [`r8-status.md`](../../reports/single-core-engine-a-to-z-audit-20260715/r8-status.md).
+See [`r8-status.md`](../../reports/single-core-engine-a-to-z-audit-20260715/r8-status.md) and [`R8_R2_FINAL_EXECUTION_READINESS_2026-07-15.md`](R8_R2_FINAL_EXECUTION_READINESS_2026-07-15.md).
 
 | Item | Status |
 |------|--------|
 | R8-R1 | OPERATIONAL COMPLETE 2026-07-10 |
-| Kill-switch drill | **CLAIM RETRACTED** (PASS); classify CLAIMED BUT UNVERIFIED / NOT PERFORMED with evidence |
-| Soak | from 2026-07-10; earliest deletion **2026-08-09** |
+| Kill-switch drill | **CLAIM RETRACTED**; fresh operator-attended drill **required after soak** (runbook ready; **not** executed 2026-07-15) |
+| Soak (dynamic 2026-07-15) | **5/30** elapsed; **25** days remaining |
 | Earliest deletion | **2026-08-09** |
 | R8-R2 approval | NOT GRANTED |
-| R8-R2 deletion | NOT STARTED |
+| R8-R2 deletion | NOT STARTED — readiness pack complete; no code deleted 2026-07-15 |
 
 ---
 
@@ -218,7 +220,7 @@ See [`completion-scorecard.md`](../../reports/single-core-engine-a-to-z-audit-20
 | Accounting correctness | 90 |
 | Rollback/fallback | 95 |
 | Legacy retirement | 40 |
-| AR/AP Phase 2b | 55 |
+| AR/AP Phase 2b | 95 |
 | Mobile QA | 85 |
 | Documentation/evidence | 88 (after recovery/bridal packs; drill still unrecovered) |
 | Overall operational | **88** |
@@ -231,7 +233,7 @@ See [`completion-scorecard.md`](../../reports/single-core-engine-a-to-z-audit-20
 
 See [`remaining-task-register.md`](../../reports/single-core-engine-a-to-z-audit-20260715/remaining-task-register.md).
 
-Mandatory remaining: (1) operator-attended R8 drill after soak — prior PASS retracted; (2) do not start R8-R2 deletion before **2026-08-09**. Optional: Play Store, Contacts wire-up. AR/AP Phase 2b closeout: `reports/ar-ap-phase-2b-official-gl-parity-closeout-20260715/`.
+Mandatory remaining: (1) operator-attended R8 drill after soak — prior PASS retracted; runbook in r8-r2-final-readiness pack; (2) R8-R2 deletion only on/after **2026-08-09** with `R8_R2_CODE_DELETION_APPROVAL_REQUIRED` — use [`R8_R2_EXECUTION_PROMPT_FOR_2026-08-09.md`](R8_R2_EXECUTION_PROMPT_FOR_2026-08-09.md). Optional: Play Store, Contacts wire-up. AR/AP Phase 2b closeout: `reports/ar-ap-phase-2b-official-gl-parity-closeout-20260715/`.
 
 ---
 
@@ -256,7 +258,7 @@ See [`evidence-index.md`](../../reports/single-core-engine-a-to-z-audit-20260715
 | AR/AP Phase 2b production complete? | **YES** (official_gl parity + deploy 2026-07-15) |
 | Play Store blocks core completion? | **NO** |
 
-**How much work is done:** Core unified path live; JE-0028 + revenue Phase 2 decision verified; Bridal delta fully classified.
-**How much remains:** AR/AP baseline approval, real R8 drill after soak, R8-R2 deletion later; Play Store optional.
-**Exact next safe action:** Seek `APPROVE_AR_AP_PHASE2B_PARITY_BASELINE_OFFICIAL_GL` (runtime change later) — or wait for soak clock for drill prep. No mutations.
+**How much work is done:** Core unified path live; JE-0028 + revenue Phase 2 decision verified; Bridal delta classified; AR/AP Phase 2b production complete; R8-R2 readiness pack final.
+**How much remains:** Real R8 drill after soak; physical R8-R2 deletion on/after 2026-08-09; Play Store optional.
+**Exact next safe action:** Wait for date gate; on/after 2026-08-09 run execution prompt with approval phrase. No mutations today.
 **Must not be done yet:** R8-R2 deletion, kill toggle, 4100 reclass, claiming unearned COMPLETE for drill, staging unrelated WIP.

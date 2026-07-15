@@ -1,0 +1,26 @@
+OLD ERP R8-R2 FINAL READINESS — VALIDATION
+Date: 2026-07-15
+Repo HEAD at validation: b8fec34b
+
+npm run test:unified-ledger
+→ 343/343 PASS
+
+npm run test:unit
+→ 183/183 PASS
+
+npm run build
+→ PASS
+
+git diff --check
+→ PASS (readiness docs only; unrelated WIP not included)
+
+npm run monitor:three-company-unified-ledger
+→ CREDENTIAL_GATE
+  Shell-only QA passwords not available in environment.
+  Do NOT report monitoring FAIL.
+  Last verified PASS: 2026-07-12
+  Fresh browser monitoring required before August execution.
+
+Golden fixtures: not refreshed (not required for readiness docs).
+Runtime source: unchanged this session.
+Deploy: none.
