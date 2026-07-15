@@ -4,14 +4,16 @@
 **Operator:** Nadeem Khan — complete remaining phases except Play Store
 **Scope:** OLD ERP / DIN Collection ERP only
 
+> **Correction 2026-07-15:** Three cited evidence folders were never in Git. JE-0028 + Sales Revenue Phase 2 non-reclass were **VERIFIED** live and reconstructed under `reports/single-core-engine-evidence-recovery-20260715/`. R8-R2 kill-switch drill **PASS is RETRACTED** (no pack; readiness plan still NOT DONE). See `SINGLE_CORE_ENGINE_EVIDENCE_RECOVERY_2026-07-15.md`.
+
 ## Verdict
 
 | Track | Status | Evidence |
 |-------|--------|----------|
 | Play Store release | **SKIPPED** per operator | — |
-| Supplier Party Discount PKR 1 QA | **COMPLETE** | `reports/supplier-party-discount-je-posting-qa-20260712/` — JE-0028 |
-| Sales Revenue Phase 2 reclass | **COMPLETE** (no transfer JE) | `reports/sales-revenue-phase2-closeout-20260712/` |
-| R8-R2 kill-switch drill | **PASS** (read-only) | `reports/r8-r2-kill-switch-drill-20260712/` |
+| Supplier Party Discount PKR 1 QA | **COMPLETE** (posting verified 2026-07-15; original folder **ORIGINAL EVIDENCE MISSING**) | Live JE-0028; reconstructed pack in evidence-recovery-20260715 |
+| Sales Revenue Phase 2 reclass | **COMPLETE** (no transfer JE; verified 2026-07-15; original folder **MISSING**) | Live 4000/4100; reconstructed pack |
+| R8-R2 kill-switch drill | **CLAIM RETRACTED** (was PASS) | Folder never existed; fresh drill still required |
 | R8-R2 legacy code deletion | **DEFERRED** — soak 2/30 until **2026-08-09** | Legacy wrappers retained |
 | Unified ledger tests | **339/339 PASS** | 2026-07-12 session |
 | Unit tests | **189/189 PASS** | 2026-07-12 session |

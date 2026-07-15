@@ -1,19 +1,22 @@
 # Single Core Engine A-to-Z Audit — 2026-07-15
 
 **Scope:** OLD ERP / DIN Collection ERP only (not FX / multi-currency exchange app)
-**Repo HEAD at audit:** `5cf65f4c`
+**Repo HEAD at original A-to-Z audit:** `5cf65f4c` (later docs commit `26fb7086`)
 **Evidence pack:** [`reports/single-core-engine-a-to-z-audit-20260715/`](../../reports/single-core-engine-a-to-z-audit-20260715/)
+**Follow-up (same day):** [`SINGLE_CORE_ENGINE_EVIDENCE_RECOVERY_2026-07-15.md`](SINGLE_CORE_ENGINE_EVIDENCE_RECOVERY_2026-07-15.md) · [`AR_AP_BRIDAL_EFFECTIVE_PARTY_INVESTIGATION_2026-07-15.md`](AR_AP_BRIDAL_EFFECTIVE_PARTY_INVESTIGATION_2026-07-15.md)
 **Prior closeout (superseded where conflicting):** [`SINGLE_CORE_ENGINE_CLOSEOUT_FINAL_2026-07-12.md`](SINGLE_CORE_ENGINE_CLOSEOUT_FINAL_2026-07-12.md)
 
 ---
 
 ## 1. Executive summary
 
-The Single Core Engine **eight money-report loaders are operationally live** on DIN CHINA / DIN BRIDAL / DIN COUTURE: production flags show **54 ON**, kill switch **OFF**, unified RPCs **active**, VPS git/runtime HEAD **equals** GitHub `5cf65f4c`, `erp-frontend` healthy, HTTPS **200**.
+The Single Core Engine **eight money-report loaders are operationally live** on DIN CHINA / DIN BRIDAL / DIN COUTURE: production flags show **54 ON**, kill switch **OFF**, unified RPCs **active**, VPS git/runtime HEAD matched GitHub at inspect, `erp-frontend` healthy, HTTPS **200**.
 
-The program is **not technically closed** and **not fully retired**: R8-R2 deletion is deferred (soak **5/30**, earliest **2026-08-09**); AR/AP Phase 2b remains **not production complete** (live DIN BRIDAL `effective_party` Δ **79850**); three closeout evidence folders cited on 2026-07-12 are **missing from git**. Play Store is **skipped** and is **not** a core blocker.
+The program is **not technically closed** and **not fully retired**: R8-R2 deletion is deferred (soak from 2026-07-10, earliest **2026-08-09**); AR/AP Phase 2b remains **not production complete**. Play Store is **skipped** and is **not** a core blocker.
 
-Local validation 2026-07-15: unified **339/339**, unit **183/183**, build **PASS**. Three-company browser monitor **not re-run** (missing QA passwords).
+**Evidence recovery (2026-07-15):** JE-0028 and Sales Revenue Phase 2 non-reclass decision are **VERIFIED** live (original folders still **ORIGINAL EVIDENCE MISSING**). R8-R2 kill-switch drill PASS is **CLAIM RETRACTED** (no pack; readiness plan NOT DONE).
+
+**Bridal parity (2026-07-15):** `effective_party` FAIL Δ **80,150** fully explained (JE-0213 orphan `correction_reversal` 80k + JV-000203 orphan-ar 150). `official_gl` / `audit_full_history` **PASS**. Recommended next approval: `APPROVE_AR_AP_PHASE2B_PARITY_BASELINE_OFFICIAL_GL` (not implemented).
 
 ---
 
@@ -159,7 +162,7 @@ See [`ar-ap-phase2b-status.md`](../../reports/single-core-engine-a-to-z-audit-20
 | Production UI verified | NO |
 | Production complete | **NO** |
 
-Blocker: Walk-in Customer old Δ **80000** (+ Walk-in Δ **150**).
+Blocker (explained): Walk-in Customer old Δ **80000** (JE-0213) + Walk-in Δ **150** (JV-000203) under **legacy vs effective_party** compare. See bridal investigation doc — recommend baseline **official_gl**.
 
 ---
 
@@ -178,8 +181,8 @@ See [`r8-status.md`](../../reports/single-core-engine-a-to-z-audit-20260715/r8-s
 | Item | Status |
 |------|--------|
 | R8-R1 | OPERATIONAL COMPLETE 2026-07-10 |
-| Kill-switch drill | Claimed PASS; evidence **MISSING** → UNVERIFIED |
-| Soak | **5/30** (from 2026-07-10) |
+| Kill-switch drill | **CLAIM RETRACTED** (PASS); classify CLAIMED BUT UNVERIFIED / NOT PERFORMED with evidence |
+| Soak | from 2026-07-10; earliest deletion **2026-08-09** |
 | Earliest deletion | **2026-08-09** |
 | R8-R2 approval | NOT GRANTED |
 | R8-R2 deletion | NOT STARTED |
@@ -217,7 +220,7 @@ See [`completion-scorecard.md`](../../reports/single-core-engine-a-to-z-audit-20
 | Legacy retirement | 40 |
 | AR/AP Phase 2b | 55 |
 | Mobile QA | 85 |
-| Documentation/evidence | 75 |
+| Documentation/evidence | 88 (after recovery/bridal packs; drill still unrecovered) |
 | Overall operational | **88** |
 | Overall technical closeout | **62** |
 | Overall program | **70** |
@@ -228,15 +231,18 @@ See [`completion-scorecard.md`](../../reports/single-core-engine-a-to-z-audit-20
 
 See [`remaining-task-register.md`](../../reports/single-core-engine-a-to-z-audit-20260715/remaining-task-register.md).
 
-Mandatory: Bridal parity investigation (extension); restore missing evidence; post-soak R8-R2 only after drill+approval. Optional: Play Store, Contacts wire-up. Do not start R8-R2 deletion before **2026-08-09**.
+Mandatory remaining: (1) approve AR/AP parity baseline `official_gl` **or** approved alternate; (2) operator-attended R8 drill after soak — drill PASS retracted; (3) do not start R8-R2 deletion before **2026-08-09**. Optional: Play Store, Contacts wire-up.
 
 ---
 
 ## 18. Evidence index
 
-See [`evidence-index.md`](../../reports/single-core-engine-a-to-z-audit-20260715/evidence-index.md).
+See [`evidence-index.md`](../../reports/single-core-engine-a-to-z-audit-20260715/evidence-index.md) plus recovery/bridal packs:
 
-**Missing:** kill-switch drill, sales-revenue phase2 closeout, supplier PKR1 QA folders (cited 2026-07-12, not in git).
+- [`reports/single-core-engine-evidence-recovery-20260715/`](../../reports/single-core-engine-evidence-recovery-20260715/)
+- [`reports/ar-ap-phase-2b-bridal-effective-party-investigation-20260715/`](../../reports/ar-ap-phase-2b-bridal-effective-party-investigation-20260715/)
+
+**Original folders still missing:** kill-switch drill, sales-revenue-phase2-closeout, supplier-party-discount (claims for first two **VERIFIED** via live reconstruction; drill **RETRACTED**).
 
 ---
 
@@ -250,7 +256,7 @@ See [`evidence-index.md`](../../reports/single-core-engine-a-to-z-audit-20260715
 | AR/AP Phase 2b production complete? | **NO** |
 | Play Store blocks core completion? | **NO** |
 
-**How much work is done:** Core unified path is live, deployed, flag-gated, tested, and (by last monitor) stable.
-**How much remains:** R8-R2 retirement, AR/AP bridal parity, evidence repair, optional mobile release.
-**Exact next safe action:** Read-only Bridal Walk-in investigation **or** wait out soak / restore missing evidence — no mutations.
-**Must not be done yet:** R8-R2 deletion, kill toggle, 4100 reclass, claiming 100% technical closeout, staging unrelated WIP.
+**How much work is done:** Core unified path live; JE-0028 + revenue Phase 2 decision verified; Bridal delta fully classified.
+**How much remains:** AR/AP baseline approval, real R8 drill after soak, R8-R2 deletion later; Play Store optional.
+**Exact next safe action:** Seek `APPROVE_AR_AP_PHASE2B_PARITY_BASELINE_OFFICIAL_GL` (runtime change later) — or wait for soak clock for drill prep. No mutations.
+**Must not be done yet:** R8-R2 deletion, kill toggle, 4100 reclass, claiming unearned COMPLETE for drill, staging unrelated WIP.

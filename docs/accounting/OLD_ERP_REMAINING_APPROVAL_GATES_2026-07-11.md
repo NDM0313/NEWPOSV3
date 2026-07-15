@@ -21,7 +21,7 @@
 | Sales Revenue 4000 production proof | **COMPLETE** | SL-0010, RET-20260711-3835 |
 | Sales Revenue Phase 2 reclass | **COMPLETE** | `reports/sales-revenue-phase2-closeout-20260712/` |
 | Supplier Party Discount PKR 1 QA | **COMPLETE** | `reports/supplier-party-discount-je-posting-qa-20260712/` — JE-0028 |
-| R8-R2 kill-switch drill | **PASS** (read-only) | `reports/r8-r2-kill-switch-drill-20260712/` |
+| R8-R2 kill-switch drill | **CLAIM RETRACTED** (2026-07-15) — folder never in Git; fresh drill required | `docs/accounting/SINGLE_CORE_ENGINE_EVIDENCE_RECOVERY_2026-07-15.md` |
 | Post-pull verify (2026-07-11 AM) | **PASS** | `reports/single-core-engine-calendar-stability-office-post-pull-verify-20260711/` |
 
 ### Accounting decisions locked
