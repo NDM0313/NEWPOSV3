@@ -50,3 +50,20 @@ test('filterUnifiedRowsByPaymentAccount filters by account code in label', () =>
   assert.equal(filtered.length, 1);
   assert.equal(filtered[0].accountCode, '1010');
 });
+
+test('filterUnifiedRowsByPaymentAccount fail-closed when option missing', () => {
+  const rows = [
+    { accountCode: '1010', accountName: 'HBL Main' },
+    { accountCode: '1000', accountName: 'Cash' },
+  ] as UnifiedLedgerRow[];
+  const filtered = filterUnifiedRowsByPaymentAccount(rows, 'missing-id', [
+    { id: 'acc-1', label: '1010 — HBL Main' },
+  ]);
+  assert.equal(filtered.length, 0);
+});
+
+test('filterUnifiedRowsByPaymentAccount returns all rows when id empty', () => {
+  const rows = [{ accountCode: '1000', accountName: 'Cash' }] as UnifiedLedgerRow[];
+  const filtered = filterUnifiedRowsByPaymentAccount(rows, null, []);
+  assert.equal(filtered.length, 1);
+});

@@ -61,6 +61,7 @@ import { useReportExport } from '@/app/components/reports/shared/useReportExport
 import { PdfPreviewModal } from '@/app/components/shared/PdfPreviewModal';
 import { exportToCSV, exportToExcel, type ExportData } from '@/app/utils/exportUtils';
 import { Button } from '@/app/components/ui/button';
+import { Pagination } from '@/app/components/ui/pagination';
 import { LedgerFilterBar } from './LedgerFilterBar';
 import { LedgerSummaryCards } from './LedgerSummaryCards';
 import { LedgerTable } from './LedgerTable';
@@ -176,6 +177,8 @@ export function LedgerStatementCenterV2Page({
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [mainLoaderSource, setMainLoaderSource] = useState<'legacy' | 'unified'>('legacy');
   const [discountModalOpen, setDiscountModalOpen] = useState(false);
+  const [pageSize, setPageSize] = useState(50);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const previewCompareSource: LedgerV2PreviewCompareSource = useMemo(
     () => resolveLedgerV2PreviewCompareSource(mainLoaderSource),
@@ -588,6 +591,38 @@ export function LedgerStatementCenterV2Page({
     () => applyLedgerV2DisplayFilters(allRows, transactionType, search),
     [allRows, transactionType, search],
   );
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize) || 1);
+  const paginatedRows = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return rows.slice(start, start + pageSize);
+  }, [rows, currentPage, pageSize]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [entityId, statementType, transactionType, search, fromDate, toDate, pageSize]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(1);
+  }, [currentPage, totalPages]);
+
+  /** Party type + only opening / no period rows → imported generic JEs often live on Account COA. */
+  const showPartyImportGapHint = useMemo(() => {
+    if (loading || !entityId) return false;
+    if (statementType !== 'customer' && statementType !== 'supplier') return false;
+    const periodRows = rows.filter((r) => {
+      const isOpening =
+        r.id === 'opening-balance' ||
+        r.referenceNo === 'Opening Balance' ||
+        r.description === 'Opening Balance' ||
+        String(r.transactionType || '')
+          .toLowerCase()
+          .includes('opening');
+      return !isOpening;
+    });
+    return periodRows.length === 0;
+  }, [loading, entityId, statementType, rows]);
+
   const summary = useMemo(
     () => (allRows.length ? summarizeLedgerV2Rows(rows, openingAll, statementType) : null),
     [rows, openingAll, statementType, allRows.length],
@@ -913,6 +948,24 @@ export function LedgerStatementCenterV2Page({
 
           <LedgerSummaryCards statementType={statementType} summary={summary} />
 
+          {showPartyImportGapHint ? (
+            <div
+              role="status"
+              className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100/90"
+            >
+              <p className="font-medium text-amber-50">
+                No party-linked transactions in this range
+              </p>
+              <p className="mt-1 text-amber-100/80">
+                Type = {statementType === 'customer' ? 'Customer' : 'Supplier'} only shows sales,
+                purchases, payments, rentals, and party opening entries for this contact. Imported
+                bank/journal lines without those links appear under{' '}
+                <span className="font-medium text-amber-50">Type = Account</span> on the matching
+                COA. New sales and payments posted from the app will show here automatically.
+              </p>
+            </div>
+          ) : null}
+
           {showDocComparison && showDiagnosticTools ? (
             <LedgerDocumentComparisonPanel comparison={docComparison} loading={docComparisonLoading} />
           ) : null}
@@ -938,9 +991,9 @@ export function LedgerStatementCenterV2Page({
             />
           ) : null}
 
-          <div ref={printRef}>
+          <div ref={printRef} className="space-y-0">
             <LedgerTable
-              rows={rows}
+              rows={paginatedRows}
               loading={loading}
               rowActionsDisabled={rowActionBusy}
               visibleColumns={visibleColumns}
@@ -949,6 +1002,19 @@ export function LedgerStatementCenterV2Page({
               onPreviewAttachments={handlePreviewAttachments}
               onOpenSourceDocument={handleOpenSourceDocument}
             />
+            {!loading && rows.length > 0 ? (
+              <div className="-mt-px rounded-b-xl border border-t-0 border-border bg-card overflow-hidden">
+                <Pagination
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  pageSize={pageSize}
+                  totalItems={rows.length}
+                  onPageChange={setCurrentPage}
+                  onPageSizeChange={setPageSize}
+                  pageSizeOptions={[50, 100, 200]}
+                />
+              </div>
+            ) : null}
           </div>
 
           <div ref={mergedPrintRef} className="sr-only">

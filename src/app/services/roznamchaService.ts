@@ -1746,13 +1746,17 @@ function sortRoznamchaRows(rows: RoznamchaRow[]): void {
 /** JE ids that already have synthetic liquidity payments (reference_id = journal entry id). */
 async function journalEntryIdsWithLiquidityPayments(companyId: string, journalEntryIds: string[]): Promise<Set<string>> {
   if (journalEntryIds.length === 0) return new Set();
-  const { data } = await supabase
-    .from('payments')
-    .select('reference_id')
-    .eq('company_id', companyId)
-    .in('reference_id', journalEntryIds);
+  const rows = await fetchInBatches(journalEntryIds, async (chunk) => {
+    const { data, error } = await supabase
+      .from('payments')
+      .select('reference_id')
+      .eq('company_id', companyId)
+      .in('reference_id', chunk);
+    if (error) throw error;
+    return data || [];
+  });
   const out = new Set<string>();
-  (data || []).forEach((p: { reference_id?: string | null }) => {
+  rows.forEach((p: { reference_id?: string | null }) => {
     const rid = String(p.reference_id || '').trim();
     if (rid) out.add(rid);
   });

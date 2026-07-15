@@ -183,6 +183,20 @@ export function cashFlowFiltersAffectRunningBalance(args: {
   );
 }
 
+/** Inclusive calendar-day span between YYYY-MM-DD bounds (0 if invalid). */
+export const CASH_FLOW_SAFE_RANGE_DAYS = 92;
+
+export function cashFlowDateRangeSpanDays(dateFrom: string, dateTo: string): number {
+  const from = Date.parse(`${String(dateFrom || '').slice(0, 10)}T00:00:00`);
+  const to = Date.parse(`${String(dateTo || '').slice(0, 10)}T00:00:00`);
+  if (!Number.isFinite(from) || !Number.isFinite(to) || to < from) return 0;
+  return Math.floor((to - from) / (24 * 60 * 60 * 1000)) + 1;
+}
+
+export function cashFlowHeaderRangeExceedsSafeDays(dateFrom: string, dateTo: string): boolean {
+  return cashFlowDateRangeSpanDays(dateFrom, dateTo) > CASH_FLOW_SAFE_RANGE_DAYS;
+}
+
 export function cashFlowRunningBalanceNote(filtersActive: boolean): string | null {
   if (!filtersActive) return null;
   return 'Running balance is calculated on the filtered rows.';
@@ -235,6 +249,27 @@ export function recomputeCashFlowRunningBalance<T extends { cashIn: number; cash
     balance += (Number(row.cashIn) || 0) - (Number(row.cashOut) || 0);
     return { ...row, runningBalance: balance };
   });
+}
+
+/** Display safety: match CF `cashAccount` to a selected `code — name` payment ledger option. */
+export function cashFlowRowMatchesSelectedAccount(
+  cashAccount: string,
+  selectedOption: { id: string; label: string } | undefined,
+): boolean {
+  if (!selectedOption) return false;
+  const label = selectedOption.label.trim();
+  if (!label) return false;
+  const ca = (cashAccount || '').trim().toLowerCase();
+  if (!ca) return false;
+  const codePart = label.split(' — ')[0]?.trim().toLowerCase() || '';
+  const namePart = label.includes(' — ')
+    ? label.split(' — ').slice(1).join(' — ').trim().toLowerCase()
+    : label.toLowerCase();
+  if (namePart && ca === namePart) return true;
+  if (namePart && ca.includes(namePart)) return true;
+  if (codePart && ca.includes(codePart)) return true;
+  if (label.toLowerCase().includes(ca)) return true;
+  return false;
 }
 
 /** One roznamcha entity key per movement — payment, rental payment, or journal header. */

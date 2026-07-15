@@ -4,6 +4,10 @@ import {
   assertUniqueCashFlowSourceKeys,
   buildCashFlowCsvRows,
   cashFlowFiltersAffectRunningBalance,
+  cashFlowDateRangeSpanDays,
+  cashFlowHeaderRangeExceedsSafeDays,
+  CASH_FLOW_SAFE_RANGE_DAYS,
+  cashFlowRowMatchesSelectedAccount,
   cashFlowRunningBalanceNote,
   cashFlowStatusBadges,
   computeCashFlowSummary,
@@ -130,6 +134,22 @@ test('CSV export rows include status and branch columns', () => {
   assert.equal(rows.length, 1);
   assert.equal(rows[0][8], 'Live');
   assert.equal(rows[0][9], 'HQ');
+});
+
+test('cashFlowDateRangeSpanDays and safe-range guard', () => {
+  assert.equal(cashFlowDateRangeSpanDays('2026-01-01', '2026-01-01'), 1);
+  assert.equal(cashFlowDateRangeSpanDays('2026-01-01', '2026-04-02'), 92);
+  assert.equal(cashFlowHeaderRangeExceedsSafeDays('2026-01-01', '2026-04-02'), false);
+  assert.equal(cashFlowHeaderRangeExceedsSafeDays('2026-01-01', '2026-04-03'), true);
+  assert.equal(CASH_FLOW_SAFE_RANGE_DAYS, 92);
+});
+
+test('cashFlowRowMatchesSelectedAccount matches name and code parts', () => {
+  const opt = { id: 'a1', label: '1010 — HBL Main' };
+  assert.equal(cashFlowRowMatchesSelectedAccount('HBL Main', opt), true);
+  assert.equal(cashFlowRowMatchesSelectedAccount('1010 HBL', opt), true);
+  assert.equal(cashFlowRowMatchesSelectedAccount('Cash In Hand', opt), false);
+  assert.equal(cashFlowRowMatchesSelectedAccount('HBL Main', undefined), false);
 });
 
 test('running balance note when filters active', () => {

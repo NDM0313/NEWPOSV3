@@ -45,13 +45,18 @@ export function filterUnifiedRowsByPaymentAccount(
   const id = paymentLedgerAccountId?.trim();
   if (!id) return rows;
   const opt = paymentAccountOptions.find((o) => o.id === id);
-  if (!opt) return rows;
+  // Fail closed: selected id with no option must not leak the full (unfiltered) stream.
+  if (!opt) return [];
   const labelLower = opt.label.toLowerCase();
   const codePart = opt.label.split(' — ')[0]?.trim().toLowerCase() || '';
+  const namePart = opt.label.includes(' — ')
+    ? opt.label.split(' — ').slice(1).join(' — ').trim().toLowerCase()
+    : '';
   return rows.filter((r) => {
     const code = (r.accountCode || '').trim().toLowerCase();
     const name = (r.accountName || '').trim().toLowerCase();
     if (code && codePart && code === codePart) return true;
+    if (name && namePart && name === namePart) return true;
     if (name && labelLower.includes(name)) return true;
     if (code && labelLower.includes(code)) return true;
     return false;

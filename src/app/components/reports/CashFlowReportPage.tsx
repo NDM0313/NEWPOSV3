@@ -2,7 +2,7 @@
  * CF-1 / CF-1.1 — Cash Flow tab (read-only operational cash/bank movement report).
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { format, startOfMonth } from 'date-fns';
 import { AlertCircle, ArrowLeftRight, Loader2, RefreshCw, Wallet } from 'lucide-react';
 import { useSupabase } from '@/app/context/SupabaseContext';
@@ -21,6 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../ui/select';
+import { SearchableSelect } from '../ui/searchable-select';
 import { cn } from '../ui/utils';
 import { accountService } from '@/app/services/accountService';
 import {
@@ -32,15 +33,20 @@ import {
   buildCashFlowCsvRows,
   buildCashFlowTieOutDiagnosticHints,
   CASH_FLOW_CSV_HEADERS,
+  CASH_FLOW_SAFE_RANGE_DAYS,
   CASH_FLOW_SOURCE_MODULE_LABELS,
   CASH_FLOW_TIEOUT_EXPLANATION,
   cashFlowAuditModeNote,
   cashFlowFiltersAffectRunningBalance,
+  cashFlowHeaderRangeExceedsSafeDays,
+  cashFlowRowMatchesSelectedAccount,
   cashFlowRunningBalanceNote,
   cashFlowStatusBadges,
   cashFlowStatusLabel,
+  computeCashFlowSummary,
   computeCashFlowTieOut,
   glCashFlowModeNote,
+  recomputeCashFlowRunningBalance,
   resolveCashFlowPartyDisplay,
   type CashFlowSourceModule,
   type GlCashFlowStatementSummary,
@@ -122,12 +128,19 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
   const [sourceModuleFilter, setSourceModuleFilter] = useState<CashFlowSourceModule | 'all'>('all');
   const [auditMode, setAuditMode] = useState(false);
   const [overrideGlobalDates, setOverrideGlobalDates] = useState(false);
+  const [rangeNarrowedForPerf, setRangeNarrowedForPerf] = useState(false);
+  const didAutoNarrowRef = useRef(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [pageSize, setPageSize] = useState(50);
+  const [currentPage, setCurrentPage] = useState(1);
   const [data, setData] = useState<CashFlowReportResult | null>(null);
   const [glSummary, setGlSummary] = useState<GlCashFlowStatementSummary | null>(null);
+  const [glSummaryLoading, setGlSummaryLoading] = useState(false);
   const [loading, setLoading] = useState(!!companyId);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [mainLoaderSource, setMainLoaderSource] = useState<'legacy' | 'unified'>('legacy');
+  const paymentAccountOptionsRef = useRef(paymentAccountOptions);
+  paymentAccountOptionsRef.current = paymentAccountOptions;
 
   const showUnifiedPreviewTools = canAccessCashFlowUnifiedPreview(userRole);
   const [unifiedPreviewEnabled, setUnifiedPreviewEnabled] = useState(false);
@@ -154,10 +167,12 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
       .then((list) => {
         if (cancelled) return;
         setPaymentAccountOptions(
-          (list || []).map((a: { id: string; name?: string; code?: string }) => ({
-            id: String(a.id),
-            label: [a.code, a.name].filter(Boolean).join(' — ') || a.name || String(a.id),
-          }))
+          (list || [])
+            .map((a: { id: string; name?: string; code?: string }) => ({
+              id: String(a.id),
+              label: [a.code, a.name].filter(Boolean).join(' — ') || a.name || String(a.id),
+            }))
+            .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true })),
         );
       })
       .catch(() => {
@@ -169,6 +184,24 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
   }, [companyId]);
 
   const useGlobalRange = Boolean(globalStartDate && globalEndDate);
+
+  // Auto-narrow wide header ranges to current month so first paint does not dump years of cash rows.
+  useEffect(() => {
+    if (didAutoNarrowRef.current) return;
+    if (!useGlobalRange || !globalStartDate || !globalEndDate) return;
+    if (overrideGlobalDates) return;
+    if (
+      cashFlowHeaderRangeExceedsSafeDays(
+        String(globalStartDate).slice(0, 10),
+        String(globalEndDate).slice(0, 10),
+      )
+    ) {
+      didAutoNarrowRef.current = true;
+      setOverrideGlobalDates(true);
+      setRangeNarrowedForPerf(true);
+    }
+  }, [useGlobalRange, globalStartDate, globalEndDate, overrideGlobalDates]);
+
   const dateFrom = useMemo(() => {
     if (useGlobalRange && !overrideGlobalDates) return (globalStartDate ?? '').slice(0, 10);
     if (dateRange.from) return format(dateRange.from, 'yyyy-MM-dd');
@@ -192,12 +225,34 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
       : accountFilter.charAt(0).toUpperCase() + accountFilter.slice(1);
 
   const ledgerAccountLabel = useMemo(() => {
-    if (!paymentLedgerAccountId.trim()) return 'All payment accounts';
+    if (!paymentLedgerAccountId.trim()) return 'All accounts';
     return (
       paymentAccountOptions.find((o) => o.id === paymentLedgerAccountId)?.label ||
       paymentLedgerAccountId
     );
   }, [paymentLedgerAccountId, paymentAccountOptions]);
+
+  const accountSelectOptions = useMemo(
+    () => [
+      { id: '__all__', name: 'All accounts' },
+      ...paymentAccountOptions.map((o) => ({ id: o.id, name: o.label })),
+    ],
+    [paymentAccountOptions],
+  );
+
+  /** Account-scoped rows/summary (display safety net on top of unified filter). */
+  const accountScopedData = useMemo((): CashFlowReportResult | null => {
+    if (!data) return null;
+    const id = paymentLedgerAccountId.trim();
+    if (!id) return data;
+    const opt = paymentAccountOptions.find((o) => o.id === id);
+    const scopedRows = !opt
+      ? []
+      : data.rows.filter((r) => cashFlowRowMatchesSelectedAccount(r.cashAccount, opt));
+    const rows = recomputeCashFlowRunningBalance(scopedRows, data.summary.opening);
+    const summary = computeCashFlowSummary(rows, data.summary.opening);
+    return { ...data, rows, summary };
+  }, [data, paymentLedgerAccountId, paymentAccountOptions]);
 
   const sourceModuleLabel =
     sourceModuleFilter === 'all'
@@ -227,51 +282,39 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
     }
     setLoading(true);
     setLoadError(null);
+    setGlSummary(null);
     try {
-      const branchArg = effectiveBranchId ?? undefined;
       const resolved = await resolveCashFlowMainLoaderSource(companyId);
       const mainSource = effectiveCashFlowMainLoaderSource(resolved);
       setMainLoaderSource(mainSource);
 
-      const glPromise = accountingReportsService.getCashFlowStatement(companyId, dateFrom, dateTo, branchArg, {
-        auditMode,
-        basis: auditMode ? 'official_gl' : 'effective_party',
-      });
-
+      // Main grid only — GL statement loads after data lands (does not block paint).
       if (mainSource === 'unified') {
-        const [unified, gl] = await Promise.all([
-          loadCashFlowUnifiedMain({
-            companyId,
-            branchId: effectiveBranchId,
-            dateFrom,
-            dateTo,
-            accountFilter,
-            paymentLedgerAccountId: paymentLedgerAccountId.trim() || null,
-            paymentAccountOptions,
-            auditMode,
-            sourceModuleFilter,
-            basis: previewBasis,
-          }),
-          glPromise,
-        ]);
+        const unified = await loadCashFlowUnifiedMain({
+          companyId,
+          branchId: effectiveBranchId,
+          dateFrom,
+          dateTo,
+          accountFilter,
+          paymentLedgerAccountId: paymentLedgerAccountId.trim() || null,
+          paymentAccountOptions: paymentAccountOptionsRef.current,
+          auditMode,
+          sourceModuleFilter,
+          basis: previewBasis,
+        });
         setData(unified);
-        setGlSummary(gl);
       } else {
-        const [result, gl] = await Promise.all([
-          getCashFlowReport({
-            companyId,
-            branchId: effectiveBranchId,
-            dateFrom,
-            dateTo,
-            accountFilter,
-            paymentLedgerAccountId: paymentLedgerAccountId.trim() || null,
-            auditMode,
-            sourceModuleFilter,
-          }),
-          glPromise,
-        ]);
+        const result = await getCashFlowReport({
+          companyId,
+          branchId: effectiveBranchId,
+          dateFrom,
+          dateTo,
+          accountFilter,
+          paymentLedgerAccountId: paymentLedgerAccountId.trim() || null,
+          auditMode,
+          sourceModuleFilter,
+        });
         setData(result);
-        setGlSummary(gl);
       }
     } catch (err) {
       setData(null);
@@ -289,13 +332,39 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
     paymentLedgerAccountId,
     auditMode,
     sourceModuleFilter,
-    paymentAccountOptions,
     previewBasis,
   ]);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
+
+  // Defer GL cash-flow statement until operational grid is ready.
+  useEffect(() => {
+    if (!companyId || !dateFrom || !dateTo || !data) {
+      return;
+    }
+    let cancelled = false;
+    setGlSummaryLoading(true);
+    const branchArg = effectiveBranchId ?? undefined;
+    void accountingReportsService
+      .getCashFlowStatement(companyId, dateFrom, dateTo, branchArg, {
+        auditMode,
+        basis: auditMode ? 'official_gl' : 'effective_party',
+      })
+      .then((gl) => {
+        if (!cancelled) setGlSummary(gl);
+      })
+      .catch(() => {
+        if (!cancelled) setGlSummary(null);
+      })
+      .finally(() => {
+        if (!cancelled) setGlSummaryLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, dateFrom, dateTo, effectiveBranchId, auditMode, data]);
 
   const loadUnifiedPreview = useCallback(async () => {
     if (!companyId || !data || !unifiedPreviewEnabled || !dateFrom || !dateTo) {
@@ -326,7 +395,7 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
             dateTo,
             accountFilter,
             paymentLedgerAccountId: paymentLedgerAccountId.trim() || null,
-            paymentAccountOptions,
+            paymentAccountOptions: paymentAccountOptionsRef.current,
             auditMode,
             sourceModuleFilter,
             basis: previewBasis,
@@ -349,7 +418,7 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
         dateTo,
         accountFilter,
         paymentLedgerAccountId: paymentLedgerAccountId.trim() || null,
-        paymentAccountOptions,
+        paymentAccountOptions: paymentAccountOptionsRef.current,
         auditMode,
         sourceModuleFilter,
         basis: previewBasis,
@@ -381,7 +450,6 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
     effectiveBranchId,
     accountFilter,
     paymentLedgerAccountId,
-    paymentAccountOptions,
     auditMode,
     sourceModuleFilter,
     previewBasis,
@@ -400,9 +468,10 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
 
   const filteredRows = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
-    if (!data?.rows.length) return [];
-    if (!q) return data.rows;
-    return data.rows.filter((r) => {
+    const rows = accountScopedData?.rows ?? [];
+    if (!rows.length) return [];
+    if (!q) return rows;
+    return rows.filter((r) => {
       const hay = [
         r.reference,
         r.journalEntryNo,
@@ -418,9 +487,33 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
         .toLowerCase();
       return hay.includes(q);
     });
-  }, [data?.rows, searchTerm]);
+  }, [accountScopedData?.rows, searchTerm]);
 
-  const summary = data?.summary;
+  const summary = accountScopedData?.summary;
+
+  const totalRows = filteredRows.length;
+  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize) || 1);
+  const paginatedRows = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredRows.slice(start, start + pageSize);
+  }, [filteredRows, currentPage, pageSize]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(1);
+  }, [currentPage, totalPages]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [
+    dateFrom,
+    dateTo,
+    accountFilter,
+    paymentLedgerAccountId,
+    sourceModuleFilter,
+    auditMode,
+    searchTerm,
+    pageSize,
+  ]);
 
   useEffect(() => {
     setPrintOrientation(reportExport.accountingPrintOptions.orientation);
@@ -434,15 +527,23 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
   const periodLabel = dateFrom && dateTo ? `${dateFrom} → ${dateTo}` : '—';
   const generatedAt = useMemo(() => new Date().toLocaleString(), [reportExport.previewOpen]);
 
+  // Only build print rows when PDF preview is open/loading (avoid remapping thousands of rows on every filter tick).
   const cashFlowPrintPreview = useMemo(() => {
     if (!summary) return null;
+    if (!reportExport.previewOpen && !reportExport.loadingBrand) return null;
     return {
       summaryStats: buildCashFlowSummaryStats(summary, formatCurrency),
       rows: buildCashFlowPrintRows(filteredRows),
       openingBalance: formatCurrency(summary.opening),
       closingBalance: formatCurrency(summary.closing),
     };
-  }, [summary, filteredRows, formatCurrency]);
+  }, [
+    reportExport.previewOpen,
+    reportExport.loadingBrand,
+    summary,
+    filteredRows,
+    formatCurrency,
+  ]);
 
   const tieOut = useMemo(() => {
     if (!summary || !glSummary) return null;
@@ -450,6 +551,7 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
   }, [summary, glSummary]);
 
   const tieOutHints = useMemo(() => {
+    if (!glSummary || !tieOut) return [];
     return buildCashFlowTieOutDiagnosticHints(
       filteredRows.map((r) => ({
         sourceModule: r.sourceModule,
@@ -457,12 +559,12 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
         referenceType: r.referenceType,
         party: r.party,
         branchName: r.branchName,
-      }))
+      })),
     );
-  }, [filteredRows]);
+  }, [filteredRows, glSummary, tieOut]);
 
-  const csvExportRows = useMemo(() => {
-    return buildCashFlowCsvRows(
+  const handleCsvExport = () => {
+    const rows = buildCashFlowCsvRows(
       filteredRows.map((r) => ({
         dateTime: formatRoznamchaRowDateTimeDisplay(r.date, r.time || ''),
         reference: r.journalEntryNo ? `${r.reference} (${r.journalEntryNo})` : r.reference,
@@ -475,18 +577,15 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
         status: r.status,
         branchName: r.branchName,
         auditMode,
-      }))
+      })),
     );
-  }, [filteredRows, auditMode]);
-
-  const handleCsvExport = () => {
     exportToCSV(
       {
         title: `${businessName} — Cash Flow`,
         headers: [...CASH_FLOW_CSV_HEADERS],
-        rows: csvExportRows,
+        rows,
       },
-      'cash-flow'
+      'cash-flow',
     );
   };
 
@@ -706,6 +805,14 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
         ) : null}
       </div>
 
+      {rangeNarrowedForPerf && overrideGlobalDates && useGlobalRange ? (
+        <div className="no-print rounded-lg border border-amber-800/50 bg-amber-950/20 px-4 py-3 text-sm text-amber-100/90">
+          Date range was narrowed to this month for performance (header span exceeded{' '}
+          {CASH_FLOW_SAFE_RANGE_DAYS} days). Turn off <strong>Override header dates</strong> below to
+          load the full header period.
+        </div>
+      ) : null}
+
       <div className="no-print rounded-xl border border-border bg-muted/40 p-4 space-y-4">
         <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Filters</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -713,7 +820,14 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
             <Label className="text-xs text-muted-foreground">Date range</Label>
             {useGlobalRange && (
               <div className="flex items-center gap-2 mb-1">
-                <Switch checked={overrideGlobalDates} onCheckedChange={setOverrideGlobalDates} id="cf-override-dates" />
+                <Switch
+                  checked={overrideGlobalDates}
+                  onCheckedChange={(on) => {
+                    setOverrideGlobalDates(on);
+                    if (!on) setRangeNarrowedForPerf(false);
+                  }}
+                  id="cf-override-dates"
+                />
                 <Label htmlFor="cf-override-dates" className="text-xs text-muted-foreground cursor-pointer">
                   Override header dates
                 </Label>
@@ -751,23 +865,19 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
           </div>
 
           <div className="space-y-2 min-w-0">
-            <Label className="text-xs text-muted-foreground">Cash/bank account</Label>
-            <Select
+            <Label className="text-xs text-muted-foreground">Account</Label>
+            <SearchableSelect
               value={paymentLedgerAccountId || '__all__'}
               onValueChange={(v) => setPaymentLedgerAccountId(v === '__all__' ? '' : v)}
-            >
-              <SelectTrigger className="w-full bg-input-background border-border text-foreground">
-                <SelectValue placeholder="All accounts" />
-              </SelectTrigger>
-              <SelectContent className="max-h-72">
-                <SelectItem value="__all__">All payment accounts</SelectItem>
-                {paymentAccountOptions.map((opt) => (
-                  <SelectItem key={opt.id} value={opt.id}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              options={accountSelectOptions}
+              placeholder="All accounts"
+              searchPlaceholder="Search cash/bank/wallet…"
+              emptyText="No accounts found."
+              className="w-full max-w-none"
+            />
+            <p className="text-xs text-muted-foreground">
+              All cash/bank/wallet books. Select one to show only that account.
+            </p>
           </div>
 
           <div className="space-y-2 min-w-0">
@@ -798,6 +908,20 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
               </Label>
             </div>
             {auditModeNote && <p className="text-xs text-blue-400/90 leading-snug">{auditModeNote}</p>}
+          </div>
+
+          <div className="space-y-2 min-w-0">
+            <Label className="text-xs text-muted-foreground">Rows per page</Label>
+            <Select value={String(pageSize)} onValueChange={(v) => setPageSize(Number(v))}>
+              <SelectTrigger className="w-full bg-input-background border-border text-foreground">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="50">50</SelectItem>
+                <SelectItem value="100">100</SelectItem>
+                <SelectItem value="200">200</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="space-y-2 sm:col-span-2 min-w-0">
@@ -839,44 +963,55 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
             </p>
           </div>
 
-          {glSummary && (
+          {(glSummary || glSummaryLoading) && (
             <div className="space-y-2">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
                   GL cash flow summary
                 </h3>
-                <ReportBasisBadge basis={auditMode ? 'official_gl' : 'effective_party'} />
-                <span className="text-xs text-muted-foreground">{glModeNote}</span>
+                {glSummary ? (
+                  <ReportBasisBadge basis={auditMode ? 'official_gl' : 'effective_party'} />
+                ) : null}
+                <span className="text-xs text-muted-foreground">
+                  {glSummaryLoading && !glSummary ? 'Loading GL tie-out…' : glModeNote}
+                </span>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {[
-                  { label: 'Operating Cash Flow', value: glSummary.operating.net },
-                  { label: 'Investing Cash Flow', value: glSummary.investing.net },
-                  { label: 'Financing Cash Flow', value: glSummary.financing.net },
-                  {
-                    label: 'Net GL Cash Flow',
-                    value: glSummary.netChange,
-                    accent: glSummary.netChange >= 0 ? 'text-emerald-400' : 'text-red-400',
-                  },
-                ].map((card) => (
-                  <div
-                    key={card.label}
-                    className="rounded-xl border border-violet-900/40 bg-violet-950/20 p-3 sm:p-4 print:border-gray-300 print:bg-white"
-                  >
-                    <p className="text-xs text-muted-foreground uppercase tracking-wide print:text-muted-foreground">
-                      {card.label}
-                    </p>
-                    <p
-                      className={cn(
-                        'text-lg sm:text-xl font-bold mt-1 text-foreground print:text-black',
-                        card.accent
-                      )}
+              {glSummary ? (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {[
+                    { label: 'Operating Cash Flow', value: glSummary.operating.net },
+                    { label: 'Investing Cash Flow', value: glSummary.investing.net },
+                    { label: 'Financing Cash Flow', value: glSummary.financing.net },
+                    {
+                      label: 'Net GL Cash Flow',
+                      value: glSummary.netChange,
+                      accent: glSummary.netChange >= 0 ? 'text-emerald-400' : 'text-red-400',
+                    },
+                  ].map((card) => (
+                    <div
+                      key={card.label}
+                      className="rounded-xl border border-violet-900/40 bg-violet-950/20 p-3 sm:p-4 print:border-gray-300 print:bg-white"
                     >
-                      {formatCurrency(card.value)}
-                    </p>
-                  </div>
-                ))}
-              </div>
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide print:text-muted-foreground">
+                        {card.label}
+                      </p>
+                      <p
+                        className={cn(
+                          'text-lg sm:text-xl font-bold mt-1 text-foreground print:text-black',
+                          card.accent
+                        )}
+                      >
+                        {formatCurrency(card.value)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="no-print flex items-center gap-2 text-xs text-muted-foreground py-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-violet-400" />
+                  GL summary loads after the operational grid (non-blocking).
+                </div>
+              )}
             </div>
           )}
 
@@ -1001,17 +1136,62 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
                 </thead>
                 <tbody className="print:text-black">
                   {renderTableBody(
-                    filteredRows,
+                    paginatedRows,
                     searchTerm.trim()
                       ? 'No cash movement found for selected filters.'
-                      : 'No cash movement found for selected filters.'
+                      : 'No cash movement found for selected filters.',
                   )}
                 </tbody>
               </table>
             </div>
-            <p className="text-xs text-muted-foreground p-3 border-t border-border no-print">
-              {filteredRows.length} row(s) · {modeLabel} mode · Read-only
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-2 p-3 border-t border-border no-print">
+              <p className="text-xs text-muted-foreground">
+                {totalRows === 0
+                  ? `0 row(s) · Page ${currentPage} of ${totalPages} · ${modeLabel} mode · Read-only`
+                  : `Showing ${(currentPage - 1) * pageSize + 1}–${Math.min(currentPage * pageSize, totalRows)} of ${totalRows} · Page ${currentPage} of ${totalPages} · ${pageSize}/page · ${modeLabel} mode · Read-only`}
+              </p>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 border-border text-muted-foreground"
+                  disabled={currentPage <= 1}
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                >
+                  Previous
+                </Button>
+                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .filter((p) => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 2)
+                  .map((p, idx, arr) => (
+                    <React.Fragment key={p}>
+                      {idx > 0 && arr[idx - 1] !== p - 1 ? (
+                        <span className="px-1 text-muted-foreground">…</span>
+                      ) : null}
+                      <button
+                        type="button"
+                        className={cn(
+                          'h-8 min-w-[2rem] rounded px-2 text-sm font-medium',
+                          p === currentPage
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-muted text-muted-foreground hover:bg-muted',
+                        )}
+                        onClick={() => setCurrentPage(p)}
+                      >
+                        {p}
+                      </button>
+                    </React.Fragment>
+                  ))}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 border-border text-muted-foreground"
+                  disabled={currentPage >= totalPages}
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       ) : (
