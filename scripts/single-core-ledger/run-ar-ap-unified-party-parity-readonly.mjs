@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
  * Phase 2b — read-only legacy vs unified party GL balance parity (AR/AP Diagnostics).
- * Compares get_contact_party_gl_balances vs get_unified_contact_party_gl_balances sums.
+ * Production parity baseline: official_gl (APPROVE_AR_AP_PHASE2B_PARITY_BASELINE_OFFICIAL_GL).
+ * Also reports effective_party as explained variance (may FAIL Bridal intentionally).
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -10,8 +11,11 @@ import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const OUT = path.join(ROOT, 'reports/ar-ap-phase-2b-unified-wireup-20260712');
+const OUT = path.join(ROOT, 'reports/ar-ap-phase-2b-official-gl-parity-closeout-20260715');
 const TOLERANCE = 0.01;
+/** Production parity gate — must match Contacts legacy semantics. */
+const PARITY_BASIS = 'official_gl';
+const VARIANCE_BASIS = 'effective_party';
 
 const COMPANIES = [
   { id: '30bd8592-3384-4f34-899a-f3907e336485', name: 'DIN CHINA' },
@@ -49,15 +53,14 @@ function rpcExists(name) {
   return Number(String(raw).split('\n')[0]) > 0;
 }
 
-function sumPartyRpc(fnName, companyId, basis = null) {
-  const basisArg = basis ? `, '${basis}'` : '';
+function sumPartyRpc(fnName, companyId, basis = PARITY_BASIS) {
   const sql =
     fnName === 'get_unified_contact_party_gl_balances'
       ? `SELECT
   ROUND(COALESCE(SUM(gl_ar_receivable),0)::numeric, 2),
   ROUND(COALESCE(SUM(gl_ap_payable),0)::numeric, 2),
   ROUND(COALESCE(SUM(gl_worker_payable),0)::numeric, 2)
-FROM public.get_unified_contact_party_gl_balances('${companyId}'::uuid, NULL::uuid, CURRENT_DATE, 'effective_party');`
+FROM public.get_unified_contact_party_gl_balances('${companyId}'::uuid, NULL::uuid, CURRENT_DATE, '${basis}');`
       : `SELECT
   ROUND(COALESCE(SUM(gl_ar_receivable),0)::numeric, 2),
   ROUND(COALESCE(SUM(gl_ap_payable),0)::numeric, 2),
@@ -79,7 +82,13 @@ function maxAbsDelta(legacy, unified) {
 
 function main() {
   fs.mkdirSync(OUT, { recursive: true });
-  const lines = ['# AR/AP Phase 2b party GL parity (read-only)', `Generated: ${new Date().toISOString()}`, ''];
+  const lines = [
+    '# AR/AP Phase 2b party GL parity (read-only)',
+    `Generated: ${new Date().toISOString()}`,
+    `Production parity basis: ${PARITY_BASIS}`,
+    `Explained variance basis: ${VARIANCE_BASIS}`,
+    '',
+  ];
 
   const unifiedExists = rpcExists('get_unified_contact_party_gl_balances');
   lines.push(`Unified RPC deployed: ${unifiedExists ? 'YES' : 'NO (legacy fallback expected in UI)'}`);
@@ -99,31 +108,47 @@ function main() {
       results.push({ company: c.name, result: 'SKIP', legacy });
       continue;
     }
-    const unified = sumPartyRpc('get_unified_contact_party_gl_balances', c.id);
-    if (unified.error) {
-      results.push({ company: c.name, result: 'FAIL', error: unified.error });
+    const unifiedParity = sumPartyRpc('get_unified_contact_party_gl_balances', c.id, PARITY_BASIS);
+    const unifiedEp = sumPartyRpc('get_unified_contact_party_gl_balances', c.id, VARIANCE_BASIS);
+    if (unifiedParity.error) {
+      results.push({ company: c.name, result: 'FAIL', error: unifiedParity.error });
       overall = 'FAIL';
       continue;
     }
-    const delta = round2(maxAbsDelta(legacy, unified));
+    const delta = round2(maxAbsDelta(legacy, unifiedParity));
+    const epDelta = unifiedEp.error ? null : round2(maxAbsDelta(legacy, unifiedEp));
     const pass = delta <= TOLERANCE;
     if (!pass) overall = 'FAIL';
-    results.push({ company: c.name, result: pass ? 'PASS' : 'FAIL', legacy, unified, maxAbsDelta: delta });
+    results.push({
+      company: c.name,
+      result: pass ? 'PASS' : 'FAIL',
+      basis: PARITY_BASIS,
+      legacy,
+      unified: unifiedParity,
+      maxAbsDelta: delta,
+      effective_party_maxAbsDelta: epDelta,
+    });
   }
 
   for (const r of results) {
-    lines.push(`## ${r.company}: ${r.result}`);
+    lines.push(`## ${r.company}: ${r.result} (parity=${PARITY_BASIS})`);
     if (r.legacy) lines.push(`- Legacy sums AR/AP/WP: ${r.legacy.ar} / ${r.legacy.ap} / ${r.legacy.wp}`);
-    if (r.unified) lines.push(`- Unified sums AR/AP/WP: ${r.unified.ar} / ${r.unified.ap} / ${r.unified.wp}`);
-    if (r.maxAbsDelta != null) lines.push(`- Max column delta: ${r.maxAbsDelta}`);
+    if (r.unified) lines.push(`- Unified ${PARITY_BASIS} AR/AP/WP: ${r.unified.ar} / ${r.unified.ap} / ${r.unified.wp}`);
+    if (r.maxAbsDelta != null) lines.push(`- Max column delta (${PARITY_BASIS}): ${r.maxAbsDelta}`);
+    if (r.effective_party_maxAbsDelta != null) {
+      lines.push(
+        `- Explained variance max delta (${VARIANCE_BASIS}): ${r.effective_party_maxAbsDelta}` +
+          (r.effective_party_maxAbsDelta > TOLERANCE ? ' (not a production parity fail)' : ''),
+      );
+    }
     if (r.error) lines.push(`- Error: ${r.error}`);
     lines.push('');
   }
 
-  lines.push(`Overall: ${overall}`);
+  lines.push(`Overall (${PARITY_BASIS} gate): ${overall}`);
   const outPath = path.join(OUT, 'party-gl-parity-readonly.txt');
   fs.writeFileSync(outPath, lines.join('\n'));
-  fs.writeFileSync(path.join(OUT, 'party-gl-parity-readonly.json'), JSON.stringify({ overall, results }, null, 2));
+  fs.writeFileSync(path.join(OUT, 'party-gl-parity-readonly.json'), JSON.stringify({ overall, parityBasis: PARITY_BASIS, results }, null, 2));
   console.log(lines.join('\n'));
   console.log(`Wrote ${outPath}`);
   if (overall === 'FAIL') process.exit(1);

@@ -12,6 +12,7 @@ type Props = {
   defaultOpen?: boolean;
   partyGlSource?: ArApPartyGlBalanceSource;
   partyGlBasis?: UnifiedLedgerBasis;
+  partyGlParityBasis?: UnifiedLedgerBasis;
 };
 
 function partyGlRpcLabel(source: ArApPartyGlBalanceSource | undefined, basis?: UnifiedLedgerBasis): string {
@@ -28,6 +29,7 @@ export function PayablesVarianceExplainerPanel({
   defaultOpen = true,
   partyGlSource,
   partyGlBasis,
+  partyGlParityBasis,
 }: Props) {
   const [open, setOpen] = React.useState(defaultOpen);
 
@@ -61,7 +63,22 @@ export function PayablesVarianceExplainerPanel({
               <strong>Operational payables</strong> = open purchase due from documents (
               <code className="text-blue-700 dark:text-blue-300/80">getContactBalancesSummary</code>).{' '}
               <strong>Party GL payables</strong> = supplier sub-ledger sum (
-              <code className="text-blue-700 dark:text-blue-300/80">{partyGlRpcLabel(partyGlSource, partyGlBasis)}</code>) — aligned with Party Ledger when unified loaders are ON.{' '}
+              <code className="text-blue-700 dark:text-blue-300/80">{partyGlRpcLabel(partyGlSource, partyGlBasis)}</code>)
+              {partyGlSource === 'unified' ? (
+                <>
+                  {' '}— operational basis{' '}
+                  <strong>{partyGlBasis ? UNIFIED_LEDGER_BASIS_LABELS[partyGlBasis] : 'effective_party'}</strong>
+                  {partyGlParityBasis ? (
+                    <>
+                      ; production parity baseline{' '}
+                      <strong>{UNIFIED_LEDGER_BASIS_LABELS[partyGlParityBasis]}</strong> vs Contacts legacy
+                    </>
+                  ) : null}
+                  .
+                </>
+              ) : (
+                <> — aligned with Contacts when unified loaders are OFF.</>
+              )}{' '}
               <strong>Control GL</strong> = AP 2000 net Cr−Dr on the control account. Comparing operational to
               control directly often looks wrong; use party GL for apples-to-apples with Contacts / Party Ledger.
             </p>

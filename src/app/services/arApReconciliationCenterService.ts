@@ -78,9 +78,13 @@ export interface IntegrityLabSummary extends IntegrityLabSnapshotRow {
   party_gl_vs_control_variance: number | null;
   /** Phase 2b — party GL rollup engine used for supplier sub-ledger cards. */
   party_gl_balance_source: ArApPartyGlBalanceSource;
+  /** Operational unified basis for party payables cards (typically effective_party). */
   party_gl_balance_basis: UnifiedLedgerBasis;
-  /** Shadow legacy vs unified max per-contact delta (when unified active). */
+  /** Parity compare baseline vs Contacts legacy — official_gl. */
+  party_gl_parity_basis: UnifiedLedgerBasis;
+  /** Shadow legacy vs unified(parity basis) max per-contact delta. */
   party_gl_parity_max_delta?: number;
+  party_gl_parity_status: 'pass' | 'fail' | 'skipped' | 'n_a';
   status: IntegrityLabStatus;
   statusLabels: string[];
 }
@@ -324,7 +328,9 @@ export async function fetchIntegrityLabSummary(
     party_gl_vs_control_variance,
     party_gl_balance_source: partyGlFetch.source,
     party_gl_balance_basis: partyGlFetch.basis,
+    party_gl_parity_basis: partyGlFetch.parityBasis,
     party_gl_parity_max_delta: partyGlFetch.maxAbsPartyDelta,
+    party_gl_parity_status: partyGlFetch.parityStatus,
     status,
     statusLabels: labels,
   };

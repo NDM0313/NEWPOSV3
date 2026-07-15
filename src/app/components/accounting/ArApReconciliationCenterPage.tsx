@@ -96,7 +96,6 @@ import {
   classifyUnpostedDocument as classifyUnpostedForRepair,
   type ActionableRepairButton,
 } from '@/app/lib/actionableRepairClassifier';
-import { partyGlParityWithinTolerance } from '@/app/services/arApUnifiedPartyBalanceService';
 import { UNIFIED_LEDGER_BASIS_LABELS } from '@/app/lib/unifiedLedgerBasisFilter';
 
 function statusBadgeClass(status: IntegrityLabSummary['status']): string {
@@ -868,9 +867,14 @@ export function ArApReconciliationCenterPage() {
         {summary?.party_gl_balance_source === 'unified' ? (
           <div className="rounded-lg border border-emerald-500/35 bg-emerald-950/20 px-3 py-2 text-xs text-emerald-100 flex flex-wrap items-center gap-2">
             <span>
-              <strong>Party GL rollup:</strong> Unified Core Ledger —{' '}
+              <strong>Party GL rollup:</strong> Unified Core Ledger — operational{' '}
               {UNIFIED_LEDGER_BASIS_LABELS[summary.party_gl_balance_basis] ?? summary.party_gl_balance_basis}
               {' '}via <code className="text-emerald-200/90">get_unified_contact_party_gl_balances</code>
+            </span>
+            <span className="text-emerald-200/80">
+              Parity baseline:{' '}
+              {UNIFIED_LEDGER_BASIS_LABELS[summary.party_gl_parity_basis] ?? summary.party_gl_parity_basis}
+              {' '}(vs Contacts legacy)
             </span>
             <Button
               variant="outline"
@@ -891,12 +895,25 @@ export function ArApReconciliationCenterPage() {
             >
               Admin Compare
             </Button>
-            {access.canUseHybridRepair &&
-            summary.party_gl_parity_max_delta != null &&
-            !partyGlParityWithinTolerance(summary.party_gl_parity_max_delta) ? (
-              <Badge className="bg-amber-500/20 text-amber-200 border-amber-500/40 text-[10px]">
-                Legacy shadow delta PKR {summary.party_gl_parity_max_delta.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+            {access.canUseHybridRepair && summary.party_gl_parity_status === 'pass' ? (
+              <Badge className="bg-emerald-500/20 text-emerald-100 border-emerald-500/40 text-[10px]">
+                Parity PASS
+                {summary.party_gl_parity_max_delta != null
+                  ? ` (max Δ ${summary.party_gl_parity_max_delta.toLocaleString(undefined, { maximumFractionDigits: 2 })})`
+                  : ''}
               </Badge>
+            ) : null}
+            {access.canUseHybridRepair && summary.party_gl_parity_status === 'fail' ? (
+              <Badge className="bg-amber-500/20 text-amber-200 border-amber-500/40 text-[10px]">
+                Parity FAIL — legacy shadow delta PKR{' '}
+                {(summary.party_gl_parity_max_delta ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+              </Badge>
+            ) : null}
+            {access.canUseHybridRepair &&
+            summary.party_gl_balance_basis !== summary.party_gl_parity_basis ? (
+              <span className="text-[10px] text-emerald-200/70">
+                Note: operational {summary.party_gl_balance_basis} may differ from parity {summary.party_gl_parity_basis}; that is intentional.
+              </span>
             ) : null}
           </div>
         ) : null}
@@ -1073,6 +1090,7 @@ export function ArApReconciliationCenterPage() {
             formatCurrency={formatCurrency}
             partyGlSource={summary.party_gl_balance_source}
             partyGlBasis={summary.party_gl_balance_basis}
+            partyGlParityBasis={summary.party_gl_parity_basis}
           />
 
           <div className="flex flex-wrap gap-2">
