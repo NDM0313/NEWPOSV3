@@ -22,6 +22,10 @@ Locate or truthfully retract three closeout evidence folders cited on 2026-07-12
 - Sales Revenue Phase 2: keep **COMPLETE** only as *no transfer JE / preserve China 4100 verified*; folder missing.
 - R8-R2 kill-switch drill: **do not** keep PASS. Fresh operator-attended drill still required after soak (**2026-08-09**).
 
+## Follow-up (same day)
+
+AR/AP parity baseline corrected to `official_gl` after approval `APPROVE_AR_AP_PHASE2B_PARITY_BASELINE_OFFICIAL_GL` — see `reports/ar-ap-phase-2b-official-gl-parity-closeout-20260715/`. Does not restore the missing R8 drill pack.
+
 ## Safety
 
-No migrations, JE mutations, kill toggles, deploys, or fixture edits in this recovery.
+No migrations, JE mutations, kill toggles, or fixture edits in the recovery investigation itself.

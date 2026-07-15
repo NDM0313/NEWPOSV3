@@ -23,14 +23,14 @@
 - 80k: **LEGACY OVERSTATES AR** + **INTENTIONAL EFFECTIVE_PARTY EXCLUSION**
 - 150: **INTENTIONAL EFFECTIVE_PARTY EXCLUSION** (independent)
 
-## Recommendation (not executed)
+## Recommendation — EXECUTED 2026-07-15
 
-**B. Fix AR/AP comparison baseline** — gate production-complete on legacy vs unified **`official_gl`** (already PASS), keep EP as economic lens.
+**B. Fix AR/AP comparison baseline** — **APPROVED** via `APPROVE_AR_AP_PHASE2B_PARITY_BASELINE_OFFICIAL_GL`.
 
-**Approval phrase required:** `APPROVE_AR_AP_PHASE2B_PARITY_BASELINE_OFFICIAL_GL`
+Runtime commit `a5149971` deployed to VPS. Operational basis remains `effective_party`; parity baseline is `official_gl`. No GL/data mutation.
 
-No runtime change, migration, or data mutation in this investigation.
+Evidence: `reports/ar-ap-phase-2b-official-gl-parity-closeout-20260715/`
 
 ## Status
 
-AR/AP Phase 2b: still **NOT PRODUCTION COMPLETE** until that approval (or alternate approved path) lands.
+AR/AP Phase 2b: **PRODUCTION COMPLETE** (official_gl parity PASS ×3 + deploy + UI labels). Bridal `effective_party` variance remains intentional and documented.

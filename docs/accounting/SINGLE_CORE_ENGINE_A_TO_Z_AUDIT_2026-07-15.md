@@ -16,7 +16,7 @@ The program is **not technically closed** and **not fully retired**: R8-R2 delet
 
 **Evidence recovery (2026-07-15):** JE-0028 and Sales Revenue Phase 2 non-reclass decision are **VERIFIED** live (original folders still **ORIGINAL EVIDENCE MISSING**). R8-R2 kill-switch drill PASS is **CLAIM RETRACTED** (no pack; readiness plan NOT DONE).
 
-**Bridal parity (2026-07-15):** `effective_party` FAIL Δ **80,150** fully explained (JE-0213 orphan `correction_reversal` 80k + JV-000203 orphan-ar 150). `official_gl` / `audit_full_history` **PASS**. Recommended next approval: `APPROVE_AR_AP_PHASE2B_PARITY_BASELINE_OFFICIAL_GL` (not implemented).
+**Bridal parity (2026-07-15):** `effective_party` FAIL Δ ~**79,850** company-sum fully explained (JE-0213 + JV-000203). Parity baseline switched to **`official_gl`** under `APPROVE_AR_AP_PHASE2B_PARITY_BASELINE_OFFICIAL_GL` (runtime `a5149971`, VPS deployed). AR/AP Phase 2b **PRODUCTION COMPLETE**.
 
 ---
 
@@ -231,7 +231,7 @@ See [`completion-scorecard.md`](../../reports/single-core-engine-a-to-z-audit-20
 
 See [`remaining-task-register.md`](../../reports/single-core-engine-a-to-z-audit-20260715/remaining-task-register.md).
 
-Mandatory remaining: (1) approve AR/AP parity baseline `official_gl` **or** approved alternate; (2) operator-attended R8 drill after soak — drill PASS retracted; (3) do not start R8-R2 deletion before **2026-08-09**. Optional: Play Store, Contacts wire-up.
+Mandatory remaining: (1) operator-attended R8 drill after soak — prior PASS retracted; (2) do not start R8-R2 deletion before **2026-08-09**. Optional: Play Store, Contacts wire-up. AR/AP Phase 2b closeout: `reports/ar-ap-phase-2b-official-gl-parity-closeout-20260715/`.
 
 ---
 
@@ -253,7 +253,7 @@ See [`evidence-index.md`](../../reports/single-core-engine-a-to-z-audit-20260715
 | Single Core Engine operationally complete? | **YES** |
 | Single Core Engine technically closed? | **NO** |
 | Single Core Engine fully retired? | **NO** |
-| AR/AP Phase 2b production complete? | **NO** |
+| AR/AP Phase 2b production complete? | **YES** (official_gl parity + deploy 2026-07-15) |
 | Play Store blocks core completion? | **NO** |
 
 **How much work is done:** Core unified path live; JE-0028 + revenue Phase 2 decision verified; Bridal delta fully classified.

@@ -101,33 +101,34 @@ User-facing workspace to **separate** operational subledger signals, GL control 
 - **Snapshot RPC:** `p_branch_id NULL` = all branches; UUID = only JEs/documents with matching `branch_id` (NULL branch on JE excluded when filtering by branch — same as reconciliation migration).
 - **Operational full totals** in UI use `get_contact_balances_summary(company, branch)` — match Contacts page branch semantics.
 
-## Phase 2b — Unified party GL rollup (2026-07-12)
+## Phase 2b — Unified party GL rollup (2026-07-12 → 2026-07-15)
 
 When Party Ledger unified loaders are ON (`unified_ledger_loader_party_ledger` + engine + screen), AR/AP Diagnostics party GL summary cards use:
 
-- **RPC:** `get_unified_contact_party_gl_balances(company, branch, as_of, basis)` — default basis `effective_party`
+- **RPC:** `get_unified_contact_party_gl_balances(company, branch, as_of, basis)`
+- **Operational basis:** `effective_party` (party payables cards — economic view)
+- **Parity baseline:** **`official_gl`** vs Contacts `get_contact_party_gl_balances` (approval `APPROVE_AR_AP_PHASE2B_PARITY_BASELINE_OFFICIAL_GL`)
 - **Fallback:** `get_contact_party_gl_balances` when kill switch active, loaders OFF, or RPC not deployed
-- **Shadow parity:** admin view compares legacy vs unified per-contact max delta (0.01 PKR tolerance)
-- **Unchanged:** exception queues, hybrid repair, control GL snapshot, operational document totals
+- **Shadow parity:** admin chip uses **official_gl** max per-contact delta (0.01 PKR); `effective_party` differences are explained variance, not a production fail
+- **Unchanged:** exception queues, hybrid repair, control GL snapshot, operational document totals, Contacts page
 
-Evidence: `reports/ar-ap-phase-2b-unified-wireup-20260712/`
+Evidence: `reports/ar-ap-phase-2b-unified-wireup-20260712/` · `reports/ar-ap-phase-2b-bridal-effective-party-investigation-20260715/` · `reports/ar-ap-phase-2b-official-gl-parity-closeout-20260715/`
 
-### Rollout status (2026-07-12)
+### Rollout status (updated 2026-07-15)
 
 | Status | Value |
 |--------|-------|
-| DEVELOPMENT COMPLETE | yes — commit `75c12cd7` |
+| DEVELOPMENT COMPLETE | yes — `75c12cd7` + parity baseline `a5149971` |
 | GITHUB PUSHED | yes |
 | MIGRATION APPROVED | yes — `APPROVE_AR_AP_PHASE2B_UNIFIED_RPC_PRODUCTION_MIGRATION` |
 | MIGRATION APPLIED | yes — prod since 2026-07-11 21:36:11Z |
-| PRODUCTION PARITY PASS | **no** — DIN BRIDAL FAIL (max AR delta 79850 under `effective_party`) |
-| FRONTEND ON VPS | `aff7c1d3` (pre-existing); post-FAIL session did **not** claim production-complete |
+| PARITY BASELINE APPROVED | yes — `APPROVE_AR_AP_PHASE2B_PARITY_BASELINE_OFFICIAL_GL` |
+| PRODUCTION PARITY PASS | **yes** — all three companies on **official_gl** (max Δ 0) |
+| FRONTEND ON VPS | `a5149971` (`VITE_BUILD_COMMIT`) |
 | FALLBACK RETAINED | yes — `get_contact_party_gl_balances` |
 | Contacts page | still legacy RPC (unchanged) |
 
-DIN BRIDAL fail drivers: Walk-in Customer old (−80000 AR) + Walk-in Customer (+150 AR). Same company PASS on `official_gl` / `audit_full_history`.
-
-Production rollout evidence: `reports/ar-ap-phase-2b-production-rollout-20260712/`
+DIN BRIDAL `effective_party` vs legacy Δ ~79850 remains **intentional** (JE-0213 + JV-000203); not a production parity fail.
 
 ---
 
