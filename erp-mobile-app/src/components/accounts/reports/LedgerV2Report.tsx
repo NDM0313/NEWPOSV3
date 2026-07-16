@@ -113,7 +113,8 @@ export function LedgerV2Report({
             paymentId: l.paymentId ?? null,
             accountCode: selected.code,
             accountName: selected.name,
-            partyResolved: l.partyName ?? l.counterAccountName ?? null,
+            partyResolved:
+              l.partyName ?? l.counterAccountName ?? (pres.title !== '—' ? pres.title : null),
           };
           }),
         );
