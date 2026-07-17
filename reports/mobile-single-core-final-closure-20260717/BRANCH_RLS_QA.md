@@ -1,11 +1,19 @@
 # BRANCH_RLS_QA.md
 
-Generated: 2026-07-17T13:33:05.990Z
+Generated: 2026-07-17 (operational gates)
 
-| Scenario | User | Company | RPC | Server | Visible | Status | Note |
-|---|---|---|---|---|---|---|---|
-| own_branch_ok | (none) | — | — | — | — | **NOT_RUN_CREDENTIAL_GATED** | Set QA_BROWSER_EMAIL_BRANCH + QA_BROWSER_PASSWORD_BRANCH |
-| other_branch_denied | (none) | — | — | — | — | **NOT_RUN_CREDENTIAL_GATED** | Set QA_BROWSER_EMAIL_BRANCH + QA_BROWSER_PASSWORD_BRANCH |
-| company_wide_null_denied | (none) | — | — | — | — | **NOT_RUN_CREDENTIAL_GATED** | Set QA_BROWSER_EMAIL_BRANCH + QA_BROWSER_PASSWORD_BRANCH |
-| branch_switch_no_stale | (none) | — | — | — | — | **NOT_RUN_CREDENTIAL_GATED** | Set QA_BROWSER_EMAIL_BRANCH + QA_BROWSER_PASSWORD_BRANCH |
-| logout_clears | (none) | — | — | — | — | **NOT_RUN_CREDENTIAL_GATED** | Set QA_BROWSER_EMAIL_BRANCH + QA_BROWSER_PASSWORD_BRANCH |
+**Overall:** `NOT_RUN_CREDENTIAL_GATED`
+
+## Why
+
+1. Env vars `QA_BROWSER_EMAIL_BRANCH` / `QA_BROWSER_PASSWORD_BRANCH` are **MISSING**.
+2. Read-only inventory: all active salesmen have **0** `user_branches` rows; only admins have branch rows (1 each). No approved non-admin branch-restricted QA credential available.
+3. No user/permission changes performed.
+
+| Scenario | Status |
+|----------|--------|
+| own_branch_ok | **NOT_RUN_CREDENTIAL_GATED** |
+| other_branch_denied | **NOT_RUN_CREDENTIAL_GATED** |
+| company_wide_null_denied | **NOT_RUN_CREDENTIAL_GATED** |
+| branch_switch_no_stale | **NOT_RUN_CREDENTIAL_GATED** |
+| logout_clears | **NOT_RUN_CREDENTIAL_GATED** |

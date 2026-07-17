@@ -2,26 +2,30 @@
 
 ## Verdict
 
-`MOBILE_SINGLE_CORE_FINAL_CLOSURE_PARTIAL`
+`MOBILE_SINGLE_CORE_OPERATIONAL_GATES_PARTIAL`
 
-## Open gates
+## Operational gate status
 
-1. Salesman live RLS — `NOT_RUN_CREDENTIAL_GATED`
-2. Limited live RLS — `NOT_RUN_CREDENTIAL_GATED`
-3. Branch-restricted live RLS — `NOT_RUN_CREDENTIAL_GATED`
-4. Authenticated APK emulator — `EMULATOR_QA_FAIL`
-5. Physical device — `NOT_RUN_DEVICE_GATED`
+| Gate | Result |
+|------|--------|
+| Salesman live RLS | `NOT_RUN_CREDENTIAL_GATED` |
+| Limited live RLS | `NOT_RUN_CREDENTIAL_GATED` |
+| Branch-restricted live RLS | `NOT_RUN_CREDENTIAL_GATED` |
+| Authenticated APK emulator | `EMULATOR_QA_FAIL` |
+| Physical device | `NOT_RUN_DEVICE_GATED` |
 
-## Green
+## Still green
 
-- All automated tests/build at product commit
-- Live parity + admin RLS
-- QA identity verified read-only for salesman candidate
+- Automated tests / typecheck / build at product commit `93cd8436`
+- Three-company parity 0 FAIL
+- Admin live RLS PASS
+- Product APK SHA unchanged
+- No production mutations / migrations / 4100 / R8-R2
 
 ## Merge readiness
 
 `NOT_READY_FOR_MERGE`
 
-## Safety
+## Product defects fixed
 
-Mutations **NONE** · Migrations **NONE** · 4100 **NONE** · R8-R2 **NONE**
+NONE

@@ -1,6 +1,6 @@
 # SALESMAN_RLS_QA.md
 
-Generated: 2026-07-17T13:33:05.989Z
+Generated: 2026-07-17T14:03:48.118Z
 
 | Scenario | User | Company | RPC | Server | Visible | Status | Note |
 |---|---|---|---|---|---|---|---|

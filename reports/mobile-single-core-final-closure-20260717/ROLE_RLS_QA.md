@@ -1,6 +1,6 @@
 # ROLE_RLS_QA.md (summary)
 
-Generated: 2026-07-17T13:33:05.991Z
+Generated: 2026-07-17T14:03:48.121Z
 
 - Admin live: 2 PASS
 - Salesman: NOT_RUN_CREDENTIAL_GATED
