@@ -1,0 +1,10 @@
+=== R8-R2 six-screen spot-check ===
+BASE=https://erp.dincouture.pk email=din@yahoo.com gotoTimeoutMs=120000
+buildCommit=n/a
+[PASS] Roznamcha loader=unified data=true filters=true scope=true consoleMat=0
+[PASS] Account Statement loader=unified data=true filters=true scope=true consoleMat=0
+[PASS] Cash Flow loader=unified data=true filters=true scope=true consoleMat=0
+[PASS] Trial Balance loader=unified data=true filters=true scope=true consoleMat=0
+[PASS] Party Ledger loader=unified data=true filters=true scope=true consoleMat=0
+[PASS] Ledger V2 loader=unified data=true filters=true scope=true consoleMat=0
+OVERALL PASS
