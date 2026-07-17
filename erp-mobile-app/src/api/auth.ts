@@ -412,6 +412,12 @@ export async function signIn(email: string, password: string): Promise<{ data: A
 export async function signOutGlobal(): Promise<void> {
   await supabase.auth.signOut({ scope: 'local' });
   await clearSecure();
+  try {
+    const { clearAccountingStateOnLogout } = await import('./singleCore/accountingCache');
+    await clearAccountingStateOnLogout();
+  } catch {
+    /* ignore — accounting cache optional at boot */
+  }
 }
 
 /** Clear the client session only (does not revoke server refresh tokens). */

@@ -54,7 +54,10 @@ export function AgingReport({
   }, [companyId, branchId, kind, reportRefreshEpoch]);
 
   const title = kind === 'payables' ? 'Payables' : 'Receivables';
-  const subtitle = kind === 'payables' ? 'What you owe suppliers' : 'What customers owe you';
+  const subtitle =
+    kind === 'payables'
+      ? 'Operational due amounts (not official GL closing)'
+      : 'Operational due amounts (not official GL closing)';
   const gradient: 'amber' | 'rose' = kind === 'payables' ? 'amber' : 'rose';
 
   const stats = useMemo(() => {

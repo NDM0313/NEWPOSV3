@@ -266,6 +266,46 @@ export function AccountsModule({
     };
   }, [companyId]);
 
+  // Company switch: clear stale company-scoped list caches and force report reload.
+  useEffect(() => {
+    if (!companyId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { invalidateCompanyAccountingCaches } = await import('../../api/singleCore/accountingCache');
+        await invalidateCompanyAccountingCaches(companyId);
+      } catch {
+        /* ignore */
+      }
+      if (!cancelled) setReportRefreshEpoch((v) => v + 1);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId]);
+
+  // Branch switch: reload branch-scoped ledgers (null = company-wide).
+  useEffect(() => {
+    setReportRefreshEpoch((v) => v + 1);
+  }, [branch?.id]);
+
+  // Revalidate accounting reports when returning to the app / tab.
+  useEffect(() => {
+    const onFocusLike = () => {
+      if (document.visibilityState && document.visibilityState !== 'visible') return;
+      setReportRefreshEpoch((v) => v + 1);
+    };
+    const onAccountingRefresh = () => setReportRefreshEpoch((v) => v + 1);
+    document.addEventListener('visibilitychange', onFocusLike);
+    window.addEventListener('focus', onFocusLike);
+    window.addEventListener('erp-mobile-accounting-refresh', onAccountingRefresh as EventListener);
+    return () => {
+      document.removeEventListener('visibilitychange', onFocusLike);
+      window.removeEventListener('focus', onFocusLike);
+      window.removeEventListener('erp-mobile-accounting-refresh', onAccountingRefresh as EventListener);
+    };
+  }, []);
+
   const backToDashboard = () => setView('dashboard');
   const backToReports = () => setView(canUseFullAccounting ? 'reports' : 'dashboard');
   const backFromReportsHub = () => {
