@@ -1,6 +1,6 @@
 # QA_IDENTITY_VERIFICATION.md
 
-Generated: 2026-07-17T14:10:00.000Z (operational gates re-check)
+Generated: 2026-07-17 (resource-gated re-check)
 
 ## Credential env presence (values never logged)
 
@@ -12,33 +12,30 @@ Generated: 2026-07-17T14:10:00.000Z (operational gates re-check)
 | `QA_BROWSER_PASSWORD_LIMITED` | **MISSING** |
 | `QA_BROWSER_EMAIL_BRANCH` | **MISSING** |
 | `QA_BROWSER_PASSWORD_BRANCH` | **MISSING** |
-| `QA_BROWSER_PASSWORD_CHINA` | AVAILABLE (admin) |
-| `QA_BROWSER_PASSWORD_BRIDAL` | AVAILABLE (admin Bridal — not Salesman) |
+| `QA_BROWSER_PASSWORD_CHINA` | AVAILABLE (admin only) |
 
-## Read-only production identity verification
+## Verified Salesman identity (read-only)
 
-| Masked email | User ID | Role | Company | Active | `user_branches` count |
-|---|---|---|---|---|---|
-| `di***@yahoo.com` | `5257707c-710e-4b94-9767-d53e3aa4e3e9` | **admin** | DIN CHINA | true | 1 |
-| `no***@yahoo.com` | `af1d7b5a-3f73-4268-8a4d-b0557c6d7a6d` | **salesman** | DIN BRIDAL | true | **0** |
+| Field | Value |
+|-------|--------|
+| Masked email | `no***@yahoo.com` |
+| User ID | `af1d7b5a-3f73-4268-8a4d-b0557c6d7a6d` |
+| Role | **salesman** |
+| Company | DIN BRIDAL |
+| Active | true |
+| `user_branches` count | **0** |
 
-**noman@yahoo.com** confirmed `salesman` / DIN BRIDAL / active via read-only SQL (not assumed from email).
+## Limited / branch identity search
 
-## Role inventory (active users)
+| Search | Result |
+|--------|--------|
+| Active limited/easy/viewer/staff QA users | **None** → `QA_IDENTITY_NOT_AVAILABLE` |
+| Staging/test emails (`%qa%`, `%test%`, `%mobile%`) | **None** |
+| Inactive users | 1 inactive salesman (`ab***@yahoo.com` / DIN BRIDAL) — wrong role |
+| Active roles present | admin (5), salesman (7) only |
 
-Production active roles present: **`admin` (5)** · **`salesman` (7)** only.
+## Temp user approval
 
-- No active `user` / limited / easy role accounts found.
-- No non-admin user with a single-branch restriction pattern suitable for branch-restricted QA credentials.
-- All 7 salesmen currently have **0** `user_branches` rows.
+Phrase `APPROVE_CREATE_TEMP_MOBILE_QA_USERS`: **NOT SUPPLIED**
 
-## Gate implications
-
-| Role | Live auth possible? | Result |
-|------|---------------------|--------|
-| Admin | Yes (China password present) | Prior + re-check **PASS** |
-| Salesman | No — password not in approved env | `NOT_RUN_CREDENTIAL_GATED` |
-| Limited | No — no limited identity + no password | `NOT_RUN_CREDENTIAL_GATED` |
-| Branch-restricted | No — no dedicated credentialed identity | `NOT_RUN_CREDENTIAL_GATED` |
-
-Do **not** create users or assign passwords without explicit operator approval.
+Plan prepared (not executed): `TEMP_QA_USER_PLAN.md` via approved `create-erp-user` workflow.

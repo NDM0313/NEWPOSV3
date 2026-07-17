@@ -2,11 +2,10 @@
 
 | Asset | Notes |
 |-------|-------|
-| `QA_IDENTITY_VERIFICATION.md` | Env presence + read-only DB identity |
-| `SALESMAN_RLS_QA.md` / `SALESMAN_RLS_RAW.json` | Credential-gated |
-| `LIMITED_RLS_QA.md` / `LIMITED_RLS_RAW.json` | Credential-gated (no limited role users) |
-| `BRANCH_RLS_QA.md` / `BRANCH_RLS_RAW.json` | Credential-gated |
-| `EMULATOR_QA.md` | AVD offline / ADB hang — FAIL |
+| `QA_IDENTITY_VERIFICATION.md` | Env + inventory |
+| `TEMP_QA_USER_PLAN.md` | Prepared; not executed |
+| `SALESMAN_RLS_QA.md` | Credential gated |
+| `LIMITED_RLS_QA.md` / `BRANCH_RLS_QA.md` | Identity unavailable |
+| `EMULATOR_QA.md` | Partial health then ADB hang |
 | `PHYSICAL_DEVICE_QA.md` | No device |
-| Prior `emu-manual-launch.png` | Black screen from earlier attempt |
-| Prior acceptance mobile-web screenshots | Supplementary only |
+| Host APK SHA | `d15114fc…` @ `93cd8436` |

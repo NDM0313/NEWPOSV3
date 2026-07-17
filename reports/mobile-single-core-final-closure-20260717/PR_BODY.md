@@ -2,21 +2,23 @@
 
 `feat(mobile): complete Single Core reporting alignment`
 
-## Summary
+## Resource-gate status
 
-- Three-company live parity: **0 FAIL**
-- Admin RLS: **PASS**
-- Salesman / Limited / Branch live RLS: **`NOT_RUN_CREDENTIAL_GATED`**
-- Emulator authenticated APK: **`EMULATOR_QA_FAIL`** (AVD/ADB offline)
-- Physical device: **`NOT_RUN_DEVICE_GATED`**
-- Tests: mobile 89 · unified 350 · typecheck/build PASS
-- APK: product `93cd8436` · SHA `d15114fc…` · 1.0.5 / 39
-- Mutations / migrations / 4100 / R8-R2: **NONE**
+| Gate | Result |
+|------|--------|
+| Salesman live RLS | `NOT_RUN_CREDENTIAL_GATED` |
+| Limited | `QA_IDENTITY_NOT_AVAILABLE` |
+| Branch-restricted | `QA_IDENTITY_NOT_AVAILABLE` |
+| Emulator authenticated APK | `EMULATOR_QA_FAIL` (ADB/AVD) |
+| Physical device | `NOT_RUN_DEVICE_GATED` |
+| Admin RLS / parity / tests | PASS / 0 FAIL / green |
+| Temp QA users | Plan only — awaiting `APPROVE_CREATE_TEMP_MOBILE_QA_USERS` |
+| APK | `93cd8436` · SHA `d15114fc…` · 1.0.5/39 |
+| Mutations / migrations / 4100 / R8-R2 | NONE |
 
-## Merge recommendation
+## Merge readiness
 
 `NOT_READY_FOR_MERGE`
 
-Unblock by providing salesman (and limited/branch if available) passwords in approved env, running authenticated APK QA on a stable emulator or device, then supply:
-
+Merge still requires separate phrase:
 `APPROVE_MOBILE_SINGLE_CORE_FINALIZATION_MERGE`

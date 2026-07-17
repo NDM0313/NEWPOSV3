@@ -1,43 +1,36 @@
 # EMULATOR_QA.md
 
-Generated: 2026-07-17 (operational gates re-run)
+Generated: 2026-07-17 (resource gates — one clean AVD attempt)
 
 **Result:** `EMULATOR_QA_FAIL`
 
-## Environment
+## Health proof (partial)
 
-| Item | Value |
-|------|--------|
-| AVD | Medium_Phone_API_36.1 |
-| Serial | emulator-5554 |
-| Product APK | `erp-mobile-app/android/app/build/outputs/apk/debug/app-debug.apk` |
-| APK SHA-256 | `d15114fc2a53c735c8004f06267568fc33ecc6575aa8cb798fe9f4c88b57f440` |
-| Source commit | `93cd8436087869f9d839f1c5650626d047a33a98` |
-| App | 1.0.5 / versionCode 39 |
+| Check | Result |
+|-------|--------|
+| Stop old AVD / restart ADB | Done |
+| One AVD only | Medium_Phone_API_36.1 |
+| `sys.boot_completed=1` | Eventually **PASS** |
+| Repeated `adb shell echo` | **PASS** (3/3 briefly) |
+| Package installed | **PASS** — `com.dincouture.erp` versionName 1.0.5 / versionCode 39 |
+| App process | Briefly alive (`pidof` returned) then unstable |
+| Non-black screen | **Not proven** — screencap timed out |
+| WebView/CDP socket | **FAIL** — no `webview_devtools_remote_*` |
+| `adb install -r` | **TIMEOUT** |
+| `am start -W` | **TIMEOUT** |
 
-## Stabilization attempts (this run)
+## Authenticated matrix
 
-1. `adb kill-server` / `adb start-server` — devices briefly healthy (`boot_completed=1`, display 1080x2400).
-2. `adb install -r` / `am start` / screencap — **ADB shell hung** (timeouts).
-3. Cold kill AVD + relaunch with `-gpu swiftshader_indirect` — emulator stayed **`offline`** for >3 minutes; `getprop sys.boot_completed` failed repeatedly (`adb: device offline`).
-4. CDP / WS automation **not reached** — no stable device shell / WebView process.
+**Not completed** — environment degraded before login/report navigation.
 
 ## Failure classification
 
 | Layer | Verdict |
 |-------|---------|
-| App-code failure | **Not proven** — no authenticated session; no FATAL crash evidence this run |
-| Android/AVD failure | **YES** — device offline / ADB shell hang / black-screen history |
-| WebView automation failure | Secondary — blocked by AVD/ADB instability |
+| Application failure | **Not proven** |
+| WebView automation failure | Secondary (no CDP target) |
+| ADB failure | **YES** — install/screencap/start hangs |
+| AVD/display failure | **YES** — unreliable after boot |
 
-## Authenticated matrix
-
-**Not completed** (Customer/Supplier/Worker/Account/Ledger V2/Roznamcha/Cash Flow/Trial Balance).
-
-## Required behavioural checks
-
-Company/branch switch, logout, resume, network failure, Retry — **not executed**.
-
-## Supplementary (not APK PASS)
-
-Prior mobile-web same-bundle QA remains **9/9 PASS** — does **not** equal `EMULATOR_QA_PASS`.
+APK SHA (host file): `d15114fc2a53c735c8004f06267568fc33ecc6575aa8cb798fe9f4c88b57f440`  
+Product commit: `93cd8436087869f9d839f1c5650626d047a33a98`

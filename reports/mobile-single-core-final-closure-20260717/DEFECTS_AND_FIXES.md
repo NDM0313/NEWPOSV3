@@ -1,13 +1,12 @@
 # DEFECTS_AND_FIXES.md
 
-Generated: 2026-07-17 (operational gates)
-
 | Finding | Product defect? | Action |
 |---------|-----------------|--------|
-| Salesman password missing from approved env | No | `NOT_RUN_CREDENTIAL_GATED` |
-| No limited/easy active role users in production | No (identity inventory) | `NOT_RUN_CREDENTIAL_GATED` — do not create users without approval |
-| No credentialed branch-restricted non-admin QA identity | No | `NOT_RUN_CREDENTIAL_GATED` |
-| Emulator offline / ADB hang after cold boot | No (Android/AVD) | `EMULATOR_QA_FAIL` |
-| No physical device attached | No | `NOT_RUN_DEVICE_GATED` |
+| Salesman password env missing | No | Credential gate |
+| Limited identity not available | No | `QA_IDENTITY_NOT_AVAILABLE` + temp plan |
+| Branch-restricted identity not available | No | `QA_IDENTITY_NOT_AVAILABLE` + temp plan |
+| Emulator ADB hang / no CDP | No (infra) | `EMULATOR_QA_FAIL` |
+| No physical device | No | `NOT_RUN_DEVICE_GATED` |
 
-**Product-code fixes this run:** NONE
+**Product fixes:** NONE  
+**Temp users created:** NONE (approval phrase not supplied)
