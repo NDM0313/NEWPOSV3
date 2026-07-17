@@ -1,0 +1,1661 @@
+{
+  "generatedAt": "2026-07-17T18:30:54.697Z",
+  "productHead": "a7471520",
+  "byCompany": {
+    "din-china": {
+      "company": "DIN CHINA",
+      "companyId": "30bd8592-3384-4f34-899a-f3907e336485",
+      "dateFrom": "2026-07-01",
+      "dateTo": "2026-07-17",
+      "basis": "official_gl",
+      "productHead": "a7471520",
+      "rows": [
+        {
+          "company": "DIN CHINA",
+          "branch": null,
+          "screen": "Customer Party Ledger",
+          "filters": {
+            "dateFrom": "2026-07-01",
+            "dateTo": "2026-07-17",
+            "basis": "official_gl",
+            "productHead": "a7471520"
+          },
+          "mobileLoader": "get_unified_party_ledger",
+          "webLoader": "get_unified_party_ledger",
+          "mobileBasis": "official_gl",
+          "webBasis": "official_gl",
+          "result": {
+            "opening": 3909458,
+            "closing": 3709458,
+            "rows": 1,
+            "debit": 0,
+            "credit": 200000,
+            "loader": "get_unified_party_ledger",
+            "basis": "official_gl",
+            "party": {
+              "id": "ed1abdc6-a701-488b-8a92-8efd1f9750a3",
+              "name": "HASSAN   MARDAN",
+              "listBalance": 3709458
+            }
+          },
+          "notes": "HASSAN   MARDAN",
+          "numericDifference": 0,
+          "status": "PASS",
+          "explanation": "Same production unified RPC used by web main loaders and mobile Single Core adapter when flags ON"
+        },
+        {
+          "company": "DIN CHINA",
+          "branch": null,
+          "screen": "Supplier Party Ledger",
+          "filters": {
+            "dateFrom": "2026-07-01",
+            "dateTo": "2026-07-17",
+            "basis": "official_gl",
+            "productHead": "a7471520"
+          },
+          "mobileLoader": "get_unified_party_ledger",
+          "webLoader": "get_unified_party_ledger",
+          "mobileBasis": "official_gl",
+          "webBasis": "official_gl",
+          "result": {
+            "opening": 1140287.4,
+            "closing": 1140286.4,
+            "rows": 1,
+            "debit": 1,
+            "credit": 0,
+            "loader": "get_unified_party_ledger",
+            "basis": "official_gl",
+            "party": {
+              "id": "36fe85d7-95cf-49ad-8922-cabe5f3596cc",
+              "name": "MR DIN MOHAMMAD",
+              "listBalance": 1140286.4
+            }
+          },
+          "notes": "MR DIN MOHAMMAD",
+          "numericDifference": 0,
+          "status": "PASS",
+          "explanation": "Same production unified RPC used by web main loaders and mobile Single Core adapter when flags ON"
+        },
+        {
+          "company": "DIN CHINA",
+          "branch": null,
+          "screen": "Worker Ledger",
+          "filters": {
+            "dateFrom": "2026-07-01",
+            "dateTo": "2026-07-17",
+            "basis": "official_gl",
+            "productHead": "a7471520"
+          },
+          "mobileLoader": "get_unified_party_ledger",
+          "webLoader": "get_unified_party_ledger",
+          "mobileBasis": "official_gl",
+          "webBasis": "official_gl",
+          "result": {
+            "loader": "get_unified_party_ledger",
+            "basis": "official_gl",
+            "rows": 0,
+            "opening": 0,
+            "closing": 0,
+            "debit": 0,
+            "credit": 0,
+            "emptyCompany": true,
+            "party": {
+              "error": "no_worker",
+              "emptyCompany": true
+            }
+          },
+          "notes": " · unified worker GL (2010/1180); operational fallback labelled non-official in UI",
+          "status": "EXPECTED_BASIS_DIFFERENCE",
+          "explanation": "Company has no workers — Worker Ledger N/A (not a loader defect)"
+        },
+        {
+          "company": "DIN CHINA",
+          "branch": null,
+          "screen": "Account Ledger",
+          "filters": {
+            "dateFrom": "2026-07-01",
+            "dateTo": "2026-07-17",
+            "basis": "official_gl",
+            "productHead": "a7471520"
+          },
+          "mobileLoader": "get_unified_account_ledger",
+          "webLoader": "get_unified_account_ledger",
+          "mobileBasis": "official_gl",
+          "webBasis": "official_gl",
+          "result": {
+            "opening": 0,
+            "closing": 0,
+            "rows": 0,
+            "debit": 0,
+            "credit": 0,
+            "loader": "get_unified_account_ledger",
+            "basis": "official_gl",
+            "clientFallbackPolicy": "labelled_legacy_on_unified_error",
+            "account": {
+              "id": "0c6e4169-ed17-45bb-b3ec-1b0664057267",
+              "code": "1000",
+              "name": "Cash"
+            }
+          },
+          "notes": "Unified account statement; labelled legacy notice on unified error (a7471520) · clientFallbackPolicy=labelled_legacy_on_unified_error · account=1000 Cash",
+          "numericDifference": 0,
+          "status": "PASS",
+          "explanation": "Same production unified RPC used by web main loaders and mobile Single Core adapter when flags ON"
+        },
+        {
+          "company": "DIN CHINA",
+          "branch": null,
+          "screen": "Roznamcha",
+          "filters": {
+            "dateFrom": "2026-07-01",
+            "dateTo": "2026-07-17",
+            "basis": "official_gl",
+            "productHead": "a7471520"
+          },
+          "mobileLoader": "get_unified_cash_bank_ledger",
+          "webLoader": "get_unified_cash_bank_ledger",
+          "mobileBasis": "official_gl",
+          "webBasis": "official_gl",
+          "result": {
+            "opening": 10138342,
+            "closing": 9944818,
+            "rows": 11,
+            "debit": 1111000,
+            "credit": 1304524,
+            "loader": "get_unified_cash_bank_ledger",
+            "basis": "official_gl",
+            "clientFallbackPolicy": "no_silent_legacy"
+          },
+          "notes": "Day Book cash mode → get_unified_cash_bank_ledger",
+          "numericDifference": 0,
+          "status": "PASS",
+          "explanation": "Same production unified RPC used by web main loaders and mobile Single Core adapter when flags ON"
+        },
+        {
+          "company": "DIN CHINA",
+          "branch": null,
+          "screen": "Cash Flow",
+          "filters": {
+            "dateFrom": "2026-07-01",
+            "dateTo": "2026-07-17",
+            "basis": "official_gl",
+            "productHead": "a7471520"
+          },
+          "mobileLoader": "get_unified_cash_bank_ledger",
+          "webLoader": "get_unified_cash_bank_ledger",
+          "mobileBasis": "official_gl",
+          "webBasis": "official_gl",
+          "result": {
+            "opening": 10138342,
+            "closing": 9944818,
+            "rows": 11,
+            "debit": 1111000,
+            "credit": 1304524,
+            "loader": "get_unified_cash_bank_ledger",
+            "basis": "official_gl",
+            "clientFallbackPolicy": "no_silent_legacy"
+          },
+          "notes": "Same cash/bank RPC; UI must not silently fall back (a7471520)",
+          "numericDifference": 0,
+          "status": "PASS",
+          "explanation": "Same production unified RPC used by web main loaders and mobile Single Core adapter when flags ON"
+        },
+        {
+          "company": "DIN CHINA",
+          "branch": null,
+          "screen": "Trial Balance",
+          "filters": {
+            "dateFrom": "2026-07-01",
+            "dateTo": "2026-07-17",
+            "basis": "official_gl",
+            "productHead": "a7471520"
+          },
+          "mobileLoader": "get_unified_trial_balance",
+          "webLoader": "get_unified_trial_balance",
+          "mobileBasis": "official_gl",
+          "webBasis": "official_gl",
+          "result": {
+            "totalDebit": 394526434.15,
+            "totalCredit": 394526434.15,
+            "difference": 0,
+            "accounts": 57,
+            "loader": "get_unified_trial_balance",
+            "basis": "official_gl"
+          },
+          "notes": "Control totals for statement family",
+          "numericDifference": 0,
+          "status": "PASS",
+          "explanation": "Same production unified RPC used by web main loaders and mobile Single Core adapter when flags ON"
+        },
+        {
+          "company": "DIN CHINA",
+          "branch": null,
+          "screen": "Operational Aging",
+          "filters": {
+            "dateFrom": "2026-07-01",
+            "dateTo": "2026-07-17",
+            "basis": "official_gl",
+            "productHead": "a7471520"
+          },
+          "mobileLoader": "operational_due_amount",
+          "webLoader": "operational_due_amount",
+          "mobileBasis": "operational_due_amount",
+          "webBasis": "operational_due_amount",
+          "result": {
+            "loader": "operational_due_amount",
+            "basis": "operational_due_amount",
+            "receivablesCount": 56,
+            "receivablesTotal": 16068815.98,
+            "payablesCount": 2,
+            "payablesTotal": 1140477.4,
+            "clientErrorPolicy": "fail_loud_on_query_error"
+          },
+          "notes": "Receivables+payables due_amount; not official GL closing",
+          "status": "EXPECTED_BASIS_DIFFERENCE",
+          "explanation": "Aging uses operational due_amount (not official GL). Client fail-loud on query/RLS error (a7471520).",
+          "numericDifference": null
+        },
+        {
+          "company": "DIN CHINA",
+          "branch": null,
+          "screen": "Contact list vs customer statement closing",
+          "filters": {
+            "dateFrom": "2026-07-01",
+            "dateTo": "2026-07-17",
+            "basis": "official_gl",
+            "productHead": "a7471520"
+          },
+          "mobileLoader": "get_contact_party_gl_balances",
+          "webLoader": "get_contact_party_gl_balances",
+          "mobileBasis": "official_gl",
+          "webBasis": "official_gl",
+          "result": {
+            "loader": "get_contact_party_gl_balances",
+            "basis": "official_gl"
+          },
+          "notes": "HASSAN   MARDAN",
+          "numericDifference": 0,
+          "status": "EXPECTED_BASIS_DIFFERENCE",
+          "explanation": "Contact list is as-of GL; Party Ledger closing is period-scoped (company-wide null branch)"
+        }
+      ],
+      "summary": {
+        "pass": 6,
+        "expectedDiff": 3,
+        "fail": 0
+      }
+    },
+    "din-bridal": {
+      "company": "DIN BRIDAL",
+      "companyId": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "dateFrom": "2026-07-01",
+      "dateTo": "2026-07-17",
+      "basis": "official_gl",
+      "productHead": "a7471520",
+      "rows": [
+        {
+          "company": "DIN BRIDAL",
+          "branch": null,
+          "screen": "Customer Party Ledger",
+          "filters": {
+            "dateFrom": "2026-07-01",
+            "dateTo": "2026-07-17",
+            "basis": "official_gl",
+            "productHead": "a7471520"
+          },
+          "mobileLoader": "get_unified_party_ledger",
+          "webLoader": "get_unified_party_ledger",
+          "mobileBasis": "official_gl",
+          "webBasis": "official_gl",
+          "result": {
+            "opening": 530000,
+            "closing": 530000,
+            "rows": 0,
+            "debit": 0,
+            "credit": 0,
+            "loader": "get_unified_party_ledger",
+            "basis": "official_gl",
+            "party": {
+              "id": "cee98d04-0a04-4692-857c-18df75bcb466",
+              "name": "MR REHAN ALI",
+              "listBalance": 530000
+            }
+          },
+          "notes": "MR REHAN ALI",
+          "numericDifference": 0,
+          "status": "PASS",
+          "explanation": "Same production unified RPC used by web main loaders and mobile Single Core adapter when flags ON"
+        },
+        {
+          "company": "DIN BRIDAL",
+          "branch": null,
+          "screen": "Supplier Party Ledger",
+          "filters": {
+            "dateFrom": "2026-07-01",
+            "dateTo": "2026-07-17",
+            "basis": "official_gl",
+            "productHead": "a7471520"
+          },
+          "mobileLoader": "get_unified_party_ledger",
+          "webLoader": "get_unified_party_ledger",
+          "mobileBasis": "official_gl",
+          "webBasis": "official_gl",
+          "result": {
+            "opening": -310000,
+            "closing": -310000,
+            "rows": 0,
+            "debit": 0,
+            "credit": 0,
+            "loader": "get_unified_party_ledger",
+            "basis": "official_gl",
+            "party": {
+              "id": "420172a2-342d-44fa-bf99-c5ef104ffdec",
+              "name": "ASIF PINDI",
+              "listBalance": -310000
+            }
+          },
+          "notes": "ASIF PINDI",
+          "numericDifference": 0,
+          "status": "PASS",
+          "explanation": "Same production unified RPC used by web main loaders and mobile Single Core adapter when flags ON"
+        },
+        {
+          "company": "DIN BRIDAL",
+          "branch": null,
+          "screen": "Worker Ledger",
+          "filters": {
+            "dateFrom": "2026-07-01",
+            "dateTo": "2026-07-17",
+            "basis": "official_gl",
+            "productHead": "a7471520"
+          },
+          "mobileLoader": "get_unified_party_ledger",
+          "webLoader": "get_unified_party_ledger",
+          "mobileBasis": "official_gl",
+          "webBasis": "official_gl",
+          "result": {
+            "loader": "get_unified_party_ledger",
+            "basis": "official_gl",
+            "rows": 0,
+            "opening": 0,
+            "closing": 0,
+            "debit": 0,
+            "credit": 0,
+            "emptyCompany": true,
+            "party": {
+              "error": "no_worker",
+              "emptyCompany": true
+            }
+          },
+          "notes": " · unified worker GL (2010/1180); operational fallback labelled non-official in UI",
+          "status": "EXPECTED_BASIS_DIFFERENCE",
+          "explanation": "Company has no workers — Worker Ledger N/A (not a loader defect)"
+        },
+        {
+          "company": "DIN BRIDAL",
+          "branch": null,
+          "screen": "Account Ledger",
+          "filters": {
+            "dateFrom": "2026-07-01",
+            "dateTo": "2026-07-17",
+            "basis": "official_gl",
+            "productHead": "a7471520"
+          },
+          "mobileLoader": "get_unified_account_ledger",
+          "webLoader": "get_unified_account_ledger",
+          "mobileBasis": "official_gl",
+          "webBasis": "official_gl",
+          "result": {
+            "opening": -2000,
+            "closing": -2000,
+            "rows": 0,
+            "debit": 0,
+            "credit": 0,
+            "loader": "get_unified_account_ledger",
+            "basis": "official_gl",
+            "clientFallbackPolicy": "labelled_legacy_on_unified_error",
+            "account": {
+              "id": "75695b61-c0eb-4c9b-84bb-d0e77551d37e",
+              "code": "1000",
+              "name": "Cash"
+            }
+          },
+          "notes": "Unified account statement; labelled legacy notice on unified error (a7471520) · clientFallbackPolicy=labelled_legacy_on_unified_error · account=1000 Cash",
+          "numericDifference": 0,
+          "status": "PASS",
+          "explanation": "Same production unified RPC used by web main loaders and mobile Single Core adapter when flags ON"
+        },
+        {
+          "company": "DIN BRIDAL",
+          "branch": null,
+          "screen": "Roznamcha",
+          "filters": {
+            "dateFrom": "2026-07-01",
+            "dateTo": "2026-07-17",
+            "basis": "official_gl",
+            "productHead": "a7471520"
+          },
+          "mobileLoader": "get_unified_cash_bank_ledger",
+          "webLoader": "get_unified_cash_bank_ledger",
+          "mobileBasis": "official_gl",
+          "webBasis": "official_gl",
+          "result": {
+            "opening": 1522823,
+            "closing": 556243,
+            "rows": 15,
+            "debit": 108500,
+            "credit": 1075080,
+            "loader": "get_unified_cash_bank_ledger",
+            "basis": "official_gl",
+            "clientFallbackPolicy": "no_silent_legacy"
+          },
+          "notes": "Day Book cash mode → get_unified_cash_bank_ledger",
+          "numericDifference": 0,
+          "status": "PASS",
+          "explanation": "Same production unified RPC used by web main loaders and mobile Single Core adapter when flags ON"
+        },
+        {
+          "company": "DIN BRIDAL",
+          "branch": null,
+          "screen": "Cash Flow",
+          "filters": {
+            "dateFrom": "2026-07-01",
+            "dateTo": "2026-07-17",
+            "basis": "official_gl",
+            "productHead": "a7471520"
+          },
+          "mobileLoader": "get_unified_cash_bank_ledger",
+          "webLoader": "get_unified_cash_bank_ledger",
+          "mobileBasis": "official_gl",
+          "webBasis": "official_gl",
+          "result": {
+            "opening": 1522823,
+            "closing": 556243,
+            "rows": 15,
+            "debit": 108500,
+            "credit": 1075080,
+            "loader": "get_unified_cash_bank_ledger",
+            "basis": "official_gl",
+            "clientFallbackPolicy": "no_silent_legacy"
+          },
+          "notes": "Same cash/bank RPC; UI must not silently fall back (a7471520)",
+          "numericDifference": 0,
+          "status": "PASS",
+          "explanation": "Same production unified RPC used by web main loaders and mobile Single Core adapter when flags ON"
+        },
+        {
+          "company": "DIN BRIDAL",
+          "branch": null,
+          "screen": "Trial Balance",
+          "filters": {
+            "dateFrom": "2026-07-01",
+            "dateTo": "2026-07-17",
+            "basis": "official_gl",
+            "productHead": "a7471520"
+          },
+          "mobileLoader": "get_unified_trial_balance",
+          "webLoader": "get_unified_trial_balance",
+          "mobileBasis": "official_gl",
+          "webBasis": "official_gl",
+          "result": {
+            "totalDebit": 26952083,
+            "totalCredit": 26952083,
+            "difference": 0,
+            "accounts": 125,
+            "loader": "get_unified_trial_balance",
+            "basis": "official_gl"
+          },
+          "notes": "Control totals for statement family",
+          "numericDifference": 0,
+          "status": "PASS",
+          "explanation": "Same production unified RPC used by web main loaders and mobile Single Core adapter when flags ON"
+        },
+        {
+          "company": "DIN BRIDAL",
+          "branch": null,
+          "screen": "Operational Aging",
+          "filters": {
+            "dateFrom": "2026-07-01",
+            "dateTo": "2026-07-17",
+            "basis": "official_gl",
+            "productHead": "a7471520"
+          },
+          "mobileLoader": "operational_due_amount",
+          "webLoader": "operational_due_amount",
+          "mobileBasis": "operational_due_amount",
+          "webBasis": "operational_due_amount",
+          "result": {
+            "loader": "operational_due_amount",
+            "basis": "operational_due_amount",
+            "receivablesCount": 14,
+            "receivablesTotal": 968200,
+            "payablesCount": 0,
+            "payablesTotal": 0,
+            "clientErrorPolicy": "fail_loud_on_query_error"
+          },
+          "notes": "Receivables+payables due_amount; not official GL closing",
+          "status": "EXPECTED_BASIS_DIFFERENCE",
+          "explanation": "Aging uses operational due_amount (not official GL). Client fail-loud on query/RLS error (a7471520).",
+          "numericDifference": null
+        },
+        {
+          "company": "DIN BRIDAL",
+          "branch": null,
+          "screen": "Contact list vs customer statement closing",
+          "filters": {
+            "dateFrom": "2026-07-01",
+            "dateTo": "2026-07-17",
+            "basis": "official_gl",
+            "productHead": "a7471520"
+          },
+          "mobileLoader": "get_contact_party_gl_balances",
+          "webLoader": "get_contact_party_gl_balances",
+          "mobileBasis": "official_gl",
+          "webBasis": "official_gl",
+          "result": {
+            "loader": "get_contact_party_gl_balances",
+            "basis": "official_gl"
+          },
+          "notes": "MR REHAN ALI",
+          "numericDifference": 0,
+          "status": "EXPECTED_BASIS_DIFFERENCE",
+          "explanation": "Contact list is as-of GL; Party Ledger closing is period-scoped (company-wide null branch)"
+        }
+      ],
+      "summary": {
+        "pass": 6,
+        "expectedDiff": 3,
+        "fail": 0
+      }
+    },
+    "din-couture": {
+      "company": "DIN COUTURE",
+      "companyId": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "dateFrom": "2026-07-01",
+      "dateTo": "2026-07-17",
+      "basis": "official_gl",
+      "productHead": "a7471520",
+      "rows": [
+        {
+          "company": "DIN COUTURE",
+          "branch": null,
+          "screen": "Customer Party Ledger",
+          "filters": {
+            "dateFrom": "2026-07-01",
+            "dateTo": "2026-07-17",
+            "basis": "official_gl",
+            "productHead": "a7471520"
+          },
+          "mobileLoader": "get_unified_party_ledger",
+          "webLoader": "get_unified_party_ledger",
+          "mobileBasis": "official_gl",
+          "webBasis": "official_gl",
+          "result": {
+            "opening": 4488088,
+            "closing": 4488088,
+            "rows": 0,
+            "debit": 0,
+            "credit": 0,
+            "loader": "get_unified_party_ledger",
+            "basis": "official_gl",
+            "party": {
+              "id": "04831980-546b-4ff2-bc9d-2e75a43eb51c",
+              "name": "DHARIA",
+              "listBalance": 4488088
+            }
+          },
+          "notes": "DHARIA",
+          "numericDifference": 0,
+          "status": "PASS",
+          "explanation": "Same production unified RPC used by web main loaders and mobile Single Core adapter when flags ON"
+        },
+        {
+          "company": "DIN COUTURE",
+          "branch": null,
+          "screen": "Supplier Party Ledger",
+          "filters": {
+            "dateFrom": "2026-07-01",
+            "dateTo": "2026-07-17",
+            "basis": "official_gl",
+            "productHead": "a7471520"
+          },
+          "mobileLoader": "get_unified_party_ledger",
+          "webLoader": "get_unified_party_ledger",
+          "mobileBasis": "official_gl",
+          "webBasis": "official_gl",
+          "result": {
+            "opening": 5413392,
+            "closing": 5413392,
+            "rows": 0,
+            "debit": 0,
+            "credit": 0,
+            "loader": "get_unified_party_ledger",
+            "basis": "official_gl",
+            "party": {
+              "id": "6a64814f-d472-4e2d-9db7-285eb8f14a32",
+              "name": "IBRAHIM",
+              "listBalance": 5413392
+            }
+          },
+          "notes": "IBRAHIM",
+          "numericDifference": 0,
+          "status": "PASS",
+          "explanation": "Same production unified RPC used by web main loaders and mobile Single Core adapter when flags ON"
+        },
+        {
+          "company": "DIN COUTURE",
+          "branch": null,
+          "screen": "Worker Ledger",
+          "filters": {
+            "dateFrom": "2026-07-01",
+            "dateTo": "2026-07-17",
+            "basis": "official_gl",
+            "productHead": "a7471520"
+          },
+          "mobileLoader": "get_unified_party_ledger",
+          "webLoader": "get_unified_party_ledger",
+          "mobileBasis": "official_gl",
+          "webBasis": "official_gl",
+          "result": {
+            "opening": 0,
+            "closing": 0,
+            "rows": 0,
+            "debit": 0,
+            "credit": 0,
+            "loader": "get_unified_party_ledger",
+            "basis": "official_gl",
+            "party": {
+              "id": "650f310d-058f-4d2f-8ece-13ac715b2574",
+              "name": "AMJID KG"
+            }
+          },
+          "notes": "AMJID KG · unified worker GL (2010/1180); operational fallback labelled non-official in UI",
+          "numericDifference": 0,
+          "status": "PASS",
+          "explanation": "Same production unified RPC used by web main loaders and mobile Single Core adapter when flags ON"
+        },
+        {
+          "company": "DIN COUTURE",
+          "branch": null,
+          "screen": "Account Ledger",
+          "filters": {
+            "dateFrom": "2026-07-01",
+            "dateTo": "2026-07-17",
+            "basis": "official_gl",
+            "productHead": "a7471520"
+          },
+          "mobileLoader": "get_unified_account_ledger",
+          "webLoader": "get_unified_account_ledger",
+          "mobileBasis": "official_gl",
+          "webBasis": "official_gl",
+          "result": {
+            "opening": -10000,
+            "closing": -10000,
+            "rows": 0,
+            "debit": 0,
+            "credit": 0,
+            "loader": "get_unified_account_ledger",
+            "basis": "official_gl",
+            "clientFallbackPolicy": "labelled_legacy_on_unified_error",
+            "account": {
+              "id": "9c6e4ab8-f3cd-4780-ab3b-b7145d468ca2",
+              "code": "1000",
+              "name": "Cash"
+            }
+          },
+          "notes": "Unified account statement; labelled legacy notice on unified error (a7471520) · clientFallbackPolicy=labelled_legacy_on_unified_error · account=1000 Cash",
+          "numericDifference": 0,
+          "status": "PASS",
+          "explanation": "Same production unified RPC used by web main loaders and mobile Single Core adapter when flags ON"
+        },
+        {
+          "company": "DIN COUTURE",
+          "branch": null,
+          "screen": "Roznamcha",
+          "filters": {
+            "dateFrom": "2026-07-01",
+            "dateTo": "2026-07-17",
+            "basis": "official_gl",
+            "productHead": "a7471520"
+          },
+          "mobileLoader": "get_unified_cash_bank_ledger",
+          "webLoader": "get_unified_cash_bank_ledger",
+          "mobileBasis": "official_gl",
+          "webBasis": "official_gl",
+          "result": {
+            "opening": 50500,
+            "closing": 50500,
+            "rows": 0,
+            "debit": 0,
+            "credit": 0,
+            "loader": "get_unified_cash_bank_ledger",
+            "basis": "official_gl",
+            "clientFallbackPolicy": "no_silent_legacy"
+          },
+          "notes": "Day Book cash mode → get_unified_cash_bank_ledger",
+          "numericDifference": 0,
+          "status": "PASS",
+          "explanation": "Same production unified RPC used by web main loaders and mobile Single Core adapter when flags ON"
+        },
+        {
+          "company": "DIN COUTURE",
+          "branch": null,
+          "screen": "Cash Flow",
+          "filters": {
+            "dateFrom": "2026-07-01",
+            "dateTo": "2026-07-17",
+            "basis": "official_gl",
+            "productHead": "a7471520"
+          },
+          "mobileLoader": "get_unified_cash_bank_ledger",
+          "webLoader": "get_unified_cash_bank_ledger",
+          "mobileBasis": "official_gl",
+          "webBasis": "official_gl",
+          "result": {
+            "opening": 50500,
+            "closing": 50500,
+            "rows": 0,
+            "debit": 0,
+            "credit": 0,
+            "loader": "get_unified_cash_bank_ledger",
+            "basis": "official_gl",
+            "clientFallbackPolicy": "no_silent_legacy"
+          },
+          "notes": "Same cash/bank RPC; UI must not silently fall back (a7471520)",
+          "numericDifference": 0,
+          "status": "PASS",
+          "explanation": "Same production unified RPC used by web main loaders and mobile Single Core adapter when flags ON"
+        },
+        {
+          "company": "DIN COUTURE",
+          "branch": null,
+          "screen": "Trial Balance",
+          "filters": {
+            "dateFrom": "2026-07-01",
+            "dateTo": "2026-07-17",
+            "basis": "official_gl",
+            "productHead": "a7471520"
+          },
+          "mobileLoader": "get_unified_trial_balance",
+          "webLoader": "get_unified_trial_balance",
+          "mobileBasis": "official_gl",
+          "webBasis": "official_gl",
+          "result": {
+            "totalDebit": 49747104,
+            "totalCredit": 49747104,
+            "difference": 0,
+            "accounts": 83,
+            "loader": "get_unified_trial_balance",
+            "basis": "official_gl"
+          },
+          "notes": "Control totals for statement family",
+          "numericDifference": 0,
+          "status": "PASS",
+          "explanation": "Same production unified RPC used by web main loaders and mobile Single Core adapter when flags ON"
+        },
+        {
+          "company": "DIN COUTURE",
+          "branch": null,
+          "screen": "Operational Aging",
+          "filters": {
+            "dateFrom": "2026-07-01",
+            "dateTo": "2026-07-17",
+            "basis": "official_gl",
+            "productHead": "a7471520"
+          },
+          "mobileLoader": "operational_due_amount",
+          "webLoader": "operational_due_amount",
+          "mobileBasis": "operational_due_amount",
+          "webBasis": "operational_due_amount",
+          "result": {
+            "loader": "operational_due_amount",
+            "basis": "operational_due_amount",
+            "receivablesCount": 2,
+            "receivablesTotal": 42500,
+            "payablesCount": 0,
+            "payablesTotal": 0,
+            "clientErrorPolicy": "fail_loud_on_query_error"
+          },
+          "notes": "Receivables+payables due_amount; not official GL closing",
+          "status": "EXPECTED_BASIS_DIFFERENCE",
+          "explanation": "Aging uses operational due_amount (not official GL). Client fail-loud on query/RLS error (a7471520).",
+          "numericDifference": null
+        },
+        {
+          "company": "DIN COUTURE",
+          "branch": null,
+          "screen": "Contact list vs customer statement closing",
+          "filters": {
+            "dateFrom": "2026-07-01",
+            "dateTo": "2026-07-17",
+            "basis": "official_gl",
+            "productHead": "a7471520"
+          },
+          "mobileLoader": "get_contact_party_gl_balances",
+          "webLoader": "get_contact_party_gl_balances",
+          "mobileBasis": "official_gl",
+          "webBasis": "official_gl",
+          "result": {
+            "loader": "get_contact_party_gl_balances",
+            "basis": "official_gl"
+          },
+          "notes": "DHARIA",
+          "numericDifference": 0,
+          "status": "EXPECTED_BASIS_DIFFERENCE",
+          "explanation": "Contact list is as-of GL; Party Ledger closing is period-scoped (company-wide null branch)"
+        }
+      ],
+      "summary": {
+        "pass": 7,
+        "expectedDiff": 2,
+        "fail": 0
+      }
+    }
+  },
+  "matrix": [
+    {
+      "company": "DIN CHINA",
+      "branch": null,
+      "screen": "Customer Party Ledger",
+      "filters": {
+        "dateFrom": "2026-07-01",
+        "dateTo": "2026-07-17",
+        "basis": "official_gl",
+        "productHead": "a7471520"
+      },
+      "mobileLoader": "get_unified_party_ledger",
+      "webLoader": "get_unified_party_ledger",
+      "mobileBasis": "official_gl",
+      "webBasis": "official_gl",
+      "result": {
+        "opening": 3909458,
+        "closing": 3709458,
+        "rows": 1,
+        "debit": 0,
+        "credit": 200000,
+        "loader": "get_unified_party_ledger",
+        "basis": "official_gl",
+        "party": {
+          "id": "ed1abdc6-a701-488b-8a92-8efd1f9750a3",
+          "name": "HASSAN   MARDAN",
+          "listBalance": 3709458
+        }
+      },
+      "notes": "HASSAN   MARDAN",
+      "numericDifference": 0,
+      "status": "PASS",
+      "explanation": "Same production unified RPC used by web main loaders and mobile Single Core adapter when flags ON"
+    },
+    {
+      "company": "DIN CHINA",
+      "branch": null,
+      "screen": "Supplier Party Ledger",
+      "filters": {
+        "dateFrom": "2026-07-01",
+        "dateTo": "2026-07-17",
+        "basis": "official_gl",
+        "productHead": "a7471520"
+      },
+      "mobileLoader": "get_unified_party_ledger",
+      "webLoader": "get_unified_party_ledger",
+      "mobileBasis": "official_gl",
+      "webBasis": "official_gl",
+      "result": {
+        "opening": 1140287.4,
+        "closing": 1140286.4,
+        "rows": 1,
+        "debit": 1,
+        "credit": 0,
+        "loader": "get_unified_party_ledger",
+        "basis": "official_gl",
+        "party": {
+          "id": "36fe85d7-95cf-49ad-8922-cabe5f3596cc",
+          "name": "MR DIN MOHAMMAD",
+          "listBalance": 1140286.4
+        }
+      },
+      "notes": "MR DIN MOHAMMAD",
+      "numericDifference": 0,
+      "status": "PASS",
+      "explanation": "Same production unified RPC used by web main loaders and mobile Single Core adapter when flags ON"
+    },
+    {
+      "company": "DIN CHINA",
+      "branch": null,
+      "screen": "Worker Ledger",
+      "filters": {
+        "dateFrom": "2026-07-01",
+        "dateTo": "2026-07-17",
+        "basis": "official_gl",
+        "productHead": "a7471520"
+      },
+      "mobileLoader": "get_unified_party_ledger",
+      "webLoader": "get_unified_party_ledger",
+      "mobileBasis": "official_gl",
+      "webBasis": "official_gl",
+      "result": {
+        "loader": "get_unified_party_ledger",
+        "basis": "official_gl",
+        "rows": 0,
+        "opening": 0,
+        "closing": 0,
+        "debit": 0,
+        "credit": 0,
+        "emptyCompany": true,
+        "party": {
+          "error": "no_worker",
+          "emptyCompany": true
+        }
+      },
+      "notes": " · unified worker GL (2010/1180); operational fallback labelled non-official in UI",
+      "status": "EXPECTED_BASIS_DIFFERENCE",
+      "explanation": "Company has no workers — Worker Ledger N/A (not a loader defect)"
+    },
+    {
+      "company": "DIN CHINA",
+      "branch": null,
+      "screen": "Account Ledger",
+      "filters": {
+        "dateFrom": "2026-07-01",
+        "dateTo": "2026-07-17",
+        "basis": "official_gl",
+        "productHead": "a7471520"
+      },
+      "mobileLoader": "get_unified_account_ledger",
+      "webLoader": "get_unified_account_ledger",
+      "mobileBasis": "official_gl",
+      "webBasis": "official_gl",
+      "result": {
+        "opening": 0,
+        "closing": 0,
+        "rows": 0,
+        "debit": 0,
+        "credit": 0,
+        "loader": "get_unified_account_ledger",
+        "basis": "official_gl",
+        "clientFallbackPolicy": "labelled_legacy_on_unified_error",
+        "account": {
+          "id": "0c6e4169-ed17-45bb-b3ec-1b0664057267",
+          "code": "1000",
+          "name": "Cash"
+        }
+      },
+      "notes": "Unified account statement; labelled legacy notice on unified error (a7471520) · clientFallbackPolicy=labelled_legacy_on_unified_error · account=1000 Cash",
+      "numericDifference": 0,
+      "status": "PASS",
+      "explanation": "Same production unified RPC used by web main loaders and mobile Single Core adapter when flags ON"
+    },
+    {
+      "company": "DIN CHINA",
+      "branch": null,
+      "screen": "Roznamcha",
+      "filters": {
+        "dateFrom": "2026-07-01",
+        "dateTo": "2026-07-17",
+        "basis": "official_gl",
+        "productHead": "a7471520"
+      },
+      "mobileLoader": "get_unified_cash_bank_ledger",
+      "webLoader": "get_unified_cash_bank_ledger",
+      "mobileBasis": "official_gl",
+      "webBasis": "official_gl",
+      "result": {
+        "opening": 10138342,
+        "closing": 9944818,
+        "rows": 11,
+        "debit": 1111000,
+        "credit": 1304524,
+        "loader": "get_unified_cash_bank_ledger",
+        "basis": "official_gl",
+        "clientFallbackPolicy": "no_silent_legacy"
+      },
+      "notes": "Day Book cash mode → get_unified_cash_bank_ledger",
+      "numericDifference": 0,
+      "status": "PASS",
+      "explanation": "Same production unified RPC used by web main loaders and mobile Single Core adapter when flags ON"
+    },
+    {
+      "company": "DIN CHINA",
+      "branch": null,
+      "screen": "Cash Flow",
+      "filters": {
+        "dateFrom": "2026-07-01",
+        "dateTo": "2026-07-17",
+        "basis": "official_gl",
+        "productHead": "a7471520"
+      },
+      "mobileLoader": "get_unified_cash_bank_ledger",
+      "webLoader": "get_unified_cash_bank_ledger",
+      "mobileBasis": "official_gl",
+      "webBasis": "official_gl",
+      "result": {
+        "opening": 10138342,
+        "closing": 9944818,
+        "rows": 11,
+        "debit": 1111000,
+        "credit": 1304524,
+        "loader": "get_unified_cash_bank_ledger",
+        "basis": "official_gl",
+        "clientFallbackPolicy": "no_silent_legacy"
+      },
+      "notes": "Same cash/bank RPC; UI must not silently fall back (a7471520)",
+      "numericDifference": 0,
+      "status": "PASS",
+      "explanation": "Same production unified RPC used by web main loaders and mobile Single Core adapter when flags ON"
+    },
+    {
+      "company": "DIN CHINA",
+      "branch": null,
+      "screen": "Trial Balance",
+      "filters": {
+        "dateFrom": "2026-07-01",
+        "dateTo": "2026-07-17",
+        "basis": "official_gl",
+        "productHead": "a7471520"
+      },
+      "mobileLoader": "get_unified_trial_balance",
+      "webLoader": "get_unified_trial_balance",
+      "mobileBasis": "official_gl",
+      "webBasis": "official_gl",
+      "result": {
+        "totalDebit": 394526434.15,
+        "totalCredit": 394526434.15,
+        "difference": 0,
+        "accounts": 57,
+        "loader": "get_unified_trial_balance",
+        "basis": "official_gl"
+      },
+      "notes": "Control totals for statement family",
+      "numericDifference": 0,
+      "status": "PASS",
+      "explanation": "Same production unified RPC used by web main loaders and mobile Single Core adapter when flags ON"
+    },
+    {
+      "company": "DIN CHINA",
+      "branch": null,
+      "screen": "Operational Aging",
+      "filters": {
+        "dateFrom": "2026-07-01",
+        "dateTo": "2026-07-17",
+        "basis": "official_gl",
+        "productHead": "a7471520"
+      },
+      "mobileLoader": "operational_due_amount",
+      "webLoader": "operational_due_amount",
+      "mobileBasis": "operational_due_amount",
+      "webBasis": "operational_due_amount",
+      "result": {
+        "loader": "operational_due_amount",
+        "basis": "operational_due_amount",
+        "receivablesCount": 56,
+        "receivablesTotal": 16068815.98,
+        "payablesCount": 2,
+        "payablesTotal": 1140477.4,
+        "clientErrorPolicy": "fail_loud_on_query_error"
+      },
+      "notes": "Receivables+payables due_amount; not official GL closing",
+      "status": "EXPECTED_BASIS_DIFFERENCE",
+      "explanation": "Aging uses operational due_amount (not official GL). Client fail-loud on query/RLS error (a7471520).",
+      "numericDifference": null
+    },
+    {
+      "company": "DIN CHINA",
+      "branch": null,
+      "screen": "Contact list vs customer statement closing",
+      "filters": {
+        "dateFrom": "2026-07-01",
+        "dateTo": "2026-07-17",
+        "basis": "official_gl",
+        "productHead": "a7471520"
+      },
+      "mobileLoader": "get_contact_party_gl_balances",
+      "webLoader": "get_contact_party_gl_balances",
+      "mobileBasis": "official_gl",
+      "webBasis": "official_gl",
+      "result": {
+        "loader": "get_contact_party_gl_balances",
+        "basis": "official_gl"
+      },
+      "notes": "HASSAN   MARDAN",
+      "numericDifference": 0,
+      "status": "EXPECTED_BASIS_DIFFERENCE",
+      "explanation": "Contact list is as-of GL; Party Ledger closing is period-scoped (company-wide null branch)"
+    },
+    {
+      "company": "DIN BRIDAL",
+      "branch": null,
+      "screen": "Customer Party Ledger",
+      "filters": {
+        "dateFrom": "2026-07-01",
+        "dateTo": "2026-07-17",
+        "basis": "official_gl",
+        "productHead": "a7471520"
+      },
+      "mobileLoader": "get_unified_party_ledger",
+      "webLoader": "get_unified_party_ledger",
+      "mobileBasis": "official_gl",
+      "webBasis": "official_gl",
+      "result": {
+        "opening": 530000,
+        "closing": 530000,
+        "rows": 0,
+        "debit": 0,
+        "credit": 0,
+        "loader": "get_unified_party_ledger",
+        "basis": "official_gl",
+        "party": {
+          "id": "cee98d04-0a04-4692-857c-18df75bcb466",
+          "name": "MR REHAN ALI",
+          "listBalance": 530000
+        }
+      },
+      "notes": "MR REHAN ALI",
+      "numericDifference": 0,
+      "status": "PASS",
+      "explanation": "Same production unified RPC used by web main loaders and mobile Single Core adapter when flags ON"
+    },
+    {
+      "company": "DIN BRIDAL",
+      "branch": null,
+      "screen": "Supplier Party Ledger",
+      "filters": {
+        "dateFrom": "2026-07-01",
+        "dateTo": "2026-07-17",
+        "basis": "official_gl",
+        "productHead": "a7471520"
+      },
+      "mobileLoader": "get_unified_party_ledger",
+      "webLoader": "get_unified_party_ledger",
+      "mobileBasis": "official_gl",
+      "webBasis": "official_gl",
+      "result": {
+        "opening": -310000,
+        "closing": -310000,
+        "rows": 0,
+        "debit": 0,
+        "credit": 0,
+        "loader": "get_unified_party_ledger",
+        "basis": "official_gl",
+        "party": {
+          "id": "420172a2-342d-44fa-bf99-c5ef104ffdec",
+          "name": "ASIF PINDI",
+          "listBalance": -310000
+        }
+      },
+      "notes": "ASIF PINDI",
+      "numericDifference": 0,
+      "status": "PASS",
+      "explanation": "Same production unified RPC used by web main loaders and mobile Single Core adapter when flags ON"
+    },
+    {
+      "company": "DIN BRIDAL",
+      "branch": null,
+      "screen": "Worker Ledger",
+      "filters": {
+        "dateFrom": "2026-07-01",
+        "dateTo": "2026-07-17",
+        "basis": "official_gl",
+        "productHead": "a7471520"
+      },
+      "mobileLoader": "get_unified_party_ledger",
+      "webLoader": "get_unified_party_ledger",
+      "mobileBasis": "official_gl",
+      "webBasis": "official_gl",
+      "result": {
+        "loader": "get_unified_party_ledger",
+        "basis": "official_gl",
+        "rows": 0,
+        "opening": 0,
+        "closing": 0,
+        "debit": 0,
+        "credit": 0,
+        "emptyCompany": true,
+        "party": {
+          "error": "no_worker",
+          "emptyCompany": true
+        }
+      },
+      "notes": " · unified worker GL (2010/1180); operational fallback labelled non-official in UI",
+      "status": "EXPECTED_BASIS_DIFFERENCE",
+      "explanation": "Company has no workers — Worker Ledger N/A (not a loader defect)"
+    },
+    {
+      "company": "DIN BRIDAL",
+      "branch": null,
+      "screen": "Account Ledger",
+      "filters": {
+        "dateFrom": "2026-07-01",
+        "dateTo": "2026-07-17",
+        "basis": "official_gl",
+        "productHead": "a7471520"
+      },
+      "mobileLoader": "get_unified_account_ledger",
+      "webLoader": "get_unified_account_ledger",
+      "mobileBasis": "official_gl",
+      "webBasis": "official_gl",
+      "result": {
+        "opening": -2000,
+        "closing": -2000,
+        "rows": 0,
+        "debit": 0,
+        "credit": 0,
+        "loader": "get_unified_account_ledger",
+        "basis": "official_gl",
+        "clientFallbackPolicy": "labelled_legacy_on_unified_error",
+        "account": {
+          "id": "75695b61-c0eb-4c9b-84bb-d0e77551d37e",
+          "code": "1000",
+          "name": "Cash"
+        }
+      },
+      "notes": "Unified account statement; labelled legacy notice on unified error (a7471520) · clientFallbackPolicy=labelled_legacy_on_unified_error · account=1000 Cash",
+      "numericDifference": 0,
+      "status": "PASS",
+      "explanation": "Same production unified RPC used by web main loaders and mobile Single Core adapter when flags ON"
+    },
+    {
+      "company": "DIN BRIDAL",
+      "branch": null,
+      "screen": "Roznamcha",
+      "filters": {
+        "dateFrom": "2026-07-01",
+        "dateTo": "2026-07-17",
+        "basis": "official_gl",
+        "productHead": "a7471520"
+      },
+      "mobileLoader": "get_unified_cash_bank_ledger",
+      "webLoader": "get_unified_cash_bank_ledger",
+      "mobileBasis": "official_gl",
+      "webBasis": "official_gl",
+      "result": {
+        "opening": 1522823,
+        "closing": 556243,
+        "rows": 15,
+        "debit": 108500,
+        "credit": 1075080,
+        "loader": "get_unified_cash_bank_ledger",
+        "basis": "official_gl",
+        "clientFallbackPolicy": "no_silent_legacy"
+      },
+      "notes": "Day Book cash mode → get_unified_cash_bank_ledger",
+      "numericDifference": 0,
+      "status": "PASS",
+      "explanation": "Same production unified RPC used by web main loaders and mobile Single Core adapter when flags ON"
+    },
+    {
+      "company": "DIN BRIDAL",
+      "branch": null,
+      "screen": "Cash Flow",
+      "filters": {
+        "dateFrom": "2026-07-01",
+        "dateTo": "2026-07-17",
+        "basis": "official_gl",
+        "productHead": "a7471520"
+      },
+      "mobileLoader": "get_unified_cash_bank_ledger",
+      "webLoader": "get_unified_cash_bank_ledger",
+      "mobileBasis": "official_gl",
+      "webBasis": "official_gl",
+      "result": {
+        "opening": 1522823,
+        "closing": 556243,
+        "rows": 15,
+        "debit": 108500,
+        "credit": 1075080,
+        "loader": "get_unified_cash_bank_ledger",
+        "basis": "official_gl",
+        "clientFallbackPolicy": "no_silent_legacy"
+      },
+      "notes": "Same cash/bank RPC; UI must not silently fall back (a7471520)",
+      "numericDifference": 0,
+      "status": "PASS",
+      "explanation": "Same production unified RPC used by web main loaders and mobile Single Core adapter when flags ON"
+    },
+    {
+      "company": "DIN BRIDAL",
+      "branch": null,
+      "screen": "Trial Balance",
+      "filters": {
+        "dateFrom": "2026-07-01",
+        "dateTo": "2026-07-17",
+        "basis": "official_gl",
+        "productHead": "a7471520"
+      },
+      "mobileLoader": "get_unified_trial_balance",
+      "webLoader": "get_unified_trial_balance",
+      "mobileBasis": "official_gl",
+      "webBasis": "official_gl",
+      "result": {
+        "totalDebit": 26952083,
+        "totalCredit": 26952083,
+        "difference": 0,
+        "accounts": 125,
+        "loader": "get_unified_trial_balance",
+        "basis": "official_gl"
+      },
+      "notes": "Control totals for statement family",
+      "numericDifference": 0,
+      "status": "PASS",
+      "explanation": "Same production unified RPC used by web main loaders and mobile Single Core adapter when flags ON"
+    },
+    {
+      "company": "DIN BRIDAL",
+      "branch": null,
+      "screen": "Operational Aging",
+      "filters": {
+        "dateFrom": "2026-07-01",
+        "dateTo": "2026-07-17",
+        "basis": "official_gl",
+        "productHead": "a7471520"
+      },
+      "mobileLoader": "operational_due_amount",
+      "webLoader": "operational_due_amount",
+      "mobileBasis": "operational_due_amount",
+      "webBasis": "operational_due_amount",
+      "result": {
+        "loader": "operational_due_amount",
+        "basis": "operational_due_amount",
+        "receivablesCount": 14,
+        "receivablesTotal": 968200,
+        "payablesCount": 0,
+        "payablesTotal": 0,
+        "clientErrorPolicy": "fail_loud_on_query_error"
+      },
+      "notes": "Receivables+payables due_amount; not official GL closing",
+      "status": "EXPECTED_BASIS_DIFFERENCE",
+      "explanation": "Aging uses operational due_amount (not official GL). Client fail-loud on query/RLS error (a7471520).",
+      "numericDifference": null
+    },
+    {
+      "company": "DIN BRIDAL",
+      "branch": null,
+      "screen": "Contact list vs customer statement closing",
+      "filters": {
+        "dateFrom": "2026-07-01",
+        "dateTo": "2026-07-17",
+        "basis": "official_gl",
+        "productHead": "a7471520"
+      },
+      "mobileLoader": "get_contact_party_gl_balances",
+      "webLoader": "get_contact_party_gl_balances",
+      "mobileBasis": "official_gl",
+      "webBasis": "official_gl",
+      "result": {
+        "loader": "get_contact_party_gl_balances",
+        "basis": "official_gl"
+      },
+      "notes": "MR REHAN ALI",
+      "numericDifference": 0,
+      "status": "EXPECTED_BASIS_DIFFERENCE",
+      "explanation": "Contact list is as-of GL; Party Ledger closing is period-scoped (company-wide null branch)"
+    },
+    {
+      "company": "DIN COUTURE",
+      "branch": null,
+      "screen": "Customer Party Ledger",
+      "filters": {
+        "dateFrom": "2026-07-01",
+        "dateTo": "2026-07-17",
+        "basis": "official_gl",
+        "productHead": "a7471520"
+      },
+      "mobileLoader": "get_unified_party_ledger",
+      "webLoader": "get_unified_party_ledger",
+      "mobileBasis": "official_gl",
+      "webBasis": "official_gl",
+      "result": {
+        "opening": 4488088,
+        "closing": 4488088,
+        "rows": 0,
+        "debit": 0,
+        "credit": 0,
+        "loader": "get_unified_party_ledger",
+        "basis": "official_gl",
+        "party": {
+          "id": "04831980-546b-4ff2-bc9d-2e75a43eb51c",
+          "name": "DHARIA",
+          "listBalance": 4488088
+        }
+      },
+      "notes": "DHARIA",
+      "numericDifference": 0,
+      "status": "PASS",
+      "explanation": "Same production unified RPC used by web main loaders and mobile Single Core adapter when flags ON"
+    },
+    {
+      "company": "DIN COUTURE",
+      "branch": null,
+      "screen": "Supplier Party Ledger",
+      "filters": {
+        "dateFrom": "2026-07-01",
+        "dateTo": "2026-07-17",
+        "basis": "official_gl",
+        "productHead": "a7471520"
+      },
+      "mobileLoader": "get_unified_party_ledger",
+      "webLoader": "get_unified_party_ledger",
+      "mobileBasis": "official_gl",
+      "webBasis": "official_gl",
+      "result": {
+        "opening": 5413392,
+        "closing": 5413392,
+        "rows": 0,
+        "debit": 0,
+        "credit": 0,
+        "loader": "get_unified_party_ledger",
+        "basis": "official_gl",
+        "party": {
+          "id": "6a64814f-d472-4e2d-9db7-285eb8f14a32",
+          "name": "IBRAHIM",
+          "listBalance": 5413392
+        }
+      },
+      "notes": "IBRAHIM",
+      "numericDifference": 0,
+      "status": "PASS",
+      "explanation": "Same production unified RPC used by web main loaders and mobile Single Core adapter when flags ON"
+    },
+    {
+      "company": "DIN COUTURE",
+      "branch": null,
+      "screen": "Worker Ledger",
+      "filters": {
+        "dateFrom": "2026-07-01",
+        "dateTo": "2026-07-17",
+        "basis": "official_gl",
+        "productHead": "a7471520"
+      },
+      "mobileLoader": "get_unified_party_ledger",
+      "webLoader": "get_unified_party_ledger",
+      "mobileBasis": "official_gl",
+      "webBasis": "official_gl",
+      "result": {
+        "opening": 0,
+        "closing": 0,
+        "rows": 0,
+        "debit": 0,
+        "credit": 0,
+        "loader": "get_unified_party_ledger",
+        "basis": "official_gl",
+        "party": {
+          "id": "650f310d-058f-4d2f-8ece-13ac715b2574",
+          "name": "AMJID KG"
+        }
+      },
+      "notes": "AMJID KG · unified worker GL (2010/1180); operational fallback labelled non-official in UI",
+      "numericDifference": 0,
+      "status": "PASS",
+      "explanation": "Same production unified RPC used by web main loaders and mobile Single Core adapter when flags ON"
+    },
+    {
+      "company": "DIN COUTURE",
+      "branch": null,
+      "screen": "Account Ledger",
+      "filters": {
+        "dateFrom": "2026-07-01",
+        "dateTo": "2026-07-17",
+        "basis": "official_gl",
+        "productHead": "a7471520"
+      },
+      "mobileLoader": "get_unified_account_ledger",
+      "webLoader": "get_unified_account_ledger",
+      "mobileBasis": "official_gl",
+      "webBasis": "official_gl",
+      "result": {
+        "opening": -10000,
+        "closing": -10000,
+        "rows": 0,
+        "debit": 0,
+        "credit": 0,
+        "loader": "get_unified_account_ledger",
+        "basis": "official_gl",
+        "clientFallbackPolicy": "labelled_legacy_on_unified_error",
+        "account": {
+          "id": "9c6e4ab8-f3cd-4780-ab3b-b7145d468ca2",
+          "code": "1000",
+          "name": "Cash"
+        }
+      },
+      "notes": "Unified account statement; labelled legacy notice on unified error (a7471520) · clientFallbackPolicy=labelled_legacy_on_unified_error · account=1000 Cash",
+      "numericDifference": 0,
+      "status": "PASS",
+      "explanation": "Same production unified RPC used by web main loaders and mobile Single Core adapter when flags ON"
+    },
+    {
+      "company": "DIN COUTURE",
+      "branch": null,
+      "screen": "Roznamcha",
+      "filters": {
+        "dateFrom": "2026-07-01",
+        "dateTo": "2026-07-17",
+        "basis": "official_gl",
+        "productHead": "a7471520"
+      },
+      "mobileLoader": "get_unified_cash_bank_ledger",
+      "webLoader": "get_unified_cash_bank_ledger",
+      "mobileBasis": "official_gl",
+      "webBasis": "official_gl",
+      "result": {
+        "opening": 50500,
+        "closing": 50500,
+        "rows": 0,
+        "debit": 0,
+        "credit": 0,
+        "loader": "get_unified_cash_bank_ledger",
+        "basis": "official_gl",
+        "clientFallbackPolicy": "no_silent_legacy"
+      },
+      "notes": "Day Book cash mode → get_unified_cash_bank_ledger",
+      "numericDifference": 0,
+      "status": "PASS",
+      "explanation": "Same production unified RPC used by web main loaders and mobile Single Core adapter when flags ON"
+    },
+    {
+      "company": "DIN COUTURE",
+      "branch": null,
+      "screen": "Cash Flow",
+      "filters": {
+        "dateFrom": "2026-07-01",
+        "dateTo": "2026-07-17",
+        "basis": "official_gl",
+        "productHead": "a7471520"
+      },
+      "mobileLoader": "get_unified_cash_bank_ledger",
+      "webLoader": "get_unified_cash_bank_ledger",
+      "mobileBasis": "official_gl",
+      "webBasis": "official_gl",
+      "result": {
+        "opening": 50500,
+        "closing": 50500,
+        "rows": 0,
+        "debit": 0,
+        "credit": 0,
+        "loader": "get_unified_cash_bank_ledger",
+        "basis": "official_gl",
+        "clientFallbackPolicy": "no_silent_legacy"
+      },
+      "notes": "Same cash/bank RPC; UI must not silently fall back (a7471520)",
+      "numericDifference": 0,
+      "status": "PASS",
+      "explanation": "Same production unified RPC used by web main loaders and mobile Single Core adapter when flags ON"
+    },
+    {
+      "company": "DIN COUTURE",
+      "branch": null,
+      "screen": "Trial Balance",
+      "filters": {
+        "dateFrom": "2026-07-01",
+        "dateTo": "2026-07-17",
+        "basis": "official_gl",
+        "productHead": "a7471520"
+      },
+      "mobileLoader": "get_unified_trial_balance",
+      "webLoader": "get_unified_trial_balance",
+      "mobileBasis": "official_gl",
+      "webBasis": "official_gl",
+      "result": {
+        "totalDebit": 49747104,
+        "totalCredit": 49747104,
+        "difference": 0,
+        "accounts": 83,
+        "loader": "get_unified_trial_balance",
+        "basis": "official_gl"
+      },
+      "notes": "Control totals for statement family",
+      "numericDifference": 0,
+      "status": "PASS",
+      "explanation": "Same production unified RPC used by web main loaders and mobile Single Core adapter when flags ON"
+    },
+    {
+      "company": "DIN COUTURE",
+      "branch": null,
+      "screen": "Operational Aging",
+      "filters": {
+        "dateFrom": "2026-07-01",
+        "dateTo": "2026-07-17",
+        "basis": "official_gl",
+        "productHead": "a7471520"
+      },
+      "mobileLoader": "operational_due_amount",
+      "webLoader": "operational_due_amount",
+      "mobileBasis": "operational_due_amount",
+      "webBasis": "operational_due_amount",
+      "result": {
+        "loader": "operational_due_amount",
+        "basis": "operational_due_amount",
+        "receivablesCount": 2,
+        "receivablesTotal": 42500,
+        "payablesCount": 0,
+        "payablesTotal": 0,
+        "clientErrorPolicy": "fail_loud_on_query_error"
+      },
+      "notes": "Receivables+payables due_amount; not official GL closing",
+      "status": "EXPECTED_BASIS_DIFFERENCE",
+      "explanation": "Aging uses operational due_amount (not official GL). Client fail-loud on query/RLS error (a7471520).",
+      "numericDifference": null
+    },
+    {
+      "company": "DIN COUTURE",
+      "branch": null,
+      "screen": "Contact list vs customer statement closing",
+      "filters": {
+        "dateFrom": "2026-07-01",
+        "dateTo": "2026-07-17",
+        "basis": "official_gl",
+        "productHead": "a7471520"
+      },
+      "mobileLoader": "get_contact_party_gl_balances",
+      "webLoader": "get_contact_party_gl_balances",
+      "mobileBasis": "official_gl",
+      "webBasis": "official_gl",
+      "result": {
+        "loader": "get_contact_party_gl_balances",
+        "basis": "official_gl"
+      },
+      "notes": "DHARIA",
+      "numericDifference": 0,
+      "status": "EXPECTED_BASIS_DIFFERENCE",
+      "explanation": "Contact list is as-of GL; Party Ledger closing is period-scoped (company-wide null branch)"
+    }
+  ]
+}
