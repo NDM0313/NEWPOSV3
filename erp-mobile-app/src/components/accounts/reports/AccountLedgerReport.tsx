@@ -6,10 +6,17 @@ import { getAccountLedgerLines, type LedgerLine } from '../../../api/reports';
 import {
   getCustomerArGlLedgerLinesForContact,
   getSupplierApGlLedgerLinesForContact,
+  isPartyGlLedgerEmptySuccess,
 } from '../../../api/partyGlLedger';
 import { ReportHeader } from './_shared/ReportHeader';
 import { DateRangeBar, makeInitialRange, type DateRangeValue } from './_shared/DateRangeBar';
 import { ReportShell, ReportCard, ReportSectionTitle } from './_shared/ReportShell';
+import {
+  LedgerPeriodEmptyCard,
+  allTimeDateRange,
+  isOpeningOnlyPeriod,
+  isTrulyEmptyLedger,
+} from './_shared/LedgerPeriodEmptyCard';
 import { formatAmount, formatDate, dateRangeLabel, displayReferenceNumber } from './_shared/format';
 import { PdfPreviewModal } from '../../shared/PdfPreviewModal';
 import { LedgerPreviewPdf } from '../../shared/LedgerPreviewPdf';
@@ -55,7 +62,7 @@ export function AccountLedgerReport({
   const [loading, setLoading] = useState(!!companyId);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<accountsApi.AccountRow | null>(null);
-  const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange());
+  const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange('all'));
 
   const [lines, setLines] = useState<LedgerLine[]>([]);
   const [opening, setOpening] = useState(0);
@@ -87,16 +94,21 @@ export function AccountLedgerReport({
     }
     let cancelled = false;
     setLoading(true);
-    accountsApi.getAccounts(companyId).then(({ data }) => {
+    (async () => {
+      const { data } = await accountsApi.getAccounts(companyId);
       if (cancelled) return;
-      const list = (data || []).filter((a) => !filterTypes || filterTypes.includes(a.type as never));
+      const filtered = (data || [])
+        .filter((a) => !a.isGroup)
+        .filter((a) => !filterTypes || filterTypes.includes(a.type as never));
+      const list = await accountsApi.overlayAccountBalancesFromJournal(companyId, filtered);
+      if (cancelled) return;
       setAccounts(list);
       setLoading(false);
       if (initialAccountId) {
         const found = list.find((a) => a.id === initialAccountId);
         if (found) setSelected(found);
       }
-    });
+    })();
     return () => {
       cancelled = true;
     };
@@ -137,7 +149,7 @@ export function AccountLedgerReport({
             range.to || undefined,
           );
           if (cancelled) return;
-          if (!rpcRes.error) {
+          if (!rpcRes.error && !isPartyGlLedgerEmptySuccess(rpcRes)) {
             setOpening(rpcRes.openingBalance);
             setLines(sortLedgerLinesAndRebuildRunningBalance(rpcRes.lines, rpcRes.openingBalance));
             setLedgerFallbackNotice(null);
@@ -151,11 +163,20 @@ export function AccountLedgerReport({
             branchId ?? null,
           );
           if (cancelled) return;
-          setOpening(fb.openingBalance);
-          setLines(sortLedgerLinesAndRebuildRunningBalance(fb.lines, fb.openingBalance));
-          setLedgerFallbackNotice(
-            `Party AP GL unavailable (${rpcRes.error}). Showing lines posted only to this sub-account.`,
-          );
+          const fbHasData = fb.lines.length > 0 || Math.abs(fb.openingBalance) >= 0.005;
+          if (fbHasData) {
+            setOpening(fb.openingBalance);
+            setLines(sortLedgerLinesAndRebuildRunningBalance(fb.lines, fb.openingBalance));
+            setLedgerFallbackNotice(
+              rpcRes.error
+                ? `Party AP GL unavailable (${rpcRes.error}). Showing lines posted only to this sub-account.`
+                : 'Party AP GL empty for this contact — showing lines posted to this sub-account.',
+            );
+            return;
+          }
+          setOpening(rpcRes.error ? 0 : rpcRes.openingBalance);
+          setLines([]);
+          setLedgerFallbackNotice(rpcRes.error ? `Party AP GL unavailable (${rpcRes.error}).` : null);
           return;
         }
 
@@ -168,7 +189,7 @@ export function AccountLedgerReport({
             range.to || undefined,
           );
           if (cancelled) return;
-          if (!rpcRes.error) {
+          if (!rpcRes.error && !isPartyGlLedgerEmptySuccess(rpcRes)) {
             setOpening(rpcRes.openingBalance);
             setLines(sortLedgerLinesAndRebuildRunningBalance(rpcRes.lines, rpcRes.openingBalance));
             setLedgerFallbackNotice(null);
@@ -182,11 +203,20 @@ export function AccountLedgerReport({
             branchId ?? null,
           );
           if (cancelled) return;
-          setOpening(fb.openingBalance);
-          setLines(sortLedgerLinesAndRebuildRunningBalance(fb.lines, fb.openingBalance));
-          setLedgerFallbackNotice(
-            `Party AR GL unavailable (${rpcRes.error}). Showing lines posted only to this sub-account.`,
-          );
+          const fbHasData = fb.lines.length > 0 || Math.abs(fb.openingBalance) >= 0.005;
+          if (fbHasData) {
+            setOpening(fb.openingBalance);
+            setLines(sortLedgerLinesAndRebuildRunningBalance(fb.lines, fb.openingBalance));
+            setLedgerFallbackNotice(
+              rpcRes.error
+                ? `Party AR GL unavailable (${rpcRes.error}). Showing lines posted only to this sub-account.`
+                : 'Party AR GL empty for this contact — showing lines posted to this sub-account.',
+            );
+            return;
+          }
+          setOpening(rpcRes.error ? 0 : rpcRes.openingBalance);
+          setLines([]);
+          setLedgerFallbackNotice(rpcRes.error ? `Party AR GL unavailable (${rpcRes.error}).` : null);
           return;
         }
 
@@ -204,9 +234,6 @@ export function AccountLedgerReport({
           });
           if (cancelled) return;
           if (!unified.error && unified.rows.length >= 0) {
-            const openingBal = unified.rows[0]?.runningBalance
-              ? unified.rows[0].runningBalance - unified.rows[0].debit + unified.rows[0].credit
-              : unified.closingBalance;
             const mapped: LedgerLine[] = unified.rows.map((r) => ({
               id: r.journalEntryLineId,
               journalEntryId: r.journalEntryId,
@@ -222,7 +249,7 @@ export function AccountLedgerReport({
               runningBalance: r.runningBalance,
               paymentId: r.paymentId,
             }));
-            setOpening(openingBal);
+            setOpening(unified.openingBalance);
             setLines(mapped);
             setLedgerLoaderSource('unified');
             setLedgerFallbackNotice(null);
@@ -476,7 +503,18 @@ export function AccountLedgerReport({
         </div>
       )}
 
-      <ReportShell loading={detailLoading} empty={!detailLoading && lines.length === 0} emptyLabel="No ledger activity for this period.">
+      <ReportShell
+        loading={detailLoading}
+        empty={!detailLoading && isTrulyEmptyLedger(lines.length, opening)}
+        emptyLabel="No ledger activity for this period."
+      >
+        {isOpeningOnlyPeriod(lines.length, opening) ? (
+          <LedgerPeriodEmptyCard
+            opening={opening}
+            periodLabel={dateRangeLabel(range.from, range.to)}
+            onShowAllTime={() => setRange(allTimeDateRange())}
+          />
+        ) : (
         <ReportCard>
           <ReportSectionTitle
             title="Ledger activity"
@@ -562,6 +600,7 @@ export function AccountLedgerReport({
             ))}
           </ul>
         </ReportCard>
+        )}
       </ReportShell>
 
       {preview.brand && (

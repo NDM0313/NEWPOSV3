@@ -5,7 +5,12 @@ import { getContactSubAccountId, getAccountLedgerLines, type LedgerLine } from '
 import {
   getSupplierApGlLedgerLinesForContact,
   getCustomerArGlLedgerLinesForContact,
+  isPartyGlLedgerEmptySuccess,
 } from '../../../api/partyGlLedger';
+import { loadPartyLedger, type LoaderMetadata } from '../../../api/singleCore';
+import { AccountingLoaderDebugBadge } from './_shared/AccountingLoaderDebugBadge';
+import { LoaderSourceBadge } from './_shared/LoaderSourceBadge';
+import { usePermissions } from '../../../context/PermissionContext';
 import { getContacts, getContactWhatsAppPhone, type ContactRole } from '../../../api/contacts';
 import { getWorkersWithPayable } from '../../../api/accounts';
 import { getWorkerPartyGlLedgerLines } from '../../../api/workerPartyGlLedger';
@@ -18,6 +23,12 @@ import {
 import { ReportHeader } from './_shared/ReportHeader';
 import { DateRangeBar, makeInitialRange, type DateRangeValue } from './_shared/DateRangeBar';
 import { ReportShell, ReportCard, ReportSectionTitle } from './_shared/ReportShell';
+import {
+  LedgerPeriodEmptyCard,
+  allTimeDateRange,
+  isOpeningOnlyPeriod,
+  isTrulyEmptyLedger,
+} from './_shared/LedgerPeriodEmptyCard';
 import { formatAmount, dateRangeLabel } from './_shared/format';
 import { PdfPreviewModal } from '../../shared/PdfPreviewModal';
 import { LedgerPreviewPdf } from '../../shared/LedgerPreviewPdf';
@@ -66,12 +77,14 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
   const cfg = KIND_LABELS[kind];
   const hubMode = useReportHubMode();
   const easyMode = isEasyReportHubMode(hubMode);
+  const { isAdminOrOwner } = usePermissions();
+  const showLoaderDebug = isAdminOrOwner && !easyMode;
   const [parties, setParties] = useState<LocalParty[]>([]);
   const [loading, setLoading] = useState(!!companyId);
   const [listError, setListError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<LocalParty | null>(null);
-  const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange());
+  const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange('all'));
 
   const [lines, setLines] = useState<LedgerLine[]>([]);
   const [opening, setOpening] = useState(0);
@@ -81,6 +94,7 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
   const [ledgerRefreshNonce, setLedgerRefreshNonce] = useState(0);
   const [manualLedgerRefresh, setManualLedgerRefresh] = useState(false);
   const [ledgerSourceHint, setLedgerSourceHint] = useState<string | null>(null);
+  const [loaderMeta, setLoaderMeta] = useState<LoaderMetadata | null>(null);
   const preview = usePdfPreview(companyId);
   const { openAttachmentPreview, AttachmentPreviewPortal } = useAttachmentPreview();
 
@@ -99,8 +113,19 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
     if (!companyId) {
       setLoading(false);
       setListError(null);
+      setSelected(null);
+      setLines([]);
+      setOpening(0);
+      setDetailError(null);
+      setLoaderMeta(null);
       return;
     }
+    setSelected(null);
+    setLines([]);
+    setOpening(0);
+    setDetailError(null);
+    setLoaderMeta(null);
+    setLedgerSourceHint(null);
     let cancelled = false;
     setLoading(true);
     setListError(null);
@@ -210,6 +235,31 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
           setDetailError(glRes.error ?? opRes.error);
           setLedgerSourceHint(glRes.lines.length > 0 ? 'GL journal (2010 / 1180)' : null);
         } else {
+          // Prefer unified party ledger when engine + loader + screen flags are ON.
+          const uni = await loadPartyLedger({
+            companyId,
+            partyType: kind === 'supplier' ? 'supplier' : 'customer',
+            partyId: selected.id,
+            branchId: branchId ?? null,
+            dateFrom: range.from || '',
+            dateTo: range.to || '',
+            basis: 'official_gl',
+          });
+          if (cancelled) return;
+
+          if (!uni.error && uni.meta.source === 'unified') {
+            setOpening(uni.openingBalance);
+            setLines(sortLedgerLinesAndRebuildRunningBalance(uni.lines, uni.openingBalance));
+            setDetailError(null);
+            setLedgerSourceHint(null);
+            setLoaderMeta(uni.meta);
+            return;
+          }
+
+          // Unified failed (not flags_off): show error; still allow explicit labelled legacy fallback.
+          const unifiedHardFail =
+            !!uni.error && uni.error.code !== 'flags_off' && uni.error.code !== 'kill_switch';
+
           const rpcLoad =
             kind === 'supplier'
               ? getSupplierApGlLedgerLinesForContact(
@@ -230,19 +280,48 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
           const rpcRes = await rpcLoad;
           if (cancelled) return;
 
-          if (!rpcRes.error) {
+          const needFallback = !!rpcRes.error || isPartyGlLedgerEmptySuccess(rpcRes);
+          if (!needFallback) {
             setOpening(rpcRes.openingBalance);
             setLines(sortLedgerLinesAndRebuildRunningBalance(rpcRes.lines, rpcRes.openingBalance));
-            setDetailError(null);
+            setDetailError(
+              unifiedHardFail
+                ? `Unified party ledger failed (${uni.error?.message}). Showing labelled legacy party GL.`
+                : null,
+            );
+            setLoaderMeta({
+              ...uni.meta,
+              source: 'legacy',
+              resultKind: unifiedHardFail ? 'fallback' : 'ok',
+              fallbackReason: unifiedHardFail
+                ? uni.error?.message ?? 'unified_failed'
+                : uni.error?.code === 'flags_off'
+                  ? 'flags_off'
+                  : null,
+              rpcName: kind === 'supplier'
+                ? 'get_supplier_ap_gl_ledger_for_contact'
+                : 'get_customer_ar_gl_ledger_for_contact',
+            });
           } else {
             const subId = await getContactSubAccountId(companyId, selected.id);
             if (cancelled) return;
             if (!subId) {
-              setOpening(0);
-              setLines([]);
+              setOpening(rpcRes.error ? 0 : rpcRes.openingBalance);
+              setLines(rpcRes.error ? [] : rpcRes.lines);
               setDetailError(
-                `${rpcRes.error} · No linked sub-account for legacy fallback.`,
+                rpcRes.error
+                  ? `${rpcRes.error} · No linked sub-account for legacy fallback.`
+                  : unifiedHardFail
+                    ? `Unified party ledger failed (${uni.error?.message}). No activity on legacy party GL.`
+                    : null,
               );
+              setLoaderMeta({
+                ...uni.meta,
+                source: 'legacy',
+                resultKind: 'error',
+                fallbackReason: rpcRes.error ?? uni.error?.message ?? null,
+                rpcName: null,
+              });
               return;
             }
             const { openingBalance, lines: rows, error } = await getAccountLedgerLines(
@@ -253,13 +332,41 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
               branchId ?? null,
             );
             if (cancelled) return;
-            setOpening(openingBalance);
-            setLines(sortLedgerLinesAndRebuildRunningBalance(rows, openingBalance));
-            setDetailError(
-              error
-                ? `${rpcRes.error} · Fallback: ${error}`
-                : `Showing sub-account only (${rpcRes.error}). Totals may not match web AP/AR statement.`,
-            );
+            const fbHasData = rows.length > 0 || Math.abs(openingBalance) >= 0.005;
+            if (fbHasData) {
+              setOpening(openingBalance);
+              setLines(sortLedgerLinesAndRebuildRunningBalance(rows, openingBalance));
+              setDetailError(
+                error
+                  ? `${rpcRes.error ?? 'Party GL empty'} · Fallback: ${error}`
+                  : rpcRes.error
+                    ? `Showing sub-account only (${rpcRes.error}). Totals may not match web AP/AR statement.`
+                    : 'Party GL empty for this contact — showing lines posted to linked sub-account (legacy fallback).',
+              );
+              setLoaderMeta({
+                ...uni.meta,
+                source: 'legacy',
+                resultKind: 'fallback',
+                fallbackReason: 'sub_account_journal_lines',
+                rpcName: 'getAccountLedgerLines',
+              });
+            } else {
+              setOpening(rpcRes.error ? 0 : rpcRes.openingBalance);
+              setLines([]);
+              setDetailError(
+                rpcRes.error ||
+                  (unifiedHardFail
+                    ? `Unified party ledger failed (${uni.error?.message}).`
+                    : null),
+              );
+              setLoaderMeta({
+                ...uni.meta,
+                source: 'legacy',
+                resultKind: 'empty',
+                fallbackReason: uni.error?.message ?? null,
+                rpcName: null,
+              });
+            }
           }
         }
       } catch (err) {
@@ -417,6 +524,7 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
         onBack={() => {
           setSelected(null);
           setLedgerSourceHint(null);
+          setLoaderMeta(null);
         }}
         title={selected.name}
         subtitle={detailPartySubtitle}
@@ -429,16 +537,40 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
           setLedgerRefreshNonce((n) => n + 1);
         }}
         refreshing={manualLedgerRefresh && detailLoading}
+        rightExtras={
+          loaderMeta ? (
+            <LoaderSourceBadge source={loaderMeta.source} hidden={!showLoaderDebug} />
+          ) : undefined
+        }
       >
         <DateRangeBar value={range} onChange={setRange} companyId={companyId} branchId={branchId} />
       </ReportHeader>
 
+      <AccountingLoaderDebugBadge meta={loaderMeta} hidden={!showLoaderDebug} />
+
+      {detailError && (lines.length > 0 || isOpeningOnlyPeriod(lines.length, opening)) && (
+        <div className="px-4 pt-2">
+          <div className="p-3 bg-amber-500/15 border border-amber-500/40 rounded-lg text-sm text-amber-100">
+            {detailError}
+          </div>
+        </div>
+      )}
+
       <ReportShell
         loading={detailLoading}
-        error={detailError}
-        empty={!detailLoading && lines.length === 0}
+        error={
+          lines.length > 0 || isOpeningOnlyPeriod(lines.length, opening) ? null : detailError
+        }
+        empty={!detailLoading && isTrulyEmptyLedger(lines.length, opening) && !detailError}
         emptyLabel="No ledger activity for this period."
       >
+        {isOpeningOnlyPeriod(lines.length, opening) ? (
+          <LedgerPeriodEmptyCard
+            opening={opening}
+            periodLabel={dateRangeLabel(range.from, range.to)}
+            onShowAllTime={() => setRange(allTimeDateRange())}
+          />
+        ) : (
         <ReportCard>
           <ReportSectionTitle
             title="Ledger activity"
@@ -457,6 +589,7 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
             ))}
           </ul>
         </ReportCard>
+        )}
       </ReportShell>
 
       {preview.brand && (
