@@ -325,6 +325,15 @@ export async function deleteExpense(
 
   const { error } = await supabase.from('expenses').delete().eq('id', id).eq('company_id', companyId);
   if (error) return { error: error.message };
+  try {
+    const { invalidateAfterAccountingWrite } = await import('./singleCore/accountingCache');
+    await invalidateAfterAccountingWrite({
+      companyId,
+      reason: 'expense-deleted',
+    });
+  } catch {
+    /* ignore */
+  }
   return { error: null };
 }
 
@@ -922,6 +931,16 @@ export async function updateExpense(input: {
   const row = upd.data as Record<string, unknown>;
   await enrichExpenseRowsWithCreatorNames([row]);
   await enrichExpenseRowsWithPostedPaymentAccount([row], input.companyId);
+  try {
+    const { invalidateAfterAccountingWrite } = await import('./singleCore/accountingCache');
+    await invalidateAfterAccountingWrite({
+      companyId: input.companyId,
+      branchId: input.branchId ?? null,
+      reason: 'expense-updated',
+    });
+  } catch {
+    /* ignore */
+  }
   return { data: mapExpenseRow(row), error: null };
 }
 

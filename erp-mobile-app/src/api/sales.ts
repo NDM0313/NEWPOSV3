@@ -20,7 +20,6 @@ import {
   composeCustomerPaymentNotesForRpc,
   composeSalePaymentNotes,
 } from '../utils/saleNotesComposition';
-import { dispatchMobileAccountingInvalidated } from '../lib/dataInvalidationBus';
 import { readSaleBillRef } from '../utils/saleBillRef';
 
 export interface CreateSaleInput {
@@ -1238,6 +1237,26 @@ export async function cancelSale(
   if (error) return { error: error.message };
   const res = data as { success?: boolean; error?: string } | null;
   if (res && res.success === false) return { error: res.error ?? 'Cancel failed' };
+  try {
+    const { data: saleRow } = await supabase
+      .from('sales')
+      .select('company_id, branch_id, customer_id')
+      .eq('id', saleId)
+      .maybeSingle();
+    const companyId = (saleRow as { company_id?: string } | null)?.company_id;
+    if (companyId) {
+      const { invalidateAfterAccountingWrite } = await import('./singleCore/accountingCache');
+      await invalidateAfterAccountingWrite({
+        companyId,
+        branchId: (saleRow as { branch_id?: string | null } | null)?.branch_id ?? null,
+        partyKind: (saleRow as { customer_id?: string | null } | null)?.customer_id ? 'customer' : undefined,
+        partyId: (saleRow as { customer_id?: string | null } | null)?.customer_id || undefined,
+        reason: 'sale-cancelled',
+      });
+    }
+  } catch {
+    /* ignore */
+  }
   return { error: null };
 }
 
@@ -1316,7 +1335,19 @@ export async function recordSalePayment(params: {
   });
   if (error) return { data: null, error: error.message };
   const res = data as { success?: boolean; payment_id?: string; error?: string } | null;
-  if (res?.success && res.payment_id) return { data: { payment_id: res.payment_id }, error: null };
+  if (res?.success && res.payment_id) {
+    try {
+      const { invalidateAfterAccountingWrite } = await import('./singleCore/accountingCache');
+      await invalidateAfterAccountingWrite({
+        companyId,
+        branchId: branchResolved,
+        reason: 'sale-payment',
+      });
+    } catch {
+      /* ignore */
+    }
+    return { data: { payment_id: res.payment_id }, error: null };
+  }
   return { data: null, error: res?.error ?? 'Payment failed.' };
 }
 
@@ -1447,6 +1478,18 @@ export async function recordCustomerPayment(params: {
     if (params.paymentAt) {
       const { patchPaymentCreatedAt } = await import('./paymentTimestamp');
       await patchPaymentCreatedAt(res.payment_id, params.paymentAt);
+    }
+    try {
+      const { invalidateAfterAccountingWrite } = await import('./singleCore/accountingCache');
+      await invalidateAfterAccountingWrite({
+        companyId,
+        branchId: branchResolved,
+        partyKind: customerId ? 'customer' : undefined,
+        partyId: customerId || undefined,
+        reason: 'customer-payment',
+      });
+    } catch {
+      /* ignore */
     }
     return { data: { payment_id: res.payment_id, reference_number: res.reference_number }, error: null };
   }
@@ -1604,11 +1647,18 @@ export async function recordOnAccountCustomerPayment(params: {
     await patchPaymentCreatedAt(paymentId, params.paymentAt);
   }
 
-  dispatchMobileAccountingInvalidated({
-    companyId,
-    branchId: branchResolved,
-    reason: 'mobile-on-account-receipt',
-  });
+  try {
+    const { invalidateAfterAccountingWrite } = await import('./singleCore/accountingCache');
+    await invalidateAfterAccountingWrite({
+      companyId,
+      branchId: branchResolved,
+      partyKind: 'customer',
+      partyId: contactId || undefined,
+      reason: 'mobile-on-account-receipt',
+    });
+  } catch {
+    /* ignore */
+  }
 
   return {
     data: { payment_id: paymentId, reference_number: res.reference_number },
@@ -2055,6 +2105,16 @@ export async function createAndFinalizeSaleReturn(payload: CreateSaleReturnPaylo
 
   const finalizeRes = (finalizeData || {}) as { success?: boolean; error?: string };
   if (finalizeRes.success === false) return { data: null, error: finalizeRes.error || 'Failed to finalize sale return.' };
+
+  try {
+    const { invalidateAfterAccountingWrite } = await import('./singleCore/accountingCache');
+    await invalidateAfterAccountingWrite({
+      companyId: payload.companyId,
+      reason: 'sale-return-finalized',
+    });
+  } catch {
+    /* ignore */
+  }
 
   return { data: { returnId: String(saleReturn.id), returnNo: String(saleReturn.return_no || returnNo) }, error: null };
 }

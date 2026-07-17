@@ -199,11 +199,22 @@ export function PurchaseModule({
       branchId: scopedBranchId,
       reason: 'purchase_edited',
     });
-    dispatchMobileAccountingInvalidated({
-      companyId,
-      branchId: scopedBranchId,
-      reason: 'purchase_edited',
-    });
+    void (async () => {
+      try {
+        const { invalidateAfterAccountingWrite } = await import('../../api/singleCore/accountingCache');
+        await invalidateAfterAccountingWrite({
+          companyId,
+          branchId: scopedBranchId,
+          reason: 'purchase_edited',
+        });
+      } catch {
+        dispatchMobileAccountingInvalidated({
+          companyId,
+          branchId: scopedBranchId,
+          reason: 'purchase_edited',
+        });
+      }
+    })();
   }, [branchId, companyId]);
 
   const effectiveBranchId = branchId && branchId !== 'all' ? branchId : undefined;

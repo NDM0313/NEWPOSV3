@@ -633,11 +633,22 @@ export function SalesHome({
         branchId: scopedBranchId,
         reason: 'sale_edited',
       });
-      dispatchMobileAccountingInvalidated({
-        companyId,
-        branchId: scopedBranchId,
-        reason: 'sale_edited',
-      });
+      void (async () => {
+        try {
+          const { invalidateAfterAccountingWrite } = await import('../../api/singleCore/accountingCache');
+          await invalidateAfterAccountingWrite({
+            companyId,
+            branchId: scopedBranchId,
+            reason: 'sale_edited',
+          });
+        } catch {
+          dispatchMobileAccountingInvalidated({
+            companyId,
+            branchId: scopedBranchId,
+            reason: 'sale_edited',
+          });
+        }
+      })();
     },
     [branchId, companyId]
   );

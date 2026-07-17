@@ -284,10 +284,26 @@ export function AccountsModule({
     };
   }, [companyId]);
 
-  // Branch switch: reload branch-scoped ledgers (null = company-wide).
+  // Branch switch: clear company list caches (branch-scoped contact balances) and reload reports.
   useEffect(() => {
-    setReportRefreshEpoch((v) => v + 1);
-  }, [branch?.id]);
+    if (!companyId) {
+      setReportRefreshEpoch((v) => v + 1);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { invalidateCompanyAccountingCaches } = await import('../../api/singleCore/accountingCache');
+        await invalidateCompanyAccountingCaches(companyId);
+      } catch {
+        /* ignore */
+      }
+      if (!cancelled) setReportRefreshEpoch((v) => v + 1);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [branch?.id, companyId]);
 
   // Revalidate accounting reports when returning to the app / tab.
   useEffect(() => {

@@ -223,6 +223,7 @@ export function AccountLedgerReport({
         const resolved = await resolveReportMainLoaderSource(companyId, 'account_statement', {
           legacyAvailable: true,
         });
+        let unifiedFailNotice: string | null = null;
         if (effectiveReportLoaderSource(resolved) === 'unified') {
           const unified = await rpcGetUnifiedAccountLedger({
             companyId,
@@ -233,7 +234,7 @@ export function AccountLedgerReport({
             basis: 'official_gl',
           });
           if (cancelled) return;
-          if (!unified.error && unified.rows.length >= 0) {
+          if (!unified.error) {
             const mapped: LedgerLine[] = unified.rows.map((r) => ({
               id: r.journalEntryLineId,
               journalEntryId: r.journalEntryId,
@@ -255,6 +256,7 @@ export function AccountLedgerReport({
             setLedgerFallbackNotice(null);
             return;
           }
+          unifiedFailNotice = `Unified account ledger unavailable (${unified.error}). Showing legacy journal lines.`;
         }
 
         const res = await getAccountLedgerLines(
@@ -268,7 +270,7 @@ export function AccountLedgerReport({
         setOpening(res.openingBalance);
         setLines(sortLedgerLinesAndRebuildRunningBalance(res.lines, res.openingBalance));
         setLedgerLoaderSource('legacy');
-        setLedgerFallbackNotice(null);
+        setLedgerFallbackNotice(unifiedFailNotice);
       } catch (err) {
         if (!cancelled) {
           setOpening(0);

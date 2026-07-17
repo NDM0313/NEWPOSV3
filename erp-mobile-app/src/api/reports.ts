@@ -314,6 +314,8 @@ export interface AgingReport {
   totals: { amount: number; count: number }[];
   grandTotal: number;
   parties: AgingRow[];
+  /** Present when the query failed; callers must treat as fail-loud (not empty success). */
+  error?: string | null;
 }
 
 const AGING_LABELS = ['0-30', '31-60', '61-90', '91-180', '180+'] as const;
@@ -329,7 +331,9 @@ function bucketIndexForAge(days: number): number {
 export async function getReceivablesAging(companyId: string, branchId?: string | null): Promise<AgingReport> {
   const labels = [...AGING_LABELS];
   const emptyTotals = labels.map(() => ({ amount: 0, count: 0 }));
-  if (!isSupabaseConfigured) return { labels, totals: emptyTotals, grandTotal: 0, parties: [] };
+  if (!isSupabaseConfigured) {
+    return { labels, totals: emptyTotals, grandTotal: 0, parties: [], error: 'App not configured.' };
+  }
 
   let q = supabase
     .from('sales')
@@ -337,8 +341,11 @@ export async function getReceivablesAging(companyId: string, branchId?: string |
     .eq('company_id', companyId)
     .in('payment_status', ['unpaid', 'partial']);
   if (branchId && branchId !== 'all' && branchId !== 'default') q = q.eq('branch_id', branchId);
-  const { data } = await q;
-  if (!data) return { labels, totals: emptyTotals, grandTotal: 0, parties: [] };
+  const { data, error } = await q;
+  if (error) {
+    return { labels, totals: emptyTotals, grandTotal: 0, parties: [], error: error.message };
+  }
+  if (!data) return { labels, totals: emptyTotals, grandTotal: 0, parties: [], error: null };
 
   const now = Date.now();
   const parties = new Map<string, AgingRow>();
@@ -375,20 +382,26 @@ export async function getReceivablesAging(companyId: string, branchId?: string |
     totals,
     grandTotal: grand,
     parties: Array.from(parties.values()).sort((a, b) => b.total - a.total),
+    error: null,
   };
 }
 
 export async function getPayablesAging(companyId: string): Promise<AgingReport> {
   const labels = [...AGING_LABELS];
   const emptyTotals = labels.map(() => ({ amount: 0, count: 0 }));
-  if (!isSupabaseConfigured) return { labels, totals: emptyTotals, grandTotal: 0, parties: [] };
+  if (!isSupabaseConfigured) {
+    return { labels, totals: emptyTotals, grandTotal: 0, parties: [], error: 'App not configured.' };
+  }
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('purchases')
     .select('id, supplier_id, supplier_name, total, paid_amount, due_amount, po_date, payment_status')
     .eq('company_id', companyId)
     .in('payment_status', ['unpaid', 'partial']);
-  if (!data) return { labels, totals: emptyTotals, grandTotal: 0, parties: [] };
+  if (error) {
+    return { labels, totals: emptyTotals, grandTotal: 0, parties: [], error: error.message };
+  }
+  if (!data) return { labels, totals: emptyTotals, grandTotal: 0, parties: [], error: null };
 
   const now = Date.now();
   const parties = new Map<string, AgingRow>();
@@ -425,6 +438,7 @@ export async function getPayablesAging(companyId: string): Promise<AgingReport> 
     totals,
     grandTotal: grand,
     parties: Array.from(parties.values()).sort((a, b) => b.total - a.total),
+    error: null,
   };
 }
 

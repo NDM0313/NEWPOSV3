@@ -1294,6 +1294,19 @@ export async function addRentalPayment(
       await patchPaymentCreatedAt(paymentId, params.paymentAt);
     }
 
+    try {
+      const { invalidateAfterAccountingWrite } = await import('./singleCore/accountingCache');
+      await invalidateAfterAccountingWrite({
+        companyId: params.companyId,
+        branchId: branchResolved,
+        partyKind: (r.customer_id as string | null) ? 'customer' : undefined,
+        partyId: (r.customer_id as string | null) || undefined,
+        reason: 'rental-payment',
+      });
+    } catch {
+      /* ignore */
+    }
+
     return { error: null, paymentId, referenceNumber };
   }
 

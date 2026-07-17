@@ -33,6 +33,7 @@ export function AgingReport({
 }: AgingReportProps) {
   const [data, setData] = useState<AgingData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const preview = usePdfPreview(companyId);
 
   useEffect(() => {
@@ -42,10 +43,22 @@ export function AgingReport({
     }
     let cancelled = false;
     setLoading(true);
+    setError(null);
     const load = kind === 'payables' ? getPayablesAging(companyId) : getReceivablesAging(companyId, branchId ?? null);
     load.then((d) => {
       if (cancelled) return;
-      setData(d);
+      if (d.error) {
+        setError(d.error);
+        setData(null);
+      } else {
+        setError(null);
+        setData(d);
+      }
+      setLoading(false);
+    }).catch((err) => {
+      if (cancelled) return;
+      setError(err instanceof Error ? err.message : 'Failed to load aging report');
+      setData(null);
       setLoading(false);
     });
     return () => {
@@ -97,7 +110,8 @@ export function AgingReport({
 
       <ReportShell
         loading={loading}
-        empty={!loading && (!data || data.parties.length === 0)}
+        error={error}
+        empty={!loading && !error && (!data || data.parties.length === 0)}
         emptyLabel={kind === 'payables' ? 'No outstanding payables.' : 'No outstanding receivables.'}
       >
         {data && (

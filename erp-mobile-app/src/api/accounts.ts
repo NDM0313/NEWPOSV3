@@ -931,6 +931,17 @@ export async function updateJournalEntryInPlace(
     }
   }
 
+  try {
+    const { invalidateAfterAccountingWrite } = await import('./singleCore/accountingCache');
+    await invalidateAfterAccountingWrite({
+      companyId: payload.companyId,
+      branchId: je.branch_id ?? null,
+      reason: 'journal-entry-updated',
+    });
+  } catch {
+    /* ignore */
+  }
+
   return { data: { id: payload.journalEntryId }, error: null };
 }
 

@@ -352,6 +352,27 @@ export async function tryFinalizeStudioProductionAfterMobileInvoice(params: {
       })
       .eq('id', productionId);
 
+    try {
+      const { data: saleScope } = await supabase
+        .from('sales')
+        .select('company_id, branch_id, customer_id')
+        .eq('id', saleId)
+        .maybeSingle();
+      const companyId = (saleScope as { company_id?: string } | null)?.company_id;
+      if (companyId) {
+        const { invalidateAfterAccountingWrite } = await import('./singleCore/accountingCache');
+        await invalidateAfterAccountingWrite({
+          companyId,
+          branchId: (saleScope as { branch_id?: string | null } | null)?.branch_id ?? null,
+          partyKind: (saleScope as { customer_id?: string | null } | null)?.customer_id ? 'customer' : undefined,
+          partyId: (saleScope as { customer_id?: string | null } | null)?.customer_id || undefined,
+          reason: 'studio-sale-finalized',
+        });
+      }
+    } catch {
+      /* ignore */
+    }
+
     return { ok: true, finalized: true, saleId };
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);

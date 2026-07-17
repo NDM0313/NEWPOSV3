@@ -322,8 +322,15 @@ export async function cancelPurchase(
   if (error) return { error: error.message };
   const res = data as { success?: boolean; error?: string } | null;
   if (res && res.success === false) return { error: res.error ?? 'Cancel failed' };
-  // Silence unused parameter lint
-  void companyId;
+  try {
+    const { invalidateAfterAccountingWrite } = await import('./singleCore/accountingCache');
+    await invalidateAfterAccountingWrite({
+      companyId,
+      reason: 'purchase-cancelled',
+    });
+  } catch {
+    /* ignore */
+  }
   return { error: null };
 }
 
