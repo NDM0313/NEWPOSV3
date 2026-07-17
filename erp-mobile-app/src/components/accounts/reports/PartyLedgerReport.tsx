@@ -201,20 +201,31 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
     (async () => {
       try {
         if (kind === 'worker') {
-          const opRes = await getWorkerOperationalLedgerLines(
+          // Canonical path: unified party ledger when party_ledger flags ON (RPC supports worker).
+          // Web production main still uses GL 2010/1180; operational ledger is labelled fallback only.
+          const uni = await loadPartyLedger({
             companyId,
-            selected.id,
-            range.from || undefined,
-            range.to || undefined,
-          );
+            partyType: 'worker',
+            partyId: selected.id,
+            branchId: branchId ?? null,
+            dateFrom: range.from || '',
+            dateTo: range.to || '',
+            basis: 'official_gl',
+          });
           if (cancelled) return;
-          if (opRes.lines.length > 0) {
-            setOpening(opRes.openingBalance);
-            setLines(opRes.lines);
-            setDetailError(opRes.error);
-            setLedgerSourceHint('Studio jobs & worker payments (operational ledger)');
+
+          if (!uni.error && uni.meta.source === 'unified') {
+            setOpening(uni.openingBalance);
+            setLines(sortLedgerLinesAndRebuildRunningBalance(uni.lines, uni.openingBalance));
+            setDetailError(null);
+            setLedgerSourceHint('Official GL (unified party ledger · worker 2010/1180)');
+            setLoaderMeta(uni.meta);
             return;
           }
+
+          const unifiedHardFail =
+            !!uni.error && uni.error.code !== 'flags_off' && uni.error.code !== 'kill_switch';
+
           const glRes = await getWorkerPartyGlLedgerLines(
             companyId,
             selected.id,
@@ -223,17 +234,76 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
             range.to || undefined,
           );
           if (cancelled) return;
-          if (glRes.error && opRes.error) {
-            setDetailError(`${opRes.error} · ${glRes.error}`);
-            setOpening(0);
-            setLines([]);
-            setLedgerSourceHint(null);
+
+          if (!glRes.error && (glRes.lines.length > 0 || Math.abs(glRes.openingBalance) >= 0.005)) {
+            setOpening(glRes.openingBalance);
+            setLines(sortLedgerLinesAndRebuildRunningBalance(glRes.lines, glRes.openingBalance));
+            setDetailError(
+              unifiedHardFail
+                ? `Unified worker ledger failed (${uni.error?.message}). Showing labelled legacy GL (2010/1180).`
+                : null,
+            );
+            setLedgerSourceHint('Official GL journal (2010 / 1180) — web Worker Ledger parity');
+            setLoaderMeta({
+              ...uni.meta,
+              source: 'legacy',
+              resultKind: unifiedHardFail ? 'fallback' : 'ok',
+              fallbackReason: unifiedHardFail
+                ? uni.error?.message ?? 'unified_failed'
+                : uni.error?.code === 'flags_off' || uni.error?.code === 'kill_switch'
+                  ? uni.error.code
+                  : null,
+              rpcName: 'getWorkerPartyGlJournalLedger',
+            });
             return;
           }
-          setOpening(glRes.openingBalance);
-          setLines(sortLedgerLinesAndRebuildRunningBalance(glRes.lines, glRes.openingBalance));
-          setDetailError(glRes.error ?? opRes.error);
-          setLedgerSourceHint(glRes.lines.length > 0 ? 'GL journal (2010 / 1180)' : null);
+
+          const opRes = await getWorkerOperationalLedgerLines(
+            companyId,
+            selected.id,
+            range.from || undefined,
+            range.to || undefined,
+          );
+          if (cancelled) return;
+
+          if (opRes.lines.length > 0 || Math.abs(opRes.openingBalance) >= 0.005) {
+            setOpening(opRes.openingBalance);
+            setLines(opRes.lines);
+            setDetailError(
+              [
+                unifiedHardFail ? `Unified failed (${uni.error?.message})` : null,
+                glRes.error ? `GL: ${glRes.error}` : 'GL empty for period',
+                'Showing operational worker ledger (studio jobs & payments) — not official GL closing.',
+                opRes.error,
+              ]
+                .filter(Boolean)
+                .join(' · '),
+            );
+            setLedgerSourceHint('Operational worker_ledger_entries (not official GL)');
+            setLoaderMeta({
+              ...uni.meta,
+              source: 'legacy',
+              resultKind: 'fallback',
+              fallbackReason: 'operational_worker_ledger_after_gl_empty',
+              rpcName: 'getWorkerLedgerEntries',
+            });
+            return;
+          }
+
+          setOpening(0);
+          setLines([]);
+          setDetailError(
+            [uni.error?.message, glRes.error, opRes.error].filter(Boolean).join(' · ') ||
+              (unifiedHardFail ? `Unified worker ledger failed (${uni.error?.message}).` : null),
+          );
+          setLedgerSourceHint(null);
+          setLoaderMeta({
+            ...uni.meta,
+            source: uni.meta.source === 'unified' ? 'unified' : 'legacy',
+            resultKind: uni.error && uni.error.code !== 'flags_off' ? 'error' : 'empty',
+            fallbackReason: uni.error?.message ?? glRes.error ?? null,
+            rpcName: null,
+          });
         } else {
           // Prefer unified party ledger when engine + loader + screen flags are ON.
           const uni = await loadPartyLedger({
