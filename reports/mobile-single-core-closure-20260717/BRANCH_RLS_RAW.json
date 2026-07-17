@@ -1,0 +1,33 @@
+{
+  "generated": "2026-07-17T12:52:01.213Z",
+  "rows": [
+    {
+      "role": "branch-restricted",
+      "user": "(none)",
+      "scenario": "own_branch_ok",
+      "status": "NOT_RUN_CREDENTIAL_GATED",
+      "note": "Set QA_BROWSER_EMAIL_BRANCH + QA_BROWSER_PASSWORD_BRANCH"
+    },
+    {
+      "role": "branch-restricted",
+      "user": "(none)",
+      "scenario": "other_branch_denied",
+      "status": "NOT_RUN_CREDENTIAL_GATED",
+      "note": "Set QA_BROWSER_EMAIL_BRANCH + QA_BROWSER_PASSWORD_BRANCH"
+    },
+    {
+      "role": "branch-restricted",
+      "user": "(none)",
+      "scenario": "company_wide_null_denied",
+      "status": "NOT_RUN_CREDENTIAL_GATED",
+      "note": "Set QA_BROWSER_EMAIL_BRANCH + QA_BROWSER_PASSWORD_BRANCH"
+    },
+    {
+      "role": "branch-restricted",
+      "user": "(none)",
+      "scenario": "branch_switch_no_stale",
+      "status": "NOT_RUN_CREDENTIAL_GATED",
+      "note": "Set QA_BROWSER_EMAIL_BRANCH + QA_BROWSER_PASSWORD_BRANCH"
+    }
+  ]
+}

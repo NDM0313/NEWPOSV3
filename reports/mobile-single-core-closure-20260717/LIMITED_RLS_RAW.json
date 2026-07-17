@@ -1,0 +1,47 @@
+{
+  "generated": "2026-07-17T12:52:01.212Z",
+  "rows": [
+    {
+      "role": "limited/easy",
+      "user": "(none)",
+      "scenario": "login",
+      "status": "NOT_RUN_CREDENTIAL_GATED",
+      "note": "Set QA_BROWSER_EMAIL_LIMITED + QA_BROWSER_PASSWORD_LIMITED"
+    },
+    {
+      "role": "limited/easy",
+      "user": "(none)",
+      "scenario": "easy_subset",
+      "status": "NOT_RUN_CREDENTIAL_GATED",
+      "note": "Set QA_BROWSER_EMAIL_LIMITED + QA_BROWSER_PASSWORD_LIMITED"
+    },
+    {
+      "role": "limited/easy",
+      "user": "(none)",
+      "scenario": "full_accounting_restricted",
+      "status": "NOT_RUN_CREDENTIAL_GATED",
+      "note": "Set QA_BROWSER_EMAIL_LIMITED + QA_BROWSER_PASSWORD_LIMITED"
+    },
+    {
+      "role": "limited/easy",
+      "user": "(none)",
+      "scenario": "direct_url_bypass",
+      "status": "NOT_RUN_CREDENTIAL_GATED",
+      "note": "Set QA_BROWSER_EMAIL_LIMITED + QA_BROWSER_PASSWORD_LIMITED"
+    },
+    {
+      "role": "limited/easy",
+      "user": "(none)",
+      "scenario": "denial_visible_not_zero",
+      "status": "NOT_RUN_CREDENTIAL_GATED",
+      "note": "Set QA_BROWSER_EMAIL_LIMITED + QA_BROWSER_PASSWORD_LIMITED"
+    },
+    {
+      "role": "limited/easy",
+      "user": "(none)",
+      "scenario": "company_branch_scope",
+      "status": "NOT_RUN_CREDENTIAL_GATED",
+      "note": "Set QA_BROWSER_EMAIL_LIMITED + QA_BROWSER_PASSWORD_LIMITED"
+    }
+  ]
+}

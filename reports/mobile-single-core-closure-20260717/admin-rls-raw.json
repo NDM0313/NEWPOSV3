@@ -1,0 +1,50 @@
+{
+  "generated": "2026-07-17T12:52:01.213Z",
+  "rows": [
+    {
+      "role": "admin",
+      "user": "din@yahoo.com",
+      "company": "DIN CHINA",
+      "branch": "null",
+      "scenario": "admin_signin",
+      "ui_gate": "n/a",
+      "rpc": "auth.signIn",
+      "server": "session",
+      "visible": "ok",
+      "status": "PASS"
+    },
+    {
+      "role": "admin",
+      "user": "din@yahoo.com",
+      "company": "DIN CHINA",
+      "branch": "null",
+      "scenario": "own_company_tb",
+      "rpc": "get_unified_trial_balance",
+      "server": "data returned",
+      "visible": "ok",
+      "status": "PASS"
+    },
+    {
+      "role": "admin",
+      "user": "din@yahoo.com",
+      "company": "DIN BRIDAL (cross)",
+      "branch": "null",
+      "scenario": "cross_company_bridal_tb",
+      "rpc": "get_unified_trial_balance",
+      "server": "ACCESS_DENIED: company scope mismatch",
+      "visible": "denied",
+      "status": "PASS"
+    },
+    {
+      "role": "admin",
+      "user": "din@yahoo.com",
+      "company": "DIN COUTURE (cross)",
+      "branch": "null",
+      "scenario": "cross_company_couture_tb",
+      "rpc": "get_unified_trial_balance",
+      "server": "ACCESS_DENIED: company scope mismatch",
+      "visible": "denied",
+      "status": "PASS"
+    }
+  ]
+}
