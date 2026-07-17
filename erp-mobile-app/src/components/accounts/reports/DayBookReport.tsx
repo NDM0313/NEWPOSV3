@@ -10,6 +10,10 @@ import {
   type RoznamchaResult,
   type RoznamchaRowWithBalance,
 } from '../../../api/roznamcha';
+import { loadRoznamcha, type LoaderMetadata } from '../../../api/singleCore';
+import { AccountingLoaderDebugBadge } from './_shared/AccountingLoaderDebugBadge';
+import { LoaderSourceBadge } from './_shared/LoaderSourceBadge';
+import { usePermissions } from '../../../context/PermissionContext';
 import { getPaymentAccounts } from '../../../api/accounts';
 import { ReportHeader } from './_shared/ReportHeader';
 import { DateRangeBar, makeInitialRange, type DateRangeValue } from './_shared/DateRangeBar';
@@ -67,6 +71,8 @@ function rowSortTimestamp(r: RoznamchaRowWithBalance): number {
 export function DayBookReport({ onBack, companyId, branchId, user, reportRefreshEpoch = 0 }: DayBookReportProps) {
   const hubMode = useReportHubMode();
   const easyMode = isEasyReportHubMode(hubMode);
+  const { isAdminOrOwner } = usePermissions();
+  const showLoaderDebug = isAdminOrOwner && !easyMode;
   const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange());
   const [mode, setMode] = useState<ReportMode>('cash');
   const [branchScope, setBranchScope] = useState<BranchScope>('session');
@@ -81,6 +87,8 @@ export function DayBookReport({ onBack, companyId, branchId, user, reportRefresh
   const [roznamcha, setRoznamcha] = useState<RoznamchaResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [legacyFallbackNotice, setLegacyFallbackNotice] = useState<string | null>(null);
+  const [loaderMeta, setLoaderMeta] = useState<LoaderMetadata | null>(null);
 
   const [selectedEntry, setSelectedEntry] = useState<DayBookJournalEntry | null>(null);
   const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(null);
@@ -121,35 +129,133 @@ export function DayBookReport({ onBack, companyId, branchId, user, reportRefresh
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setLegacyFallbackNotice(null);
 
     if (mode === 'cash') {
-      getRoznamcha(
-        companyId,
-        rozBranchId,
-        dateFrom,
-        dateTo,
-        liquidity,
-        includeVoided,
-        paymentLedgerAccountId.trim() || null,
-      )
-        .then((result) => {
-          if (cancelled) return;
-          setRoznamcha(result);
+      (async () => {
+        const uni = await loadRoznamcha({
+          companyId,
+          branchId: rozBranchId,
+          dateFrom: dateFrom,
+          dateTo: dateTo,
+          basis: 'official_gl',
+          liquidity,
+        });
+        if (cancelled) return;
+
+        if (!uni.error && uni.result && uni.meta.source === 'unified') {
+          // Account filter (specific payment ledger) is legacy-only; force labelled legacy when set.
+          if (paymentLedgerAccountId.trim()) {
+            try {
+              const legacy = await getRoznamcha(
+                companyId,
+                rozBranchId,
+                dateFrom,
+                dateTo,
+                liquidity,
+                includeVoided,
+                paymentLedgerAccountId.trim() || null,
+              );
+              if (cancelled) return;
+              setRoznamcha(legacy);
+              setJournalEntries([]);
+              setLoaderMeta({
+                ...uni.meta,
+                source: 'legacy',
+                resultKind: 'fallback',
+                fallbackReason: 'payment_ledger_account_filter_requires_legacy',
+                rpcName: 'getRoznamcha',
+              });
+              setLegacyFallbackNotice(
+                'Specific payment account filter uses legacy Roznamcha (unified cash/bank is company liquidity set).',
+              );
+              setLoading(false);
+              return;
+            } catch {
+              if (cancelled) return;
+              setRoznamcha(null);
+              setError('Failed to load Roznamcha (legacy account filter).');
+              setLoaderMeta({ ...uni.meta, source: 'legacy', resultKind: 'error' });
+              setLoading(false);
+              return;
+            }
+          }
+
+          setRoznamcha(uni.result);
           setJournalEntries([]);
+          setLoaderMeta(uni.meta);
           setLoading(false);
-        })
-        .catch(() => {
+          return;
+        }
+
+        const flagsOff = uni.error?.code === 'flags_off' || uni.error?.code === 'kill_switch';
+        try {
+          const legacy = await getRoznamcha(
+            companyId,
+            rozBranchId,
+            dateFrom,
+            dateTo,
+            liquidity,
+            includeVoided,
+            paymentLedgerAccountId.trim() || null,
+          );
+          if (cancelled) return;
+          setRoznamcha(legacy);
+          setJournalEntries([]);
+          setLoaderMeta({
+            ...(uni.meta || {
+              source: 'legacy',
+              basis: 'official_gl',
+              companyId,
+              branchId: rozBranchId,
+              dateFrom,
+              dateTo,
+              rpcName: 'getRoznamcha',
+              screenId: 'roznamcha',
+              lastRefreshIso: new Date().toISOString(),
+              fallbackReason: null,
+              killSwitchActive: false,
+              loaderFlagEnabled: false,
+              companyEngineEnabled: false,
+              screenFlagEnabled: false,
+              resultKind: 'ok',
+            }),
+            source: 'legacy',
+            resultKind: flagsOff ? 'ok' : 'fallback',
+            fallbackReason: flagsOff ? uni.error?.code ?? 'flags_off' : uni.error?.message ?? 'unified_failed',
+            rpcName: 'getRoznamcha',
+          });
+          if (!flagsOff && uni.error) {
+            setLegacyFallbackNotice(
+              `Unified Roznamcha failed (${uni.error.message}). Showing labelled legacy cash book — basis may differ.`,
+            );
+            setError(null);
+          } else {
+            setLegacyFallbackNotice(null);
+          }
+          setLoading(false);
+        } catch (e) {
           if (cancelled) return;
           setRoznamcha(null);
-          setError('Failed to load Roznamcha.');
+          setError(
+            uni.error
+              ? `Unified Roznamcha failed (${uni.error.message}). Legacy load also failed.`
+              : e instanceof Error
+                ? e.message
+                : 'Failed to load Roznamcha.',
+          );
+          setLoaderMeta(uni.meta);
           setLoading(false);
-        });
+        }
+      })();
     } else {
       getDayBook(companyId, dateFrom, dateTo, rozBranchId, 'all').then(({ data, error: err }) => {
         if (cancelled) return;
         setJournalEntries(data);
         setRoznamcha(null);
         setError(err);
+        setLoaderMeta(null);
+        setLegacyFallbackNotice(null);
         setLoading(false);
       });
     }
@@ -275,12 +381,19 @@ export function DayBookReport({ onBack, companyId, branchId, user, reportRefresh
         title={mode === 'cash' ? 'Roznamcha' : 'Day Book'}
         subtitle={
           mode === 'cash'
-            ? 'Payments-only cash book (matches web Roznamcha)'
+            ? loaderMeta?.source === 'unified'
+              ? 'Unified cash/bank GL (official_gl)'
+              : 'Legacy payments cash book'
             : 'All journal entries, chronological'
         }
         stats={stats}
         onShare={preview.openPreview}
         sharing={preview.loading}
+        rightExtras={
+          mode === 'cash' && loaderMeta ? (
+            <LoaderSourceBadge source={loaderMeta.source} hidden={!showLoaderDebug} />
+          ) : undefined
+        }
       >
         <DateRangeBar
           value={range}
@@ -313,14 +426,44 @@ export function DayBookReport({ onBack, companyId, branchId, user, reportRefresh
         ) : null}
       </ReportHeader>
 
+      <AccountingLoaderDebugBadge meta={mode === 'cash' ? loaderMeta : null} hidden={!showLoaderDebug} />
+
+      {legacyFallbackNotice && (
+        <div className="px-4 pt-2">
+          <div className="p-3 bg-amber-500/15 border border-amber-500/40 rounded-lg text-sm text-amber-100 flex flex-col gap-2">
+            <p>{legacyFallbackNotice}</p>
+            <button
+              type="button"
+              className="self-start px-3 py-1.5 rounded-lg bg-[#6366F1] text-white text-xs font-semibold"
+              onClick={() => {
+                setLegacyFallbackNotice(null);
+                // bump refresh via range noop — use reportRefreshEpoch parent; local: remount load
+                setRange((r) => ({ ...r }));
+              }}
+            >
+              Retry unified
+            </button>
+          </div>
+        </div>
+      )}
+
       {mode === 'cash' && (
         <div className="px-4 -mt-2 mb-2">
           <p className="text-[10px] text-[#9CA3AF] border border-[#374151] rounded-lg px-3 py-2 bg-[#0F172A]/80">
-            Cash / bank / wallet receive &amp; pay only — from{' '}
-            <span className="text-[#D1D5DB] font-medium">payments</span> and{' '}
-            <span className="text-[#D1D5DB] font-medium">rental_payments</span>. One row per actual movement.
-            Rental receipts show as <span className="text-[#D1D5DB] font-medium">REN-*-PAY</span> or RCV, not duplicate JE.
-            Voided reversed receipts are excluded by default.
+            {loaderMeta?.source === 'unified' ? (
+              <>
+                Cash / bank / wallet movements from{' '}
+                <span className="text-[#D1D5DB] font-medium">get_unified_cash_bank_ledger</span> (official posted GL).
+                Debit = in, credit = out.
+              </>
+            ) : (
+              <>
+                Cash / bank / wallet receive &amp; pay only — from{' '}
+                <span className="text-[#D1D5DB] font-medium">payments</span> and{' '}
+                <span className="text-[#D1D5DB] font-medium">rental_payments</span>. One row per actual movement.
+                Voided reversed receipts are excluded by default.
+              </>
+            )}
           </p>
         </div>
       )}
