@@ -269,11 +269,13 @@ export function AccountLedgerReport({
         setLines(sortLedgerLinesAndRebuildRunningBalance(res.lines, res.openingBalance));
         setLedgerLoaderSource('legacy');
         setLedgerFallbackNotice(null);
-      } catch {
+      } catch (err) {
         if (!cancelled) {
           setOpening(0);
           setLines([]);
-          setLedgerFallbackNotice(null);
+          setLedgerFallbackNotice(
+            err instanceof Error ? err.message : 'Failed to load account ledger',
+          );
         }
       } finally {
         if (!cancelled) {

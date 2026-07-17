@@ -38,6 +38,8 @@ export type LoadResult<T> = {
   data: T | null;
   loaderSource: 'legacy' | 'unified' | 'unavailable';
   error: string | null;
+  /** Set when unified was attempted and legacy is shown explicitly (never silent). */
+  fallbackReason?: string | null;
 };
 
 async function loadTrialBalanceUnified(params: {
@@ -223,9 +225,64 @@ export async function loadMobileCashFlow(params: {
         },
         loaderSource: 'unified',
         error: null,
+        fallbackReason: null,
       };
     } catch (e) {
-      /* fall through to legacy roznamcha */
+      const unifiedFailMsg = e instanceof Error ? e.message : String(e || 'Unified cash flow failed');
+      // Explicit labelled legacy fallback only — never silent.
+      try {
+        const roz = await getRoznamcha(
+          params.companyId,
+          params.branchId ?? null,
+          params.startDate,
+          params.endDate,
+          'all',
+        );
+        let totalCashIn = 0;
+        let totalCashOut = 0;
+        const rows = (roz.rows || []).map((r) => {
+          const cashIn = r.cashIn ?? 0;
+          const cashOut = r.cashOut ?? 0;
+          totalCashIn += cashIn;
+          totalCashOut += cashOut;
+          return {
+            id: r.id,
+            date: r.date,
+            reference: r.ref || r.journalEntryNo || '—',
+            party: r.partyLine ?? null,
+            cashIn,
+            cashOut,
+            runningBalance: r.runningBalance ?? 0,
+            details: r.details || '—',
+            attachments: r.attachments,
+            sourcePaymentId: r.sourcePaymentId ?? null,
+            sourceJournalEntryId: r.sourceJournalEntryId ?? null,
+          };
+        });
+        return {
+          data: {
+            rows,
+            openingBalance: roz.summary?.openingBalance ?? 0,
+            closingBalance: roz.summary?.closingBalance ?? rows[rows.length - 1]?.runningBalance ?? 0,
+            totalCashIn,
+            totalCashOut,
+            startDate: params.startDate,
+            endDate: params.endDate,
+          },
+          loaderSource: 'legacy',
+          error: null,
+          fallbackReason: `unified_cash_flow_failed→legacy_roznamcha: ${unifiedFailMsg}`,
+        };
+      } catch (legacyErr) {
+        return {
+          data: null,
+          loaderSource: 'unavailable',
+          error: `${unifiedFailMsg}. Legacy Cash Flow also failed: ${
+            legacyErr instanceof Error ? legacyErr.message : String(legacyErr)
+          }`,
+          fallbackReason: unifiedFailMsg,
+        };
+      }
     }
   }
 
@@ -270,9 +327,10 @@ export async function loadMobileCashFlow(params: {
       },
       loaderSource: 'legacy',
       error: null,
+      fallbackReason: null,
     };
   } catch (e) {
-    return { data: null, loaderSource: 'legacy', error: (e as Error).message };
+    return { data: null, loaderSource: 'legacy', error: (e as Error).message, fallbackReason: null };
   }
 }
 

@@ -30,6 +30,7 @@ export function CashFlowReport({
   const [loaderSource, setLoaderSource] = useState<'legacy' | 'unified' | 'unavailable'>('unavailable');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [fallbackReason, setFallbackReason] = useState<string | null>(null);
   const { openAttachmentPreview, AttachmentPreviewPortal } = useAttachmentPreview();
 
   const openRowAttachments = useCallback(
@@ -56,6 +57,7 @@ export function CashFlowReport({
     }
     let cancelled = false;
     setLoading(true);
+    setFallbackReason(null);
     loadMobileCashFlow({
       companyId,
       startDate: range.from,
@@ -66,6 +68,7 @@ export function CashFlowReport({
       setData(res.data);
       setLoaderSource(res.loaderSource);
       setError(res.error);
+      setFallbackReason(res.fallbackReason ?? null);
       setLoading(false);
     });
     return () => {
@@ -93,6 +96,27 @@ export function CashFlowReport({
       >
         <DateRangeBar value={range} onChange={setRange} companyId={companyId} branchId={branchId} />
       </ReportHeader>
+      {fallbackReason && (
+        <div className="px-4 pt-2">
+          <div className="p-3 bg-amber-500/15 border border-amber-500/40 rounded-lg text-sm text-amber-100 flex flex-col gap-2">
+            <p>
+              Unified Cash Flow failed — showing labelled legacy Roznamcha-sourced cash movements. Values may use a
+              different basis than official unified cash/bank GL.
+            </p>
+            <p className="text-[10px] font-mono text-amber-200/80 break-all">{fallbackReason}</p>
+            <button
+              type="button"
+              className="self-start px-3 py-1.5 rounded-lg bg-[#6366F1] text-white text-xs font-semibold"
+              onClick={() => {
+                setFallbackReason(null);
+                setRange((r) => ({ ...r }));
+              }}
+            >
+              Retry unified
+            </button>
+          </div>
+        </div>
+      )}
       <ReportShell loading={loading} error={error} empty={!data?.rows.length && !error}>
         {data && (
           <ReportCard className="divide-y divide-[#374151]">
