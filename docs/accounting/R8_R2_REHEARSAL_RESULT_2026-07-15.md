@@ -4,7 +4,7 @@
 **Branch:** `rehearsal/r8-r2-legacy-deletion-20260715`  
 **Base (accelerated rebase):** `9f0e237a` (`origin/main` at rehearsal)  
 **Includes readiness HEAD:** `866cb0df` (ancestor)  
-**Runtime commit:** `dbb16b1f`  
+**Runtime commit:** `b89cdd76`  
 **Pre-delete tag (local):** `r8-r2-rehearsal-pre-delete-20260715` → `9f0e237a`  
 **Evidence:** [`reports/r8-r2-deletion-rehearsal-20260715/`](../../reports/r8-r2-deletion-rehearsal-20260715/)  
 **Merge checklist:** [`R8_R2_FINAL_MERGE_CHECKLIST.md`](R8_R2_FINAL_MERGE_CHECKLIST.md)

@@ -10,7 +10,7 @@
 
 ## Steps executed
 
-1. Recorded rehearsal commit `dbb16b1f`
+1. Recorded rehearsal commit `b89cdd76`
 2. Checked out `r8-r2-rehearsal-pre-delete-20260715`
 3. Confirmed wrappers present; `test:unified-ledger` 345/345; `test:unit` 188/188
 4. Checked out `rehearsal/r8-r2-legacy-deletion-20260715`

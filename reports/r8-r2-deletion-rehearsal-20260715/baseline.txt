@@ -1,10 +1,9 @@
-Main starting HEAD (rehearsal base before delete): 9f0e237abea77bd12b61fc72e1a77ee8ac7b35fc
-Main docs HEAD after Phase 14: 5811f5b246953be4aec278de6349233c171cb206
-origin/main: 5811f5b246953be4aec278de6349233c171cb206
-Includes 866cb0df: YES (ancestor)
+Main starting HEAD (pre-delete baseline): 9f0e237abea77bd12b61fc72e1a77ee8ac7b35fc
+Main final HEAD (docs only): 12fe4a1788e8e5227c836806732c927fc603b83f
+origin/main: 12fe4a1788e8e5227c836806732c927fc603b83f
+Includes 866cb0df: YES
 Rehearsal branch: rehearsal/r8-r2-legacy-deletion-20260715
-Pre-delete tag: r8-r2-rehearsal-pre-delete-20260715 -> 9f0e237abea77bd12b61fc72e1a77ee8ac7b35fc (local)
-Rehearsal runtime commit: dbb16b1f9d94c212aa7782a0eb984675c809f423
-Rehearsal tip = origin/main + runtime only (docs already on main)
-WIP stash: stash@{0} WIP preserve before R8-R2 accelerated rehearsal 2026-07-17
+Rehearsal runtime commit: b89cdd767685ed412a02db5c80a4724710b4f386
+Pre-delete tag (local): r8-r2-rehearsal-pre-delete-20260715 -> 9f0e237abea77bd12b61fc72e1a77ee8ac7b35fc
+WIP stash preserved: stash@{0} WIP preserve before R8-R2 accelerated rehearsal 2026-07-17
 Date: 2026-07-17
