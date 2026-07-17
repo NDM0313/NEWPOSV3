@@ -31,7 +31,11 @@
     "android:apk:release:win": "node scripts/prepare-release-env.mjs && node scripts/verify-mobile-build-env.mjs && npm run cap:sync:android:prod && cd android && gradlew.bat assembleRelease && cd .. && node scripts/copy-release-apk.mjs",
     "android:apk:release:mac": "node scripts/prepare-release-env.mjs && node scripts/verify-mobile-build-env.mjs && npm run cap:sync:android:prod && cd android && ./gradlew assembleRelease && cd .. && node scripts/copy-release-apk.mjs",
     "ios:ipa:release:mac": "bash scripts/build-ios-release-mac.sh",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "npx tsx --test src/api/singleCore/singleCore.test.ts src/lib/*.test.ts src/utils/*.test.ts",
+    "test:run": "npx tsx --test src/api/singleCore/singleCore.test.ts src/lib/*.test.ts src/utils/*.test.ts",
+    "test:single-core": "npx tsx --test src/api/singleCore/singleCore.test.ts",
+    "lint": "tsc -b --pretty false"
   },
   "dependencies": {
     "@capacitor-mlkit/barcode-scanning": "^8.0.1",
