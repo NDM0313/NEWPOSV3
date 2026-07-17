@@ -2,10 +2,9 @@
 
 | Asset | Notes |
 |-------|-------|
-| `QA_IDENTITY_VERIFICATION.md` | Env + inventory |
+| `DECISION_GATE.md` | Path A/B/merge status |
 | `TEMP_QA_USER_PLAN.md` | Prepared; not executed |
-| `SALESMAN_RLS_QA.md` | Credential gated |
-| `LIMITED_RLS_QA.md` / `BRANCH_RLS_QA.md` | Identity unavailable |
-| `EMULATOR_QA.md` | Partial health then ADB hang |
-| `PHYSICAL_DEVICE_QA.md` | No device |
-| Host APK SHA | `d15114fc…` @ `93cd8436` |
+| `emu-decision-health.png` | System ANR dialog |
+| `emulator-qa-raw.json` | CDP attempt — login FAIL |
+| `EMULATOR_QA.md` | Env unavailable |
+| `PHYSICAL_DEVICE_QA.md` | Not run |

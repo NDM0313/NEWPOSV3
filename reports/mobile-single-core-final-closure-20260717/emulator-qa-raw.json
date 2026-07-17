@@ -1,0 +1,77 @@
+{
+  "result": "EMULATOR_QA_FAIL",
+  "results": [
+    {
+      "id": 1,
+      "name": "Install APK",
+      "pass": true,
+      "note": "Performing Streamed Install\nSuccess"
+    },
+    {
+      "id": 2,
+      "name": "SHA/source",
+      "pass": true,
+      "note": "d15114fc2a53c735c8004f06267568fc33ecc6575aa8cb798fe9f4c88b57f440"
+    },
+    {
+      "id": 3,
+      "name": "Open app + CDP",
+      "pass": true,
+      "note": "socket=webview_devtools_remote_5449 boot=1"
+    },
+    {
+      "id": 4,
+      "name": "Login",
+      "pass": false,
+      "note": "Loading..."
+    },
+    {
+      "id": 5,
+      "name": "Company DIN CHINA",
+      "pass": false,
+      "note": "company"
+    },
+    {
+      "id": 6,
+      "name": "Branch scope",
+      "pass": true,
+      "note": "authorized"
+    },
+    {
+      "id": 7,
+      "name": "Customer Ledger",
+      "pass": true,
+      "note": "loaded"
+    },
+    {
+      "id": 8,
+      "name": "Supplier Ledger",
+      "pass": true,
+      "note": "loaded"
+    },
+    {
+      "id": 9,
+      "name": "Worker Ledger",
+      "pass": true,
+      "note": "loaded"
+    },
+    {
+      "id": 10,
+      "name": "Account Ledger",
+      "pass": true,
+      "note": "loaded"
+    },
+    {
+      "id": 11,
+      "name": "Ledger V2",
+      "pass": true,
+      "note": "loaded"
+    },
+    {
+      "id": 0,
+      "name": "fatal",
+      "pass": false,
+      "note": "{\"exceptionId\":1,\"text\":\"Uncaught\",\"lineNumber\":1,\"columnNumber\":29,\"scriptId\":\"34\",\"exception\":{\"type\":\"object\",\"subtyp"
+    }
+  ]
+}

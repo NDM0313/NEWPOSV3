@@ -1,36 +1,40 @@
 # EMULATOR_QA.md
 
-Generated: 2026-07-17 (resource gates — one clean AVD attempt)
+Generated: 2026-07-17 (decision-gate run — single attempt after health probe)
 
-**Result:** `EMULATOR_QA_FAIL`
+**Result:** `EMULATOR_QA_FAIL`  
+**Also recorded:** `EMULATOR_ENVIRONMENT_UNAVAILABLE` (system ANR on display)
 
-## Health proof (partial)
+## Infrastructure probe
 
 | Check | Result |
 |-------|--------|
-| Stop old AVD / restart ADB | Done |
-| One AVD only | Medium_Phone_API_36.1 |
-| `sys.boot_completed=1` | Eventually **PASS** |
-| Repeated `adb shell echo` | **PASS** (3/3 briefly) |
-| Package installed | **PASS** — `com.dincouture.erp` versionName 1.0.5 / versionCode 39 |
-| App process | Briefly alive (`pidof` returned) then unstable |
-| Non-black screen | **Not proven** — screencap timed out |
-| WebView/CDP socket | **FAIL** — no `webview_devtools_remote_*` |
-| `adb install -r` | **TIMEOUT** |
-| `am start -W` | **TIMEOUT** |
+| `boot_completed` | 1 |
+| Repeated `adb shell echo` | 3/3 |
+| Package process | Present |
+| Screenshot | Captured — shows **"Process system isn't responding"** ANR (`emu-decision-health.png`) |
+| APK install | Success (versionName 1.0.5 / versionCode 39) |
+| CDP socket | Found once |
 
 ## Authenticated matrix
 
-**Not completed** — environment degraded before login/report navigation.
+| Scenario | Result |
+|----------|--------|
+| Login | **FAIL** (stuck on Loading…) |
+| Report navigation | Incomplete / unreliable after login failure |
+| Critical | Login failed → overall **FAIL** |
+
+Raw: `emulator-qa-raw.json`
 
 ## Failure classification
 
 | Layer | Verdict |
 |-------|---------|
-| Application failure | **Not proven** |
-| WebView automation failure | Secondary (no CDP target) |
-| ADB failure | **YES** — install/screencap/start hangs |
-| AVD/display failure | **YES** — unreliable after boot |
+| Application accounting defect | **Not proven** |
+| WebView automation | Partial (CDP connected; login interaction unreliable) |
+| ADB | Intermittent hangs historically |
+| AVD/display | **YES** — system ANR dialog |
 
-APK SHA (host file): `d15114fc2a53c735c8004f06267568fc33ecc6575aa8cb798fe9f4c88b57f440`  
-Product commit: `93cd8436087869f9d839f1c5650626d047a33a98`
+**No further CDP retries** per decision-gate policy.
+
+Physical device remains the preferred primary native APK evidence when available.
