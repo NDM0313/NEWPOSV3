@@ -1,21 +1,20 @@
 # ROLE_RLS_QA.md
 
-## Client / hub gates
-Automated `finalization.test.ts` + `reportsHubCatalog` / permissions helpers: **PASS**
-(Salesman/limited cannot see Trial Balance, Account Ledger, Cash Flow, supplier tiles without permission.)
+Generated: 2026-07-17T12:15:37.585Z
+
+## Client hub gates (unit tests)
+Automated `finalization.test.ts` + `reportsHubCatalog`: **PASS**
 
 ## Live server / RLS
-| Scenario | UI gate | Client scope | RPC/RLS | Visible result | Status |
-|----------|---------|--------------|---------|----------------|--------|
-| Salesman unrestricted TB | client PASS | — | — | — | `NOT_RUN_CREDENTIAL_GATED` |
-| Salesman Account Ledger | client PASS | — | — | — | `NOT_RUN_CREDENTIAL_GATED` |
-| Salesman supplier/purchase | client PASS | — | — | — | `NOT_RUN_CREDENTIAL_GATED` |
-| Salesman account transfer | client PASS | — | — | — | `NOT_RUN_CREDENTIAL_GATED` |
-| Direct-route bypass | client catalog PASS | — | — | — | `NOT_RUN_CREDENTIAL_GATED` |
-| Other-company reject | — | — | — | — | `NOT_RUN_CREDENTIAL_GATED` |
-| Unauthorized branch | — | — | — | — | `NOT_RUN_CREDENTIAL_GATED` |
-| Company-wide null for unauthorized | — | — | — | — | `NOT_RUN_CREDENTIAL_GATED` |
-| Denial ≠ zero | code policy PASS | — | — | — | `NOT_RUN_CREDENTIAL_GATED` (live) |
-| Logout clears rows | code PASS | — | — | — | `NOT_RUN_CREDENTIAL_GATED` (live) |
 
-Only admin QA password profile available in this session; no salesman/branch-restricted live session executed.
+| Scenario | UI gate | Client scope | RPC | Visible | Status | Note |
+|---|---|---|---|---|---|---|
+| admin_china_signin | — | — | — | — | **PASS** | session ok |
+| admin_china_own_company_tb | n/a | china/null | get_unified_trial_balance | ok | **PASS** | data returned |
+| admin_china_cross_company_bridal_tb | n/a | bridal/null (unauthorized company) | get_unified_trial_balance | denied | **PASS** | ACCESS_DENIED: company scope mismatch |
+| admin_china_cross_company_couture_tb | n/a | couture/null | get_unified_trial_balance | denied | **PASS** | ACCESS_DENIED: company scope mismatch |
+| salesman_unrestricted_tb | — | — | — | — | **NOT_RUN_CREDENTIAL_GATED** | No QA_BROWSER_EMAIL_SALESMAN / QA_BROWSER_PASSWORD_SALESMAN in env |
+| salesman_account_ledger | — | — | — | — | **NOT_RUN_CREDENTIAL_GATED** | salesman credentials not in approved local env |
+| salesman_supplier_purchase | — | — | — | — | **NOT_RUN_CREDENTIAL_GATED** | salesman credentials not in approved local env |
+| salesman_account_transfer | — | — | — | — | **NOT_RUN_CREDENTIAL_GATED** | salesman credentials not in approved local env |
+| limited_direct_route_bypass | — | — | — | — | **NOT_RUN_CREDENTIAL_GATED** | limited-user credentials not in env |

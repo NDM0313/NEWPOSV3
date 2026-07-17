@@ -1,6 +1,6 @@
 # LIVE_PARITY_MATRIX.md
 
-Generated: 2026-07-17T11:56:58.935Z
+Generated: 2026-07-17T12:08:52.671Z
 
 Method: read-only production Postgres unified RPCs via `ssh dincouture-vps`.
 When flags ON, web main loaders and mobile Single Core adapter call the same RPCs — numeric identity is the contract under test.

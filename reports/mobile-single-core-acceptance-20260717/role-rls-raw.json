@@ -1,0 +1,62 @@
+{
+  "generated": "2026-07-17T12:15:37.589Z",
+  "rows": [
+    {
+      "scenario": "admin_china_signin",
+      "status": "PASS",
+      "note": "session ok"
+    },
+    {
+      "scenario": "admin_china_own_company_tb",
+      "status": "PASS",
+      "ui_gate": "n/a",
+      "client_scope": "china/null",
+      "rpc": "get_unified_trial_balance",
+      "visible": "ok",
+      "note": "data returned"
+    },
+    {
+      "scenario": "admin_china_cross_company_bridal_tb",
+      "status": "PASS",
+      "ui_gate": "n/a",
+      "client_scope": "bridal/null (unauthorized company)",
+      "rpc": "get_unified_trial_balance",
+      "visible": "denied",
+      "note": "ACCESS_DENIED: company scope mismatch"
+    },
+    {
+      "scenario": "admin_china_cross_company_couture_tb",
+      "status": "PASS",
+      "ui_gate": "n/a",
+      "client_scope": "couture/null",
+      "rpc": "get_unified_trial_balance",
+      "visible": "denied",
+      "note": "ACCESS_DENIED: company scope mismatch"
+    },
+    {
+      "scenario": "salesman_unrestricted_tb",
+      "status": "NOT_RUN_CREDENTIAL_GATED",
+      "note": "No QA_BROWSER_EMAIL_SALESMAN / QA_BROWSER_PASSWORD_SALESMAN in env"
+    },
+    {
+      "scenario": "salesman_account_ledger",
+      "status": "NOT_RUN_CREDENTIAL_GATED",
+      "note": "salesman credentials not in approved local env"
+    },
+    {
+      "scenario": "salesman_supplier_purchase",
+      "status": "NOT_RUN_CREDENTIAL_GATED",
+      "note": "salesman credentials not in approved local env"
+    },
+    {
+      "scenario": "salesman_account_transfer",
+      "status": "NOT_RUN_CREDENTIAL_GATED",
+      "note": "salesman credentials not in approved local env"
+    },
+    {
+      "scenario": "limited_direct_route_bypass",
+      "status": "NOT_RUN_CREDENTIAL_GATED",
+      "note": "limited-user credentials not in env"
+    }
+  ]
+}

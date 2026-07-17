@@ -1,0 +1,51 @@
+{
+  "base": "http://127.0.0.1:5175/",
+  "results": [
+    {
+      "step": "pin_skip",
+      "pass": true
+    },
+    {
+      "step": "Customer Ledger",
+      "pass": true,
+      "note": "content or labelled notice"
+    },
+    {
+      "step": "Supplier Ledger",
+      "pass": true,
+      "note": "content or labelled notice"
+    },
+    {
+      "step": "Worker Ledger",
+      "pass": false,
+      "note": "blank or error"
+    },
+    {
+      "step": "Account Ledger",
+      "pass": true,
+      "note": "content or labelled notice"
+    },
+    {
+      "step": "Day Book / Roznamcha",
+      "pass": true,
+      "note": "content or labelled notice"
+    },
+    {
+      "step": "Cash Flow",
+      "pass": true,
+      "note": "content or labelled notice"
+    },
+    {
+      "step": "Trial Balance",
+      "pass": true,
+      "note": "content or labelled notice"
+    },
+    {
+      "step": "Ledger V2",
+      "pass": true,
+      "note": "content or labelled notice"
+    }
+  ],
+  "pass": 8,
+  "fail": 1
+}

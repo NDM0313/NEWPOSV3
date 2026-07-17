@@ -1,43 +1,74 @@
 ## Project boundary
-OLD ERP / DIN Collection Capacitor mobile (`erp-mobile-app/`) only — not FX, POS, or Flutter apps.
+
+OLD ERP / DIN Collection Capacitor mobile (`erp-mobile-app/`) only — not FX, `POS/`, or Flutter apps.
 
 ## Starting baseline
+
 - Branch: `feature/mobile-single-core-finalization`
-- HEAD: `93cd8436087869f9d839f1c5650626d047a33a98`
+- Product HEAD (APK): `93cd8436087869f9d839f1c5650626d047a33a98`
 
 ## Implementation summary
-- Party / Worker / Roznamcha / Cash Flow Single Core wiring (prior commits on this lineage)
-- Fail-loud + explicit fallback; accounting write invalidation
-- Acceptance: read-only production RPC parity + DIN CHINA web unified spotcheck
+
+- Party / Worker / Roznamcha / Cash Flow Single Core wiring
+- Fail-loud + explicit fallback notices; accounting write invalidation helper
+- Role hub gating tests (`finalization.test.ts`)
 
 ## Tests
-- Mobile 89 PASS; Unified-ledger 350 PASS; Typecheck PASS
-- Web production six-screen spotcheck: OVERALL PASS (unified)
 
-## Live parity
-- DIN CHINA / BRIDAL / COUTURE: RPC matrix 0 FAIL (expected basis diffs for Aging, contact-list vs period, empty-worker companies)
-- Details: `reports/mobile-single-core-acceptance-20260717/`
+| Suite | Result |
+|-------|--------|
+| Mobile | 89 PASS / 0 FAIL |
+| Unified ledger | 350 PASS / 0 FAIL |
+| Typecheck | PASS |
+| Prod mobile build + debug APK | PASS |
 
-## Device
-- Emulator: install/launch PASS; authenticated matrix incomplete → EMULATOR_QA_FAIL
-- Physical: NOT_RUN_DEVICE_GATED
+## Live parity (read-only production RPC)
+
+| Company | PASS | EXPECTED_BASIS_DIFF | FAIL |
+|---------|------|---------------------|------|
+| DIN CHINA | 8 | 3 | 0 |
+| DIN BRIDAL | 8 | 3 | 0 |
+| DIN COUTURE | 9 | 2 | 0 |
+
+Web production spotcheck (DIN CHINA): Roznamcha, Account Statement, Cash Flow, TB, Party Ledger, Ledger V2 — all `loader=unified` — **OVERALL PASS**
+
+## Server / RLS
+
+- Admin cross-company TB: **PASS** (`ACCESS_DENIED: company scope mismatch`)
+- Salesman / limited live sessions: **NOT_RUN_CREDENTIAL_GATED**
+- Client hub gates: **PASS** (unit tests)
+
+## Device QA
+
+| Channel | Result |
+|---------|--------|
+| Emulator APK | `EMULATOR_QA_FAIL` (WebView automation blocked) |
+| Mobile web (same bundle, :5175) | **9/9 PASS** — see `MOBILE_WEB_QA.md` |
+| Physical device | `NOT_RUN_DEVICE_GATED` |
 
 ## Build / APK
-- Prod build PASS
-- APK SHA-256: d15114fc2a53c735c8004f06267568fc33ecc6575aa8cb798fe9f4c88b57f440
+
+- Path: `erp-mobile-app/android/app/build/outputs/apk/debug/app-debug.apk`
+- SHA-256: `d15114fc2a53c735c8004f06267568fc33ecc6575aa8cb798fe9f4c88b57f440`
+- versionName 1.0.5 / versionCode 39
 
 ## Safety
-- Production DB/GL mutations: NONE
-- Migrations: NONE
-- 4100 reclass: NONE
-- R8-R2 deletion: NONE
+
+- Production mutations: **NONE**
+- Migrations: **NONE**
+- 4100 reclass: **NONE**
+- R8-R2 deletion: **NONE**
 
 ## Rollback
-Flag/kill-switch or revert feature branch — no SQL rollback.
+
+Revert feature branch or disable unified loader flags — no SQL rollback required. See `ROLLBACK.md`.
 
 ## Residual risks
-See RESIDUAL_RISKS.md (RLS live roles, device QA).
+
+See `RESIDUAL_RISKS.md` — salesman live RLS, physical device, contact-list vs statement basis labelling.
 
 ## Merge recommendation
-`READY_FOR_APPROVAL` blocked until device + live RLS gates close; current status **`NOT_READY_FOR_MERGE`**.
-Do not merge without exact phrase `APPROVE_MOBILE_SINGLE_CORE_FINALIZATION_MERGE`.
+
+`NOT_READY_FOR_MERGE` — complete salesman/branch live RLS + physical-device QA; then operator supplies exact phrase `APPROVE_MOBILE_SINGLE_CORE_FINALIZATION_MERGE`.
+
+**Do not merge without that phrase.**
