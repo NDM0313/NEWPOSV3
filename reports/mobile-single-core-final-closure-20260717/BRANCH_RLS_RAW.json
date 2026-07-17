@@ -1,0 +1,70 @@
+{
+  "generated": "2026-07-17T13:33:05.989Z",
+  "rows": [
+    {
+      "role": "branch-restricted",
+      "user": "(none)",
+      "company": "—",
+      "branch": "—",
+      "scenario": "own_branch_ok",
+      "ui_gate": "—",
+      "rpc": "—",
+      "server": "—",
+      "visible": "—",
+      "status": "NOT_RUN_CREDENTIAL_GATED",
+      "note": "Set QA_BROWSER_EMAIL_BRANCH + QA_BROWSER_PASSWORD_BRANCH"
+    },
+    {
+      "role": "branch-restricted",
+      "user": "(none)",
+      "company": "—",
+      "branch": "—",
+      "scenario": "other_branch_denied",
+      "ui_gate": "—",
+      "rpc": "—",
+      "server": "—",
+      "visible": "—",
+      "status": "NOT_RUN_CREDENTIAL_GATED",
+      "note": "Set QA_BROWSER_EMAIL_BRANCH + QA_BROWSER_PASSWORD_BRANCH"
+    },
+    {
+      "role": "branch-restricted",
+      "user": "(none)",
+      "company": "—",
+      "branch": "—",
+      "scenario": "company_wide_null_denied",
+      "ui_gate": "—",
+      "rpc": "—",
+      "server": "—",
+      "visible": "—",
+      "status": "NOT_RUN_CREDENTIAL_GATED",
+      "note": "Set QA_BROWSER_EMAIL_BRANCH + QA_BROWSER_PASSWORD_BRANCH"
+    },
+    {
+      "role": "branch-restricted",
+      "user": "(none)",
+      "company": "—",
+      "branch": "—",
+      "scenario": "branch_switch_no_stale",
+      "ui_gate": "—",
+      "rpc": "—",
+      "server": "—",
+      "visible": "—",
+      "status": "NOT_RUN_CREDENTIAL_GATED",
+      "note": "Set QA_BROWSER_EMAIL_BRANCH + QA_BROWSER_PASSWORD_BRANCH"
+    },
+    {
+      "role": "branch-restricted",
+      "user": "(none)",
+      "company": "—",
+      "branch": "—",
+      "scenario": "logout_clears",
+      "ui_gate": "—",
+      "rpc": "—",
+      "server": "—",
+      "visible": "—",
+      "status": "NOT_RUN_CREDENTIAL_GATED",
+      "note": "Set QA_BROWSER_EMAIL_BRANCH + QA_BROWSER_PASSWORD_BRANCH"
+    }
+  ]
+}

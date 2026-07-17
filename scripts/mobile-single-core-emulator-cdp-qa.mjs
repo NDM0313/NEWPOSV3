@@ -10,7 +10,7 @@ import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const OUT = path.join(ROOT, 'reports/mobile-single-core-closure-20260717');
+const OUT = path.join(ROOT, 'reports/mobile-single-core-final-closure-20260717');
 const APK = path.join(ROOT, 'erp-mobile-app/android/app/build/outputs/apk/debug/app-debug.apk');
 const PKG = 'com.dincouture.erp';
 const ACT = 'com.dincouture.erp.MainActivity';
@@ -99,10 +99,119 @@ async function main() {
   const api = sh('adb -s emulator-5554 shell getprop ro.build.version.sdk');
 
   await ensureCdp();
-  const { chromium } = requireRoot('playwright');
-  const browser = await chromium.connectOverCDP('http://127.0.0.1:9222');
-  const context = browser.contexts()[0];
-  const page = context.pages()[0] || (await context.newPage());
+  const { pid, list } = await ensureCdp();
+  const pageWs = list.find((t) => t.type === 'page')?.webSocketDebuggerUrl;
+  if (!pageWs) throw new Error('no page WebSocketDebuggerUrl');
+
+  // WebView exposes page-level CDP only — browser-level connectOverCDP fails.
+  let page;
+  let browser;
+  try {
+    const puppeteer = requireRoot('puppeteer-core');
+    browser = await puppeteer.connect({ browserWSEndpoint: pageWs, defaultViewport: null });
+    const pages = await browser.pages();
+    page = pages[0];
+    if (!page) throw new Error('no page in puppeteer session');
+  } catch (puppeteerErr) {
+    const { chromium } = requireRoot('playwright');
+    browser = await chromium.connectOverCDP(`http://127.0.0.1:9222`);
+    const context = browser.contexts()[0];
+    page = context?.pages()[0];
+    if (!page) throw new Error(`puppeteer failed (${puppeteerErr.message}); playwright page missing`);
+  }
+
+  const pwPage = {
+    async screenshot(opts) {
+      await page.screenshot(opts);
+    },
+    async locator(sel) {
+      if (typeof page.locator === 'function') return page.locator(sel);
+      return {
+        first: () => ({
+          async fill(v) {
+            await page.waitForSelector(sel, { timeout: 8000 });
+            await page.focus(sel);
+            await page.evaluate((s) => {
+              document.querySelector(s).value = '';
+            }, sel);
+            await page.type(sel, v, { delay: 10 });
+          },
+          async click() {
+            await page.click(sel);
+          },
+          async count() {
+            return page.$$(sel).then((a) => a.length);
+          },
+          async waitFor() {},
+        }),
+      };
+    },
+    getByText(re) {
+      const rx = re instanceof RegExp ? re : new RegExp(re, 'i');
+      const sel = `xpath=//*[contains(text(),'${rx.source.replace(/'/g, '')}')]`;
+      return {
+        first: () => ({
+          async click(opts = {}) {
+            await page.waitForFunction(
+              (pattern) => [...document.querySelectorAll('*')].some((el) => pattern.test(el.textContent || '')),
+              { timeout: opts.timeout || 8000 },
+              rx.source,
+            );
+            await page.evaluate((pattern) => {
+              const el = [...document.querySelectorAll('*')].find((n) => new RegExp(pattern, 'i').test(n.textContent || ''));
+              if (el) el.click();
+            }, rx.source);
+          },
+          async count() {
+            return page.evaluate((pattern) => {
+              return [...document.querySelectorAll('*')].filter((n) => new RegExp(pattern, 'i').test(n.textContent || '')).length;
+            }, rx.source);
+          },
+        }),
+      };
+    },
+    getByRole(role, opts) {
+      if (role === 'button' && opts?.name) {
+        const name = opts.name;
+        return {
+          first: () => ({
+            async click(o = {}) {
+              await page.evaluate((btnName) => {
+                const btn = [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === btnName);
+                if (btn) btn.click();
+              }, typeof name === 'string' ? name : name.source);
+            },
+          }),
+        };
+      }
+      return { first: () => ({ async click() {} }) };
+    },
+    async waitForTimeout(ms) {
+      await sleep(ms);
+    },
+    async innerText() {
+      return page.evaluate(() => document.body.innerText);
+    },
+    async goBack() {
+      await page.goBack().catch(() => null);
+    },
+    async evaluate(fn) {
+      return page.evaluate(fn);
+    },
+    locator(sel) {
+      return {
+        filter() {
+          return this;
+        },
+        first: () => ({
+          async click() {
+            await page.click('button');
+          },
+        }),
+      };
+    },
+  };
+  page = pwPage;
   const results = [];
   const add = (id, name, pass, note) => results.push({ id, name, pass, note });
 

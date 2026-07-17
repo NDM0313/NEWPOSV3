@@ -1,0 +1,96 @@
+{
+  "generated": "2026-07-17T13:33:05.988Z",
+  "rows": [
+    {
+      "role": "limited",
+      "user": "(none)",
+      "company": "—",
+      "branch": "—",
+      "scenario": "login",
+      "ui_gate": "—",
+      "rpc": "—",
+      "server": "—",
+      "visible": "—",
+      "status": "NOT_RUN_CREDENTIAL_GATED",
+      "note": "Set QA_BROWSER_EMAIL_LIMITED + QA_BROWSER_PASSWORD_LIMITED"
+    },
+    {
+      "role": "limited",
+      "user": "(none)",
+      "company": "—",
+      "branch": "—",
+      "scenario": "easy_subset",
+      "ui_gate": "—",
+      "rpc": "—",
+      "server": "—",
+      "visible": "—",
+      "status": "NOT_RUN_CREDENTIAL_GATED",
+      "note": "Set QA_BROWSER_EMAIL_LIMITED + QA_BROWSER_PASSWORD_LIMITED"
+    },
+    {
+      "role": "limited",
+      "user": "(none)",
+      "company": "—",
+      "branch": "—",
+      "scenario": "full_accounting_restricted",
+      "ui_gate": "—",
+      "rpc": "—",
+      "server": "—",
+      "visible": "—",
+      "status": "NOT_RUN_CREDENTIAL_GATED",
+      "note": "Set QA_BROWSER_EMAIL_LIMITED + QA_BROWSER_PASSWORD_LIMITED"
+    },
+    {
+      "role": "limited",
+      "user": "(none)",
+      "company": "—",
+      "branch": "—",
+      "scenario": "direct_bypass",
+      "ui_gate": "—",
+      "rpc": "—",
+      "server": "—",
+      "visible": "—",
+      "status": "NOT_RUN_CREDENTIAL_GATED",
+      "note": "Set QA_BROWSER_EMAIL_LIMITED + QA_BROWSER_PASSWORD_LIMITED"
+    },
+    {
+      "role": "limited",
+      "user": "(none)",
+      "company": "—",
+      "branch": "—",
+      "scenario": "cross_company",
+      "ui_gate": "—",
+      "rpc": "—",
+      "server": "—",
+      "visible": "—",
+      "status": "NOT_RUN_CREDENTIAL_GATED",
+      "note": "Set QA_BROWSER_EMAIL_LIMITED + QA_BROWSER_PASSWORD_LIMITED"
+    },
+    {
+      "role": "limited",
+      "user": "(none)",
+      "company": "—",
+      "branch": "—",
+      "scenario": "denial_visible",
+      "ui_gate": "—",
+      "rpc": "—",
+      "server": "—",
+      "visible": "—",
+      "status": "NOT_RUN_CREDENTIAL_GATED",
+      "note": "Set QA_BROWSER_EMAIL_LIMITED + QA_BROWSER_PASSWORD_LIMITED"
+    },
+    {
+      "role": "limited",
+      "user": "(none)",
+      "company": "—",
+      "branch": "—",
+      "scenario": "denial_not_zero",
+      "ui_gate": "—",
+      "rpc": "—",
+      "server": "—",
+      "visible": "—",
+      "status": "NOT_RUN_CREDENTIAL_GATED",
+      "note": "Set QA_BROWSER_EMAIL_LIMITED + QA_BROWSER_PASSWORD_LIMITED"
+    }
+  ]
+}
