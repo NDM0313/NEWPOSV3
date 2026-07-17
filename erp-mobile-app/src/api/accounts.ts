@@ -732,6 +732,17 @@ export async function createJournalEntry(params: {
     /* Roznamcha read path still picks up journal liquidity legs if payment insert fails */
   }
 
+  try {
+    const { invalidateAfterAccountingWrite } = await import('./singleCore/accountingCache');
+    await invalidateAfterAccountingWrite({
+      companyId,
+      branchId: effectiveBranch,
+      reason: 'journal-entry-created',
+    });
+  } catch {
+    /* ignore */
+  }
+
   return { data: { id: entry.id, entry_no: entry.entry_no }, error: null };
 }
 
@@ -1077,6 +1088,17 @@ export async function recordSupplierPayment(params: {
       }
     }
     const rpcRef = (res as { reference_number?: string | null }).reference_number ?? null;
+    try {
+      const { invalidateAfterAccountingWrite } = await import('./singleCore/accountingCache');
+      await invalidateAfterAccountingWrite({
+        companyId: params.companyId,
+        branchId: branchResolved,
+        partyKind: 'supplier',
+        reason: 'supplier-payment',
+      });
+    } catch {
+      /* ignore */
+    }
     return { data: { payment_id: res.payment_id, reference_number: rpcRef }, error: null };
   }
   let rpcErr = res?.error ?? 'Payment failed.';
@@ -1400,6 +1422,19 @@ export async function recordWorkerPayment(params: {
         entry_type: 'payment',
       });
     if (workerLedErr) return { data: null, error: workerLedErr.message };
+  }
+
+  try {
+    const { invalidateAfterAccountingWrite } = await import('./singleCore/accountingCache');
+    await invalidateAfterAccountingWrite({
+      companyId: params.companyId,
+      branchId: branchResolved,
+      partyKind: 'worker',
+      partyId: params.workerId,
+      reason: 'worker-payment',
+    });
+  } catch {
+    /* ignore */
   }
 
   return { data: { id: paymentId }, error: null };

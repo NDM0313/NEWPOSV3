@@ -269,6 +269,19 @@ export async function createPurchase(
     }
   }
 
+  try {
+    const { invalidateAfterAccountingWrite } = await import('./singleCore/accountingCache');
+    await invalidateAfterAccountingWrite({
+      companyId,
+      branchId: effectiveBranchId,
+      partyKind: supplierId ? 'supplier' : undefined,
+      partyId: supplierId || undefined,
+      reason: 'purchase-created-accounting',
+    });
+  } catch {
+    /* ignore */
+  }
+
   return {
     data: { id: purchaseId, poNo },
     error: null,

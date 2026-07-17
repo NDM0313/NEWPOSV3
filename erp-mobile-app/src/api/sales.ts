@@ -334,6 +334,25 @@ export async function updateSaleStatus(
     }
   }
 
+  try {
+    const { data: saleScope } = await supabase
+      .from('sales')
+      .select('company_id, branch_id')
+      .eq('id', saleId)
+      .maybeSingle();
+    const companyId = (saleScope as { company_id?: string } | null)?.company_id;
+    if (companyId && isPostedSaleStatus(status) && !isPostedSaleStatus(prev)) {
+      const { invalidateAfterAccountingWrite } = await import('./singleCore/accountingCache');
+      await invalidateAfterAccountingWrite({
+        companyId,
+        branchId: (saleScope as { branch_id?: string | null } | null)?.branch_id ?? null,
+        reason: 'sale-status-accounting',
+      });
+    }
+  } catch {
+    /* ignore */
+  }
+
   return { data: data as { id: string; status: string; invoice_no?: string | null }, error: null };
 }
 
@@ -839,6 +858,16 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
     companyId,
     reason: 'sale-created',
   });
+  try {
+    const { invalidateAfterAccountingWrite } = await import('./singleCore/accountingCache');
+    await invalidateAfterAccountingWrite({
+      companyId,
+      branchId: effectiveBranchId,
+      reason: 'sale-created-accounting',
+    });
+  } catch {
+    /* ignore */
+  }
 
   return {
     data: { id: saleId, invoiceNo: docNo },

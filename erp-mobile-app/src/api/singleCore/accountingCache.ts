@@ -45,13 +45,26 @@ export async function invalidateAfterAccountingWrite(opts: {
   companyId: string;
   partyKind?: string;
   partyId?: string;
+  branchId?: string | null;
+  reason?: string;
 }): Promise<void> {
-  const { companyId, partyKind, partyId } = opts;
+  const { companyId, partyKind, partyId, branchId, reason } = opts;
+  if (!companyId) return;
   if (partyKind && partyId) {
     // Clear known all-time / common range keys if present; epoch bump covers live reports.
     await listCacheRemove(listCacheKeys.ledger(companyId, partyKind, partyId, 'all'));
   }
   await invalidateCompanyAccountingCaches(companyId);
+  try {
+    const { dispatchMobileAccountingInvalidated } = await import('../../lib/dataInvalidationBus');
+    dispatchMobileAccountingInvalidated({
+      companyId,
+      branchId: branchId ?? null,
+      reason: reason ?? 'accounting-write',
+    });
+  } catch {
+    /* bus optional in non-browser tests */
+  }
 }
 
 export async function clearAccountingStateOnLogout(): Promise<void> {

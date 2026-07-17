@@ -807,6 +807,17 @@ export async function createExpense(input: {
     }
   }
 
+  try {
+    const { invalidateAfterAccountingWrite } = await import('./singleCore/accountingCache');
+    await invalidateAfterAccountingWrite({
+      companyId: input.companyId,
+      branchId: effectiveBranchId,
+      reason: 'expense-created',
+    });
+  } catch {
+    /* ignore */
+  }
+
   return {
     data: { id: rpc.expense_id, expense_no: rpc.expense_no, receiptWarning },
     error: null,
