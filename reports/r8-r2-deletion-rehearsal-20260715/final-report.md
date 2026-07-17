@@ -5,7 +5,7 @@
 First-wave R8-R2 deletion **technically rehearsed** on branch `rehearsal/r8-r2-legacy-deletion-20260715`, **rebased onto current main** `9f0e237a` (includes LV2 pagination).  
 **Not merged. Not deployed. Production unchanged.**
 
-Prior remote tip `60c3746f` (base `866cb0df`) is superseded by `c660f5c3`.
+Prior remote tip `60c3746f` (base `866cb0df`) is superseded by `dbb16b1f`.
 
 ## Removed
 

@@ -1,9 +1,10 @@
-Main starting HEAD: 9f0e237abea77bd12b61fc72e1a77ee8ac7b35fc
-origin/main: 9f0e237abea77bd12b61fc72e1a77ee8ac7b35fc
+Main starting HEAD (rehearsal base before delete): 9f0e237abea77bd12b61fc72e1a77ee8ac7b35fc
+Main docs HEAD after Phase 14: 5811f5b246953be4aec278de6349233c171cb206
+origin/main: 5811f5b246953be4aec278de6349233c171cb206
 Includes 866cb0df: YES (ancestor)
 Rehearsal branch: rehearsal/r8-r2-legacy-deletion-20260715
-Pre-delete tag: r8-r2-rehearsal-pre-delete-20260715 -> 9f0e237abea77bd12b61fc72e1a77ee8ac7b35fc
-Rehearsal commit: c660f5c30e4bc6b67c4793175a4381b7f994caa9
-Prior remote rehearsal (superseded base 866cb0df): 60c3746f
-Date: 2026-07-17 (accelerated rebase onto current main)
+Pre-delete tag: r8-r2-rehearsal-pre-delete-20260715 -> 9f0e237abea77bd12b61fc72e1a77ee8ac7b35fc (local)
+Rehearsal runtime commit: dbb16b1f9d94c212aa7782a0eb984675c809f423
+Rehearsal tip = origin/main + runtime only (docs already on main)
 WIP stash: stash@{0} WIP preserve before R8-R2 accelerated rehearsal 2026-07-17
+Date: 2026-07-17

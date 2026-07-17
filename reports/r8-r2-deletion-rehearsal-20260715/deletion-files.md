@@ -1,7 +1,7 @@
 # Deletion files (rehearsal)
 
 **Branch:** `rehearsal/r8-r2-legacy-deletion-20260715`  
-**Commit:** `c660f5c3` (rebased onto `9f0e237a`)
+**Commit:** `dbb16b1f` (rebased onto `9f0e237a`)
 
 ## A1. Thin wrappers deleted
 
