@@ -15,12 +15,13 @@
 - Aging classified operational (`EXPECTED_BASIS_DIFFERENCE`) with fail-loud client policy documented
 - Automated suites retained green; APK SHA unchanged
 - No product defects; no product fixes; no mutations
+- **iOS updated:** build `39` / version `1.0.5`, Cap sync + pods, simulator **BUILD SUCCEEDED** (see `IOS_UPDATE.md`)
 
 ## What remains open
 
 - Salesman live RLS (credentials)
 - Limited / branch gates (Path A or Path B phrase)
-- Physical device QA (primary native gate)
+- Physical device QA — Android primary; iPhone optional after signing
 - Emulator unavailable (documented limitation)
 - Merge approval phrase
 
