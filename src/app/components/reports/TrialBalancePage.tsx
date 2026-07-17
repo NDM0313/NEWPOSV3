@@ -45,7 +45,7 @@ import {
 } from '@/app/lib/resolveTrialBalancePreviewCompareSource';
 import { loadTrialBalanceLegacyShadowPreview } from '@/app/services/trialBalanceLegacyShadowPreviewService';
 import { loadTrialBalanceUnifiedMain } from '@/app/services/trialBalanceUnifiedMainService';
-import { loadTrialBalanceLegacyMain } from '@/app/services/trialBalanceLegacyMainService';
+import { assertUnifiedMainLoaderSource } from '@/app/lib/r8R2LegacyMainRetired';
 import type { UnifiedTrialBalanceAccount } from '@/app/services/unifiedLedgerService';
 
 const toExport = (
@@ -138,32 +138,21 @@ export const TrialBalancePage: React.FC<{
         const mainSource = effectiveTrialBalanceMainLoaderSource(resolved);
         setMainLoaderSource(mainSource);
 
-        if (mainSource === 'unified') {
-          const unified = await loadTrialBalanceUnifiedMain({
-            companyId,
-            startDate,
-            endDate,
-            branchId,
-            basis: previewBasis,
-          });
-          setMainUnifiedAccounts(unified.accounts);
-          setData({
-            rows: unified.rows,
-            totalDebit: unified.totalDebit,
-            totalCredit: unified.totalCredit,
-            difference: unified.difference,
-          });
-        } else {
-          setMainUnifiedAccounts([]);
-          const legacy = await loadTrialBalanceLegacyMain({
-            companyId,
-            startDate,
-            endDate,
-            branchId,
-            arApMode,
-          });
-          setData(legacy);
-        }
+        assertUnifiedMainLoaderSource(mainSource);
+        const unified = await loadTrialBalanceUnifiedMain({
+          companyId,
+          startDate,
+          endDate,
+          branchId,
+          basis: previewBasis,
+        });
+        setMainUnifiedAccounts(unified.accounts);
+        setData({
+          rows: unified.rows,
+          totalDebit: unified.totalDebit,
+          totalCredit: unified.totalCredit,
+          difference: unified.difference,
+        });
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Failed to load trial balance';
         setFetchError(msg);

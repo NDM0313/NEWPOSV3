@@ -26,10 +26,15 @@ test('compare services use shadowForce and do not write feature flags', () => {
   assert.doesNotMatch(account, /feature_flags|upsert/);
 });
 
-test('production ledger loaders unchanged — Ledger V2 still uses getLedgerStatementV2', () => {
+test('Ledger V2 main page uses unified main; no in-page getLedgerStatementV2 legacy branch', () => {
   const ledgerV2 = readRepo('src/app/features/ledger-statement-center-v2/LedgerStatementCenterV2Page.tsx');
-  assert.match(ledgerV2, /getLedgerStatementV2/);
+  assert.match(ledgerV2, /getLedgerStatementV2UnifiedMain/);
+  assert.match(ledgerV2, /assertUnifiedMainLoaderSource/);
+  assert.doesNotMatch(ledgerV2, /await getLedgerStatementV2\(/);
   assert.doesNotMatch(ledgerV2, /comparePartyLedgerTieOut|compareAccountLedgerTieOut/);
+  // Shadow compare retains getLedgerStatementV2 outside the page main branch.
+  const shadow = readRepo('src/app/services/ledgerStatementCenterV2LegacyShadowPreviewService.ts');
+  assert.match(shadow, /getLedgerStatementV2/);
 });
 
 test('hybrid customer ledger matcher includes party_discount by contact reference_id', () => {

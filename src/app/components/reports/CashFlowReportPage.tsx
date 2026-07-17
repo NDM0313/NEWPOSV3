@@ -81,6 +81,7 @@ import {
   resolveCashFlowMainLoaderSource,
 } from '@/app/lib/resolveCashFlowMainLoaderSource';
 import { loadCashFlowUnifiedMain } from '@/app/services/cashFlowUnifiedMainService';
+import { assertUnifiedMainLoaderSource } from '@/app/lib/r8R2LegacyMainRetired';
 import { UNIFIED_LEDGER_SCREEN_IDS } from '@/app/lib/unifiedLedgerScreenFlags';
 import { CASH_FLOW_APPROVED_FINANCE_RULES } from '@/app/lib/accounting/cashFlowPreviewFinanceAlignment';
 import { AttachmentViewer } from '@/app/components/shared/AttachmentViewer';
@@ -289,33 +290,20 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
       setMainLoaderSource(mainSource);
 
       // Main grid only — GL statement loads after data lands (does not block paint).
-      if (mainSource === 'unified') {
-        const unified = await loadCashFlowUnifiedMain({
-          companyId,
-          branchId: effectiveBranchId,
-          dateFrom,
-          dateTo,
-          accountFilter,
-          paymentLedgerAccountId: paymentLedgerAccountId.trim() || null,
-          paymentAccountOptions: paymentAccountOptionsRef.current,
-          auditMode,
-          sourceModuleFilter,
-          basis: previewBasis,
-        });
-        setData(unified);
-      } else {
-        const result = await getCashFlowReport({
-          companyId,
-          branchId: effectiveBranchId,
-          dateFrom,
-          dateTo,
-          accountFilter,
-          paymentLedgerAccountId: paymentLedgerAccountId.trim() || null,
-          auditMode,
-          sourceModuleFilter,
-        });
-        setData(result);
-      }
+      assertUnifiedMainLoaderSource(mainSource);
+      const unified = await loadCashFlowUnifiedMain({
+        companyId,
+        branchId: effectiveBranchId,
+        dateFrom,
+        dateTo,
+        accountFilter,
+        paymentLedgerAccountId: paymentLedgerAccountId.trim() || null,
+        paymentAccountOptions: paymentAccountOptionsRef.current,
+        auditMode,
+        sourceModuleFilter,
+        basis: previewBasis,
+      });
+      setData(unified);
     } catch (err) {
       setData(null);
       setGlSummary(null);

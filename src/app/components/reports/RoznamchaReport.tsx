@@ -37,7 +37,7 @@ import {
   type RoznamchaResult,
   type RoznamchaRowWithBalance,
 } from '@/app/services/roznamchaService';
-import { loadRoznamchaLegacyMain } from '@/app/services/roznamchaLegacyMainService';
+import { assertUnifiedMainLoaderSource } from '@/app/lib/r8R2LegacyMainRetired';
 import { loadRoznamchaUnifiedMain } from '@/app/services/roznamchaUnifiedMainService';
 import { loadRoznamchaLegacyShadowPreview } from '@/app/services/roznamchaLegacyShadowPreviewService';
 import {
@@ -80,29 +80,6 @@ import { AttachmentViewer } from '@/app/components/shared/AttachmentViewer';
 import { TransactionAttachmentIconButton } from '@/app/components/shared/TransactionAttachmentIconButton';
 import { roznamchaRowHasAttachments } from '@/app/lib/roznamchaAttachments';
 import type { TransactionAttachment } from '@/app/utils/transactionAttachments';
-
-const ROZNAMCHA_CACHE_TTL_MS = 30_000;
-const roznamchaResultCache = new Map<string, { at: number; data: RoznamchaResult }>();
-
-function roznamchaCacheKey(
-  companyId: string,
-  branchId: string | null,
-  dateFrom: string,
-  dateTo: string,
-  accountFilter: AccountFilter,
-  includeVoidedReversed: boolean,
-  paymentLedgerAccountId: string | null
-): string {
-  return [
-    companyId,
-    branchId ?? 'all',
-    dateFrom,
-    dateTo,
-    accountFilter,
-    includeVoidedReversed ? '1' : '0',
-    paymentLedgerAccountId ?? '',
-  ].join('|');
-}
 import { exportToExcel } from '@/app/utils/exportUtils';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { useFormatDate } from '@/app/hooks/useFormatDate';
@@ -510,56 +487,27 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
       return;
     }
     const ledgerId = paymentLedgerAccountId.trim() ? paymentLedgerAccountId.trim() : null;
-    const cacheKey = roznamchaCacheKey(
-      companyId,
-      effectiveBranchId,
-      dateFrom,
-      dateTo,
-      accountFilter,
-      includeVoidedReversed,
-      ledgerId
-    );
     setLoading(true);
     try {
       const resolved = await resolveRoznamchaMainLoaderSource(companyId);
       const mainSource = effectiveRoznamchaMainLoaderSource(resolved);
       setMainLoaderSource(mainSource);
 
-      if (mainSource === 'unified') {
-        setMainUnifiedRows([]);
-        const unified = await loadRoznamchaUnifiedMain({
-          companyId,
-          branchId: effectiveBranchId,
-          dateFrom,
-          dateTo,
-          accountFilter,
-          includeVoidedReversed,
-          paymentLedgerAccountId: ledgerId,
-          paymentAccountOptions,
-          basis: previewBasis,
-        });
-        setMainUnifiedRows(unified.unifiedRows);
-        setData(unified);
-      } else {
-        const cached = roznamchaResultCache.get(cacheKey);
-        if (cached && Date.now() - cached.at < ROZNAMCHA_CACHE_TTL_MS) {
-          setMainUnifiedRows([]);
-          setData(cached.data);
-          return;
-        }
-        setMainUnifiedRows([]);
-        const result = await loadRoznamchaLegacyMain({
-          companyId,
-          branchId: effectiveBranchId,
-          dateFrom,
-          dateTo,
-          accountFilter,
-          includeVoidedReversed,
-          paymentLedgerAccountId: ledgerId,
-        });
-        roznamchaResultCache.set(cacheKey, { at: Date.now(), data: result });
-        setData(result);
-      }
+      assertUnifiedMainLoaderSource(mainSource);
+      setMainUnifiedRows([]);
+      const unified = await loadRoznamchaUnifiedMain({
+        companyId,
+        branchId: effectiveBranchId,
+        dateFrom,
+        dateTo,
+        accountFilter,
+        includeVoidedReversed,
+        paymentLedgerAccountId: ledgerId,
+        paymentAccountOptions,
+        basis: previewBasis,
+      });
+      setMainUnifiedRows(unified.unifiedRows);
+      setData(unified);
     } catch (err) {
       console.error('[RoznamchaReport] load failed:', err);
       toast.error('Could not load Roznamcha. Try refreshing or widening the date range.');

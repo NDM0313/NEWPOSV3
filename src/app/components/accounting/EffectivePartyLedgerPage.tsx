@@ -19,7 +19,7 @@ import {
   type EffectiveLedgerRow,
   type EffectiveLedgerResult,
 } from '@/app/services/effectivePartyLedgerService';
-import { loadPartyLedgerLegacyMain } from '@/app/services/partyLedgerLegacyMainService';
+import { assertUnifiedMainLoaderSource } from '@/app/lib/r8R2LegacyMainRetired';
 import { loadPartyLedgerUnifiedMain } from '@/app/services/partyLedgerUnifiedMainService';
 import { loadPartyLedgerLegacyShadowPreview } from '@/app/services/partyLedgerLegacyShadowPreviewService';
 import {
@@ -153,32 +153,20 @@ export const EffectivePartyLedgerPage: React.FC<EffectivePartyLedgerPageProps> =
       const fromDate = dateRange.from ? format(dateRange.from, 'yyyy-MM-dd') : '2020-01-01';
       const toDate = dateRange.to ? format(dateRange.to, 'yyyy-MM-dd') : '2099-12-31';
 
-      if (mainSource === 'unified') {
-        const unified = await loadPartyLedgerUnifiedMain({
-          companyId,
-          contactId,
-          partyType,
-          dateFrom: fromDate,
-          dateTo: toDate,
-          mode,
-          showReversals,
-          partyName: contactName || 'Party',
-          basis: previewBasis,
-        });
-        setMainUnifiedRows(unified.unifiedRows);
-        setResult(unified);
-      } else {
-        setMainUnifiedRows([]);
-        const legacy = await loadPartyLedgerLegacyMain({
-          companyId,
-          contactId,
-          partyType,
-          fromDate,
-          toDate,
-          branchId,
-        });
-        setResult(legacy);
-      }
+      assertUnifiedMainLoaderSource(mainSource);
+      const unified = await loadPartyLedgerUnifiedMain({
+        companyId,
+        contactId,
+        partyType,
+        dateFrom: fromDate,
+        dateTo: toDate,
+        mode,
+        showReversals,
+        partyName: contactName || 'Party',
+        basis: previewBasis,
+      });
+      setMainUnifiedRows(unified.unifiedRows);
+      setResult(unified);
     } catch (err) {
       console.error('[EffectivePartyLedger] load error:', err);
     } finally {

@@ -1,9 +1,14 @@
 /**
  * Trial Balance — legacy shadow preview loader (Phase 2.12).
+ *
+ * R8-R2 rehearsal: thin LegacyMain wrapper deleted; shadow calls getTrialBalance directly.
  */
 
-import type { TrialBalanceArApMode, TrialBalanceResult } from '@/app/services/accountingReportsService';
-import { loadTrialBalanceLegacyMain } from '@/app/services/trialBalanceLegacyMainService';
+import {
+  accountingReportsService,
+  type TrialBalanceArApMode,
+  type TrialBalanceResult,
+} from '@/app/services/accountingReportsService';
 
 export type TrialBalanceLegacyShadowPreviewResult = TrialBalanceResult & {
   compareSource: 'legacy_shadow';
@@ -16,6 +21,12 @@ export async function loadTrialBalanceLegacyShadowPreview(params: {
   branchId?: string;
   arApMode: TrialBalanceArApMode;
 }): Promise<TrialBalanceLegacyShadowPreviewResult> {
-  const data = await loadTrialBalanceLegacyMain(params);
+  const data = await accountingReportsService.getTrialBalance(
+    params.companyId,
+    params.startDate,
+    params.endDate,
+    params.branchId,
+    { arApMode: params.arApMode },
+  );
   return { ...data, compareSource: 'legacy_shadow' };
 }

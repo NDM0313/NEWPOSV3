@@ -68,7 +68,7 @@ import {
 } from '@/app/lib/resolveAccountStatementPreviewCompareSource';
 import { loadAccountStatementLegacyShadowPreview } from '@/app/services/accountStatementLegacyShadowPreviewService';
 import { loadAccountStatementUnifiedMain } from '@/app/services/accountStatementUnifiedMainService';
-import { loadAccountStatementLegacyMain } from '@/app/services/accountStatementLegacyMainService';
+import { assertUnifiedMainLoaderSource } from '@/app/lib/r8R2LegacyMainRetired';
 
 /** AR / AP running balance sign: highlight “inverted” party positions so refunds / prepaids are obvious. */
 const PARTY_BAL_EPS = 0.005;
@@ -660,76 +660,45 @@ export const AccountLedgerReportPage: React.FC<{
     setLoading(true);
     (async () => {
       try {
-        const legacyParams = {
-          companyId,
-          statementType: applied.statementType,
-          selectedContactId: applied.selectedContactId,
-          selectedWorkerId: applied.selectedWorkerId,
-          selectedAccountId: applied.selectedAccountId,
-          accounts,
-          startDate,
-          endDate,
-        };
-
         const { resolveAccountStatementMainLoaderSource, effectiveAccountStatementMainLoaderSource } =
           await import('@/app/lib/resolveAccountStatementMainLoaderSource');
         const resolved = await resolveAccountStatementMainLoaderSource(companyId);
         const mainSource = effectiveAccountStatementMainLoaderSource(resolved);
         setMainLoaderSource(mainSource);
+        assertUnifiedMainLoaderSource(mainSource);
 
         let loaded: AccountLedgerEntry[] = [];
         let nextOfficialGl: typeof officialGlSummary = null;
-        if (mainSource === 'unified') {
-          const target = resolveAccountStatementPreviewTarget({
-            statementType: applied.statementType,
-            selectedContactId: applied.selectedContactId,
-            selectedWorkerId: applied.selectedWorkerId,
-            selectedAccountId: applied.selectedAccountId,
-            accounts,
-          });
-          if (target.kind === 'none') {
-            setEntries([]);
-            setOfficialGlSummary(null);
-            return;
-          }
-          const basis = defaultUnifiedBasisForAccountStatement(target, viewMode);
-          const unified = await loadAccountStatementUnifiedMain({
-            companyId,
-            target,
-            startDate,
-            endDate,
-            basis,
-          });
-          loaded = unified.rows;
-          if (target.kind === 'account') {
-            const body = (loaded || []).filter((e) => !isStatementOpeningRow(e));
-            nextOfficialGl = {
-              openingBalance: Number(unified.meta.periodOpeningBalance || 0),
-              totalDebit: body.reduce((s, e) => s + Number(e.debit || 0), 0),
-              totalCredit: body.reduce((s, e) => s + Number(e.credit || 0), 0),
-              closingBalance: Number(unified.closingBalance || 0),
-              txCount: body.length,
-            };
-          }
-        } else {
-          loaded = await loadAccountStatementLegacyMain(legacyParams);
-          if (applied.statementType === 'gl' && loaded?.length) {
-            const body = loaded.filter((e) => !isStatementOpeningRow(e));
-            const first = loaded[0];
-            const last = loaded[loaded.length - 1];
-            const firstMove = Number(first.debit || 0) - Number(first.credit || 0);
-            const opening =
-              isStatementOpeningRow(first)
-                ? Number(first.running_balance || 0)
-                : Number(first.running_balance || 0) - firstMove;
-            nextOfficialGl = {
-              openingBalance: opening,
-              totalDebit: body.reduce((s, e) => s + Number(e.debit || 0), 0),
-              totalCredit: body.reduce((s, e) => s + Number(e.credit || 0), 0),
-              closingBalance: Number(last.running_balance || 0),
-              txCount: body.length,
-            };
-          }
+        const target = resolveAccountStatementPreviewTarget({
+          statementType: applied.statementType,
+          selectedContactId: applied.selectedContactId,
+          selectedWorkerId: applied.selectedWorkerId,
+          selectedAccountId: applied.selectedAccountId,
+          accounts,
+        });
+        if (target.kind === 'none') {
+          setEntries([]);
+          setOfficialGlSummary(null);
+          return;
+        }
+        const basis = defaultUnifiedBasisForAccountStatement(target, viewMode);
+        const unified = await loadAccountStatementUnifiedMain({
+          companyId,
+          target,
+          startDate,
+          endDate,
+          basis,
+        });
+        loaded = unified.rows;
+        if (target.kind === 'account') {
+          const body = (loaded || []).filter((e) => !isStatementOpeningRow(e));
+          nextOfficialGl = {
+            openingBalance: Number(unified.meta.periodOpeningBalance || 0),
+            totalDebit: body.reduce((s, e) => s + Number(e.debit || 0), 0),
+            totalCredit: body.reduce((s, e) => s + Number(e.credit || 0), 0),
+            closingBalance: Number(unified.closingBalance || 0),
+            txCount: body.length,
+          };
         }
 
         setOfficialGlSummary(nextOfficialGl);

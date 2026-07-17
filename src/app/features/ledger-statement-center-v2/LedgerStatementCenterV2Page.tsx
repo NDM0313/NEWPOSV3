@@ -15,7 +15,6 @@ import {
   applyLedgerV2DisplayFilters,
   deriveLedgerV2Opening,
   getLedgerAttachmentsV2,
-  getLedgerStatementV2,
   listLedgerEntitiesV2,
   summarizeLedgerV2Rows,
 } from '@/app/services/ledgerStatementCenterV2Service';
@@ -24,6 +23,7 @@ import { shareLedgerRowViaWhatsApp } from '@/app/services/ledgerStatementCenterV
 import { compareGlWithDocumentsV2 } from '@/app/services/ledgerStatementCenterV2Diagnostic';
 import { canAccessDeveloperIntegrityLab } from '@/app/lib/developerAccountingAccess';
 import { canAccessLedgerV2UnifiedPreview } from '@/app/lib/ledgerV2UnifiedPreviewAccess';
+import { assertUnifiedMainLoaderSource } from '@/app/lib/r8R2LegacyMainRetired';
 import { shortenLedgerPaymentLabel } from '@/app/lib/ledgerStatementV2Enrichment';
 import { useUnifiedLedgerEngineState } from '@/app/hooks/useUnifiedLedgerEngineState';
 import { useAccountingReportReload } from '@/app/hooks/useAccountingReportReload';
@@ -415,21 +415,15 @@ export function LedgerStatementCenterV2Page({
       const resolved = await resolveLedgerV2MainLoaderSource(companyId);
       const mainSource = effectiveLedgerV2MainLoaderSource(resolved);
       setMainLoaderSource(mainSource);
+      assertUnifiedMainLoaderSource(mainSource);
 
-      const data =
-        mainSource === 'unified'
-          ? await (
-              await import('@/app/services/ledgerStatementCenterV2UnifiedMainService')
-            ).getLedgerStatementV2UnifiedMain(
-              companyId,
-              statementFilters,
-              entityLabel || entityId,
-            )
-          : await getLedgerStatementV2(
-              companyId,
-              statementFilters,
-              entityLabel || entityId,
-            );
+      const data = await (
+        await import('@/app/services/ledgerStatementCenterV2UnifiedMainService')
+      ).getLedgerStatementV2UnifiedMain(
+        companyId,
+        statementFilters,
+        entityLabel || entityId,
+      );
       setResult(data);
       setDocComparison(null);
       if (showDocComparison && showDiagnosticTools) {
