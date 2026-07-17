@@ -16,6 +16,7 @@ import { JournalDescriptionFields } from './JournalDescriptionFields';
 import {
   buildTransferAutoDescription,
   composeJournalEntryDescription,
+  readJournalAutoDescriptionEnabled,
 } from '../../utils/journalEntryDescription';
 import { accountInOutBadgeLabel, POSTING_FIELD_TITLES } from '../../lib/accountPostingInOutLabel';
 
@@ -32,6 +33,9 @@ interface AccountTransferFlowProps {
     toAccountName?: string;
     amount?: number;
     date?: string;
+    reference?: string;
+    notes?: string;
+    attachmentFiles?: File[];
   } | null;
 }
 
@@ -71,7 +75,9 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
   const { run: runSave, busy: submitting } = useSubmitLock();
   const [error, setError] = useState<string | null>(null);
   const [successData, setSuccessData] = useState<TransactionSuccessData | null>(null);
-  const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
+  const [attachmentFiles, setAttachmentFiles] = useState<File[]>(() =>
+    seed?.attachmentFiles?.length ? [...seed.attachmentFiles] : []
+  );
   const [transferData, setTransferData] = useState<TransferData>({
     fromAccountId: seed?.fromAccountId ?? '',
     fromAccountName: seed?.fromAccountName ?? '',
@@ -79,8 +85,8 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
     toAccountName: seed?.toAccountName ?? '',
     amount: seed?.amount && seed.amount > 0 ? seed.amount : 0,
     date: seed?.date || localNowDateString(),
-    reference: '',
-    notes: '',
+    reference: seed?.reference ?? '',
+    notes: seed?.notes ?? '',
   });
 
   useEffect(() => {
@@ -141,6 +147,7 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
       auto: autoDescription,
       userNotes: transferData.notes,
       reference: transferData.reference,
+      includeAuto: readJournalAutoDescriptionEnabled(),
     });
     let attachments: { url: string; name: string }[] | undefined;
     if (attachmentFiles.length > 0) {
@@ -411,6 +418,17 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
                 files={attachmentFiles}
                 onChange={setAttachmentFiles}
                 onError={(message) => setError(message)}
+                ocrEnabled
+                getExistingNotes={() => transferData.notes}
+                onOcrApply={(patch) => {
+                  setTransferData((prev) => ({
+                    ...prev,
+                    ...(patch.amount != null ? { amount: patch.amount } : {}),
+                    ...(patch.date ? { date: patch.date } : {}),
+                    ...(patch.reference ? { reference: patch.reference } : {}),
+                    ...(patch.notes != null ? { notes: patch.notes } : {}),
+                  }));
+                }}
               />
             </div>
 

@@ -5,19 +5,28 @@ import { getContactSubAccountId, getAccountLedgerLines, type LedgerLine } from '
 import {
   getSupplierApGlLedgerLinesForContact,
   getCustomerArGlLedgerLinesForContact,
+  isPartyGlLedgerEmptySuccess,
 } from '../../../api/partyGlLedger';
 import { getContacts, getContactWhatsAppPhone, type ContactRole } from '../../../api/contacts';
 import { getWorkersWithPayable } from '../../../api/accounts';
 import { getWorkerPartyGlLedgerLines } from '../../../api/workerPartyGlLedger';
 import { getWorkerOperationalLedgerLines } from '../../../api/workerOperationalLedger';
 import {
+  balanceRowFromMap,
   fetchContactPartyGlBalancesMap,
-  partyGlDueForListRole,
+  fetchOperationalContactBalancesSummary,
   partyGlSliceFromMap,
+  resolveContactListBalance,
 } from '../../../api/contactBalancesRpc';
 import { ReportHeader } from './_shared/ReportHeader';
 import { DateRangeBar, makeInitialRange, type DateRangeValue } from './_shared/DateRangeBar';
 import { ReportShell, ReportCard, ReportSectionTitle } from './_shared/ReportShell';
+import {
+  LedgerPeriodEmptyCard,
+  allTimeDateRange,
+  isOpeningOnlyPeriod,
+  isTrulyEmptyLedger,
+} from './_shared/LedgerPeriodEmptyCard';
 import { formatAmount, dateRangeLabel } from './_shared/format';
 import { PdfPreviewModal } from '../../shared/PdfPreviewModal';
 import { LedgerPreviewPdf } from '../../shared/LedgerPreviewPdf';
@@ -108,18 +117,23 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
     (async () => {
       try {
         if (kind === 'worker') {
-          const [{ data }, partyGl] = await Promise.all([
+          const [{ data }, partyGl, opSummary] = await Promise.all([
             getWorkersWithPayable(companyId),
             fetchContactPartyGlBalancesMap(companyId, branchId ?? null),
+            fetchOperationalContactBalancesSummary(companyId, branchId ?? null),
           ]);
           if (cancelled) return;
+          const glOk = partyGl.error == null;
           setParties(
             (data || []).map((w) => {
-              const slice = partyGlSliceFromMap(partyGl.map, w.id);
-              const balance =
-                !partyGl.error && slice
-                  ? partyGlDueForListRole(slice, 'worker')
-                  : Number(w.totalPayable || 0);
+              const balance = resolveContactListBalance({
+                opening: Number(w.totalPayable || 0),
+                contactType: 'worker',
+                listRole: 'worker',
+                glOk,
+                glSlice: partyGlSliceFromMap(partyGl.map, w.id),
+                opRow: balanceRowFromMap(opSummary.map, w.id),
+              });
               return {
                 id: w.id,
                 name: w.name,
@@ -230,7 +244,8 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
           const rpcRes = await rpcLoad;
           if (cancelled) return;
 
-          if (!rpcRes.error) {
+          const needFallback = !!rpcRes.error || isPartyGlLedgerEmptySuccess(rpcRes);
+          if (!needFallback) {
             setOpening(rpcRes.openingBalance);
             setLines(sortLedgerLinesAndRebuildRunningBalance(rpcRes.lines, rpcRes.openingBalance));
             setDetailError(null);
@@ -238,10 +253,12 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
             const subId = await getContactSubAccountId(companyId, selected.id);
             if (cancelled) return;
             if (!subId) {
-              setOpening(0);
-              setLines([]);
+              setOpening(rpcRes.error ? 0 : rpcRes.openingBalance);
+              setLines(rpcRes.error ? [] : rpcRes.lines);
               setDetailError(
-                `${rpcRes.error} · No linked sub-account for legacy fallback.`,
+                rpcRes.error
+                  ? `${rpcRes.error} · No linked sub-account for legacy fallback.`
+                  : null,
               );
               return;
             }
@@ -253,13 +270,22 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
               branchId ?? null,
             );
             if (cancelled) return;
-            setOpening(openingBalance);
-            setLines(sortLedgerLinesAndRebuildRunningBalance(rows, openingBalance));
-            setDetailError(
-              error
-                ? `${rpcRes.error} · Fallback: ${error}`
-                : `Showing sub-account only (${rpcRes.error}). Totals may not match web AP/AR statement.`,
-            );
+            const fbHasData = rows.length > 0 || Math.abs(openingBalance) >= 0.005;
+            if (fbHasData) {
+              setOpening(openingBalance);
+              setLines(sortLedgerLinesAndRebuildRunningBalance(rows, openingBalance));
+              setDetailError(
+                error
+                  ? `${rpcRes.error ?? 'Party GL empty'} · Fallback: ${error}`
+                  : rpcRes.error
+                    ? `Showing sub-account only (${rpcRes.error}). Totals may not match web AP/AR statement.`
+                    : 'Party GL empty for this contact — showing lines posted to linked sub-account.',
+              );
+            } else {
+              setOpening(rpcRes.error ? 0 : rpcRes.openingBalance);
+              setLines([]);
+              setDetailError(rpcRes.error);
+            }
           }
         }
       } catch (err) {
@@ -433,12 +459,29 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
         <DateRangeBar value={range} onChange={setRange} companyId={companyId} branchId={branchId} />
       </ReportHeader>
 
+      {detailError && (lines.length > 0 || isOpeningOnlyPeriod(lines.length, opening)) && (
+        <div className="px-4 pt-2">
+          <div className="p-3 bg-amber-500/15 border border-amber-500/40 rounded-lg text-sm text-amber-100">
+            {detailError}
+          </div>
+        </div>
+      )}
+
       <ReportShell
         loading={detailLoading}
-        error={detailError}
-        empty={!detailLoading && lines.length === 0}
+        error={
+          lines.length > 0 || isOpeningOnlyPeriod(lines.length, opening) ? null : detailError
+        }
+        empty={!detailLoading && isTrulyEmptyLedger(lines.length, opening) && !detailError}
         emptyLabel="No ledger activity for this period."
       >
+        {isOpeningOnlyPeriod(lines.length, opening) ? (
+          <LedgerPeriodEmptyCard
+            opening={opening}
+            periodLabel={dateRangeLabel(range.from, range.to)}
+            onShowAllTime={() => setRange(allTimeDateRange())}
+          />
+        ) : (
         <ReportCard>
           <ReportSectionTitle
             title="Ledger activity"
@@ -457,6 +500,7 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
             ))}
           </ul>
         </ReportCard>
+        )}
       </ReportShell>
 
       {preview.brand && (

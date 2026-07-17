@@ -58,6 +58,11 @@ export interface UnifiedPaymentSheetProps {
   /** Customer bill book / REF # for sale receive-payment auto description. */
   customerBillRef?: string | null;
   defaultPaymentNotes?: string | null;
+  initialAmount?: number;
+  initialReference?: string | null;
+  initialPaymentDate?: string | null;
+  initialPaymentTime?: string | null;
+  initialAttachmentFiles?: File[] | null;
 
   onClose: () => void;
   onSuccess: () => void;
@@ -83,6 +88,11 @@ export function UnifiedPaymentSheet({
   damageDeduction,
   customerBillRef,
   defaultPaymentNotes,
+  initialAmount,
+  initialReference,
+  initialPaymentDate,
+  initialPaymentTime,
+  initialAttachmentFiles,
   onClose,
   onSuccess,
   onViewLedger,
@@ -225,7 +235,12 @@ export function UnifiedPaymentSheet({
       outstandingAmount={outstandingAmount}
       subtitle={subtitleBits.length > 0 ? subtitleBits.join(' · ') : undefined}
       customerBillRef={kind === 'sale' ? customerBillRef : undefined}
-      defaultPaymentNotes={kind === 'sale' ? defaultPaymentNotes : undefined}
+      defaultPaymentNotes={defaultPaymentNotes}
+      initialAmount={initialAmount}
+      initialReference={initialReference}
+      initialPaymentDate={initialPaymentDate}
+      initialPaymentTime={initialPaymentTime}
+      initialAttachmentFiles={initialAttachmentFiles}
       onClose={onClose}
       onSuccess={onSuccess}
       onSubmit={handleSubmit}

@@ -29,3 +29,26 @@ test('composeSalePaymentNotes appends bank trace', () => {
     'Auto | Bank Trace ID: T1',
   );
 });
+
+test('composeSalePaymentNotes includeAuto false keeps add-on and trace only', () => {
+  const out = composeSalePaymentNotes({
+    autoNotes: 'Customer receipt from SHOP A8.',
+    userNotes: 'From: NADEEM\nTo: SKAD',
+    bankTraceId: '434570',
+    includeAuto: false,
+  });
+  assert.equal(out, 'From: NADEEM\nTo: SKAD | Bank Trace ID: 434570');
+  assert.doesNotMatch(out, /Customer receipt/);
+});
+
+test('composeSalePaymentNotes includeAuto false with empty add-on is trace only', () => {
+  assert.equal(
+    composeSalePaymentNotes({
+      autoNotes: 'Customer receipt from X.',
+      userNotes: '',
+      bankTraceId: 'T9',
+      includeAuto: false,
+    }),
+    'Bank Trace ID: T9',
+  );
+});

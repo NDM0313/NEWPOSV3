@@ -22,6 +22,8 @@ const accentFocusClass: Record<NonNullable<DateInputFieldProps['accent']>, strin
   rental: 'focus-within:border-[#8B5CF6]',
 };
 
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
 /**
  * Standard date field: native OS/date picker inside dark ERP styling (no wheel modal).
  */
@@ -46,12 +48,18 @@ export function DateInputField({
       >
         <Calendar className="w-5 h-5 text-[#6B7280] shrink-0" aria-hidden />
         <input
+          key={value || 'empty'}
           type={showTime ? 'datetime-local' : 'date'}
           value={value}
           min={min}
           max={max}
           required={required}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => {
+            const next = e.target.value;
+            // Capacitor/WebView quirk: ignore spurious empty clears when a valid ISO date is set.
+            if (!showTime && !next && ISO_DATE.test(value)) return;
+            onChange(next);
+          }}
           className="flex-1 min-w-0 w-full bg-transparent text-white text-sm outline-none [color-scheme:dark]"
         />
       </div>

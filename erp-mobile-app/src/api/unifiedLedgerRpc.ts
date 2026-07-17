@@ -127,6 +127,11 @@ export async function rpcGetUnifiedCashBankLedger(params: {
   return { rows, openingBalance: opening, closingBalance: closing, error: null };
 }
 
+function rpcDateOrNull(value: string | null | undefined): string | null {
+  const s = value != null ? String(value).trim() : '';
+  return s ? s.slice(0, 10) : null;
+}
+
 export async function rpcGetUnifiedAccountLedger(params: {
   companyId: string;
   accountId: string;
@@ -134,24 +139,29 @@ export async function rpcGetUnifiedAccountLedger(params: {
   dateFrom: string;
   dateTo: string;
   basis: UnifiedLedgerBasis;
-}): Promise<{ rows: UnifiedLedgerRow[]; closingBalance: number; error: string | null }> {
+}): Promise<{
+  rows: UnifiedLedgerRow[];
+  openingBalance: number;
+  closingBalance: number;
+  error: string | null;
+}> {
   if (!(await shouldUseUnifiedRpc(params.companyId))) {
-    return { rows: [], closingBalance: 0, error: 'Unified engine not enabled' };
+    return { rows: [], openingBalance: 0, closingBalance: 0, error: 'Unified engine not enabled' };
   }
   const { data: rpcRaw, error } = await supabase.rpc('get_unified_account_ledger', {
     p_company_id: params.companyId,
     p_account_id: params.accountId,
     p_branch_id: params.branchId ?? null,
-    p_start_date: params.dateFrom,
-    p_end_date: params.dateTo,
+    p_start_date: rpcDateOrNull(params.dateFrom),
+    p_end_date: rpcDateOrNull(params.dateTo),
     p_basis: params.basis,
   });
-  if (error) return { rows: [], closingBalance: 0, error: error.message };
+  if (error) return { rows: [], openingBalance: 0, closingBalance: 0, error: error.message };
   const payload = (rpcRaw || {}) as { rows?: RpcLedgerRow[]; period_opening_balance?: number };
   const opening = round2(Number(payload.period_opening_balance) || 0);
   const rows = (payload.rows || []).map((r) => mapRpcRow(r, opening));
   const closing = rows.length ? rows[rows.length - 1].runningBalance : opening;
-  return { rows, closingBalance: closing, error: null };
+  return { rows, openingBalance: opening, closingBalance: closing, error: null };
 }
 
 export async function rpcGetUnifiedPartyLedger(params: {

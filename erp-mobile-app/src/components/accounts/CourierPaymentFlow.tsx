@@ -8,6 +8,7 @@ import {
   type MobilePaymentSheetSubmitPayload,
   type MobilePaymentSheetSubmitResult,
 } from '../shared/MobilePaymentSheet';
+import type { ReceiptOcrRouteSeed } from '../../lib/ocr/receiptOcrRouteSeed';
 
 interface CourierPaymentFlowProps {
   onBack: () => void;
@@ -16,6 +17,7 @@ interface CourierPaymentFlowProps {
   companyId?: string | null;
   branchId?: string | null;
   onViewLedger?: (info: { paymentId: string | null; partyName: string | null }) => void;
+  ocrSeed?: ReceiptOcrRouteSeed | null;
 }
 
 export function CourierPaymentFlow({
@@ -25,6 +27,7 @@ export function CourierPaymentFlow({
   companyId,
   branchId,
   onViewLedger,
+  ocrSeed,
 }: CourierPaymentFlowProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [couriers, setCouriers] = useState<CourierRow[]>([]);
@@ -132,6 +135,12 @@ export function CourierPaymentFlow({
         allowOverpayment
         hidePayFull
         hideSummary
+        initialAmount={ocrSeed?.amount && ocrSeed.amount > 0 ? ocrSeed.amount : undefined}
+        defaultPaymentNotes={ocrSeed?.notes ?? null}
+        initialReference={ocrSeed?.reference ?? null}
+        initialPaymentDate={ocrSeed?.date ?? null}
+        initialPaymentTime={ocrSeed?.time ?? null}
+        initialAttachmentFiles={ocrSeed?.attachmentFiles?.length ? ocrSeed.attachmentFiles : null}
         onClose={() => setSelectedCourier(null)}
         onSuccess={onComplete}
         onSubmit={handleSubmit}

@@ -5,6 +5,7 @@ import { getAllCustomersWithBalance, type CustomerWithBalance } from '../../api/
 import { MobilePaymentSheet, type MobilePaymentSheetSubmitPayload } from '../shared/MobilePaymentSheet';
 import { useRecordOnAccountCustomerPayment } from '../../hooks/useRecordOnAccountCustomerPayment';
 import { finalizePaymentAttachments } from '../../lib/finalizePaymentAttachments';
+import type { ReceiptOcrRouteSeed } from '../../lib/ocr/receiptOcrRouteSeed';
 
 interface CustomerPaymentFlowProps {
   onBack: () => void;
@@ -15,6 +16,8 @@ interface CustomerPaymentFlowProps {
   onViewLedger?: (info: { paymentId: string | null; partyName: string | null }) => void;
   /** Prefill from Duplicate — select this customer when list loads. */
   initialContactId?: string | null;
+  /** Prefill from Scan Receipt hub. */
+  ocrSeed?: ReceiptOcrRouteSeed | null;
 }
 
 export function CustomerPaymentFlow({
@@ -25,6 +28,7 @@ export function CustomerPaymentFlow({
   branchId,
   onViewLedger,
   initialContactId,
+  ocrSeed,
 }: CustomerPaymentFlowProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [customers, setCustomers] = useState<CustomerWithBalance[]>([]);
@@ -102,6 +106,8 @@ export function CustomerPaymentFlow({
   };
 
   if (selectedCustomer && companyId) {
+    const ocrAmount = ocrSeed?.amount && ocrSeed.amount > 0 ? ocrSeed.amount : undefined;
+    const due = Math.max(0, selectedCustomer.balance);
     return (
       <MobilePaymentSheet
         mode="receive"
@@ -112,13 +118,18 @@ export function CustomerPaymentFlow({
         profileId={user.profileId ?? null}
         partyName={selectedCustomer.name}
         partyPhone={selectedCustomer.phone}
-        outstandingAmount={Math.max(0, selectedCustomer.balance)}
-        initialAmount={Math.max(0, selectedCustomer.balance) || undefined}
+        outstandingAmount={due}
+        initialAmount={ocrAmount ?? (due || undefined)}
         allowOverpayment
         title="Receive Payment from Customer"
         subtitle="On-account receipt (updates customer AR)"
         partyKindLabel="CUSTOMER"
         submitLabel="Receive Payment"
+        defaultPaymentNotes={ocrSeed?.notes ?? null}
+        initialReference={ocrSeed?.reference ?? null}
+        initialPaymentDate={ocrSeed?.date ?? null}
+        initialPaymentTime={ocrSeed?.time ?? null}
+        initialAttachmentFiles={ocrSeed?.attachmentFiles?.length ? ocrSeed.attachmentFiles : null}
         onClose={() => setSelectedCustomer(null)}
         onSuccess={onComplete}
         onSubmit={handleSubmit}

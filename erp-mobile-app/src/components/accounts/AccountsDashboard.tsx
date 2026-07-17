@@ -15,6 +15,7 @@ import {
   BookMarked,
   ArrowUpRight,
   ArrowDownLeft,
+  ScanText,
   type LucideIcon,
 } from 'lucide-react';
 import type { User } from '../../types';
@@ -82,6 +83,7 @@ interface AccountsDashboardProps {
   onWorkerPayment: () => void;
   onCourierPayment: () => void;
   onExpenseEntry: () => void;
+  onScanReceipt?: () => void;
   onViewReports: () => void;
   onChartOfAccounts: () => void;
   onEntryClick: (entry: AccountEntry) => void;
@@ -237,6 +239,7 @@ export function AccountsDashboard({
   onWorkerPayment,
   onCourierPayment,
   onExpenseEntry,
+  onScanReceipt,
   onViewReports,
   onChartOfAccounts,
   onEntryClick,
@@ -468,6 +471,14 @@ export function AccountsDashboard({
       <div>
         <h2 className="text-sm font-semibold text-white mb-3 px-1">Quick Actions</h2>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          {onScanReceipt && (
+            <ActionButton
+              icon={ScanText}
+              label="Scan Receipt"
+              color="from-[#0EA5E9] to-[#0284C7]"
+              onClick={onScanReceipt}
+            />
+          )}
           <ActionButton icon={BookOpen} label="General Entry" color="from-[#8B5CF6] to-[#7C3AED]" onClick={onGeneralEntry} />
           <ActionButton icon={ArrowLeftRight} label="Account Transfer" color="from-[#3B82F6] to-[#2563EB]" onClick={onAccountTransfer} />
           <ActionButton icon={Users} label="Supplier Payment" color="from-[#F59E0B] to-[#D97706]" onClick={onSupplierPayment} />

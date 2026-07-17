@@ -16,6 +16,7 @@ import { JournalDescriptionFields } from './JournalDescriptionFields';
 import {
   buildGeneralJournalAutoDescription,
   composeJournalEntryDescription,
+  readJournalAutoDescriptionEnabled,
 } from '../../utils/journalEntryDescription';
 import { accountInOutBadgeLabel, formatPostingFieldLabel, inOutSelectionClasses, POSTING_FIELD_TITLES } from '../../lib/accountPostingInOutLabel';
 
@@ -28,6 +29,7 @@ export interface GeneralEntrySeed {
   date?: string;
   userNotes?: string;
   reference?: string;
+  attachmentFiles?: File[];
   /** When true, jump to amount/details step if both accounts are seeded. */
   startAtDetails?: boolean;
 }
@@ -74,7 +76,9 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
   const { run: runSave, busy: submitting } = useSubmitLock();
   const [error, setError] = useState<string | null>(null);
   const [successData, setSuccessData] = useState<TransactionSuccessData | null>(null);
-  const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
+  const [attachmentFiles, setAttachmentFiles] = useState<File[]>(() =>
+    seed?.attachmentFiles?.length ? [...seed.attachmentFiles] : []
+  );
   const [entryData, setEntryData] = useState<EntryData>({
     debitAccountId: seed?.debitAccountId ?? '',
     debitAccountName: seed?.debitAccountName ?? '',
@@ -144,6 +148,7 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
         auto: autoDescription,
         userNotes: entryData.userNotes,
         reference: entryData.reference,
+        includeAuto: readJournalAutoDescriptionEnabled(),
       });
       let attachments: { url: string; name: string }[] | undefined;
       if (attachmentFiles.length > 0) {
@@ -439,6 +444,17 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
                 files={attachmentFiles}
                 onChange={setAttachmentFiles}
                 onError={(message) => setError(message)}
+                ocrEnabled
+                getExistingNotes={() => entryData.userNotes}
+                onOcrApply={(patch) => {
+                  setEntryData((prev) => ({
+                    ...prev,
+                    ...(patch.amount != null ? { amount: patch.amount } : {}),
+                    ...(patch.date ? { date: patch.date } : {}),
+                    ...(patch.reference ? { reference: patch.reference } : {}),
+                    ...(patch.notes != null ? { userNotes: patch.notes } : {}),
+                  }));
+                }}
               />
             </div>
 

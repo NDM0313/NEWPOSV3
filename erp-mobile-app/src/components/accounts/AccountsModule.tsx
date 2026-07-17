@@ -10,7 +10,9 @@ import { CustomerPaymentFlow } from './CustomerPaymentFlow';
 import { WorkerPaymentFlow } from './WorkerPaymentFlow';
 import { CourierPaymentFlow } from './CourierPaymentFlow';
 import { ExpenseEntryFlow } from './ExpenseEntryFlow';
+import { ReceiptScanFlow } from './ReceiptScanFlow';
 import { getJournalEntryById } from '../../api/accounts';
+import type { ReceiptOcrRouteSeed } from '../../lib/ocr/receiptOcrRouteSeed';
 import { supabase } from '../../lib/supabase';
 import {
   buildGeneralEntrySeedFromJournalLines,
@@ -65,6 +67,7 @@ interface AccountsModuleProps {
 
 type View =
   | 'dashboard'
+  | 'scan-receipt'
   | 'general-entry'
   | 'account-transfer'
   | 'supplier-payment'
@@ -148,15 +151,20 @@ export function AccountsModule({
     toAccountName?: string;
     amount?: number;
     date?: string;
+    reference?: string;
+    notes?: string;
+    attachmentFiles?: File[];
   } | null>(null);
   const [duplicateContactId, setDuplicateContactId] = useState<string | null>(null);
   const [duplicateWorkerId, setDuplicateWorkerId] = useState<string | null>(null);
+  const [ocrRouteSeed, setOcrRouteSeed] = useState<ReceiptOcrRouteSeed | null>(null);
 
   const clearDuplicateSeeds = useCallback(() => {
     setGeneralEntrySeed(null);
     setTransferSeed(null);
     setDuplicateContactId(null);
     setDuplicateWorkerId(null);
+    setOcrRouteSeed(null);
   }, []);
 
   const backToDashboardFromFlow = useCallback(() => {
@@ -335,6 +343,7 @@ export function AccountsModule({
             onWorkerPayment={() => setView('worker-payment')}
             onCourierPayment={() => setView('courier-payment')}
             onExpenseEntry={() => setView('expense-entry')}
+            onScanReceipt={() => setView('scan-receipt')}
             onViewReports={() => setView('reports')}
             onChartOfAccounts={() => setView('chart')}
             onEntryClick={(entry) => {
@@ -346,6 +355,40 @@ export function AccountsModule({
           />
         </div>
       </div>
+    );
+  }
+
+  if (view === 'scan-receipt') {
+    return (
+      <ReceiptScanFlow
+        onBack={backToDashboardFromFlow}
+        onRouted={({ kind, seed }) => {
+          setOcrRouteSeed(seed);
+          if (kind === 'general-entry') {
+            setGeneralEntrySeed({
+              amount: seed.amount,
+              date: seed.date,
+              reference: seed.reference,
+              userNotes: seed.notes,
+              attachmentFiles: seed.attachmentFiles,
+            });
+            setView('general-entry');
+            return;
+          }
+          if (kind === 'account-transfer') {
+            setTransferSeed({
+              amount: seed.amount,
+              date: seed.date,
+              reference: seed.reference,
+              notes: seed.notes,
+              attachmentFiles: seed.attachmentFiles,
+            });
+            setView('account-transfer');
+            return;
+          }
+          setView(kind);
+        }}
+      />
     );
   }
 
@@ -382,6 +425,7 @@ export function AccountsModule({
         companyId={companyId}
         branchId={branch?.id}
         initialContactId={duplicateContactId}
+        ocrSeed={ocrRouteSeed}
       />
     );
   }
@@ -394,6 +438,7 @@ export function AccountsModule({
         companyId={companyId}
         branchId={branch?.id ?? null}
         initialContactId={duplicateContactId}
+        ocrSeed={ocrRouteSeed}
       />
     );
   }
@@ -406,6 +451,7 @@ export function AccountsModule({
         companyId={companyId}
         branchId={branch?.id ?? null}
         initialWorkerId={duplicateWorkerId}
+        ocrSeed={ocrRouteSeed}
       />
     );
   }
@@ -417,6 +463,7 @@ export function AccountsModule({
         user={user}
         companyId={companyId}
         branchId={branch?.id ?? null}
+        ocrSeed={ocrRouteSeed}
       />
     );
   }
@@ -428,6 +475,7 @@ export function AccountsModule({
         user={user}
         companyId={companyId}
         branchId={branch?.id}
+        ocrSeed={ocrRouteSeed}
       />
     );
   }

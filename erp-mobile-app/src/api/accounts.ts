@@ -236,6 +236,14 @@ async function mergeJournalBalances(
   }));
 }
 
+/** Overlay journal net balances (debit − credit) onto account rows — GL truth for list UIs. */
+export async function overlayAccountBalancesFromJournal(
+  companyId: string,
+  rows: AccountRow[],
+): Promise<AccountRow[]> {
+  return mergeJournalBalances(companyId, rows);
+}
+
 /** Payment accounts: cash, bank, mobile wallet only (no generic asset / AR / etc.). */
 export async function getPaymentAccounts(companyId: string): Promise<{ data: AccountRow[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };

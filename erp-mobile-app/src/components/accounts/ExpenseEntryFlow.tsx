@@ -18,6 +18,7 @@ import {
   type MobilePaymentSheetSubmitPayload,
   type MobilePaymentSheetSubmitResult,
 } from '../shared/MobilePaymentSheet';
+import type { ReceiptOcrRouteSeed } from '../../lib/ocr/receiptOcrRouteSeed';
 
 interface ExpenseEntryFlowProps {
   onBack: () => void;
@@ -25,16 +26,17 @@ interface ExpenseEntryFlowProps {
   user: User;
   companyId?: string | null;
   branchId?: string | null;
+  ocrSeed?: ReceiptOcrRouteSeed | null;
 }
 
-export function ExpenseEntryFlow({ onBack, onComplete, user, companyId, branchId }: ExpenseEntryFlowProps) {
+export function ExpenseEntryFlow({ onBack, onComplete, user, companyId, branchId, ocrSeed }: ExpenseEntryFlowProps) {
   const [categoryTree, setCategoryTree] = useState<ExpenseCategoryTreeItem[]>([]);
   const [mainCategoryId, setMainCategoryId] = useState('');
   const [subCategoryId, setSubCategoryId] = useState('');
   const [leafCategoryId, setLeafCategoryId] = useState('');
   const [categoriesLoading, setCategoriesLoading] = useState(false);
   const [categoriesError, setCategoriesError] = useState<string | null>(null);
-  const [description, setDescription] = useState('');
+  const [description, setDescription] = useState(() => String(ocrSeed?.notes ?? '').trim());
   const [showSheet, setShowSheet] = useState(false);
 
   const {
@@ -152,6 +154,12 @@ export function ExpenseEntryFlow({ onBack, onComplete, user, companyId, branchId
         hideSummary
         hidePayFull
         allowOverpayment
+        initialAmount={ocrSeed?.amount && ocrSeed.amount > 0 ? ocrSeed.amount : undefined}
+        defaultPaymentNotes={ocrSeed?.notes ?? null}
+        initialReference={ocrSeed?.reference ?? null}
+        initialPaymentDate={ocrSeed?.date ?? null}
+        initialPaymentTime={ocrSeed?.time ?? null}
+        initialAttachmentFiles={ocrSeed?.attachmentFiles?.length ? ocrSeed.attachmentFiles : null}
         onClose={() => setShowSheet(false)}
         onSuccess={onComplete}
         onSubmit={handleSubmit}

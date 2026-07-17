@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { ArrowLeft, Check, Search } from 'lucide-react';
 import type { User } from '../../types';
 import {
@@ -7,6 +7,8 @@ import {
   type SupplierWithPayable,
 } from '../../api/accounts';
 import { UnifiedPaymentSheet } from '../shared/UnifiedPaymentSheet';
+import type { ReceiptOcrRouteSeed } from '../../lib/ocr/receiptOcrRouteSeed';
+import { fuzzyMatchSuppliers } from '../../lib/ocr/parsePakSupplierBill';
 
 interface SupplierPaymentFlowProps {
   onBack: () => void;
@@ -16,6 +18,7 @@ interface SupplierPaymentFlowProps {
   branchId?: string | null;
   onViewLedger?: (info: { paymentId: string | null; partyName: string | null }) => void;
   initialContactId?: string | null;
+  ocrSeed?: ReceiptOcrRouteSeed | null;
 }
 
 export function SupplierPaymentFlow({
@@ -26,10 +29,16 @@ export function SupplierPaymentFlow({
   branchId,
   onViewLedger,
   initialContactId,
+  ocrSeed,
 }: SupplierPaymentFlowProps) {
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(() => String(ocrSeed?.supplierHint ?? '').trim());
   const [suppliers, setSuppliers] = useState<SupplierWithPayable[]>([]);
   const [selectedSupplier, setSelectedSupplier] = useState<SupplierWithPayable | null>(null);
+
+  useEffect(() => {
+    const hint = String(ocrSeed?.supplierHint ?? '').trim();
+    if (hint) setSearchQuery((q) => q || hint);
+  }, [ocrSeed?.supplierHint]);
 
   useEffect(() => {
     if (!companyId) return;
@@ -41,6 +50,11 @@ export function SupplierPaymentFlow({
       if (match) setSelectedSupplier(match);
     });
   }, [companyId, initialContactId]);
+
+  const ocrSuggestions = useMemo(
+    () => fuzzyMatchSuppliers(ocrSeed?.supplierHint, suppliers, 5),
+    [ocrSeed?.supplierHint, suppliers]
+  );
 
   const filteredSuppliers = suppliers.filter(
     (s) => s.name.toLowerCase().includes(searchQuery.toLowerCase()) || s.phone.includes(searchQuery),
@@ -80,12 +94,53 @@ export function SupplierPaymentFlow({
         partyPhone={selectedSupplier.phone || null}
         totalAmount={selectedSupplier.totalPayable}
         outstandingAmount={selectedSupplier.totalPayable}
+        initialAmount={
+          ocrSeed?.amount && ocrSeed.amount > 0 ? ocrSeed.amount : selectedSupplier.totalPayable
+        }
+        defaultPaymentNotes={ocrSeed?.notes ?? null}
+        initialReference={ocrSeed?.reference ?? null}
+        initialPaymentDate={ocrSeed?.date ?? null}
+        initialPaymentTime={ocrSeed?.time ?? null}
+        initialAttachmentFiles={ocrSeed?.attachmentFiles?.length ? ocrSeed.attachmentFiles : null}
         onClose={() => setSelectedSupplier(null)}
         onSuccess={onComplete}
         onViewLedger={onViewLedger}
       />
     );
   }
+
+  const renderSupplierButton = (supplier: SupplierWithPayable, suggested?: boolean) => (
+    <button
+      key={supplier.id}
+      type="button"
+      onClick={() => setSelectedSupplier(supplier)}
+      className={`w-full p-4 rounded-xl border-2 text-left transition-all bg-[#1F2937] ${
+        suggested
+          ? 'border-[#F59E0B]/60 hover:border-[#F59E0B]'
+          : 'border-[#374151] hover:border-[#F59E0B]/50'
+      }`}
+    >
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-white truncate">{supplier.name}</p>
+          <p className="text-xs text-[#9CA3AF] truncate">{supplier.phone}</p>
+          {suggested ? (
+            <p className="text-[10px] text-[#FBBF24] mt-0.5">OCR name suggestion — confirm to select</p>
+          ) : null}
+        </div>
+        <Check className="text-[#F59E0B] opacity-0" size={20} />
+      </div>
+      <div className="flex items-center justify-between pt-2 border-t border-[#374151]">
+        <span className="text-xs text-[#9CA3AF]">Outstanding Balance</span>
+        <span className={`text-sm font-bold ${supplier.totalPayable > 0 ? 'text-[#EF4444]' : 'text-[#10B981]'}`}>
+          Rs. {supplier.totalPayable.toLocaleString()}
+        </span>
+      </div>
+      {supplier.lastPayment && (
+        <p className="text-xs text-[#6B7280] mt-1">Last payment: {supplier.lastPayment}</p>
+      )}
+    </button>
+  );
 
   return (
     <div className="min-h-screen pb-40 bg-[#111827]">
@@ -112,36 +167,23 @@ export function SupplierPaymentFlow({
             className="w-full pl-10 pr-4 py-3 bg-[#1F2937] border border-[#374151] rounded-xl text-white placeholder-[#6B7280] focus:outline-none focus:border-[#F59E0B]"
           />
         </div>
+
+        {ocrSuggestions.length > 0 && String(ocrSeed?.supplierHint ?? '').trim() ? (
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-[#FBBF24]">Suggested from OCR</p>
+            {ocrSuggestions.map((s) => renderSupplierButton(s, true))}
+          </div>
+        ) : null}
+
         <div className="space-y-2">
-          {filteredSuppliers.length === 0 ? (
+          {filteredSuppliers.length === 0 && ocrSuggestions.length === 0 ? (
             <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-8 text-center">
               <p className="text-sm text-[#9CA3AF]">No suppliers with outstanding balance</p>
             </div>
           ) : (
-            filteredSuppliers.map((supplier) => (
-              <button
-                key={supplier.id}
-                onClick={() => setSelectedSupplier(supplier)}
-                className="w-full p-4 rounded-xl border-2 text-left transition-all bg-[#1F2937] border-[#374151] hover:border-[#F59E0B]/50"
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-white truncate">{supplier.name}</p>
-                    <p className="text-xs text-[#9CA3AF] truncate">{supplier.phone}</p>
-                  </div>
-                  <Check className="text-[#F59E0B] opacity-0" size={20} />
-                </div>
-                <div className="flex items-center justify-between pt-2 border-t border-[#374151]">
-                  <span className="text-xs text-[#9CA3AF]">Outstanding Balance</span>
-                  <span className={`text-sm font-bold ${supplier.totalPayable > 0 ? 'text-[#EF4444]' : 'text-[#10B981]'}`}>
-                    Rs. {supplier.totalPayable.toLocaleString()}
-                  </span>
-                </div>
-                {supplier.lastPayment && (
-                  <p className="text-xs text-[#6B7280] mt-1">Last payment: {supplier.lastPayment}</p>
-                )}
-              </button>
-            ))
+            filteredSuppliers
+              .filter((s) => !ocrSuggestions.some((g) => g.id === s.id))
+              .map((supplier) => renderSupplierButton(supplier))
           )}
         </div>
       </div>

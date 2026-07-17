@@ -53,15 +53,38 @@ export function composeSalePaymentNotes(params: {
   autoNotes: string;
   userNotes?: string | null;
   bankTraceId?: string | null;
+  /** When false, omit auto sentence; keep add-on + bank trace. Default true. */
+  includeAuto?: boolean;
 }): string {
-  const auto = String(params.autoNotes ?? '').trim();
+  const includeAuto = params.includeAuto !== false;
+  const auto = includeAuto ? String(params.autoNotes ?? '').trim() : '';
   const user = String(params.userNotes ?? '').trim();
-  const base = user ? `${auto}\n\n${user}` : auto;
+  const base = auto && user ? `${auto}\n\n${user}` : auto || user;
   const trace = String(params.bankTraceId ?? '').trim();
   if (trace) {
     return base ? `${base} | Bank Trace ID: ${trace}` : `Bank Trace ID: ${trace}`;
   }
   return base;
+}
+
+export const PAYMENT_AUTO_DESCRIPTION_STORAGE_KEY = 'erp.mobile.paymentAutoDescription';
+
+export function readPaymentAutoDescriptionEnabled(): boolean {
+  try {
+    const raw = localStorage.getItem(PAYMENT_AUTO_DESCRIPTION_STORAGE_KEY);
+    if (raw === null) return true;
+    return raw !== '0' && raw !== 'false';
+  } catch {
+    return true;
+  }
+}
+
+export function writePaymentAutoDescriptionEnabled(enabled: boolean): void {
+  try {
+    localStorage.setItem(PAYMENT_AUTO_DESCRIPTION_STORAGE_KEY, enabled ? '1' : '0');
+  } catch {
+    /* ignore quota / private mode */
+  }
 }
 
 /** Recompose customer payment notes so Bill/REF auto block is always enforced on submit. */

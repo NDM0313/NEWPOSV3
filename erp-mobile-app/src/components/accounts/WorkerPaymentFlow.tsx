@@ -8,6 +8,7 @@ import {
   type MobilePaymentSheetSubmitPayload,
   type MobilePaymentSheetSubmitResult,
 } from '../shared/MobilePaymentSheet';
+import type { ReceiptOcrRouteSeed } from '../../lib/ocr/receiptOcrRouteSeed';
 
 interface WorkerPaymentFlowProps {
   onBack: () => void;
@@ -17,6 +18,7 @@ interface WorkerPaymentFlowProps {
   branchId?: string | null;
   onViewLedger?: (info: { paymentId: string | null; partyName: string | null }) => void;
   initialWorkerId?: string | null;
+  ocrSeed?: ReceiptOcrRouteSeed | null;
 }
 
 interface Worker {
@@ -50,6 +52,7 @@ export function WorkerPaymentFlow({
   branchId,
   onViewLedger,
   initialWorkerId,
+  ocrSeed,
 }: WorkerPaymentFlowProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
@@ -115,6 +118,7 @@ export function WorkerPaymentFlow({
   };
 
   if (selectedWorker && companyId) {
+    const ocrAmount = ocrSeed?.amount && ocrSeed.amount > 0 ? ocrSeed.amount : undefined;
     return (
       <MobilePaymentSheet
         mode="pay-worker"
@@ -126,8 +130,13 @@ export function WorkerPaymentFlow({
         partyName={selectedWorker.name}
         referenceNo={getWorkerTypeLabel(selectedWorker.type)}
         outstandingAmount={selectedWorker.totalPayable}
-        initialAmount={selectedWorker.totalPayable}
+        initialAmount={ocrAmount ?? selectedWorker.totalPayable}
         allowOverpayment
+        defaultPaymentNotes={ocrSeed?.notes ?? null}
+        initialReference={ocrSeed?.reference ?? null}
+        initialPaymentDate={ocrSeed?.date ?? null}
+        initialPaymentTime={ocrSeed?.time ?? null}
+        initialAttachmentFiles={ocrSeed?.attachmentFiles?.length ? ocrSeed.attachmentFiles : null}
         onClose={() => setSelectedWorker(null)}
         onSuccess={onComplete}
         onSubmit={handleSubmit}

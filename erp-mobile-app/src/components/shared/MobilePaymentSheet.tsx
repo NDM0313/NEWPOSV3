@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import {
   X,
@@ -13,6 +13,7 @@ import {
   Upload,
   FileText,
   Loader2,
+  ScanText,
 } from 'lucide-react';
 import { getPaymentAccounts } from '../../api/accounts';
 import { getBranches, getBranchPaymentDefaults } from '../../api/branches';
@@ -20,6 +21,9 @@ import { getDefaultAccounts, type DefaultAccountsSettings } from '../../api/sett
 import { MAX_FILE_SIZE_BYTES, ACCEPT_TYPES } from '../../api/paymentAttachments';
 import { prepareAttachmentFilesForUpload } from '../../utils/imageCompression';
 import { MediaSourcePicker } from './MediaSourcePicker';
+import { ReceiptOcrReviewSheet } from './ReceiptOcrReviewSheet';
+import { useReceiptOcrAfterAttach } from '../../hooks/useReceiptOcrAfterAttach';
+import { isImageFile } from '../../lib/ocr/receiptOcrTypes';
 import { TransactionSuccessModal, type TransactionSuccessData } from './TransactionSuccessModal';
 import {
   buildPaymentReferenceLabels,
@@ -32,6 +36,8 @@ import { usePermissions } from '../../context/PermissionContext';
 import {
   buildCustomerSalePaymentAutoNotes,
   composeSalePaymentNotes,
+  readPaymentAutoDescriptionEnabled,
+  writePaymentAutoDescriptionEnabled,
 } from '../../utils/saleNotesComposition';
 import { formatAccountBalanceLineIfAllowed } from '../../utils/balancePrivacy';
 import {
@@ -39,6 +45,7 @@ import {
   parsePaymentDateTimeLocal,
   getCurrentLocalTimestamp,
 } from '../../utils/localDate';
+import { ocrDateTimeLocal } from '../../lib/ocr/receiptOcrTypes';
 import { isBranchSentinel, isRealBranchUuid } from '../../utils/branchId';
 import {
   filterPaymentAccountsByMethod,
@@ -136,6 +143,14 @@ export interface MobilePaymentSheetProps {
   customerBillRef?: string | null;
   /** Optional user add-on prefill for description field. */
   defaultPaymentNotes?: string | null;
+  /** Prefill bank trace / reference from Scan Receipt OCR. */
+  initialReference?: string | null;
+  /** Prefill payment date YYYY-MM-DD (keeps current time-of-day unless initialPaymentTime set). */
+  initialPaymentDate?: string | null;
+  /** Prefill HH:mm with initialPaymentDate for datetime-local. */
+  initialPaymentTime?: string | null;
+  /** Prefill attachment files from Scan Receipt (upload on submit). */
+  initialAttachmentFiles?: File[] | null;
 
   onClose: () => void;
   onSuccess: () => void;
@@ -263,6 +278,10 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
     documentBranchId,
     customerBillRef,
     defaultPaymentNotes,
+    initialReference,
+    initialPaymentDate,
+    initialPaymentTime,
+    initialAttachmentFiles,
     onClose,
     onSuccess,
     onSubmit,
@@ -279,13 +298,58 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [accountId, setAccountId] = useState('');
   const { canViewBalances } = usePermissions();
-  const [paymentDateTime, setPaymentDateTime] = useState(() => localNowDateTimeString());
+  const [paymentDateTime, setPaymentDateTime] = useState(() =>
+    ocrDateTimeLocal(initialPaymentDate, initialPaymentTime) ?? localNowDateTimeString()
+  );
   const [branchPickerModalOpen, setBranchPickerModalOpen] = useState(false);
   const [notes, setNotes] = useState(() => String(defaultPaymentNotes ?? '').trim());
-  const [reference, setReference] = useState('');
-  const [showOptional, setShowOptional] = useState(false);
-  const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
+  const [reference, setReference] = useState(() => String(initialReference ?? '').trim());
+  const [showOptional, setShowOptional] = useState(
+    () =>
+      Boolean(String(defaultPaymentNotes ?? '').trim()) ||
+      Boolean(String(initialReference ?? '').trim()) ||
+      Boolean(initialAttachmentFiles?.length)
+  );
+  const [attachmentFiles, setAttachmentFiles] = useState<File[]>(() =>
+    initialAttachmentFiles?.length ? [...initialAttachmentFiles] : []
+  );
   const [isProcessingFiles, setIsProcessingFiles] = useState(false);
+  const [paymentAutoEnabled, setPaymentAutoEnabled] = useState(readPaymentAutoDescriptionEnabled);
+
+  const setPaymentAutoDescriptionEnabled = (next: boolean) => {
+    setPaymentAutoEnabled(next);
+    writePaymentAutoDescriptionEnabled(next);
+  };
+
+  useEffect(() => {
+    const next = ocrDateTimeLocal(initialPaymentDate, initialPaymentTime);
+    if (next) setPaymentDateTime(next);
+  }, [initialPaymentDate, initialPaymentTime]);
+
+  const handleOcrApply = useCallback(
+    (patch: { amount?: number; date?: string; time?: string; reference?: string; notes?: string }) => {
+      if (patch.amount != null) setAmount(patch.amount);
+      if (patch.reference) setReference(patch.reference);
+      if (patch.notes != null) setNotes(patch.notes);
+      if (patch.date) {
+        const next =
+          ocrDateTimeLocal(patch.date, patch.time) ??
+          (() => {
+            const now = localNowDateTimeString();
+            const timePart = now.includes('T') ? now.split('T')[1] : '12:00';
+            return `${patch.date}T${timePart.slice(0, 5)}`;
+          })();
+        setPaymentDateTime(next);
+      }
+      setShowOptional(true);
+    },
+    []
+  );
+  const ocr = useReceiptOcrAfterAttach({
+    enabled: true,
+    onApply: handleOcrApply,
+    getExistingNotes: () => notes,
+  });
   const [accounts, setAccounts] = useState<PaymentAccountPick[]>([]);
   const [defaultAccounts, setDefaultAccounts] = useState<DefaultAccountsSettings | null>(null);
   const [branchPaymentDefaults, setBranchPaymentDefaults] = useState<BranchPaymentDefaults | null>(null);
@@ -448,6 +512,7 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
               }),
               userNotes: notes.trim(),
               bankTraceId: reference.trim() || null,
+              includeAuto: paymentAutoEnabled,
             })
           : reference.trim()
             ? composeSalePaymentNotes({ autoNotes: notes.trim(), bankTraceId: reference.trim() })
@@ -659,7 +724,15 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
           <label className="block text-sm font-medium text-[#9CA3AF] mb-2">Payment date & time *</label>
           <input
             type="datetime-local"
-            max={localNowDateTimeString()}
+            max={
+              // Allow OCR past dates: max = later of now and current value so WebViews
+              // do not clamp a valid OCR datetime to empty/now.
+              (() => {
+                const now = localNowDateTimeString();
+                if (!paymentDateTime) return now;
+                return paymentDateTime > now ? paymentDateTime : now;
+              })()
+            }
             value={paymentDateTime}
             onChange={(e) => setPaymentDateTime(e.target.value)}
             className="w-full max-w-xs h-11 px-3 rounded-lg bg-[#1F2937] border border-[#374151] text-white focus:outline-none focus:ring-2 focus:ring-[#3B82F6]"
@@ -817,11 +890,51 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
             <div className="px-4 pb-4 space-y-4 border-t border-[#374151] pt-4">
               {mode === 'receive' && salePaymentAutoDescription && (
                 <div>
-                  <label className="block text-xs font-medium text-[#9CA3AF] mb-1">Auto description</label>
-                  <p className="text-sm text-[#9CA3AF] leading-relaxed whitespace-pre-wrap break-words">
-                    {salePaymentAutoDescription}
-                  </p>
-                  <p className="text-[10px] text-[#6B7280] mt-1">Saved with your add-on and bank trace below.</p>
+                  <div className="flex items-center justify-between gap-3 mb-1">
+                    <label className="block text-xs font-medium text-[#9CA3AF]">Auto description</label>
+                    <div
+                      className="inline-flex rounded-lg border border-[#4B5563] overflow-hidden shrink-0"
+                      role="group"
+                      aria-label="Auto description on or off"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setPaymentAutoDescriptionEnabled(true)}
+                        className={`px-3 py-1.5 text-xs font-bold tracking-wide transition-colors ${
+                          paymentAutoEnabled
+                            ? 'bg-[#4F46E5] text-white'
+                            : 'bg-[#374151] text-[#9CA3AF] hover:text-white'
+                        }`}
+                      >
+                        ON
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPaymentAutoDescriptionEnabled(false)}
+                        className={`px-3 py-1.5 text-xs font-bold tracking-wide transition-colors border-l border-[#4B5563] ${
+                          !paymentAutoEnabled
+                            ? 'bg-[#6B7280] text-white'
+                            : 'bg-[#374151] text-[#9CA3AF] hover:text-white'
+                        }`}
+                      >
+                        OFF
+                      </button>
+                    </div>
+                  </div>
+                  {paymentAutoEnabled ? (
+                    <>
+                      <p className="text-sm text-[#9CA3AF] leading-relaxed whitespace-pre-wrap break-words">
+                        {salePaymentAutoDescription}
+                      </p>
+                      <p className="text-[10px] text-[#6B7280] mt-1">
+                        Saved with your add-on and bank trace below.
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-sm text-[#6B7280] leading-relaxed">
+                      Auto description is OFF. Only Bank Trace and Description add-on are saved.
+                    </p>
+                  )}
                 </div>
               )}
               <div>
@@ -862,6 +975,10 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
                         compressionMessages.forEach((msg) => setToast({ message: msg, type: 'success' }));
                         if (processed.length > 0) {
                           setAttachmentFiles((prev) => [...prev, ...processed]);
+                          ocr.rememberImageFromFiles(processed);
+                          if (processed.some(isImageFile)) {
+                            void ocr.startOcrForFiles(processed);
+                          }
                         }
                       } finally {
                         setIsProcessingFiles(false);
@@ -891,6 +1008,30 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
                 </button>
                   )}
                 </MediaSourcePicker>
+                {attachmentFiles.some(isImageFile) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const img = [...attachmentFiles].reverse().find(isImageFile);
+                      if (img) {
+                        ocr.rememberImageFromFiles([img]);
+                        void ocr.rescanLastImage();
+                      }
+                    }}
+                    className="mt-2 w-full flex items-center justify-center gap-2 py-2 text-xs font-medium text-[#3B82F6]"
+                  >
+                    <ScanText className="w-3.5 h-3.5" />
+                    Scan receipt fields (OCR)
+                  </button>
+                )}
+                <ReceiptOcrReviewSheet
+                  open={ocr.sheetOpen}
+                  loading={ocr.loading}
+                  draft={ocr.draft}
+                  onChangeDraft={ocr.setDraft}
+                  onConfirm={ocr.handleConfirm}
+                  onSkip={ocr.handleSkip}
+                />
                 {attachmentFiles.length > 0 && (
                   <ul className="mt-2 space-y-1">
                     {attachmentFiles.map((file, idx) => (

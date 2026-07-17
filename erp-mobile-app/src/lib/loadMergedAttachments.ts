@@ -1,4 +1,5 @@
 import { fetchReferenceAttachments } from '../api/transactionDetail';
+import { fetchInBatches } from './chunkInQuery';
 import { supabase, isSupabaseConfigured } from './supabase';
 import { normalizeAttachments, type NormalizedAttachment } from './normalizeAttachments';
 
@@ -87,12 +88,16 @@ export async function batchExpenseIdsWithReceiptUrl(
   const out = new Set<string>();
   const ids = Array.from(new Set(expenseIds.filter((id) => id.trim() !== '')));
   if (!isSupabaseConfigured || !companyId || ids.length === 0) return out;
-  const { data } = await supabase
-    .from('expenses')
-    .select('id, receipt_url')
-    .eq('company_id', companyId)
-    .in('id', ids);
-  for (const row of data || []) {
+  const rows = await fetchInBatches(ids, async (chunk) => {
+    const { data, error } = await supabase
+      .from('expenses')
+      .select('id, receipt_url')
+      .eq('company_id', companyId)
+      .in('id', chunk);
+    if (error) throw error;
+    return data || [];
+  });
+  for (const row of rows) {
     const id = String((row as Record<string, unknown>).id ?? '');
     const ru = String((row as Record<string, unknown>).receipt_url ?? '').trim();
     if (id && ru) out.add(id);
@@ -109,11 +114,15 @@ export async function batchJournalEntryHasAttachments(
   const ids = Array.from(new Set(journalEntryIds.filter((id) => id.trim() !== '')));
   if (!isSupabaseConfigured || !companyId || ids.length === 0) return result;
 
-  const { data: jeRows } = await supabase
-    .from('journal_entries')
-    .select('id, attachments, payment_id, reference_type, reference_id')
-    .eq('company_id', companyId)
-    .in('id', ids);
+  const jeRows = await fetchInBatches(ids, async (chunk) => {
+    const { data, error } = await supabase
+      .from('journal_entries')
+      .select('id, attachments, payment_id, reference_type, reference_id')
+      .eq('company_id', companyId)
+      .in('id', chunk);
+    if (error) throw error;
+    return data || [];
+  });
 
   const paymentIds = new Set<string>();
   const jeMeta = new Map<
@@ -121,7 +130,7 @@ export async function batchJournalEntryHasAttachments(
     { attachments: NormalizedAttachment[]; paymentId: string | null; referenceType: string; referenceId: string | null }
   >();
 
-  for (const row of jeRows || []) {
+  for (const row of jeRows) {
     const id = String((row as Record<string, unknown>).id ?? '');
     if (!id) continue;
     const paymentId =
@@ -144,11 +153,15 @@ export async function batchJournalEntryHasAttachments(
 
   const paymentAttById = new Map<string, NormalizedAttachment[]>();
   if (paymentIds.size > 0) {
-    const { data: payRows } = await supabase
-      .from('payments')
-      .select('id, attachments')
-      .in('id', Array.from(paymentIds));
-    for (const row of payRows || []) {
+    const payRows = await fetchInBatches(Array.from(paymentIds), async (chunk) => {
+      const { data, error } = await supabase
+        .from('payments')
+        .select('id, attachments')
+        .in('id', chunk);
+      if (error) throw error;
+      return data || [];
+    });
+    for (const row of payRows) {
       const id = String((row as Record<string, unknown>).id ?? '');
       if (!id) continue;
       paymentAttById.set(id, normalizeAttachments((row as Record<string, unknown>).attachments));
