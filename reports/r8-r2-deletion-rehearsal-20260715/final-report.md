@@ -1,9 +1,11 @@
-# R8-R2 Deletion Rehearsal — Final Report (2026-07-15)
+# R8-R2 Deletion Rehearsal — Final Report (accelerated rebase 2026-07-17)
 
 ## Verdict
 
-First-wave R8-R2 deletion **technically rehearsed** on branch `rehearsal/r8-r2-legacy-deletion-20260715`.
+First-wave R8-R2 deletion **technically rehearsed** on branch `rehearsal/r8-r2-legacy-deletion-20260715`, **rebased onto current main** `9f0e237a` (includes LV2 pagination).  
 **Not merged. Not deployed. Production unchanged.**
+
+Prior remote tip `60c3746f` (base `866cb0df`) is superseded by `c660f5c3`.
 
 ## Removed
 
@@ -16,11 +18,11 @@ First-wave R8-R2 deletion **technically rehearsed** on branch `rehearsal/r8-r2-l
 
 ## Retained
 
-Shadow compare, getCustomerLedger, Contacts, mobile, resolvers, flags, kill, L1 SQL, loader guard, CF/LV2 underlying legacy services for shadow/preview.
+Shadow compare, getCustomerLedger, Contacts, mobile, resolvers, flags, kill, L1 SQL, loader guard, CF/LV2 underlying legacy services for shadow/preview, LV2 pagination UI.
 
 ## Validation
 
-348/348 unified · 183/183 unit · build PASS · LOCAL STATIC DRILL only
+350/350 unified · 188/188 unit · build PASS · LOCAL STATIC DRILL only · rollback tag drill PASS
 
 ## Next production action
 

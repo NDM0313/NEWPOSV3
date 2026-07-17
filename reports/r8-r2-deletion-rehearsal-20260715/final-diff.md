@@ -1,20 +1,25 @@
-# Final diff classification (vs main @ 866cb0df)
+# Final diff classification (`main...HEAD`)
+
+Base: `9f0e237a` · Tip: `c660f5c3`
 
 | Path | Class |
 |------|-------|
-| `accountStatementLegacyMainService.ts` (D) | approved deletion |
-| `trialBalanceLegacyMainService.ts` (D) | approved deletion |
-| `partyLedgerLegacyMainService.ts` (D) | approved deletion |
-| `roznamchaLegacyMainService.ts` (D) | approved deletion |
-| `*LegacyShadowPreviewService.ts` (M ×4) | dependency cleanup (shadow retarget) |
-| AS / TB / Party / Roznamcha / LV2 / CF pages (M) | approved page-branch removal |
-| `r8R2LegacyMainRetired.ts` (+test) | import/assert helper + tests |
-| `unifiedLedgerCompareScopeGuard.test.ts` | test update |
-| `package.json` | test registry update |
-| `reports/r8-r2-deletion-rehearsal-20260715/**` | documentation/evidence |
-| `docs/accounting/R8_R2_REHEARSAL_RESULT_2026-07-15.md` | documentation |
-| `docs/accounting/R8_R2_FINAL_MERGE_CHECKLIST.md` | documentation |
+| `src/app/services/accountStatementLegacyMainService.ts` | approved deletion |
+| `src/app/services/trialBalanceLegacyMainService.ts` | approved deletion |
+| `src/app/services/partyLedgerLegacyMainService.ts` | approved deletion |
+| `src/app/services/roznamchaLegacyMainService.ts` | approved deletion |
+| `src/app/components/reports/AccountLedgerReportPage.tsx` | approved deletion (page branch) |
+| `src/app/components/reports/TrialBalancePage.tsx` | approved deletion (page branch) |
+| `src/app/components/accounting/EffectivePartyLedgerPage.tsx` | approved deletion (page branch) |
+| `src/app/components/reports/RoznamchaReport.tsx` | approved deletion (page branch) |
+| `src/app/features/ledger-statement-center-v2/LedgerStatementCenterV2Page.tsx` | approved deletion (page branch) |
+| `src/app/components/reports/CashFlowReportPage.tsx` | approved deletion (page branch) |
+| `src/app/services/*LegacyShadowPreviewService.ts` (×4) | import cleanup / retarget |
+| `src/app/lib/r8R2LegacyMainRetired.ts` | approved deletion support |
+| `src/app/lib/r8R2LegacyMainRetired.test.ts` | test update |
+| `src/app/lib/unifiedLedgerCompareScopeGuard.test.ts` | test update |
+| `package.json` | test update |
 
 ## Confirmed absent from diff
 
-migrations · Contacts · mobile · AR/AP basis · graphify · credentials · APK/IPA · repair scripts · production dumps · BS/P&L fallback removal
+- migrations · accounting COA codes · mobile · Contacts · AR/AP basis · graphify-out · credentials · APK/AAB/IPA · repair scripts · production dumps · BalanceSheet/ProfitLoss page deletion

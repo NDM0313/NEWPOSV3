@@ -1,11 +1,4 @@
-npm run build
-Date: 2026-07-15
-Branch: rehearsal/r8-r2-legacy-deletion-20260715
-
-Result: PASS
-✓ built in ~42.5s
-PWA generateSW completed.
-
-Unresolved warnings (pre-existing / non-blocking):
-- chunk size > 600 kB (existing pattern)
-- browserslist data age notice
+npm run build: PASS (2026-07-17)
+chunk size warnings: unchanged (pre-existing)
+browserslist stale warning: pre-existing
+git diff --check: PASS

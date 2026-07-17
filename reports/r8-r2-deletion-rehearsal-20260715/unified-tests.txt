@@ -1,9 +1,5 @@
-npm run test:unified-ledger
-Date: 2026-07-15
-Branch: rehearsal/r8-r2-legacy-deletion-20260715
-
-ℹ tests 348
-ℹ pass 348
-ℹ fail 0
-
-Baseline was 343; +5 from r8R2LegacyMainRetired.test.ts (+ updated compare-scope wiring, same suite).
+test:unified-ledger
+baseline (pre-delete tag): 345/345 PASS
+post-deletion: 350/350 PASS (+5 r8R2LegacyMainRetired wiring tests)
+removed tests: 0
+added tests: 5 (r8R2LegacyMainRetired.test.ts)

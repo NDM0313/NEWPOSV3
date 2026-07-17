@@ -1,21 +1,29 @@
 # Dependency cleanup
 
-## Shadow retarget
+## Shadow retarget (human decision D1 executed)
 
-| Shadow service | Previously | Now |
-|----------------|------------|-----|
-| accountStatementLegacyShadowPreviewService | `loadAccountStatementLegacyMain` | inlined `getCustomerLedger` / AP / worker / account ledger |
-| trialBalanceLegacyShadowPreviewService | `loadTrialBalanceLegacyMain` | `accountingReportsService.getTrialBalance` |
-| partyLedgerLegacyShadowPreviewService | `loadPartyLedgerLegacyMain` | `loadEffectivePartyLedger` |
-| roznamchaLegacyShadowPreviewService | `loadRoznamchaLegacyMain` | `getRoznamcha` |
+Legacy bodies for thin wrappers moved into corresponding `*LegacyShadowPreviewService.ts`:
 
-## Page fail-closed
+| Deleted wrapper | Shadow now calls |
+|-----------------|------------------|
+| accountStatementLegacyMainService | underlying AS legacy APIs / `getCustomerLedger` path |
+| trialBalanceLegacyMainService | `getTrialBalance` |
+| partyLedgerLegacyMainService | `loadEffectivePartyLedger` |
+| roznamchaLegacyMainService | `getRoznamcha` |
 
-When kill/flags resolve to `legacy`, pages throw `R8_R2_LEGACY_MAIN_RETIRED_MESSAGE`.
-Production recovery after merge requires **L2 tag restore** (or keep this rehearsal unmerged until drill proves ops path).
+## Import cleanup only
 
-## Shared consumers unchanged
+- Removed page imports of deleted wrappers
+- Removed LV2 page import of `getLedgerStatementV2` (retained in shadow service)
+- Removed Roznamcha legacy-only result cache (served only legacy main path)
 
-Dashboards → `getTrialBalance` / BS / P&L report services (not deleted wrappers).
-Cash Flow preview → `getCashFlowReport` still imported.
-Ledger V2 shadow → `getLedgerStatementV2` still used outside page main path.
+## Not done (out of scope)
+
+- No broad service renames
+- No Contacts / mobile / AR/AP basis / account code changes
+- No migration / rollback SQL mutation
+- No kill-switch production toggle
+
+## Build errors from deletion
+
+None after surgical rebase onto `9f0e237a` (LV2 pagination + Cash Flow pagination preserved).

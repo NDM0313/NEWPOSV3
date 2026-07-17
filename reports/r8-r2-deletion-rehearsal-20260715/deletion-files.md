@@ -1,28 +1,34 @@
 # Deletion files (rehearsal)
 
-## Deleted files
+**Branch:** `rehearsal/r8-r2-legacy-deletion-20260715`  
+**Commit:** `c660f5c3` (rebased onto `9f0e237a`)
 
-| Path | Classification |
-|------|----------------|
-| `src/app/services/accountStatementLegacyMainService.ts` | approved thin wrapper |
-| `src/app/services/trialBalanceLegacyMainService.ts` | approved thin wrapper |
-| `src/app/services/partyLedgerLegacyMainService.ts` | approved thin wrapper |
-| `src/app/services/roznamchaLegacyMainService.ts` | approved thin wrapper |
+## A1. Thin wrappers deleted
 
-## Page branches removed (files retained)
+| File | Status |
+|------|--------|
+| `src/app/services/accountStatementLegacyMainService.ts` | DELETED |
+| `src/app/services/trialBalanceLegacyMainService.ts` | DELETED |
+| `src/app/services/partyLedgerLegacyMainService.ts` | DELETED |
+| `src/app/services/roznamchaLegacyMainService.ts` | DELETED |
+
+## A2. Page legacy branches removed (unified-only + fail-closed)
 
 | Page | Change |
 |------|--------|
-| `AccountLedgerReportPage.tsx` | unified-only main; `assertUnifiedMainLoaderSource` |
-| `TrialBalancePage.tsx` | same |
-| `EffectivePartyLedgerPage.tsx` | same |
-| `RoznamchaReport.tsx` | same; removed legacy-only result cache |
-| `LedgerStatementCenterV2Page.tsx` | removed `getLedgerStatementV2` main branch |
-| `CashFlowReportPage.tsx` | removed `getCashFlowReport` main branch (preview still uses it) |
+| `AccountLedgerReportPage.tsx` | Removed `loadAccountStatementLegacyMain` branch; `assertUnifiedMainLoaderSource` |
+| `TrialBalancePage.tsx` | Removed `loadTrialBalanceLegacyMain` branch; assert |
+| `EffectivePartyLedgerPage.tsx` | Removed `loadPartyLedgerLegacyMain` branch; assert |
+| `RoznamchaReport.tsx` | Removed `loadRoznamchaLegacyMain` branch + legacy-only cache; assert |
+| `LedgerStatementCenterV2Page.tsx` | Removed `getLedgerStatementV2` main branch; assert; **pagination retained** |
+| `CashFlowReportPage.tsx` | Removed `getCashFlowReport` main branch; assert; shadow still uses `getCashFlowReport` |
 
-## Added
+## Supporting
 
-| Path | Role |
-|------|------|
-| `src/app/lib/r8R2LegacyMainRetired.ts` | fail-closed helper when resolver=`legacy` |
-| `src/app/lib/r8R2LegacyMainRetired.test.ts` | wiring / retain assertions |
+| File | Change |
+|------|--------|
+| `r8R2LegacyMainRetired.ts` | NEW — fail-closed helper |
+| `r8R2LegacyMainRetired.test.ts` | NEW — wiring + retention assertions |
+| `*LegacyShadowPreviewService.ts` (×4) | Retargeted to underlying APIs |
+| `unifiedLedgerCompareScopeGuard.test.ts` | Asserts LV2 no longer calls `getLedgerStatementV2` on page |
+| `package.json` | Adds `r8R2LegacyMainRetired.test.ts` to `test:unified-ledger` |

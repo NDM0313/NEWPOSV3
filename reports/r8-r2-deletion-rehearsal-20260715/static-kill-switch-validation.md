@@ -1,20 +1,22 @@
-# LOCAL STATIC DRILL — NOT PRODUCTION OPERATOR DRILL
+# Static kill-switch validation
 
-Date: 2026-07-15
-Environment: local unit/resolver tests only
-Production kill switch: **NOT toggled**
+## LOCAL STATIC DRILL — NOT PRODUCTION OPERATOR DRILL
 
-## Verified via tests
+No production kill switch was toggled.
 
-| Check | Result |
-|-------|--------|
-| Kill ON → resolver source `legacy` / killed | PASS (`unifiedLedgerEngineState.test.ts`, per-screen resolver tests) |
-| Kill OFF + flags ON → unified | PASS |
-| Deleted wrappers not referenced | PASS (`r8R2LegacyMainRetired.test.ts`) |
-| Shadow compare retained | PASS |
-| Page fail-closed when source=`legacy` | PASS (`assertUnifiedMainLoaderSource`) |
-| BS/P&L error fallback still present | PASS |
+## What was verified (local/unit)
 
-## Explicit label
+Via `npm run test:unified-ledger` resolver + engine tests:
 
-This does **not** replace the production operator-attended kill-switch drill required on/after 2026-08-09.
+- Kill ON → resolver effective source `legacy` / killed mode
+- Kill OFF + flags ON → unified main path
+- Feature flags / engine gates still tested
+- `assertUnifiedMainLoaderSource('legacy')` throws `R8_R2_LEGACY_MAIN_RETIRED_MESSAGE`
+- Deleted wrappers not referenced by approved pages
+- Shadow compare + BS/P&L fallback remain available
+
+## Explicitly not done
+
+- Production kill switch toggle
+- Production operator drill attestation
+- Production frontend deploy of rehearsal code

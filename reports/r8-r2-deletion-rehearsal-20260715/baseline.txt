@@ -1,16 +1,9 @@
-OLD ERP R8-R2 DELETION REHEARSAL — BASELINE
-Date: 2026-07-15
-
-Main HEAD / origin/main at start: 866cb0df
+Main starting HEAD: 9f0e237abea77bd12b61fc72e1a77ee8ac7b35fc
+origin/main: 9f0e237abea77bd12b61fc72e1a77ee8ac7b35fc
+Includes 866cb0df: YES (ancestor)
 Rehearsal branch: rehearsal/r8-r2-legacy-deletion-20260715
-Pre-delete local tag: r8-r2-rehearsal-pre-delete-20260715 @ 866cb0df
-
-Unrelated WIP: stashed as wip-exclude-r8-r2-rehearsal-20260715 (not included)
-
-Baseline validation (pre-delete on main packaging):
-- test:unified-ledger: 343/343 (readiness pack)
-- rehearsal post-delete: 348/348 (+5 wiring tests)
-- test:unit: 183/183
-- build: PASS
-
-Production not modified.
+Pre-delete tag: r8-r2-rehearsal-pre-delete-20260715 -> 9f0e237abea77bd12b61fc72e1a77ee8ac7b35fc
+Rehearsal commit: c660f5c30e4bc6b67c4793175a4381b7f994caa9
+Prior remote rehearsal (superseded base 866cb0df): 60c3746f
+Date: 2026-07-17 (accelerated rebase onto current main)
+WIP stash: stash@{0} WIP preserve before R8-R2 accelerated rehearsal 2026-07-17

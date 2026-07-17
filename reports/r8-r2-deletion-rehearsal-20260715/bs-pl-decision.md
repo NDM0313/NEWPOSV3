@@ -1,15 +1,20 @@
-# BS/P&L decision — REHEARSAL
+# BS/P&L decision
 
-## Choice: **B. DEFER BS/P&L TO SECOND R8-R2 WAVE**
+**Choice: B — DEFER BS/P&L TO SECOND R8-R2 WAVE**
 
-### Evidence
+## Evidence
 
-1. `BalanceSheetPage.tsx` / `ProfitLossPage.tsx` still catch unified failure and call `accountingReportsService.getBalanceSheet` / `getProfitLoss`.
-2. `bsPlMainLoaderWiring.test.ts` explicitly asserts `legacy_error_fallback` effective source.
-3. Dashboards and other consumers still use the shared report services — not the same as page error fallback, but removing fallback increases live risk before operator drill.
-4. Readiness manifest marks BS/P&L as last / human decision; prefer defer unless fallback proven unnecessary.
+1. Live pages still implement error→legacy catch:
+   - `BalanceSheetPage.tsx`: `Unified Balance Sheet main loader failed; falling back to legacy.`
+   - `ProfitLossPage.tsx`: `Unified P&L main loader failed; falling back to legacy.`
+2. Tests still assert fallback exists (`r8R2LegacyMainRetired.test.ts` + `bsPlMainLoaderWiring` unified error fallback path).
+3. Dashboards / shared report services still consume `getBalanceSheet` / `getProfitLoss`.
+4. Manifest section A3: optional same-day only if drill PASS + operator confirms; otherwise must-retain until mini-approval.
 
-### Consequence
+## Reason
 
-First-wave rehearsal deletes wrappers + AS/TB/Party/Roznamcha/LV2/CF page branches only.
-BS/P&L error fallback remains until a future approved second wave after production drill.
+Fallback remains required until a fresh production operator drill proves L1 flag rollback / failure handling without in-page legacy catch. Prefer minimal first deletion day (A1+A2 only).
+
+## Action in this rehearsal
+
+**No BS/P&L page branch deletion.**

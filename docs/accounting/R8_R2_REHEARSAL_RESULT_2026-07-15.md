@@ -1,10 +1,12 @@
-# R8-R2 Deletion Rehearsal Result — 2026-07-15
+# R8-R2 Deletion Rehearsal Result — 2026-07-15 (updated 2026-07-17)
 
-**Scope:** OLD ERP / DIN Collection ERP only
-**Branch:** `rehearsal/r8-r2-legacy-deletion-20260715`
-**Base:** `866cb0df` (`origin/main` at rehearsal start)
-**Pre-delete tag (local):** `r8-r2-rehearsal-pre-delete-20260715`
-**Evidence:** [`reports/r8-r2-deletion-rehearsal-20260715/`](../../reports/r8-r2-deletion-rehearsal-20260715/)
+**Scope:** OLD ERP / DIN Collection ERP only  
+**Branch:** `rehearsal/r8-r2-legacy-deletion-20260715`  
+**Base (accelerated rebase):** `9f0e237a` (`origin/main` at rehearsal)  
+**Includes readiness HEAD:** `866cb0df` (ancestor)  
+**Runtime commit:** `c660f5c3`  
+**Pre-delete tag (local):** `r8-r2-rehearsal-pre-delete-20260715` → `9f0e237a`  
+**Evidence:** [`reports/r8-r2-deletion-rehearsal-20260715/`](../../reports/r8-r2-deletion-rehearsal-20260715/)  
 **Merge checklist:** [`R8_R2_FINAL_MERGE_CHECKLIST.md`](R8_R2_FINAL_MERGE_CHECKLIST.md)
 
 > Runtime deletion commit must **not** land on `main` or production until date gate + approval + production operator drill.
@@ -26,6 +28,8 @@ Account Statement · Trial Balance · Party Ledger · Roznamcha · Ledger V2 · 
 
 Fail-closed via `assertUnifiedMainLoaderSource` when resolver returns `legacy`.
 
+**Rebase note:** LV2 pagination (`ec70f94a`) and Cash Flow pagination preserved on current main tip.
+
 ### B. Retained
 
 Shadow compare (retargeted) · `getCustomerLedger` · Contacts · mobile · resolvers · flags · kill · L1 SQL · loader guard · CF/LV2 underlying legacy services for diagnostics.
@@ -40,10 +44,11 @@ Shadow compare (retargeted) · `getCustomerLedger` · Contacts · mobile · reso
 
 | Check | Result |
 |-------|--------|
-| `test:unified-ledger` | **348/348 PASS** (was 343; +5 wiring) |
-| `test:unit` | **183/183 PASS** |
+| `test:unified-ledger` | **350/350 PASS** (baseline tag 345; +5 wiring) |
+| `test:unit` | **188/188 PASS** |
 | `build` | **PASS** |
 | Kill drill | **LOCAL STATIC DRILL — NOT PRODUCTION OPERATOR DRILL** |
+| Rollback tag drill | **PASS** (local) |
 | Production deploy | **NO** |
 | Merge to main | **NO** (runtime) |
 
