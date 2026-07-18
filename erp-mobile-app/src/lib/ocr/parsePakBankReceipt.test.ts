@@ -127,3 +127,114 @@ FAHAD LACE
   assert.ok(enriched.notes?.includes('SKAD') || enriched.notes?.includes('To:'));
   assert.ok(!enriched.notes?.match(/^From:\s*dh\)/i));
 });
+
+test('Meezan overlay FAHAD LACE stays in notes; To is SAAD not swallowed', () => {
+  const raw = `
+Transaction Successful
+PKR 100,000
+Jul 13, 2026 | 6:21 PM
+Reference Number: 434570
+From Account:
+NADEEM DIN MOHAMMAD/SALEEM KHAN
+0819xxx2478
+To Account:
+SAAD
+0180xxx9151
+FAHAD LACE
+`;
+  const notes = buildReceiptNotes(raw);
+  assert.ok(notes?.includes('FAHAD LACE'));
+  assert.ok(notes?.includes('To: SAAD'));
+  assert.ok(!notes?.includes('0180xxx9151'), 'account mask should not crowd notes');
+  assert.ok(!/^To:.*FAHAD/im.test(notes || ''), 'FAHAD must not be inside To line');
+
+  const d = parsePakBankReceipt(raw);
+  assert.ok(d.notes?.includes('FAHAD LACE'));
+  assert.match(d.notes || '', /To:\s*SAAD/);
+});
+
+test('enrich merges FAHAD LACE even when From/To notes already look good', () => {
+  const raw = `
+Transaction Successful
+PKR 100,000
+Jul 13, 2026 | 6:21 PM
+Reference Number: 434570
+From Account:
+NADEEM DIN MOHAMMAD/SALEEM KHAN
+To Account:
+SAAD
+0180xxx9151
+FAHAD LACE
+`;
+  const draft = emptyReceiptOcrDraft(raw);
+  draft.amount = 100000;
+  draft.date = '2026-07-13';
+  draft.time = '18:21';
+  draft.reference = '434570';
+  draft.notes = 'From: NADEEM DIN MOHAMMAD/SALEEM KHAN\nTo: SAAD';
+
+  const enriched = enrichDraftFromRaw(draft);
+  assert.ok(enriched.notes?.includes('FAHAD LACE'), 'overlay must be appended');
+  assert.ok(enriched.notes?.includes('To: SAAD'));
+});
+
+const MEEZAN_STAN_RMB = `
+Transaction Successful
+Meezan Bank
+PKR 299,600
+Jul 17, 2026 | 11:25 PM
+Reference Number (STAN): 648910
+From Account:
+NADEEM DIN MOHAMMAD/SALEEM KHAN
+0819xxx2478
+To Account:
+ASAL DIN KHAN
+0147xxx3863
+RMB 7000x42.8
+`;
+
+test('Meezan STAN ref + RMB calc overlay; full To name', () => {
+  const d = parsePakBankReceipt(MEEZAN_STAN_RMB);
+  assert.equal(d.amount, 299600);
+  assert.equal(d.date, '2026-07-17');
+  assert.equal(d.time, '23:25');
+  assert.equal(d.reference, '648910');
+  assert.ok(d.notes?.includes('ASAL DIN KHAN'), 'To must be full name');
+  assert.ok(!/^To:\s*ASAL$/im.test(d.notes || ''), 'To must not be clipped to ASAL');
+  assert.ok(d.notes?.includes('RMB 7000x42.8'), 'calc overlay in notes');
+  assert.ok(d.notes?.includes('NADEEM DIN MOHAMMAD'));
+});
+
+const FAYSAL_TXN = `
+Faysal Bank
+Transaction Successful
+PKR 40,000
+Date: 16/07/2026
+Time: 15:59:36
+Transaction ID: 868613
+From
+Current Account
+NADEEM DIN MOHAMMAD
+08***********00
+To
+Bank Alfalah
+MUHAMMAD SATTAR
+PK**FAYS*************3721
+Comment: SATTAR KG
+Transaction Type: MBL-to-MBL
+`;
+
+test('Faysal Transaction ID + full From/To + comment', () => {
+  const d = parsePakBankReceipt(FAYSAL_TXN);
+  assert.equal(d.amount, 40000);
+  assert.equal(d.date, '2026-07-16');
+  assert.equal(d.time, '15:59');
+  assert.equal(d.reference, '868613');
+  assert.ok(d.notes?.includes('NADEEM DIN MOHAMMAD'), 'full From');
+  assert.ok(!/^From:\s*NADEEM$/im.test(d.notes || ''), 'From not clipped to NADEEM');
+  assert.ok(d.notes?.includes('MUHAMMAD SATTAR'), 'full To');
+  assert.ok(d.notes?.includes('SATTAR KG'), 'comment in notes');
+  assert.ok(!d.notes?.includes('Current Account'), 'skip Faysal chrome');
+  assert.ok(!d.notes?.includes('Bank Alfalah'), 'skip bank chrome');
+  assert.ok(!d.notes?.includes('PK**FAYS'), 'skip masked IBAN');
+});

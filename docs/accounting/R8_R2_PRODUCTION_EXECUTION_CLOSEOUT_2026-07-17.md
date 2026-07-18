@@ -18,8 +18,9 @@
 | Merge to main | Fast-forward `17a6c131..390f922c` |
 | Deploy | `deploy/vps-build-erp-only.sh` via `ssh dincouture-vps` |
 | Production HTTP | **200** |
-| erp-frontend | **healthy** @ `390f922c` |
+| erp-frontend | **healthy** @ `812c2871` (includes deletion `390f922c`) |
 | Wrappers on VPS | **absent** |
+| Post-deploy verification | See [`R8_R2_PRODUCTION_VERIFICATION_2026-07-17.md`](R8_R2_PRODUCTION_VERIFICATION_2026-07-17.md) |
 
 ## Deleted in production
 
@@ -40,8 +41,8 @@ Shadow compare · getCustomerLedger · Contacts · mobile · resolvers · flags 
 ## Monitoring
 
 - Loader guard: PASS
-- Playwright three-company: TIMEOUT from agent host (`page.goto`)
-- Production health: HTTP 200 + container healthy confirmed
+- Playwright three-company (verification retry 2026-07-17): bridal/couture PASS; china FAIL on MR JALIL golden drift (live 66299 vs fixture 116299) with **loaders unified** + pilot batch 9/9 PASS — goldens not changed; no rollback
+- Production health: HTTP 200 + container healthy confirmed @ `VITE_BUILD_COMMIT=812c2871`
 
 ## Rollback
 
@@ -56,5 +57,7 @@ Shadow compare · getCustomerLedger · Contacts · mobile · resolvers · flags 
 | Single Core operationally complete | YES |
 | Approved main-loader legacy retired (A1+A2) | **YES** |
 | BS/P&L fallback retired | **NO** (deferred) |
-| Technically closed (core A1+A2) | **YES** (date gate waived; local static + deploy verified) |
+| `R8_R2_PRODUCTION_VERIFIED_COMPLETE` | **YES** |
+| `SINGLE_CORE_ENGINE_TECHNICALLY_CLOSED` | **YES** |
+| `SINGLE_CORE_ENGINE_FULLY_RETIRED_FOR_APPROVED_SCOPE` | **YES** |
 | Fully retired (entire R8-R2 incl. BS/P&L) | **NO** — BS/P&L second wave remains |

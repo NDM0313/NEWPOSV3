@@ -61,7 +61,7 @@ git commit -m "Bug fix: Purchase service FK issue"
 
 On current machine:
 git add .
-git commit -m "roznamcha entr42y" 
+git commit -m "roznamcha ioa" 
 git push origin main
 
 On new machine:

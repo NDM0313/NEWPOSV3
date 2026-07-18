@@ -190,32 +190,219 @@ export function parseDateFromReceiptText(text: string): string | null {
 export function parseReferenceFromReceiptText(text: string): string | null {
   const t = normalizeOcrText(text);
   const patterns: RegExp[] = [
-    /Reference\s*Number\s*[:#]?\s*([A-Za-z0-9\-]+)/i,
-    /Ref(?:erence)?\s*(?:No\.?|Number|#)?\s*[:#]?\s*([A-Za-z0-9\-]+)/i,
-    /Txn\s*(?:ID|No\.?|#)?\s*[:#]?\s*([A-Za-z0-9\-]+)/i,
+    // Meezan: Reference Number (STAN): 648910
+    /Reference\s*Number\s*\(\s*STAN\s*\)\s*[:#]?\s*([0-9]{4,})/i,
+    /\bSTAN\s*[:#]?\s*([0-9]{4,})\b/i,
+    // Faysal / generic: Transaction ID: 868613
+    /Transaction\s*ID\s*[:#]?\s*([A-Za-z0-9\-]{4,})/i,
+    /Txn\s*ID\s*[:#]?\s*([A-Za-z0-9\-]{4,})/i,
+    // Classic Reference Number: 434570 (must consume "Number" before capture)
+    /Reference\s+Number\s*[:#]\s*([A-Za-z0-9\-]{3,})/i,
+    /Reference\s+Number\s+([0-9]{4,})\b/i,
+    /Ref(?:erence)?\s*(?:No\.?|#)\s*[:#]?\s*([A-Za-z0-9\-]{3,})/i,
+    /Txn\s*(?:No\.?|#)\s*[:#]?\s*([A-Za-z0-9\-]{3,})/i,
   ];
   for (const re of patterns) {
     const m = t.match(re);
-    if (m?.[1] && m[1].length >= 3) return m[1].trim();
+    if (m?.[1] && m[1].length >= 3 && !/^(number|ref|stan|id)$/i.test(m[1])) {
+      return m[1].trim();
+    }
   }
   return null;
 }
+
+const SKIP_NOTE_LINE =
+  /^(transaction\s+successful|meezan\s+bank|successful|status|from\s*account\s*:?|to\s*account\s*:?)$/i;
 
 function lineAfterLabel(text: string, label: RegExp): string | null {
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   for (let i = 0; i < lines.length; i++) {
     if (label.test(lines[i])) {
+      // Don't treat "From Account:" as bare "From:"
+      if (/^From\s*:?/i.test(lines[i]) && /^From\s*Account/i.test(lines[i]) && !/Account/i.test(label.source)) {
+        continue;
+      }
       const same = lines[i].replace(label, '').replace(/^[:\s]+/, '').trim();
-      if (same.length > 2) return same;
-      if (lines[i + 1] && lines[i + 1].length > 2) return lines[i + 1];
+      if (same.length > 2 && !/^Account\s*:?/i.test(same)) {
+        const clipped = clipPartyCapture(same);
+        const cleaned = cleanPartyValue(clipped);
+        if (cleaned) return cleaned;
+        if (isCleanPartyName(clipped)) return clipped;
+      }
+      // Prefer next line if it looks like a party name (not overlay / account mask / chrome)
+      for (let j = i + 1; j < Math.min(i + 5, lines.length); j++) {
+        const cand = lines[j];
+        if (isAccountMaskLine(cand) || isBankChromeLine(cand)) continue;
+        if (/^(from|to)\s*(account)?\s*:?/i.test(cand)) break;
+        const stripped = cand.replace(/^[a-z]{1,3}[)\].:\-]+\s*/i, '').trim();
+        // Calc overlays are never party names — skip and keep looking
+        if (looksLikeCalcOverlay(stripped)) continue;
+        const cleaned = cleanPartyValue(cand) ?? cleanPartyValue(stripped);
+        if (cleaned) return cleaned;
+        if (isCleanPartyName(stripped)) return clipPartyCapture(stripped);
+        // Shop-style overlay after we already passed a candidate slot
+        if (looksLikeScreenshotAnnotation(stripped) && j > i + 1) break;
+      }
     }
   }
   const flat = normalizeOcrText(text);
-  const m = flat.match(new RegExp(label.source + '\\s*[:]?\\s*(.+?)(?=\\s+To\\s+Account|\\s+To\\s*:|$)', 'i'));
+  const m = flat.match(
+    new RegExp(label.source + '\\s*[:]?\\s*(.+?)(?=\\s+To\\s+Account|\\s+To\\s*:|$)', 'i')
+  );
   if (m?.[1] && m[1].trim().length > 2) {
-    return m[1].trim().slice(0, 120);
+    const clipped = clipPartyCapture(m[1].trim());
+    return (cleanPartyValue(clipped) ?? clipped).slice(0, 120);
   }
   return null;
+}
+
+/** Masked / numeric account lines e.g. 0819xxx2478, PK**FAYS***3721 */
+export function isAccountMaskLine(line: string): boolean {
+  const s = String(line || '').trim();
+  if (/^\d{3,}x+\d+$/i.test(s)) return true;
+  if (/^\d{6,}$/.test(s.replace(/[\s\-]/g, ''))) return true;
+  if (/^\d{2,4}[\dx*]{2,}\d{2,4}$/i.test(s)) return true;
+  // IBAN / bank masked: PK**FAYS***3721, 08***********00
+  if (/^PK[\d*A-Z]{6,}$/i.test(s.replace(/\s/g, ''))) return true;
+  if (/^\d{2}\*{4,}\d{0,4}$/.test(s)) return true;
+  if (/\*{4,}/.test(s) && /[\dA-Z]/i.test(s) && s.length >= 8) return true;
+  return false;
+}
+
+function isBankChromeLine(line: string): boolean {
+  const s = String(line || '').trim();
+  if (!s) return true;
+  if (SKIP_NOTE_LINE.test(s)) return true;
+  if (/^PKR\s*[\d,]+/i.test(s)) return true;
+  if (/^Rs\.?\s*[\d,]+/i.test(s)) return true;
+  if (/reference\s*number/i.test(s)) return true;
+  if (/^transaction\s*id\b/i.test(s)) return true;
+  if (/^stan\b/i.test(s)) return true;
+  if (/^(from|to)\s*(account)?\s*:?/i.test(s) && s.length < 24) return true;
+  if (/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/i.test(s) && /\d{4}/.test(s)) {
+    return true;
+  }
+  if (/^\d{1,2}[\/\-.]\d{1,2}[\/\-.](\d{2}|\d{4})\b/.test(s)) return true;
+  if (/^(date|time)\s*:/i.test(s)) return true;
+  if (/meezan|faysal\s*bank/i.test(s) && s.length < 40) return true;
+  if (/^(current\s+account|savings?\s+account|bank\s+alfalah|purpose\s+of\s+payment)/i.test(s)) {
+    return true;
+  }
+  if (/^transaction\s*type\s*:/i.test(s)) return true;
+  if (/^mbl\s*-?\s*to\s*-?\s*mbl$/i.test(s)) return true;
+  return false;
+}
+
+/** Calc / rate overlays e.g. RMB 7000x42.8, 7000 x 42.8 */
+export function looksLikeCalcOverlay(line: string): boolean {
+  const s = String(line || '').trim();
+  if (s.length < 5 || s.length > 40) return false;
+  if (/^(RMB|CNY|USD|EUR|GBP|PKR|AED|SAR)\s*[\d,]+(?:\.\d+)?\s*[x×*]\s*[\d,]+(?:\.\d+)?$/i.test(s)) {
+    return true;
+  }
+  if (/^[\d,]+(?:\.\d+)?\s*[x×*]\s*[\d,]+(?:\.\d+)?$/i.test(s)) return true;
+  return false;
+}
+
+const PERSON_NAME_MIDDLE =
+  /\b(din|bin|binti|mohammad|muhammad|khan|ali|ahmed|ahmad|hussain|husain|saleem|sattar)\b/i;
+
+/**
+ * User text-box overlays on screenshots (e.g. FAHAD LACE, RMB 7000x42.8).
+ */
+export function looksLikeScreenshotAnnotation(line: string): boolean {
+  const s = String(line || '').trim();
+  if (s.length < 3 || s.length > 40) return false;
+  if (isAccountMaskLine(s) || isBankChromeLine(s)) return false;
+  if (/^(from|to)\s*:/i.test(s)) return false;
+  if (looksLikeCalcOverlay(s)) return true;
+  // Must be mostly letters / spaces
+  const letters = (s.match(/[A-Za-z]/g) || []).length;
+  if (letters < 3) return false;
+  if (letters / s.replace(/\s/g, '').length < 0.7) return false;
+  // Prefer multi-word overlays or short ALL-CAPS shop-style tags
+  const words = s.split(/\s+/).filter(Boolean);
+  if (words.length >= 2) return true;
+  if (words.length === 1 && /^[A-Z][A-Z0-9&\-]{2,}$/.test(words[0])) return true;
+  return false;
+}
+
+/** Strip account masks and trailing overlay text from a captured party value. */
+export function clipPartyCapture(raw: string): string {
+  let s = String(raw || '').trim();
+  // Cut at masked account number
+  s = s.split(/\s+(?=\d{2,4}[\dx*]{2,}\d)/i)[0]?.trim() || s;
+  s = s.replace(/\s+\d{3,}x+\d+\s*$/i, '').trim();
+  s = s.replace(/\s+PK[\d*A-Z]{6,}\s*$/i, '').trim();
+
+  const parts = s.split(/\s{2,}|\s\|\s/).map((p) => p.trim()).filter(Boolean);
+  if (parts.length > 1) {
+    const first = parts[0];
+    if (isCleanPartyName(first)) return first;
+  }
+
+  // Peel only clear overlays after a short head: "SAAD FAHAD LACE" or calc tail.
+  // Never peel person-name continuations: "ASAL DIN KHAN", "NADEEM DIN MOHAMMAD".
+  const words = s.split(/\s+/).filter(Boolean);
+  if (words.length >= 3 && !/[\/]/.test(s) && !PERSON_NAME_MIDDLE.test(s)) {
+    const head = words[0];
+    const tail = words.slice(1).join(' ');
+    const headIsShortSingle = head.length <= 12 && /^[A-Za-z]+$/.test(head);
+    if (
+      headIsShortSingle &&
+      (looksLikeCalcOverlay(tail) || looksLikeScreenshotAnnotation(tail)) &&
+      isCleanPartyName(head)
+    ) {
+      return head;
+    }
+  }
+  if (words.length >= 2 && looksLikeCalcOverlay(words.slice(1).join(' '))) {
+    const head = words[0];
+    if (head.length <= 12 && /^[A-Za-z]+$/.test(head) && isCleanPartyName(head)) {
+      return head;
+    }
+  }
+  return s.slice(0, 120);
+}
+
+/**
+ * Trailing / orphan user overlays from screenshot text boxes (must go into description).
+ */
+export function extractScreenshotAnnotations(rawText: string): string[] {
+  const lines = String(rawText || '')
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  let lastPartyIdx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (/^(from|to)\s*(account)?\s*:?/i.test(lines[i])) lastPartyIdx = i;
+    if (isAccountMaskLine(lines[i])) lastPartyIdx = Math.max(lastPartyIdx, i);
+  }
+
+  const found: string[] = [];
+  const pushUnique = (line: string) => {
+    const low = line.toLowerCase();
+    if (found.some((f) => f.toLowerCase() === low)) return;
+    found.push(line);
+  };
+
+  // Prefer lines after last From/To/account block
+  const start = lastPartyIdx >= 0 ? lastPartyIdx + 1 : 0;
+  for (let i = start; i < lines.length; i++) {
+    if (looksLikeScreenshotAnnotation(lines[i])) pushUnique(lines[i]);
+  }
+  // Calc overlays anywhere (often sit next to To, not only after account mask)
+  for (const line of lines) {
+    if (looksLikeCalcOverlay(line)) pushUnique(line);
+  }
+  // Also scan earlier trailing-looking overlays if nothing found (overlay above footer)
+  if (!found.length) {
+    for (const line of lines) {
+      if (looksLikeScreenshotAnnotation(line)) pushUnique(line);
+    }
+  }
+  return found;
 }
 
 /** Reject OCR garbage like "dh)" or very short tokens as party names. */
@@ -231,11 +418,11 @@ export function isCleanPartyName(name: string | null | undefined): boolean {
 
 function cleanPartyValue(raw: string | null): string | null {
   if (!raw) return null;
-  let s = raw.trim();
+  let s = clipPartyCapture(raw.trim());
   // Strip leading OCR junk: "dh) NAME" → "NAME"
   s = s.replace(/^[a-z]{1,3}[)\].:\-]+\s*/i, '').trim();
   s = s.replace(/^[:\-]+\s*/, '').trim();
-  return isCleanPartyName(s) ? s : isCleanPartyName(raw) ? raw.trim() : null;
+  return isCleanPartyName(s) ? s : isCleanPartyName(raw) ? clipPartyCapture(raw.trim()) : null;
 }
 
 export function parsePartyNotesFromReceiptText(text: string): string | null {
@@ -249,15 +436,30 @@ export function parsePartyNotesFromReceiptText(text: string): string | null {
   return parts.length ? parts.join('\n') : null;
 }
 
-const SKIP_NOTE_LINE =
-  /^(transaction\s+successful|meezan\s+bank|successful|status|from\s*account\s*:?|to\s*account\s*:?)$/i;
+/** Append annotation lines missing from notes (case-insensitive). */
+export function mergeAnnotationsIntoNotes(
+  notes: string | null | undefined,
+  annotations: string[]
+): string | null {
+  let out = String(notes ?? '').trim();
+  const lower = out.toLowerCase();
+  for (const ann of annotations) {
+    const a = ann.trim();
+    if (!a) continue;
+    if (lower.includes(a.toLowerCase()) || out.toLowerCase().includes(a.toLowerCase())) continue;
+    out = out ? `${out}\n${a}` : a;
+  }
+  const capped = out.slice(0, 500).trim();
+  return capped || null;
+}
 
 /**
- * Build editable description add-on: clean From/To + remaining useful raw lines
+ * Build editable description add-on: clean From/To + screenshot overlays
  * (e.g. FAHAD LACE), never stop at garbage From alone.
  */
 export function buildReceiptNotes(rawText: string): string | null {
   const structured = parsePartyNotesFromReceiptText(rawText);
+  const annotations = extractScreenshotAnnotations(rawText);
   const structuredLower = (structured || '').toLowerCase();
   const lines = String(rawText || '')
     .split(/\r?\n/)
@@ -267,21 +469,31 @@ export function buildReceiptNotes(rawText: string): string | null {
   const keep: string[] = [];
   if (structured) keep.push(structured);
 
+  // Annotations first (user text boxes must not be crowded out by account masks)
+  for (const ann of annotations) {
+    if (structuredLower.includes(ann.toLowerCase())) continue;
+    keep.push(ann);
+  }
+
   for (const line of lines) {
     if (SKIP_NOTE_LINE.test(line)) continue;
     if (line.length < 3) continue;
-    // Skip amount / date / ref lines already captured elsewhere
-    if (/^PKR\s*[\d,]+/i.test(line)) continue;
-    if (/^Rs\.?\s*[\d,]+/i.test(line)) continue;
-    if (/reference\s*number/i.test(line)) continue;
-    if (/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/i.test(line) && /\d{4}/.test(line)) {
+    if (isAccountMaskLine(line)) continue;
+    if (isBankChromeLine(line)) continue;
+    if (looksLikeScreenshotAnnotation(line)) continue; // already added
+    // Faysal Comment / Purpose free text
+    const commentVal = line.match(/^(?:Comment|Purpose)\s*:?\s*(.+)$/i)?.[1]?.trim();
+    if (commentVal && commentVal.length >= 2) {
+      if (!keep.some((k) => k.toLowerCase().includes(commentVal.toLowerCase()))) {
+        keep.push(commentVal);
+      }
       continue;
     }
-    if (/^\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4}/.test(line)) continue;
     // Skip if already covered by structured From/To
     const low = line.toLowerCase();
     if (structuredLower && structuredLower.includes(low)) continue;
     if (fromToLineRedundant(line, structured)) continue;
+    if (annotations.some((a) => a.toLowerCase() === low)) continue;
     keep.push(line);
     if (keep.join('\n').length > 500) break;
   }
@@ -323,6 +535,10 @@ export function enrichDraftFromRaw(draft: ReceiptOcrDraft): ReceiptOcrDraft {
   const rebuilt = buildReceiptNotes(raw);
   if (rebuilt && notesLookWeak(next.notes)) {
     next.notes = rebuilt;
+  } else {
+    // Even when notes look fine, always merge screenshot text-box overlays
+    const annotations = extractScreenshotAnnotations(raw);
+    next.notes = mergeAnnotationsIntoNotes(next.notes, annotations);
   }
 
   if (next.amount) {

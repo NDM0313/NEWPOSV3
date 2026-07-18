@@ -20,7 +20,7 @@
 - [x] Merge rehearsal runtime into `main` (`390f922c`)
 - [x] Deploy **frontend only** (`deploy/vps-build-erp-only.sh`)
 - [x] Post-deploy HTTP 200 + erp-frontend healthy @ `390f922c`
-- [ ] Spot-check AS / TB / Party / Roznamcha / LV2 / Cash Flow in browser (operator)
+- [x] Spot-check AS / TB / Party / Roznamcha / LV2 / Cash Flow in browser — **PASS** (all loaders unified; see verification doc)
 - [x] Confirm kill still OFF in production (not toggled)
 
 ## Rollback on failure
