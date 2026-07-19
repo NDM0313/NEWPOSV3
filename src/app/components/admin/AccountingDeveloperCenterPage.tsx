@@ -113,6 +113,24 @@ export default function AccountingDeveloperCenterPage() {
           >
             Unified Ledger Compare
           </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="border-amber-500/50 text-amber-100"
+            title="Opens Accounting Integrity Lab → tab H · Live TB repair (not a Developer Center tab)"
+            onClick={() => {
+              try {
+                sessionStorage.setItem('erp-integrity-lab-tab', 'live_tb');
+              } catch {
+                /* ignore */
+              }
+              setCurrentView('accounting-integrity-lab');
+              leaveSpecialAppRoute('/');
+            }}
+          >
+            Live TB repair
+          </Button>
           <Button type="button" size="sm" variant="outline" onClick={exitToErp} className="gap-1.5">
             <ArrowLeft className="w-4 h-4" />
             Back to ERP

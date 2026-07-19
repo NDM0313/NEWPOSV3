@@ -402,6 +402,16 @@ export function ArApReconciliationCenterPage() {
     toast.message('Developer Accounting Integrity Lab');
   };
 
+  const openLiveTbRepairLabH = () => {
+    try {
+      sessionStorage.setItem('erp-integrity-lab-tab', 'live_tb');
+    } catch {
+      /* ignore */
+    }
+    setCurrentView('accounting-integrity-lab');
+    toast.message('Integrity Lab · H Live TB repair');
+  };
+
   const handleActionableRepair: ActionableRepairCardProps['onAction'] = (button, classification) => {
     switch (button) {
       case 'create_gl_correction_draft': {
@@ -801,6 +811,15 @@ export function ArApReconciliationCenterPage() {
           <Button
             variant="outline"
             size="sm"
+            className="border-amber-500/50 text-amber-100"
+            title="Accounting Integrity Lab → tab H · Live TB repair"
+            onClick={openLiveTbRepairLabH}
+          >
+            Live TB repair (Lab H)
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             className="border-gray-600"
             onClick={() => {
               window.history.pushState({}, '', '/admin/accounting-developer-center');
@@ -1105,6 +1124,15 @@ export function ArApReconciliationCenterPage() {
             <Button variant="outline" size="sm" className="border-gray-600" onClick={openDeveloperIntegrityLab}>
               <ShieldAlert className="w-4 h-4 mr-2" />
               Developer Integrity Lab
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-amber-500/50 text-amber-100"
+              title="Integrity Lab tab H — unbalanced JE Preview / Fix"
+              onClick={openLiveTbRepairLabH}
+            >
+              Live TB repair (Lab H)
             </Button>
           </div>
         </>

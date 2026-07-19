@@ -11,8 +11,14 @@ Single Core Engine does **not** auto-fix this — it only ensures one GL loader.
 
 ## How to fix (UI)
 
-1. Financial Truth / Tie-out → amber **TB difference** → **Open Live TB repair**  
-   (or Accounting Integrity Lab → tab **H · Live TB repair**)
+**Where Lab H lives:** Sidebar → **Accounting Integrity Lab** → last tab **H · Live TB repair**.  
+It is **not** inside Accounting Developer Center or the AR/AP hub body — those pages only deep-link to Lab H.
+
+1. Open Lab H via any of:
+   - Sidebar → Accounting Integrity Lab → **H · Live TB repair**
+   - AR/AP Diagnostics hub header → **Live TB repair (Lab H)**
+   - Accounting Developer Center header → **Live TB repair**
+   - Tie-out / Financial Truth → amber **TB difference** → **Open Live TB repair**
 2. Click **Load detection** (auto-loads on open)
 3. Confirm **Σ JE diffs** matches **TB difference** (±0.01)
 4. Per row:
