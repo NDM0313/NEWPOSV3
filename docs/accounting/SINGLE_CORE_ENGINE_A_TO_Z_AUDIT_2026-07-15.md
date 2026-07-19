@@ -1,5 +1,7 @@
 # Single Core Engine A-to-Z Audit — 2026-07-15
 
+> **Superseded for current status (2026-07-19):** Use [`SINGLE_CORE_ENGINE_COMPLETE_A_TO_Z_2026-07-19.md`](SINGLE_CORE_ENGINE_COMPLETE_A_TO_Z_2026-07-19.md). This Jul 15 file remains a **historical freeze** at HEAD `5cf65f4c`. R8-R2 main-loader deletion completed **2026-07-17** (`SINGLE_CORE_ENGINE_TECHNICALLY_CLOSED=YES`). AR/AP Phase 2b production complete via `official_gl` (same day as this freeze).
+
 **Scope:** OLD ERP / DIN Collection ERP only (not FX / multi-currency exchange app)
 **Repo HEAD at original A-to-Z audit:** `5cf65f4c` (later docs commit `26fb7086`)
 **Evidence pack:** [`reports/single-core-engine-a-to-z-audit-20260715/`](../../reports/single-core-engine-a-to-z-audit-20260715/)
@@ -8,7 +10,7 @@
 **Prior closeout (superseded where conflicting):** [`SINGLE_CORE_ENGINE_CLOSEOUT_FINAL_2026-07-12.md`](SINGLE_CORE_ENGINE_CLOSEOUT_FINAL_2026-07-12.md)
 
 > **Correction note (late 2026-07-15 readiness):** Kill-switch drill PASS remains **CLAIM RETRACTED**. Fresh operator-attended drill is required after soak. **No legacy deletion** performed on 2026-07-15. Soak = **5/30** elapsed; earliest deletion **2026-08-09**. AR/AP Phase 2b remains **production complete**.
-
+> **Post-freeze (2026-07-17):** Date gate waived; R8-R2 deletion executed — see [`R8_R2_PRODUCTION_EXECUTION_CLOSEOUT_2026-07-17.md`](R8_R2_PRODUCTION_EXECUTION_CLOSEOUT_2026-07-17.md).
 ---
 
 ## 1. Executive summary

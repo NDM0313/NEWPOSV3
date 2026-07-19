@@ -40,6 +40,21 @@
 | Contacts unified party GL | — | — | — | Switch Contacts off legacy RPC | FUTURE / OPTIONAL | Extension | Still `get_contact_party_gl_balances` |
 | Mobile unified first wave | deferred | — | Phase 2.mobile | Mobile loaders | OUT OF SCOPE | Optional | Not core closeout |
 
+## Post-freeze addendum (2026-07-19)
+
+Frozen table above remains historical. Updates after HEAD `5cf65f4c`:
+
+| Phase | Date | Commit | Objective | Status |
+|-------|------|--------|-----------|--------|
+| AR/AP bridal investigation | 2026-07-15 | investigation docs | Explain Δ ~79850 | COMPLETE |
+| AR/AP `official_gl` parity closeout | 2026-07-15 | `a5149971` / `b8fec34b` | Parity max Δ 0; production complete | PRODUCTION COMPLETE |
+| R8-R2 deletion rehearsal | 2026-07-15 | rehearsal tip | Rehearse wrapper removal | COMPLETE |
+| R8-R2 production deletion | 2026-07-17 | `390f922c` / docs `812c2871` | Delete approved main-loader legacy; fail-closed | **COMPLETE** — `SINGLE_CORE_ENGINE_TECHNICALLY_CLOSED=YES` |
+| Mobile Single Core alignment | 2026-07-17 | mobile report packs | Document mobile parity | DOCUMENTED |
+| A-to-Z current status pack | 2026-07-19 | this refresh | Operator master reference | PUBLISHED |
+
+Current master: [`docs/accounting/SINGLE_CORE_ENGINE_COMPLETE_A_TO_Z_2026-07-19.md`](../../docs/accounting/SINGLE_CORE_ENGINE_COMPLETE_A_TO_Z_2026-07-19.md).
+
 ## Key commit categories (Jul 2026)
 
 | Commit | Subject | Categories |

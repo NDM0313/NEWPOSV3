@@ -4,9 +4,13 @@
 **Operator:** Nadeem Khan — complete remaining phases except Play Store
 **Scope:** OLD ERP / DIN Collection ERP only
 
+> **Superseded for current status (2026-07-19):** [`SINGLE_CORE_ENGINE_COMPLETE_A_TO_Z_2026-07-19.md`](SINGLE_CORE_ENGINE_COMPLETE_A_TO_Z_2026-07-19.md) and [`R8_R2_PRODUCTION_EXECUTION_CLOSEOUT_2026-07-17.md`](R8_R2_PRODUCTION_EXECUTION_CLOSEOUT_2026-07-17.md). R8-R2 main-loader deletion is **COMPLETE**; `SINGLE_CORE_ENGINE_TECHNICALLY_CLOSED=YES`. Rows below that still say “R8-R2 DEFERRED / migration not approved” are **historical**.
+
 > **Correction 2026-07-15 (evidence recovery):** Three cited evidence folders were never in Git. JE-0028 + Sales Revenue Phase 2 non-reclass were **VERIFIED** live and reconstructed under `reports/single-core-engine-evidence-recovery-20260715/`. R8-R2 kill-switch drill **PASS is RETRACTED** (no pack; readiness plan was NOT DONE). See `SINGLE_CORE_ENGINE_EVIDENCE_RECOVERY_2026-07-15.md`.
 
 > **Correction 2026-07-15 (AR/AP + R8 readiness):** AR/AP Phase 2b is **PRODUCTION COMPLETE** (parity baseline `official_gl`, runtime `a5149971`, docs/closeout `b8fec34b`). R8-R2 final readiness pack published — **no deletion**, **no kill toggle**, soak **5/30** on 2026-07-15, earliest deletion **2026-08-09**. Fresh operator-attended drill still **required**. See `R8_R2_FINAL_EXECUTION_READINESS_2026-07-15.md` and `R8_R2_EXECUTION_PROMPT_FOR_2026-08-09.md`.
+
+> **Correction 2026-07-17 (R8-R2 executed):** Date gate waived; deletion tip `390f922c`; docs `812c2871`. BS/P&L error-fallback second wave remains deferred.
 
 ## Verdict
 
