@@ -126,11 +126,15 @@ function MetricCard({
   value,
   basis,
   warn,
+  onOpen,
+  actionLabel,
 }: {
   label: string;
   value: string;
   basis?: BasisBadge;
   warn?: boolean;
+  onOpen?: () => void;
+  actionLabel?: string;
 }) {
   return (
     <div
@@ -144,6 +148,17 @@ function MetricCard({
         {basis && <BasisBadge basis={basis} />}
       </div>
       <p className={cn('text-xl font-semibold tabular-nums', warn && 'text-amber-200')}>{value}</p>
+      {onOpen && warn ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="mt-2 border-amber-500/40 text-amber-200 text-xs h-7"
+          onClick={onOpen}
+        >
+          {actionLabel ?? 'Find unbalanced JEs'}
+        </Button>
+      ) : null}
     </div>
   );
 }
@@ -339,9 +354,21 @@ export function FinancialTraceDiagnosticsPanel({
     [openPartyLedger, setAccountingTabInitial, setCurrentView]
   );
 
+  const openIntegrityLabPhase8 = useCallback(() => {
+    try {
+      sessionStorage.setItem('erp-integrity-lab-tab', 'live_tb');
+    } catch {
+      /* ignore */
+    }
+    setCurrentView('accounting-integrity-lab');
+  }, [setCurrentView]);
+
   const handleTieOutDrilldown = useCallback(
     (target: TieOutDrilldownTarget) => {
       switch (target) {
+        case 'integrity_lab_phase8':
+          openIntegrityLabPhase8();
+          break;
         case 'trial_balance':
         case 'balance_sheet':
         case 'profit_loss':
@@ -364,7 +391,7 @@ export function FinancialTraceDiagnosticsPanel({
           break;
       }
     },
-    [onSwitchHubTab, setCurrentView]
+    [onSwitchHubTab, openIntegrityLabPhase8, setCurrentView]
   );
 
   useEffect(() => {
@@ -621,6 +648,8 @@ export function FinancialTraceDiagnosticsPanel({
                     value={formatCurrency(tieOut.trialBalance.difference)}
                     basis="gl"
                     warn={!tieOut.trialBalance.balanced}
+                    onOpen={openIntegrityLabPhase8}
+                    actionLabel="Open Live TB repair"
                   />
                   <MetricCard
                     label="BS A = L + E diff"

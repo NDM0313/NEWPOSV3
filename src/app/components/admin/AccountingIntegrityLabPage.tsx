@@ -59,6 +59,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
 import { Checkbox } from '@/app/components/ui/checkbox';
 import { runUnifiedAccountingCompanyChecks } from '@/app/services/integrityUnifiedService';
+import { AccountingIntegrityTestLab } from '@/app/components/accounting/AccountingIntegrityTestLab';
 
 type Scenario = 'sale' | 'purchase' | 'inventory' | 'reconciliation';
 interface DocRow {
@@ -126,6 +127,14 @@ function ClassificationBadge({ c }: { c?: WarningClassification }) {
 export function AccountingIntegrityLabPage() {
   const { companyId, branchId, setBranchId, accessibleBranchIds, user } = useSupabase();
   const { openDrawer, setCurrentView, setOpenSaleIdForView } = useNavigation();
+
+  const [labTab, setLabTab] = useState(() => {
+    try {
+      return sessionStorage.getItem('erp-integrity-lab-tab') || 'setup';
+    } catch {
+      return 'setup';
+    }
+  });
 
   const [categoryFilter, setCategoryFilter] = useState<LabCheckCategory | 'all'>('all');
 
@@ -621,7 +630,18 @@ export function AccountingIntegrityLabPage() {
         </div>
       </div>
 
-      <Tabs defaultValue="setup" className="w-full">
+      <Tabs
+        value={labTab}
+        onValueChange={(v) => {
+          setLabTab(v);
+          try {
+            sessionStorage.setItem('erp-integrity-lab-tab', v);
+          } catch {
+            /* ignore */
+          }
+        }}
+        className="w-full"
+      >
         <TabsList className="flex flex-wrap h-auto gap-1">
           <TabsTrigger value="setup">A · Setup</TabsTrigger>
           <TabsTrigger value="actions">B · Action runner</TabsTrigger>
@@ -630,6 +650,7 @@ export function AccountingIntegrityLabPage() {
           <TabsTrigger value="reports">E · Reports reconcile</TabsTrigger>
           <TabsTrigger value="snapshots">F · Snapshots</TabsTrigger>
           <TabsTrigger value="rental_gl">G · Rental GL repair</TabsTrigger>
+          <TabsTrigger value="live_tb">H · Live TB repair</TabsTrigger>
         </TabsList>
 
         <TabsContent value="setup" className="space-y-4 mt-4">
@@ -1751,6 +1772,27 @@ export function AccountingIntegrityLabPage() {
                   </pre>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="live_tb" className="mt-4 space-y-3">
+          <Card>
+            <CardHeader>
+              <CardTitle>Live Trial Balance repair detection</CardTitle>
+              <CardDescription>
+                TB ≠ 0 means unbalanced journal entry lines. Load Phase 8 detection, match Σ JE diffs to TB
+                difference, then open each JE in Journal. Syncing account balances does not fix TB.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <AccountingIntegrityTestLab
+                onOpenJournalTrace={(fragment) => {
+                  void navigator.clipboard?.writeText(fragment).catch(() => undefined);
+                  toast.success(`JE id copied — open Journal and paste to search: ${fragment.slice(0, 8)}…`);
+                  setCurrentView('accounting');
+                }}
+              />
             </CardContent>
           </Card>
         </TabsContent>

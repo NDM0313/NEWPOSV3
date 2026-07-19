@@ -138,6 +138,10 @@ export function AccountingIntegrityTestLab({ onOpenJournalTrace }: AccountingInt
     }
   };
 
+  useEffect(() => {
+    if (companyId) void loadPhase8();
+  }, [companyId]);
+
   const handleSyncAccountsBalance = async () => {
     if (!companyId) return;
     setPhase8SyncLoading(true);
@@ -534,6 +538,12 @@ export function AccountingIntegrityTestLab({ onOpenJournalTrace }: AccountingInt
                 <p className={phase8Summary.unbalancedCount === 0 ? 'text-[var(--erp-money-positive)]' : 'text-amber-400'}>{phase8Summary.unbalancedCount}</p>
               </div>
               <div className="rounded-lg bg-muted/50 p-2">
+                <p className="text-muted-foreground">Σ JE diffs</p>
+                <p className={Math.abs(phase8Unbalanced.reduce((n, u) => n + (Number(u.difference) || 0), 0) - (phase8Summary.trialBalanceDifference || 0)) < 0.01 ? 'text-[var(--erp-money-positive)]' : 'text-amber-400'}>
+                  {Math.round(phase8Unbalanced.reduce((n, u) => n + (Number(u.difference) || 0), 0) * 100) / 100}
+                </p>
+              </div>
+              <div className="rounded-lg bg-muted/50 p-2">
                 <p className="text-muted-foreground">Account mismatches</p>
                 <p className={phase8Summary.accountMismatchCount === 0 ? 'text-[var(--erp-money-positive)]' : 'text-amber-400'}>{phase8Summary.accountMismatchCount}</p>
               </div>
@@ -541,15 +551,19 @@ export function AccountingIntegrityTestLab({ onOpenJournalTrace }: AccountingInt
                 <p className="text-muted-foreground">AR vs receivables</p>
                 <p className={phase8Summary.receivablesDifference === 0 ? 'text-[var(--erp-money-positive)]' : 'text-amber-400'}>{phase8Summary.receivablesDifference}</p>
               </div>
-              <div className="rounded-lg bg-muted/50 p-2">
-                <p className="text-muted-foreground">AP vs payables</p>
-                <p className={phase8Summary.payablesDifference === 0 ? 'text-[var(--erp-money-positive)]' : 'text-amber-400'}>{phase8Summary.payablesDifference}</p>
-              </div>
             </div>
+          )}
+          {phase8Summary && Math.abs(phase8Summary.trialBalanceDifference) >= 0.01 && (
+            <p className="text-xs text-amber-200/90 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+              TB ≠ 0 means one or more journal entries have Σdebit ≠ Σcredit. The sum of JE differences below should match TB difference within Rs 0.01.
+              Syncing account balances from journal only refreshes cached <code className="text-[11px]">accounts.balance</code> — it does not fix Trial Balance.
+            </p>
           )}
           {phase8Unbalanced.length > 0 && (
             <div className="overflow-x-auto">
-              <p className="text-muted-foreground text-sm font-medium mb-2">Unbalanced journal entries (review manually)</p>
+              <p className="text-muted-foreground text-sm font-medium mb-2">
+                Unbalanced journal entries ({phase8Unbalanced.length}) — review manually / open journal
+              </p>
               <table className="w-full text-sm min-w-[520px]">
                 <thead>
                   <tr className="text-left text-muted-foreground">
@@ -561,7 +575,7 @@ export function AccountingIntegrityTestLab({ onOpenJournalTrace }: AccountingInt
                   </tr>
                 </thead>
                 <tbody>
-                  {phase8Unbalanced.slice(0, 10).map((u) => (
+                  {phase8Unbalanced.map((u) => (
                     <tr key={u.id} className="border-t border-border align-top">
                       <td className="py-1 font-mono whitespace-nowrap pr-2">{u.entry_no ?? '—'}</td>
                       <td className="py-1">
@@ -587,7 +601,6 @@ export function AccountingIntegrityTestLab({ onOpenJournalTrace }: AccountingInt
                   ))}
                 </tbody>
               </table>
-              {phase8Unbalanced.length > 10 && <p className="text-muted-foreground text-xs mt-1">+{phase8Unbalanced.length - 10} more</p>}
             </div>
           )}
           {phase8Mismatches.length > 0 && (

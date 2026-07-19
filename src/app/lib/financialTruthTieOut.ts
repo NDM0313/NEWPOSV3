@@ -15,7 +15,8 @@ export type TieOutDrilldownTarget =
   | 'ar_ap_center'
   | 'account_statements'
   | 'cash_flow'
-  | 'party_trace';
+  | 'party_trace'
+  | 'integrity_lab_phase8';
 
 export interface TieOutDifferenceRow {
   id: string;
@@ -130,9 +131,10 @@ export function buildStandardTieOutDifferences(input: {
         rightLabel: 'TB total credit',
         leftAmount: 0,
         rightAmount: input.tbDifference,
-        drilldown: 'trial_balance',
+        drilldown: 'integrity_lab_phase8',
         overrideReason: 'unknown',
-        overrideAction: 'Use Accounting Integrity Lab to find unbalanced journal entries.',
+        overrideAction:
+          'TB ≠ 0 means unbalanced JE lines (Σdebit ≠ Σcredit). Open Integrity Lab → Live TB repair. Sync account balances will not fix this.',
       })
     );
   }
