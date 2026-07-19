@@ -40,6 +40,17 @@ It is **not** inside Accounting Developer Center or the AR/AP hub body — those
 - Do **not** invent a suspense balancing JE
 - Sync account balances ≠ TB fix
 
+## After TB is 0
+
+When Lab H shows **TB difference = 0** and **Unbalanced JEs = 0**, remaining cards are **not** JE rebuild work:
+
+| Lab H metric | Meaning | Action |
+|--------------|---------|--------|
+| **Account mismatches** | Cached `accounts.balance` ≠ journal | Lab H → **Sync account balances from journal** |
+| **AR vs receivables** | Document due vs AR journal | Separate AR investigation — sync button does **not** fix this |
+
+Office checklist for the 2026-07-20 DIN BRIDAL leftovers: [`office-handoff-lab-h-remaining-20260720.md`](./office-handoff-lab-h-remaining-20260720.md).
+
 ## Code entry points
 
 | Piece | Path |
