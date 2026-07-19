@@ -7,12 +7,22 @@
 import { supabase } from '@/lib/supabase';
 import { fetchInBatches } from '@/app/lib/chunkInQuery';
 import { accountingReportsService } from './accountingReportsService';
+import {
+  classifyUnbalancedJeRepair,
+  type UnbalancedJeRepairStrategy,
+} from '@/app/lib/unbalancedJeRepairClassifier';
+import {
+  rebuildSaleDocumentAccounting,
+  rebuildSaleReversalAccounting,
+} from './documentPostingEngine';
 
 export interface UnbalancedJe {
   id: string;
   entry_no: string | null;
   entry_date: string | null;
   reference_type: string | null;
+  reference_id: string | null;
+  payment_id?: string | null;
   sum_debit: number;
   sum_credit: number;
   difference: number;
@@ -56,7 +66,7 @@ export interface LiveDataRepairSummary {
 export async function getUnbalancedJournalEntries(companyId: string): Promise<UnbalancedJe[]> {
   const { data: entries, error: jeError } = await supabase
     .from('journal_entries')
-    .select('id, entry_no, entry_date, reference_type')
+    .select('id, entry_no, entry_date, reference_type, reference_id, payment_id')
     .eq('company_id', companyId)
     .or('is_void.is.null,is_void.eq.false');
 
@@ -97,6 +107,8 @@ export async function getUnbalancedJournalEntries(companyId: string): Promise<Un
         entry_no: e.entry_no,
         entry_date: e.entry_date,
         reference_type: e.reference_type,
+        reference_id: e.reference_id ?? null,
+        payment_id: e.payment_id ?? null,
         sum_debit: Math.round(s.debit * 100) / 100,
         sum_credit: Math.round(s.credit * 100) / 100,
         difference: diff,
@@ -406,6 +418,137 @@ export async function voidLegacyAdjustmentJEs(
   return { voided, errors };
 }
 
+export type UnbalancedJeRepairPreview = {
+  journalEntryId: string;
+  entryNo: string | null;
+  referenceType: string | null;
+  referenceId: string | null;
+  saleId: string | null;
+  invoiceNo: string | null;
+  saleStatus: string | null;
+  currentDiff: number;
+  sumDebit: number;
+  sumCredit: number;
+  strategy: UnbalancedJeRepairStrategy;
+  canAutoFix: boolean;
+  reasonIfNot: string | null;
+  actionLabel: string;
+  proposedAction: string;
+};
+
+/**
+ * Read-only preview of how an unbalanced JE would be auto-fixed (sale / sale_reversal).
+ */
+export async function previewUnbalancedJeRepair(jeId: string): Promise<UnbalancedJeRepairPreview | null> {
+  if (!jeId) return null;
+  const { data: je, error } = await supabase
+    .from('journal_entries')
+    .select('id, entry_no, reference_type, reference_id, payment_id, is_void')
+    .eq('id', jeId)
+    .maybeSingle();
+  if (error || !je || (je as { is_void?: boolean }).is_void === true) return null;
+
+  const { data: lines } = await supabase
+    .from('journal_entry_lines')
+    .select('debit, credit')
+    .eq('journal_entry_id', jeId);
+  let dr = 0;
+  let cr = 0;
+  for (const l of lines || []) {
+    dr += Number((l as { debit?: number }).debit) || 0;
+    cr += Number((l as { credit?: number }).credit) || 0;
+  }
+  const diff = Math.round((dr - cr) * 100) / 100;
+
+  const referenceId = (je as { reference_id?: string | null }).reference_id ?? null;
+  const referenceType = (je as { reference_type?: string | null }).reference_type ?? null;
+  const paymentId = (je as { payment_id?: string | null }).payment_id ?? null;
+
+  let invoiceNo: string | null = null;
+  let saleStatus: string | null = null;
+  if (referenceId) {
+    const { data: sale } = await supabase
+      .from('sales')
+      .select('invoice_no, status')
+      .eq('id', referenceId)
+      .maybeSingle();
+    if (sale) {
+      invoiceNo = (sale as { invoice_no?: string | null }).invoice_no ?? null;
+      saleStatus = (sale as { status?: string | null }).status ?? null;
+    }
+  }
+
+  const classified = classifyUnbalancedJeRepair({
+    referenceType,
+    saleStatus,
+    hasPaymentId: !!paymentId,
+    hasReferenceId: !!referenceId,
+  });
+
+  const proposedAction =
+    classified.strategy === 'REBUILD_SALE'
+      ? `Soft-void unbalanced sale JE(s) for ${invoiceNo || referenceId} and repost from current final sale. Payments untouched.`
+      : classified.strategy === 'REBUILD_SALE_REVERSAL'
+        ? `Soft-void unbalanced sale_reversal JE(s) for ${invoiceNo || referenceId} and post a fresh cancel reversal. Payments untouched.`
+        : classified.reasonIfNot || 'Open Journal and correct lines manually — do not invent a suspense balancing entry.';
+
+  return {
+    journalEntryId: jeId,
+    entryNo: (je as { entry_no?: string | null }).entry_no ?? null,
+    referenceType,
+    referenceId,
+    saleId: referenceId,
+    invoiceNo,
+    saleStatus,
+    currentDiff: diff,
+    sumDebit: Math.round(dr * 100) / 100,
+    sumCredit: Math.round(cr * 100) / 100,
+    strategy: classified.strategy,
+    canAutoFix: classified.canAutoFix,
+    reasonIfNot: classified.reasonIfNot,
+    actionLabel: classified.actionLabel,
+    proposedAction,
+  };
+}
+
+/** Apply auto-fix for one unbalanced JE when strategy allows. */
+export async function applyUnbalancedJeRepair(jeId: string): Promise<{
+  ok: boolean;
+  error?: string;
+  newJournalId?: string | null;
+  strategy?: UnbalancedJeRepairStrategy;
+}> {
+  const preview = await previewUnbalancedJeRepair(jeId);
+  if (!preview) return { ok: false, error: 'Journal not found or already void.' };
+  if (!preview.canAutoFix || !preview.saleId) {
+    return { ok: false, error: preview.reasonIfNot || 'Not auto-fixable.', strategy: preview.strategy };
+  }
+  if (Math.abs(preview.currentDiff) < 0.01) {
+    return { ok: false, error: 'Journal is already balanced.', strategy: preview.strategy };
+  }
+
+  try {
+    const newJournalId =
+      preview.strategy === 'REBUILD_SALE'
+        ? await rebuildSaleDocumentAccounting(preview.saleId)
+        : await rebuildSaleReversalAccounting(preview.saleId);
+    if (!newJournalId) {
+      return {
+        ok: false,
+        error: 'Rebuild returned no journal (check sale status/total).',
+        strategy: preview.strategy,
+      };
+    }
+    return { ok: true, newJournalId, strategy: preview.strategy };
+  } catch (e: unknown) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : String(e),
+      strategy: preview.strategy,
+    };
+  }
+}
+
 export const liveDataRepairService = {
   getUnbalancedJournalEntries,
   getAccountBalanceMismatches,
@@ -417,6 +560,8 @@ export const liveDataRepairService = {
   previewLegacyAdjustmentJEs,
   voidLegacyAdjustmentJEs,
   rebuildPurchaseDocumentJELines,
+  previewUnbalancedJeRepair,
+  applyUnbalancedJeRepair,
   auditDocumentSequences,
   resetDocumentSequence,
 };

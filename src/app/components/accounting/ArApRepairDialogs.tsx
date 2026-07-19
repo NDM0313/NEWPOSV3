@@ -297,6 +297,11 @@ export function JournalRepairWizardDialog(props: {
                     {inferReverseRepostStrategy(detail) === 'rebuild_sale' && (
                       <option value="rebuild_sale">Rebuild from sale document (void canonical + repost)</option>
                     )}
+                    {inferReverseRepostStrategy(detail) === 'rebuild_sale_reversal' && (
+                      <option value="rebuild_sale_reversal">
+                        Rebuild sale cancellation reversal (void + re-reverse)
+                      </option>
+                    )}
                     {inferReverseRepostStrategy(detail) === 'rebuild_purchase' && (
                       <option value="rebuild_purchase">Rebuild from purchase document (void canonical + repost)</option>
                     )}

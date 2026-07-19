@@ -2049,9 +2049,13 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                     ≠ Credit Rs {journalTotals.credit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
                     (difference Rs {Math.abs(journalTotals.diff).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
                   </p>
-                  {String(transaction?.reference_type || '').toLowerCase() === 'sale' &&
-                    transaction?.reference_id &&
-                    !transaction?.payment_id && (
+                  {(() => {
+                    const rt = String(transaction?.reference_type || '').toLowerCase();
+                    const canRebuildSale = rt === 'sale' && transaction?.reference_id && !transaction?.payment_id;
+                    const canRebuildReversal =
+                      rt === 'sale_reversal' && transaction?.reference_id && !transaction?.payment_id;
+                    if (!canRebuildSale && !canRebuildReversal) return null;
+                    return (
                       <Button
                         type="button"
                         variant="outline"
@@ -2059,25 +2063,43 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                         className="mt-2 border-red-500/40 text-red-200 hover:bg-red-500/20"
                         onClick={async () => {
                           try {
-                            const { rebuildSaleDocumentAccounting } = await import('@/app/services/documentPostingEngine');
                             const saleId = String(transaction.reference_id);
-                            const newJeId = await rebuildSaleDocumentAccounting(saleId);
-                            if (newJeId) {
-                              toast.success('Sale document journal rebuilt from current invoice.');
-                              await loadTransaction();
-                              dispatchAccountingEditCommitted();
-                              accounting.refreshEntries?.();
+                            if (canRebuildReversal) {
+                              const { rebuildSaleReversalAccounting } = await import(
+                                '@/app/services/documentPostingEngine'
+                              );
+                              const newJeId = await rebuildSaleReversalAccounting(saleId);
+                              if (newJeId) {
+                                toast.success('Sale cancellation reversal rebuilt from cancelled sale.');
+                                await loadTransaction();
+                                dispatchAccountingEditCommitted();
+                                accounting.refreshEntries?.();
+                              } else {
+                                toast.error('Rebuild failed — check sale is cancelled.');
+                              }
                             } else {
-                              toast.error('Rebuild failed — check sale is final with a positive total.');
+                              const { rebuildSaleDocumentAccounting } = await import(
+                                '@/app/services/documentPostingEngine'
+                              );
+                              const newJeId = await rebuildSaleDocumentAccounting(saleId);
+                              if (newJeId) {
+                                toast.success('Sale document journal rebuilt from current invoice.');
+                                await loadTransaction();
+                                dispatchAccountingEditCommitted();
+                                accounting.refreshEntries?.();
+                              } else {
+                                toast.error('Rebuild failed — check sale is final with a positive total.');
+                              }
                             }
                           } catch (e: unknown) {
                             toast.error(e instanceof Error ? e.message : 'Rebuild failed');
                           }
                         }}
                       >
-                        Rebuild from sale
+                        {canRebuildReversal ? 'Rebuild sale reversal' : 'Rebuild from sale'}
                       </Button>
-                    )}
+                    );
+                  })()}
                 </div>
               )}
               {journalLines.length > 0 ? (

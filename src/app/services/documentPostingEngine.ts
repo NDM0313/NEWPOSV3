@@ -21,7 +21,7 @@ import {
 if (typeof window !== 'undefined') {
   (window as any).__postSaleAccounting = (saleId: string) => postSaleDocumentAccounting(saleId);
   (window as any).__repairUnbalancedSaleJournals = (companyId: string) =>
-    repairUnbalancedSaleDocumentJournals(companyId);
+    repairUnbalancedSaleRelatedJournals(companyId);
 }
 
 /** Post canonical sale document JE (idempotent). Loads sale row from DB. */
@@ -68,50 +68,136 @@ export async function rebuildSaleDocumentAccounting(saleId: string): Promise<str
   return postSaleDocumentAccounting(saleId);
 }
 
+/** Void active sale_reversal JEs for a cancelled sale, then post a fresh reversal. Payments untouched. */
+export async function rebuildSaleReversalAccounting(saleId: string): Promise<string | null> {
+  if (!saleId) return null;
+  const { data: sale, error } = await supabase
+    .from('sales')
+    .select('id, status')
+    .eq('id', saleId)
+    .maybeSingle();
+  if (error || !sale) {
+    console.warn('[documentPostingEngine] rebuildSaleReversalAccounting: sale not found', saleId, error?.message);
+    return null;
+  }
+  const status = String((sale as { status?: string }).status || '').toLowerCase();
+  if (status !== 'cancelled') {
+    console.warn(
+      `[documentPostingEngine] rebuildSaleReversalAccounting: sale ${saleId} status is "${status}" (need cancelled)`
+    );
+    return null;
+  }
+
+  const { data: reversalRows } = await supabase
+    .from('journal_entries')
+    .select('id, is_void, payment_id')
+    .eq('reference_type', 'sale_reversal')
+    .eq('reference_id', saleId)
+    .or('is_void.is.null,is_void.eq.false');
+
+  const ids = (reversalRows || [])
+    .filter((r: { is_void?: boolean | null; payment_id?: string | null }) => r.is_void !== true && !r.payment_id)
+    .map((r: { id: string }) => r.id)
+    .filter(Boolean);
+
+  if (ids.length > 0) {
+    const now = new Date().toISOString();
+    await supabase
+      .from('journal_entries')
+      .update({
+        is_void: true,
+        void_reason: 'rebuild_sale_reversal_accounting',
+        voided_at: now,
+      })
+      .in('id', ids);
+  }
+
+  return reverseSaleDocumentAccounting(saleId);
+}
+
 /**
- * Repair canonical sale document JEs that are out of balance (Dr != Cr).
- * Voids + reposts from current sale row — payments untouched.
+ * Repair unbalanced sale + sale_reversal document JEs (Dr != Cr).
+ * Soft-void + repost from document — payments untouched.
  */
+export async function repairUnbalancedSaleRelatedJournals(companyId: string): Promise<{
+  scanned: number;
+  repaired: number;
+  skipped: number;
+  failed: { saleId: string; strategy: string; error: string }[];
+  details: { saleId: string; strategy: string; newJournalId: string | null }[];
+}> {
+  const failed: { saleId: string; strategy: string; error: string }[] = [];
+  const details: { saleId: string; strategy: string; newJournalId: string | null }[] = [];
+  if (!companyId) return { scanned: 0, repaired: 0, skipped: 0, failed, details };
+
+  const unbalanced = await findUnbalancedJournalEntries(companyId);
+  const related = unbalanced.filter((u) => {
+    const rt = String(u.reference_type || '').toLowerCase();
+    return (rt === 'sale' || rt === 'sale_reversal') && !!u.reference_id;
+  });
+  if (related.length === 0) return { scanned: 0, repaired: 0, skipped: 0, failed, details };
+
+  const jeIds = related.map((u) => u.journal_entry_id);
+  const { data: jeMeta } = await supabase
+    .from('journal_entries')
+    .select('id, reference_id, reference_type, payment_id')
+    .in('id', jeIds);
+
+  type Job = { saleId: string; strategy: 'REBUILD_SALE' | 'REBUILD_SALE_REVERSAL' };
+  const jobs = new Map<string, Job>();
+  for (const j of jeMeta || []) {
+    if (j.payment_id || !j.reference_id) continue;
+    const rt = String(j.reference_type || '').toLowerCase();
+    const saleId = j.reference_id as string;
+    if (rt === 'sale') jobs.set(`sale:${saleId}`, { saleId, strategy: 'REBUILD_SALE' });
+    else if (rt === 'sale_reversal') jobs.set(`rev:${saleId}`, { saleId, strategy: 'REBUILD_SALE_REVERSAL' });
+  }
+
+  let repaired = 0;
+  let skipped = 0;
+  for (const job of jobs.values()) {
+    try {
+      const newJeId =
+        job.strategy === 'REBUILD_SALE'
+          ? await rebuildSaleDocumentAccounting(job.saleId)
+          : await rebuildSaleReversalAccounting(job.saleId);
+      if (newJeId) {
+        repaired++;
+        details.push({ saleId: job.saleId, strategy: job.strategy, newJournalId: newJeId });
+      } else {
+        failed.push({
+          saleId: job.saleId,
+          strategy: job.strategy,
+          error: 'Rebuild returned no journal (check sale status/total).',
+        });
+      }
+    } catch (e: unknown) {
+      failed.push({
+        saleId: job.saleId,
+        strategy: job.strategy,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
+  const skippedCount = related.length - jobs.size;
+  skipped = skippedCount > 0 ? skippedCount : 0;
+
+  return { scanned: jobs.size, repaired, skipped, failed, details };
+}
+
+/** @deprecated Prefer repairUnbalancedSaleRelatedJournals — kept for console / callers. */
 export async function repairUnbalancedSaleDocumentJournals(companyId: string): Promise<{
   scanned: number;
   repaired: number;
   failed: { saleId: string; error: string }[];
 }> {
-  const failed: { saleId: string; error: string }[] = [];
-  if (!companyId) return { scanned: 0, repaired: 0, failed };
-
-  const unbalanced = await findUnbalancedJournalEntries(companyId);
-  const saleJeRows = unbalanced.filter(
-    (u) => String(u.reference_type || '').toLowerCase() === 'sale' && u.reference_id
-  );
-  if (saleJeRows.length === 0) return { scanned: 0, repaired: 0, failed };
-
-  const jeIds = saleJeRows.map((u) => u.journal_entry_id);
-  const { data: jeMeta } = await supabase
-    .from('journal_entries')
-    .select('id, reference_id, payment_id')
-    .in('id', jeIds);
-
-  const saleIds = [
-    ...new Set(
-      (jeMeta || [])
-        .filter((j) => !j.payment_id && j.reference_id)
-        .map((j) => j.reference_id as string)
-    ),
-  ];
-
-  let repaired = 0;
-  for (const saleId of saleIds) {
-    try {
-      const newJeId = await rebuildSaleDocumentAccounting(saleId);
-      if (newJeId) repaired++;
-      else failed.push({ saleId, error: 'Rebuild returned no journal (check sale status/total).' });
-    } catch (e: unknown) {
-      failed.push({ saleId, error: e instanceof Error ? e.message : String(e) });
-    }
-  }
-
-  return { scanned: saleIds.length, repaired, failed };
+  const r = await repairUnbalancedSaleRelatedJournals(companyId);
+  return {
+    scanned: r.scanned,
+    repaired: r.repaired,
+    failed: r.failed.map((f) => ({ saleId: f.saleId, error: `[${f.strategy}] ${f.error}` })),
+  };
 }
 
 /** Reverse canonical sale document (adds sale_reversal JE; does not void original). */

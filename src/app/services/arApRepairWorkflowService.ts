@@ -244,7 +244,7 @@ export async function fetchJournalDetailForLab(journalEntryId: string): Promise<
   return { ...(je as Omit<JournalDetailForLab, 'lines'>), lines: enriched };
 }
 
-export type ReverseRepostStrategy = 'rebuild_sale' | 'rebuild_purchase' | 'void_only';
+export type ReverseRepostStrategy = 'rebuild_sale' | 'rebuild_sale_reversal' | 'rebuild_purchase' | 'void_only';
 
 export async function executeReverseRepostWizard(params: {
   journalEntryId: string;
@@ -263,6 +263,17 @@ export async function executeReverseRepostWizard(params: {
     if (refType !== 'sale' || !refId) return { ok: false, error: 'Journal reference is not a sale document.' };
     const jeId = await rebuildSaleDocumentAccounting(refId);
     return jeId ? { ok: true, newJournalId: jeId } : { ok: false, error: 'Rebuild sale did not return a journal id.' };
+  }
+
+  if (params.strategy === 'rebuild_sale_reversal') {
+    if (refType !== 'sale_reversal' || !refId) {
+      return { ok: false, error: 'Journal reference is not a sale_reversal.' };
+    }
+    const { rebuildSaleReversalAccounting } = await import('@/app/services/documentPostingEngine');
+    const jeId = await rebuildSaleReversalAccounting(refId);
+    return jeId
+      ? { ok: true, newJournalId: jeId }
+      : { ok: false, error: 'Rebuild sale reversal did not return a journal id.' };
   }
 
   if (params.strategy === 'rebuild_purchase') {
@@ -291,6 +302,7 @@ export function inferReverseRepostStrategy(detail: JournalDetailForLab | null): 
   if (!detail) return null;
   const t = (detail.reference_type || '').toLowerCase().trim();
   if (t === 'sale' && detail.reference_id) return 'rebuild_sale';
+  if (t === 'sale_reversal' && detail.reference_id) return 'rebuild_sale_reversal';
   if (t === 'purchase' && detail.reference_id) return 'rebuild_purchase';
   return 'void_only';
 }

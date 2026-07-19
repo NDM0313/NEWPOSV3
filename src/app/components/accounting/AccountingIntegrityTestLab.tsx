@@ -18,7 +18,7 @@ import {
 import { Button } from '@/app/components/ui/button';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useNavigation } from '@/app/context/NavigationContext';
-import { canAccessDeveloperIntegrityLab } from '@/app/lib/developerAccountingAccess';
+import { canAccessDeveloperIntegrityLab, canApplyDeveloperRepair } from '@/app/lib/developerAccountingAccess';
 import {
   getIntegritySummary,
   voidDuplicateGroup,
@@ -33,9 +33,14 @@ import {
   syncAccountsBalanceFromJournal,
   getReceivablesReconciliation,
   getPayablesReconciliation,
+  previewUnbalancedJeRepair,
+  applyUnbalancedJeRepair,
   type UnbalancedJe,
   type AccountBalanceMismatch,
+  type UnbalancedJeRepairPreview,
 } from '@/app/services/liveDataRepairService';
+import { repairUnbalancedSaleRelatedJournals } from '@/app/services/documentPostingEngine';
+import { classifyUnbalancedJeRepair } from '@/app/lib/unbalancedJeRepairClassifier';
 import { useAccounting } from '@/app/context/AccountingContext';
 import { toast } from 'sonner';
 
@@ -81,6 +86,7 @@ export function AccountingIntegrityTestLab({ onOpenJournalTrace }: AccountingInt
   const { companyId, userRole } = useSupabase();
   const { setCurrentView } = useNavigation();
   const devLabAllowed = canAccessDeveloperIntegrityLab(userRole);
+  const canFixTb = canApplyDeveloperRepair(userRole);
   const accounting = useAccounting();
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<{
@@ -97,6 +103,10 @@ export function AccountingIntegrityTestLab({ onOpenJournalTrace }: AccountingInt
   const [phase8Pay, setPhase8Pay] = useState<Awaited<ReturnType<typeof getPayablesReconciliation>> | null>(null);
   const [phase8Loading, setPhase8Loading] = useState(false);
   const [phase8SyncLoading, setPhase8SyncLoading] = useState(false);
+  const [previewByJe, setPreviewByJe] = useState<Record<string, UnbalancedJeRepairPreview>>({});
+  const [tbBeforeFix, setTbBeforeFix] = useState<number | null>(null);
+  const [tbAfterFix, setTbAfterFix] = useState<number | null>(null);
+  const [fixBusyId, setFixBusyId] = useState<string | null>(null);
 
   const load = async () => {
     if (!companyId) return;
@@ -157,6 +167,104 @@ export function AccountingIntegrityTestLab({ onOpenJournalTrace }: AccountingInt
       toast.error(e?.message || 'Sync failed');
     } finally {
       setPhase8SyncLoading(false);
+    }
+  };
+
+  const rowStrategy = (u: UnbalancedJe) =>
+    classifyUnbalancedJeRepair({
+      referenceType: u.reference_type,
+      hasReferenceId: !!u.reference_id,
+      hasPaymentId: !!u.payment_id,
+    });
+
+  const handlePreviewJe = async (jeId: string) => {
+    setFixBusyId(`preview:${jeId}`);
+    try {
+      const preview = await previewUnbalancedJeRepair(jeId);
+      if (!preview) {
+        toast.error('Could not load repair preview');
+        return;
+      }
+      setPreviewByJe((prev) => ({ ...prev, [jeId]: preview }));
+      toast.message(preview.actionLabel, { description: preview.proposedAction });
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Preview failed');
+    } finally {
+      setFixBusyId(null);
+    }
+  };
+
+  const handleFixJe = async (jeId: string) => {
+    if (!canFixTb) {
+      toast.error('Admin / owner / developer role required to apply TB repair.');
+      return;
+    }
+    const preview = previewByJe[jeId] || (await previewUnbalancedJeRepair(jeId));
+    if (!preview?.canAutoFix) {
+      toast.error(preview?.reasonIfNot || 'Not auto-fixable');
+      if (preview) setPreviewByJe((prev) => ({ ...prev, [jeId]: preview }));
+      return;
+    }
+    const ok = window.confirm(
+      `${preview.actionLabel} for ${preview.entryNo || jeId.slice(0, 8)}?\n\n` +
+        `${preview.proposedAction}\n\n` +
+        `Current difference: Rs ${preview.currentDiff}\n` +
+        `This soft-voids the unbalanced JE and reposts from the document. Payments are not touched.`
+    );
+    if (!ok) return;
+
+    setFixBusyId(jeId);
+    const tbBefore = phase8Summary?.trialBalanceDifference ?? null;
+    setTbBeforeFix(tbBefore);
+    try {
+      const result = await applyUnbalancedJeRepair(jeId);
+      if (!result.ok) {
+        toast.error(result.error || 'Fix failed');
+        return;
+      }
+      toast.success(`Repaired ${preview.entryNo || jeId.slice(0, 8)} → new JE ${result.newJournalId?.slice(0, 8) || 'ok'}`);
+      await loadPhase8();
+      accounting.refreshEntries?.();
+      const summaryAfter = companyId ? await getLiveDataRepairSummary(companyId) : null;
+      setTbAfterFix(summaryAfter?.trialBalanceDifference ?? null);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Fix failed');
+    } finally {
+      setFixBusyId(null);
+    }
+  };
+
+  const handleFixAllAutoFixable = async () => {
+    if (!companyId || !canFixTb) {
+      toast.error('Admin / owner / developer role required.');
+      return;
+    }
+    const auto = phase8Unbalanced.filter((u) => rowStrategy(u).canAutoFix);
+    if (auto.length === 0) {
+      toast.info('No auto-fixable sale / sale_reversal rows.');
+      return;
+    }
+    const labels = auto.map((u) => u.entry_no || u.id.slice(0, 8)).join(', ');
+    const ok = window.confirm(
+      `Fix all auto-fixable unbalanced JEs (${auto.length})?\n\n${labels}\n\n` +
+        `Soft-void + rebuild from document. Payments untouched.`
+    );
+    if (!ok) return;
+
+    setFixBusyId('all');
+    setTbBeforeFix(phase8Summary?.trialBalanceDifference ?? null);
+    try {
+      const result = await repairUnbalancedSaleRelatedJournals(companyId);
+      toast.success(`Repaired ${result.repaired}/${result.scanned}` + (result.failed.length ? `; ${result.failed.length} failed` : ''));
+      if (result.failed[0]) toast.error(result.failed[0].error);
+      await loadPhase8();
+      accounting.refreshEntries?.();
+      const summaryAfter = await getLiveDataRepairSummary(companyId);
+      setTbAfterFix(summaryAfter.trialBalanceDifference);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Batch fix failed');
+    } finally {
+      setFixBusyId(null);
     }
   };
 
@@ -560,45 +668,111 @@ export function AccountingIntegrityTestLab({ onOpenJournalTrace }: AccountingInt
             </p>
           )}
           {phase8Unbalanced.length > 0 && (
-            <div className="overflow-x-auto">
-              <p className="text-muted-foreground text-sm font-medium mb-2">
-                Unbalanced journal entries ({phase8Unbalanced.length}) — review manually / open journal
-              </p>
-              <table className="w-full text-sm min-w-[520px]">
+            <div className="overflow-x-auto space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-muted-foreground text-sm font-medium">
+                  Unbalanced journal entries ({phase8Unbalanced.length}) — Preview → Fix (sale / sale_reversal)
+                </p>
+                {canFixTb && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-amber-500/50 text-amber-200"
+                    disabled={!!fixBusyId || phase8Loading}
+                    onClick={() => void handleFixAllAutoFixable()}
+                  >
+                    {fixBusyId === 'all' ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                    Fix all auto-fixable
+                  </Button>
+                )}
+              </div>
+              {(tbBeforeFix != null || tbAfterFix != null) && (
+                <p className="text-xs text-muted-foreground">
+                  TB difference: before {tbBeforeFix ?? '—'} → after {tbAfterFix ?? '—'}
+                </p>
+              )}
+              <table className="w-full text-sm min-w-[720px]">
                 <thead>
                   <tr className="text-left text-muted-foreground">
                     <th className="pb-1 pr-2">Entry</th>
-                    <th className="pb-1 min-w-[200px]">JE id (copy / journal)</th>
+                    <th className="pb-1">Type</th>
+                    <th className="pb-1">Strategy</th>
                     <th className="pb-1">Debit</th>
                     <th className="pb-1">Credit</th>
                     <th className="pb-1">Difference</th>
+                    <th className="pb-1">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {phase8Unbalanced.map((u) => (
-                    <tr key={u.id} className="border-t border-border align-top">
-                      <td className="py-1 font-mono whitespace-nowrap pr-2">{u.entry_no ?? '—'}</td>
-                      <td className="py-1">
-                        <div className="flex items-start gap-1 min-w-0">
-                          <span className="font-mono text-[11px] break-all text-muted-foreground">{u.id}</span>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 shrink-0"
-                            title="Copy JE id"
-                            onClick={() => copyToClipboard(u.id, 'JE id copied')}
+                  {phase8Unbalanced.map((u) => {
+                    const classified = rowStrategy(u);
+                    const preview = previewByJe[u.id];
+                    const strategy = preview?.strategy || classified.strategy;
+                    return (
+                      <tr key={u.id} className="border-t border-border align-top">
+                        <td className="py-1 font-mono whitespace-nowrap pr-2">
+                          <div className="flex items-center gap-1">
+                            <span>{u.entry_no ?? '—'}</span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 shrink-0"
+                              title="Copy JE id"
+                              onClick={() => copyToClipboard(u.id, 'JE id copied')}
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                            </Button>
+                            <TraceIconButton title="Journal: filter by JE id" fragment={u.id} onOpenJournalTrace={onOpenJournalTrace} />
+                          </div>
+                        </td>
+                        <td className="py-1 text-xs whitespace-nowrap">{u.reference_type || '—'}</td>
+                        <td className="py-1">
+                          <span
+                            className={
+                              strategy === 'MANUAL_REVIEW'
+                                ? 'text-xs text-muted-foreground'
+                                : 'text-xs text-emerald-300 font-medium'
+                            }
                           >
-                            <Copy className="h-3.5 w-3.5" />
-                          </Button>
-                          <TraceIconButton title="Journal: filter by JE id" fragment={u.id} onOpenJournalTrace={onOpenJournalTrace} />
-                        </div>
-                      </td>
-                      <td className="py-1 whitespace-nowrap">{u.sum_debit}</td>
-                      <td className="py-1 whitespace-nowrap">{u.sum_credit}</td>
-                      <td className="py-1 text-amber-400 whitespace-nowrap">{u.difference}</td>
-                    </tr>
-                  ))}
+                            {strategy}
+                          </span>
+                          {preview?.invoiceNo ? (
+                            <p className="text-[10px] text-muted-foreground">{preview.invoiceNo} · {preview.saleStatus}</p>
+                          ) : null}
+                        </td>
+                        <td className="py-1 whitespace-nowrap">{u.sum_debit}</td>
+                        <td className="py-1 whitespace-nowrap">{u.sum_credit}</td>
+                        <td className="py-1 text-amber-400 whitespace-nowrap">{u.difference}</td>
+                        <td className="py-1">
+                          <div className="flex flex-wrap gap-1">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs border-gray-600"
+                              disabled={!!fixBusyId}
+                              onClick={() => void handlePreviewJe(u.id)}
+                            >
+                              {fixBusyId === `preview:${u.id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Preview'}
+                            </Button>
+                            {canFixTb && (preview?.canAutoFix ?? classified.canAutoFix) ? (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs border-amber-500/40 text-amber-200"
+                                disabled={!!fixBusyId}
+                                onClick={() => void handleFixJe(u.id)}
+                              >
+                                {fixBusyId === u.id ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Fix'}
+                              </Button>
+                            ) : null}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
