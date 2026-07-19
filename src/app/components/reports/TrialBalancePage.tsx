@@ -397,6 +397,11 @@ export const TrialBalancePage: React.FC<{
         showFooter={financialPrint.printOpts.showFooter}
         orientation={financialPrint.printOrientation}
         fontSize={financialPrint.printOpts.fontSize}
+        dataListFontSize={financialPrint.printOpts.dataListFontSize}
+        tableHeaderFontSize={financialPrint.printOpts.tableHeaderFontSize}
+        summaryFontSize={financialPrint.printOpts.summaryFontSize}
+        columnPaddingPx={financialPrint.printOpts.columnPaddingPx}
+        showCurrencySymbol={financialPrint.printOpts.showCurrencySymbol}
         fontFamily={financialPrint.printOpts.fontFamily}
         margins={financialPrint.printOpts.margins}
       />

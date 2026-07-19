@@ -2,6 +2,7 @@ import { toast } from "sonner";
 import React, { lazy, Suspense, useState } from 'react';
 import { useNavigation } from '../../context/NavigationContext';
 import { useSupabase } from '../../context/SupabaseContext';
+import { useSettings } from '../../context/SettingsContext';
 import { contactService } from '../../services/contactService';
 import { contactGroupService } from '../../services/contactGroupService';
 import { WorkerRoleCombobox } from '../contacts/WorkerRoleCombobox';
@@ -37,7 +38,9 @@ const PackingEntryModal = lazy(() => import('../transactions/PackingEntryModal')
 
 export const GlobalDrawer = () => {
   const { activeDrawer, openDrawer, closeDrawer, drawerData, parentDrawer, setCreatedProduct, packingModalOpen, closePackingModal, packingModalData } = useNavigation();
-  const { companyId, user, enablePacking } = useSupabase();
+  const { companyId, user } = useSupabase();
+  const { inventorySettings } = useSettings();
+  const enablePacking = inventorySettings.enablePacking;
   const isMobile = useMediaQuery('(max-width: 768px)');
   const [saving, setSaving] = useState(false);
 
@@ -116,9 +119,9 @@ export const GlobalDrawer = () => {
     }
   }
   
-  // For nested Contact drawer, ensure higher z-index and proper overflow
-  if (hasNestedDrawer) {
-    contentClasses += " !z-[70]"; // Higher z-index than parent drawer (z-50)
+  // For nested Contact / Add Product drawers, ensure higher z-index than parent Sale/Purchase sheet
+  if (hasNestedDrawer || hasNestedProductDrawer) {
+    contentClasses += " !z-[70]"; // Higher z-index than parent drawer (z-50 / z-60)
   }
 
   // Render parent drawer content (Sale/Purchase only)

@@ -10,7 +10,8 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Textarea } from '../ui/textarea';
-import { CalendarDatePicker } from '../ui/CalendarDatePicker';
+import { DatePicker } from '../ui/DatePicker';
+import { format, parseISO, isValid } from 'date-fns';
 import { Loader2, Upload } from 'lucide-react';
 import type { BespokeFabricMaterial, BespokeFormConfig, BespokeMetadata, CustomizationDetails } from '@/app/types/bespoke';
 import { buildBespokeMetadataForPersist, normalizeFabricMaterials } from '@/app/types/bespoke';
@@ -209,11 +210,17 @@ export function BespokeDetailsModal({
             <div>
               <Label className="text-muted-foreground">Expected delivery date</Label>
               <div className="mt-1">
-                <CalendarDatePicker
-                  value={deliveryDate}
-                  onChange={(d) => setDeliveryDate(d)}
+                <DatePicker
+                  value={deliveryDate ? format(deliveryDate, 'yyyy-MM-dd') : ''}
+                  onChange={(v) => {
+                    if (!v) {
+                      setDeliveryDate(undefined);
+                      return;
+                    }
+                    const d = parseISO(v);
+                    if (isValid(d)) setDeliveryDate(d);
+                  }}
                   placeholder="Select date"
-                  showTime={false}
                 />
               </div>
             </div>

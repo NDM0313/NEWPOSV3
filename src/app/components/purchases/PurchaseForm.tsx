@@ -77,6 +77,7 @@ import { useSupabase } from '@/app/context/SupabaseContext';
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 import { useSettings } from '@/app/context/SettingsContext';
 import { formatCurrency } from '@/app/utils/formatCurrency';
+import { rankProductSearchHit, preferExactSkuHits, PRODUCT_SEARCH_RESULT_CAP } from '@/app/utils/productSearchRank';
 import { contactService } from '@/app/services/contactService';
 import { productService } from '@/app/services/productService';
 import { branchService } from '@/app/services/branchService';
@@ -205,6 +206,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
     const [editModeProductVariations, setEditModeProductVariations] = useState<Record<string, Array<{ id?: string; size?: string; color?: string; sku?: string; price?: number; stock?: number; attributes?: Record<string, unknown> }>>>({});
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const submitInProgressRef = useRef(false);
     
     // Header State
     const [supplierId, setSupplierId] = useState("");
@@ -384,78 +386,6 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
     }, [initialPurchase?.po_no, initialPurchase?.purchaseNo, initialPurchase?.poNo, poNumber, generateDocumentNumber]);
 
     // --- Workflow Handlers ---
-
-    // Helper: Extract numeric part from SKU (keep leading zeros for matching)
-    const extractNumericPart = (sku: string): string => {
-        // Extract numeric part (keep leading zeros)
-        return sku.replace(/\D/g, '');
-    };
-
-    // Helper: Normalize numeric part (remove leading zeros for comparison)
-    const normalizeNumeric = (numStr: string): string => {
-        return numStr.replace(/^0+/, '') || '0';
-    };
-
-    // Helper: Check if search term matches SKU (including numeric-only search)
-    const matchesSku = (sku: string, searchTerm: string): boolean => {
-        if (!sku || !searchTerm) return false;
-        
-        const lowerSku = sku.toLowerCase();
-        const lowerSearch = searchTerm.toLowerCase();
-        
-        // 1. Direct text match (full SKU or partial)
-        if (lowerSku.includes(lowerSearch)) {
-            return true;
-        }
-        
-        // 2. Numeric matching (handle leading zeros)
-        const skuNumeric = extractNumericPart(sku);
-        const searchNumeric = extractNumericPart(searchTerm);
-        
-        // If search term has numbers, check numeric matching
-        if (searchNumeric.length > 0) {
-            // If SKU has no numeric part, skip numeric matching
-            if (skuNumeric.length === 0) {
-                return false;
-            }
-            
-            // Match with leading zeros preserved (e.g., "0001" matches "REG-0001")
-            // Special handling for "0" - only match if SKU numeric part starts with "0" or contains "0" as a digit
-            if (searchNumeric === '0') {
-                // "0" should match SKUs that have "0" in their numeric part
-                // But be more precise: match if SKU starts with "0" (like "0001", "001", "002")
-                if (skuNumeric.startsWith('0')) {
-                    return true;
-                }
-            } else {
-                // For other numeric searches, use includes check
-                if (skuNumeric.includes(searchNumeric) || searchNumeric.includes(skuNumeric)) {
-                    return true;
-                }
-            }
-            
-            // Match normalized (without leading zeros) - e.g., "1" matches "0001"
-            const normalizedSku = normalizeNumeric(skuNumeric);
-            const normalizedSearch = normalizeNumeric(searchNumeric);
-            
-            // Special case: if search is "0" after normalization, it should match any SKU with leading zeros
-            // But we already handled this above with includes() check
-            // So only do normalized matching if both are non-zero
-            if (normalizedSearch !== '0' && normalizedSku !== '0') {
-                // Check if normalized values match (exact or partial)
-                if (normalizedSku === normalizedSearch) {
-                    return true;
-                }
-                
-                // Check if one contains the other (for partial matches)
-                if (normalizedSku.includes(normalizedSearch) || normalizedSearch.includes(normalizedSku)) {
-                    return true;
-                }
-            }
-        }
-        
-        return false;
-    };
 
     // Helper to normalize a single variation (shared by products list and edit-mode fetch)
     const normalizeVariation = (v: any) => {
@@ -746,44 +676,24 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
         toast.success("Expense added!");
     };
 
-    // Enhanced search with SKU numeric matching (parent products only, no variations in results)
+    // Enhanced search with shared SKU/name ranker (narrow numeric matches)
     const filteredProducts = useMemo(() => {
         if (!productSearchTerm.trim()) return products;
-        
+
         const searchTerm = productSearchTerm.trim();
-        const searchLower = searchTerm.toLowerCase();
-        const isNumericOnly = /^\d+$/.test(searchTerm);
-        
-        const results = products.filter(p => {
-            // Match product name
-            const nameMatch = p.name.toLowerCase().includes(searchLower);
-            
-            // Match SKU (full or numeric part)
-            const skuMatch = matchesSku(p.sku, searchTerm);
-            
-            // Debug for "0" search
-            if (isNumericOnly && searchTerm === '0' && skuMatch) {
-                console.log(`[FILTER DEBUG] Product: ${p.name}, SKU: ${p.sku}, nameMatch: ${nameMatch}, skuMatch: ${skuMatch}, Will include: ${nameMatch || skuMatch}`);
-            }
-            
-            return nameMatch || skuMatch;
+        let results = products.filter((p) => rankProductSearchHit(p, searchTerm) < 99);
+
+        results.sort((a, b) => {
+            const ra = rankProductSearchHit(a, searchTerm);
+            const rb = rankProductSearchHit(b, searchTerm);
+            if (ra !== rb) return ra - rb;
+            return String(a.name).localeCompare(String(b.name));
         });
-        
-        // Debug: Log results for numeric search
-        if (isNumericOnly) {
-            console.log(`[SKU SEARCH] Search: "${searchTerm}", Results: ${results.length}, Total Products: ${products.length}`);
-            if (results.length === 0) {
-                console.log(`[SKU SEARCH] No matches. Available products:`, products.map(p => ({ 
-                    name: p.name, 
-                    sku: p.sku, 
-                    numeric: extractNumericPart(p.sku),
-                    normalized: normalizeNumeric(extractNumericPart(p.sku))
-                })));
-            } else {
-                console.log(`[SKU SEARCH] Matched products:`, results.map(p => ({ name: p.name, sku: p.sku })));
-            }
+
+        results = preferExactSkuHits(results, searchTerm);
+        if (results.length > PRODUCT_SEARCH_RESULT_CAP) {
+            results = results.slice(0, PRODUCT_SEARCH_RESULT_CAP);
         }
-        
         return results;
     }, [products, productSearchTerm]);
     
@@ -1526,6 +1436,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
 
     // Handle Save
     const handleSave = async (print: boolean = false) => {
+        if (saving || submitInProgressRef.current) return;
         // RULE 2 FIX: Branch validation - Required for Admin/Owner
         if (isAdmin && (!branchId || branchId === '' || branchId === 'all')) {
             toast.error('Please select a branch before saving purchase');
@@ -1580,7 +1491,9 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
     };
 
     const proceedWithSave = async (print: boolean, openPaymentDialogAfter: boolean): Promise<string | null> => {
+        if (saving || submitInProgressRef.current) return null;
         try {
+            submitInProgressRef.current = true;
             setSaving(true);
             
             const selectedSupplier = suppliers.find(s => s.id.toString() === supplierId);
@@ -1708,7 +1621,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                             toast.error('Final PO created but some payments failed: ' + (paymentError.message || ''));
                         }
                     }
-                    await refreshPurchases();
+                    // List refresh via updatePurchase → emitPurchaseInvalidation (avoid double load)
                     window.dispatchEvent(new CustomEvent('purchaseSaved', { detail: { purchaseId } }));
                     toast.success(`Purchase finalized as ${nextPo} (same row).`);
                     if (openPaymentDialogAfter) {
@@ -1839,6 +1752,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
             toast.error(`Failed to save purchase: ${error.message || 'Unknown error'}`);
             return null;
         } finally {
+            submitInProgressRef.current = false;
             setSaving(false);
         }
     };

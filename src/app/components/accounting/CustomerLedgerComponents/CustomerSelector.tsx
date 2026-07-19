@@ -32,8 +32,10 @@ export const CustomerSelector: React.FC<CustomerSelectorProps> = ({
     if (!companyId) return;
     setLoading(true);
     try {
-      const data = await contactService.getAllContacts(companyId, 'customer');
-      setCustomers(data || []);
+      const data = await contactService.getAllContacts(companyId);
+      setCustomers(
+        (data || []).filter((c) => c.type === 'customer' || c.type === 'both'),
+      );
     } catch (error) {
       console.error('[CUSTOMER SELECTOR] Error loading customers:', error);
     } finally {

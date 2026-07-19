@@ -23,7 +23,7 @@ import { getEffectivePrinterSettings } from '../../api/settings';
 import { maybeAutoPrintAfterTransaction, manualPrintReceipt } from '../../services/printAfterTransaction';
 import { useSingleFlightAction } from '../../hooks/useSingleFlightAction';
 import { useSubmitLock } from '../../contexts/LoadingContext';
-import { localNowDateString, formatLocalDateYYYYMMDD, getCurrentLocalTimestamp } from '../../utils/localDate';
+import { localNowDateString, localNowDateTimeString, formatLocalDateYYYYMMDD, getCurrentLocalTimestamp } from '../../utils/localDate';
 import { useSettings } from '../../context/SettingsContext';
 import { orderSaleLinesForPersist } from '../../lib/bespokeCartInjection';
 import { useEffectiveWorkerId, useEffectiveWorkerRole, useEffectiveWorkerProfileId } from '../../context/CounterWorkerContext';
@@ -232,7 +232,7 @@ export function SalesModule({
     notes: '',
     billRef: '',
     attachmentFiles: [],
-    saleDate: localNowDateString(),
+    saleDate: localNowDateTimeString(),
     saleType: initialSaleType === 'studio' ? 'studio' : 'regular',
     orderDate: localNowDateString(),
     deadlineDate: localDatePlusDays(7),
@@ -319,7 +319,7 @@ export function SalesModule({
       total: 0,
       notes: '',
       attachmentFiles: [],
-      saleDate: localNowDateString(),
+      saleDate: localNowDateTimeString(),
       saleType,
       orderDate: localNowDateString(),
       deadlineDate: localDatePlusDays(7),
@@ -365,8 +365,25 @@ export function SalesModule({
   };
 
   const handleNewSale = () => startNewSaleFlow();
-  const handleCustomerSelect = (customer: Customer, saleType: 'regular' | 'studio') => {
-    setSaleData((prev) => ({ ...prev, customer, saleType }));
+  const handleCustomerSelect = (
+    customer: Customer,
+    saleType: 'regular' | 'studio',
+    extras?: { documentStatus?: SaleData['documentStatus']; deadlineDate?: string },
+  ) => {
+    setSaleData((prev) => ({
+      ...prev,
+      customer,
+      saleType,
+      ...(saleType === 'regular'
+        ? {
+            documentStatus: extras?.documentStatus ?? prev.documentStatus ?? 'order',
+            deadlineDate:
+              (extras?.documentStatus ?? prev.documentStatus ?? 'order') === 'order'
+                ? (extras?.deadlineDate ?? prev.deadlineDate)
+                : prev.deadlineDate,
+          }
+        : { documentStatus: 'order' as const }),
+    }));
     setStep('products');
   };
   const handleProductsUpdate = (products: Product[]) => {
@@ -516,6 +533,9 @@ export function SalesModule({
       ...(saleData.saleType === 'regular' && {
         targetStatus: saleData.documentStatus ?? 'order',
         documentType: saleData.documentStatus === 'quotation' ? 'quotation' as const : 'invoice' as const,
+        ...((saleData.documentStatus ?? 'order') === 'order' && saleData.deadlineDate
+          ? { deadline: saleData.deadlineDate }
+          : {}),
       }),
     };
 
@@ -610,7 +630,7 @@ export function SalesModule({
       total: 0,
       notes: '',
       attachmentFiles: [],
-      saleDate: localNowDateString(),
+      saleDate: localNowDateTimeString(),
       saleType: 'regular',
       orderDate: localNowDateString(),
       deadlineDate: localDatePlusDays(7),
@@ -662,7 +682,7 @@ export function SalesModule({
       total: 0,
       notes: '',
       attachmentFiles: [],
-      saleDate: localNowDateString(),
+      saleDate: localNowDateTimeString(),
       saleType: 'regular',
       orderDate: localNowDateString(),
       deadlineDate: localDatePlusDays(7),
@@ -710,6 +730,8 @@ export function SalesModule({
           onSelect={handleCustomerSelect}
           initialSaleType={saleData.saleType}
           onSaleTypeChange={(st) => setSaleData((prev) => ({ ...prev, saleType: st }))}
+          initialDocumentStatus={saleData.documentStatus ?? 'order'}
+          initialDeadlineDate={saleData.deadlineDate}
         />
       ) : (
         <SelectCustomer
@@ -720,6 +742,8 @@ export function SalesModule({
           onSelect={handleCustomerSelect}
           initialSaleType={saleData.saleType}
           onSaleTypeChange={(st) => setSaleData((prev) => ({ ...prev, saleType: st }))}
+          initialDocumentStatus={saleData.documentStatus ?? 'order'}
+          initialDeadlineDate={saleData.deadlineDate}
         />
       ))}
       {step === 'products' && saleData.customer && (

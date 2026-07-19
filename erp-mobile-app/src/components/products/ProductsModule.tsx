@@ -35,6 +35,7 @@ import * as branchesApi from '../../api/branches';
 import { useSubmitLock } from '../../contexts/LoadingContext';
 import { useEffectiveWorkerId } from '../../context/CounterWorkerContext';
 import { prepareMobileProductDuplicateSeed } from '../../utils/productDuplicateUtils';
+import { filterAndRankProducts, productMatchesSearch } from '../../lib/productSearchRank';
 
 /** Total stock: sum of variation stocks when hasVariations, else product stock */
 function getDisplayStock(p: productsApi.Product): number {
@@ -187,11 +188,12 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
     });
   }, [companyId, branchId]);
 
-  const filtered = products.filter((p) => {
-    const matchSearch = p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase());
-    const matchCat = filterCat === 'all' || p.category === filterCat;
-    return matchSearch && matchCat;
-  });
+  const filtered = useMemo(() => {
+    const term = search.trim();
+    const byCat = products.filter((p) => filterCat === 'all' || p.category === filterCat);
+    if (!term) return byCat;
+    return filterAndRankProducts(byCat, term, productMatchesSearch);
+  }, [products, search, filterCat]);
 
   const categories = ['all', ...Array.from(new Set(products.map((p) => p.category)))];
 
@@ -516,15 +518,23 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
                       isSelected ? 'border-[#3B82F6] ring-1 ring-[#3B82F6]/40' : 'border-[#374151] hover:border-[#3B82F6]/50'
                     }`}
                   >
-                  <button
-                    type="button"
+                  <div
+                    role="button"
+                    tabIndex={0}
                     onClick={() => {
                       if (selectMode) toggleSelected(p.id);
                       else {
                         setDetailProduct(p);
                       }
                     }}
-                    className="w-full text-left active:scale-[0.99]"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        if (selectMode) toggleSelected(p.id);
+                        else setDetailProduct(p);
+                      }
+                    }}
+                    className="w-full text-left active:scale-[0.99] cursor-pointer"
                   >
                     <div className="flex items-start gap-3">
                       {selectMode && (
@@ -611,7 +621,7 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
                         )}
                       </button>
                     </div>
-                  </button>
+                  </div>
                   {!selectMode && (
                     <button
                       type="button"

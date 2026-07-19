@@ -1,4 +1,4 @@
-import type { FieldsConfig } from '@/app/types/printingSettings';
+import type { FieldsConfig, ReportExportSettings } from '@/app/types/printingSettings';
 
 /**
  * Report-only print configuration.
@@ -47,4 +47,40 @@ export function pickReportHeaderFieldVisibility(
     showPhone: fields?.showPhone ?? DEFAULT_REPORT_HEADER_FIELDS.showPhone,
     showEmail: fields?.showEmail ?? DEFAULT_REPORT_HEADER_FIELDS.showEmail,
   };
+}
+
+export type ReportTypographyOptions = {
+  fontSize: number;
+  dataListFontSize: number;
+  tableHeaderFontSize: number;
+  summaryFontSize: number;
+  columnPaddingPx: number;
+  showCurrencySymbol: boolean;
+};
+
+/** Resolve report typography + table options with fallbacks for older saved JSONB. */
+export function resolveReportTypography(
+  reportExport: ReportExportSettings,
+  pdfFontSize?: number,
+): ReportTypographyOptions {
+  const base = reportExport.reportFontSize ?? pdfFontSize ?? REPORT_DEFAULT_FONT_SIZE;
+  const pad = reportExport.reportColumnPaddingPx ?? 4;
+  return {
+    fontSize: base,
+    dataListFontSize: reportExport.reportDataListFontSize ?? base,
+    tableHeaderFontSize:
+      reportExport.reportTableHeaderFontSize ?? Math.max(8, base - 2),
+    summaryFontSize: reportExport.reportSummaryFontSize ?? Math.max(8, base - 2),
+    columnPaddingPx: Math.max(2, Math.min(10, pad)),
+    showCurrencySymbol: reportExport.reportShowCurrencySymbol !== false,
+  };
+}
+
+/** Strip leading currency symbol from a formatted money string (Rs. / $ / € / £). */
+export function stripCurrencySymbol(formatted: string): string {
+  return formatted.replace(/^(Rs\.?|PKR|USD|EUR|GBP|\$|€|£)\s*/i, '').trim();
+}
+
+export function formatReportMoneyDisplay(formatted: string, showCurrencySymbol: boolean): string {
+  return showCurrencySymbol ? formatted : stripCurrencySymbol(formatted);
 }

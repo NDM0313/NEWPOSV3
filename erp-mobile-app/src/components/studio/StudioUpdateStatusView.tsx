@@ -5,6 +5,7 @@ import { getPaymentAccounts } from '../../api/accounts';
 import type { AccountRow } from '../../api/accounts';
 import type { StudioOrder, StudioStage } from './StudioDashboard';
 import { todayDateInputValue } from '../../lib/studioWorkflowDates';
+import { DateInputField } from '../shared/DateTimePicker';
 
 type StudioPayMethod = 'cash' | 'bank' | 'wallet';
 const STUDIO_METHOD_TO_TYPE: Record<StudioPayMethod, string[]> = {
@@ -321,16 +322,13 @@ export function StudioUpdateStatusView({
                 </div>
               )}
             </div>
-            <div>
-              <label className="block text-sm text-[#9CA3AF] mb-2">Expected Return Date</label>
-              <input
-                type="date"
-                value={expectedDate}
-                onChange={(e) => setExpectedDate(e.target.value)}
-                min={todayDateInputValue()}
-                className="w-full bg-[#1F2937] border border-[#374151] rounded-lg px-4 py-3 text-white"
-              />
-            </div>
+            <DateInputField
+              label="Expected Return Date"
+              value={expectedDate}
+              onChange={setExpectedDate}
+              min={todayDateInputValue()}
+              required
+            />
             <div>
               <label className="block text-sm text-[#9CA3AF] mb-2">Expected Cost (Rs)</label>
               <input
@@ -357,15 +355,7 @@ export function StudioUpdateStatusView({
         {isAssigned && (
           <div className="space-y-4">
             <p className="text-sm text-[#9CA3AF]">Mark that the item has been sent to the worker.</p>
-            <div>
-              <label className="block text-sm text-[#9CA3AF] mb-2">Send date</label>
-              <input
-                type="date"
-                value={workflowDate}
-                onChange={(e) => setWorkflowDate(e.target.value)}
-                className="w-full bg-[#1F2937] border border-[#374151] rounded-lg px-4 py-3 text-white"
-              />
-            </div>
+            <DateInputField label="Send date" value={workflowDate} onChange={setWorkflowDate} required />
             <div>
               <label className="block text-sm text-[#9CA3AF] mb-2">Notes (optional)</label>
               <textarea
@@ -390,15 +380,7 @@ export function StudioUpdateStatusView({
         {isSentToWorker && (
           <div className="space-y-4">
             <p className="text-sm text-[#9CA3AF]">Mark that work has been received back from the worker.</p>
-            <div>
-              <label className="block text-sm text-[#9CA3AF] mb-2">Receive date</label>
-              <input
-                type="date"
-                value={workflowDate}
-                onChange={(e) => setWorkflowDate(e.target.value)}
-                className="w-full bg-[#1F2937] border border-[#374151] rounded-lg px-4 py-3 text-white"
-              />
-            </div>
+            <DateInputField label="Receive date" value={workflowDate} onChange={setWorkflowDate} required />
             <div>
               <label className="block text-sm text-[#9CA3AF] mb-2">Notes (optional)</label>
               <textarea

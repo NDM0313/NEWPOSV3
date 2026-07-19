@@ -1,6 +1,6 @@
 import React, { useCallback, useState, useEffect, useRef } from "react";
 import { useDropzone } from "react-dropzone";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, type FieldErrors } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useSupabase } from '@/app/context/SupabaseContext';
@@ -32,6 +32,7 @@ import {
 import { ProductImage } from './ProductImage';
 import { getSupabaseStorageDashboardUrl } from '@/app/utils/paymentAttachmentUrl';
 import { toast } from 'sonner';
+import { mapPool, perfStart } from '@/app/utils/perfTiming';
 import {
   X,
   Upload,
@@ -83,7 +84,8 @@ import {
 // Define the validation schema (aligned with submit and DB)
 const productSchema = z.object({
   name: z.string().min(1, "Product name is required"),
-  sku: z.string().min(1, "SKU is required"),
+  // Empty allowed — onSubmit generates SKU (create/edit parity)
+  sku: z.string().optional(),
   barcodeType: z.string().optional(),
   barcode: z.string().optional(),
   brand: z.string().optional(),
@@ -122,6 +124,50 @@ const productSchema = z.object({
 
 type ProductFormValues = z.infer<typeof productSchema>;
 
+const PRODUCT_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Prefer uuid; accept string id only when it is a UUID (never list index numbers). */
+function resolveEditProductId(
+  product: { uuid?: unknown; id?: unknown } | null | undefined,
+): string | null {
+  if (!product) return null;
+  const uuid = product.uuid;
+  if (typeof uuid === 'string' && PRODUCT_UUID_RE.test(uuid)) return uuid;
+  const id = product.id;
+  if (typeof id === 'string' && PRODUCT_UUID_RE.test(id)) return id;
+  return null;
+}
+
+type ProductFormTab = 'basic' | 'pricing' | 'inventory' | 'media' | 'details' | 'variations' | 'combos';
+
+const FIELD_ERROR_TAB: Partial<Record<keyof ProductFormValues, ProductFormTab>> = {
+  name: 'basic',
+  sku: 'basic',
+  brand: 'basic',
+  category: 'basic',
+  subCategory: 'basic',
+  unit: 'basic',
+  barcodeType: 'basic',
+  barcode: 'basic',
+  purchasePrice: 'pricing',
+  margin: 'pricing',
+  sellingPrice: 'pricing',
+  wholesalePrice: 'pricing',
+  taxType: 'pricing',
+  rentalPrice: 'pricing',
+  securityDeposit: 'pricing',
+  rentalDuration: 'pricing',
+  stockManagement: 'inventory',
+  initialStock: 'inventory',
+  alertQty: 'inventory',
+  maxStock: 'inventory',
+  description: 'details',
+  notes: 'details',
+  supplier: 'details',
+  supplierCode: 'details',
+};
+
 // Ensure number inputs never show empty on click/clear — store 0 instead of ""
 const setValueAsNumber = (v: unknown): number => {
   if (v === '' || v === undefined || v === null) return 0;
@@ -152,6 +198,12 @@ export const EnhancedProductForm = ({
   const [saving, setSaving] = useState(false);
   /** Synchronous guard to prevent double submit (state update is async). */
   const submitInProgressRef = useRef(false);
+  /** Prevent re-hydrating edit form (wipes in-progress name/price edits). Key = `${id}:list|full`. */
+  const hydratedKeyRef = useRef<string | null>(null);
+  /** Issue auto SKU once for new-product create (generateDocumentNumberSafe identity churn must not re-run). */
+  const skuAutoIssuedRef = useRef(false);
+  /** Seed duplicate form once per source product id. */
+  const duplicateSeededKeyRef = useRef<string | null>(null);
   /** Enable Variations toggle: default OFF for new product, from DB for edit. When ON, parent stock locked at 0. */
   const [enableVariations, setEnableVariations] = useState(false);
   const [blockDisableVariationsModalOpen, setBlockDisableVariationsModalOpen] = useState(false);
@@ -276,11 +328,25 @@ export const EnhancedProductForm = ({
   });
 
   const stockManagement = watch("stockManagement");
-  const purchasePrice = watch("purchasePrice");
-  const margin = watch("margin");
   const selectedUnitId = watch('unit');
   const selectedUnitAllowsDecimal =
     units.find((u) => u.id === selectedUnitId)?.allow_decimal ?? false;
+
+  const onInvalid = useCallback((errors: FieldErrors<ProductFormValues>) => {
+    if (import.meta.env.DEV) {
+      console.warn('[PRODUCT FORM] validation', errors);
+    }
+    const firstKey = Object.keys(errors)[0] as keyof ProductFormValues | undefined;
+    const err = firstKey ? errors[firstKey] : undefined;
+    const msg =
+      err && typeof err === 'object' && 'message' in err && err.message
+        ? String(err.message)
+        : 'Please fix the form errors';
+    toast.error(msg);
+    if (firstKey && FIELD_ERROR_TAB[firstKey]) {
+      setActiveTab(FIELD_ERROR_TAB[firstKey]!);
+    }
+  }, []);
 
   const parseVariationQtyInput = (raw: string): number => {
     if (selectedUnitAllowsDecimal) {
@@ -434,7 +500,7 @@ export const EnhancedProductForm = ({
     if (!companyId || activeTab !== 'variations' || !enableVariations) return;
     let cancelled = false;
     setLoadingProductsWithVariations(true);
-    productService.getAllProducts(companyId)
+    productService.getProductsWithVariationsForCopy(companyId)
       .then((data: any) => {
         if (cancelled) return;
         const withVars = (data || []).filter(
@@ -505,20 +571,33 @@ export const EnhancedProductForm = ({
     return (n && String(n).trim()) ? n : 'PRD-0001';
   }, [generateDocumentNumber]);
 
-  // Auto-generate unique SKU for new product only (collision-safe via DB check)
+  // Auto-generate unique SKU for new product only — once per create session
+  const editProductId = initialProduct?.uuid ?? initialProduct?.id;
   useEffect(() => {
-    if (initialProduct || duplicateFromProductId || !companyId) return;
+    if (editProductId || duplicateFromProductId || !companyId) {
+      if (editProductId || duplicateFromProductId) skuAutoIssuedRef.current = false;
+      return;
+    }
+    if (skuAutoIssuedRef.current) return;
     let cancelled = false;
     (async () => {
       try {
         const nextSKU = await generateDocumentNumberSafe('production');
-        if (!cancelled && nextSKU) setValue('sku', nextSKU);
-      } catch (e) {
-        if (!cancelled) setValue('sku', generateSKU());
+        if (!cancelled && nextSKU) {
+          skuAutoIssuedRef.current = true;
+          setValue('sku', nextSKU);
+        }
+      } catch {
+        if (!cancelled) {
+          skuAutoIssuedRef.current = true;
+          setValue('sku', generateSKU());
+        }
       }
     })();
     return () => { cancelled = true; };
-  }, [companyId, initialProduct, duplicateFromProductId, setValue, generateDocumentNumberSafe, generateSKU]);
+    // Intentionally omit generateDocumentNumberSafe / generateSKU — unstable identities re-issue SKUs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot SKU; helpers read from latest render
+  }, [companyId, duplicateFromProductId, editProductId, setValue]);
 
   // Duplicate mode: fetch full source product
   useEffect(() => {
@@ -547,9 +626,15 @@ export const EnhancedProductForm = ({
     return () => { cancelled = true; };
   }, [duplicateFromProductId, initialProduct]);
 
-  // Duplicate mode: seed create form from fetched source
+  // Duplicate mode: seed create form once per source id
   useEffect(() => {
+    if (!duplicateFromProductId) {
+      duplicateSeededKeyRef.current = null;
+      return;
+    }
     if (!isDuplicateMode || !duplicateSourceFull) return;
+    if (duplicateSeededKeyRef.current === duplicateFromProductId) return;
+
     let cancelled = false;
     const source = duplicateSourceFull;
     (async () => {
@@ -560,6 +645,8 @@ export const EnhancedProductForm = ({
         nextSku = generateSKU();
       }
       if (cancelled) return;
+
+      duplicateSeededKeyRef.current = duplicateFromProductId;
 
       setValue('name', duplicateProductName(source.name || ''));
       setValue('sku', nextSku);
@@ -582,6 +669,7 @@ export const EnhancedProductForm = ({
       if (catId) {
         try {
           const cat = await productCategoryService.getById(catId);
+          if (cancelled) return;
           if (cat.parent_id) {
             setValue('category', cat.parent_id);
             setValue('subCategory', cat.id);
@@ -590,8 +678,10 @@ export const EnhancedProductForm = ({
             setValue('subCategory', '');
           }
         } catch {
-          setValue('category', catId);
-          setValue('subCategory', '');
+          if (!cancelled) {
+            setValue('category', catId);
+            setValue('subCategory', '');
+          }
         }
       } else {
         setValue('category', '');
@@ -614,7 +704,9 @@ export const EnhancedProductForm = ({
       setCombos([]);
     })();
     return () => { cancelled = true; };
-  }, [isDuplicateMode, duplicateSourceFull, setValue, generateDocumentNumberSafe, generateSKU]);
+    // Intentionally omit generateDocumentNumberSafe / generateSKU — unstable identities wipe the form.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot duplicate seed
+  }, [isDuplicateMode, duplicateFromProductId, duplicateSourceFull, setValue]);
 
   // Edit mode: fetch full product by id so we have variations, category_id, unit_id, brand_id (list product often has only display fields)
   useEffect(() => {
@@ -655,114 +747,129 @@ export const EnhancedProductForm = ({
     }
   }, [initialProduct, fullProductForEdit]);
 
-  // Pre-populate form when editing – use full product from API when available so all fields + variations hydrate
+  // Pre-populate once per product id (list → full). Do not re-run on branch/object churn — that wipes edits.
   useEffect(() => {
     let cancelled = false;
-    const source = fullProductForEdit ?? initialProduct;
-    if (source) {
-      setValue('name', source.name || '');
-      setValue('sku', source.sku || '');
-      setValue('barcodeType', (source as any).barcode_type || 'code128');
-      setValue('barcode', source.barcode || '');
-      setValue('purchasePrice', source.cost_price ?? (source as any).purchasePrice ?? 0);
-      setValue('sellingPrice', source.retail_price ?? (source as any).sellingPrice ?? 0);
-      setValue('wholesalePrice', source.wholesale_price ?? source.retail_price ?? 0);
-      setValue('rentalPrice', source.rental_price_daily ?? 0);
-      setValue('alertQty', source.min_stock ?? (source as any).lowStockThreshold ?? 0);
-      setValue('maxStock', source.max_stock ?? 1000);
-      setValue('description', source.description || '');
-      setValue('brand', source.brand_id || '');
-      setValue('unit', source.unit_id || '');
-      setValue('supplier', (source as any).supplier_id || (source as any).supplier || '');
-      setValue('supplierCode', (source as any).supplier_code || (source as any).supplierCode || '');
-      const catId = source.category_id || source.category?.id || '';
-      if (catId) {
-        productCategoryService.getById(catId).then((cat) => {
-          if (cat.parent_id) {
-            setValue('category', cat.parent_id);
-            setValue('subCategory', cat.id);
-          } else {
-            setValue('category', cat.id);
-            setValue('subCategory', '');
-          }
-        }).catch(() => {
-          setValue('category', catId);
-          setValue('subCategory', '');
-        });
-      } else {
-        setValue('category', '');
-        setValue('subCategory', '');
-      }
-      if (source.variations && Array.isArray(source.variations) && source.variations.length > 0) {
-        const firstParsed = publicVariationAttributes(
-          parseVariationAttributesRaw(source.variations[0]?.attributes)
-        );
-        const attrNames = Object.keys(firstParsed).sort((a, b) => a.localeCompare(b));
-        if (attrNames.length > 0) {
-          const valuesByAttr: Record<string, Set<string>> = {};
-          attrNames.forEach((k) => {
-            valuesByAttr[k] = new Set();
-          });
-          source.variations.forEach((v: any) => {
-            const a = publicVariationAttributes(parseVariationAttributesRaw(v.attributes));
-            attrNames.forEach((k) => {
-              if (a[k] != null && a[k] !== '') valuesByAttr[k].add(String(a[k]));
-            });
-          });
-          setVariantAttributes(
-            attrNames.map((name) => ({
-              name,
-              values: Array.from(valuesByAttr[name] || []).sort((a, b) => a.localeCompare(b)),
-            }))
-          );
-        } else {
-          setVariantAttributes([]);
-        }
-        const mapped = (source.variations as any[]).map((v) =>
-          mapProductVariationApiToFormRow(v as Record<string, unknown>)
-        );
-        const pid = (source as any).uuid || (source as any).id;
-        (async () => {
-          if (companyId && pid && mapped.some((m) => m.id)) {
-            const branchScope = branchId && branchId !== 'all' ? branchId : null;
-            const withMovement = await Promise.all(
-              mapped.map(async (row) => {
-                if (!row.id) return row;
-                try {
-                  const qty = await inventoryService.getStock(companyId, pid as string, row.id, branchScope);
-                  return { ...row, stock: qty };
-                } catch {
-                  return row;
-                }
-              })
-            );
-            if (!cancelled) setGeneratedVariations(withMovement);
-          } else if (!cancelled) {
-            setGeneratedVariations(mapped);
-          }
-        })();
-      } else {
+    const productId = initialProduct?.uuid ?? initialProduct?.id;
+
+    if (!productId) {
+      if (hydratedKeyRef.current !== null) {
+        hydratedKeyRef.current = null;
+        setExistingImageUrls([]);
+        setIsComboProduct(false);
+        setFullProductForEdit(null);
         setGeneratedVariations([]);
         setVariantAttributes([]);
       }
-      const urls = (source as any)?.image_urls;
-      setExistingImageUrls(Array.isArray(urls) ? [...urls] : []);
-      if (source.is_combo_product !== undefined) {
-        setIsComboProduct(!!source.is_combo_product);
-      }
-      const productId = source.uuid || source.id;
-      if (productId) loadProductCombos(productId);
+      return;
+    }
+
+    const source = fullProductForEdit ?? initialProduct;
+    if (!source) return;
+
+    const key = `${productId}:${fullProductForEdit ? 'full' : 'list'}`;
+    if (hydratedKeyRef.current === key) return;
+    hydratedKeyRef.current = key;
+
+    setValue('name', source.name || '');
+    setValue('sku', source.sku || '');
+    setValue('barcodeType', (source as any).barcode_type || 'code128');
+    setValue('barcode', source.barcode || '');
+    setValue('purchasePrice', source.cost_price ?? (source as any).purchasePrice ?? 0);
+    setValue('sellingPrice', source.retail_price ?? (source as any).sellingPrice ?? 0);
+    setValue('wholesalePrice', source.wholesale_price ?? source.retail_price ?? 0);
+    setValue('rentalPrice', source.rental_price_daily ?? 0);
+    setValue('alertQty', source.min_stock ?? (source as any).lowStockThreshold ?? 0);
+    setValue('maxStock', source.max_stock ?? 1000);
+    setValue('description', source.description || '');
+    setValue('brand', source.brand_id || '');
+    setValue('unit', source.unit_id || '');
+    setValue('supplier', (source as any).supplier_id || (source as any).supplier || '');
+    setValue('supplierCode', (source as any).supplier_code || (source as any).supplierCode || '');
+    const catId = source.category_id || source.category?.id || '';
+    if (catId) {
+      productCategoryService.getById(catId).then((cat) => {
+        if (cancelled) return;
+        if (cat.parent_id) {
+          setValue('category', cat.parent_id);
+          setValue('subCategory', cat.id);
+        } else {
+          setValue('category', cat.id);
+          setValue('subCategory', '');
+        }
+      }).catch(() => {
+        if (!cancelled) {
+          setValue('category', catId);
+          setValue('subCategory', '');
+        }
+      });
     } else {
-      setExistingImageUrls([]);
-      setIsComboProduct(false);
-      setFullProductForEdit(null);
+      setValue('category', '');
+      setValue('subCategory', '');
+    }
+    if (source.variations && Array.isArray(source.variations) && source.variations.length > 0) {
+      const firstParsed = publicVariationAttributes(
+        parseVariationAttributesRaw(source.variations[0]?.attributes)
+      );
+      const attrNames = Object.keys(firstParsed).sort((a, b) => a.localeCompare(b));
+      if (attrNames.length > 0) {
+        const valuesByAttr: Record<string, Set<string>> = {};
+        attrNames.forEach((k) => {
+          valuesByAttr[k] = new Set();
+        });
+        source.variations.forEach((v: any) => {
+          const a = publicVariationAttributes(parseVariationAttributesRaw(v.attributes));
+          attrNames.forEach((k) => {
+            if (a[k] != null && a[k] !== '') valuesByAttr[k].add(String(a[k]));
+          });
+        });
+        setVariantAttributes(
+          attrNames.map((name) => ({
+            name,
+            values: Array.from(valuesByAttr[name] || []).sort((a, b) => a.localeCompare(b)),
+          }))
+        );
+      } else {
+        setVariantAttributes([]);
+      }
+      const mapped = (source.variations as any[]).map((v) =>
+        mapProductVariationApiToFormRow(v as Record<string, unknown>)
+      );
+      const pid = (source as any).uuid || (source as any).id;
+      (async () => {
+        if (companyId && pid && mapped.some((m) => m.id)) {
+          const branchScope = branchId && branchId !== 'all' ? branchId : null;
+          const withMovement = await Promise.all(
+            mapped.map(async (row) => {
+              if (!row.id) return row;
+              try {
+                const qty = await inventoryService.getStock(companyId, pid as string, row.id, branchScope);
+                return { ...row, stock: qty };
+              } catch {
+                return row;
+              }
+            })
+          );
+          if (!cancelled) setGeneratedVariations(withMovement);
+        } else if (!cancelled) {
+          setGeneratedVariations(mapped);
+        }
+      })();
+    } else {
       setGeneratedVariations([]);
       setVariantAttributes([]);
     }
+    const urls = (source as any)?.image_urls;
+    setExistingImageUrls(Array.isArray(urls) ? [...urls] : []);
+    if (source.is_combo_product !== undefined) {
+      setIsComboProduct(!!source.is_combo_product);
+    }
+    if (productId) loadProductCombos(productId);
+
     return () => {
       cancelled = true;
     };
-  }, [fullProductForEdit, initialProduct, setValue, companyId, branchId]);
+  }, [fullProductForEdit, initialProduct?.uuid, initialProduct?.id, setValue]);
 
   /** Movement-based stock for edit (products.current_stock is not selected in getProduct). */
   useEffect(() => {
@@ -855,19 +962,20 @@ export const EnhancedProductForm = ({
     }
   };
 
-  // Auto-calculate selling price when purchase price or margin changes
-  useEffect(() => {
-    const purchasePriceNum = typeof purchasePrice === 'number' ? purchasePrice : parseFloat(String(purchasePrice || 0)) || 0;
-    const marginNum = typeof margin === 'number' ? margin : parseFloat(String(margin || 0)) || 0;
-    
-    if (purchasePriceNum > 0 && marginNum > 0) {
-      const sp = purchasePriceNum + (purchasePriceNum * marginNum) / 100;
-      if (typeof sp === 'number' && !isNaN(sp)) {
-        const sellingPrice = Number(sp.toFixed(2));
-        setValue("sellingPrice", sellingPrice, { shouldValidate: false, shouldDirty: false });
+  /** Optional helper: only when user edits Profit Margin (%), recompute selling from purchase. */
+  const applySellingFromMargin = useCallback(
+    (marginRaw: unknown) => {
+      const marginNum = setValueAsNumber(marginRaw);
+      const purchasePriceNum = setValueAsNumber(getValues('purchasePrice'));
+      if (purchasePriceNum > 0 && marginNum > 0) {
+        const sp = purchasePriceNum + (purchasePriceNum * marginNum) / 100;
+        if (Number.isFinite(sp)) {
+          setValue('sellingPrice', Number(sp.toFixed(2)), { shouldValidate: false, shouldDirty: true });
+        }
       }
-    }
-  }, [purchasePrice, margin, setValue]);
+    },
+    [getValues, setValue],
+  );
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     setImages((prev) => [...prev, ...acceptedFiles]);
@@ -1202,7 +1310,10 @@ export const EnhancedProductForm = ({
     data: ProductFormValues,
     action: "save" | "saveAndAdd",
   ) => {
-    if (submitInProgressRef.current) return;
+    if (submitInProgressRef.current) {
+      toast.info('Save in progress…');
+      return;
+    }
     submitInProgressRef.current = true;
     if (!companyId) {
       toast.error('Company ID not found. Please login again.');
@@ -1217,14 +1328,21 @@ export const EnhancedProductForm = ({
       return;
     }
     
+    const perf = perfStart('productSave');
+    let productSaveEnded = false;
+    const endProductSavePerf = (extra?: Record<string, unknown>) => {
+      if (productSaveEnded) return;
+      productSaveEnded = true;
+      perf.end(extra);
+    };
+
     try {
       setSaving(true);
       const finalSKU = data.sku && data.sku.trim() !== '' ? data.sku : generateSKU();
 
-      const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       const asId = (v: unknown): string | null => {
         if (v == null || v === '') return null;
-        if (typeof v === 'string' && UUID_REGEX.test(v)) return v;
+        if (typeof v === 'string' && PRODUCT_UUID_RE.test(v)) return v;
         if (typeof v === 'object' && v !== null && 'id' in v && typeof (v as any).id === 'string') return (v as any).id;
         return null;
       };
@@ -1275,10 +1393,17 @@ export const EnhancedProductForm = ({
         is_active: true,
       };
 
-      const productId = initialProduct?.uuid ?? initialProduct?.id; // Edit: UUID from list or API
-      const isEdit = !!productId;
+      const productId = resolveEditProductId(initialProduct);
+      const isEdit = !!initialProduct;
 
-      if (isEdit) {
+      if (isEdit && !productId) {
+        toast.error('Product id missing. Close and reopen the product.');
+        setSaving(false);
+        submitInProgressRef.current = false;
+        return;
+      }
+
+      if (isEdit && productId) {
         // UPDATE: merge existing image_urls (including any user-removed) with newly uploaded files
         const editSource = fullProductForEdit ?? initialProduct;
         const previousImageUrls = Array.isArray((editSource as { image_urls?: string[] })?.image_urls)
@@ -1299,20 +1424,23 @@ export const EnhancedProductForm = ({
         (productData as { image_urls: string[] }).image_urls = imageUrls;
 
         // RULE 5: Block enabling variations when product has parent-level stock (show modal)
-        if (enableVariations) {
-          const parentLevelCount = await inventoryService.getParentLevelMovementCount(productId);
-          if (parentLevelCount > 0) {
+        // Parallelize movement pre-checks (independent head counts)
+        const [parentLevelCount, movementCount] = await Promise.all([
+          enableVariations
+            ? inventoryService.getParentLevelMovementCount(productId)
+            : Promise.resolve(0),
+          inventoryService.getMovementCountForProduct(productId),
+        ]);
+        if (enableVariations && parentLevelCount > 0) {
             setBlockVariationsModalOpen(true);
             setSaving(false);
             submitInProgressRef.current = false;
             return;
-          }
         }
 
         // Opening stock: movement-based only; never send current_stock (productService strips it).
         const hasVariations = enableVariations;
         const initialStock = Number(data.initialStock) || 0;
-        const movementCount = await inventoryService.getMovementCountForProduct(productId);
         delete (productData as any).current_stock;
         if (hasVariations) (productData as any).current_stock = 0; // RULE 1: parent never holds stock
 
@@ -1328,7 +1456,7 @@ export const EnhancedProductForm = ({
         if (enableVariations && generatedVariations.length > 0 && finalCompanyId) {
           const parentCost = Number(data.purchasePrice) || 0;
           const parentSell = Number(data.sellingPrice) || 0;
-          for (const row of generatedVariations) {
+          await mapPool(generatedVariations, 5, async (row) => {
             const purchN = Number(row.purchasePrice);
             const sellN = Number(row.price);
             const cost = Number.isFinite(purchN) ? purchN : parentCost;
@@ -1408,7 +1536,7 @@ export const EnhancedProductForm = ({
               console.error('[PRODUCT FORM] Variation save failed:', ve);
               toast.warning('Product saved but one or more variations failed to save. Check the Variations tab.');
             }
-          }
+          });
         }
 
         const canReconcileOpening = await inventoryService.allowsParentOpeningReconcileFromProductForm(
@@ -1454,6 +1582,7 @@ export const EnhancedProductForm = ({
           combos: combos,
         };
         toast.success('Product updated successfully!');
+        endProductSavePerf({ action: 'update' });
         if (action === "saveAndAdd" && onSaveAndAdd) {
           onSaveAndAdd(payload);
         } else {
@@ -1545,6 +1674,7 @@ export const EnhancedProductForm = ({
         } else {
           toast.success('Product created successfully!');
         }
+        endProductSavePerf({ action: 'create', variations: generatedVariations.length });
 
         if (action === "saveAndAdd" && onSaveAndAdd) {
           onSaveAndAdd(payload);
@@ -1553,7 +1683,7 @@ export const EnhancedProductForm = ({
         }
       }
     } catch (error: any) {
-      const wasEdit = !!(initialProduct?.uuid ?? initialProduct?.id);
+      const wasEdit = !!resolveEditProductId(initialProduct) || !!initialProduct;
       const msg = error?.message || 'Unknown error';
       console.error('[PRODUCT FORM] Error saving product:', error);
       if (msg.includes('SKU') && msg.includes('already') && !wasEdit) {
@@ -1564,6 +1694,7 @@ export const EnhancedProductForm = ({
         toast.error(wasEdit ? 'Failed to update product: ' + msg : 'Failed to create product: ' + msg);
       }
     } finally {
+      endProductSavePerf({ done: true });
       setSaving(false);
       submitInProgressRef.current = false;
     }
@@ -1572,8 +1703,8 @@ export const EnhancedProductForm = ({
   return (
     <div className="flex flex-col h-full min-h-0 bg-input-background text-foreground relative">
       {(loadingFullProduct && initialProduct) || (loadingDuplicateSource && isDuplicateMode) ? (
-        <div className="absolute inset-0 bg-input-background/80 z-20 flex items-center justify-center rounded-xl">
-          <div className="flex flex-col items-center gap-3">
+        <div className="absolute inset-x-0 top-0 bottom-[4.5rem] bg-input-background/80 z-20 flex items-center justify-center rounded-xl pointer-events-none">
+          <div className="flex flex-col items-center gap-3 pointer-events-auto">
             <RefreshCcw size={32} className="text-blue-400 animate-spin" />
             <p className="text-sm text-muted-foreground">
               {isDuplicateMode ? 'Preparing duplicate...' : 'Loading product...'}
@@ -1959,7 +2090,12 @@ export const EnhancedProductForm = ({
                   </Label>
                   <Input
                     type="number"
-                    {...register("margin", { setValueAs: setValueAsNumber })}
+                    {...register('margin', { setValueAs: setValueAsNumber })}
+                    onChange={(e) => {
+                      const n = setValueAsNumber(e.target.value);
+                      setValue('margin', n, { shouldDirty: true, shouldValidate: true });
+                      applySellingFromMargin(n);
+                    }}
                     placeholder="0"
                     className="bg-muted border-border text-foreground mt-1"
                   />
@@ -3141,8 +3277,9 @@ export const EnhancedProductForm = ({
           Cancel
         </button>
         <button
-          onClick={handleSubmit((data) =>
-            onSubmit(data, "save"),
+          onClick={handleSubmit(
+            (data) => onSubmit(data, "save"),
+            onInvalid,
           )}
           type="button"
           disabled={saving}
@@ -3152,8 +3289,9 @@ export const EnhancedProductForm = ({
         </button>
         {onSaveAndAdd && (
           <button
-            onClick={handleSubmit((data) =>
-              onSubmit(data, "saveAndAdd"),
+            onClick={handleSubmit(
+              (data) => onSubmit(data, "saveAndAdd"),
+              onInvalid,
             )}
             type="button"
             disabled={saving}

@@ -22,6 +22,11 @@ export interface FinancialReportPreviewProps {
   showFooter?: boolean;
   orientation?: ReportPrintOrientation;
   fontSize?: number;
+  dataListFontSize?: number;
+  tableHeaderFontSize?: number;
+  summaryFontSize?: number;
+  columnPaddingPx?: number;
+  showCurrencySymbol?: boolean;
   fontFamily?: string;
   margins?: PageMargins;
 }
@@ -39,6 +44,10 @@ export function FinancialReportPreview({
   showFooter = true,
   orientation = 'portrait',
   fontSize,
+  dataListFontSize,
+  tableHeaderFontSize,
+  columnPaddingPx,
+  showCurrencySymbol,
   fontFamily,
   margins,
 }: FinancialReportPreviewProps) {
@@ -54,10 +63,20 @@ export function FinancialReportPreview({
       showFooter={showFooter}
       orientation={orientation}
       fontSize={fontSize}
+      dataListFontSize={dataListFontSize}
+      tableHeaderFontSize={tableHeaderFontSize}
+      columnPaddingPx={columnPaddingPx}
       fontFamily={fontFamily}
       margins={margins}
     >
-      <FinancialReportDataTable headers={headers} rows={rows} />
+      <FinancialReportDataTable
+        headers={headers}
+        rows={rows}
+        dataListFontSize={dataListFontSize}
+        tableHeaderFontSize={tableHeaderFontSize}
+        columnPaddingPx={columnPaddingPx}
+        showCurrencySymbol={showCurrencySymbol}
+      />
     </FinancialReportPrintLayout>
   );
 }

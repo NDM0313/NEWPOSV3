@@ -125,6 +125,7 @@ import { getTailorOptionsForExtraType, tailorNameByCategoryId } from '@/app/util
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 import { useSettings } from '@/app/context/SettingsContext';
 import { formatCurrency, getCurrencySymbol } from '@/app/utils/formatCurrency';
+import { rankProductSearchHit, preferExactSkuHits, PRODUCT_SEARCH_RESULT_CAP } from '@/app/utils/productSearchRank';
 import { contactService } from '@/app/services/contactService';
 import { saleService } from '@/app/services/saleService';
 import { productService } from '@/app/services/productService';
@@ -675,113 +676,24 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
 
     const getSalesmanName = () => salesmen.find(s => s.id.toString() === salesmanId)?.name || "No Salesman";
 
-    // Helper: Extract numeric part from SKU (keep leading zeros)
-    const extractNumericPart = (sku: string): string => {
-        return sku.replace(/\D/g, '');
-    };
-
-    // Helper: Normalize numeric part (remove leading zeros for comparison)
-    const normalizeNumeric = (numStr: string): string => {
-        return numStr.replace(/^0+/, '') || '0';
-    };
-
-    // Helper: Check if search term matches SKU (including numeric-only search)
-    const matchesSku = (sku: string, searchTerm: string): boolean => {
-        if (!sku || !searchTerm) return false;
-        
-        const lowerSku = sku.toLowerCase();
-        const lowerSearch = searchTerm.toLowerCase();
-        
-        // 1. Direct text match (full SKU or partial)
-        if (lowerSku.includes(lowerSearch)) {
-            return true;
-        }
-        
-        // 2. Numeric matching (handle leading zeros)
-        const skuNumeric = extractNumericPart(sku);
-        const searchNumeric = extractNumericPart(searchTerm);
-        
-        // If search term has numbers, check numeric matching
-        if (searchNumeric.length > 0) {
-            // If SKU has no numeric part, skip numeric matching
-            if (skuNumeric.length === 0) {
-                return false;
-            }
-            
-            // Match with leading zeros preserved (e.g., "0001" matches "REG-0001")
-            // Special handling for "0" - only match if SKU numeric part starts with "0"
-            if (searchNumeric === '0') {
-                // "0" should match SKUs that have "0" in their numeric part
-                // But be more precise: match if SKU starts with "0" (like "0001", "001", "002")
-                if (skuNumeric.startsWith('0')) {
-                    return true;
-                }
-            } else {
-                // For other numeric searches, use includes check
-                if (skuNumeric.includes(searchNumeric) || searchNumeric.includes(skuNumeric)) {
-                    return true;
-                }
-            }
-            
-            // Match normalized (without leading zeros) - e.g., "1" matches "0001"
-            const normalizedSku = normalizeNumeric(skuNumeric);
-            const normalizedSearch = normalizeNumeric(searchNumeric);
-            
-            // Special case: if search normalizes to "0", it means search was all zeros
-            // In this case, we already checked with includes() above, so skip normalized check
-            // Only do normalized matching if search is not all zeros
-            if (normalizedSearch !== '0') {
-                // Check if normalized values match (exact or partial)
-                if (normalizedSku === normalizedSearch) {
-                    return true;
-                }
-                
-                // Check if one contains the other (for partial matches)
-                // But avoid "0" matching everything
-                if (normalizedSku !== '0' && normalizedSearch !== '0') {
-                    if (normalizedSku.includes(normalizedSearch) || normalizedSearch.includes(normalizedSku)) {
-                        return true;
-                    }
-                }
-            }
-        }
-        
-        return false;
-    };
-
-    // Enhanced search with SKU numeric matching (parent products only, no variations in results)
+    // Enhanced search with shared SKU/name ranker (narrow numeric matches)
     const filteredProducts = useMemo(() => {
         if (!productSearchTerm.trim()) return products;
-        
+
         const searchTerm = productSearchTerm.trim();
-        const searchLower = searchTerm.toLowerCase();
-        const isNumericOnly = /^\d+$/.test(searchTerm);
-        
-        const results = products.filter(p => {
-            // Match product name
-            const nameMatch = (p.name ?? '').toLowerCase().includes(searchLower);
-            
-            // Match SKU (full or numeric part)
-            const skuMatch = matchesSku(p.sku, searchTerm);
-            
-            return nameMatch || skuMatch;
+        let results = products.filter((p) => rankProductSearchHit(p, searchTerm) < 99);
+
+        results.sort((a, b) => {
+            const ra = rankProductSearchHit(a, searchTerm);
+            const rb = rankProductSearchHit(b, searchTerm);
+            if (ra !== rb) return ra - rb;
+            return String(a.name).localeCompare(String(b.name));
         });
-        
-        // Debug: Log results for numeric search
-        if (isNumericOnly) {
-            console.log(`[SKU SEARCH] Search: "${searchTerm}", Results: ${results.length}/${products.length}`);
-            if (results.length > 0) {
-                console.log(`[SKU SEARCH] ✅ Matched:`, results.map(p => `${p.name} (${p.sku})`));
-            } else {
-                console.log(`[SKU SEARCH] ❌ No matches. Sample products:`, products.slice(0, 3).map(p => ({ 
-                    name: p.name, 
-                    sku: p.sku, 
-                    numeric: extractNumericPart(p.sku),
-                    normalized: normalizeNumeric(extractNumericPart(p.sku))
-                })));
-            }
+
+        results = preferExactSkuHits(results, searchTerm);
+        if (results.length > PRODUCT_SEARCH_RESULT_CAP) {
+            results = results.slice(0, PRODUCT_SEARCH_RESULT_CAP);
         }
-        
         return results;
     }, [products, productSearchTerm]);
     
@@ -2517,10 +2429,15 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                   .map((item) => item.productId.toString()),
               ),
             ];
-            const productById = new Map<string, Awaited<ReturnType<typeof productService.getProduct>>>();
-            if (productIdsNeedingVariation.length > 0) {
+            const productById = new Map<string, { variations?: any[] }>();
+            for (const pid of productIdsNeedingVariation) {
+              const cached = products.find((p) => String(p.id) === pid);
+              if (cached?.variations?.length) productById.set(pid, cached);
+            }
+            const missingProductIds = productIdsNeedingVariation.filter((pid) => !productById.has(pid));
+            if (missingProductIds.length > 0) {
               await Promise.all(
-                productIdsNeedingVariation.map(async (pid) => {
+                missingProductIds.map(async (pid) => {
                   try {
                     const product = await productService.getProduct(pid);
                     if (product) productById.set(pid, product);
@@ -2589,14 +2506,6 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                     unitPrice: saleItem.price,
                     baseUnitPrice: saleItem.baseUnitPrice,
                     hasCustomization: persistedCustomization != null,
-                  });
-                } else {
-                  console.log(`[SALE FORM] ✅ Converted item ${index}:`, {
-                    id: saleItem.id,
-                    productId: saleItem.productId,
-                    name: saleItem.productName,
-                    qty: saleItem.quantity,
-                    price: saleItem.price,
                   });
                 }
                 
@@ -2773,8 +2682,11 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 customerBillRef: refNumber.trim() || undefined,
                 deadline: (() => {
                     const d = studioDeadlineRef.current ?? studioDeadline;
-                    const value = isStudioSale && d ? d.toISOString().split('T')[0] : null;
-                    if (import.meta.env?.DEV && isStudioSale) {
+                    // Persist for studio + orders; also keep existing date when converting order→final
+                    const keepOnFinal = saleStatus === 'final' && !!d;
+                    const persistDeadline = isStudioSale || saleStatus === 'order' || keepOnFinal;
+                    const value = persistDeadline && d ? d.toISOString().split('T')[0] : null;
+                    if (import.meta.env?.DEV && persistDeadline) {
                         console.log('[SALE FORM] Saving deadline:', value, 'from ref:', !!studioDeadlineRef.current, 'state:', !!studioDeadline);
                     }
                     return value;
@@ -3053,6 +2965,24 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                 <span className="text-xs text-foreground capitalize">
                                     {isStudioSale ? 'Studio' : 'Regular'}
                                 </span>
+                            </div>
+                        )}
+                        {/* Delivery — regular orders only (studio uses Deadline in studio panel) */}
+                        {saleStatus === 'order' && !isStudioSale && (
+                            <div className="flex items-center gap-1.5 ml-1">
+                                <CalendarIcon size={14} className="text-muted-foreground shrink-0" />
+                                <span className="text-[10px] uppercase tracking-wide text-muted-foreground shrink-0">Delivery</span>
+                                <div className="w-[140px] [&_button]:h-8 [&_button]:min-h-8 [&_button]:text-xs [&_button]:px-2 [&_button]:rounded-lg">
+                                    <DatePicker
+                                        value={studioDeadline ? formatLocalDateYYYYMMDD(studioDeadline) : ''}
+                                        onChange={(v) => {
+                                            const d = v ? parseLocalDateInput(v) : undefined;
+                                            studioDeadlineRef.current = d;
+                                            setStudioDeadline(d);
+                                        }}
+                                        placeholder="Delivery date"
+                                    />
+                                </div>
                             </div>
                         )}
                     </div>
@@ -3359,7 +3289,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                 </PopoverContent>
                             </Popover>
                                 </div>
-                                {/* Date – same as Purchase */}
+                                {/* Date – bill / invoice date */}
                                 <div className="flex flex-col w-[184px] absolute left-[798px] top-[77px] z-0">
                                     <Label className="text-muted-foreground font-medium text-xs uppercase tracking-wide h-[14px] mb-1.5">Date</Label>
                                     <div className="[&>div>button]:bg-muted/30 [&>div>button]:border-border [&>div>button]:text-foreground [&>div>button]:text-xs [&>div>button]:h-10 [&>div>button]:min-h-[40px] [&>div>button]:px-2.5 [&>div>button]:py-1 [&>div>button]:rounded-lg [&>div>button]:border [&>div>button]:hover:bg-accent [&>div>button]:w-full [&>div>button]:justify-start" style={{ width: '209px' }}>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CalendarDays } from 'lucide-react';
+import { DateInputField } from './DateTimePicker';
 import {
   buildDateRange,
   DATE_RANGE_PRESET_CHIPS,
@@ -126,28 +126,16 @@ export function DateRangeBar({
       </div>
       {(customOpen || value.preset === 'custom') && (
         <div className="grid grid-cols-2 gap-2 pt-1">
-          <div>
-            <label className={`text-[10px] flex items-center gap-1 ${styles.label}`}>
-              <CalendarDays className="w-3 h-3" /> From
-            </label>
-            <input
-              type="date"
-              value={value.from}
-              onChange={(e) => onChange({ ...value, from: e.target.value, preset: 'custom' })}
-              className={`w-full mt-1 px-3 py-2 border rounded-lg text-sm ${styles.input}`}
-            />
-          </div>
-          <div>
-            <label className={`text-[10px] flex items-center gap-1 ${styles.label}`}>
-              <CalendarDays className="w-3 h-3" /> To
-            </label>
-            <input
-              type="date"
-              value={value.to}
-              onChange={(e) => onChange({ ...value, to: e.target.value, preset: 'custom' })}
-              className={`w-full mt-1 px-3 py-2 border rounded-lg text-sm ${styles.input}`}
-            />
-          </div>
+          <DateInputField
+            label="From"
+            value={value.from}
+            onChange={(from) => onChange({ ...value, from, preset: 'custom' })}
+          />
+          <DateInputField
+            label="To"
+            value={value.to}
+            onChange={(to) => onChange({ ...value, to, preset: 'custom' })}
+          />
         </div>
       )}
     </div>

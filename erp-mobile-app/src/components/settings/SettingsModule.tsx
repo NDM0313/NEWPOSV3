@@ -748,6 +748,7 @@ export function SettingsModule({
             labelSettings={labelSettings}
             barcodeSettings={barcodeSettings}
             barcodeSaving={barcodeSaving}
+            companyName={receiptBrandPreview || undefined}
             onPrinterMode={handlePrinterMode}
             onPaperSize={handlePaperSize}
             onAutoPrint={handleAutoPrint}

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, Upload, DollarSign, Loader2 } from 'lucide-react';
 import { CustomSelect } from '../common';
 import { MediaSourcePicker } from '../shared/MediaSourcePicker';
+import { DateInputField } from '../shared/DateTimePicker';
 import { uploadRentalPickupDoc } from '../../api/rentalPickupDocs';
 import type { MarkRentalPickedUpPayload, RentalDetail } from '../../api/rentals';
 import { localNowDateString } from '../../utils/localDate';
@@ -246,15 +247,12 @@ export function RentalPickupModal({
                 className="w-full h-10 bg-[#1F2937] border border-[#374151] rounded-lg px-3 text-white"
               />
             </div>
-            <div>
-              <label className="block text-sm text-[#9CA3AF] mb-1">Document expiry (optional)</label>
-              <input
-                type="date"
-                value={documentExpiry}
-                onChange={(e) => setDocumentExpiry(e.target.value)}
-                className="w-full h-10 bg-[#1F2937] border border-[#374151] rounded-lg px-3 text-white"
-              />
-            </div>
+            <DateInputField
+              label="Document expiry (optional)"
+              value={documentExpiry}
+              onChange={setDocumentExpiry}
+              accent="rental"
+            />
             <div className="grid grid-cols-1 gap-3">
               <PhotoSlot label="Document front (optional)" file={frontFile} onPick={(f) => setFrontFile(f[0] ?? null)} onClear={() => setFrontFile(null)} disabled={loading || uploading} />
               <PhotoSlot label="Document back (optional)" file={backFile} onPick={(f) => setBackFile(f[0] ?? null)} onClear={() => setBackFile(null)} disabled={loading || uploading} />
@@ -273,16 +271,14 @@ export function RentalPickupModal({
 
           <div className="bg-[#111827] border border-[#374151] rounded-xl p-4 space-y-3">
             <p className="text-xs font-semibold text-[#9CA3AF] uppercase tracking-wide">Pickup details</p>
-            <div>
-              <label className="block text-sm text-[#9CA3AF] mb-1">Actual pickup date *</label>
-              <input
-                type="date"
-                value={actualPickupDate}
-                min={rental.pickupDate.slice(0, 10)}
-                onChange={(e) => setActualPickupDate(e.target.value)}
-                className="w-full h-10 bg-[#1F2937] border border-[#374151] rounded-lg px-3 text-white"
-              />
-            </div>
+            <DateInputField
+              label="Actual pickup date"
+              value={actualPickupDate}
+              onChange={setActualPickupDate}
+              min={rental.pickupDate.slice(0, 10)}
+              accent="rental"
+              required
+            />
             <div>
               <label className="block text-sm text-[#9CA3AF] mb-1">Notes (optional)</label>
               <textarea

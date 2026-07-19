@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import { ArrowLeft, ArrowRight, Check, Search, ArrowLeftRight, Paperclip } from 'lucide-react';
 import type { User } from '../../types';
-import { DateInputField } from '../shared/DateTimePicker';
+import { DateTimeInputField } from '../shared/DateTimePicker';
 import { getPaymentAccounts, createJournalEntry } from '../../api/accounts';
 import { addPending } from '../../lib/offlineStore';
-import { localNowDateString } from '../../utils/localDate';
+import { localNowDateTimeString } from '../../utils/localDate';
 import { usePermissions } from '../../context/PermissionContext';
 import { formatAccountBalanceInline } from '../../utils/balancePrivacy';
 import { isRealBranchUuid } from '../../utils/branchId';
@@ -84,7 +84,7 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
     toAccountId: seed?.toAccountId ?? '',
     toAccountName: seed?.toAccountName ?? '',
     amount: seed?.amount && seed.amount > 0 ? seed.amount : 0,
-    date: seed?.date || localNowDateString(),
+    date: seed?.date || localNowDateTimeString(),
     reference: seed?.reference ?? '',
     notes: seed?.notes ?? '',
   });
@@ -160,7 +160,7 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
     const payload = {
       companyId,
       branchId: effectiveBranchId,
-      entryDate: transferData.date,
+      entryDate: transferData.date.slice(0, 10),
       description: desc,
       referenceType: 'transfer',
       lines: [
@@ -399,7 +399,7 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
               )}
             </div>
 
-            <DateInputField label="Transfer Date" value={transferData.date} onChange={(date) => setTransferData({ ...transferData, date })} pickerLabel="SELECT TRANSFER DATE" />
+            <DateTimeInputField label="Transfer date & time" value={transferData.date} onChange={(date) => setTransferData({ ...transferData, date })} required />
 
             <JournalDescriptionFields
               autoDescription={autoDescription}

@@ -209,7 +209,46 @@ export const SalesPage = () => {
       }
     };
     loadSalesWithReturns();
-  }, [companyId, branchId, sales.length]);
+  }, [companyId, branchId]);
+
+  // Refresh returns map on explicit sale lifecycle / returns events (not every sales.length change)
+  useEffect(() => {
+    if (!companyId) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const schedule = () => {
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        void (async () => {
+          try {
+            const returns = await saleReturnService.getSaleReturns(
+              companyId,
+              branchId === 'all' ? undefined : branchId || undefined,
+            );
+            const saleIdsWithReturns = new Set<string>();
+            returns.forEach((ret: any) => {
+              if (ret.original_sale_id && String(ret.status).toLowerCase() === 'final') {
+                saleIdsWithReturns.add(ret.original_sale_id);
+              }
+            });
+            setSalesWithReturns(saleIdsWithReturns);
+          } catch (error) {
+            console.error('[SALES PAGE] Error loading sales with returns:', error);
+          }
+        })();
+      }, 300);
+    };
+    const onSale = () => schedule();
+    window.addEventListener('saleSaved', onSale);
+    window.addEventListener('saleUpdated', onSale);
+    window.addEventListener('saleReturnSaved', onSale);
+    return () => {
+      if (timer) clearTimeout(timer);
+      window.removeEventListener('saleSaved', onSale);
+      window.removeEventListener('saleUpdated', onSale);
+      window.removeEventListener('saleReturnSaved', onSale);
+    };
+  }, [companyId, branchId]);
 
   
   // 🎯 Payment Dialog & Ledger states
@@ -252,7 +291,7 @@ export const SalesPage = () => {
   const [attachmentsDialogList, setAttachmentsDialogList] = useState<{ url: string; name: string }[] | null>(null);
   
   // Invoice source sub-filter (only when main list = Sales). Returns list uses activeMainTab === 'returns'.
-  const [activeTab, setActiveTab] = useState<'all' | 'pos' | 'regular' | 'quotation' | 'final'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'pos' | 'regular' | 'order' | 'quotation' | 'final'>('all');
   /** Main list: invoices vs sale returns (same pattern as PurchasesPage). */
   const [activeMainTab, setActiveMainTab] = useState<'sales' | 'returns'>('sales');
   
@@ -759,6 +798,7 @@ export const SalesPage = () => {
   const [visibleColumns, setVisibleColumns] = useState({
     actions: true,
     date: true,
+    deadline: true,
     invoiceNo: true,
     notes: true, // Reference / Notes
     type: true, // POS vs Regular (same as SalesListDesignTestPage)
@@ -785,6 +825,7 @@ export const SalesPage = () => {
   const [columnOrder, setColumnOrder] = useState([
     'actions', // Action column first for easier access
     'date',
+    'deadline',
     'invoiceNo',
     'notes',
     'type', // POS vs Regular (same as SalesListDesignTestPage)
@@ -807,6 +848,7 @@ export const SalesPage = () => {
     const labels: Record<string, string> = {
       actions: 'Actions',
       date: 'Date',
+      deadline: 'Delivery',
       invoiceNo: 'Invoice No.',
       notes: 'Ref / Notes',
       type: 'Type',
@@ -857,6 +899,7 @@ export const SalesPage = () => {
     const widths: Record<string, string> = {
       actions: '60px',
       date: '100px',
+      deadline: '100px',
       invoiceNo: '110px',
       notes: '120px',
       type: '100px',
@@ -882,6 +925,7 @@ export const SalesPage = () => {
   const alignments: Record<string, string> = {
     actions: 'text-center',
     date: 'text-left',
+    deadline: 'text-left',
     invoiceNo: 'text-left',
     type: 'text-left',
     customer: 'text-left',
@@ -982,11 +1026,13 @@ export const SalesPage = () => {
     if (activeMainTab === 'returns') return [];
     
     return sales.filter((sale: Sale) => {
-      // Tab filter - POS vs Regular vs Quotation vs Final
+      // Tab filter - POS vs Regular vs Order vs Quotation vs Final
       if (activeTab === 'pos') {
         if (!isLikelyPOS(sale)) return false;
       } else if (activeTab === 'regular') {
         if (isLikelyPOS(sale)) return false;
+      } else if (activeTab === 'order') {
+        if (getEffectiveSaleStatus(sale) !== 'order') return false;
       } else if (activeTab === 'quotation') {
         if (getEffectiveSaleStatus(sale) !== 'quotation') return false;
       } else if (activeTab === 'final') {
@@ -1019,8 +1065,8 @@ export const SalesPage = () => {
       // Payment status filter
       if (paymentStatusFilter !== 'all' && sale.paymentStatus !== paymentStatusFilter) return false;
 
-      // Sale lifecycle status filter (draft / quotation / order / final)
-      if (saleStatusFilter !== 'all' && (sale as any).status !== saleStatusFilter) return false;
+      // Sale lifecycle status filter (draft / quotation / order / final / cancelled)
+      if (saleStatusFilter !== 'all' && getEffectiveSaleStatus(sale) !== saleStatusFilter) return false;
 
       // Shipping status filter
       if (shippingStatusFilter !== 'all' && sale.shippingStatus !== shippingStatusFilter) return false;
@@ -1063,12 +1109,16 @@ export const SalesPage = () => {
   ]);
 
   // Sort state: default createdAt descending so newest-created sales appear first
-  type SaleSortKey = 'date' | 'createdAt' | 'invoiceNo' | 'customer' | 'location' | 'saleStatus' | 'paymentStatus' | 'total' | 'paid' | 'due' | 'returnDue' | 'return' | 'shipping' | 'items' | 'createdBy';
+  type SaleSortKey = 'date' | 'deadline' | 'createdAt' | 'invoiceNo' | 'customer' | 'location' | 'saleStatus' | 'paymentStatus' | 'total' | 'paid' | 'due' | 'returnDue' | 'return' | 'shipping' | 'items' | 'createdBy';
   const [sortKey, setSortKey] = useState<SaleSortKey>('createdAt');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   const getSaleSortValue = (s: Sale, key: SaleSortKey): string | number => {
     if (key === 'date') return new Date(s.date).getTime();
+    if (key === 'deadline') {
+      const d = (s as any).deadline;
+      return d ? new Date(d).getTime() : 0;
+    }
     if (key === 'createdAt') return new Date((s as any).createdAt || s.date || 0).getTime();
     if (key === 'customer') return s.customerName || s.customer || '';
     if (key === 'shipping') return s.shippingStatus || '';
@@ -1272,6 +1322,22 @@ export const SalesPage = () => {
             <span className="text-xs text-muted-foreground/80">{dateTime.time}</span>
           </div>
         );
+
+      case 'deadline': {
+        const delivery = (sale as any).deadline as string | undefined;
+        if (!delivery) {
+          return <span className="text-sm text-muted-foreground/50">—</span>;
+        }
+        try {
+          return (
+            <span className="text-sm text-cyan-300/90">
+              {new Date(delivery).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+            </span>
+          );
+        } catch {
+          return <span className="text-sm text-muted-foreground">{delivery}</span>;
+        }
+      }
       
       case 'invoiceNo': {
         const displayNo =
@@ -1978,6 +2044,7 @@ export const SalesPage = () => {
             { id: 'all' as const, label: 'All', icon: ShoppingCart },
             { id: 'pos' as const, label: 'POS', icon: Zap },
             { id: 'regular' as const, label: 'Regular', icon: Store },
+            { id: 'order' as const, label: 'Order', icon: Package },
             { id: 'quotation' as const, label: 'Quotation', icon: FileText },
             { id: 'final' as const, label: 'Final', icon: CheckCircle2 },
           ].map(({ id, label, icon: Icon }) => (
@@ -2043,6 +2110,7 @@ export const SalesPage = () => {
                       }
                       const labels: Record<string, string> = {
                         date: 'Date',
+                        deadline: 'Delivery',
                         invoiceNo: 'Invoice No.',
                         type: 'Type',
                         customer: 'Customer',
@@ -2060,7 +2128,7 @@ export const SalesPage = () => {
                         items: 'Items',
                         createdBy: 'Created By',
                       };
-                      const isSortable = (['date', 'invoiceNo', 'customer', 'location', 'saleStatus', 'paymentStatus', 'total', 'paid', 'due', 'returnDue', 'return', 'shipping', 'items', 'createdBy'] as SaleSortKey[]).includes(key as SaleSortKey);
+                      const isSortable = (['date', 'deadline', 'invoiceNo', 'customer', 'location', 'saleStatus', 'paymentStatus', 'total', 'paid', 'due', 'returnDue', 'return', 'shipping', 'items', 'createdBy'] as SaleSortKey[]).includes(key as SaleSortKey);
                       const isActive = sortKey === key;
                       
                       return (

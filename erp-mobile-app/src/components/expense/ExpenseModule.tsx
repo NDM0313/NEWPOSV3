@@ -21,7 +21,8 @@ import * as authApi from '../../api/auth';
 import * as accountsApi from '../../api/accounts';
 import { getUsersForSalary, type SalaryUserRow } from '../../api/users';
 import { addPending } from '../../lib/offlineStore';
-import { getCurrentLocalTimestamp, localNowDateString } from '../../utils/localDate';
+import { getCurrentLocalTimestamp, localNowDateTimeString } from '../../utils/localDate';
+import { DateTimeInputField } from '../shared/DateTimePicker';
 import { sortByDocumentDateTimeDesc } from '../../utils/chronologicalSort';
 import { usePermissions } from '../../context/PermissionContext';
 import { formatAccountPickerSubtitle } from '../../utils/balancePrivacy';
@@ -219,8 +220,8 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
   const [salaryUsers, setSalaryUsers] = useState<SalaryUserRow[]>([]);
   const [salaryUsersLoading, setSalaryUsersLoading] = useState(false);
   const [showSwitchUser, setShowSwitchUser] = useState(false);
-  /** Calendar date in device local TZ (`YYYY-MM-DD`); matches `expenses.expense_date`. */
-  const [addExpenseDate, setAddExpenseDate] = useState(localNowDateString);
+  /** Local date+time for picker; persisted as `expenses.expense_date` (YYYY-MM-DD). */
+  const [addExpenseDate, setAddExpenseDate] = useState(localNowDateTimeString);
   const [clearingLines, setClearingLines] = useState<expensesApi.ExtraServiceClearingLine[]>([]);
   const [clearingLinesLoading, setClearingLinesLoading] = useState(false);
   const [selectedClearingChargeId, setSelectedClearingChargeId] = useState('');
@@ -266,7 +267,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
     setExistingReceiptUrl(null);
     setEditingExpenseId(null);
     setEditingExpenseNo(null);
-    setAddExpenseDate(localNowDateString());
+    setAddExpenseDate(localNowDateTimeString());
     setSelectedClearingChargeId('');
     setClearingLines([]);
   }, []);
@@ -344,7 +345,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
   };
 
   useEffect(() => {
-    if (showAdd) setAddExpenseDate(localNowDateString());
+    if (showAdd) setAddExpenseDate(localNowDateTimeString());
   }, [showAdd]);
 
   const noBranchAccess =
@@ -744,7 +745,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
       amount: amt,
       paymentMethod,
       userId: expenseUserId,
-      expenseDate: addExpenseDate,
+      expenseDate: addExpenseDate.slice(0, 10),
       paymentAccountId: addAccountId || undefined,
       receiptUrl: receiptUrl || undefined,
       paidToUserId: isSalaryCategory && paidToUserId ? paidToUserId : undefined,
@@ -770,7 +771,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
         description: descriptionFinal,
         amount: amt,
         paymentMethod,
-        expenseDate: addExpenseDate,
+        expenseDate: addExpenseDate.slice(0, 10),
         paymentAccountId: addAccountId || undefined,
         receiptUrl: receiptUrl ?? undefined,
         paidToUserId: isSalaryCategory && paidToUserId ? paidToUserId : undefined,
@@ -1186,18 +1187,20 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
             )}
 
             <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
-              <label htmlFor="expense-date-input" className="block text-sm font-medium text-[#D1D5DB] mb-2">
-                Expense date *
-              </label>
-              <input
-                id="expense-date-input"
-                type="date"
-                value={addExpenseDate}
-                max={localNowDateString()}
-                onChange={(e) => setAddExpenseDate(e.target.value)}
-                className="w-full h-11 bg-[#111827] border border-[#374151] rounded-lg px-3 text-sm text-white focus:outline-none focus:border-[#EF4444]"
+              <DateTimeInputField
+                label="Expense date & time"
+                required
+                value={
+                  addExpenseDate.includes('T')
+                    ? addExpenseDate
+                    : addExpenseDate
+                      ? `${addExpenseDate}T${localNowDateTimeString().slice(11, 16)}`
+                      : localNowDateTimeString()
+                }
+                onChange={setAddExpenseDate}
+                max={localNowDateTimeString().slice(0, 10)}
               />
-              <p className="text-xs text-[#9CA3AF] mt-2">Uses your device calendar date (not UTC midnight).</p>
+              <p className="text-xs text-[#9CA3AF] mt-2">Uses your device local date and time.</p>
             </div>
 
             {isSalaryCategory && (

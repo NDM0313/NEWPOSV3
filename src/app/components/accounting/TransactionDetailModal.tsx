@@ -2395,8 +2395,12 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
           isOpen={manualReceiptEditorOpen}
           onClose={() => setManualReceiptEditorOpen(false)}
           context="customer"
-          entityName="Customer"
-          entityId={String(transaction.reference_id)}
+          entityName={paymentContactName || 'Customer'}
+          entityId={String(
+            (payment as { contact_id?: string | null })?.contact_id ||
+              transaction.reference_id ||
+              '',
+          )}
           outstandingAmount={0}
           linkedJournalEntryNo={
             String(transaction?.entry_no || transaction?.reference_number || '').trim() || undefined

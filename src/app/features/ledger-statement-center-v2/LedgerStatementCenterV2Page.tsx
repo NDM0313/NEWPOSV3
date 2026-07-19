@@ -49,7 +49,6 @@ import {
 } from '@/app/services/ledgerStatementCenterV2UnifiedPreviewService';
 import { loadLedgerV2LegacyShadowPreview } from '@/app/services/ledgerStatementCenterV2LegacyShadowPreviewService';
 import { TransactionDetailModal } from '@/app/components/accounting/TransactionDetailModal';
-import { AddEntryV2Host } from '@/app/components/accounting/AddEntryV2Host';
 import { ReportActions } from '@/app/components/reports/ReportActions';
 import { ReportBasisBanner } from '@/app/components/accounting/ReportBasisBanner';
 import { LedgerStatementReportPreview } from '@/app/components/reports/shared/LedgerStatementReportPreview';
@@ -715,6 +714,12 @@ export function LedgerStatementCenterV2Page({
         showFooter={ledgerPrint.showFooter}
         orientation={pdfOrientation}
         fontSize={ledgerPrint.fontSize}
+        dataListFontSize={ledgerPrint.dataListFontSize}
+        tableHeaderFontSize={ledgerPrint.tableHeaderFontSize}
+        summaryFontSize={ledgerPrint.summaryFontSize}
+        columnPaddingPx={ledgerPrint.columnPaddingPx}
+        showCurrencySymbol={ledgerPrint.showCurrencySymbol}
+        columnWidths={ledgerPrint.columnWidths}
         fontFamily={ledgerPrint.fontFamily}
         margins={ledgerPrint.margins}
         visibleColumns={visibleColumns}
@@ -1047,8 +1052,6 @@ export function LedgerStatementCenterV2Page({
           autoLaunchUnifiedEdit={false}
         />
       )}
-
-      <AddEntryV2Host />
 
       <AttachmentPreviewDialog
         attachments={attachmentPreview}

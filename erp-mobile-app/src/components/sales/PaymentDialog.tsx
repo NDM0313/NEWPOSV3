@@ -5,7 +5,8 @@ import { useSingleFlightAction } from '../../hooks/useSingleFlightAction';
 import { usePermissions } from '../../context/PermissionContext';
 import { formatAccountBalanceLineIfAllowed } from '../../utils/balancePrivacy';
 import { canViewFinancialBalances } from '../../config/functionalRoles';
-import { localNowDateString } from '../../utils/localDate';
+import { localNowDateTimeString } from '../../utils/localDate';
+import { DateTimeInputField } from '../shared/DateTimePicker';
 import { accountInOutBadgeLabel, POSTING_FIELD_TITLES } from '../../lib/accountPostingInOutLabel';
 
 export interface PaymentResult {
@@ -71,7 +72,7 @@ export function PaymentDialog({
     viewerRoleProp != null ? canViewFinancialBalances(viewerRoleProp) : canViewBalancesCtx;
   const showCredit = showCreditOption ?? hasCustomer;
   const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [paymentDate, setPaymentDate] = useState(() => localNowDateString());
+  const [paymentDate, setPaymentDate] = useState(() => localNowDateTimeString());
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(null);
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('full');
@@ -473,14 +474,13 @@ export function PaymentDialog({
           </div>
 
           <div className="mb-6">
-            <label className="text-sm font-medium text-[#9CA3AF] mb-2 block">Payment date</label>
-            <input
-              type="date"
-              max={localNowDateString()}
+            <DateTimeInputField
+              label="Payment date & time"
+              required
               value={paymentDate}
-              onChange={(e) => setPaymentDate(e.target.value)}
+              onChange={setPaymentDate}
+              max={localNowDateTimeString().slice(0, 10)}
               disabled={isBusy}
-              className="w-full max-w-xs h-10 bg-[#111827] border border-[#374151] rounded-lg px-3 text-sm text-white disabled:opacity-50"
             />
           </div>
 

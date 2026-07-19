@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { X, Save, AlertCircle, Package, Loader2, DollarSign, Building2, Lock, Ruler, TrendingUp, Undo2, RefreshCw, Box, Check } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Textarea } from '../ui/textarea';
-import { CalendarDatePicker } from '../ui/CalendarDatePicker';
+import { DatePicker } from '../ui/DatePicker';
 import {
   Dialog,
   DialogContent,
@@ -570,7 +570,15 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
           <div className="flex items-center gap-3">
             <div>
               <span className="text-[11px] text-muted-foreground block mb-0.5">Return Date</span>
-              <CalendarDatePicker value={returnDate} onChange={(date) => date && setReturnDate(date)} className="bg-muted border-border text-foreground h-8 w-[140px] text-sm" />
+              <DatePicker
+                className="w-[140px]"
+                value={format(returnDate, 'yyyy-MM-dd')}
+                onChange={(v) => {
+                  if (!v) return;
+                  const d = parseISO(v);
+                  if (isValid(d)) setReturnDate(d);
+                }}
+              />
             </div>
             <Button variant="ghost" size="icon" onClick={onClose} className="text-muted-foreground hover:text-foreground rounded-full">
               <X size={22} />

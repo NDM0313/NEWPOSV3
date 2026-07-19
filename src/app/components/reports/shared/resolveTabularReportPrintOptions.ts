@@ -6,6 +6,7 @@ import {
 
 import {
   pickReportHeaderFieldVisibility,
+  resolveReportTypography,
   type ReportHeaderFieldVisibility,
   type ReportPrintOrientation,
 } from './reportPrintConfig';
@@ -18,6 +19,11 @@ export interface TabularReportPrintOptions {
   showHeader: boolean;
   showFooter: boolean;
   fontSize: number;
+  dataListFontSize: number;
+  tableHeaderFontSize: number;
+  summaryFontSize: number;
+  columnPaddingPx: number;
+  showCurrencySymbol: boolean;
   fontFamily: string;
   margins: PageMargins;
 }
@@ -33,12 +39,13 @@ export function resolveTabularReportPrintOptions(
       : kind === 'stock_movement_history'
         ? merged.reportExport.stockMovementHistoryOrientation ?? 'landscape'
         : merged.reportExport.productSellOrientation;
+  const typography = resolveReportTypography(merged.reportExport, merged.pdf.fontSize);
   return {
     orientation,
     fieldVisibility: pickReportHeaderFieldVisibility(merged.fields),
     showHeader: merged.reportExport.showReportHeader !== false,
     showFooter: merged.reportExport.showReportFooter !== false,
-    fontSize: merged.reportExport.reportFontSize ?? merged.pdf.fontSize ?? 11,
+    ...typography,
     fontFamily: merged.pdf.fontFamily ?? 'Arial, Helvetica, sans-serif',
     margins: merged.pageSetup.margins,
   };

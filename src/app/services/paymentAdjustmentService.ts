@@ -429,6 +429,283 @@ export async function postPaymentAccountAdjustment(params: {
 }
 
 /**
+ * Move AR (or AP) credit/debit between party subledgers without rewriting the primary payment JE.
+ * Customer receipt: Dr old AR-CUS*, Cr new AR-CUS* (receipt credit moves to new customer).
+ * Supplier payment: Dr new AP-SUP*, Cr old AP-SUP* (payable debit moves to new supplier).
+ * Call before amount deltas when both party + amount change in one save.
+ */
+export async function postPaymentPartyTransfer(params: {
+  context: PaymentContext;
+  companyId: string;
+  branchId: string | null;
+  paymentId: string;
+  oldContactId: string;
+  newContactId: string;
+  amount: number;
+  invoiceNoOrRef: string;
+  entryDate: string;
+  createdBy?: string | null;
+}): Promise<{ ok: boolean; skipped?: boolean; error?: string }> {
+  const {
+    context,
+    companyId,
+    branchId,
+    paymentId,
+    oldContactId,
+    newContactId,
+    amount,
+    invoiceNoOrRef,
+    entryDate,
+    createdBy,
+  } = params;
+
+  const { tracePaymentEditFlow } = await import('@/app/lib/paymentEditFlowTrace');
+  tracePaymentEditFlow('paymentAdjustment.post_party_transfer.enter', {
+    paymentId,
+    companyId,
+    oldContactId,
+    newContactId,
+    amount,
+    context,
+  });
+
+  const oldId = String(oldContactId || '').trim();
+  const newId = String(newContactId || '').trim();
+  const amt = Math.round(Number(amount) * 100) / 100;
+  if (!oldId || !newId || oldId === newId) return { ok: true, skipped: true };
+  if (!(amt > 0.009)) return { ok: true, skipped: true };
+
+  const fingerprint = `payment_adjustment_party:${companyId}:${paymentId}:${oldId}:${newId}:${amt}`;
+  const { data: existing } = await supabase
+    .from('journal_entries')
+    .select('id')
+    .eq('company_id', companyId)
+    .eq('reference_type', 'payment_adjustment')
+    .eq('reference_id', paymentId)
+    .eq('action_fingerprint', fingerprint)
+    .or('is_void.is.null,is_void.eq.false')
+    .limit(1);
+  if (existing?.length) {
+    tracePaymentEditFlow('paymentAdjustment.post_party_transfer.skip_idempotent', {
+      paymentId,
+      oldContactId: oldId,
+      newContactId: newId,
+      amount: amt,
+    });
+    return { ok: true, skipped: true };
+  }
+
+  const { resolveReceivablePostingAccountId, resolvePayablePostingAccountId } = await import(
+    '@/app/services/partySubledgerAccountService'
+  );
+
+  let lines: JournalEntryLine[];
+  if (context === 'sale') {
+    const oldAr = await resolveReceivablePostingAccountId(companyId, oldId);
+    const newAr = await resolveReceivablePostingAccountId(companyId, newId);
+    if (!oldAr || !newAr) {
+      return { ok: false, error: 'Could not resolve AR sub-ledger accounts for party transfer.' };
+    }
+    if (oldAr === newAr) {
+      return { ok: false, error: 'Old and new customer resolve to the same AR account; cannot transfer.' };
+    }
+    // Primary receipt = Dr Cash, Cr AR-old. Move credit: Dr AR-old, Cr AR-new.
+    lines = [
+      {
+        id: '',
+        journal_entry_id: '',
+        account_id: oldAr,
+        debit: amt,
+        credit: 0,
+        description: `AR transfer out – ${invoiceNoOrRef}`,
+      },
+      {
+        id: '',
+        journal_entry_id: '',
+        account_id: newAr,
+        debit: 0,
+        credit: amt,
+        description: `AR transfer in – ${invoiceNoOrRef}`,
+      },
+    ];
+  } else {
+    const oldAp = await resolvePayablePostingAccountId(companyId, oldId);
+    const newAp = await resolvePayablePostingAccountId(companyId, newId);
+    if (!oldAp || !newAp) {
+      return { ok: false, error: 'Could not resolve AP sub-ledger accounts for party transfer.' };
+    }
+    if (oldAp === newAp) {
+      return { ok: false, error: 'Old and new supplier resolve to the same AP account; cannot transfer.' };
+    }
+    // Primary payment = Dr AP-old, Cr Cash. Move debit: Dr AP-new, Cr AP-old.
+    lines = [
+      {
+        id: '',
+        journal_entry_id: '',
+        account_id: newAp,
+        debit: amt,
+        credit: 0,
+        description: `AP transfer in – ${invoiceNoOrRef}`,
+      },
+      {
+        id: '',
+        journal_entry_id: '',
+        account_id: oldAp,
+        debit: 0,
+        credit: amt,
+        description: `AP transfer out – ${invoiceNoOrRef}`,
+      },
+    ];
+  }
+
+  const entryNo = `JE-PAY-PARTY-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+  const desc =
+    context === 'sale'
+      ? `Payment party changed – ${invoiceNoOrRef} (customer AR transfer)`
+      : `Payment party changed – ${invoiceNoOrRef} (supplier AP transfer)`;
+
+  const entry: JournalEntry = {
+    id: '',
+    company_id: companyId,
+    branch_id: branchId && branchId !== 'all' ? branchId : undefined,
+    entry_no: entryNo,
+    entry_date: entryDate,
+    description: desc,
+    reference_type: 'payment_adjustment',
+    reference_id: paymentId,
+    created_by: createdBy || undefined,
+    action_fingerprint: fingerprint,
+    economic_event_id: paymentId,
+  };
+
+  tracePaymentEditFlow('paymentAdjustment.post_party_transfer.createEntry', {
+    paymentId,
+    fingerprint,
+    economic_event_id: paymentId,
+  });
+  const saved = await accountingService.createEntry(entry, lines, paymentId);
+  const jeId = String((saved as { id?: string })?.id || '');
+  if (jeId) {
+    void recordTransactionMutation({
+      companyId,
+      branchId,
+      entityType: 'payment',
+      entityId: paymentId,
+      mutationType: 'contact_change',
+      oldState: { contact_id: oldId },
+      newState: { contact_id: newId, amount: amt },
+      adjustmentJournalEntryId: jeId,
+      actorUserId: createdBy ?? null,
+      reason: 'PF-14 party AR/AP transfer (same receipt, new contact)',
+      metadata: { fingerprint, context },
+    });
+  }
+  return { ok: true };
+}
+
+/**
+ * Manual customer receipt: post AR party transfer JE, update payments.contact_id + primary JE reference_id.
+ * Does not rebuild FIFO — caller should rebuild after amount/account patch.
+ * Sale-linked payments (reference_type=sale) are rejected.
+ */
+export async function reassignManualReceiptCustomer(params: {
+  companyId: string;
+  paymentId: string;
+  newCustomerId: string;
+  entryDate: string;
+  createdBy?: string | null;
+  /** Amount for the transfer JE; defaults to current payments.amount */
+  transferAmount?: number;
+}): Promise<{ ok: boolean; oldCustomerId?: string; error?: string }> {
+  const { companyId, paymentId, newCustomerId, entryDate, createdBy, transferAmount } = params;
+  const newId = String(newCustomerId || '').trim();
+  if (!companyId || !paymentId || !newId) {
+    return { ok: false, error: 'Missing company, payment, or customer for party change.' };
+  }
+
+  const { data: pay, error } = await supabase
+    .from('payments')
+    .select('id, company_id, branch_id, contact_id, amount, reference_type, reference_id, reference_number, voided_at')
+    .eq('id', paymentId)
+    .eq('company_id', companyId)
+    .maybeSingle();
+  if (error || !pay) return { ok: false, error: error?.message || 'Payment not found.' };
+
+  const row = pay as {
+    contact_id?: string | null;
+    amount?: number;
+    reference_type?: string | null;
+    reference_id?: string | null;
+    reference_number?: string | null;
+    voided_at?: string | null;
+    branch_id?: string | null;
+  };
+  if (row.voided_at) return { ok: false, error: 'Cannot change party on a voided payment.' };
+
+  const rt = String(row.reference_type || '').toLowerCase();
+  if (rt === 'sale' || (row.reference_id && rt !== 'manual_receipt' && rt !== 'on_account')) {
+    return { ok: false, error: 'Sale-linked payments cannot change customer. Edit the invoice customer instead.' };
+  }
+  if (rt !== 'manual_receipt' && rt !== 'on_account') {
+    return { ok: false, error: 'Party change is only allowed on manual customer receipts.' };
+  }
+
+  const oldId = String(row.contact_id || row.reference_id || '').trim();
+  if (!oldId) return { ok: false, error: 'Current receipt has no customer contact_id.' };
+  if (oldId === newId) return { ok: true, oldCustomerId: oldId };
+
+  const amt =
+    transferAmount != null && Number.isFinite(transferAmount)
+      ? Math.round(Number(transferAmount) * 100) / 100
+      : Math.round(Number(row.amount || 0) * 100) / 100;
+
+  const posted = await postPaymentPartyTransfer({
+    context: 'sale',
+    companyId,
+    branchId: row.branch_id && String(row.branch_id).trim() !== 'all' ? row.branch_id : null,
+    paymentId,
+    oldContactId: oldId,
+    newContactId: newId,
+    amount: amt,
+    invoiceNoOrRef: String(row.reference_number || 'Customer receipt'),
+    entryDate,
+    createdBy,
+  });
+  if (!posted.ok) return { ok: false, oldCustomerId: oldId, error: posted.error };
+
+  const { error: upErr } = await supabase
+    .from('payments')
+    .update({
+      contact_id: newId,
+      updated_at: getCurrentLocalTimestamp(),
+    })
+    .eq('id', paymentId)
+    .eq('company_id', companyId);
+  if (upErr) return { ok: false, oldCustomerId: oldId, error: upErr.message };
+
+  // Primary manual_receipt JE stores party on reference_id (create path).
+  await supabase
+    .from('journal_entries')
+    .update({ reference_id: newId })
+    .eq('company_id', companyId)
+    .eq('payment_id', paymentId)
+    .eq('reference_type', 'manual_receipt')
+    .or('is_void.is.null,is_void.eq.false');
+
+  // Legacy rows may link by reference_id=old contact without payment_id set correctly.
+  await supabase
+    .from('journal_entries')
+    .update({ reference_id: newId })
+    .eq('company_id', companyId)
+    .eq('reference_type', 'manual_receipt')
+    .eq('reference_id', oldId)
+    .eq('payment_id', paymentId)
+    .or('is_void.is.null,is_void.eq.false');
+
+  return { ok: true, oldCustomerId: oldId };
+}
+
+/**
  * Liquidity leg on the *primary* payment JE (the row with journal_entries.payment_id set, not payment_adjustment).
  * - Sale receipt: Dr Cash/Bank, Cr AR → liquidity = account that is not AR (1100).
  * - Supplier payment: Dr AP, Cr Cash/Bank → liquidity = account that is not AP (2000).

@@ -15,6 +15,13 @@ export function localNowDateString(): string {
   return formatLocalDateYYYYMMDD(new Date());
 }
 
+/** Local calendar date N days from today (YYYY-MM-DD). */
+export function localDatePlusDays(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return formatLocalDateYYYYMMDD(d);
+}
+
 /** Current local date+time for `datetime-local` inputs (YYYY-MM-DDTHH:mm). */
 export function localNowDateTimeString(): string {
   const now = new Date();

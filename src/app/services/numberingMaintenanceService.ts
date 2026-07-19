@@ -1,6 +1,7 @@
 /**
  * Numbering Maintenance / Sequence Sync Tool
  * Analyze DB max vs sequence last_number, fix out-of-sync sequences.
+ * Phase B: unified PAY counter; legacy SUPPLIER_PAYMENT / WORKER_PAYMENT read-only.
  */
 
 import { supabase } from '@/lib/supabase';
@@ -53,7 +54,29 @@ export interface NumberingAnalysisRow {
   database_max: number;
   effective_max: number;
   status: 'ok' | 'out_of_sync';
+  /** Min last_number across counter rows for this type/year (when rows diverge). */
+  sequence_min_row?: number;
+  /** PAYMENT row alone before folding legacy SUPPLIER_PAYMENT into effective last. */
+  sequence_payment_only?: number;
+  /** Max WPY-* voucher suffix in payments (historical; informational). */
+  legacy_wpy_max?: number;
 }
+
+export interface NumberingLegacyRow {
+  document_type: string;
+  label: string;
+  sequence_last: number;
+}
+
+export interface NumberingAnalyzeResult {
+  rows: NumberingAnalysisRow[];
+  legacyRows: NumberingLegacyRow[];
+}
+
+const LEGACY_DOC_TYPES: { document_type: string; label: string }[] = [
+  { document_type: 'SUPPLIER_PAYMENT', label: 'Supplier payment (legacy)' },
+  { document_type: 'WORKER_PAYMENT', label: 'Worker payment (legacy WPY)' },
+];
 
 const DOC_TYPES: {
   document_type: string;
@@ -91,41 +114,90 @@ const DOC_TYPES: {
   { document_type: 'PRODUCT', label: 'Product', prefix: 'PRD', table: 'products', column: 'sku', prefixFilter: (v) => /^PRD-/i.test(v) },
 ];
 
+type SeqRow = {
+  document_type: string;
+  last_number: number;
+  year: number;
+  year_reset?: boolean | null;
+  branch_id?: string | null;
+};
+
+/** Effective sequence year for a doc type (calendar year when year_reset, else 0). */
+function resolveSeqYear(
+  sequences: SeqRow[],
+  documentType: string,
+  calendarYear: number,
+): number {
+  const typeUpper = documentType.toUpperCase();
+  const sentinelCurrent = sequences.find(
+    (r) =>
+      (r.document_type || '').toUpperCase() === typeUpper
+      && String(r.branch_id || '') === SENTINEL
+      && Number(r.year) === calendarYear,
+  );
+  if (sentinelCurrent && sentinelCurrent.year_reset === false) return 0;
+  const anyType = sequences.find((r) => (r.document_type || '').toUpperCase() === typeUpper);
+  if (anyType && anyType.year_reset === false) return 0;
+  return calendarYear;
+}
+
+/** Max / min last_number across all branch rows for type + effective year. */
+function sequenceStatsForType(
+  sequences: SeqRow[],
+  documentType: string,
+  seqYear: number,
+): { max: number; min: number } {
+  const typeUpper = documentType.toUpperCase();
+  let max = 0;
+  let min = Number.POSITIVE_INFINITY;
+  let found = false;
+  for (const r of sequences) {
+    if ((r.document_type || '').toUpperCase() !== typeUpper) continue;
+    if (Number(r.year) !== seqYear) continue;
+    const n = Number(r.last_number ?? 0);
+    if (n > max) max = n;
+    if (n < min) min = n;
+    found = true;
+  }
+  return { max, min: found ? min : 0 };
+}
+
 export const numberingMaintenanceService = {
   /**
    * Analyze: for each document type get DB max and sequence last_number; return status.
+   * Phase B shape: `{ rows, legacyRows }`.
    */
-  async analyze(companyId: string): Promise<NumberingAnalysisRow[]> {
-    const year = new Date().getFullYear();
+  async analyze(companyId: string): Promise<NumberingAnalyzeResult> {
+    const calendarYear = new Date().getFullYear();
 
     const [sequencesRes, ...tableResults] = await Promise.all([
       supabase
         .from('erp_document_sequences')
-        .select('document_type, last_number')
-        .eq('company_id', companyId)
-        .eq('branch_id', SENTINEL)
-        .eq('year', year),
+        .select('document_type, last_number, year, year_reset, branch_id')
+        .eq('company_id', companyId),
       supabase.from('sales').select('invoice_no').eq('company_id', companyId),
       supabase.from('purchases').select('po_no').eq('company_id', companyId),
-      supabase.from('payments').select('reference_number, payment_type').eq('company_id', companyId),
+      supabase.from('payments').select('reference_number, payment_type, reference_type').eq('company_id', companyId),
       supabase.from('expenses').select('expense_no').eq('company_id', companyId),
       supabase.from('rentals').select('booking_no').eq('company_id', companyId),
       supabase.from('products').select('sku').eq('company_id', companyId),
     ]);
 
-    const sequenceByType = new Map<string, number>();
-    if (sequencesRes.data) {
-      for (const r of sequencesRes.data as { document_type: string; last_number: number }[]) {
-        sequenceByType.set((r.document_type || '').toUpperCase(), Number(r.last_number ?? 0));
-      }
-    }
+    const sequences = (sequencesRes.data || []) as SeqRow[];
 
     const salesRows = (tableResults[0].data || []) as { invoice_no?: string }[];
     const purchaseRows = (tableResults[1].data || []) as { po_no?: string }[];
-    const paymentRows = (tableResults[2].data || []) as { reference_number?: string; payment_type?: string }[];
+    const paymentRows = (tableResults[2].data || []) as {
+      reference_number?: string;
+      payment_type?: string;
+      reference_type?: string;
+    }[];
     const expenseRows = (tableResults[3].data || []) as { expense_no?: string }[];
     const rentalRows = (tableResults[4].data || []) as { booking_no?: string }[];
     const productRows = (tableResults[5].data || []) as { sku?: string }[];
+
+    const supplierSeqYear = resolveSeqYear(sequences, 'SUPPLIER_PAYMENT', calendarYear);
+    const supplierStats = sequenceStatsForType(sequences, 'SUPPLIER_PAYMENT', supplierSeqYear);
 
     const result: NumberingAnalysisRow[] = [];
 
@@ -151,32 +223,105 @@ export const numberingMaintenanceService = {
         databaseMax = maxFromStrings(values);
       }
 
-      const sequenceLast = sequenceByType.get(doc.document_type) ?? 0;
-      const effectiveMax = Math.max(sequenceLast, databaseMax);
-      const status: 'ok' | 'out_of_sync' = databaseMax > sequenceLast ? 'out_of_sync' : 'ok';
+      const seqYear = resolveSeqYear(sequences, doc.document_type, calendarYear);
+      const stats = sequenceStatsForType(sequences, doc.document_type, seqYear);
+      let sequenceLast = stats.max;
+      const sequenceMinRow = stats.min;
 
-      result.push({
+      const row: NumberingAnalysisRow = {
         document_type: doc.document_type,
         label: doc.label,
         sequence_last: sequenceLast,
         database_max: databaseMax,
-        effective_max: effectiveMax,
-        status,
-      });
+        effective_max: Math.max(sequenceLast, databaseMax),
+        status: databaseMax > sequenceLast ? 'out_of_sync' : 'ok',
+      };
+
+      if (sequenceMinRow < sequenceLast) {
+        row.sequence_min_row = sequenceMinRow;
+      }
+
+      if (doc.document_type === 'PAYMENT') {
+        row.sequence_payment_only = sequenceLast;
+        // Effective counter last includes legacy supplier sequence (Phase B unified PAY).
+        const folded = Math.max(sequenceLast, supplierStats.max);
+        if (folded > sequenceLast) {
+          row.sequence_last = folded;
+          row.effective_max = Math.max(folded, databaseMax);
+          row.status = databaseMax > folded ? 'out_of_sync' : 'ok';
+        }
+        const wpyValues = paymentRows
+          .map((r) => r.reference_number)
+          .filter((v) => /^WPY-/i.test(v || ''));
+        const wpyMax = maxFromStrings(wpyValues);
+        if (wpyMax > 0) row.legacy_wpy_max = wpyMax;
+      }
+
+      result.push(row);
     }
 
-    return result;
+    const legacyRows: NumberingLegacyRow[] = [];
+    for (const leg of LEGACY_DOC_TYPES) {
+      const seqYear = resolveSeqYear(sequences, leg.document_type, calendarYear);
+      const stats = sequenceStatsForType(sequences, leg.document_type, seqYear);
+      if (stats.max > 0 || sequences.some((r) => (r.document_type || '').toUpperCase() === leg.document_type)) {
+        legacyRows.push({
+          document_type: leg.document_type,
+          label: leg.label,
+          sequence_last: stats.max,
+        });
+      }
+    }
+
+    return { rows: result, legacyRows };
+  },
+
+  /**
+   * Fold SUPPLIER_PAYMENT counter into PAYMENT via company-scoped RPC (no voucher rewrites).
+   */
+  async mergeLegacyPaySequences(companyId: string): Promise<{
+    success: boolean;
+    updated: boolean;
+    mergedLastNumber?: number;
+    message?: string;
+    error?: string;
+  }> {
+    const { data, error } = await supabase.rpc('merge_supplier_payment_sequence_for_company', {
+      p_company_id: companyId,
+    });
+    if (error) {
+      return { success: false, updated: false, error: error.message };
+    }
+    const json = (data || {}) as {
+      success?: boolean;
+      updated?: boolean;
+      merged_last_number?: number;
+      message?: string;
+      error?: string;
+    };
+    if (json.success === false) {
+      return { success: false, updated: false, error: json.error || 'Merge failed' };
+    }
+    return {
+      success: true,
+      updated: Boolean(json.updated),
+      mergedLastNumber: json.merged_last_number,
+      message: json.message,
+    };
   },
 
   /**
    * Fix sequence: set last_number = newLastNumber for (company, sentinel, document_type, year).
    * Upserts so row exists; next generated number will be newLastNumber + 1.
    * Caps newLastNumber to avoid integer overflow or timestamp-like values.
+   * When year_reset is false, uses year = 0.
    */
   async fixSequence(companyId: string, documentType: string, newLastNumber: number): Promise<void> {
     const safeLast = Math.min(Math.max(0, Math.floor(newLastNumber)), MAX_REASONABLE_SEQUENCE);
-    const year = new Date().getFullYear();
-    const selectColumns = 'id, prefix, padding, year_reset, branch_based, include_branch_code';
+    const calendarYear = new Date().getFullYear();
+    const docUpper = documentType.toUpperCase();
+
+    const selectColumns = 'id, prefix, padding, year_reset, branch_based, include_branch_code, year, last_number';
     let existing: Record<string, unknown> | null = null;
     let selectError: { code?: string; message?: string } | null = null;
 
@@ -185,8 +330,8 @@ export const numberingMaintenanceService = {
       .select(selectColumns)
       .eq('company_id', companyId)
       .eq('branch_id', SENTINEL)
-      .eq('document_type', documentType.toUpperCase())
-      .eq('year', year)
+      .eq('document_type', docUpper)
+      .eq('year', calendarYear)
       .maybeSingle();
 
     existing = (primary.data as Record<string, unknown> | null) ?? null;
@@ -195,23 +340,54 @@ export const numberingMaintenanceService = {
     if (selectError && isMissingColumnError(selectError, 'include_branch_code')) {
       const fallback = await supabase
         .from('erp_document_sequences')
-        .select('id, prefix, padding, year_reset, branch_based')
+        .select('id, prefix, padding, year_reset, branch_based, year, last_number')
         .eq('company_id', companyId)
         .eq('branch_id', SENTINEL)
-        .eq('document_type', documentType.toUpperCase())
-        .eq('year', year)
+        .eq('document_type', docUpper)
+        .eq('year', calendarYear)
         .maybeSingle();
       existing = (fallback.data as Record<string, unknown> | null) ?? null;
       selectError = fallback.error;
     }
 
+    // Fallback: year=0 counter when year_reset is false or current-year row missing
+    if (!existing && !selectError) {
+      const year0 = await supabase
+        .from('erp_document_sequences')
+        .select(selectColumns)
+        .eq('company_id', companyId)
+        .eq('branch_id', SENTINEL)
+        .eq('document_type', docUpper)
+        .eq('year', 0)
+        .maybeSingle();
+      if (!year0.error && year0.data) {
+        existing = year0.data as Record<string, unknown>;
+      } else if (year0.error && isMissingColumnError(year0.error, 'include_branch_code')) {
+        const year0fb = await supabase
+          .from('erp_document_sequences')
+          .select('id, prefix, padding, year_reset, branch_based, year, last_number')
+          .eq('company_id', companyId)
+          .eq('branch_id', SENTINEL)
+          .eq('document_type', docUpper)
+          .eq('year', 0)
+          .maybeSingle();
+        existing = (year0fb.data as Record<string, unknown> | null) ?? null;
+        selectError = year0fb.error;
+      }
+    }
+
     if (selectError) throw selectError;
+
+    const yearReset = existing?.year_reset !== false;
+    const year = existing && existing.year_reset === false
+      ? 0
+      : (existing?.year != null ? Number(existing.year) : calendarYear);
 
     const payload: Record<string, unknown> = {
       company_id: companyId,
       branch_id: SENTINEL,
-      document_type: documentType.toUpperCase(),
-      year,
+      document_type: docUpper,
+      year: yearReset ? (Number.isFinite(year) ? year : calendarYear) : 0,
       last_number: safeLast,
       updated_at: new Date().toISOString(),
     };
@@ -237,10 +413,35 @@ export const numberingMaintenanceService = {
         WORKER: 'WRK',
         JOB: 'JOB',
       };
-      payload.prefix = defaults[documentType.toUpperCase()] || documentType.substring(0, 3).toUpperCase();
+      payload.prefix = defaults[docUpper] || documentType.substring(0, 3).toUpperCase();
       payload.padding = 4;
       payload.year_reset = true;
       payload.branch_based = false;
+    }
+
+    // Also bump all other branch rows for this type/year to at least safeLast (never decrease).
+    const { data: allRows } = await supabase
+      .from('erp_document_sequences')
+      .select('id, last_number, branch_id')
+      .eq('company_id', companyId)
+      .eq('document_type', docUpper)
+      .eq('year', payload.year as number);
+
+    if (allRows && allRows.length > 0) {
+      for (const r of allRows as { id: string; last_number: number; branch_id: string }[]) {
+        const cur = Number(r.last_number ?? 0);
+        if (cur >= safeLast) continue;
+        const { error: updErr } = await supabase
+          .from('erp_document_sequences')
+          .update({ last_number: safeLast, updated_at: new Date().toISOString() })
+          .eq('id', r.id);
+        if (updErr) throw updErr;
+      }
+      // Ensure sentinel row exists / is upserted
+      const hasSentinel = allRows.some(
+        (r: { branch_id: string }) => String(r.branch_id) === SENTINEL,
+      );
+      if (hasSentinel) return;
     }
 
     let { error } = await supabase.from('erp_document_sequences').upsert(payload, {
@@ -263,7 +464,7 @@ export const numberingMaintenanceService = {
     documentType: string
   ): Promise<{ success: boolean; updated: boolean; message?: string; error?: string }> {
     try {
-      const rows = await this.analyze(companyId);
+      const { rows } = await this.analyze(companyId);
       const docTypeUpper = documentType.toUpperCase();
       const row = rows.find((r) => r.document_type.toUpperCase() === docTypeUpper);
       if (!row) {

@@ -7,7 +7,10 @@
  * - DateRangePicker — preset report ranges
  * - CalendarDateRangePicker — dual-calendar ledger/rental ranges
  *
- * Avoid native type="date" / datetime-local and direct ../ui/calendar in forms.
+ * Shared calendar chrome (CalendarDatePicker) includes month + year dropdowns
+ * so multi-year jumps do not require repeated month chevrons. Prefer these
+ * wrappers; avoid native type="date" / datetime-local and direct ../ui/calendar
+ * in new forms.
  */
 
 import React from 'react';

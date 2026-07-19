@@ -164,27 +164,52 @@ export async function reverseSaleDocumentAccounting(saleId: string): Promise<str
   });
 }
 
-/** Post canonical purchase document JE (idempotent). Loads purchase from DB. */
-export async function postPurchaseDocumentAccounting(purchaseId: string): Promise<string | null> {
+/** Post canonical purchase document JE (idempotent).
+ * Pass `existingPurchase` (+ optional `charges`) after create to skip re-select of the header. */
+export async function postPurchaseDocumentAccounting(
+  purchaseId: string,
+  existingPurchase?: {
+    id?: string;
+    company_id: string;
+    branch_id?: string | null;
+    status?: string;
+    total?: number;
+    subtotal?: number;
+    discount_amount?: number;
+    po_no?: string;
+    supplier_name?: string;
+    po_date?: string;
+  } | null,
+  existingCharges?: { charge_type?: string; amount?: number }[] | null,
+): Promise<string | null> {
   if (!purchaseId) return null;
-  const { data: p, error } = await supabase
-    .from('purchases')
-    .select('id, company_id, branch_id, status, total, subtotal, discount_amount, po_no, supplier_name, po_date')
-    .eq('id', purchaseId)
-    .maybeSingle();
-  if (error || !p) {
-    console.warn('[documentPostingEngine] postPurchaseDocumentAccounting: purchase not found', purchaseId, error?.message);
-    return null;
+  let p = existingPurchase ?? null;
+  if (!p) {
+    const { data, error } = await supabase
+      .from('purchases')
+      .select('id, company_id, branch_id, status, total, subtotal, discount_amount, po_no, supplier_name, po_date')
+      .eq('id', purchaseId)
+      .maybeSingle();
+    if (error || !data) {
+      console.warn('[documentPostingEngine] postPurchaseDocumentAccounting: purchase not found', purchaseId, error?.message);
+      return null;
+    }
+    p = data as typeof p;
   }
+  if (!p) return null;
   if (!canPostAccountingForPurchaseStatus((p as { status?: string }).status)) return null;
   const total = Number((p as { total?: number }).total) || 0;
   if (total <= 0) return null;
 
-  const { data: chargeRows } = await supabase
-    .from('purchase_charges')
-    .select('charge_type, amount')
-    .eq('purchase_id', purchaseId);
-  const charges = (chargeRows || []) as { charge_type?: string; amount?: number }[];
+  let charges: { charge_type?: string; amount?: number }[] =
+    existingCharges != null ? [...existingCharges] : [];
+  if (existingCharges == null) {
+    const { data: chargeRows } = await supabase
+      .from('purchase_charges')
+      .select('charge_type, amount')
+      .eq('purchase_id', purchaseId);
+    charges = (chargeRows || []) as { charge_type?: string; amount?: number }[];
+  }
   const headerDiscount = Number((p as { discount_amount?: number }).discount_amount ?? 0) || 0;
   const hasDiscountCharge = charges.some((c) => String(c?.charge_type || '').toLowerCase() === 'discount');
   if (headerDiscount > 0 && !hasDiscountCharge) {

@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import { ArrowLeft, ArrowRight, Check, Search, Paperclip } from 'lucide-react';
 import type { User } from '../../types';
-import { DateInputField } from '../shared/DateTimePicker';
+import { DateTimeInputField } from '../shared/DateTimePicker';
 import { getAccounts, createJournalEntry } from '../../api/accounts';
 import { addPending } from '../../lib/offlineStore';
 import { useSubmitLock } from '../../contexts/LoadingContext';
-import { localNowDateString } from '../../utils/localDate';
+import { localNowDateTimeString } from '../../utils/localDate';
 import { usePermissions } from '../../context/PermissionContext';
 import { formatAccountBalanceInline } from '../../utils/balancePrivacy';
 import { isRealBranchUuid } from '../../utils/branchId';
@@ -85,7 +85,7 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
     creditAccountId: seed?.creditAccountId ?? '',
     creditAccountName: seed?.creditAccountName ?? '',
     amount: seed?.amount && seed.amount > 0 ? seed.amount : 0,
-    date: seed?.date || localNowDateString(),
+    date: seed?.date || localNowDateTimeString(),
     userNotes: seed?.userNotes ?? '',
     reference: seed?.reference ?? '',
   });
@@ -161,7 +161,7 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
       const payload = {
         companyId,
         branchId: effectiveBranchId,
-        entryDate: entryData.date,
+        entryDate: entryData.date.slice(0, 10),
         description: desc,
         referenceType: 'journal',
         lines: [
@@ -422,7 +422,7 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
               />
             </div>
 
-            <DateInputField label="Entry Date" value={entryData.date} onChange={(date) => setEntryData({ ...entryData, date })} pickerLabel="SELECT ENTRY DATE" />
+            <DateTimeInputField label="Entry date & time" value={entryData.date} onChange={(date) => setEntryData({ ...entryData, date })} required />
 
             <JournalDescriptionFields
               autoDescription={autoDescription}

@@ -19,12 +19,17 @@ export type PaymentEditTraceEvent =
   | 'UnifiedPaymentDialog.edit.manual_amount_adjust'
   | 'UnifiedPaymentDialog.edit.manual_amount_adjust_failed'
   | 'UnifiedPaymentDialog.edit.manual_account_transfer'
+  | 'UnifiedPaymentDialog.edit.manual_party_transfer'
+  | 'UnifiedPaymentDialog.edit.manual_party_transfer_failed'
   | 'paymentAdjustment.post_amount_adjust.enter'
   | 'paymentAdjustment.post_amount_adjust.skip_idempotent'
   | 'paymentAdjustment.post_amount_adjust.createEntry'
   | 'paymentAdjustment.post_account_adjust.enter'
   | 'paymentAdjustment.post_account_adjust.skip_idempotent'
   | 'paymentAdjustment.post_account_adjust.createEntry'
+  | 'paymentAdjustment.post_party_transfer.enter'
+  | 'paymentAdjustment.post_party_transfer.skip_idempotent'
+  | 'paymentAdjustment.post_party_transfer.createEntry'
   | 'AccountingContext.loadEntries.sync_payment_accounts'
   | 'SalesContext.sync_sale_payment.updatePayment';
 

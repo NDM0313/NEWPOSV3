@@ -27,7 +27,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../ui/select';
-import { CalendarDatePicker } from '../ui/CalendarDatePicker';
+import { DatePicker } from '../ui/DatePicker';
+import { format, parseISO, isValid } from 'date-fns';
 import { Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import {
@@ -291,22 +292,34 @@ export function BespokeWorkOrderForm(props: BespokeWorkOrderFormProps) {
                   <div>
                     <Label className="text-muted-foreground">Job created</Label>
                     <div className="mt-1">
-                      <CalendarDatePicker
-                        value={createdDate}
-                        onChange={setCreatedDate}
+                      <DatePicker
+                        value={createdDate ? format(createdDate, 'yyyy-MM-dd') : ''}
+                        onChange={(v) => {
+                          if (!v) {
+                            setCreatedDate(undefined);
+                            return;
+                          }
+                          const d = parseISO(v);
+                          if (isValid(d)) setCreatedDate(d);
+                        }}
                         placeholder="Created date"
-                        showTime={false}
                       />
                     </div>
                   </div>
                   <div>
                     <Label className="text-muted-foreground">Job completed</Label>
                     <div className={status !== 'completed' ? 'mt-1 opacity-50 pointer-events-none' : 'mt-1'}>
-                      <CalendarDatePicker
-                        value={completedDate}
-                        onChange={setCompletedDate}
+                      <DatePicker
+                        value={completedDate ? format(completedDate, 'yyyy-MM-dd') : ''}
+                        onChange={(v) => {
+                          if (!v) {
+                            setCompletedDate(undefined);
+                            return;
+                          }
+                          const d = parseISO(v);
+                          if (isValid(d)) setCompletedDate(d);
+                        }}
                         placeholder="Completed date"
-                        showTime={false}
                       />
                     </div>
                   </div>

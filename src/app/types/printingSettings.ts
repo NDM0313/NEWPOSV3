@@ -100,8 +100,53 @@ export interface ReportExportSettings {
   showReportHeader?: boolean;
   /** Show page-number footer on tabular report PDF/print. */
   showReportFooter?: boolean;
+  /** Document base font (titles / meta fallback). */
   reportFontSize?: number;
+  /** Table body / data-list rows. */
+  reportDataListFontSize?: number;
+  /** Column header row. */
+  reportTableHeaderFontSize?: number;
+  /** Opening / Closing / totals summary band. */
+  reportSummaryFontSize?: number;
+  /** Horizontal th/td padding (narrower = denser columns). */
+  reportColumnPaddingPx?: number;
+  /** When false, PDF/print money cells omit the currency symbol. */
+  reportShowCurrencySymbol?: boolean;
+  /**
+   * Ledger PDF column widths: percent (5–30) or `'auto'`.
+   * Auto columns share remaining table width after fixed %.
+   */
+  reportLedgerColumnWidths?: Partial<Record<LedgerColumnWidthKey, LedgerColumnWidthSetting>>;
 }
+
+/** Percent or auto for a ledger print column. */
+export type LedgerColumnWidthSetting = number | 'auto';
+
+/** Ledger print columns with configurable width (all may be auto or %). */
+export type LedgerColumnWidthKey =
+  | 'date'
+  | 'reference'
+  | 'type'
+  | 'description'
+  | 'branch'
+  | 'debit'
+  | 'credit'
+  | 'balance'
+  | 'payment'
+  | 'createdBy';
+
+export const DEFAULT_LEDGER_COLUMN_WIDTHS: Record<LedgerColumnWidthKey, LedgerColumnWidthSetting> = {
+  date: 9,
+  reference: 11,
+  type: 'auto',
+  description: 'auto',
+  branch: 'auto',
+  debit: 11,
+  credit: 11,
+  balance: 12,
+  payment: 'auto',
+  createdBy: 'auto',
+};
 
 export type DocumentTemplateId =
   | 'sales_invoice'
@@ -196,6 +241,12 @@ export const DEFAULT_REPORT_EXPORT: ReportExportSettings = {
   showReportHeader: true,
   showReportFooter: true,
   reportFontSize: 11,
+  reportDataListFontSize: 10,
+  reportTableHeaderFontSize: 9,
+  reportSummaryFontSize: 9,
+  reportColumnPaddingPx: 4,
+  reportShowCurrencySymbol: true,
+  reportLedgerColumnWidths: { ...DEFAULT_LEDGER_COLUMN_WIDTHS },
 };
 
 export const DEFAULT_DOCUMENT_TEMPLATES: DocumentTemplateId[] = [
@@ -215,7 +266,14 @@ export function mergeWithDefaults(partial: CompanyPrintingSettings | null | unde
     layout: { ...DEFAULT_LAYOUT, ...partial?.layout },
     thermal: { ...DEFAULT_THERMAL, ...partial?.thermal },
     pdf: { ...DEFAULT_PDF, ...partial?.pdf },
-    reportExport: { ...DEFAULT_REPORT_EXPORT, ...partial?.reportExport },
+    reportExport: {
+      ...DEFAULT_REPORT_EXPORT,
+      ...partial?.reportExport,
+      reportLedgerColumnWidths: {
+        ...DEFAULT_LEDGER_COLUMN_WIDTHS,
+        ...partial?.reportExport?.reportLedgerColumnWidths,
+      },
+    },
     documentTemplates: partial?.documentTemplates?.length ? partial.documentTemplates : DEFAULT_DOCUMENT_TEMPLATES,
     defaultInvoiceType: partial?.defaultInvoiceType ?? 'standard',
   };

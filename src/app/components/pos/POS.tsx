@@ -1,4 +1,5 @@
 import { getCurrentLocalTimestamp, localNowDateString } from '@/app/utils/localDate';
+import { rankProductSearchHit, preferExactSkuHits, PRODUCT_SEARCH_RESULT_CAP } from '@/app/utils/productSearchRank';
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { 
   Search, 
@@ -750,11 +751,27 @@ export const POS = () => {
 
   const cartCount = cart.reduce((sum, item) => sum + item.qty, 0);
 
-  const filteredProducts = products.filter(p => {
-    const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase());
-    const matchesCategory = activeCategory === "All" || p.category === activeCategory;
-    return matchesSearch && matchesCategory;
-  });
+  const filteredProducts = useMemo(() => {
+    const term = search.trim();
+    const results = products.filter((p) => {
+      const matchesCategory = activeCategory === 'All' || p.category === activeCategory;
+      if (!matchesCategory) return false;
+      if (!term) return true;
+      return rankProductSearchHit(p, term) < 99;
+    });
+    if (!term) return results;
+    let sorted = [...results].sort((a, b) => {
+      const ra = rankProductSearchHit(a, term);
+      const rb = rankProductSearchHit(b, term);
+      if (ra !== rb) return ra - rb;
+      return String(a.name).localeCompare(String(b.name));
+    });
+    sorted = preferExactSkuHits(sorted, term);
+    if (sorted.length > PRODUCT_SEARCH_RESULT_CAP) {
+      sorted = sorted.slice(0, PRODUCT_SEARCH_RESULT_CAP);
+    }
+    return sorted;
+  }, [products, search, activeCategory]);
 
   // Get current date and time
   const currentDate = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });

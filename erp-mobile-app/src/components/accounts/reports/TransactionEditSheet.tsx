@@ -5,6 +5,8 @@ import type { TransactionDetail } from '../../../api/transactions';
 import { getPaymentAccounts } from '../../../api/accounts';
 import { supabase } from '../../../lib/supabase';
 import { updateTransaction } from '../../../api/transactionEdit';
+import { DateTimeInputField } from '../../shared/DateTimePicker';
+import { localNowDateTimeString } from '../../../utils/localDate';
 
 interface Props {
   detail: TransactionDetail;
@@ -13,12 +15,30 @@ interface Props {
   onSuccess: () => void;
 }
 
+function toDateTimeLocalValue(datePart: string, eventTimestamp?: string | null): string {
+  const date = String(datePart || '').slice(0, 10);
+  if (!date) return localNowDateTimeString();
+  if (datePart.includes('T')) return datePart.slice(0, 16);
+  const ts = eventTimestamp ? new Date(eventTimestamp) : null;
+  if (ts && !Number.isNaN(ts.getTime())) {
+    const h = String(ts.getHours()).padStart(2, '0');
+    const m = String(ts.getMinutes()).padStart(2, '0');
+    return `${date}T${h}:${m}`;
+  }
+  return `${date}T${localNowDateTimeString().slice(11, 16)}`;
+}
+
 export function TransactionEditSheet({ detail, companyId, onClose, onSuccess }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Form State
-  const [paymentDate, setPaymentDate] = useState(detail.paymentDate?.slice(0, 10) || detail.createdAt?.slice(0, 10) || '');
+  const [paymentDate, setPaymentDate] = useState(() =>
+    toDateTimeLocalValue(
+      detail.paymentDate?.slice(0, 10) || detail.createdAt?.slice(0, 10) || '',
+      detail.createdAt,
+    ),
+  );
   const [amount, setAmount] = useState(detail.amount.toString());
   const [reference, setReference] = useState(detail.referenceNumber || '');
   const [notes, setNotes] = useState(detail.notes || '');
@@ -60,7 +80,7 @@ export function TransactionEditSheet({ detail, companyId, onClose, onSuccess }: 
       }
 
       await updateTransaction(companyId, detail, {
-        paymentDate,
+        paymentDate: paymentDate.slice(0, 10),
         amount: numAmount,
         reference,
         notes,
@@ -95,16 +115,18 @@ export function TransactionEditSheet({ detail, companyId, onClose, onSuccess }: 
             </div>
           )}
 
-          <div>
-            <label className="block text-xs font-medium text-[#9CA3AF] mb-1">Date</label>
-            <input
-              type="date"
-              value={paymentDate}
-              onChange={(e) => setPaymentDate(e.target.value)}
-              className="w-full bg-[#1F2937] border border-[#374151] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#6366F1]"
-              disabled={loading}
-            />
-          </div>
+          <DateTimeInputField
+            label="Date"
+            value={
+              paymentDate.includes('T')
+                ? paymentDate
+                : paymentDate
+                  ? `${paymentDate}T${localNowDateTimeString().slice(11, 16)}`
+                  : localNowDateTimeString()
+            }
+            onChange={setPaymentDate}
+            disabled={loading}
+          />
 
           {!isManualJournal && (
             <div>

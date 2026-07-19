@@ -53,8 +53,15 @@ export function BarcodeLabelPrintDialog({
   const [showBranch, setShowBranch] = useState(labelSettings.showBranchName);
   const [a4Columns, setA4Columns] = useState(labelSettings.a4Columns);
   const [maxLabelsPerSheet, setMaxLabelsPerSheet] = useState(labelSettings.maxLabelsPerSheet);
+  const [useFixedLabelSize, setUseFixedLabelSize] = useState(labelSettings.useFixedLabelSize === true);
+  const [labelWidthMm, setLabelWidthMm] = useState(labelSettings.labelWidthMm ?? 65);
+  const [labelHeightMm, setLabelHeightMm] = useState(labelSettings.labelHeightMm ?? 25);
   const [presetId, setPresetId] = useState<BarcodeLabelPresetId>(() =>
-    presetIdFromLayout(labelSettings.a4Columns, labelSettings.maxLabelsPerSheet)
+    presetIdFromLayout(labelSettings.a4Columns, labelSettings.maxLabelsPerSheet, {
+      useFixedLabelSize: labelSettings.useFixedLabelSize,
+      labelWidthMm: labelSettings.labelWidthMm,
+      labelHeightMm: labelSettings.labelHeightMm,
+    }),
   );
   const [previewLineKey, setPreviewLineKey] = useState<string | null>(null);
   const [productFilter, setProductFilter] = useState('');
@@ -72,7 +79,19 @@ export function BarcodeLabelPrintDialog({
     setShowBranch(labelSettings.showBranchName);
     setA4Columns(labelSettings.a4Columns);
     setMaxLabelsPerSheet(labelSettings.maxLabelsPerSheet);
-    setPresetId(presetIdFromLayout(labelSettings.a4Columns, labelSettings.maxLabelsPerSheet));
+    const fixed = labelSettings.useFixedLabelSize === true;
+    const w = labelSettings.labelWidthMm ?? 65;
+    const h = labelSettings.labelHeightMm ?? 25;
+    setUseFixedLabelSize(fixed);
+    setLabelWidthMm(w);
+    setLabelHeightMm(h);
+    setPresetId(
+      presetIdFromLayout(labelSettings.a4Columns, labelSettings.maxLabelsPerSheet, {
+        useFixedLabelSize: fixed,
+        labelWidthMm: w,
+        labelHeightMm: h,
+      }),
+    );
     const first =
       initialLines.find((l) => l.selected && hasPrintableCode(l)) ??
       initialLines.find(hasPrintableCode);
@@ -109,19 +128,30 @@ export function BarcodeLabelPrintDialog({
     });
   }, [rows, productFilter]);
 
-  const buildSettings = (): BarcodeLabelSettings => ({
-    ...labelSettings,
-    labelLayout: 'a4',
-    a4Columns,
-    maxLabelsPerSheet,
-    showName,
-    showPrice,
-    showVariation,
-    showPacking,
-    showCompanyName: showCompany,
-    showBranchName: showBranch,
-    showBusinessName: showCompany,
-  });
+  const buildSettings = (): BarcodeLabelSettings => {
+    const base: BarcodeLabelSettings = {
+      ...labelSettings,
+      labelLayout: 'a4',
+      a4Columns,
+      maxLabelsPerSheet,
+      showName,
+      showPrice,
+      showVariation,
+      showPacking,
+      showCompanyName: showCompany,
+      showBranchName: showBranch,
+      showBusinessName: showCompany,
+      useFixedLabelSize,
+    };
+    if (useFixedLabelSize) {
+      base.labelWidthMm = labelWidthMm;
+      base.labelHeightMm = labelHeightMm;
+    } else {
+      delete base.labelWidthMm;
+      delete base.labelHeightMm;
+    }
+    return base;
+  };
 
   const previewLine = useMemo(() => {
     if (previewLineKey) {
@@ -366,18 +396,19 @@ export function BarcodeLabelPrintDialog({
             <div className="rounded-xl border border-border bg-muted/60 p-4 space-y-3">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">Sheet layout</p>
               <BarcodeLabelSheetLayoutFields
+                idPrefix="dlg-sheet"
                 presetId={presetId}
                 onPresetChange={setPresetId}
                 a4Columns={a4Columns}
-                onA4ColumnsChange={(n) => {
-                  setA4Columns(n);
-                  setPresetId(presetIdFromLayout(n, maxLabelsPerSheet));
-                }}
+                onA4ColumnsChange={setA4Columns}
                 maxLabelsPerSheet={maxLabelsPerSheet}
-                onMaxLabelsPerSheetChange={(n) => {
-                  setMaxLabelsPerSheet(n);
-                  setPresetId(presetIdFromLayout(a4Columns, n));
-                }}
+                onMaxLabelsPerSheetChange={setMaxLabelsPerSheet}
+                useFixedLabelSize={useFixedLabelSize}
+                onUseFixedLabelSizeChange={setUseFixedLabelSize}
+                labelWidthMm={labelWidthMm}
+                onLabelWidthMmChange={setLabelWidthMm}
+                labelHeightMm={labelHeightMm}
+                onLabelHeightMmChange={setLabelHeightMm}
               />
             </div>
             <button
@@ -415,6 +446,8 @@ export function BarcodeLabelPrintDialog({
                 {...displayOptions}
                 large
                 className="w-full"
+                labelWidthMm={useFixedLabelSize ? labelWidthMm : undefined}
+                labelHeightMm={useFixedLabelSize ? labelHeightMm : undefined}
               />
             </div>
             <div>
@@ -428,6 +461,9 @@ export function BarcodeLabelPrintDialog({
                 companyName={companyName}
                 branchName={branchName}
                 largeSheet
+                useFixedLabelSize={useFixedLabelSize}
+                labelWidthMm={labelWidthMm}
+                labelHeightMm={labelHeightMm}
               />
             </div>
             {error && <p className="text-sm text-red-400">{error}</p>}

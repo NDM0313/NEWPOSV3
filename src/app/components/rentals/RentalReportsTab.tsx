@@ -282,6 +282,11 @@ export const RentalReportsTab = () => {
         showFooter={tabularPrint.showFooter}
         orientation={printOrientation}
         fontSize={tabularPrint.fontSize}
+        dataListFontSize={tabularPrint.dataListFontSize}
+        tableHeaderFontSize={tabularPrint.tableHeaderFontSize}
+        summaryFontSize={tabularPrint.summaryFontSize}
+        columnPaddingPx={tabularPrint.columnPaddingPx}
+        showCurrencySymbol={tabularPrint.showCurrencySymbol}
         fontFamily={tabularPrint.fontFamily}
         margins={tabularPrint.margins}
         compact={filtered.length > 60}

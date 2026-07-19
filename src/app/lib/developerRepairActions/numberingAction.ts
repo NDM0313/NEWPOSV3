@@ -22,7 +22,7 @@ async function dryRunSequenceSync(
     };
   }
 
-  const rows = await numberingMaintenanceService.analyze(ctx.companyId);
+  const { rows } = await numberingMaintenanceService.analyze(ctx.companyId);
   const row = rows.find((r) => r.document_type.toUpperCase() === documentType);
   if (!row) {
     return {

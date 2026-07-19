@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, FileText, Upload, X, Calendar, Loader2 } from 'lucide-react';
+import { ArrowLeft, FileText, Upload, X, Loader2 } from 'lucide-react';
 import type { SaleData } from './SalesModule';
-import { localNowDateString } from '../../utils/localDate';
+import { localNowDateTimeString, localDatePlusDays } from '../../utils/localDate';
+import { DateTimeInputField, DateInputField } from '../shared/DateTimePicker';
 import type { Branch } from '../../api/branches';
 import { WriteBranchPickerField } from '../shared/WriteBranchPickerField';
 import { prepareAttachmentFilesForUpload } from '../../utils/imageCompression';
@@ -197,17 +198,19 @@ export function SaleSummary({
         </div>
 
         <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
-          <label className="text-sm font-medium text-[#9CA3AF] mb-2 block">Invoice date</label>
-          <div className="flex items-center gap-2 bg-[#111827] border border-[#374151] rounded-lg px-3 py-2.5">
-            <Calendar className="w-5 h-5 text-[#6B7280] shrink-0" />
-            <input
-              type="date"
-              max={localNowDateString()}
-              value={saleData.saleDate ?? localNowDateString()}
-              onChange={(e) => onUpdate({ saleDate: e.target.value })}
-              className="flex-1 min-w-0 bg-transparent text-white text-sm outline-none"
-            />
-          </div>
+          <DateTimeInputField
+            label="Invoice date & time"
+            required
+            value={
+              saleData.saleDate?.includes('T')
+                ? saleData.saleDate
+                : saleData.saleDate
+                  ? `${saleData.saleDate}T${localNowDateTimeString().slice(11, 16)}`
+                  : localNowDateTimeString()
+            }
+            onChange={(v) => onUpdate({ saleDate: v })}
+            max={localNowDateTimeString().slice(0, 10)}
+          />
           <p className="text-xs text-[#6B7280] mt-2">Uses your device calendar (not UTC midnight).</p>
         </div>
 
@@ -344,6 +347,15 @@ export function SaleSummary({
             <p className="text-xs text-[#6B7280]">
               Order / quotation: stock aur payment baad mein. Final: payment abhi.
             </p>
+            {(saleData.documentStatus ?? 'order') === 'order' && (
+              <div className="pt-2">
+                <DateInputField
+                  label="Delivery Date"
+                  value={saleData.deadlineDate || localDatePlusDays(7)}
+                  onChange={(v) => onUpdate({ deadlineDate: v })}
+                />
+              </div>
+            )}
           </div>
         )}
 

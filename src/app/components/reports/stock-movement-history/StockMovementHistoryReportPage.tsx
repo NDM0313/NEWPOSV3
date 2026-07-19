@@ -657,7 +657,11 @@ export function StockMovementHistoryReportPage({
             showFooter={reportExport.tabularPrintOptions.showFooter}
 
             fontSize={reportExport.tabularPrintOptions.fontSize}
-
+            dataListFontSize={reportExport.tabularPrintOptions.dataListFontSize}
+            tableHeaderFontSize={reportExport.tabularPrintOptions.tableHeaderFontSize}
+            summaryFontSize={reportExport.tabularPrintOptions.summaryFontSize}
+            columnPaddingPx={reportExport.tabularPrintOptions.columnPaddingPx}
+            showCurrencySymbol={reportExport.tabularPrintOptions.showCurrencySymbol}
             fontFamily={reportExport.tabularPrintOptions.fontFamily}
 
             orientation={printOrientation}
@@ -836,6 +840,14 @@ export function StockMovementHistoryReportPage({
             sections={activePreviewSections}
 
             fieldVisibility={reportExport.tabularPrintOptions.fieldVisibility}
+
+            fontSize={reportExport.tabularPrintOptions.fontSize}
+
+            dataListFontSize={reportExport.tabularPrintOptions.dataListFontSize}
+
+            tableHeaderFontSize={reportExport.tabularPrintOptions.tableHeaderFontSize}
+
+            columnPaddingPx={reportExport.tabularPrintOptions.columnPaddingPx}
 
             orientation={printOrientation}
 

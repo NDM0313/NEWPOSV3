@@ -4,10 +4,15 @@ import { Label } from '@/app/components/ui/label';
 import { cn } from '@/app/components/ui/utils';
 import {
   BARCODE_LABEL_PRESETS,
+  cmToMm,
+  fitLabelsOnA4Page,
   gridSummary,
+  mmToCm,
   presetIdFromLayout,
+  stickerSizeSummary,
   type BarcodeLabelPresetId,
 } from '@/app/lib/barcodeLabelPresets';
+import { clampLabelHeightMm, clampLabelWidthMm } from '@/app/services/barcodeLabelSettingsService';
 import { gridRowsForSheet } from './barcodeLabelPreview';
 
 export type LabelFieldOptions = {
@@ -97,23 +102,58 @@ export function BarcodeLabelContentFields({
   );
 }
 
+export type StickerSizeFields = {
+  useFixedLabelSize: boolean;
+  labelWidthMm: number;
+  labelHeightMm: number;
+};
+
 export function BarcodeLabelSheetLayoutFields({
+  idPrefix = 'label-sheet',
   presetId,
   onPresetChange,
   a4Columns,
   onA4ColumnsChange,
   maxLabelsPerSheet,
   onMaxLabelsPerSheetChange,
+  useFixedLabelSize,
+  onUseFixedLabelSizeChange,
+  labelWidthMm,
+  onLabelWidthMmChange,
+  labelHeightMm,
+  onLabelHeightMmChange,
 }: {
+  idPrefix?: string;
   presetId: BarcodeLabelPresetId;
   onPresetChange: (id: BarcodeLabelPresetId) => void;
   a4Columns: number;
   onA4ColumnsChange: (n: number) => void;
   maxLabelsPerSheet: number;
   onMaxLabelsPerSheetChange: (n: number) => void;
+  useFixedLabelSize: boolean;
+  onUseFixedLabelSizeChange: (v: boolean) => void;
+  labelWidthMm: number;
+  onLabelWidthMmChange: (n: number) => void;
+  labelHeightMm: number;
+  onLabelHeightMmChange: (n: number) => void;
 }) {
   const gridRows = gridRowsForSheet(maxLabelsPerSheet, a4Columns);
   const preset = BARCODE_LABEL_PRESETS.find((p) => p.id === presetId);
+  const widthCm = mmToCm(labelWidthMm);
+  const heightCm = mmToCm(labelHeightMm);
+
+  const applyFit = (wMm: number, hMm: number) => {
+    const fit = fitLabelsOnA4Page({ widthMm: wMm, heightMm: hMm });
+    onA4ColumnsChange(fit.a4Columns);
+    onMaxLabelsPerSheetChange(fit.maxLabelsPerSheet);
+    onPresetChange(
+      presetIdFromLayout(fit.a4Columns, fit.maxLabelsPerSheet, {
+        useFixedLabelSize: true,
+        labelWidthMm: wMm,
+        labelHeightMm: hMm,
+      }),
+    );
+  };
 
   return (
     <div className="space-y-3">
@@ -125,9 +165,15 @@ export function BarcodeLabelSheetLayoutFields({
             const id = e.target.value as BarcodeLabelPresetId;
             onPresetChange(id);
             const p = BARCODE_LABEL_PRESETS.find((x) => x.id === id);
-            if (p && id !== 'custom') {
-              onA4ColumnsChange(p.a4Columns);
-              onMaxLabelsPerSheetChange(p.maxLabelsPerSheet);
+            if (!p || id === 'custom') return;
+            onA4ColumnsChange(p.a4Columns);
+            onMaxLabelsPerSheetChange(p.maxLabelsPerSheet);
+            if (p.useFixedLabelSize && p.labelWidthMm != null && p.labelHeightMm != null) {
+              onUseFixedLabelSizeChange(true);
+              onLabelWidthMmChange(p.labelWidthMm);
+              onLabelHeightMmChange(p.labelHeightMm);
+            } else {
+              onUseFixedLabelSizeChange(false);
             }
           }}
           className="mt-1 w-full h-9 rounded bg-input-background border border-border text-foreground text-sm px-2"
@@ -142,6 +188,96 @@ export function BarcodeLabelSheetLayoutFields({
           <p className="text-[10px] text-muted-foreground mt-1 leading-snug">{preset.description}</p>
         ) : null}
       </div>
+
+      <div className="rounded-md border border-border bg-muted/30 p-3 space-y-2.5">
+        <OptionRow
+          id={`${idPrefix}-fixed-size`}
+          checked={useFixedLabelSize}
+          onCheckedChange={(v) => {
+            onUseFixedLabelSizeChange(v);
+            if (v) {
+              onPresetChange(
+                presetIdFromLayout(a4Columns, maxLabelsPerSheet, {
+                  useFixedLabelSize: true,
+                  labelWidthMm,
+                  labelHeightMm,
+                }),
+              );
+            } else {
+              onPresetChange(presetIdFromLayout(a4Columns, maxLabelsPerSheet));
+            }
+          }}
+          label="Use fixed sticker size (cm)"
+        />
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <Label className="text-xs text-muted-foreground">Width (cm)</Label>
+            <input
+              type="number"
+              min={2}
+              max={12}
+              step={0.1}
+              disabled={!useFixedLabelSize}
+              value={widthCm}
+              placeholder="6.5"
+              onChange={(e) => {
+                const cm = parseFloat(e.target.value);
+                if (!Number.isFinite(cm)) return;
+                const mm = clampLabelWidthMm(cmToMm(cm));
+                onLabelWidthMmChange(mm);
+                onPresetChange(
+                  presetIdFromLayout(a4Columns, maxLabelsPerSheet, {
+                    useFixedLabelSize: true,
+                    labelWidthMm: mm,
+                    labelHeightMm,
+                  }),
+                );
+              }}
+              className="mt-1 w-full h-9 rounded bg-input-background border border-border text-foreground text-sm px-2 disabled:opacity-50"
+            />
+          </div>
+          <div>
+            <Label className="text-xs text-muted-foreground">Height (cm)</Label>
+            <input
+              type="number"
+              min={1}
+              max={8}
+              step={0.1}
+              disabled={!useFixedLabelSize}
+              value={heightCm}
+              placeholder="2.5"
+              onChange={(e) => {
+                const cm = parseFloat(e.target.value);
+                if (!Number.isFinite(cm)) return;
+                const mm = clampLabelHeightMm(cmToMm(cm));
+                onLabelHeightMmChange(mm);
+                onPresetChange(
+                  presetIdFromLayout(a4Columns, maxLabelsPerSheet, {
+                    useFixedLabelSize: true,
+                    labelWidthMm,
+                    labelHeightMm: mm,
+                  }),
+                );
+              }}
+              className="mt-1 w-full h-9 rounded bg-input-background border border-border text-foreground text-sm px-2 disabled:opacity-50"
+            />
+          </div>
+        </div>
+        <button
+          type="button"
+          disabled={!useFixedLabelSize}
+          onClick={() => applyFit(labelWidthMm, labelHeightMm)}
+          className="w-full h-8 rounded text-xs font-medium border border-border bg-input-background text-foreground hover:bg-muted disabled:opacity-50"
+        >
+          Fit to A4
+        </button>
+        {useFixedLabelSize ? (
+          <p className="text-[10px] text-muted-foreground leading-snug">
+            {stickerSizeSummary(labelWidthMm, labelHeightMm, a4Columns, maxLabelsPerSheet)}
+          </p>
+        ) : null}
+      </div>
+
       <div className="flex gap-1">
         {[2, 3, 4].map((n) => (
           <button
@@ -149,13 +285,19 @@ export function BarcodeLabelSheetLayoutFields({
             type="button"
             onClick={() => {
               onA4ColumnsChange(n);
-              onPresetChange(presetIdFromLayout(n, maxLabelsPerSheet));
+              onPresetChange(
+                presetIdFromLayout(n, maxLabelsPerSheet, {
+                  useFixedLabelSize,
+                  labelWidthMm,
+                  labelHeightMm,
+                }),
+              );
             }}
             className={cn(
               'flex-1 py-1.5 rounded text-xs font-medium border transition-colors',
               a4Columns === n
                 ? 'bg-blue-600 border-blue-500 text-foreground'
-                : 'bg-muted border-border text-muted-foreground hover:border-gray-600'
+                : 'bg-muted border-border text-muted-foreground hover:border-gray-600',
             )}
           >
             {n} cols
@@ -172,7 +314,13 @@ export function BarcodeLabelSheetLayoutFields({
           onChange={(e) => {
             const n = Math.max(6, Math.min(60, parseInt(e.target.value, 10) || 30));
             onMaxLabelsPerSheetChange(n);
-            onPresetChange(presetIdFromLayout(a4Columns, n));
+            onPresetChange(
+              presetIdFromLayout(a4Columns, n, {
+                useFixedLabelSize,
+                labelWidthMm,
+                labelHeightMm,
+              }),
+            );
           }}
           className="mt-1 w-full h-9 rounded bg-input-background border border-border text-foreground text-sm px-2"
         />

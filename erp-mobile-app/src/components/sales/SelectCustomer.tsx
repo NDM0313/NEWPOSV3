@@ -8,41 +8,88 @@ import { CustomerPickerList } from '../shared/CustomerPickerList';
 import * as contactsApi from '../../api/contacts';
 import { getContactDisplayPhone } from '../../api/contacts';
 import { usePermissions } from '../../context/PermissionContext';
+import { DateInputField } from '../shared/DateTimePicker';
+import { localDatePlusDays } from '../../utils/localDate';
+
+export type SaleDocumentStatus = 'draft' | 'quotation' | 'order' | 'final';
+
+export interface SelectCustomerExtras {
+  documentStatus?: SaleDocumentStatus;
+  deadlineDate?: string;
+}
 
 interface SelectCustomerProps {
   companyId: string | null;
   branchId?: string | null;
   sessionUserId?: string | null;
   onBack: () => void;
-  onSelect: (customer: Customer, saleType: 'regular' | 'studio') => void;
+  onSelect: (customer: Customer, saleType: 'regular' | 'studio', extras?: SelectCustomerExtras) => void;
   initialSaleType?: 'regular' | 'studio';
   onSaleTypeChange?: (saleType: 'regular' | 'studio') => void;
+  initialDocumentStatus?: SaleDocumentStatus;
+  initialDeadlineDate?: string;
 }
 
 function contactToCustomer(c: contactsApi.Contact): Customer {
   return { id: c.id, name: c.name, phone: getContactDisplayPhone(c) || '—', balance: c.balance };
 }
 
-export function SelectCustomer({ companyId, branchId, sessionUserId, onBack, onSelect, initialSaleType = 'regular', onSaleTypeChange }: SelectCustomerProps) {
-  const { canViewBalances } = usePermissions();
+export function SelectCustomer({
+  companyId,
+  branchId,
+  sessionUserId,
+  onBack,
+  onSelect,
+  initialSaleType = 'regular',
+  onSaleTypeChange,
+  initialDocumentStatus = 'order',
+  initialDeadlineDate,
+}: SelectCustomerProps) {
+  const { canViewBalances, isModuleEnabled } = usePermissions();
+  const studioModuleEnabled = isModuleEnabled('studio');
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [defaultCustomer, setDefaultCustomer] = useState<Customer | null>(null);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [loading, setLoading] = useState(!!companyId);
   const walkingInitRef = useRef(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [saleType, setSaleType] = useState<'regular' | 'studio'>(initialSaleType);
+  const [saleType, setSaleType] = useState<'regular' | 'studio'>(
+    studioModuleEnabled && initialSaleType === 'studio' ? 'studio' : 'regular'
+  );
+  const [documentStatus, setDocumentStatus] = useState<SaleDocumentStatus>(initialDocumentStatus || 'order');
+  const [deadlineDate, setDeadlineDate] = useState(initialDeadlineDate || localDatePlusDays(7));
   const [view, setView] = useState<'pick' | 'addContact'>('pick');
   const [addError, setAddError] = useState('');
   const [addSaving, setAddSaving] = useState(false);
 
   useEffect(() => {
-    setSaleType(initialSaleType);
-  }, [initialSaleType]);
+    const next = studioModuleEnabled && initialSaleType === 'studio' ? 'studio' : 'regular';
+    setSaleType(next);
+    if (!studioModuleEnabled && initialSaleType === 'studio') {
+      onSaleTypeChange?.('regular');
+    }
+  }, [initialSaleType, studioModuleEnabled, onSaleTypeChange]);
+
+  useEffect(() => {
+    setDocumentStatus(initialDocumentStatus || 'order');
+  }, [initialDocumentStatus]);
+
+  useEffect(() => {
+    if (initialDeadlineDate) setDeadlineDate(initialDeadlineDate);
+  }, [initialDeadlineDate]);
 
   const handleSaleTypeChange = (type: 'regular' | 'studio') => {
+    if (type === 'studio' && !studioModuleEnabled) return;
     setSaleType(type);
     onSaleTypeChange?.(type);
+  };
+
+  const buildExtras = (): SelectCustomerExtras | undefined => {
+    if (saleType !== 'regular') return undefined;
+    return {
+      documentStatus,
+      deadlineDate: documentStatus === 'order' ? deadlineDate : undefined,
+    };
   };
 
   useEffect(() => {
@@ -106,7 +153,7 @@ export function SelectCustomer({ companyId, branchId, sessionUserId, onBack, onS
           const c = contactToCustomer(created);
           setCustomers((prev) => [c, ...prev]);
           setView('pick');
-          onSelect(c, saleType);
+          onSelect(c, saleType, buildExtras());
         }
       } else {
         const c: Customer = {
@@ -117,7 +164,7 @@ export function SelectCustomer({ companyId, branchId, sessionUserId, onBack, onS
         };
         setCustomers((prev) => [c, ...prev]);
         setView('pick');
-        onSelect(c, saleType);
+        onSelect(c, saleType, buildExtras());
       }
     } finally {
       setAddSaving(false);
@@ -168,17 +215,52 @@ export function SelectCustomer({ companyId, branchId, sessionUserId, onBack, onS
               <ShoppingCart className="w-4 h-4" />
               Regular Sale
             </button>
-            <button
-              onClick={() => handleSaleTypeChange('studio')}
-              className={`flex-1 h-10 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 ${
-                saleType === 'studio' ? 'bg-[#8B5CF6] text-white shadow-lg shadow-[#8B5CF6]/20' : 'bg-[#111827] text-[#9CA3AF] border border-[#374151] hover:border-[#8B5CF6]/50'
-              }`}
-            >
-              <Palette className="w-4 h-4" />
-              Studio Sale
-            </button>
+            {studioModuleEnabled && (
+              <button
+                onClick={() => handleSaleTypeChange('studio')}
+                className={`flex-1 h-10 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 ${
+                  saleType === 'studio' ? 'bg-[#8B5CF6] text-white shadow-lg shadow-[#8B5CF6]/20' : 'bg-[#111827] text-[#9CA3AF] border border-[#374151] hover:border-[#8B5CF6]/50'
+                }`}
+              >
+                <Palette className="w-4 h-4" />
+                Studio Sale
+              </button>
+            )}
           </div>
         </div>
+        {saleType === 'regular' && (
+          <div className="mb-3">
+            <label className="block text-xs font-medium text-[#9CA3AF] mb-2">DOCUMENT TYPE</label>
+            <div className="grid grid-cols-2 gap-2">
+              {(
+                [
+                  { id: 'draft', label: 'Draft' },
+                  { id: 'quotation', label: 'Quotation' },
+                  { id: 'order', label: 'Order' },
+                  { id: 'final', label: 'Final' },
+                ] as const
+              ).map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setDocumentStatus(opt.id)}
+                  className={`h-9 rounded-lg text-xs font-medium border ${
+                    documentStatus === opt.id
+                      ? 'border-[#3B82F6] bg-[#3B82F6]/15 text-white'
+                      : 'border-[#374151] text-[#9CA3AF]'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            {documentStatus === 'order' && (
+              <div className="mt-3">
+                <DateInputField label="Delivery Date" value={deadlineDate} onChange={setDeadlineDate} />
+              </div>
+            )}
+          </div>
+        )}
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#6B7280]" />
           <input
@@ -196,7 +278,7 @@ export function SelectCustomer({ companyId, branchId, sessionUserId, onBack, onS
           customers={customers}
           loading={loading}
           searchQuery={searchQuery}
-          onSelect={(c) => onSelect(c, saleType)}
+          onSelect={(c) => onSelect(c, saleType, buildExtras())}
           canViewBalances={canViewBalances}
           accent="blue"
           defaultCustomer={defaultCustomer}

@@ -18,6 +18,7 @@ import {
 import { PdfPreviewModal } from '../../shared/PdfPreviewModal';
 import { FinancialStatementPreviewPdf } from '../../shared/FinancialStatementPreviewPdf';
 import { usePdfPreview } from '../../shared/usePdfPreview';
+import { DateInputField } from '../../shared/DateTimePicker';
 
 interface BalanceSheetReportProps {
   onBack: () => void;
@@ -142,15 +143,7 @@ export function BalanceSheetReport({
         onShare={canViewBalances ? preview.openPreview : undefined}
         sharing={preview.loading}
       >
-        <label className="block">
-          <span className="sr-only">As of date</span>
-          <input
-            type="date"
-            value={asOf}
-            onChange={(e) => setAsOf(e.target.value)}
-            className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-sm text-white"
-          />
-        </label>
+        <DateInputField label="As of date" value={asOf} onChange={setAsOf} />
       </ReportHeader>
       <ReportShell loading={loading} error={error} empty={!data && !error} emptyLabel="No balance sheet data.">
         {data && (

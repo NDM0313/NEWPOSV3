@@ -6,7 +6,6 @@ import { branchService } from '@/app/services/branchService';
 import { permissionService } from '@/app/services/permissionService';
 import type { EngineRole } from '@/app/services/permissionService';
 import { permissionEngine } from '@/app/services/permissionEngine';
-import { accountService } from '@/app/services/accountService';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { isDebugErpEnabled } from '@/app/lib/debugErp';
@@ -545,9 +544,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
       const [
         { data: companyData },
         branchesData,
-        accountsList,
         allSettings,
-        enablePacking,
         businessSettingsData,
         erpSequences,
         sequences,
@@ -557,9 +554,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
       ] = await Promise.all([
         supabase.from('companies').select('*').eq('id', companyId).single(),
         branchService.getAllBranches(companyId),
-        accountService.getAllAccounts(companyId),
         settingsService.getAllSettings(companyId),
-        settingsService.getEnablePacking(companyId),
         businessSettingsService.getBusinessSettings(companyId).catch(() => ({
           enableBespokeOrders: false,
           bespokeFormConfig: { ...DEFAULT_BESPOKE_FORM_CONFIG },
@@ -579,6 +574,28 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
               .then(r => r.data)
           : Promise.resolve(null),
       ]);
+
+      // Slim account name lookup for branch defaults only (AccountingContext owns full COA).
+      const branchAccountIds = [
+        ...new Set(
+          (branchesData || []).flatMap((b: any) =>
+            [b.default_cash_account_id, b.default_bank_account_id, b.default_pos_drawer_account_id].filter(
+              Boolean,
+            ) as string[],
+          ),
+        ),
+      ];
+      let accountsList: { id: string; name: string }[] = [];
+      if (branchAccountIds.length > 0) {
+        const { data: slimAccounts } = await supabase
+          .from('accounts')
+          .select('id, name')
+          .in('id', branchAccountIds);
+        accountsList = (slimAccounts as { id: string; name: string }[]) || [];
+      }
+
+      const settingsMapEarly = new Map((allSettings || []).map((s: any) => [s.key, s.value]));
+      const enablePacking = settingsMapEarly.get('enable_packing') === true;
 
       if (companyData) {
         const c = companyData as any;

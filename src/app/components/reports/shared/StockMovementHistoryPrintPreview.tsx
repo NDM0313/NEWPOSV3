@@ -18,6 +18,11 @@ interface Props {
   showHeader?: boolean;
   showFooter?: boolean;
   fontSize?: number;
+  dataListFontSize?: number;
+  tableHeaderFontSize?: number;
+  summaryFontSize?: number;
+  columnPaddingPx?: number;
+  showCurrencySymbol?: boolean;
   fontFamily?: string;
   orientation?: 'portrait' | 'landscape';
 }
@@ -33,17 +38,23 @@ export function StockMovementHistoryPrintPreview({
   showHeader = true,
   showFooter = true,
   fontSize = 11,
+  dataListFontSize,
+  tableHeaderFontSize,
+  columnPaddingPx = 4,
   fontFamily = 'Arial, Helvetica, sans-serif',
   orientation = 'landscape',
 }: Props) {
   const fmtInOut = (n: number) => (n === 0 ? '—' : formatQty(n));
   const fmtBalance = (n: number) => formatQty(n);
   const landscapeClass = orientation === 'landscape' ? 'pdf-document-landscape' : '';
+  const listFont = dataListFontSize ?? fontSize;
+  const headerFont = tableHeaderFontSize ?? Math.max(8, listFont - 1);
+  const hPad = Math.max(2, Math.min(10, columnPaddingPx));
 
   return (
     <div
       className={cn('pdf-print-root pdf-document pdf-document-compact bg-white text-black', landscapeClass)}
-      style={{ fontSize, fontFamily }}
+      style={{ fontSize: listFont, fontFamily }}
       data-orientation={orientation}
     >
       {showHeader && (
@@ -67,26 +78,26 @@ export function StockMovementHistoryPrintPreview({
               <h3 className="font-bold text-sm">
                 {section.summary.productName} — {section.summary.sku}
               </h3>
-              <p className="text-sm font-bold text-gray-800" style={{ fontSize: fontSize + 1 }}>
+              <p className="text-sm font-bold text-gray-800" style={{ fontSize: listFont + 1 }}>
                 {formatProductSummaryLine(section.summary)}
               </p>
             </div>
 
-            <table className="w-full text-xs border-collapse">
+            <table className="w-full border-collapse" style={{ fontSize: listFont }}>
               <thead>
-                <tr className="bg-gray-100">
-                  <th className="border border-gray-300 px-2 py-1 text-left">Date</th>
-                  <th className="border border-gray-300 px-2 py-1 text-left">Branch</th>
+                <tr className="bg-gray-100" style={{ fontSize: headerFont }}>
+                  <th className="border border-gray-300 text-left" style={{ padding: `4px ${hPad}px` }}>Date</th>
+                  <th className="border border-gray-300 text-left" style={{ padding: `4px ${hPad}px` }}>Branch</th>
                   {showVariationColumn && (
-                    <th className="border border-gray-300 px-2 py-1 text-left">Variation</th>
+                    <th className="border border-gray-300 text-left" style={{ padding: `4px ${hPad}px` }}>Variation</th>
                   )}
-                  <th className="border border-gray-300 px-2 py-1 text-left">Type</th>
-                  <th className="border border-gray-300 px-2 py-1 text-left">Reference</th>
-                  <th className="border border-gray-300 px-2 py-1 text-left">Party</th>
-                  <th className="border border-gray-300 px-2 py-1 text-right">In</th>
-                  <th className="border border-gray-300 px-2 py-1 text-right">Out</th>
-                  <th className="border border-gray-300 px-2 py-1 text-right">Balance</th>
-                  <th className="border border-gray-300 px-2 py-1 text-left">Notes</th>
+                  <th className="border border-gray-300 text-left" style={{ padding: `4px ${hPad}px` }}>Type</th>
+                  <th className="border border-gray-300 text-left" style={{ padding: `4px ${hPad}px` }}>Reference</th>
+                  <th className="border border-gray-300 text-left" style={{ padding: `4px ${hPad}px` }}>Party</th>
+                  <th className="border border-gray-300 text-right" style={{ padding: `4px ${hPad}px` }}>In</th>
+                  <th className="border border-gray-300 text-right" style={{ padding: `4px ${hPad}px` }}>Out</th>
+                  <th className="border border-gray-300 text-right" style={{ padding: `4px ${hPad}px` }}>Balance</th>
+                  <th className="border border-gray-300 text-left" style={{ padding: `4px ${hPad}px` }}>Notes</th>
                 </tr>
               </thead>
               <tbody>
@@ -99,18 +110,18 @@ export function StockMovementHistoryPrintPreview({
                 ) : (
                   section.rows.map((r) => (
                     <tr key={r.id}>
-                      <td className="border border-gray-300 px-2 py-1">{new Date(r.date).toLocaleString()}</td>
-                      <td className="border border-gray-300 px-2 py-1">{r.branchName || '—'}</td>
+                      <td className="border border-gray-300" style={{ padding: `4px ${hPad}px` }}>{new Date(r.date).toLocaleString()}</td>
+                      <td className="border border-gray-300" style={{ padding: `4px ${hPad}px` }}>{r.branchName || '—'}</td>
                       {showVariationColumn && (
-                        <td className="border border-gray-300 px-2 py-1">{r.variationLabel || '—'}</td>
+                        <td className="border border-gray-300" style={{ padding: `4px ${hPad}px` }}>{r.variationLabel || '—'}</td>
                       )}
-                      <td className="border border-gray-300 px-2 py-1">{r.movementTypeLabel}</td>
-                      <td className="border border-gray-300 px-2 py-1">{r.reference || '—'}</td>
-                      <td className="border border-gray-300 px-2 py-1">{r.party || '—'}</td>
-                      <td className="border border-gray-300 px-2 py-1 text-right">{fmtInOut(r.qtyIn)}</td>
-                      <td className="border border-gray-300 px-2 py-1 text-right">{fmtInOut(r.qtyOut)}</td>
-                      <td className="border border-gray-300 px-2 py-1 text-right font-medium">{fmtBalance(r.runningBalance)}</td>
-                      <td className="border border-gray-300 px-2 py-1">{r.notes || '—'}</td>
+                      <td className="border border-gray-300" style={{ padding: `4px ${hPad}px` }}>{r.movementTypeLabel}</td>
+                      <td className="border border-gray-300" style={{ padding: `4px ${hPad}px` }}>{r.reference || '—'}</td>
+                      <td className="border border-gray-300" style={{ padding: `4px ${hPad}px` }}>{r.party || '—'}</td>
+                      <td className="border border-gray-300 text-right" style={{ padding: `4px ${hPad}px` }}>{fmtInOut(r.qtyIn)}</td>
+                      <td className="border border-gray-300 text-right" style={{ padding: `4px ${hPad}px` }}>{fmtInOut(r.qtyOut)}</td>
+                      <td className="border border-gray-300 text-right font-medium" style={{ padding: `4px ${hPad}px` }}>{fmtBalance(r.runningBalance)}</td>
+                      <td className="border border-gray-300" style={{ padding: `4px ${hPad}px` }}>{r.notes || '—'}</td>
                     </tr>
                   ))
                 )}

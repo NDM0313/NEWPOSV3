@@ -9,12 +9,27 @@ import { allowsDayBookUnifiedEdit } from '../../lib/journalEntryEditPolicy';
 import type { AccountEntry } from './AccountsDashboard';
 import { useSubmitLock } from '../../contexts/LoadingContext';
 import { SaveBlockingOverlay } from '../common/SaveBlockingOverlay';
+import { DateTimeInputField } from '../shared/DateTimePicker';
+import { localNowDateTimeString } from '../../utils/localDate';
 
 interface Props {
   entry: AccountEntry;
   companyId: string;
   onClose: () => void;
   onSuccess: () => void;
+}
+
+function toDateTimeLocalValue(datePart: string, eventTimestamp?: string | null): string {
+  const date = String(datePart || '').slice(0, 10);
+  if (!date) return localNowDateTimeString();
+  if (datePart.includes('T')) return datePart.slice(0, 16);
+  const ts = eventTimestamp ? new Date(eventTimestamp) : null;
+  if (ts && !Number.isNaN(ts.getTime())) {
+    const h = String(ts.getHours()).padStart(2, '0');
+    const m = String(ts.getMinutes()).padStart(2, '0');
+    return `${date}T${h}:${m}`;
+  }
+  return `${date}T${localNowDateTimeString().slice(11, 16)}`;
 }
 
 export function EntryEditSheet({ entry, companyId, onClose, onSuccess }: Props) {
@@ -100,7 +115,7 @@ export function EntryEditSheet({ entry, companyId, onClose, onSuccess }: Props) 
       }
 
       // 4) Set default form values
-      setPaymentDate(entry.date?.slice(0, 10) || '');
+      setPaymentDate(toDateTimeLocalValue(entry.date || '', entry.createdAt));
       setAmount(entry.amount.toString());
       setNotes(entry.description || '');
 
@@ -121,7 +136,7 @@ export function EntryEditSheet({ entry, companyId, onClose, onSuccess }: Props) 
           setNotes(pRow.notes || entry.description || '');
           setDirection(pRow.direction === 'in' ? 'received' : 'paid');
           if (pRow.payment_date) {
-            setPaymentDate(String(pRow.payment_date).slice(0, 10));
+            setPaymentDate(toDateTimeLocalValue(String(pRow.payment_date), entry.createdAt));
           }
 
           // ── KEY FIX: always pre-select the saved account ──
@@ -223,7 +238,7 @@ export function EntryEditSheet({ entry, companyId, onClose, onSuccess }: Props) 
       };
 
       await updateTransaction(companyId, syntheticDetail, {
-        paymentDate,
+        paymentDate: paymentDate.slice(0, 10),
         amount: numAmount,
         reference,
         notes,
@@ -271,16 +286,18 @@ export function EntryEditSheet({ entry, companyId, onClose, onSuccess }: Props) 
               </div>
             )}
 
-            <div>
-              <label className="block text-xs font-medium text-[#9CA3AF] mb-1">Date</label>
-              <input
-                type="date"
-                value={paymentDate}
-                onChange={(e) => setPaymentDate(e.target.value)}
-                className="w-full bg-[#1F2937] border border-[#374151] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#6366F1]"
-                disabled={saving}
-              />
-            </div>
+            <DateTimeInputField
+              label="Date"
+              value={
+                paymentDate.includes('T')
+                  ? paymentDate
+                  : paymentDate
+                    ? `${paymentDate}T${localNowDateTimeString().slice(11, 16)}`
+                    : localNowDateTimeString()
+              }
+              onChange={setPaymentDate}
+              disabled={saving}
+            />
 
             {!isManualJournal && (
               <div>

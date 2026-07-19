@@ -38,6 +38,7 @@ import { AdjustPriceDialog } from './AdjustPriceDialog';
 import { AdjustStockDialog } from './AdjustStockDialog';
 import { toast } from 'sonner';
 import { formatCurrency } from '@/app/utils/formatCurrency';
+import { rankProductSearchHit, preferExactSkuHits, PRODUCT_SEARCH_RESULT_CAP } from '@/app/utils/productSearchRank';
 import { exportToCSV, exportToExcel, exportToPDF, type ExportData } from '@/app/utils/exportUtils';
 import {
   AlertDialog,
@@ -216,23 +217,21 @@ export const ProductsPage = () => {
     void openLabelDialog(selected);
   };
 
-  // Refresh list when a product is added/updated from GlobalDrawer (no full page reload)
-  useEffect(() => {
-    const refreshAfterStockChange = () => {
-      if (companyId) clearInventoryOverviewCache(companyId);
-      void loadProducts();
-    };
-    window.addEventListener('products-updated', refreshAfterStockChange);
-    window.addEventListener('inventory-updated', refreshAfterStockChange);
-    return () => {
-      window.removeEventListener('products-updated', refreshAfterStockChange);
-      window.removeEventListener('inventory-updated', refreshAfterStockChange);
-    };
-  }, [companyId, loadProducts]);
-
+  // Refresh list when product/inventory events fire — single debounced flight (also covers DATA_INVALIDATED).
   useEffect(() => {
     if (!companyId) return;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleReload = () => {
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        clearInventoryOverviewCache(companyId);
+        void loadProducts();
+      }, 400);
+    };
+    const refreshAfterStockChange = () => scheduleReload();
+    window.addEventListener('products-updated', refreshAfterStockChange);
+    window.addEventListener('inventory-updated', refreshAfterStockChange);
     const onInvalidated = (ev: Event) => {
       const detail = (ev as CustomEvent<DataInvalidationDetail>).detail;
       if (
@@ -250,15 +249,13 @@ export const ProductsPage = () => {
       ) {
         return;
       }
-      if (timer) return;
-      timer = setTimeout(() => {
-        timer = null;
-        void loadProducts();
-      }, 400);
+      scheduleReload();
     };
     window.addEventListener(DATA_INVALIDATED_EVENT, onInvalidated as EventListener);
     return () => {
       if (timer) clearTimeout(timer);
+      window.removeEventListener('products-updated', refreshAfterStockChange);
+      window.removeEventListener('inventory-updated', refreshAfterStockChange);
       window.removeEventListener(DATA_INVALIDATED_EVENT, onInvalidated as EventListener);
     };
   }, [companyId, loadProducts]);
@@ -343,18 +340,24 @@ export const ProductsPage = () => {
   const filteredProducts = useMemo(() => {
     // TASK 1 FIX - If no products loaded, return empty array
     if (products.length === 0) return [];
-    
-    return products.filter(product => {
-      // Search filter (only apply if search term exists)
+
+    let list = products.filter(product => {
+      // Search filter — shared SKU/name ranker (narrow numeric)
       if (searchTerm && searchTerm.trim()) {
-        const search = searchTerm.toLowerCase();
-        const matchesSearch = 
-          product.name.toLowerCase().includes(search) ||
-          product.sku.toLowerCase().includes(search) ||
-          product.category.toLowerCase().includes(search) ||
-          product.brand.toLowerCase().includes(search) ||
-          product.branch.toLowerCase().includes(search);
-        if (!matchesSearch) return false;
+        const term = searchTerm.trim();
+        const ranked = rankProductSearchHit(
+          {
+            name: product.name,
+            sku: product.sku,
+            description: (product as { description?: string }).description,
+          },
+          term,
+        );
+        const catBrandBranch =
+          product.category.toLowerCase().includes(term.toLowerCase())
+          || product.brand.toLowerCase().includes(term.toLowerCase())
+          || product.branch.toLowerCase().includes(term.toLowerCase());
+        if (ranked >= 99 && !catBrandBranch) return false;
       }
 
       // Branch filter (TASK 1 FIX - "all" means no filter)
@@ -381,6 +384,23 @@ export const ProductsPage = () => {
       
       return true;
     });
+
+    if (searchTerm && searchTerm.trim()) {
+      const term = searchTerm.trim();
+      list = [...list].sort((a, b) => {
+        const ra = rankProductSearchHit(a, term);
+        const rb = rankProductSearchHit(b, term);
+        if (ra !== rb) return ra - rb;
+        return String(a.name).localeCompare(String(b.name));
+      });
+      list = preferExactSkuHits(list, term);
+      if (list.length > PRODUCT_SEARCH_RESULT_CAP * 4) {
+        // Catalog page: allow more rows than picker, but still bound noise
+        list = list.slice(0, PRODUCT_SEARCH_RESULT_CAP * 4);
+      }
+    }
+
+    return list;
   }, [products, searchTerm, branchFilter, categoryFilter, brandFilter, typeFilter, statusFilter, stockStatusFilter]);
 
   // Calculate summary

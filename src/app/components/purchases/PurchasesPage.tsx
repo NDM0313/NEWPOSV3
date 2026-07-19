@@ -131,6 +131,8 @@ interface Purchase {
   date: string;
   reference: string;
   location: string;
+  /** Branch UUID for resolving location when name embed was missing. */
+  branchId?: string;
   items: number;
   grandTotal: number;
   paymentDue: number;
@@ -518,19 +520,14 @@ export const PurchasesPage = () => {
       
       // Convert Supabase format to app format
       const convertedPurchases: Purchase[] = data.map((p: any, index: number) => {
-        // 🔒 CLONE FROM SALE PAGE: Resolve branch NAME from branch_id (UI rule: name only, no code, no UUID)
+        // Resolve branch NAME from branch embed or branchMap (never leave UUID as display text)
         let location = '';
         if (p.branch?.name) {
           location = p.branch.name;
         } else if (p.branch_id) {
-          // Always try to resolve from branchMap (even if empty, will be resolved in render)
           const resolved = branchMap.get(p.branch_id);
           if (resolved) {
-            // Extract just the name if branchMap returns "BR-001 | Name" format
             location = resolved.includes('|') ? resolved.split('|').pop()?.trim() || '' : resolved;
-          } else {
-            // If branchMap not loaded yet, store branch_id (will be resolved in render)
-            location = p.branch_id;
           }
         }
         
@@ -541,22 +538,25 @@ export const PurchasesPage = () => {
             draft_no: p.draft_no ?? null,
             order_no: p.order_no ?? null,
           }) || (p.po_no || `PO-${String(index + 1).padStart(3, '0')}`);
+        const itemCount =
+          (Array.isArray(p.items) && p.items.length > 0
+            ? p.items.length
+            : Number(p.items_count) || 0) || 0;
         return {
-          id: index + 1, // Use index-based ID for compatibility with existing UI
-          uuid: p.id, // Store actual Supabase UUID for database operations
+          id: index + 1,
+          uuid: p.id,
           supplierId: (p.supplier_id || p.supplier?.id || '') as string,
           poNo: displayPo,
           supplier: p.supplier?.name || p.supplier_name || 'Unknown Supplier',
           supplierContact: p.supplier?.phone || '',
           date: p.po_date || new Date().toISOString().split('T')[0],
-          // STEP 1 FIX: Reference number from notes field (reference field may not exist in all schemas)
           reference: p.reference || p.notes || '',
           location: location,
-          items: p.items?.length || 0,
+          branchId: p.branch_id || p.branch?.id || undefined,
+          items: itemCount,
           grandTotal: p.total || 0,
           paymentDue: resolveListPaymentDue(p as Record<string, unknown>),
           freightSettlement: (p.freight_settlement === 'courier' ? 'courier' : 'supplier') as 'supplier' | 'courier',
-          // Preserve API status: draft | ordered | received | final | cancelled
           status: (p.status === 'final' ? 'final' : 
                    p.status === 'received' ? 'received' : 
                    p.status === 'ordered' ? 'ordered' : 
@@ -564,11 +564,8 @@ export const PurchasesPage = () => {
                    p.status === 'cancelled' ? 'cancelled' : 
                    'draft') as PurchaseStatus,
           paymentStatus: p.payment_status || 'unpaid',
-          // STEP 3 FIX: Added By - show user name from created_by_user join or Purchase.createdBy
           addedBy: p.created_by_user?.full_name || p.created_by_user?.email || (p as any).createdBy || 'System',
-          // Attachments from purchase
           attachments: p.attachments || null,
-          // 🔒 LOCK CHECK: hasReturn and returnCount from API
           hasReturn: p.hasReturn || false,
           returnCount: p.returnCount || 0,
         };
@@ -588,22 +585,27 @@ export const PurchasesPage = () => {
   useEffect(() => {
     if (contextPurchases.length > 0) {
       const convertedPurchases: Purchase[] = contextPurchases.map((p: any, index: number) => {
-        // 🔒 CLONE FROM SALE PAGE: UI Rule: Show branch NAME only (never UUID, never code)
-        // p.location from context should already be branch name, but resolve if needed
+        // UI Rule: Show branch NAME only (never UUID, never code)
         let locationDisplay = p.location || '';
+
+        // Empty location: resolve from branchId via branchMap (Sales pattern)
+        if (!locationDisplay && branchMap.size > 0 && p.branchId) {
+          const resolved = branchMap.get(p.branchId);
+          if (resolved) {
+            locationDisplay = resolved.includes('|') ? resolved.split('|').pop()?.trim() || '' : resolved;
+          }
+        }
         
         // Safety check: if somehow UUID got through, try to resolve it
         const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(locationDisplay);
         if (isUUID) {
           const resolved = branchMap.get(locationDisplay);
-          // Extract just the name if branchMap returns "BR-001 | Name" format
           if (resolved && resolved.includes('|')) {
             locationDisplay = resolved.split('|').pop()?.trim() || '';
           } else {
             locationDisplay = resolved || '';
           }
         }
-        // Strip code prefix if present (e.g., "BR-001 | Name" -> "Name")
         if (locationDisplay.includes('|')) {
           locationDisplay = locationDisplay.split('|').pop()?.trim() || '';
         }
@@ -626,14 +628,13 @@ export const PurchasesPage = () => {
           supplier: p.supplierName || 'Unknown Supplier',
           supplierContact: p.contactNumber || '',
           date: p.date || new Date().toISOString().split('T')[0],
-          // STEP 1 FIX: Reference number from notes field
           reference: p.notes || '',
           location: locationDisplay,
-          items: p.itemsCount || 0,
+          branchId: p.branchId || undefined,
+          items: p.itemsCount ?? p.items?.length ?? 0,
           grandTotal: p.total || 0,
           paymentDue: resolveListPaymentDue(p as Record<string, unknown>),
           freightSettlement: (p.freightSettlement === 'courier' ? 'courier' : 'supplier') as 'supplier' | 'courier',
-          // Preserve API status for tabs: draft | ordered | received | final
           status: (p.status === 'final' ? 'final' : 
                    p.status === 'received' ? 'received' : 
                    p.status === 'ordered' ? 'ordered' : 
@@ -641,9 +642,7 @@ export const PurchasesPage = () => {
                    p.status === 'cancelled' ? 'cancelled' : 
                    'draft') as PurchaseStatus,
           paymentStatus: p.paymentStatus || 'unpaid',
-          // STEP 3 FIX: Added By - show user name from created_by_user join (context purchases)
           addedBy: (p as any).createdBy || p.created_by_user?.full_name || p.created_by_user?.email || 'System',
-          // Attachments from purchase
           attachments: p.attachments || null,
         };
       });
@@ -657,21 +656,23 @@ export const PurchasesPage = () => {
     }
   }, [contextPurchasesSyncKey, contextLoading, companyId, loadPurchases, branchMap]);
 
-  // Listen for purchase saved event to refresh list
+  // paymentAdded only — create/update refresh via DATA_INVALIDATED (emitPurchaseInvalidation). Avoid double load.
   useEffect(() => {
-    const handlePurchaseSaved = () => {
-      void refreshPurchases();
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleRefresh = () => {
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        void refreshPurchases();
+      }, 220);
     };
-    const handlePaymentAdded = () => {
-      void refreshPurchases();
-    };
-    window.addEventListener('purchaseSaved', handlePurchaseSaved);
+    const handlePaymentAdded = () => scheduleRefresh();
     window.addEventListener('paymentAdded', handlePaymentAdded);
     return () => {
-      window.removeEventListener('purchaseSaved', handlePurchaseSaved);
+      if (timer) clearTimeout(timer);
       window.removeEventListener('paymentAdded', handlePaymentAdded);
     };
-  }, [loadPurchases, refreshPurchases]);
+  }, [refreshPurchases]);
 
   useEffect(() => {
     if (!companyId) return;
@@ -790,22 +791,30 @@ export const PurchasesPage = () => {
     [companyId, branchId, user?.id, accounting, reloadPurchaseReturnsTable, refreshPurchases]
   );
 
-  // 🔒 CLONE FROM SALE PAGE: Re-resolve locations when branchMap is updated
+  // Re-resolve locations when branchMap is updated (UUID or empty + branchId)
   useEffect(() => {
     if (branchMap.size > 0 && purchases.length > 0) {
-      // Re-resolve locations for purchases that might have UUIDs
       const updatedPurchases = purchases.map(p => {
-        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(p.location);
+        let locationText = p.location || '';
+        if (!locationText && p.branchId && branchMap.has(p.branchId)) {
+          const resolved = branchMap.get(p.branchId) || '';
+          locationText = resolved.includes('|') ? resolved.split('|').pop()?.trim() || '' : resolved;
+        }
+        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(locationText);
         if (isUUID) {
-          const resolved = branchMap.get(p.location);
+          const resolved = branchMap.get(locationText);
           if (resolved) {
-            const locationName = resolved.includes('|') ? resolved.split('|').pop()?.trim() || '' : resolved;
-            return { ...p, location: locationName };
+            locationText = resolved.includes('|') ? resolved.split('|').pop()?.trim() || '' : resolved;
           }
+        }
+        if (locationText.includes('|')) {
+          locationText = locationText.split('|').pop()?.trim() || '';
+        }
+        if (locationText !== p.location) {
+          return { ...p, location: locationText };
         }
         return p;
       });
-      // Only update if locations actually changed
       const hasChanges = updatedPurchases.some((p, i) => p.location !== purchases[i].location);
       if (hasChanges) {
         setPurchases(updatedPurchases);
@@ -1108,23 +1117,25 @@ export const PurchasesPage = () => {
           </div>
         );
       case 'location': {
-        // 🔒 CLONE FROM SALE PAGE: UI Rule: Show branch NAME only (not code, never UUID)
-        // purchase.location now contains branch name from context (or empty)
-        // Fallback to branchMap for old data that might still have UUID
+        // UI Rule: Show branch NAME only (not code, never UUID)
         let locationText = purchase.location || '';
+
+        if (!locationText && branchMap.size > 0 && purchase.branchId) {
+          if (branchMap.has(purchase.branchId)) {
+            const resolved = branchMap.get(purchase.branchId) || '';
+            locationText = resolved.includes('|') ? resolved.split('|').pop()?.trim() || '' : resolved;
+          }
+        }
         
-        // If it looks like a UUID, try branchMap fallback, then show '—'
         const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(locationText);
         if (isUUID) {
           const resolved = branchMap.get(locationText);
-          // Extract just the name if branchMap returns "BR-001 | Name" format
           if (resolved && resolved.includes('|')) {
             locationText = resolved.split('|').pop()?.trim() || '';
           } else {
             locationText = resolved || '';
           }
         }
-        // If it contains '|' (old format), extract just the name
         if (locationText.includes('|')) {
           locationText = locationText.split('|').pop()?.trim() || '';
         }

@@ -964,14 +964,14 @@ export interface RepairQueueSnapshot {
 
 /** Repair queue dry-run snapshot (Phase D) — preview only. Expense mismatch search is on-demand in Repair Queue tab. */
 export async function loadRepairQueueSnapshot(companyId: string): Promise<RepairQueueSnapshot> {
-  const [issues, numberingRows] = await Promise.all([
+  const [issues, numberingResult] = await Promise.all([
     listIntegrityIssues(companyId, { hideResolved: true, limit: 100 }),
     numberingMaintenanceService.analyze(companyId),
   ]);
   return {
     issues,
     issuePreviews: issues.slice(0, 50).map(integrityIssueToDryRunPreview),
-    numberingRows: buildNumberingDryRunPreviews(numberingRows),
+    numberingRows: buildNumberingDryRunPreviews(numberingResult.rows),
     loadedAt: new Date().toISOString(),
   };
 }

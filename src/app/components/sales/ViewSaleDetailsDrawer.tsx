@@ -878,14 +878,17 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                         <span className="text-foreground">{new Date(sale.updatedAt).toLocaleString()}</span>
                       </div>
                     )}
-                    {((sale as any).is_studio || (sale.invoiceNo || '').startsWith('STD-') || (sale.invoiceNo || '').startsWith('ST-')) && (() => {
-                      const studioDue = (sale as any).deadline || getStudioDeadlineFromNotes((sale as any).notes);
-                      return studioDue ? (
+                    {(() => {
+                      const due = (sale as any).deadline || getStudioDeadlineFromNotes((sale as any).notes);
+                      const isStudio = (sale as any).is_studio || (sale.invoiceNo || '').startsWith('STD-') || (sale.invoiceNo || '').startsWith('ST-');
+                      const isOrder = String(sale.status || '').toLowerCase() === 'order';
+                      if (!due || (!isStudio && !isOrder)) return null;
+                      return (
                         <div className="flex justify-between">
-                          <span className="text-xs text-muted-foreground">Studio / Due Date</span>
-                          <span className="text-foreground">{new Date(studioDue).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                          <span className="text-xs text-muted-foreground">{isStudio ? 'Studio / Due Date' : 'Delivery Date'}</span>
+                          <span className="text-foreground">{new Date(due).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
                         </div>
-                      ) : null;
+                      );
                     })()}
                     {(((sale as any).hasReturn || (sale as any).returnDue > 0 || saleReturns.length > 0) || loadingSaleReturns) && (() => {
                       const finalReturns = saleReturns.filter((r: any) => String(r.status || '').toLowerCase() === 'final');

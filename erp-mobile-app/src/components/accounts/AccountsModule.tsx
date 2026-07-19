@@ -48,7 +48,7 @@ import {
   shouldAcceptMobileInvalidation,
   type MobileInvalidationDetail,
 } from '../../lib/dataInvalidationBus';
-import { localNowDateString } from '../../utils/localDate';
+import { localNowDateTimeString } from '../../utils/localDate';
 
 interface AccountsModuleProps {
   onBack: () => void;
@@ -185,7 +185,7 @@ export function AccountsModule({
         if (target === 'general-entry') {
           const seed = buildGeneralEntrySeedFromJournalLines(lines, {
             amount: entry.amount,
-            date: localNowDateString(),
+            date: localNowDateTimeString(),
           });
           setGeneralEntrySeed(seed);
           setView('general-entry');
@@ -193,7 +193,7 @@ export function AccountsModule({
         }
         const tSeed = buildTransferSeedFromJournalLines(lines, {
           amount: entry.amount,
-          date: localNowDateString(),
+          date: localNowDateTimeString(),
         });
         setTransferSeed(tSeed);
         setView('account-transfer');

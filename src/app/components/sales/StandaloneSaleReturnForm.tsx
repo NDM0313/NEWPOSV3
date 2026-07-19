@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, Save, Plus, Trash2, Package, Loader2, AlertCircle, DollarSign, Building2, Wallet, UserCheck, ChevronDown, Check } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
-import { CalendarDatePicker } from '../ui/CalendarDatePicker';
+import { DatePicker } from '../ui/DatePicker';
 import {
   Dialog,
   DialogContent,
@@ -467,7 +467,14 @@ export const StandaloneSaleReturnForm: React.FC<StandaloneSaleReturnFormProps> =
               </div>
               <div>
                 <Label className="text-muted-foreground text-xs">Return Date</Label>
-                <CalendarDatePicker value={returnDate} onChange={(d) => d && setReturnDate(d)} className="bg-muted border-border text-foreground h-9 mt-1 w-full" />
+                <DatePicker
+                  value={format(returnDate, 'yyyy-MM-dd')}
+                  onChange={(v) => {
+                    if (!v) return;
+                    const d = parseISO(v);
+                    if (isValid(d)) setReturnDate(d);
+                  }}
+                />
               </div>
               <div>
                 <Label className="text-muted-foreground text-xs">Reason (optional)</Label>

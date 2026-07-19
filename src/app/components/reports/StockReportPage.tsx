@@ -381,6 +381,11 @@ export const StockReportPage = () => {
             showFooter={tabularPrint.showFooter}
             compact={filteredRows.length <= 50}
             fontSize={tabularPrint.fontSize}
+            dataListFontSize={tabularPrint.dataListFontSize}
+            tableHeaderFontSize={tabularPrint.tableHeaderFontSize}
+            summaryFontSize={tabularPrint.summaryFontSize}
+            columnPaddingPx={tabularPrint.columnPaddingPx}
+            showCurrencySymbol={tabularPrint.showCurrencySymbol}
             fontFamily={tabularPrint.fontFamily}
             margins={tabularPrint.margins}
             orientation={printOrientation}

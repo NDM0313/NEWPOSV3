@@ -64,13 +64,35 @@ const PROFESSIONAL_CATEGORIES = [
 type OperationalRole = typeof OPERATIONAL_ROLES[number]['value'];
 type ProfessionalCategory = typeof PROFESSIONAL_CATEGORIES[number]['value'];
 
+function deriveProfessionalCategoryFromParent(parent: {
+  type?: string;
+  code?: string;
+  name?: string;
+}): ProfessionalCategory {
+  const cats: ProfessionalCategory[] = ['asset', 'liability', 'equity', 'revenue', 'expense'];
+  for (const c of cats) {
+    if (accountMatchesProfessionalCategory(parent, c)) return c;
+  }
+  return 'asset';
+}
+
 interface AddAccountDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: () => void;
+  /** When opening from "Add Child Account", force Professional tab. */
+  initialTab?: 'operational' | 'professional';
+  /** Prefill parent account (Professional create under this row). */
+  initialParentId?: string | null;
 }
 
-export const AddAccountDrawer = ({ isOpen, onClose, onSuccess }: AddAccountDrawerProps) => {
+export const AddAccountDrawer = ({
+  isOpen,
+  onClose,
+  onSuccess,
+  initialTab,
+  initialParentId = null,
+}: AddAccountDrawerProps) => {
   const { companyId } = useSupabase();
   const [activeTab, setActiveTab] = useState<'operational' | 'professional'>('operational');
   const [existingAccounts, setExistingAccounts] = useState<any[]>([]);
@@ -95,6 +117,32 @@ export const AddAccountDrawer = ({ isOpen, onClose, onSuccess }: AddAccountDrawe
 
   const [isSaving, setIsSaving] = useState(false);
 
+  /** Reset form each time the drawer opens; apply child-create prefill when provided. */
+  useEffect(() => {
+    if (!isOpen) {
+      setOpeningSideTouched(false);
+      setOpeningSide(naturalOpeningSide(mapDbAccountTypeToOpeningCategory('bank')));
+      return;
+    }
+    setAccountName('');
+    setAccountCode('');
+    setNotes('');
+    setOpeningBalance(0);
+    setOpeningBalanceDate(new Date().toISOString().slice(0, 10));
+    setOpeningSideTouched(false);
+    setIsActive(true);
+    setOperationalRole('bank');
+    if (initialParentId) {
+      setActiveTab('professional');
+      setParentId(initialParentId);
+      setProfessionalCategory('asset');
+    } else {
+      setActiveTab(initialTab ?? 'operational');
+      setParentId(null);
+      setProfessionalCategory('asset');
+    }
+  }, [isOpen, initialParentId, initialTab]);
+
   useEffect(() => {
     if (isOpen && companyId) {
       setLoadingAccounts(true);
@@ -105,18 +153,20 @@ export const AddAccountDrawer = ({ isOpen, onClose, onSuccess }: AddAccountDrawe
     }
   }, [isOpen, companyId]);
 
+  /** After accounts load, derive category from the prefilled parent (so Parent select filters correctly). */
+  useEffect(() => {
+    if (!isOpen || !initialParentId || !existingAccounts.length) return;
+    const parent = existingAccounts.find((a) => a.id === initialParentId);
+    if (!parent) return;
+    setProfessionalCategory(deriveProfessionalCategoryFromParent(parent));
+    setParentId(initialParentId);
+  }, [isOpen, initialParentId, existingAccounts]);
+
   useEffect(() => {
     if (openingSideTouched) return;
     const typeKey = activeTab === 'operational' ? operationalRole : professionalCategory;
     setOpeningSide(naturalOpeningSide(mapDbAccountTypeToOpeningCategory(typeKey)));
   }, [activeTab, operationalRole, professionalCategory, openingSideTouched]);
-
-  useEffect(() => {
-    if (!isOpen) {
-      setOpeningSideTouched(false);
-      setOpeningSide(naturalOpeningSide(mapDbAccountTypeToOpeningCategory('bank')));
-    }
-  }, [isOpen]);
 
   /** Suggest next child code when parent is chosen and code field is empty. */
   useEffect(() => {
@@ -471,13 +521,24 @@ export const AddAccountDrawer = ({ isOpen, onClose, onSuccess }: AddAccountDrawe
                     </SelectTrigger>
                     <SelectContent className="bg-muted border-border text-foreground max-h-[min(60vh,20rem)]">
                       <SelectItem value="__none__">None (top-level)</SelectItem>
-                      {filterManualCoaParentCandidates(existingAccounts, (a) =>
-                        accountMatchesProfessionalCategory(a, professionalCategory)
-                      ).map((a) => (
+                      {(() => {
+                        const candidates = filterManualCoaParentCandidates(existingAccounts, (a) =>
+                          accountMatchesProfessionalCategory(a, professionalCategory)
+                        );
+                        const selected = parentId
+                          ? existingAccounts.find((a) => a.id === parentId)
+                          : null;
+                        const options =
+                          selected && !candidates.some((a) => a.id === selected.id)
+                            ? [selected, ...candidates]
+                            : candidates;
+                        return options.map((a) => (
                           <SelectItem key={a.id} value={a.id}>
-                            {a.code ? `${a.code} – ` : ''}{a.name}
+                            {a.code ? `${a.code} – ` : ''}
+                            {a.name}
                           </SelectItem>
-                        ))}
+                        ));
+                      })()}
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">Sub-accounts must have the same category as the parent.</p>

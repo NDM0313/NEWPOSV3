@@ -869,10 +869,9 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setEnablePackingState(false);
   };
 
-  // Load enable_packing when company is set; ensure explicit inventory_settings row (negative stock default false)
+  // enable_packing: SettingsContext inventorySettings owns the flag; keep ensure* bootstrap only.
   useEffect(() => {
     if (companyId) {
-      loadEnablePacking(companyId);
       settingsService.ensureDefaultInventorySettings(companyId).catch(() => {
         /* RLS or missing settings table — getAllowNegativeStock still defaults to false */
       });

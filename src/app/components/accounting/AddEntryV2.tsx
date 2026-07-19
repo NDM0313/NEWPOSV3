@@ -126,7 +126,7 @@ export interface AddEntryV2Props {
   initialFromAccountId?: string;
   /** Journal voucher / transfer deep link: pre-select debit (IN) account. */
   initialToAccountId?: string;
-  /** Called only after a successful save, before `onClose`. */
+  /** Called after a successful save; runs async after the dialog closes. */
   onRecorded?: () => void | Promise<void>;
   /** Edit existing General Entry (pure journal) — opens form pre-filled. */
   editJournalEntryId?: string;
@@ -887,14 +887,16 @@ export function AddEntryV2({
         entryType === 'supplier_payment' ||
         entryType === 'worker_payment' ||
         entryType === 'courier_payment';
-      if (!isEditMode) {
-        await loadFormData({ silent: true });
-      }
       if (partyPaymentFlow) {
         dispatchContactBalancesRefresh(companyId);
       }
-      await Promise.resolve(onRecorded?.());
+      setSaving(false);
       onClose();
+      void Promise.resolve(onRecorded?.()).catch((err: unknown) => {
+        console.error('[AddEntryV2] onRecorded failed after save', err);
+        toast.error('Entry saved, but the screen could not refresh automatically.');
+      });
+      return;
     } catch (e: any) {
       toast.error(e?.message || 'Failed to save');
     } finally {

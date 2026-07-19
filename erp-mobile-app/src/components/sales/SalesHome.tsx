@@ -72,6 +72,7 @@ import { mergeCustomerBillRefIntoNotes } from '../../utils/saleNotesComposition'
 import { printReceiptLines } from '../../services/printService';
 import { getEffectivePrinterSettings } from '../../api/settings';
 import { AttachmentsSection } from '../shared/AttachmentsSection';
+import { DateInputField } from '../shared/DateTimePicker';
 import { normalizeAttachments } from '../../lib/normalizeAttachments';
 import { SaleAddAttachmentsSheet } from './SaleAddAttachmentsSheet';
 import { SaleAttachmentEditor } from './SaleAttachmentEditor';
@@ -80,11 +81,13 @@ import { canViewSaleBalances, maskMoney } from '../../utils/balancePrivacy';
 import {
   isLikelyPosSaleRow,
   isStudioSaleRow,
+  isOrderSaleRow,
   saleListTypeLabel,
   type SaleListTypeFilter,
 } from '../../lib/saleTypeClassification';
 import * as rentalsApi from '../../api/rentals';
 import type { RentalListItem } from '../../api/rentals';
+import { filterAndRankProducts, productMatchesSearch } from '../../lib/productSearchRank';
 import { ViewRentalDetails } from '../rental/ViewRentalDetails';
 import {
   saleToUnifiedRow,
@@ -127,6 +130,8 @@ type SaleRecord = {
   date: string;
   /** From DB join with users; not hardcoded */
   created_by_name: string;
+  /** Delivery / studio deadline (YYYY-MM-DD) when present */
+  deadline?: string | null;
   /** Studio worker cost; grand_total = amount + studio_charges */
   studio_charges?: number;
   grand_total?: number;
@@ -159,6 +164,7 @@ function mapEnrichedRowToSaleRecord(s: Record<string, unknown>): SaleRecord {
     date: dateStr,
     created_by_name:
       (s.created_by_name as string) || (createdByUser?.full_name as string) || '',
+    deadline: (s.deadline as string) || null,
     studio_charges: studioCharges,
     grand_total: grandTotal,
     shipment_status: (s.shipment_status as string) || undefined,
@@ -197,16 +203,18 @@ export function SalesHome({
   const saleTypeFilterTabs = useMemo((): SaleListTypeFilter[] => {
     const tabs: SaleListTypeFilter[] = ['all'];
     if (studioModuleOn) tabs.push('studio');
-    tabs.push('pos', 'regular', 'rental');
+    tabs.push('pos', 'regular', 'order', 'rental');
     return tabs;
   }, [studioModuleOn]);
 
   const saleTypeTabGridClass =
-    saleTypeFilterTabs.length >= 5
-      ? 'grid-cols-5'
-      : saleTypeFilterTabs.length === 4
-        ? 'grid-cols-4'
-        : 'grid-cols-3';
+    saleTypeFilterTabs.length >= 6
+      ? 'grid-cols-6'
+      : saleTypeFilterTabs.length >= 5
+        ? 'grid-cols-5'
+        : saleTypeFilterTabs.length === 4
+          ? 'grid-cols-4'
+          : 'grid-cols-3';
 
   const listBranchScope = useMemo(
     (): ListBranchScope =>
@@ -441,6 +449,14 @@ export function SalesHome({
         <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-medium bg-pink-500/20 text-pink-300 border border-pink-500/40">
           <Package className="w-3 h-3" />
           Rental
+        </span>
+      );
+    }
+    if (row.saleRaw && isOrderSaleRow(row.saleRaw)) {
+      return (
+        <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-medium bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+          <Package className="w-3 h-3" />
+          Order
         </span>
       );
     }
@@ -1128,11 +1144,9 @@ export function SalesHome({
 
   const filteredEditCatalog = useMemo(() => {
     if (!editSale) return [];
-    const q = productSearch.trim().toLowerCase();
+    const q = productSearch.trim();
     if (!q) return productCatalog.slice(0, 35);
-    return productCatalog
-      .filter((p) => p.name.toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q))
-      .slice(0, 45);
+    return filterAndRankProducts(productCatalog, q, productMatchesSearch).slice(0, 45);
   }, [editSale, productSearch, productCatalog]);
 
   const editLineSubtotal = editLineItems.reduce((s, r) => {
@@ -1239,7 +1253,7 @@ export function SalesHome({
       </button>
       <button onClick={() => openAttachmentSheet(sale)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
         <Paperclip className="w-5 h-5 text-[#3B82F6]" />
-        {normalizeAttachments(sale.raw.attachments).length > 0 ? 'Add attachments' : 'Add attachment'}
+        {normalizeAttachments(sale.raw.attachments).length > 0 ? 'Update attachments' : 'Add attachments'}
       </button>
       <div className="border-t border-[#374151]" />
       <button onClick={() => handleEdit(sale)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
@@ -1378,6 +1392,14 @@ export function SalesHome({
                 <span className="text-[#9CA3AF]">Invoice Date:</span>
                 <span className="text-white">{selectedSale.date}</span>
               </div>
+              {(selectedSale.deadline || (selectedSale.raw.deadline as string)) && (
+                <div className="flex justify-between">
+                  <span className="text-[#9CA3AF]">Delivery Date:</span>
+                  <span className="text-cyan-300">
+                    {String(selectedSale.deadline || selectedSale.raw.deadline).slice(0, 10)}
+                  </span>
+                </div>
+              )}
               {selectedSale.created_by_name && (
                 <div className="flex justify-between">
                   <span className="text-[#9CA3AF]">Created by:</span>
@@ -1817,6 +1839,7 @@ export function SalesHome({
                 credit_balance: row.credit_balance,
                 date: row.date,
                 created_by_name: row.created_by_name,
+                deadline: (row.saleRaw?.deadline as string) || null,
                 studio_charges: row.studio_charges,
                 grand_total: row.grand_total,
                 shipment_status: row.shipment_status,
@@ -1866,6 +1889,11 @@ export function SalesHome({
                     <Calendar className="w-3.5 h-3.5 shrink-0" />
                     <span>{sale.date}</span>
                   </div>
+                  {sale.deadline && (
+                    <p className="text-xs text-cyan-300/90 mt-0.5">
+                      Delivery: {String(sale.deadline).slice(0, 10)}
+                    </p>
+                  )}
 
                   <div className="border-t border-[#374151] my-3" aria-hidden="true" />
 
@@ -2160,15 +2188,7 @@ export function SalesHome({
                 />
                 {editCustomersLoading && <p className="text-[10px] text-[#9CA3AF] mt-1">Loading customers…</p>}
               </div>
-              <div>
-                <label className="block text-xs text-[#9CA3AF] mb-1">Invoice Date</label>
-                <input
-                  type="date"
-                  value={editDate}
-                  onChange={(e) => setEditDate(e.target.value)}
-                  className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm"
-                />
-              </div>
+              <DateInputField label="Invoice Date" value={editDate} onChange={setEditDate} />
 
               {(showDiscountField || Number(editSale.raw.discount_amount ?? 0) > 0) && (
                 <div>

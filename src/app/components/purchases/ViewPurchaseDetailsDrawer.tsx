@@ -60,7 +60,8 @@ import { Separator } from "../ui/separator";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
-import { CalendarDatePicker } from "../ui/CalendarDatePicker";
+import { DatePicker } from "../ui/DatePicker";
+import { format, parseISO, isValid } from 'date-fns';
 import { cn, formatBoxesPieces } from "../ui/utils";
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { useFormatDate } from '@/app/hooks/useFormatDate';
@@ -1283,10 +1284,13 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <Label className="text-gray-200 mb-2 block">Return Date *</Label>
-                      <CalendarDatePicker 
-                        value={returnDate} 
-                        onChange={(d) => d && setReturnDate(d)} 
-                        className="bg-muted border-border text-foreground" 
+                      <DatePicker
+                        value={format(returnDate, 'yyyy-MM-dd')}
+                        onChange={(v) => {
+                          if (!v) return;
+                          const d = parseISO(v);
+                          if (isValid(d)) setReturnDate(d);
+                        }}
                       />
                     </div>
                     <div>

@@ -25,6 +25,8 @@ import { notifyAccountingEntriesChanged } from '@/app/lib/accountingInvalidate';
 import { dispatchAccountingEditCommitted } from '@/app/lib/unifiedTransactionEdit';
 import { resolvePaymentIdForMutation } from '@/app/lib/paymentRowEditRouting';
 import { rebuildManualReceiptFifoAllocations, rebuildManualSupplierFifoAllocations } from '@/app/services/paymentAllocationService';
+import { CustomerSelector } from '@/app/components/accounting/CustomerLedgerComponents/CustomerSelector';
+import { contactService, type Contact } from '@/app/services/contactService';
 import {
   syncExpenseDateByPaymentId,
   syncJournalEntryDateByPaymentId,
@@ -247,6 +249,19 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
   const prevOpenRef = React.useRef(false);
   /** After user taps Cash/Bank/Wallet in edit mode, stop forcing the saved payment_account_id + inferred method. */
   const userPickedPaymentMethodRef = React.useRef(false);
+  /** Edit-only: allow changing customer on manual_receipt (not sale-linked). */
+  const [editReferenceType, setEditReferenceType] = useState<string | null>(null);
+  const [editPartyContact, setEditPartyContact] = useState<Contact | null>(null);
+  const [originalEditPartyId, setOriginalEditPartyId] = useState<string | null>(null);
+
+  const canChangeManualReceiptCustomer =
+    Boolean(editMode) &&
+    context === 'customer' &&
+    !referenceId &&
+    (editReferenceType === 'manual_receipt' || editReferenceType === 'on_account');
+
+  const effectiveEntityId = (editPartyContact?.id || entityId || '').trim() || undefined;
+  const effectiveEntityName = (editPartyContact?.name || entityName || '').trim() || entityName;
 
   // Reset form when dialog opens; set attachments from initialAttachmentFiles only when opening (so purchase-form files are not overwritten)
   React.useEffect(() => {
@@ -316,9 +331,18 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
       }
       if (justOpened) {
         setAttachments(initialAttachmentFiles?.length ? [...initialAttachmentFiles] : []);
+        userPickedPaymentMethodRef.current = false;
+        if (!(editMode && paymentToEdit)) {
+          setEditReferenceType(null);
+          setEditPartyContact(null);
+          setOriginalEditPartyId(null);
+        }
       }
     } else {
       prevOpenRef.current = false;
+      setEditReferenceType(null);
+      setEditPartyContact(null);
+      setOriginalEditPartyId(null);
     }
   }, [
     isOpen,
@@ -339,6 +363,72 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
   React.useEffect(() => {
     if (!isOpen) userPickedPaymentMethodRef.current = false;
   }, [isOpen]);
+
+  // Load payment party + reference_type so manual_receipt edits can change customer safely.
+  React.useEffect(() => {
+    if (!isOpen || !editMode || !paymentToEdit?.id || !companyId) return;
+    let cancelled = false;
+    (async () => {
+      const paymentId = resolvePaymentIdForMutation({
+        id: paymentToEdit.id,
+        parentPaymentId: paymentToEdit.parentPaymentId,
+      });
+      const { data } = await supabase
+        .from('payments')
+        .select('contact_id, reference_type, reference_id')
+        .eq('id', paymentId)
+        .eq('company_id', companyId)
+        .maybeSingle();
+      if (cancelled || !data) return;
+      const rt = String((data as { reference_type?: string }).reference_type || '').toLowerCase();
+      setEditReferenceType(rt);
+      const cid = String(
+        (data as { contact_id?: string | null }).contact_id ||
+          (rt === 'manual_receipt' || rt === 'on_account'
+            ? (data as { reference_id?: string | null }).reference_id
+            : null) ||
+          entityId ||
+          '',
+      ).trim();
+      setOriginalEditPartyId(cid || null);
+      if (!cid) {
+        setEditPartyContact(null);
+        return;
+      }
+      try {
+        const contacts = await contactService.getAllContacts(companyId);
+        if (cancelled) return;
+        const found =
+          (contacts || []).find(
+            (c) => c.id === cid && (c.type === 'customer' || c.type === 'both'),
+          ) ||
+          (contacts || []).find((c) => c.id === cid) ||
+          null;
+        if (found) {
+          setEditPartyContact(found);
+        } else {
+          setEditPartyContact({
+            id: cid,
+            name: entityName || 'Customer',
+            company_id: companyId,
+            type: 'customer',
+          } as Contact);
+        }
+      } catch {
+        if (!cancelled) {
+          setEditPartyContact({
+            id: cid,
+            name: entityName || 'Customer',
+            company_id: companyId,
+            type: 'customer',
+          } as Contact);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, editMode, paymentToEdit?.id, paymentToEdit?.parentPaymentId, companyId, entityId, entityName]);
 
   // COA only when dialog opens — avoid full journal reload (refreshEntries) on every payment dialog.
   React.useEffect(() => {
@@ -617,6 +707,11 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
       toast.error('Payment amount must be greater than zero.');
       return;
     }
+
+    if (canChangeManualReceiptCustomer && !String(effectiveEntityId || '').trim()) {
+      toast.error('Select a customer for this receipt.');
+      return;
+    }
     
     if (referenceId && amount > effectiveOutstanding) {
       toast.error(`Payment amount cannot exceed outstanding amount of ${effectiveOutstanding.toLocaleString()}`);
@@ -743,10 +838,11 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
           let preManualBranch: string | null = null;
           let preManualAccountId: string | null = null;
           let preManualReferenceType: string | null = null;
+          let preManualContactId: string | null = null;
           if (editMode && paymentToEdit) {
             const { data: preRow } = await supabase
               .from('payments')
-              .select('amount, branch_id, payment_account_id, reference_type')
+              .select('amount, branch_id, payment_account_id, reference_type, contact_id, reference_id')
               .eq('id', paymentIdForUpdate)
               .single();
             if (preRow) {
@@ -755,8 +851,61 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
               const pa = (preRow as { payment_account_id?: string | null }).payment_account_id;
               preManualAccountId = pa && String(pa).trim() ? String(pa) : null;
               preManualReferenceType = String((preRow as { reference_type?: string }).reference_type || '').toLowerCase();
+              preManualContactId = String(
+                (preRow as { contact_id?: string | null }).contact_id ||
+                  (preManualReferenceType === 'manual_receipt' || preManualReferenceType === 'on_account'
+                    ? (preRow as { reference_id?: string | null }).reference_id
+                    : null) ||
+                  '',
+              ).trim() || null;
             }
           }
+
+          // Party change first (AR transfer on pre-edit amount), then amount delta on the new party.
+          const newPartyId = String(effectiveEntityId || '').trim();
+          if (
+            editMode &&
+            companyId &&
+            context === 'customer' &&
+            (preManualReferenceType === 'manual_receipt' || preManualReferenceType === 'on_account') &&
+            !referenceId &&
+            preManualContactId &&
+            newPartyId &&
+            preManualContactId !== newPartyId
+          ) {
+            const { tracePaymentEditFlow } = await import('@/app/lib/paymentEditFlowTrace');
+            const { reassignManualReceiptCustomer } = await import('@/app/services/paymentAdjustmentService');
+            const { data: { user: partyUser } } = await supabase.auth.getUser();
+            tracePaymentEditFlow('UnifiedPaymentDialog.edit.manual_party_transfer', {
+              paymentId: paymentIdForUpdate,
+              oldContactId: preManualContactId,
+              newContactId: newPartyId,
+              transferAmount: preManualAmount,
+            });
+            const partyRes = await reassignManualReceiptCustomer({
+              companyId,
+              paymentId: paymentIdForUpdate,
+              newCustomerId: newPartyId,
+              entryDate: paymentDate,
+              createdBy: (partyUser as any)?.id ?? null,
+              transferAmount: preManualAmount ?? undefined,
+            });
+            if (!partyRes.ok) {
+              tracePaymentEditFlow('UnifiedPaymentDialog.edit.manual_party_transfer_failed', {
+                paymentId: paymentIdForUpdate,
+                error: partyRes.error,
+              });
+              throw new Error(partyRes.error || 'Failed to change receipt customer.');
+            }
+            preManualContactId = newPartyId;
+            dispatchAccountingEditCommitted({
+              customerId: newPartyId,
+            });
+            if (partyRes.oldCustomerId) {
+              dispatchAccountingEditCommitted({ customerId: partyRes.oldCustomerId });
+            }
+          }
+
           const deltaLiquidityId =
             (selectedAccount && String(selectedAccount).trim() ? String(selectedAccount) : null) ||
             preManualAccountId ||
@@ -834,9 +983,11 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                 amount,
                 deltaLiquidityId,
                 phase: 'before_payment_patch',
+                partyId: effectiveEntityId || entityId,
               });
               const { resolveReceivablePostingAccountId } = await import('@/app/services/partySubledgerAccountService');
-              const arId = entityId ? await resolveReceivablePostingAccountId(companyId, entityId) : null;
+              const arPartyId = effectiveEntityId || entityId;
+              const arId = arPartyId ? await resolveReceivablePostingAccountId(companyId, arPartyId) : null;
               try {
                 await postPaymentAmountAdjustment({
                   context: 'sale',
@@ -1522,7 +1673,24 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                       {context.toUpperCase()}
                     </Badge>
                   </div>
-                  <p className="text-lg font-bold text-foreground mb-1">{entityName}</p>
+                  <p className="text-lg font-bold text-foreground mb-1">{effectiveEntityName}</p>
+                  {editMode && canChangeManualReceiptCustomer && companyId ? (
+                    <div className="mb-3 space-y-1.5">
+                      <p className="text-[11px] text-muted-foreground">Change customer (moves AR to new party sub-ledger)</p>
+                      <CustomerSelector
+                        companyId={companyId}
+                        selectedCustomer={editPartyContact}
+                        onSelect={(c) => setEditPartyContact(c)}
+                      />
+                      {originalEditPartyId &&
+                      editPartyContact?.id &&
+                      originalEditPartyId !== editPartyContact.id ? (
+                        <p className="text-[10px] text-amber-300/90">
+                          Saving will transfer this receipt’s AR from the previous customer to the selected one.
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
                   {editMode ? (
                     <div className="space-y-1.5 mb-2 text-[11px] leading-snug">
                       {linkedJournalEntryNo ? (

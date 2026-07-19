@@ -27,7 +27,8 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Badge } from '../ui/badge';
 import { Textarea } from '../ui/textarea';
-import { CalendarDatePicker } from '../ui/CalendarDatePicker';
+import { DatePicker } from '../ui/DatePicker';
+import { format, parseISO, isValid } from 'date-fns';
 import {
   Select,
   SelectContent,
@@ -475,21 +476,33 @@ export const NewRentalBooking = () => {
 
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <CalendarDatePicker
+                <DatePicker
                   label="Pickup Date"
-                  value={pickupDate}
-                  onChange={setPickupDate}
+                  value={pickupDate ? format(pickupDate, 'yyyy-MM-dd') : ''}
+                  onChange={(v) => {
+                    if (!v) {
+                      setPickupDate(undefined);
+                      return;
+                    }
+                    const d = parseISO(v);
+                    if (isValid(d)) setPickupDate(d);
+                  }}
                   disabled={datesLocked}
-                  showTime={false}
                   minDate={new Date()}
                   required
                 />
-                <CalendarDatePicker
+                <DatePicker
                   label="Return Date"
-                  value={returnDate}
-                  onChange={setReturnDate}
+                  value={returnDate ? format(returnDate, 'yyyy-MM-dd') : ''}
+                  onChange={(v) => {
+                    if (!v) {
+                      setReturnDate(undefined);
+                      return;
+                    }
+                    const d = parseISO(v);
+                    if (isValid(d)) setReturnDate(d);
+                  }}
                   disabled={datesLocked}
-                  showTime={false}
                   minDate={pickupDate}
                   required
                 />

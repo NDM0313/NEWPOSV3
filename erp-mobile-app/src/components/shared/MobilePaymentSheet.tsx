@@ -47,6 +47,7 @@ import {
 } from '../../utils/localDate';
 import { ocrDateTimeLocal } from '../../lib/ocr/receiptOcrTypes';
 import { isBranchSentinel, isRealBranchUuid } from '../../utils/branchId';
+import { DateTimeInputField } from './DateTimePicker';
 import {
   filterPaymentAccountsByMethod,
   mobilePaymentMethodToLabel,
@@ -721,21 +722,16 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
         )}
 
         <div>
-          <label className="block text-sm font-medium text-[#9CA3AF] mb-2">Payment date & time *</label>
-          <input
-            type="datetime-local"
-            max={
-              // Allow OCR past dates: max = later of now and current value so WebViews
-              // do not clamp a valid OCR datetime to empty/now.
-              (() => {
-                const now = localNowDateTimeString();
-                if (!paymentDateTime) return now;
-                return paymentDateTime > now ? paymentDateTime : now;
-              })()
-            }
+          <DateTimeInputField
+            label="Payment date & time"
+            required
             value={paymentDateTime}
-            onChange={(e) => setPaymentDateTime(e.target.value)}
-            className="w-full max-w-xs h-11 px-3 rounded-lg bg-[#1F2937] border border-[#374151] text-white focus:outline-none focus:ring-2 focus:ring-[#3B82F6]"
+            onChange={setPaymentDateTime}
+            max={(() => {
+              const now = localNowDateTimeString();
+              if (!paymentDateTime) return now.slice(0, 10);
+              return (paymentDateTime > now ? paymentDateTime : now).slice(0, 10);
+            })()}
           />
         </div>
 

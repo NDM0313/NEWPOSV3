@@ -174,13 +174,20 @@ export type CreateSaleOptions = {
   allowNegativeStock?: boolean;
 };
 
-/** Insert lines in order; resolve parent_line_index → bespoke_parent_item_id. */
+/** Insert lines in order; resolve parent_line_index → bespoke_parent_item_id.
+ * Batch insert + optional parent-id updates (avoids N sequential round-trips). */
 export async function insertSaleItemsOrdered(
   saleId: string,
   items: SaleItem[],
 ): Promise<void> {
-  const insertedIds: (string | null)[] = [];
-  for (const item of items) {
+  if (!items.length) return;
+
+  type Prepared = {
+    row: Record<string, unknown>;
+    parentIdx: number | null | undefined;
+  };
+
+  const prepared: Prepared[] = items.map((item) => {
     const row: Record<string, unknown> = { ...item, sale_id: saleId };
     if ('variation_id' in row && row.variation_id != null) {
       row.variation_id = coerceUuidOrNull(row.variation_id);
@@ -192,17 +199,64 @@ export async function insertSaleItemsOrdered(
     delete row.tax_percentage;
     const parentIdx = item.parent_line_index;
     delete row.parent_line_index;
-    if (parentIdx != null && parentIdx >= 0 && parentIdx < insertedIds.length) {
-      row.bespoke_parent_item_id = insertedIds[parentIdx];
+    // Parent resolved after batch insert via index; keep explicit bespoke_parent_item_id if set
+    if (parentIdx != null && parentIdx >= 0) {
+      delete row.bespoke_parent_item_id;
     } else if (item.bespoke_parent_item_id) {
       row.bespoke_parent_item_id = item.bespoke_parent_item_id;
     }
-    let res = await supabase.from('sales_items').insert(row).select('id').single();
-    if (res.error?.code === '42P01') {
-      res = await supabase.from('sale_items').insert(row).select('id').single();
+    return { row, parentIdx };
+  });
+
+  const payload = prepared.map((p) => p.row);
+  let res = await supabase.from('sales_items').insert(payload).select('id');
+  if (res.error?.code === '42P01') {
+    res = await supabase.from('sale_items').insert(payload).select('id');
+  }
+  if (res.error) throw res.error;
+
+  const insertedIds = (res.data ?? []).map((r: { id?: string }) => r.id ?? null);
+  if (insertedIds.length !== prepared.length) {
+    // Fallback sequential if RETURNING order/count unexpected
+    for (let i = 0; i < prepared.length; i++) {
+      if (insertedIds[i]) continue;
+      throw new Error('Sale items insert returned incomplete ids; cannot resolve fabric parent links.');
     }
-    if (res.error) throw res.error;
-    insertedIds.push(res.data?.id ?? null);
+  }
+
+  const parentPatches: { id: string; bespoke_parent_item_id: string }[] = [];
+  prepared.forEach((p, idx) => {
+    const parentIdx = p.parentIdx;
+    if (parentIdx == null || parentIdx < 0 || parentIdx >= insertedIds.length) return;
+    const childId = insertedIds[idx];
+    const parentId = insertedIds[parentIdx];
+    if (childId && parentId) {
+      parentPatches.push({ id: childId, bespoke_parent_item_id: parentId });
+    }
+  });
+
+  if (parentPatches.length === 0) return;
+
+  const table = 'sales_items';
+  const results = await Promise.all(
+    parentPatches.map((patch) =>
+      supabase.from(table).update({ bespoke_parent_item_id: patch.bespoke_parent_item_id }).eq('id', patch.id),
+    ),
+  );
+  const failed = results.find((r) => r.error);
+  if (failed?.error?.code === '42P01') {
+    const retry = await Promise.all(
+      parentPatches.map((patch) =>
+        supabase
+          .from('sale_items')
+          .update({ bespoke_parent_item_id: patch.bespoke_parent_item_id })
+          .eq('id', patch.id),
+      ),
+    );
+    const retryFail = retry.find((r) => r.error);
+    if (retryFail?.error) throw retryFail.error;
+  } else if (failed?.error) {
+    throw failed.error;
   }
 }
 
@@ -459,62 +513,11 @@ export const saleService = {
       order_no: (saleData as any).order_no,
     });
 
-    // CRITICAL FIX: Fetch the complete sale with items to return
-    // This ensures items are included in the response
-    let completeSale = null;
-    let fetchError = null;
-
-    // Try sales_items first
-    const { data: salesItemsData, error: fetchSalesItemsError } = await supabase
-      .from('sales')
-      .select(`
-        *,
-        customer:contacts(*),
-        items:sales_items(
-          *,
-          product:products(id, name, sku, cost_price, retail_price, has_variations),
-          variation:product_variations(id, product_id, sku, attributes)
-        )
-      `)
-      .eq('id', saleData.id)
-      .single();
-
-    if (fetchSalesItemsError) {
-      // If sales_items fails, try sale_items (backward compatibility)
-      if (fetchSalesItemsError.code === '42P01' || fetchSalesItemsError.message?.includes('does not exist')) {
-        const { data: saleItemsData, error: fetchSaleItemsError } = await supabase
-          .from('sales')
-          .select(`
-            *,
-            customer:contacts(*),
-            items:sale_items(
-              *,
-              product:products(id, name, sku, cost_price, retail_price, has_variations),
-              variation:product_variations(id, product_id, sku, attributes)
-            )
-          `)
-          .eq('id', saleData.id)
-          .single();
-        
-        if (!fetchSaleItemsError) {
-          completeSale = saleItemsData;
-        } else {
-          fetchError = fetchSaleItemsError;
-        }
-      } else {
-        fetchError = fetchSalesItemsError;
-      }
-    } else {
-      completeSale = salesItemsData;
-    }
-
-    if (fetchError || !completeSale) {
-      // If fetch fails, still return saleData (items will be fetched separately on refresh)
-      console.warn('[SALE SERVICE] Failed to fetch sale with items:', fetchError);
-      return saleData;
-    }
-
-    return completeSale;
+    // Slim return: avoid nested products/variations re-fetch (list/edit load full sale later).
+    return {
+      ...saleData,
+      items: items.map((it) => ({ ...it, sale_id: saleData.id })),
+    };
   },
 
   // Get single sale by ID (with items for edit form).

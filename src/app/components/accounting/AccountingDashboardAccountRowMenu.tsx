@@ -26,6 +26,7 @@ import {
   DropdownMenuTrigger,
 } from '@/app/components/ui/dropdown-menu';
 import { getControlAccountKind } from '@/app/lib/accountControlKind';
+import { isPartyOrLinkedLeafAccount } from '@/app/lib/addAccountCoaPicker';
 import { accountService } from '@/app/services/accountService';
 import { toast } from 'sonner';
 import type { AccountsHierarchyRowModel } from './useAccountsHierarchyModel';
@@ -57,6 +58,8 @@ type Props = {
   onOpenAccountStatements: (accountId: string) => void;
   canPostAccounting?: boolean;
   onTransferBalance?: (accountId: string) => void;
+  /** Open Professional Create Account with this row as parent. */
+  onAddChildAccount?: (accountId: string) => void;
 };
 
 export function AccountingDashboardAccountRowMenu({
@@ -71,6 +74,7 @@ export function AccountingDashboardAccountRowMenu({
   onOpenAccountStatements,
   canPostAccounting = false,
   onTransferBalance,
+  onAddChildAccount,
 }: Props) {
   const account = row.account;
   const code = (account as { code?: string }).code;
@@ -144,7 +148,27 @@ export function AccountingDashboardAccountRowMenu({
         </DropdownMenuItem>
         <DropdownMenuItem
           className="gap-2 focus:bg-muted cursor-pointer"
-          onClick={() => toast.info('Add child account — use Create New Account (Professional) and pick parent.')}
+          onClick={() => {
+            if (!account.id) return;
+            if (
+              isPartyOrLinkedLeafAccount({
+                id: account.id,
+                name: account.name,
+                code,
+                linked_contact_id: (account as { linked_contact_id?: string | null }).linked_contact_id,
+              })
+            ) {
+              toast.error(
+                'Party AR/AP/WP sub-ledgers cannot be parents for manual CoA accounts. Use Contacts or a control account (e.g. 1100 / 2000).'
+              );
+              return;
+            }
+            if (!onAddChildAccount) {
+              toast.info('Add child account — use Create New Account (Professional) and pick parent.');
+              return;
+            }
+            onAddChildAccount(account.id);
+          }}
         >
           <FolderPlus size={14} className="shrink-0" /> Add Child Account
         </DropdownMenuItem>

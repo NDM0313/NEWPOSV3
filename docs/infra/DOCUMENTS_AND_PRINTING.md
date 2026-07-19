@@ -191,8 +191,15 @@ Key groups:
 - `fields` — show/hide logo, address, SKU, tax, discount, signature, notes, …  
 - `layout` — header/table/footer positions  
 - `thermal` — compact mode, QR, cashier line, `paperSize` (58mm default / 80mm), `posPrinterDeviceName`, kiosk hint  
-- `pdf` — fontSize, fontFamily, watermark (invoice PDF download only)  
-- `reportExport` — `stockReportOrientation`, `productSellOrientation` for tabular reports  
+- `pdf` — fontSize, fontFamily, watermark (invoice PDF download only; Reports tab also edits `fontFamily` for report exports)  
+- `reportExport` — orientations, header/footer toggles, and report typography:
+  - `reportFontSize` — document base (titles / meta fallback)
+  - `reportDataListFontSize` — table body / data-list rows
+  - `reportTableHeaderFontSize` — column header row
+  - `reportSummaryFontSize` — Opening / Closing / totals summary band
+  - `reportColumnPaddingPx` — horizontal th/td padding (2–10; cell spacing, not column width)
+  - `reportShowCurrencySymbol` — when false, PDF/print money cells omit Rs. / $ / € / £
+  - `reportLedgerColumnWidths` — ledger PDF column widths as percent (5–30) or `'auto'` for date/reference/type/description/branch/debit/credit/balance/payment/createdBy; auto columns share remaining width after fixed % 
 - `documentTemplates` — enabled document kinds  
 - `defaultInvoiceType` — standard / packing / pieces / summary / detailed  
 

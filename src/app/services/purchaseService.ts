@@ -1,4 +1,5 @@
 import { getCurrentLocalTimestamp, localNowDateString } from '@/app/utils/localDate';
+import { mapPool } from '@/app/utils/perfTiming';
 import { supabase } from '@/lib/supabase';
 import { getDocumentConversionSchemaFlags } from '@/app/lib/documentConversionSchema';
 import { canPostAccountingForPurchaseStatus, wasPurchasePostedForReversal } from '@/app/lib/postingStatusGate';
@@ -24,10 +25,33 @@ function purchaseRowNeedsPostedPoAllocation(row: Record<string, unknown>): boole
 
 function isUniquePoNumberViolation(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false;
-  const e = error as { code?: string; message?: string };
-  if (e.code !== '23505') return false;
-  const msg = String(e.message || '').toLowerCase();
-  return msg.includes('po_no') || msg.includes('draft_no') || msg.includes('order_no') || msg.includes('idx_purchases_company_po_no');
+  const e = error as {
+    code?: string;
+    message?: string;
+    details?: string;
+    hint?: string;
+    status?: number;
+    statusCode?: number;
+  };
+  const code = String(e.code || '');
+  const status = Number(e.status ?? e.statusCode ?? 0);
+  const blob = `${e.message || ''} ${e.details || ''} ${e.hint || ''}`.toLowerCase();
+  const looksUnique =
+    code === '23505' ||
+    status === 409 ||
+    blob.includes('duplicate key') ||
+    blob.includes('unique constraint') ||
+    blob.includes('already exists');
+  if (!looksUnique) return false;
+  // Prefer document-number collisions; still retry on sparse PostgREST 409 bodies.
+  return (
+    blob.includes('po_no') ||
+    blob.includes('draft_no') ||
+    blob.includes('order_no') ||
+    blob.includes('idx_purchases_company_po_no') ||
+    code === '23505' ||
+    status === 409
+  );
 }
 
 async function reallocatePurchaseDocumentNumbers(
@@ -125,6 +149,55 @@ async function enrichPurchasesWithSupplierContacts(purchases: any[]): Promise<vo
       const c = byId.get(p.supplier_id);
       if (c) p.supplier = { name: c.name, phone: c.phone };
     }
+  });
+}
+
+/** Header-only list: attach branch { id, name } from branch_id so mapper can show location. */
+async function enrichPurchasesWithBranchNames(purchases: any[]): Promise<void> {
+  const ids = [
+    ...new Set(
+      (purchases || [])
+        .map((p: any) => p.branch_id)
+        .filter((id: unknown) => typeof id === 'string' && id.length > 0),
+    ),
+  ] as string[];
+  if (ids.length === 0) return;
+  const { data: branches } = await supabase.from('branches').select('id, name, code').in('id', ids);
+  const byId = new Map((branches || []).map((b: any) => [b.id, b]));
+  purchases.forEach((p: any) => {
+    if (!p.branch && p.branch_id) {
+      const b = byId.get(p.branch_id);
+      if (b) p.branch = { id: b.id, name: b.name, code: b.code };
+    }
+  });
+}
+
+/** Header-only list: set items_count from purchase_items (no full embed). */
+async function enrichPurchasesWithItemCounts(purchases: any[]): Promise<void> {
+  const ids = (purchases || []).map((p: any) => p.id).filter(Boolean) as string[];
+  if (ids.length === 0) return;
+  const needsCount = (purchases || []).some(
+    (p: any) => !Array.isArray(p.items) || p.items.length === 0,
+  );
+  if (!needsCount) return;
+
+  const { data: rows, error } = await supabase
+    .from('purchase_items')
+    .select('purchase_id')
+    .in('purchase_id', ids);
+  if (error || !rows) return;
+
+  const countByPurchase = new Map<string, number>();
+  for (const row of rows as { purchase_id?: string }[]) {
+    const pid = row.purchase_id;
+    if (!pid) continue;
+    countByPurchase.set(pid, (countByPurchase.get(pid) || 0) + 1);
+  }
+  purchases.forEach((p: any) => {
+    if (!p?.id) return;
+    if (Array.isArray(p.items) && p.items.length > 0) return;
+    const n = countByPurchase.get(p.id) || 0;
+    p.items_count = n;
   });
 }
 
@@ -413,13 +486,18 @@ async function applyWeightedCostRollup(params: {
     stockByProduct.set(pId, (stockByProduct.get(pId) || 0) + q);
   }
 
-  // Update variation weighted costs first
-  for (const [variationId, incoming] of variationIncoming) {
-    const currentQty = Math.max(0, stockByVariation.get(variationId) || 0);
-    const currentCost = variationCostById.get(variationId) || 0;
-    const incomingCost = incoming.sum / Math.max(1, incoming.qty);
-    const next = computeWeightedCost(currentQty, currentCost, incoming.qty, incomingCost);
-    if (next <= 0) continue;
+  // Update variation weighted costs (bounded concurrency — avoid N sequential round-trips)
+  const variationUpdates = [...variationIncoming.entries()]
+    .map(([variationId, incoming]) => {
+      const currentQty = Math.max(0, stockByVariation.get(variationId) || 0);
+      const currentCost = variationCostById.get(variationId) || 0;
+      const incomingCost = incoming.sum / Math.max(1, incoming.qty);
+      const next = computeWeightedCost(currentQty, currentCost, incoming.qty, incomingCost);
+      return next > 0 ? { variationId, next } : null;
+    })
+    .filter((x): x is { variationId: string; next: number } => x != null);
+
+  await mapPool(variationUpdates, 5, async ({ variationId, next }) => {
     const upFull = await supabase
       .from('product_variations')
       .update({ purchase_price: next, cost_price: next })
@@ -430,17 +508,22 @@ async function applyWeightedCostRollup(params: {
         await supabase.from('product_variations').update({ purchase_price: next }).eq('id', variationId);
       }
     }
-  }
+  });
 
   // Update parent product weighted costs
-  for (const [productId, incoming] of productIncoming) {
-    const currentQty = Math.max(0, stockByProduct.get(productId) || 0);
-    const currentCost = productCostById.get(productId) || 0;
-    const incomingCost = incoming.sum / Math.max(1, incoming.qty);
-    const next = computeWeightedCost(currentQty, currentCost, incoming.qty, incomingCost);
-    if (next <= 0) continue;
+  const productUpdates = [...productIncoming.entries()]
+    .map(([productId, incoming]) => {
+      const currentQty = Math.max(0, stockByProduct.get(productId) || 0);
+      const currentCost = productCostById.get(productId) || 0;
+      const incomingCost = incoming.sum / Math.max(1, incoming.qty);
+      const next = computeWeightedCost(currentQty, currentCost, incoming.qty, incomingCost);
+      return next > 0 ? { productId, next } : null;
+    })
+    .filter((x): x is { productId: string; next: number } => x != null);
+
+  await mapPool(productUpdates, 5, async ({ productId, next }) => {
     await supabase.from('products').update({ cost_price: next, updated_at: getCurrentLocalTimestamp() }).eq('id', productId);
-  }
+  });
 }
 
 export const purchaseService = {
@@ -455,12 +538,25 @@ export const purchaseService = {
 
     let purchaseData: Record<string, unknown> | null = null;
     let purchaseError: unknown = null;
-    for (let attempt = 0; attempt < 2; attempt++) {
+    /** Match sale finalize retries — sequence can lag behind existing PUR/PDR/POR rows. */
+    const maxPoAttempts = 12;
+    let lastConflictNo: string | undefined;
+    for (let attempt = 0; attempt < maxPoAttempts; attempt++) {
       const res = await supabase.from('purchases').insert(purchaseRow).select('*').single();
       purchaseData = res.data as Record<string, unknown> | null;
       purchaseError = res.error;
       if (!purchaseError) break;
-      if (attempt === 0 && isUniquePoNumberViolation(purchaseError)) {
+      if (isUniquePoNumberViolation(purchaseError)) {
+        lastConflictNo = String(
+          purchaseRow.po_no ?? purchaseRow.draft_no ?? purchaseRow.order_no ?? '',
+        ).trim() || undefined;
+        if (import.meta.env?.DEV) {
+          console.warn(
+            `[PURCHASE SERVICE] Document number conflict (attempt ${attempt + 1}/${maxPoAttempts}), last=`,
+            lastConflictNo,
+            purchaseError,
+          );
+        }
         purchaseRow = await reallocatePurchaseDocumentNumbers(purchase, purchaseRow);
         continue;
       }
@@ -469,6 +565,13 @@ export const purchaseService = {
 
     if (purchaseError) {
       console.error('[PURCHASE SERVICE] Error creating purchase:', purchaseError);
+      if (isUniquePoNumberViolation(purchaseError)) {
+        throw new Error(
+          `Purchase document number still conflicts after ${maxPoAttempts} attempts` +
+            (lastConflictNo ? ` (last tried: ${lastConflictNo})` : '') +
+            '. Check Settings → Numbering sequences for PUR/PDR/POR, then retry.',
+        );
+      }
       throw purchaseError;
     }
     if (!purchaseData) {
@@ -666,6 +769,8 @@ export const purchaseService = {
       if (simpleData?.length) {
         await enrichPurchasesWithCreatorNames(simpleData);
         await enrichPurchasesWithSupplierContacts(simpleData);
+        await enrichPurchasesWithBranchNames(simpleData);
+        await enrichPurchasesWithItemCounts(simpleData);
       }
       if (opts) return { data: simpleData || [], total: simpleCount ?? 0 };
       return simpleData;
@@ -674,6 +779,15 @@ export const purchaseService = {
     if (error) throw error;
 
     await enrichPurchasesWithCreatorNames(data || []);
+    // Embed may be empty/missing while headers exist — fill branch name + line counts
+    if (data?.length) {
+      const missingBranch = data.some((p: any) => p.branch_id && !p.branch?.name);
+      const missingItems = data.some(
+        (p: any) => !Array.isArray(p.items) || p.items.length === 0,
+      );
+      if (missingBranch) await enrichPurchasesWithBranchNames(data);
+      if (missingItems) await enrichPurchasesWithItemCounts(data);
+    }
 
     // 🔒 LOCK CHECK: Add hasReturn and returnCount to each purchase
     if (data && data.length > 0) {

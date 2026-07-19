@@ -6,6 +6,7 @@ import type { LedgerPrintOptions } from '@/app/components/reports/shared/resolve
 import type { AccountingReportPrintOptions } from '@/app/components/reports/shared/resolveAccountingReportPrintOptions';
 import type { CompanyBrand } from '@/app/services/companyBrandService';
 import type { PageMargins } from '@/app/types/printingSettings';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 
 const MOCK_BRAND: CompanyBrand = {
   name: 'Your Company',
@@ -73,8 +74,7 @@ export function ReportExportPreviewPanel({
   const [tab, setTab] = useState<'ledger' | 'cashbook'>('ledger');
   const previewBrand = brand ?? MOCK_BRAND;
   const cashOpts = roznamchaOptions ?? ledgerOptions;
-  const formatCurrency = (n: number) =>
-    `Rs ${n.toLocaleString('en-PK', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+  const { formatCurrency } = useFormatCurrency();
   const formatDate = (iso: string) => {
     const d = new Date(iso + 'T12:00:00');
     return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -87,7 +87,7 @@ export function ReportExportPreviewPanel({
   const isLandscape = resolvedOrientation === 'landscape';
 
   return (
-    <div className="border border-border rounded-xl overflow-hidden bg-input-background p-3">
+    <div className="border border-border rounded-xl bg-input-background p-3 min-w-0 max-w-full">
       <div className="flex items-center gap-2 mb-2">
         <button
           type="button"
@@ -104,65 +104,82 @@ export function ReportExportPreviewPanel({
           Roznamcha / Cash book
         </button>
       </div>
-      <div className="overflow-auto max-h-[520px] flex justify-center">
+      <div className="min-w-0 w-full max-w-full overflow-x-auto overflow-y-auto max-h-[520px]">
         <div
-          className="bg-white shadow-xl rounded-sm overflow-hidden shrink-0"
-          style={{
-            width: isLandscape ? 'min(100%, 700px)' : 'min(100%, 520px)',
-            aspectRatio: isLandscape ? '297/210' : '210/297',
-            maxHeight: '85vh',
-          }}
+          className="flex justify-center"
+          style={{ width: 'max(100%, max-content)' }}
         >
-          <div style={marginPadding(tab === 'cashbook' ? cashOpts.margins : ledgerOptions.margins)}>
-            {tab === 'ledger' ? (
-              <LedgerStatementReportPreview
-                brand={previewBrand}
-                title="Customer Ledger"
-                partyName="Sample Customer"
-                periodLabel="01 Apr 2026 → 10 Jun 2026"
-                branchScopeLabel="All branches (GL scope)"
-                generatedAt={new Date().toLocaleString('en-GB')}
-                openingBalance={12000}
-                closingBalance={25000}
-                totalDebit={45000}
-                totalCredit={20000}
-                rows={MOCK_LEDGER_ROWS}
-                formatCurrency={formatCurrency}
-                formatDate={formatDate}
-                fieldVisibility={ledgerOptions.fieldVisibility}
-                showHeader={ledgerOptions.showHeader}
-                showFooter={ledgerOptions.showFooter}
-                orientation={resolvedOrientation}
-                fontSize={ledgerOptions.fontSize}
-                fontFamily={ledgerOptions.fontFamily}
-                margins={ledgerOptions.margins}
-              />
-            ) : (
-              <CashBookReportPreview
-                brand={previewBrand}
-                title="Roznamcha (Daily Cash Book)"
-                periodLabel="01 Apr 2026 → 10 Jun 2026"
-                branchScopeLabel="All branches"
-                generatedAt={new Date().toLocaleString('en-GB')}
-                columns={ROZNAMCHA_PRINT_COLUMNS}
-                rows={MOCK_CASH_BOOK_ROWS}
-                summaryStats={[
-                  { label: 'Opening', value: formatCurrency(100000) },
-                  { label: 'Cash In', value: formatCurrency(25000) },
-                  { label: 'Cash Out', value: formatCurrency(8500) },
-                  { label: 'Closing', value: formatCurrency(116500) },
-                ]}
-                openingBalance={formatCurrency(100000)}
-                closingBalance={formatCurrency(116500)}
-                fieldVisibility={cashOpts.fieldVisibility}
-                showHeader={cashOpts.showHeader}
-                showFooter={cashOpts.showFooter}
-                orientation={resolvedOrientation}
-                fontSize={cashOpts.fontSize}
-                fontFamily={cashOpts.fontFamily}
-                margins={cashOpts.margins}
-              />
-            )}
+          <div
+            className="bg-white shadow-xl rounded-sm shrink-0"
+            style={{
+              width: isLandscape ? 700 : 640,
+              flexShrink: 0,
+              aspectRatio: isLandscape ? '297/210' : '210/297',
+              maxHeight: '85vh',
+            }}
+          >
+            <div style={marginPadding(tab === 'cashbook' ? cashOpts.margins : ledgerOptions.margins)}>
+              {tab === 'ledger' ? (
+                <LedgerStatementReportPreview
+                  brand={previewBrand}
+                  title="Customer Ledger"
+                  partyName="Sample Customer"
+                  periodLabel="01 Apr 2026 → 10 Jun 2026"
+                  branchScopeLabel="All branches (GL scope)"
+                  generatedAt={new Date().toLocaleString('en-GB')}
+                  openingBalance={12000}
+                  closingBalance={25000}
+                  totalDebit={45000}
+                  totalCredit={20000}
+                  rows={MOCK_LEDGER_ROWS}
+                  formatCurrency={formatCurrency}
+                  formatDate={formatDate}
+                  fieldVisibility={ledgerOptions.fieldVisibility}
+                  showHeader={ledgerOptions.showHeader}
+                  showFooter={ledgerOptions.showFooter}
+                  orientation={resolvedOrientation}
+                  fontSize={ledgerOptions.fontSize}
+                  dataListFontSize={ledgerOptions.dataListFontSize}
+                  tableHeaderFontSize={ledgerOptions.tableHeaderFontSize}
+                  summaryFontSize={ledgerOptions.summaryFontSize}
+                  columnPaddingPx={ledgerOptions.columnPaddingPx}
+                  showCurrencySymbol={ledgerOptions.showCurrencySymbol}
+                  columnWidths={ledgerOptions.columnWidths}
+                  fontFamily={ledgerOptions.fontFamily}
+                  margins={ledgerOptions.margins}
+                />
+              ) : (
+                <CashBookReportPreview
+                  brand={previewBrand}
+                  title="Roznamcha (Daily Cash Book)"
+                  periodLabel="01 Apr 2026 → 10 Jun 2026"
+                  branchScopeLabel="All branches"
+                  generatedAt={new Date().toLocaleString('en-GB')}
+                  columns={ROZNAMCHA_PRINT_COLUMNS}
+                  rows={MOCK_CASH_BOOK_ROWS}
+                  summaryStats={[
+                    { label: 'Opening', value: formatCurrency(100000) },
+                    { label: 'Cash In', value: formatCurrency(25000) },
+                    { label: 'Cash Out', value: formatCurrency(8500) },
+                    { label: 'Closing', value: formatCurrency(116500) },
+                  ]}
+                  openingBalance={formatCurrency(100000)}
+                  closingBalance={formatCurrency(116500)}
+                  fieldVisibility={cashOpts.fieldVisibility}
+                  showHeader={cashOpts.showHeader}
+                  showFooter={cashOpts.showFooter}
+                  orientation={resolvedOrientation}
+                  fontSize={cashOpts.fontSize}
+                  dataListFontSize={cashOpts.dataListFontSize}
+                  tableHeaderFontSize={cashOpts.tableHeaderFontSize}
+                  summaryFontSize={cashOpts.summaryFontSize}
+                  columnPaddingPx={cashOpts.columnPaddingPx}
+                  showCurrencySymbol={cashOpts.showCurrencySymbol}
+                  fontFamily={cashOpts.fontFamily}
+                  margins={cashOpts.margins}
+                />
+              )}
+            </div>
           </div>
         </div>
       </div>

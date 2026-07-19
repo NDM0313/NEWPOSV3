@@ -9,6 +9,7 @@ import { getTotalInternalProductionCost } from './studioPricing';
 import { getStudioDetailStatusLabel } from '../../lib/studioOrderDisplay';
 import { todayDateInputValue } from '../../lib/studioWorkflowDates';
 import { StudioStageTimeline } from './StudioStageTimeline';
+import { DateInputField } from '../shared/DateTimePicker';
 
 type StudioPayMethod = 'cash' | 'bank' | 'wallet';
 const STUDIO_METHOD_TO_TYPE: Record<StudioPayMethod, string[]> = {
@@ -902,14 +903,11 @@ export function StudioOrderDetail({
             <p className="text-xs text-[#9CA3AF] mb-4">
               {workflowDateSheet.stage.name} — pick date (default today). Add a note if there are issues to record for the next user.
             </p>
-            <label className="block text-sm text-[#9CA3AF] mb-2">
-              {workflowDateSheet.type === 'send' ? 'Send date' : 'Receive date'}
-            </label>
-            <input
-              type="date"
+            <DateInputField
+              label={workflowDateSheet.type === 'send' ? 'Send date' : 'Receive date'}
               value={workflowDate}
-              onChange={(e) => setWorkflowDate(e.target.value)}
-              className="w-full bg-[#111827] border border-[#374151] rounded-lg px-4 py-3 text-white mb-3"
+              onChange={setWorkflowDate}
+              required
             />
             <label className="block text-sm text-[#9CA3AF] mb-2">
               {workflowDateSheet.type === 'send' ? 'Send note (optional)' : 'Receive note (optional)'}

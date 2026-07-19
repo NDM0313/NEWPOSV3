@@ -16,9 +16,17 @@ import {
   type DocumentTemplateId,
   type InvoiceTypeId,
   type PageSetup,
+  type LedgerColumnWidthKey,
+  type LedgerColumnWidthSetting,
+  DEFAULT_LEDGER_COLUMN_WIDTHS,
   mergeWithDefaults,
 } from '@/app/types/printingSettings';
-import { resolveLedgerPrintOptions } from '@/app/components/reports/shared/resolveLedgerPrintOptions';
+import {
+  resolveLedgerPrintOptions,
+  resolveLedgerColumnWidths,
+  sumFixedLedgerColumnPercents,
+  LEDGER_COLUMN_WIDTH_KEYS,
+} from '@/app/components/reports/shared/resolveLedgerPrintOptions';
 import { resolveAccountingReportPrintOptions } from '@/app/components/reports/shared/resolveAccountingReportPrintOptions';
 import { POS_SILENT_PRINT_GUIDE, getPosPrintAutomationHint } from '@/app/services/printingSettingsService';
 import { PrintingPreviewPanel } from './PrintingPreviewPanel';
@@ -471,6 +479,18 @@ export function PrintingSettingsPanel({
                     />
                   </div>
                   <div>
+                    <Label className="text-muted-foreground text-sm">Font family</Label>
+                    <select
+                      value={merged.pdf.fontFamily}
+                      onChange={(e) => update('pdf', { ...merged.pdf, fontFamily: e.target.value })}
+                      className="mt-1 w-full bg-muted border border-border text-foreground rounded-lg px-3 py-2 max-w-[220px]"
+                    >
+                      <option value="Inter">Inter</option>
+                      <option value="Roboto">Roboto</option>
+                      <option value="Arial">Arial</option>
+                    </select>
+                  </div>
+                  <div>
                     <Label className="text-muted-foreground text-sm">Report font size (px)</Label>
                     <Input
                       type="number"
@@ -485,8 +505,194 @@ export function PrintingSettingsPanel({
                       }
                       className="mt-1 bg-muted border-border text-foreground max-w-[120px]"
                     />
+                    <p className="text-[11px] text-muted-foreground mt-1">Titles / meta fallback</p>
+                  </div>
+                  <div>
+                    <Label className="text-muted-foreground text-sm">Data list font size (px)</Label>
+                    <Input
+                      type="number"
+                      min={8}
+                      max={14}
+                      value={merged.reportExport.reportDataListFontSize ?? 10}
+                      onChange={(e) =>
+                        update('reportExport', {
+                          ...merged.reportExport,
+                          reportDataListFontSize: Number(e.target.value) || 10,
+                        })
+                      }
+                      className="mt-1 bg-muted border-border text-foreground max-w-[120px]"
+                    />
+                    <p className="text-[11px] text-muted-foreground mt-1">Table body rows</p>
+                  </div>
+                  <div>
+                    <Label className="text-muted-foreground text-sm">Table header font size (px)</Label>
+                    <Input
+                      type="number"
+                      min={8}
+                      max={14}
+                      value={merged.reportExport.reportTableHeaderFontSize ?? 9}
+                      onChange={(e) =>
+                        update('reportExport', {
+                          ...merged.reportExport,
+                          reportTableHeaderFontSize: Number(e.target.value) || 9,
+                        })
+                      }
+                      className="mt-1 bg-muted border-border text-foreground max-w-[120px]"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-muted-foreground text-sm">Summary font size (px)</Label>
+                    <Input
+                      type="number"
+                      min={8}
+                      max={14}
+                      value={merged.reportExport.reportSummaryFontSize ?? 9}
+                      onChange={(e) =>
+                        update('reportExport', {
+                          ...merged.reportExport,
+                          reportSummaryFontSize: Number(e.target.value) || 9,
+                        })
+                      }
+                      className="mt-1 bg-muted border-border text-foreground max-w-[120px]"
+                    />
+                    <p className="text-[11px] text-muted-foreground mt-1">Opening / Closing / totals band</p>
+                  </div>
+                  <div>
+                    <Label className="text-muted-foreground text-sm">Cell padding (px)</Label>
+                    <Input
+                      type="number"
+                      min={2}
+                      max={10}
+                      value={merged.reportExport.reportColumnPaddingPx ?? 4}
+                      onChange={(e) =>
+                        update('reportExport', {
+                          ...merged.reportExport,
+                          reportColumnPaddingPx: Number(e.target.value) || 4,
+                        })
+                      }
+                      className="mt-1 bg-muted border-border text-foreground max-w-[120px]"
+                    />
+                    <p className="text-[11px] text-muted-foreground mt-1">Spacing inside cells (not column width)</p>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-muted-foreground text-sm">Show currency symbol</Label>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">Rs. / $ on PDF money cells</p>
+                    </div>
+                    <Switch
+                      checked={merged.reportExport.reportShowCurrencySymbol !== false}
+                      onCheckedChange={(v) =>
+                        update('reportExport', { ...merged.reportExport, reportShowCurrencySymbol: v })
+                      }
+                    />
                   </div>
                 </div>
+              </SectionCard>
+
+              <SectionCard title="Ledger column widths" icon={<Layout size={18} />}>
+                <p className="text-xs text-muted-foreground -mt-2">
+                  Auto columns share leftover width after fixed %. Description can be Auto or %.
+                </p>
+                {(() => {
+                  const widths = resolveLedgerColumnWidths(merged.reportExport.reportLedgerColumnWidths);
+                  const fixedSum = sumFixedLedgerColumnPercents(widths);
+                  const labels: Record<LedgerColumnWidthKey, string> = {
+                    date: 'Date',
+                    reference: 'Reference',
+                    type: 'Type',
+                    description: 'Description',
+                    branch: 'Branch',
+                    debit: 'Debit',
+                    credit: 'Credit',
+                    balance: 'Balance',
+                    payment: 'Payment (optional)',
+                    createdBy: 'Created By (optional)',
+                  };
+                  const setWidth = (key: LedgerColumnWidthKey, value: LedgerColumnWidthSetting) => {
+                    update('reportExport', {
+                      ...merged.reportExport,
+                      reportLedgerColumnWidths: {
+                        ...DEFAULT_LEDGER_COLUMN_WIDTHS,
+                        ...merged.reportExport.reportLedgerColumnWidths,
+                        [key]: value,
+                      },
+                    });
+                  };
+                  return (
+                    <div className="space-y-2">
+                      <div className="hidden sm:grid sm:grid-cols-[1fr_7.5rem_5.5rem] gap-2 px-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+                        <span>Column</span>
+                        <span>Mode</span>
+                        <span>Width %</span>
+                      </div>
+                      <div className="rounded-lg border border-border divide-y divide-border overflow-hidden">
+                        {LEDGER_COLUMN_WIDTH_KEYS.map((key) => {
+                          const value = widths[key];
+                          const isAuto = value === 'auto';
+                          return (
+                            <div
+                              key={key}
+                              className="grid grid-cols-1 sm:grid-cols-[1fr_7.5rem_5.5rem] gap-2 items-center px-3 py-2 bg-card/40"
+                            >
+                              <Label className="text-sm text-foreground font-medium">{labels[key]}</Label>
+                              <select
+                                value={isAuto ? 'auto' : 'percent'}
+                                onChange={(e) => {
+                                  if (e.target.value === 'auto') {
+                                    setWidth(key, 'auto');
+                                  } else {
+                                    const fallback =
+                                      typeof DEFAULT_LEDGER_COLUMN_WIDTHS[key] === 'number'
+                                        ? (DEFAULT_LEDGER_COLUMN_WIDTHS[key] as number)
+                                        : 10;
+                                    setWidth(key, typeof value === 'number' ? value : fallback);
+                                  }
+                                }}
+                                className="w-full bg-muted border border-border text-foreground rounded-lg px-2 py-1.5 text-sm"
+                              >
+                                <option value="auto">Auto</option>
+                                <option value="percent">Percent</option>
+                              </select>
+                              <Input
+                                type="number"
+                                min={5}
+                                max={30}
+                                disabled={isAuto}
+                                value={isAuto ? '' : value}
+                                placeholder="—"
+                                onChange={(e) => {
+                                  const n = Number(e.target.value);
+                                  setWidth(key, Math.max(5, Math.min(30, Number.isFinite(n) ? n : 10)));
+                                }}
+                                className="bg-muted border-border text-foreground disabled:opacity-50"
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                        <p className="text-[11px] text-muted-foreground">
+                          Fixed: {fixedSum}% · Auto columns share the rest
+                          {fixedSum > 100 ? (
+                            <span className="text-amber-500"> (over 100% — reduce fixed columns)</span>
+                          ) : null}
+                        </p>
+                        <button
+                          type="button"
+                          className="text-xs text-blue-400 hover:text-blue-300 underline-offset-2 hover:underline"
+                          onClick={() =>
+                            update('reportExport', {
+                              ...merged.reportExport,
+                              reportLedgerColumnWidths: { ...DEFAULT_LEDGER_COLUMN_WIDTHS },
+                            })
+                          }
+                        >
+                          Reset defaults
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
               </SectionCard>
 
               <SectionCard title="Report header fields" icon={<BarChart3 size={18} />}>
@@ -723,7 +929,7 @@ export function PrintingSettingsPanel({
             </div>
           )}
           {showReportPreview && (
-            <div className="p-3">
+            <div className="p-3 min-w-0">
               <ReportExportPreviewPanel
                 ledgerOptions={ledgerPrintOptions}
                 roznamchaOptions={roznamchaPrintOptions}

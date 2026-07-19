@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Loader2, ScanText, X } from 'lucide-react';
 import type { ReceiptOcrDraft } from '../../lib/ocr/receiptOcrTypes';
+import { ocrDateTimeLocal } from '../../lib/ocr/receiptOcrTypes';
 import { revokeReceiptOcrPreview } from '../../lib/ocr/receiptOcrEngine';
 import { enrichDraftFromRaw, notesLookWeak } from '../../lib/ocr/parsePakBankReceipt';
 import { enrichSupplierBillFromRaw } from '../../lib/ocr/parsePakSupplierBill';
-import { DateInputField } from './DateTimePicker';
+import { DateTimeInputField } from './DateTimePicker';
+import { localNowDateTimeString } from '../../utils/localDate';
 
 export interface ReceiptOcrReviewSheetProps {
   open: boolean;
@@ -169,26 +171,27 @@ export function ReceiptOcrReviewSheet({
                 />
               </div>
 
-              <DateInputField
-                label="Date"
-                value={draft.date ?? ''}
-                onChange={(v) => patch({ date: v || null })}
+              <DateTimeInputField
+                label="Date & time"
+                required
+                value={
+                  ocrDateTimeLocal(draft.date, draft.time) ??
+                  (draft.date ? `${draft.date}T12:00` : localNowDateTimeString())
+                }
+                onChange={(v) => {
+                  const [datePart, timePart] = v.split('T');
+                  patch({
+                    date: datePart || null,
+                    time: timePart?.slice(0, 5) || null,
+                  });
+                }}
               />
               {draft.date ? (
                 <p className="text-[10px] text-[#6B7280] -mt-1" data-testid="ocr-date-hint">
                   Parsed date: {draft.date}
+                  {draft.time ? ` ${draft.time}` : ''}
                 </p>
               ) : null}
-
-              <div>
-                <label className="block text-xs font-medium text-[#9CA3AF] mb-1">Time (optional)</label>
-                <input
-                  type="time"
-                  value={draft.time ?? ''}
-                  onChange={(e) => patch({ time: e.target.value || null })}
-                  className="w-full h-11 px-3 rounded-lg bg-[#111827] border border-[#374151] text-white focus:outline-none focus:ring-2 focus:ring-[#3B82F6] [color-scheme:dark]"
-                />
-              </div>
 
               <div>
                 <label className="block text-xs font-medium text-[#9CA3AF] mb-1">Reference</label>

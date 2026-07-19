@@ -15,6 +15,21 @@ export function getSupabaseStorageDashboardUrl(): string {
 
 const KNOWN_BUCKETS = ['payment-attachments', 'purchase-attachments', 'sale-attachments', 'expense-receipts'];
 
+/** Production storage API origin (avoid broken localhost-relative signed URLs in Vite DEV). */
+function storageApiOrigin(): string {
+  const configured = (
+    (typeof import.meta !== 'undefined' &&
+      (import.meta.env?.VITE_SUPABASE_URL || import.meta.env?.NEXT_PUBLIC_SUPABASE_URL)) ||
+    ''
+  )
+    .trim()
+    .replace(/\/$/, '');
+  if (configured && !configured.includes('localhost') && !configured.includes('127.0.0.1')) {
+    return configured;
+  }
+  return 'https://supabase.dincouture.pk';
+}
+
 export function storageRefForPersistence(bucket: string, path: string): string {
   return `${bucket}/${path}`;
 }
@@ -38,6 +53,40 @@ function resolveAttachmentRef(rawUrl: string): { bucket: string; path: string } 
 }
 
 /**
+ * Absolute signed URL for img/open. Relative or localhost:5173/supabase URLs are rewritten
+ * to the production storage host so previews work in Vite DEV and after import repairs.
+ */
+export function absolutizeStorageSignedUrl(signedUrl: string): string {
+  const raw = String(signedUrl || '').trim();
+  if (!raw) return raw;
+  const origin = storageApiOrigin();
+
+  if (raw.startsWith('/object/sign/') || raw.startsWith('/storage/v1/object/sign/')) {
+    const path = raw.startsWith('/storage/v1/') ? raw : `/storage/v1${raw}`;
+    return `${origin}${path}`;
+  }
+
+  try {
+    const u = new URL(raw, typeof window !== 'undefined' ? window.location.origin : origin);
+    const isLocal =
+      u.hostname === 'localhost' ||
+      u.hostname === '127.0.0.1' ||
+      u.hostname.startsWith('192.168.');
+    if (isLocal && u.pathname.includes('/storage/v1/object/sign/')) {
+      const idx = u.pathname.indexOf('/storage/v1/');
+      return `${origin}${u.pathname.slice(idx)}${u.search}`;
+    }
+    if (isLocal && u.pathname.includes('/supabase/storage/v1/object/sign/')) {
+      const idx = u.pathname.indexOf('/storage/v1/');
+      return `${origin}${u.pathname.slice(idx)}${u.search}`;
+    }
+  } catch {
+    /* keep raw */
+  }
+  return raw;
+}
+
+/**
  * Returns a URL that will work for opening the attachment.
  * For Supabase storage (payment-attachments, purchase-attachments, sale-attachments), returns a signed URL so it works when the bucket is private.
  * For other URLs, returns as-is.
@@ -49,7 +98,7 @@ export async function getAttachmentOpenUrl(rawUrl: string): Promise<string> {
     if (!resolved) return rawUrl;
     const { data, error } = await supabase.storage.from(resolved.bucket).createSignedUrl(resolved.path, 3600);
     if (error || !data?.signedUrl) return rawUrl;
-    return data.signedUrl;
+    return absolutizeStorageSignedUrl(data.signedUrl);
   } catch {
     return rawUrl;
   }

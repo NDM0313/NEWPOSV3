@@ -27,7 +27,9 @@ export function NumberingMaintenanceTable() {
     if (!companyId) return;
     setAnalyzing(true);
     try {
-      const { rows: data, legacyRows: legacy } = await numberingMaintenanceService.analyze(companyId);
+      const result = await numberingMaintenanceService.analyze(companyId);
+      const data = Array.isArray(result?.rows) ? result.rows : [];
+      const legacy = Array.isArray(result?.legacyRows) ? result.legacyRows : [];
       setRows(data);
       setLegacyRows(legacy);
       const outOfSync = data.filter((r) => r.status === 'out_of_sync').length;

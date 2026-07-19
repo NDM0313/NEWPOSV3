@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, ChevronLeft, ChevronRight, Clock, X } from 'lucide-react';
+import { Calendar, Clock, X } from 'lucide-react';
 import { Button } from './button';
 import { cn } from './utils';
 import {
@@ -9,6 +9,7 @@ import {
 } from './popover';
 import { useFormatDate } from '@/app/hooks/useFormatDate';
 import { formatDate as formatDateUtil, formatTime as formatTimeUtil } from '@/app/utils/formatDate';
+import { CALENDAR_DAYS, CalendarMonthYearHeader } from './calendarChrome';
 
 interface CalendarDatePickerProps {
   value?: Date;
@@ -22,9 +23,6 @@ interface CalendarDatePickerProps {
   /** Display format for the selected date (e.g. DD MMM YYYY). Default: locale short date */
   displayFormat?: (date: Date) => string;
 }
-
-const DAYS = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
-const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
   value,
@@ -57,7 +55,7 @@ export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
     }
     return dateVal;
   };
-  
+
   const initialDate = getDateValue(value);
   const [selectedDate, setSelectedDate] = useState<Date | null>(initialDate);
   const [currentMonth, setCurrentMonth] = useState(initialDate || new Date());
@@ -111,23 +109,20 @@ export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
     const startingDayOfWeek = firstDay.getDay();
 
     const days: (Date | null)[] = [];
-    
-    // Add empty cells for days before month starts
+
     for (let i = 0; i < startingDayOfWeek; i++) {
       days.push(null);
     }
-    
-    // Add actual days
+
     for (let day = 1; day <= daysInMonth; day++) {
       days.push(new Date(year, month, day));
     }
-    
+
     return days;
   };
 
   const handleDateClick = (date: Date) => {
     setSelectedDate(date);
-    // When no time picker, commit immediately so parent state updates even if user closes without clicking Confirm
     if (!showTime) {
       onChange?.(date);
       setIsOpen(false);
@@ -171,17 +166,13 @@ export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
     setCurrentMonth(today);
   };
 
-  const nextMonth = () => {
-    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1));
-  };
-
-  const prevMonth = () => {
-    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1));
-  };
-
-  // Show value (linked from parent) when present, else in-popover selection, so trigger is always linked to actual date
   const effectiveDate = getDateValue(value) ?? selectedDate;
-  const timeForDisplay = effectiveDate === selectedDate ? selectedTime : (effectiveDate ? `${effectiveDate.getHours().toString().padStart(2, '0')}:${effectiveDate.getMinutes().toString().padStart(2, '0')}` : '00:00');
+  const timeForDisplay =
+    effectiveDate === selectedDate
+      ? selectedTime
+      : effectiveDate
+        ? `${effectiveDate.getHours().toString().padStart(2, '0')}:${effectiveDate.getMinutes().toString().padStart(2, '0')}`
+        : '00:00';
   const displayText = effectiveDate ? formatDateTime(effectiveDate, timeForDisplay) : placeholder;
 
   const hasValue = !!effectiveDate;
@@ -199,8 +190,8 @@ export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
           <Button
             variant="outline"
             className={cn(
-              "w-full justify-start text-left font-normal bg-input-background border-border text-foreground hover:bg-accent hover:text-foreground",
-              !hasValue && "text-muted-foreground"
+              'w-full justify-start text-left font-normal bg-input-background border-border text-foreground hover:bg-accent hover:text-foreground',
+              !hasValue && 'text-muted-foreground',
             )}
           >
             <Calendar className="mr-2 h-4 w-4" />
@@ -215,33 +206,17 @@ export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
         </PopoverTrigger>
         <PopoverContent className="w-auto p-0 bg-popover border-border" align="start">
           <div className="p-4">
-            {/* Month Navigation */}
-            <div className="flex items-center justify-between mb-4">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={prevMonth}
-                className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent"
-              >
-                <ChevronLeft size={18} />
-              </Button>
-              <div className="text-sm font-semibold text-foreground">
-                {MONTHS[currentMonth.getMonth()]} {currentMonth.getFullYear()}
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={nextMonth}
-                className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent"
-              >
-                <ChevronRight size={18} />
-              </Button>
-            </div>
+            <CalendarMonthYearHeader
+              currentMonth={currentMonth}
+              onMonthChange={setCurrentMonth}
+              minDate={minDate}
+              maxDate={maxDate}
+              monthLabels="full"
+            />
 
-            {/* Calendar Grid */}
             <div className="w-64">
               <div className="grid grid-cols-7 gap-1 mb-2">
-                {DAYS.map((day) => (
+                {CALENDAR_DAYS.map((day) => (
                   <div key={day} className="text-center text-xs font-medium text-muted-foreground py-2">
                     {day}
                   </div>
@@ -252,22 +227,22 @@ export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
                   if (!date) {
                     return <div key={`empty-${idx}`} className="h-9" />;
                   }
-                  
+
                   const isSelected = isDateSelected(date);
                   const isToday = date.toDateString() === new Date().toDateString();
                   const isDisabled = isDateDisabled(date);
-                  
+
                   return (
                     <button
                       key={idx}
                       onClick={() => !isDisabled && handleDateClick(date)}
                       disabled={isDisabled}
                       className={cn(
-                        "h-9 text-sm rounded transition-colors",
-                        isSelected && "bg-blue-600 text-white font-semibold",
-                        !isSelected && !isDisabled && "text-muted-foreground hover:bg-accent",
-                        isToday && !isSelected && "border border-blue-500",
-                        isDisabled && "text-gray-700 cursor-not-allowed opacity-50"
+                        'h-9 text-sm rounded transition-colors',
+                        isSelected && 'bg-blue-600 text-white font-semibold',
+                        !isSelected && !isDisabled && 'text-muted-foreground hover:bg-accent',
+                        isToday && !isSelected && 'border border-blue-500',
+                        isDisabled && 'text-gray-700 cursor-not-allowed opacity-50',
                       )}
                     >
                       {date.getDate()}
@@ -277,7 +252,6 @@ export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
               </div>
             </div>
 
-            {/* Time Selection (Optional) */}
             {showTime && (
               <div className="mt-4 pt-4 border-t border-border">
                 <div className="space-y-2">
@@ -295,7 +269,6 @@ export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
               </div>
             )}
 
-            {/* Footer */}
             <div className="mt-4 pt-4 border-t border-border flex items-center justify-between">
               <Button
                 variant="ghost"

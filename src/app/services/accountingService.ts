@@ -206,6 +206,17 @@ function dedupeCustomerArPaymentCreditLines(sortedLines: any[]): any[] {
  * Whether an AR journal line belongs to this customer (before correction_reversal handling).
  * Used by getCustomerLedger; reversal rows are included separately when they reverse such a line.
  */
+/**
+ * Party AR line → customer statement matcher.
+ *
+ * LOCK (import / Account Statements gap): Do **not** widen this to accept generic
+ * `journal` / null / bank-transfer headers solely because the debit/credit hits an
+ * AR leaf or `accounts.linked_contact_id`. That would mix unrelated COA history into
+ * party statements. Imported journals without sale/payment/rental/opening links belong
+ * on **Type = Account** until repaired (`opening_balance_contact_ar` + contact id, or
+ * real sale/payment rows). Future POS sales/payments already match here and show under
+ * Type = Customer. See docs/accounting/CUSTOMER_STATEMENT_VS_ACCOUNT_IMPORT_GAP.md.
+ */
 function arJournalLineMatchesCustomer(
   line: any,
   customerId: string,

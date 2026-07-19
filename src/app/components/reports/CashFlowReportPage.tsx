@@ -761,6 +761,11 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
             showFooter={printOpts.showFooter}
             orientation={printOrientation}
             fontSize={printOpts.fontSize}
+            dataListFontSize={printOpts.dataListFontSize}
+            tableHeaderFontSize={printOpts.tableHeaderFontSize}
+            summaryFontSize={printOpts.summaryFontSize}
+            columnPaddingPx={printOpts.columnPaddingPx}
+            showCurrencySymbol={printOpts.showCurrencySymbol}
             fontFamily={printOpts.fontFamily}
             margins={printOpts.margins}
           />
@@ -787,6 +792,11 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
             showFooter={printOpts.showFooter}
             orientation={printOrientation}
             fontSize={printOpts.fontSize}
+            dataListFontSize={printOpts.dataListFontSize}
+            tableHeaderFontSize={printOpts.tableHeaderFontSize}
+            summaryFontSize={printOpts.summaryFontSize}
+            columnPaddingPx={printOpts.columnPaddingPx}
+            showCurrencySymbol={printOpts.showCurrencySymbol}
             fontFamily={printOpts.fontFamily}
             margins={printOpts.margins}
           />

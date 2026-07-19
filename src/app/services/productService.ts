@@ -15,6 +15,7 @@ import { resolveStockWriteBranchId } from '@/app/utils/branchScope';
 import { parseLocalDateTimeInput, toLocalISOString } from '@/app/utils/localDate';
 import { resolveProductUnitCost, roundStockMoney } from '@/app/utils/stockMovementValuation';
 import { stockAdjustmentJournalService } from '@/app/services/stockAdjustmentJournalService';
+import { mapPool } from '@/app/utils/perfTiming';
 
 /** normal = catalog product; production = manufactured from studio (STD-PROD, inventory + cost). */
 export type ProductType = 'normal' | 'production';
@@ -206,6 +207,28 @@ export const productService = {
     throw lastErr || simpleError;
   },
 
+  /** Slim catalog for "copy variations" UI — name/sku/supplier + variation attributes only. */
+  async getProductsWithVariationsForCopy(companyId: string) {
+    const { data, error } = await supabase
+      .from('products')
+      .select(
+        'id, name, sku, supplier_id, has_variations, variations:product_variations(id, name, sku, attributes)',
+      )
+      .eq('company_id', companyId)
+      .eq('is_active', true)
+      .eq('has_variations', true)
+      .order('name');
+    if (error) {
+      if (isPostgrestMissingColumnError(error) || error.code === '42703') {
+        return this.getAllProducts(companyId);
+      }
+      throw error;
+    }
+    return (data || []).filter(
+      (p: { variations?: unknown[] }) => Array.isArray(p.variations) && p.variations.length > 0,
+    );
+  },
+
   // Get single product (no current_stock; stock from stock_movements)
   async getProduct(id: string) {
     for (const vSel of VARIATION_SELECT_LAYERS) {
@@ -229,15 +252,15 @@ export const productService = {
     return { ...data, variations: [] as unknown[] };
   },
 
-  // Create product (uses ERP numbering engine for SKU; auto-retry once on duplicate SKU).
+  // Create product (uses ERP numbering engine for SKU; auto-retry on duplicate SKU).
   // Never send current_stock to DB (column may not exist; stock is movement-based).
   async createProduct(product: Partial<Product>) {
     const raw = ensureProductIds(product as Record<string, unknown>);
     const { current_stock: _cs, opening_stock: _os, ...payload } = raw as Record<string, unknown>;
     const companyId = (payload.company_id as string) || (product as any).company_id;
-    let lastError: unknown = null;
+    const maxSkuRetries = 5;
 
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (let attempt = 0; attempt < maxSkuRetries; attempt++) {
       const { data, error } = await supabase
         .from('products')
         .insert(payload)
@@ -249,19 +272,20 @@ export const productService = {
       const isDuplicate = error.code === '23505' || (error.message && /duplicate key value|unique constraint/i.test(error.message));
       const isSkuConflict = isDuplicate && (error.message && /sku|SKU/i.test(error.message) || (product.sku && error.message?.includes(product.sku as string)));
 
-      if (isSkuConflict && companyId && attempt === 0) {
+      if (isSkuConflict && companyId && attempt < maxSkuRetries - 1) {
         try {
           const nextSKU = await documentNumberService.getNextProductSKU(companyId, null);
           (payload as any).sku = nextSKU;
-          lastError = error;
           continue;
-        } catch (e) {
-          lastError = e;
+        } catch {
+          // fall through to duplicate error below
         }
       }
 
       if (isDuplicate) {
-        const hint = product.sku ? `SKU "${product.sku}" is already in use for this company.` : 'A product with this SKU already exists.';
+        const hint = (payload as any).sku
+          ? `SKU "${(payload as any).sku}" is already in use for this company.`
+          : 'A product with this SKU already exists.';
         throw new Error(`${hint} Please use a different SKU or generate a new one.`);
       }
       throw error;
@@ -584,7 +608,7 @@ export const productService = {
     let variationsUpdated = 0;
 
     try {
-      for (const row of variations) {
+      const variationResults = await mapPool(variations, 5, async (row) => {
         const varSku = row.sku.trim();
         if (!varSku) throw new Error(`Variation "${row.name}" is missing SKU`);
         const attrs = row.attributes ?? { variant: row.name };
@@ -601,43 +625,49 @@ export const productService = {
             wholesale_price: row.wholesale_price ?? null,
             price: row.retail_price ?? null,
           });
-          variationIds.push(String(existingVar.id));
-          variationsUpdated++;
-        } else {
-          const createdVar = await this.createVariation({
-            product_id: productId!,
-            name: row.name,
-            sku: varSku,
-            barcode: row.barcode ?? null,
-            attributes: attrs,
-            cost_price: row.cost_price,
-            retail_price: row.retail_price,
-            wholesale_price: row.wholesale_price,
-            current_stock: 0,
-          });
-          const vid = (createdVar as { id?: string })?.id;
-          if (!vid) throw new Error(`Variation "${row.name}" save returned no ID`);
-          variationIds.push(vid);
-          variationsCreated++;
+          return { id: String(existingVar.id), created: false as const, openingMovementId: null as string | null };
+        }
 
-          const openingStock = Number(row.opening_stock) || 0;
-          if (openingStock > 0) {
-            const { error: movErr, movementId } = await inventoryService.insertOpeningBalanceMovement(
-              companyId,
-              branchIdOrNull,
-              productId!,
-              openingStock,
-              row.cost_price ?? 0,
-              vid,
-              { deferGlSync: deferOpeningBalanceGlSync }
-            );
-            if (movErr) {
-              console.warn('[productService] Variation opening stock skipped:', movErr.message || movErr);
-            } else if (movementId) {
-              openingMovementIds.push(movementId);
-            }
+        const createdVar = await this.createVariation({
+          product_id: productId!,
+          name: row.name,
+          sku: varSku,
+          barcode: row.barcode ?? null,
+          attributes: attrs,
+          cost_price: row.cost_price,
+          retail_price: row.retail_price,
+          wholesale_price: row.wholesale_price,
+          current_stock: 0,
+        });
+        const vid = (createdVar as { id?: string })?.id;
+        if (!vid) throw new Error(`Variation "${row.name}" save returned no ID`);
+
+        let openingMovementId: string | null = null;
+        const openingStock = Number(row.opening_stock) || 0;
+        if (openingStock > 0) {
+          const { error: movErr, movementId } = await inventoryService.insertOpeningBalanceMovement(
+            companyId,
+            branchIdOrNull,
+            productId!,
+            openingStock,
+            row.cost_price ?? 0,
+            vid,
+            { deferGlSync: deferOpeningBalanceGlSync }
+          );
+          if (movErr) {
+            console.warn('[productService] Variation opening stock skipped:', movErr.message || movErr);
+          } else if (movementId) {
+            openingMovementId = movementId;
           }
         }
+        return { id: vid, created: true as const, openingMovementId };
+      });
+
+      for (const r of variationResults) {
+        variationIds.push(r.id);
+        if (r.created) variationsCreated++;
+        else variationsUpdated++;
+        if (r.openingMovementId) openingMovementIds.push(r.openingMovementId);
       }
 
       if (!hasVariations && parentCreated) {

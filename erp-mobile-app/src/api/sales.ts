@@ -22,6 +22,7 @@ import {
 } from '../utils/saleNotesComposition';
 import { dispatchMobileAccountingInvalidated } from '../lib/dataInvalidationBus';
 import { readSaleBillRef } from '../utils/saleBillRef';
+import { buildBespokeMetadataForPersist } from '../types/bespoke';
 
 export interface CreateSaleInput {
   companyId: string;
@@ -665,7 +666,8 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
       row.packing_details = item.packingDetails;
     }
     if (item.customizationDetails != null) {
-      row.customization_details = item.customizationDetails;
+      row.customization_details =
+        buildBespokeMetadataForPersist(item.customizationDetails) ?? item.customizationDetails;
     }
     if (item.bespokeParentItemId != null) {
       row.bespoke_parent_item_id = item.bespokeParentItemId;

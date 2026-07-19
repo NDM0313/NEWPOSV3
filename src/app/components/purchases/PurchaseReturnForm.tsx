@@ -4,10 +4,11 @@
  */
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, Save, Package, Minus, Plus, Loader2, AlertCircle, Box, TrendingUp, Undo2, RefreshCw, Check } from 'lucide-react';
+import { format, parseISO, isValid } from 'date-fns';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
-import { CalendarDatePicker } from '../ui/CalendarDatePicker';
+import { DatePicker } from '../ui/DatePicker';
 import { toast } from 'sonner';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useAccounting } from '@/app/context/AccountingContext';
@@ -210,7 +211,15 @@ export const PurchaseReturnForm: React.FC<PurchaseReturnFormProps> = ({ purchase
           <div className="flex items-center gap-3">
             <div>
               <span className="text-xs text-muted-foreground block mb-0.5">Return Date</span>
-              <CalendarDatePicker value={returnDate} onChange={(d) => d && setReturnDate(d)} className="bg-muted border-border text-foreground h-9 w-[160px]" />
+              <DatePicker
+                className="w-[160px]"
+                value={format(returnDate, 'yyyy-MM-dd')}
+                onChange={(v) => {
+                  if (!v) return;
+                  const d = parseISO(v);
+                  if (isValid(d)) setReturnDate(d);
+                }}
+              />
             </div>
             <Button variant="ghost" size="icon" onClick={onClose} className="text-muted-foreground hover:text-foreground rounded-full">
               <X size={22} />

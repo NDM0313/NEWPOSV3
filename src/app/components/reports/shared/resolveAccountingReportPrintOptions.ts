@@ -6,6 +6,7 @@ import {
 
 import {
   pickReportHeaderFieldVisibility,
+  resolveReportTypography,
   type ReportHeaderFieldVisibility,
   type ReportPrintOrientation,
 } from './reportPrintConfig';
@@ -18,6 +19,11 @@ export interface AccountingReportPrintOptions {
   showHeader: boolean;
   showFooter: boolean;
   fontSize: number;
+  dataListFontSize: number;
+  tableHeaderFontSize: number;
+  summaryFontSize: number;
+  columnPaddingPx: number;
+  showCurrencySymbol: boolean;
   fontFamily: string;
   margins: PageMargins;
 }
@@ -53,12 +59,13 @@ export function resolveAccountingReportPrintOptions(
   kind: AccountingReportKind,
 ): AccountingReportPrintOptions {
   const merged = mergeWithDefaults(settings);
+  const typography = resolveReportTypography(merged.reportExport, merged.pdf.fontSize);
   return {
     orientation: orientationFromSettings(merged, kind),
     fieldVisibility: pickReportHeaderFieldVisibility(merged.fields),
     showHeader: merged.reportExport.showReportHeader !== false,
     showFooter: merged.reportExport.showReportFooter !== false,
-    fontSize: merged.reportExport.reportFontSize ?? merged.pdf.fontSize ?? 11,
+    ...typography,
     fontFamily: merged.pdf.fontFamily ?? 'Arial',
     margins: merged.pageSetup.margins,
   };

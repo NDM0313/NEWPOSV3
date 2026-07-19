@@ -20,6 +20,7 @@ import {
 } from '@/app/lib/postingStatusGate';
 import { getPurchaseDisplayNumber } from '@/app/lib/documentDisplayNumbers';
 import { getCurrentLocalTimestamp, localNowDateString } from '@/app/utils/localDate';
+import { perfStart } from '@/app/utils/perfTiming';
 import { assertDomainEditSafetyTestMode, classifyPurchaseEdit } from '@/app/lib/accountingEditClassification';
 import { createAccountingEditTraceId, pushAccountingEditTrace } from '@/app/lib/accountingEditTrace';
 import { dispatchDataInvalidated } from '@/app/lib/dataInvalidationBus';
@@ -178,11 +179,19 @@ export const convertFromSupabasePurchase = (supabasePurchase: any): Purchase => 
   // UI Rule: Show only branch NAME (not code, never UUID)
   let locationDisplay = '';
   if (supabasePurchase.branch) {
-    // Branch data joined from API - show NAME only
     locationDisplay = supabasePurchase.branch.name || '';
   }
-  // Note: Do NOT fallback to branch_id UUID - it should never appear in UI
-  
+  // Do NOT put branch_id UUID into location — page resolves via branchId + branchMap
+
+  const rawItems = Array.isArray(supabasePurchase.items) ? supabasePurchase.items : [];
+  const enrichedCount = Number(supabasePurchase.items_count);
+  const itemsCount =
+    rawItems.length > 0
+      ? rawItems.length
+      : Number.isFinite(enrichedCount) && enrichedCount > 0
+        ? enrichedCount
+        : rawItems.length;
+
   const displayPo = getPurchaseDisplayNumber(supabasePurchase);
   return {
     id: supabasePurchase.id,
@@ -194,11 +203,12 @@ export const convertFromSupabasePurchase = (supabasePurchase: any): Purchase => 
     contactNumber: supabasePurchase.supplier?.phone || '',
     date: supabasePurchase.po_date || localNowDateString(),
     expectedDelivery: supabasePurchase.expected_delivery_date,
-    location: locationDisplay, // NOW uses resolved branch name/code instead of raw UUID
+    location: locationDisplay,
+    branchId: supabasePurchase.branch_id || supabasePurchase.branch?.id || undefined,
     status: supabasePurchase.status || 'draft',
     // CRITICAL FIX: Include user info for "Added By" display
     createdBy: supabasePurchase.created_by_user?.full_name || supabasePurchase.created_by_user?.email || 'System',
-    items: (supabasePurchase.items || []).map((item: any) => ({
+    items: rawItems.map((item: any) => ({
       id: item.id || '',
       productId: item.product_id || '',
       variationId: item.variation_id || undefined, // Include variation ID
@@ -214,10 +224,7 @@ export const convertFromSupabasePurchase = (supabasePurchase: any): Purchase => 
       packingDetails: item.packing_details || undefined,
       variation: item.variation || item.product_variations || undefined,
     })),
-    // 🔒 CRITICAL FIX: Items count from joined purchase_items array
-    // If items array is missing or empty, count is 0
-    // This should match the actual COUNT(*) FROM purchase_items WHERE purchase_id = ...
-    itemsCount: Array.isArray(supabasePurchase.items) ? supabasePurchase.items.length : 0,
+    itemsCount,
     subtotal: supabasePurchase.subtotal || 0,
     discount: supabasePurchase.discount_amount || 0,
     tax: supabasePurchase.tax_amount || 0,
@@ -327,6 +334,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
     purchaseData: Omit<Purchase, 'id' | 'purchaseNo' | 'createdAt' | 'updatedAt'>,
     providedPurchaseNo?: string
   ): Promise<Purchase> => {
+    const perf = perfStart('createPurchase');
     if (!companyId || !user) {
       throw new Error('Company ID and User are required');
     }
@@ -496,11 +504,11 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
           .catch((err) => console.warn('[PURCHASE CONTEXT] Activity log failed:', err));
       }
 
-      // PURCHASE DOCUMENT JE — single posting engine (reads purchase + purchase_charges from DB after createPurchase)
+      // PURCHASE DOCUMENT JE — pass in-memory header + charges to skip re-select
       if (canPostAccountingForPurchaseStatus(newPurchase.status) && companyId && newPurchase.total > 0) {
         try {
           const { postPurchaseDocumentAccounting } = await import('@/app/services/documentPostingEngine');
-          const jeId = await postPurchaseDocumentAccounting(newPurchase.id);
+          const jeId = await postPurchaseDocumentAccounting(newPurchase.id, result as any, charges);
           if (!jeId) {
             throw new Error('Final/received purchase was saved but no canonical purchase document JE exists.');
           }
@@ -613,7 +621,8 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       if (newPurchase.supplier) {
         window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'supplier', entityId: newPurchase.supplier } }));
       }
-      
+
+      perf.end({ status: newPurchase.status, items: newPurchase.items?.length ?? 0 });
       return newPurchase;
     } catch (error: any) {
       console.error('[PURCHASE CONTEXT] Error creating purchase:', error);
@@ -1417,8 +1426,8 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
         }).catch((err) => console.warn('[PURCHASE CONTEXT] Activity log failed:', err));
       }
       
-      // Refresh purchases list in background (local state already patched above).
-      void loadPurchases();
+      // List refresh: emitPurchaseInvalidation → PurchasesPage DATA_INVALIDATED (single flight).
+      // Do not also call loadPurchases here — that double-fetched after every update.
       
       // Dispatch event to refresh inventory if stock movements were created
       if (stockMovementDeltas.length > 0) {

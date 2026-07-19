@@ -487,6 +487,8 @@ export const AccountingDashboard = () => {
   
   // 🎯 Account Management State
   const [isAddAccountOpen, setIsAddAccountOpen] = useState(false);
+  /** When set, AddAccountDrawer opens Professional with this parent prefilled (Add Child Account). */
+  const [addAccountPrefill, setAddAccountPrefill] = useState<{ parentId: string } | null>(null);
   const [isEditAccountOpen, setIsEditAccountOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<any>(null);
   const [payCourierOpen, setPayCourierOpen] = useState(false);
@@ -655,6 +657,8 @@ export const AccountingDashboard = () => {
     totalPayable: number;
     netProfit: number;
   } | null>(null);
+  /** Explicit refresh for P&L snapshot (not keyed off entries.length). */
+  const [glSummaryEpoch, setGlSummaryEpoch] = useState(0);
 
   useEffect(() => {
     if (!companyId) {
@@ -688,7 +692,7 @@ export const AccountingDashboard = () => {
     return () => {
       cancelled = true;
     };
-  }, [companyId, branchId, accounting.entries.length]);
+  }, [companyId, branchId, glSummaryEpoch]);
 
   const displaySummary = canonicalGlSummary ?? summary;
 
@@ -706,6 +710,7 @@ export const AccountingDashboard = () => {
       timer = setTimeout(() => {
         timer = null;
         setPartyGlEpoch((n) => n + 1);
+        setGlSummaryEpoch((n) => n + 1);
       }, 180);
     };
     const onInvalidated = (ev: Event) => {
@@ -2179,7 +2184,10 @@ export const AccountingDashboard = () => {
                 </div>
                 {canPostAccounting && (
                   <Button
-                    onClick={() => setIsAddAccountOpen(true)}
+                    onClick={() => {
+                      setAddAccountPrefill(null);
+                      setIsAddAccountOpen(true);
+                    }}
                     className="bg-blue-600 hover:bg-blue-500 text-white gap-2"
                   >
                     <Plus size={16} /> Create New Account
@@ -2194,7 +2202,10 @@ export const AccountingDashboard = () => {
                 <p className="text-muted-foreground text-sm">No accounts found</p>
                 <p className="text-muted-foreground text-xs mt-1">Create your first account to get started</p>
                 <Button
-                  onClick={() => setIsAddAccountOpen(true)}
+                  onClick={() => {
+                    setAddAccountPrefill(null);
+                    setIsAddAccountOpen(true);
+                  }}
                   className="mt-4 bg-blue-600 hover:bg-blue-500 text-white"
                 >
                   <Plus size={16} className="mr-2" /> Create Account
@@ -2359,6 +2370,10 @@ export const AccountingDashboard = () => {
                     onOpenAccountStatements={(accountId) => {
                       setAccountStatementPreselectId(accountId);
                       setActiveTab('account_statements');
+                    }}
+                    onAddChildAccount={(accountId) => {
+                      setAddAccountPrefill({ parentId: accountId });
+                      setIsAddAccountOpen(true);
                     }}
                   />
                 )}
@@ -2665,12 +2680,18 @@ export const AccountingDashboard = () => {
       />
 
       {/* Add Account Drawer */}
-      <AddAccountDrawer 
-        isOpen={isAddAccountOpen} 
-        onClose={() => setIsAddAccountOpen(false)}
+      <AddAccountDrawer
+        isOpen={isAddAccountOpen}
+        initialTab={addAccountPrefill ? 'professional' : undefined}
+        initialParentId={addAccountPrefill?.parentId ?? null}
+        onClose={() => {
+          setIsAddAccountOpen(false);
+          setAddAccountPrefill(null);
+        }}
         onSuccess={async () => {
           await accounting.refreshEntries();
           setIsAddAccountOpen(false);
+          setAddAccountPrefill(null);
         }}
       />
 

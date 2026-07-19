@@ -72,8 +72,8 @@ export function SaleAddAttachmentsSheet({
 
   const title =
     existing.length > 0
-      ? 'Add attachments'
-      : 'Add attachment';
+      ? 'Update attachments'
+      : 'Add attachments';
 
   return (
     <div
