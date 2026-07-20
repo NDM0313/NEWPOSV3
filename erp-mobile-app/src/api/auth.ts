@@ -13,7 +13,13 @@ import {
   type SecurePayload,
   type VerifyResult,
 } from '../lib/secureStorage';
-import { normalizeAppRole, type AssignableAppRole } from '../config/functionalRoles';
+import {
+  isPlatformCompanyOperator,
+  normalizeAppRole,
+  type AssignableAppRole,
+  type PlatformAppRole,
+} from '../config/functionalRoles';
+import { getEffectiveCompanyId } from './platformCompany';
 import { getOAuthRedirectTo } from '../lib/oauthRedirect';
 import {
   isStaleRefreshTokenError,
@@ -294,13 +300,15 @@ export async function resendSignupEmailOtp(email: string): Promise<{ error: { me
   return error ? { error: { message: error.message } } : { error: null };
 }
 
-export type UserRole = AssignableAppRole | 'owner';
+export type UserRole = AssignableAppRole | 'owner' | PlatformAppRole;
 
 export interface AuthProfile {
   name: string;
   email: string;
   role: UserRole;
   companyId: string | null;
+  /** Home users.company_id (before platform session override). */
+  homeCompanyId?: string | null;
   userId: string;
   /** Public users.id (for user_branches.user_id). When present, use for branch access. */
   profileId?: string;
@@ -329,15 +337,26 @@ async function profileFromAuthUser(
 
   const normalized = normalizeAppRole(row.role);
   const finalRole: UserRole =
-    normalized === 'owner' ? 'owner' : (normalized as AssignableAppRole);
+    normalized === 'owner'
+      ? 'owner'
+      : normalized === 'developer' || normalized === 'super_admin'
+        ? (normalized as PlatformAppRole)
+        : (normalized as AssignableAppRole);
   const branchId: string | null = null;
   const branchLocked = false;
+  const homeCompanyId = row.company_id || null;
+  let companyId = homeCompanyId;
+  if (isPlatformCompanyOperator(row.role)) {
+    const effective = await getEffectiveCompanyId();
+    if (!effective.error && effective.data) companyId = effective.data;
+  }
 
   const profile: AuthProfile = {
     name: displayNameFromAuthUserAndRow(user, row as UsersNameRow),
     email: user.email || email,
     role: finalRole,
-    companyId: row.company_id || null,
+    companyId,
+    homeCompanyId,
     userId: user.id,
     profileId: (row as { id?: string }).id ?? undefined,
     branchId,
@@ -543,13 +562,23 @@ export async function getProfile(userId: string): Promise<AuthProfile | null> {
   if (!user) return null;
   const normalized = normalizeAppRole(row.role);
   const finalRole: UserRole =
-    normalized === 'owner' ? 'owner' : (normalized as AssignableAppRole);
+    normalized === 'owner'
+      ? 'owner'
+      : normalized === 'developer' || normalized === 'super_admin'
+        ? (normalized as PlatformAppRole)
+        : (normalized as AssignableAppRole);
   const profileId = (row as { id?: string }).id ?? undefined;
+  const homeCompanyId = row.company_id || null;
+  let companyId = homeCompanyId;
+  if (isPlatformCompanyOperator(row.role)) {
+    const effective = await getEffectiveCompanyId();
+    if (!effective.error && effective.data) companyId = effective.data;
+  }
 
   let branchId: string | null = null;
   let branchLocked = false;
-  if (profileId && isSupabaseConfigured) {
-    const companyId = row.company_id || null;
+  // Platform operators pick company then branch; do not lock from home-company assignments.
+  if (profileId && isSupabaseConfigured && !isPlatformCompanyOperator(row.role)) {
     const branchIds = await getUserAccessibleBranchIds(user.id, profileId, companyId);
     if (branchIds.length === 1) {
       branchId = branchIds[0];
@@ -561,7 +590,8 @@ export async function getProfile(userId: string): Promise<AuthProfile | null> {
     name: displayNameFromAuthUserAndRow(user, row as UsersNameRow),
     email: user.email || '',
     role: finalRole,
-    companyId: row.company_id || null,
+    companyId,
+    homeCompanyId,
     userId: user.id,
     profileId,
     branchId,

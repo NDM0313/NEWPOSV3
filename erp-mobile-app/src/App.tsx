@@ -22,7 +22,10 @@ import { useResponsive } from './hooks/useResponsive';
 import { LoginScreen } from './components/LoginScreen';
 import { CreateBusinessWizardScreen } from './components/auth/CreateBusinessWizardScreen';
 import { BranchSelection } from './components/BranchSelection';
+import { CompanySelection } from './components/CompanySelection';
 import { HomeScreen } from './components/HomeScreen';
+import { isPlatformCompanyOperator } from './config/functionalRoles';
+import { getPlatformActiveCompany } from './api/platformCompany';
 import { BottomNav } from './components/BottomNav';
 import { ModuleGrid } from './components/ModuleGrid';
 import { TabletSidebar } from './components/TabletSidebar';
@@ -75,6 +78,7 @@ function ModuleLoadingFallback() {
 
 const MODULE_TITLES: Record<Screen, string> = {
   login: 'Login',
+  'company-selection': 'Company',
   'branch-selection': 'Branch',
   home: 'Home',
   dashboard: 'Dashboard',
@@ -111,6 +115,7 @@ export default function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>('login');
   const [user, setUser] = useState<User | null>(null);
   const [companyId, setCompanyId] = useState<string | null>(null);
+  const [companyName, setCompanyName] = useState<string | null>(null);
   const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
   const [activeBottomTab, setActiveBottomTab] = useState<BottomNavTab>('home');
   const [showModuleGrid, setShowModuleGrid] = useState(false);
@@ -442,17 +447,33 @@ export default function App() {
         };
         permissionReloadFreshRef.current = true;
         setUser(u);
-        setCompanyId(profile.companyId);
-        setLastCounterCompanyId(profile.companyId);
+
+        let cid = profile.companyId || '';
+        let cname: string | null = null;
+        if (isPlatformCompanyOperator(profile.role)) {
+          const session = await getPlatformActiveCompany();
+          const activeId = session.data?.activeCompanyId ?? null;
+          if (!activeId) {
+            setCompanyId(null);
+            setCompanyName(null);
+            setLastCounterCompanyId(null);
+            setCurrentScreen('company-selection');
+            setIsBranchResolving(false);
+            return;
+          }
+          cid = activeId;
+          cname = session.data?.companyName ?? null;
+        }
+        setCompanyId(cid || null);
+        setCompanyName(cname);
+        setLastCounterCompanyId(cid || null);
         if (pinSet) {
-          const cid = profile.companyId || '';
           const counterLock = cid ? await safeShouldActivateCounterLockScreen(cid) : false;
           if (!counterLock) {
             setIsPinLocked(true);
           }
         }
         try {
-          const cid = profile.companyId || '';
           const profileId = profile.profileId;
           if (cid) {
             await listCacheRemove(listCacheKeys.branches(cid));
@@ -528,23 +549,54 @@ export default function App() {
   }, []);
 
   const handleLogin = async (u: User, cid: string | null) => {
-    const needsCounterLock = cid ? await safeShouldActivateCounterLockScreen(cid) : false;
-    skipCounterBootLockAfterInteractiveLoginRef.current = !needsCounterLock;
+    skipCounterBootLockAfterInteractiveLoginRef.current = true;
     permissionReloadFreshRef.current = true;
     if (previousAuthUserIdRef.current !== null && previousAuthUserIdRef.current !== u.id) {
       await resetLocalDataPlaneForNewCompany();
     }
     previousAuthUserIdRef.current = u.id;
     setUser(u);
-    setCompanyId(cid);
-    setLastCounterCompanyId(cid);
     setIsBranchResolving(true);
     setIsPinLocked(false);
     markUnlocked();
+    setSelectedBranch(null);
+
+    if (isPlatformCompanyOperator(u.role)) {
+      const session = await getPlatformActiveCompany();
+      const activeId = session.data?.activeCompanyId ?? null;
+      if (!activeId) {
+        setCompanyId(null);
+        setCompanyName(null);
+        setLastCounterCompanyId(null);
+        setCurrentScreen('company-selection');
+        setIsBranchResolving(false);
+        return;
+      }
+      const activeName = session.data?.companyName ?? null;
+      setCompanyId(activeId);
+      setCompanyName(activeName);
+      setLastCounterCompanyId(activeId);
+      const needsCounterLock = await safeShouldActivateCounterLockScreen(activeId);
+      skipCounterBootLockAfterInteractiveLoginRef.current = !needsCounterLock;
+      await listCacheRemove(listCacheKeys.branches(activeId));
+      invalidateBranchAccessSessionCache();
+      await resolveBranchScreenForUser(u, activeId);
+      return;
+    }
+
+    setCompanyId(cid);
+    setCompanyName(null);
+    setLastCounterCompanyId(cid);
+    const needsCounterLock = cid ? await safeShouldActivateCounterLockScreen(cid) : false;
+    skipCounterBootLockAfterInteractiveLoginRef.current = !needsCounterLock;
     if (cid) {
       await listCacheRemove(listCacheKeys.branches(cid));
       invalidateBranchAccessSessionCache();
     }
+    await resolveBranchScreenForUser(u, cid);
+  };
+
+  const resolveBranchScreenForUser = async (u: User, cid: string | null) => {
     if (cid && (u.profileId || u.id)) {
       try {
         const unrestricted = canPickAllCompanyBranches(u.role);
@@ -582,6 +634,26 @@ export default function App() {
       } catch { /* ignore */ }
     }
     setCurrentScreen('branch-selection');
+    setIsBranchResolving(false);
+  };
+
+  const handleCompanySelect = async (company: { id: string; name: string }) => {
+    if (!user) return;
+    permissionReloadFreshRef.current = true;
+    setCompanyId(company.id);
+    setCompanyName(company.name);
+    setLastCounterCompanyId(company.id);
+    setSelectedBranch(null);
+    setIsBranchResolving(true);
+    await listCacheRemove(listCacheKeys.branches(company.id));
+    invalidateBranchAccessSessionCache();
+    await resolveBranchScreenForUser(user, company.id);
+  };
+
+  const handleSwitchCompany = () => {
+    setSelectedBranch(null);
+    try { localStorage.removeItem(BRANCH_STORAGE_KEY); } catch { /* ignore */ }
+    setCurrentScreen('company-selection');
     setIsBranchResolving(false);
   };
 
@@ -629,6 +701,7 @@ export default function App() {
     clearUnlockMark();
     setUser(null);
     setCompanyId(null);
+    setCompanyName(null);
     setSelectedBranch(null);
     setIsBranchResolving(false);
     setIsPinLocked(false);
@@ -762,6 +835,18 @@ export default function App() {
     );
   }
 
+  if (currentScreen === 'company-selection' && user && isPlatformCompanyOperator(user.role)) {
+    return (
+      <div className="min-h-screen bg-[#111827] text-[#F9FAFB]">
+        <CompanySelection
+          user={user}
+          currentCompanyId={companyId}
+          onCompanySelect={(c) => void handleCompanySelect(c)}
+        />
+      </div>
+    );
+  }
+
   if (currentScreen === 'branch-selection' && user) {
     return (
       <div className="min-h-screen bg-[#111827] text-[#F9FAFB]">
@@ -821,7 +906,17 @@ export default function App() {
     <Suspense fallback={<ModuleLoadingFallback />}>
     <>
       {currentScreen === 'home' && user && selectedBranch && (
-        <HomeScreen user={user} branch={selectedBranch} companyId={companyId} onNavigate={navigateToModule} onLogout={handleLogout} />
+        <HomeScreen
+          user={user}
+          branch={selectedBranch}
+          companyId={companyId}
+          companyName={companyName}
+          onNavigate={navigateToModule}
+          onLogout={handleLogout}
+          onSwitchCompany={
+            isPlatformCompanyOperator(user.role) ? handleSwitchCompany : undefined
+          }
+        />
       )}
       {currentScreen === 'sales' && user && (
         isBranchResolving

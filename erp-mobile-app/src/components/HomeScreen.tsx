@@ -1,6 +1,6 @@
 import {
   ShoppingCart, ShoppingBag, Shirt, Camera, DollarSign, Receipt, Package, User as UserIcon,
-  LogOut, TrendingUp, Settings as SettingsIcon, Sparkles, Store, ListChecks,
+  LogOut, TrendingUp, Settings as SettingsIcon, Sparkles, Store, ListChecks, Building2,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import type { User, Branch, Screen } from '../types';
@@ -17,13 +17,16 @@ import {
 } from '../context/CounterWorkerContext';
 import { getPermissionModuleForScreen, screenSkipsModuleViewPermission } from '../utils/permissionModules';
 import { isDeveloperModeUnlocked, subscribeDeveloperMode } from '../lib/developerMode';
+import { getFunctionalRoleLabel } from '../config/functionalRoles';
 
 interface HomeScreenProps {
   user: User;
   branch: Branch;
   companyId: string | null;
+  companyName?: string | null;
   onNavigate: (screen: Screen) => void;
   onLogout: () => void;
+  onSwitchCompany?: () => void;
 }
 
 interface ModuleCard {
@@ -52,13 +55,21 @@ const MODULES: ModuleCard[] = [
   { id: 'settings', title: 'Settings', icon: <SettingsIcon className="w-8 h-8" />, color: '#6B7280', bgColor: 'bg-[#6B7280]/10', enabled: true },
 ];
 
-export function HomeScreen({ user, branch, companyId, onNavigate, onLogout }: HomeScreenProps) {
+export function HomeScreen({
+  user,
+  branch,
+  companyId,
+  companyName,
+  onNavigate,
+  onLogout,
+  onSwitchCompany,
+}: HomeScreenProps) {
   const responsive = useResponsive();
   const profile = useEffectiveWorkerProfile(user);
   const effectiveUserId = useEffectiveWorkerId(user.id);
   const effectiveProfileId = useEffectiveWorkerProfileId();
   const displayName = profile?.displayName ?? user.name;
-  const displayRole = profile?.role ?? user.role;
+  const displayRole = getFunctionalRoleLabel(profile?.role ?? user.role);
   const { hasPermission, isPermissionLoaded, isModuleEnabled, moduleConfigBanner, canUseFullAccounting } = usePermissions();
   const [showFeatures, setShowFeatures] = useState(false);
   const [todaySales, setTodaySales] = useState<number>(0);
@@ -127,7 +138,9 @@ export function HomeScreen({ user, branch, companyId, onNavigate, onLogout }: Ho
       <div className="bg-gradient-to-br from-[#1F2937] to-[#111827] p-6 pb-8 flow-screen-header">
         <div className="flex items-start justify-between mb-6">
           <div>
-            <h1 className="text-xl font-bold text-white mb-1">Din Collection</h1>
+            <h1 className="text-xl font-bold text-white mb-1">
+              {companyName?.trim() || 'Din Collection'}
+            </h1>
             <p className="text-sm text-[#9CA3AF]">Welcome, {displayName}</p>
             <div className="flex items-center gap-2 mt-2 flex-wrap">
               <span className="inline-block px-2 py-0.5 bg-[#8B5CF6]/20 text-[#8B5CF6] text-xs rounded-full font-medium">
@@ -136,6 +149,16 @@ export function HomeScreen({ user, branch, companyId, onNavigate, onLogout }: Ho
               <div className="w-2 h-2 bg-[#10B981] rounded-full" />
               <p className="text-xs text-[#D1D5DB]">{branch.name}</p>
             </div>
+            {onSwitchCompany && (
+              <button
+                type="button"
+                onClick={onSwitchCompany}
+                className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#374151] hover:bg-[#4B5563] text-xs text-white"
+              >
+                <Building2 className="w-3.5 h-3.5" />
+                Switch company
+              </button>
+            )}
           </div>
           <div className="flex items-center gap-2">
             {enabled.some((m) => m.id === 'settings') && (

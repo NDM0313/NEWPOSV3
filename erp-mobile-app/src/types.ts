@@ -1,5 +1,6 @@
 export type Screen =
   | 'login'
+  | 'company-selection'
   | 'branch-selection'
   | 'home'
   | 'dashboard'
@@ -22,7 +23,7 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  role: 'owner' | 'admin' | 'manager' | 'staff' | 'viewer' | 'salesman' | 'cashier';
+  role: 'owner' | 'admin' | 'manager' | 'staff' | 'viewer' | 'salesman' | 'cashier' | 'developer' | 'super_admin';
   /** Public users.id for user_branches lookup. */
   profileId?: string;
   /** When set, user is locked to this branch (no branch selector). */
