@@ -42,30 +42,17 @@ It is **not** a tab inside Accounting Developer Center.
 
 ## Office remaining
 
-### Task A — Account balance mismatches (2 rows)
+### Task A — Account balance mismatches — **DONE 2026-07-20 (office)**
 
-Lab H showed **Account mismatches = 2** under:
+Lab H / journal sync applied on production DIN BRIDAL:
 
-> Account balance vs journal (safe repair: sync from journal)
+- Pre mismatches: **15** (live had more than the 2 seen at home)
+- Updated: **15** `accounts.balance` rows from journal (voided excluded)
+- Post mismatches: **0**
+- TB Σ still **0**
+- Evidence: [`lab-h-task-a-complete-20260720.md`](./lab-h-task-a-complete-20260720.md)
 
-Observed diffs (home DOM): **105350** and **-40200** (one account row starts **5010 CO…**).
-
-These are **cached `accounts.balance` vs journal totals**, not Trial Balance imbalance (TB is already 0).
-
-**Fix on production (office):**
-
-1. Open Lab H (path above) → **Load detection**
-2. Confirm still **Account mismatches = 2** (or list the two rows)
-3. Click **Sync account balances from journal**
-4. Reload detection → expect **Account mismatches = 0**
-
-**Notes:**
-
-- Does **not** invent journal entries
-- Does **not** change TB (already 0)
-- Sync ≠ TB fix (see admin self-fix doc)
-
-### Task B — AR vs receivables (separate)
+### Task B — AR vs receivables (separate) — **STILL OPEN**
 
 Lab H showed **AR vs receivables = −1,382,450**.
 
