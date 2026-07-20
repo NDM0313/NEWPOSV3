@@ -41,7 +41,21 @@ Both legs exist on production; net GL movement on the party sub-account is **zer
 
 - `src/app/lib/accountLedgerPresentation.test.ts` — PASS
 - `erp-mobile-app/src/lib/ledgerEffectiveNet.test.ts` — PASS
-- `npm run build` — PASS
+- `npm run build` (web) — PASS
+- `erp-mobile-app` build — PASS
+
+## Delivery
+
+| Item | Value |
+|------|--------|
+| Commit | `b8973a2f` |
+| Pushed | `origin/main` |
+| VPS deploy | `deploy/vps-build-erp-only.sh` (image built; recreate retried after race) |
+| VPS HEAD | `b8973a2f` |
+| Production HTTP | `https://erp.dincouture.pk/` → 200 |
+| Mobile path | `https://erp.dincouture.pk/m/` |
+
+Hard-refresh browser / mobile PWA (Ctrl+Shift+R) to pick up the new bundle.
 
 ## Non-goals (unchanged)
 
