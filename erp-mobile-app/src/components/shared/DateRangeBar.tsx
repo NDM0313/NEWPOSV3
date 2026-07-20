@@ -16,6 +16,8 @@ export interface DateRangeBarProps {
   value: DateRangeValue;
   onChange: (v: DateRangeValue) => void;
   hidePresets?: DateRangePreset[];
+  /** Keep these chips first (e.g. `all` for ledgers) so full history is one tap away. */
+  pinPresets?: DateRangePreset[];
   /** Report gradient header (default) vs dark module chrome vs rental purple header */
   variant?: 'gradient' | 'dark' | 'purple';
   companyId?: string | null;
@@ -52,6 +54,7 @@ export function DateRangeBar({
   value,
   onChange,
   hidePresets,
+  pinPresets,
   variant = 'gradient',
   companyId,
   branchId,
@@ -61,7 +64,16 @@ export function DateRangeBar({
   const [loadedFiscalYearConfig, setLoadedFiscalYearConfig] = useState<FiscalYearConfig | null>(null);
   const hide = new Set(hidePresets ?? []);
   const styles = VARIANT_STYLES[variant];
-  const chips = DATE_RANGE_PRESET_CHIPS.filter((c) => !hide.has(c.id));
+  const pinOrder = pinPresets ?? [];
+  const chips = (() => {
+    const visible = DATE_RANGE_PRESET_CHIPS.filter((c) => !hide.has(c.id));
+    if (!pinOrder.length) return visible;
+    const pinned = pinOrder
+      .map((id) => visible.find((c) => c.id === id))
+      .filter((c): c is (typeof DATE_RANGE_PRESET_CHIPS)[number] => Boolean(c));
+    const pinnedIds = new Set(pinned.map((c) => c.id));
+    return [...pinned, ...visible.filter((c) => !pinnedIds.has(c.id))];
+  })();
   const fiscalYearConfig = fiscalYearConfigProp ?? loadedFiscalYearConfig;
 
   useEffect(() => {

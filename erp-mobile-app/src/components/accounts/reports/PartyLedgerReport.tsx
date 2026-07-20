@@ -477,7 +477,22 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
         }}
         refreshing={manualLedgerRefresh && detailLoading}
       >
-        <DateRangeBar value={range} onChange={setRange} companyId={companyId} branchId={branchId} />
+        <DateRangeBar
+          value={range}
+          onChange={setRange}
+          companyId={companyId}
+          branchId={branchId}
+          pinPresets={['all']}
+        />
+        {range.preset !== 'all' ? (
+          <button
+            type="button"
+            onClick={() => setRange(allTimeDateRange())}
+            className="mt-1.5 text-[11px] font-medium text-white/80 underline underline-offset-2 hover:text-white"
+          >
+            Show full history (All time)
+          </button>
+        ) : null}
       </ReportHeader>
 
       {detailError && (lines.length > 0 || isOpeningOnlyPeriod(lines.length, opening)) && (
@@ -507,7 +522,7 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
           <ReportSectionTitle
             title="Ledger activity"
             subtitle={dateRangeLabel(range.from, range.to)}
-            right={`${lines.length} entries`}
+            right={`${presentedLedger.lines.length} entries`}
           />
           <ul className="divide-y divide-[#374151]">
             {presentedLedger.lines.map((l) => (

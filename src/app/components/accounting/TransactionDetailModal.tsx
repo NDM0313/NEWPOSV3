@@ -58,6 +58,7 @@ import {
   manualJournalCancelConfirmMessage,
 } from '@/app/lib/manualJournalCancelPolicy';
 import { TransactionActionPanel } from '@/app/components/accounting/TransactionActionPanel';
+import { TransactionConfirmDialog } from '@/app/components/accounting/TransactionConfirmDialog';
 import { openJournalSourceDocumentFromEntry } from '@/app/lib/openJournalSourceDocument';
 import { getJournalEntrySourceDocumentOpenTarget } from '@/app/lib/journalEntryEditPolicy';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/app/components/ui/sheet';
@@ -327,6 +328,12 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
   const [activityLogs, setActivityLogs] = useState<Awaited<ReturnType<typeof activityLogService.getEntityActivityLogs>>>([]);
   const [loadingActivityLogs, setLoadingActivityLogs] = useState(false);
   const [staleReversalVoidEligible, setStaleReversalVoidEligible] = useState(false);
+  const [pendingConfirm, setPendingConfirm] = useState<{
+    title: string;
+    description: string;
+    confirmLabel: string;
+    action: 'reverse' | 'void_stale' | 'void_payment' | 'orphan' | 'undo_last';
+  } | null>(null);
   const canVoidStaleReversal = canApplyDeveloperRepair(userRole);
 
   const loadPaymentTrace = useCallback(async () => {
@@ -1143,7 +1150,16 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
       toast.error(blockReason);
       return;
     }
-    if (!window.confirm('Create a reversal entry for this journal? This posts an offsetting entry.')) return;
+    setPendingConfirm({
+      title: 'Create reversal entry?',
+      description: 'Create a reversal entry for this journal? This posts an offsetting entry.',
+      confirmLabel: 'Yes, Reverse',
+      action: 'reverse',
+    });
+  };
+
+  const executeReverseJournal = async () => {
+    if (!transaction?.id) return;
     const ok = await accounting.createReversalEntry(transaction.id);
     if (ok) {
       toast.success('Reversal posted');
@@ -1164,7 +1180,16 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
       ),
       0
     );
-    if (!window.confirm(staleCorrectionReversalVoidConfirmMessage(entryNo, amount || null))) return;
+    setPendingConfirm({
+      title: 'Remove from live GL?',
+      description: staleCorrectionReversalVoidConfirmMessage(entryNo, amount || null),
+      confirmLabel: 'Yes, Remove',
+      action: 'void_stale',
+    });
+  };
+
+  const executeVoidStaleReversal = async () => {
+    if (!transaction?.id || !companyId) return;
     try {
       const res = await voidStaleCorrectionReversals(companyId, [String(transaction.id)]);
       if (!res.success) throw new Error(res.error || 'Void failed');
@@ -1193,12 +1218,21 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
       transaction.payment_id ??
       (Array.isArray(transaction.payment) ? transaction.payment[0]?.id : transaction.payment?.id);
     const isMultiMemberChain = paymentChainMemberCount > 1 && !!paymentId;
-    const msg = paymentId
+    const description = paymentId
       ? isMultiMemberChain
         ? 'Cancel this payment entirely? This voids the original posting plus every edit in the chain. Cannot be undone.'
         : 'Cancel this payment? This posts offsetting entries and removes it from live reports.'
       : manualJournalCancelConfirmMessage(false);
-    if (!window.confirm(msg)) return;
+    setPendingConfirm({
+      title: paymentId ? 'Cancel this payment?' : 'Cancel this journal?',
+      description,
+      confirmLabel: paymentId ? 'Yes, Cancel Payment' : 'Yes, Cancel',
+      action: 'void_payment',
+    });
+  };
+
+  const executeVoidJournal = async () => {
+    if (!transaction?.id) return;
     const ok = await accounting.createReversalEntry(transaction.id);
     if (ok) {
       await loadTransaction();
@@ -1216,11 +1250,22 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
       toast.error('Orphan receipt has no linked payment id.');
       return;
     }
-    if (
-      !window.confirm(
+    setPendingConfirm({
+      title: 'Hide orphan receipt?',
+      description:
         'Hide this failed receipt attempt from normal reports? The payment record and audit history are kept; no GL lines were posted.',
-      )
-    ) {
+      confirmLabel: 'Yes, Hide',
+      action: 'orphan',
+    });
+  };
+
+  const executeCancelOrphanReceipt = async () => {
+    if (!transaction || !companyId) return;
+    const paymentId =
+      transaction.payment_id ??
+      (Array.isArray(transaction.payment) ? transaction.payment[0]?.id : transaction.payment?.id);
+    if (!paymentId) {
+      toast.error('Orphan receipt has no linked payment id.');
       return;
     }
     try {
@@ -1241,13 +1286,20 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
       transaction.payment_id ??
       (Array.isArray(transaction.payment) ? transaction.payment[0]?.id : transaction.payment?.id);
     if (!paymentId) return;
-    if (
-      !window.confirm(
-        'Undo the last edit on this payment? This voids the latest adjustment and restores the previous state.',
-      )
-    ) {
-      return;
-    }
+    setPendingConfirm({
+      title: 'Undo last payment change?',
+      description: 'Undo the last edit on this payment? This voids the latest adjustment and restores the previous state.',
+      confirmLabel: 'Yes, Undo',
+      action: 'undo_last',
+    });
+  };
+
+  const executeUndoLastPaymentChange = async () => {
+    if (!transaction || !companyId) return;
+    const paymentId =
+      transaction.payment_id ??
+      (Array.isArray(transaction.payment) ? transaction.payment[0]?.id : transaction.payment?.id);
+    if (!paymentId) return;
     const ok = await accounting.undoLastPaymentMutation(String(paymentId));
     if (ok) {
       toast.success('Last change undone');
@@ -1256,6 +1308,16 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     } else {
       toast.error('Could not undo last change');
     }
+  };
+
+  const runPendingConfirmAction = async (
+    action: NonNullable<typeof pendingConfirm>['action'],
+  ) => {
+    if (action === 'reverse') await executeReverseJournal();
+    else if (action === 'void_stale') await executeVoidStaleReversal();
+    else if (action === 'void_payment') await executeVoidJournal();
+    else if (action === 'orphan') await executeCancelOrphanReceipt();
+    else if (action === 'undo_last') await executeUndoLastPaymentChange();
   };
 
   const handleOpenSourceDocumentFromModal = async () => {
@@ -2633,6 +2695,21 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
         }}
       />
     )}
+    {pendingConfirm ? (
+      <TransactionConfirmDialog
+        open
+        title={pendingConfirm.title}
+        description={pendingConfirm.description}
+        confirmLabel={pendingConfirm.confirmLabel}
+        cancelLabel="No"
+        onConfirm={() => {
+          const action = pendingConfirm.action;
+          setPendingConfirm(null);
+          void run('Confirming...', () => runPendingConfirmAction(action));
+        }}
+        onCancel={() => setPendingConfirm(null)}
+      />
+    ) : null}
     </>
   );
 };

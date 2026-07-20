@@ -487,7 +487,22 @@ export function AccountLedgerReport({
         refreshing={manualLedgerRefresh && detailLoading}
         rightExtras={<LoaderSourceBadge source={ledgerLoaderSource} />}
       >
-        <DateRangeBar value={range} onChange={setRange} companyId={companyId} branchId={branchId} />
+        <DateRangeBar
+          value={range}
+          onChange={setRange}
+          companyId={companyId}
+          branchId={branchId}
+          pinPresets={['all']}
+        />
+        {range.preset !== 'all' ? (
+          <button
+            type="button"
+            onClick={() => setRange(allTimeDateRange())}
+            className="mt-1.5 text-[11px] font-medium text-white/80 underline underline-offset-2 hover:text-white"
+          >
+            Show full history (All time)
+          </button>
+        ) : null}
       </ReportHeader>
 
       {/* Floating running balance footer so the current balance is always visible. */}

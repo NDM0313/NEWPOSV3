@@ -47,6 +47,7 @@ function mapRpcRowToLedgerLine(r: Record<string, unknown>, index: number): Ledge
     debit: Number(r.debit ?? 0),
     credit: Number(r.credit ?? 0),
     runningBalance: Number(r.running_balance ?? 0),
+    paymentId: r.payment_id != null && String(r.payment_id).trim() !== '' ? String(r.payment_id) : null,
   };
 }
 
