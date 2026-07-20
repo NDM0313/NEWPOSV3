@@ -29,5 +29,10 @@ Default date range is **Current FY**, not a hard RPC row limit. Older activity i
 | Item | Value |
 |------|--------|
 | Branch | `main` |
+| Commit | `b00c5d3f` |
 | Evidence | this folder |
-| Production | `https://erp.dincouture.pk` + `/m/` |
+| VPS HEAD | `b00c5d3f` |
+| Production | `https://erp.dincouture.pk` → 200 |
+| Mobile | `https://erp.dincouture.pk/m/` → 200 |
+
+Hard-refresh browser / `/m/` (Ctrl+Shift+R) after deploy.
