@@ -37,6 +37,10 @@ import { LedgerActivityListRow } from './_shared/LedgerActivityListRow';
 import { isEasyReportHubMode, useReportHubMode } from './_shared/ReportHubModeContext';
 import { loadMergedAttachmentsForJournalEntry } from '../../../lib/loadMergedAttachments';
 import { toLedgerPreviewRow } from '../../../lib/ledgerLinePresentation';
+import {
+  effectiveNetLedgerPresentation,
+  formatPartyLedgerLoadError,
+} from '../../../lib/ledgerEffectiveNet';
 
 export type PartyLedgerKind = 'customer' | 'supplier' | 'worker';
 
@@ -145,21 +149,36 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
           );
         } else {
           const role = kind as ContactRole;
-          const { data, error } = await getContacts(companyId, role, branchId ?? null);
+          const [{ data, error }, partyGl, opSummary] = await Promise.all([
+            getContacts(companyId, role, branchId ?? null),
+            fetchContactPartyGlBalancesMap(companyId, branchId ?? null),
+            fetchOperationalContactBalancesSummary(companyId, branchId ?? null),
+          ]);
           if (cancelled) return;
           if (error) {
             setParties([]);
             setListError(error);
             return;
           }
+          const glOk = partyGl.error == null;
           setParties(
-            (data || []).map((c) => ({
-              id: c.id,
-              name: c.name,
-              meta: [c.phone, c.email].filter(Boolean).join(' · ') || undefined,
-              balance: Number(c.balance || 0),
-              sharePhone: getContactWhatsAppPhone(c) || undefined,
-            })),
+            (data || []).map((c) => {
+              const balance = resolveContactListBalance({
+                opening: Number(c.balance || 0),
+                contactType: role,
+                listRole: role,
+                glOk,
+                glSlice: partyGlSliceFromMap(partyGl.map, c.id),
+                opRow: balanceRowFromMap(opSummary.map, c.id),
+              });
+              return {
+                id: c.id,
+                name: c.name,
+                meta: [c.phone, c.email].filter(Boolean).join(' · ') || undefined,
+                balance,
+                sharePhone: getContactWhatsAppPhone(c) || undefined,
+              };
+            }),
           );
         }
       } finally {
@@ -253,13 +272,9 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
             const subId = await getContactSubAccountId(companyId, selected.id);
             if (cancelled) return;
             if (!subId) {
-              setOpening(rpcRes.error ? 0 : rpcRes.openingBalance);
-              setLines(rpcRes.error ? [] : rpcRes.lines);
-              setDetailError(
-                rpcRes.error
-                  ? `${rpcRes.error} · No linked sub-account for legacy fallback.`
-                  : null,
-              );
+              setOpening(0);
+              setLines([]);
+              setDetailError(formatPartyLedgerLoadError(rpcRes.error));
               return;
             }
             const { openingBalance, lines: rows, error } = await getAccountLedgerLines(
@@ -324,12 +339,18 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
     return () => document.removeEventListener('visibilitychange', onVis);
   }, [selected]);
 
+  const presentedLedger = useMemo(
+    () => effectiveNetLedgerPresentation(lines, opening, kind === 'supplier'),
+    [lines, opening, kind],
+  );
+
   const totals = useMemo(() => {
-    const debit = lines.reduce((s, l) => s + l.debit, 0);
-    const credit = lines.reduce((s, l) => s + l.credit, 0);
-    const closing = lines.length ? lines[lines.length - 1].runningBalance : opening;
+    const displayLines = presentedLedger.lines;
+    const debit = displayLines.reduce((s, l) => s + l.debit, 0);
+    const credit = displayLines.reduce((s, l) => s + l.credit, 0);
+    const closing = presentedLedger.closingBalance;
     return { debit, credit, closing };
-  }, [lines, opening]);
+  }, [presentedLedger]);
 
   const filteredParties = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -489,7 +510,7 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
             right={`${lines.length} entries`}
           />
           <ul className="divide-y divide-[#374151]">
-            {lines.map((l) => (
+            {presentedLedger.lines.map((l) => (
               <LedgerActivityListRow
                 key={l.id}
                 line={l}
@@ -521,7 +542,7 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
             openingBalance={opening}
             closingBalance={totals.closing}
             totals={{ debit: totals.debit, credit: totals.credit }}
-            rows={lines.map((l) =>
+            rows={presentedLedger.lines.map((l) =>
               toLedgerPreviewRow(l, displayEntryNo(l.entryNo, l.referenceType), {
                 viewedPartyName: selected.name,
               }),

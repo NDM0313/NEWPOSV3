@@ -69,6 +69,14 @@ import {
 import { loadAccountStatementLegacyShadowPreview } from '@/app/services/accountStatementLegacyShadowPreviewService';
 import { loadAccountStatementUnifiedMain } from '@/app/services/accountStatementUnifiedMainService';
 import { assertUnifiedMainLoaderSource } from '@/app/lib/r8R2LegacyMainRetired';
+import {
+  alignLedgerRunningBalances,
+  buildReversalTwinMatcher,
+  filterAuditRowsForReversals,
+  isPaymentLikeLedgerRow,
+  isReversalLedgerRow,
+  shouldPreserveRpcRunningBalancesForAudit,
+} from '@/app/lib/accountLedgerPresentation';
 
 /** AR / AP running balance sign: highlight “inverted” party positions so refunds / prepaids are obvious. */
 const PARTY_BAL_EPS = 0.005;
@@ -293,16 +301,11 @@ function isPartyRowHiddenInNormalEffective(e: AccountLedgerEntry): boolean {
 }
 
 function isReversalRow(e: AccountLedgerEntry): boolean {
-  const d = normalizeLower(e.description);
-  const t = normalizeLower(e.document_type);
-  const jeRt = normalizeLower(e.je_reference_type);
-  return (
-    e.ledger_kind === 'reversal' ||
-    jeRt === 'correction_reversal' ||
-    jeRt === 'sale_reversal' ||
-    d.includes('reversal') ||
-    t.includes('reversal')
-  );
+  return isReversalLedgerRow(e);
+}
+
+function isPaymentLikeRow(e: AccountLedgerEntry): boolean {
+  return isPaymentLikeLedgerRow(e);
 }
 
 function isManualRow(e: AccountLedgerEntry): boolean {
@@ -315,12 +318,6 @@ function isStatementOpeningRow(e: AccountLedgerEntry): boolean {
   const d = normalizeLower(e.description);
   const t = normalizeLower(e.document_type || '');
   return d.includes('opening balance') || t.includes('opening balance');
-}
-
-function isPaymentLikeRow(e: AccountLedgerEntry): boolean {
-  const d = normalizeLower(e.description);
-  const t = normalizeLower(e.document_type);
-  return d.includes('payment') || t.includes('payment') || Boolean(e.payment_id);
 }
 
 function extractDocumentRefToken(e: AccountLedgerEntry): string {
@@ -371,39 +368,6 @@ function sortTimeMs(e: AccountLedgerEntry): number {
     if (!Number.isNaN(t)) return t;
   }
   return sortDayMs(e);
-}
-
-function movementOf(e: AccountLedgerEntry): number {
-  return Number(e.debit || 0) - Number(e.credit || 0);
-}
-
-function normalizePaymentTargetText(description: string): string {
-  const d = normalizeLower(description);
-  return d
-    .replace(/^reversal of:\s*/i, '')
-    .replace(/^reversal\s*-\s*/i, '')
-    .replace(/^reversal\s*/i, '')
-    .trim();
-}
-
-/**
- * Recompute the balance column from row 0 so rollups and filters still chain correctly.
- * Supplier AP (getSupplierApGlJournalLedger): liability running_balance += credit − debit.
- * Customer AR / cash GL: asset-style += debit − credit.
- */
-function alignRunningBalances(rows: PresentedLedgerRow[], apLiabilityStyle: boolean): PresentedLedgerRow[] {
-  if (!rows.length) return rows;
-  const out: PresentedLedgerRow[] = [];
-  let prevBal = Number(rows[0].displayRunningBalance ?? rows[0].running_balance ?? 0);
-  out.push({ ...rows[0], displayRunningBalance: prevBal });
-  for (let idx = 1; idx < rows.length; idx++) {
-    const row = rows[idx];
-    const d = Number(row.displayDebit || 0);
-    const c = Number(row.displayCredit || 0);
-    prevBal = apLiabilityStyle ? prevBal + c - d : prevBal + d - c;
-    out.push({ ...row, displayRunningBalance: prevBal });
-  }
-  return out;
 }
 
 export const AccountLedgerReportPage: React.FC<{
@@ -1387,28 +1351,15 @@ export const AccountLedgerReportPage: React.FC<{
     });
     if (!base.length) return [];
 
-    const reversalRows = base.filter((e) => isReversalRow(e));
-    const reversalTextTargets = reversalRows
-      .map((e) => normalizePaymentTargetText(String(e.description || '')))
-      .filter(Boolean);
-    const reversalPaymentIds = new Set(reversalRows.map((e) => String(e.payment_id || '')).filter(Boolean));
-    const hasReversalTwin = (row: AccountLedgerEntry) => {
-      if (!isPaymentLikeRow(row) || isReversalRow(row)) return false;
-      if (row.payment_id && reversalPaymentIds.has(String(row.payment_id))) return true;
-      const rowText = normalizeLower(row.description || '');
-      if (reversalTextTargets.some((t) => t && rowText.includes(t))) return true;
-      const rowMove = movementOf(row);
-      return reversalRows.some((rev) => {
-        const revMove = movementOf(rev);
-        return Math.abs(rowMove + revMove) < 0.0001 && sortDayMs(row) <= sortDayMs(rev);
-      });
-    };
+  const { hasReversalTwin, hasOriginalTwin } = buildReversalTwinMatcher(base);
 
     if (viewMode === 'audit') {
-      const auditRows = base
-        .filter((e) => (applied.includeAdjustments ? true : !isAdjustmentRow(e)))
-        .filter((e) => (applied.includeReversals ? true : !isReversalRow(e)))
-        .map((e) => {
+      const auditBase = base.filter((e) => (applied.includeAdjustments ? true : !isAdjustmentRow(e)));
+      const auditFiltered = filterAuditRowsForReversals(auditBase, applied.includeReversals, {
+        hasReversalTwin,
+        hasOriginalTwin,
+      });
+      const auditRows = auditFiltered.map((e) => {
           const adjustmentLabel = isAdjustmentRow(e) ? adjustmentSubtypeLabel(e) : '';
           const auditTrailLabel = partyEffectiveRowAuditLabel({
             jeReferenceType: e.je_reference_type,
@@ -1433,7 +1384,13 @@ export const AccountLedgerReportPage: React.FC<{
             presentationKind: presentationForLedgerEntry(e),
           };
         });
-      return alignRunningBalances(auditRows, applied.statementType === 'supplier');
+      const preserveRpcRunningBalances = shouldPreserveRpcRunningBalancesForAudit(
+        applied.includeReversals,
+        applied.includeAdjustments,
+      );
+      return preserveRpcRunningBalances
+        ? auditRows
+        : alignLedgerRunningBalances(auditRows, applied.statementType === 'supplier');
     }
 
     // Effective GL-like mode: hide adjustment/reversal detail, keep line-level movements.
@@ -1459,7 +1416,7 @@ export const AccountLedgerReportPage: React.FC<{
             presentationKind: presentationForLedgerEntry(e),
           };
         });
-      return alignRunningBalances(effectiveGlRows, false);
+      return alignLedgerRunningBalances(effectiveGlRows, false);
     }
 
     // Effective party mode: supplier/customer statements collapse business documents.
@@ -1533,7 +1490,7 @@ export const AccountLedgerReportPage: React.FC<{
         presentationKind: presentationForLedgerEntry(row),
       });
     });
-    return alignRunningBalances(out, applied.statementType === 'supplier');
+    return alignLedgerRunningBalances(out, applied.statementType === 'supplier');
   }, [
     sortedEntries,
     applied.includeManualEntries,

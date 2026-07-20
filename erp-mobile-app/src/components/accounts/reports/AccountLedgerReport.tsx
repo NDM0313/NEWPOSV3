@@ -35,6 +35,7 @@ import { loadMergedAttachmentsForJournalEntry } from '../../../lib/loadMergedAtt
 import { AttachmentIndicatorButton } from '../../shared/AttachmentIndicatorButton';
 import { formatEventDateGroupLabel, getTransactionEventDateKey } from '../../../utils/transactionDisplayDate';
 import { formatLedgerLinePresentation, toLedgerPreviewRow } from '../../../lib/ledgerLinePresentation';
+import { effectiveNetLedgerPresentation } from '../../../lib/ledgerEffectiveNet';
 
 interface AccountLedgerReportProps {
   onBack: () => void;
@@ -297,12 +298,21 @@ export function AccountLedgerReport({
     return () => document.removeEventListener('visibilitychange', onVis);
   }, [selected?.id]);
 
+  const apLiabilityStyle =
+    selected?.type === 'payable' || selected?.type === 'liability';
+
+  const presentedLedger = useMemo(
+    () => effectiveNetLedgerPresentation(lines, opening, apLiabilityStyle),
+    [lines, opening, apLiabilityStyle],
+  );
+
   const totals = useMemo(() => {
-    const debit = lines.reduce((s, l) => s + l.debit, 0);
-    const credit = lines.reduce((s, l) => s + l.credit, 0);
-    const closing = lines.length ? lines[lines.length - 1].runningBalance : opening;
+    const displayLines = presentedLedger.lines;
+    const debit = displayLines.reduce((s, l) => s + l.debit, 0);
+    const credit = displayLines.reduce((s, l) => s + l.credit, 0);
+    const closing = presentedLedger.closingBalance;
     return { debit, credit, closing };
-  }, [lines, opening]);
+  }, [presentedLedger]);
 
   type Granularity = 'none' | 'week' | 'month';
   const granularity: Granularity = useMemo(() => {
@@ -316,12 +326,13 @@ export function AccountLedgerReport({
   }, [range.from, range.to, lines.length]);
 
   const groupedLines = useMemo(() => {
-    if (lines.length === 0) {
+    const displayLines = presentedLedger.lines;
+    if (displayLines.length === 0) {
       return [{ key: 'all', label: '', lines: [], closingBalance: totals.closing }];
     }
     if (granularity === 'none') {
       const dayMap = new Map<string, LedgerLine[]>();
-      for (const line of lines) {
+      for (const line of displayLines) {
         const key = getTransactionEventDateKey(line.date, line.createdAt) || 'unknown';
         const arr = dayMap.get(key) ?? [];
         arr.push(line);
@@ -362,7 +373,7 @@ export function AccountLedgerReport({
       return ymd.slice(0, 7);
     };
 
-    for (const line of lines) {
+    for (const line of displayLines) {
       const eventDate = getTransactionEventDateKey(line.date, line.createdAt) || line.date;
       const key = granularity === 'month' ? monthKey(eventDate) : weekKey(eventDate);
       const existing = groups.get(key);
@@ -374,7 +385,7 @@ export function AccountLedgerReport({
       }
     }
     return Array.from(groups.values());
-  }, [lines, granularity, totals.closing]);
+  }, [presentedLedger.lines, granularity, totals.closing]);
 
   const filteredAccounts = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -480,7 +491,7 @@ export function AccountLedgerReport({
       </ReportHeader>
 
       {/* Floating running balance footer so the current balance is always visible. */}
-      {!detailLoading && lines.length > 0 && (
+      {!detailLoading && presentedLedger.lines.length > 0 && (
         <div className="fixed left-3 right-3 bottom-3 z-40 rounded-xl border border-[#374151] bg-[#111827]/95 backdrop-blur shadow-lg px-4 py-2 flex items-center justify-between">
           <div>
             <p className="text-[10px] uppercase tracking-wide text-[#9CA3AF]">Running balance</p>
@@ -505,10 +516,10 @@ export function AccountLedgerReport({
 
       <ReportShell
         loading={detailLoading}
-        empty={!detailLoading && isTrulyEmptyLedger(lines.length, opening)}
+        empty={!detailLoading && isTrulyEmptyLedger(presentedLedger.lines.length, opening)}
         emptyLabel="No ledger activity for this period."
       >
-        {isOpeningOnlyPeriod(lines.length, opening) ? (
+        {isOpeningOnlyPeriod(presentedLedger.lines.length, opening) ? (
           <LedgerPeriodEmptyCard
             opening={opening}
             periodLabel={dateRangeLabel(range.from, range.to)}
@@ -519,7 +530,7 @@ export function AccountLedgerReport({
           <ReportSectionTitle
             title="Ledger activity"
             subtitle={dateRangeLabel(range.from, range.to)}
-            right={`${lines.length} entries`}
+            right={`${presentedLedger.lines.length} entries`}
           />
           <ul className="divide-y divide-[#374151]">
             {groupedLines.map((group) => (
@@ -620,7 +631,7 @@ export function AccountLedgerReport({
             openingBalance={opening}
             closingBalance={totals.closing}
             totals={{ debit: totals.debit, credit: totals.credit }}
-            rows={lines.map((l) =>
+            rows={presentedLedger.lines.map((l) =>
               toLedgerPreviewRow(l, displayReferenceNumber(l.entryNo, l.referenceType), {
                 viewedAccountName: selected.name,
               }),
