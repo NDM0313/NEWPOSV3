@@ -52,13 +52,13 @@ Lab H / journal sync applied on production DIN BRIDAL:
 - TB Σ still **0**
 - Evidence: [`lab-h-task-a-complete-20260720.md`](./lab-h-task-a-complete-20260720.md)
 
-### Task B — AR vs receivables (separate) — **STILL OPEN**
+### Task B — AR vs receivables (separate) — **DONE 2026-07-20 (office investigation)**
 
 Lab H showed **AR vs receivables = −1,382,450**.
 
-- **Do not** treat this as TB imbalance
-- **Do not** expect Task A sync button to clear this gap
-- Investigate on office PC (document due vs AR journal) as a separate AR/receivables reconciliation task
+**Result:** Explained as **EXPECTED_METRIC_GAP** — final sales due (**329,000**) vs full AR GL (**1,711,450**) which includes `opening_balance_contact_ar` (**+2,382,950**) + rentals + receipts. **Not** a TB defect. **No GL mutation.**
+
+Evidence: [`lab-h-task-b-complete-20260720.md`](./lab-h-task-b-complete-20260720.md)
 
 ---
 
@@ -78,4 +78,4 @@ git checkout main
 git pull origin main
 ```
 
-Then complete Task A (and schedule Task B). Hard-refresh ERP if Lab H / deep-link buttons missing after VPS deploy.
+Then complete Task A and Task B (both done 2026-07-20 office). Hard-refresh ERP if Lab H / deep-link buttons missing after VPS deploy.

@@ -47,7 +47,7 @@ When Lab H shows **TB difference = 0** and **Unbalanced JEs = 0**, remaining car
 | Lab H metric | Meaning | Action |
 |--------------|---------|--------|
 | **Account mismatches** | Cached `accounts.balance` ≠ journal | Lab H → **Sync account balances from journal** |
-| **AR vs receivables** | Document due vs AR journal | Separate AR investigation — sync button does **not** fix this |
+| **AR vs receivables** | Document due vs AR journal | Separate investigation — sync button does **not** fix this. DIN BRIDAL −1,382,450 explained 2026-07-20 as openings/rentals in AR GL (see `lab-h-task-b-complete-20260720.md`) |
 
 Office checklist for the 2026-07-20 DIN BRIDAL leftovers: [`office-handoff-lab-h-remaining-20260720.md`](./office-handoff-lab-h-remaining-20260720.md).
 
