@@ -110,7 +110,7 @@ async function filterProductRowsForBranch<T extends { id: string }>(
 
 /** Products table select: omit current_stock so query works when column is missing. Stock from variations or 0. */
 const PRODUCTS_SELECT =
-  'id, company_id, name, sku, barcode, description, cost_price, retail_price, wholesale_price, min_stock, category_id, brand_id, unit_id, is_active, has_variations, image_urls, product_categories(name), units(name, allow_decimal)';
+  'id, company_id, name, sku, barcode, description, cost_price, retail_price, wholesale_price, min_stock, category_id, brand_id, unit_id, is_active, has_variations, is_dyeable, image_urls, product_categories(name), units(name, allow_decimal)';
 
 export interface ProductRow {
   id: string;
@@ -140,6 +140,7 @@ export interface Product {
   stock: number;
   unit: string;
   unitAllowDecimal?: boolean;
+  isDyeable?: boolean;
   status: 'active' | 'inactive';
   description?: string;
   barcode?: string;
@@ -245,6 +246,7 @@ export async function getProductByBarcodeOrSku(
       stock,
       unit: row.units?.name || 'Piece',
       unitAllowDecimal: row.units?.allow_decimal ?? false,
+      isDyeable: Boolean((row as { is_dyeable?: boolean }).is_dyeable),
       status: row.is_active !== false ? 'active' : 'inactive',
       description: row.description ?? undefined,
       barcode: row.barcode ?? undefined,
@@ -292,6 +294,7 @@ export async function getProductByBarcodeOrSku(
     stock,
     unit: row.units?.name || 'Piece',
     unitAllowDecimal: row.units?.allow_decimal ?? false,
+    isDyeable: Boolean((row as { is_dyeable?: boolean }).is_dyeable),
     status: row.is_active !== false ? 'active' : 'inactive',
     description: row.description ?? undefined,
     barcode: row.barcode ?? undefined,
@@ -388,6 +391,7 @@ async function getProductsInner(
       stock: productStock,
       unit: unitName,
       unitAllowDecimal,
+      isDyeable: Boolean((row as { is_dyeable?: boolean }).is_dyeable),
       status: row.is_active !== false ? 'active' : 'inactive',
       description: row.description ?? undefined,
       barcode: row.barcode ?? undefined,
@@ -475,6 +479,7 @@ async function buildProductFromRow(
     stock: row.has_variations ? 0 : (stockByKey[row.id] ?? 0),
     unit: row.units?.name || 'Piece',
     unitAllowDecimal: row.units?.allow_decimal ?? false,
+    isDyeable: Boolean((row as { is_dyeable?: boolean }).is_dyeable),
     status: row.is_active !== false ? 'active' : 'inactive',
     description: row.description ?? undefined,
     barcode: row.barcode ?? undefined,

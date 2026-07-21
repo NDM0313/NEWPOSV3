@@ -165,8 +165,14 @@ export const bespokeFabricProductService = {
     let usedFallback = false;
     let rows: ProductRow[] = [];
 
+    // Prefer explicitly marked dyeable / white fabrics when any exist.
+    const dyeableRows = allProducts.filter((p) => Boolean((p as { is_dyeable?: boolean }).is_dyeable));
+    if (dyeableRows.length) {
+      rows = term ? filterProductsBySearch(dyeableRows, term) : dyeableRows;
+    }
+
     const primaryUnitIds = getLooseFabricUnitIds(fabricUnits);
-    if (primaryUnitIds.length) {
+    if (!rows.length && primaryUnitIds.length) {
       rows = filterProductsByUnitIds(allProducts, primaryUnitIds);
       if (term) rows = filterProductsBySearch(rows, term);
     }

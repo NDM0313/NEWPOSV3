@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { X, Plus, Trash2, Upload, Loader2 } from 'lucide-react';
+import { X, Plus, Trash2, Upload, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
 import type { Product } from './SalesModule';
 import * as productsApi from '../../api/products';
 import {
@@ -22,6 +22,21 @@ import {
   getBespokeImageDisplayUrl,
   uploadBespokeReferenceImage,
 } from '../../utils/bespokeImageUpload';
+
+const LOOSE_FABRIC_UNIT_TOKENS = new Set([
+  'm', 'meter', 'meters', 'metre', 'metres',
+  'yd', 'yard', 'yards',
+  'gaz', 'gazz', 'guz',
+  'mtr', 'mtrs',
+]);
+
+function isLooseFabricUnit(unitName: string | undefined): boolean {
+  const t = String(unitName ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z]/g, '');
+  return LOOSE_FABRIC_UNIT_TOKENS.has(t);
+}
 
 interface SaleCustomizeModalProps {
   companyId: string;
@@ -91,14 +106,29 @@ export function SaleCustomizeModal({
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [stockProducts, setStockProducts] = useState<FabricPickerProduct[]>([]);
+  const [fabricFilterNote, setFabricFilterNote] = useState<string | null>(null);
+  const [showMeasurements, setShowMeasurements] = useState(false);
+  const [showImage, setShowImage] = useState(false);
+  const [showNotes, setShowNotes] = useState(Boolean(initialDetails?.notes));
 
   useEffect(() => {
     void productsApi.getProducts(companyId, { branchId: branchId ?? undefined }).then(({ data }) => {
-      setStockProducts(
-        (data ?? [])
-          .filter((p) => !isBespokeGenericSku(p.sku))
-          .map(mapApiProductToFabricPicker),
-      );
+      const all = (data ?? []).filter((p) => !isBespokeGenericSku(p.sku));
+      const dyeable = all.filter((p) => p.isDyeable);
+      let source = all;
+      if (dyeable.length > 0) {
+        source = dyeable;
+        setFabricFilterNote('Showing dyeable / white fabrics only');
+      } else {
+        const byUnit = all.filter((p) => isLooseFabricUnit(p.unit) || p.unitAllowDecimal);
+        if (byUnit.length > 0) {
+          source = byUnit;
+          setFabricFilterNote('Showing meter/yard fabrics (mark products as Dyeable for a tighter list)');
+        } else {
+          setFabricFilterNote(null);
+        }
+      }
+      setStockProducts(source.map(mapApiProductToFabricPicker));
     });
   }, [companyId, branchId]);
 
@@ -131,6 +161,7 @@ export function SaleCustomizeModal({
   }, [stockProducts, fabricSearch]);
 
   const activeFabric = fabrics[activeFabricIndex];
+  const dressTotal = Number(parentLine.price || 0) * Number(parentLine.quantity || 1);
 
   const pickProductForActiveLine = (opt: FabricPickerProduct) => {
     const next = [...fabrics];
@@ -199,7 +230,7 @@ export function SaleCustomizeModal({
         <div className="flex items-center justify-between p-4 border-b border-[#374151]">
           <div>
             <h2 className="text-lg font-semibold text-white">
-              {hasExisting ? 'Edit customization' : 'Customize / Add Details'}
+              {hasExisting ? 'Edit customization' : 'Customize dress'}
             </h2>
             <p className="text-xs text-[#9CA3AF] mt-0.5 truncate max-w-[280px]">{parentLine.name}</p>
           </div>
@@ -208,92 +239,28 @@ export function SaleCustomizeModal({
           </button>
         </div>
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          <p className="text-xs text-[#6B7280] rounded border border-[#374151] bg-[#111827]/80 px-3 py-2">
-            Fabrics become separate cart lines for stock. Line delivery date is for this item only (not the order
-            deadline).
-          </p>
-
-          {config.show_color_code && (
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-[#9CA3AF] block mb-1">Color name</label>
-                <input
-                  value={colorName}
-                  onChange={(e) => setColorName(e.target.value)}
-                  className="w-full h-10 bg-[#111827] border border-[#374151] rounded-lg px-3 text-sm text-white"
-                  placeholder="Optional"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-[#9CA3AF] block mb-1">Shade card code</label>
-                <input
-                  value={shadeCode}
-                  onChange={(e) => setShadeCode(e.target.value)}
-                  className="w-full h-10 bg-[#111827] border border-[#374151] rounded-lg px-3 text-sm text-white"
-                  placeholder="Optional"
-                />
-              </div>
-            </div>
-          )}
-
-          {config.show_measurements && (
-            <div>
-              <label className="text-xs text-[#9CA3AF] block mb-1">Measurements</label>
-              <textarea
-                value={measurements}
-                onChange={(e) => setMeasurements(e.target.value)}
-                rows={3}
-                placeholder="Chest, length, sleeve…"
-                className="w-full bg-[#111827] border border-[#374151] rounded-lg px-3 py-2 text-sm text-white resize-none"
-              />
-            </div>
-          )}
-
-          {config.show_delivery_date && (
-            <DateInputField
-              label="Expected delivery (this line)"
-              value={deliveryDate}
-              onChange={setDeliveryDate}
-            />
-          )}
-
-          {config.show_image_upload && (
-            <div className="space-y-2">
-              <label className="text-xs text-[#9CA3AF] block">Reference image</label>
-              <input
-                value={imageUrl}
-                onChange={(e) => {
-                  setImageUrl(e.target.value);
-                  if (e.target.value.trim()) setImagePath('');
-                }}
-                placeholder="External image URL (optional)"
-                className="w-full h-10 bg-[#111827] border border-[#374151] rounded-lg px-3 text-sm text-white"
-              />
-              <label className="inline-flex items-center gap-2 text-sm text-[#C4B5FD] cursor-pointer">
-                {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                Upload file
-                <input type="file" accept="image/*" className="hidden" onChange={handleFile} disabled={uploading} />
-              </label>
-              {uploadError && <p className="text-xs text-[#EF4444]">{uploadError}</p>}
-              {previewSrc ? (
-                <img src={previewSrc} alt="Reference" className="max-h-32 rounded-lg border border-[#374151] object-contain" />
+          <div className="rounded-xl border border-violet-500/30 bg-violet-500/10 px-3 py-3">
+            <p className="text-[10px] uppercase tracking-wide text-violet-300/80">Dress (customer price)</p>
+            <p className="text-sm font-semibold text-white truncate">{parentLine.name}</p>
+            <p className="text-lg font-bold text-[#A78BFA] mt-0.5">
+              Rs. {dressTotal.toLocaleString()}
+              {parentLine.quantity > 1 ? (
+                <span className="text-xs font-normal text-[#9CA3AF] ml-2">
+                  ({parentLine.quantity} × {Number(parentLine.price || 0).toLocaleString()})
+                </span>
               ) : null}
-            </div>
-          )}
-
-          <div>
-            <label className="text-xs text-[#9CA3AF] block mb-1">Notes</label>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={2}
-              className="w-full bg-[#111827] border border-[#374151] rounded-lg px-3 py-2 text-sm text-white resize-none"
-            />
+            </p>
+            <p className="text-[11px] text-[#9CA3AF] mt-1">
+              Making, fabric, dyeing &amp; stitching are included in this dress rate. Extra shop expenses use Extra Expenses on the sale.
+            </p>
           </div>
 
           {config.show_fabric && (
             <div>
-              <label className="text-xs text-[#9CA3AF] block mb-2">Fabric lines</label>
+              <label className="text-sm font-medium text-white block mb-1">1. Choose fabric</label>
+              {fabricFilterNote ? (
+                <p className="text-[11px] text-[#9CA3AF] mb-2">{fabricFilterNote}</p>
+              ) : null}
               <div className="flex flex-wrap gap-2 mb-2">
                 {fabrics.map((f, idx) => (
                   <button
@@ -317,14 +284,14 @@ export function SaleCustomizeModal({
                   }}
                   className="flex items-center gap-1 px-2 py-1 text-xs text-[#3B82F6]"
                 >
-                  <Plus className="w-3 h-3" /> Add
+                  <Plus className="w-3 h-3" /> Add (e.g. dupatta)
                 </button>
               </div>
 
               {activeFabric && (
-                <div className="p-3 bg-[#111827] rounded-lg border border-[#374151] space-y-3">
+                <div className="p-3 bg-[#111827] rounded-lg border border-[#374151] space-y-3 mb-2">
                   <p className="text-xs text-[#6EE7B7]">
-                    Line {activeFabricIndex + 1}: {activeFabric.product_name || 'Select product below'}
+                    Line {activeFabricIndex + 1}: {activeFabric.product_name || 'Tap a fabric below'}
                   </p>
                   <div className="flex gap-2 items-center">
                     <input
@@ -360,11 +327,10 @@ export function SaleCustomizeModal({
                 </div>
               )}
 
-              <label className="text-xs text-[#9CA3AF] block mb-1 mt-3">Search stock products</label>
               <input
                 value={fabricSearch}
                 onChange={(e) => setFabricSearch(e.target.value)}
-                placeholder="Search fabric / material…"
+                placeholder="Search fabric…"
                 className="w-full h-10 bg-[#111827] border border-[#374151] rounded-lg px-3 text-sm text-white mb-2"
               />
               <FabricProductGrid
@@ -377,6 +343,120 @@ export function SaleCustomizeModal({
               />
             </div>
           )}
+
+          {config.show_color_code && (
+            <div>
+              <label className="text-sm font-medium text-white block mb-2">2. Color / shade</label>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-[#9CA3AF] block mb-1">Color name</label>
+                  <input
+                    value={colorName}
+                    onChange={(e) => setColorName(e.target.value)}
+                    className="w-full h-10 bg-[#111827] border border-[#374151] rounded-lg px-3 text-sm text-white"
+                    placeholder="Optional"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-[#9CA3AF] block mb-1">Shade card code</label>
+                  <input
+                    value={shadeCode}
+                    onChange={(e) => setShadeCode(e.target.value)}
+                    className="w-full h-10 bg-[#111827] border border-[#374151] rounded-lg px-3 text-sm text-white"
+                    placeholder="Optional"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {config.show_delivery_date && (
+            <DateInputField
+              label="Expected delivery (this line)"
+              value={deliveryDate}
+              onChange={setDeliveryDate}
+            />
+          )}
+
+          {config.show_measurements && (
+            <div className="border border-[#374151] rounded-lg overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setShowMeasurements((v) => !v)}
+                className="w-full flex items-center justify-between px-3 py-2.5 text-sm text-[#D1D5DB]"
+              >
+                <span>Measurements (optional)</span>
+                {showMeasurements ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+              </button>
+              {showMeasurements && (
+                <div className="px-3 pb-3">
+                  <textarea
+                    value={measurements}
+                    onChange={(e) => setMeasurements(e.target.value)}
+                    rows={3}
+                    placeholder="Chest, length, sleeve…"
+                    className="w-full bg-[#111827] border border-[#374151] rounded-lg px-3 py-2 text-sm text-white resize-none"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {config.show_image_upload && (
+            <div className="border border-[#374151] rounded-lg overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setShowImage((v) => !v)}
+                className="w-full flex items-center justify-between px-3 py-2.5 text-sm text-[#D1D5DB]"
+              >
+                <span>Reference image (optional)</span>
+                {showImage ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+              </button>
+              {showImage && (
+                <div className="px-3 pb-3 space-y-2">
+                  <input
+                    value={imageUrl}
+                    onChange={(e) => {
+                      setImageUrl(e.target.value);
+                      if (e.target.value.trim()) setImagePath('');
+                    }}
+                    placeholder="External image URL (optional)"
+                    className="w-full h-10 bg-[#111827] border border-[#374151] rounded-lg px-3 text-sm text-white"
+                  />
+                  <label className="inline-flex items-center gap-2 text-sm text-[#C4B5FD] cursor-pointer">
+                    {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                    Upload file
+                    <input type="file" accept="image/*" className="hidden" onChange={handleFile} disabled={uploading} />
+                  </label>
+                  {uploadError && <p className="text-xs text-[#EF4444]">{uploadError}</p>}
+                  {previewSrc ? (
+                    <img src={previewSrc} alt="Reference" className="max-h-32 rounded-lg border border-[#374151] object-contain" />
+                  ) : null}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="border border-[#374151] rounded-lg overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowNotes((v) => !v)}
+              className="w-full flex items-center justify-between px-3 py-2.5 text-sm text-[#D1D5DB]"
+            >
+              <span>Notes (optional)</span>
+              {showNotes ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+            </button>
+            {showNotes && (
+              <div className="px-3 pb-3">
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={2}
+                  className="w-full bg-[#111827] border border-[#374151] rounded-lg px-3 py-2 text-sm text-white resize-none"
+                />
+              </div>
+            )}
+          </div>
         </div>
         <div className="p-4 border-t border-[#374151] flex gap-2">
           <button type="button" onClick={onClose} className="flex-1 h-11 rounded-xl border border-[#374151] text-[#9CA3AF]">

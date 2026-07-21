@@ -355,6 +355,40 @@ export const bespokeWorkOrderService = {
     return { stockMovementsReversed: result.stock_movements_reversed ?? 0 };
   },
 
+  /** Soft-cancel WO: reverse stock, void JE, set status=cancelled. */
+  async cancelWorkOrder(
+    id: string,
+    userId?: string,
+    reason?: string,
+  ): Promise<{ stockMovementsReversed: number }> {
+    const erpUserId = await resolveBespokeCreatedBy(userId);
+    const { data, error } = await supabase.rpc('cancel_bespoke_work_order', {
+      p_work_order_id: id,
+      p_user_id: erpUserId,
+      p_reason: reason?.trim() || null,
+    });
+    if (error) throwMappedError(error);
+    const result = data as {
+      success?: boolean;
+      error?: string;
+      stock_movements_reversed?: number;
+      cancelled?: boolean;
+    };
+    if (result?.success === false) {
+      throw new Error(result.error || 'Failed to cancel work order');
+    }
+
+    const wo = await this.getById(id);
+    if (wo?.sale_id) {
+      const { dispatchBespokeFabricStockUpdated } = await import(
+        '@/app/services/bespokeFabricStockService'
+      );
+      dispatchBespokeFabricStockUpdated(wo.sale_id);
+    }
+
+    return { stockMovementsReversed: result.stock_movements_reversed ?? 0 };
+  },
+
   async complete(
     id: string,
     userId?: string,

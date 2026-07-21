@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Loader2, Package, Scissors } from 'lucide-react';
 import {
+  cancelBespokeWorkOrder,
   completeBespokeWorkOrder,
   getWorkOrderStockPostStatus,
   listBespokeWorkOrdersByCompany,
   repostBespokeWorkOrderStock,
+  updateBespokeWorkOrder,
   type BespokeWorkOrderRow,
   type BespokeWorkOrderStatus,
   type WorkOrderStockPostStatus,
 } from '../../api/bespokeWorkOrders';
+import { getContacts } from '../../api/contacts';
 import { WorkOrderDetailSheet } from './WorkOrderDetailSheet';
 
 const STATUS_TABS: Array<BespokeWorkOrderStatus | 'all'> = [
@@ -45,6 +48,7 @@ export function WorkOrdersList({
 }: WorkOrdersListProps) {
   const [orders, setOrders] = useState<BespokeWorkOrderRow[]>([]);
   const [stockById, setStockById] = useState<Record<string, WorkOrderStockPostStatus>>({});
+  const [workers, setWorkers] = useState<Array<{ id: string; name: string }>>([]);
   const [statusFilter, setStatusFilter] = useState<BespokeWorkOrderStatus | 'all'>('all');
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -56,11 +60,19 @@ export function WorkOrdersList({
     setLoading(true);
     setError(null);
     try {
-      const rows = await listBespokeWorkOrdersByCompany(companyId, {
-        status: statusFilter,
-        branchId: branchId || undefined,
-      });
+      const [rows, contacts] = await Promise.all([
+        listBespokeWorkOrdersByCompany(companyId, {
+          status: statusFilter,
+          branchId: branchId || undefined,
+        }),
+        getContacts(companyId, 'supplier'),
+      ]);
       setOrders(rows);
+      setWorkers(
+        (contacts.data ?? [])
+          .filter((c) => c.id && c.name)
+          .map((c) => ({ id: c.id!, name: c.name! })),
+      );
       const stockEntries = await Promise.all(
         rows
           .filter((row) => row.status === 'completed')
@@ -133,6 +145,44 @@ export function WorkOrdersList({
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Post stock failed');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleSaveEdit = async (params: {
+    workOrderId: string;
+    tailorContactId: string;
+    productionCost: number;
+    notes: string;
+  }) => {
+    setBusyId(params.workOrderId);
+    setError(null);
+    try {
+      await updateBespokeWorkOrder({
+        workOrderId: params.workOrderId,
+        tailorContactId: params.tailorContactId,
+        productionCost: params.productionCost,
+        notes: params.notes,
+        userId,
+      });
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Update failed');
+      throw e;
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleCancelWo = async (woId: string) => {
+    setBusyId(woId);
+    setError(null);
+    try {
+      await cancelBespokeWorkOrder(woId, userId);
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Cancel failed');
     } finally {
       setBusyId(null);
     }
@@ -277,9 +327,12 @@ export function WorkOrdersList({
         workOrder={detailWo}
         stock={detailWo ? stockById[detailWo.id] ?? null : null}
         busy={!!busyId}
+        workers={workers}
         onClose={() => setDetailWo(null)}
         onComplete={(id) => void handleComplete(id)}
         onPostStock={(id) => void handlePostStock(id)}
+        onSaveEdit={handleSaveEdit}
+        onCancelWorkOrder={(id) => void handleCancelWo(id)}
       />
     </div>
   );

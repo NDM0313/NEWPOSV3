@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Loader2, Package, Plus, Scissors } from 'lucide-react';
 import {
+  cancelBespokeWorkOrder,
   completeBespokeWorkOrder,
   createBespokeWorkOrder,
   getWorkOrderStockPostStatus,
   listBespokeParentSaleItems,
   listBespokeWorkOrdersBySale,
   repostBespokeWorkOrderStock,
+  updateBespokeWorkOrder,
   type BespokeWorkOrderRow,
   type WorkOrderStockPostStatus,
 } from '../../api/bespokeWorkOrders';
@@ -141,6 +143,44 @@ export function SaleBespokeWorkOrders({
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Post stock failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleSaveEdit = async (params: {
+    workOrderId: string;
+    tailorContactId: string;
+    productionCost: number;
+    notes: string;
+  }) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await updateBespokeWorkOrder({
+        workOrderId: params.workOrderId,
+        tailorContactId: params.tailorContactId,
+        productionCost: params.productionCost,
+        notes: params.notes,
+        userId,
+      });
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Update failed');
+      throw e;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleCancelWo = async (woId: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await cancelBespokeWorkOrder(woId, userId);
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Cancel failed');
     } finally {
       setBusy(false);
     }
@@ -305,9 +345,12 @@ export function SaleBespokeWorkOrders({
         workOrder={detailWo}
         stock={detailWo ? stockById[detailWo.id] ?? null : null}
         busy={busy}
+        workers={tailors}
         onClose={() => setDetailWo(null)}
         onComplete={(id) => void handleComplete(id)}
         onPostStock={(id) => void handlePostStock(id)}
+        onSaveEdit={handleSaveEdit}
+        onCancelWorkOrder={(id) => void handleCancelWo(id)}
       />
     </div>
   );

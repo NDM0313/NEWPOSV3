@@ -255,6 +255,64 @@ export async function repostBespokeWorkOrderStock(
   return runCompleteBespokeWorkOrderRpc(workOrderId, userId);
 }
 
+export async function updateBespokeWorkOrder(params: {
+  workOrderId: string;
+  tailorContactId: string;
+  productionCost: number;
+  notes?: string | null;
+  status?: BespokeWorkOrderStatus | null;
+  userId?: string;
+}): Promise<BespokeWorkOrderRow> {
+  if (!isSupabaseConfigured) throw new Error('App not configured.');
+  const erpUserId = await resolveErpUserId(params.userId);
+  const { data, error } = await supabase.rpc('update_bespoke_work_order', {
+    p_work_order_id: params.workOrderId,
+    p_tailor_contact_id: params.tailorContactId,
+    p_production_cost: params.productionCost,
+    p_notes: params.notes?.trim() || null,
+    p_user_id: erpUserId,
+    p_status: params.status ?? null,
+  });
+  if (error) throw new Error(error.message);
+  const result = data as { success?: boolean; error?: string };
+  if (result?.success === false) {
+    throw new Error(result.error || 'Failed to update work order');
+  }
+  const { data: row, error: fetchErr } = await supabase
+    .from('bespoke_work_orders')
+    .select(
+      '*, tailor:contacts!tailor_contact_id(id, name, phone), sale:sales!sale_id(id, invoice_no, order_no, customer_name, status), parent_item:sales_items!parent_sales_item_id(id, product_name)',
+    )
+    .eq('id', params.workOrderId)
+    .single();
+  if (fetchErr) throw new Error(fetchErr.message);
+  return row as BespokeWorkOrderRow;
+}
+
+export async function cancelBespokeWorkOrder(
+  workOrderId: string,
+  userId?: string,
+  reason?: string,
+): Promise<{ stockMovementsReversed: number }> {
+  if (!isSupabaseConfigured) throw new Error('App not configured.');
+  const erpUserId = await resolveErpUserId(userId);
+  const { data, error } = await supabase.rpc('cancel_bespoke_work_order', {
+    p_work_order_id: workOrderId,
+    p_user_id: erpUserId,
+    p_reason: reason?.trim() || null,
+  });
+  if (error) throw new Error(error.message);
+  const result = data as {
+    success?: boolean;
+    error?: string;
+    stock_movements_reversed?: number;
+  };
+  if (result?.success === false) {
+    throw new Error(result.error || 'Failed to cancel work order');
+  }
+  return { stockMovementsReversed: result.stock_movements_reversed ?? 0 };
+}
+
 export async function listBespokeParentSaleItems(saleId: string): Promise<
   Array<{ id: string; product_name: string | null; sku: string | null; quantity: number }>
 > {

@@ -110,6 +110,23 @@ export function BespokeWorkOrdersPanel({
     }
   };
 
+  const handleCancelWorkOrder = async (id: string, workOrderNo: string) => {
+    const ok = window.confirm(
+      `Cancel work order ${workOrderNo}?\n\nThis will reverse stock and void the production journal entry.`,
+    );
+    if (!ok) return;
+    setBusyId(id);
+    try {
+      await bespokeWorkOrderService.cancelWorkOrder(id, user?.id);
+      toast.success('Work order cancelled');
+      await load();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Cancel failed');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   return (
     <div className="mt-4 border border-border rounded-lg p-4 bg-card/40">
       <h3 className="text-sm font-semibold text-violet-300 mb-2">Bespoke work orders</h3>
@@ -203,6 +220,17 @@ export function BespokeWorkOrdersPanel({
                       <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
                     )}
                     Complete job
+                  </Button>
+                )}
+                {wo.status !== 'cancelled' && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 border-red-500/40 text-red-300"
+                    disabled={busyId === wo.id}
+                    onClick={() => void handleCancelWorkOrder(wo.id, wo.work_order_no)}
+                  >
+                    Cancel
                   </Button>
                 )}
               </div>

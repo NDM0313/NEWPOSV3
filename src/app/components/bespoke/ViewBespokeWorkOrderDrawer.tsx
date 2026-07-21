@@ -177,6 +177,25 @@ export function ViewBespokeWorkOrderDrawer({
     }
   };
 
+  const handleCancelWorkOrder = async () => {
+    if (!workOrder) return;
+    const ok = window.confirm(
+      `Cancel work order ${workOrder.work_order_no}?\n\nThis will reverse stock and void the production journal entry.`,
+    );
+    if (!ok) return;
+    setCompleting(true);
+    try {
+      await bespokeWorkOrderService.cancelWorkOrder(workOrder.id, user?.id);
+      toast.success('Work order cancelled');
+      await load();
+      onUpdated?.();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Cancel failed');
+    } finally {
+      setCompleting(false);
+    }
+  };
+
   const openLinkedSale = () => {
     if (!workOrder?.sale_id) return;
     setOpenSaleIdForView?.(workOrder.sale_id);
@@ -403,6 +422,16 @@ export function ViewBespokeWorkOrderDrawer({
                   <CheckCircle2 className="h-4 w-4 mr-2" />
                 )}
                 Complete job
+              </Button>
+            )}
+            {canEdit && (
+              <Button
+                variant="outline"
+                className="border-red-500/40 text-red-300"
+                disabled={completing}
+                onClick={() => void handleCancelWorkOrder()}
+              >
+                Cancel work order
               </Button>
             )}
           </div>

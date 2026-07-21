@@ -44,6 +44,8 @@ export interface Product {
   is_rentable: boolean;
   is_sellable: boolean;
   track_stock: boolean;
+  /** White/dyeable fabric eligible for bespoke customize picker. */
+  is_dyeable?: boolean;
   is_active: boolean;
   image_urls?: string[];
   /** normal = catalog; production = studio manufactured (STD-PROD). */
@@ -64,7 +66,7 @@ function ensureProductIds(payload: Record<string, unknown>): Record<string, unkn
 
 // Explicit select lists: never request current_stock (column may not exist). Stock from stock_movements/inventory overview.
 const PRODUCT_SELECT_SAFE =
-  'id, company_id, category_id, brand_id, unit_id, name, sku, barcode, description, cost_price, retail_price, wholesale_price, min_stock, max_stock, has_variations, is_rentable, is_sellable, track_stock, is_active, image_urls, product_type, source_type, created_at, updated_at';
+  'id, company_id, category_id, brand_id, unit_id, name, sku, barcode, description, cost_price, retail_price, wholesale_price, min_stock, max_stock, has_variations, is_rentable, is_sellable, track_stock, is_dyeable, is_active, image_urls, product_type, source_type, created_at, updated_at';
 
 /** Variation select layers — actual minimal schema first, richer schemas as fallback for future column additions. */
 const VARIATION_SELECT_LAYERS = [

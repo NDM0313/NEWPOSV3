@@ -109,6 +109,7 @@ const productSchema = z.object({
 
   // Inventory (initialStock = current_stock, alertQty = min_stock)
   stockManagement: z.boolean().default(true),
+  isDyeable: z.boolean().default(false),
   initialStock: z.coerce.number().min(0).optional(),
   alertQty: z.coerce.number().min(0).optional(),
   maxStock: z.coerce.number().min(0).optional(),
@@ -314,6 +315,7 @@ export const EnhancedProductForm = ({
       barcodeType: "code128",
       barcode: "",
       stockManagement: true,
+      isDyeable: false,
       purchasePrice: 0,
       margin: 30,
       sellingPrice: 0,
@@ -781,6 +783,11 @@ export const EnhancedProductForm = ({
     setValue('rentalPrice', source.rental_price_daily ?? 0);
     setValue('alertQty', source.min_stock ?? (source as any).lowStockThreshold ?? 0);
     setValue('maxStock', source.max_stock ?? 1000);
+    setValue(
+      'isDyeable',
+      Boolean((source as { is_dyeable?: boolean; isDyeable?: boolean }).is_dyeable
+        ?? (source as { isDyeable?: boolean }).isDyeable),
+    );
     setValue('description', source.description || '');
     setValue('brand', source.brand_id || '');
     setValue('unit', source.unit_id || '');
@@ -1390,6 +1397,7 @@ export const EnhancedProductForm = ({
         is_rentable: (data.rentalPrice ?? 0) > 0,
         is_sellable: true,
         track_stock: data.stockManagement !== false,
+        is_dyeable: data.isDyeable === true,
         is_active: true,
       };
 
@@ -2384,6 +2392,28 @@ export const EnhancedProductForm = ({
                     )}
                   />
                 </div>
+              </div>
+
+              <div className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-2">
+                <div>
+                  <Label htmlFor="is-dyeable" className="text-gray-200">
+                    Dyeable fabric
+                  </Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Show this product in bespoke fabric picker (white / dyeable stock).
+                  </p>
+                </div>
+                <Controller
+                  control={control}
+                  name="isDyeable"
+                  render={({ field }) => (
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                      id="is-dyeable"
+                    />
+                  )}
+                />
               </div>
 
               {stockManagement && (
