@@ -1,7 +1,7 @@
 import { useRecordCustomerPayment } from '../../hooks/useRecordCustomerPayment';
 import { finalizePaymentAttachments } from '../../lib/finalizePaymentAttachments';
 import { addRentalPayment } from '../../api/rentals';
-import { recordSupplierPayment } from '../../api/accounts';
+import { recordSupplierPayment, recordManualSupplierPayment } from '../../api/accounts';
 import {
   MobilePaymentSheet,
   type MobilePaymentSheetSubmitPayload,
@@ -18,11 +18,12 @@ import {
  * Per-kind extras (attachments for sales, damageDeduction for rentals, etc.)
  * stay available via optional props without duplicating the sheet UI.
  */
-export type UnifiedPaymentKind = 'sale' | 'purchase' | 'rental' | 'expense' | 'worker';
+export type UnifiedPaymentKind = 'sale' | 'purchase' | 'supplier-on-account' | 'rental' | 'expense' | 'worker';
 
 const KIND_TO_MODE: Record<UnifiedPaymentKind, PaymentSheetMode> = {
   sale: 'receive',
   purchase: 'pay-supplier',
+  'supplier-on-account': 'pay-supplier',
   rental: 'rental',
   expense: 'expense',
   worker: 'pay-worker',
@@ -200,6 +201,46 @@ export function UnifiedPaymentSheet({
       }
       return {
         success: !error,
+        error: error ?? null,
+        paymentId: data?.payment_id ?? null,
+        referenceNumber: data?.reference_number ?? null,
+        partyAccountName: partyName ? `Payable — ${partyName}` : null,
+        attachmentWarning,
+      };
+    }
+
+    if (kind === 'supplier-on-account') {
+      const payBranchId = payload.branchId ?? branchId;
+      if (!payBranchId) return { success: false, error: 'Branch required for supplier payment.' };
+      if (!partyId) return { success: false, error: 'Supplier contact required.' };
+      const methodForRpc: 'cash' | 'bank' | 'card' | 'other' | 'wallet' =
+        payload.method === 'wallet' ? 'wallet' : payload.method;
+      const { data, error } = await recordManualSupplierPayment({
+        companyId,
+        branchId: payBranchId,
+        supplierContactId: partyId,
+        supplierName: partyName ?? 'Supplier',
+        amount: payload.amount,
+        paymentDate: payload.paymentDate,
+        paymentAt: payload.paymentAt,
+        paymentAccountId: payload.accountId,
+        paymentMethod: methodForRpc,
+        reference: payload.reference || undefined,
+        notes: payload.notes || undefined,
+        userId: userId ?? undefined,
+      });
+      let attachmentWarning: string | null = null;
+      if (data?.payment_id && payload.attachments.length > 0) {
+        const fin = await finalizePaymentAttachments({
+          companyId,
+          storageSegment: partyId,
+          paymentId: data.payment_id,
+          files: payload.attachments,
+        });
+        attachmentWarning = fin.attachmentWarning;
+      }
+      return {
+        success: !error || !!data?.payment_id,
         error: error ?? null,
         paymentId: data?.payment_id ?? null,
         referenceNumber: data?.reference_number ?? null,

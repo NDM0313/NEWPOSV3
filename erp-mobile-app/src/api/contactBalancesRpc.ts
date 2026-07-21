@@ -235,6 +235,17 @@ export function receivableFromBalanceMap(
   return Math.max(0, row?.receivables ?? 0);
 }
 
+/** Operational / summary payable for one contact id (supplier / both). */
+export function payableFromBalanceMap(
+  map: Map<string, ContactBalancesRow>,
+  contactId: string
+): number {
+  const cid = canonContactId(contactId);
+  const raw = String(contactId).trim();
+  const row = map.get(cid) ?? map.get(raw);
+  return Math.max(0, row?.payables ?? 0);
+}
+
 export function balanceRowFromMap(
   map: Map<string, ContactBalancesRow>,
   contactId: string

@@ -15,8 +15,20 @@ import { getAccountBalancesFromJournal } from './accountBalancesFromJournal';
 import { isLiquidityPaymentAccount } from '../lib/liquidityPaymentAccount';
 import { isBrowserOffline, listCacheGet, listCacheKeys, listCacheSet } from '../lib/listCache';
 import { resolveBranchUuidForWrite, safeRpcBranchId } from '../utils/branchId';
-import { getCurrentLocalTimestamp, toLocalDateString } from '../utils/localDate';
+import { getCurrentLocalTimestamp, localNowDateString, toLocalDateString } from '../utils/localDate';
 import { hasNormalizedAttachments } from '../lib/normalizeAttachments';
+import {
+  balanceRowFromMap,
+  fetchContactPartyGlBalancesMap,
+  fetchOperationalContactBalancesSummary,
+  partyGlSliceFromMap,
+  resolveContactListBalance,
+} from './contactBalancesRpc';
+import { normalizeCompanyId } from './contactBalancesUtils';
+import {
+  applyManualSupplierPaymentAllocations,
+  sortSuppliersByPayable,
+} from '../lib/supplierPaymentAllocation';
 
 export interface AccountRow {
   id: string;
@@ -931,46 +943,68 @@ export interface SupplierWithPayable {
   lastPayment?: string;
 }
 
-/** Suppliers with outstanding from purchases */
-export async function getSuppliersWithPayable(companyId: string): Promise<{ data: SupplierWithPayable[]; error: string | null }> {
+/** All active supplier/both contacts with GL/operational payable (includes Rs. 0 for advance). */
+export async function getAllSuppliersWithPayable(
+  companyId: string,
+  branchId?: string | null,
+): Promise<{ data: SupplierWithPayable[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
-  const { data: purchases, error: purErr } = await supabase
-    .from('purchases')
-    .select('id, supplier_id, supplier_name, due_amount, paid_amount, po_date')
-    .eq('company_id', companyId)
-    .gt('due_amount', 0)
-    .is('cancelled_at', null);
-  if (purErr) return { data: [], error: purErr.message };
+  const company = normalizeCompanyId(companyId);
+  if (!company) return { data: [], error: 'Missing company.' };
 
-  const bySupplier = new Map<string, { totalPayable: number; supplierName: string }>();
-  for (const p of purchases || []) {
-    const sid = (p.supplier_id as string) || `name:${p.supplier_name}`;
-    const existing = bySupplier.get(sid) || { totalPayable: 0, supplierName: String(p.supplier_name ?? 'Unknown') };
-    existing.totalPayable += Number(p.due_amount) || 0;
-    if (p.supplier_name) existing.supplierName = String(p.supplier_name);
-    bySupplier.set(sid, existing);
-  }
+  const { data: contacts, error: contactsErr } = await supabase
+    .from('contacts')
+    .select('id, name, phone, mobile, type, opening_balance, is_active')
+    .eq('company_id', company)
+    .in('type', ['supplier', 'both'])
+    .order('name');
+  if (contactsErr) return { data: [], error: contactsErr.message };
 
-  const supplierIds = [...new Set((purchases || []).map((p) => p.supplier_id).filter(Boolean))] as string[];
-  let contacts: { id: string; name: string; phone?: string }[] = [];
-  if (supplierIds.length > 0) {
-    const { data: c } = await supabase.from('contacts').select('id, name, phone').in('id', supplierIds);
-    contacts = c || [];
-  }
+  const active = (contacts || []).filter(
+    (c: { is_active?: boolean | null }) => c.is_active !== false,
+  );
+  if (!active.length) return { data: [], error: null };
 
-  const result: SupplierWithPayable[] = [];
-  for (const [entityId, info] of bySupplier) {
-    if (entityId.startsWith('name:')) continue;
-    const contact = contacts.find((c) => c.id === entityId);
-    result.push({
-      id: entityId,
-      name: contact?.name ?? info.supplierName ?? 'Unknown',
-      phone: contact?.phone ?? '',
-      totalPayable: info.totalPayable,
-      lastPayment: undefined,
-    });
-  }
-  return { data: result, error: null };
+  const [partyGl, opSummary] = await Promise.all([
+    fetchContactPartyGlBalancesMap(company, branchId),
+    fetchOperationalContactBalancesSummary(company, branchId),
+  ]);
+  const glOk = partyGl.error == null;
+
+  const list: SupplierWithPayable[] = active.map(
+    (row: {
+      id: string;
+      name: string;
+      phone?: string | null;
+      mobile?: string | null;
+      type?: string;
+      opening_balance?: number | null;
+    }) => {
+      const opening = Number(row.opening_balance ?? 0);
+      const totalPayable = resolveContactListBalance({
+        opening,
+        contactType: row.type || 'supplier',
+        listRole: 'supplier',
+        glOk,
+        glSlice: partyGlSliceFromMap(partyGl.map, row.id),
+        opRow: balanceRowFromMap(opSummary.map, row.id),
+      });
+      return {
+        id: row.id,
+        name: row.name || '',
+        phone: String(row.phone ?? row.mobile ?? '').trim(),
+        totalPayable: Math.max(0, totalPayable),
+        lastPayment: undefined,
+      };
+    },
+  );
+
+  return { data: sortSuppliersByPayable(list), error: null };
+}
+
+/** @deprecated Prefer getAllSuppliersWithPayable — kept for callers that only need open-purchase suppliers. */
+export async function getSuppliersWithPayable(companyId: string): Promise<{ data: SupplierWithPayable[]; error: string | null }> {
+  return getAllSuppliersWithPayable(companyId, null);
 }
 
 export interface PurchaseWithDue {
@@ -1092,6 +1126,146 @@ export async function recordSupplierPayment(params: {
     data: null,
     error:
       typeof rpcErr === 'string' ? appendPayReferenceAllocationHint(rpcErr) : rpcErr,
+  };
+}
+
+/**
+ * On-account / manual supplier payment: Dr AP, Cr Cash/Bank via record_payment_with_accounting,
+ * then FIFO-allocate to open purchase bills (web createManualSupplierPayment parity).
+ */
+export async function recordManualSupplierPayment(params: {
+  companyId: string;
+  branchId: string | null;
+  supplierContactId: string;
+  supplierName: string;
+  amount: number;
+  paymentDate: string;
+  paymentAt?: string | null;
+  paymentAccountId: string;
+  paymentMethod: 'cash' | 'bank' | 'card' | 'other' | 'wallet';
+  reference?: string;
+  notes?: string;
+  userId?: string | null;
+  attachments?: { url: string; name: string }[] | null;
+}): Promise<{ data: { payment_id: string; reference_number?: string | null } | null; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
+  if (!params.companyId || !params.supplierContactId || params.amount <= 0 || !params.paymentAccountId) {
+    return { data: null, error: 'Company, supplier, amount and account are required.' };
+  }
+  let branchResolved: string;
+  try {
+    branchResolved = await resolveBranchUuidForWrite(
+      params.companyId,
+      params.branchId,
+      'No branch set up. Add a branch in Settings to record payments.',
+    );
+  } catch (e) {
+    return { data: null, error: e instanceof Error ? e.message : 'Branch required for payment.' };
+  }
+
+  const baseNotes = params.notes?.trim() ?? '';
+  const bankTraceId = params.reference?.trim() ?? '';
+  const composedNotes = bankTraceId
+    ? `${baseNotes ? `${baseNotes} | ` : ''}Bank Trace ID: ${bankTraceId}`
+    : baseNotes || `Manual payment to ${params.supplierName}`;
+
+  const methodMap: Record<string, 'cash' | 'bank' | 'card' | 'other'> = {
+    cash: 'cash',
+    bank: 'bank',
+    card: 'card',
+    wallet: 'other',
+    other: 'other',
+  };
+  const enumMethod = methodMap[String(params.paymentMethod).toLowerCase()] || 'cash';
+
+  const { data: authData } = await supabase.auth.getUser();
+  const createdBy = params.userId ?? authData?.user?.id ?? null;
+
+  const { data, error } = await supabase.rpc('record_payment_with_accounting', {
+    p_company_id: params.companyId,
+    p_branch_id: branchResolved,
+    p_payment_type: 'paid',
+    p_reference_type: 'manual_payment',
+    p_reference_id: params.supplierContactId,
+    p_amount: params.amount,
+    p_payment_method: enumMethod,
+    p_payment_date: params.paymentDate || localNowDateString(),
+    p_payment_account_id: params.paymentAccountId,
+    p_reference_number: null,
+    p_notes: composedNotes || null,
+    p_created_by: createdBy,
+    p_worker_stage_id: null,
+  });
+
+  if (error) {
+    let msg = error.message;
+    if (msg.includes('payment_status') && msg.includes('text')) {
+      msg +=
+        ' Apply migration migrations/20260449_record_payment_with_accounting_payment_status_cast.sql on Postgres.';
+    }
+    return { data: null, error: appendPayReferenceAllocationHint(msg) };
+  }
+
+  const res = data as {
+    success?: boolean;
+    payment_id?: string;
+    reference_number?: string;
+    error?: string;
+  } | null;
+  if (!res?.success || !res.payment_id) {
+    return { data: null, error: res?.error ?? 'Payment failed.' };
+  }
+
+  const paymentId = res.payment_id;
+  const patch: Record<string, unknown> = {
+    reference_type: 'manual_payment',
+    reference_id: null,
+    contact_id: params.supplierContactId,
+    received_by: createdBy,
+  };
+  if (params.attachments?.length) {
+    patch.attachments = params.attachments;
+  }
+
+  let payUpd = await supabase.from('payments').update(patch).eq('id', paymentId);
+  if (payUpd.error?.code === 'PGRST204' && String(payUpd.error.message || '').includes('attachments')) {
+    const { attachments: _a, ...rest } = patch;
+    payUpd = await supabase.from('payments').update(rest).eq('id', paymentId);
+  } else if (payUpd.error) {
+    return {
+      data: null,
+      error: `Payment recorded but contact link failed: ${payUpd.error.message}`,
+    };
+  }
+
+  try {
+    await applyManualSupplierPaymentAllocations({
+      companyId: params.companyId,
+      branchId: branchResolved,
+      paymentId,
+      supplierId: params.supplierContactId,
+      amount: params.amount,
+      paymentDate: params.paymentDate || localNowDateString(),
+      createdBy,
+    });
+  } catch (allocErr) {
+    return {
+      data: { payment_id: paymentId, reference_number: res.reference_number ?? null },
+      error:
+        allocErr instanceof Error
+          ? `Payment saved but bill allocation failed: ${allocErr.message}`
+          : 'Payment saved but bill allocation failed.',
+    };
+  }
+
+  if (params.paymentAt) {
+    const { patchPaymentCreatedAt } = await import('./paymentTimestamp');
+    await patchPaymentCreatedAt(paymentId, params.paymentAt);
+  }
+
+  return {
+    data: { payment_id: paymentId, reference_number: res.reference_number ?? null },
+    error: null,
   };
 }
 

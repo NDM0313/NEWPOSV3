@@ -1,9 +1,11 @@
 #!/bin/bash
-# VPS cron: auto-pull and deploy when remote changes (hourly recommended).
+# VPS cron: conditional auto-pull + deploy once daily (recommended 8:00 PM PKT = 15:00 UTC).
 # Run: crontab -e  then add:
-#   0 * * * * flock -n /var/lock/newposv3-deploy.lock /root/NEWPOSV3/deploy/vps-auto-pull-cron.sh
+#   0 15 * * * /root/NEWPOSV3/deploy/vps-auto-pull-cron.sh >> /var/log/newposv3-auto-deploy.log 2>&1
 # Manual full rebuild: DEPLOY_NO_CACHE=1 bash deploy/deploy.sh
 # Requires: git, deploy/deploy.sh
+#
+# Exits 0 immediately when origin/main matches local HEAD (no Docker build).
 
 set -e
 LOCK_FILE="/var/lock/newposv3-deploy.lock"

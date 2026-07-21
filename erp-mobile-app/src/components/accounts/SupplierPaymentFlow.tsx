@@ -1,12 +1,10 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { ArrowLeft, Check, Search } from 'lucide-react';
 import type { User } from '../../types';
-import {
-  getSuppliersWithPayable,
-  getPurchasesBySupplier,
-  type SupplierWithPayable,
-} from '../../api/accounts';
-import { UnifiedPaymentSheet } from '../shared/UnifiedPaymentSheet';
+import { getAllSuppliersWithPayable, type SupplierWithPayable } from '../../api/accounts';
+import { MobilePaymentSheet, type MobilePaymentSheetSubmitPayload } from '../shared/MobilePaymentSheet';
+import { useRecordOnAccountSupplierPayment } from '../../hooks/useRecordOnAccountSupplierPayment';
+import { finalizePaymentAttachments } from '../../lib/finalizePaymentAttachments';
 import type { ReceiptOcrRouteSeed } from '../../lib/ocr/receiptOcrRouteSeed';
 import { fuzzyMatchSuppliers } from '../../lib/ocr/parsePakSupplierBill';
 
@@ -33,7 +31,10 @@ export function SupplierPaymentFlow({
 }: SupplierPaymentFlowProps) {
   const [searchQuery, setSearchQuery] = useState(() => String(ocrSeed?.supplierHint ?? '').trim());
   const [suppliers, setSuppliers] = useState<SupplierWithPayable[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedSupplier, setSelectedSupplier] = useState<SupplierWithPayable | null>(null);
+  const { submit } = useRecordOnAccountSupplierPayment();
 
   useEffect(() => {
     const hint = String(ocrSeed?.supplierHint ?? '').trim();
@@ -41,62 +42,94 @@ export function SupplierPaymentFlow({
   }, [ocrSeed?.supplierHint]);
 
   useEffect(() => {
-    if (!companyId) return;
-    getSuppliersWithPayable(companyId).then((sRes) => {
-      const all = sRes.data ?? [];
-      const match = initialContactId ? all.find((s) => s.id === initialContactId) : undefined;
-      const list = all.filter((s) => s.totalPayable > 0 || (match && s.id === match.id));
+    if (!companyId) {
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    getAllSuppliersWithPayable(companyId, branchId ?? null).then(({ data, error }) => {
+      if (cancelled) return;
+      const list = data ?? [];
       setSuppliers(list);
-      if (match) setSelectedSupplier(match);
+      setLoadError(error);
+      setLoading(false);
+      if (initialContactId) {
+        const match = list.find((s) => s.id === initialContactId);
+        if (match) setSelectedSupplier(match);
+      }
     });
-  }, [companyId, initialContactId]);
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, branchId, initialContactId]);
 
-  const ocrSuggestions = useMemo(
-    () => fuzzyMatchSuppliers(ocrSeed?.supplierHint, suppliers, 5),
-    [ocrSeed?.supplierHint, suppliers]
-  );
+  const ocrSuggestions = fuzzyMatchSuppliers(ocrSeed?.supplierHint, suppliers, 5);
 
   const filteredSuppliers = suppliers.filter(
-    (s) => s.name.toLowerCase().includes(searchQuery.toLowerCase()) || s.phone.includes(searchQuery),
+    (s) =>
+      s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      s.phone.includes(searchQuery),
   );
 
-  const [resolvedPurchaseId, setResolvedPurchaseId] = useState<string | null>(null);
-  useEffect(() => {
-    if (!companyId || !selectedSupplier) { setResolvedPurchaseId(null); return; }
-    let cancelled = false;
-    getPurchasesBySupplier(companyId, selectedSupplier.id).then(({ data }) => {
-      if (cancelled) return;
-      setResolvedPurchaseId(data?.[0]?.id ?? null);
+  const handleSubmit = async (payload: MobilePaymentSheetSubmitPayload) => {
+    if (!selectedSupplier || !companyId) {
+      return { success: false, error: 'Missing supplier.' };
+    }
+    const { success, error, paymentId, referenceNumber } = await submit({
+      companyId,
+      branchId: payload.branchId ?? branchId ?? null,
+      supplierContactId: selectedSupplier.id,
+      supplierName: selectedSupplier.name,
+      amount: payload.amount,
+      accountId: payload.accountId,
+      paymentMethod: payload.method === 'wallet' ? 'wallet' : payload.method,
+      paymentDate: payload.paymentDate,
+      paymentAt: payload.paymentAt,
+      notes: payload.notes || null,
+      bankTraceId: payload.reference?.trim() || null,
+      userId: user.id ?? null,
     });
-    return () => { cancelled = true; };
-  }, [companyId, selectedSupplier]);
+    let attachmentWarning: string | null = null;
+    if (success && paymentId && payload.attachments.length > 0) {
+      const fin = await finalizePaymentAttachments({
+        companyId,
+        storageSegment: selectedSupplier.id,
+        paymentId,
+        files: payload.attachments,
+      });
+      attachmentWarning = fin.attachmentWarning;
+    }
+    return {
+      success,
+      error: error ?? null,
+      paymentId: paymentId ?? null,
+      referenceNumber: referenceNumber ?? null,
+      partyAccountName: selectedSupplier.name ? `Payable — ${selectedSupplier.name}` : null,
+      attachmentWarning,
+    };
+  };
 
   if (selectedSupplier && companyId) {
-    if (!resolvedPurchaseId) {
-      return (
-        <div className="min-h-screen bg-[#111827] flex items-center justify-center">
-          <p className="text-[#9CA3AF] text-sm">Loading outstanding purchase…</p>
-        </div>
-      );
-    }
+    const ocrAmount = ocrSeed?.amount && ocrSeed.amount > 0 ? ocrSeed.amount : undefined;
+    const due = Math.max(0, selectedSupplier.totalPayable);
     return (
-      <UnifiedPaymentSheet
-        kind="purchase"
-        referenceId={resolvedPurchaseId}
-        referenceNo={selectedSupplier.phone || null}
+      <MobilePaymentSheet
+        mode="pay-supplier"
         companyId={companyId}
         branchId={branchId ?? null}
         userId={user.id}
         userRole={user.role}
         profileId={user.profileId ?? null}
         partyName={selectedSupplier.name}
-        partyId={selectedSupplier.id}
         partyPhone={selectedSupplier.phone || null}
-        totalAmount={selectedSupplier.totalPayable}
-        outstandingAmount={selectedSupplier.totalPayable}
-        initialAmount={
-          ocrSeed?.amount && ocrSeed.amount > 0 ? ocrSeed.amount : selectedSupplier.totalPayable
-        }
+        outstandingAmount={due}
+        initialAmount={ocrAmount ?? (due || undefined)}
+        allowOverpayment
+        title="Pay Supplier"
+        subtitle="On-account payment (updates supplier AP)"
+        partyKindLabel="SUPPLIER"
+        submitLabel="Pay Supplier"
         defaultPaymentNotes={ocrSeed?.notes ?? null}
         initialReference={ocrSeed?.reference ?? null}
         initialPaymentDate={ocrSeed?.date ?? null}
@@ -104,6 +137,7 @@ export function SupplierPaymentFlow({
         initialAttachmentFiles={ocrSeed?.attachmentFiles?.length ? ocrSeed.attachmentFiles : null}
         onClose={() => setSelectedSupplier(null)}
         onSuccess={onComplete}
+        onSubmit={handleSubmit}
         onViewLedger={onViewLedger}
       />
     );
@@ -123,7 +157,7 @@ export function SupplierPaymentFlow({
       <div className="flex items-center justify-between mb-2">
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-white truncate">{supplier.name}</p>
-          <p className="text-xs text-[#9CA3AF] truncate">{supplier.phone}</p>
+          <p className="text-xs text-[#9CA3AF] truncate">{supplier.phone || '—'}</p>
           {suggested ? (
             <p className="text-[10px] text-[#FBBF24] mt-0.5">OCR name suggestion — confirm to select</p>
           ) : null}
@@ -132,13 +166,14 @@ export function SupplierPaymentFlow({
       </div>
       <div className="flex items-center justify-between pt-2 border-t border-[#374151]">
         <span className="text-xs text-[#9CA3AF]">Outstanding Balance</span>
-        <span className={`text-sm font-bold ${supplier.totalPayable > 0 ? 'text-[#EF4444]' : 'text-[#10B981]'}`}>
+        <span
+          className={`text-sm font-bold ${
+            supplier.totalPayable > 0.01 ? 'text-[#EF4444]' : 'text-[#6B7280]'
+          }`}
+        >
           Rs. {supplier.totalPayable.toLocaleString()}
         </span>
       </div>
-      {supplier.lastPayment && (
-        <p className="text-xs text-[#6B7280] mt-1">Last payment: {supplier.lastPayment}</p>
-      )}
     </button>
   );
 
@@ -168,6 +203,12 @@ export function SupplierPaymentFlow({
           />
         </div>
 
+        {loadError && (
+          <div className="p-3 bg-[#EF4444]/10 border border-[#EF4444]/40 rounded-xl text-sm text-[#FCA5A5]">
+            {loadError}
+          </div>
+        )}
+
         {ocrSuggestions.length > 0 && String(ocrSeed?.supplierHint ?? '').trim() ? (
           <div className="space-y-2">
             <p className="text-xs font-medium text-[#FBBF24]">Suggested from OCR</p>
@@ -175,17 +216,21 @@ export function SupplierPaymentFlow({
           </div>
         ) : null}
 
-        <div className="space-y-2">
-          {filteredSuppliers.length === 0 && ocrSuggestions.length === 0 ? (
-            <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-8 text-center">
-              <p className="text-sm text-[#9CA3AF]">No suppliers with outstanding balance</p>
-            </div>
-          ) : (
-            filteredSuppliers
-              .filter((s) => !ocrSuggestions.some((g) => g.id === s.id))
-              .map((supplier) => renderSupplierButton(supplier))
-          )}
-        </div>
+        {loading ? (
+          <div className="py-8 text-center text-[#9CA3AF] text-sm">Loading suppliers…</div>
+        ) : (
+          <div className="space-y-2">
+            {filteredSuppliers.length === 0 && ocrSuggestions.length === 0 ? (
+              <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-8 text-center">
+                <p className="text-sm text-[#9CA3AF]">No suppliers found</p>
+              </div>
+            ) : (
+              filteredSuppliers
+                .filter((s) => !ocrSuggestions.some((g) => g.id === s.id))
+                .map((supplier) => renderSupplierButton(supplier))
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
