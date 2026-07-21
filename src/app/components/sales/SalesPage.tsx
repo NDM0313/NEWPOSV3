@@ -2343,7 +2343,12 @@ export const SalesPage = () => {
                   <div className="py-12 text-center px-4">
                     <ShoppingCart size={48} className="mx-auto text-muted-foreground mb-3" />
                     <p className="text-muted-foreground text-sm">No sales found</p>
-                    {sales.length > 0 ? (
+                    {branchId && branchId !== 'all' && sales.length === 0 ? (
+                      <p className="text-amber-400/90 text-xs mt-2 max-w-lg mx-auto">
+                        Filtered by the header branch. Switch the header branch to All (or the sale&apos;s branch)
+                        to see sales from other locations.
+                      </p>
+                    ) : sales.length > 0 ? (
                       <p className="text-muted-foreground text-xs mt-2 max-w-lg mx-auto">
                         {sortedSales.length === 0
                           ? 'This company has sales, but none match the current filters. Widen the header date range, set branch to All where applicable, or clear search and column filters.'

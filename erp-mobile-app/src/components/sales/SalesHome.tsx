@@ -4,6 +4,7 @@ import * as salesApi from '../../api/sales';
 import * as saleChargesApi from '../../api/saleCharges';
 import { useBespokeEnabled } from '../../hooks/useBespokeEnabled';
 import { SaleBespokeWorkOrders } from './SaleBespokeWorkOrders';
+import { WorkOrdersList } from './WorkOrdersList';
 import * as studioApi from '../../api/studio';
 import * as reportsApi from '../../api/reports';
 import * as contactsApi from '../../api/contacts';
@@ -203,18 +204,20 @@ export function SalesHome({
   const saleTypeFilterTabs = useMemo((): SaleListTypeFilter[] => {
     const tabs: SaleListTypeFilter[] = ['all'];
     if (studioModuleOn) tabs.push('studio');
-    tabs.push('pos', 'regular', 'order', 'rental');
+    tabs.push('pos', 'regular', 'order', 'rental', 'work_orders');
     return tabs;
   }, [studioModuleOn]);
 
   const saleTypeTabGridClass =
-    saleTypeFilterTabs.length >= 6
-      ? 'grid-cols-6'
-      : saleTypeFilterTabs.length >= 5
-        ? 'grid-cols-5'
-        : saleTypeFilterTabs.length === 4
-          ? 'grid-cols-4'
-          : 'grid-cols-3';
+    saleTypeFilterTabs.length >= 7
+      ? 'grid-cols-4'
+      : saleTypeFilterTabs.length >= 6
+        ? 'grid-cols-6'
+        : saleTypeFilterTabs.length >= 5
+          ? 'grid-cols-5'
+          : saleTypeFilterTabs.length === 4
+            ? 'grid-cols-4'
+            : 'grid-cols-3';
 
   const listBranchScope = useMemo(
     (): ListBranchScope =>
@@ -231,6 +234,7 @@ export function SalesHome({
   const [searchQuery, setSearchQuery] = useState('');
   const [saleTypeFilter, setSaleTypeFilter] = useState<SaleListTypeFilter>('all');
   const [selectedRentalId, setSelectedRentalId] = useState<string | null>(null);
+  const [woRefreshToken, setWoRefreshToken] = useState(0);
 
   useEffect(() => {
     if (!studioModuleOn && saleTypeFilter === 'studio') {
@@ -488,6 +492,7 @@ export function SalesHome({
     if (searchQuery.trim()) return 'No invoices match your search';
     if (saleTypeFilter === 'all') return 'No sales or rentals found';
     if (saleTypeFilter === 'rental') return 'No rentals found';
+    if (saleTypeFilter === 'work_orders') return 'No work orders found';
     return `No ${saleListTypeLabel(saleTypeFilter).toLowerCase()} sales found`;
   };
 
@@ -1676,9 +1681,11 @@ export function SalesHome({
           <div className="flex-1">
             <h1 className="font-semibold text-white text-lg">Sales</h1>
             <p className="text-xs text-white/80">
-              {saleTypeFilter === 'all'
-                ? `${filteredList.length} item${filteredList.length === 1 ? '' : 's'}`
-                : `${filteredList.length} ${saleListTypeLabel(saleTypeFilter).toLowerCase()} item${filteredList.length === 1 ? '' : 's'}`}
+              {saleTypeFilter === 'work_orders'
+                ? 'Bespoke production jobs'
+                : saleTypeFilter === 'all'
+                  ? `${filteredList.length} item${filteredList.length === 1 ? '' : 's'}`
+                  : `${filteredList.length} ${saleListTypeLabel(saleTypeFilter).toLowerCase()} item${filteredList.length === 1 ? '' : 's'}`}
             </p>
           </div>
           <button
@@ -1725,7 +1732,7 @@ export function SalesHome({
             );
           })}
         </div>
-        {saleTypeFilter !== 'all' && saleTypeFilter !== 'rental' && (
+        {saleTypeFilter !== 'all' && saleTypeFilter !== 'rental' && saleTypeFilter !== 'work_orders' && (
           <p className="text-[10px] text-white/60 mb-2 -mt-1">Totals include all sale types.</p>
         )}
 
@@ -1744,6 +1751,7 @@ export function SalesHome({
       <PullToRefresh
         onRefresh={async () => {
           await refetchSales({ silent: true });
+          setWoRefreshToken((n) => n + 1);
         }}
         disabled={!companyId}
         scrollElementRef={mainScrollRef}
@@ -1756,6 +1764,18 @@ export function SalesHome({
       ) : (
         <>
           <div className="p-4 pt-4 space-y-3">
+            {saleTypeFilter === 'work_orders' && companyId ? (
+              <WorkOrdersList
+                companyId={companyId}
+                branchId={listBranchScope.mode === 'single' ? listBranchScope.branchId : null}
+                userId={effectiveUserId}
+                searchQuery={searchQuery}
+                refreshToken={woRefreshToken}
+              />
+            ) : saleTypeFilter === 'work_orders' ? (
+              <p className="text-sm text-gray-500 text-center py-8">Company not loaded</p>
+            ) : (
+              <>
             {filteredList.map((row) => {
               if (row.kind === 'rental') {
                 const isCancelled = row.rentalStatus === 'cancelled';
@@ -1997,6 +2017,8 @@ export function SalesHome({
                 <ShoppingCart className="w-16 h-16 mx-auto mb-4 text-[#374151]" />
                 <p className="text-[#9CA3AF]">{emptyListMessage()}</p>
               </div>
+            )}
+              </>
             )}
           </div>
 

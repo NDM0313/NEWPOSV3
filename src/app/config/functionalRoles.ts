@@ -29,10 +29,30 @@ const WORKER_ALIASES = new Set([
   'inventory_clerk',
 ]);
 
+/** Canonize role string: lower, trim, underscores → spaces. */
+function canonAppRoleRaw(role: string | null | undefined): string {
+  return (role ?? '')
+    .toLowerCase()
+    .trim()
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ');
+}
+
+/**
+ * Platform operators (users.role enum): developer / super_admin.
+ * They keep their DB role for Dev Tools gates, but permission engine treats them as Admin
+ * so sidebar modules like Accounting (ledger view) are not stuck behind the worker (`user`) matrix.
+ */
+export function isPlatformOperatorAppRole(role: string | null | undefined): boolean {
+  const r = canonAppRoleRaw(role);
+  return r === 'developer' || r === 'super admin' || r === 'superadmin';
+}
+
 /** Normalize legacy users.role strings to assignable or system values. */
 export function normalizeAppRole(role: string | null | undefined): string {
-  const r = (role ?? 'salesman').toLowerCase().trim();
+  const r = canonAppRoleRaw(role) || 'salesman';
   if (r === 'owner') return 'owner';
+  if (r === 'developer') return 'developer';
   if (r === 'admin' || r === 'super admin' || r === 'superadmin') return 'admin';
   if (r === 'manager' || r === 'accountant') return 'manager';
   if (WORKER_ALIASES.has(r)) return 'salesman';
@@ -40,6 +60,7 @@ export function normalizeAppRole(role: string | null | undefined): string {
 }
 
 export function mapAppRoleToEngineRole(role: string | null | undefined): EngineRole {
+  if (isPlatformOperatorAppRole(role)) return 'admin';
   const r = normalizeAppRole(role);
   if (r === 'owner') return 'owner';
   if (r === 'admin') return 'admin';
@@ -48,6 +69,7 @@ export function mapAppRoleToEngineRole(role: string | null | undefined): EngineR
 }
 
 export function mapAppRoleToUiRole(role: string | null | undefined): UiPermissionRole {
+  if (isPlatformOperatorAppRole(role)) return 'Admin';
   const r = normalizeAppRole(role);
   if (r === 'owner' || r === 'admin') return 'Admin';
   if (r === 'manager') return 'Manager';
@@ -59,6 +81,9 @@ export function isAdminUiRole(uiRole: UiPermissionRole): boolean {
 }
 
 export function getFunctionalRoleLabel(appRole: string | null | undefined): string {
+  const raw = canonAppRoleRaw(appRole);
+  if (raw === 'developer') return 'Developer (platform)';
+  if (raw === 'super admin' || raw === 'superadmin') return 'Super Admin (platform)';
   const r = normalizeAppRole(appRole);
   if (r === 'owner') return 'Owner (system)';
   if (r === 'admin') return 'Admin';

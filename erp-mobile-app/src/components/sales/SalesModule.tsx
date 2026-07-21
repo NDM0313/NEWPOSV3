@@ -532,7 +532,7 @@ export function SalesModule({
       }),
       ...(saleData.saleType === 'regular' && {
         targetStatus: saleData.documentStatus ?? 'order',
-        documentType: saleData.documentStatus === 'quotation' ? 'quotation' as const : 'invoice' as const,
+        documentType: saleData.documentStatus === 'final' ? 'invoice' as const : 'quotation' as const,
         ...((saleData.documentStatus ?? 'order') === 'order' && saleData.deadlineDate
           ? { deadline: saleData.deadlineDate }
           : {}),

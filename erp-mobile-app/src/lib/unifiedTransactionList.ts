@@ -93,6 +93,7 @@ export function filterUnifiedRows(
   filter: SaleListTypeFilter,
 ): UnifiedListRow[] {
   if (filter === 'rental') return rows.filter((r) => r.kind === 'rental');
+  if (filter === 'work_orders') return [];
   if (filter === 'all') return rows;
   return rows.filter(
     (r) => r.kind === 'sale' && r.saleRaw && matchesSaleListTypeFilter(r.saleRaw, filter),

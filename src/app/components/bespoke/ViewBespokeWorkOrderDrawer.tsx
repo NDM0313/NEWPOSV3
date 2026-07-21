@@ -38,6 +38,7 @@ import {
   hasWorkOrderActiveStockMovements,
   type WorkOrderStockPostStatus,
 } from '@/app/services/bespokeFabricStockService';
+import { nudgeConvertSaleToFinalAfterWoComplete } from './nudgeConvertSaleToFinal';
 
 const statusStyles: Record<BespokeWorkOrderStatus, string> = {
   draft: 'bg-gray-500/20 text-muted-foreground border-gray-500/30',
@@ -62,7 +63,7 @@ export function ViewBespokeWorkOrderDrawer({
   const { user, companyId } = useSupabase();
   const { formatCurrency } = useFormatCurrency();
   const { formatDateTime } = useFormatDate();
-  const { setCurrentView, setOpenSaleIdForView } = useNavigation();
+  const { setCurrentView, setOpenSaleIdForView, openDrawer } = useNavigation();
   const [workOrder, setWorkOrder] = useState<BespokeWorkOrderDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [completing, setCompleting] = useState(false);
@@ -125,6 +126,15 @@ export function ViewBespokeWorkOrderDrawer({
       } else {
         toast.success('Job complete — stock posted (fabric + custom order).');
       }
+      await nudgeConvertSaleToFinalAfterWoComplete({
+        saleId: workOrder.sale_id,
+        knownStatus: workOrder.sale?.status,
+        openConvert: (sale) => {
+          setCurrentView('sales');
+          openDrawer('edit-sale', undefined, { sale, convertToFinal: true });
+          onClose();
+        },
+      });
       await load();
       onUpdated?.();
     } catch (e: unknown) {

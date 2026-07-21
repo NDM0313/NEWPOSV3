@@ -23,7 +23,13 @@ export interface BespokeWorkOrder {
 }
 
 export interface BespokeWorkOrderDetail extends BespokeWorkOrder {
-  sale?: { id: string; invoice_no?: string | null; customer_name?: string | null } | null;
+  sale?: {
+    id: string;
+    invoice_no?: string | null;
+    order_no?: string | null;
+    customer_name?: string | null;
+    status?: string | null;
+  } | null;
   parent_item?: { id: string; product_name?: string | null } | null;
   branch?: { id: string; name?: string | null } | null;
   journal_entry?: { id: string; entry_no?: string | null } | null;
@@ -37,7 +43,7 @@ export interface BespokeWorkOrderListFilters {
 }
 
 const WORK_ORDER_DETAIL_SELECT =
-  '*, tailor:contacts!tailor_contact_id(id, name, phone), sale:sales!sale_id(id, invoice_no, customer_name), parent_item:sales_items!parent_sales_item_id(id, product_name), branch:branches!branch_id(id, name), journal_entry:journal_entries!journal_entry_id(id, entry_no)';
+  '*, tailor:contacts!tailor_contact_id(id, name, phone), sale:sales!sale_id(id, invoice_no, order_no, customer_name, status), parent_item:sales_items!parent_sales_item_id(id, product_name), branch:branches!branch_id(id, name), journal_entry:journal_entries!journal_entry_id(id, entry_no)';
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

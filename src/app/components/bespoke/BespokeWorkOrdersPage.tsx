@@ -13,6 +13,7 @@ import {
 } from '../ui/select';
 import { cn } from '../ui/utils';
 import { useSupabase } from '@/app/context/SupabaseContext';
+import { useNavigation } from '@/app/context/NavigationContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { useFormatDate } from '@/app/hooks/useFormatDate';
 import { branchService, type Branch } from '@/app/services/branchService';
@@ -24,6 +25,7 @@ import {
 } from '@/app/services/bespokeWorkOrderService';
 import { ViewBespokeWorkOrderDrawer } from './ViewBespokeWorkOrderDrawer';
 import { BespokeWorkOrderForm } from './BespokeWorkOrderForm';
+import { nudgeConvertSaleToFinalAfterWoComplete } from './nudgeConvertSaleToFinal';
 import {
   getWorkOrderStockPostStatus,
   hasWorkOrderActiveStockMovements,
@@ -47,6 +49,7 @@ const statusStyles: Record<BespokeWorkOrderStatus, string> = {
 
 export function BespokeWorkOrdersPage() {
   const { companyId, user } = useSupabase();
+  const { openDrawer, setCurrentView } = useNavigation();
   const { formatCurrency } = useFormatCurrency();
   const { formatDateTime } = useFormatDate();
   const [orders, setOrders] = useState<BespokeWorkOrderDetail[]>([]);
@@ -145,11 +148,22 @@ export function BespokeWorkOrdersPage() {
   const handleCompleteJob = async (woId: string) => {
     setBusyId(woId);
     try {
+      const wo = orders.find((o) => o.id === woId);
       const result = await bespokeWorkOrderService.complete(woId, user?.id);
       if (result.stockWarning) {
         toast.warning(result.stockWarning);
       } else {
         toast.success('Job complete — stock posted (fabric + custom order).');
+      }
+      if (wo?.sale_id) {
+        await nudgeConvertSaleToFinalAfterWoComplete({
+          saleId: wo.sale_id,
+          knownStatus: wo.sale?.status,
+          openConvert: (sale) => {
+            setCurrentView('sales');
+            openDrawer('edit-sale', undefined, { sale, convertToFinal: true });
+          },
+        });
       }
       await load();
     } catch (e: unknown) {

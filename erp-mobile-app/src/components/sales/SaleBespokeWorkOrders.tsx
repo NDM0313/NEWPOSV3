@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Loader2, Scissors } from 'lucide-react';
+import { Loader2, Package, Scissors } from 'lucide-react';
 import {
   completeBespokeWorkOrder,
   createBespokeWorkOrder,
+  getWorkOrderStockPostStatus,
   listBespokeParentSaleItems,
   listBespokeWorkOrdersBySale,
+  repostBespokeWorkOrderStock,
   type BespokeWorkOrderRow,
+  type WorkOrderStockPostStatus,
 } from '../../api/bespokeWorkOrders';
 import { getContacts } from '../../api/contacts';
 
@@ -25,6 +28,7 @@ export function SaleBespokeWorkOrders({
   saleStatus,
 }: SaleBespokeWorkOrdersProps) {
   const [orders, setOrders] = useState<BespokeWorkOrderRow[]>([]);
+  const [stockById, setStockById] = useState<Record<string, WorkOrderStockPostStatus>>({});
   const [parents, setParents] = useState<Array<{ id: string; product_name: string | null; sku: string | null }>>([]);
   const [tailors, setTailors] = useState<Array<{ id: string; name: string }>>([]);
   const [loading, setLoading] = useState(true);
@@ -51,6 +55,21 @@ export function SaleBespokeWorkOrders({
       setTailors(workerList);
       if (!parentItemId && pi[0]?.id) setParentItemId(pi[0].id);
       if (!tailorId && workerList[0]?.id) setTailorId(workerList[0].id);
+
+      const stockEntries = await Promise.all(
+        wo
+          .filter((row) => row.status === 'completed')
+          .map(async (row) => {
+            const status = await getWorkOrderStockPostStatus(
+              row.id,
+              row.parent_sales_item_id,
+              row.sale_id,
+              row.work_order_no,
+            );
+            return [row.id, status] as const;
+          }),
+      );
+      setStockById(Object.fromEntries(stockEntries));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load work orders');
     } finally {
@@ -106,6 +125,19 @@ export function SaleBespokeWorkOrders({
     }
   };
 
+  const handlePostStock = async (woId: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await repostBespokeWorkOrderStock(woId, userId);
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Post stock failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const posted = String(saleStatus).toLowerCase() === 'final';
 
   if (loading) {
@@ -126,24 +158,51 @@ export function SaleBespokeWorkOrders({
         <p className="text-xs text-gray-500">No work orders yet. Create one per custom dress line.</p>
       ) : (
         <ul className="space-y-2 text-sm">
-          {orders.map((wo) => (
-            <li key={wo.id} className="flex justify-between items-center gap-2 bg-gray-900 rounded px-2 py-1.5">
-              <span>
-                {wo.work_order_no} · {wo.status}
-                {wo.tailor?.name ? ` · ${wo.tailor.name}` : ''}
-              </span>
-              {wo.status !== 'completed' && wo.status !== 'cancelled' && (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void handleComplete(wo.id)}
-                  className="text-xs text-emerald-400 font-medium"
-                >
-                  Complete
-                </button>
-              )}
-            </li>
-          ))}
+          {orders.map((wo) => {
+            const stock = stockById[wo.id];
+            const needsStock = wo.status === 'completed' && stock?.needsStockPost === true;
+            const stockOk = wo.status === 'completed' && stock && !stock.needsStockPost;
+            return (
+              <li key={wo.id} className="flex flex-col gap-1.5 bg-gray-900 rounded px-2 py-1.5">
+                <div className="flex justify-between items-center gap-2">
+                  <span>
+                    {wo.work_order_no} · {wo.status}
+                    {wo.tailor?.name ? ` · ${wo.tailor.name}` : ''}
+                  </span>
+                  {wo.status !== 'completed' && wo.status !== 'cancelled' && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void handleComplete(wo.id)}
+                      className="text-xs text-emerald-400 font-medium"
+                    >
+                      Complete
+                    </button>
+                  )}
+                </div>
+                {needsStock && (
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                      Stock pending
+                    </span>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void handlePostStock(wo.id)}
+                      className="inline-flex items-center gap-1 text-xs text-amber-300 font-medium border border-amber-500/40 rounded px-2 py-0.5"
+                    >
+                      <Package size={12} /> Post stock
+                    </button>
+                  </div>
+                )}
+                {stockOk && (
+                  <span className="w-fit text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    Stock posted
+                  </span>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
       {!posted && parents.length > 0 && (

@@ -2,7 +2,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { invalidateSalesListCache, listCacheKeys } from '../lib/listCache';
 import { dispatchMobileInvalidated } from '../lib/dataInvalidationBus';
 import { readThroughCache } from '../lib/offlineData';
-import { getNextDocumentNumber } from './documentNumber';
+import { getNextDocumentNumber, getNextDocumentNumberGlobal } from './documentNumber';
 import { enrichRowsWithCreatorNames } from '../lib/resolveCreatorName';
 import { localNowDateString } from '../utils/localDate';
 import { resolveBranchUuidForWrite, isRealBranchUuid } from '../utils/branchId';
@@ -84,7 +84,7 @@ export interface CreateSaleInput {
   isPOS?: boolean;
   /** Regular sale lifecycle (default order). Studio always order. POS always final. */
   targetStatus?: 'draft' | 'quotation' | 'order' | 'final';
-  /** Document type for create_sale_document_header (default invoice). */
+  /** Document type: quotation for non-final; invoice when final (web parity). */
   documentType?: 'invoice' | 'quotation';
   /** Line-level extra expenses (stitching, etc.) — persisted to sale_charges + extra_expenses. */
   extraExpenses?: ExtraExpense[];
@@ -100,6 +100,92 @@ export type SaleDocumentStatus = 'draft' | 'quotation' | 'order' | 'final' | 'ca
 
 function isPostedSaleStatus(status: string | null | undefined): boolean {
   return String(status ?? '').toLowerCase() === 'final';
+}
+
+function isPreFinalSaleStatus(status: string | null | undefined): boolean {
+  const s = String(status ?? '').toLowerCase();
+  return s === 'draft' || s === 'quotation' || s === 'order';
+}
+
+/** True when document number is a pre-final lifecycle stage (not SL/INV/POS). */
+function isPreFinalSaleDocumentNo(no: string | null | undefined): boolean {
+  const n = String(no ?? '').trim().toUpperCase();
+  if (!n) return false;
+  return (
+    n.startsWith('DRAFT-') ||
+    n.startsWith('SDR-') ||
+    n.startsWith('QT-') ||
+    n.startsWith('SQT-') ||
+    n.startsWith('SO-') ||
+    n.startsWith('SOR-')
+  );
+}
+
+function saleRowNeedsFinalInvoiceAllocation(row: Record<string, unknown>): boolean {
+  const inv = String(row.invoice_no ?? '').trim();
+  if (!inv) return true;
+  return isPreFinalSaleDocumentNo(inv);
+}
+
+function finalSaleDocumentSequenceKey(row: Record<string, unknown>): 'SL' | 'STD' | 'PS' {
+  const isStudio =
+    row.is_studio === true ||
+    String(row.order_no ?? '')
+      .toUpperCase()
+      .startsWith('STD-') ||
+    String(row.order_no ?? '')
+      .toUpperCase()
+      .startsWith('ST-');
+  if (isStudio) return 'STD';
+  const inv = String(row.invoice_no ?? '').trim();
+  if (/^POS-/i.test(inv)) return 'PS';
+  return 'SL';
+}
+
+function isSalesInvoiceNoUniqueViolation(err: { code?: string; message?: string } | null | undefined): boolean {
+  if (!err || err.code !== '23505') return false;
+  const m = String(err.message || '');
+  return m.includes('idx_sales_company_invoice_no_when_set') || (m.includes('invoice_no') && m.includes('duplicate key'));
+}
+
+/** Allocate SL/STD/PS invoice_no when finalizing if missing or still SDR/SQT/SOR. */
+async function ensureFinalSaleInvoiceNoAllocated(
+  saleId: string,
+  row: Record<string, unknown>,
+): Promise<{ row: Record<string, unknown>; error: string | null }> {
+  if (!saleRowNeedsFinalInvoiceAllocation(row)) return { row, error: null };
+  const companyId = String(row.company_id ?? '');
+  if (!companyId) return { row, error: 'Cannot finalize: company_id missing.' };
+  const seq = finalSaleDocumentSequenceKey(row);
+  const maxAttempts = 12;
+  let lastDup: string | undefined;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    let nextNo: string;
+    try {
+      nextNo = await getNextDocumentNumberGlobal(companyId, seq);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { row, error: `Cannot finalize: could not allocate invoice number (${seq}). ${msg}` };
+    }
+    const { data: patched, error } = await supabase
+      .from('sales')
+      .update({ invoice_no: nextNo, type: 'invoice' })
+      .eq('id', saleId)
+      .select()
+      .single();
+    if (!error) {
+      return { row: (patched ?? { ...row, invoice_no: nextNo, type: 'invoice' }) as Record<string, unknown>, error: null };
+    }
+    if (isSalesInvoiceNoUniqueViolation(error)) {
+      lastDup = nextNo;
+      continue;
+    }
+    return { row, error: `Cannot finalize: failed to save invoice number: ${error.message}` };
+  }
+  return {
+    row,
+    error: `Cannot finalize: invoice number still conflicts after ${maxAttempts} attempts (last tried: ${lastDup ?? 'n/a'}).`,
+  };
 }
 
 export { readSaleBillRef } from '../utils/saleBillRef';
@@ -278,19 +364,39 @@ export async function updateSaleStatus(
   status: SaleDocumentStatus,
 ): Promise<{ data: { id: string; status: string; invoice_no?: string | null } | null; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
-  const { data: prior } = await supabase.from('sales').select('status').eq('id', saleId).maybeSingle();
+  const { data: prior } = await supabase
+    .from('sales')
+    .select('id, status, company_id, invoice_no, order_no, is_studio, type')
+    .eq('id', saleId)
+    .maybeSingle();
   if (!prior) return { data: null, error: 'Sale not found.' };
   const prev = String((prior as { status?: string }).status ?? '').toLowerCase();
+  const next = String(status ?? '').toLowerCase();
 
-  const { data, error } = await supabase
-    .from('sales')
-    .update({ status })
-    .eq('id', saleId)
-    .select('id, status, invoice_no, order_no, quotation_no, draft_no')
-    .single();
-  if (error) return { data: null, error: error.message };
+  // Web parity: posted (final) sales cannot demote to draft/quotation/order — cancel instead.
+  if (isPostedSaleStatus(prev) && isPreFinalSaleStatus(next)) {
+    return {
+      data: null,
+      error: 'Final sale cannot be moved back. Cancel it instead.',
+    };
+  }
 
+  // Finalize path: allocate SL/STD/PS before status flip so JE references the invoice number.
   if (isPostedSaleStatus(status) && !isPostedSaleStatus(prev)) {
+    const alloc = await ensureFinalSaleInvoiceNoAllocated(saleId, prior as Record<string, unknown>);
+    if (alloc.error) return { data: null, error: alloc.error };
+
+    const { data, error } = await supabase
+      .from('sales')
+      .update({ status: 'final', type: 'invoice' })
+      .eq('id', saleId)
+      .select('id, status, invoice_no, order_no, quotation_no, draft_no')
+      .single();
+    if (error) {
+      // Best-effort: leave allocated invoice_no; do not flip status.
+      return { data: null, error: error.message };
+    }
+
     const stockErr = await ensureSaleStockPosted(saleId);
     if (stockErr) {
       await supabase.from('sales').update({ status: prev }).eq('id', saleId);
@@ -333,7 +439,17 @@ export async function updateSaleStatus(
         console.warn('[sales] Commission patch on finalize:', commissionErr);
       }
     }
+
+    return { data: data as { id: string; status: string; invoice_no?: string | null }, error: null };
   }
+
+  const { data, error } = await supabase
+    .from('sales')
+    .update({ status })
+    .eq('id', saleId)
+    .select('id, status, invoice_no, order_no, quotation_no, draft_no')
+    .single();
+  if (error) return { data: null, error: error.message };
 
   return { data: data as { id: string; status: string; invoice_no?: string | null }, error: null };
 }
@@ -615,7 +731,85 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
       if (!posInserted) {
         return { data: null, error: 'Failed to allocate POS invoice number after retries.' };
       }
+    } else if (!postStockAndAccounting) {
+      /**
+       * Web parity (SalesContext): non-final regular sales use global SDR/SQT/SOR into
+       * draft_no / quotation_no / order_no with invoice_no null — never create_sale_document_header (SL).
+       */
+      const stageSeq =
+        targetStatus === 'draft' ? 'SDR' : targetStatus === 'quotation' ? 'SQT' : 'SOR';
+      const stageCol =
+        targetStatus === 'draft' ? 'draft_no' : targetStatus === 'quotation' ? 'quotation_no' : 'order_no';
+      const deadlineVal =
+        deadline != null && String(deadline).trim() !== '' ? String(deadline).trim().slice(0, 10) : null;
+
+      const isUniqueDocNo = (err: { code?: string; message?: string } | null) =>
+        !!err &&
+        (err.code === '23505' ||
+          String(err.message || '').includes('duplicate key') ||
+          String(err.message || '').includes('sales_company_branch_'));
+
+      let stageInserted = false;
+      for (let tryN = 0; tryN < 12 && !stageInserted; tryN++) {
+        let stageNo: string;
+        try {
+          stageNo = await getNextDocumentNumberGlobal(companyId, stageSeq);
+        } catch (e) {
+          return {
+            data: null,
+            error: (e as Error).message ?? `Failed to allocate ${stageSeq} document number.`,
+          };
+        }
+
+        const row: Record<string, unknown> = {
+          company_id: companyId,
+          branch_id: effectiveBranchId,
+          invoice_no: null,
+          [stageCol]: stageNo,
+          invoice_date: invDate,
+          customer_id: customerId || null,
+          customer_name: customerName || 'Walk-in',
+          contact_number: contactNumber || null,
+          type: 'quotation',
+          status: targetStatus,
+          payment_status: 'unpaid',
+          payment_method: paymentMethod || 'Cash',
+          subtotal: Number(subtotal) || 0,
+          discount_amount: Number(discountAmount) || 0,
+          tax_amount: Number(taxAmount) || 0,
+          expenses: Number(expenses) || 0,
+          total: totalNum,
+          paid_amount: 0,
+          due_amount: totalNum,
+          notes: notes || null,
+          created_by: userId,
+          ...(deadlineVal ? { deadline: deadlineVal } : {}),
+        };
+
+        const { data: stageIns, error: stageErr } = await supabase
+          .from('sales')
+          .insert(row)
+          .select('id')
+          .single();
+
+        if (!stageErr && stageIns?.id) {
+          saleId = (stageIns as { id: string }).id;
+          docNo = stageNo;
+          stageInserted = true;
+          break;
+        }
+        if (!isUniqueDocNo(stageErr)) {
+          return { data: null, error: stageErr?.message ?? 'Failed to create sale.' };
+        }
+      }
+      if (!stageInserted) {
+        return { data: null, error: `Failed to allocate ${stageSeq} number after retries.` };
+      }
     } else {
+      // Final regular invoice: keep create_sale_document_header (SL + invoice_no + stock/GL path).
+      salePayload.type = 'invoice';
+      salePayload.status = 'final';
+
       const { data: hdrRaw, error: hdrErr } = await supabase.rpc('create_sale_document_header', {
         p_company_id: companyId,
         p_branch_id: effectiveBranchId,

@@ -16,6 +16,10 @@ export function ModuleTogglesSection({ value, onChange, disabled }: ModuleToggle
 
   return (
     <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        Turning a module on enables company features. Sidebar items that are permission-gated (for example
+        Accounting) also need the matching role permission — Module Toggle alone does not show the nav item.
+      </p>
       {entries.map((m) => (
         <div
           key={m.moduleName}

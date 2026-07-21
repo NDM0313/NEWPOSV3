@@ -22,6 +22,7 @@ import { accountService, Account } from '../../services/accountService';
 import { toast } from 'sonner';
 import {
   FUNCTIONAL_ROLE_OPTIONS,
+  isPlatformOperatorAppRole,
   normalizeAppRole,
   type AssignableAppRole,
 } from '@/app/config/functionalRoles';
@@ -82,7 +83,9 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
           role:
             normalizeAppRole(editingUser.role) === 'owner'
               ? 'owner'
-              : (normalizeAppRole(editingUser.role) as AssignableAppRole),
+              : isPlatformOperatorAppRole(editingUser.role)
+                ? 'admin'
+                : (normalizeAppRole(editingUser.role) as AssignableAppRole),
           basic_salary: 0,
           commission_rate: 0,
           rental_commission_rate: Number((editingUser as any).rental_commission_percent) || 0,
@@ -226,12 +229,21 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
         }
       }
 
+      const roleForSave =
+        editingUser &&
+        isPlatformOperatorAppRole(editingUser.role) &&
+        formData.role === 'admin'
+          ? editingUser.role
+          : formData.role === 'owner'
+            ? 'owner'
+            : normalizeAppRole(formData.role);
+
       const userData: Partial<UserType> = {
         company_id: companyId,
         full_name: formData.full_name.trim(),
         email: formData.email.trim().toLowerCase(),
         phone: formData.phone || undefined,
-        role: formData.role === 'owner' ? 'owner' : normalizeAppRole(formData.role),
+        role: roleForSave,
         is_active: formData.is_active,
         can_be_assigned_as_salesman:
           formData.role === 'salesman' || formData.can_be_assigned_as_salesman,
