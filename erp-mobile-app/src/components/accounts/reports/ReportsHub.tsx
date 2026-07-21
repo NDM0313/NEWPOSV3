@@ -95,8 +95,6 @@ interface ReportsHubProps {
   fullAccounting?: boolean;
   canViewCustomerLedger?: boolean;
   canViewSupplierLedger?: boolean;
-  hubMode: ReportHubMode;
-  onHubModeChange: (mode: ReportHubMode) => void;
   onCopyTransaction?: (prefill: CopyTransactionPrefill) => void;
 }
 
@@ -104,35 +102,8 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-function ReportHubModeToggle({
-  mode,
-  onChange,
-}: {
-  mode: ReportHubMode;
-  onChange: (mode: ReportHubMode) => void;
-}) {
-  const options: { id: ReportHubMode; label: string }[] = [
-    { id: 'easy', label: 'Easy' },
-    { id: 'standard', label: 'Standard' },
-    { id: 'advanced', label: 'Advanced' },
-  ];
-  return (
-    <div className="flex rounded-lg border border-white/25 overflow-hidden bg-white/10">
-      {options.map((opt) => (
-        <button
-          key={opt.id}
-          type="button"
-          onClick={() => onChange(opt.id)}
-          className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-            mode === opt.id ? 'bg-white text-[#4F46E5]' : 'text-white/90 hover:bg-white/10'
-          } ${opt.id !== 'easy' ? 'border-l border-white/20' : ''}`}
-        >
-          {opt.label}
-        </button>
-      ))}
-    </div>
-  );
-}
+/** Mode toggle removed — hub always shows the full (advanced) catalog. */
+const HUB_MODE: ReportHubMode = 'advanced';
 
 export function ReportsHub({
   onBack,
@@ -144,8 +115,6 @@ export function ReportsHub({
   fullAccounting = true,
   canViewCustomerLedger = true,
   canViewSupplierLedger = false,
-  hubMode,
-  onHubModeChange,
   onCopyTransaction,
 }: ReportsHubProps) {
   const [view, setView] = useState<'hub' | 'timeline'>('hub');
@@ -157,12 +126,12 @@ export function ReportsHub({
 
   const catalogSections = useMemo(
     () =>
-      reportsBySection(hubMode, {
+      reportsBySection(HUB_MODE, {
         fullAccounting,
         canViewCustomerLedger,
         canViewSupplierLedger,
       }),
-    [hubMode, fullAccounting, canViewCustomerLedger, canViewSupplierLedger],
+    [fullAccounting, canViewCustomerLedger, canViewSupplierLedger],
   );
 
   useEffect(() => {
@@ -229,17 +198,9 @@ export function ReportsHub({
       <ReportHeader
         onBack={onBack}
         title="Reports"
-        subtitle={
-          hubMode === 'easy'
-            ? 'Daily cash & customer activity'
-            : hubMode === 'advanced'
-              ? 'Full financial statements & operations'
-              : 'Unified financial activity & statements'
-        }
+        subtitle="Full financial statements & operations"
         stats={loading ? undefined : headerStats}
-      >
-        <ReportHubModeToggle mode={hubMode} onChange={onHubModeChange} />
-      </ReportHeader>
+      />
 
       <div className="p-4 space-y-5">
         {fullAccounting && (

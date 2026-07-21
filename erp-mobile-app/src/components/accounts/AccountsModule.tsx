@@ -23,7 +23,6 @@ import type { CopyTransactionPrefill } from '../../lib/copyTransactionPrefill';
 import { ChartOfAccountsView } from './ChartOfAccountsView';
 import { AddAccountForm } from './AddAccountForm';
 import { ReportsHub, type LegacyReportKey } from './reports/ReportsHub';
-import { loadStoredReportHubMode, saveReportHubMode, type ReportHubMode } from '../../lib/reportsHubCatalog';
 import { AccountLedgerReport } from './reports/AccountLedgerReport';
 import { PartyLedgerReport } from './reports/PartyLedgerReport';
 import { DayBookReport } from './reports/DayBookReport';
@@ -142,7 +141,6 @@ export function AccountsModule({
   const [selectedEntry, setSelectedEntry] = useState<AccountEntry | null>(null);
   const [ledgerInitialAccountId, setLedgerInitialAccountId] = useState<string | null>(null);
   const [reportRefreshEpoch, setReportRefreshEpoch] = useState(0);
-  const [hubMode, setHubMode] = useState<ReportHubMode>(() => loadStoredReportHubMode());
   const [generalEntrySeed, setGeneralEntrySeed] = useState<GeneralEntrySeed | null>(null);
   const [transferSeed, setTransferSeed] = useState<{
     fromAccountId?: string;
@@ -518,11 +516,6 @@ export function AccountsModule({
         fullAccounting={canUseFullAccounting}
         canViewCustomerLedger={canViewCustomerLedger}
         canViewSupplierLedger={canViewSupplierLedger}
-        hubMode={hubMode}
-        onHubModeChange={(mode) => {
-          setHubMode(mode);
-          saveReportHubMode(mode);
-        }}
         onCopyTransaction={openCopyTransaction}
       />
     );
