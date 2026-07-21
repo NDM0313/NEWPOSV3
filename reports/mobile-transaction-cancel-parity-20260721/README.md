@@ -10,8 +10,14 @@ Mobile Transactions timeline and detail sheet only had **Edit** / **Copy**. Web 
 |-------|--------|
 | API | [`erp-mobile-app/src/api/transactionCancel.ts`](../../erp-mobile-app/src/api/transactionCancel.ts) — eligibility + `cancelTransactionWithReversal` (web parity: single JE mirror reversal, multi-member chain void) |
 | Confirm UI | [`erp-mobile-app/src/components/common/ConfirmActionSheet.tsx`](../../erp-mobile-app/src/components/common/ConfirmActionSheet.tsx) |
-| Timeline | Cancel button + long-press **Cancel Payment / Cancel Entry** on [`TransactionsTimeline.tsx`](../../erp-mobile-app/src/components/accounts/reports/TransactionsTimeline.tsx) |
-| Detail | Red cancel under Edit on [`TransactionDetailSheet.tsx`](../../erp-mobile-app/src/components/accounts/reports/TransactionDetailSheet.tsx) |
+| Timeline | Row footer clean — Edit/Cancel only via long-press menu + detail sheet; Copy footer kept |
+| Detail | Red cancel under Edit on [`TransactionDetailSheet.tsx`](../../erp-mobile-app/src/components/accounts/reports/TransactionDetailSheet.tsx); confirm sheet required before cancel |
+
+## Follow-up (row UI cleanup)
+
+- Removed timeline row footer **Edit** and **Cancel Payment** buttons (clutter)
+- Actions remain: long-press menu + open detail sheet
+- Expense: still cancel-with-reversal (no hard delete — GL/audit safe)
 
 ## Semantics (not hard delete)
 

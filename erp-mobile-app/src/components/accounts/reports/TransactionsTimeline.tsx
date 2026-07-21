@@ -563,18 +563,6 @@ export function TransactionsTimeline({
                       tx={t}
                       showAttachmentIcon={attachmentActions.hasAnyAttachmentHint({ transactionRow: t })}
                       onAttachmentClick={() => void attachmentActions.previewAttachments(rowAttachParams)}
-                      readOnly={rowReadOnly}
-                      editability={editability}
-                      cancelLabel={showCancel ? cancelHint.label : null}
-                      onCancel={showCancel ? () => void beginCancelForRow(t) : undefined}
-                      onEdit={() => {
-                        if (rowReadOnly || !editability.editable) return;
-                        if (editability.kind === 'journal' && !t.journalEntryId) return;
-                        setEditTarget({
-                          mode: editability.kind === 'journal' ? 'journal' : 'payment',
-                          id: editability.kind === 'journal' ? t.journalEntryId! : t.id,
-                        });
-                      }}
                       onCopy={
                         showCopy && copyPrefill
                           ? () => onCopyTransaction!(copyPrefill)
@@ -723,24 +711,14 @@ function StatCard({ label, value, color }: { label: string; value: number; color
 
 function TransactionRowCard({
   tx,
-  onEdit,
   onCopy,
-  onCancel,
-  cancelLabel,
-  readOnly = false,
   showAttachmentIcon = false,
   onAttachmentClick,
-  editability,
 }: {
   tx: TransactionRow;
-  onEdit: () => void;
   onCopy?: () => void;
-  onCancel?: () => void;
-  cancelLabel?: string | null;
-  readOnly?: boolean;
   showAttachmentIcon?: boolean;
   onAttachmentClick?: () => void;
-  editability: ReturnType<typeof canEditTransaction>;
 }) {
   const dateTimeLine = formatPaymentDateTimeLine(tx.paymentDate, tx.createdAt);
 
@@ -778,38 +756,17 @@ function TransactionRowCard({
             </div>
           </div>
         </div>
-        {(!readOnly || onCopy) && (
+        {onCopy ? (
           <div className="mt-2 flex justify-end gap-2 flex-wrap">
-            {onCopy ? (
-              <button
-                type="button"
-                onClick={onCopy}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[#4B5563] text-white"
-              >
-                Copy
-              </button>
-            ) : null}
-            {!readOnly ? (
-              <button
-                type="button"
-                disabled={!editability.editable}
-                onClick={onEdit}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[#374151] text-white disabled:opacity-40"
-              >
-                Edit
-              </button>
-            ) : null}
-            {!readOnly && onCancel && cancelLabel ? (
-              <button
-                type="button"
-                onClick={onCancel}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[#7F1D1D] text-white hover:bg-[#991B1B]"
-              >
-                {cancelLabel}
-              </button>
-            ) : null}
+            <button
+              type="button"
+              onClick={onCopy}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[#4B5563] text-white"
+            >
+              Copy
+            </button>
           </div>
-        )}
+        ) : null}
       </div>
     </li>
   );
