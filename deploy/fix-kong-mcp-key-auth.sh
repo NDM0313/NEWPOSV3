@@ -54,8 +54,10 @@ if [ ! -f "$SUPABASE_ENV" ]; then
 fi
 
 # shellcheck disable=SC1090
-source "$SUPABASE_ENV"
-SRK="${SERVICE_ROLE_KEY:-}"
+SRK=""
+if [ -f "$SUPABASE_ENV" ]; then
+  SRK="$(grep '^SERVICE_ROLE_KEY=' "$SUPABASE_ENV" | cut -d= -f2- | tr -d '"' | tr -d '\r' || true)"
+fi
 if [ -z "$SRK" ]; then
   echo "[WARN] SERVICE_ROLE_KEY not set in $SUPABASE_ENV — skip authenticated verify."
   exit 0
