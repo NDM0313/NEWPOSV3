@@ -7,11 +7,14 @@ import {
   getLooseFabricUnitIds,
   type FabricUnitLike,
 } from '@/app/types/bespoke';
+import { isBespokeGenericSku } from '@/app/lib/bespokeCartInjection';
 import {
   parseVariationAttributesRaw,
   publicVariationAttributes,
   variationRetailFromApiRow,
 } from '@/app/utils/variationFieldMap';
+
+export type FabricFilterMode = 'dyeable' | 'meter' | 'all';
 
 export interface LooseFabricProductOption {
   /** Unique list key (product or product:variation). */
@@ -24,12 +27,14 @@ export interface LooseFabricProductOption {
   unit_code: string;
   retail_price: number;
   stock?: number;
+  is_dyeable?: boolean;
 }
 
 export interface LooseFabricProductsResult {
   options: LooseFabricProductOption[];
   hasEligibleUnits: boolean;
   usedFallback: boolean;
+  counts: { dyeable: number; meter: number; all: number };
 }
 
 function unitLabel(u: { short_code?: string; symbol?: string; name?: string }): string {
@@ -53,6 +58,7 @@ type ProductRow = Record<string, unknown> & {
   unit_id?: string;
   retail_price?: number;
   has_variations?: boolean;
+  is_dyeable?: boolean;
   variations?: Array<Record<string, unknown>>;
 };
 
@@ -64,7 +70,7 @@ function filterProductsByUnitIds(rows: ProductRow[], unitIds: string[]): Product
 
 function filterProductsBySearch(rows: ProductRow[], searchTerm: string): ProductRow[] {
   const term = searchTerm.trim().toLowerCase();
-  if (term.length < 2) return [];
+  if (!term) return rows;
   return rows.filter((p) => {
     const name = String(p.name ?? '').toLowerCase();
     const sku = String(p.sku ?? '').toLowerCase();
@@ -87,6 +93,7 @@ function expandProductsToOptions(
     const basePrice = Number(p.retail_price) || 0;
     const variations = Array.isArray(p.variations) ? p.variations : [];
     const activeVariations = variations.filter((v) => v.is_active !== false);
+    const isDyeable = Boolean(p.is_dyeable);
 
     if (p.has_variations && activeVariations.length > 0) {
       for (const v of activeVariations) {
@@ -102,6 +109,7 @@ function expandProductsToOptions(
           unit_code: unitCode,
           retail_price: retail > 0 ? retail : basePrice,
           stock: stockByVariationId[variationId] ?? stockByProductId[productId],
+          is_dyeable: isDyeable,
         });
       }
     } else {
@@ -114,11 +122,12 @@ function expandProductsToOptions(
         unit_code: unitCode,
         retail_price: basePrice,
         stock: stockByProductId[productId],
+        is_dyeable: isDyeable,
       });
     }
   }
 
-  return options.slice(0, 40);
+  return options.slice(0, 80);
 }
 
 async function loadStockMaps(
@@ -144,15 +153,20 @@ async function loadStockMaps(
   }
 }
 
+function catalogWithoutCustom(rows: ProductRow[]): ProductRow[] {
+  return rows.filter((p) => !isBespokeGenericSku(String(p.sku ?? '')));
+}
+
 export const bespokeFabricProductService = {
   /**
    * Loads fabric candidates via productService.getAllProducts (schema-safe)
-   * then filters client-side by unit / search — avoids PostgREST 400 on optional columns.
+   * then filters client-side by mode / unit / search.
    */
   async getLooseFabricProducts(
     companyId: string,
     searchTerm?: string,
     branchId?: string | null,
+    mode: FabricFilterMode = 'dyeable',
   ): Promise<LooseFabricProductsResult> {
     const units = await unitService.getAll(companyId);
     const fabricUnits = units as FabricUnitLike[];
@@ -160,36 +174,45 @@ export const bespokeFabricProductService = {
     const unitById = new Map(units.map((u) => [u.id, u]));
     const term = searchTerm?.trim() ?? '';
 
-    const allProducts = (await productService.getAllProducts(companyId)) as ProductRow[];
+    const allProducts = catalogWithoutCustom(
+      (await productService.getAllProducts(companyId)) as ProductRow[],
+    );
+
+    const primaryUnitIds = getLooseFabricUnitIds(fabricUnits);
+    const decimalUnitIds = getDecimalFabricFallbackUnitIds(fabricUnits);
+    const meterUnitIds = [...new Set([...primaryUnitIds, ...decimalUnitIds])];
+
+    const dyeableRows = allProducts.filter((p) => Boolean(p.is_dyeable));
+    const meterRows = meterUnitIds.length
+      ? filterProductsByUnitIds(allProducts, meterUnitIds)
+      : [];
+
+    const counts = {
+      dyeable: dyeableRows.length,
+      meter: meterRows.length,
+      all: allProducts.length,
+    };
 
     let usedFallback = false;
     let rows: ProductRow[] = [];
 
-    // Prefer explicitly marked dyeable / white fabrics when any exist.
-    const dyeableRows = allProducts.filter((p) => Boolean((p as { is_dyeable?: boolean }).is_dyeable));
-    if (dyeableRows.length) {
-      rows = term ? filterProductsBySearch(dyeableRows, term) : dyeableRows;
-    }
-
-    const primaryUnitIds = getLooseFabricUnitIds(fabricUnits);
-    if (!rows.length && primaryUnitIds.length) {
-      rows = filterProductsByUnitIds(allProducts, primaryUnitIds);
-      if (term) rows = filterProductsBySearch(rows, term);
-    }
-
-    if (!rows.length) {
-      const decimalUnitIds = getDecimalFabricFallbackUnitIds(fabricUnits);
-      if (decimalUnitIds.length) {
-        rows = filterProductsByUnitIds(allProducts, decimalUnitIds);
-        if (term) rows = filterProductsBySearch(rows, term);
-        if (rows.length) usedFallback = true;
+    if (mode === 'dyeable') {
+      rows = dyeableRows;
+      if (!rows.length) {
+        rows = meterRows;
+        usedFallback = rows.length > 0;
       }
+    } else if (mode === 'meter') {
+      rows = meterRows;
+      if (!rows.length && term.length >= 2) {
+        rows = filterProductsBySearch(allProducts, term);
+        usedFallback = rows.length > 0;
+      }
+    } else {
+      rows = allProducts;
     }
 
-    if (!rows.length && term.length >= 2) {
-      rows = filterProductsBySearch(allProducts, term);
-      if (rows.length) usedFallback = true;
-    }
+    if (term) rows = filterProductsBySearch(rows, term);
 
     const { product: stockByProductId, variation: stockByVariationId } = await loadStockMaps(
       companyId,
@@ -208,6 +231,7 @@ export const bespokeFabricProductService = {
       options,
       hasEligibleUnits,
       usedFallback,
+      counts,
     };
   },
 };

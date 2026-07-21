@@ -23,6 +23,18 @@ import {
   uploadBespokeReferenceImage,
 } from '../../utils/bespokeImageUpload';
 
+const STANDARD_FABRIC_QTY = 2.5;
+
+type FabricPreset = 'shirt' | 'dupatta' | 'trouser' | 'custom';
+type FabricFilterTab = 'dyeable' | 'meter' | 'all';
+
+const FABRIC_PRESETS: Array<{ id: FabricPreset; label: string; qty: number | null }> = [
+  { id: 'shirt', label: 'Shirt', qty: STANDARD_FABRIC_QTY },
+  { id: 'dupatta', label: 'Dupatta', qty: STANDARD_FABRIC_QTY },
+  { id: 'trouser', label: 'Trouser', qty: STANDARD_FABRIC_QTY },
+  { id: 'custom', label: 'Custom', qty: null },
+];
+
 const LOOSE_FABRIC_UNIT_TOKENS = new Set([
   'm', 'meter', 'meters', 'metre', 'metres',
   'yd', 'yard', 'yards',
@@ -36,6 +48,10 @@ function isLooseFabricUnit(unitName: string | undefined): boolean {
     .toLowerCase()
     .replace(/[^a-z]/g, '');
   return LOOSE_FABRIC_UNIT_TOKENS.has(t);
+}
+
+function isMeterFabricProduct(p: FabricPickerProduct): boolean {
+  return isLooseFabricUnit(p.unit) || Boolean(p.unitAllowDecimal);
 }
 
 interface SaleCustomizeModalProps {
@@ -84,7 +100,7 @@ export function SaleCustomizeModal({
         isBespokeInjected: p.isBespokeInjected,
       })),
     );
-    return hydrated.length ? hydrated : [{ product_id: '', product_name: '', unit_code: 'm', quantity: 1 }];
+    return hydrated.length ? hydrated : [{ product_id: '', product_name: '', unit_code: 'm', quantity: STANDARD_FABRIC_QTY }];
   });
   const [activeFabricIndex, setActiveFabricIndex] = useState(0);
   const [fabricSearch, setFabricSearch] = useState('');
@@ -106,29 +122,21 @@ export function SaleCustomizeModal({
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [stockProducts, setStockProducts] = useState<FabricPickerProduct[]>([]);
-  const [fabricFilterNote, setFabricFilterNote] = useState<string | null>(null);
+  const [fabricTab, setFabricTab] = useState<FabricFilterTab>('dyeable');
+  const [presetByLine, setPresetByLine] = useState<Record<number, FabricPreset>>({});
   const [showMeasurements, setShowMeasurements] = useState(false);
   const [showImage, setShowImage] = useState(false);
   const [showNotes, setShowNotes] = useState(Boolean(initialDetails?.notes));
 
   useEffect(() => {
     void productsApi.getProducts(companyId, { branchId: branchId ?? undefined }).then(({ data }) => {
-      const all = (data ?? []).filter((p) => !isBespokeGenericSku(p.sku));
-      const dyeable = all.filter((p) => p.isDyeable);
-      let source = all;
-      if (dyeable.length > 0) {
-        source = dyeable;
-        setFabricFilterNote('Showing dyeable / white fabrics only');
-      } else {
-        const byUnit = all.filter((p) => isLooseFabricUnit(p.unit) || p.unitAllowDecimal);
-        if (byUnit.length > 0) {
-          source = byUnit;
-          setFabricFilterNote('Showing meter/yard fabrics (mark products as Dyeable for a tighter list)');
-        } else {
-          setFabricFilterNote(null);
-        }
-      }
-      setStockProducts(source.map(mapApiProductToFabricPicker));
+      const all = (data ?? [])
+        .filter((p) => !isBespokeGenericSku(p.sku))
+        .map(mapApiProductToFabricPicker);
+      setStockProducts(all);
+      if (all.some((p) => p.isDyeable)) setFabricTab('dyeable');
+      else if (all.some((p) => isMeterFabricProduct(p))) setFabricTab('meter');
+      else setFabricTab('all');
     });
   }, [companyId, branchId]);
 
@@ -152,25 +160,55 @@ export function SaleCustomizeModal({
     };
   }, [imageUrl, imagePath]);
 
+  const tabCounts = useMemo(() => {
+    const dyeable = stockProducts.filter((p) => p.isDyeable).length;
+    const meter = stockProducts.filter((p) => isMeterFabricProduct(p)).length;
+    return { dyeable, meter, all: stockProducts.length };
+  }, [stockProducts]);
+
   const filteredStock = useMemo(() => {
+    let list = stockProducts;
+    if (fabricTab === 'dyeable') list = stockProducts.filter((p) => p.isDyeable);
+    else if (fabricTab === 'meter') list = stockProducts.filter((p) => isMeterFabricProduct(p));
     const q = fabricSearch.trim().toLowerCase();
-    if (!q) return stockProducts;
-    return stockProducts.filter(
+    if (!q) return list;
+    return list.filter(
       (p) => p.name.toLowerCase().includes(q) || (p.sku ?? '').toLowerCase().includes(q),
     );
-  }, [stockProducts, fabricSearch]);
+  }, [stockProducts, fabricSearch, fabricTab]);
 
   const activeFabric = fabrics[activeFabricIndex];
   const dressTotal = Number(parentLine.price || 0) * Number(parentLine.quantity || 1);
+  const activePreset = presetByLine[activeFabricIndex] ?? 'custom';
+  const activeRetailRef = activeFabric?.product_id
+    ? stockProducts.find((p) => p.id === activeFabric.product_id)?.price ?? activeFabric.retail_price ?? 0
+    : 0;
+
+  const applyPreset = (preset: FabricPreset) => {
+    const def = FABRIC_PRESETS.find((p) => p.id === preset);
+    setPresetByLine((prev) => ({ ...prev, [activeFabricIndex]: preset }));
+    if (def?.qty != null) {
+      const next = [...fabrics];
+      next[activeFabricIndex] = {
+        ...next[activeFabricIndex],
+        quantity: def.qty,
+        unit_code: next[activeFabricIndex]?.unit_code || 'm',
+      };
+      setFabrics(next);
+    }
+  };
 
   const pickProductForActiveLine = (opt: FabricPickerProduct) => {
     const next = [...fabrics];
+    const currentQty = next[activeFabricIndex]?.quantity;
     next[activeFabricIndex] = {
       product_id: opt.id,
       product_name: opt.name,
       sku: opt.sku,
-      unit_code: opt.unit ?? 'm',
-      quantity: next[activeFabricIndex]?.quantity > 0 ? next[activeFabricIndex].quantity : 1,
+      unit_code: isLooseFabricUnit(opt.unit) ? (opt.unit || 'm') : 'm',
+      quantity: currentQty > 0 ? currentQty : STANDARD_FABRIC_QTY,
+      // Kept for display/reference only — cart injection still bills dress price.
+      retail_price: opt.price,
     };
     setFabrics(next);
   };
@@ -258,9 +296,7 @@ export function SaleCustomizeModal({
           {config.show_fabric && (
             <div>
               <label className="text-sm font-medium text-white block mb-1">1. Choose fabric</label>
-              {fabricFilterNote ? (
-                <p className="text-[11px] text-[#9CA3AF] mb-2">{fabricFilterNote}</p>
-              ) : null}
+
               <div className="flex flex-wrap gap-2 mb-2">
                 {fabrics.map((f, idx) => (
                   <button
@@ -279,8 +315,9 @@ export function SaleCustomizeModal({
                 <button
                   type="button"
                   onClick={() => {
-                    setFabrics([...fabrics, { product_id: '', product_name: '', unit_code: 'm', quantity: 1 }]);
+                    setFabrics([...fabrics, { product_id: '', product_name: '', unit_code: 'm', quantity: STANDARD_FABRIC_QTY }]);
                     setActiveFabricIndex(fabrics.length);
+                    setPresetByLine((prev) => ({ ...prev, [fabrics.length]: 'custom' }));
                   }}
                   className="flex items-center gap-1 px-2 py-1 text-xs text-[#3B82F6]"
                 >
@@ -293,12 +330,34 @@ export function SaleCustomizeModal({
                   <p className="text-xs text-[#6EE7B7]">
                     Line {activeFabricIndex + 1}: {activeFabric.product_name || 'Tap a fabric below'}
                   </p>
-                  <div className="flex gap-2 items-center">
+
+                  <div>
+                    <p className="text-[10px] text-[#9CA3AF] mb-1.5">Piece type (standard 2.5 m)</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {FABRIC_PRESETS.map((p) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => applyPreset(p.id)}
+                          className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border ${
+                            activePreset === p.id
+                              ? 'border-violet-500 bg-violet-500/20 text-violet-200'
+                              : 'border-[#374151] text-[#9CA3AF]'
+                          }`}
+                        >
+                          {p.label}
+                          {p.qty != null ? ` ${p.qty}m` : ''}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 items-center flex-wrap">
                     <input
                       type="number"
                       min={0.01}
                       step={0.01}
-                      value={activeFabric.quantity}
+                      value={activeFabric.quantity || ''}
                       onChange={(e) => {
                         const next = [...fabrics];
                         next[activeFabricIndex] = {
@@ -306,16 +365,23 @@ export function SaleCustomizeModal({
                           quantity: Number(e.target.value) || 0,
                         };
                         setFabrics(next);
+                        setPresetByLine((prev) => ({ ...prev, [activeFabricIndex]: 'custom' }));
                       }}
                       className="w-24 h-9 bg-[#1F2937] border border-[#374151] rounded px-2 text-sm text-white"
                     />
                     <span className="text-xs text-[#9CA3AF]">{activeFabric.unit_code || 'm'}</span>
+                    {activeFabric.product_id ? (
+                      <span className="text-[11px] text-[#A78BFA]">
+                        Retail ref: Rs. {Number(activeRetailRef || 0).toLocaleString()}
+                        <span className="text-[#6B7280]"> (not billed)</span>
+                      </span>
+                    ) : null}
                     {fabrics.length > 1 && (
                       <button
                         type="button"
                         onClick={() => {
                           const next = fabrics.filter((_, i) => i !== activeFabricIndex);
-                          setFabrics(next.length ? next : [{ product_id: '', product_name: '', unit_code: 'm', quantity: 1 }]);
+                          setFabrics(next.length ? next : [{ product_id: '', product_name: '', unit_code: 'm', quantity: STANDARD_FABRIC_QTY }]);
                           setActiveFabricIndex(0);
                         }}
                         className="ml-auto p-1 text-[#EF4444]"
@@ -326,6 +392,29 @@ export function SaleCustomizeModal({
                   </div>
                 </div>
               )}
+
+              <div className="flex gap-1 overflow-x-auto pb-1 mb-2">
+                {(
+                  [
+                    { id: 'dyeable' as const, label: 'Dyeable', count: tabCounts.dyeable },
+                    { id: 'meter' as const, label: 'Meter Fabrics', count: tabCounts.meter },
+                    { id: 'all' as const, label: 'All Products', count: tabCounts.all },
+                  ]
+                ).map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setFabricTab(tab.id)}
+                    className={`shrink-0 px-2.5 py-1 rounded-lg text-[11px] font-semibold ${
+                      fabricTab === tab.id
+                        ? 'bg-violet-500 text-white'
+                        : 'bg-white/10 text-white/80 border border-white/15'
+                    }`}
+                  >
+                    {tab.label} ({tab.count})
+                  </button>
+                ))}
+              </div>
 
               <input
                 value={fabricSearch}
