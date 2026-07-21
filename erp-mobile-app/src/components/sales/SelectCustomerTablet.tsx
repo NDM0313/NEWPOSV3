@@ -7,9 +7,7 @@ import { SwipeBackShell } from '../common';
 import * as contactsApi from '../../api/contacts';
 import { getContactDisplayPhone } from '../../api/contacts';
 import { usePermissions } from '../../context/PermissionContext';
-import { DateInputField } from '../shared/DateTimePicker';
-import { localDatePlusDays } from '../../utils/localDate';
-import type { SaleDocumentStatus, SelectCustomerExtras } from './SelectCustomer';
+import type { SelectCustomerExtras } from './SelectCustomer';
 
 function contactToCustomer(c: contactsApi.Contact): Customer {
   return { id: c.id, name: c.name, phone: getContactDisplayPhone(c) || '—', balance: c.balance };
@@ -22,8 +20,6 @@ interface SelectCustomerTabletProps {
   onSelect: (customer: Customer, saleType: 'regular' | 'studio', extras?: SelectCustomerExtras) => void;
   initialSaleType?: 'regular' | 'studio';
   onSaleTypeChange?: (saleType: 'regular' | 'studio') => void;
-  initialDocumentStatus?: SaleDocumentStatus;
-  initialDeadlineDate?: string;
 }
 
 export function SelectCustomerTablet({
@@ -33,8 +29,6 @@ export function SelectCustomerTablet({
   onSelect,
   initialSaleType = 'regular',
   onSaleTypeChange,
-  initialDocumentStatus = 'order',
-  initialDeadlineDate,
 }: SelectCustomerTabletProps) {
   const { canViewBalances, isModuleEnabled } = usePermissions();
   const studioModuleEnabled = isModuleEnabled('studio');
@@ -46,8 +40,6 @@ export function SelectCustomerTablet({
   const [saleType, setSaleType] = useState<'regular' | 'studio'>(
     studioModuleEnabled && initialSaleType === 'studio' ? 'studio' : 'regular'
   );
-  const [documentStatus, setDocumentStatus] = useState<SaleDocumentStatus>(initialDocumentStatus || 'order');
-  const [deadlineDate, setDeadlineDate] = useState(initialDeadlineDate || localDatePlusDays(7));
   const [view, setView] = useState<'pick' | 'addContact'>('pick');
   const [addError, setAddError] = useState('');
   const [addSaving, setAddSaving] = useState(false);
@@ -61,26 +53,10 @@ export function SelectCustomerTablet({
     }
   }, [initialSaleType, studioModuleEnabled, onSaleTypeChange]);
 
-  useEffect(() => {
-    setDocumentStatus(initialDocumentStatus || 'order');
-  }, [initialDocumentStatus]);
-
-  useEffect(() => {
-    if (initialDeadlineDate) setDeadlineDate(initialDeadlineDate);
-  }, [initialDeadlineDate]);
-
   const handleSaleTypeChange = (type: 'regular' | 'studio') => {
     if (type === 'studio' && !studioModuleEnabled) return;
     setSaleType(type);
     onSaleTypeChange?.(type);
-  };
-
-  const buildExtras = (): SelectCustomerExtras | undefined => {
-    if (saleType !== 'regular') return undefined;
-    return {
-      documentStatus,
-      deadlineDate: documentStatus === 'order' ? deadlineDate : undefined,
-    };
   };
 
   useEffect(() => {
@@ -120,7 +96,7 @@ export function SelectCustomerTablet({
 
   const handleCustomerClick = (customer: Customer) => {
     if (selectedCustomerId === customer.id) {
-      onSelect(customer, saleType, buildExtras());
+      onSelect(customer, saleType);
     } else {
       setSelectedCustomerId(customer.id);
     }
@@ -163,7 +139,7 @@ export function SelectCustomerTablet({
         setCustomers([c, ...customers]);
         setView('pick');
         setSelectedCustomerId(c.id);
-        onSelect(c, saleType, buildExtras());
+        onSelect(c, saleType);
       }
     } finally {
       setAddSaving(false);
@@ -233,39 +209,6 @@ export function SelectCustomerTablet({
               </button>
             )}
           </div>
-          {saleType === 'regular' && (
-            <div className="mb-4">
-              <label className="block text-xs font-medium text-[#9CA3AF] mb-2">DOCUMENT TYPE</label>
-              <div className="grid grid-cols-4 gap-2">
-                {(
-                  [
-                    { id: 'draft', label: 'Draft' },
-                    { id: 'quotation', label: 'Quote' },
-                    { id: 'order', label: 'Order' },
-                    { id: 'final', label: 'Final' },
-                  ] as const
-                ).map((opt) => (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => setDocumentStatus(opt.id)}
-                    className={`h-9 rounded-lg text-xs font-medium border ${
-                      documentStatus === opt.id
-                        ? 'border-[#3B82F6] bg-[#3B82F6]/15 text-white'
-                        : 'border-[#374151] text-[#9CA3AF]'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-              {documentStatus === 'order' && (
-                <div className="mt-3">
-                  <DateInputField label="Delivery Date" value={deadlineDate} onChange={setDeadlineDate} />
-                </div>
-              )}
-            </div>
-          )}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#6B7280]" />
             <input

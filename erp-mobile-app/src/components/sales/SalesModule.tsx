@@ -9,6 +9,8 @@ import { addPending } from '../../lib/offlineStore';
 import { useWriteBranchSelection } from '../../hooks/useWriteBranchSelection';
 import { useDocumentBranchGate } from '../../hooks/useDocumentBranchGate';
 import { DocumentBranchGateModal } from '../shared/DocumentBranchGateModal';
+import { SaleDocumentTypeGateModal } from './SaleDocumentTypeGateModal';
+import { useBespokeEnabled } from '../../hooks/useBespokeEnabled';
 import { SalesHome } from './SalesHome';
 import { SelectCustomer } from './SelectCustomer';
 import { SelectCustomerTablet } from './SelectCustomerTablet';
@@ -254,6 +256,8 @@ export function SalesModule({
     profileId: effectiveProfileId,
     invalidateDomains: ['contacts', 'sales', 'inventory'],
   });
+  const { enabled: bespokeEnabled } = useBespokeEnabled(companyId);
+  const [typeGateOpen, setTypeGateOpen] = useState(false);
 
   const {
     effectiveBranchId,
@@ -344,14 +348,38 @@ export function SalesModule({
           setDocumentBranchId(pickedId);
           setPickedBranchId(pickedId);
           resetSaleData(saleType);
-          setStep('customer');
+          if (saleType === 'studio') {
+            setStep('customer');
+            return;
+          }
+          if (bespokeEnabled) {
+            // Branch chosen → ask what kind of document (Custom Order / Quotation / Draft / Final).
+            setTypeGateOpen(true);
+          } else {
+            // Customization disabled for this company: go straight to an ordinary direct sale.
+            setSaleData((prev) => ({ ...prev, documentStatus: 'final' }));
+            setStep('customer');
+          }
         },
         {
           title: saleType === 'studio' ? 'Select branch for studio sale' : 'Select branch for sale',
         },
       );
     },
-    [runWithBranch, resetSaleData, setPickedBranchId],
+    [runWithBranch, resetSaleData, setPickedBranchId, bespokeEnabled],
+  );
+
+  const handleDocumentTypePick = useCallback(
+    (status: NonNullable<SaleData['documentStatus']>, deadlineDate?: string) => {
+      setTypeGateOpen(false);
+      setSaleData((prev) => ({
+        ...prev,
+        documentStatus: status,
+        ...(status === 'order' && deadlineDate ? { deadlineDate } : {}),
+      }));
+      setStep('customer');
+    },
+    [],
   );
 
   const handleStepBack = () => {
@@ -730,8 +758,6 @@ export function SalesModule({
           onSelect={handleCustomerSelect}
           initialSaleType={saleData.saleType}
           onSaleTypeChange={(st) => setSaleData((prev) => ({ ...prev, saleType: st }))}
-          initialDocumentStatus={saleData.documentStatus ?? 'order'}
-          initialDeadlineDate={saleData.deadlineDate}
         />
       ) : (
         <SelectCustomer
@@ -742,8 +768,6 @@ export function SalesModule({
           onSelect={handleCustomerSelect}
           initialSaleType={saleData.saleType}
           onSaleTypeChange={(st) => setSaleData((prev) => ({ ...prev, saleType: st }))}
-          initialDocumentStatus={saleData.documentStatus ?? 'order'}
-          initialDeadlineDate={saleData.deadlineDate}
         />
       ))}
       {step === 'products' && saleData.customer && (
@@ -836,6 +860,12 @@ export function SalesModule({
       <DocumentBranchGateModal
         {...branchGateModalProps}
         accentClass="text-[#2563EB] hover:border-[#2563EB]"
+      />
+
+      <SaleDocumentTypeGateModal
+        open={typeGateOpen}
+        onPick={handleDocumentTypePick}
+        onCancel={() => setTypeGateOpen(false)}
       />
     </>
   );
