@@ -47,6 +47,10 @@ import { useAccounting } from '@/app/context/AccountingContext';
 import { useExpenses } from '@/app/context/ExpenseContext';
 import { useSettings } from '@/app/context/SettingsContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import {
+  resolveDefaultPaymentAccountId,
+  branchPaymentDefaultsFromSettings,
+} from '@/app/utils/resolveDefaultPaymentAccount';
 import { accountService } from '@/app/services/accountService';
 import { userService } from '@/app/services/userService';
 import { contactService } from '@/app/services/contactService';
@@ -335,7 +339,21 @@ export function AddEntryV2({
 
       const tree = expCats || [];
       setExpenseCategoryTree(tree);
-      setPaymentAccountId((prev) => prev || (payList[0]?.id ?? ''));
+      setPaymentAccountId((prev) => {
+        if (prev) return prev;
+        const branchDefs = branchPaymentDefaultsFromSettings(
+          settings.branches || [],
+          branchId,
+        );
+        return (
+          resolveDefaultPaymentAccountId('Cash', payList, {
+            branchDefaults: branchDefs,
+            defaultAccounts: settings.defaultAccounts,
+          }) ||
+          payList[0]?.id ||
+          ''
+        );
+      });
       if (!editJournalEntryId) {
         setDebitAccountId((prev) => prev || accList[0]?.id || '');
         setCreditAccountId((prev) => prev || accList[accList.length - 1]?.id || accList[0]?.id || '');
@@ -354,7 +372,7 @@ export function AddEntryV2({
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [companyId, branchId, editJournalEntryId]);
+  }, [companyId, branchId, editJournalEntryId, settings.branches, settings.defaultAccounts]);
 
   useEffect(() => {
     loadFormData();

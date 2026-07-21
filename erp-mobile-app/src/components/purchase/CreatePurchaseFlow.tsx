@@ -810,6 +810,7 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
         <PaymentDialog
           totalAmount={total}
           companyId={companyId}
+          branchId={branchId}
           onBack={() => setStep('summary')}
           onComplete={(result) => handleSaveWithPayment(result)}
           saving={saving || isSubmitRunning}

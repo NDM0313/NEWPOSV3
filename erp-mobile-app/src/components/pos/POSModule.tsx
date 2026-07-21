@@ -715,6 +715,7 @@ export function POSModule({ onBack, user, companyId, branchId, onRequestCounterL
               onBack={() => { setShowPaymentStep(false); setShowCart(true); }}
               totalAmount={total}
               companyId={companyId}
+              branchId={effectiveBranchId}
               onComplete={handlePaymentComplete}
               saving={checkoutLoading}
               saveError={checkoutError}

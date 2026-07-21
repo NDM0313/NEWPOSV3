@@ -1,6 +1,13 @@
 import { useState, useEffect } from 'react';
 import { ArrowLeft, Banknote, Building2, Smartphone, CreditCard, AlertCircle, Loader2, Receipt } from 'lucide-react';
 import { getPaymentAccounts } from '../../api/accounts';
+import { getDefaultAccounts, type DefaultAccountsSettings } from '../../api/settings';
+import { getBranchPaymentDefaults } from '../../api/branches';
+import {
+  resolveDefaultPaymentAccountId,
+  type BranchPaymentDefaults,
+  type PaymentAccountPick,
+} from '../../utils/resolveDefaultPaymentAccount';
 import { useSingleFlightAction } from '../../hooks/useSingleFlightAction';
 import { usePermissions } from '../../context/PermissionContext';
 import { formatAccountBalanceLineIfAllowed } from '../../utils/balancePrivacy';
@@ -24,6 +31,8 @@ interface PaymentDialogProps {
   onBack: () => void;
   totalAmount: number;
   companyId: string | null;
+  /** Branch for default cash/bank account preselect. */
+  branchId?: string | null;
   onComplete: (result: PaymentResult) => void | Promise<void>;
   saving?: boolean;
   saveError?: string | null;
@@ -45,6 +54,9 @@ interface Account {
   name: string;
   balance: number;
   type: string;
+  code?: string;
+  isDefaultCash?: boolean;
+  isDefaultBank?: boolean;
 }
 
 /** Map payment method to account type filter */
@@ -59,6 +71,7 @@ export function PaymentDialog({
   onBack,
   totalAmount,
   companyId,
+  branchId = null,
   onComplete,
   saving,
   saveError,
@@ -81,6 +94,8 @@ export function PaymentDialog({
   const [allAccounts, setAllAccounts] = useState<Account[]>([]);
   const [accountsLoading, setAccountsLoading] = useState(true);
   const [accountsError, setAccountsError] = useState<string | null>(null);
+  const [defaultAccounts, setDefaultAccounts] = useState<DefaultAccountsSettings | null>(null);
+  const [branchPaymentDefaults, setBranchPaymentDefaults] = useState<BranchPaymentDefaults | null>(null);
   const { runSingleFlight, isRunning } = useSingleFlightAction();
   const isBusy = Boolean(saving) || isRunning;
 
@@ -95,9 +110,29 @@ export function PaymentDialog({
     getPaymentAccounts(companyId).then(({ data, error }) => {
       setAccountsLoading(false);
       if (error) setAccountsError(error);
-      else setAllAccounts((data || []).map((a) => ({ id: a.id, name: a.name, balance: a.balance, type: a.type })));
+      else
+        setAllAccounts(
+          (data || []).map((a) => ({
+            id: a.id,
+            name: a.name,
+            balance: a.balance,
+            type: a.type,
+            code: a.code,
+            isDefaultCash: a.isDefaultCash,
+            isDefaultBank: a.isDefaultBank,
+          })),
+        );
     });
+    getDefaultAccounts(companyId).then(({ data }) => setDefaultAccounts(data));
   }, [companyId]);
+
+  useEffect(() => {
+    if (!branchId?.trim()) {
+      setBranchPaymentDefaults(null);
+      return;
+    }
+    getBranchPaymentDefaults(branchId).then(setBranchPaymentDefaults);
+  }, [branchId]);
 
   const getAccounts = (): Account[] => {
     if (!paymentMethod || paymentMethod === 'credit') return [];
@@ -125,6 +160,27 @@ export function PaymentDialog({
         }
       });
       return;
+    }
+    const types = METHOD_TO_TYPE[method].map((t) => t.toLowerCase());
+    const filtered = allAccounts.filter((a) => types.includes((a.type || '').toLowerCase()));
+    const picks: PaymentAccountPick[] = filtered.map((a) => ({
+      id: a.id,
+      name: a.name,
+      type: a.type,
+      balance: a.balance,
+      code: a.code ?? '',
+      isDefaultCash: a.isDefaultCash,
+      isDefaultBank: a.isDefaultBank,
+    }));
+    const resolvedId = resolveDefaultPaymentAccountId(
+      method,
+      picks,
+      defaultAccounts,
+      branchPaymentDefaults,
+    );
+    if (resolvedId) {
+      const match = filtered.find((a) => a.id === resolvedId) ?? null;
+      setSelectedAccount(match);
     }
     setStep(2);
   };

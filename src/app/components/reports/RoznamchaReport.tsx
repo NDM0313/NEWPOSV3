@@ -172,7 +172,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
   const [paymentAccountOptions, setPaymentAccountOptions] = useState<Array<{ id: string; label: string }>>([]);
   /** Default off: voided payments (e.g. reversed receipts) are excluded from cash book totals. */
   const [includeVoidedReversed, setIncludeVoidedReversed] = useState(false);
-  const [dateSort, setDateSort] = useState<'asc' | 'desc'>('asc');
+  const [dateSort, setDateSort] = useState<'asc' | 'desc'>('desc');
   const [pageSize, setPageSize] = useState(50);
   const [data, setData] = useState<RoznamchaResult | null>(null);
   const [mainLoaderSource, setMainLoaderSource] = useState<'legacy' | 'unified'>('legacy');
@@ -477,7 +477,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
     toast.message('Use Roznamcha date range for DIN CHINA validation period. Preview compares legacy vs unified cash/bank ledger.');
   }, [companyId]);
 
-  const displayFiltersActive = searchTerm.trim().length > 0 || dateSort !== 'asc' || pageSize !== 50;
+  const displayFiltersActive = searchTerm.trim().length > 0 || dateSort !== 'desc' || pageSize !== 50;
   const paymentAccountFilterActive = Boolean(paymentLedgerAccountId.trim());
 
   const load = useCallback(async () => {

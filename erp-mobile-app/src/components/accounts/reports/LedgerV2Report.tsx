@@ -3,7 +3,7 @@
  * Lists GL accounts; selecting one loads unified account ledger when flags allow.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
 import { usePermissions } from '../../../context/PermissionContext';
 import * as accountsApi from '../../../api/accounts';
@@ -45,6 +45,12 @@ export function LedgerV2Report({
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Display order only. Default newest-first. */
+  const [dateSort, setDateSort] = useState<'asc' | 'desc'>('desc');
+
+  const orderedRows = useMemo(() => {
+    return dateSort === 'desc' ? [...rows].reverse() : rows;
+  }, [rows, dateSort]);
 
   useEffect(() => {
     if (!companyId) {
@@ -143,7 +149,28 @@ export function LedgerV2Report({
         subtitle={selected ? dateRangeLabel(range.from, range.to) : 'Unified GL account statements'}
         rightExtras={selected ? <LoaderSourceBadge source={loaderSource} hidden={!canViewBalances} /> : undefined}
       >
-        {selected && <DateRangeBar value={range} onChange={setRange} companyId={companyId} branchId={branchId} />}
+        {selected && (
+          <>
+            <DateRangeBar value={range} onChange={setRange} companyId={companyId} branchId={branchId} />
+            <div className="mt-2 flex items-center gap-2 text-[11px] text-white/80">
+              <span>Date order</span>
+              <button
+                type="button"
+                onClick={() => setDateSort('desc')}
+                className={`px-2 py-0.5 rounded ${dateSort === 'desc' ? 'bg-[#3B82F6] text-white' : 'bg-white/10'}`}
+              >
+                Newest
+              </button>
+              <button
+                type="button"
+                onClick={() => setDateSort('asc')}
+                className={`px-2 py-0.5 rounded ${dateSort === 'asc' ? 'bg-[#3B82F6] text-white' : 'bg-white/10'}`}
+              >
+                Oldest
+              </button>
+            </div>
+          </>
+        )}
       </ReportHeader>
       <ReportShell loading={loading && !selected} error={error} empty={false}>
         {!selected ? (
@@ -180,7 +207,7 @@ export function LedgerV2Report({
             )}
             {detailLoading ? null : (
               <ReportCard className="divide-y divide-[#374151]">
-                {rows.map((r) => (
+                {orderedRows.map((r) => (
                   <div key={r.journalEntryLineId} className="px-3 py-2 text-xs">
                     <div className="flex justify-between text-[#E5E7EB]">
                       <span>{formatDate(r.entryDate)}</span>

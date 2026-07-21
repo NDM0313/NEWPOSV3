@@ -74,6 +74,8 @@ export function AccountLedgerReport({
   /** Shown when party GL RPC fails and we fall back to raw sub-account lines. */
   const [ledgerFallbackNotice, setLedgerFallbackNotice] = useState<string | null>(null);
   const [ledgerLoaderSource, setLedgerLoaderSource] = useState<'legacy' | 'unified'>('legacy');
+  /** Display order only — running balances stay chronological. Default newest-first. */
+  const [dateSort, setDateSort] = useState<'asc' | 'desc'>('desc');
   const preview = usePdfPreview(companyId);
   const { openAttachmentPreview, AttachmentPreviewPortal } = useAttachmentPreview();
 
@@ -326,7 +328,8 @@ export function AccountLedgerReport({
   }, [range.from, range.to, lines.length]);
 
   const groupedLines = useMemo(() => {
-    const displayLines = presentedLedger.lines;
+    const chronologic = presentedLedger.lines;
+    const displayLines = dateSort === 'desc' ? [...chronologic].reverse() : chronologic;
     if (displayLines.length === 0) {
       return [{ key: 'all', label: '', lines: [], closingBalance: totals.closing }];
     }
@@ -339,12 +342,15 @@ export function AccountLedgerReport({
         dayMap.set(key, arr);
       }
       return Array.from(dayMap.entries())
-        .sort((a, b) => b[0].localeCompare(a[0]))
+        .sort((a, b) => (dateSort === 'desc' ? b[0].localeCompare(a[0]) : a[0].localeCompare(b[0])))
         .map(([key, groupLines]) => ({
           key,
           label: key === 'unknown' ? 'Unknown date' : formatEventDateGroupLabel(key),
           lines: groupLines,
-          closingBalance: groupLines[groupLines.length - 1]?.runningBalance ?? totals.closing,
+          closingBalance:
+            dateSort === 'desc'
+              ? groupLines[0]?.runningBalance ?? totals.closing
+              : groupLines[groupLines.length - 1]?.runningBalance ?? totals.closing,
         }));
     }
     const groups = new Map<string, { key: string; label: string; lines: LedgerLine[]; closingBalance: number }>();
@@ -384,8 +390,9 @@ export function AccountLedgerReport({
         groups.set(key, { key, label: labelForKey(key), lines: [line], closingBalance: line.runningBalance });
       }
     }
-    return Array.from(groups.values());
-  }, [presentedLedger.lines, granularity, totals.closing]);
+    const arr = Array.from(groups.values());
+    return dateSort === 'desc' ? arr : [...arr].reverse();
+  }, [presentedLedger.lines, granularity, totals.closing, dateSort]);
 
   const filteredAccounts = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -494,6 +501,23 @@ export function AccountLedgerReport({
           branchId={branchId}
           pinPresets={['all']}
         />
+        <div className="mt-2 flex items-center gap-2 text-[11px] text-white/80">
+          <span>Date order</span>
+          <button
+            type="button"
+            onClick={() => setDateSort('desc')}
+            className={`px-2 py-0.5 rounded ${dateSort === 'desc' ? 'bg-[#3B82F6] text-white' : 'bg-white/10'}`}
+          >
+            Newest
+          </button>
+          <button
+            type="button"
+            onClick={() => setDateSort('asc')}
+            className={`px-2 py-0.5 rounded ${dateSort === 'asc' ? 'bg-[#3B82F6] text-white' : 'bg-white/10'}`}
+          >
+            Oldest
+          </button>
+        </div>
         {range.preset !== 'all' ? (
           <button
             type="button"

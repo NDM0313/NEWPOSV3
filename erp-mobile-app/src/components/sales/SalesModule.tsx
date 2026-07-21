@@ -831,6 +831,7 @@ export function SalesModule({
               onBack={handleStepBack}
               totalAmount={saleData.total}
               companyId={companyId}
+              branchId={effectiveBranchId}
               onComplete={handlePaymentComplete}
               saving={saving || isPaymentSubmitRunning}
               saveError={saveError}

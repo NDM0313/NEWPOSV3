@@ -31,6 +31,11 @@ import { VirtualNumpad } from "../ui/virtual-numpad";
 import { useExpenses } from "@/app/context/ExpenseContext";
 import { useAccounting } from "@/app/context/AccountingContext";
 import { useSupabase } from "@/app/context/SupabaseContext";
+import { useSettings } from "@/app/context/SettingsContext";
+import {
+  resolveDefaultPaymentAccountId,
+  branchPaymentDefaultsFromSettings,
+} from "@/app/utils/resolveDefaultPaymentAccount";
 import { branchService } from "@/app/services/branchService";
 import { accountService } from "@/app/services/accountService";
 import { expenseCategoryService, type ExpenseCategoryTreeItem } from "@/app/services/expenseCategoryService";
@@ -85,6 +90,7 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
   const { formatCurrency } = useFormatCurrency();
   const { canManageSettings } = useCheckPermission();
   const { companyId, branchId: contextBranchId, requiresBranchSelection } = useSupabase();
+  const settings = useSettings();
   const { createExpense, updateExpense } = useExpenses();
   const { accounts: coaAccounts } = useAccounting();
 
@@ -132,17 +138,35 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
   useEffect(() => {
     if (!isOpen || !companyId) return;
     accountService.getPaymentAccountsOnly(companyId).then((list) => {
-      setPaymentAccounts((list || []).map((a: any) => {
+      const mapped = (list || []).map((a: any) => {
         const gl = coaAccounts.find((c) => c.id === a.id);
         return {
           id: a.id,
           name: a.name || a.code || '',
+          code: a.code != null ? String(a.code) : '',
+          type: a.type != null ? String(a.type) : '',
           balance: gl ? Number(gl.balance) || 0 : 0,
           icon: Wallet,
         };
-      }));
+      });
+      setPaymentAccounts(mapped);
+      if (!expenseToEdit) {
+        setPaidFromAccountId((prev) => {
+          if (prev) return prev;
+          const branchDefs = branchPaymentDefaultsFromSettings(
+            settings.branches || [],
+            selectedBranchId || contextBranchId,
+          );
+          return (
+            resolveDefaultPaymentAccountId('Cash', mapped, {
+              branchDefaults: branchDefs,
+              defaultAccounts: settings.defaultAccounts,
+            }) || ''
+          );
+        });
+      }
     }).catch(() => setPaymentAccounts([]));
-  }, [isOpen, companyId, coaAccounts]);
+  }, [isOpen, companyId, coaAccounts, expenseToEdit, selectedBranchId, contextBranchId, settings.branches, settings.defaultAccounts]);
 
   // Pre-fill form when editing (depend on full expenseToEdit so switching rows refreshes the form)
   useEffect(() => {

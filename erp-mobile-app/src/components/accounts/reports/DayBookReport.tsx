@@ -73,7 +73,7 @@ export function DayBookReport({ onBack, companyId, branchId, user, reportRefresh
   const [liquidity, setLiquidity] = useState<AccountFilter>('all');
   const [paymentLedgerAccountId, setPaymentLedgerAccountId] = useState('');
   const [includeVoided, setIncludeVoided] = useState(false);
-  const [dateSort, setDateSort] = useState<DateSort>('asc');
+  const [dateSort, setDateSort] = useState<DateSort>('desc');
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [paymentAccountOptions, setPaymentAccountOptions] = useState<Array<{ id: string; label: string }>>([]);
 

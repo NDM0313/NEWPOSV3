@@ -93,6 +93,8 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
   const [listRefreshNonce, setListRefreshNonce] = useState(0);
   const [ledgerRefreshNonce, setLedgerRefreshNonce] = useState(0);
   const [manualLedgerRefresh, setManualLedgerRefresh] = useState(false);
+  /** Display order only — balances stay chronological. Default newest-first. */
+  const [dateSort, setDateSort] = useState<'asc' | 'desc'>('desc');
   const [ledgerSourceHint, setLedgerSourceHint] = useState<string | null>(null);
   const preview = usePdfPreview(companyId);
   const { openAttachmentPreview, AttachmentPreviewPortal } = useAttachmentPreview();
@@ -344,6 +346,11 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
     [lines, opening, kind],
   );
 
+  const orderedLedgerLines = useMemo(() => {
+    const chronologic = presentedLedger.lines;
+    return dateSort === 'desc' ? [...chronologic].reverse() : chronologic;
+  }, [presentedLedger.lines, dateSort]);
+
   const totals = useMemo(() => {
     const displayLines = presentedLedger.lines;
     const debit = displayLines.reduce((s, l) => s + l.debit, 0);
@@ -484,6 +491,23 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
           branchId={branchId}
           pinPresets={['all']}
         />
+        <div className="mt-2 flex items-center gap-2 text-[11px] text-white/80">
+          <span>Date order</span>
+          <button
+            type="button"
+            onClick={() => setDateSort('desc')}
+            className={`px-2 py-0.5 rounded ${dateSort === 'desc' ? 'bg-[#3B82F6] text-white' : 'bg-white/10'}`}
+          >
+            Newest
+          </button>
+          <button
+            type="button"
+            onClick={() => setDateSort('asc')}
+            className={`px-2 py-0.5 rounded ${dateSort === 'asc' ? 'bg-[#3B82F6] text-white' : 'bg-white/10'}`}
+          >
+            Oldest
+          </button>
+        </div>
         {range.preset !== 'all' ? (
           <button
             type="button"
@@ -525,7 +549,7 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
             right={`${presentedLedger.lines.length} entries`}
           />
           <ul className="divide-y divide-[#374151]">
-            {presentedLedger.lines.map((l) => (
+            {orderedLedgerLines.map((l) => (
               <LedgerActivityListRow
                 key={l.id}
                 line={l}

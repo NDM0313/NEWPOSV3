@@ -540,6 +540,24 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
       return;
     }
 
+    const activeBranch = (settings.branches || []).find((b) => b.id === branchId);
+    const branchDefaults = activeBranch
+      ? { cashId: activeBranch.cashAccountId ?? null, bankId: activeBranch.bankAccountId ?? null }
+      : null;
+
+    if (paymentMethod === 'Cash' && branchDefaults?.cashId) {
+      if (filteredAccounts.some((a) => a.id === branchDefaults.cashId)) {
+        setSelectedAccount(branchDefaults.cashId);
+        return;
+      }
+    }
+    if (paymentMethod === 'Bank' && branchDefaults?.bankId) {
+      if (filteredAccounts.some((a) => a.id === branchDefaults.bankId)) {
+        setSelectedAccount(branchDefaults.bankId);
+        return;
+      }
+    }
+
     const defaultPayment = settings.defaultAccounts?.paymentMethods?.find((p) => p.method === paymentMethod);
 
     if (defaultPayment?.defaultAccount) {
@@ -579,6 +597,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
   }, [
     paymentMethod,
     settings.defaultAccounts,
+    settings.branches,
     accounting?.accounts,
     companyId,
     isOpen,

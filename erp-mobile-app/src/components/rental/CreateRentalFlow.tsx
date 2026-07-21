@@ -13,6 +13,9 @@ import * as productsApi from '../../api/products';
 import * as rentalsApi from '../../api/rentals';
 import * as branchesApi from '../../api/branches';
 import * as accountsApi from '../../api/accounts';
+import { getBranchPaymentDefaults } from '../../api/branches';
+import { getDefaultAccounts } from '../../api/settings';
+import { resolveDefaultPaymentAccountId } from '../../utils/resolveDefaultPaymentAccount';
 import * as usersApi from '../../api/users';
 import { TransactionSuccessModal, type TransactionSuccessData } from '../shared/TransactionSuccessModal';
 import { CustomSelect, CustomSearchableSheet, NumericInput } from '../common';
@@ -292,13 +295,35 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
   useEffect(() => {
     if (!companyId || (step !== 'advance' && step !== 'payment_confirm' && step !== 'confirm')) return;
     let c = false;
-    accountsApi.getPaymentAccounts(companyId).then(({ data }) => {
+    void (async () => {
+      const [{ data }, defaultsRes, branchDefs] = await Promise.all([
+        accountsApi.getPaymentAccounts(companyId),
+        getDefaultAccounts(companyId),
+        writeBranchId ? getBranchPaymentDefaults(writeBranchId) : Promise.resolve(null),
+      ]);
       if (c) return;
-      setPaymentAccounts(data || []);
-      if (data?.length === 1 && !advancePaymentAccountId) setAdvancePaymentAccountId(data[0].id);
-    });
-    return () => { c = true; };
-  }, [companyId, step, advancePaymentAccountId]);
+      const list = data || [];
+      setPaymentAccounts(list);
+      if (!advancePaymentAccountId && list.length > 0) {
+        const picks = list.map((a) => ({
+          id: a.id,
+          name: a.name,
+          type: a.type,
+          balance: a.balance ?? 0,
+          code: a.code ?? '',
+          isDefaultCash: a.isDefaultCash,
+          isDefaultBank: a.isDefaultBank,
+        }));
+        const resolved =
+          resolveDefaultPaymentAccountId('cash', picks, defaultsRes.data, branchDefs) ??
+          resolveDefaultPaymentAccountId('bank', picks, defaultsRes.data, branchDefs);
+        if (resolved) setAdvancePaymentAccountId(resolved);
+      }
+    })();
+    return () => {
+      c = true;
+    };
+  }, [companyId, step, writeBranchId]);
 
   useEffect(() => {
     if (!companyId || salesmen.length > 0) return;

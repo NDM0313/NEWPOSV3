@@ -451,6 +451,7 @@ export function ViewRentalDetails({
         <RentalReturnModal
           rental={rental}
           companyId={companyId}
+          branchId={rental.branchId ?? null}
           onClose={() => setReturnOpen(false)}
           onConfirm={handleReturn}
           loading={actionLoading}

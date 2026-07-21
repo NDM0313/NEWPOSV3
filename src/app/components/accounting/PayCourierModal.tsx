@@ -15,6 +15,10 @@ import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { shipmentAccountingService } from '@/app/services/shipmentAccountingService';
 import { toast } from 'sonner';
 import { formatLocalDateTimeYYYYMMDDHHmm } from '@/app/utils/localDate';
+import {
+  resolveDefaultPaymentAccountId,
+  branchPaymentDefaultsFromSettings,
+} from '@/app/utils/resolveDefaultPaymentAccount';
 import { DateTimePicker } from '@/app/components/ui/DateTimePicker';
 import { formatAccountSelectOptionLabel } from '@/app/lib/accountPostingInOutLabel';
 import { AccountPickerFieldLabel } from '@/app/components/accounting/AccountPickerFieldLabel';
@@ -126,11 +130,19 @@ export function PayCourierModal({ open, onClose, companyId, branchId, onSuccess 
       setSelectedAccount('');
       return;
     }
-    const defaultCash = paymentMethod === 'Cash' && filtered.find((a) => (a as any).code === '1000' || a.name?.toLowerCase() === 'cash');
-    const defaultBank = paymentMethod === 'Bank' && filtered.find((a) => (a as any).code === '1010' || a.name?.toLowerCase() === 'bank');
-    const defaultAcc = defaultCash || defaultBank || filtered[0];
-    setSelectedAccount(defaultAcc?.id ?? '');
-  }, [open, companyId, paymentMethod, accounting.accounts, branchId]);
+    const branchDefs = branchPaymentDefaultsFromSettings(settings.branches || [], branchId);
+    const picks = filtered.map((a) => ({
+      id: a.id,
+      name: a.name || '',
+      code: (a as { code?: string }).code ?? null,
+      type: String((a as { type?: string }).type ?? (a as { accountType?: string }).accountType ?? ''),
+    }));
+    const resolved = resolveDefaultPaymentAccountId(paymentMethod, picks, {
+      branchDefaults: branchDefs,
+      defaultAccounts: settings.defaultAccounts,
+    });
+    setSelectedAccount(resolved || filtered[0]?.id || '');
+  }, [open, companyId, paymentMethod, accounting.accounts, branchId, settings.branches, settings.defaultAccounts]);
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = parseFloat(e.target.value) || 0;

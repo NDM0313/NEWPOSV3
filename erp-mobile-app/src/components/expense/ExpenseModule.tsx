@@ -19,6 +19,9 @@ import { rowInListBranchScope } from '../../lib/listBranchScope';
 import * as expensesApi from '../../api/expenses';
 import * as authApi from '../../api/auth';
 import * as accountsApi from '../../api/accounts';
+import { getBranchPaymentDefaults } from '../../api/branches';
+import { getDefaultAccounts } from '../../api/settings';
+import { resolveDefaultPaymentAccountId } from '../../utils/resolveDefaultPaymentAccount';
 import { getUsersForSalary, type SalaryUserRow } from '../../api/users';
 import { addPending } from '../../lib/offlineStore';
 import { getCurrentLocalTimestamp, localNowDateTimeString } from '../../utils/localDate';
@@ -441,9 +444,37 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
 
   useEffect(() => {
     if (!showAdd || !companyId) return;
-    accountsApi.getPaymentAccounts(companyId).then(({ data }) => setPaymentAccounts(data || []));
+    let cancelled = false;
+    void (async () => {
+      const [{ data }, defaultsRes, branchDefs] = await Promise.all([
+        accountsApi.getPaymentAccounts(companyId),
+        getDefaultAccounts(companyId),
+        writeBranchId ? getBranchPaymentDefaults(writeBranchId) : Promise.resolve(null),
+      ]);
+      if (cancelled) return;
+      const list = data || [];
+      setPaymentAccounts(list);
+      if (!editingExpenseId && !addAccountId && list.length > 0) {
+        const picks = list.map((a) => ({
+          id: a.id,
+          name: a.name,
+          type: a.type,
+          balance: a.balance ?? 0,
+          code: a.code ?? '',
+          isDefaultCash: a.isDefaultCash,
+          isDefaultBank: a.isDefaultBank,
+        }));
+        const resolved =
+          resolveDefaultPaymentAccountId('cash', picks, defaultsRes.data, branchDefs) ??
+          resolveDefaultPaymentAccountId('bank', picks, defaultsRes.data, branchDefs);
+        if (resolved) setAddAccountId(resolved);
+      }
+    })();
     reloadCategoryTree();
-  }, [showAdd, companyId, reloadCategoryTree]);
+    return () => {
+      cancelled = true;
+    };
+  }, [showAdd, companyId, writeBranchId, reloadCategoryTree]);
 
   const selectedMain = categoryTree.find((m) => m.id === mainCategoryId);
   const subOptions = selectedMain?.children ?? [];
