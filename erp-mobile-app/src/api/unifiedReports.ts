@@ -167,20 +167,39 @@ export async function loadMobileTrialBalance(params: {
   }
 }
 
+export type CashFlowAccountFilter = {
+  id: string;
+  code?: string | null;
+  name?: string | null;
+} | null;
+
+function cashFlowAccountLabel(code?: string | null, name?: string | null, fallback?: string | null): string | null {
+  const parts = [code, name].map((x) => (x != null ? String(x).trim() : '')).filter(Boolean);
+  if (parts.length) return parts.join(' — ');
+  return fallback?.trim() || null;
+}
+
 export async function loadMobileCashFlow(params: {
   companyId: string;
   startDate: string;
   endDate: string;
   branchId?: string | null;
   basis?: UnifiedLedgerBasis;
+  /** When set, only cash/bank/wallet movements for this payment account */
+  account?: CashFlowAccountFilter;
 }): Promise<LoadResult<CashFlowResult>> {
   const resolved = await resolveReportMainLoaderSource(params.companyId, 'cash_flow', {
     legacyAvailable: true,
   });
   const source = effectiveReportLoaderSource(resolved);
   const basis = params.basis ?? ('official_gl' as UnifiedLedgerBasis);
+  const accountFilter = params.account?.id ? params.account : null;
+  const paymentLedgerAccountId = accountFilter?.id ?? null;
 
-  if (source === 'unified') {
+  // Unfiltered "All": prefer unified cash/bank ledger when enabled.
+  // Account-id filter: legacy getRoznamcha (payment_account_id) — unified
+  // cash-bank RPC has no account_id column.
+  if (source === 'unified' && !paymentLedgerAccountId) {
     try {
       const unified = await rpcGetUnifiedCashBankLedger({
         companyId: params.companyId,
@@ -196,6 +215,7 @@ export async function loadMobileCashFlow(params: {
       const rows = unified.rows.map((r) => {
         totalCashIn += r.debit;
         totalCashOut += r.credit;
+        const accountLabel = cashFlowAccountLabel(r.accountCode, r.accountName);
         return {
           id: r.journalEntryLineId,
           date: r.entryDate,
@@ -205,6 +225,9 @@ export async function loadMobileCashFlow(params: {
           cashOut: r.credit,
           runningBalance: r.runningBalance,
           details: r.description || '—',
+          accountLabel,
+          accountName: r.accountName,
+          accountCode: r.accountCode,
           sourcePaymentId: r.paymentId,
           sourceJournalEntryId: r.journalEntryId,
           referenceType: r.referenceType,
@@ -236,6 +259,8 @@ export async function loadMobileCashFlow(params: {
       params.startDate,
       params.endDate,
       'all',
+      false,
+      paymentLedgerAccountId,
     );
     let totalCashIn = 0;
     let totalCashOut = 0;
@@ -253,16 +278,24 @@ export async function loadMobileCashFlow(params: {
         cashOut,
         runningBalance: r.runningBalance ?? 0,
         details: r.details || '—',
+        accountLabel: r.accountLabel || cashFlowAccountLabel(null, r.accountName),
+        accountName: r.accountName ?? null,
+        paymentAccountId: r.paymentAccountId ?? null,
         attachments: r.attachments,
         sourcePaymentId: r.sourcePaymentId ?? null,
         sourceJournalEntryId: r.sourceJournalEntryId ?? null,
+        referenceType: r.type ?? null,
       };
     });
     return {
       data: {
         rows,
-        openingBalance: roz.summary?.openingBalance ?? 0,
-        closingBalance: roz.summary?.closingBalance ?? rows[rows.length - 1]?.runningBalance ?? 0,
+        openingBalance: accountFilter ? 0 : roz.summary?.openingBalance ?? 0,
+        closingBalance: accountFilter
+          ? rows.length
+            ? rows[rows.length - 1].runningBalance
+            : 0
+          : roz.summary?.closingBalance ?? rows[rows.length - 1]?.runningBalance ?? 0,
         totalCashIn,
         totalCashOut,
         startDate: params.startDate,

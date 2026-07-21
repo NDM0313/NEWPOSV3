@@ -55,6 +55,11 @@ export type CashFlowRow = {
   cashOut: number;
   runningBalance: number;
   details: string;
+  /** Liquidity account display (code — name) when known */
+  accountLabel?: string | null;
+  accountName?: string | null;
+  accountCode?: string | null;
+  paymentAccountId?: string | null;
   attachments?: { url: string; name: string }[];
   sourcePaymentId?: string | null;
   sourceJournalEntryId?: string | null;
