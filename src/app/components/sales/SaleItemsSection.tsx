@@ -58,6 +58,10 @@ interface SaleItem {
     bespokeParentCartId?: number;
     bespokeRole?: 'fabric';
     isBespokeInjected?: boolean;
+    /** Piece-type preset (Shirt/Dupatta/Trouser) — display on fabric cart lines. */
+    bespokeUsage?: 'shirt' | 'dupatta' | 'trouser';
+    /** Catalog retail unit price for UI only — billed price stays 0. */
+    bespokeRefUnitPrice?: number;
     stock?: number;
     showVariations?: boolean; // Flag to show variation selector inline
     selectedVariationId?: string; // Currently selected variation ID (for edit preselect + read-only)
@@ -478,7 +482,11 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                                     </div>
                                                     {enableBespoke &&
                                                       (item.isBespokeInjected || item.bespokeRole === 'fabric') ? (
-                                                        <div className="mt-1 text-[10px] text-amber-400/90">Fabric (linked to custom order)</div>
+                                                        <div className="mt-1 text-[10px] text-amber-400/90">
+                                                          {item.bespokeRefUnitPrice != null && item.bespokeRefUnitPrice > 0
+                                                            ? `Ref Rs. ${Number(item.bespokeRefUnitPrice).toLocaleString()}/m — dress price میں شامل`
+                                                            : 'Fabric (linked to custom order)'}
+                                                        </div>
                                                     ) : null}
                                                     {enableBespoke && onOpenBespokeModal && !isInjectedBespokeLine(item) && (
                                                         <button

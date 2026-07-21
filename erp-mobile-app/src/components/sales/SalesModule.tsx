@@ -118,6 +118,10 @@ export interface Product {
   bespokeParentCartId?: string | number;
   bespokeRole?: 'fabric';
   isBespokeInjected?: boolean;
+  /** Piece-type preset (Shirt/Dupatta/Trouser) — display on fabric cart lines. */
+  bespokeUsage?: 'shirt' | 'dupatta' | 'trouser';
+  /** Catalog retail unit price for UI only — billed price stays 0. */
+  bespokeRefUnitPrice?: number;
 }
 
 export interface SaleData {

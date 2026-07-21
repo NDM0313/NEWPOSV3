@@ -452,6 +452,13 @@ export function AddProducts({
                       {(p.variation || p.variationId) && (
                         <p className="text-xs text-[#9CA3AF]">{p.variation || 'Variant'}</p>
                       )}
+                      {(p.isBespokeInjected || p.bespokeRole === 'fabric') && (
+                        <p className="text-[11px] text-amber-400/90 mt-0.5">
+                          {p.bespokeRefUnitPrice != null && p.bespokeRefUnitPrice > 0
+                            ? `Ref Rs. ${Number(p.bespokeRefUnitPrice).toLocaleString()}/m — dress price میں شامل`
+                            : 'Fabric (linked) — billed in dress price'}
+                        </p>
+                      )}
                       {p.packingDetails && (p.packingDetails.total_meters ?? 0) > 0 && (
                         <p className="text-xs text-[#3B82F6] mt-1">
                           {p.packingDetails.total_boxes ?? 0} Box • {p.packingDetails.total_pieces ?? 0} Pc • {(p.packingDetails.total_meters ?? 0).toFixed(1)} M
@@ -519,7 +526,11 @@ export function AddProducts({
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="text-sm text-[#9CA3AF]">
-                      Qty: {p.quantity} × Rs. {p.price.toLocaleString()}
+                      {(p.isBespokeInjected || p.bespokeRole === 'fabric') &&
+                      p.bespokeRefUnitPrice != null &&
+                      p.bespokeRefUnitPrice > 0
+                        ? `Qty: ${p.quantity} × Ref Rs. ${Number(p.bespokeRefUnitPrice).toLocaleString()}/m`
+                        : `Qty: ${p.quantity} × Rs. ${p.price.toLocaleString()}`}
                     </div>
                     <div className="font-semibold text-[#10B981]">
                       Rs. {p.total.toLocaleString()}

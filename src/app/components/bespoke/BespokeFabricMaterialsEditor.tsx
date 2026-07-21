@@ -64,7 +64,6 @@ export function BespokeFabricMaterialsEditor({
   const [usedFallback, setUsedFallback] = useState(false);
   const [filterMode, setFilterMode] = useState<FabricFilterMode>('dyeable');
   const [counts, setCounts] = useState({ dyeable: 0, meter: 0, all: 0 });
-  const [presetByRow, setPresetByRow] = useState<Record<number, FabricPreset>>({});
 
   const loadOptions = useCallback(
     async (term: string, mode: FabricFilterMode) => {
@@ -139,15 +138,18 @@ export function BespokeFabricMaterialsEditor({
   };
 
   const applyPreset = (index: number, preset: FabricPreset) => {
-    setPresetByRow((prev) => ({ ...prev, [index]: preset }));
     const def = FABRIC_PRESETS.find((p) => p.id === preset);
-    if (def?.qty != null) {
-      updateRow(index, { quantity: def.qty, unit_code: rows[index]?.unit_code || 'm' });
-    }
+    updateRow(index, {
+      ...(def?.qty != null
+        ? { quantity: def.qty, unit_code: rows[index]?.unit_code || 'm' }
+        : {}),
+      usage: preset === 'custom' ? undefined : preset,
+    });
   };
 
   const selectProduct = (index: number, product: LooseFabricProductOption) => {
-    const currentQty = rows[index]?.quantity;
+    const current = rows[index];
+    const currentQty = current?.quantity;
     updateRow(index, {
       product_id: product.product_id,
       variation_id: product.variation_id,
@@ -157,6 +159,7 @@ export function BespokeFabricMaterialsEditor({
       quantity: currentQty > 0 ? currentQty : STANDARD_FABRIC_QTY,
       // Display/reference only — cart injection still keeps fabric stock-only (Rs 0 billed).
       retail_price: product.retail_price,
+      ...(current?.usage ? { usage: current.usage } : {}),
     });
     setOpenRowIndex(null);
     setSearchTerm('');
@@ -197,7 +200,7 @@ export function BespokeFabricMaterialsEditor({
       </div>
 
       {rows.map((row, index) => {
-        const preset = presetByRow[index] ?? 'custom';
+        const preset: FabricPreset = row.usage ?? 'custom';
         return (
           <div
             key={`fabric-row-${index}`}
@@ -308,8 +311,7 @@ export function BespokeFabricMaterialsEditor({
                   value={row.quantity > 0 ? row.quantity : ''}
                   onChange={(e) => {
                     const v = e.target.value === '' ? 0 : parseFloat(e.target.value) || 0;
-                    updateRow(index, { quantity: v });
-                    setPresetByRow((prev) => ({ ...prev, [index]: 'custom' }));
+                    updateRow(index, { quantity: v, usage: undefined });
                   }}
                   className="h-8 bg-input-background border-border text-white text-xs"
                   placeholder="2.5"

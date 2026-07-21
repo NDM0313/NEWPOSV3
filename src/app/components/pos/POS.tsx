@@ -122,6 +122,8 @@ interface CartItem {
   bespokeParentCartId?: string;
   bespokeRole?: 'fabric';
   isBespokeInjected?: boolean;
+  bespokeUsage?: 'shirt' | 'dupatta' | 'trouser';
+  bespokeRefUnitPrice?: number;
   parentLineIndex?: number;
 }
 

@@ -110,6 +110,8 @@ import {
   hydrateFabricDraftsFromChildren,
   isInjectedBespokeLine,
   resolveFabricMaterialRetailPrice,
+  stripFabricUsagePrefix,
+  parseFabricUsage,
 } from '@/app/lib/bespokeCartInjection';
 import { toast } from "sonner";
 import { webSaveTimingMark, webSaveTimingStart } from '@/app/lib/webSaveTiming';
@@ -182,6 +184,10 @@ interface SaleItem {
     bespokeParentCartId?: number;
     bespokeRole?: 'fabric';
     isBespokeInjected?: boolean;
+    /** Piece-type preset (Shirt/Dupatta/Trouser) — display on fabric cart lines. */
+    bespokeUsage?: 'shirt' | 'dupatta' | 'trouser';
+    /** Catalog retail unit price for UI only — billed price stays 0. */
+    bespokeRefUnitPrice?: number;
     /** DB parent line id when editing existing sale */
     dbLineId?: string;
     bespokeParentItemId?: string | null;
@@ -1473,24 +1479,31 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                     );
                     const storedUnitPrice = Number(item.price ?? item.unit_price ?? 0);
                     const productRetail = Number((item.product as { retail_price?: number } | undefined)?.retail_price ?? 0) || 0;
-                    const resolvedStoredPrice =
-                        storedUnitPrice > 0
-                            ? storedUnitPrice
-                            : isFabricChild && productRetail > 0
-                              ? productRetail
-                              : storedUnitPrice;
+                    // Fabric children are stock-only (billed Rs 0); catalog retail is display-only.
+                    const resolvedStoredPrice = isFabricChild ? 0 : storedUnitPrice;
                     const baseUnitPrice = isFabricChild
-                        ? resolvedStoredPrice
+                        ? 0
                         : deriveBaseUnitPriceFromStored(resolvedStoredPrice, details);
+                    const lineName = item.productName || item.product_name || '';
+                    const fromName = stripFabricUsagePrefix(lineName);
+                    const fabricUsage = isFabricChild
+                        ? parseFabricUsage(fromName.usage)
+                        : undefined;
+                    const fabricRef =
+                        isFabricChild && productRetail > 0
+                            ? productRetail
+                            : isFabricChild && storedUnitPrice > 0
+                              ? storedUnitPrice
+                              : undefined;
 
                     return {
                         id: baseTimestamp + index,
                         dbLineId,
                         bespokeParentItemId: parentDbId,
                         productId: item.productId || item.product_id || '',
-                        name: item.productName || item.product_name || '',
+                        name: lineName,
                         sku: item.sku || '',
-                        price: isFabricChild ? resolvedStoredPrice : baseUnitPrice,
+                        price: isFabricChild ? 0 : baseUnitPrice,
                         baseUnitPrice,
                         qty: item.quantity || 0,
                         size: item.size,
@@ -1508,6 +1521,8 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                         customizationDetails: buildBespokeMetadataForPersist(details) ?? details,
                         isBespokeInjected: !!parentDbId,
                         bespokeRole: parentDbId ? ('fabric' as const) : undefined,
+                        ...(fabricUsage ? { bespokeUsage: fabricUsage } : {}),
+                        ...(fabricRef != null ? { bespokeRefUnitPrice: fabricRef } : {}),
                     };
                 });
                 const parentIdByDb = new Map<string, number>();

@@ -98,6 +98,8 @@ export function SaleCustomizeModal({
         bespokeParentCartId: p.bespokeParentCartId,
         bespokeRole: p.bespokeRole,
         isBespokeInjected: p.isBespokeInjected,
+        bespokeUsage: p.bespokeUsage,
+        bespokeRefUnitPrice: p.bespokeRefUnitPrice,
       })),
     );
     return hydrated.length ? hydrated : [{ product_id: '', product_name: '', unit_code: 'm', quantity: STANDARD_FABRIC_QTY }];
@@ -123,7 +125,6 @@ export function SaleCustomizeModal({
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [stockProducts, setStockProducts] = useState<FabricPickerProduct[]>([]);
   const [fabricTab, setFabricTab] = useState<FabricFilterTab>('dyeable');
-  const [presetByLine, setPresetByLine] = useState<Record<number, FabricPreset>>({});
   const [showMeasurements, setShowMeasurements] = useState(false);
   const [showImage, setShowImage] = useState(false);
   const [showNotes, setShowNotes] = useState(Boolean(initialDetails?.notes));
@@ -179,28 +180,34 @@ export function SaleCustomizeModal({
 
   const activeFabric = fabrics[activeFabricIndex];
   const dressTotal = Number(parentLine.price || 0) * Number(parentLine.quantity || 1);
-  const activePreset = presetByLine[activeFabricIndex] ?? 'custom';
+  const activePreset: FabricPreset = activeFabric?.usage ?? 'custom';
   const activeRetailRef = activeFabric?.product_id
     ? stockProducts.find((p) => p.id === activeFabric.product_id)?.price ?? activeFabric.retail_price ?? 0
     : 0;
 
   const applyPreset = (preset: FabricPreset) => {
     const def = FABRIC_PRESETS.find((p) => p.id === preset);
-    setPresetByLine((prev) => ({ ...prev, [activeFabricIndex]: preset }));
-    if (def?.qty != null) {
-      const next = [...fabrics];
-      next[activeFabricIndex] = {
-        ...next[activeFabricIndex],
-        quantity: def.qty,
-        unit_code: next[activeFabricIndex]?.unit_code || 'm',
-      };
-      setFabrics(next);
-    }
+    const next = [...fabrics];
+    const current = next[activeFabricIndex] ?? {
+      product_id: '',
+      product_name: '',
+      unit_code: 'm',
+      quantity: STANDARD_FABRIC_QTY,
+    };
+    next[activeFabricIndex] = {
+      ...current,
+      ...(def?.qty != null
+        ? { quantity: def.qty, unit_code: current.unit_code || 'm' }
+        : {}),
+      usage: preset === 'custom' ? undefined : preset,
+    };
+    setFabrics(next);
   };
 
   const pickProductForActiveLine = (opt: FabricPickerProduct) => {
     const next = [...fabrics];
-    const currentQty = next[activeFabricIndex]?.quantity;
+    const current = next[activeFabricIndex];
+    const currentQty = current?.quantity;
     next[activeFabricIndex] = {
       product_id: opt.id,
       product_name: opt.name,
@@ -209,6 +216,7 @@ export function SaleCustomizeModal({
       quantity: currentQty > 0 ? currentQty : STANDARD_FABRIC_QTY,
       // Kept for display/reference only — cart injection still bills dress price.
       retail_price: opt.price,
+      ...(current?.usage ? { usage: current.usage } : {}),
     };
     setFabrics(next);
   };
@@ -317,7 +325,6 @@ export function SaleCustomizeModal({
                   onClick={() => {
                     setFabrics([...fabrics, { product_id: '', product_name: '', unit_code: 'm', quantity: STANDARD_FABRIC_QTY }]);
                     setActiveFabricIndex(fabrics.length);
-                    setPresetByLine((prev) => ({ ...prev, [fabrics.length]: 'custom' }));
                   }}
                   className="flex items-center gap-1 px-2 py-1 text-xs text-[#3B82F6]"
                 >
@@ -360,12 +367,13 @@ export function SaleCustomizeModal({
                       value={activeFabric.quantity || ''}
                       onChange={(e) => {
                         const next = [...fabrics];
+                        const current = next[activeFabricIndex];
                         next[activeFabricIndex] = {
-                          ...next[activeFabricIndex],
+                          ...current,
                           quantity: Number(e.target.value) || 0,
+                          usage: undefined,
                         };
                         setFabrics(next);
-                        setPresetByLine((prev) => ({ ...prev, [activeFabricIndex]: 'custom' }));
                       }}
                       className="w-24 h-9 bg-[#1F2937] border border-[#374151] rounded px-2 text-sm text-white"
                     />
