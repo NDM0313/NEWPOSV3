@@ -685,7 +685,9 @@ export function TransactionsTimeline({
         </PdfPreviewModal>
       )}
       {!loading && !error && filteredRows.length > 0 && (
-        <div className="fixed left-4 right-4 bottom-24 z-20">
+        // sticky (not fixed) so the bar tracks the content column width — on tablet
+        // a fixed bar spans the full viewport and overlaps the sidebar area.
+        <div className="sticky bottom-24 z-20 mx-4">
           <div className="rounded-xl border border-[#374151] bg-[#111827]/95 backdrop-blur px-4 py-2 flex items-center justify-between">
             <span className="text-xs text-[#9CA3AF]">Floating balance</span>
             <span className={`text-sm font-bold ${stats.net >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
