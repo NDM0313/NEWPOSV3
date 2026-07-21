@@ -894,6 +894,30 @@ export const saleService = {
       const invoiceNo = (saleRow as any).invoice_no || `SL-${id.substring(0, 8)}`;
       const priorPosted = wasSalePostedForReversal((saleRow as any).status);
 
+      // Cascade-cancel linked bespoke work orders (stock reverse + production JE void) before sale void.
+      {
+        const { data: linkedWos, error: woListErr } = await supabase
+          .from('bespoke_work_orders')
+          .select('id, status')
+          .eq('sale_id', id)
+          .neq('status', 'cancelled');
+        if (woListErr) throw new Error(woListErr.message);
+        const { data: authData } = await supabase.auth.getUser();
+        const actorId = authData?.user?.id ?? null;
+        for (const wo of linkedWos || []) {
+          const { data: woRes, error: woErr } = await supabase.rpc('cancel_bespoke_work_order', {
+            p_work_order_id: wo.id,
+            p_user_id: actorId,
+            p_reason: 'Sale cancelled',
+          });
+          if (woErr) throw new Error(woErr.message);
+          const res = woRes as { success?: boolean; error?: string } | null;
+          if (res && res.success === false) {
+            throw new Error(res.error || 'Failed to cancel linked work order');
+          }
+        }
+      }
+
       // Draft / quotation / order: no stock reversal, no accounting reversal (nothing was posted)
       if (!priorPosted) {
         const { data, error } = await supabase.from('sales').update({ status }).eq('id', id).select().single();

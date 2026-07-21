@@ -4,6 +4,7 @@ import * as salesApi from '../../api/sales';
 import * as saleChargesApi from '../../api/saleCharges';
 import { useBespokeEnabled } from '../../hooks/useBespokeEnabled';
 import { SaleBespokeWorkOrders } from './SaleBespokeWorkOrders';
+import { listBespokeWorkOrdersBySale } from '../../api/bespokeWorkOrders';
 import * as studioApi from '../../api/studio';
 import * as reportsApi from '../../api/reports';
 import * as contactsApi from '../../api/contacts';
@@ -582,6 +583,8 @@ export function SalesHome({
   const [cancelling, setCancelling] = useState(false);
   const [addPaymentSale, setAddPaymentSale] = useState<SaleRecord | null>(null);
   const [cancelConfirmSale, setCancelConfirmSale] = useState<SaleRecord | null>(null);
+  /** Non-cancelled WOs linked to cancelConfirmSale (for dialog warning). */
+  const [cancelLinkedWoCount, setCancelLinkedWoCount] = useState(0);
   const [returnSale, setReturnSale] = useState<SaleRecord | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
@@ -1171,8 +1174,35 @@ export function SalesHome({
   };
   const handleCancel = (sale: SaleRecord) => {
     setMenuSale(null);
+    setCancelLinkedWoCount(0);
     setCancelConfirmSale(sale);
   };
+
+  useEffect(() => {
+    if (!cancelConfirmSale) {
+      setCancelLinkedWoCount(0);
+      return;
+    }
+    const saleId = String(cancelConfirmSale.raw.id || '');
+    if (!saleId || !bespokeEnabled) {
+      setCancelLinkedWoCount(0);
+      return;
+    }
+    let cancelled = false;
+    void listBespokeWorkOrdersBySale(saleId)
+      .then((rows) => {
+        if (cancelled) return;
+        const active = rows.filter((w) => String(w.status || '').toLowerCase() !== 'cancelled');
+        setCancelLinkedWoCount(active.length);
+      })
+      .catch(() => {
+        if (!cancelled) setCancelLinkedWoCount(0);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [cancelConfirmSale, bespokeEnabled]);
+
   const confirmCancel = async () => {
     if (!cancelConfirmSale) return;
     setCancelling(true);
@@ -1196,8 +1226,13 @@ export function SalesHome({
           ),
         );
         setSelectedSale(null);
-        setActionSuccess(`Invoice ${cancelConfirmSale.id} cancelled successfully.`);
+        setActionSuccess(
+          cancelLinkedWoCount > 0
+            ? `Invoice ${cancelConfirmSale.id} cancelled (${cancelLinkedWoCount} work order(s) also cancelled).`
+            : `Invoice ${cancelConfirmSale.id} cancelled successfully.`,
+        );
         setCancelConfirmSale(null);
+        setCancelLinkedWoCount(0);
       }
     } finally {
       setCancelling(false);
@@ -2053,11 +2088,23 @@ export function SalesHome({
                 <p className="text-sm text-[#9CA3AF] mt-1">
                   {cancelConfirmSale.id} will be fully voided (stock and accounting reversed). It stays in the list with a Cancelled badge.
                 </p>
+                {cancelLinkedWoCount > 0 ? (
+                  <p className="text-sm text-amber-300/90 mt-2">
+                    {cancelLinkedWoCount} work order(s) will also be cancelled — fabric/dress stock reversed, tailor payable voided.
+                  </p>
+                ) : null}
               </div>
             </div>
             {actionError && <p className="mt-3 text-sm text-[#FCA5A5]">{actionError}</p>}
             <div className="grid grid-cols-2 gap-2 mt-4">
-              <button type="button" onClick={() => setCancelConfirmSale(null)} className="h-10 rounded-lg border border-[#374151] text-[#D1D5DB]">
+              <button
+                type="button"
+                onClick={() => {
+                  setCancelConfirmSale(null);
+                  setCancelLinkedWoCount(0);
+                }}
+                className="h-10 rounded-lg border border-[#374151] text-[#D1D5DB]"
+              >
                 Keep
               </button>
               <button type="button" onClick={confirmCancel} disabled={cancelling} className="h-10 rounded-lg bg-[#EF4444] hover:bg-[#DC2626] disabled:opacity-60 text-white font-medium">

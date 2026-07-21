@@ -2788,6 +2788,9 @@ export const SalesPage = () => {
                       Are you sure you want to cancel invoice <span className="font-semibold text-foreground">{selectedSale.invoiceNo}</span>?
                       A reversal entry will be created.
                     </p>
+                    <p className="text-amber-400/90 text-sm">
+                      Any linked work orders will also be cancelled (fabric/dress stock reversed, tailor production JE voided).
+                    </p>
                     {(() => {
                       const saleTotal = Number(selectedSale.total) || 0;
                       const alreadyPaid = Number(selectedSale.paid) || 0;
