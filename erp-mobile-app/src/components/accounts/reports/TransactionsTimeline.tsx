@@ -7,6 +7,7 @@ import {
   RefreshCw,
   Share2,
   Copy,
+  Ban,
 } from 'lucide-react';
 import {
   getPaymentTransactions,
@@ -19,6 +20,13 @@ import { getMyExpenseJournalEntries } from '../../../api/myActivity';
 import { TransactionDetailSheet } from './TransactionDetailSheet';
 import { EditTransactionSheet } from './_shared/EditTransactionSheet';
 import { canEditTransaction } from '../../../api/transactions';
+import {
+  canCancelTransactionRow,
+  cancelTransactionWithReversal,
+  getCancelEligibility,
+  resolveJournalEntryIdFromPayment,
+  type CancelEligibility,
+} from '../../../api/transactionCancel';
 import { dispatchMobileAccountingInvalidated } from '../../../lib/dataInvalidationBus';
 import { PdfPreviewModal } from '../../shared/PdfPreviewModal';
 import { TimelinePreviewPdf } from '../../shared/TimelinePreviewPdf';
@@ -40,6 +48,7 @@ import {
 import { useAccountingAttachmentActions } from '../../../hooks/useAccountingAttachmentActions';
 import { AttachmentIndicatorButton } from '../../shared/AttachmentIndicatorButton';
 import { LongPressCard } from '../../common/LongPressCard';
+import { ConfirmActionSheet } from '../../common/ConfirmActionSheet';
 import {
   resolveCopyPrefillFromTransactionRow,
   type CopyTransactionPrefill,
@@ -228,6 +237,9 @@ export function TransactionsTimeline({
   const [debouncedSearch, setDebouncedSearch] = useState<string>('');
   const [detailId, setDetailId] = useState<string | null>(null);
   const [editTarget, setEditTarget] = useState<{ mode: 'payment' | 'journal'; id: string } | null>(null);
+  const [pendingCancel, setPendingCancel] = useState<CancelEligibility | null>(null);
+  const [cancelBusy, setCancelBusy] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
@@ -329,6 +341,59 @@ export function TransactionsTimeline({
 
   const refresh = () => {
     void loadRows();
+  };
+
+  const beginCancelForRow = async (tx: TransactionRow) => {
+    if (!companyId || readOnly) return;
+    const hint = canCancelTransactionRow(tx);
+    if (!hint.show) return;
+    setCancelError(null);
+    setCancelBusy(true);
+    try {
+      let jeId = hint.journalEntryId;
+      if (!jeId) {
+        const payId = String(tx.paymentId || tx.id || '').trim();
+        if (payId) jeId = await resolveJournalEntryIdFromPayment(companyId, payId);
+      }
+      if (!jeId) {
+        setCancelError('No journal entry linked to this transaction.');
+        return;
+      }
+      const eligibility = await getCancelEligibility(companyId, jeId);
+      if (!eligibility.allowed) {
+        setCancelError(eligibility.reason || 'Cancel not allowed for this transaction.');
+        return;
+      }
+      setPendingCancel(eligibility);
+    } finally {
+      setCancelBusy(false);
+    }
+  };
+
+  const executeCancel = async () => {
+    if (!pendingCancel || !companyId) return;
+    setCancelBusy(true);
+    setCancelError(null);
+    try {
+      const result = await cancelTransactionWithReversal({
+        companyId,
+        branchId: branchId ?? null,
+        journalEntryId: pendingCancel.journalEntryId,
+      });
+      if (!result.ok) {
+        setCancelError(result.error || 'Cancel failed.');
+        return;
+      }
+      setPendingCancel(null);
+      refresh();
+      dispatchMobileAccountingInvalidated({
+        companyId,
+        branchId: branchId ?? null,
+        reason: 'transaction-cancelled',
+      });
+    } finally {
+      setCancelBusy(false);
+    }
   };
 
   return (
@@ -441,6 +506,8 @@ export function TransactionsTimeline({
                 const rowAttachParams = { transactionRow: t };
                 const copyPrefill = resolveCopyPrefillFromTransactionRow(t);
                 const showCopy = Boolean(onCopyTransaction && copyPrefill);
+                const cancelHint = canCancelTransactionRow(t);
+                const showCancel = !rowReadOnly && cancelHint.show;
                 return (
                   <LongPressCard
                     key={t.id}
@@ -462,6 +529,7 @@ export function TransactionsTimeline({
                           }
                         : undefined
                     }
+                    onDelete={undefined}
                     canEdit={!rowReadOnly && editability.editable}
                     canDelete={false}
                     customMenuItems={[
@@ -478,6 +546,17 @@ export function TransactionsTimeline({
                             },
                           ]
                         : []),
+                      ...(showCancel
+                        ? [
+                            {
+                              label: cancelHint.label,
+                              icon: <Ban className="w-4 h-4" />,
+                              onClick: () => void beginCancelForRow(t),
+                              variant: 'danger' as const,
+                              show: true,
+                            },
+                          ]
+                        : []),
                     ]}
                   >
                     <TransactionRowCard
@@ -486,6 +565,8 @@ export function TransactionsTimeline({
                       onAttachmentClick={() => void attachmentActions.previewAttachments(rowAttachParams)}
                       readOnly={rowReadOnly}
                       editability={editability}
+                      cancelLabel={showCancel ? cancelHint.label : null}
+                      onCancel={showCancel ? () => void beginCancelForRow(t) : undefined}
                       onEdit={() => {
                         if (rowReadOnly || !editability.editable) return;
                         if (editability.kind === 'journal' && !t.journalEntryId) return;
@@ -512,8 +593,12 @@ export function TransactionsTimeline({
         <TransactionDetailSheet
           paymentId={detailId}
           companyId={companyId}
+          branchId={branchId}
           onClose={() => setDetailId(null)}
           onViewLedger={onViewLedger}
+          onCancelled={() => {
+            refresh();
+          }}
         />
       )}
       {editTarget && companyId && (
@@ -533,6 +618,35 @@ export function TransactionsTimeline({
           }}
         />
       )}
+
+      <ConfirmActionSheet
+        open={!!pendingCancel}
+        title={pendingCancel?.confirmTitle ?? 'Cancel?'}
+        description={pendingCancel?.confirmDescription ?? ''}
+        confirmLabel={pendingCancel?.confirmLabel ?? 'Yes, Cancel'}
+        cancelLabel="No"
+        busy={cancelBusy}
+        error={cancelError}
+        onCancel={() => {
+          if (cancelBusy) return;
+          setPendingCancel(null);
+          setCancelError(null);
+        }}
+        onConfirm={() => void executeCancel()}
+      />
+
+      {cancelError && !pendingCancel ? (
+        <div className="fixed left-4 right-4 bottom-36 z-30 p-3 rounded-xl bg-[#7F1D1D] border border-[#EF4444] text-sm text-white shadow-lg">
+          {cancelError}
+          <button
+            type="button"
+            className="ml-3 underline text-xs"
+            onClick={() => setCancelError(null)}
+          >
+            Dismiss
+          </button>
+        </div>
+      ) : null}
 
       {attachmentActions.AttachmentPreviewPortal}
       {attachmentActions.AddAttachmentSheetPortal}
@@ -611,6 +725,8 @@ function TransactionRowCard({
   tx,
   onEdit,
   onCopy,
+  onCancel,
+  cancelLabel,
   readOnly = false,
   showAttachmentIcon = false,
   onAttachmentClick,
@@ -619,6 +735,8 @@ function TransactionRowCard({
   tx: TransactionRow;
   onEdit: () => void;
   onCopy?: () => void;
+  onCancel?: () => void;
+  cancelLabel?: string | null;
   readOnly?: boolean;
   showAttachmentIcon?: boolean;
   onAttachmentClick?: () => void;
@@ -661,7 +779,7 @@ function TransactionRowCard({
           </div>
         </div>
         {(!readOnly || onCopy) && (
-          <div className="mt-2 flex justify-end gap-2">
+          <div className="mt-2 flex justify-end gap-2 flex-wrap">
             {onCopy ? (
               <button
                 type="button"
@@ -679,6 +797,15 @@ function TransactionRowCard({
                 className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[#374151] text-white disabled:opacity-40"
               >
                 Edit
+              </button>
+            ) : null}
+            {!readOnly && onCancel && cancelLabel ? (
+              <button
+                type="button"
+                onClick={onCancel}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[#7F1D1D] text-white hover:bg-[#991B1B]"
+              >
+                {cancelLabel}
               </button>
             ) : null}
           </div>
