@@ -25,7 +25,7 @@ Mobile Transactions timeline and detail sheet only had **Edit** / **Copy**. Web 
 | Item | Value |
 |------|--------|
 | Branch | `main` |
-| Commit | *(filled after push)* |
+| Commit | `2c9c813e` |
 | VPS | `deploy/vps-build-erp-only.sh` |
 | Mobile | `https://erp.dincouture.pk/m/` |
 
