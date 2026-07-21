@@ -21,7 +21,8 @@
 | Item | Value |
 |------|--------|
 | Branch | `main` |
+| Commit | `8baaf96b` |
 | Deploy | `deploy/vps-build-erp-only.sh` |
-| Mobile | `https://erp.dincouture.pk/m/` |
+| Mobile | `https://erp.dincouture.pk/m/` → HTTP 200 |
 
 Hard-refresh `/m/` after deploy.
