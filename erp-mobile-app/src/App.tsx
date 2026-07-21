@@ -54,6 +54,7 @@ const LAST_AUTOSYNC_KEY = 'erp_mobile_last_autosync_at';
 const BOOT_AUTH_TIMEOUT_MS = 10_000;
 
 const SalesModule = lazy(() => import('./components/sales/SalesModule').then((m) => ({ default: m.SalesModule })));
+const WorkOrdersModule = lazy(() => import('./components/sales/WorkOrdersModule').then((m) => ({ default: m.WorkOrdersModule })));
 const POSModule = lazy(() => import('./components/pos/POSModule').then((m) => ({ default: m.POSModule })));
 const ContactsModule = lazy(() => import('./components/contacts/ContactsModule').then((m) => ({ default: m.ContactsModule })));
 const SettingsModule = lazy(() => import('./components/settings/SettingsModule').then((m) => ({ default: m.SettingsModule })));
@@ -83,6 +84,7 @@ const MODULE_TITLES: Record<Screen, string> = {
   home: 'Home',
   dashboard: 'Dashboard',
   sales: 'Sales',
+  workorders: 'Work Orders',
   purchase: 'Purchase',
   rental: 'Rental',
   studio: 'Studio',
@@ -953,6 +955,22 @@ export default function App() {
                     setDocumentEditIntent((prev) => (prev?.kind === 'sale' ? null : prev))
                   }
                 />
+      )}
+      {currentScreen === 'workorders' && user && (
+        !canAccessScreen('workorders', selectedBranch?.id)
+          ? <AccessDenied onBack={navigateHome} />
+          : (
+            <ScreenErrorBoundary screenName="Work Orders" onBack={navigateHome}>
+              <Suspense fallback={<ModuleLoadingFallback />}>
+                <WorkOrdersModule
+                  onBack={navigateHome}
+                  user={user}
+                  companyId={companyId}
+                  branchId={selectedBranch?.id ?? null}
+                />
+              </Suspense>
+            </ScreenErrorBoundary>
+          )
       )}
       {currentScreen === 'pos' && user && (
         !canAccessScreen('pos', selectedBranch?.id)

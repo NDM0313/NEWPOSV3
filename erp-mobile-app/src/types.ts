@@ -5,6 +5,7 @@ export type Screen =
   | 'home'
   | 'dashboard'
   | 'sales'
+  | 'workorders'
   | 'purchase'
   | 'rental'
   | 'studio'

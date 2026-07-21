@@ -1,6 +1,6 @@
 import {
   ShoppingCart, ShoppingBag, Shirt, Camera, DollarSign, Receipt, Package, User as UserIcon,
-  LogOut, TrendingUp, Settings as SettingsIcon, Sparkles, Store, ListChecks, Building2,
+  LogOut, TrendingUp, Settings as SettingsIcon, Sparkles, Store, ListChecks, Building2, Scissors,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import type { User, Branch, Screen } from '../types';
@@ -18,6 +18,7 @@ import {
 import { getPermissionModuleForScreen, screenSkipsModuleViewPermission } from '../utils/permissionModules';
 import { isDeveloperModeUnlocked, subscribeDeveloperMode } from '../lib/developerMode';
 import { getFunctionalRoleLabel } from '../config/functionalRoles';
+import { useBespokeEnabled } from '../hooks/useBespokeEnabled';
 
 interface HomeScreenProps {
   user: User;
@@ -40,6 +41,7 @@ interface ModuleCard {
 
 const MODULES: ModuleCard[] = [
   { id: 'sales', title: 'Sales', icon: <ShoppingCart className="w-8 h-8" />, color: '#3B82F6', bgColor: 'bg-[#3B82F6]/10', enabled: true },
+  { id: 'workorders', title: 'Work Orders', icon: <Scissors className="w-8 h-8" />, color: '#8B5CF6', bgColor: 'bg-[#8B5CF6]/10', enabled: true },
   { id: 'purchase', title: 'Purchase', icon: <ShoppingBag className="w-8 h-8" />, color: '#10B981', bgColor: 'bg-[#10B981]/10', enabled: true },
   { id: 'rental', title: 'Rental', icon: <Shirt className="w-8 h-8" />, color: '#8B5CF6', bgColor: 'bg-[#8B5CF6]/10', enabled: true },
   { id: 'studio', title: 'Studio', icon: <Camera className="w-8 h-8" />, color: '#EC4899', bgColor: 'bg-[#EC4899]/10', enabled: true },
@@ -71,6 +73,7 @@ export function HomeScreen({
   const displayName = profile?.displayName ?? user.name;
   const displayRole = getFunctionalRoleLabel(profile?.role ?? user.role);
   const { hasPermission, isPermissionLoaded, isModuleEnabled, moduleConfigBanner, canUseFullAccounting } = usePermissions();
+  const { enabled: bespokeEnabled } = useBespokeEnabled(companyId);
   const [showFeatures, setShowFeatures] = useState(false);
   const [todaySales, setTodaySales] = useState<number>(0);
   const [pendingAmount, setPendingAmount] = useState<number>(0);
@@ -111,6 +114,7 @@ export function HomeScreen({
   }
 
   const enabled = MODULES.filter((m) => {
+    if (m.id === 'workorders' && !bespokeEnabled) return false;
     if (!isModuleEnabled(m.id)) return false;
     if (m.id === 'ledger' && FEATURE_MOBILE_PERMISSION_V2 && !canUseFullAccounting) {
       if (screenSkipsModuleViewPermission('accounts')) return false;

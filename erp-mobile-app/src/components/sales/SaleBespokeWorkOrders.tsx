@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Loader2, Package, Scissors } from 'lucide-react';
+import { Loader2, Package, Plus, Scissors } from 'lucide-react';
 import {
   completeBespokeWorkOrder,
   createBespokeWorkOrder,
@@ -11,6 +11,7 @@ import {
   type WorkOrderStockPostStatus,
 } from '../../api/bespokeWorkOrders';
 import { getContacts } from '../../api/contacts';
+import { WorkOrderDetailSheet } from './WorkOrderDetailSheet';
 
 interface SaleBespokeWorkOrdersProps {
   companyId: string;
@@ -37,6 +38,8 @@ export function SaleBespokeWorkOrders({
   const [parentItemId, setParentItemId] = useState('');
   const [tailorId, setTailorId] = useState('');
   const [cost, setCost] = useState('');
+  const [showCreate, setShowCreate] = useState(false);
+  const [detailWo, setDetailWo] = useState<BespokeWorkOrderRow | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -70,6 +73,10 @@ export function SaleBespokeWorkOrders({
           }),
       );
       setStockById(Object.fromEntries(stockEntries));
+      setDetailWo((prev) => {
+        if (!prev) return null;
+        return wo.find((row) => row.id === prev.id) ?? null;
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load work orders');
     } finally {
@@ -104,6 +111,7 @@ export function SaleBespokeWorkOrders({
         createdByAuthUserId: userId,
       });
       setCost('');
+      setShowCreate(false);
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Create failed');
@@ -139,6 +147,7 @@ export function SaleBespokeWorkOrders({
   };
 
   const posted = String(saleStatus).toLowerCase() === 'final';
+  const showCreateForm = !posted && parents.length > 0 && (orders.length === 0 || showCreate);
 
   if (loading) {
     return (
@@ -163,7 +172,19 @@ export function SaleBespokeWorkOrders({
             const needsStock = wo.status === 'completed' && stock?.needsStockPost === true;
             const stockOk = wo.status === 'completed' && stock && !stock.needsStockPost;
             return (
-              <li key={wo.id} className="flex flex-col gap-1.5 bg-gray-900 rounded px-2 py-1.5">
+              <li
+                key={wo.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => setDetailWo(wo)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setDetailWo(wo);
+                  }
+                }}
+                className="flex flex-col gap-1.5 bg-gray-900 rounded px-2 py-1.5 cursor-pointer"
+              >
                 <div className="flex justify-between items-center gap-2">
                   <span>
                     {wo.work_order_no} · {wo.status}
@@ -173,7 +194,10 @@ export function SaleBespokeWorkOrders({
                     <button
                       type="button"
                       disabled={busy}
-                      onClick={() => void handleComplete(wo.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void handleComplete(wo.id);
+                      }}
                       className="text-xs text-emerald-400 font-medium"
                     >
                       Complete
@@ -188,7 +212,10 @@ export function SaleBespokeWorkOrders({
                     <button
                       type="button"
                       disabled={busy}
-                      onClick={() => void handlePostStock(wo.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void handlePostStock(wo.id);
+                      }}
                       className="inline-flex items-center gap-1 text-xs text-amber-300 font-medium border border-amber-500/40 rounded px-2 py-0.5"
                     >
                       <Package size={12} /> Post stock
@@ -205,7 +232,18 @@ export function SaleBespokeWorkOrders({
           })}
         </ul>
       )}
-      {!posted && parents.length > 0 && (
+
+      {!posted && orders.length > 0 && parents.length > 0 && !showCreate && (
+        <button
+          type="button"
+          onClick={() => setShowCreate(true)}
+          className="inline-flex items-center gap-1 text-xs text-violet-300 font-medium"
+        >
+          <Plus size={12} /> Add work order
+        </button>
+      )}
+
+      {showCreateForm && (
         <div className="space-y-2 pt-2 border-t border-gray-800">
           <select
             value={parentItemId}
@@ -236,19 +274,41 @@ export function SaleBespokeWorkOrders({
             onChange={(e) => setCost(e.target.value)}
             className="w-full h-9 bg-gray-900 border border-gray-700 rounded px-2 text-sm text-white"
           />
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void handleCreate()}
-            className="w-full h-9 rounded bg-violet-600 text-white text-sm font-medium disabled:opacity-50"
-          >
-            Create work order
-          </button>
+          <div className="flex gap-2">
+            {orders.length > 0 && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setShowCreate(false)}
+                className="flex-1 h-9 rounded border border-gray-700 text-gray-300 text-sm font-medium disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            )}
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void handleCreate()}
+              className="flex-1 h-9 rounded bg-violet-600 text-white text-sm font-medium disabled:opacity-50"
+            >
+              Create work order
+            </button>
+          </div>
         </div>
       )}
       {posted && (
         <p className="text-xs text-amber-500/90">Sale is final — new work orders are locked.</p>
       )}
+
+      <WorkOrderDetailSheet
+        open={!!detailWo}
+        workOrder={detailWo}
+        stock={detailWo ? stockById[detailWo.id] ?? null : null}
+        busy={busy}
+        onClose={() => setDetailWo(null)}
+        onComplete={(id) => void handleComplete(id)}
+        onPostStock={(id) => void handlePostStock(id)}
+      />
     </div>
   );
 }

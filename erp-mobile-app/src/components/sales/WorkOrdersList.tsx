@@ -9,6 +9,7 @@ import {
   type BespokeWorkOrderStatus,
   type WorkOrderStockPostStatus,
 } from '../../api/bespokeWorkOrders';
+import { WorkOrderDetailSheet } from './WorkOrderDetailSheet';
 
 const STATUS_TABS: Array<BespokeWorkOrderStatus | 'all'> = [
   'all',
@@ -48,6 +49,7 @@ export function WorkOrdersList({
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [detailWo, setDetailWo] = useState<BespokeWorkOrderRow | null>(null);
 
   const refresh = useCallback(async () => {
     if (!companyId) return;
@@ -73,6 +75,10 @@ export function WorkOrdersList({
           }),
       );
       setStockById(Object.fromEntries(stockEntries));
+      setDetailWo((prev) => {
+        if (!prev) return null;
+        return rows.find((row) => row.id === prev.id) ?? null;
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load work orders');
       setOrders([]);
@@ -179,7 +185,16 @@ export function WorkOrdersList({
             return (
               <li
                 key={wo.id}
-                className="rounded-xl border border-white/10 bg-[#1F2937] p-3 space-y-2"
+                role="button"
+                tabIndex={0}
+                onClick={() => setDetailWo(wo)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setDetailWo(wo);
+                  }
+                }}
+                className="rounded-xl border border-white/10 bg-[#1F2937] p-3 space-y-2 active:scale-[0.99] transition-transform cursor-pointer"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div>
@@ -228,7 +243,10 @@ export function WorkOrdersList({
                     <button
                       type="button"
                       disabled={busy}
-                      onClick={() => void handleComplete(wo.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void handleComplete(wo.id);
+                      }}
                       className="h-8 px-3 rounded-lg bg-emerald-600/90 text-white text-xs font-semibold disabled:opacity-50"
                     >
                       {busy ? '…' : 'Complete'}
@@ -238,7 +256,10 @@ export function WorkOrdersList({
                     <button
                       type="button"
                       disabled={busy}
-                      onClick={() => void handlePostStock(wo.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void handlePostStock(wo.id);
+                      }}
                       className="h-8 px-3 rounded-lg border border-amber-500/40 text-amber-300 text-xs font-semibold inline-flex items-center gap-1 disabled:opacity-50"
                     >
                       <Package size={12} /> {busy ? '…' : 'Post stock'}
@@ -250,6 +271,16 @@ export function WorkOrdersList({
           })}
         </ul>
       )}
+
+      <WorkOrderDetailSheet
+        open={!!detailWo}
+        workOrder={detailWo}
+        stock={detailWo ? stockById[detailWo.id] ?? null : null}
+        busy={!!busyId}
+        onClose={() => setDetailWo(null)}
+        onComplete={(id) => void handleComplete(id)}
+        onPostStock={(id) => void handlePostStock(id)}
+      />
     </div>
   );
 }

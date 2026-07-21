@@ -1,4 +1,4 @@
-import { X, Package, BarChart3, ShoppingBag, Shirt, Camera, Receipt, DollarSign, Settings, CreditCard, Users, LayoutGrid, TrendingUp, ShoppingCart } from 'lucide-react';
+import { X, Package, BarChart3, ShoppingBag, Shirt, Camera, Receipt, DollarSign, Settings, CreditCard, Users, LayoutGrid, TrendingUp, ShoppingCart, Scissors } from 'lucide-react';
 import type { Screen, User } from '../types';
 import { FEATURE_MOBILE_PERMISSION_V2 } from '../config/featureFlags';
 import { usePermissions } from '../context/PermissionContext';
@@ -27,6 +27,7 @@ export function ModuleGrid({ onClose, onModuleSelect, userRole: _userRole }: Mod
 
   const modules: Module[] = [
     { id: 'sales', name: 'Sales', icon: <ShoppingCart className="w-6 h-6" />, color: '#3B82F6', enabled: true },
+    { id: 'workorders', name: 'Work Orders', icon: <Scissors className="w-6 h-6" />, color: '#8B5CF6', enabled: true },
     { id: 'products', name: 'Products', icon: <Package className="w-6 h-6" />, color: '#3B82F6', enabled: true },
     { id: 'inventory', name: 'Inventory', icon: <BarChart3 className="w-6 h-6" />, color: '#10B981', enabled: true },
     { id: 'purchase', name: 'Purchases', icon: <ShoppingBag className="w-6 h-6" />, color: '#10B981', enabled: true },
