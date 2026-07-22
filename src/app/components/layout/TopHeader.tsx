@@ -47,7 +47,7 @@ import { dispatchGlobalRefresh } from '@/app/lib/dataInvalidationBus';
 export const TopHeader = () => {
   const { toggleSidebar, openDrawer, setCurrentView, setMobileNavOpen } = useNavigation();
   const { businessSettings } = useSettings();
-  const { signOut, user, companyId, branchId, erpFullName, userRole } = useSupabase();
+  const { signOut, user, companyId, branchId, erpFullName, userRole, accessibleBranchIds } = useSupabase();
   const { hasPermission } = useCheckPermission();
   const globalFilter = useGlobalFilter();
   const { dateRangeType, setDateRangeType, setCustomDateRange, getDateRangeLabel, setBranchId: setGlobalBranchId, branchId: globalBranchId, customStartDate, customEndDate, startDateObj, endDateObj } = globalFilter;
@@ -55,6 +55,9 @@ export const TopHeader = () => {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loadingBranches, setLoadingBranches] = useState(false);
   const [showCustomDatePicker, setShowCustomDatePicker] = useState(false);
+
+  const roleNorm = String(userRole || '').toLowerCase().trim();
+  const isAdminOrOwner = roleNorm === 'admin' || roleNorm === 'owner';
 
   // Load branches (cached) for header dropdown; global rule: hide when single branch
   const loadBranches = useCallback(async () => {
@@ -75,20 +78,27 @@ export const TopHeader = () => {
     loadBranches();
   }, [loadBranches]);
 
-  // If business has only one branch, always auto-select it (persist in global filter + Supabase)
-  useEffect(() => {
-    if (branches.length === 1) {
-      setGlobalBranchId(branches[0].id);
-    }
-  }, [branches, setGlobalBranchId]);
+  const selectableBranches = useMemo(() => {
+    if (isAdminOrOwner) return branches;
+    if (!accessibleBranchIds?.length) return [];
+    const allow = new Set(accessibleBranchIds.map(String));
+    return branches.filter((b) => allow.has(String(b.id)));
+  }, [branches, accessibleBranchIds, isAdminOrOwner]);
 
-  // Get current branch name (All Branches = real option for admin)
+  // If user can only see one branch, always auto-select it (persist in global filter + Supabase)
+  useEffect(() => {
+    if (selectableBranches.length === 1) {
+      setGlobalBranchId(selectableBranches[0].id);
+    }
+  }, [selectableBranches, setGlobalBranchId]);
+
+  // Get current branch name (All Branches = real option when multi-access)
   const currentBranch = useMemo(() => {
     if (!branchId) return 'Select Branch';
     if (branchId === 'all') return 'All Branches';
-    const branch = branches.find(b => b.id === branchId);
+    const branch = branches.find(b => b.id === branchId) || selectableBranches.find(b => b.id === branchId);
     return branch?.name || 'Select Branch';
-  }, [branchId, branches]);
+  }, [branchId, branches, selectableBranches]);
 
   // Handle branch change — always route through global filter so Supabase re-syncs
   // even when persisted is already 'all' but header still shows a concrete branch.
@@ -171,8 +181,8 @@ export const TopHeader = () => {
           <Menu size={22} strokeWidth={2} />
         </button>
         
-        {/* Branch / Location Selector — global rule: only show when multiple branches */}
-        {!loadingBranches && branches.length > 1 && (
+        {/* Branch / Location Selector — only when user has multi-branch access */}
+        {!loadingBranches && selectableBranches.length > 1 && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button 
@@ -207,10 +217,10 @@ export const TopHeader = () => {
                   </div>
                   {branchId === 'all' && <div className="w-1.5 h-1.5 rounded-full bg-primary"></div>}
                 </DropdownMenuItem>
-                {branches.length > 0 && (
+                {selectableBranches.length > 0 && (
                   <div className="border-t border-border my-2" />
                 )}
-                {branches.map((b) => (
+                {selectableBranches.map((b) => (
                   <DropdownMenuItem
                     key={b.id}
                     onClick={() => handleBranchChange(b.id)}

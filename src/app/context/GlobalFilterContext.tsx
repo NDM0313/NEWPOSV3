@@ -227,12 +227,17 @@ function dispatchFilterInvalidation(
 }
 
 export const GlobalFilterProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { setBranchId: setSupabaseBranchId, companyId } = useSupabase();
+  const {
+    setBranchId: setSupabaseBranchId,
+    companyId,
+    accessibleBranchIds,
+  } = useSupabase();
   const [currentModule, setCurrentModuleState] = useState<GlobalFilterModule>(DEFAULT_MODULE);
   const [persisted, setPersisted] = useState<PersistedFilters>(loadFromStorage);
   const [fiscalYearConfig, setFiscalYearConfig] = useState<FiscalYearConfig | null>(null);
   const [fiscalYearRefreshToken, setFiscalYearRefreshToken] = useState(0);
   const initialSyncDone = useRef(false);
+  const multiAccessDefaultDone = useRef(false);
   const persistedRef = useRef(persisted);
   persistedRef.current = persisted;
 
@@ -289,6 +294,39 @@ export const GlobalFilterProvider: React.FC<{ children: ReactNode }> = ({ childr
     },
     [setSupabaseBranchId, companyId]
   );
+
+  // When user has multi-branch access and persisted branch is missing/invalid → default All Branches.
+  // Keep a valid persisted concrete branch the user previously chose.
+  useEffect(() => {
+    multiAccessDefaultDone.current = false;
+  }, [companyId]);
+
+  useEffect(() => {
+    if (!companyId || multiAccessDefaultDone.current) return;
+    // Wait until accessible list is known after loadUserBranch
+    if (accessibleBranchIds.length === 0) return;
+
+    const accessible = accessibleBranchIds.map(String);
+    if (accessible.length <= 1) {
+      multiAccessDefaultDone.current = true;
+      return;
+    }
+
+    const current = persistedRef.current.branchId;
+    const validConcrete =
+      current != null &&
+      current !== '' &&
+      current !== 'all' &&
+      accessible.includes(String(current));
+
+    multiAccessDefaultDone.current = true;
+    if (validConcrete) return;
+    if (current === 'all') {
+      setSupabaseBranchId?.('all');
+      return;
+    }
+    setBranchId('all');
+  }, [companyId, accessibleBranchIds, setBranchId, setSupabaseBranchId]);
 
   // Do not sync Supabase -> persisted; only persisted -> Supabase on init.
   // Single-branch auto-set is done in TopHeader via setGlobalBranchId(branches[0].id).

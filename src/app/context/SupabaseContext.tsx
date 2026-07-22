@@ -621,8 +621,9 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const authId = typeof userIds === 'string' ? null : userIds.authUserId;
     const lookupId = authId ?? erpId;
     try {
-      const isAdmin = userRole === 'admin' || userRole === 'Admin';
-      if (isAdmin) {
+      const roleNorm = String(userRole || '').toLowerCase().trim();
+      const isAdminOrOwner = roleNorm === 'admin' || roleNorm === 'owner';
+      if (isAdminOrOwner) {
         const { data: companyBranches } = await supabase
           .from('branches')
           .select('id')
@@ -635,17 +636,17 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           setDefaultBranchId(ids[0]);
           setBranchId(ids[0]);
           setRequiresBranchSelection(false);
-          if (import.meta.env?.DEV) console.log('[BRANCH LOADED] Admin single branch:', ids[0]);
+          if (import.meta.env?.DEV) console.log('[BRANCH LOADED] Admin/owner single branch:', ids[0]);
           return;
         }
         setDefaultBranchId('all');
         setBranchId('all');
         setRequiresBranchSelection(false);
-        if (import.meta.env?.DEV) console.log('[BRANCH LOADED] Admin: All Branches', { count: ids.length });
+        if (import.meta.env?.DEV) console.log('[BRANCH LOADED] Admin/owner: All Branches', { count: ids.length });
         return;
       }
 
-      // Non-admin: use get_effective_user_branch (single-branch => auto that branch; multi => user_branches or null)
+      // Non-admin: use get_effective_user_branch (single-branch => auto that branch; multi-access => All Branches)
       const { data: rpcData, error: rpcError } = await supabase.rpc('get_effective_user_branch', { p_user_id: lookupId });
       const payload = rpcData as {
         effective_branch_id?: string | null;
@@ -663,13 +664,17 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setAccessibleBranchIds(accessible);
         setRequiresBranchSelection(Boolean(payload.requires_branch_selection));
         const effectiveId = payload.effective_branch_id ?? null;
-        setDefaultBranchId(effectiveId);
-        if (count === 1 && accessible.length === 1) {
+        if (accessible.length > 1) {
+          setDefaultBranchId('all');
+          setBranchId('all');
+        } else if (accessible.length === 1) {
+          setDefaultBranchId(accessible[0]);
           setBranchId(accessible[0]);
         } else {
+          setDefaultBranchId(effectiveId);
           setBranchId(effectiveId);
         }
-        if (import.meta.env?.DEV) console.log('[BRANCH LOADED] get_effective_user_branch', { count, effectiveId, requiresBranchSelection: payload.requires_branch_selection });
+        if (import.meta.env?.DEV) console.log('[BRANCH LOADED] get_effective_user_branch', { count, accessible: accessible.length, effectiveId, requiresBranchSelection: payload.requires_branch_selection });
         return;
       }
 
@@ -689,11 +694,16 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setAccessibleBranchIds(ids);
         setBranchCount(ids.length);
         setRequiresBranchSelection(false);
-        const defaultRow = userBranches.find((ub: any) => ub.is_default === true) || userBranches[0];
-        const defaultId = defaultRow?.branch_id ?? ids[0];
-        setDefaultBranchId(defaultId);
-        setBranchId(defaultId);
-        if (import.meta.env?.DEV) console.log('[BRANCH LOADED] User branches (fallback)', { count: ids.length, defaultId });
+        if (ids.length > 1) {
+          setDefaultBranchId('all');
+          setBranchId('all');
+          if (import.meta.env?.DEV) console.log('[BRANCH LOADED] User branches (fallback) All Branches', { count: ids.length });
+        } else {
+          const defaultId = ids[0];
+          setDefaultBranchId(defaultId);
+          setBranchId(defaultId);
+          if (import.meta.env?.DEV) console.log('[BRANCH LOADED] User branches (fallback)', { count: ids.length, defaultId });
+        }
         return;
       }
 
