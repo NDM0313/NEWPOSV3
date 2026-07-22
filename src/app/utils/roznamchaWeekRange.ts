@@ -1,15 +1,16 @@
 /**
  * Configurable calendar week for Roznamcha Prev/Next navigator.
- * weekStartsOn: 0=Sun … 6=Sat (JS getDay). Default Friday (5).
- * Full week = start day + 6 days (e.g. Fri → Thu).
+ * weekStartsOn: 0=Sun … 6=Sat (JS getDay). Default Saturday (6).
+ * Full week = start day + 6 days (Sat → Fri).
  */
 
 import { safeLocalStorageGetItem, safeLocalStorageSetItem } from '@/app/lib/safeBrowserStorage';
 
 export type WeekStartsOn = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
-export const ROZNAMCHA_WEEK_STARTS_ON_KEY = 'erp-roznamcha-week-starts-on';
-export const DEFAULT_ROZNAMCHA_WEEK_STARTS_ON: WeekStartsOn = 5; // Friday
+/** v2 bumps past sticky Friday (5) default from the first navigator release. */
+export const ROZNAMCHA_WEEK_STARTS_ON_KEY = 'erp-roznamcha-week-starts-on-v2';
+export const DEFAULT_ROZNAMCHA_WEEK_STARTS_ON: WeekStartsOn = 6; // Saturday
 
 export const WEEK_START_DAY_OPTIONS: Array<{ value: WeekStartsOn; label: string }> = [
   { value: 0, label: 'Sunday' },

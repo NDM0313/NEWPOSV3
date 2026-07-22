@@ -34,12 +34,18 @@ test('Sat-start week containing a Wednesday is Sat→Fri', () => {
   assert.equal(ymd(endDate), '2026-07-24'); // Friday
 });
 
-test('shiftWeek moves by 7 days', () => {
-  const base = getWeekRangeContaining(new Date(2026, 6, 22), 5);
+test('shiftWeek moves by 7 days (Sat-start week)', () => {
+  const base = getWeekRangeContaining(new Date(2026, 6, 22), 6);
   const next = shiftWeek(base, 1);
   const prev = shiftWeek(base, -1);
-  assert.equal(ymd(next.startDate), '2026-07-24');
-  assert.equal(ymd(next.endDate), '2026-07-30');
-  assert.equal(ymd(prev.startDate), '2026-07-10');
-  assert.equal(ymd(prev.endDate), '2026-07-16');
+  assert.equal(ymd(next.startDate), '2026-07-25');
+  assert.equal(ymd(next.endDate), '2026-07-31');
+  assert.equal(ymd(prev.startDate), '2026-07-11');
+  assert.equal(ymd(prev.endDate), '2026-07-17');
+});
+
+test('default weekStartsOn is Saturday (Sat→Fri)', () => {
+  const { startDate, endDate } = getWeekRangeContaining(new Date(2026, 6, 22));
+  assert.equal(ymd(startDate), '2026-07-18'); // Saturday
+  assert.equal(ymd(endDate), '2026-07-24'); // Friday
 });
