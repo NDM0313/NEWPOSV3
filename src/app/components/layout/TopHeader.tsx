@@ -50,7 +50,7 @@ export const TopHeader = () => {
   const { signOut, user, companyId, branchId, erpFullName, userRole } = useSupabase();
   const { hasPermission } = useCheckPermission();
   const globalFilter = useGlobalFilter();
-  const { dateRangeType, setDateRangeType, setCustomDateRange, getDateRangeLabel, setBranchId: setGlobalBranchId, customStartDate, customEndDate, startDateObj, endDateObj } = globalFilter;
+  const { dateRangeType, setDateRangeType, setCustomDateRange, getDateRangeLabel, setBranchId: setGlobalBranchId, branchId: globalBranchId, customStartDate, customEndDate, startDateObj, endDateObj } = globalFilter;
 
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loadingBranches, setLoadingBranches] = useState(false);
@@ -90,9 +90,15 @@ export const TopHeader = () => {
     return branch?.name || 'Select Branch';
   }, [branchId, branches]);
 
-  // Handle branch change — update global filter (persists + syncs to Supabase)
+  // Handle branch change — always route through global filter so Supabase re-syncs
+  // even when persisted is already 'all' but header still shows a concrete branch.
   const handleBranchChange = (newBranchId: string) => {
-    if (newBranchId === branchId) return;
+    const globalMatches =
+      newBranchId === globalBranchId ||
+      (newBranchId === 'all' && (globalBranchId === 'all' || globalBranchId == null));
+    const supabaseMatches =
+      newBranchId === branchId || (newBranchId === 'all' && branchId === 'all');
+    if (globalMatches && supabaseMatches) return;
     setGlobalBranchId(newBranchId);
     toast.success('Branch switched successfully');
   };
@@ -380,7 +386,7 @@ export const TopHeader = () => {
                 dateRangeType === 'thisWeek' ? "bg-primary/10 text-primary" : "text-foreground hover:bg-accent"
               )}
             >
-              This Week
+              This Week (Sat–Fri)
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() => setDateRangeType('lastWeek')}
@@ -389,7 +395,7 @@ export const TopHeader = () => {
                 dateRangeType === 'lastWeek' ? "bg-primary/10 text-primary" : "text-foreground hover:bg-accent"
               )}
             >
-              Last Week
+              Last Week (Sat–Fri)
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() => setDateRangeType('thisMonth')}

@@ -30,6 +30,15 @@ import { BranchSelector } from '@/app/components/layout/BranchSelector';
 import { Switch } from '../ui/switch';
 import { Label } from '../ui/label';
 import { formatRoznamchaRowDateTimeDisplay } from '@/app/utils/transactionEventDateTime';
+import { useGlobalFilter } from '@/app/context/GlobalFilterContext';
+import {
+  WEEK_START_DAY_OPTIONS,
+  getWeekRangeContaining,
+  loadRoznamchaWeekStartsOn,
+  saveRoznamchaWeekStartsOn,
+  shiftWeek,
+  type WeekStartsOn,
+} from '@/app/utils/roznamchaWeekRange';
 import {
   roznamchaJournalSubtitle,
   roznamchaRefDisplay,
@@ -84,19 +93,41 @@ import { exportToExcel } from '@/app/utils/exportUtils';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { useFormatDate } from '@/app/hooks/useFormatDate';
 import { DateTimeDisplay } from '../ui/DateTimeDisplay';
-import { Loader2, BookOpen, Wallet, Building2, CreditCard, Smartphone, Search } from 'lucide-react';
+import { Loader2, BookOpen, Wallet, Building2, CreditCard, Smartphone, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Input } from '../ui/input';
 import { cn } from '../ui/utils';
 import { format, parseISO } from 'date-fns';
 import { journalDescriptionForDisplay } from '@/app/utils/journalDescriptionDisplay';
 
-function rowSortTimestamp(r: RoznamchaRowWithBalance): number {
-  const t = r.time?.length === 5 ? `${r.time}:00` : r.time || '00:00:00';
-  try {
-    return new Date(`${r.date}T${t}`).getTime();
-  } catch {
-    return 0;
-  }
+function rowSortTimeKey(r: { time?: string | null }): string {
+  const t = String(r.time || '').trim();
+  if (t.length === 5) return `${t}:00`;
+  if (t.length >= 8) return t.slice(0, 8);
+  return '00:00:00';
+}
+
+/** Cash-book order: business date → time → ref → id (stable). */
+function compareRoznamchaRowsChronological(
+  a: RoznamchaRowWithBalance,
+  b: RoznamchaRowWithBalance,
+): number {
+  const dateA = String(a.date || '');
+  const dateB = String(b.date || '');
+  if (dateA < dateB) return -1;
+  if (dateA > dateB) return 1;
+  const timeA = rowSortTimeKey(a);
+  const timeB = rowSortTimeKey(b);
+  if (timeA < timeB) return -1;
+  if (timeA > timeB) return 1;
+  const refA = String(a.journalEntryNo || a.ref || '');
+  const refB = String(b.journalEntryNo || b.ref || '');
+  if (refA < refB) return -1;
+  if (refA > refB) return 1;
+  const idA = String(a.id || '');
+  const idB = String(b.id || '');
+  if (idA < idB) return -1;
+  if (idA > idB) return 1;
+  return 0;
 }
 
 function AccountBadge({
@@ -135,6 +166,7 @@ export interface RoznamchaReportProps {
 
 export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaReportProps = {}) => {
   const { companyId, branchId: contextBranchId, userRole } = useSupabase();
+  const { setCustomDateRange, getDateRangeLabel } = useGlobalFilter();
   const reloadEpoch = useAccountingReportReload({ companyId, branchId: contextBranchId });
   const { canPostAccounting } = useCheckPermission();
   const useTransactionActionPanel = isTransactionActionPanelEnabled();
@@ -172,7 +204,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
   const [paymentAccountOptions, setPaymentAccountOptions] = useState<Array<{ id: string; label: string }>>([]);
   /** Default off: voided payments (e.g. reversed receipts) are excluded from cash book totals. */
   const [includeVoidedReversed, setIncludeVoidedReversed] = useState(false);
-  const [dateSort, setDateSort] = useState<'asc' | 'desc'>('desc');
+  const [dateSort, setDateSort] = useState<'asc' | 'desc'>('asc');
   const [pageSize, setPageSize] = useState(50);
   const [data, setData] = useState<RoznamchaResult | null>(null);
   const [mainLoaderSource, setMainLoaderSource] = useState<'legacy' | 'unified'>('legacy');
@@ -187,6 +219,12 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
   const [overrideGlobalDates, setOverrideGlobalDates] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [attachmentsDialogList, setAttachmentsDialogList] = useState<TransactionAttachment[] | null>(null);
+  const [weekStartsOn, setWeekStartsOn] = useState<WeekStartsOn>(() => loadRoznamchaWeekStartsOn());
+  const [weekAnchor, setWeekAnchor] = useState<Date>(() => {
+    const t = new Date();
+    t.setHours(0, 0, 0, 0);
+    return t;
+  });
 
   const showUnifiedPreviewTools = canAccessRoznamchaUnifiedPreview(userRole);
   const [unifiedPreviewEnabled, setUnifiedPreviewEnabled] = useState(false);
@@ -229,7 +267,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
   const orderedRows = useMemo(() => {
     if (!data?.rows?.length) return [];
     const copy = [...data.rows];
-    copy.sort((a, b) => rowSortTimestamp(a) - rowSortTimestamp(b));
+    copy.sort(compareRoznamchaRowsChronological);
     if (dateSort === 'desc') copy.reverse();
     return copy;
   }, [data?.rows, dateSort]);
@@ -306,6 +344,113 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
       /* keep existing range */
     }
   }, [useGlobalRange, overrideGlobalDates, globalStartDate, globalEndDate, dateRange.from, dateRange.to]);
+
+  const activeWeekRange = useMemo(
+    () => getWeekRangeContaining(weekAnchor, weekStartsOn),
+    [weekAnchor, weekStartsOn],
+  );
+
+  const weekRangeLabel = useMemo(() => {
+    const { startDate, endDate } = activeWeekRange;
+    return `${format(startDate, 'EEE d MMM')} – ${format(endDate, 'EEE d MMM')}`;
+  }, [activeWeekRange]);
+
+  const applyWeekRange = useCallback(
+    (range: { startDate: Date; endDate: Date }) => {
+      setWeekAnchor(range.startDate);
+      if (useGlobalRange) {
+        setOverrideGlobalDates(false);
+        setCustomDateRange(range.startDate, range.endDate);
+        return;
+      }
+      setDateRange({ from: range.startDate, to: range.endDate });
+    },
+    [useGlobalRange, setCustomDateRange],
+  );
+
+  const goPrevWeek = useCallback(() => {
+    applyWeekRange(shiftWeek(activeWeekRange, -1));
+  }, [applyWeekRange, activeWeekRange]);
+
+  const goNextWeek = useCallback(() => {
+    applyWeekRange(shiftWeek(activeWeekRange, 1));
+  }, [applyWeekRange, activeWeekRange]);
+
+  const goThisWeek = useCallback(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    applyWeekRange(getWeekRangeContaining(today, weekStartsOn));
+  }, [applyWeekRange, weekStartsOn]);
+
+  const onWeekStartsOnChange = useCallback(
+    (value: string) => {
+      const next = Number(value) as WeekStartsOn;
+      if (!Number.isInteger(next) || next < 0 || next > 6) return;
+      setWeekStartsOn(next);
+      saveRoznamchaWeekStartsOn(next);
+      applyWeekRange(getWeekRangeContaining(weekAnchor, next));
+    },
+    [applyWeekRange, weekAnchor],
+  );
+
+  const weekNavigator = (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 gap-1 px-2.5 border-border text-muted-foreground"
+          onClick={goPrevWeek}
+          aria-label="Previous week"
+        >
+          <ChevronLeft className="h-4 w-4" />
+          Prev
+        </Button>
+        <span className="text-sm font-medium text-foreground tabular-nums min-w-[11.5rem] text-center">
+          {weekRangeLabel}
+        </span>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 gap-1 px-2.5 border-border text-muted-foreground"
+          onClick={goNextWeek}
+          aria-label="Next week"
+        >
+          Next
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+        <button
+          type="button"
+          className="text-xs text-primary hover:underline underline-offset-2 px-1"
+          onClick={goThisWeek}
+        >
+          This week
+        </button>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Label htmlFor="roznamcha-week-starts" className="text-xs text-muted-foreground shrink-0">
+          Week starts
+        </Label>
+        <Select value={String(weekStartsOn)} onValueChange={onWeekStartsOnChange}>
+          <SelectTrigger
+            id="roznamcha-week-starts"
+            className="h-8 w-[140px] bg-input-background border-border text-foreground text-xs"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {WEEK_START_DAY_OPTIONS.map(({ value, label }) => (
+              <SelectItem key={value} value={String(value)}>
+                {label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  );
 
   const rowDateTime = (r: RoznamchaRowWithBalance) => {
     if (!r.date) return r.time || '—';
@@ -477,7 +622,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
     toast.message('Use Roznamcha date range for DIN CHINA validation period. Preview compares legacy vs unified cash/bank ledger.');
   }, [companyId]);
 
-  const displayFiltersActive = searchTerm.trim().length > 0 || dateSort !== 'desc' || pageSize !== 50;
+  const displayFiltersActive = searchTerm.trim().length > 0 || dateSort !== 'asc' || pageSize !== 50;
   const paymentAccountFilterActive = Boolean(paymentLedgerAccountId.trim());
 
   const load = useCallback(async () => {
@@ -756,14 +901,15 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
       <div className="no-print rounded-xl border border-border bg-muted/40 p-4">
         <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">Filters</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-6 gap-y-5 items-start">
-          <div className="flex flex-col gap-2 min-w-0">
+          <div className="flex flex-col gap-2 min-w-0 sm:col-span-2 lg:col-span-2 xl:col-span-2">
             <Label className="text-xs text-muted-foreground uppercase tracking-wide">Date range</Label>
             {useGlobalRange ? (
               <>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  Header: {globalStartDate?.slice(0, 10)} → {globalEndDate?.slice(0, 10)}
-                  {!overrideGlobalDates ? ' (active)' : ''}
+                  {getDateRangeLabel()} · {globalStartDate?.slice(0, 10)} → {globalEndDate?.slice(0, 10)}
+                  {!overrideGlobalDates ? ' (active)' : ' (overridden locally)'}
                 </p>
+                {weekNavigator}
                 <div className="flex items-center gap-2">
                   <Switch
                     id="roznamcha-override-global-dates"
@@ -775,80 +921,13 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
                   </Label>
                 </div>
                 {overrideGlobalDates && (
-                  <>
-                    <DateRangePicker value={dateRange} onChange={setDateRange} placeholder="Start & end (or one day)" />
-                    <div className="flex flex-wrap gap-1.5">
-                      {[
-                        { label: 'Today', days: 0, single: true },
-                        { label: 'Yesterday', days: 1, single: true },
-                        { label: 'Last 5 days', days: 4, single: false },
-                        { label: 'Last 7 days', days: 6, single: false },
-                        { label: 'Last 30 days', days: 29, single: false },
-                        { label: 'This month', days: -1, single: false },
-                      ].map(({ label, days, single }) => (
-                        <Button
-                          key={label}
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-7 text-xs border-border text-muted-foreground hover:bg-muted"
-                          onClick={() => {
-                            const t = new Date(); t.setHours(0,0,0,0);
-                            if (days === -1) {
-                              const from = new Date(t.getFullYear(), t.getMonth(), 1);
-                              setDateRange({ from, to: t });
-                            } else if (single) {
-                              const d = new Date(t); d.setDate(d.getDate() - days);
-                              setDateRange({ from: d, to: d });
-                            } else {
-                              const from = new Date(t); from.setDate(from.getDate() - days);
-                              setDateRange({ from, to: t });
-                            }
-                          }}
-                        >
-                          {label}
-                        </Button>
-                      ))}
-                    </div>
-                  </>
+                  <DateRangePicker value={dateRange} onChange={setDateRange} placeholder="Start & end (or one day)" />
                 )}
               </>
             ) : (
               <>
+                {weekNavigator}
                 <DateRangePicker value={dateRange} onChange={setDateRange} placeholder="Start & end (same day = single date)" />
-                <div className="flex flex-wrap gap-1.5">
-                  {[
-                    { label: 'Today', days: 0, single: true },
-                    { label: 'Yesterday', days: 1, single: true },
-                    { label: 'Last 5 days', days: 4, single: false },
-                    { label: 'Last 7 days', days: 6, single: false },
-                    { label: 'Last 30 days', days: 29, single: false },
-                    { label: 'This month', days: -1, single: false },
-                  ].map(({ label, days, single }) => (
-                    <Button
-                      key={label}
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-7 text-xs border-border text-muted-foreground hover:bg-muted"
-                      onClick={() => {
-                        const t = new Date(); t.setHours(0,0,0,0);
-                        if (days === -1) {
-                          const from = new Date(t.getFullYear(), t.getMonth(), 1);
-                          setDateRange({ from, to: t });
-                        } else if (single) {
-                          const d = new Date(t); d.setDate(d.getDate() - days);
-                          setDateRange({ from: d, to: d });
-                        } else {
-                          const from = new Date(t); from.setDate(from.getDate() - days);
-                          setDateRange({ from, to: t });
-                        }
-                      }}
-                    >
-                      {label}
-                    </Button>
-                  ))}
-                </div>
               </>
             )}
           </div>
