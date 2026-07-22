@@ -8,9 +8,7 @@ import {
   parseFinancialMetrics,
   type FinancialDashboardMetrics,
 } from '@/app/services/financialDashboardService';
-import { inventoryService } from '@/app/services/inventoryService';
-import { mapOverviewToStockAlerts } from '@/app/lib/dashboardV2Stock';
-import { priorComparablePeriod } from '@/app/lib/dashboardV2Period';
+import { mapRpcLowStockToAlerts } from '@/app/lib/dashboardV2Stock';
 import {
   buildMeta,
   buildStockAlerts,
@@ -180,13 +178,8 @@ async function loadSnapshotInner(params: LoadSnapshotParams): Promise<DashboardV
   const { companyId, branchId, dateFrom, dateTo } = params;
   const branchNorm = branchId && branchId !== 'all' ? branchId : null;
 
-  const prior = priorComparablePeriod(dateFrom, dateTo);
-
-  const [rpcRaw, overview, priorPayload] = await Promise.all([
-    fetchV2Rpc(companyId, branchNorm, dateFrom, dateTo),
-    inventoryService.getInventoryOverview(companyId, branchNorm),
-    getDashboardMetrics(companyId, branchNorm, prior.from, prior.to).catch(() => null),
-  ]);
+  // Single V2 RPC: metrics + prior_period + low_stock (no parallel inventoryOverview / prior metrics)
+  const rpcRaw = await fetchV2Rpc(companyId, branchNorm, dateFrom, dateTo);
 
   let metrics: FinancialDashboardMetrics;
   let salesByCategory: Array<{ categoryName: string; total: number }> = [];
@@ -199,6 +192,7 @@ async function loadSnapshotInner(params: LoadSnapshotParams): Promise<DashboardV
   let topCustomers: { name: string; total: number }[] = [];
   let rentals: DashboardV2Snapshot['operations']['rentals'] = [];
   let cashBankByAccount: { code: string; name: string; balance: number }[] = [];
+  let priorMetrics: FinancialDashboardMetrics | null = null;
 
   if (rpcRaw?.metrics) {
     metrics = parseFinancialMetrics(rpcRaw.metrics as Record<string, unknown>);
@@ -229,17 +223,31 @@ async function loadSnapshotInner(params: LoadSnapshotParams): Promise<DashboardV
       name: String(a.name ?? ''),
       balance: Number(a.balance) || 0,
     }));
+    if (rpcRaw.prior_period && typeof rpcRaw.prior_period === 'object') {
+      priorMetrics = parseFinancialMetrics(rpcRaw.prior_period as Record<string, unknown>);
+    }
   } else {
     const fallback = await getDashboardMetrics(companyId, branchNorm, dateFrom, dateTo);
     metrics = fallback.metrics;
     salesByCategory = fallback.sales_by_category;
   }
 
-  const priorMetrics = priorPayload?.metrics ?? null;
   const summary = buildSummaryFromMetrics(metrics, priorMetrics);
   summary.cashBankByAccount = cashBankByAccount;
 
-  const lowStock = mapOverviewToStockAlerts(overview);
+  const lowStockRaw =
+    (Array.isArray(rpcRaw?.low_stock) ? rpcRaw!.low_stock : null) ??
+    (Array.isArray(rpcRaw?.low_stock_items) ? rpcRaw!.low_stock_items : null) ??
+    [];
+  const lowStock = mapRpcLowStockToAlerts(
+    lowStockRaw as Array<{
+      id?: string;
+      name?: string;
+      sku?: string;
+      current_stock?: number;
+      min_stock?: number;
+    }>,
+  );
   const stockAlerts = buildStockAlerts(lowStock);
   const liquidityAlerts = buildLiquidityAlerts(summary);
   const rentalAlerts = buildRentalAlerts(rentals);
