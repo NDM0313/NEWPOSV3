@@ -43,6 +43,7 @@ import { ChangePasswordDialog } from '../auth/ChangePasswordDialog';
 import { useCheckPermission } from '../../hooks/useCheckPermission';
 import { NotificationsDropdown } from './NotificationsDropdown';
 import { dispatchGlobalRefresh } from '@/app/lib/dataInvalidationBus';
+import { hasCompanyWideBranchAccess } from '@/app/config/functionalRoles';
 
 export const TopHeader = () => {
   const { toggleSidebar, openDrawer, setCurrentView, setMobileNavOpen } = useNavigation();
@@ -56,8 +57,7 @@ export const TopHeader = () => {
   const [loadingBranches, setLoadingBranches] = useState(false);
   const [showCustomDatePicker, setShowCustomDatePicker] = useState(false);
 
-  const roleNorm = String(userRole || '').toLowerCase().trim();
-  const isAdminOrOwner = roleNorm === 'admin' || roleNorm === 'owner';
+  const companyWideBranchAccess = hasCompanyWideBranchAccess(userRole);
 
   // Load branches (cached) for header dropdown; global rule: hide when single branch
   const loadBranches = useCallback(async () => {
@@ -79,11 +79,11 @@ export const TopHeader = () => {
   }, [loadBranches]);
 
   const selectableBranches = useMemo(() => {
-    if (isAdminOrOwner) return branches;
+    if (companyWideBranchAccess) return branches;
     if (!accessibleBranchIds?.length) return [];
     const allow = new Set(accessibleBranchIds.map(String));
     return branches.filter((b) => allow.has(String(b.id)));
-  }, [branches, accessibleBranchIds, isAdminOrOwner]);
+  }, [branches, accessibleBranchIds, companyWideBranchAccess]);
 
   // If user can only see one branch, always auto-select it (persist in global filter + Supabase)
   useEffect(() => {

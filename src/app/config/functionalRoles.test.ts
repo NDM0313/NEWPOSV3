@@ -5,6 +5,7 @@ import {
   mapAppRoleToEngineRole,
   mapAppRoleToUiRole,
   isPlatformOperatorAppRole,
+  hasCompanyWideBranchAccess,
 } from './functionalRoles.ts';
 
 describe('functionalRoles', () => {
@@ -40,5 +41,14 @@ describe('functionalRoles', () => {
     assert.equal(mapAppRoleToEngineRole('developer'), 'admin');
     assert.equal(mapAppRoleToUiRole('super_admin'), 'Admin');
     assert.equal(mapAppRoleToEngineRole('super_admin'), 'admin');
+  });
+
+  it('grants company-wide branch access to admin, owner, and platform operators', () => {
+    assert.equal(hasCompanyWideBranchAccess('admin'), true);
+    assert.equal(hasCompanyWideBranchAccess('owner'), true);
+    assert.equal(hasCompanyWideBranchAccess('developer'), true);
+    assert.equal(hasCompanyWideBranchAccess('super_admin'), true);
+    assert.equal(hasCompanyWideBranchAccess('manager'), false);
+    assert.equal(hasCompanyWideBranchAccess('salesman'), false);
   });
 });

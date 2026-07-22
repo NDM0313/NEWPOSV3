@@ -48,6 +48,12 @@ export function isPlatformOperatorAppRole(role: string | null | undefined): bool
   return r === 'developer' || r === 'super admin' || r === 'superadmin';
 }
 
+/** Admin, owner, and platform operators may see all company branches (+ All Branches). */
+export function hasCompanyWideBranchAccess(role: string | null | undefined): boolean {
+  const r = canonAppRoleRaw(role);
+  return r === 'admin' || r === 'owner' || isPlatformOperatorAppRole(role);
+}
+
 /** Normalize legacy users.role strings to assignable or system values. */
 export function normalizeAppRole(role: string | null | undefined): string {
   const r = canonAppRoleRaw(role) || 'salesman';

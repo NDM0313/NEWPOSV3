@@ -12,6 +12,7 @@ import {
   getBridgeSession,
   type UserProfileRow,
 } from '@/app/lib/supabaseSessionBridge';
+import { hasCompanyWideBranchAccess } from '@/app/config/functionalRoles';
 
 /** True when Supabase returned 502/503/504 and retries are exhausted; show "Service temporarily unavailable" and offer retry. */
 const CONNECTION_ERROR_MAX_RETRIES = 2;
@@ -621,9 +622,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const authId = typeof userIds === 'string' ? null : userIds.authUserId;
     const lookupId = authId ?? erpId;
     try {
-      const roleNorm = String(userRole || '').toLowerCase().trim();
-      const isAdminOrOwner = roleNorm === 'admin' || roleNorm === 'owner';
-      if (isAdminOrOwner) {
+      if (hasCompanyWideBranchAccess(userRole)) {
         const { data: companyBranches } = await supabase
           .from('branches')
           .select('id')
@@ -636,13 +635,13 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           setDefaultBranchId(ids[0]);
           setBranchId(ids[0]);
           setRequiresBranchSelection(false);
-          if (import.meta.env?.DEV) console.log('[BRANCH LOADED] Admin/owner single branch:', ids[0]);
+          if (import.meta.env?.DEV) console.log('[BRANCH LOADED] Privileged single branch:', ids[0]);
           return;
         }
         setDefaultBranchId('all');
         setBranchId('all');
         setRequiresBranchSelection(false);
-        if (import.meta.env?.DEV) console.log('[BRANCH LOADED] Admin/owner: All Branches', { count: ids.length });
+        if (import.meta.env?.DEV) console.log('[BRANCH LOADED] Privileged: All Branches', { count: ids.length });
         return;
       }
 
