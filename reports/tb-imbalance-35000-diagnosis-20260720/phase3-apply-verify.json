@@ -1,0 +1,12 @@
+{
+  "status": "TB_IMBALANCE_FIXED",
+  "companyId": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+  "tbDifferenceAfter": 0,
+  "unbalancedRemaining": 0,
+  "fixes": [
+    {"entryNo": "JE-0222", "action": "set_cogs_debit_26000"},
+    {"entryNo": "JE-0247", "action": "insert_extra_service_debit_9000"}
+  ],
+  "migrationsRun": false,
+  "featureFlagsChanged": false
+}

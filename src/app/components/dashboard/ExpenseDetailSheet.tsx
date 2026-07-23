@@ -1,5 +1,5 @@
-import React from 'react';
-import { Pencil, Trash } from 'lucide-react';
+import React, { useRef } from 'react';
+import { Pencil, Trash, Paperclip } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Sheet, SheetContent } from '../ui/sheet';
@@ -41,19 +41,32 @@ export function ExpenseDetailSheet({
   getStatusBadgeStyle,
 }: ExpenseDetailSheetProps) {
   const { formatCurrency } = useFormatCurrency();
+  const receiptSectionRef = useRef<HTMLDivElement>(null);
 
   return (
     <Sheet open={open} onOpenChange={(isOpen) => { if (!isOpen) onClose(); }}>
-      <SheetContent side="right" className="w-full max-w-full sm:max-w-md bg-[#111827] border-l border-gray-800 text-white overflow-y-auto p-0">
+      <SheetContent side="right" className="w-full max-w-full sm:max-w-md bg-background border-l border-border text-foreground overflow-y-auto p-0">
         {expense ? (
           <div className="flex flex-col min-h-full">
-            <div className="bg-gray-950/80 border-b border-gray-800 px-6 py-5">
+            <div className="bg-input-background/80 border-b border-border px-6 py-5">
               <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Expense</p>
-                  <h2 className="text-xl font-bold text-white mt-1 truncate">
-                    {expense.expenseNo || expense.id.slice(0, 8)}
-                  </h2>
+                <div className="min-w-0 flex items-start gap-2">
+                  <div className="min-w-0">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Expense</p>
+                    <h2 className="text-xl font-bold text-foreground mt-1 truncate">
+                      {expense.expenseNo || expense.id.slice(0, 8)}
+                    </h2>
+                  </div>
+                  {expense.receiptUrl ? (
+                    <button
+                      type="button"
+                      onClick={() => receiptSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })}
+                      className="mt-5 p-1.5 rounded-lg hover:bg-amber-500/10 transition-colors shrink-0"
+                      title="View attachment"
+                    >
+                      <Paperclip size={18} className="text-amber-400" />
+                    </button>
+                  ) : null}
                 </div>
                 <Badge className={cn('shrink-0 capitalize', getStatusBadgeStyle(expense.status))}>
                   {expense.status}
@@ -64,25 +77,25 @@ export function ExpenseDetailSheet({
 
             <div className="flex-1 px-6 py-5 space-y-5">
               <div className="grid grid-cols-2 gap-3">
-                <div className="bg-gray-900/60 border border-gray-800 rounded-lg p-3">
-                  <p className="text-[10px] text-gray-500 uppercase font-medium">Date</p>
-                  <p className="text-sm text-white mt-1">{new Date(expense.date).toLocaleDateString()}</p>
+                <div className="bg-muted/60 border border-border rounded-lg p-3">
+                  <p className="text-[10px] text-muted-foreground uppercase font-medium">Date</p>
+                  <p className="text-sm text-foreground mt-1">{new Date(expense.date).toLocaleDateString()}</p>
                 </div>
-                <div className="bg-gray-900/60 border border-gray-800 rounded-lg p-3">
-                  <p className="text-[10px] text-gray-500 uppercase font-medium">Category</p>
-                  <p className="text-sm text-white mt-1 truncate" title={categoryPath || expense.category}>
+                <div className="bg-muted/60 border border-border rounded-lg p-3">
+                  <p className="text-[10px] text-muted-foreground uppercase font-medium">Category</p>
+                  <p className="text-sm text-foreground mt-1 truncate" title={categoryPath || expense.category}>
                     {categoryPath || expense.category}
                   </p>
                 </div>
-                <div className="bg-gray-900/60 border border-gray-800 rounded-lg p-3">
-                  <p className="text-[10px] text-gray-500 uppercase font-medium">Paid from</p>
-                  <p className="text-sm text-white mt-1 truncate" title={expense.paymentAccountDisplay || expense.paymentMethod}>
+                <div className="bg-muted/60 border border-border rounded-lg p-3">
+                  <p className="text-[10px] text-muted-foreground uppercase font-medium">Paid from</p>
+                  <p className="text-sm text-foreground mt-1 truncate" title={expense.paymentAccountDisplay || expense.paymentMethod}>
                     {expense.paymentAccountDisplay || expense.paymentMethod || '—'}
                   </p>
                 </div>
-                <div className="bg-gray-900/60 border border-gray-800 rounded-lg p-3">
-                  <p className="text-[10px] text-gray-500 uppercase font-medium">Payee</p>
-                  <p className="text-sm text-white mt-1 truncate" title={expense.payeeName || '—'}>
+                <div className="bg-muted/60 border border-border rounded-lg p-3">
+                  <p className="text-[10px] text-muted-foreground uppercase font-medium">Payee</p>
+                  <p className="text-sm text-foreground mt-1 truncate" title={expense.payeeName || '—'}>
                     {expense.payeeName || '—'}
                   </p>
                 </div>
@@ -90,26 +103,26 @@ export function ExpenseDetailSheet({
 
               {expense.submittedBy ? (
                 <div>
-                  <p className="text-xs text-gray-500 uppercase font-medium">Created by</p>
-                  <p className="text-white mt-1">{expense.submittedBy}</p>
+                  <p className="text-xs text-muted-foreground uppercase font-medium">Created by</p>
+                  <p className="text-foreground mt-1">{expense.submittedBy}</p>
                 </div>
               ) : null}
 
               <div>
-                <p className="text-xs text-gray-500 uppercase font-medium">Description</p>
-                <p className="text-white mt-1 whitespace-pre-wrap break-words">{expense.description || '—'}</p>
+                <p className="text-xs text-muted-foreground uppercase font-medium">Description</p>
+                <p className="text-foreground mt-1 whitespace-pre-wrap break-words">{expense.description || '—'}</p>
               </div>
 
               {expense.receiptUrl ? (
-                <div>
-                  <p className="text-xs text-gray-500 uppercase font-medium mb-2">Receipt / attachment</p>
+                <div ref={receiptSectionRef}>
+                  <p className="text-xs text-muted-foreground uppercase font-medium mb-2">Receipt / attachment</p>
                   {isPdfUrl(expense.receiptUrl) ? (
-                    <div className="rounded-lg bg-gray-800/50 border border-gray-700 p-4">
-                      <p className="text-sm text-gray-300 mb-3">{receiptFileName(expense.receiptUrl)}</p>
+                    <div className="rounded-lg bg-muted/50 border border-border p-4">
+                      <p className="text-sm text-muted-foreground mb-3">{receiptFileName(expense.receiptUrl)}</p>
                       <Button
                         size="sm"
                         variant="outline"
-                        className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                        className="border-gray-600 text-muted-foreground hover:bg-muted"
                         onClick={() => window.open(expense.receiptUrl!, '_blank')}
                       >
                         Open PDF
@@ -124,10 +137,10 @@ export function ExpenseDetailSheet({
               ) : null}
             </div>
 
-            <div className="sticky bottom-0 border-t border-gray-800 bg-[#111827] px-6 py-4 flex gap-2">
+            <div className="sticky bottom-0 border-t border-border bg-background px-6 py-4 flex gap-2">
               <Button
                 variant="outline"
-                className="flex-1 border-gray-700 text-gray-300"
+                className="flex-1 border-border text-muted-foreground"
                 onClick={onClose}
               >
                 Close

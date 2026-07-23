@@ -10,6 +10,8 @@ export type UserProfileRow = {
   company_id: string | null;
   role: string | null;
   is_active: boolean | null;
+  full_name?: string | null;
+  phone?: string | null;
 };
 
 let bridgeSession: Session | null = null;
@@ -66,7 +68,7 @@ export async function fetchUserProfileRow(
 
   const orFilter = `(id.eq.${userId},auth_user_id.eq.${userId})`;
   const url =
-    `${base}/rest/v1/users?select=id,auth_user_id,company_id,role,is_active` +
+    `${base}/rest/v1/users?select=id,auth_user_id,company_id,role,is_active,full_name,phone` +
     `&or=${encodeURIComponent(orFilter)}&limit=1`;
 
   try {

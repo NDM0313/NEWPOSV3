@@ -9,18 +9,23 @@ import { supabase } from '@/lib/supabase';
 import { documentNumberService } from '@/app/services/documentNumberService';
 import { accountingService, type JournalEntry, type JournalEntryLine } from '@/app/services/accountingService';
 import { dispatchContactBalancesRefresh } from '@/app/lib/contactBalancesRefresh';
-import { applyManualReceiptAllocations, applyManualSupplierPaymentAllocations } from '@/app/services/paymentAllocationService';
+import { applyManualReceiptAllocations } from '@/app/services/paymentAllocationService';
 import { generatePaymentReference } from '@/app/utils/paymentUtils';
-import {
-  getWorkerAdvanceAccountId,
-  shouldDebitWorkerPayableForPayment,
-} from '@/app/services/workerAdvanceService';
-import {
-  resolvePayablePostingAccountId,
-  resolveWorkerPayablePostingAccountId,
-} from '@/app/services/partySubledgerAccountService';
+import { createManualSupplierPayment } from '@/app/services/supplierPaymentService';
+import { createWorkerPayment } from '@/app/services/workerPaymentService';
+import { createCourierPayment } from '@/app/services/courierPaymentService';
 import { logPaymentCreated } from '@/app/services/auditLogService';
-import { ensurePaymentsForLiquidityJournal } from '@/app/services/journalLiquidityPaymentService';
+import {
+  ensurePaymentsForLiquidityJournal,
+  syncExistingLiquidityPaymentsForJournal,
+  syncLiquidityPaymentForJournal,
+} from '@/app/services/journalLiquidityPaymentService';
+import { notifyAccountingEntriesChanged } from '@/app/lib/accountingInvalidate';
+import {
+  recordPaymentWithAccounting,
+  resolveBranchIdForPaymentRpc,
+} from '@/app/services/recordPaymentWithAccountingRpc';
+import { resolveBranchUuidForWrite } from '@/app/utils/branchId';
 
 const PAYMENT_METHOD_MAP: Record<string, string> = {
   cash: 'cash', Cash: 'cash', bank: 'bank', Bank: 'bank', 'mobile wallet': 'other', 'Mobile Wallet': 'other',
@@ -36,60 +41,27 @@ function validBranchId(branchId: string | null | undefined): string | null {
   return branchId && branchId !== 'all' ? branchId : null;
 }
 
-async function getCustomerReceiptRef(companyId: string, branchId: string | null): Promise<string> {
-  try {
-    return await documentNumberService.getNextDocumentNumber(companyId, branchId, 'customer_receipt');
-  } catch {
-    return generatePaymentReference(null);
-  }
-}
-
-async function getOutgoingPaymentRef(companyId: string, branchId: string | null): Promise<string> {
-  try {
-    return await documentNumberService.getNextDocumentNumber(companyId, branchId, 'supplier_payment');
-  } catch {
-    return generatePaymentReference(null);
-  }
-}
-
-/** Worker/courier payments must NOT reuse supplier_payment numbers — same sequence caused payments_reference_number_unique collisions with supplier rows. */
-async function getWorkerOrCourierPaymentRef(companyId: string, branchId: string | null): Promise<string> {
-  try {
-    return await documentNumberService.getNextDocumentNumber(companyId, branchId, 'payment');
-  } catch {
-    return generatePaymentReference(null);
-  }
-}
-
-function isPaymentReferenceDuplicateError(err: { code?: string; message?: string } | null): boolean {
-  if (!err) return false;
-  if (err.code === '23505') return true;
-  const m = String(err.message || '').toLowerCase();
-  return m.includes('duplicate') || m.includes('payments_reference_number_unique');
-}
-
-async function getApAccountId(companyId: string): Promise<string> {
-  const { data } = await supabase.from('accounts').select('id').eq('company_id', companyId).or('code.eq.2000,name.ilike.%Accounts Payable%').limit(1);
-  const id = (data?.[0] as { id: string })?.id;
-  if (!id) throw new Error('Accounts Payable account (2000) not found');
-  return id;
-}
-
-async function getCourierPayableAccountId(companyId: string, contactId: string, contactName: string): Promise<string> {
-  const { data, error } = await supabase.rpc('get_or_create_courier_payable_account', {
-    p_company_id: companyId,
-    p_contact_id: contactId,
-    p_contact_name: contactName,
-  });
-  if (error || !data) throw new Error('Courier payable account not found');
-  return data as string;
-}
-
 /** Returns contactId only if it exists in contacts. Used to avoid payments.contact_id FK violation (e.g. courier with stale/missing contact). */
 async function validPaymentsContactId(_companyId: string, contactId: string | null): Promise<string | null> {
   if (!contactId) return null;
   const { data } = await supabase.from('contacts').select('id').eq('id', contactId).maybeSingle();
   return (data && (data as { id: string }).id) ? contactId : null;
+}
+
+function notifyAddEntryAccountingSaved(args: {
+  companyId: string;
+  branchId?: string | null;
+  journalEntryId?: string | null;
+}): void {
+  notifyAccountingEntriesChanged({
+    companyId: args.companyId,
+    branchId: args.branchId ?? null,
+    entityId: args.journalEntryId ?? null,
+    reason: 'accounting-entries-changed',
+  });
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('paymentAdded'));
+  }
 }
 
 // ─── 1. Pure Journal ─────────────────────────────────────────────────────
@@ -108,16 +80,16 @@ export interface CreatePureJournalParams {
 export async function createPureJournalEntry(params: CreatePureJournalParams): Promise<{ journalEntryId: string }> {
   const { companyId, branchId, entryDate, debitAccountId, creditAccountId, amount, description, createdBy, attachments } = params;
   if (!companyId || !debitAccountId || !creditAccountId || amount <= 0) throw new Error('Invalid pure journal params');
-  const branch = validBranchId(branchId);
+  const branch = await resolveBranchUuidForWrite(companyId, branchId);
   let entryNo: string;
   try {
-    entryNo = await documentNumberService.getNextDocumentNumber(companyId, branch, 'manual_journal');
+    entryNo = await documentNumberService.getNextJournalEntryNumber(companyId, branch);
   } catch {
-    entryNo = `JV-${Date.now()}`;
+    entryNo = `JE-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
   }
   const journalEntry: JournalEntry = {
     company_id: companyId,
-    branch_id: branch ?? undefined,
+    branch_id: branch,
     entry_no: entryNo,
     document_no: entryNo,
     entry_date: entryDate,
@@ -147,7 +119,100 @@ export async function createPureJournalEntry(params: CreatePureJournalParams): P
     })),
     createdBy: createdBy ?? null,
   });
+  notifyAddEntryAccountingSaved({ companyId, branchId: branch, journalEntryId });
   return { journalEntryId };
+}
+
+export interface UpdatePureJournalParams {
+  companyId: string;
+  journalEntryId: string;
+  entryDate: string;
+  createdAt?: string | null;
+  debitAccountId: string;
+  creditAccountId: string;
+  amount: number;
+  description?: string | null;
+}
+
+export async function updatePureJournalEntry(params: UpdatePureJournalParams): Promise<{ ok: boolean; error?: string }> {
+  const {
+    companyId,
+    journalEntryId,
+    entryDate,
+    createdAt,
+    debitAccountId,
+    creditAccountId,
+    amount,
+    description,
+  } = params;
+  if (!companyId || !journalEntryId || !debitAccountId || !creditAccountId || amount <= 0) {
+    return { ok: false, error: 'Invalid pure journal update params' };
+  }
+
+  const lines: JournalEntryLine[] = [
+    { account_id: debitAccountId, debit: amount, credit: 0, description: description || undefined },
+    { account_id: creditAccountId, debit: 0, credit: amount, description: description || undefined },
+  ];
+
+  const res = await accountingService.updateManualJournalEntry(companyId, journalEntryId, {
+    entry_date: entryDate,
+    ...(createdAt ? { created_at: createdAt } : {}),
+    description: description ?? null,
+    lines,
+  });
+  if (!res.ok) return res;
+
+  const { data: jeRow } = await supabase
+    .from('journal_entries')
+    .select('payment_id, entry_no, branch_id')
+    .eq('id', journalEntryId)
+    .eq('company_id', companyId)
+    .maybeSingle();
+
+  const entryNo = String((jeRow as { entry_no?: string } | null)?.entry_no || '').trim();
+  const paymentId = String((jeRow as { payment_id?: string } | null)?.payment_id || '').trim();
+  const branchId = (jeRow as { branch_id?: string | null } | null)?.branch_id ?? null;
+  const lineInputs = lines.map((l) => ({
+    accountId: l.account_id,
+    debit: l.debit,
+    credit: l.credit,
+  }));
+
+  if (paymentId) {
+    await syncLiquidityPaymentForJournal({
+      companyId,
+      paymentId,
+      entryNo,
+      entryDate,
+      description: description || 'Journal entry',
+      lines: lineInputs,
+    });
+  } else {
+    const { syncedCount } = await syncExistingLiquidityPaymentsForJournal({
+      companyId,
+      journalEntryId,
+      entryNo,
+      entryDate,
+      description: description || 'Journal entry',
+      lines: lineInputs,
+    });
+    if (syncedCount === 0) {
+      await ensurePaymentsForLiquidityJournal({
+        companyId,
+        branchId: validBranchId(branchId),
+        journalEntryId,
+        entryNo,
+        entryDate,
+        description: description || 'Journal entry',
+        lines: lineInputs,
+        createdBy: null,
+      });
+    }
+  }
+
+  notifyAddEntryAccountingSaved({ companyId, journalEntryId });
+
+  return { ok: true };
 }
 
 // ─── 2. Customer Receipt ───────────────────────────────────────────────────
@@ -169,54 +234,81 @@ export interface CreateCustomerReceiptParams {
 export async function createCustomerReceiptEntry(params: CreateCustomerReceiptParams): Promise<{ paymentId: string; journalEntryId: string; referenceNumber: string }> {
   const { companyId, branchId, customerId, customerName, amount, paymentAccountId, paymentDate, paymentMethod, notes, attachments, invoiceAllocations } = params;
   if (!companyId || !customerId || amount <= 0 || !paymentAccountId) throw new Error('Invalid customer receipt params');
-  const branch = validBranchId(branchId);
-  const refNo = await getCustomerReceiptRef(companyId, branch);
+  const branch = await resolveBranchUuidForWrite(companyId, branchId);
+  const branchResolved = branch;
   const { data: { user } } = await supabase.auth.getUser();
   const uid = (user as any)?.id ?? null;
+  const desc = notes || `Receipt from ${customerName}`;
 
-  const { data: arAccounts } = await supabase.from('accounts').select('id').eq('company_id', companyId).or('code.eq.1100,name.ilike.%Accounts Receivable%').limit(1);
-  const arId = (arAccounts?.[0] as { id: string })?.id;
-  if (!arId) throw new Error('Accounts Receivable account (1100) not found');
+  const { findRecentDuplicateManualReceipt } = await import('@/app/services/orphanReceiptService');
+  const duplicate = await findRecentDuplicateManualReceipt({
+    companyId,
+    customerId,
+    amount,
+    paymentDate,
+    paymentMethod: normalizePaymentMethod(paymentMethod),
+    paymentAccountId,
+  });
+  if (duplicate && !duplicate.isOrphan) {
+    throw new Error(
+      `Duplicate receipt already posted as ${duplicate.referenceNumber}. Open that receipt instead of creating a new one.`,
+    );
+  }
+  if (duplicate?.isOrphan) {
+    throw new Error(
+      `A failed receipt attempt ${duplicate.referenceNumber} already exists. Use Delete/Hide orphan on that row before retrying.`,
+    );
+  }
 
-  const receiptPayload: Record<string, unknown> = {
-    company_id: companyId,
-    branch_id: branch,
-    payment_type: 'received',
+  const rpcResult = await recordPaymentWithAccounting({
+    companyId,
+    branchId: branchResolved,
+    paymentType: 'received',
+    referenceType: 'on_account',
+    referenceId: customerId,
+    amount,
+    paymentMethod,
+    paymentDate,
+    paymentAccountId,
+    notes: desc,
+    createdBy: uid,
+  });
+
+  const paymentId = rpcResult.paymentId;
+  const journalEntryId = rpcResult.journalEntryId;
+  const refNo = rpcResult.referenceNumber;
+
+  const paymentPatch: Record<string, unknown> = {
     reference_type: 'manual_receipt',
     reference_id: null,
     contact_id: customerId,
-    amount,
-    payment_method: normalizePaymentMethod(paymentMethod),
-    payment_account_id: paymentAccountId,
-    payment_date: paymentDate,
-    reference_number: refNo,
-    notes: notes || undefined,
     received_by: uid,
-    created_by: uid,
   };
-  if (attachments && attachments.length > 0) receiptPayload.attachments = attachments;
-  const { data: paymentRow, error: payErr } = await supabase.from('payments').insert(receiptPayload).select('id').single();
-  if (payErr) throw new Error(`Payment row failed: ${payErr.message}`);
-  const paymentId = (paymentRow as { id: string }).id;
-  logPaymentCreated(companyId, paymentId, { reference_type: 'manual_receipt', amount, contact_id: customerId });
+  if (attachments && attachments.length > 0) {
+    paymentPatch.attachments = attachments;
+  }
 
-  const entryNo = `JE-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
-  const desc = notes || `Receipt from ${customerName}`;
-  const journalEntry: JournalEntry = {
-    company_id: companyId,
-    branch_id: branch ?? undefined,
-    entry_no: entryNo,
-    entry_date: paymentDate,
-    description: desc,
-    reference_type: 'manual_receipt',
-    reference_id: customerId,
-    created_by: uid ?? undefined,
-  };
-  const lines: JournalEntryLine[] = [
-    { account_id: paymentAccountId, debit: amount, credit: 0, description: desc },
-    { account_id: arId, debit: 0, credit: amount, description: desc },
-  ];
-  const saved = await accountingService.createEntry(journalEntry, lines, paymentId);
+  let payUpd = await supabase.from('payments').update(paymentPatch).eq('id', paymentId);
+  if (payUpd.error?.code === 'PGRST204' && String(payUpd.error.message || '').includes('attachments')) {
+    const { attachments: _a, ...rest } = paymentPatch;
+    payUpd = await supabase.from('payments').update(rest).eq('id', paymentId);
+  } else if (payUpd.error) {
+    console.warn('[AddEntryV2] manual receipt payment patch after RPC:', payUpd.error.message);
+  }
+
+  const jeUpd = await supabase
+    .from('journal_entries')
+    .update({
+      reference_type: 'manual_receipt',
+      reference_id: customerId,
+      description: desc,
+    })
+    .eq('id', journalEntryId);
+  if (jeUpd.error) {
+    console.warn('[AddEntryV2] manual receipt JE patch after RPC:', jeUpd.error.message);
+  }
+
+  logPaymentCreated(companyId, paymentId, { reference_type: 'manual_receipt', amount, contact_id: customerId });
 
   await applyManualReceiptAllocations({
     companyId,
@@ -230,20 +322,21 @@ export async function createCustomerReceiptEntry(params: CreateCustomerReceiptPa
     explicitAllocations: invoiceAllocations && invoiceAllocations.length > 0 ? invoiceAllocations : null,
   });
 
+  dispatchContactBalancesRefresh(companyId);
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'customer', entityId: customerId } }));
-    window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
   }
+  notifyAddEntryAccountingSaved({ companyId, branchId: branch, journalEntryId });
   if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
     console.log('[AddEntryV2] createCustomerReceiptEntry:', {
       payload: { customerId, customerName, amount, paymentAccountId, paymentDate },
       paymentId,
-      journalEntryId: (saved as { id: string }).id,
+      journalEntryId,
       referenceNumber: refNo,
       refetchEvent: 'ledgerUpdated(customer)',
     });
   }
-  return { paymentId, journalEntryId: (saved as { id: string }).id, referenceNumber: refNo };
+  return { paymentId, journalEntryId, referenceNumber: refNo };
 }
 
 // ─── 3. Supplier Payment ──────────────────────────────────────────────────
@@ -263,71 +356,25 @@ export interface CreateSupplierPaymentParams {
 export async function createSupplierPaymentEntry(params: CreateSupplierPaymentParams): Promise<{ paymentId: string; journalEntryId: string; referenceNumber: string }> {
   const { companyId, branchId, supplierContactId, supplierName, amount, paymentAccountId, paymentDate, paymentMethod, notes, attachments } = params;
   if (!companyId || !supplierContactId || amount <= 0 || !paymentAccountId) throw new Error('Invalid supplier payment params');
-  const branch = validBranchId(branchId);
-  const refNo = await getOutgoingPaymentRef(companyId, branch);
-  const { data: { user } } = await supabase.auth.getUser();
-  const uid = (user as any)?.id ?? null;
-
-  const supplierPayPayload: Record<string, unknown> = {
-    company_id: companyId,
-    branch_id: branch,
-    payment_type: 'paid',
-    reference_type: 'manual_payment',
-    reference_id: null,
-    contact_id: supplierContactId,
-    amount,
-    payment_method: normalizePaymentMethod(paymentMethod),
-    payment_account_id: paymentAccountId,
-    payment_date: paymentDate,
-    reference_number: refNo,
-    notes: notes || undefined,
-    received_by: uid,
-    created_by: uid,
-  };
-  if (attachments && attachments.length > 0) supplierPayPayload.attachments = attachments;
-  const { data: paymentRow, error: payErr } = await supabase.from('payments').insert(supplierPayPayload).select('id').single();
-  if (payErr) throw new Error(`Payment row failed: ${payErr.message}`);
-  const paymentId = (paymentRow as { id: string }).id;
-  logPaymentCreated(companyId, paymentId, { reference_type: 'manual_payment', amount, contact_id: supplierContactId });
-
-  const apId =
-    (await resolvePayablePostingAccountId(companyId, supplierContactId)) || (await getApAccountId(companyId));
   const desc = notes || `Manual payment to ${supplierName}`;
-  const entryNo = `JE-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
-  const journalEntry: JournalEntry = {
-    company_id: companyId,
-    branch_id: branch ?? undefined,
-    entry_no: entryNo,
-    entry_date: paymentDate,
-    description: desc,
-    reference_type: 'manual_payment',
-    reference_id: paymentId,
-    created_by: uid ?? undefined,
-  };
-  const lines: JournalEntryLine[] = [
-    { account_id: apId, debit: amount, credit: 0, description: desc },
-    { account_id: paymentAccountId, debit: 0, credit: amount, description: desc },
-  ];
-  const saved = await accountingService.createEntry(journalEntry, lines, paymentId);
-
-  await applyManualSupplierPaymentAllocations({
+  const branch = await resolveBranchUuidForWrite(companyId, branchId);
+  const result = await createManualSupplierPayment({
     companyId,
     branchId: branch,
-    paymentId,
-    supplierId: supplierContactId,
+    supplierContactId,
     amount,
+    paymentMethod,
+    paymentAccountId,
     paymentDate,
-    referenceNumber: refNo,
-    createdBy: uid,
-    explicitAllocations: null,
+    notes: desc,
+    attachments,
   });
-
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'supplier', entityId: supplierContactId } }));
-    window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
-  }
-  dispatchContactBalancesRefresh(companyId);
-  return { paymentId, journalEntryId: (saved as { id: string }).id, referenceNumber: refNo };
+  notifyAddEntryAccountingSaved({
+    companyId,
+    branchId: branch,
+    journalEntryId: result.journalEntryId,
+  });
+  return result;
 }
 
 // ─── 4. Worker Payment ────────────────────────────────────────────────────
@@ -349,86 +396,35 @@ export interface CreateWorkerPaymentParams {
 export async function createWorkerPaymentEntry(params: CreateWorkerPaymentParams): Promise<{ paymentId: string; journalEntryId: string; referenceNumber: string }> {
   const { companyId, branchId, workerId, workerName, amount, paymentAccountId, paymentDate, paymentMethod, notes, stageId, attachments } = params;
   if (!companyId || !workerId || amount <= 0 || !paymentAccountId) throw new Error('Invalid worker payment params');
-  const branch = validBranchId(branchId);
-  const { data: { user } } = await supabase.auth.getUser();
-  const uid = (user as any)?.id ?? null;
-  const contactIdForPay = await validPaymentsContactId(companyId, workerId);
-
-  let refNo = await getWorkerOrCourierPaymentRef(companyId, branch);
-  let paymentId = '';
-  let payErr: { code?: string; message?: string } | null = null;
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const workerPayPayload: Record<string, unknown> = {
-      company_id: companyId,
-      branch_id: branch,
-      payment_type: 'paid',
-      reference_type: 'worker_payment',
-      reference_id: workerId,
-      amount,
-      payment_method: normalizePaymentMethod(paymentMethod),
-      payment_account_id: paymentAccountId,
-      payment_date: paymentDate,
-      reference_number: refNo,
-      notes: notes || undefined,
-      received_by: uid,
-      created_by: uid,
-    };
-    if (contactIdForPay) workerPayPayload.contact_id = contactIdForPay;
-    if (attachments && attachments.length > 0) workerPayPayload.attachments = attachments;
-    const { data: paymentRow, error } = await supabase.from('payments').insert(workerPayPayload).select('id').single();
-    payErr = error;
-    if (!error && paymentRow) {
-      paymentId = (paymentRow as { id: string }).id;
-      break;
-    }
-    if (isPaymentReferenceDuplicateError(error) && attempt < 4) {
-      refNo = generatePaymentReference(null);
-      continue;
-    }
-    throw new Error(`Payment row failed: ${error?.message || 'unknown'}`);
-  }
-  if (!paymentId) throw new Error(`Payment row failed: ${payErr?.message || 'unknown'}`);
-  logPaymentCreated(companyId, paymentId, { reference_type: 'worker_payment', amount, reference_id: workerId });
-
-  const payToPayable = await shouldDebitWorkerPayableForPayment(companyId, workerId, stageId ?? null, branch);
-  const wpId = await resolveWorkerPayablePostingAccountId(companyId, workerId);
-  if (!wpId) throw new Error('Worker Payable account (2010) not found');
-  const advId = payToPayable ? null : await getWorkerAdvanceAccountId(companyId);
-  if (!payToPayable && !advId) throw new Error('Worker Advance account (1180) not found');
-  const debitId = payToPayable ? wpId : advId!;
-  const debitNote = payToPayable ? 'Worker payable' : 'Worker advance (pre-bill)';
-  const desc = notes || `Payment to worker ${workerName} (${debitNote})`;
-  const entryNo = `JE-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
-  const journalEntry: JournalEntry = {
-    company_id: companyId,
-    branch_id: branch ?? undefined,
-    entry_no: entryNo,
-    entry_date: paymentDate,
-    description: desc,
-    reference_type: 'worker_payment',
-    reference_id: workerId,
-    created_by: uid ?? undefined,
-  };
-  const lines: JournalEntryLine[] = [
-    { account_id: debitId, debit: amount, credit: 0, description: desc },
-    { account_id: paymentAccountId, debit: 0, credit: amount, description: desc },
-  ];
-  const saved = await accountingService.createEntry(journalEntry, lines, paymentId);
-
-  const { studioProductionService } = await import('@/app/services/studioProductionService');
-  await studioProductionService.recordAccountingPaymentToLedger({
+  const desc = notes || `Payment to worker ${workerName}`;
+  const branch = await resolveBranchUuidForWrite(companyId, branchId);
+  const result = await createWorkerPayment({
     companyId,
+    branchId: branch,
     workerId,
+    workerName,
     amount,
-    paymentReference: refNo,
+    paymentMethod,
+    paymentAccountId,
+    paymentDate,
+    stageId: stageId ?? null,
     notes: desc,
-    journalEntryId: (saved as { id: string }).id,
   });
+  if (attachments && attachments.length > 0) {
+    const upd = await supabase.from('payments').update({ attachments }).eq('id', result.paymentId);
+    if (upd.error?.code === 'PGRST204') {
+      /* attachments column optional */
+    }
+  }
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'worker', entityId: workerId } }));
   }
-  dispatchContactBalancesRefresh(companyId);
-  return { paymentId, journalEntryId: (saved as { id: string }).id, referenceNumber: refNo };
+  notifyAddEntryAccountingSaved({
+    companyId,
+    branchId: branch,
+    journalEntryId: result.journalEntryId,
+  });
+  return result;
 }
 
 // ─── 5. Expense Payment ─────────────────────────────────────────────────────
@@ -446,7 +442,7 @@ export interface CreateExpensePaymentParams {
 export async function createExpensePaymentEntry(params: CreateExpensePaymentParams): Promise<{ paymentId: string; journalEntryId: string; referenceNumber: string }> {
   const { companyId, branchId, expenseAccountId, amount, paymentAccountId, paymentDate, paymentMethod, notes } = params;
   if (!companyId || !expenseAccountId || amount <= 0 || !paymentAccountId) throw new Error('Invalid expense payment params');
-  const branch = validBranchId(branchId);
+  const branch = await resolveBranchUuidForWrite(companyId, branchId);
   let refNo: string;
   try {
     refNo = await documentNumberService.getNextDocumentNumber(companyId, branch, 'expense');
@@ -479,7 +475,7 @@ export async function createExpensePaymentEntry(params: CreateExpensePaymentPara
   const entryNo = `JE-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
   const journalEntry: JournalEntry = {
     company_id: companyId,
-    branch_id: branch ?? undefined,
+    branch_id: branch,
     entry_no: entryNo,
     entry_date: paymentDate,
     description: desc,
@@ -492,7 +488,9 @@ export async function createExpensePaymentEntry(params: CreateExpensePaymentPara
     { account_id: paymentAccountId, debit: 0, credit: amount, description: desc },
   ];
   const saved = await accountingService.createEntry(journalEntry, lines, paymentId);
-  return { paymentId, journalEntryId: (saved as { id: string }).id, referenceNumber: refNo };
+  const journalEntryId = (saved as { id: string }).id;
+  notifyAddEntryAccountingSaved({ companyId, branchId: branch, journalEntryId });
+  return { paymentId, journalEntryId, referenceNumber: refNo };
 }
 
 // ─── 6. Internal Transfer ──────────────────────────────────────────────────
@@ -511,7 +509,7 @@ export interface CreateInternalTransferParams {
 export async function createInternalTransferEntry(params: CreateInternalTransferParams): Promise<{ journalEntryId: string }> {
   const { companyId, branchId, fromAccountId, toAccountId, amount, entryDate, description, createdBy, attachments } = params;
   if (!companyId || !fromAccountId || !toAccountId || amount <= 0) throw new Error('Invalid transfer params');
-  const branch = validBranchId(branchId);
+  const branch = await resolveBranchUuidForWrite(companyId, branchId);
   const desc = description || 'Internal transfer';
   let entryNo: string;
   try {
@@ -521,7 +519,7 @@ export async function createInternalTransferEntry(params: CreateInternalTransfer
   }
   const journalEntry: JournalEntry = {
     company_id: companyId,
-    branch_id: branch ?? undefined,
+    branch_id: branch,
     entry_no: entryNo,
     document_no: entryNo,
     entry_date: entryDate,
@@ -550,6 +548,7 @@ export async function createInternalTransferEntry(params: CreateInternalTransfer
     ],
     createdBy: createdBy ?? null,
   });
+  notifyAddEntryAccountingSaved({ companyId, branchId: branch, journalEntryId });
   return { journalEntryId };
 }
 
@@ -571,89 +570,29 @@ export interface CreateCourierPaymentParams {
 export async function createCourierPaymentEntry(params: CreateCourierPaymentParams): Promise<{ paymentId: string; journalEntryId: string; referenceNumber: string }> {
   const { companyId, branchId, courierId, courierName, courierContactId, amount, paymentAccountId, paymentDate, paymentMethod, notes, attachments } = params;
   if (!companyId || !courierId || amount <= 0 || !paymentAccountId) throw new Error('Invalid courier payment params');
-  const branch = validBranchId(branchId);
-  const { data: { user } } = await supabase.auth.getUser();
-  const uid = (user as any)?.id ?? null;
-
   const rawContactId = courierContactId || courierId;
   const contactIdForPayments = await validPaymentsContactId(companyId, rawContactId);
-  if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-    console.log('[AddEntryV2] createCourierPaymentEntry – courier/contact:', {
-      courierId,
-      courierName,
-      rawContactId,
-      contactIdValid: !!contactIdForPayments,
-    });
+  if (!contactIdForPayments) {
+    throw new Error('Courier payment requires a valid contact linked to the courier.');
   }
-
-  let refNo = await getWorkerOrCourierPaymentRef(companyId, branch);
-  let paymentId = '';
-  let payErr: { code?: string; message?: string } | null = null;
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const paymentPayload: Record<string, unknown> = {
-      company_id: companyId,
-      branch_id: branch,
-      payment_type: 'paid',
-      reference_type: 'courier_payment',
-      reference_id: courierId,
-      amount,
-      payment_method: normalizePaymentMethod(paymentMethod),
-      payment_account_id: paymentAccountId,
-      payment_date: paymentDate,
-      reference_number: refNo,
-      notes: notes || undefined,
-      received_by: uid,
-      created_by: uid,
-    };
-    if (attachments && attachments.length > 0) paymentPayload.attachments = attachments;
-    if (contactIdForPayments != null) {
-      paymentPayload.contact_id = contactIdForPayments;
-    }
-    const { data: paymentRow, error } = await supabase.from('payments').insert(paymentPayload).select('id').single();
-    payErr = error;
-    if (!error && paymentRow) {
-      paymentId = (paymentRow as { id: string }).id;
-      break;
-    }
-    if (isPaymentReferenceDuplicateError(error) && attempt < 4) {
-      refNo = generatePaymentReference(null);
-      continue;
-    }
-    throw new Error(`Payment row failed: ${error?.message || 'unknown'}`);
-  }
-  if (!paymentId) throw new Error(`Payment row failed: ${payErr?.message || 'unknown'}`);
-  logPaymentCreated(companyId, paymentId, { reference_type: 'courier_payment', amount, reference_id: courierId });
-
-  if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-    console.log('[AddEntryV2] createCourierPaymentEntry – payments row created:', { paymentId, contact_id: contactIdForPayments ?? null });
-  }
-
-  const courierPayableId = await getCourierPayableAccountId(companyId, rawContactId, courierName);
   const desc = notes || `Courier payment – ${courierName}`;
-  const entryNo = `JE-COUR-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
-  const journalEntry: JournalEntry = {
-    company_id: companyId,
-    branch_id: branch ?? undefined,
-    entry_no: entryNo,
-    entry_date: paymentDate,
-    description: desc,
-    reference_type: 'courier_payment',
-    reference_id: rawContactId,
-    created_by: uid ?? undefined,
-  };
-  const lines: JournalEntryLine[] = [
-    { account_id: courierPayableId, debit: amount, credit: 0, description: desc },
-    { account_id: paymentAccountId, debit: 0, credit: amount, description: `Payment to ${courierName}` },
-  ];
-  const saved = await accountingService.createEntry(journalEntry, lines, paymentId);
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'courier', entityId: rawContactId } }));
-  }
-  if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-    console.log('[AddEntryV2] createCourierPaymentEntry – JE + ledgerUpdated:', {
-      journalEntryId: (saved as { id: string }).id,
-      courierEntityId: rawContactId,
-    });
-  }
-  return { paymentId, journalEntryId: (saved as { id: string }).id, referenceNumber: refNo };
+  const branch = await resolveBranchUuidForWrite(companyId, branchId);
+  const result = await createCourierPayment({
+    companyId,
+    branchId: branch,
+    courierContactId: contactIdForPayments,
+    courierReferenceId: courierId,
+    amount,
+    paymentMethod,
+    paymentAccountId,
+    paymentDate,
+    notes: desc,
+    attachments,
+  });
+  notifyAddEntryAccountingSaved({
+    companyId,
+    branchId: branch,
+    journalEntryId: result.journalEntryId,
+  });
+  return result;
 }

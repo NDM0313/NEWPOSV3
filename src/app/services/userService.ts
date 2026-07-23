@@ -92,6 +92,50 @@ export const userService = {
     return data;
   },
 
+  /** Load ERP profile for the signed-in auth user (id OR auth_user_id match). */
+  async getProfileForAuthUser(authUserId: string, companyId?: string | null): Promise<User | null> {
+    if (!authUserId) return null;
+    let query = supabase
+      .from('users')
+      .select('*')
+      .or(`id.eq.${authUserId},auth_user_id.eq.${authUserId}`)
+      .limit(1);
+    if (companyId) {
+      query = query.eq('company_id', companyId);
+    }
+    const { data, error } = await query.maybeSingle();
+    if (error) throw error;
+    return data as User | null;
+  },
+
+  /** Self-service profile update: full_name and phone only. */
+  async updateOwnProfile(
+    authUserId: string,
+    companyId: string | null,
+    payload: { full_name: string; phone?: string | null },
+  ): Promise<User> {
+    const erpUserId = await this.resolvePublicUserId(companyId, authUserId);
+    const updatePayload = {
+      full_name: payload.full_name.trim(),
+      phone: payload.phone?.trim() || null,
+      updated_at: new Date().toISOString(),
+    };
+    const { data, error } = await supabase
+      .from('users')
+      .update(updatePayload)
+      .eq('id', erpUserId)
+      .select()
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!data) {
+      throw new Error(
+        'Profile update was not applied (no matching row or insufficient permission).',
+      );
+    }
+    return data as User;
+  },
+
   // Generate next user code
   async generateUserCode(companyId: string): Promise<string> {
     try {
@@ -303,13 +347,24 @@ export const userService = {
   },
 
   /**
-   * Get active users eligible for salary (Staff, Salesman, Operator, Admin, Manager).
+   * Get active users eligible for salary (Staff, Salesman, Operator, Admin, Manager, Owner).
    * Used in Expenses → Salary: "Pay to (User)" dropdown. Workers (Dyer, Stitcher, etc.) are NOT included.
    */
   async getUsersForSalary(companyId: string): Promise<User[]> {
     const all = await this.getAllUsers(companyId, { includeInactive: false });
-    const salaryRoles = ['admin', 'manager', 'staff', 'salesman', 'operator', 'cashier', 'inventory'];
-    return (all || []).filter((u) => salaryRoles.includes((u.role || '').toLowerCase()));
+    const salaryRoles = ['owner', 'admin', 'manager', 'staff', 'salesman', 'operator', 'cashier', 'inventory'];
+    return (all || [])
+      .filter((u) => {
+        const role = (u.role || '').toLowerCase();
+        if (salaryRoles.includes(role)) return true;
+        const perms = (u as User & { permissions?: Record<string, unknown> }).permissions ?? {};
+        if (perms.canBeAssignedAsSalesman === true) return true;
+        if ((perms as { sales?: { canBeAssignedAsSalesman?: boolean } }).sales?.canBeAssignedAsSalesman === true) {
+          return true;
+        }
+        return u.can_be_assigned_as_salesman === true;
+      })
+      .sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '', undefined, { sensitivity: 'base' }));
   },
 
   /** Get branch IDs assigned to a user (for Edit User → Branch Access). userId = auth_user_id (identity). */

@@ -15,6 +15,33 @@ export function localNowDateString(): string {
   return formatLocalDateYYYYMMDD(new Date());
 }
 
+/** Local calendar date N days from today (YYYY-MM-DD). */
+export function localDatePlusDays(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return formatLocalDateYYYYMMDD(d);
+}
+
+/** Current local date+time for `datetime-local` inputs (YYYY-MM-DDTHH:mm). */
+export function localNowDateTimeString(): string {
+  const now = new Date();
+  return `${formatLocalDateYYYYMMDD(now)}T${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
+}
+
+/** Split a `datetime-local` value into payment_date (YYYY-MM-DD) and timestamptz for created_at. */
+export function parsePaymentDateTimeLocal(value: string): { paymentDate: string; paymentAt: string } {
+  const trimmed = (value || '').trim();
+  if (!trimmed) {
+    const now = new Date();
+    return { paymentDate: formatLocalDateYYYYMMDD(now), paymentAt: toLocalISOString(now) };
+  }
+  const [datePart, timePart] = trimmed.split('T');
+  const paymentDate = datePart || localNowDateString();
+  const d = timePart ? new Date(trimmed) : new Date(`${paymentDate}T12:00:00`);
+  const paymentAt = Number.isNaN(d.getTime()) ? getCurrentLocalTimestamp() : toLocalISOString(d);
+  return { paymentDate, paymentAt };
+}
+
 function pad2(n: number): string {
   return String(n).padStart(2, '0');
 }

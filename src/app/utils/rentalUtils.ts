@@ -172,12 +172,14 @@ export const releaseProductStock = (
  */
 export const getAllowedStatusTransitions = (currentStatus: RentalStatus): RentalStatus[] => {
   const transitions: Record<RentalStatus, RentalStatus[]> = {
-    reserved: ['picked_up', 'cancelled'],
-    picked_up: ['returned', 'overdue'],
+    reserved: ['booked', 'picked_up', 'cancelled'],
+    booked: ['picked_up', 'active', 'cancelled'],
+    picked_up: ['returned', 'overdue', 'active'],
+    active: ['returned', 'overdue'],
     returned: ['closed'],
     closed: [],
     cancelled: [],
-    overdue: ['returned']
+    overdue: ['returned'],
   };
   
   return transitions[currentStatus] || [];

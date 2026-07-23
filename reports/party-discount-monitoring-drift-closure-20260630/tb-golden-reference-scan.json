@@ -1,0 +1,20 @@
+{
+  "generated_at": "2026-06-30T09:00:00.000Z",
+  "search_value": 407957271.02,
+  "monitoring_active_files_to_update": [
+    "scripts/single-core-ledger/monitoring-company-profiles.json",
+    "reports/single-core-ledger/din-china/golden-fixtures.json",
+    "scripts/single-core-ledger/unifiedLedgerBrowserQaHelpers.mjs",
+    "scripts/single-core-ledger/unifiedLedgerBrowserQaHelpers.test.mjs",
+    "scripts/single-core-ledger/loadMonitoringProfile.test.mjs"
+  ],
+  "historical_evidence_only": [
+    "reports/single-core-ledger/operational-monitoring/three-company-monitoring-*.json",
+    "reports/single-core-ledger/phase-2-16-monitoring/**",
+    "scripts/single-core-ledger/run-phase-213-party-ledger-loader-browser-qa.mjs",
+    "scripts/single-core-ledger/run-phase-212x-closeout-verify.mjs",
+    "docs/accounting/SINGLE_CORE_LEDGER_PRODUCTION_READY.md"
+  ],
+  "new_expected_value": 407957272.02,
+  "reason": "Retained JE-0003 PKR 1 party_discount increases DIN CHINA TB total by 1"
+}

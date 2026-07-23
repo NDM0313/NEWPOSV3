@@ -10,14 +10,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "../ui/popover";
-import { Calendar } from "../ui/calendar";
 import { format } from "date-fns";
-import { cn } from "../ui/utils";
+import { DatePicker } from "../ui/DatePicker";
+import { formatLocalDateYYYYMMDD, parseLocalDateInput } from '@/app/utils/localDate';
 import { useFormatCurrency } from "@/app/hooks/useFormatCurrency";
 
 type PaymentMode = 'cash' | 'card' | 'bank' | 'cheque';
@@ -111,7 +106,7 @@ export const SmartPaymentWidget = ({
   };
 
   const paymentModes = [
-    { id: 'cash' as PaymentMode, icon: Banknote, label: 'Cash', color: 'text-green-400', bgColor: 'bg-green-500/10', borderColor: 'border-green-500/30' },
+    { id: 'cash' as PaymentMode, icon: Banknote, label: 'Cash', color: 'text-[var(--erp-money-positive)]', bgColor: 'bg-green-500/10', borderColor: 'border-green-500/30' },
     { id: 'card' as PaymentMode, icon: CreditCard, label: 'Card', color: 'text-blue-400', bgColor: 'bg-blue-500/10', borderColor: 'border-blue-500/30' },
     { id: 'bank' as PaymentMode, icon: Building2, label: 'Bank', color: 'text-purple-400', bgColor: 'bg-purple-500/10', borderColor: 'border-purple-500/30' },
     { id: 'cheque' as PaymentMode, icon: FileText, label: 'Cheque', color: 'text-orange-400', bgColor: 'bg-orange-500/10', borderColor: 'border-orange-500/30' },
@@ -125,11 +120,11 @@ export const SmartPaymentWidget = ({
   ];
 
   return (
-    <div className="bg-gray-900 border-t border-gray-800 p-6 space-y-6">
+    <div className="bg-card border-t border-border p-6 space-y-6">
       {/* Grand Total Display */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <span className="text-sm text-gray-400 uppercase tracking-wide">Net Payable</span>
+          <span className="text-sm text-muted-foreground uppercase tracking-wide">Net Payable</span>
           {type === 'sale' && (
             <div className="flex items-center gap-1 text-xs text-blue-400">
               <DollarSign size={12} />
@@ -137,7 +132,7 @@ export const SmartPaymentWidget = ({
             </div>
           )}
         </div>
-        <div className="text-[32px] font-bold text-white leading-none">
+        <div className="text-[32px] font-bold text-foreground leading-none">
           {formatCurrency(grandTotal)}
         </div>
       </div>
@@ -165,7 +160,7 @@ export const SmartPaymentWidget = ({
           className={cn(
             "h-11 flex flex-col items-center justify-center gap-1 transition-all",
             strategy === 'full_cash'
-              ? "bg-green-600 hover:bg-green-500 text-white shadow-lg shadow-green-500/20"
+              ? "bg-green-600 hover:bg-green-500 text-foreground shadow-lg shadow-green-500/20"
               : "bg-green-600/80 hover:bg-green-600 text-white"
           )}
         >
@@ -190,14 +185,14 @@ export const SmartPaymentWidget = ({
       </div>
 
       {/* Payment Details Form */}
-      <div className="space-y-4 p-4 bg-gray-950 border border-gray-800 rounded-lg">
+      <div className="space-y-4 p-4 bg-input-background border border-border rounded-lg">
         {/* Amount Input */}
         <div className="space-y-2">
-          <Label htmlFor="amount" className="text-gray-300 text-sm">
+          <Label htmlFor="amount" className="text-muted-foreground text-sm">
             Amount Collecting
           </Label>
           <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-lg">{currencySymbol}</span>
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-lg">{currencySymbol}</span>
             <Input
               ref={amountInputRef}
               id="amount"
@@ -208,7 +203,7 @@ export const SmartPaymentWidget = ({
               value={paidAmount}
               onChange={(e) => handleAmountChange(parseFloat(e.target.value) || 0)}
               className={cn(
-                "pl-8 h-12 bg-gray-900 border-gray-700 text-white text-xl font-bold focus:border-blue-500",
+                "pl-8 h-12 bg-card border-border text-foreground text-xl font-bold focus:border-blue-500",
                 paidAmount < grandTotal && "focus:border-yellow-500"
               )}
               placeholder="0.00"
@@ -229,8 +224,8 @@ export const SmartPaymentWidget = ({
           {strategy === 'partial' && paidAmount > 0 && balanceDue > 0 && (
             <div className="grid grid-cols-2 gap-2 mt-2">
               <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-2">
-                <div className="text-xs text-green-400 mb-1">Collecting Now</div>
-                <div className="text-lg font-bold text-green-400">{formatCurrency(paidAmount)}</div>
+                <div className="text-xs text-[var(--erp-money-positive)] mb-1">Collecting Now</div>
+                <div className="text-lg font-bold text-[var(--erp-money-positive)]">{formatCurrency(paidAmount)}</div>
               </div>
               <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-2">
                 <div className="text-xs text-yellow-400 mb-1">On Account</div>
@@ -247,29 +242,11 @@ export const SmartPaymentWidget = ({
               <CalendarIcon size={14} />
               Payment Due Date
             </Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className={cn(
-                    "w-full justify-start text-left font-normal bg-gray-900 border-yellow-500/30 text-white hover:bg-gray-800",
-                    !dueDate && "text-gray-500"
-                  )}
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {dueDate ? format(dueDate, "PPP") : <span>Pick a date</span>}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0 bg-gray-900 border-gray-800">
-                <Calendar
-                  mode="single"
-                  selected={dueDate}
-                  onSelect={setDueDate}
-                  initialFocus
-                  className="bg-gray-900 text-white"
-                />
-              </PopoverContent>
-            </Popover>
+            <DatePicker
+              value={dueDate ? formatLocalDateYYYYMMDD(dueDate) : ''}
+              onChange={(v) => setDueDate(v ? parseLocalDateInput(v) : undefined)}
+              placeholder="Pick a date"
+            />
             <p className="text-xs text-yellow-400/70">
               Customer will need to pay by this date
             </p>
@@ -280,7 +257,7 @@ export const SmartPaymentWidget = ({
         {paidAmount > 0 && (
           <>
             <div className="space-y-2">
-              <Label className="text-gray-300 text-sm">Payment Method</Label>
+              <Label className="text-muted-foreground text-sm">Payment Method</Label>
               <div className="grid grid-cols-4 gap-2">
                 {paymentModes.map((mode) => {
                   const Icon = mode.icon;
@@ -294,7 +271,7 @@ export const SmartPaymentWidget = ({
                         "flex flex-col items-center justify-center gap-2 p-3 rounded-lg border-2 transition-all",
                         isActive
                           ? `${mode.bgColor} ${mode.borderColor} ${mode.color}`
-                          : "bg-gray-900 border-gray-800 text-gray-500 hover:bg-gray-800 hover:border-gray-700"
+                          : "bg-card border-border text-muted-foreground hover:bg-muted hover:border-border"
                       )}
                     >
                       <Icon size={20} />
@@ -307,14 +284,14 @@ export const SmartPaymentWidget = ({
 
             {/* Account Select */}
             <div className="space-y-2">
-              <Label htmlFor="account" className="text-gray-300 text-sm">
+              <Label htmlFor="account" className="text-muted-foreground text-sm">
                 Deposit To
               </Label>
               <Select value={account} onValueChange={setAccount}>
-                <SelectTrigger className="bg-gray-900 border-gray-700 text-white h-10">
+                <SelectTrigger className="bg-card border-border text-foreground h-10">
                   <SelectValue placeholder="Select account" />
                 </SelectTrigger>
-                <SelectContent className="bg-gray-900 border-gray-700 text-white">
+                <SelectContent className="bg-popover border-border text-popover-foreground">
                   {accounts.map((acc) => (
                     <SelectItem key={acc.id} value={acc.id}>
                       <span className="flex items-center gap-2">
@@ -353,7 +330,7 @@ export const SmartPaymentWidget = ({
             strategy === 'full_credit'
               ? "text-yellow-400"
               : strategy === 'full_cash'
-              ? "text-green-400"
+              ? "text-[var(--erp-money-positive)]"
               : "text-blue-400"
           )}>
             {strategy === 'full_credit' && "Full Credit (Udhaar)"}
@@ -361,7 +338,7 @@ export const SmartPaymentWidget = ({
             {strategy === 'partial' && "Partial Payment"}
           </span>
         </div>
-        <span className="text-xs text-gray-500">
+        <span className="text-xs text-muted-foreground">
           {strategy === 'full_credit' && dueDate && `Due: ${format(dueDate, "MMM dd")}`}
           {strategy === 'full_cash' && "No Balance"}
           {strategy === 'partial' && `${((paidAmount / grandTotal) * 100).toFixed(0)}% Paid`}

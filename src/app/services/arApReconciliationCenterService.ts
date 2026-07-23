@@ -6,6 +6,16 @@
 import { supabase } from '@/lib/supabase';
 import { contactService } from '@/app/services/contactService';
 import { accountingReportsService } from '@/app/services/accountingReportsService';
+import {
+  computeEffectiveGlAp,
+  computeEffectiveGlAr,
+  computeEffectiveVariance,
+  sumAuditOnlyPartyGlNet,
+} from '@/app/lib/arApEffectiveVariance';
+import { fetchPartyGlLinesForEffectiveVariance } from '@/app/services/arApEffectiveVarianceService';
+import { fetchPartyGlBalancesWithSource } from '@/app/services/arApUnifiedPartyBalanceService';
+import type { ArApPartyGlBalanceSource } from '@/app/services/arApUnifiedPartyBalanceService';
+import type { UnifiedLedgerBasis } from '@/app/lib/unifiedLedgerBasisFilter';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -45,11 +55,36 @@ export interface IntegrityLabSnapshotRow {
 export interface IntegrityLabSummary extends IntegrityLabSnapshotRow {
   asOfDate: string;
   branchId: string | null;
-  /** Full Contacts RPC totals (includes openings, workers where applicable). */
+  /** Party GL (1100 subtree) clamped ≥0 per contact. */
   operational_receivables_full: number;
   operational_payables_full: number;
+  /** Signed party GL totals (includes negative per-contact AR). */
+  operational_receivables_signed: number;
+  operational_payables_signed: number;
   variance_receivables: number | null;
   variance_payables: number | null;
+  /** GL AR after excluding audit-only cancelled/void/correction chains (effective statement model). */
+  effective_gl_ar_net_dr_minus_cr: number | null;
+  effective_gl_ap_net_credit: number | null;
+  effective_variance_receivables: number | null;
+  effective_variance_payables: number | null;
+  audit_only_ar_net_adjustment: number;
+  audit_only_ap_net_adjustment: number;
+  /** Sum of signed gl_ap_payable from get_contact_party_gl_balances (Contacts GL basis). */
+  party_gl_payables_signed: number | null;
+  /** Sum of GREATEST(0, gl_ap_payable) per contact. */
+  party_gl_payables_clamped: number | null;
+  /** party_gl_payables_signed − gl_ap_net_credit (control AP Cr−Dr). */
+  party_gl_vs_control_variance: number | null;
+  /** Phase 2b — party GL rollup engine used for supplier sub-ledger cards. */
+  party_gl_balance_source: ArApPartyGlBalanceSource;
+  /** Operational unified basis for party payables cards (typically effective_party). */
+  party_gl_balance_basis: UnifiedLedgerBasis;
+  /** Parity compare baseline vs Contacts legacy — official_gl. */
+  party_gl_parity_basis: UnifiedLedgerBasis;
+  /** Shadow legacy vs unified(parity basis) max per-contact delta. */
+  party_gl_parity_max_delta?: number;
+  party_gl_parity_status: 'pass' | 'fail' | 'skipped' | 'n_a';
   status: IntegrityLabStatus;
   statusLabels: string[];
 }
@@ -173,14 +208,15 @@ export async function fetchIntegrityLabSummary(
   const end = (asOfDate ?? new Date().toISOString().slice(0, 10)).slice(0, 10);
   const b = safeBranchForFilter(branchId);
 
-  const [rpc, opRes, glSnap] = await Promise.all([
+  const [rpc, opRes, glSnap, partyGlFetch] = await Promise.all([
     supabase.rpc('ar_ap_integrity_lab_snapshot', {
       p_company_id: companyId,
       p_branch_id: b,
       p_as_of_date: end,
     }),
-    contactService.getContactBalancesSummary(companyId, branchId ?? null),
+    contactService.getContactBalancesSummary(companyId, branchId ?? null, end),
     accountingReportsService.getArApGlSnapshot(companyId, end, b ?? undefined),
+    fetchPartyGlBalancesWithSource(companyId, branchId, end, { includeShadowParity: true }),
   ]);
 
   const snap = pickSnapshotRow(rpc.data);
@@ -201,11 +237,15 @@ export async function fetchIntegrityLabSummary(
 
   let operational_receivables_full = 0;
   let operational_payables_full = 0;
+  let operational_receivables_signed = 0;
+  let operational_payables_signed = 0;
   if (!opRes.error) {
     opRes.map.forEach((v) => {
       operational_receivables_full += Number(v.receivables) || 0;
       operational_payables_full += Number(v.payables) || 0;
     });
+    operational_receivables_signed = opRes.signedReceivablesTotal;
+    operational_payables_signed = opRes.signedPayablesTotal;
   }
 
   const glAr = s.gl_ar_net_dr_minus_cr ?? glSnap.ar?.balance ?? null;
@@ -213,9 +253,52 @@ export async function fetchIntegrityLabSummary(
   const variance_receivables = glAr != null ? operational_receivables_full - glAr : null;
   const variance_payables = glAp != null ? operational_payables_full - glAp : null;
 
+  let audit_only_ar_net_adjustment = 0;
+  let audit_only_ap_net_adjustment = 0;
+  try {
+    const [arLines, apLines] = await Promise.all([
+      fetchPartyGlLinesForEffectiveVariance(companyId, 'AR', end),
+      fetchPartyGlLinesForEffectiveVariance(companyId, 'AP', end),
+    ]);
+    audit_only_ar_net_adjustment = sumAuditOnlyPartyGlNet(arLines);
+    audit_only_ap_net_adjustment = sumAuditOnlyPartyGlNet(apLines);
+  } catch (e) {
+    console.warn('[arApIntegrityLab] effective variance lines:', e);
+  }
+
+  const effective_gl_ar_net_dr_minus_cr = computeEffectiveGlAr(glAr, audit_only_ar_net_adjustment);
+  const effective_gl_ap_net_credit = computeEffectiveGlAp(glAp, audit_only_ap_net_adjustment);
+  const effective_variance_receivables = computeEffectiveVariance(
+    operational_receivables_full,
+    effective_gl_ar_net_dr_minus_cr
+  );
+  const effective_variance_payables = computeEffectiveVariance(
+    operational_payables_full,
+    effective_gl_ap_net_credit
+  );
+
+  let party_gl_payables_signed: number | null = null;
+  let party_gl_payables_clamped: number | null = null;
+  const partyGlMap = partyGlFetch.map;
+  if (partyGlMap && partyGlMap.size > 0) {
+    let signed = 0;
+    let clamped = 0;
+    partyGlMap.forEach((slice) => {
+      const ap = Number(slice.glApPayable) || 0;
+      signed += ap;
+      clamped += Math.max(0, ap);
+    });
+    party_gl_payables_signed = signed;
+    party_gl_payables_clamped = clamped;
+  }
+  const party_gl_vs_control_variance =
+    party_gl_payables_signed != null && glAp != null
+      ? party_gl_payables_signed - glAp
+      : null;
+
   const { status, labels } = deriveIntegrityLabStatus({
-    varianceReceivables: variance_receivables,
-    variancePayables: variance_payables,
+    varianceReceivables: effective_variance_receivables ?? variance_receivables,
+    variancePayables: effective_variance_payables ?? variance_payables,
     unpostedCount: s.unposted_document_count,
     unmappedArJe: s.unmapped_ar_je_count,
     unmappedApJe: s.unmapped_ap_je_count,
@@ -230,8 +313,24 @@ export async function fetchIntegrityLabSummary(
     branchId: b,
     operational_receivables_full,
     operational_payables_full,
+    operational_receivables_signed,
+    operational_payables_signed,
     variance_receivables,
     variance_payables,
+    effective_gl_ar_net_dr_minus_cr,
+    effective_gl_ap_net_credit,
+    effective_variance_receivables,
+    effective_variance_payables,
+    audit_only_ar_net_adjustment,
+    audit_only_ap_net_adjustment,
+    party_gl_payables_signed,
+    party_gl_payables_clamped,
+    party_gl_vs_control_variance,
+    party_gl_balance_source: partyGlFetch.source,
+    party_gl_balance_basis: partyGlFetch.basis,
+    party_gl_parity_basis: partyGlFetch.parityBasis,
+    party_gl_parity_max_delta: partyGlFetch.maxAbsPartyDelta,
+    party_gl_parity_status: partyGlFetch.parityStatus,
     status,
     statusLabels: labels,
   };
@@ -363,6 +462,37 @@ export async function ensureArApSuspenseAccount(companyId: string): Promise<{ ac
   if (error) return { accountId: null, error: error.message };
   const id = typeof data === 'string' ? data : (data as string | null);
   return { accountId: id || null };
+}
+
+export interface AppliedGlCorrectionAuditRow {
+  journal_entry_id: string;
+  entry_no: string | null;
+  action_fingerprint: string | null;
+  description: string | null;
+  entry_date: string | null;
+}
+
+/** Recent applied developer_repair gl_correction JEs (audit queue 2d). */
+export async function fetchAppliedGlCorrections(
+  companyId: string,
+  limit = 10
+): Promise<AppliedGlCorrectionAuditRow[]> {
+  const { data, error } = await supabase
+    .from('journal_entries')
+    .select('id, entry_no, action_fingerprint, description, entry_date')
+    .eq('company_id', companyId)
+    .eq('is_void', false)
+    .like('action_fingerprint', 'developer_repair:gl_correction:%')
+    .order('entry_date', { ascending: false })
+    .limit(limit);
+  if (error) return [];
+  return (data || []).map((row) => ({
+    journal_entry_id: String((row as { id: string }).id),
+    entry_no: (row as { entry_no?: string }).entry_no ?? null,
+    action_fingerprint: (row as { action_fingerprint?: string }).action_fingerprint ?? null,
+    description: (row as { description?: string }).description ?? null,
+    entry_date: (row as { entry_date?: string }).entry_date ?? null,
+  }));
 }
 
 export function unpostedItemKey(row: UnpostedDocumentRow): string {

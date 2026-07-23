@@ -1,4 +1,5 @@
 import { getCurrentLocalTimestamp, localNowDateString } from '@/app/utils/localDate';
+import { mapPool } from '@/app/utils/perfTiming';
 import { supabase } from '@/lib/supabase';
 import { getDocumentConversionSchemaFlags } from '@/app/lib/documentConversionSchema';
 import { canPostAccountingForPurchaseStatus, wasPurchasePostedForReversal } from '@/app/lib/postingStatusGate';
@@ -24,10 +25,33 @@ function purchaseRowNeedsPostedPoAllocation(row: Record<string, unknown>): boole
 
 function isUniquePoNumberViolation(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false;
-  const e = error as { code?: string; message?: string };
-  if (e.code !== '23505') return false;
-  const msg = String(e.message || '').toLowerCase();
-  return msg.includes('po_no') || msg.includes('draft_no') || msg.includes('order_no') || msg.includes('idx_purchases_company_po_no');
+  const e = error as {
+    code?: string;
+    message?: string;
+    details?: string;
+    hint?: string;
+    status?: number;
+    statusCode?: number;
+  };
+  const code = String(e.code || '');
+  const status = Number(e.status ?? e.statusCode ?? 0);
+  const blob = `${e.message || ''} ${e.details || ''} ${e.hint || ''}`.toLowerCase();
+  const looksUnique =
+    code === '23505' ||
+    status === 409 ||
+    blob.includes('duplicate key') ||
+    blob.includes('unique constraint') ||
+    blob.includes('already exists');
+  if (!looksUnique) return false;
+  // Prefer document-number collisions; still retry on sparse PostgREST 409 bodies.
+  return (
+    blob.includes('po_no') ||
+    blob.includes('draft_no') ||
+    blob.includes('order_no') ||
+    blob.includes('idx_purchases_company_po_no') ||
+    code === '23505' ||
+    status === 409
+  );
 }
 
 async function reallocatePurchaseDocumentNumbers(
@@ -114,6 +138,69 @@ async function enrichPurchasesWithCreatorNames(purchases: any[]): Promise<void> 
   });
 }
 
+/** Attach supplier contact when list embed failed (PGRST201). */
+async function enrichPurchasesWithSupplierContacts(purchases: any[]): Promise<void> {
+  const ids = [...new Set((purchases || []).map((p: any) => p.supplier_id).filter(Boolean))] as string[];
+  if (ids.length === 0) return;
+  const { data: contacts } = await supabase.from('contacts').select('id, name, phone').in('id', ids);
+  const byId = new Map((contacts || []).map((c: any) => [c.id, c]));
+  purchases.forEach((p: any) => {
+    if (p.supplier_id && !p.supplier) {
+      const c = byId.get(p.supplier_id);
+      if (c) p.supplier = { name: c.name, phone: c.phone };
+    }
+  });
+}
+
+/** Header-only list: attach branch { id, name } from branch_id so mapper can show location. */
+async function enrichPurchasesWithBranchNames(purchases: any[]): Promise<void> {
+  const ids = [
+    ...new Set(
+      (purchases || [])
+        .map((p: any) => p.branch_id)
+        .filter((id: unknown) => typeof id === 'string' && id.length > 0),
+    ),
+  ] as string[];
+  if (ids.length === 0) return;
+  const { data: branches } = await supabase.from('branches').select('id, name, code').in('id', ids);
+  const byId = new Map((branches || []).map((b: any) => [b.id, b]));
+  purchases.forEach((p: any) => {
+    if (!p.branch && p.branch_id) {
+      const b = byId.get(p.branch_id);
+      if (b) p.branch = { id: b.id, name: b.name, code: b.code };
+    }
+  });
+}
+
+/** Header-only list: set items_count from purchase_items (no full embed). */
+async function enrichPurchasesWithItemCounts(purchases: any[]): Promise<void> {
+  const ids = (purchases || []).map((p: any) => p.id).filter(Boolean) as string[];
+  if (ids.length === 0) return;
+  const needsCount = (purchases || []).some(
+    (p: any) => !Array.isArray(p.items) || p.items.length === 0,
+  );
+  if (!needsCount) return;
+
+  const { data: rows, error } = await supabase
+    .from('purchase_items')
+    .select('purchase_id')
+    .in('purchase_id', ids);
+  if (error || !rows) return;
+
+  const countByPurchase = new Map<string, number>();
+  for (const row of rows as { purchase_id?: string }[]) {
+    const pid = row.purchase_id;
+    if (!pid) continue;
+    countByPurchase.set(pid, (countByPurchase.get(pid) || 0) + 1);
+  }
+  purchases.forEach((p: any) => {
+    if (!p?.id) return;
+    if (Array.isArray(p.items) && p.items.length > 0) return;
+    const n = countByPurchase.get(p.id) || 0;
+    p.items_count = n;
+  });
+}
+
 function buildPaymentNote(extraDescription?: string | null, bankTraceId?: string | null): string | null {
   const parts: string[] = [];
   const extra = String(extraDescription ?? '').trim();
@@ -140,6 +227,8 @@ export interface Purchase {
   discount_amount: number;
   tax_amount: number;
   shipping_cost: number;
+  freight_settlement?: 'supplier' | 'courier';
+  clearance_courier_id?: string | null;
   total: number;
   paid_amount: number;
   due_amount: number;
@@ -179,6 +268,7 @@ export interface PurchaseChargeInsert {
 const PURCHASE_INSERT_KEYS = [
   'company_id', 'branch_id', 'po_no', 'draft_no', 'order_no', 'po_date', 'supplier_id', 'supplier_name',
   'status', 'payment_status', 'subtotal', 'discount_amount', 'tax_amount', 'shipping_cost',
+  'freight_settlement', 'clearance_courier_id',
   'total', 'paid_amount', 'due_amount', 'notes', 'attachments', 'created_by',
 ] as const;
 
@@ -396,13 +486,18 @@ async function applyWeightedCostRollup(params: {
     stockByProduct.set(pId, (stockByProduct.get(pId) || 0) + q);
   }
 
-  // Update variation weighted costs first
-  for (const [variationId, incoming] of variationIncoming) {
-    const currentQty = Math.max(0, stockByVariation.get(variationId) || 0);
-    const currentCost = variationCostById.get(variationId) || 0;
-    const incomingCost = incoming.sum / Math.max(1, incoming.qty);
-    const next = computeWeightedCost(currentQty, currentCost, incoming.qty, incomingCost);
-    if (next <= 0) continue;
+  // Update variation weighted costs (bounded concurrency — avoid N sequential round-trips)
+  const variationUpdates = [...variationIncoming.entries()]
+    .map(([variationId, incoming]) => {
+      const currentQty = Math.max(0, stockByVariation.get(variationId) || 0);
+      const currentCost = variationCostById.get(variationId) || 0;
+      const incomingCost = incoming.sum / Math.max(1, incoming.qty);
+      const next = computeWeightedCost(currentQty, currentCost, incoming.qty, incomingCost);
+      return next > 0 ? { variationId, next } : null;
+    })
+    .filter((x): x is { variationId: string; next: number } => x != null);
+
+  await mapPool(variationUpdates, 5, async ({ variationId, next }) => {
     const upFull = await supabase
       .from('product_variations')
       .update({ purchase_price: next, cost_price: next })
@@ -413,17 +508,22 @@ async function applyWeightedCostRollup(params: {
         await supabase.from('product_variations').update({ purchase_price: next }).eq('id', variationId);
       }
     }
-  }
+  });
 
   // Update parent product weighted costs
-  for (const [productId, incoming] of productIncoming) {
-    const currentQty = Math.max(0, stockByProduct.get(productId) || 0);
-    const currentCost = productCostById.get(productId) || 0;
-    const incomingCost = incoming.sum / Math.max(1, incoming.qty);
-    const next = computeWeightedCost(currentQty, currentCost, incoming.qty, incomingCost);
-    if (next <= 0) continue;
+  const productUpdates = [...productIncoming.entries()]
+    .map(([productId, incoming]) => {
+      const currentQty = Math.max(0, stockByProduct.get(productId) || 0);
+      const currentCost = productCostById.get(productId) || 0;
+      const incomingCost = incoming.sum / Math.max(1, incoming.qty);
+      const next = computeWeightedCost(currentQty, currentCost, incoming.qty, incomingCost);
+      return next > 0 ? { productId, next } : null;
+    })
+    .filter((x): x is { productId: string; next: number } => x != null);
+
+  await mapPool(productUpdates, 5, async ({ productId, next }) => {
     await supabase.from('products').update({ cost_price: next, updated_at: getCurrentLocalTimestamp() }).eq('id', productId);
-  }
+  });
 }
 
 export const purchaseService = {
@@ -438,12 +538,25 @@ export const purchaseService = {
 
     let purchaseData: Record<string, unknown> | null = null;
     let purchaseError: unknown = null;
-    for (let attempt = 0; attempt < 2; attempt++) {
+    /** Match sale finalize retries — sequence can lag behind existing PUR/PDR/POR rows. */
+    const maxPoAttempts = 12;
+    let lastConflictNo: string | undefined;
+    for (let attempt = 0; attempt < maxPoAttempts; attempt++) {
       const res = await supabase.from('purchases').insert(purchaseRow).select('*').single();
       purchaseData = res.data as Record<string, unknown> | null;
       purchaseError = res.error;
       if (!purchaseError) break;
-      if (attempt === 0 && isUniquePoNumberViolation(purchaseError)) {
+      if (isUniquePoNumberViolation(purchaseError)) {
+        lastConflictNo = String(
+          purchaseRow.po_no ?? purchaseRow.draft_no ?? purchaseRow.order_no ?? '',
+        ).trim() || undefined;
+        if (import.meta.env?.DEV) {
+          console.warn(
+            `[PURCHASE SERVICE] Document number conflict (attempt ${attempt + 1}/${maxPoAttempts}), last=`,
+            lastConflictNo,
+            purchaseError,
+          );
+        }
         purchaseRow = await reallocatePurchaseDocumentNumbers(purchase, purchaseRow);
         continue;
       }
@@ -452,6 +565,13 @@ export const purchaseService = {
 
     if (purchaseError) {
       console.error('[PURCHASE SERVICE] Error creating purchase:', purchaseError);
+      if (isUniquePoNumberViolation(purchaseError)) {
+        throw new Error(
+          `Purchase document number still conflicts after ${maxPoAttempts} attempts` +
+            (lastConflictNo ? ` (last tried: ${lastConflictNo})` : '') +
+            '. Check Settings → Numbering sequences for PUR/PDR/POR, then retry.',
+        );
+      }
       throw purchaseError;
     }
     if (!purchaseData) {
@@ -531,9 +651,10 @@ export const purchaseService = {
   ): Promise<any[] | { data: any[]; total: number }> {
     const limit = opts?.limit ?? 50;
     const offset = opts?.offset ?? 0;
+    // Disambiguate contacts embed: purchases has FKs supplier_id + clearance_courier_id → contacts (PGRST201).
     const purchaseSelect = `
         *,
-        supplier:contacts(name, phone),
+        supplier:contacts!purchases_supplier_id_fkey(name, phone),
         branch:branches(id, name, code),
         items:purchase_items(
           *,
@@ -563,15 +684,13 @@ export const purchaseService = {
       }
     }
 
-    if (error && opts) throw error;
-
     // If error is about po_date column not existing, retry with created_at
     if (error && error.code === '42703' && error.message?.includes('po_date')) {
       const retryQuery = supabase
         .from('purchases')
         .select(`
           *,
-          supplier:contacts(name, phone),
+          supplier:contacts!purchases_supplier_id_fkey(name, phone),
           branch:branches(id, name, code),
           items:purchase_items(
             *,
@@ -592,7 +711,7 @@ export const purchaseService = {
           .from('purchases')
         .select(`
           *,
-          supplier:contacts(name, phone),
+          supplier:contacts!purchases_supplier_id_fkey(name, phone),
           branch:branches(id, name, code),
           items:purchase_items(
             *,
@@ -607,53 +726,68 @@ export const purchaseService = {
         const { data: finalData, error: finalError } = await finalQuery;
         if (finalError) throw finalError;
         if (finalData?.length) await enrichPurchasesWithCreatorNames(finalData);
-        return finalData;
+        return opts ? { data: finalData || [], total: finalData?.length ?? 0 } : finalData;
       }
-      return retryData;
+      return opts ? { data: retryData || [], total: retryData?.length ?? 0 } : retryData;
     }
     
-    // If error is about foreign key relationship or other issues, try without nested selects
-    if (error && (error.code === '42703' || error.code === '42P01' || error.code === 'PGRST116')) {
-      // Try simpler query without nested relationships
+    // Ambiguous FK / missing nested relationship: fall back to header-only (+ optional supplier enrich)
+    if (error && (error.code === '42703' || error.code === '42P01' || error.code === 'PGRST116' || error.code === 'PGRST201' || error.code === 'PGRST200')) {
       let simpleQuery = supabase
         .from('purchases')
-        .select(`
-          *
-        `)
+        .select('*', opts ? { count: 'exact' } : undefined)
+        .eq('company_id', companyId)
         .order('created_at', { ascending: false });
       
       if (branchId) {
         simpleQuery = simpleQuery.eq('branch_id', branchId);
       }
+      if (opts) simpleQuery = simpleQuery.range(offset, offset + limit - 1);
       
-      const { data: simpleData, error: simpleError } = await simpleQuery;
+      let { data: simpleData, error: simpleError, count: simpleCount } = await simpleQuery;
       
       // If created_at doesn't exist, try without ordering
       if (simpleError && simpleError.code === '42703' && simpleError.message?.includes('created_at')) {
         let noOrderQuery = supabase
           .from('purchases')
-          .select(`
-            *
-          `);
+          .select('*', opts ? { count: 'exact' } : undefined)
+          .eq('company_id', companyId);
         
         if (branchId) {
           noOrderQuery = noOrderQuery.eq('branch_id', branchId);
         }
+        if (opts) noOrderQuery = noOrderQuery.range(offset, offset + limit - 1);
         
-        const { data: noOrderData, error: noOrderError } = await noOrderQuery;
-        if (noOrderError) throw noOrderError;
-        if (noOrderData?.length) await enrichPurchasesWithCreatorNames(noOrderData);
-        return noOrderData;
+        const noOrderResult = await noOrderQuery;
+        if (noOrderResult.error) throw noOrderResult.error;
+        simpleData = noOrderResult.data;
+        simpleError = noOrderResult.error;
+        simpleCount = noOrderResult.count;
       }
       
       if (simpleError) throw simpleError;
-      if (simpleData?.length) await enrichPurchasesWithCreatorNames(simpleData);
+      if (simpleData?.length) {
+        await enrichPurchasesWithCreatorNames(simpleData);
+        await enrichPurchasesWithSupplierContacts(simpleData);
+        await enrichPurchasesWithBranchNames(simpleData);
+        await enrichPurchasesWithItemCounts(simpleData);
+      }
+      if (opts) return { data: simpleData || [], total: simpleCount ?? 0 };
       return simpleData;
     }
     
     if (error) throw error;
 
     await enrichPurchasesWithCreatorNames(data || []);
+    // Embed may be empty/missing while headers exist — fill branch name + line counts
+    if (data?.length) {
+      const missingBranch = data.some((p: any) => p.branch_id && !p.branch?.name);
+      const missingItems = data.some(
+        (p: any) => !Array.isArray(p.items) || p.items.length === 0,
+      );
+      if (missingBranch) await enrichPurchasesWithBranchNames(data);
+      if (missingItems) await enrichPurchasesWithItemCounts(data);
+    }
 
     // 🔒 LOCK CHECK: Add hasReturn and returnCount to each purchase
     if (data && data.length > 0) {
@@ -767,7 +901,7 @@ export const purchaseService = {
     // NOTE: Do not list `attachments` after `*` — duplicate field in select often yields PostgREST 400 (`select=*` requests).
     const embeddedSelect = `
         *,
-        supplier:contacts(id, name, phone),
+        supplier:contacts!purchases_supplier_id_fkey(id, name, phone),
         items:purchase_items(
           *,
           product:products(id, name, sku, cost_price, has_variations, unit_id, category_id, min_stock, max_stock),
@@ -783,6 +917,7 @@ export const purchaseService = {
       const msg = String((error as any).message || '');
       const retry =
         code === 'PGRST200' ||
+        code === 'PGRST201' ||
         code === 'PGRST204' ||
         code === '42703' ||
         (error as any).status === 400 ||
@@ -1428,6 +1563,8 @@ export const purchaseService = {
       paymentMethod?: string;
       accountId?: string;
       paymentDate?: string;
+      /** When set, updates payments.created_at (business event time for roznamcha / picker). */
+      eventTimestamp?: string;
       referenceNumber?: string;
       notes?: string;
       attachments?: any;
@@ -1493,6 +1630,7 @@ export const purchaseService = {
       if (normalizedPaymentMethod) updateData.payment_method = normalizedPaymentMethod;
       if (updates.accountId) updateData.payment_account_id = updates.accountId;
       if (updates.paymentDate) updateData.payment_date = updates.paymentDate;
+      if (updates.eventTimestamp) updateData.created_at = updates.eventTimestamp;
       if (updates.referenceNumber !== undefined) updateData.reference_number = updates.referenceNumber;
       if (updates.notes !== undefined) updateData.notes = updates.notes;
       if (updates.attachments !== undefined) updateData.attachments = updates.attachments;
@@ -1877,6 +2015,61 @@ export const purchaseService = {
       // RPC request can throw (e.g. 404) → use direct delete
       return await this.deletePaymentDirect(paymentId, purchaseId);
     }
+  },
+
+  /** Period purchases for reports (not paginated PurchaseContext). */
+  async getPurchasesForReports(
+    companyId: string,
+    startDate: string,
+    endDate: string,
+    branchId?: string | null
+  ): Promise<{ data: any[]; total: number; truncated: boolean }> {
+    const max = 5000;
+    const selectAttempts = [
+      `id, company_id, branch_id, po_no, draft_no, order_no, po_date, supplier_id, supplier_name,
+       status, payment_status, subtotal, discount_amount, tax_amount, total, paid_amount, due_amount,
+       created_at, branch:branches(id, name, code)`,
+      `id, company_id, branch_id, po_no, draft_no, order_no, po_date, supplier_id, supplier_name,
+       status, payment_status, subtotal, total, paid_amount, due_amount, created_at,
+       branch:branches(id, name, code)`,
+      `*, branch:branches(id, name, code)`,
+    ];
+
+    const runQuery = (selectFields: string, dateCol: 'po_date' | 'created_at') => {
+      let q = supabase
+        .from('purchases')
+        .select(selectFields, { count: 'exact' })
+        .eq('company_id', companyId)
+        .gte(dateCol, startDate)
+        .lte(dateCol, endDate)
+        .order(dateCol, { ascending: false })
+        .limit(max);
+      if (branchId && branchId !== 'all') q = q.eq('branch_id', branchId);
+      return q;
+    };
+
+    let rows: any[] = [];
+    let count: number | null = null;
+    let lastError: unknown = null;
+
+    for (const fields of selectAttempts) {
+      let res = await runQuery(fields, 'po_date');
+      if (res.error && (res.error as { code?: string }).code === '42703') {
+        res = await runQuery(fields, 'created_at');
+      }
+      if (!res.error) {
+        rows = res.data || [];
+        count = res.count;
+        lastError = null;
+        break;
+      }
+      lastError = res.error;
+      console.warn('[purchaseService.getPurchasesForReports] select fallback:', fields.trim().slice(0, 80), res.error);
+    }
+    if (lastError) throw lastError;
+
+    const total = count ?? rows.length;
+    return { data: rows, total, truncated: total > max };
   },
 
   // Direct delete fallback (if RPC not available)

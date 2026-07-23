@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   X,
   ArrowDownLeft,
@@ -7,19 +7,30 @@ import {
   BookOpen,
   Loader2,
   SquarePen,
+  Ban,
 } from 'lucide-react';
 import {
   getTransactionDetail,
   canEditTransaction,
   type TransactionDetail,
 } from '../../../api/transactions';
+import {
+  canCancelTransactionRow,
+  cancelTransactionWithReversal,
+  getCancelEligibility,
+  resolveJournalEntryIdForCancel,
+  resolveJournalEntryIdFromPayment,
+  type CancelEligibility,
+} from '../../../api/transactionCancel';
 import { buildPaymentReferenceLabels } from '../../../utils/paymentReferenceDisplay';
 import { PdfPreviewModal } from '../../shared/PdfPreviewModal';
 import { ReceiptPreviewPdf } from '../../shared/ReceiptPreviewPdf';
 import { usePdfPreview } from '../../shared/usePdfPreview';
 import { EditTransactionSheet } from './_shared/EditTransactionSheet';
+import { ConfirmActionSheet } from '../../common/ConfirmActionSheet';
 import { dispatchMobileAccountingInvalidated } from '../../../lib/dataInvalidationBus';
 import { AttachmentPreviewModal } from '../../sales/AttachmentPreviewModal';
+import { AttachmentIndicatorButton } from '../../shared/AttachmentIndicatorButton';
 import { AttachmentsSection } from '../../shared/AttachmentsSection';
 import { normalizeAttachments } from '../../../lib/normalizeAttachments';
 import { formatPaymentDateTimeLine, paymentDateTimeIsoForReceipt } from '../../../utils/transactionDisplayDate';
@@ -27,8 +38,10 @@ import { formatPaymentDateTimeLine, paymentDateTimeIsoForReceipt } from '../../.
 interface Props {
   paymentId: string;
   companyId: string;
+  branchId?: string | null;
   onClose: () => void;
   onViewLedger?: (info: { partyId?: string | null; partyName?: string | null; accountId?: string | null }) => void;
+  onCancelled?: () => void;
 }
 
 const METHOD_LABEL: Record<string, string> = {
@@ -38,7 +51,14 @@ const METHOD_LABEL: Record<string, string> = {
   other: 'Other',
 };
 
-export function TransactionDetailSheet({ paymentId, companyId, onClose, onViewLedger }: Props) {
+export function TransactionDetailSheet({
+  paymentId,
+  companyId,
+  branchId,
+  onClose,
+  onViewLedger,
+  onCancelled,
+}: Props) {
   const [detail, setDetail] = useState<TransactionDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -46,6 +66,9 @@ export function TransactionDetailSheet({ paymentId, companyId, onClose, onViewLe
   const [showEdit, setShowEdit] = useState(false);
   const [attachmentPreviewList, setAttachmentPreviewList] = useState<Array<{ url: string; name: string }> | null>(null);
   const [attachmentPreviewStart, setAttachmentPreviewStart] = useState(0);
+  const [cancelBusy, setCancelBusy] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
+  const [pendingCancel, setPendingCancel] = useState<CancelEligibility | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -87,9 +110,77 @@ export function TransactionDetailSheet({ paymentId, companyId, onClose, onViewLe
       )
     : { editable: false, kind: 'locked' as const };
 
+  const cancelHint = useMemo(
+    () => (detail ? canCancelTransactionRow(detail) : { show: false, label: 'Cancel Entry' as const, journalEntryId: null }),
+    [detail],
+  );
+
   const openAttachmentPreview = (items: Array<{ url: string; name: string }>, startIndex = 0) => {
     setAttachmentPreviewList(items);
     setAttachmentPreviewStart(startIndex);
+  };
+
+  const attachmentItems = detail ? normalizeAttachments(detail.attachments) : [];
+
+  const beginCancel = async () => {
+    if (!detail) return;
+    setCancelError(null);
+    setCancelBusy(true);
+    try {
+      let jeId =
+        resolveJournalEntryIdForCancel({
+          id: detail.id,
+          journalEntryId: detail.journalEntryId,
+          paymentId: detail.paymentId,
+        }) || cancelHint.journalEntryId;
+      if (!jeId && detail.paymentId) {
+        jeId = await resolveJournalEntryIdFromPayment(companyId, detail.paymentId);
+      }
+      const paymentIdLooksLikeUuid =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(paymentId);
+      if (!jeId && paymentIdLooksLikeUuid && (detail.id.startsWith('journal-') || detail.journalEntryId === paymentId)) {
+        jeId = paymentId;
+      }
+      if (!jeId) {
+        setCancelError('No journal entry linked to this transaction.');
+        return;
+      }
+      const eligibility = await getCancelEligibility(companyId, jeId);
+      if (!eligibility.allowed) {
+        setCancelError(eligibility.reason || 'Cancel not allowed for this transaction.');
+        return;
+      }
+      setPendingCancel(eligibility);
+    } finally {
+      setCancelBusy(false);
+    }
+  };
+
+  const executeCancel = async () => {
+    if (!pendingCancel) return;
+    setCancelBusy(true);
+    setCancelError(null);
+    try {
+      const result = await cancelTransactionWithReversal({
+        companyId,
+        branchId: branchId ?? detail?.branchId ?? null,
+        journalEntryId: pendingCancel.journalEntryId,
+      });
+      if (!result.ok) {
+        setCancelError(result.error || 'Cancel failed.');
+        return;
+      }
+      setPendingCancel(null);
+      dispatchMobileAccountingInvalidated({
+        companyId,
+        branchId: branchId ?? detail?.branchId ?? null,
+        reason: 'transaction-cancelled',
+      });
+      onCancelled?.();
+      onClose();
+    } finally {
+      setCancelBusy(false);
+    }
   };
 
   return (
@@ -100,9 +191,17 @@ export function TransactionDetailSheet({ paymentId, companyId, onClose, onViewLe
       >
         <div className="sticky top-0 z-10 flow-screen-header bg-[#111827] border-b border-[#1F2937] flex items-center justify-between px-4 py-3">
           <h2 className="text-base font-semibold text-white">Transaction</h2>
-          <button onClick={onClose} className="p-1.5 hover:bg-[#1F2937] rounded-lg text-[#9CA3AF]">
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1">
+            {attachmentItems.length > 0 ? (
+              <AttachmentIndicatorButton
+                onClick={() => openAttachmentPreview(attachmentItems, 0)}
+                size="sm"
+              />
+            ) : null}
+            <button onClick={onClose} className="p-1.5 hover:bg-[#1F2937] rounded-lg text-[#9CA3AF]">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {loading && (
@@ -231,11 +330,8 @@ export function TransactionDetailSheet({ paymentId, companyId, onClose, onViewLe
               </section>
             )}
 
-            {normalizeAttachments(detail.attachments).length > 0 && (
-              <AttachmentsSection
-                items={normalizeAttachments(detail.attachments)}
-                onOpenPreview={openAttachmentPreview}
-              />
+            {attachmentItems.length > 0 && (
+              <AttachmentsSection items={attachmentItems} onOpenPreview={openAttachmentPreview} />
             )}
 
             <div className="grid grid-cols-2 gap-2 pt-2">
@@ -260,10 +356,46 @@ export function TransactionDetailSheet({ paymentId, companyId, onClose, onViewLe
                   <SquarePen className="w-4 h-4" /> Edit Transaction
                 </button>
               )}
+              {cancelHint.show && (
+                <button
+                  type="button"
+                  disabled={cancelBusy}
+                  onClick={() => void beginCancel()}
+                  className="col-span-2 flex items-center justify-center gap-2 py-3 bg-[#7F1D1D] hover:bg-[#991B1B] rounded-lg text-white font-semibold text-sm mt-1 disabled:opacity-50"
+                >
+                  {cancelBusy && !pendingCancel ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Ban className="w-4 h-4" />
+                  )}
+                  {cancelHint.label}
+                </button>
+              )}
+              {cancelError && !pendingCancel ? (
+                <div className="col-span-2 p-3 bg-[#EF4444]/15 border border-[#EF4444]/40 rounded-lg text-sm text-[#FCA5A5]">
+                  {cancelError}
+                </div>
+              ) : null}
             </div>
           </div>
         )}
       </div>
+
+      <ConfirmActionSheet
+        open={!!pendingCancel}
+        title={pendingCancel?.confirmTitle ?? 'Cancel?'}
+        description={pendingCancel?.confirmDescription ?? ''}
+        confirmLabel={pendingCancel?.confirmLabel ?? 'Yes, Cancel'}
+        cancelLabel="No"
+        busy={cancelBusy}
+        error={cancelError}
+        onCancel={() => {
+          if (cancelBusy) return;
+          setPendingCancel(null);
+          setCancelError(null);
+        }}
+        onConfirm={() => void executeCancel()}
+      />
 
       {preview.brand && detail && (
         <PdfPreviewModal

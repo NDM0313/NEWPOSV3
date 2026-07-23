@@ -20,6 +20,7 @@ import {
 } from '@/app/lib/postingStatusGate';
 import { getPurchaseDisplayNumber } from '@/app/lib/documentDisplayNumbers';
 import { getCurrentLocalTimestamp, localNowDateString } from '@/app/utils/localDate';
+import { perfStart } from '@/app/utils/perfTiming';
 import { assertDomainEditSafetyTestMode, classifyPurchaseEdit } from '@/app/lib/accountingEditClassification';
 import { createAccountingEditTraceId, pushAccountingEditTrace } from '@/app/lib/accountingEditTrace';
 import { dispatchDataInvalidated } from '@/app/lib/dataInvalidationBus';
@@ -99,6 +100,8 @@ export interface Purchase {
   discount: number;
   tax: number;
   shippingCost: number;
+  freightSettlement?: 'supplier' | 'courier';
+  clearanceCourierId?: string | null;
   total: number;
   paid: number;
   due: number;
@@ -176,11 +179,19 @@ export const convertFromSupabasePurchase = (supabasePurchase: any): Purchase => 
   // UI Rule: Show only branch NAME (not code, never UUID)
   let locationDisplay = '';
   if (supabasePurchase.branch) {
-    // Branch data joined from API - show NAME only
     locationDisplay = supabasePurchase.branch.name || '';
   }
-  // Note: Do NOT fallback to branch_id UUID - it should never appear in UI
-  
+  // Do NOT put branch_id UUID into location — page resolves via branchId + branchMap
+
+  const rawItems = Array.isArray(supabasePurchase.items) ? supabasePurchase.items : [];
+  const enrichedCount = Number(supabasePurchase.items_count);
+  const itemsCount =
+    rawItems.length > 0
+      ? rawItems.length
+      : Number.isFinite(enrichedCount) && enrichedCount > 0
+        ? enrichedCount
+        : rawItems.length;
+
   const displayPo = getPurchaseDisplayNumber(supabasePurchase);
   return {
     id: supabasePurchase.id,
@@ -192,11 +203,12 @@ export const convertFromSupabasePurchase = (supabasePurchase: any): Purchase => 
     contactNumber: supabasePurchase.supplier?.phone || '',
     date: supabasePurchase.po_date || localNowDateString(),
     expectedDelivery: supabasePurchase.expected_delivery_date,
-    location: locationDisplay, // NOW uses resolved branch name/code instead of raw UUID
+    location: locationDisplay,
+    branchId: supabasePurchase.branch_id || supabasePurchase.branch?.id || undefined,
     status: supabasePurchase.status || 'draft',
     // CRITICAL FIX: Include user info for "Added By" display
     createdBy: supabasePurchase.created_by_user?.full_name || supabasePurchase.created_by_user?.email || 'System',
-    items: (supabasePurchase.items || []).map((item: any) => ({
+    items: rawItems.map((item: any) => ({
       id: item.id || '',
       productId: item.product_id || '',
       variationId: item.variation_id || undefined, // Include variation ID
@@ -212,14 +224,13 @@ export const convertFromSupabasePurchase = (supabasePurchase: any): Purchase => 
       packingDetails: item.packing_details || undefined,
       variation: item.variation || item.product_variations || undefined,
     })),
-    // 🔒 CRITICAL FIX: Items count from joined purchase_items array
-    // If items array is missing or empty, count is 0
-    // This should match the actual COUNT(*) FROM purchase_items WHERE purchase_id = ...
-    itemsCount: Array.isArray(supabasePurchase.items) ? supabasePurchase.items.length : 0,
+    itemsCount,
     subtotal: supabasePurchase.subtotal || 0,
     discount: supabasePurchase.discount_amount || 0,
     tax: supabasePurchase.tax_amount || 0,
     shippingCost: supabasePurchase.shipping_cost || 0,
+    freightSettlement: (supabasePurchase.freight_settlement === 'courier' ? 'courier' : 'supplier') as 'supplier' | 'courier',
+    clearanceCourierId: supabasePurchase.clearance_courier_id ?? null,
     total: supabasePurchase.total || 0,
     paid: supabasePurchase.paid_amount || 0,
     due: supabasePurchase.due_amount || 0,
@@ -323,6 +334,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
     purchaseData: Omit<Purchase, 'id' | 'purchaseNo' | 'createdAt' | 'updatedAt'>,
     providedPurchaseNo?: string
   ): Promise<Purchase> => {
+    const perf = perfStart('createPurchase');
     if (!companyId || !user) {
       throw new Error('Company ID and User are required');
     }
@@ -492,11 +504,11 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
           .catch((err) => console.warn('[PURCHASE CONTEXT] Activity log failed:', err));
       }
 
-      // PURCHASE DOCUMENT JE — single posting engine (reads purchase + purchase_charges from DB after createPurchase)
+      // PURCHASE DOCUMENT JE — pass in-memory header + charges to skip re-select
       if (canPostAccountingForPurchaseStatus(newPurchase.status) && companyId && newPurchase.total > 0) {
         try {
           const { postPurchaseDocumentAccounting } = await import('@/app/services/documentPostingEngine');
-          const jeId = await postPurchaseDocumentAccounting(newPurchase.id);
+          const jeId = await postPurchaseDocumentAccounting(newPurchase.id, result as any, charges);
           if (!jeId) {
             throw new Error('Final/received purchase was saved but no canonical purchase document JE exists.');
           }
@@ -521,21 +533,20 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
         console.log('[PURCHASE CONTEXT] Stock for purchase', newPurchase.id, 'handled by DB trigger (single posting).');
       }
 
-      // Z1: Reconcile lines vs stock_movements after trigger + any race
+      // Z1: Reconcile lines vs stock_movements after trigger — background (do not block save UI)
       const pst = normalizePurchaseStatusForPosting(newPurchase.status);
       if (
         newPurchase.id &&
         (canPostStockForPurchaseStatus(pst) || String(newPurchase.status).toLowerCase() === 'cancelled')
       ) {
-        try {
-          const { syncPurchaseStockForDocument } = await import('@/app/services/documentStockSyncService');
-          const z1 = await syncPurchaseStockForDocument(newPurchase.id);
-          if (z1.adjustmentsInserted > 0) {
-            console.log('[PURCHASE CONTEXT] Z1 stock sync (create):', z1.keysAdjusted);
-          }
-        } catch (z1Err) {
-          console.warn('[PURCHASE CONTEXT] Z1 stock sync (create) failed:', z1Err);
-        }
+        void import('@/app/services/documentStockSyncService')
+          .then(({ syncPurchaseStockForDocument }) => syncPurchaseStockForDocument(newPurchase.id))
+          .then((z1) => {
+            if (z1.adjustmentsInserted > 0) {
+              console.log('[PURCHASE CONTEXT] Z1 stock sync (create):', z1.keysAdjusted);
+            }
+          })
+          .catch((z1Err) => console.warn('[PURCHASE CONTEXT] Z1 stock sync (create) failed:', z1Err));
       }
       
       // 🔒 CRITICAL FIX: Record initial payment in payments table (like Sale module) — posted POs only (no payment JE for draft/ordered)
@@ -600,7 +611,9 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
         });
       }
 
-      toast.success(`Purchase Order ${purchaseNo} created successfully!`);
+      if (import.meta.env?.DEV) {
+        console.info('[PURCHASE CONTEXT] createPurchase complete:', purchaseNo);
+      }
       
       // 🔒 CRITICAL FIX: Dispatch event to refresh inventory (like Sale module)
       window.dispatchEvent(new CustomEvent('purchaseSaved', { detail: { purchaseId: newPurchase.id } }));
@@ -608,7 +621,8 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       if (newPurchase.supplier) {
         window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'supplier', entityId: newPurchase.supplier } }));
       }
-      
+
+      perf.end({ status: newPurchase.status, items: newPurchase.items?.length ?? 0 });
       return newPurchase;
     } catch (error: any) {
       console.error('[PURCHASE CONTEXT] Error creating purchase:', error);
@@ -1244,38 +1258,39 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
               }
               if (!apAccountId) apAccountId = await getAccId('2000');
 
-              // Rebuild JE lines: delete old lines and insert fresh correct ones
-              // (the old per-line update was buggy: freight+subtotal lines shared same account_id
-              //  so both got the same amount, doubling the JE)
+              const freightSettlement = String((updated as any).freight_settlement ?? 'supplier');
+              const clearanceCourierId = (updated as any).clearance_courier_id ?? null;
+              const headerTax = Number((updated as any).tax_amount ?? 0) || 0;
+              const headerShipping = Number((updated as any).shipping_cost ?? 0) || 0;
+
               await sbPur.from('journal_entry_lines').delete().eq('journal_entry_id', jeId);
 
-              const newLines: { journal_entry_id: string; account_id: string; debit: number; credit: number; description: string }[] = [];
-              const itemsSubtotal = newSnapshot.subtotal;
-              const freight = newSnapshot.otherCharges;
-              const discount = newSnapshot.discount;
+              const { buildPurchaseDocumentJournalLines } = await import('@/app/services/purchaseAccountingService');
+              const lineSpecs = await buildPurchaseDocumentJournalLines({
+                companyId,
+                purchaseId: id,
+                poNo,
+                supplierName: (updated as any).supplier_name || 'Supplier',
+                subtotal: newSnapshot.subtotal,
+                discount: newSnapshot.discount,
+                tax: headerTax,
+                shippingCost: headerShipping,
+                freightSettlement,
+                clearanceCourierId,
+                supplierContactId: supplierId,
+                charges: (updated as any).purchase_charges ?? (updated as any).charges ?? [],
+                inventoryAccountId: inventoryId!,
+                apAccountId: apAccountId!,
+                discountAccountId: discountId,
+              });
 
-              // DR Inventory = subtotal (items)
-              if (itemsSubtotal > 0) {
-                newLines.push({ journal_entry_id: jeId, account_id: inventoryId!, debit: itemsSubtotal, credit: 0, description: `Inventory purchase ${poNo}` });
-              }
-              // CR AP = subtotal (items)
-              if (itemsSubtotal > 0) {
-                newLines.push({ journal_entry_id: jeId, account_id: apAccountId!, debit: 0, credit: itemsSubtotal, description: `Payable — ${(updated as any).supplier_name || 'Supplier'}` });
-              }
-              // DR Inventory = freight, CR AP = freight (if any)
-              if (freight > 0) {
-                newLines.push(
-                  { journal_entry_id: jeId, account_id: inventoryId!, debit: freight, credit: 0, description: `Freight (purchase)` },
-                  { journal_entry_id: jeId, account_id: apAccountId!, debit: 0, credit: freight, description: `Payable — freight` },
-                );
-              }
-              // DR AP = discount, CR Discount Received (if any)
-              if (discount > 0 && discountId) {
-                newLines.push(
-                  { journal_entry_id: jeId, account_id: apAccountId!, debit: discount, credit: 0, description: `Purchase discount` },
-                  { journal_entry_id: jeId, account_id: discountId, debit: 0, credit: discount, description: `Discount received` },
-                );
-              }
+              const newLines = lineSpecs.map((l) => ({
+                journal_entry_id: jeId,
+                account_id: l.account_id,
+                debit: l.debit,
+                credit: l.credit,
+                description: l.description,
+              }));
               if (newLines.length > 0) {
                 await sbPur.from('journal_entry_lines').insert(newLines);
               }
@@ -1299,7 +1314,6 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
               await sbPur.from('journal_entries').update({ description: `${baseDesc} ${editLog}`.slice(0, 500) }).eq('id', jeId);
 
               console.log('[PURCHASE CONTEXT] In-place updated purchase JE', jeId, 'for', poNo);
-              if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
             } else {
               // Fallback: use old adjustment approach
               const newSnapshotFb = pac.getPurchaseAccountingSnapshot(updated);
@@ -1324,10 +1338,17 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
 
           try {
             const { notifyAccountingEntriesChanged } = await import('@/app/lib/accountingInvalidate');
-            notifyAccountingEntriesChanged();
+            notifyAccountingEntriesChanged({
+              companyId,
+              branchId: effectiveBranchId ?? null,
+              entityId: id,
+              reason: 'purchase-updated',
+            });
           } catch {
             if (typeof window !== 'undefined') {
-              window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+              window.dispatchEvent(
+                new CustomEvent('accountingEntriesChanged', { detail: { entityId: id } }),
+              );
             }
           }
         } catch (repostErr: any) {
@@ -1405,9 +1426,8 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
         }).catch((err) => console.warn('[PURCHASE CONTEXT] Activity log failed:', err));
       }
       
-      // 🔒 CRITICAL FIX: Refresh purchases list after update to show correct items count
-      // This ensures UI reflects the actual DB state after items update
-      await loadPurchases();
+      // List refresh: emitPurchaseInvalidation → PurchasesPage DATA_INVALIDATED (single flight).
+      // Do not also call loadPurchases here — that double-fetched after every update.
       
       // Dispatch event to refresh inventory if stock movements were created
       if (stockMovementDeltas.length > 0) {

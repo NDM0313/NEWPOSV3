@@ -1,4 +1,4 @@
-import { Camera, Image as ImageIcon, Upload, X } from 'lucide-react';
+import { Camera, ClipboardPaste, Image as ImageIcon, Upload, X } from 'lucide-react';
 import { createPortal } from 'react-dom';
 
 export interface MediaSourceActionSheetProps {
@@ -6,7 +6,9 @@ export interface MediaSourceActionSheetProps {
   onClose: () => void;
   onCamera: () => void;
   onGallery: () => void;
+  onPaste?: () => void;
   showCamera?: boolean;
+  showPaste?: boolean;
   title?: string;
 }
 
@@ -15,7 +17,9 @@ export function MediaSourceActionSheet({
   onClose,
   onCamera,
   onGallery,
+  onPaste,
   showCamera = true,
+  showPaste = false,
   title = 'Add attachment',
 }: MediaSourceActionSheetProps) {
   if (!open) return null;
@@ -69,6 +73,19 @@ export function MediaSourceActionSheet({
             )}
             <span className="text-sm font-medium">{showCamera ? 'Choose from gallery' : 'Upload file'}</span>
           </button>
+          {showPaste && onPaste ? (
+            <button
+              type="button"
+              onClick={() => onPaste()}
+              className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl bg-[#111827] border border-[#374151] text-white hover:border-[#3B82F6] transition-colors"
+            >
+              <ClipboardPaste className="w-5 h-5 text-[#A78BFA] shrink-0" />
+              <div className="text-left min-w-0">
+                <span className="text-sm font-medium block">Paste image</span>
+                <span className="text-xs text-[#9CA3AF] block">Copied image from clipboard</span>
+              </div>
+            </button>
+          ) : null}
         </div>
       </div>
     </div>

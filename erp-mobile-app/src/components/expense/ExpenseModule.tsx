@@ -19,9 +19,13 @@ import { rowInListBranchScope } from '../../lib/listBranchScope';
 import * as expensesApi from '../../api/expenses';
 import * as authApi from '../../api/auth';
 import * as accountsApi from '../../api/accounts';
+import { getBranchPaymentDefaults } from '../../api/branches';
+import { getDefaultAccounts } from '../../api/settings';
+import { resolveDefaultPaymentAccountId } from '../../utils/resolveDefaultPaymentAccount';
 import { getUsersForSalary, type SalaryUserRow } from '../../api/users';
 import { addPending } from '../../lib/offlineStore';
-import { getCurrentLocalTimestamp, localNowDateString } from '../../utils/localDate';
+import { getCurrentLocalTimestamp, localNowDateTimeString } from '../../utils/localDate';
+import { DateTimeInputField } from '../shared/DateTimePicker';
 import { sortByDocumentDateTimeDesc } from '../../utils/chronologicalSort';
 import { usePermissions } from '../../context/PermissionContext';
 import { formatAccountPickerSubtitle } from '../../utils/balancePrivacy';
@@ -35,16 +39,35 @@ import { useSubmitLock } from '../../contexts/LoadingContext';
 import { formatSaleChargeDisplayLabel } from '../../lib/saleChargeDisplay';
 import { ExpenseCategorySheet } from './ExpenseCategorySheet';
 import { ExpenseDetailSheet } from './ExpenseDetailSheet';
+import { AttachmentIndicatorButton } from '../shared/AttachmentIndicatorButton';
+import { AttachmentPreviewModal } from '../sales/AttachmentPreviewModal';
 import {
   categoryRequires4120Clearing,
   collectCategoryIdsForClearingFilter,
   collectClearingSlugsUnder,
   displayLabelForCategoryId,
-  expenseMatchesMainFilter,
+  buildExpenseFilterChips,
+  expenseMatchesCategoryFilter,
+  findPathToCategory,
+  isExpenseSalaryCategory,
+  levelIdsFromCategoryId,
   resolveExpenseCategoryIdFromLevels,
 } from '../../lib/expenseCategoryTreeUtils';
+import {
+  planHybridServiceExpense,
+  type ClearingAllocation,
+} from '../../lib/clearingAllocation';
 
 const MAX_EXPENSE_RECEIPT_BYTES = 5 * 1024 * 1024;
+
+function expenseReceiptName(url: string): string {
+  const base = url.split('/').pop() || 'receipt';
+  try {
+    return decodeURIComponent(base.replace(/^\d+_/, ''));
+  } catch {
+    return base;
+  }
+}
 
 interface ExpenseModuleProps {
   onBack: () => void;
@@ -129,7 +152,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
   const effectiveProfileId = useEffectiveWorkerProfileId() ?? user.profileId ?? null;
   const effectiveRole = useEffectiveWorkerRole(user.role);
   const isolateWorkerData = shouldIsolateCounterWorkerData(effectiveRole);
-  const { canViewBalances, branchIds, isAdminOrOwner } = usePermissions();
+  const { canViewBalances, branchIds, isAdminOrOwner, isPermissionLoaded } = usePermissions();
 
   const listBranchScope = useMemo(
     () => resolveCounterListBranchScope(branch?.id, branchIds, isAdminOrOwner, isolateWorkerData),
@@ -159,9 +182,12 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
     }[]
   >([]);
   const [loading, setLoading] = useState(!!companyId);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadWarning, setLoadWarning] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [showCategories, setShowCategories] = useState(false);
   const [detailExpenseId, setDetailExpenseId] = useState<string | null>(null);
+  const [receiptPreview, setReceiptPreview] = useState<{ url: string; name: string } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<expensesApi.ExpenseRow | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [addCategory, setAddCategory] = useState(CATEGORY_OPTIONS[0]);
@@ -187,6 +213,9 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
   const [subCategoryId, setSubCategoryId] = useState('');
   const [leafCategoryId, setLeafCategoryId] = useState('');
   const [addReceiptFile, setAddReceiptFile] = useState<File | null>(null);
+  const [existingReceiptUrl, setExistingReceiptUrl] = useState<string | null>(null);
+  const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
+  const [editingExpenseNo, setEditingExpenseNo] = useState<string | null>(null);
   const [isProcessingReceipt, setIsProcessingReceipt] = useState(false);
   const [receiptNotice, setReceiptNotice] = useState<string | null>(null);
   const [documentBranchId, setDocumentBranchId] = useState<string | null>(null);
@@ -194,8 +223,8 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
   const [salaryUsers, setSalaryUsers] = useState<SalaryUserRow[]>([]);
   const [salaryUsersLoading, setSalaryUsersLoading] = useState(false);
   const [showSwitchUser, setShowSwitchUser] = useState(false);
-  /** Calendar date in device local TZ (`YYYY-MM-DD`); matches `expenses.expense_date`. */
-  const [addExpenseDate, setAddExpenseDate] = useState(localNowDateString);
+  /** Local date+time for picker; persisted as `expenses.expense_date` (YYYY-MM-DD). */
+  const [addExpenseDate, setAddExpenseDate] = useState(localNowDateTimeString);
   const [clearingLines, setClearingLines] = useState<expensesApi.ExtraServiceClearingLine[]>([]);
   const [clearingLinesLoading, setClearingLinesLoading] = useState(false);
   const [selectedClearingChargeId, setSelectedClearingChargeId] = useState('');
@@ -238,7 +267,10 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
     setLeafCategoryId('');
     setPaidToUserId('');
     setAddReceiptFile(null);
-    setAddExpenseDate(localNowDateString());
+    setExistingReceiptUrl(null);
+    setEditingExpenseId(null);
+    setEditingExpenseNo(null);
+    setAddExpenseDate(localNowDateTimeString());
     setSelectedClearingChargeId('');
     setClearingLines([]);
   }, []);
@@ -298,6 +330,9 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
 
   const handleOpenAdd = () => {
     if (!companyId || branchGateLoading) return;
+    setEditingExpenseId(null);
+    setEditingExpenseNo(null);
+    setExistingReceiptUrl(null);
     if (branch?.id === 'all') {
       runWithBranch(
         (pickedId) => {
@@ -313,8 +348,13 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
   };
 
   useEffect(() => {
-    if (showAdd) setAddExpenseDate(localNowDateString());
+    if (showAdd) setAddExpenseDate(localNowDateTimeString());
   }, [showAdd]);
+
+  const noBranchAccess =
+    isPermissionLoaded &&
+    listBranchScope.mode === 'accessible' &&
+    listBranchScope.branchIds.length === 0;
 
   const loadExpenses = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -322,7 +362,20 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
         setLoading(false);
         return;
       }
+      if (!isPermissionLoaded) {
+        if (!opts?.silent) setLoading(true);
+        return;
+      }
+      if (noBranchAccess) {
+        setLoading(false);
+        setLoadError('No branch access configured for your account. Contact an administrator.');
+        setLoadWarning(null);
+        setList([]);
+        return;
+      }
       if (!opts?.silent) setLoading(true);
+      setLoadError(null);
+      setLoadWarning(null);
       const scope = listBranchScope;
       const apiBranchId = scope.mode === 'single' ? scope.branchId : null;
       const accessibleBranchIds = scope.mode === 'accessible' ? scope.branchIds : undefined;
@@ -330,7 +383,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
         accessibleBranchIds,
       });
       setLoading(false);
-      if (!error && data) {
+      if (data?.length) {
         setList(
           data.map((r) => ({
             id: r.id,
@@ -353,9 +406,15 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
             vendor_name: r.vendor_name ?? null,
           })),
         );
+        if (error) setLoadWarning(error);
+      } else if (error) {
+        setLoadError(error);
+        setList([]);
+      } else {
+        setList([]);
       }
     },
-    [companyId, listBranchScope, user.id]
+    [companyId, listBranchScope, isPermissionLoaded, noBranchAccess],
   );
 
   useEffect(() => {
@@ -385,9 +444,37 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
 
   useEffect(() => {
     if (!showAdd || !companyId) return;
-    accountsApi.getPaymentAccounts(companyId).then(({ data }) => setPaymentAccounts(data || []));
+    let cancelled = false;
+    void (async () => {
+      const [{ data }, defaultsRes, branchDefs] = await Promise.all([
+        accountsApi.getPaymentAccounts(companyId),
+        getDefaultAccounts(companyId),
+        writeBranchId ? getBranchPaymentDefaults(writeBranchId) : Promise.resolve(null),
+      ]);
+      if (cancelled) return;
+      const list = data || [];
+      setPaymentAccounts(list);
+      if (!editingExpenseId && !addAccountId && list.length > 0) {
+        const picks = list.map((a) => ({
+          id: a.id,
+          name: a.name,
+          type: a.type,
+          balance: a.balance ?? 0,
+          code: a.code ?? '',
+          isDefaultCash: a.isDefaultCash,
+          isDefaultBank: a.isDefaultBank,
+        }));
+        const resolved =
+          resolveDefaultPaymentAccountId('cash', picks, defaultsRes.data, branchDefs) ??
+          resolveDefaultPaymentAccountId('bank', picks, defaultsRes.data, branchDefs);
+        if (resolved) setAddAccountId(resolved);
+      }
+    })();
     reloadCategoryTree();
-  }, [showAdd, companyId, reloadCategoryTree]);
+    return () => {
+      cancelled = true;
+    };
+  }, [showAdd, companyId, writeBranchId, reloadCategoryTree]);
 
   const selectedMain = categoryTree.find((m) => m.id === mainCategoryId);
   const subOptions = selectedMain?.children ?? [];
@@ -406,25 +493,69 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
       : (CATEGORY_TO_SLUG[addCategory] ?? addCategory.toLowerCase().replace(/\s+/g, '_'));
 
   const slugLower = (effectiveCategorySlug || '').toLowerCase();
-  const isSalaryCategory =
-    slugLower === 'salaries' ||
-    slugLower === 'salary' ||
-    slugLower === 'wages' ||
-    selectedMain?.type === 'salary' ||
-    selectedSub?.type === 'salary' ||
-    selectedLeaf?.type === 'salary';
+  const salaryCategoryPath = useMemo(() => {
+    if (categoryTree.length === 0) return null;
+    if (resolvedCategoryId) {
+      return findPathToCategory(categoryTree, resolvedCategoryId);
+    }
+    const trail = [selectedMain, selectedSub, selectedLeaf].filter(Boolean) as NonNullable<
+      typeof selectedMain
+    >[];
+    return trail.length > 0 ? trail : null;
+  }, [categoryTree, resolvedCategoryId, selectedMain, selectedSub, selectedLeaf]);
 
-  const isClearingCategory =
-    categoryTree.length > 0 && selectedMain
-      ? categoryRequires4120Clearing(selectedMain)
+  const isSalaryCategory = useMemo(() => {
+    if (isExpenseSalaryCategory(salaryCategoryPath)) return true;
+    return slugLower === 'salaries' || slugLower === 'salary' || slugLower === 'wages';
+  }, [salaryCategoryPath, slugLower]);
+
+  const showClearingSection =
+    categoryTree.length > 0 && deepestCategory
+      ? categoryRequires4120Clearing(deepestCategory)
       : CLEARING_CATEGORY_SLUGS.has(slugLower);
+
+  const isMainServiceOnly =
+    showClearingSection &&
+    Boolean(selectedMain) &&
+    !subCategoryId &&
+    deepestCategory?.id === selectedMain?.id;
+
+  const isClearingSubFlow = showClearingSection && !isMainServiceOnly;
 
   const selectedClearingLine = clearingLines.find(
     (l) => l.sale_charge_id === selectedClearingChargeId,
   );
 
+  const applyCategoryFromExpenseCategoryId = useCallback(
+    (categoryId: string | null | undefined) => {
+      if (!categoryId || categoryTree.length === 0) return;
+      const { level1Id, level2Id, level3Id } = levelIdsFromCategoryId(categoryTree, categoryId);
+      if (level1Id) setMainCategoryId(level1Id);
+      setSubCategoryId(level2Id);
+      setLeafCategoryId(level3Id);
+    },
+    [categoryTree],
+  );
+
+  const selectClearingLine = useCallback(
+    (line: expensesApi.ExtraServiceClearingLine | undefined, opts?: { prefillAmount?: boolean }) => {
+      if (!line) {
+        setSelectedClearingChargeId('');
+        return;
+      }
+      setSelectedClearingChargeId(line.sale_charge_id);
+      if (opts?.prefillAmount !== false) {
+        setAddAmount(String(line.open_balance));
+      }
+      if (line.expense_category_id) {
+        applyCategoryFromExpenseCategoryId(line.expense_category_id);
+      }
+    },
+    [applyCategoryFromExpenseCategoryId],
+  );
+
   useEffect(() => {
-    if (!showAdd || !companyId || !isClearingCategory) {
+    if (!showAdd || !companyId || !showClearingSection) {
       setClearingLines([]);
       setSelectedClearingChargeId('');
       setClearingLoadError(null);
@@ -476,13 +607,41 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
   }, [
     showAdd,
     companyId,
-    isClearingCategory,
+    showClearingSection,
     effectiveCategorySlug,
     resolvedCategoryId,
     categoryTree,
     deepestCategory,
     selectedMain,
   ]);
+
+  useEffect(() => {
+    if (!showClearingSection || clearingLinesLoading) return;
+    if (
+      selectedClearingChargeId &&
+      !clearingLines.some((l) => l.sale_charge_id === selectedClearingChargeId)
+    ) {
+      setSelectedClearingChargeId('');
+    }
+  }, [showClearingSection, clearingLines, clearingLinesLoading, selectedClearingChargeId]);
+
+  const clearingAmtNum = parseFloat(addAmount);
+  const clearingCategoryLabel = selectedSub?.name ?? deepestCategory?.name ?? 'Service';
+  const hybridPlan = useMemo(() => {
+    if (!isClearingSubFlow || !Number.isFinite(clearingAmtNum) || clearingAmtNum <= 0) {
+      return null;
+    }
+    const lines =
+      clearingLines.length > 0
+        ? clearingLines
+        : selectedClearingLine
+          ? [selectedClearingLine]
+          : [];
+    if (lines.length === 0) return null;
+    return planHybridServiceExpense(clearingAmtNum, lines, selectedClearingLine ?? null);
+  }, [isClearingSubFlow, clearingAmtNum, clearingLines, selectedClearingLine]);
+
+  const clearingSaveBlocked = showClearingSection && clearingLinesLoading;
 
   useEffect(() => {
     if (!isSalaryCategory) {
@@ -553,26 +712,12 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
       showExpenseError('Please select an account (Cash/Bank).');
       return;
     }
-    if (isClearingCategory && clearingLoadError) {
+    if (showClearingSection && clearingLoadError) {
       showExpenseError(clearingLoadError);
       return;
     }
-    if (isClearingCategory && !selectedClearingLine) {
-      showExpenseError(
-        clearingLines.length === 0
-          ? 'No open sale extra to pay against. Finalize a sale with stitching/dying extras first.'
-          : 'Select a sale extra charge to pay against (4120 clearing).',
-      );
-      return;
-    }
-    if (
-      isClearingCategory &&
-      selectedClearingLine &&
-      amt > Number(selectedClearingLine.open_balance) + 0.005
-    ) {
-      showExpenseError(
-        `Amount cannot exceed open balance Rs. ${Number(selectedClearingLine.open_balance).toLocaleString()}.`,
-      );
+    if (showClearingSection && clearingLinesLoading) {
+      showExpenseError('Loading open balances…');
       return;
     }
     const session = await authApi.getSession();
@@ -581,20 +726,16 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
       return;
     }
     const expenseUserId = effectiveUserId;
-    await runSave('Saving expense...', async () => {
+    const editId = editingExpenseId;
+    await runSave(editId ? 'Updating expense...' : 'Saving expense...', async () => {
     setAddError(null);
     setSubmitErrorModal(null);
-    let receiptUrl: string | null = null;
+    let receiptUrl: string | null = existingReceiptUrl;
     if (addReceiptFile && navigator.onLine) {
       const up = await expensesApi.uploadExpenseReceipt(companyId, addReceiptFile);
       if (up.error) {
-        if (up.kind === 'bucket') {
-          receiptUrl = null;
-          showExpenseError(up.error);
-        } else {
-          showExpenseError(up.error);
-          return;
-        }
+        showExpenseError(up.error);
+        return;
       } else if (!up.url) {
         showExpenseError('Receipt could not be uploaded. Remove the file or try again.');
         return;
@@ -604,35 +745,138 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
     }
     const paymentMethod = paymentAccounts.length > 0 ? paymentMethodFromAccount : 'cash';
 
+    const resolveHybridClearing = () => {
+      if (!isClearingSubFlow) return null;
+      const lines =
+        clearingLines.length > 0
+          ? clearingLines
+          : selectedClearingLine
+            ? [selectedClearingLine]
+            : [];
+      if (lines.length === 0) return null;
+      return planHybridServiceExpense(amt, lines, selectedClearingLine ?? null);
+    };
+
+    const hybridClearing = resolveHybridClearing();
+    const clearingAllocations =
+      hybridClearing && hybridClearing.clearingParts.length > 0
+        ? hybridClearing.clearingParts.map((p) => ({
+            saleChargeId: p.saleChargeId,
+            amount: p.amount,
+          }))
+        : undefined;
+    const primaryClearingPart: ClearingAllocation | null =
+      hybridClearing?.clearingParts[0] ?? null;
+
+    const buildCreateExpenseInput = () => ({
+      companyId,
+      branchId: writeBranchId,
+      category: effectiveCategorySlug,
+      description: descriptionFinal,
+      amount: amt,
+      paymentMethod,
+      userId: expenseUserId,
+      expenseDate: addExpenseDate.slice(0, 10),
+      paymentAccountId: addAccountId || undefined,
+      receiptUrl: receiptUrl || undefined,
+      paidToUserId: isSalaryCategory && paidToUserId ? paidToUserId : undefined,
+      payeeName: isSalaryCategory && selectedSalaryUser ? selectedSalaryUser.full_name : undefined,
+      saleId: primaryClearingPart?.saleId ?? undefined,
+      saleChargeId: hybridClearing?.primarySaleChargeId ?? undefined,
+      tailorContactId: primaryClearingPart?.tailorContactId ?? undefined,
+      expenseCategoryId:
+        primaryClearingPart?.expenseCategoryId ?? resolvedCategoryId ?? undefined,
+      clearingAllocations,
+    });
+
+    if (editId) {
+      if (!navigator.onLine) {
+        showExpenseError('Editing expenses requires an internet connection.');
+        return;
+      }
+      const { data, error } = await expensesApi.updateExpense({
+        companyId,
+        expenseId: editId,
+        branchId: writeBranchId,
+        category: effectiveCategorySlug,
+        description: descriptionFinal,
+        amount: amt,
+        paymentMethod,
+        expenseDate: addExpenseDate.slice(0, 10),
+        paymentAccountId: addAccountId || undefined,
+        receiptUrl: receiptUrl ?? undefined,
+        paidToUserId: isSalaryCategory && paidToUserId ? paidToUserId : undefined,
+        payeeName: isSalaryCategory && selectedSalaryUser ? selectedSalaryUser.full_name : undefined,
+        expenseCategoryId: resolvedCategoryId || undefined,
+      });
+      if (error) {
+        showExpenseError(error);
+        return;
+      }
+      const displayCategory = resolvedCategoryId
+        ? displayLabelForCategoryId(categoryTree, resolvedCategoryId, addCategory)
+        : addCategory;
+      const updated = data!;
+      setList((prev) =>
+        prev.map((e) =>
+          e.id === editId
+            ? {
+                ...e,
+                expense_no: updated.expense_no || e.expense_no,
+                date: updated.expense_date,
+                category: displayCategory,
+                expense_category_id: updated.expense_category_id ?? resolvedCategoryId ?? null,
+                description: updated.description,
+                amount: updated.amount,
+                branch_id: updated.branch_id ?? writeBranchId,
+                payment_account_id: updated.payment_account_id ?? null,
+                payment_account_display: updated.payment_account_display,
+                payment_method: updated.payment_method,
+                receipt_url: updated.receipt_url ?? null,
+              }
+            : e,
+        ),
+      );
+      setAddError(null);
+      setSubmitErrorModal(null);
+      resetAddFormAndDraft();
+      void loadExpenses({ silent: true });
+      return;
+    }
+
     if (!navigator.onLine) {
       try {
-        await addPending('expense', {
-          companyId,
-          branchId: writeBranchId,
-          category: effectiveCategorySlug,
-          description: descriptionFinal,
-          amount: amt,
-          paymentMethod,
-          userId: expenseUserId,
-          expenseDate: addExpenseDate,
-          paymentAccountId: addAccountId || undefined,
-          receiptUrl: receiptUrl || undefined,
-          paidToUserId: isSalaryCategory && paidToUserId ? paidToUserId : undefined,
-          payeeName: isSalaryCategory && selectedSalaryUser ? selectedSalaryUser.full_name : undefined,
-          saleId: selectedClearingLine?.sale_id,
-          saleChargeId: selectedClearingLine?.sale_charge_id,
-          tailorContactId: selectedClearingLine?.tailor_contact_id ?? undefined,
-          expenseCategoryId:
-            selectedClearingLine?.expense_category_id ??
-            (resolvedCategoryId || undefined),
-        }, companyId, writeBranchId);
         const displayCategory = resolvedCategoryId
           ? displayLabelForCategoryId(categoryTree, resolvedCategoryId, addCategory)
           : addCategory;
-        const tempId = `offline-${Date.now()}`;
+        const createInput = buildCreateExpenseInput();
+        await addPending(
+          'expense',
+          {
+            companyId: createInput.companyId,
+            branchId: createInput.branchId,
+            category: createInput.category,
+            description: createInput.description,
+            amount: createInput.amount,
+            paymentMethod: createInput.paymentMethod,
+            userId: createInput.userId,
+            expenseDate: createInput.expenseDate,
+            paymentAccountId: createInput.paymentAccountId,
+            receiptUrl: createInput.receiptUrl,
+            paidToUserId: createInput.paidToUserId,
+            payeeName: createInput.payeeName,
+            saleId: createInput.saleId,
+            saleChargeId: createInput.saleChargeId,
+            tailorContactId: createInput.tailorContactId,
+            expenseCategoryId: createInput.expenseCategoryId,
+            clearingAllocations: createInput.clearingAllocations,
+          },
+          companyId,
+          writeBranchId,
+        );
         setList((prev) => [
           {
-            id: tempId,
+            id: `offline-${Date.now()}`,
             expense_no: 'Pending sync',
             date: addExpenseDate,
             created_at: getCurrentLocalTimestamp(),
@@ -654,26 +898,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
       return;
     }
 
-    const { data, error } = await expensesApi.createExpense({
-      companyId,
-      branchId: writeBranchId,
-      category: effectiveCategorySlug,
-      description: descriptionFinal,
-      amount: amt,
-      paymentMethod,
-      userId: expenseUserId,
-      expenseDate: addExpenseDate,
-      paymentAccountId: addAccountId || undefined,
-      receiptUrl: receiptUrl || undefined,
-      paidToUserId: isSalaryCategory && paidToUserId ? paidToUserId : undefined,
-      payeeName: isSalaryCategory && selectedSalaryUser ? selectedSalaryUser.full_name : undefined,
-      saleId: selectedClearingLine?.sale_id,
-      saleChargeId: selectedClearingLine?.sale_charge_id,
-      tailorContactId: selectedClearingLine?.tailor_contact_id ?? undefined,
-      expenseCategoryId:
-        selectedClearingLine?.expense_category_id ??
-        (resolvedCategoryId || undefined),
-    });
+    const { data, error } = await expensesApi.createExpense(buildCreateExpenseInput());
     if (error) {
       showExpenseError(error);
       return;
@@ -693,12 +918,17 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
         amount: amt,
         branch_id: writeBranchId,
         created_by: expenseUserId,
+        receipt_url: receiptUrl || null,
       },
       ...prev,
     ]);
+    if (data?.receiptWarning) {
+      setReceiptNotice(data.receiptWarning);
+    }
     setAddError(null);
     setSubmitErrorModal(null);
     resetAddFormAndDraft();
+    void loadExpenses({ silent: true });
     });
   };
 
@@ -719,17 +949,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
   }, [list, listBranchScope, isolateWorkerData, effectiveUserId, effectiveProfileId]);
 
   const filterChips = useMemo(() => {
-    const all = { value: 'all', label: 'All', icon: '📊' };
-    if (categoryTree.length > 0) {
-      return [
-        all,
-        ...categoryTree.map((m) => ({
-          value: m.name,
-          label: m.name,
-          icon: '📁',
-        })),
-      ];
-    }
+    if (categoryTree.length > 0) return buildExpenseFilterChips(categoryTree);
     return CATEGORIES;
   }, [categoryTree]);
 
@@ -743,6 +963,10 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
 
   const prefillEditFromRow = useCallback(
     (row: (typeof list)[number]) => {
+      setEditingExpenseId(row.id);
+      setEditingExpenseNo(row.expense_no || null);
+      setExistingReceiptUrl(row.receipt_url ?? null);
+      setAddReceiptFile(null);
       setAddDesc(row.description);
       setAddAmount(String(row.amount));
       setAddExpenseDate(row.date);
@@ -789,20 +1013,12 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
 
   const filtered = useMemo(() => {
     const rows = scopedList.filter((e) => {
-      const matchCat =
-        filterCategory === 'all' ||
-        (() => {
-          const main = categoryTree.find((m) => m.name === filterCategory);
-          if (main) {
-            return expenseMatchesMainFilter(
-              e.category,
-              e.expense_category_id,
-              main,
-              categoryTree,
-            );
-          }
-          return e.category === filterCategory;
-        })();
+      const matchCat = expenseMatchesCategoryFilter(
+        filterCategory,
+        e.category,
+        e.expense_category_id,
+        categoryTree,
+      );
       const label = categoryLabelForRow(e);
       const matchSearch =
         e.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -841,8 +1057,12 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
               <ArrowLeft className="w-5 h-5" />
             </button>
             <div>
-              <h1 className="font-semibold text-white">Add Expense</h1>
-              <p className="text-xs text-white/80">Record new business expense</p>
+              <h1 className="font-semibold text-white">{editingExpenseId ? 'Edit Expense' : 'Add Expense'}</h1>
+              <p className="text-xs text-white/80">
+                {editingExpenseId
+                  ? editingExpenseNo || 'Update existing expense'
+                  : 'Record new business expense'}
+              </p>
             </div>
           </div>
         </div>
@@ -894,6 +1114,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
                       setMainCategoryId(v);
                       setSubCategoryId('');
                       setLeafCategoryId('');
+                      setSelectedClearingChargeId('');
                     }}
                     options={[
                       { value: '', label: 'Select main category' },
@@ -908,6 +1129,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
                       onChange={(v) => {
                         setSubCategoryId(v);
                         setLeafCategoryId('');
+                        setSelectedClearingChargeId('');
                       }}
                       options={[
                         { value: '', label: `— ${selectedMain?.name ?? 'Category'} (main)` },
@@ -920,7 +1142,10 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
                   {leafOptions.length > 0 && (
                     <CustomSelect
                       value={leafCategoryId}
-                      onChange={setLeafCategoryId}
+                      onChange={(v) => {
+                        setLeafCategoryId(v);
+                        setSelectedClearingChargeId('');
+                      }}
                       options={[
                         { value: '', label: `— ${selectedSub?.name ?? selectedMain?.name ?? 'Parent'} (sub)` },
                         ...leafOptions.map((n) => ({ value: n.id, label: n.name })),
@@ -940,11 +1165,14 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
               )}
             </div>
 
-            {isClearingCategory && (
+            {showClearingSection && (
               <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
-                <span className="block text-sm font-medium text-[#D1D5DB] mb-2">
-                  Link to sale extra (4120 clearing) *
+                <span className="block text-sm font-medium text-[#D1D5DB] mb-1">
+                  Link to sale extra (optional)
                 </span>
+                <p className="text-xs text-[#6B7280] mb-2">
+                  Leave blank to auto-allocate across open balances (oldest invoice first).
+                </p>
                 {clearingLinesLoading ? (
                   <p className="text-sm text-[#9CA3AF] flex items-center gap-2">
                     <Loader2 className="w-4 h-4 animate-spin shrink-0" /> Loading open balances…
@@ -953,7 +1181,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
                   <p className="text-xs text-[#EF4444]">{clearingLoadError}</p>
                 ) : clearingLines.length === 0 ? (
                   <p className="text-xs text-[#9CA3AF]">
-                    No open extra-service balance. Finalize a sale with stitching extras first.
+                    No open balance for this service — expense will post to category only.
                   </p>
                 ) : (
                   <>
@@ -963,14 +1191,15 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
                     <CustomSelect
                       value={selectedClearingChargeId}
                       onChange={(v) => {
-                        setSelectedClearingChargeId(v);
-                        const line = clearingLines.find((l) => l.sale_charge_id === v);
-                        if (line && !addAmount) {
-                          setAddAmount(String(line.open_balance));
+                        if (!v) {
+                          setSelectedClearingChargeId('');
+                          return;
                         }
+                        const line = clearingLines.find((l) => l.sale_charge_id === v);
+                        selectClearingLine(line, { prefillAmount: true });
                       }}
                       options={[
-                        { value: '', label: 'Select invoice / tailor line' },
+                        { value: '', label: '— Auto-allocate (FIFO) —' },
                         ...clearingLines.map((l) => ({
                           value: l.sale_charge_id,
                           label: `${l.invoice_no} · ${formatSaleChargeDisplayLabel({
@@ -989,18 +1218,20 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
             )}
 
             <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
-              <label htmlFor="expense-date-input" className="block text-sm font-medium text-[#D1D5DB] mb-2">
-                Expense date *
-              </label>
-              <input
-                id="expense-date-input"
-                type="date"
-                value={addExpenseDate}
-                max={localNowDateString()}
-                onChange={(e) => setAddExpenseDate(e.target.value)}
-                className="w-full h-11 bg-[#111827] border border-[#374151] rounded-lg px-3 text-sm text-white focus:outline-none focus:border-[#EF4444]"
+              <DateTimeInputField
+                label="Expense date & time"
+                required
+                value={
+                  addExpenseDate.includes('T')
+                    ? addExpenseDate
+                    : addExpenseDate
+                      ? `${addExpenseDate}T${localNowDateTimeString().slice(11, 16)}`
+                      : localNowDateTimeString()
+                }
+                onChange={setAddExpenseDate}
+                max={localNowDateTimeString().slice(0, 10)}
               />
-              <p className="text-xs text-[#9CA3AF] mt-2">Uses your device calendar date (not UTC midnight).</p>
+              <p className="text-xs text-[#9CA3AF] mt-2">Uses your device local date and time.</p>
             </div>
 
             {isSalaryCategory && (
@@ -1010,22 +1241,30 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
                     <Loader2 className="w-4 h-4 animate-spin shrink-0" /> Loading staff…
                   </p>
                 ) : (
-                  <CustomSearchableSheet
-                    label="Pay to (staff user) *"
-                    sheetTitle="Select payee"
-                    value={paidToUserId}
-                    onChange={setPaidToUserId}
-                    options={salaryUsers.map((u) => ({
-                      value: u.id,
-                      label: u.full_name,
-                      description: [u.role, u.email].filter(Boolean).join(' · ') || undefined,
-                    }))}
-                    placeholder="Search by name, role, or email…"
-                    searchPlaceholder="Search staff…"
-                    required
-                    hint="Salary is for users only (Admin, Staff, Salesman, Operator). Workers are paid via Production → Worker Ledger."
-                    zIndexClass="z-[90]"
-                  />
+                  <>
+                    <CustomSearchableSheet
+                      label="Pay to (staff user) *"
+                      sheetTitle="Select payee"
+                      value={paidToUserId}
+                      onChange={setPaidToUserId}
+                      options={salaryUsers.map((u) => ({
+                        value: u.id,
+                        label: u.full_name,
+                        description: [u.role, u.email].filter(Boolean).join(' · ') || undefined,
+                      }))}
+                      placeholder="Search by name, role, or email…"
+                      searchPlaceholder="Search staff…"
+                      required
+                      hint="Salary is for users only (Admin, Staff, Salesman, Operator). Workers are paid via Production → Worker Ledger."
+                      zIndexClass="z-[90]"
+                    />
+                    {salaryUsers.length === 0 && (
+                      <p className="text-xs text-[#F59E0B] mt-2">
+                        No eligible users found. Add users in Settings with role Staff/Salesman or enable
+                        &quot;Can be assigned as salesman&quot;.
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
             )}
@@ -1046,6 +1285,32 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
               min={1}
               prefix="Rs."
             />
+            {hybridPlan &&
+              (hybridPlan.clearingParts.length > 0 || hybridPlan.categoryAmount > 0.005) && (
+              <p className="text-xs -mt-2 text-[#10B981]">
+                <span className="font-medium">
+                  One expense Rs. {clearingAmtNum.toLocaleString()}:
+                </span>{' '}
+                {hybridPlan.clearingParts.length > 0 && (
+                  <>
+                    {hybridPlan.clearingParts
+                      .map(
+                        (a) =>
+                          `${a.invoiceNo} Rs. ${Number(a.amount).toLocaleString()}`,
+                      )
+                      .join(' + ')}{' '}
+                    (4120 clearing)
+                  </>
+                )}
+                {hybridPlan.categoryAmount > 0.005 && (
+                  <>
+                    {hybridPlan.clearingParts.length > 0 ? ' + ' : ''}
+                    {clearingCategoryLabel} Rs.{' '}
+                    {hybridPlan.categoryAmount.toLocaleString()} (category)
+                  </>
+                )}
+              </p>
+            )}
 
             {/* Attachment (receipt/bill) */}
             <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
@@ -1115,7 +1380,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
         <ActionBar>
           <button
             onClick={handleAdd}
-            disabled={saving}
+            disabled={saving || clearingSaveBlocked}
             className="w-full h-12 bg-gradient-to-br from-[#EF4444] to-[#DC2626] hover:opacity-90 disabled:opacity-50 rounded-xl font-medium text-white flex items-center justify-center gap-2"
           >
             {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
@@ -1239,10 +1504,12 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
                   onClick={() => setFilterCategory(cat.value)}
                   className={`flex items-center gap-1.5 px-3 py-2 rounded-lg whitespace-nowrap transition-all ${
                     filterCategory === cat.value ? 'bg-white text-[#EF4444]' : 'bg-white/10 text-white hover:bg-white/20'
-                  }`}
+                  } ${'isSub' in cat && cat.isSub ? 'text-[11px]' : ''}`}
                 >
                   <span>{cat.icon}</span>
-                  <span className="text-xs font-medium">{cat.label}</span>
+                  <span className={`font-medium ${'isSub' in cat && cat.isSub ? 'text-[11px]' : 'text-xs'}`}>
+                    {cat.label}
+                  </span>
                 </button>
               ))}
             </div>
@@ -1257,9 +1524,28 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
         spinnerAccentClass="border-t-[#EF4444]"
       >
       <div className="p-4 space-y-4">
-        {loading ? (
+        {loadWarning && (
+          <div className="p-3 bg-[#F59E0B]/10 border border-[#F59E0B]/40 rounded-xl text-sm text-[#FCD34D]">
+            {loadWarning}
+          </div>
+        )}
+        {loading || !isPermissionLoaded ? (
           <div className="flex justify-center py-12">
             <Loader2 className="w-8 h-8 text-[#EF4444] animate-spin" />
+          </div>
+        ) : loadError ? (
+          <div className="text-center py-12">
+            <div className="w-16 h-16 bg-[#EF4444]/10 rounded-full flex items-center justify-center mx-auto mb-3">
+              <DollarSign className="w-8 h-8 text-[#FCA5A5]" />
+            </div>
+            <p className="text-[#FCA5A5] text-sm">{loadError}</p>
+            <button
+              type="button"
+              onClick={() => void loadExpenses()}
+              className="mt-4 px-4 py-2 bg-[#374151] hover:bg-[#4B5563] rounded-lg text-white text-sm font-medium"
+            >
+              Retry
+            </button>
           </div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-12">
@@ -1267,7 +1553,11 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
               <DollarSign className="w-8 h-8 text-[#6B7280]" />
             </div>
             <p className="text-[#9CA3AF] text-sm">No expenses found</p>
-            <p className="text-[#6B7280] text-xs mt-1 mb-4">Try adjusting your filters or add a new expense</p>
+            <p className="text-[#6B7280] text-xs mt-1 mb-4">
+              {noBranchAccess
+                ? 'You need branch access to view expenses.'
+                : 'Try adjusting your filters or add a new expense'}
+            </p>
             <button
               type="button"
               onClick={handleOpenAdd}
@@ -1320,11 +1610,30 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
                         <div className="flex items-start gap-3 flex-1 min-w-0">
                           <span className="text-2xl">{getCategoryIcon(e.category)}</span>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-white mb-1">{categoryLabelForRow(e)}</p>
-                            <p className="text-xs text-[#9CA3AF] line-clamp-2">{e.description || e.expense_no}</p>
+                            <p className="text-sm font-semibold text-white truncate mb-1">
+                              {e.expense_no && e.expense_no !== '—' ? (
+                                <>
+                                  <span className="font-mono font-normal">{e.expense_no}</span>
+                                  <span className="text-[#6B7280] font-normal"> · </span>
+                                </>
+                              ) : null}
+                              {categoryLabelForRow(e)}
+                            </p>
+                            <p className="text-xs text-[#9CA3AF] line-clamp-2">{e.description}</p>
                           </div>
                         </div>
-                        <div className="text-right ml-2">
+                        <div className="text-right ml-2 flex items-start gap-0.5 shrink-0">
+                          {e.receipt_url ? (
+                            <AttachmentIndicatorButton
+                              size="sm"
+                              onClick={() =>
+                                setReceiptPreview({
+                                  url: e.receipt_url!,
+                                  name: expenseReceiptName(e.receipt_url!),
+                                })
+                              }
+                            />
+                          ) : null}
                           <p className="text-base font-bold text-[#EF4444]">- Rs. {e.amount.toLocaleString()}</p>
                         </div>
                       </div>
@@ -1390,6 +1699,14 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
           setDetailExpenseId(null);
           setDeleteTarget(exp);
         }}
+      />
+    ) : null}
+    {receiptPreview ? (
+      <AttachmentPreviewModal
+        isOpen={!!receiptPreview}
+        attachments={[receiptPreview]}
+        initialIndex={0}
+        onClose={() => setReceiptPreview(null)}
       />
     ) : null}
     {deleteTarget ? (

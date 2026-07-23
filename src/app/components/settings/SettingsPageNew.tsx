@@ -21,6 +21,10 @@ import { useSupabase } from '@/app/context/SupabaseContext';
 import { userService, User as UserType } from '@/app/services/userService';
 import { useAccounting } from '@/app/context/AccountingContext';
 import { toast } from 'sonner';
+import {
+  safeLocalStorageRemoveItem,
+  safeSessionStorageClear,
+} from '@/app/lib/safeBrowserStorage';
 import { AddUserModal } from '../users/AddUserModal';
 import { AddBranchModal } from '../branches/AddBranchModal';
 import { exportAndDownloadBackup, restoreCompanyBackup, type CompanyBackupData } from '@/app/services/backupService';
@@ -41,9 +45,10 @@ import { printingSettingsService } from '@/app/services/printingSettingsService'
 import type { InvoiceTemplate } from '@/app/types/invoiceDocument';
 import type { CompanyPrintingSettings } from '@/app/types/printingSettings';
 import { mergeWithDefaults } from '@/app/types/printingSettings';
+import { notifyPrintingSettingsSaved } from '@/app/lib/printingSettingsEvents';
 import { PrintingSettingsPanel } from './PrintingSettingsPanel';
 import { getHealthDashboard, type ErpHealthRow } from '@/app/services/healthService';
-import { EmployeesTab } from './EmployeesTab';
+import { StaffAndPayrollTab } from './StaffAndPayrollTab';
 import { ErpPermissionArchitecturePage } from '@/app/components/erp-permissions/ErpPermissionArchitecturePage';
 import { canAccessTechnicalDeveloperSettings } from '@/app/lib/developerAccountingAccess';
 import { canAccessAccountingDeveloperCenter } from '@/app/lib/accountingDeveloperCenterAccess';
@@ -56,6 +61,7 @@ import { BarcodeLabelSettingsPanel } from './BarcodeLabelSettingsPanel';
 import { CompanyLogoUpload } from './CompanyLogoUpload';
 import type { NumberingInnerTab } from './NumberingPanel';
 import { SettingsLayout } from './SettingsLayout';
+import { AppearanceSettingsPanel } from './AppearanceSettingsPanel';
 import {
   findNavItem,
   getVisibleSettingsNav,
@@ -85,62 +91,6 @@ const INVENTORY_SUB_TAB_TO_NAV_ITEM: Record<InventoryMasterTab, string> = {
   variations: 'inventoryVariations',
 };
 
-function TemplateFormFields({
-  template,
-  onChange,
-}: {
-  template: Partial<InvoiceTemplate>;
-  onChange: (t: Partial<InvoiceTemplate>) => void;
-}) {
-  const update = (key: keyof InvoiceTemplate, value: boolean | string | null) => {
-    onChange({ ...template, [key]: value });
-  };
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <Label className="text-gray-300">Show SKU</Label>
-        <Switch checked={template.show_sku ?? true} onCheckedChange={(v) => update('show_sku', v)} />
-      </div>
-      <div className="flex items-center justify-between">
-        <Label className="text-gray-300">Show Discount</Label>
-        <Switch checked={template.show_discount ?? true} onCheckedChange={(v) => update('show_discount', v)} />
-      </div>
-      <div className="flex items-center justify-between">
-        <Label className="text-gray-300">Show Tax</Label>
-        <Switch checked={template.show_tax ?? true} onCheckedChange={(v) => update('show_tax', v)} />
-      </div>
-      <div className="flex items-center justify-between">
-        <Label className="text-gray-300">Show Studio Cost</Label>
-        <Switch checked={template.show_studio ?? true} onCheckedChange={(v) => update('show_studio', v)} />
-      </div>
-      <div className="flex items-center justify-between">
-        <Label className="text-gray-300">Show Signature Line</Label>
-        <Switch checked={template.show_signature ?? false} onCheckedChange={(v) => update('show_signature', v)} />
-      </div>
-      <div>
-        <Label className="text-gray-300">Logo URL (optional override)</Label>
-        <p className="text-xs text-gray-500 mt-1 mb-2">
-          Leave blank to use the company logo from Company Information.
-        </p>
-        <Input
-          className="mt-1 bg-gray-800 border-gray-700 text-white"
-          placeholder="https://..."
-          value={template.logo_url ?? ''}
-          onChange={(e) => update('logo_url', e.target.value || null)}
-        />
-      </div>
-      <div>
-        <Label className="text-gray-300">Footer Note</Label>
-        <Textarea
-          className="mt-1 bg-gray-800 border-gray-700 text-white min-h-[60px]"
-          placeholder="Thank you for your business..."
-          value={template.footer_note ?? ''}
-          onChange={(e) => update('footer_note', e.target.value || null)}
-        />
-      </div>
-    </div>
-  );
-}
 import {
   Dialog,
   DialogContent,
@@ -190,10 +140,10 @@ function SystemHealthPanel() {
   };
 
   const statusColor = (status: string) => {
-    if (status === 'OK') return 'text-green-400 bg-green-500/10';
+    if (status === 'OK') return 'text-[var(--erp-money-positive)] bg-green-500/10';
     if (status === 'FAIL') return 'text-red-400 bg-red-500/10';
     if (status === 'SKIP') return 'text-amber-400 bg-amber-500/10';
-    return 'text-gray-400 bg-gray-500/10';
+    return 'text-muted-foreground bg-gray-500/10';
   };
 
   if (loading) {
@@ -204,8 +154,8 @@ function SystemHealthPanel() {
             <Activity className="text-emerald-500" size={24} />
           </div>
           <div>
-            <h3 className="text-xl font-bold text-white">System Health</h3>
-            <p className="text-sm text-gray-400">Loading…</p>
+            <h3 className="text-xl font-bold text-foreground">System Health</h3>
+            <p className="text-sm text-muted-foreground">Loading…</p>
           </div>
         </div>
       </div>
@@ -220,7 +170,7 @@ function SystemHealthPanel() {
             <Activity className="text-emerald-500" size={24} />
           </div>
           <div>
-            <h3 className="text-xl font-bold text-white">System Health</h3>
+            <h3 className="text-xl font-bold text-foreground">System Health</h3>
             <p className="text-sm text-red-400">{error}</p>
           </div>
         </div>
@@ -243,8 +193,8 @@ function SystemHealthPanel() {
           <Activity className="text-emerald-500" size={24} />
         </div>
         <div>
-          <h3 className="text-xl font-bold text-white">System Health</h3>
-          <p className="text-sm text-gray-400">ERP integrity checks (admin/owner only)</p>
+          <h3 className="text-xl font-bold text-foreground">System Health</h3>
+          <p className="text-sm text-muted-foreground">ERP integrity checks (admin/owner only)</p>
         </div>
       </div>
 
@@ -264,19 +214,19 @@ function SystemHealthPanel() {
             <div
               key={`${r.component}-${i}`}
               className={cn(
-                'rounded-lg border border-gray-800 bg-gray-950/40 overflow-hidden',
+                'rounded-lg border border-border bg-input-background/40 overflow-hidden',
                 r.status === 'FAIL' && 'border-red-900/40',
               )}
             >
               <div className="flex flex-wrap items-start justify-between gap-3 p-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-white font-medium">{r.component}</span>
+                    <span className="text-foreground font-medium">{r.component}</span>
                     <span className={cn('inline-block px-2 py-0.5 rounded text-sm font-medium', statusColor(r.status))}>
                       {r.status}
                     </span>
                   </div>
-                  <p className="text-sm text-gray-400 mt-1">{r.details ?? '—'}</p>
+                  <p className="text-sm text-muted-foreground mt-1">{r.details ?? '—'}</p>
                   {r.status === 'SKIP' ? (
                     <p className="text-xs text-amber-400/90 mt-1">{HEALTH_SKIP_NOTE_UR}</p>
                   ) : null}
@@ -287,7 +237,7 @@ function SystemHealthPanel() {
                     variant="outline"
                     size="sm"
                     onClick={() => toggleGuide(r.component)}
-                    className="border-gray-600 text-gray-300 hover:bg-gray-800 shrink-0 gap-1"
+                    className="border-gray-600 text-muted-foreground hover:bg-muted shrink-0 gap-1"
                   >
                     Fix guide
                     <ChevronDown
@@ -299,20 +249,20 @@ function SystemHealthPanel() {
               </div>
 
               {showGuide && isExpanded && guide ? (
-                <div className="border-t border-gray-800 px-4 py-3 space-y-3 bg-gray-900/30">
-                  <p className="text-sm text-gray-300">{guide.meaningUr}</p>
+                <div className="border-t border-border px-4 py-3 space-y-3 bg-muted/30">
+                  <p className="text-sm text-muted-foreground">{guide.meaningUr}</p>
                   {guide.settingsHint ? (
                     <p className="text-xs text-blue-300">Settings: {guide.settingsHint}</p>
                   ) : null}
-                  <ol className="list-decimal list-inside space-y-1.5 text-sm text-gray-400">
+                  <ol className="list-decimal list-inside space-y-1.5 text-sm text-muted-foreground">
                     {guide.stepsUr.map((step, idx) => (
                       <li key={idx}>{step}</li>
                     ))}
                   </ol>
                   {guide.diagnosticSql ? (
                     <div className="space-y-2">
-                      <p className="text-xs text-gray-500">{HEALTH_SQL_COPY_WARNING_UR}</p>
-                      <pre className="text-xs text-gray-400 bg-gray-950 border border-gray-800 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap font-mono">
+                      <p className="text-xs text-muted-foreground">{HEALTH_SQL_COPY_WARNING_UR}</p>
+                      <pre className="text-xs text-muted-foreground bg-input-background border border-border rounded-lg p-3 overflow-x-auto whitespace-pre-wrap font-mono">
                         {guide.diagnosticSql}
                       </pre>
                       <Button
@@ -320,7 +270,7 @@ function SystemHealthPanel() {
                         variant="outline"
                         size="sm"
                         onClick={() => copySql(guide.diagnosticSql!)}
-                        className="border-gray-600 text-gray-300 hover:bg-gray-800 gap-2"
+                        className="border-gray-600 text-muted-foreground hover:bg-muted gap-2"
                       >
                         <Copy size={14} />
                         Copy diagnostic SQL
@@ -339,7 +289,7 @@ function SystemHealthPanel() {
         type="button"
         variant="outline"
         onClick={load}
-        className="border-gray-600 text-gray-300 hover:bg-gray-800 gap-2"
+        className="border-gray-600 text-muted-foreground hover:bg-muted gap-2"
       >
         <RefreshCw size={16} />
         Refresh
@@ -372,6 +322,10 @@ export const SettingsPageNew = () => {
   const [activeCategoryId, setActiveCategoryId] = useState<SettingsCategoryId>(visibleNav.defaultCategoryId);
   const [activeItemId, setActiveItemId] = useState<string>(visibleNav.defaultItemId);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const appearanceSaveRef = useRef<(() => void) | null>(null);
+  const appearanceRevertRef = useRef<(() => void) | null>(null);
+  const appearanceDirtyRef = useRef(false);
+  const prevContentKeyRef = useRef<SettingsContentKey>('company');
 
   useEffect(() => {
     const fromHash = parseSettingsHash();
@@ -394,6 +348,29 @@ export const SettingsPageNew = () => {
   const resolvedItemId = activeNavItem?.id ?? visibleNav.defaultItemId;
   const contentKey: SettingsContentKey = activeNavItem?.contentKey ?? 'company';
   const navSubTabId = activeNavItem?.subTabId ?? resolvedItemId;
+
+  useEffect(() => {
+    const prev = prevContentKeyRef.current;
+    if (prev === 'appearance' && contentKey !== 'appearance' && appearanceDirtyRef.current) {
+      appearanceRevertRef.current?.();
+      setHasUnsavedChanges(false);
+      appearanceDirtyRef.current = false;
+    }
+    prevContentKeyRef.current = contentKey;
+  }, [contentKey]);
+
+  const handleAppearanceDirtyChange = useCallback((dirty: boolean) => {
+    appearanceDirtyRef.current = dirty;
+    setHasUnsavedChanges(dirty);
+  }, []);
+
+  const handleRegisterAppearanceSave = useCallback((save: () => void) => {
+    appearanceSaveRef.current = save;
+  }, []);
+
+  const handleRegisterAppearanceRevert = useCallback((revert: () => void) => {
+    appearanceRevertRef.current = revert;
+  }, []);
 
   const handleNavSelect = useCallback((categoryId: SettingsCategoryId, itemId: string) => {
     setActiveCategoryId(categoryId);
@@ -601,8 +578,8 @@ export const SettingsPageNew = () => {
       window.dispatchEvent(new Event('inventory-updated'));
       window.dispatchEvent(new Event('products-updated'));
       try {
-        localStorage.removeItem('erp_modules');
-        sessionStorage.clear();
+        safeLocalStorageRemoveItem('erp_modules');
+        safeSessionStorageClear();
       } catch {
         // no-op
       }
@@ -711,6 +688,45 @@ export const SettingsPageNew = () => {
     }
   }, [companyId]);
 
+  const saveInvoiceTemplates = useCallback(async () => {
+    if (!companyId) return;
+    setSavingInvoiceTemplates(true);
+    try {
+      const a4Payload = {
+        show_sku: invoiceTemplateA4.show_sku ?? true,
+        show_discount: invoiceTemplateA4.show_discount ?? true,
+        show_tax: invoiceTemplateA4.show_tax ?? true,
+        show_studio: invoiceTemplateA4.show_studio ?? true,
+        show_signature: invoiceTemplateA4.show_signature ?? false,
+        logo_url: invoiceTemplateA4.logo_url || null,
+        footer_note: invoiceTemplateA4.footer_note || null,
+      };
+      const thermalPayload = {
+        show_sku: invoiceTemplateThermal.show_sku ?? true,
+        show_discount: invoiceTemplateThermal.show_discount ?? true,
+        show_tax: invoiceTemplateThermal.show_tax ?? true,
+        show_studio: invoiceTemplateThermal.show_studio ?? true,
+        show_signature: invoiceTemplateThermal.show_signature ?? false,
+        logo_url: invoiceTemplateThermal.logo_url || null,
+        footer_note: invoiceTemplateThermal.footer_note || null,
+      };
+      const [a4Err, thermalErr] = await Promise.all([
+        invoiceDocumentService.upsertTemplate(companyId, 'A4', a4Payload),
+        invoiceDocumentService.upsertTemplate(companyId, 'Thermal', thermalPayload),
+      ]);
+      if (a4Err.error || thermalErr.error) {
+        toast.error(a4Err.error || thermalErr.error || 'Failed to save');
+        return;
+      }
+      toast.success('Invoice template settings saved');
+    } catch (e) {
+      console.error('[SETTINGS] Error saving invoice templates:', e);
+      toast.error('Failed to save invoice template settings');
+    } finally {
+      setSavingInvoiceTemplates(false);
+    }
+  }, [companyId, invoiceTemplateA4, invoiceTemplateThermal]);
+
   const loadPrintingSettings = useCallback(async () => {
     if (!companyId) return;
     setLoadingPrinting(true);
@@ -740,6 +756,15 @@ export const SettingsPageNew = () => {
         return;
       }
       setPrintingSettings(toSave);
+
+      notifyPrintingSettingsSaved(companyId);
+
+      if (navSubTabId === 'thermalReceipts') {
+        const paperSize = toSave.thermal.paperSize ?? '58mm';
+        await printer.setMode('thermal');
+        await printer.setPaperSize(paperSize);
+      }
+
       toast.success('Printing settings saved');
     } catch (e) {
       console.error('[SETTINGS] Error saving printing settings:', e);
@@ -747,7 +772,7 @@ export const SettingsPageNew = () => {
     } finally {
       setSavingPrinting(false);
     }
-  }, [companyId, printingSettings]);
+  }, [companyId, printingSettings, navSubTabId, printer]);
 
   const loadPaymentAccounts = useCallback(async () => {
     if (!companyId) return;
@@ -840,11 +865,9 @@ export const SettingsPageNew = () => {
     if (contentKey === 'users') {
       loadUsers();
     }
-    if (contentKey === 'invoiceTemplates') {
-      loadInvoiceTemplates();
-    }
     if (contentKey === 'printing') {
       loadPrintingSettings();
+      loadInvoiceTemplates();
     }
   }, [contentKey, loadUsers, loadInvoiceTemplates, loadPrintingSettings]);
 
@@ -976,6 +999,10 @@ export const SettingsPageNew = () => {
   const handleSave = async () => {
     try {
       switch (contentKey) {
+        case 'appearance':
+          appearanceSaveRef.current?.();
+          toast.success('Appearance saved');
+          break;
         case 'company':
           await settings.updateCompanySettings(companyForm);
           break;
@@ -1033,6 +1060,14 @@ export const SettingsPageNew = () => {
         hasUnsavedChanges={hasUnsavedChanges}
         onSave={handleSave}
       >
+          {contentKey === 'appearance' && (
+            <AppearanceSettingsPanel
+              onDirtyChange={handleAppearanceDirtyChange}
+              onRegisterSave={handleRegisterAppearanceSave}
+              onRegisterRevert={handleRegisterAppearanceRevert}
+            />
+          )}
+
           {/* COMPANY INFO */}
           {contentKey === 'company' && (
               <div className="space-y-6">
@@ -1041,73 +1076,73 @@ export const SettingsPageNew = () => {
                     <Building2 className="text-blue-500" size={24} />
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold text-white">Company Information</h3>
-                    <p className="text-sm text-gray-400">Basic business details and contact info</p>
+                    <h3 className="text-xl font-bold text-foreground">Company Information</h3>
+                    <p className="text-sm text-muted-foreground">Basic business details and contact info</p>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <Label className="text-gray-300 mb-2 block">Business Name *</Label>
+                    <Label className="text-muted-foreground mb-2 block">Business Name *</Label>
                     <Input 
                       value={companyForm.businessName}
                       onChange={(e) => {
                         setCompanyForm({ ...companyForm, businessName: e.target.value });
                         setHasUnsavedChanges(true);
                       }}
-                      className="bg-gray-950 border-gray-700 text-white"
+                      className="bg-input-background border-border text-foreground"
                       placeholder="Din Collection"
                     />
                   </div>
 
                   <div>
-                    <Label className="text-gray-300 mb-2 block">Tax ID / NTN</Label>
+                    <Label className="text-muted-foreground mb-2 block">Tax ID / NTN</Label>
                     <Input 
                       value={companyForm.taxId}
                       onChange={(e) => {
                         setCompanyForm({ ...companyForm, taxId: e.target.value });
                         setHasUnsavedChanges(true);
                       }}
-                      className="bg-gray-950 border-gray-700 text-white"
+                      className="bg-input-background border-border text-foreground"
                       placeholder="TAX-123456"
                     />
                   </div>
 
                   <div className="col-span-2">
-                    <Label className="text-gray-300 mb-2 block">Business Address</Label>
+                    <Label className="text-muted-foreground mb-2 block">Business Address</Label>
                     <Input 
                       value={companyForm.businessAddress}
                       onChange={(e) => {
                         setCompanyForm({ ...companyForm, businessAddress: e.target.value });
                         setHasUnsavedChanges(true);
                       }}
-                      className="bg-gray-950 border-gray-700 text-white"
+                      className="bg-input-background border-border text-foreground"
                       placeholder="Main Branch, Lahore, Pakistan"
                     />
                   </div>
 
                   <div>
-                    <Label className="text-gray-300 mb-2 block">Phone Number</Label>
+                    <Label className="text-muted-foreground mb-2 block">Phone Number</Label>
                     <Input 
                       value={companyForm.businessPhone}
                       onChange={(e) => {
                         setCompanyForm({ ...companyForm, businessPhone: e.target.value });
                         setHasUnsavedChanges(true);
                       }}
-                      className="bg-gray-950 border-gray-700 text-white"
+                      className="bg-input-background border-border text-foreground"
                       placeholder="+92 300 1234567"
                     />
                   </div>
 
                   <div>
-                    <Label className="text-gray-300 mb-2 block">Email Address</Label>
+                    <Label className="text-muted-foreground mb-2 block">Email Address</Label>
                     <Input 
                       value={companyForm.businessEmail}
                       onChange={(e) => {
                         setCompanyForm({ ...companyForm, businessEmail: e.target.value });
                         setHasUnsavedChanges(true);
                       }}
-                      className="bg-gray-950 border-gray-700 text-white"
+                      className="bg-input-background border-border text-foreground"
                       placeholder="contact@dincollection.com"
                     />
                   </div>
@@ -1121,14 +1156,14 @@ export const SettingsPageNew = () => {
                   />
 
                   <div>
-                    <Label className="text-gray-300 mb-2 block">Currency</Label>
+                    <Label className="text-muted-foreground mb-2 block">Currency</Label>
                     <select 
                       value={companyForm.currency}
                       onChange={(e) => {
                         setCompanyForm({ ...companyForm, currency: e.target.value });
                         setHasUnsavedChanges(true);
                       }}
-                      className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+                      className="w-full bg-input-background border border-border rounded-lg px-3 py-2 text-foreground text-sm"
                     >
                       <option value="PKR">PKR - Pakistani Rupee</option>
                       <option value="USD">USD - US Dollar</option>
@@ -1138,14 +1173,14 @@ export const SettingsPageNew = () => {
                   </div>
 
                   <div>
-                    <Label className="text-gray-300 mb-2 block">Company timezone</Label>
+                    <Label className="text-muted-foreground mb-2 block">Company timezone</Label>
                     <select 
                       value={companyForm.timezone ?? 'Asia/Karachi'}
                       onChange={(e) => {
                         setCompanyForm({ ...companyForm, timezone: e.target.value });
                         setHasUnsavedChanges(true);
                       }}
-                      className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+                      className="w-full bg-input-background border border-border rounded-lg px-3 py-2 text-foreground text-sm"
                     >
                       <option value="Asia/Karachi">Asia/Karachi</option>
                       <option value="UTC">UTC</option>
@@ -1157,14 +1192,14 @@ export const SettingsPageNew = () => {
                   </div>
 
                   <div>
-                    <Label className="text-gray-300 mb-2 block">Date format</Label>
+                    <Label className="text-muted-foreground mb-2 block">Date format</Label>
                     <select 
                       value={companyForm.dateFormat ?? 'DD/MM/YYYY'}
                       onChange={(e) => {
                         setCompanyForm({ ...companyForm, dateFormat: e.target.value });
                         setHasUnsavedChanges(true);
                       }}
-                      className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+                      className="w-full bg-input-background border border-border rounded-lg px-3 py-2 text-foreground text-sm"
                     >
                       <option value="DD/MM/YYYY">DD/MM/YYYY</option>
                       <option value="MM/DD/YYYY">MM/DD/YYYY</option>
@@ -1184,8 +1219,8 @@ export const SettingsPageNew = () => {
                       <MapPin className="text-green-500" size={24} />
                     </div>
                     <div>
-                      <h3 className="text-xl font-bold text-white">Branch Management</h3>
-                      <p className="text-sm text-gray-400">
+                      <h3 className="text-xl font-bold text-foreground">Branch Management</h3>
+                      <p className="text-sm text-muted-foreground">
                         Manage multiple business locations
                         {!branchesLoading && branchesList.length > 0
                           ? ` · ${branchesList.length} location${branchesList.length === 1 ? '' : 's'}`
@@ -1194,7 +1229,7 @@ export const SettingsPageNew = () => {
                     </div>
                   </div>
                   <Button 
-                    className="bg-green-600 hover:bg-green-500 text-white gap-2"
+                    className="bg-green-600 hover:bg-green-500 text-foreground gap-2"
                     onClick={() => {
                       setEditingBranchForModal(null);
                       setAddBranchModalOpen(true);
@@ -1207,15 +1242,15 @@ export const SettingsPageNew = () => {
                 {branchesLoading && branchesList.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-16 gap-3">
                     <Loader2 className="w-8 h-8 text-green-500 animate-spin" />
-                    <p className="text-sm text-gray-400">Loading branches...</p>
+                    <p className="text-sm text-muted-foreground">Loading branches...</p>
                   </div>
                 ) : branchesList.length === 0 ? (
-                  <div className="text-center py-16 border border-dashed border-gray-700 rounded-xl">
-                    <MapPin className="w-12 h-12 text-gray-600 mx-auto mb-3" />
-                    <p className="text-gray-300 font-medium">No branches yet</p>
-                    <p className="text-sm text-gray-500 mt-1 mb-4">Add your first location to track stock and sales per branch.</p>
+                  <div className="text-center py-16 border border-dashed border-border rounded-xl">
+                    <MapPin className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
+                    <p className="text-muted-foreground font-medium">No branches yet</p>
+                    <p className="text-sm text-muted-foreground mt-1 mb-4">Add your first location to track stock and sales per branch.</p>
                     <Button
-                      className="bg-green-600 hover:bg-green-500 text-white gap-2"
+                      className="bg-green-600 hover:bg-green-500 text-foreground gap-2"
                       onClick={() => {
                         setEditingBranchForModal(null);
                         setAddBranchModalOpen(true);
@@ -1227,32 +1262,32 @@ export const SettingsPageNew = () => {
                 ) : (
                 <div className="grid gap-4">
                   {branchesList.map((branch) => (
-                    <div key={branch.id} className="bg-gray-950 border border-gray-800 rounded-lg p-5">
+                    <div key={branch.id} className="bg-input-background border border-border rounded-lg p-5">
                       <div className="flex items-start justify-between mb-3">
                         <div>
                           <div className="flex items-center gap-3 mb-2">
-                            <h4 className="text-white font-bold text-lg">{branch.branchName}</h4>
+                            <h4 className="text-foreground font-bold text-lg">{branch.branchName}</h4>
                             <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">
                               {branch.branchCode}
                             </Badge>
                             {branch.isDefault && (
-                              <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
+                              <Badge className="bg-green-500/20 text-[var(--erp-money-positive)] border-green-500/30">
                                 Default
                               </Badge>
                             )}
                             {branch.isActive ? (
-                              <Badge className="bg-green-500/20 text-green-400 border-green-500/30">Active</Badge>
+                              <Badge className="bg-green-500/20 text-[var(--erp-money-positive)] border-green-500/30">Active</Badge>
                             ) : (
-                              <Badge className="bg-gray-500/20 text-gray-400 border-gray-500/30">Inactive</Badge>
+                              <Badge className="bg-gray-500/20 text-muted-foreground border-gray-500/30">Inactive</Badge>
                             )}
                           </div>
-                          <p className="text-sm text-gray-400">{branch.address}</p>
-                          <p className="text-xs text-gray-500 mt-1">{branch.phone}</p>
+                          <p className="text-sm text-muted-foreground">{branch.address}</p>
+                          <p className="text-xs text-muted-foreground mt-1">{branch.phone}</p>
                         </div>
                         <Button 
                           variant="ghost" 
                           size="sm" 
-                          className="text-gray-400 hover:text-white"
+                          className="text-muted-foreground hover:text-foreground"
                           onClick={() => handleEditBranch(branch)}
                         >
                           <Edit size={14} className="mr-1" /> Edit
@@ -1260,17 +1295,17 @@ export const SettingsPageNew = () => {
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mt-4">
-                        <div className="bg-gray-900 p-3 rounded-lg border border-gray-800">
-                          <p className="text-xs text-gray-500 mb-1">Cash Account</p>
-                          <p className="text-sm text-white font-medium">{branch.cashAccount}</p>
+                        <div className="bg-card p-3 rounded-lg border border-border">
+                          <p className="text-xs text-muted-foreground mb-1">Cash Account</p>
+                          <p className="text-sm text-foreground font-medium">{branch.cashAccount}</p>
                         </div>
-                        <div className="bg-gray-900 p-3 rounded-lg border border-gray-800">
-                          <p className="text-xs text-gray-500 mb-1">Bank Account</p>
-                          <p className="text-sm text-white font-medium">{branch.bankAccount}</p>
+                        <div className="bg-card p-3 rounded-lg border border-border">
+                          <p className="text-xs text-muted-foreground mb-1">Bank Account</p>
+                          <p className="text-sm text-foreground font-medium">{branch.bankAccount}</p>
                         </div>
-                        <div className="bg-gray-900 p-3 rounded-lg border border-gray-800">
-                          <p className="text-xs text-gray-500 mb-1">POS Drawer</p>
-                          <p className="text-sm text-white font-medium">{branch.posCashDrawer}</p>
+                        <div className="bg-card p-3 rounded-lg border border-border">
+                          <p className="text-xs text-muted-foreground mb-1">POS Drawer</p>
+                          <p className="text-sm text-foreground font-medium">{branch.posCashDrawer}</p>
                         </div>
                       </div>
                     </div>
@@ -1288,40 +1323,40 @@ export const SettingsPageNew = () => {
                     <Store className="text-purple-500" size={24} />
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold text-white">POS Settings</h3>
-                    <p className="text-sm text-gray-400">Configure point of sale behavior</p>
+                    <h3 className="text-xl font-bold text-foreground">POS Settings</h3>
+                    <p className="text-sm text-muted-foreground">Configure point of sale behavior</p>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <Label className="text-gray-300 mb-2 block">Default Cash Account</Label>
+                    <Label className="text-muted-foreground mb-2 block">Default Cash Account</Label>
                     <Input
                       value={posForm.defaultCashAccount}
                       onChange={(e) => {
                         setPOSForm({ ...posForm, defaultCashAccount: e.target.value });
                         setHasUnsavedChanges(true);
                       }}
-                      className="bg-gray-950 border-gray-700 text-white"
+                      className="bg-input-background border-border text-foreground"
                       placeholder="Cash Drawer"
                     />
                   </div>
 
                   <div>
-                    <Label className="text-gray-300 mb-2 block">Invoice Prefix</Label>
+                    <Label className="text-muted-foreground mb-2 block">Invoice Prefix</Label>
                     <Input
                       value={posForm.invoicePrefix}
                       onChange={(e) => {
                         setPOSForm({ ...posForm, invoicePrefix: e.target.value });
                         setHasUnsavedChanges(true);
                       }}
-                      className="bg-gray-950 border-gray-700 text-white"
+                      className="bg-input-background border-border text-foreground"
                       placeholder="POS-"
                     />
                   </div>
 
                   <div>
-                    <Label className="text-gray-300 mb-2 block">Default Tax Rate (%)</Label>
+                    <Label className="text-muted-foreground mb-2 block">Default Tax Rate (%)</Label>
                     <Input
                       type="number"
                       value={posForm.defaultTaxRate || ''}
@@ -1330,13 +1365,13 @@ export const SettingsPageNew = () => {
                         setPOSForm({ ...posForm, defaultTaxRate: Number(e.target.value) || 0 });
                         setHasUnsavedChanges(true);
                       }}
-                      className="bg-gray-950 border-gray-700 text-white"
+                      className="bg-input-background border-border text-foreground"
                       placeholder="0"
                     />
                   </div>
 
                   <div>
-                    <Label className="text-gray-300 mb-2 block">Max Discount (%)</Label>
+                    <Label className="text-muted-foreground mb-2 block">Max Discount (%)</Label>
                     <Input
                       type="number"
                       value={posForm.maxDiscountPercent || ''}
@@ -1345,19 +1380,19 @@ export const SettingsPageNew = () => {
                         setPOSForm({ ...posForm, maxDiscountPercent: Number(e.target.value) || 0 });
                         setHasUnsavedChanges(true);
                       }}
-                      className="bg-gray-950 border-gray-700 text-white"
+                      className="bg-input-background border-border text-foreground"
                       placeholder="0"
                     />
                   </div>
                 </div>
 
-                <div className="space-y-3 pt-4 border-t border-gray-800">
-                  <h4 className="text-white font-semibold mb-3">POS Behavior</h4>
+                <div className="space-y-3 pt-4 border-t border-border">
+                  <h4 className="text-foreground font-semibold mb-3">POS Behavior</h4>
                   
-                  <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+                  <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                     <div>
-                      <p className="text-white font-medium">Credit Sale Allowed</p>
-                      <p className="text-sm text-gray-400">Allow sales on credit without payment</p>
+                      <p className="text-foreground font-medium">Credit Sale Allowed</p>
+                      <p className="text-sm text-muted-foreground">Allow sales on credit without payment</p>
                     </div>
                     <Switch
                       checked={posForm.creditSaleAllowed}
@@ -1368,10 +1403,10 @@ export const SettingsPageNew = () => {
                     />
                   </div>
 
-                  <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+                  <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                     <div>
-                      <p className="text-white font-medium">Auto Print Receipt</p>
-                      <p className="text-sm text-gray-400">Automatically print after sale</p>
+                      <p className="text-foreground font-medium">Auto Print Receipt</p>
+                      <p className="text-sm text-muted-foreground">Automatically print after sale</p>
                     </div>
                     <Switch
                       checked={posForm.autoPrintReceipt}
@@ -1382,10 +1417,10 @@ export const SettingsPageNew = () => {
                     />
                   </div>
 
-                  <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+                  <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                     <div>
-                      <p className="text-white font-medium">Negative Stock Allowed</p>
-                      <p className="text-sm text-gray-400">Sell items with zero stock</p>
+                      <p className="text-foreground font-medium">Negative Stock Allowed</p>
+                      <p className="text-sm text-muted-foreground">Sell items with zero stock</p>
                     </div>
                     <Switch
                       checked={posForm.negativeStockAllowed}
@@ -1396,10 +1431,10 @@ export const SettingsPageNew = () => {
                     />
                   </div>
 
-                  <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+                  <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                     <div>
-                      <p className="text-white font-medium">Allow Discount</p>
-                      <p className="text-sm text-gray-400">Enable discount in POS</p>
+                      <p className="text-foreground font-medium">Allow Discount</p>
+                      <p className="text-sm text-muted-foreground">Enable discount in POS</p>
                     </div>
                     <Switch
                       checked={posForm.allowDiscount}
@@ -1421,34 +1456,34 @@ export const SettingsPageNew = () => {
                     <ShoppingCart className="text-blue-500" size={24} />
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold text-white">Sales Settings</h3>
-                    <p className="text-sm text-gray-400">Configure sales module behavior</p>
+                    <h3 className="text-xl font-bold text-foreground">Sales Settings</h3>
+                    <p className="text-sm text-muted-foreground">Configure sales module behavior</p>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <Label className="text-gray-300 mb-2 block">Invoice Prefix</Label>
+                    <Label className="text-muted-foreground mb-2 block">Invoice Prefix</Label>
                     <Input
                       value={salesForm.invoicePrefix}
                       onChange={(e) => {
                         setSalesForm({ ...salesForm, invoicePrefix: e.target.value });
                         setHasUnsavedChanges(true);
                       }}
-                      className="bg-gray-950 border-gray-700 text-white"
+                      className="bg-input-background border-border text-foreground"
                       placeholder="SAL-"
                     />
                   </div>
 
                   <div>
-                    <Label className="text-gray-300 mb-2 block">Default Payment Method</Label>
+                    <Label className="text-muted-foreground mb-2 block">Default Payment Method</Label>
                     <select
                       value={salesForm.defaultPaymentMethod}
                       onChange={(e) => {
                         setSalesForm({ ...salesForm, defaultPaymentMethod: e.target.value as any });
                         setHasUnsavedChanges(true);
                       }}
-                      className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+                      className="w-full bg-input-background border border-border rounded-lg px-3 py-2 text-foreground text-sm"
                     >
                       <option value="Cash">Cash</option>
                       <option value="Bank">Bank Transfer</option>
@@ -1457,7 +1492,7 @@ export const SettingsPageNew = () => {
                   </div>
 
                   <div>
-                    <Label className="text-gray-300 mb-2 block">Auto Due Days</Label>
+                    <Label className="text-muted-foreground mb-2 block">Auto Due Days</Label>
                     <Input
                       type="number"
                       value={salesForm.autoDueDays || ''}
@@ -1466,19 +1501,19 @@ export const SettingsPageNew = () => {
                         setSalesForm({ ...salesForm, autoDueDays: Number(e.target.value) || 0 });
                         setHasUnsavedChanges(true);
                       }}
-                      className="bg-gray-950 border-gray-700 text-white"
+                      className="bg-input-background border-border text-foreground"
                       placeholder="7"
                     />
                   </div>
                 </div>
 
-                <div className="space-y-3 pt-4 border-t border-gray-800">
-                  <h4 className="text-white font-semibold mb-3">Sales Behavior</h4>
+                <div className="space-y-3 pt-4 border-t border-border">
+                  <h4 className="text-foreground font-semibold mb-3">Sales Behavior</h4>
                   
-                  <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+                  <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                     <div>
-                      <p className="text-white font-medium">Partial Payment Allowed</p>
-                      <p className="text-sm text-gray-400">Allow installment payments</p>
+                      <p className="text-foreground font-medium">Partial Payment Allowed</p>
+                      <p className="text-sm text-muted-foreground">Allow installment payments</p>
                     </div>
                     <Switch
                       checked={salesForm.partialPaymentAllowed}
@@ -1489,10 +1524,10 @@ export const SettingsPageNew = () => {
                     />
                   </div>
 
-                  <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+                  <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                     <div>
-                      <p className="text-white font-medium">Auto Ledger Entry</p>
-                      <p className="text-sm text-gray-400">Auto-post to accounting</p>
+                      <p className="text-foreground font-medium">Auto Ledger Entry</p>
+                      <p className="text-sm text-muted-foreground">Auto-post to accounting</p>
                     </div>
                     <Switch
                       checked={salesForm.autoLedgerEntry}
@@ -1503,10 +1538,10 @@ export const SettingsPageNew = () => {
                     />
                   </div>
 
-                  <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+                  <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                     <div>
-                      <p className="text-white font-medium">Allow Credit Sale</p>
-                      <p className="text-sm text-gray-400">Enable credit sales</p>
+                      <p className="text-foreground font-medium">Allow Credit Sale</p>
+                      <p className="text-sm text-muted-foreground">Enable credit sales</p>
                     </div>
                     <Switch
                       checked={salesForm.allowCreditSale}
@@ -1517,10 +1552,10 @@ export const SettingsPageNew = () => {
                     />
                   </div>
 
-                  <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+                  <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                     <div>
-                      <p className="text-white font-medium">Require Customer Info</p>
-                      <p className="text-sm text-gray-400">Make customer details mandatory</p>
+                      <p className="text-foreground font-medium">Require Customer Info</p>
+                      <p className="text-sm text-muted-foreground">Make customer details mandatory</p>
                     </div>
                     <Switch
                       checked={salesForm.requireCustomerInfo}
@@ -1533,15 +1568,15 @@ export const SettingsPageNew = () => {
                 </div>
 
                 {isAdminOrOwner && (
-                  <div className="space-y-3 pt-4 border-t border-gray-800">
-                    <h4 className="text-white font-semibold mb-3 flex items-center gap-2">
+                  <div className="space-y-3 pt-4 border-t border-border">
+                    <h4 className="text-foreground font-semibold mb-3 flex items-center gap-2">
                       <Scissors size={16} className="text-violet-400" />
                       Bespoke / Custom Orders
                     </h4>
-                    <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-violet-500/30">
+                    <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-violet-500/30">
                       <div>
-                        <p className="text-white font-medium">Enable customization</p>
-                        <p className="text-sm text-gray-400">
+                        <p className="text-foreground font-medium">Enable customization</p>
+                        <p className="text-sm text-muted-foreground">
                           When ON, generic custom SKUs (CUSTOM-BRIDAL, etc.) appear in search and the Customize button is available. Stitching charges use Extra Expenses on the sale.
                         </p>
                       </div>
@@ -1564,8 +1599,8 @@ export const SettingsPageNew = () => {
                     </div>
 
                     {settings.businessSettings.enableBespokeOrders && (
-                      <div className="bg-gray-950 p-4 rounded-lg border border-gray-800 space-y-3">
-                        <p className="text-sm text-gray-400">Choose which fields appear in the customization modal:</p>
+                      <div className="bg-input-background p-4 rounded-lg border border-border space-y-3">
+                        <p className="text-sm text-muted-foreground">Choose which fields appear in the customization modal:</p>
                         {(
                           [
                             ['show_measurements', 'Measurements'],
@@ -1576,7 +1611,7 @@ export const SettingsPageNew = () => {
                           ] as const
                         ).map(([key, label]) => (
                           <div key={key} className="flex items-center justify-between">
-                            <p className="text-white text-sm">{label}</p>
+                            <p className="text-foreground text-sm">{label}</p>
                             <Switch
                               checked={settings.businessSettings.bespokeFormConfig[key as keyof BespokeFormConfig]}
                               onCheckedChange={async (val) => {
@@ -1607,27 +1642,27 @@ export const SettingsPageNew = () => {
                     <ShoppingBag className="text-orange-500" size={24} />
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold text-white">Purchase Settings</h3>
-                    <p className="text-sm text-gray-400">Configure purchase workflow</p>
+                    <h3 className="text-xl font-bold text-foreground">Purchase Settings</h3>
+                    <p className="text-sm text-muted-foreground">Configure purchase workflow</p>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <Label className="text-gray-300 mb-2 block">Supplier Payable Account</Label>
+                    <Label className="text-muted-foreground mb-2 block">Supplier Payable Account</Label>
                     <Input
                       value={purchaseForm.defaultSupplierPayableAccount}
                       onChange={(e) => {
                         setPurchaseForm({ ...purchaseForm, defaultSupplierPayableAccount: e.target.value });
                         setHasUnsavedChanges(true);
                       }}
-                      className="bg-gray-950 border-gray-700 text-white"
+                      className="bg-input-background border-border text-foreground"
                       placeholder="Accounts Payable"
                     />
                   </div>
 
                   <div>
-                    <Label className="text-gray-300 mb-2 block">Payment Terms (Days)</Label>
+                    <Label className="text-muted-foreground mb-2 block">Payment Terms (Days)</Label>
                     <Input
                       type="number"
                       value={purchaseForm.defaultPaymentTerms || ''}
@@ -1636,19 +1671,19 @@ export const SettingsPageNew = () => {
                         setPurchaseForm({ ...purchaseForm, defaultPaymentTerms: Number(e.target.value) || 0 });
                         setHasUnsavedChanges(true);
                       }}
-                      className="bg-gray-950 border-gray-700 text-white"
+                      className="bg-input-background border-border text-foreground"
                       placeholder="30"
                     />
                   </div>
                 </div>
 
-                <div className="space-y-3 pt-4 border-t border-gray-800">
-                  <h4 className="text-white font-semibold mb-3">Purchase Workflow</h4>
+                <div className="space-y-3 pt-4 border-t border-border">
+                  <h4 className="text-foreground font-semibold mb-3">Purchase Workflow</h4>
                   
-                  <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+                  <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                     <div>
-                      <p className="text-white font-medium">Over Receive Allowed</p>
-                      <p className="text-sm text-gray-400">Receive more than ordered qty</p>
+                      <p className="text-foreground font-medium">Over Receive Allowed</p>
+                      <p className="text-sm text-muted-foreground">Receive more than ordered qty</p>
                     </div>
                     <Switch
                       checked={purchaseForm.overReceiveAllowed}
@@ -1659,10 +1694,10 @@ export const SettingsPageNew = () => {
                     />
                   </div>
 
-                  <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+                  <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                     <div>
-                      <p className="text-white font-medium">Approval Required</p>
-                      <p className="text-sm text-gray-400">Manager approval before order</p>
+                      <p className="text-foreground font-medium">Approval Required</p>
+                      <p className="text-sm text-muted-foreground">Manager approval before order</p>
                     </div>
                     <Switch
                       checked={purchaseForm.purchaseApprovalRequired}
@@ -1673,10 +1708,10 @@ export const SettingsPageNew = () => {
                     />
                   </div>
 
-                  <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+                  <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                     <div>
-                      <p className="text-white font-medium">GRN Required</p>
-                      <p className="text-sm text-gray-400">Goods Receipt Note mandatory</p>
+                      <p className="text-foreground font-medium">GRN Required</p>
+                      <p className="text-sm text-muted-foreground">Goods Receipt Note mandatory</p>
                     </div>
                     <Switch
                       checked={purchaseForm.grnRequired}
@@ -1687,10 +1722,10 @@ export const SettingsPageNew = () => {
                     />
                   </div>
 
-                  <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+                  <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                     <div>
-                      <p className="text-white font-medium">Auto Post to Inventory</p>
-                      <p className="text-sm text-gray-400">Update stock automatically</p>
+                      <p className="text-foreground font-medium">Auto Post to Inventory</p>
+                      <p className="text-sm text-muted-foreground">Update stock automatically</p>
                     </div>
                     <Switch
                       checked={purchaseForm.autoPostToInventory}
@@ -1712,8 +1747,8 @@ export const SettingsPageNew = () => {
                     <Package className="text-teal-500" size={24} />
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold text-white">Inventory Settings</h3>
-                    <p className="text-sm text-gray-400">Configure stock management and masters (Units, Categories, Brands, Variation attributes)</p>
+                    <h3 className="text-xl font-bold text-foreground">Inventory Settings</h3>
+                    <p className="text-sm text-muted-foreground">Configure stock management and masters (Units, Categories, Brands, Variation attributes)</p>
                   </div>
                 </div>
 
@@ -1727,7 +1762,7 @@ export const SettingsPageNew = () => {
                     <>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
-                          <Label className="text-gray-300 mb-2 block">Low Stock Threshold</Label>
+                          <Label className="text-muted-foreground mb-2 block">Low Stock Threshold</Label>
                           <Input
                             type="number"
                             value={inventoryForm.lowStockThreshold || ''}
@@ -1736,13 +1771,13 @@ export const SettingsPageNew = () => {
                               setInventoryForm({ ...inventoryForm, lowStockThreshold: Number(e.target.value) || 0 });
                               setHasUnsavedChanges(true);
                             }}
-                            className="bg-gray-950 border-gray-700 text-white"
+                            className="bg-input-background border-border text-foreground"
                             placeholder="10"
                           />
                         </div>
 
                         <div>
-                          <Label className="text-gray-300 mb-2 block">Reorder Alert Days</Label>
+                          <Label className="text-muted-foreground mb-2 block">Reorder Alert Days</Label>
                           <Input
                             type="number"
                             value={inventoryForm.reorderAlertDays || ''}
@@ -1751,20 +1786,20 @@ export const SettingsPageNew = () => {
                               setInventoryForm({ ...inventoryForm, reorderAlertDays: Number(e.target.value) || 0 });
                               setHasUnsavedChanges(true);
                             }}
-                            className="bg-gray-950 border-gray-700 text-white"
+                            className="bg-input-background border-border text-foreground"
                             placeholder="30"
                           />
                         </div>
 
                         <div className="col-span-2">
-                          <Label className="text-gray-300 mb-2 block">Valuation Method</Label>
+                          <Label className="text-muted-foreground mb-2 block">Valuation Method</Label>
                           <select
                             value={inventoryForm.valuationMethod}
                             onChange={(e) => {
                               setInventoryForm({ ...inventoryForm, valuationMethod: e.target.value as any });
                               setHasUnsavedChanges(true);
                             }}
-                            className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+                            className="w-full bg-input-background border border-border rounded-lg px-3 py-2 text-foreground text-sm"
                           >
                             <option value="FIFO">FIFO (First In First Out)</option>
                             <option value="LIFO">LIFO (Last In First Out)</option>
@@ -1773,14 +1808,14 @@ export const SettingsPageNew = () => {
                         </div>
 
                         <div className="col-span-2">
-                          <Label className="text-gray-300 mb-2 block">Default Unit</Label>
+                          <Label className="text-muted-foreground mb-2 block">Default Unit</Label>
                           <select
                             value={inventoryForm.defaultUnitId ?? ''}
                             onChange={(e) => {
                               setInventoryForm({ ...inventoryForm, defaultUnitId: e.target.value || null });
                               setHasUnsavedChanges(true);
                             }}
-                            className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+                            className="w-full bg-input-background border border-border rounded-lg px-3 py-2 text-foreground text-sm"
                           >
                             <option value="">No default (select per product)</option>
                             {units.map((u) => (
@@ -1789,16 +1824,16 @@ export const SettingsPageNew = () => {
                               </option>
                             ))}
                           </select>
-                          <p className="text-xs text-gray-500 mt-1">Used when creating products or when no unit is selected</p>
+                          <p className="text-xs text-muted-foreground mt-1">Used when creating products or when no unit is selected</p>
                         </div>
                       </div>
 
-                      <div className="space-y-3 pt-4 border-t border-gray-800">
-                        <h4 className="text-white font-semibold mb-3">Packing (Boxes / Pieces)</h4>
-                        <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-amber-500/30">
+                      <div className="space-y-3 pt-4 border-t border-border">
+                        <h4 className="text-foreground font-semibold mb-3">Packing (Boxes / Pieces)</h4>
+                        <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-amber-500/30">
                           <div>
-                            <p className="text-white font-medium">Enable Packing (Boxes / Pieces)</p>
-                            <p className="text-sm text-gray-400">When ON: packing columns and modal appear in Sale, Purchase, Inventory, Ledger, Print, and the mobile app. When OFF: system behaves as quantity-only.</p>
+                            <p className="text-foreground font-medium">Enable Packing (Boxes / Pieces)</p>
+                            <p className="text-sm text-muted-foreground">When ON: packing columns and modal appear in Sale, Purchase, Inventory, Ledger, Print, and the mobile app. When OFF: system behaves as quantity-only.</p>
                           </div>
                           <Switch
                             checked={settings.inventorySettings.enablePacking}
@@ -1814,12 +1849,12 @@ export const SettingsPageNew = () => {
                           />
                         </div>
 
-                        <h4 className="text-white font-semibold mb-3 mt-6">Inventory Control</h4>
+                        <h4 className="text-foreground font-semibold mb-3 mt-6">Inventory Control</h4>
 
-                        <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+                        <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                           <div>
-                            <p className="text-white font-medium">Negative Stock Allowed</p>
-                            <p className="text-sm text-gray-400">Stock can go below zero</p>
+                            <p className="text-foreground font-medium">Negative Stock Allowed</p>
+                            <p className="text-sm text-muted-foreground">Stock can go below zero</p>
                           </div>
                           <Switch
                             checked={inventoryForm.negativeStockAllowed}
@@ -1836,10 +1871,10 @@ export const SettingsPageNew = () => {
                           />
                         </div>
 
-                        <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+                        <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                           <div>
-                            <p className="text-white font-medium">Auto Reorder Enabled</p>
-                            <p className="text-sm text-gray-400">Auto-create purchase orders</p>
+                            <p className="text-foreground font-medium">Auto Reorder Enabled</p>
+                            <p className="text-sm text-muted-foreground">Auto-create purchase orders</p>
                           </div>
                           <Switch
                             checked={inventoryForm.autoReorderEnabled}
@@ -1856,10 +1891,10 @@ export const SettingsPageNew = () => {
                           />
                         </div>
 
-                        <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+                        <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                           <div>
-                            <p className="text-white font-medium">Barcode Required</p>
-                            <p className="text-sm text-gray-400">Mandatory for all products</p>
+                            <p className="text-foreground font-medium">Barcode Required</p>
+                            <p className="text-sm text-muted-foreground">Mandatory for all products</p>
                           </div>
                           <Switch
                             checked={inventoryForm.barcodeRequired}
@@ -1877,7 +1912,7 @@ export const SettingsPageNew = () => {
                         </div>
                       </div>
 
-                      <div className="mt-8 pt-8 border-t border-gray-800">
+                      <div className="mt-8 pt-8 border-t border-border">
                         <BarcodeLabelSettingsPanel
                           companyId={companyId}
                           companyName={companyForm.businessName}
@@ -1897,14 +1932,14 @@ export const SettingsPageNew = () => {
                     <Shirt className="text-pink-500" size={24} />
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold text-white">Rental Settings</h3>
-                    <p className="text-sm text-gray-400">Configure rental policies and fees</p>
+                    <h3 className="text-xl font-bold text-foreground">Rental Settings</h3>
+                    <p className="text-sm text-muted-foreground">Configure rental policies and fees</p>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <Label className="text-gray-300 mb-2 block">Late Fee Per Day (Rs)</Label>
+                    <Label className="text-muted-foreground mb-2 block">Late Fee Per Day (Rs)</Label>
                     <Input
                       type="number"
                       value={rentalForm.defaultLateFeePerDay || ''}
@@ -1913,13 +1948,13 @@ export const SettingsPageNew = () => {
                         setRentalForm({ ...rentalForm, defaultLateFeePerDay: Number(e.target.value) || 0 });
                         setHasUnsavedChanges(true);
                       }}
-                      className="bg-gray-950 border-gray-700 text-white"
+                      className="bg-input-background border-border text-foreground"
                       placeholder="500"
                     />
                   </div>
 
                   <div>
-                    <Label className="text-gray-300 mb-2 block">Grace Period (Days)</Label>
+                    <Label className="text-muted-foreground mb-2 block">Grace Period (Days)</Label>
                     <Input
                       type="number"
                       value={rentalForm.gracePeriodDays || ''}
@@ -1928,13 +1963,13 @@ export const SettingsPageNew = () => {
                         setRentalForm({ ...rentalForm, gracePeriodDays: Number(e.target.value) || 0 });
                         setHasUnsavedChanges(true);
                       }}
-                      className="bg-gray-950 border-gray-700 text-white"
+                      className="bg-input-background border-border text-foreground"
                       placeholder="1"
                     />
                   </div>
 
                   <div>
-                    <Label className="text-gray-300 mb-2 block">Advance Percentage (%)</Label>
+                    <Label className="text-muted-foreground mb-2 block">Advance Percentage (%)</Label>
                     <Input
                       type="number"
                       value={rentalForm.advancePercentage || ''}
@@ -1943,13 +1978,13 @@ export const SettingsPageNew = () => {
                         setRentalForm({ ...rentalForm, advancePercentage: Number(e.target.value) || 0 });
                         setHasUnsavedChanges(true);
                       }}
-                      className="bg-gray-950 border-gray-700 text-white"
+                      className="bg-input-background border-border text-foreground"
                       placeholder="50"
                     />
                   </div>
 
                   <div>
-                    <Label className="text-gray-300 mb-2 block">Security Deposit (Rs)</Label>
+                    <Label className="text-muted-foreground mb-2 block">Security Deposit (Rs)</Label>
                     <Input
                       type="number"
                       value={rentalForm.securityDepositAmount || ''}
@@ -1958,13 +1993,13 @@ export const SettingsPageNew = () => {
                         setRentalForm({ ...rentalForm, securityDepositAmount: Number(e.target.value) || 0 });
                         setHasUnsavedChanges(true);
                       }}
-                      className="bg-gray-950 border-gray-700 text-white"
+                      className="bg-input-background border-border text-foreground"
                       placeholder="5000"
                     />
                   </div>
 
                   <div>
-                    <Label className="text-gray-300 mb-2 block">Default Dress Devaluation (Rs)</Label>
+                    <Label className="text-muted-foreground mb-2 block">Default Dress Devaluation (Rs)</Label>
                     <Input
                       type="number"
                       value={defaultDressDevaluation || ''}
@@ -1973,19 +2008,19 @@ export const SettingsPageNew = () => {
                         setDefaultDressDevaluation(Math.max(0, Number(e.target.value) || 0));
                         setHasUnsavedChanges(true);
                       }}
-                      className="bg-gray-950 border-gray-700 text-white"
+                      className="bg-input-background border-border text-foreground"
                       placeholder="5000"
                     />
                   </div>
                 </div>
 
-                <div className="space-y-3 pt-4 border-t border-gray-800">
-                  <h4 className="text-white font-semibold mb-3">Rental Policies</h4>
+                <div className="space-y-3 pt-4 border-t border-border">
+                  <h4 className="text-foreground font-semibold mb-3">Rental Policies</h4>
                   
-                  <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+                  <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                     <div>
-                      <p className="text-white font-medium">Advance Required</p>
-                      <p className="text-sm text-gray-400">Require advance payment</p>
+                      <p className="text-foreground font-medium">Advance Required</p>
+                      <p className="text-sm text-muted-foreground">Require advance payment</p>
                     </div>
                     <Switch
                       checked={rentalForm.advanceRequired}
@@ -1996,10 +2031,10 @@ export const SettingsPageNew = () => {
                     />
                   </div>
 
-                  <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+                  <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                     <div>
-                      <p className="text-white font-medium">Security Deposit Required</p>
-                      <p className="text-sm text-gray-400">Refundable security deposit</p>
+                      <p className="text-foreground font-medium">Security Deposit Required</p>
+                      <p className="text-sm text-muted-foreground">Refundable security deposit</p>
                     </div>
                     <Switch
                       checked={rentalForm.securityDepositRequired}
@@ -2010,10 +2045,10 @@ export const SettingsPageNew = () => {
                     />
                   </div>
 
-                  <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+                  <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                     <div>
-                      <p className="text-white font-medium">Damage Charge Enabled</p>
-                      <p className="text-sm text-gray-400">Charge for damaged items</p>
+                      <p className="text-foreground font-medium">Damage Charge Enabled</p>
+                      <p className="text-sm text-muted-foreground">Charge for damaged items</p>
                     </div>
                     <Switch
                       checked={rentalForm.damageChargeEnabled}
@@ -2024,10 +2059,10 @@ export const SettingsPageNew = () => {
                     />
                   </div>
 
-                  <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+                  <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                     <div>
-                      <p className="text-white font-medium">Auto Extend Allowed</p>
-                      <p className="text-sm text-gray-400">Allow rental extension</p>
+                      <p className="text-foreground font-medium">Auto Extend Allowed</p>
+                      <p className="text-sm text-muted-foreground">Allow rental extension</p>
                     </div>
                     <Switch
                       checked={rentalForm.autoExtendAllowed}
@@ -2049,14 +2084,14 @@ export const SettingsPageNew = () => {
                     <Calculator className="text-yellow-500" size={24} />
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold text-white">Accounting Settings</h3>
-                    <p className="text-sm text-gray-400">Configure fiscal year and policies</p>
+                    <h3 className="text-xl font-bold text-foreground">Accounting Settings</h3>
+                    <p className="text-sm text-muted-foreground">Configure fiscal year and policies</p>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <Label className="text-gray-300 mb-2 block">Fiscal Year Start</Label>
+                    <Label className="text-muted-foreground mb-2 block">Fiscal Year Start</Label>
                     <Input
                       type="date"
                       value={accountingForm.fiscalYearStart}
@@ -2064,12 +2099,12 @@ export const SettingsPageNew = () => {
                         setAccountingForm({ ...accountingForm, fiscalYearStart: e.target.value });
                         setHasUnsavedChanges(true);
                       }}
-                      className="bg-gray-950 border-gray-700 text-white"
+                      className="bg-input-background border-border text-foreground"
                     />
                   </div>
 
                   <div>
-                    <Label className="text-gray-300 mb-2 block">Fiscal Year End</Label>
+                    <Label className="text-muted-foreground mb-2 block">Fiscal Year End</Label>
                     <Input
                       type="date"
                       value={accountingForm.fiscalYearEnd}
@@ -2077,25 +2112,25 @@ export const SettingsPageNew = () => {
                         setAccountingForm({ ...accountingForm, fiscalYearEnd: e.target.value });
                         setHasUnsavedChanges(true);
                       }}
-                      className="bg-gray-950 border-gray-700 text-white"
+                      className="bg-input-background border-border text-foreground"
                     />
                   </div>
 
                   <div>
-                    <Label className="text-gray-300 mb-2 block">Default Currency</Label>
+                    <Label className="text-muted-foreground mb-2 block">Default Currency</Label>
                     <Input
                       value={accountingForm.defaultCurrency}
                       onChange={(e) => {
                         setAccountingForm({ ...accountingForm, defaultCurrency: e.target.value });
                         setHasUnsavedChanges(true);
                       }}
-                      className="bg-gray-950 border-gray-700 text-white"
+                      className="bg-input-background border-border text-foreground"
                       placeholder="PKR"
                     />
                   </div>
 
                   <div>
-                    <Label className="text-gray-300 mb-2 block">Default Tax Rate (%)</Label>
+                    <Label className="text-muted-foreground mb-2 block">Default Tax Rate (%)</Label>
                     <Input
                       type="number"
                       value={accountingForm.defaultTaxRate || ''}
@@ -2104,20 +2139,20 @@ export const SettingsPageNew = () => {
                         setAccountingForm({ ...accountingForm, defaultTaxRate: Number(e.target.value) || 0 });
                         setHasUnsavedChanges(true);
                       }}
-                      className="bg-gray-950 border-gray-700 text-white"
+                      className="bg-input-background border-border text-foreground"
                       placeholder="0"
                     />
                   </div>
 
                   <div className="col-span-2">
-                    <Label className="text-gray-300 mb-2 block">Tax Calculation Method</Label>
+                    <Label className="text-muted-foreground mb-2 block">Tax Calculation Method</Label>
                     <select
                       value={accountingForm.taxCalculationMethod}
                       onChange={(e) => {
                         setAccountingForm({ ...accountingForm, taxCalculationMethod: e.target.value as any });
                         setHasUnsavedChanges(true);
                       }}
-                      className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+                      className="w-full bg-input-background border border-border rounded-lg px-3 py-2 text-foreground text-sm"
                     >
                       <option value="Inclusive">Tax Inclusive (Price includes tax)</option>
                       <option value="Exclusive">Tax Exclusive (Tax added on top)</option>
@@ -2125,7 +2160,7 @@ export const SettingsPageNew = () => {
                   </div>
 
                   <div className="col-span-2">
-                    <Label className="text-gray-300 mb-2 block">Lock Accounting Date (Optional)</Label>
+                    <Label className="text-muted-foreground mb-2 block">Lock Accounting Date (Optional)</Label>
                     <Input
                       type="date"
                       value={accountingForm.lockAccountingDate || ''}
@@ -2133,19 +2168,19 @@ export const SettingsPageNew = () => {
                         setAccountingForm({ ...accountingForm, lockAccountingDate: e.target.value });
                         setHasUnsavedChanges(true);
                       }}
-                      className="bg-gray-950 border-gray-700 text-white"
+                      className="bg-input-background border-border text-foreground"
                     />
-                    <p className="text-xs text-gray-500 mt-1">No entries before this date</p>
+                    <p className="text-xs text-muted-foreground mt-1">No entries before this date</p>
                   </div>
                 </div>
 
-                <div className="space-y-3 pt-4 border-t border-gray-800">
-                  <h4 className="text-white font-semibold mb-3">Accounting Policies</h4>
+                <div className="space-y-3 pt-4 border-t border-border">
+                  <h4 className="text-foreground font-semibold mb-3">Accounting Policies</h4>
                   
-                  <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+                  <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                     <div>
-                      <p className="text-white font-medium">Manual Journal Enabled</p>
-                      <p className="text-sm text-gray-400">Allow manual journal entries</p>
+                      <p className="text-foreground font-medium">Manual Journal Enabled</p>
+                      <p className="text-sm text-muted-foreground">Allow manual journal entries</p>
                     </div>
                     <Switch
                       checked={accountingForm.manualJournalEnabled}
@@ -2156,10 +2191,10 @@ export const SettingsPageNew = () => {
                     />
                   </div>
 
-                  <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+                  <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                     <div>
-                      <p className="text-white font-medium">Multi Currency Enabled</p>
-                      <p className="text-sm text-gray-400">Enable multiple currencies</p>
+                      <p className="text-foreground font-medium">Multi Currency Enabled</p>
+                      <p className="text-sm text-muted-foreground">Enable multiple currencies</p>
                     </div>
                     <Switch
                       checked={accountingForm.multiCurrencyEnabled}
@@ -2181,8 +2216,8 @@ export const SettingsPageNew = () => {
                     <CreditCard className="text-green-500" size={24} />
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold text-white">Default Payment Accounts</h3>
-                    <p className="text-sm text-gray-400">Set default accounts for Cash, Bank, and Mobile Wallet payments</p>
+                    <h3 className="text-xl font-bold text-foreground">Default Payment Accounts</h3>
+                    <p className="text-sm text-muted-foreground">Set default accounts for Cash, Bank, and Mobile Wallet payments</p>
                   </div>
                 </div>
 
@@ -2194,11 +2229,11 @@ export const SettingsPageNew = () => {
 
                 <div className="space-y-6">
                   {loadingPaymentAccounts ? (
-                    <p className="text-sm text-gray-400">Payment accounts load ho rahe hain…</p>
+                    <p className="text-sm text-muted-foreground">Payment accounts load ho rahe hain…</p>
                   ) : null}
                   <div>
-                    <Label className="text-gray-300 mb-2 block flex items-center gap-2">
-                      <Badge className="bg-green-500/20 text-green-400 border-green-500/30">Cash</Badge>
+                    <Label className="text-muted-foreground mb-2 block flex items-center gap-2">
+                      <Badge className="bg-green-500/20 text-[var(--erp-money-positive)] border-green-500/30">Cash</Badge>
                       Default Cash Account
                     </Label>
                     <select 
@@ -2210,7 +2245,7 @@ export const SettingsPageNew = () => {
                         setAccountsForm({ ...accountsForm, paymentMethods: newMethods });
                         setHasUnsavedChanges(true);
                       }}
-                      className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white"
+                      className="w-full bg-input-background border border-border rounded-lg px-3 py-2 text-foreground"
                     >
                       <option value="">Select Cash Account</option>
                       {filterPaymentAccountsByMethod(paymentAccounts, 'Cash').map((acc) => (
@@ -2222,7 +2257,7 @@ export const SettingsPageNew = () => {
                   </div>
 
                   <div>
-                    <Label className="text-gray-300 mb-2 block flex items-center gap-2">
+                    <Label className="text-muted-foreground mb-2 block flex items-center gap-2">
                       <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">Bank</Badge>
                       Default Bank Account
                     </Label>
@@ -2235,7 +2270,7 @@ export const SettingsPageNew = () => {
                         setAccountsForm({ ...accountsForm, paymentMethods: newMethods });
                         setHasUnsavedChanges(true);
                       }}
-                      className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white"
+                      className="w-full bg-input-background border border-border rounded-lg px-3 py-2 text-foreground"
                     >
                       <option value="">Select Bank Account</option>
                       {filterPaymentAccountsByMethod(paymentAccounts, 'Bank').map((acc) => (
@@ -2247,7 +2282,7 @@ export const SettingsPageNew = () => {
                   </div>
 
                   <div>
-                    <Label className="text-gray-300 mb-2 block flex items-center gap-2">
+                    <Label className="text-muted-foreground mb-2 block flex items-center gap-2">
                       <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30">Mobile</Badge>
                       Default Mobile Wallet Account
                     </Label>
@@ -2260,7 +2295,7 @@ export const SettingsPageNew = () => {
                         setAccountsForm({ ...accountsForm, paymentMethods: newMethods });
                         setHasUnsavedChanges(true);
                       }}
-                      className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white"
+                      className="w-full bg-input-background border border-border rounded-lg px-3 py-2 text-foreground"
                     >
                       <option value="">Select Mobile Wallet Account</option>
                       {filterPaymentAccountsByMethod(paymentAccounts, 'Mobile Wallet').map((acc) => (
@@ -2282,17 +2317,17 @@ export const SettingsPageNew = () => {
                     <Shield className="text-violet-400" size={24} />
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold text-white">Accounting Developer Center</h3>
-                    <p className="text-sm text-gray-400">
+                    <h3 className="text-xl font-bold text-foreground">Accounting Developer Center</h3>
+                    <p className="text-sm text-muted-foreground">
                       Read-only COA health checks and transaction trace (Phase B). No repairs on this screen.
                     </p>
                   </div>
                 </div>
-                <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-6 space-y-4">
-                  <p className="text-sm text-gray-300">
+                <div className="rounded-lg border border-border bg-muted/40 p-6 space-y-4">
+                  <p className="text-sm text-muted-foreground">
                     Diagnose Chart of Accounts structure, journal linkage, and report visibility without SQL or write tools.
                   </p>
-                  <ul className="text-sm text-gray-500 list-disc pl-5 space-y-1">
+                  <ul className="text-sm text-muted-foreground list-disc pl-5 space-y-1">
                     <li>COA Health — duplicates, hierarchy, inactive-used, balance cache drift</li>
                     <li>Transaction Trace — RCV/PAY/JE refs → payment → GL → Roznamcha/statement hints</li>
                   </ul>
@@ -2317,83 +2352,21 @@ export const SettingsPageNew = () => {
             )}
 
 
-            {/* PRINTER CONFIGURATION TAB */}
             {contentKey === 'printer' && (
-              <div className="space-y-6">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="p-3 bg-slate-500/10 rounded-lg">
-                    <Printer className="text-slate-400" size={24} />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-white">Printer Configuration</h3>
-                    <p className="text-sm text-gray-400">Receipt and invoice print settings (58mm / 80mm thermal, A4)</p>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
-                    <div>
-                      <p className="text-white font-medium">Printer Mode</p>
-                      <p className="text-sm text-gray-400">Thermal receipt or A4 invoice layout</p>
-                    </div>
-                    <select
-                      value={printer.config.mode}
-                      onChange={(e) => printer.setMode(e.target.value as 'thermal' | 'a4')}
-                      className="bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2"
-                    >
-                      <option value="a4">A4 (Standard)</option>
-                      <option value="thermal">Thermal Receipt</option>
-                    </select>
-                  </div>
-
-                  {printer.config.mode === 'thermal' && (
-                    <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
-                      <div>
-                        <p className="text-white font-medium">Paper Size</p>
-                        <p className="text-sm text-gray-400">58mm or 80mm thermal roll</p>
-                      </div>
-                      <select
-                        value={printer.config.paperSize}
-                        onChange={(e) => printer.setPaperSize(e.target.value as '58mm' | '80mm')}
-                        className="bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2"
-                      >
-                        <option value="58mm">58mm</option>
-                        <option value="80mm">80mm</option>
-                      </select>
-                    </div>
-                  )}
-
-                  <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
-                    <div>
-                      <p className="text-white font-medium">Auto Print Receipt</p>
-                      <p className="text-sm text-gray-400">Print receipt after POS sale</p>
-                    </div>
-                    <Switch
-                      checked={printer.config.autoPrintReceipt}
-                      onCheckedChange={(val) => printer.setAutoPrintReceipt(val)}
-                    />
-                  </div>
-
-                  <div className="flex items-center gap-3 pt-4">
-                    <Button
-                      variant="outline"
-                      className="border-gray-600 text-gray-300 hover:bg-gray-800"
-                      onClick={() => {
-                        window.print();
-                        toast.success('Test print dialog opened');
-                      }}
-                    >
-                      <Printer size={16} className="mr-2" />
-                      Test Print
-                    </Button>
-                    <span className="text-sm text-gray-500">Opens browser print dialog</span>
-                  </div>
-                </div>
+              <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100">
+                Legacy printer settings moved to{' '}
+                <button
+                  type="button"
+                  className="underline text-amber-200"
+                  onClick={() => writeSettingsHash('documentsPrinting', 'printingAdvanced')}
+                >
+                  Documents & Printing → Advanced
+                </button>
+                . Prefer <strong>Thermal Receipts</strong> for new receipt setup.
               </div>
             )}
 
-            {/* PHASE B: INVOICE TEMPLATES TAB */}
-            {/* Centralized Printing (Settings → Printing) */}
+            {/* Centralized Printing (Settings → Documents & Printing) */}
             {contentKey === 'printing' && (
               <PrintingSettingsPanel
                 subTabId={navSubTabId}
@@ -2402,94 +2375,30 @@ export const SettingsPageNew = () => {
                 saving={savingPrinting}
                 onSettingsChange={(partial) => setPrintingSettings((prev) => ({ ...(prev ?? {}), ...partial }))}
                 onSave={savePrintingSettings}
+                printer={printer}
+                invoiceTemplates={{
+                  loading: loadingInvoiceTemplates,
+                  saving: savingInvoiceTemplates,
+                  invoiceTemplateA4,
+                  invoiceTemplateThermal,
+                  onA4Change: setInvoiceTemplateA4,
+                  onThermalChange: setInvoiceTemplateThermal,
+                  onSave: saveInvoiceTemplates,
+                }}
               />
             )}
 
             {contentKey === 'invoiceTemplates' && (
-              <div className="space-y-6">
-                <div className="flex items-center justify-between mb-6">
-                  <div className="flex items-center gap-3">
-                    <div className="p-3 bg-slate-500/10 rounded-lg">
-                      <FileText className="text-slate-400" size={24} />
-                    </div>
-                    <div>
-                      <h3 className="text-xl font-bold text-white">Invoice Templates</h3>
-                      <p className="text-sm text-gray-400">Control what appears on A4 and Thermal invoices (Print / PDF / Share)</p>
-                    </div>
-                  </div>
-                  <Button
-                    className="bg-blue-600 hover:bg-blue-500 text-white gap-2"
-                    disabled={savingInvoiceTemplates || loadingInvoiceTemplates}
-                    onClick={async () => {
-                      if (!companyId) return;
-                      setSavingInvoiceTemplates(true);
-                      try {
-                        const a4Payload = {
-                          show_sku: invoiceTemplateA4.show_sku ?? true,
-                          show_discount: invoiceTemplateA4.show_discount ?? true,
-                          show_tax: invoiceTemplateA4.show_tax ?? true,
-                          show_studio: invoiceTemplateA4.show_studio ?? true,
-                          show_signature: invoiceTemplateA4.show_signature ?? false,
-                          logo_url: invoiceTemplateA4.logo_url || null,
-                          footer_note: invoiceTemplateA4.footer_note || null,
-                        };
-                        const thermalPayload = {
-                          show_sku: invoiceTemplateThermal.show_sku ?? true,
-                          show_discount: invoiceTemplateThermal.show_discount ?? true,
-                          show_tax: invoiceTemplateThermal.show_tax ?? true,
-                          show_studio: invoiceTemplateThermal.show_studio ?? true,
-                          show_signature: invoiceTemplateThermal.show_signature ?? false,
-                          logo_url: invoiceTemplateThermal.logo_url || null,
-                          footer_note: invoiceTemplateThermal.footer_note || null,
-                        };
-                        const [a4Err, thermalErr] = await Promise.all([
-                          invoiceDocumentService.upsertTemplate(companyId, 'A4', a4Payload),
-                          invoiceDocumentService.upsertTemplate(companyId, 'Thermal', thermalPayload),
-                        ]);
-                        if (a4Err.error || thermalErr.error) {
-                          toast.error(a4Err.error || thermalErr.error || 'Failed to save');
-                          return;
-                        }
-                        toast.success('Invoice template settings saved');
-                      } catch (e) {
-                        console.error('[SETTINGS] Error saving invoice templates:', e);
-                        toast.error('Failed to save invoice template settings');
-                      } finally {
-                        setSavingInvoiceTemplates(false);
-                      }
-                    }}
-                  >
-                    {savingInvoiceTemplates ? <RefreshCw size={16} className="animate-spin" /> : <Save size={16} />}
-                    Save Invoice Templates
-                  </Button>
-                </div>
-
-                {loadingInvoiceTemplates ? (
-                  <div className="p-8 text-center text-gray-400">Loading template settings...</div>
-                ) : (
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* A4 template */}
-                    <div className="bg-gray-950 border border-gray-800 rounded-lg p-4 space-y-4">
-                      <h4 className="text-white font-semibold flex items-center gap-2">
-                        <FileText size={18} /> A4 Invoice
-                      </h4>
-                      <TemplateFormFields
-                        template={invoiceTemplateA4}
-                        onChange={setInvoiceTemplateA4}
-                      />
-                    </div>
-                    {/* Thermal template */}
-                    <div className="bg-gray-950 border border-gray-800 rounded-lg p-4 space-y-4">
-                      <h4 className="text-white font-semibold flex items-center gap-2">
-                        <Printer size={18} /> Thermal (58mm / 80mm)
-                      </h4>
-                      <TemplateFormFields
-                        template={invoiceTemplateThermal}
-                        onChange={setInvoiceTemplateThermal}
-                      />
-                    </div>
-                  </div>
-                )}
+              <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100">
+                Invoice Templates moved to{' '}
+                <button
+                  type="button"
+                  className="underline text-amber-200"
+                  onClick={() => writeSettingsHash('documentsPrinting', 'printingAdvanced')}
+                >
+                  Documents & Printing → Advanced
+                </button>
+                .
               </div>
             )}
 
@@ -2502,12 +2411,12 @@ export const SettingsPageNew = () => {
                       <UserCog className="text-indigo-500" size={24} />
                     </div>
                     <div>
-                      <h3 className="text-xl font-bold text-white">Users</h3>
-                      <p className="text-sm text-gray-400">Manage system users, roles, and branch access</p>
+                      <h3 className="text-xl font-bold text-foreground">Users</h3>
+                      <p className="text-sm text-muted-foreground">Manage system users, roles, and branch access</p>
                     </div>
                   </div>
                   <Button 
-                    className="bg-indigo-600 hover:bg-indigo-500 text-white gap-2"
+                    className="bg-indigo-600 hover:bg-indigo-500 text-foreground gap-2"
                     onClick={() => {
                       setEditingUser(null);
                       setAddUserModalOpen(true);
@@ -2517,13 +2426,13 @@ export const SettingsPageNew = () => {
                   </Button>
                 </div>
 
-                <div className="bg-gray-950 border border-gray-800 rounded-lg overflow-hidden">
+                <div className="bg-input-background border border-border rounded-lg overflow-hidden">
                   {loadingUsers ? (
-                    <div className="p-8 text-center text-gray-400">Loading users...</div>
+                    <div className="p-8 text-center text-muted-foreground">Loading users...</div>
                   ) : users.length === 0 ? (
-                    <div className="p-8 text-center text-gray-400">
-                      <Users size={48} className="mx-auto mb-4 text-gray-600" />
-                      <p className="text-gray-400 mb-2">No users found</p>
+                    <div className="p-8 text-center text-muted-foreground">
+                      <Users size={48} className="mx-auto mb-4 text-muted-foreground" />
+                      <p className="text-muted-foreground mb-2">No users found</p>
                       <Button 
                         variant="outline" 
                         size="sm"
@@ -2538,19 +2447,19 @@ export const SettingsPageNew = () => {
                     </div>
                   ) : (
                     <table className="w-full">
-                      <thead className="bg-gray-900 border-b border-gray-800">
+                      <thead className="bg-card border-b border-border">
                         <tr>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">User</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Role</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Branches</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Email</th>
-                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Status</th>
-                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Actions</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">User</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Role</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Branches</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Email</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-muted-foreground uppercase tracking-wider">Actions</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-800">
+                      <tbody className="divide-y divide-border">
                         {users.map((user) => (
-                          <tr key={user.id} className="hover:bg-gray-900/50 transition-colors">
+                          <tr key={user.id} className="hover:bg-muted/40 transition-colors">
                             <td className="px-4 py-4">
                               <div className="flex items-center gap-3">
                                 <div className={cn(
@@ -2565,16 +2474,16 @@ export const SettingsPageNew = () => {
                                     "font-bold text-sm",
                                     user.role === 'admin' && "text-red-400",
                                     user.role === 'manager' && "text-blue-400",
-                                    user.role === 'salesman' && "text-green-400",
-                                    "text-gray-400"
+                                    user.role === 'salesman' && "text-[var(--erp-money-positive)]",
+                                    "text-muted-foreground"
                                   )}>
                                     {user.full_name?.charAt(0).toUpperCase() || 'U'}
                                   </span>
                                 </div>
                                 <div>
-                                  <p className="text-white font-medium">{user.full_name || 'No Name'}</p>
+                                  <p className="text-foreground font-medium">{user.full_name || 'No Name'}</p>
                                   {user.phone && (
-                                    <p className="text-xs text-gray-500">{user.phone}</p>
+                                    <p className="text-xs text-muted-foreground">{user.phone}</p>
                                   )}
                                 </div>
                               </div>
@@ -2584,23 +2493,23 @@ export const SettingsPageNew = () => {
                                 "text-xs",
                                 user.role === 'admin' && "bg-red-500/20 text-red-400 border-red-500/30",
                                 user.role === 'manager' && "bg-blue-500/20 text-blue-400 border-blue-500/30",
-                                user.role === 'salesman' && "bg-green-500/20 text-green-400 border-green-500/30",
-                                user.role === 'staff' && "bg-gray-500/20 text-gray-400 border-gray-500/30",
-                                "bg-gray-500/20 text-gray-400 border-gray-500/30"
+                                user.role === 'salesman' && "bg-green-500/20 text-[var(--erp-money-positive)] border-green-500/30",
+                                user.role === 'staff' && "bg-gray-500/20 text-muted-foreground border-gray-500/30",
+                                "bg-gray-500/20 text-muted-foreground border-gray-500/30"
                               )}>
                                 {user.role ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : 'Staff'}
                               </Badge>
                             </td>
-                            <td className="px-4 py-4 text-gray-400 text-sm">
+                            <td className="px-4 py-4 text-muted-foreground text-sm">
                               {(user as any).branch_names?.length ? (user as any).branch_names.join(', ') : '—'}
                             </td>
-                            <td className="px-4 py-4 text-gray-400">{user.email}</td>
+                            <td className="px-4 py-4 text-muted-foreground">{user.email}</td>
                             <td className="px-4 py-4 text-center">
                               <Badge className={cn(
                                 "text-xs",
                                 user.is_active 
-                                  ? "bg-green-500/20 text-green-400 border-green-500/30" 
-                                  : "bg-gray-500/20 text-gray-400 border-gray-500/30"
+                                  ? "bg-green-500/20 text-[var(--erp-money-positive)] border-green-500/30" 
+                                  : "bg-gray-500/20 text-muted-foreground border-gray-500/30"
                               )}>
                                 {user.is_active ? 'Active' : 'Inactive'}
                               </Badge>
@@ -2660,8 +2569,8 @@ export const SettingsPageNew = () => {
                     <ToggleLeft className="text-lime-500" size={24} />
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold text-white">Module Toggles</h3>
-                    <p className="text-sm text-gray-400">Enable or disable system modules</p>
+                    <h3 className="text-xl font-bold text-foreground">Module Toggles</h3>
+                    <p className="text-sm text-muted-foreground">Enable or disable system modules</p>
                   </div>
                 </div>
 
@@ -2681,22 +2590,22 @@ export const SettingsPageNew = () => {
 
                 {/* Developer / Feature flags — developer role only (or VITE_ACCOUNTING_DIAGNOSTICS). */}
                 {canAccessTechnicalDeveloperSettings(userRole) && (
-                <div className="mt-8 pt-6 border-t border-gray-700">
+                <div className="mt-8 pt-6 border-t border-border">
                   <div className="flex items-center gap-3 mb-4">
                     <div className="p-3 bg-amber-500/10 rounded-lg">
                       <FlaskConical className="text-amber-500" size={24} />
                     </div>
                     <div>
-                      <h3 className="text-lg font-bold text-white">Developer</h3>
-                      <p className="text-sm text-gray-400">Feature toggles – safe rollback by disabling</p>
+                      <h3 className="text-lg font-bold text-foreground">Developer</h3>
+                      <p className="text-sm text-muted-foreground">Feature toggles – safe rollback by disabling</p>
                     </div>
                   </div>
-                  <div className="flex items-center justify-between bg-gray-950 p-5 rounded-lg border border-gray-800">
+                  <div className="flex items-center justify-between bg-input-background p-5 rounded-lg border border-border">
                     <div className="flex items-center gap-3">
                       <Package size={20} className="text-amber-400" />
                       <div>
-                        <p className="text-white font-medium">Studio Production V2</p>
-                        <p className="text-sm text-gray-400">Advanced workflow (separate tables). Disable to use legacy production.</p>
+                        <p className="text-foreground font-medium">Studio Production V2</p>
+                        <p className="text-sm text-muted-foreground">Advanced workflow (separate tables). Disable to use legacy production.</p>
                       </div>
                     </div>
                     <Switch
@@ -2706,12 +2615,12 @@ export const SettingsPageNew = () => {
                       }}
                     />
                   </div>
-                  <div className="flex items-center justify-between bg-gray-950 p-5 rounded-lg border border-gray-800">
+                  <div className="flex items-center justify-between bg-input-background p-5 rounded-lg border border-border">
                     <div className="flex items-center gap-3">
                       <FileText size={20} className="text-amber-400" />
                       <div>
-                        <p className="text-white font-medium">Studio Customer Invoice</p>
-                        <p className="text-sm text-gray-400">Generate customer sale invoice from completed production (V2). Requires Studio Production V2.</p>
+                        <p className="text-foreground font-medium">Studio Customer Invoice</p>
+                        <p className="text-sm text-muted-foreground">Generate customer sale invoice from completed production (V2). Requires Studio Production V2.</p>
                       </div>
                     </div>
                     <Switch
@@ -2721,12 +2630,12 @@ export const SettingsPageNew = () => {
                       }}
                     />
                   </div>
-                  <div className="flex items-center justify-between bg-gray-950 p-5 rounded-lg border border-gray-800">
+                  <div className="flex items-center justify-between bg-input-background p-5 rounded-lg border border-border">
                     <div className="flex items-center gap-3">
                       <Factory size={20} className="text-amber-400" />
                       <div>
-                        <p className="text-white font-medium">Studio Production V3</p>
-                        <p className="text-sm text-gray-400">New workflow: stages, cost breakdown, invoice panel, product/sale creation. When ON, shows V3 instead of V2.</p>
+                        <p className="text-foreground font-medium">Studio Production V3</p>
+                        <p className="text-sm text-muted-foreground">New workflow: stages, cost breakdown, invoice panel, product/sale creation. When ON, shows V3 instead of V2.</p>
                       </div>
                     </div>
                     <Switch
@@ -2749,8 +2658,8 @@ export const SettingsPageNew = () => {
                     <QrCode className="text-blue-500" size={24} />
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold text-white">Lead Tools</h3>
-                    <p className="text-sm text-gray-400">Generate QR codes and links for public contact registration</p>
+                    <h3 className="text-xl font-bold text-foreground">Lead Tools</h3>
+                    <p className="text-sm text-muted-foreground">Generate QR codes and links for public contact registration</p>
                   </div>
                 </div>
                 <LeadTools />
@@ -2765,11 +2674,13 @@ export const SettingsPageNew = () => {
                     <Briefcase className="text-blue-500" size={24} />
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold text-white">Employee Payroll & Ledger</h3>
-                    <p className="text-sm text-gray-400">Manage employees, salaries, and commissions</p>
+                    <h3 className="text-xl font-bold text-foreground">Staff & Payroll</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Salary settings, generation schedule, and staff configuration (Phase 1)
+                    </p>
                   </div>
                 </div>
-                <EmployeesTab />
+                <StaffAndPayrollTab />
               </div>
             )}
 
@@ -2782,13 +2693,13 @@ export const SettingsPageNew = () => {
               <div className="relative space-y-6">
                 {executingReset && (
                   <div
-                    className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-2 rounded-lg bg-gray-950/85 backdrop-blur-[2px]"
+                    className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-2 rounded-lg bg-input-background/85 backdrop-blur-[2px]"
                     aria-busy="true"
                     aria-live="polite"
                   >
                     <Loader2 className="h-8 w-8 animate-spin text-red-400" />
                     <p className="text-sm font-medium text-red-300">Resetting company data…</p>
-                    <p className="text-xs text-gray-500">Please wait — do not use other controls on this tab</p>
+                    <p className="text-xs text-muted-foreground">Please wait — do not use other controls on this tab</p>
                   </div>
                 )}
                 <div className={cn(executingReset && 'pointer-events-none select-none opacity-50')}>
@@ -2797,23 +2708,23 @@ export const SettingsPageNew = () => {
                     <Download className="text-emerald-500" size={24} />
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold text-white">Data & Backup</h3>
-                    <p className="text-sm text-gray-400">Export company data for backup</p>
+                    <h3 className="text-xl font-bold text-foreground">Data & Backup</h3>
+                    <p className="text-sm text-muted-foreground">Export company data for backup</p>
                   </div>
                 </div>
 
-                <div className="bg-gray-950 p-6 rounded-lg border border-emerald-800/40">
-                  <h4 className="text-white font-medium mb-2">Backup &amp; selective restore (ZIP / CSV)</h4>
-                  <p className="text-sm text-gray-400 mb-4">
+                <div className="bg-input-background p-6 rounded-lg border border-emerald-800/40">
+                  <h4 className="text-foreground font-medium mb-2">Backup &amp; selective restore (ZIP / CSV)</h4>
+                  <p className="text-sm text-muted-foreground mb-4">
                     Export a full A-to-Z package with inventory stock balances, or import selected entities
                     with dependency checks. Client-only — uses existing contact, product, and stock services.
                   </p>
                   <BackupRestoreWorkbench isOwner={isOwner} />
                 </div>
 
-                <div className="bg-gray-950 p-6 rounded-lg border border-gray-800">
-                  <h4 className="text-white font-medium mb-2">Advanced: Company Backup (JSON)</h4>
-                  <p className="text-sm text-gray-400 mb-4">
+                <div className="bg-input-background p-6 rounded-lg border border-border">
+                  <h4 className="text-foreground font-medium mb-2">Advanced: Company Backup (JSON)</h4>
+                  <p className="text-sm text-muted-foreground mb-4">
                     Owner-only export. Data is strictly filtered by active company_id and includes tenant-safe tables.
                   </p>
                   <Button
@@ -2827,7 +2738,7 @@ export const SettingsPageNew = () => {
                       if (ok) toast.success('Backup downloaded');
                     }}
                     disabled={!companyId || !isOwner}
-                    className="bg-emerald-600 hover:bg-emerald-500 text-white gap-2"
+                    className="bg-emerald-600 hover:bg-emerald-500 text-foreground gap-2"
                   >
                     <Download size={16} />
                     Export Backup
@@ -2837,9 +2748,9 @@ export const SettingsPageNew = () => {
                   )}
                 </div>
 
-                <div className="bg-gray-950 p-6 rounded-lg border border-amber-700/50">
-                  <h4 className="text-white font-medium mb-2">Advanced: Full restore (JSON, Owner Only)</h4>
-                  <p className="text-sm text-gray-400 mb-3">
+                <div className="bg-input-background p-6 rounded-lg border border-amber-700/50">
+                  <h4 className="text-foreground font-medium mb-2">Advanced: Full restore (JSON, Owner Only)</h4>
+                  <p className="text-sm text-muted-foreground mb-3">
                     Restore validates `meta.company_id`, clears current tenant data in FK-safe order, then imports backup data hierarchically.
                   </p>
                   <div className="space-y-3">
@@ -2847,7 +2758,7 @@ export const SettingsPageNew = () => {
                       value={backupRestoreConfirmation}
                       onChange={(e) => setBackupRestoreConfirmation(e.target.value)}
                       placeholder="Type RESTORE to enable import"
-                      className="bg-gray-900 border-gray-700 text-white"
+                      className="bg-card border-border text-foreground"
                       disabled={!isOwner || backupRestoreLoading}
                     />
                     <input
@@ -2859,7 +2770,7 @@ export const SettingsPageNew = () => {
                         const file = e.target.files?.[0] ?? null;
                         void handleRestoreBackupFile(file);
                       }}
-                      className="block w-full text-sm text-gray-300 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:bg-amber-600/20 file:text-amber-300 hover:file:bg-amber-600/30"
+                      className="block w-full text-sm text-muted-foreground file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:bg-amber-600/20 file:text-amber-300 hover:file:bg-amber-600/30"
                     />
                     {!isOwner && (
                       <p className="text-xs text-amber-400">Only Owner can restore backup.</p>
@@ -2867,24 +2778,24 @@ export const SettingsPageNew = () => {
                   </div>
                 </div>
 
-                <div className="bg-gray-950 p-6 rounded-lg border border-gray-800">
+                <div className="bg-input-background p-6 rounded-lg border border-border">
                   <div className="flex items-center gap-2 mb-2">
                     <Server className="text-amber-500" size={20} />
-                    <h4 className="text-white font-medium">Server Database Backup (Self-Hosted)</h4>
+                    <h4 className="text-foreground font-medium">Server Database Backup (Self-Hosted)</h4>
                   </div>
-                  <p className="text-sm text-gray-400 mb-3">
+                  <p className="text-sm text-muted-foreground mb-3">
                     Supabase Studio mein &quot;Backup&quot; option sirf Cloud par hota hai. Self-hosted par full database backup aapke server (VPS) par run karo.
                   </p>
-                  <p className="text-sm text-gray-300 mb-2 font-mono bg-gray-900 px-3 py-2 rounded border border-gray-700 break-all">
+                  <p className="text-sm text-muted-foreground mb-2 font-mono bg-card px-3 py-2 rounded border border-border break-all">
                     cd /root/NEWPOSV3 &amp;&amp; bash deploy/backup-supabase-db.sh 7
                   </p>
-                  <p className="text-xs text-gray-500 mb-3">
-                    Backups save: <code className="bg-gray-800 px-1 rounded">./backups/supabase_db_YYYYMMDD_HHMMSS.dump</code>. Last argument = retention (days). Daily cron: <code className="bg-gray-800 px-1 rounded">0 2 * * * cd /root/NEWPOSV3 &amp;&amp; bash deploy/backup-supabase-db.sh 14</code>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    Backups save: <code className="bg-muted px-1 rounded">./backups/supabase_db_YYYYMMDD_HHMMSS.dump</code>. Last argument = retention (days). Daily cron: <code className="bg-muted px-1 rounded">0 2 * * * cd /root/NEWPOSV3 &amp;&amp; bash deploy/backup-supabase-db.sh 14</code>
                   </p>
                   <Button
                     variant="outline"
                     size="sm"
-                    className="border-gray-600 text-gray-300 hover:bg-gray-800 gap-2"
+                    className="border-gray-600 text-muted-foreground hover:bg-muted gap-2"
                     onClick={() => {
                       const cmd = 'cd /root/NEWPOSV3 && bash deploy/backup-supabase-db.sh 7';
                       navigator.clipboard.writeText(cmd).then(() => toast.success('Command copied'));
@@ -2895,12 +2806,12 @@ export const SettingsPageNew = () => {
                   </Button>
                 </div>
 
-                <div className="bg-gray-950 p-6 rounded-lg border border-gray-800">
+                <div className="bg-input-background p-6 rounded-lg border border-border">
                   <div className="flex items-center gap-2 mb-2">
                     <RefreshCw className="text-blue-500" size={20} />
-                    <h4 className="text-white font-medium">Clear cache & refresh</h4>
+                    <h4 className="text-foreground font-medium">Clear cache & refresh</h4>
                   </div>
-                  <p className="text-sm text-gray-400 mb-3">
+                  <p className="text-sm text-muted-foreground mb-3">
                     Agar purana data dikh raha ho (e.g. truncate ke baad), cache clear karke page refresh karo. Fresh data database se load hoga.
                   </p>
                   <Button
@@ -2908,8 +2819,8 @@ export const SettingsPageNew = () => {
                     className="border-blue-600 text-blue-400 hover:bg-blue-500/10 gap-2"
                     onClick={() => {
                       try {
-                        localStorage.removeItem('erp_modules');
-                        sessionStorage.clear();
+                        safeLocalStorageRemoveItem('erp_modules');
+                        safeSessionStorageClear();
                         toast.success('Cache cleared. Refreshing...');
                         setTimeout(() => window.location.reload(), 500);
                       } catch (e) {
@@ -2926,7 +2837,7 @@ export const SettingsPageNew = () => {
                 <div className="relative bg-red-950/30 p-6 rounded-lg border border-red-800/60">
                   {resetBusy && (
                     <div
-                      className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 rounded-lg bg-gray-950/85 backdrop-blur-[2px]"
+                      className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 rounded-lg bg-input-background/85 backdrop-blur-[2px]"
                       aria-busy="true"
                       aria-live="polite"
                     >
@@ -2934,14 +2845,14 @@ export const SettingsPageNew = () => {
                       <p className="text-sm font-medium text-red-300">
                         {executingReset ? 'Resetting company data…' : 'Loading reset preview…'}
                       </p>
-                      <p className="text-xs text-gray-500">Please wait — do not change options</p>
+                      <p className="text-xs text-muted-foreground">Please wait — do not change options</p>
                     </div>
                   )}
                   <div className={cn(resetBusy && 'pointer-events-none select-none opacity-50')}>
                   <div className="flex items-center justify-between gap-3 mb-3">
                     <div className="flex items-center gap-2">
                       <AlertCircle className="text-red-400" size={20} />
-                      <h4 className="text-white font-medium">Company Reset (Danger Zone)</h4>
+                      <h4 className="text-foreground font-medium">Company Reset (Danger Zone)</h4>
                     </div>
                     <Button
                       variant="outline"
@@ -2953,7 +2864,7 @@ export const SettingsPageNew = () => {
                     </Button>
                   </div>
 
-                  <p className="text-sm text-gray-400 mb-4">
+                  <p className="text-sm text-muted-foreground mb-4">
                     Company shell, branches, ERP users, and settings are never deleted. Choose a reset mode, preview counts, then confirm.
                   </p>
 
@@ -2986,18 +2897,18 @@ export const SettingsPageNew = () => {
                           'text-left p-4 rounded-lg border transition-colors',
                           resetMode === card.id
                             ? 'border-red-500 bg-red-950/50'
-                            : 'border-gray-800 bg-gray-900/50 hover:border-gray-600',
+                            : 'border-border bg-muted/40 hover:border-gray-600',
                           resetBusy && 'cursor-not-allowed opacity-60'
                         )}
                       >
-                        <p className="text-sm font-medium text-white mb-1">{card.title}</p>
-                        <p className="text-xs text-gray-400 leading-relaxed">{card.desc}</p>
+                        <p className="text-sm font-medium text-foreground mb-1">{card.title}</p>
+                        <p className="text-xs text-muted-foreground leading-relaxed">{card.desc}</p>
                       </button>
                     ))}
                   </div>
 
-                  <div className="space-y-2 mb-4 rounded-lg border border-gray-800 bg-gray-900/40 p-4">
-                    <p className="text-xs uppercase tracking-wide text-gray-500 mb-2">Domains to delete</p>
+                  <div className="space-y-2 mb-4 rounded-lg border border-border bg-card/40 p-4">
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground mb-2">Domains to delete</p>
                     {(
                       [
                         {
@@ -3036,7 +2947,7 @@ export const SettingsPageNew = () => {
                           key={domain.key}
                           className={cn(
                             'flex items-start gap-3 rounded-md p-2',
-                            locked ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer hover:bg-gray-800/50'
+                            locked ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer hover:bg-muted/50'
                           )}
                         >
                           <input
@@ -3055,7 +2966,7 @@ export const SettingsPageNew = () => {
                           />
                           <span>
                             <span className="text-sm text-gray-200 block">{domain.label}</span>
-                            <span className="text-xs text-gray-500">{domain.hint}</span>
+                            <span className="text-xs text-muted-foreground">{domain.hint}</span>
                           </span>
                         </label>
                       );
@@ -3074,7 +2985,7 @@ export const SettingsPageNew = () => {
 
                   {resetPreview?.success ? (
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                      <div className="bg-gray-900/70 border border-emerald-900/40 rounded p-3">
+                      <div className="bg-card/70 border border-emerald-900/40 rounded p-3">
                         <p className="text-xs uppercase tracking-wide text-emerald-600 mb-2">Preserved (shell)</p>
                         <p className="text-sm text-gray-200">Branches: {resetPreview.preserve?.branches ?? 0}</p>
                         <p className="text-sm text-gray-200">ERP users: {resetPreview.preserve?.users ?? 0}</p>
@@ -3083,7 +2994,7 @@ export const SettingsPageNew = () => {
                         (resetPreview.preserve?.products ?? 0) > 0 ||
                         (resetPreview.preserve?.accounts ?? 0) > 0 ? (
                           <>
-                            <p className="text-xs text-gray-500 mt-2 mb-1">Master kept after reset</p>
+                            <p className="text-xs text-muted-foreground mt-2 mb-1">Master kept after reset</p>
                             {(resetPreview.preserve?.contacts ?? 0) > 0 ? (
                               <p className="text-sm text-gray-200">Contacts: {resetPreview.preserve?.contacts}</p>
                             ) : null}
@@ -3096,8 +3007,8 @@ export const SettingsPageNew = () => {
                           </>
                         ) : null}
                       </div>
-                      <div className="bg-gray-900/70 border border-gray-800 rounded p-3 max-h-48 overflow-y-auto">
-                        <p className="text-xs uppercase tracking-wide text-gray-500 mb-2">Transactional (to delete)</p>
+                      <div className="bg-card/70 border border-border rounded p-3 max-h-48 overflow-y-auto">
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground mb-2">Transactional (to delete)</p>
                         <p className="text-sm text-red-300 mb-2">
                           Total:{' '}
                           {Object.values(resetPreview.transactional || {}).reduce(
@@ -3109,13 +3020,13 @@ export const SettingsPageNew = () => {
                           .filter(([, n]) => Number(n) > 0)
                           .sort(([a], [b]) => a.localeCompare(b))
                           .map(([key, n]) => (
-                            <p key={key} className="text-xs text-gray-400">
+                            <p key={key} className="text-xs text-muted-foreground">
                               {key.replace(/_/g, ' ')}: {n}
                             </p>
                           ))}
                       </div>
-                      <div className="bg-gray-900/70 border border-gray-800 rounded p-3 max-h-48 overflow-y-auto">
-                        <p className="text-xs uppercase tracking-wide text-gray-500 mb-2">Master (to delete)</p>
+                      <div className="bg-card/70 border border-border rounded p-3 max-h-48 overflow-y-auto">
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground mb-2">Master (to delete)</p>
                         <p className="text-sm text-red-300 mb-2">
                           Total:{' '}
                           {Object.values(resetPreview.master || {}).reduce(
@@ -3124,13 +3035,13 @@ export const SettingsPageNew = () => {
                           )}
                         </p>
                         {Object.keys(resetPreview.master || {}).length === 0 ? (
-                          <p className="text-xs text-gray-500">No master domains selected</p>
+                          <p className="text-xs text-muted-foreground">No master domains selected</p>
                         ) : (
                           Object.entries(resetPreview.master || {})
                             .filter(([, n]) => Number(n) > 0)
                             .sort(([a], [b]) => a.localeCompare(b))
                             .map(([key, n]) => (
-                              <p key={key} className="text-xs text-gray-400">
+                              <p key={key} className="text-xs text-muted-foreground">
                                 {key.replace(/_/g, ' ')}: {n}
                               </p>
                             ))
@@ -3140,7 +3051,7 @@ export const SettingsPageNew = () => {
                   ) : null}
 
                   <div className="space-y-2">
-                    <Label className="text-gray-300">
+                    <Label className="text-muted-foreground">
                       Confirmation — type exactly:{' '}
                       <span className="font-mono text-red-300">{resetConfirmPhrase}</span>
                     </Label>
@@ -3151,7 +3062,7 @@ export const SettingsPageNew = () => {
                           onChange={(e) => setResetConfirmation(e.target.value)}
                           placeholder={resetConfirmPhrase}
                           aria-label={`Confirmation phrase: ${resetConfirmPhrase}`}
-                          className="bg-gray-900 border-red-900/70 text-white font-mono"
+                          className="bg-card border-red-900/70 text-foreground font-mono"
                           autoComplete="off"
                           spellCheck={false}
                           disabled={resetBusy}
@@ -3159,7 +3070,7 @@ export const SettingsPageNew = () => {
                         <p
                           className={cn(
                             'text-xs flex items-center gap-1.5',
-                            resetPhraseMatches ? 'text-emerald-400' : 'text-gray-500'
+                            resetPhraseMatches ? 'text-emerald-400' : 'text-muted-foreground'
                           )}
                         >
                           {resetPhraseMatches ? (
@@ -3170,7 +3081,7 @@ export const SettingsPageNew = () => {
                           ) : (
                             <>
                               <AlertCircle size={14} aria-hidden />
-                              Type <span className="font-mono text-gray-400">{resetConfirmPhrase}</span> to
+                              Type <span className="font-mono text-muted-foreground">{resetConfirmPhrase}</span> to
                               enable the reset button
                             </>
                           )}
@@ -3216,8 +3127,8 @@ export const SettingsPageNew = () => {
                     <FlaskConical className="text-violet-500" size={24} />
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold text-white">Developer Tools</h3>
-                    <p className="text-sm text-gray-400">Technical diagnostics aur feature flags</p>
+                    <h3 className="text-xl font-bold text-foreground">Developer Tools</h3>
+                    <p className="text-sm text-muted-foreground">Technical diagnostics aur feature flags</p>
                   </div>
                 </div>
                 <AppVersionTapTarget />
@@ -3229,10 +3140,10 @@ export const SettingsPageNew = () => {
 
       {/* Branch Edit Dialog */}
       <Dialog open={isBranchDialogOpen} onOpenChange={setIsBranchDialogOpen}>
-        <DialogContent className="bg-gray-950 border-gray-800 text-white max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="bg-input-background border-border text-foreground max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold">Edit Branch</DialogTitle>
-            <DialogDescription className="text-gray-400">
+            <DialogDescription className="text-muted-foreground">
               Update branch information and settings
             </DialogDescription>
           </DialogHeader>
@@ -3240,71 +3151,71 @@ export const SettingsPageNew = () => {
           <div className="space-y-4 py-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <Label className="text-gray-300 mb-2 block">Branch Name *</Label>
+                <Label className="text-muted-foreground mb-2 block">Branch Name *</Label>
                 <Input
                   value={branchForm.branchName || ''}
                   onChange={(e) => setBranchForm({ ...branchForm, branchName: e.target.value })}
-                  className="bg-gray-900 border-gray-700 text-white"
+                  className="bg-card border-border text-foreground"
                   placeholder="Main Branch"
                 />
               </div>
               <div>
-                <Label className="text-gray-300 mb-2 block">Branch Code *</Label>
+                <Label className="text-muted-foreground mb-2 block">Branch Code *</Label>
                 <Input
                   value={branchForm.branchCode || ''}
                   onChange={(e) => setBranchForm({ ...branchForm, branchCode: e.target.value })}
-                  className="bg-gray-900 border-gray-700 text-white"
+                  className="bg-card border-border text-foreground"
                   placeholder="MB-001"
                 />
               </div>
             </div>
 
             <div>
-              <Label className="text-gray-300 mb-2 block">Address</Label>
+              <Label className="text-muted-foreground mb-2 block">Address</Label>
               <Textarea
                 value={branchForm.address || ''}
                 onChange={(e) => setBranchForm({ ...branchForm, address: e.target.value })}
-                className="bg-gray-900 border-gray-700 text-white"
+                className="bg-card border-border text-foreground"
                 placeholder="Branch address"
                 rows={3}
               />
             </div>
 
             <div>
-              <Label className="text-gray-300 mb-2 block">Phone</Label>
+              <Label className="text-muted-foreground mb-2 block">Phone</Label>
               <Input
                 value={branchForm.phone || ''}
                 onChange={(e) => setBranchForm({ ...branchForm, phone: e.target.value })}
-                className="bg-gray-900 border-gray-700 text-white"
+                className="bg-card border-border text-foreground"
                 placeholder="+92 300 1234567"
               />
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
               <div>
-                <Label className="text-gray-300 mb-2 block">Cash Account</Label>
+                <Label className="text-muted-foreground mb-2 block">Cash Account</Label>
                 <Input
                   value={branchForm.cashAccount || ''}
                   onChange={(e) => setBranchForm({ ...branchForm, cashAccount: e.target.value })}
-                  className="bg-gray-900 border-gray-700 text-white"
+                  className="bg-card border-border text-foreground"
                   placeholder="Cash Account"
                 />
               </div>
               <div>
-                <Label className="text-gray-300 mb-2 block">Bank Account</Label>
+                <Label className="text-muted-foreground mb-2 block">Bank Account</Label>
                 <Input
                   value={branchForm.bankAccount || ''}
                   onChange={(e) => setBranchForm({ ...branchForm, bankAccount: e.target.value })}
-                  className="bg-gray-900 border-gray-700 text-white"
+                  className="bg-card border-border text-foreground"
                   placeholder="Bank Account"
                 />
               </div>
               <div>
-                <Label className="text-gray-300 mb-2 block">POS Drawer</Label>
+                <Label className="text-muted-foreground mb-2 block">POS Drawer</Label>
                 <Input
                   value={branchForm.posCashDrawer || ''}
                   onChange={(e) => setBranchForm({ ...branchForm, posCashDrawer: e.target.value })}
-                  className="bg-gray-900 border-gray-700 text-white"
+                  className="bg-card border-border text-foreground"
                   placeholder="POS Drawer"
                 />
               </div>
@@ -3316,14 +3227,14 @@ export const SettingsPageNew = () => {
                   checked={branchForm.isActive ?? true}
                   onCheckedChange={(checked) => setBranchForm({ ...branchForm, isActive: checked })}
                 />
-                <Label className="text-gray-300">Active</Label>
+                <Label className="text-muted-foreground">Active</Label>
               </div>
               <div className="flex items-center gap-2">
                 <Switch
                   checked={branchForm.isDefault ?? false}
                   onCheckedChange={(checked) => setBranchForm({ ...branchForm, isDefault: checked })}
                 />
-                <Label className="text-gray-300">Default Branch</Label>
+                <Label className="text-muted-foreground">Default Branch</Label>
               </div>
             </div>
           </div>
@@ -3336,13 +3247,13 @@ export const SettingsPageNew = () => {
                 setEditingBranch(null);
                 setBranchForm({});
               }}
-              className="text-gray-400 hover:text-white"
+              className="text-muted-foreground hover:text-foreground"
             >
               Cancel
             </Button>
             <Button
               onClick={handleSaveBranch}
-              className="bg-green-600 hover:bg-green-500 text-white"
+              className="bg-green-600 hover:bg-green-500 text-foreground"
             >
               Save Changes
             </Button>

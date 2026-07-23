@@ -1,0 +1,14 @@
+{
+  "run": "MOBILE_MANAGER_SALESMAN_DEVICE_APK_STATE",
+  "run_local_datetime": "2026-07-02T19:22:36+05:00",
+  "adb_device_connected": false,
+  "adb_devices_output": "List of devices attached (empty)",
+  "device_model": null,
+  "android_version": null,
+  "expected_package": "com.dincouture.erp",
+  "expected_version_name": "1.0.5",
+  "expected_version_code": 39,
+  "installed_package_verified": false,
+  "reinstall_attempted": false,
+  "play_store_upload": false
+}

@@ -81,18 +81,34 @@ input[type="number"] {
   min-width: 0;
 }
 
-.safe-area-bottom {
-  padding-bottom: env(safe-area-inset-bottom, 0);
+:root {
+  --erp-inset-top: env(safe-area-inset-top, 0px);
+  --erp-inset-bottom: env(safe-area-inset-bottom, 0px);
+  --erp-bottom-nav-height: 64px;
 }
 
-/* Status bar inset: shell/sync bar only (no 28px min on full page). */
+.safe-area-bottom {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), var(--erp-inset-bottom, 0px));
+}
+
+/* App shell header — status bar + sync row */
+.erp-app-header {
+  padding-top: max(env(safe-area-inset-top, 0px), var(--erp-inset-top, 0px));
+}
+
+/* Status bar inset: legacy alias */
 .safe-area-inset-top {
-  padding-top: env(safe-area-inset-top, 0px);
+  padding-top: max(env(safe-area-inset-top, 0px), var(--erp-inset-top, 0px));
+}
+
+/* Home / scroll content above fixed bottom nav */
+.erp-content-above-nav {
+  padding-bottom: calc(var(--erp-bottom-nav-height, 64px) + max(env(safe-area-inset-bottom, 0px), var(--erp-inset-bottom, 0px)) + 8px);
 }
 
 /* Flow toolbars (Back, Save, report headers) — clear status bar on phone, minimal on tablet/desktop. */
 .flow-screen-header {
-  padding-top: calc(env(safe-area-inset-top, 0px) + 0.75rem);
+  padding-top: calc(max(env(safe-area-inset-top, 0px), var(--erp-inset-top, 0px)) + 0.75rem);
 }
 
 @media (min-width: 768px) {
@@ -114,13 +130,13 @@ input[type="number"] {
    Add the `--with-nav` modifier on any screen that does still render BottomNav. */
 .action-bar-above-nav,
 .fixed-bottom-above-nav {
-  bottom: 0;
-  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+  bottom: max(env(safe-area-inset-bottom, 0px), var(--erp-inset-bottom, 0px));
+  padding-bottom: 12px;
 }
 .action-bar-above-nav--with-nav,
 .fixed-bottom-above-nav--with-nav {
-  bottom: 80px;
-  padding-bottom: 0;
+  bottom: calc(var(--erp-bottom-nav-height, 64px) + max(env(safe-area-inset-bottom, 0px), var(--erp-inset-bottom, 0px)));
+  padding-bottom: 12px;
 }
 @media (min-width: 768px) {
   .action-bar-above-nav,

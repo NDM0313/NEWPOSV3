@@ -5,7 +5,34 @@
  */
 
 import { supabase } from '@/lib/supabase';
-import { isLiquidityPaymentAccount, paymentMethodForLiquidityAccount } from '@/app/lib/liquidityPaymentAccount';
+import { fetchInBatches } from '@/app/lib/chunkInQuery';
+import { enrichRowsWithTransactionAttachments } from '@/app/lib/roznamchaAttachments';
+import {
+  isLiquidityPaymentAccount,
+  isRoznamchaLiquidityAccount,
+  paymentMethodForLiquidityAccount,
+} from '@/app/lib/liquidityPaymentAccount';
+import {
+  buildCounterpartyByDirectionFromJeLines,
+  buildExpenseCounterpartyByDirectionFromJeLines,
+  counterpartyForPaymentDirection,
+  formatJvRoznamchaSubtitle,
+  isGenericRoznamchaPartyLabel,
+  isGeneralLiquidityJournalRef,
+  isJvBoilerplatePaymentNote,
+  resolveExpenseCounterpartyFromJeLines,
+  resolveGenericPaymentExpenseLabel,
+  resolveManualPaymentCounterpartyLabel,
+  resolveJvLinkedCounterpartyLabel,
+  seedManualJournalPaymentJeMaps,
+  type CounterpartyByDirection,
+  type RoznamchaJeLineRef,
+} from '@/app/lib/roznamchaCounterpartyLabel';
+import {
+  paymentMatchesRoznamchaBranch,
+  rentalMatchesRoznamchaBranch,
+  buildPaymentBackedSkipJeIdsFromPayments,
+} from '@/app/lib/roznamchaBranchFilter';
 import { journalDescriptionForDisplay } from '@/app/utils/journalDescriptionDisplay';
 import {
   formatRentalPaymentRef,
@@ -18,6 +45,20 @@ import {
   roznamchaLooseMovementKey,
   roznamchaMovementKey,
 } from '@/app/services/roznamchaDedupe';
+import {
+  resolveCanonicalRoznamchaRef,
+  roznamchaJournalSubtitle,
+  roznamchaRefDisplay,
+} from '@/app/lib/roznamchaRefDisplay';
+import {
+  isEventDateInRange,
+  resolveRoznamchaRowDateTime,
+} from '@/app/utils/transactionEventDateTime';
+import { filterLivePaymentsExcludingVoidedJournals } from '@/app/lib/paymentVoidVisibility';
+import {
+  isCorrectionReversalReferenceType,
+  roznamchaRowAuditSuffix,
+} from '@/app/lib/reportVisibilityContract';
 
 export { dedupeRoznamchaRows, roznamchaEntityKeys, roznamchaLooseMovementKey, roznamchaMovementKey };
 
@@ -59,6 +100,18 @@ export interface RoznamchaRow {
   sourceEconomicEventId?: string | null;
   branchId: string | null;
   type: string;
+  /** payments.reference_type or journal_entries.reference_type (for transaction actions) */
+  referenceType?: string | null;
+  /** payments.reference_id, journal reference_id, or rental id */
+  referenceId?: string | null;
+  /** payments.voided_at set */
+  isVoided?: boolean;
+  /** journal_entries.is_void */
+  journalIsVoid?: boolean;
+  /** journal_entries.payment_id when row is JE-sourced */
+  paymentIdOnJournal?: string | null;
+  /** Resolved transaction-owned attachments for icon / preview */
+  attachments?: { url: string; name: string }[];
 }
 
 export interface RoznamchaSummary {
@@ -138,26 +191,6 @@ function rentalPaymentMatchKey(
   return `${rentalId}|${date}|${Math.round(amount * 100)}|${accountId || ''}`;
 }
 
-/** Branch filter: payment row branch OR linked rental document branch (legacy null payment.branch_id). */
-function paymentMatchesRoznamchaBranch(
-  payment: {
-    branch_id?: string | null;
-    reference_type?: string | null;
-    reference_id?: string | null;
-  },
-  branchId: string | null,
-  rentalBranchById: Map<string, string>
-): boolean {
-  if (!branchId) return true;
-  const payBranch = payment.branch_id != null ? String(payment.branch_id) : '';
-  if (payBranch === branchId) return true;
-  const rt = String(payment.reference_type || '').toLowerCase();
-  if (rt === 'rental' && payment.reference_id) {
-    return rentalBranchById.get(String(payment.reference_id)) === branchId;
-  }
-  return false;
-}
-
 function resolveSubAccountLabel(
   meta: { name: string } | undefined,
   shortLabel: string
@@ -166,59 +199,11 @@ function resolveSubAccountLabel(
   return name || shortLabel || '—';
 }
 
-/** RCV / PAY / REN / EXP over JE — audit-facing ref column. */
-export function resolveCanonicalRoznamchaRef(opts: {
-  referenceNumber?: string | null;
-  rentalBookingNo?: string | null;
-  expenseNo?: string | null;
-  journalEntryNo?: string | null;
-  fallbackRef?: string | null;
-}): { ref: string; journalEntryNo: string | null } {
-  const refNum = String(opts.referenceNumber || '').trim();
-  const jeNo = String(opts.journalEntryNo || '').trim();
-  const rentalNo = String(opts.rentalBookingNo || '').trim();
-  const expenseNo = String(opts.expenseNo || '').trim();
-  const fallback = String(opts.fallbackRef || '').trim();
-
-  const jeSubtitle =
-    jeNo && refNum && jeNo.toLowerCase() !== refNum.toLowerCase() ? jeNo : null;
-
-  if (isRcvReference(refNum)) return { ref: refNum, journalEntryNo: jeSubtitle };
-  if (/^PAY-/i.test(refNum) || /^WPY-/i.test(refNum)) return { ref: refNum, journalEntryNo: jeSubtitle };
-  if (/^REN-.+-PAY$/i.test(refNum)) return { ref: refNum, journalEntryNo: jeSubtitle || (jeNo || null) };
-  if (rentalNo && (isGenericRentalPaymentReference(refNum) || !refNum) && !isRcvReference(refNum)) {
-    const synthesized = formatRentalPaymentRef(rentalNo);
-    return {
-      ref: synthesized || rentalNo,
-      journalEntryNo: jeNo && jeNo.toLowerCase() !== (synthesized || rentalNo).toLowerCase() ? jeNo : null,
-    };
-  }
-  if (rentalNo) return { ref: rentalNo, journalEntryNo: jeNo && jeNo.toLowerCase() !== rentalNo.toLowerCase() ? jeNo : null };
-  if (/^REN-/i.test(refNum)) return { ref: refNum, journalEntryNo: jeSubtitle };
-  if (expenseNo) return { ref: expenseNo, journalEntryNo: jeNo && jeNo.toLowerCase() !== expenseNo.toLowerCase() ? jeNo : null };
-  if (refNum && !/^JE-/i.test(refNum) && !/^JV-/i.test(refNum)) {
-    return { ref: refNum, journalEntryNo: jeSubtitle };
-  }
-  if (jeNo) return { ref: jeNo, journalEntryNo: null };
-  if (fallback) return { ref: fallback, journalEntryNo: null };
-  return { ref: refNum || '—', journalEntryNo: null };
-}
-
-/** Ref column for UI/export — never repeat JE twice. */
-export function roznamchaRefDisplay(row: Pick<RoznamchaRow, 'ref' | 'journalEntryNo'>): string {
-  const ref = String(row.ref || '').trim();
-  const je = String(row.journalEntryNo || '').trim();
-  if (!je || je.toLowerCase() === ref.toLowerCase()) return ref || '—';
-  return ref;
-}
-
-export function roznamchaJournalSubtitle(row: Pick<RoznamchaRow, 'ref' | 'journalEntryNo'>): string | null {
-  const ref = String(row.ref || '').trim();
-  const je = String(row.journalEntryNo || '').trim();
-  if (!je || je.toLowerCase() === ref.toLowerCase()) return null;
-  if (/^JE-/i.test(ref) || /^JV-/i.test(ref)) return null;
-  return je;
-}
+export {
+  resolveCanonicalRoznamchaRef,
+  roznamchaJournalSubtitle,
+  roznamchaRefDisplay,
+} from '@/app/lib/roznamchaRefDisplay';
 
 async function loadRentalPaymentsInPaymentsTable(
   companyId: string,
@@ -353,16 +338,20 @@ async function loadRentalPaymentJournalLinks(
       options.includeVoidedReversed ?? false
     );
     if (jeIds.length > 0) {
-      let supQ = supabase
-        .from('rental_payments')
-        .select('journal_entry_id, rentals!inner(company_id, branch_id)')
-        .eq('rentals.company_id', companyId)
-        .in('journal_entry_id', jeIds)
-        .not('journal_entry_id', 'is', null);
-      if (branchId) supQ = (supQ as any).eq('rentals.branch_id', branchId);
-      if (!options.includeVoidedReversed) supQ = supQ.is('voided_at', null);
-      const { data: supData } = await supQ;
-      (supData || []).forEach((rp: any) => {
+      const supRows = await fetchInBatches(jeIds, async (chunk) => {
+        let supQ = supabase
+          .from('rental_payments')
+          .select('journal_entry_id, rentals!inner(company_id, branch_id)')
+          .eq('rentals.company_id', companyId)
+          .in('journal_entry_id', chunk)
+          .not('journal_entry_id', 'is', null);
+        if (branchId) supQ = (supQ as any).eq('rentals.branch_id', branchId);
+        if (!options.includeVoidedReversed) supQ = supQ.is('voided_at', null);
+        const { data, error } = await supQ;
+        if (error) throw error;
+        return data || [];
+      });
+      supRows.forEach((rp: any) => {
         const jeId = String(rp.journal_entry_id || '').trim();
         if (jeId) out.add(jeId);
       });
@@ -385,47 +374,142 @@ function shouldSkipJournalEntryForRoznamcha(
   return ROZNAMCHA_DOCUMENT_JE_TYPES.has(rt);
 }
 
-function rentalMatchesRoznamchaBranch(
-  branchId: string | null,
-  rentalBranchId: string | null | undefined,
-  jeBranchId: string | null | undefined
-): boolean {
-  if (!branchId) return true;
-  if (rentalBranchId) return String(rentalBranchId) === branchId;
-  if (jeBranchId) return String(jeBranchId) === branchId;
-  return false;
-}
-
 async function loadLiquidityDebitAccountByJeId(
   jeIds: string[],
-  accountById: Map<string, { name: string; type: string; code: string | null }>
+  accountById: Map<string, { name: string; type: string; code: string | null; is_active?: boolean | null }>
 ): Promise<Map<string, string>> {
   const liquidityAccountByJeId = new Map<string, string>();
   if (jeIds.length === 0) return liquidityAccountByJeId;
 
-  const { data: jeLines } = await supabase
-    .from('journal_entry_lines')
-    .select('journal_entry_id, account_id, debit, credit, account:accounts(id, name, type, code)')
-    .in('journal_entry_id', jeIds);
-  (jeLines || []).forEach((line: any) => {
-    const rawAcc = line.account;
-    const acc = Array.isArray(rawAcc) ? rawAcc[0] : rawAcc;
-    if (!acc || !isLiquidityPaymentAccount(acc)) return;
-    const debit = Number(line.debit) || 0;
-    if (debit <= 0) return;
+  const jeLines = await fetchInBatches(jeIds, async (chunk) => {
+    const { data, error } = await supabase
+      .from('journal_entry_lines')
+      .select('journal_entry_id, account_id, debit, credit, account:accounts(id, name, type, code, is_active)')
+      .in('journal_entry_id', chunk);
+    if (error) throw error;
+    return data || [];
+  });
+  const linesByJe = new Map<string, any[]>();
+  jeLines.forEach((line: any) => {
     const jeId = String(line.journal_entry_id || '');
-    if (jeId && !liquidityAccountByJeId.has(jeId)) {
+    if (!jeId) return;
+    const list = linesByJe.get(jeId) ?? [];
+    list.push(line);
+    linesByJe.set(jeId, list);
+  });
+
+  linesByJe.forEach((lines, jeId) => {
+    for (const line of lines) {
+      const rawAcc = line.account;
+      const acc = Array.isArray(rawAcc) ? rawAcc[0] : rawAcc;
+      if (!acc || !isLiquidityPaymentAccount(acc)) continue;
+      const debit = Number(line.debit) || 0;
+      if (debit <= 0) continue;
+      if (!isRoznamchaLiquidityAccount(acc)) continue;
       liquidityAccountByJeId.set(jeId, String(line.account_id));
       if (!accountById.has(line.account_id)) {
         accountById.set(line.account_id, {
           name: (acc.name || '').trim(),
           type: String(acc.type || ''),
           code: acc.code != null ? String(acc.code).trim() : null,
+          is_active: acc.is_active ?? null,
         });
       }
+      break;
     }
   });
   return liquidityAccountByJeId;
+}
+
+async function loadCounterpartyMapsByJeId(jeIds: string[]): Promise<{
+  expenseCounterpartyByJeId: Map<string, CounterpartyByDirection>;
+  fullCounterpartyByJeId: Map<string, CounterpartyByDirection>;
+  linesByJeId: Map<string, RoznamchaJeLineRef[]>;
+}> {
+  const expenseCounterpartyByJeId = new Map<string, CounterpartyByDirection>();
+  const fullCounterpartyByJeId = new Map<string, CounterpartyByDirection>();
+  const linesByJeId = new Map<string, RoznamchaJeLineRef[]>();
+  if (jeIds.length === 0) {
+    return { expenseCounterpartyByJeId, fullCounterpartyByJeId, linesByJeId };
+  }
+
+  const jeLines = await fetchInBatches(jeIds, async (chunk) => {
+    const { data, error } = await supabase
+      .from('journal_entry_lines')
+      .select('journal_entry_id, account_id, debit, credit, account:accounts(name, type, code)')
+      .in('journal_entry_id', chunk);
+    if (error) throw error;
+    return data || [];
+  });
+
+  jeLines.forEach((line: any) => {
+    const jeId = String(line.journal_entry_id || '');
+    if (!jeId) return;
+    const rawAcc = line.account;
+    const acc = Array.isArray(rawAcc) ? rawAcc[0] : rawAcc;
+    const bucket = linesByJeId.get(jeId) || [];
+    bucket.push({
+      accountId: line.account_id != null ? String(line.account_id) : null,
+      debit: Number(line.debit) || 0,
+      credit: Number(line.credit) || 0,
+      account: acc as RoznamchaJeLineRef['account'],
+    });
+    linesByJeId.set(jeId, bucket);
+  });
+
+  linesByJeId.forEach((lines, jeId) => {
+    expenseCounterpartyByJeId.set(jeId, buildExpenseCounterpartyByDirectionFromJeLines(lines));
+    fullCounterpartyByJeId.set(jeId, buildCounterpartyByDirectionFromJeLines(lines));
+  });
+  return { expenseCounterpartyByJeId, fullCounterpartyByJeId, linesByJeId };
+}
+
+function resolveJvJeIdForPayment(
+  paymentId: string,
+  journalEntryIdByPaymentId: Map<string, string>,
+  referenceIdFallback?: string | null,
+): string | null {
+  const fromMap = journalEntryIdByPaymentId.get(paymentId)?.trim();
+  if (fromMap) return fromMap;
+  const fallback = String(referenceIdFallback || '').trim();
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(fallback)) {
+    return fallback;
+  }
+  return null;
+}
+
+function resolveManualJournalCounterpartyLabel(
+  paymentId: string,
+  direction: 'IN' | 'OUT',
+  referenceId: string | null | undefined,
+  paymentAccountId: string | null | undefined,
+  journalEntryIdByPaymentId: Map<string, string>,
+  fullCounterpartyByJeId: Map<string, CounterpartyByDirection>,
+  linesByJeId: Map<string, RoznamchaJeLineRef[]>,
+): string | null {
+  const jeId = resolveJvJeIdForPayment(paymentId, journalEntryIdByPaymentId, referenceId);
+  if (!jeId) return null;
+  const lines = linesByJeId.get(jeId);
+  const paymentLegLabel = resolveManualPaymentCounterpartyLabel(lines, direction, paymentAccountId);
+  if (paymentLegLabel) return paymentLegLabel;
+  return counterpartyForPaymentDirection(fullCounterpartyByJeId.get(jeId), direction);
+}
+
+function applyJvRoznamchaRowDisplay(
+  r: RoznamchaRow,
+  pay: { notes?: string | null; reference_id?: string | null },
+  jvLabel: string,
+  fullCounterpartyByJeId: Map<string, CounterpartyByDirection>,
+  journalEntryIdByPaymentId: Map<string, string>,
+): void {
+  r.details = jvLabel;
+  r.partyLine = null;
+  const jeId = resolveJvJeIdForPayment(r.id, journalEntryIdByPaymentId, pay.reference_id);
+  const subtitle = jeId ? formatJvRoznamchaSubtitle(fullCounterpartyByJeId.get(jeId)) : '';
+  const notes = String(pay.notes || '').trim();
+  const noteSuffix = notes && !isJvBoilerplatePaymentNote(notes) ? notes : '';
+  r.referenceDisplay =
+    subtitle && noteSuffix ? `${subtitle} — ${noteSuffix}` : subtitle || noteSuffix;
 }
 
 function resolveRentalPaymentLiquidity(
@@ -466,9 +550,12 @@ async function buildJournalSkipJeIds(
   branchId: string | null,
   journalEntryIds: string[],
   includeVoidedReversed: boolean,
-  dateOpts: { dateFrom?: string; dateTo?: string; beforeDate?: string }
+  dateOpts: { dateFrom?: string; dateTo?: string; beforeDate?: string },
+  visiblePaymentsForSkip?: Array<{ reference_id?: string | null }>,
 ): Promise<Set<string>> {
-  const skipJeIds = await journalEntryIdsWithLiquidityPayments(companyId, journalEntryIds);
+  const skipJeIds = visiblePaymentsForSkip
+    ? buildPaymentBackedSkipJeIdsFromPayments(visiblePaymentsForSkip)
+    : await journalEntryIdsWithLiquidityPayments(companyId, journalEntryIds);
   const rentalJeLinks = await loadRentalPaymentJournalLinks(companyId, branchId, {
     ...dateOpts,
     includeVoidedReversed,
@@ -522,6 +609,9 @@ function resolvePaymentContactId(pay: {
   const refType = String(pay.reference_type || '').toLowerCase();
   if (refType === 'manual_receipt' || refType === 'manual_payment') {
     const refId = String(pay.reference_id || '').trim();
+    if (refId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(refId)) {
+      return null;
+    }
     if (refId) return refId;
   }
   return null;
@@ -618,6 +708,11 @@ export function classifyRoznamchaLiquidity(
   accountName: string | null | undefined,
   accountCode?: string | null | undefined
 ): { liquidity: RoznamchaLiquidity | null; shortLabel: string } {
+  const accRef = { code: accountCode, type: accountType, name: accountName };
+  if (!isRoznamchaLiquidityAccount(accRef)) {
+    return { liquidity: null, shortLabel: '—' };
+  }
+
   const m = (paymentMethod || '').toLowerCase().trim();
   const t = String(accountType || '').toLowerCase().trim();
   const n = (accountName || '').toLowerCase().trim();
@@ -663,7 +758,14 @@ export function classifyRoznamchaLiquidity(
     }
   }
 
-  return { liquidity: null, shortLabel: '—' };
+  const inferred = paymentMethodForLiquidityAccount(accRef);
+  if (inferred === 'bank') {
+    return { liquidity: 'bank', shortLabel: 'Bank' };
+  }
+  if (inferred === 'other') {
+    return { liquidity: 'wallet', shortLabel: walletDisplayLabel(accountName, paymentMethod) };
+  }
+  return { liquidity: 'cash', shortLabel: 'Cash' };
 }
 
 /** Map auth_user_id or users.id → display name for Roznamcha "by …" subtitle. */
@@ -717,16 +819,6 @@ function roznamchaExpenseRefColumn(
   }
 
   const jeNo = (jeByPaymentId.get(p.id) || '').trim();
-  if (jeNo && /^EXP-/i.test(jeNo)) {
-    return jeNo;
-  }
-
-  const payRef = String(p.reference_number || '').trim();
-  const payMatch = payRef.match(/^PAY-(\d+)$/i);
-  if (payMatch) {
-    return `EXP-${payMatch[1]}`;
-  }
-
   if (jeNo) return jeNo;
   return defaultRef;
 }
@@ -742,7 +834,7 @@ async function fetchPaymentRows(
   includeVoidedReversed = false,
   /** When set, only payments posted to this ledger (cash/bank/wallet) account */
   paymentLedgerAccountId: string | null = null
-): Promise<RoznamchaRow[]> {
+): Promise<{ rows: RoznamchaRow[]; branchFilteredPayments: Array<{ reference_id?: string | null }> }> {
   let q = supabase
     .from('payments')
     .select(`
@@ -780,10 +872,14 @@ async function fetchPaymentRows(
     if (process.env.NODE_ENV === 'development') {
       console.warn('[roznamchaService] payments query failed:', error.message);
     }
-    return [];
+    return { rows: [], branchFilteredPayments: [] };
   }
 
   let paymentList = data || [];
+
+  if (!includeVoidedReversed && paymentList.length > 0) {
+    paymentList = await filterLivePaymentsExcludingVoidedJournals(companyId, paymentList);
+  }
 
   const rentalIdsForBranch = [
     ...new Set(
@@ -835,7 +931,7 @@ async function fetchPaymentRows(
 
   const [accRes, expRes, jeRes, jeByPaymentRes, contactRes, expenseCatRes] = await Promise.all([
     accountIds.length > 0
-      ? supabase.from('accounts').select('id, name, type, code').in('id', accountIds)
+      ? supabase.from('accounts').select('id, name, type, code, linked_contact_id, is_active').in('id', accountIds)
       : Promise.resolve({ data: [] as { id: string; name: string; type: string; code?: string | null }[] }),
     expenseEntityIds.length > 0
       ? supabase
@@ -846,19 +942,27 @@ async function fetchPaymentRows(
           { data: [] as { id: string; expense_no: string; description?: string; vendor_name?: string; category?: string; expense_category_id?: string }[] }
         ),
     expensePaymentIds.length > 0
-      ? supabase
-          .from('journal_entries')
-          .select('payment_id, entry_no')
-          .in('payment_id', expensePaymentIds)
-          .eq('reference_type', 'expense')
-          .eq('company_id', companyId)
+      ? fetchInBatches(expensePaymentIds, async (chunk) => {
+          const { data, error } = await supabase
+            .from('journal_entries')
+            .select('payment_id, entry_no')
+            .in('payment_id', chunk)
+            .eq('reference_type', 'expense')
+            .eq('company_id', companyId);
+          if (error) throw error;
+          return data || [];
+        }).then((rows) => ({ data: rows as { payment_id: string; entry_no: string }[] }))
       : Promise.resolve({ data: [] as { payment_id: string; entry_no: string }[] }),
     allPaymentIds.length > 0
-      ? supabase
-          .from('journal_entries')
-          .select('id, payment_id, entry_no')
-          .eq('company_id', companyId)
-          .in('payment_id', allPaymentIds)
+      ? fetchInBatches(allPaymentIds, async (chunk) => {
+          const { data, error } = await supabase
+            .from('journal_entries')
+            .select('id, payment_id, entry_no')
+            .eq('company_id', companyId)
+            .in('payment_id', chunk);
+          if (error) throw error;
+          return data || [];
+        }).then((rows) => ({ data: rows as { id: string; payment_id: string; entry_no: string }[] }))
       : Promise.resolve({ data: [] as { id: string; payment_id: string; entry_no: string }[] }),
     contactIdsToFetch.length > 0
       ? supabase.from('contacts').select('id, name').in('id', contactIdsToFetch)
@@ -866,13 +970,18 @@ async function fetchPaymentRows(
     supabase.from('expense_categories').select('id, name, parent_id').eq('company_id', companyId),
   ]);
 
-  const accountById = new Map<string, { name: string; type: string; code: string | null }>();
+  const accountById = new Map<
+    string,
+    { name: string; type: string; code: string | null; linked_contact_id?: string | null; is_active?: boolean | null }
+  >();
   (accRes.data || []).forEach((a: any) => {
     if (a?.id) {
       accountById.set(a.id, {
         name: (a.name || '').trim(),
         type: String(a.type || ''),
         code: a.code != null ? String(a.code).trim() : null,
+        linked_contact_id: a.linked_contact_id ?? null,
+        is_active: a.is_active ?? null,
       });
     }
   });
@@ -944,6 +1053,21 @@ async function fetchPaymentRows(
     }
   }
 
+  seedManualJournalPaymentJeMaps(
+    paymentList.map((p: any) => ({
+      id: String(p.id),
+      reference_type: p.reference_type,
+      reference_id: p.reference_id,
+      reference_number: p.reference_number,
+    })),
+    journalEntryNoByPaymentId,
+    journalEntryIdByPaymentId,
+  );
+
+  const linkedJeIds = [...new Set(journalEntryIdByPaymentId.values())];
+  const { expenseCounterpartyByJeId, fullCounterpartyByJeId, linesByJeId } =
+    await loadCounterpartyMapsByJeId(linkedJeIds);
+
   const contactNameById = new Map<string, string>();
   (contactRes.data || []).forEach((c: any) => {
     const nm = String(c?.name || '').trim();
@@ -951,10 +1075,13 @@ async function fetchPaymentRows(
   });
 
   const rows: RoznamchaRow[] = [];
+  const roznamchaBackingPayments: Array<{ reference_id?: string | null }> = [];
   for (const p of paymentList) {
     const aid = (p as any).payment_account_id as string | null | undefined;
     const meta = aid ? accountById.get(aid) : undefined;
     const methodRaw = String((p as any).payment_method || '');
+    if (meta && !isRoznamchaLiquidityAccount(meta)) continue;
+
     const { liquidity, shortLabel } = classifyRoznamchaLiquidity(
       methodRaw,
       meta?.type,
@@ -970,11 +1097,16 @@ async function fetchPaymentRows(
       if (accountFilter === 'wallet' && liquidity !== 'wallet') continue;
     }
 
+    roznamchaBackingPayments.push({
+      reference_id: (p as any).reference_id ?? null,
+    });
+
     const amount = Number(p.amount) || 0;
     const direction = getDirection((p as any).payment_type);
-    const dateStr = (p as any).payment_date || '';
-    const createdAt = (p as any).created_at ? new Date((p as any).created_at) : new Date();
-    const timeStr = createdAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+    const { date: dateStr, time: timeStr } = resolveRoznamchaRowDateTime(
+      (p as any).payment_date,
+      (p as any).created_at ? String((p as any).created_at) : null,
+    );
     const ref = roznamchaExpenseRefColumn(
       {
         id: (p as any).id,
@@ -997,11 +1129,17 @@ async function fetchPaymentRows(
 
     const payRefType = String((p as any).reference_type || '').toLowerCase();
     const payRefId = (p as any).reference_id ? String((p as any).reference_id) : '';
+    const payContactId = (p as any).contact_id ? String((p as any).contact_id) : '';
     const payBranchId =
       (p as any).branch_id ??
       (payRefType === 'rental' && payRefId ? rentalBranchById.get(payRefId) ?? null : null);
 
     const paymentId = String((p as any).id);
+    const payRefNumber = String((p as any).reference_number || '').trim();
+    const journalEntryNo =
+      journalEntryNoByPaymentId.get(paymentId) ||
+      (isGeneralLiquidityJournalRef(payRefNumber) ? payRefNumber : null) ||
+      null;
     rows.push({
       id: paymentId,
       date: dateStr,
@@ -1010,7 +1148,7 @@ async function fetchPaymentRows(
       details,
       referenceDisplay,
       partyLine: null,
-      journalEntryNo: journalEntryNoByPaymentId.get(paymentId) || null,
+      journalEntryNo,
       createdBy: null, // filled below via received_by
       cashIn: direction === 'IN' ? amount : 0,
       cashOut: direction === 'OUT' ? amount : 0,
@@ -1024,6 +1162,12 @@ async function fetchPaymentRows(
       sourceJournalEntryId: journalEntryIdByPaymentId.get(paymentId) || null,
       branchId: payBranchId ?? null,
       type: getPartyAwareTypeLabel((p as any).reference_type, (p as any).payment_type),
+      referenceType: payRefType || null,
+      referenceId:
+        payRefId ||
+        (payRefType === 'manual_receipt' || payRefType === 'manual_payment' ? payContactId : '') ||
+        null,
+      isVoided: voided,
     } as RoznamchaRow);
   }
 
@@ -1037,22 +1181,6 @@ async function fetchPaymentRows(
   const purchaseSupplierByRefId = new Map<string, string>();
   const rentalBookingByRefId = new Map<string, string>();
   const rentalCustomerByRefId = new Map<string, string>();
-  if (saleIds.length > 0) {
-    const { data: sales } = await supabase.from('sales').select('id, invoice_no, customer_name').in('id', saleIds);
-    (sales || []).forEach((s: any) => {
-      if (s?.id && s.invoice_no) saleInvoiceByRefId.set(s.id, s.invoice_no);
-      const cn = String(s?.customer_name || '').trim();
-      if (s?.id && cn) saleCustomerByRefId.set(String(s.id), cn);
-    });
-  }
-  if (purchaseIds.length > 0) {
-    const { data: purchases } = await supabase.from('purchases').select('id, po_no, supplier_name').in('id', purchaseIds);
-    (purchases || []).forEach((p: any) => {
-      if (p?.id && p.po_no) purchasePoByRefId.set(p.id, p.po_no);
-      const sn = String(p?.supplier_name || '').trim();
-      if (p?.id && sn) purchaseSupplierByRefId.set(String(p.id), sn);
-    });
-  }
   const rentalIds = [
     ...new Set(
       paymentList
@@ -1061,18 +1189,33 @@ async function fetchPaymentRows(
         .filter(Boolean)
     ),
   ] as string[];
-  if (rentalIds.length > 0) {
-    const { data: rentals } = await supabase
-      .from('rentals')
-      .select('id, booking_no, customer_name')
-      .in('id', rentalIds);
-    (rentals || []).forEach((r: any) => {
-      const bookingNo = String(r?.booking_no || '').trim();
-      const customer = String(r?.customer_name || '').trim();
-      if (r?.id && bookingNo) rentalBookingByRefId.set(String(r.id), bookingNo);
-      if (r?.id && customer) rentalCustomerByRefId.set(String(r.id), customer);
-    });
-  }
+  const [salesRes, purchasesRes, rentalsRes] = await Promise.all([
+    saleIds.length > 0
+      ? supabase.from('sales').select('id, invoice_no, customer_name').in('id', saleIds)
+      : Promise.resolve({ data: [] as { id: string; invoice_no?: string; customer_name?: string }[] }),
+    purchaseIds.length > 0
+      ? supabase.from('purchases').select('id, po_no, supplier_name').in('id', purchaseIds)
+      : Promise.resolve({ data: [] as { id: string; po_no?: string; supplier_name?: string }[] }),
+    rentalIds.length > 0
+      ? supabase.from('rentals').select('id, booking_no, customer_name').in('id', rentalIds)
+      : Promise.resolve({ data: [] as { id: string; booking_no?: string; customer_name?: string }[] }),
+  ]);
+  (salesRes.data || []).forEach((s: any) => {
+    if (s?.id && s.invoice_no) saleInvoiceByRefId.set(s.id, s.invoice_no);
+    const cn = String(s?.customer_name || '').trim();
+    if (s?.id && cn) saleCustomerByRefId.set(String(s.id), cn);
+  });
+  (purchasesRes.data || []).forEach((p: any) => {
+    if (p?.id && p.po_no) purchasePoByRefId.set(p.id, p.po_no);
+    const sn = String(p?.supplier_name || '').trim();
+    if (p?.id && sn) purchaseSupplierByRefId.set(String(p.id), sn);
+  });
+  (rentalsRes.data || []).forEach((r: any) => {
+    const bookingNo = String(r?.booking_no || '').trim();
+    const customer = String(r?.customer_name || '').trim();
+    if (r?.id && bookingNo) rentalBookingByRefId.set(String(r.id), bookingNo);
+    if (r?.id && customer) rentalCustomerByRefId.set(String(r.id), customer);
+  });
 
   const paymentById = new Map(paymentList.map((p: any) => [(p as any).id, p]));
   rows.forEach((r) => {
@@ -1089,9 +1232,10 @@ async function fetchPaymentRows(
       const desc = expenseDescById.get(refId);
       const vendor = expenseVendorById.get(refId);
       const primary = vendor || categoryPath || legacyCat || desc || 'Shop Expense';
+      const expenseDocNo = expenseNoById.get(refId) || r.ref;
       r.details = primary;
       r.referenceDisplay = buildRoznamchaMetaLine(
-        pay.reference_number,
+        expenseDocNo,
         pay.notes,
         [categoryPath, desc].filter(Boolean) as string[],
         primary
@@ -1132,20 +1276,104 @@ async function fetchPaymentRows(
         contactName ||
         (refType === 'sale' && refId ? saleCustomerByRefId.get(refId) : null) ||
         null;
-      r.details = customer || getPartyAwareTypeLabel(refType, paymentType);
+      if (customer) {
+        r.details = customer;
+        const extraParts: string[] = [];
+        if (refType === 'sale' && refId && saleInvoiceByRefId.has(refId)) {
+          extraParts.push(`Invoice ${saleInvoiceByRefId.get(refId)!}`);
+        }
+        r.referenceDisplay = buildRoznamchaMetaLine(pay.reference_number, pay.notes, extraParts, r.details);
+        r.partyLine = null;
+        return;
+      }
+      const counterpartyLabel = resolveManualJournalCounterpartyLabel(
+        r.id,
+        r.direction,
+        pay.reference_id,
+        pay.payment_account_id,
+        journalEntryIdByPaymentId,
+        fullCounterpartyByJeId,
+        linesByJeId,
+      );
+      if (counterpartyLabel) {
+        applyJvRoznamchaRowDisplay(r, pay, counterpartyLabel, fullCounterpartyByJeId, journalEntryIdByPaymentId);
+        return;
+      }
+      const jvRef = r.journalEntryNo || r.ref || pay.reference_number;
+      const jvLabel = resolveJvLinkedCounterpartyLabel(
+        r.id,
+        r.direction,
+        jvRef,
+        journalEntryIdByPaymentId,
+        fullCounterpartyByJeId,
+        pay.reference_id,
+      );
+      if (jvLabel) {
+        applyJvRoznamchaRowDisplay(r, pay, jvLabel, fullCounterpartyByJeId, journalEntryIdByPaymentId);
+        return;
+      }
+      const generic = getPartyAwareTypeLabel(refType, paymentType);
+      const expenseLabel = resolveGenericPaymentExpenseLabel(
+        generic,
+        r.id,
+        r.direction,
+        journalEntryIdByPaymentId,
+        expenseCounterpartyByJeId
+      );
+      r.details = expenseLabel || generic;
       const extraParts: string[] = [];
       if (refType === 'sale' && refId && saleInvoiceByRefId.has(refId)) {
         extraParts.push(`Invoice ${saleInvoiceByRefId.get(refId)!}`);
       }
       r.referenceDisplay = buildRoznamchaMetaLine(pay.reference_number, pay.notes, extraParts, r.details);
-      r.partyLine = customer ? null : 'Customer Receipt';
+      r.partyLine = expenseLabel ? null : 'Customer Receipt';
       return;
     }
 
     if (isSupplierPaymentPayment(refType, paymentType)) {
-      r.details = contactName || getPartyAwareTypeLabel(refType, paymentType);
+      if (contactName) {
+        r.details = contactName;
+        r.referenceDisplay = buildRoznamchaMetaLine(pay.reference_number, pay.notes, [], r.details);
+        r.partyLine = null;
+        return;
+      }
+      const counterpartyLabel = resolveManualJournalCounterpartyLabel(
+        r.id,
+        r.direction,
+        pay.reference_id,
+        pay.payment_account_id,
+        journalEntryIdByPaymentId,
+        fullCounterpartyByJeId,
+        linesByJeId,
+      );
+      if (counterpartyLabel) {
+        applyJvRoznamchaRowDisplay(r, pay, counterpartyLabel, fullCounterpartyByJeId, journalEntryIdByPaymentId);
+        return;
+      }
+      const jvRef = r.journalEntryNo || r.ref || pay.reference_number;
+      const jvLabel = resolveJvLinkedCounterpartyLabel(
+        r.id,
+        r.direction,
+        jvRef,
+        journalEntryIdByPaymentId,
+        fullCounterpartyByJeId,
+        pay.reference_id,
+      );
+      if (jvLabel) {
+        applyJvRoznamchaRowDisplay(r, pay, jvLabel, fullCounterpartyByJeId, journalEntryIdByPaymentId);
+        return;
+      }
+      const generic = getPartyAwareTypeLabel(refType, paymentType);
+      const expenseLabel = resolveGenericPaymentExpenseLabel(
+        generic,
+        r.id,
+        r.direction,
+        journalEntryIdByPaymentId,
+        expenseCounterpartyByJeId
+      );
+      r.details = expenseLabel || generic;
       r.referenceDisplay = buildRoznamchaMetaLine(pay.reference_number, pay.notes, [], r.details);
-      r.partyLine = contactName ? null : 'Supplier Payment';
+      r.partyLine = expenseLabel ? null : 'Supplier Payment';
       return;
     }
 
@@ -1243,7 +1471,7 @@ async function fetchPaymentRows(
   );
   rows.push(...rentalPayRows);
 
-  return rows;
+  return { rows, branchFilteredPayments: roznamchaBackingPayments };
 }
 
 /** Fetch rental_payments rows (customer cash-IN) and map to RoznamchaRow. */
@@ -1286,14 +1514,18 @@ async function fetchRentalPaymentRows(
     return !primaryRows.some((r: any) => String(r.journal_entry_id || '') === jeId);
   });
   if (extraJeIds.length > 0) {
-    let supQ = supabase
-      .from('rental_payments')
-      .select(RENTAL_PAYMENT_ROW_SELECT)
-      .eq('rentals.company_id', companyId)
-      .in('journal_entry_id', extraJeIds);
-    if (!includeVoidedReversed) supQ = supQ.is('voided_at', null);
-    const { data: supData } = await supQ;
-    supplementalRows = (supData || []).filter((r: any) => !primaryIds.has(String(r.id)));
+    const fetched = await fetchInBatches(extraJeIds, async (chunk) => {
+      let supQ = supabase
+        .from('rental_payments')
+        .select(RENTAL_PAYMENT_ROW_SELECT)
+        .eq('rentals.company_id', companyId)
+        .in('journal_entry_id', chunk);
+      if (!includeVoidedReversed) supQ = supQ.is('voided_at', null);
+      const { data, error } = await supQ;
+      if (error) throw error;
+      return data || [];
+    });
+    supplementalRows = fetched.filter((r: any) => !primaryIds.has(String(r.id)));
   }
 
   const data = [...primaryRows, ...supplementalRows];
@@ -1413,9 +1645,11 @@ async function fetchRentalPaymentRows(
     const payInRange = payDay >= dateFrom && payDay <= dateTo;
     const jeInRange = Boolean(jeEntryDate && jeEntryDate >= dateFrom && jeEntryDate <= dateTo);
     if (!payInRange && !jeInRange) continue;
-    const dateStr = payInRange ? payDay : jeEntryDate || payDay;
-    const createdAt = rp.created_at ? new Date(rp.created_at) : new Date();
-    const timeStr = createdAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+    const businessDate = payInRange ? payDay : jeEntryDate || payDay;
+    const { date: dateStr, time: timeStr } = resolveRoznamchaRowDateTime(
+      businessDate,
+      rp.created_at ? String(rp.created_at) : null,
+    );
     const rentalNo: string = rental.booking_no || (rental as any).rental_no || '';
     const customerName = String((rental as any).customer_name || '').trim();
     let refDisplay = String(rp.reference || '').trim();
@@ -1468,6 +1702,9 @@ async function fetchRentalPaymentRows(
       sourceJournalEntryId: linkedJeId || null,
       branchId: rental.branch_id ?? null,
       type: 'Rental Payment',
+      referenceType: 'rental',
+      referenceId: rentalId || null,
+      isVoided: false,
     });
   }
 
@@ -1489,7 +1726,7 @@ function journalLiquidityTypeLabel(referenceType: string): string {
   const m: Record<string, string> = {
     general: 'General Entry',
     transfer: 'Internal Transfer',
-    journal: 'Journal Entry',
+    journal: 'General Entry',
     manual: 'Manual Entry',
     manual_journal: 'Journal Entry',
   };
@@ -1500,8 +1737,20 @@ function sortRoznamchaRows(rows: RoznamchaRow[]): void {
   rows.sort((a, b) => {
     if (a.date < b.date) return -1;
     if (a.date > b.date) return 1;
-    if (a.time < b.time) return -1;
-    if (a.time > b.time) return 1;
+    const timeA = String(a.time || '').trim() || '00:00:00';
+    const timeB = String(b.time || '').trim() || '00:00:00';
+    const normA = timeA.length === 5 ? `${timeA}:00` : timeA.slice(0, 8);
+    const normB = timeB.length === 5 ? `${timeB}:00` : timeB.slice(0, 8);
+    if (normA < normB) return -1;
+    if (normA > normB) return 1;
+    const refA = String(a.journalEntryNo || a.ref || '');
+    const refB = String(b.journalEntryNo || b.ref || '');
+    if (refA < refB) return -1;
+    if (refA > refB) return 1;
+    const idA = String(a.id || '');
+    const idB = String(b.id || '');
+    if (idA < idB) return -1;
+    if (idA > idB) return 1;
     return 0;
   });
 }
@@ -1509,13 +1758,17 @@ function sortRoznamchaRows(rows: RoznamchaRow[]): void {
 /** JE ids that already have synthetic liquidity payments (reference_id = journal entry id). */
 async function journalEntryIdsWithLiquidityPayments(companyId: string, journalEntryIds: string[]): Promise<Set<string>> {
   if (journalEntryIds.length === 0) return new Set();
-  const { data } = await supabase
-    .from('payments')
-    .select('reference_id')
-    .eq('company_id', companyId)
-    .in('reference_id', journalEntryIds);
+  const rows = await fetchInBatches(journalEntryIds, async (chunk) => {
+    const { data, error } = await supabase
+      .from('payments')
+      .select('reference_id')
+      .eq('company_id', companyId)
+      .in('reference_id', chunk);
+    if (error) throw error;
+    return data || [];
+  });
   const out = new Set<string>();
-  (data || []).forEach((p: { reference_id?: string | null }) => {
+  rows.forEach((p: { reference_id?: string | null }) => {
     const rid = String(p.reference_id || '').trim();
     if (rid) out.add(rid);
   });
@@ -1544,28 +1797,48 @@ type JournalLiquidityLineRow = {
   }>;
 };
 
+async function loadExpenseNoById(expenseIds: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (expenseIds.length === 0) return out;
+  const { data } = await supabase.from('expenses').select('id, expense_no').in('id', expenseIds);
+  (data || []).forEach((e: { id?: string; expense_no?: string }) => {
+    if (e?.id && e.expense_no) out.set(String(e.id), String(e.expense_no).trim());
+  });
+  return out;
+}
+
 function mapJournalLiquidityLinesToRows(
   entries: JournalLiquidityLineRow[],
   skipJeIds: Set<string>,
   accountFilter: AccountFilter,
   paymentLedgerAccountId: string | null,
   nameByUserId: Map<string, string>,
+  expenseNoByExpenseId: Map<string, string> = new Map(),
+  auditMode = false,
 ): RoznamchaRow[] {
   const rows: RoznamchaRow[] = [];
   for (const je of entries) {
     if (shouldSkipJournalEntryForRoznamcha(je, skipJeIds)) continue;
-    const dateStr = je.entry_date || '';
-    const createdAt = je.created_at ? new Date(je.created_at) : new Date();
-    const timeStr = createdAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
-    const desc = journalDescriptionForDisplay(je.description, journalLiquidityTypeLabel(je.reference_type || ''));
+    const { date: dateStr, time: timeStr } = resolveRoznamchaRowDateTime(
+      je.entry_date,
+      je.created_at ? String(je.created_at) : null,
+    );
     const entryNo = String(je.entry_no || '').trim();
+    const refType = String(je.reference_type || '').toLowerCase();
+    const expenseId = je.reference_id ? String(je.reference_id) : '';
+    const expenseNo =
+      refType === 'expense' && expenseId ? expenseNoByExpenseId.get(expenseId) : undefined;
+    const ref = expenseNo || entryNo || `JE-${String(je.id).slice(0, 8)}`;
+    const journalEntryNo =
+      expenseNo && entryNo && expenseNo.toLowerCase() !== entryNo.toLowerCase() ? entryNo : null;
     const typeLabel = journalLiquidityTypeLabel(je.reference_type || '');
     const creatorName = je.created_by ? nameByUserId.get(je.created_by) || null : null;
+    const desc = journalDescriptionForDisplay(je.description, typeLabel);
 
     for (const line of je.lines || []) {
       const rawAcc = line.account as { id: string; name: string; type: string; code: string | null } | { id: string; name: string; type: string; code: string | null }[] | null | undefined;
       const acc = Array.isArray(rawAcc) ? rawAcc[0] : rawAcc;
-      if (!acc || !isLiquidityPaymentAccount(acc)) continue;
+      if (!acc || !isRoznamchaLiquidityAccount(acc)) continue;
       const debit = Number(line.debit) || 0;
       const credit = Number(line.credit) || 0;
       if (debit <= 0 && credit <= 0) continue;
@@ -1580,15 +1853,27 @@ function mapJournalLiquidityLinesToRows(
       }
       if (paymentLedgerAccountId && line.account_id !== paymentLedgerAccountId) continue;
 
+      const descriptionFallback = desc;
+      const expenseLabel = isGenericRoznamchaPartyLabel(descriptionFallback)
+        ? resolveExpenseCounterpartyFromJeLines(je.lines, direction)
+        : null;
+      const primaryDetails = expenseLabel ?? descriptionFallback;
+
+      const auditSuffix = auditMode
+        ? roznamchaRowAuditSuffix({
+            referenceType: je.reference_type,
+            journalIsVoid: (je as { is_void?: boolean }).is_void,
+          })
+        : '';
       rows.push({
         id: `jel-${line.id}`,
         date: dateStr,
         time: timeStr,
-        ref: entryNo || `JE-${String(je.id).slice(0, 8)}`,
-        details: desc,
+        ref,
+        details: primaryDetails + auditSuffix,
         referenceDisplay: '',
         partyLine: null,
-        journalEntryNo: null,
+        journalEntryNo,
         createdBy: creatorName,
         cashIn: direction === 'IN' ? amount : 0,
         cashOut: direction === 'OUT' ? amount : 0,
@@ -1605,6 +1890,10 @@ function mapJournalLiquidityLinesToRows(
         sourceEconomicEventId: String((je as JournalLiquidityLineRow).economic_event_id || '').trim() || null,
         branchId: je.branch_id ?? null,
         type: typeLabel,
+        referenceType: refType || null,
+        referenceId: expenseId || (je.reference_id ? String(je.reference_id) : null) || null,
+        journalIsVoid: (je as { is_void?: boolean }).is_void === true,
+        paymentIdOnJournal: null,
       });
     }
   }
@@ -1651,6 +1940,7 @@ async function fetchJournalLiquidityRows(
   accountFilter: AccountFilter,
   includeVoidedReversed = false,
   paymentLedgerAccountId: string | null = null,
+  visiblePaymentsForSkip?: Array<{ reference_id?: string | null }>,
 ): Promise<RoznamchaRow[]> {
   let q = supabase
     .from('journal_entries')
@@ -1687,6 +1977,7 @@ async function fetchJournalLiquidityRows(
 
   let entries = (data as unknown as JournalLiquidityLineRow[]).filter((je) => {
     if (!includeVoidedReversed && (je as { is_void?: boolean }).is_void === true) return false;
+    if (!includeVoidedReversed && isCorrectionReversalReferenceType(je.reference_type)) return false;
     return true;
   });
   entries = await filterJournalEntriesForRoznamchaBranch(entries, branchId);
@@ -1698,12 +1989,30 @@ async function fetchJournalLiquidityRows(
     entries.map((e) => e.id),
     includeVoidedReversed,
     { dateFrom, dateTo },
+    visiblePaymentsForSkip,
   );
 
   const userIds = [...new Set(entries.map((e) => e.created_by).filter(Boolean))] as string[];
   const nameByUserId = await resolveUserDisplayNames(userIds);
 
-  return mapJournalLiquidityLinesToRows(entries, skipJeIds, accountFilter, paymentLedgerAccountId, nameByUserId);
+  const expenseIds = [
+    ...new Set(
+      entries
+        .filter((e) => String(e.reference_type || '').toLowerCase() === 'expense' && e.reference_id)
+        .map((e) => String(e.reference_id)),
+    ),
+  ];
+  const expenseNoByExpenseId = await loadExpenseNoById(expenseIds);
+
+  return mapJournalLiquidityLinesToRows(
+    entries,
+    skipJeIds,
+    accountFilter,
+    paymentLedgerAccountId,
+    nameByUserId,
+    expenseNoByExpenseId,
+    includeVoidedReversed,
+  );
 }
 
 /** Opening contribution from journal liquidity legs before dateFrom. */
@@ -1748,6 +2057,7 @@ async function getJournalLiquidityOpeningDelta(
 
   let entries = (data as unknown as JournalLiquidityLineRow[]).filter((je) => {
     if (!includeVoidedReversed && (je as { is_void?: boolean }).is_void === true) return false;
+    if (!includeVoidedReversed && isCorrectionReversalReferenceType(je.reference_type)) return false;
     return true;
   });
   entries = await filterJournalEntriesForRoznamchaBranch(entries, branchId);
@@ -1761,7 +2071,24 @@ async function getJournalLiquidityOpeningDelta(
     { beforeDate },
   );
 
-  const rows = mapJournalLiquidityLinesToRows(entries, skipJeIds, accountFilter, paymentLedgerAccountId, new Map());
+  const expenseIds = [
+    ...new Set(
+      entries
+        .filter((e) => String(e.reference_type || '').toLowerCase() === 'expense' && e.reference_id)
+        .map((e) => String(e.reference_id)),
+    ),
+  ];
+  const expenseNoByExpenseId = await loadExpenseNoById(expenseIds);
+
+  const rows = mapJournalLiquidityLinesToRows(
+    entries,
+    skipJeIds,
+    accountFilter,
+    paymentLedgerAccountId,
+    new Map(),
+    expenseNoByExpenseId,
+    includeVoidedReversed,
+  );
   let total = 0;
   for (const r of rows) {
     total += r.direction === 'IN' ? r.amount : -r.amount;
@@ -2006,6 +2333,7 @@ async function recoverOrphanRentalPaymentJeRows(
 
   let entries = (jeData as unknown as JournalLiquidityLineRow[]).filter((je) => {
     if (!includeVoidedReversed && je.is_void === true) return false;
+    if (!includeVoidedReversed && isCorrectionReversalReferenceType(je.reference_type)) return false;
     return true;
   });
   entries = await filterJournalEntriesForRoznamchaBranch(entries, branchId);
@@ -2031,20 +2359,24 @@ async function recoverOrphanRentalPaymentJeRows(
 
   const rpRefByJeId = new Map<string, string>();
   const rpIdByJeId = new Map<string, string>();
-  if (jeIds.length > 0) {
-    const { data: rpRows } = await supabase
-      .from('rental_payments')
-      .select('id, journal_entry_id, reference')
-      .in('journal_entry_id', jeIds)
-      .is('voided_at', null);
-    (rpRows || []).forEach((rp: any) => {
-      const jeId = String(rp?.journal_entry_id || '').trim();
-      const ref = String(rp?.reference || '').trim();
-      const rpId = String(rp?.id || '').trim();
-      if (jeId && ref) rpRefByJeId.set(jeId, ref);
-      if (jeId && rpId) rpIdByJeId.set(jeId, rpId);
-    });
-  }
+    if (jeIds.length > 0) {
+      const rpRows = await fetchInBatches(jeIds, async (chunk) => {
+        const { data, error } = await supabase
+          .from('rental_payments')
+          .select('id, journal_entry_id, reference')
+          .in('journal_entry_id', chunk)
+          .is('voided_at', null);
+        if (error) throw error;
+        return data || [];
+      });
+      rpRows.forEach((rp: any) => {
+        const jeId = String(rp?.journal_entry_id || '').trim();
+        const ref = String(rp?.reference || '').trim();
+        const rpId = String(rp?.id || '').trim();
+        if (jeId && ref) rpRefByJeId.set(jeId, ref);
+        if (jeId && rpId) rpIdByJeId.set(jeId, rpId);
+      });
+    }
 
   const userIds = [...new Set(entries.map((e) => e.created_by).filter(Boolean))] as string[];
   const nameByUserId = await resolveUserDisplayNames(userIds);
@@ -2058,9 +2390,10 @@ async function recoverOrphanRentalPaymentJeRows(
 
     const rental = je.reference_id ? rentalInfoById.get(String(je.reference_id)) : undefined;
     const rentalNo = String(rental?.booking_no || '').trim();
-    const dateStr = String(je.entry_date || '').slice(0, 10);
-    const createdAt = je.created_at ? new Date(je.created_at) : new Date();
-    const timeStr = createdAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+    const { date: dateStr, time: timeStr } = resolveRoznamchaRowDateTime(
+      je.entry_date,
+      je.created_at ? String(je.created_at) : null,
+    );
     const creatorName = je.created_by ? nameByUserId.get(je.created_by) || null : null;
     const storedRpRef = rpRefByJeId.get(String(je.id)) || '';
     const canonical = resolveCanonicalRoznamchaRef({
@@ -2074,7 +2407,7 @@ async function recoverOrphanRentalPaymentJeRows(
     for (const line of je.lines || []) {
       const rawAcc = line.account as { id: string; name: string; type: string; code: string | null } | { id: string; name: string; type: string; code: string | null }[] | null | undefined;
       const acc = Array.isArray(rawAcc) ? rawAcc[0] : rawAcc;
-      if (!acc || !isLiquidityPaymentAccount(acc)) continue;
+      if (!acc || !isRoznamchaLiquidityAccount(acc)) continue;
       const debit = Number(line.debit) || 0;
       if (debit <= 0) continue;
       const { liquidity, shortLabel } = classifyRoznamchaLiquidity('', acc.type, acc.name, acc.code);
@@ -2115,6 +2448,10 @@ async function recoverOrphanRentalPaymentJeRows(
         sourceJournalEntryId: String(je.id),
         branchId: rental?.branch_id ?? je.branch_id ?? null,
         type: 'Rental Payment',
+        referenceType: 'rental',
+        referenceId: je.reference_id ? String(je.reference_id) : null,
+        journalIsVoid: je.is_void === true,
+        sourceRentalPaymentId: linkedRpId || null,
       };
       const candidateEntityKeys = roznamchaEntityKeys(candidate);
       if (candidateEntityKeys.some((k) => representedEntityKeys.has(k))) continue;
@@ -2181,7 +2518,7 @@ async function fetchRoznamchaPreDedupeRows(
   includeVoidedReversed = false,
   paymentLedgerAccountId: string | null = null
 ): Promise<RoznamchaRow[]> {
-  const paymentRows = await fetchPaymentRows(
+  const { rows: paymentRows, branchFilteredPayments } = await fetchPaymentRows(
     companyId,
     branchId,
     dateFrom,
@@ -2197,7 +2534,8 @@ async function fetchRoznamchaPreDedupeRows(
     dateTo,
     accountFilterParam,
     includeVoidedReversed,
-    paymentLedgerAccountId
+    paymentLedgerAccountId,
+    branchFilteredPayments,
   );
   const orphanRentalRows = await recoverOrphanRentalPaymentJeRows(
     companyId,
@@ -2242,23 +2580,25 @@ export async function getRoznamcha(
   includeVoidedReversed = false,
   paymentLedgerAccountId: string | null = null
 ): Promise<RoznamchaResult> {
-  const openingBalance = await getOpeningBalance(
-    companyId,
-    branchId,
-    dateFrom,
-    accountFilterParam,
-    includeVoidedReversed,
-    paymentLedgerAccountId
-  );
-  const preDedupe = await fetchRoznamchaPreDedupeRows(
-    companyId,
-    branchId,
-    dateFrom,
-    dateTo,
-    accountFilterParam,
-    includeVoidedReversed,
-    paymentLedgerAccountId
-  );
+  const [openingBalance, preDedupe] = await Promise.all([
+    getOpeningBalance(
+      companyId,
+      branchId,
+      dateFrom,
+      accountFilterParam,
+      includeVoidedReversed,
+      paymentLedgerAccountId
+    ),
+    fetchRoznamchaPreDedupeRows(
+      companyId,
+      branchId,
+      dateFrom,
+      dateTo,
+      accountFilterParam,
+      includeVoidedReversed,
+      paymentLedgerAccountId
+    ),
+  ]);
   if (roznamchaTraceEnabled()) {
     const tracePre = preDedupe.filter(isRoznamchaTraceTarget);
     if (tracePre.length > 0) {
@@ -2273,9 +2613,11 @@ export async function getRoznamcha(
       console.warn('[roznamcha trace] HQ-RCV-0006 / JE-0012 not in pre-dedupe — excluded by fetch (date/branch/liquidity/rental skip)');
     }
   }
-  const rows = dedupeRoznamchaRows(preDedupe);
-  logRoznamchaTraceDedupe(preDedupe, rows);
+  const inRangeRows = preDedupe.filter((r) => isEventDateInRange(r.date, dateFrom, dateTo));
+  const rows = dedupeRoznamchaRows(inRangeRows);
+  logRoznamchaTraceDedupe(inRangeRows, rows);
   sortRoznamchaRows(rows);
+  await enrichRowsWithTransactionAttachments(companyId, rows);
   const { rowsWithBalance, summary, cashSplit } = buildSummaryAndRunning(rows, openingBalance);
   return {
     rows: rowsWithBalance,

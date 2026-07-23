@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NDM ERP.ipa</key>
+	<array>
+		<dict>
+			<key>architectures</key>
+			<array>
+				<string>arm64</string>
+			</array>
+			<key>buildNumber</key>
+			<string>20</string>
+			<key>certificate</key>
+			<dict>
+				<key>SHA1</key>
+				<string>9F5FDFE25CB78F8B26EEF90B99EF32D80C679AF7</string>
+				<key>dateExpires</key>
+				<string>24/02/2027</string>
+				<key>type</key>
+				<string>Apple Development</string>
+			</dict>
+			<key>embeddedBinaries</key>
+			<array>
+				<dict>
+					<key>architectures</key>
+					<array>
+						<string>arm64</string>
+					</array>
+					<key>buildNumber</key>
+					<string>3</string>
+					<key>certificate</key>
+					<dict>
+						<key>SHA1</key>
+						<string>9F5FDFE25CB78F8B26EEF90B99EF32D80C679AF7</string>
+						<key>dateExpires</key>
+						<string>24/02/2027</string>
+						<key>type</key>
+						<string>Apple Development</string>
+					</dict>
+					<key>name</key>
+					<string>IONFilesystemLib.framework</string>
+					<key>team</key>
+					<dict>
+						<key>id</key>
+						<string>NLNZN84GX4</string>
+						<key>name</key>
+						<string></string>
+					</dict>
+					<key>versionNumber</key>
+					<string>1.0.1</string>
+				</dict>
+			</array>
+			<key>entitlements</key>
+			<dict>
+				<key>application-identifier</key>
+				<string>NLNZN84GX4.com.dincouture.erp</string>
+				<key>com.apple.developer.team-identifier</key>
+				<string>NLNZN84GX4</string>
+				<key>get-task-allow</key>
+				<true/>
+			</dict>
+			<key>name</key>
+			<string>NDM ERP.app</string>
+			<key>profile</key>
+			<dict>
+				<key>UUID</key>
+				<string>78dd2682-882f-4c34-8156-2170de217de7</string>
+				<key>dateExpires</key>
+				<string>14/07/2026</string>
+				<key>name</key>
+				<string>iOS Team Provisioning Profile: com.dincouture.erp</string>
+			</dict>
+			<key>team</key>
+			<dict>
+				<key>id</key>
+				<string>NLNZN84GX4</string>
+				<key>name</key>
+				<string></string>
+			</dict>
+			<key>versionNumber</key>
+			<string>1.0.5</string>
+		</dict>
+	</array>
+</dict>
+</plist>

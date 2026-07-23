@@ -1,0 +1,36 @@
+{
+  "company": "din-china",
+  "phase": "3B-I",
+  "zeroDiff": false,
+  "rowKeyedCounts": {
+    "exact": 89,
+    "strong": 0,
+    "weak": 11,
+    "legacyOnly": 223,
+    "previewOnly": 305,
+    "transferBucket": 0,
+    "openingBucket": 0,
+    "financeExcludedTransfer": 0,
+    "financeExcludedOpening": 0
+  },
+  "transferBucketEffect": {
+    "excludedFromNormalTotals": {
+      "internalTransferRows": 169,
+      "openingBalanceRows": 0,
+      "auditDetailRows": 169
+    },
+    "thematicTransferBucket": 0,
+    "financeExcludedTransfer": 0
+  },
+  "openingBucketEffect": {
+    "excludedFromNormalTotals": 0,
+    "thematicOpeningBucket": 0,
+    "financeExcludedOpening": 0
+  },
+  "approvedRules": {
+    "Q4": "A",
+    "Q5": "C",
+    "Q7": "B"
+  },
+  "approvalStatus": "CANDIDATE_ONLY — NOT FINANCE APPROVED"
+}

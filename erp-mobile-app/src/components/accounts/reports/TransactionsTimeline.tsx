@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
-  ArrowDownLeft,
-  ArrowUpRight,
   Search,
   Loader2,
   CalendarDays,
   RefreshCw,
   Share2,
+  Copy,
+  Ban,
 } from 'lucide-react';
 import {
   getPaymentTransactions,
@@ -20,6 +20,13 @@ import { getMyExpenseJournalEntries } from '../../../api/myActivity';
 import { TransactionDetailSheet } from './TransactionDetailSheet';
 import { EditTransactionSheet } from './_shared/EditTransactionSheet';
 import { canEditTransaction } from '../../../api/transactions';
+import {
+  canCancelTransactionRow,
+  cancelTransactionWithReversal,
+  getCancelEligibility,
+  resolveJournalEntryIdFromPayment,
+  type CancelEligibility,
+} from '../../../api/transactionCancel';
 import { dispatchMobileAccountingInvalidated } from '../../../lib/dataInvalidationBus';
 import { PdfPreviewModal } from '../../shared/PdfPreviewModal';
 import { TimelinePreviewPdf } from '../../shared/TimelinePreviewPdf';
@@ -30,10 +37,8 @@ import {
   formatEventDateGroupLabel,
   getTransactionEventDateKey,
 } from '../../../utils/transactionDisplayDate';
-import {
-  transactionPrimaryTitle,
-  transactionFromToLabels,
-} from '../../../lib/transactionRowDisplay';
+import { TransactionActivityRow } from './_shared/TransactionActivityRow';
+import { resolveTimelinePresentation } from '../../../lib/transactionTimelinePresentation';
 import {
   DateRangeBar,
   makeInitialRange,
@@ -43,6 +48,11 @@ import {
 import { useAccountingAttachmentActions } from '../../../hooks/useAccountingAttachmentActions';
 import { AttachmentIndicatorButton } from '../../shared/AttachmentIndicatorButton';
 import { LongPressCard } from '../../common/LongPressCard';
+import { ConfirmActionSheet } from '../../common/ConfirmActionSheet';
+import {
+  resolveCopyPrefillFromTransactionRow,
+  type CopyTransactionPrefill,
+} from '../../../lib/copyTransactionPrefill';
 
 interface TransactionsTimelineProps {
   onBack: () => void;
@@ -70,6 +80,7 @@ interface TransactionsTimelineProps {
   hideDatePresets?: DateRangePreset[];
   /** Initial date preset; defaults to month. */
   defaultDatePreset?: DateRangePreset;
+  onCopyTransaction?: (prefill: CopyTransactionPrefill) => void;
 }
 
 function isRowByUser(row: TransactionRow, scope: { authId: string; profileId?: string | null }): boolean {
@@ -199,7 +210,8 @@ export function TransactionsTimeline({
   includeOwnExpenses = false,
   readOnly = false,
   hideDatePresets,
-  defaultDatePreset = 'month',
+  defaultDatePreset = 'currentFinancialYear',
+  onCopyTransaction,
 }: TransactionsTimelineProps) {
   const preview = usePdfPreview(companyId);
   const attachmentActions = useAccountingAttachmentActions(companyId, branchId);
@@ -225,6 +237,9 @@ export function TransactionsTimeline({
   const [debouncedSearch, setDebouncedSearch] = useState<string>('');
   const [detailId, setDetailId] = useState<string | null>(null);
   const [editTarget, setEditTarget] = useState<{ mode: 'payment' | 'journal'; id: string } | null>(null);
+  const [pendingCancel, setPendingCancel] = useState<CancelEligibility | null>(null);
+  const [cancelBusy, setCancelBusy] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
@@ -328,6 +343,59 @@ export function TransactionsTimeline({
     void loadRows();
   };
 
+  const beginCancelForRow = async (tx: TransactionRow) => {
+    if (!companyId || readOnly) return;
+    const hint = canCancelTransactionRow(tx);
+    if (!hint.show) return;
+    setCancelError(null);
+    setCancelBusy(true);
+    try {
+      let jeId = hint.journalEntryId;
+      if (!jeId) {
+        const payId = String(tx.paymentId || tx.id || '').trim();
+        if (payId) jeId = await resolveJournalEntryIdFromPayment(companyId, payId);
+      }
+      if (!jeId) {
+        setCancelError('No journal entry linked to this transaction.');
+        return;
+      }
+      const eligibility = await getCancelEligibility(companyId, jeId);
+      if (!eligibility.allowed) {
+        setCancelError(eligibility.reason || 'Cancel not allowed for this transaction.');
+        return;
+      }
+      setPendingCancel(eligibility);
+    } finally {
+      setCancelBusy(false);
+    }
+  };
+
+  const executeCancel = async () => {
+    if (!pendingCancel || !companyId) return;
+    setCancelBusy(true);
+    setCancelError(null);
+    try {
+      const result = await cancelTransactionWithReversal({
+        companyId,
+        branchId: branchId ?? null,
+        journalEntryId: pendingCancel.journalEntryId,
+      });
+      if (!result.ok) {
+        setCancelError(result.error || 'Cancel failed.');
+        return;
+      }
+      setPendingCancel(null);
+      refresh();
+      dispatchMobileAccountingInvalidated({
+        companyId,
+        branchId: branchId ?? null,
+        reason: 'transaction-cancelled',
+      });
+    } finally {
+      setCancelBusy(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#111827] pb-24">
       <div className="bg-gradient-to-br from-[#6366F1] to-[#4F46E5] p-4 sticky top-0 z-10 flow-screen-header">
@@ -376,7 +444,13 @@ export function TransactionsTimeline({
         </div>
 
         <div className="mt-3">
-          <DateRangeBar value={dateRange} onChange={setDateRange} hidePresets={hideDatePresets} />
+          <DateRangeBar
+            value={dateRange}
+            onChange={setDateRange}
+            hidePresets={hideDatePresets}
+            companyId={companyId}
+            branchId={branchId}
+          />
         </div>
 
         <div className="mt-3 flex gap-1.5 overflow-x-auto">
@@ -430,6 +504,10 @@ export function TransactionsTimeline({
                 const source = t.id.startsWith('journal-') ? 'journal_entry' : 'payment_row';
                 const editability = canEditTransaction(t.referenceType, source);
                 const rowAttachParams = { transactionRow: t };
+                const copyPrefill = resolveCopyPrefillFromTransactionRow(t);
+                const showCopy = Boolean(onCopyTransaction && copyPrefill);
+                const cancelHint = canCancelTransactionRow(t);
+                const showCancel = !rowReadOnly && cancelHint.show;
                 return (
                   <LongPressCard
                     key={t.id}
@@ -451,26 +529,45 @@ export function TransactionsTimeline({
                           }
                         : undefined
                     }
+                    onDelete={undefined}
                     canEdit={!rowReadOnly && editability.editable}
                     canDelete={false}
-                    customMenuItems={attachmentActions.buildLongPressMenuItems(rowAttachParams, {
-                      canAdd: !rowReadOnly && editability.editable,
-                    })}
+                    customMenuItems={[
+                      ...attachmentActions.buildLongPressMenuItems(rowAttachParams, {
+                        canAdd: !rowReadOnly && editability.editable,
+                      }),
+                      ...(showCopy && copyPrefill
+                        ? [
+                            {
+                              label: 'Copy transaction',
+                              icon: <Copy className="w-4 h-4" />,
+                              onClick: () => onCopyTransaction!(copyPrefill),
+                              show: true,
+                            },
+                          ]
+                        : []),
+                      ...(showCancel
+                        ? [
+                            {
+                              label: cancelHint.label,
+                              icon: <Ban className="w-4 h-4" />,
+                              onClick: () => void beginCancelForRow(t),
+                              variant: 'danger' as const,
+                              show: true,
+                            },
+                          ]
+                        : []),
+                    ]}
                   >
                     <TransactionRowCard
                       tx={t}
-                      showAttachmentIcon={attachmentActions.transactionShowsAttachmentIcon(t)}
+                      showAttachmentIcon={attachmentActions.hasAnyAttachmentHint({ transactionRow: t })}
                       onAttachmentClick={() => void attachmentActions.previewAttachments(rowAttachParams)}
-                      readOnly={rowReadOnly}
-                      editability={editability}
-                      onEdit={() => {
-                        if (rowReadOnly || !editability.editable) return;
-                        if (editability.kind === 'journal' && !t.journalEntryId) return;
-                        setEditTarget({
-                          mode: editability.kind === 'journal' ? 'journal' : 'payment',
-                          id: editability.kind === 'journal' ? t.journalEntryId! : t.id,
-                        });
-                      }}
+                      onCopy={
+                        showCopy && copyPrefill
+                          ? () => onCopyTransaction!(copyPrefill)
+                          : undefined
+                      }
                     />
                   </LongPressCard>
                 );
@@ -484,8 +581,12 @@ export function TransactionsTimeline({
         <TransactionDetailSheet
           paymentId={detailId}
           companyId={companyId}
+          branchId={branchId}
           onClose={() => setDetailId(null)}
           onViewLedger={onViewLedger}
+          onCancelled={() => {
+            refresh();
+          }}
         />
       )}
       {editTarget && companyId && (
@@ -505,6 +606,35 @@ export function TransactionsTimeline({
           }}
         />
       )}
+
+      <ConfirmActionSheet
+        open={!!pendingCancel}
+        title={pendingCancel?.confirmTitle ?? 'Cancel?'}
+        description={pendingCancel?.confirmDescription ?? ''}
+        confirmLabel={pendingCancel?.confirmLabel ?? 'Yes, Cancel'}
+        cancelLabel="No"
+        busy={cancelBusy}
+        error={cancelError}
+        onCancel={() => {
+          if (cancelBusy) return;
+          setPendingCancel(null);
+          setCancelError(null);
+        }}
+        onConfirm={() => void executeCancel()}
+      />
+
+      {cancelError && !pendingCancel ? (
+        <div className="fixed left-4 right-4 bottom-36 z-30 p-3 rounded-xl bg-[#7F1D1D] border border-[#EF4444] text-sm text-white shadow-lg">
+          {cancelError}
+          <button
+            type="button"
+            className="ml-3 underline text-xs"
+            onClick={() => setCancelError(null)}
+          >
+            Dismiss
+          </button>
+        </div>
+      ) : null}
 
       {attachmentActions.AttachmentPreviewPortal}
       {attachmentActions.AddAttachmentSheetPortal}
@@ -536,15 +666,15 @@ export function TransactionsTimeline({
               date: g.label,
               rows: g.items.map((t) => {
                 const { time } = formatPaymentDateTime(t.paymentDate, t.createdAt);
-                const isReceived = t.direction === 'received';
+                const pres = resolveTimelinePresentation(t);
                 return {
                   time,
-                  party: t.partyName || t.partyAccountName || t.referenceType,
+                  party: pres.title,
                   reference: `${displayReference(t)} ${t.referenceType ? '· ' + t.referenceType.replace('_', ' ') : ''}`.trim(),
-                  fromAccount: isReceived ? t.paymentAccountName ?? undefined : (t.partyAccountName ?? t.partyName) ?? undefined,
-                  toAccount: isReceived ? (t.partyAccountName ?? t.partyName) ?? undefined : t.paymentAccountName ?? undefined,
+                  fromAccount: pres.from !== '—' ? pres.from : undefined,
+                  toAccount: pres.to !== '—' ? pres.to : undefined,
                   amount: t.amount,
-                  direction: isReceived ? ('in' as const) : ('out' as const),
+                  direction: pres.isReceived ? ('in' as const) : ('out' as const),
                   notes: t.notes ?? undefined,
                 };
               }),
@@ -555,7 +685,9 @@ export function TransactionsTimeline({
         </PdfPreviewModal>
       )}
       {!loading && !error && filteredRows.length > 0 && (
-        <div className="fixed left-4 right-4 bottom-24 z-20">
+        // sticky (not fixed) so the bar tracks the content column width — on tablet
+        // a fixed bar spans the full viewport and overlaps the sidebar area.
+        <div className="sticky bottom-24 z-20 mx-4">
           <div className="rounded-xl border border-[#374151] bg-[#111827]/95 backdrop-blur px-4 py-2 flex items-center justify-between">
             <span className="text-xs text-[#9CA3AF]">Floating balance</span>
             <span className={`text-sm font-bold ${stats.net >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
@@ -581,90 +713,62 @@ function StatCard({ label, value, color }: { label: string; value: number; color
 
 function TransactionRowCard({
   tx,
-  onEdit,
-  readOnly = false,
+  onCopy,
   showAttachmentIcon = false,
   onAttachmentClick,
-  editability,
 }: {
   tx: TransactionRow;
-  onEdit: () => void;
-  readOnly?: boolean;
+  onCopy?: () => void;
   showAttachmentIcon?: boolean;
   onAttachmentClick?: () => void;
-  editability: ReturnType<typeof canEditTransaction>;
 }) {
-  const isReceived = tx.direction === 'received';
-  const amountColor = isReceived ? 'text-[#10B981]' : 'text-[#EF4444]';
-  const pillBg = isReceived ? 'bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/30' : 'bg-[#EF4444]/20 text-[#EF4444] border border-[#EF4444]/30';
-  const Icon = isReceived ? ArrowDownLeft : ArrowUpRight;
   const dateTimeLine = formatPaymentDateTimeLine(tx.paymentDate, tx.createdAt);
-  const isTransferLike =
-    tx.referenceType === 'transfer' || tx.referenceType === 'general' || tx.id.startsWith('journal-');
-  const { from, to } = transactionFromToLabels(tx, isReceived, isTransferLike);
 
   return (
     <li>
       <div className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-3 transition-colors hover:border-[#4B5563]">
         <div className="w-full text-left">
-        <div className="flex items-start gap-3">
-          <div className={`shrink-0 mt-0.5 w-9 h-9 rounded-full flex items-center justify-center ${pillBg}`}>
-            <Icon className="w-4 h-4" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-white truncate">
-                  {transactionPrimaryTitle(tx)}
-                </p>
-                <p className="text-xs text-[#9CA3AF] truncate">
-                  {displayReference(tx)}
-                  {tx.referenceType ? <span className="ml-1 capitalize">· {tx.referenceType.replace('_', ' ')}</span> : null}
-                </p>
-              </div>
-              <div className="text-right shrink-0">
-                <p className={`text-sm font-bold ${amountColor}`}>
-                  {isReceived ? '+' : '−'} Rs. {tx.amount.toLocaleString('en-PK', { minimumFractionDigits: 2 })}
-                </p>
-                <div className="flex items-center justify-end gap-0.5">
-                  {showAttachmentIcon && onAttachmentClick ? (
+          <div className="flex items-start gap-3">
+            <div className="flex-1 min-w-0">
+              <TransactionActivityRow
+                tx={tx}
+                amountDecimals={2}
+                timeLabel={dateTimeLine}
+                attachmentSlot={
+                  showAttachmentIcon && onAttachmentClick ? (
                     <AttachmentIndicatorButton onClick={() => onAttachmentClick()} size="sm" />
+                  ) : null
+                }
+              />
+              <p className="text-xs text-[#9CA3AF] truncate mt-1">
+                {displayReference(tx)}
+                {tx.referenceType ? <span className="ml-1 capitalize">· {tx.referenceType.replace('_', ' ')}</span> : null}
+              </p>
+              <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-[#6B7280]">
+                <span className="truncate">
+                  {tx.createdByName ? (
+                    <span className="text-[#9CA3AF]">Created by {tx.createdByName}</span>
                   ) : null}
-                  <p className="text-xs text-[#9CA3AF] whitespace-nowrap">{dateTimeLine}</p>
-                </div>
+                </span>
+                <span className="shrink-0 flex items-center gap-1.5">
+                  {tx.method && <span className="uppercase">{METHOD_LABEL[tx.method] ?? tx.method}</span>}
+                  {tx.branchName && <span className="truncate max-w-[80px]">{tx.branchName}</span>}
+                </span>
               </div>
-            </div>
-            <div className="mt-2 flex items-center gap-1.5 text-[11px] text-[#9CA3AF]">
-              <span className="truncate max-w-[45%]">{from}</span>
-              <span className="text-[#6366F1]">→</span>
-              <span className="truncate max-w-[45%]">{to}</span>
-            </div>
-            <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-[#6B7280]">
-              <span className="truncate">
-                {tx.createdByName ? (
-                  <span className="text-[#9CA3AF]">Created by {tx.createdByName}</span>
-                ) : null}
-              </span>
-              <span className="shrink-0 flex items-center gap-1.5">
-                {tx.method && <span className="uppercase">{METHOD_LABEL[tx.method] ?? tx.method}</span>}
-                {tx.branchName && <span className="truncate max-w-[80px]">{tx.branchName}</span>}
-              </span>
             </div>
           </div>
         </div>
-        </div>
-        {!readOnly && (
-          <div className="mt-2 flex justify-end">
+        {onCopy ? (
+          <div className="mt-2 flex justify-end gap-2 flex-wrap">
             <button
               type="button"
-              disabled={!editability.editable}
-              onClick={onEdit}
-              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[#374151] text-white disabled:opacity-40"
+              onClick={onCopy}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[#4B5563] text-white"
             >
-              Edit
+              Copy
             </button>
           </div>
-        )}
+        ) : null}
       </div>
     </li>
   );

@@ -11,10 +11,24 @@ function appendPayReferenceAllocationHint(message: string): string {
   return out;
 }
 import { getNextDocumentNumber } from './documentNumber';
+import { getAccountBalancesFromJournal } from './accountBalancesFromJournal';
+import { isLiquidityPaymentAccount } from '../lib/liquidityPaymentAccount';
 import { isBrowserOffline, listCacheGet, listCacheKeys, listCacheSet } from '../lib/listCache';
 import { resolveBranchUuidForWrite, safeRpcBranchId } from '../utils/branchId';
-import { getCurrentLocalTimestamp, toLocalDateString } from '../utils/localDate';
+import { getCurrentLocalTimestamp, localNowDateString, toLocalDateString } from '../utils/localDate';
 import { hasNormalizedAttachments } from '../lib/normalizeAttachments';
+import {
+  balanceRowFromMap,
+  fetchContactPartyGlBalancesMap,
+  fetchOperationalContactBalancesSummary,
+  partyGlSliceFromMap,
+  resolveContactListBalance,
+} from './contactBalancesRpc';
+import { normalizeCompanyId } from './contactBalancesUtils';
+import {
+  applyManualSupplierPaymentAllocations,
+  sortSuppliersByPayable,
+} from '../lib/supplierPaymentAllocation';
 
 export interface AccountRow {
   id: string;
@@ -24,6 +38,8 @@ export interface AccountRow {
   balance: number;
   parentId?: string | null;
   isGroup?: boolean;
+  isDefaultCash?: boolean;
+  isDefaultBank?: boolean;
   /** Party-linked AR/AP sub-account — enables party GL ledger RPC on mobile. */
   linkedContactId?: string | null;
 }
@@ -199,7 +215,46 @@ export async function getAccounts(companyId: string): Promise<{ data: AccountRow
   };
 }
 
-const PAYMENT_ACCOUNT_TYPES_LOWER = new Set(['cash', 'bank', 'mobile_wallet', 'wallet']);
+function mapPaymentAccountRow(r: Record<string, unknown>): AccountRow {
+  return {
+    id: String(r.id ?? ''),
+    code: String(r.code ?? '—'),
+    name: String(r.name ?? '—'),
+    type: String(r.type ?? '—'),
+    balance: Number(r.balance) || 0,
+    isDefaultCash: r.is_default_cash === true,
+    isDefaultBank: r.is_default_bank === true,
+  };
+}
+
+function isLiquidityPaymentAccountRow(acc: AccountRow): boolean {
+  return isLiquidityPaymentAccount({
+    code: acc.code,
+    name: acc.name,
+    type: acc.type,
+    is_active: true,
+  });
+}
+
+async function mergeJournalBalances(
+  companyId: string,
+  rows: AccountRow[],
+): Promise<AccountRow[]> {
+  const { map: journalBalances, error: jbErr } = await getAccountBalancesFromJournal(companyId);
+  if (jbErr) return rows;
+  return rows.map((acc) => ({
+    ...acc,
+    balance: journalBalances.get(acc.id) ?? 0,
+  }));
+}
+
+/** Overlay journal net balances (debit − credit) onto account rows — GL truth for list UIs. */
+export async function overlayAccountBalancesFromJournal(
+  companyId: string,
+  rows: AccountRow[],
+): Promise<AccountRow[]> {
+  return mergeJournalBalances(companyId, rows);
+}
 
 /** Payment accounts: cash, bank, mobile wallet only (no generic asset / AR / etc.). */
 export async function getPaymentAccounts(companyId: string): Promise<{ data: AccountRow[]; error: string | null }> {
@@ -207,29 +262,35 @@ export async function getPaymentAccounts(companyId: string): Promise<{ data: Acc
   const cacheKey = listCacheKeys.paymentAccounts(companyId);
   if (isBrowserOffline()) {
     const cached = await listCacheGet<AccountRow[]>(cacheKey);
-    const filtered = (cached ?? []).filter((a) => PAYMENT_ACCOUNT_TYPES_LOWER.has((a.type || '').toLowerCase()));
+    const filtered = (cached ?? []).filter((a) => isLiquidityPaymentAccountRow(a));
     return {
       data: filtered,
       error: filtered.length ? null : 'Offline: payment accounts not cached. Connect once while logged in.',
     };
   }
-  const q = supabase
+  const withDefaults = await supabase
     .from('accounts')
-    .select('id, code, name, type, balance')
+    .select('id, code, name, type, balance, is_default_cash, is_default_bank')
     .eq('company_id', companyId)
     .eq('is_active', true)
     .or('is_group.eq.false,is_group.is.null')
-    .in('type', ['cash', 'bank', 'mobile_wallet', 'wallet'])
     .order('code');
-  const { data, error } = await q;
+  let rawRows: Record<string, unknown>[] = (withDefaults.data || []) as Record<string, unknown>[];
+  let error = withDefaults.error;
+  if (error && /is_default_cash|is_default_bank|column/i.test(String(error.message || ''))) {
+    const fallback = await supabase
+      .from('accounts')
+      .select('id, code, name, type, balance')
+      .eq('company_id', companyId)
+      .eq('is_active', true)
+      .or('is_group.eq.false,is_group.is.null')
+      .order('code');
+    rawRows = (fallback.data || []) as Record<string, unknown>[];
+    error = fallback.error;
+  }
   if (error) return { data: [], error: error.message };
-  const rows = (data || []).map((r: Record<string, unknown>) => ({
-    id: String(r.id ?? ''),
-    code: String(r.code ?? '—'),
-    name: String(r.name ?? '—'),
-    type: String(r.type ?? '—'),
-    balance: Number(r.balance) || 0,
-  }));
+  const liquidityRows = rawRows.map(mapPaymentAccountRow).filter(isLiquidityPaymentAccountRow);
+  const rows = await mergeJournalBalances(companyId, liquidityRows);
   void listCacheSet(cacheKey, rows);
   return { data: rows, error: null };
 }
@@ -247,6 +308,8 @@ export interface JournalEntryRow {
   entry_no: string;
   /** Payments voucher no (PAY-xx / RCV-xx) when this JE links via payment_id — preferred list label over JE entry_no. */
   payment_reference_number?: string | null;
+  /** Expense document no (EXP-xx) — preferred over PAY for expense JEs. */
+  display_expense_no?: string | null;
   entry_date: string;
   description: string;
   reference_type: string;
@@ -313,10 +376,19 @@ export async function getJournalEntries(
   const paymentRefNoById = new Map<string, string | null>();
   const paymentTypeById = new Map<string, 'received' | 'paid' | null>();
   const paymentAttachmentsById = new Map<string, unknown>();
+  const paymentExpenseIdById = new Map<string, string>();
+  const expenseIdsForNo = new Set<string>();
+  (data || []).forEach((e: Record<string, unknown>) => {
+    const rt = String(e.reference_type ?? '')
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, '_');
+    if (rt === 'expense' && e.reference_id) expenseIdsForNo.add(String(e.reference_id));
+  });
   if (paymentIds.length > 0) {
     const { data: paymentRows } = await supabase
       .from('payments')
-      .select('id, notes, reference_number, payment_type, attachments')
+      .select('id, notes, reference_number, payment_type, attachments, reference_type, reference_id')
       .in('id', paymentIds);
     for (const row of paymentRows || []) {
       const id = String((row as Record<string, unknown>).id ?? '');
@@ -331,6 +403,28 @@ export async function getJournalEntries(
       const pt = String((row as Record<string, unknown>).payment_type ?? '').trim().toLowerCase();
       paymentTypeById.set(id, pt === 'received' ? 'received' : pt === 'paid' ? 'paid' : null);
       paymentAttachmentsById.set(id, (row as Record<string, unknown>).attachments);
+      const payRt = String((row as Record<string, unknown>).reference_type ?? '')
+        .toLowerCase()
+        .trim()
+        .replace(/\s+/g, '_');
+      const payRefId = (row as Record<string, unknown>).reference_id;
+      if (payRt === 'expense' && payRefId) {
+        const eid = String(payRefId);
+        paymentExpenseIdById.set(id, eid);
+        expenseIdsForNo.add(eid);
+      }
+    }
+  }
+  const expenseNoById = new Map<string, string>();
+  if (expenseIdsForNo.size > 0) {
+    const { data: expRows } = await supabase
+      .from('expenses')
+      .select('id, expense_no')
+      .in('id', [...expenseIdsForNo]);
+    for (const row of expRows || []) {
+      const id = String((row as Record<string, unknown>).id ?? '');
+      const no = String((row as Record<string, unknown>).expense_no ?? '').trim();
+      if (id && no) expenseNoById.set(id, no);
     }
   }
   const rows = (data || []).map((e: Record<string, unknown>) => {
@@ -342,10 +436,22 @@ export async function getJournalEntries(
     const payAttachments = paymentId ? paymentAttachmentsById.get(paymentId) : null;
     const hasAttachments =
       hasNormalizedAttachments(jeAttachments) || hasNormalizedAttachments(payAttachments);
+    const refType = String(e.reference_type ?? '')
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, '_');
+    const expenseId =
+      refType === 'expense' && e.reference_id
+        ? String(e.reference_id)
+        : paymentId
+          ? paymentExpenseIdById.get(paymentId)
+          : undefined;
+    const displayExpenseNo = expenseId ? expenseNoById.get(expenseId) ?? null : null;
     return {
       id: String(e.id ?? ''),
       entry_no: String(e.entry_no ?? ''),
       payment_reference_number: paymentId ? paymentRefNoById.get(paymentId) ?? null : null,
+      display_expense_no: displayExpenseNo,
       entry_date: e.entry_date ? toLocalDateString(e.entry_date as string) : '',
       description: String(e.description ?? ''),
       reference_type: String(e.reference_type ?? ''),
@@ -364,9 +470,32 @@ export async function getJournalEntries(
       lines,
       attachments: jeAttachments,
       hasAttachments,
+      _expenseRefId:
+        refType === 'expense' || refType === 'expense_payment'
+          ? e.reference_id != null && String(e.reference_id).trim() !== ''
+            ? String(e.reference_id)
+            : null
+          : expenseId ?? null,
     };
   });
-  return { data: rows, error: null };
+
+  const expenseIdsNeedingCheck = rows
+    .filter((r) => !r.hasAttachments && r._expenseRefId)
+    .map((r) => r._expenseRefId as string);
+  if (expenseIdsNeedingCheck.length > 0) {
+    const { batchExpenseIdsWithReceiptUrl } = await import('../lib/loadMergedAttachments');
+    const withReceipt = await batchExpenseIdsWithReceiptUrl(companyId, expenseIdsNeedingCheck);
+    for (const row of rows) {
+      if (!row.hasAttachments && row._expenseRefId && withReceipt.has(row._expenseRefId)) {
+        row.hasAttachments = true;
+      }
+    }
+  }
+
+  return {
+    data: rows.map(({ _expenseRefId: _, ...rest }) => rest as JournalEntryRow),
+    error: null,
+  };
 }
 
 
@@ -543,7 +672,17 @@ export async function createJournalEntry(params: {
   if (Math.abs(totalDebit - totalCredit) > 0.01) {
     return { data: null, error: 'Debit must equal Credit.' };
   }
-  const entryNo = await getNextDocumentNumber(companyId, branchId ?? null, 'journal');
+  let resolvedBranchId: string;
+  try {
+    resolvedBranchId = await resolveBranchUuidForWrite(
+      companyId,
+      branchId,
+      'No branch set up. Add a branch in Settings to continue.',
+    );
+  } catch (e) {
+    return { data: null, error: e instanceof Error ? e.message : 'No branch set up.' };
+  }
+  const entryNo = await getNextDocumentNumber(companyId, resolvedBranchId, 'journal');
   const entryRow: Record<string, unknown> = {
     company_id: companyId,
     entry_no: entryNo,
@@ -551,8 +690,8 @@ export async function createJournalEntry(params: {
     description,
     reference_type: referenceType,
     created_by: userId ?? null,
+    branch_id: resolvedBranchId,
   };
-  if (branchId && branchId !== 'all' && branchId !== 'default') entryRow.branch_id = branchId;
   if (referenceId) entryRow.reference_id = referenceId;
   if (actionFingerprint) entryRow.action_fingerprint = actionFingerprint;
   if (attachments && attachments.length > 0) entryRow.attachments = attachments;
@@ -584,8 +723,7 @@ export async function createJournalEntry(params: {
     if (lineErr) return { data: null, error: lineErr.message };
   }
 
-  const effectiveBranch =
-    branchId && branchId !== 'all' && branchId !== 'default' ? branchId : null;
+  const effectiveBranch = resolvedBranchId;
   try {
     const { ensurePaymentsForLiquidityJournal } = await import('../lib/journalLiquidityPayment');
     await ensurePaymentsForLiquidityJournal({
@@ -686,7 +824,7 @@ export async function updateJournalEntryInPlace(
 
   const { data: je, error: jeErr } = await supabase
     .from('journal_entries')
-    .select('id, reference_type, reference_id')
+    .select('id, reference_type, reference_id, entry_no, branch_id, payment_id')
     .eq('company_id', payload.companyId)
     .eq('id', payload.journalEntryId)
     .maybeSingle();
@@ -742,6 +880,58 @@ export async function updateJournalEntryInPlace(
       .eq('company_id', payload.companyId);
   }
 
+  const lineInputs = [
+    { accountId: payload.debitAccountId, debit: amount, credit: 0 },
+    { accountId: payload.creditAccountId, debit: 0, credit: amount },
+  ];
+  const entryNo = String(je.entry_no || '').trim();
+  const paymentId = String(je.payment_id || '').trim();
+  const isManualJournal =
+    refType === 'journal' || refType === 'manual' || refType === 'general' || refType === 'transfer';
+
+  if (isManualJournal) {
+    try {
+      const {
+        syncLiquidityPaymentForJournal,
+        syncExistingLiquidityPaymentsForJournal,
+        ensurePaymentsForLiquidityJournal,
+      } = await import('../lib/journalLiquidityPayment');
+      if (paymentId) {
+        await syncLiquidityPaymentForJournal({
+          companyId: payload.companyId,
+          paymentId,
+          entryNo,
+          entryDate: payload.entryDate,
+          description: payload.description,
+          lines: lineInputs,
+        });
+      } else {
+        const { syncedCount } = await syncExistingLiquidityPaymentsForJournal({
+          companyId: payload.companyId,
+          journalEntryId: payload.journalEntryId,
+          entryNo,
+          entryDate: payload.entryDate,
+          description: payload.description,
+          lines: lineInputs,
+        });
+        if (syncedCount === 0) {
+          await ensurePaymentsForLiquidityJournal({
+            companyId: payload.companyId,
+            branchId: je.branch_id ?? null,
+            journalEntryId: payload.journalEntryId,
+            entryNo,
+            entryDate: payload.entryDate,
+            description: payload.description,
+            lines: lineInputs,
+            createdBy: null,
+          });
+        }
+      }
+    } catch {
+      /* best-effort roznamcha payment sync */
+    }
+  }
+
   return { data: { id: payload.journalEntryId }, error: null };
 }
 
@@ -753,46 +943,68 @@ export interface SupplierWithPayable {
   lastPayment?: string;
 }
 
-/** Suppliers with outstanding from purchases */
-export async function getSuppliersWithPayable(companyId: string): Promise<{ data: SupplierWithPayable[]; error: string | null }> {
+/** All active supplier/both contacts with GL/operational payable (includes Rs. 0 for advance). */
+export async function getAllSuppliersWithPayable(
+  companyId: string,
+  branchId?: string | null,
+): Promise<{ data: SupplierWithPayable[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
-  const { data: purchases, error: purErr } = await supabase
-    .from('purchases')
-    .select('id, supplier_id, supplier_name, due_amount, paid_amount, po_date')
-    .eq('company_id', companyId)
-    .gt('due_amount', 0)
-    .is('cancelled_at', null);
-  if (purErr) return { data: [], error: purErr.message };
+  const company = normalizeCompanyId(companyId);
+  if (!company) return { data: [], error: 'Missing company.' };
 
-  const bySupplier = new Map<string, { totalPayable: number; supplierName: string }>();
-  for (const p of purchases || []) {
-    const sid = (p.supplier_id as string) || `name:${p.supplier_name}`;
-    const existing = bySupplier.get(sid) || { totalPayable: 0, supplierName: String(p.supplier_name ?? 'Unknown') };
-    existing.totalPayable += Number(p.due_amount) || 0;
-    if (p.supplier_name) existing.supplierName = String(p.supplier_name);
-    bySupplier.set(sid, existing);
-  }
+  const { data: contacts, error: contactsErr } = await supabase
+    .from('contacts')
+    .select('id, name, phone, mobile, type, opening_balance, is_active')
+    .eq('company_id', company)
+    .in('type', ['supplier', 'both'])
+    .order('name');
+  if (contactsErr) return { data: [], error: contactsErr.message };
 
-  const supplierIds = [...new Set((purchases || []).map((p) => p.supplier_id).filter(Boolean))] as string[];
-  let contacts: { id: string; name: string; phone?: string }[] = [];
-  if (supplierIds.length > 0) {
-    const { data: c } = await supabase.from('contacts').select('id, name, phone').in('id', supplierIds);
-    contacts = c || [];
-  }
+  const active = (contacts || []).filter(
+    (c: { is_active?: boolean | null }) => c.is_active !== false,
+  );
+  if (!active.length) return { data: [], error: null };
 
-  const result: SupplierWithPayable[] = [];
-  for (const [entityId, info] of bySupplier) {
-    if (entityId.startsWith('name:')) continue;
-    const contact = contacts.find((c) => c.id === entityId);
-    result.push({
-      id: entityId,
-      name: contact?.name ?? info.supplierName ?? 'Unknown',
-      phone: contact?.phone ?? '',
-      totalPayable: info.totalPayable,
-      lastPayment: undefined,
-    });
-  }
-  return { data: result, error: null };
+  const [partyGl, opSummary] = await Promise.all([
+    fetchContactPartyGlBalancesMap(company, branchId),
+    fetchOperationalContactBalancesSummary(company, branchId),
+  ]);
+  const glOk = partyGl.error == null;
+
+  const list: SupplierWithPayable[] = active.map(
+    (row: {
+      id: string;
+      name: string;
+      phone?: string | null;
+      mobile?: string | null;
+      type?: string;
+      opening_balance?: number | null;
+    }) => {
+      const opening = Number(row.opening_balance ?? 0);
+      const totalPayable = resolveContactListBalance({
+        opening,
+        contactType: row.type || 'supplier',
+        listRole: 'supplier',
+        glOk,
+        glSlice: partyGlSliceFromMap(partyGl.map, row.id),
+        opRow: balanceRowFromMap(opSummary.map, row.id),
+      });
+      return {
+        id: row.id,
+        name: row.name || '',
+        phone: String(row.phone ?? row.mobile ?? '').trim(),
+        totalPayable: Math.max(0, totalPayable),
+        lastPayment: undefined,
+      };
+    },
+  );
+
+  return { data: sortSuppliersByPayable(list), error: null };
+}
+
+/** @deprecated Prefer getAllSuppliersWithPayable — kept for callers that only need open-purchase suppliers. */
+export async function getSuppliersWithPayable(companyId: string): Promise<{ data: SupplierWithPayable[]; error: string | null }> {
+  return getAllSuppliersWithPayable(companyId, null);
 }
 
 export interface PurchaseWithDue {
@@ -833,11 +1045,13 @@ export async function recordSupplierPayment(params: {
   purchaseId: string;
   amount: number;
   paymentDate: string;
+  paymentAt?: string | null;
   paymentAccountId: string;
   paymentMethod: 'cash' | 'bank' | 'card' | 'other';
   reference?: string;
   notes?: string;
   userId?: string;
+  attachments?: { url: string; name: string }[] | null;
 }): Promise<{ data: { payment_id: string; reference_number?: string | null } | null; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
   let branchResolved: string;
@@ -880,6 +1094,22 @@ export async function recordSupplierPayment(params: {
   }
   const res = data as { success?: boolean; payment_id?: string; error?: string };
   if (res?.success && res.payment_id) {
+    if (params.paymentAt) {
+      const { patchPaymentCreatedAt } = await import('./paymentTimestamp');
+      await patchPaymentCreatedAt(res.payment_id, params.paymentAt);
+    }
+    if (params.attachments?.length) {
+      const patch = { attachments: params.attachments };
+      let upd = await supabase.from('payments').update(patch).eq('id', res.payment_id);
+      if (upd.error?.code === 'PGRST204' && String(upd.error.message || '').includes('attachments')) {
+        // attachments column unavailable — payment still valid
+      } else if (upd.error) {
+        return {
+          data: { payment_id: res.payment_id, reference_number: (res as { reference_number?: string | null }).reference_number ?? null },
+          error: `Payment recorded but attachments could not be linked: ${upd.error.message}`,
+        };
+      }
+    }
     const rpcRef = (res as { reference_number?: string | null }).reference_number ?? null;
     return { data: { payment_id: res.payment_id, reference_number: rpcRef }, error: null };
   }
@@ -896,6 +1126,146 @@ export async function recordSupplierPayment(params: {
     data: null,
     error:
       typeof rpcErr === 'string' ? appendPayReferenceAllocationHint(rpcErr) : rpcErr,
+  };
+}
+
+/**
+ * On-account / manual supplier payment: Dr AP, Cr Cash/Bank via record_payment_with_accounting,
+ * then FIFO-allocate to open purchase bills (web createManualSupplierPayment parity).
+ */
+export async function recordManualSupplierPayment(params: {
+  companyId: string;
+  branchId: string | null;
+  supplierContactId: string;
+  supplierName: string;
+  amount: number;
+  paymentDate: string;
+  paymentAt?: string | null;
+  paymentAccountId: string;
+  paymentMethod: 'cash' | 'bank' | 'card' | 'other' | 'wallet';
+  reference?: string;
+  notes?: string;
+  userId?: string | null;
+  attachments?: { url: string; name: string }[] | null;
+}): Promise<{ data: { payment_id: string; reference_number?: string | null } | null; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
+  if (!params.companyId || !params.supplierContactId || params.amount <= 0 || !params.paymentAccountId) {
+    return { data: null, error: 'Company, supplier, amount and account are required.' };
+  }
+  let branchResolved: string;
+  try {
+    branchResolved = await resolveBranchUuidForWrite(
+      params.companyId,
+      params.branchId,
+      'No branch set up. Add a branch in Settings to record payments.',
+    );
+  } catch (e) {
+    return { data: null, error: e instanceof Error ? e.message : 'Branch required for payment.' };
+  }
+
+  const baseNotes = params.notes?.trim() ?? '';
+  const bankTraceId = params.reference?.trim() ?? '';
+  const composedNotes = bankTraceId
+    ? `${baseNotes ? `${baseNotes} | ` : ''}Bank Trace ID: ${bankTraceId}`
+    : baseNotes || `Manual payment to ${params.supplierName}`;
+
+  const methodMap: Record<string, 'cash' | 'bank' | 'card' | 'other'> = {
+    cash: 'cash',
+    bank: 'bank',
+    card: 'card',
+    wallet: 'other',
+    other: 'other',
+  };
+  const enumMethod = methodMap[String(params.paymentMethod).toLowerCase()] || 'cash';
+
+  const { data: authData } = await supabase.auth.getUser();
+  const createdBy = params.userId ?? authData?.user?.id ?? null;
+
+  const { data, error } = await supabase.rpc('record_payment_with_accounting', {
+    p_company_id: params.companyId,
+    p_branch_id: branchResolved,
+    p_payment_type: 'paid',
+    p_reference_type: 'manual_payment',
+    p_reference_id: params.supplierContactId,
+    p_amount: params.amount,
+    p_payment_method: enumMethod,
+    p_payment_date: params.paymentDate || localNowDateString(),
+    p_payment_account_id: params.paymentAccountId,
+    p_reference_number: null,
+    p_notes: composedNotes || null,
+    p_created_by: createdBy,
+    p_worker_stage_id: null,
+  });
+
+  if (error) {
+    let msg = error.message;
+    if (msg.includes('payment_status') && msg.includes('text')) {
+      msg +=
+        ' Apply migration migrations/20260449_record_payment_with_accounting_payment_status_cast.sql on Postgres.';
+    }
+    return { data: null, error: appendPayReferenceAllocationHint(msg) };
+  }
+
+  const res = data as {
+    success?: boolean;
+    payment_id?: string;
+    reference_number?: string;
+    error?: string;
+  } | null;
+  if (!res?.success || !res.payment_id) {
+    return { data: null, error: res?.error ?? 'Payment failed.' };
+  }
+
+  const paymentId = res.payment_id;
+  const patch: Record<string, unknown> = {
+    reference_type: 'manual_payment',
+    reference_id: null,
+    contact_id: params.supplierContactId,
+    received_by: createdBy,
+  };
+  if (params.attachments?.length) {
+    patch.attachments = params.attachments;
+  }
+
+  let payUpd = await supabase.from('payments').update(patch).eq('id', paymentId);
+  if (payUpd.error?.code === 'PGRST204' && String(payUpd.error.message || '').includes('attachments')) {
+    const { attachments: _a, ...rest } = patch;
+    payUpd = await supabase.from('payments').update(rest).eq('id', paymentId);
+  } else if (payUpd.error) {
+    return {
+      data: null,
+      error: `Payment recorded but contact link failed: ${payUpd.error.message}`,
+    };
+  }
+
+  try {
+    await applyManualSupplierPaymentAllocations({
+      companyId: params.companyId,
+      branchId: branchResolved,
+      paymentId,
+      supplierId: params.supplierContactId,
+      amount: params.amount,
+      paymentDate: params.paymentDate || localNowDateString(),
+      createdBy,
+    });
+  } catch (allocErr) {
+    return {
+      data: { payment_id: paymentId, reference_number: res.reference_number ?? null },
+      error:
+        allocErr instanceof Error
+          ? `Payment saved but bill allocation failed: ${allocErr.message}`
+          : 'Payment saved but bill allocation failed.',
+    };
+  }
+
+  if (params.paymentAt) {
+    const { patchPaymentCreatedAt } = await import('./paymentTimestamp');
+    await patchPaymentCreatedAt(paymentId, params.paymentAt);
+  }
+
+  return {
+    data: { payment_id: paymentId, reference_number: res.reference_number ?? null },
+    error: null,
   };
 }
 
@@ -1099,6 +1469,7 @@ export async function recordWorkerPayment(params: {
   workerId: string;
   amount: number;
   paymentDate: string;
+  paymentAt?: string | null;
   paymentAccountId: string;
   paymentMethod?: string;
   workerName?: string;
@@ -1108,6 +1479,7 @@ export async function recordWorkerPayment(params: {
   paymentReference?: string;
   /** When paying a specific studio stage (Pay Now), matches web worker payment debit side. */
   stageId?: string | null;
+  attachments?: { url: string; name: string }[] | null;
 }): Promise<{ data: { id: string } | null; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
   if (!params.workerId || !params.paymentAccountId || Number(params.amount) <= 0) {
@@ -1161,6 +1533,21 @@ export async function recordWorkerPayment(params: {
   const paymentId = res.payment_id;
   const journalEntryId = res.journal_entry_id;
   const ref = String(res.reference_number ?? '');
+
+  if (params.paymentAt) {
+    const { patchPaymentCreatedAt } = await import('./paymentTimestamp');
+    await patchPaymentCreatedAt(paymentId, params.paymentAt);
+  }
+
+  if (params.attachments?.length) {
+    const patch = { attachments: params.attachments };
+    const attUpd = await supabase.from('payments').update(patch).eq('id', paymentId);
+    if (attUpd.error?.code === 'PGRST204' && String(attUpd.error.message || '').includes('attachments')) {
+      // attachments column unavailable — payment still valid
+    } else if (attUpd.error) {
+      return { data: null, error: `Payment recorded but attachments could not be linked: ${attUpd.error.message}` };
+    }
+  }
 
   const { data: existingLedger } = await supabase
     .from('worker_ledger_entries')

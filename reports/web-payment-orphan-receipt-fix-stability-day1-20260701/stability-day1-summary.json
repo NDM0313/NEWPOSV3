@@ -1,0 +1,15 @@
+{
+  "stability_window_start": "2026-07-01",
+  "stability_day": 1,
+  "issue": "orphan_web_receipts_RCV-0081_RCV-0082",
+  "code_fix_status": "COMPLETE",
+  "cleanup_status": "APPLIED_SOFT_VOID",
+  "pre_fix_monitoring": "PASS",
+  "post_fix_monitoring": "FAIL",
+  "post_fix_fail_reason": "din_bridal_roznamcha_golden_minus_90000_after_orphan_void",
+  "production_gl_mutations": false,
+  "production_metadata_mutations": true,
+  "feature_flags_unchanged": true,
+  "r8_blocked": true,
+  "mobile_release_separate": true
+}

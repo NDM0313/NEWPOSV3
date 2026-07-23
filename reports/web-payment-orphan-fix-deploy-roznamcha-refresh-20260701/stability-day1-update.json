@@ -1,0 +1,10 @@
+{
+  "stability_window_start": "2026-07-01",
+  "stability_day": 1,
+  "orphan_fix_deployed": true,
+  "deploy_commit": "6da3387f",
+  "roznamcha_fixture_refresh": true,
+  "final_monitoring": "PASS",
+  "production_gl_mutation_this_run": false,
+  "r8_blocked": true
+}

@@ -49,7 +49,9 @@ migrations/_tmp*.sql
 *.temp
 posv3.zip
 
-
+# Cursor/IDE terminal session logs (never commit — may contain secrets)
+75043.txt
+**/terminals/*.txt
 
 .env.local
 .env.db.local

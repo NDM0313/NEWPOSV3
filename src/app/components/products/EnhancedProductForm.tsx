@@ -1,6 +1,6 @@
 import React, { useCallback, useState, useEffect, useRef } from "react";
 import { useDropzone } from "react-dropzone";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, type FieldErrors } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useSupabase } from '@/app/context/SupabaseContext';
@@ -23,9 +23,16 @@ import { comboService } from '@/app/services/comboService';
 import { supabase } from '@/lib/supabase';
 import { uploadProductImages, removeProductImagesFromStorage } from '@/app/utils/productImageUpload';
 import { parseVariationAttributesRaw, publicVariationAttributes } from '@/app/utils/variationFieldMap';
+import {
+  duplicateProductName,
+  duplicateVariationRows,
+  duplicateVariantAttributes,
+  duplicateImageUrls,
+} from '@/app/utils/productDuplicateUtils';
 import { ProductImage } from './ProductImage';
 import { getSupabaseStorageDashboardUrl } from '@/app/utils/paymentAttachmentUrl';
 import { toast } from 'sonner';
+import { mapPool, perfStart } from '@/app/utils/perfTiming';
 import {
   X,
   Upload,
@@ -77,7 +84,8 @@ import {
 // Define the validation schema (aligned with submit and DB)
 const productSchema = z.object({
   name: z.string().min(1, "Product name is required"),
-  sku: z.string().min(1, "SKU is required"),
+  // Empty allowed — onSubmit generates SKU (create/edit parity)
+  sku: z.string().optional(),
   barcodeType: z.string().optional(),
   barcode: z.string().optional(),
   brand: z.string().optional(),
@@ -101,6 +109,7 @@ const productSchema = z.object({
 
   // Inventory (initialStock = current_stock, alertQty = min_stock)
   stockManagement: z.boolean().default(true),
+  isDyeable: z.boolean().default(false),
   initialStock: z.coerce.number().min(0).optional(),
   alertQty: z.coerce.number().min(0).optional(),
   maxStock: z.coerce.number().min(0).optional(),
@@ -116,6 +125,50 @@ const productSchema = z.object({
 
 type ProductFormValues = z.infer<typeof productSchema>;
 
+const PRODUCT_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Prefer uuid; accept string id only when it is a UUID (never list index numbers). */
+function resolveEditProductId(
+  product: { uuid?: unknown; id?: unknown } | null | undefined,
+): string | null {
+  if (!product) return null;
+  const uuid = product.uuid;
+  if (typeof uuid === 'string' && PRODUCT_UUID_RE.test(uuid)) return uuid;
+  const id = product.id;
+  if (typeof id === 'string' && PRODUCT_UUID_RE.test(id)) return id;
+  return null;
+}
+
+type ProductFormTab = 'basic' | 'pricing' | 'inventory' | 'media' | 'details' | 'variations' | 'combos';
+
+const FIELD_ERROR_TAB: Partial<Record<keyof ProductFormValues, ProductFormTab>> = {
+  name: 'basic',
+  sku: 'basic',
+  brand: 'basic',
+  category: 'basic',
+  subCategory: 'basic',
+  unit: 'basic',
+  barcodeType: 'basic',
+  barcode: 'basic',
+  purchasePrice: 'pricing',
+  margin: 'pricing',
+  sellingPrice: 'pricing',
+  wholesalePrice: 'pricing',
+  taxType: 'pricing',
+  rentalPrice: 'pricing',
+  securityDeposit: 'pricing',
+  rentalDuration: 'pricing',
+  stockManagement: 'inventory',
+  initialStock: 'inventory',
+  alertQty: 'inventory',
+  maxStock: 'inventory',
+  description: 'details',
+  notes: 'details',
+  supplier: 'details',
+  supplierCode: 'details',
+};
+
 // Ensure number inputs never show empty on click/clear — store 0 instead of ""
 const setValueAsNumber = (v: unknown): number => {
   if (v === '' || v === undefined || v === null) return 0;
@@ -125,6 +178,8 @@ const setValueAsNumber = (v: unknown): number => {
 
 interface EnhancedProductFormProps {
   product?: any; // Product data for edit mode
+  /** When set, pre-fill Add form from this product id (create mode, not update). */
+  duplicateFromProductId?: string;
   onCancel: () => void;
   onSave: (product?: any) => void;
   onSaveAndAdd?: (product: any) => void;
@@ -132,6 +187,7 @@ interface EnhancedProductFormProps {
 
 export const EnhancedProductForm = ({
   product: initialProduct,
+  duplicateFromProductId,
   onCancel,
   onSave,
   onSaveAndAdd,
@@ -143,6 +199,12 @@ export const EnhancedProductForm = ({
   const [saving, setSaving] = useState(false);
   /** Synchronous guard to prevent double submit (state update is async). */
   const submitInProgressRef = useRef(false);
+  /** Prevent re-hydrating edit form (wipes in-progress name/price edits). Key = `${id}:list|full`. */
+  const hydratedKeyRef = useRef<string | null>(null);
+  /** Issue auto SKU once for new-product create (generateDocumentNumberSafe identity churn must not re-run). */
+  const skuAutoIssuedRef = useRef(false);
+  /** Seed duplicate form once per source product id. */
+  const duplicateSeededKeyRef = useRef<string | null>(null);
   /** Enable Variations toggle: default OFF for new product, from DB for edit. When ON, parent stock locked at 0. */
   const [enableVariations, setEnableVariations] = useState(false);
   const [blockDisableVariationsModalOpen, setBlockDisableVariationsModalOpen] = useState(false);
@@ -179,6 +241,10 @@ export const EnhancedProductForm = ({
   /** When in edit mode, full product fetched from API (with variations, category_id, etc.). Form hydrates from this. */
   const [fullProductForEdit, setFullProductForEdit] = useState<any>(null);
   const [loadingFullProduct, setLoadingFullProduct] = useState(false);
+  /** Duplicate mode: source product fetched from API before seeding create form. */
+  const [duplicateSourceFull, setDuplicateSourceFull] = useState<any>(null);
+  const [loadingDuplicateSource, setLoadingDuplicateSource] = useState(false);
+  const isDuplicateMode = !!duplicateFromProductId && !initialProduct;
   const [generatedVariations, setGeneratedVariations] = useState<
     Array<{
       id?: string;
@@ -249,6 +315,7 @@ export const EnhancedProductForm = ({
       barcodeType: "code128",
       barcode: "",
       stockManagement: true,
+      isDyeable: false,
       purchasePrice: 0,
       margin: 30,
       sellingPrice: 0,
@@ -263,11 +330,25 @@ export const EnhancedProductForm = ({
   });
 
   const stockManagement = watch("stockManagement");
-  const purchasePrice = watch("purchasePrice");
-  const margin = watch("margin");
   const selectedUnitId = watch('unit');
   const selectedUnitAllowsDecimal =
     units.find((u) => u.id === selectedUnitId)?.allow_decimal ?? false;
+
+  const onInvalid = useCallback((errors: FieldErrors<ProductFormValues>) => {
+    if (import.meta.env.DEV) {
+      console.warn('[PRODUCT FORM] validation', errors);
+    }
+    const firstKey = Object.keys(errors)[0] as keyof ProductFormValues | undefined;
+    const err = firstKey ? errors[firstKey] : undefined;
+    const msg =
+      err && typeof err === 'object' && 'message' in err && err.message
+        ? String(err.message)
+        : 'Please fix the form errors';
+    toast.error(msg);
+    if (firstKey && FIELD_ERROR_TAB[firstKey]) {
+      setActiveTab(FIELD_ERROR_TAB[firstKey]!);
+    }
+  }, []);
 
   const parseVariationQtyInput = (raw: string): number => {
     if (selectedUnitAllowsDecimal) {
@@ -421,7 +502,7 @@ export const EnhancedProductForm = ({
     if (!companyId || activeTab !== 'variations' || !enableVariations) return;
     let cancelled = false;
     setLoadingProductsWithVariations(true);
-    productService.getAllProducts(companyId)
+    productService.getProductsWithVariationsForCopy(companyId)
       .then((data: any) => {
         if (cancelled) return;
         const withVars = (data || []).filter(
@@ -492,20 +573,142 @@ export const EnhancedProductForm = ({
     return (n && String(n).trim()) ? n : 'PRD-0001';
   }, [generateDocumentNumber]);
 
-  // Auto-generate unique SKU for new product only (collision-safe via DB check)
+  // Auto-generate unique SKU for new product only — once per create session
+  const editProductId = initialProduct?.uuid ?? initialProduct?.id;
   useEffect(() => {
-    if (initialProduct || !companyId) return;
+    if (editProductId || duplicateFromProductId || !companyId) {
+      if (editProductId || duplicateFromProductId) skuAutoIssuedRef.current = false;
+      return;
+    }
+    if (skuAutoIssuedRef.current) return;
     let cancelled = false;
     (async () => {
       try {
         const nextSKU = await generateDocumentNumberSafe('production');
-        if (!cancelled && nextSKU) setValue('sku', nextSKU);
-      } catch (e) {
-        if (!cancelled) setValue('sku', generateSKU());
+        if (!cancelled && nextSKU) {
+          skuAutoIssuedRef.current = true;
+          setValue('sku', nextSKU);
+        }
+      } catch {
+        if (!cancelled) {
+          skuAutoIssuedRef.current = true;
+          setValue('sku', generateSKU());
+        }
       }
     })();
     return () => { cancelled = true; };
-  }, [companyId, initialProduct, setValue, generateDocumentNumberSafe, generateSKU]);
+    // Intentionally omit generateDocumentNumberSafe / generateSKU — unstable identities re-issue SKUs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot SKU; helpers read from latest render
+  }, [companyId, duplicateFromProductId, editProductId, setValue]);
+
+  // Duplicate mode: fetch full source product
+  useEffect(() => {
+    if (!duplicateFromProductId || initialProduct) {
+      setDuplicateSourceFull(null);
+      setLoadingDuplicateSource(false);
+      return;
+    }
+    let cancelled = false;
+    setLoadingDuplicateSource(true);
+    setDuplicateSourceFull(null);
+    productService.getProduct(duplicateFromProductId)
+      .then((full) => {
+        if (!cancelled) setDuplicateSourceFull(full);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.error('[PRODUCT FORM] Failed to load product for duplicate:', err);
+          toast.error('Could not load product to duplicate');
+          setDuplicateSourceFull(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingDuplicateSource(false);
+      });
+    return () => { cancelled = true; };
+  }, [duplicateFromProductId, initialProduct]);
+
+  // Duplicate mode: seed create form once per source id
+  useEffect(() => {
+    if (!duplicateFromProductId) {
+      duplicateSeededKeyRef.current = null;
+      return;
+    }
+    if (!isDuplicateMode || !duplicateSourceFull) return;
+    if (duplicateSeededKeyRef.current === duplicateFromProductId) return;
+
+    let cancelled = false;
+    const source = duplicateSourceFull;
+    (async () => {
+      let nextSku = '';
+      try {
+        nextSku = await generateDocumentNumberSafe('production');
+      } catch {
+        nextSku = generateSKU();
+      }
+      if (cancelled) return;
+
+      duplicateSeededKeyRef.current = duplicateFromProductId;
+
+      setValue('name', duplicateProductName(source.name || ''));
+      setValue('sku', nextSku);
+      setValue('barcodeType', (source as any).barcode_type || 'code128');
+      setValue('barcode', '');
+      setValue('purchasePrice', source.cost_price ?? 0);
+      setValue('sellingPrice', source.retail_price ?? 0);
+      setValue('wholesalePrice', source.wholesale_price ?? source.retail_price ?? 0);
+      setValue('rentalPrice', source.rental_price_daily ?? 0);
+      setValue('alertQty', source.min_stock ?? 0);
+      setValue('maxStock', source.max_stock ?? 1000);
+      setValue('initialStock', 0);
+      setValue('description', source.description || '');
+      setValue('brand', source.brand_id || '');
+      setValue('unit', source.unit_id || '');
+      setValue('supplier', (source as any).supplier_id || (source as any).supplier || '');
+      setValue('supplierCode', (source as any).supplier_code || (source as any).supplierCode || '');
+
+      const catId = source.category_id || source.category?.id || '';
+      if (catId) {
+        try {
+          const cat = await productCategoryService.getById(catId);
+          if (cancelled) return;
+          if (cat.parent_id) {
+            setValue('category', cat.parent_id);
+            setValue('subCategory', cat.id);
+          } else {
+            setValue('category', cat.id);
+            setValue('subCategory', '');
+          }
+        } catch {
+          if (!cancelled) {
+            setValue('category', catId);
+            setValue('subCategory', '');
+          }
+        }
+      } else {
+        setValue('category', '');
+        setValue('subCategory', '');
+      }
+
+      const hasVar = !!(source.has_variations ?? (source.variations?.length > 0));
+      setEnableVariations(hasVar);
+      if (hasVar && Array.isArray(source.variations) && source.variations.length > 0) {
+        setVariantAttributes(duplicateVariantAttributes(source.variations));
+        setGeneratedVariations(duplicateVariationRows(source.variations, nextSku));
+      } else {
+        setVariantAttributes([]);
+        setGeneratedVariations([]);
+      }
+
+      setExistingImageUrls(duplicateImageUrls(source));
+      setIsComboProduct(!!source.is_combo_product);
+      setCurrentComboItems([]);
+      setCombos([]);
+    })();
+    return () => { cancelled = true; };
+    // Intentionally omit generateDocumentNumberSafe / generateSKU — unstable identities wipe the form.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot duplicate seed
+  }, [isDuplicateMode, duplicateFromProductId, duplicateSourceFull, setValue]);
 
   // Edit mode: fetch full product by id so we have variations, category_id, unit_id, brand_id (list product often has only display fields)
   useEffect(() => {
@@ -546,114 +749,134 @@ export const EnhancedProductForm = ({
     }
   }, [initialProduct, fullProductForEdit]);
 
-  // Pre-populate form when editing – use full product from API when available so all fields + variations hydrate
+  // Pre-populate once per product id (list → full). Do not re-run on branch/object churn — that wipes edits.
   useEffect(() => {
     let cancelled = false;
-    const source = fullProductForEdit ?? initialProduct;
-    if (source) {
-      setValue('name', source.name || '');
-      setValue('sku', source.sku || '');
-      setValue('barcodeType', (source as any).barcode_type || 'code128');
-      setValue('barcode', source.barcode || '');
-      setValue('purchasePrice', source.cost_price ?? (source as any).purchasePrice ?? 0);
-      setValue('sellingPrice', source.retail_price ?? (source as any).sellingPrice ?? 0);
-      setValue('wholesalePrice', source.wholesale_price ?? source.retail_price ?? 0);
-      setValue('rentalPrice', source.rental_price_daily ?? 0);
-      setValue('alertQty', source.min_stock ?? (source as any).lowStockThreshold ?? 0);
-      setValue('maxStock', source.max_stock ?? 1000);
-      setValue('description', source.description || '');
-      setValue('brand', source.brand_id || '');
-      setValue('unit', source.unit_id || '');
-      setValue('supplier', (source as any).supplier_id || (source as any).supplier || '');
-      setValue('supplierCode', (source as any).supplier_code || (source as any).supplierCode || '');
-      const catId = source.category_id || source.category?.id || '';
-      if (catId) {
-        productCategoryService.getById(catId).then((cat) => {
-          if (cat.parent_id) {
-            setValue('category', cat.parent_id);
-            setValue('subCategory', cat.id);
-          } else {
-            setValue('category', cat.id);
-            setValue('subCategory', '');
-          }
-        }).catch(() => {
-          setValue('category', catId);
-          setValue('subCategory', '');
-        });
-      } else {
-        setValue('category', '');
-        setValue('subCategory', '');
-      }
-      if (source.variations && Array.isArray(source.variations) && source.variations.length > 0) {
-        const firstParsed = publicVariationAttributes(
-          parseVariationAttributesRaw(source.variations[0]?.attributes)
-        );
-        const attrNames = Object.keys(firstParsed).sort((a, b) => a.localeCompare(b));
-        if (attrNames.length > 0) {
-          const valuesByAttr: Record<string, Set<string>> = {};
-          attrNames.forEach((k) => {
-            valuesByAttr[k] = new Set();
-          });
-          source.variations.forEach((v: any) => {
-            const a = publicVariationAttributes(parseVariationAttributesRaw(v.attributes));
-            attrNames.forEach((k) => {
-              if (a[k] != null && a[k] !== '') valuesByAttr[k].add(String(a[k]));
-            });
-          });
-          setVariantAttributes(
-            attrNames.map((name) => ({
-              name,
-              values: Array.from(valuesByAttr[name] || []).sort((a, b) => a.localeCompare(b)),
-            }))
-          );
-        } else {
-          setVariantAttributes([]);
-        }
-        const mapped = (source.variations as any[]).map((v) =>
-          mapProductVariationApiToFormRow(v as Record<string, unknown>)
-        );
-        const pid = (source as any).uuid || (source as any).id;
-        (async () => {
-          if (companyId && pid && mapped.some((m) => m.id)) {
-            const branchScope = branchId && branchId !== 'all' ? branchId : null;
-            const withMovement = await Promise.all(
-              mapped.map(async (row) => {
-                if (!row.id) return row;
-                try {
-                  const qty = await inventoryService.getStock(companyId, pid as string, row.id, branchScope);
-                  return { ...row, stock: qty };
-                } catch {
-                  return row;
-                }
-              })
-            );
-            if (!cancelled) setGeneratedVariations(withMovement);
-          } else if (!cancelled) {
-            setGeneratedVariations(mapped);
-          }
-        })();
-      } else {
+    const productId = initialProduct?.uuid ?? initialProduct?.id;
+
+    if (!productId) {
+      if (hydratedKeyRef.current !== null) {
+        hydratedKeyRef.current = null;
+        setExistingImageUrls([]);
+        setIsComboProduct(false);
+        setFullProductForEdit(null);
         setGeneratedVariations([]);
         setVariantAttributes([]);
       }
-      const urls = (source as any)?.image_urls;
-      setExistingImageUrls(Array.isArray(urls) ? [...urls] : []);
-      if (source.is_combo_product !== undefined) {
-        setIsComboProduct(!!source.is_combo_product);
-      }
-      const productId = source.uuid || source.id;
-      if (productId) loadProductCombos(productId);
+      return;
+    }
+
+    const source = fullProductForEdit ?? initialProduct;
+    if (!source) return;
+
+    const key = `${productId}:${fullProductForEdit ? 'full' : 'list'}`;
+    if (hydratedKeyRef.current === key) return;
+    hydratedKeyRef.current = key;
+
+    setValue('name', source.name || '');
+    setValue('sku', source.sku || '');
+    setValue('barcodeType', (source as any).barcode_type || 'code128');
+    setValue('barcode', source.barcode || '');
+    setValue('purchasePrice', source.cost_price ?? (source as any).purchasePrice ?? 0);
+    setValue('sellingPrice', source.retail_price ?? (source as any).sellingPrice ?? 0);
+    setValue('wholesalePrice', source.wholesale_price ?? source.retail_price ?? 0);
+    setValue('rentalPrice', source.rental_price_daily ?? 0);
+    setValue('alertQty', source.min_stock ?? (source as any).lowStockThreshold ?? 0);
+    setValue('maxStock', source.max_stock ?? 1000);
+    setValue(
+      'isDyeable',
+      Boolean((source as { is_dyeable?: boolean; isDyeable?: boolean }).is_dyeable
+        ?? (source as { isDyeable?: boolean }).isDyeable),
+    );
+    setValue('description', source.description || '');
+    setValue('brand', source.brand_id || '');
+    setValue('unit', source.unit_id || '');
+    setValue('supplier', (source as any).supplier_id || (source as any).supplier || '');
+    setValue('supplierCode', (source as any).supplier_code || (source as any).supplierCode || '');
+    const catId = source.category_id || source.category?.id || '';
+    if (catId) {
+      productCategoryService.getById(catId).then((cat) => {
+        if (cancelled) return;
+        if (cat.parent_id) {
+          setValue('category', cat.parent_id);
+          setValue('subCategory', cat.id);
+        } else {
+          setValue('category', cat.id);
+          setValue('subCategory', '');
+        }
+      }).catch(() => {
+        if (!cancelled) {
+          setValue('category', catId);
+          setValue('subCategory', '');
+        }
+      });
     } else {
-      setExistingImageUrls([]);
-      setIsComboProduct(false);
-      setFullProductForEdit(null);
+      setValue('category', '');
+      setValue('subCategory', '');
+    }
+    if (source.variations && Array.isArray(source.variations) && source.variations.length > 0) {
+      const firstParsed = publicVariationAttributes(
+        parseVariationAttributesRaw(source.variations[0]?.attributes)
+      );
+      const attrNames = Object.keys(firstParsed).sort((a, b) => a.localeCompare(b));
+      if (attrNames.length > 0) {
+        const valuesByAttr: Record<string, Set<string>> = {};
+        attrNames.forEach((k) => {
+          valuesByAttr[k] = new Set();
+        });
+        source.variations.forEach((v: any) => {
+          const a = publicVariationAttributes(parseVariationAttributesRaw(v.attributes));
+          attrNames.forEach((k) => {
+            if (a[k] != null && a[k] !== '') valuesByAttr[k].add(String(a[k]));
+          });
+        });
+        setVariantAttributes(
+          attrNames.map((name) => ({
+            name,
+            values: Array.from(valuesByAttr[name] || []).sort((a, b) => a.localeCompare(b)),
+          }))
+        );
+      } else {
+        setVariantAttributes([]);
+      }
+      const mapped = (source.variations as any[]).map((v) =>
+        mapProductVariationApiToFormRow(v as Record<string, unknown>)
+      );
+      const pid = (source as any).uuid || (source as any).id;
+      (async () => {
+        if (companyId && pid && mapped.some((m) => m.id)) {
+          const branchScope = branchId && branchId !== 'all' ? branchId : null;
+          const withMovement = await Promise.all(
+            mapped.map(async (row) => {
+              if (!row.id) return row;
+              try {
+                const qty = await inventoryService.getStock(companyId, pid as string, row.id, branchScope);
+                return { ...row, stock: qty };
+              } catch {
+                return row;
+              }
+            })
+          );
+          if (!cancelled) setGeneratedVariations(withMovement);
+        } else if (!cancelled) {
+          setGeneratedVariations(mapped);
+        }
+      })();
+    } else {
       setGeneratedVariations([]);
       setVariantAttributes([]);
     }
+    const urls = (source as any)?.image_urls;
+    setExistingImageUrls(Array.isArray(urls) ? [...urls] : []);
+    if (source.is_combo_product !== undefined) {
+      setIsComboProduct(!!source.is_combo_product);
+    }
+    if (productId) loadProductCombos(productId);
+
     return () => {
       cancelled = true;
     };
-  }, [fullProductForEdit, initialProduct, setValue, companyId, branchId]);
+  }, [fullProductForEdit, initialProduct?.uuid, initialProduct?.id, setValue]);
 
   /** Movement-based stock for edit (products.current_stock is not selected in getProduct). */
   useEffect(() => {
@@ -746,19 +969,20 @@ export const EnhancedProductForm = ({
     }
   };
 
-  // Auto-calculate selling price when purchase price or margin changes
-  useEffect(() => {
-    const purchasePriceNum = typeof purchasePrice === 'number' ? purchasePrice : parseFloat(String(purchasePrice || 0)) || 0;
-    const marginNum = typeof margin === 'number' ? margin : parseFloat(String(margin || 0)) || 0;
-    
-    if (purchasePriceNum > 0 && marginNum > 0) {
-      const sp = purchasePriceNum + (purchasePriceNum * marginNum) / 100;
-      if (typeof sp === 'number' && !isNaN(sp)) {
-        const sellingPrice = Number(sp.toFixed(2));
-        setValue("sellingPrice", sellingPrice, { shouldValidate: false, shouldDirty: false });
+  /** Optional helper: only when user edits Profit Margin (%), recompute selling from purchase. */
+  const applySellingFromMargin = useCallback(
+    (marginRaw: unknown) => {
+      const marginNum = setValueAsNumber(marginRaw);
+      const purchasePriceNum = setValueAsNumber(getValues('purchasePrice'));
+      if (purchasePriceNum > 0 && marginNum > 0) {
+        const sp = purchasePriceNum + (purchasePriceNum * marginNum) / 100;
+        if (Number.isFinite(sp)) {
+          setValue('sellingPrice', Number(sp.toFixed(2)), { shouldValidate: false, shouldDirty: true });
+        }
       }
-    }
-  }, [purchasePrice, margin, setValue]);
+    },
+    [getValues, setValue],
+  );
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     setImages((prev) => [...prev, ...acceptedFiles]);
@@ -1093,7 +1317,10 @@ export const EnhancedProductForm = ({
     data: ProductFormValues,
     action: "save" | "saveAndAdd",
   ) => {
-    if (submitInProgressRef.current) return;
+    if (submitInProgressRef.current) {
+      toast.info('Save in progress…');
+      return;
+    }
     submitInProgressRef.current = true;
     if (!companyId) {
       toast.error('Company ID not found. Please login again.');
@@ -1108,14 +1335,21 @@ export const EnhancedProductForm = ({
       return;
     }
     
+    const perf = perfStart('productSave');
+    let productSaveEnded = false;
+    const endProductSavePerf = (extra?: Record<string, unknown>) => {
+      if (productSaveEnded) return;
+      productSaveEnded = true;
+      perf.end(extra);
+    };
+
     try {
       setSaving(true);
       const finalSKU = data.sku && data.sku.trim() !== '' ? data.sku : generateSKU();
 
-      const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       const asId = (v: unknown): string | null => {
         if (v == null || v === '') return null;
-        if (typeof v === 'string' && UUID_REGEX.test(v)) return v;
+        if (typeof v === 'string' && PRODUCT_UUID_RE.test(v)) return v;
         if (typeof v === 'object' && v !== null && 'id' in v && typeof (v as any).id === 'string') return (v as any).id;
         return null;
       };
@@ -1163,13 +1397,21 @@ export const EnhancedProductForm = ({
         is_rentable: (data.rentalPrice ?? 0) > 0,
         is_sellable: true,
         track_stock: data.stockManagement !== false,
+        is_dyeable: data.isDyeable === true,
         is_active: true,
       };
 
-      const productId = initialProduct?.uuid ?? initialProduct?.id; // Edit: UUID from list or API
-      const isEdit = !!productId;
+      const productId = resolveEditProductId(initialProduct);
+      const isEdit = !!initialProduct;
 
-      if (isEdit) {
+      if (isEdit && !productId) {
+        toast.error('Product id missing. Close and reopen the product.');
+        setSaving(false);
+        submitInProgressRef.current = false;
+        return;
+      }
+
+      if (isEdit && productId) {
         // UPDATE: merge existing image_urls (including any user-removed) with newly uploaded files
         const editSource = fullProductForEdit ?? initialProduct;
         const previousImageUrls = Array.isArray((editSource as { image_urls?: string[] })?.image_urls)
@@ -1190,20 +1432,23 @@ export const EnhancedProductForm = ({
         (productData as { image_urls: string[] }).image_urls = imageUrls;
 
         // RULE 5: Block enabling variations when product has parent-level stock (show modal)
-        if (enableVariations) {
-          const parentLevelCount = await inventoryService.getParentLevelMovementCount(productId);
-          if (parentLevelCount > 0) {
+        // Parallelize movement pre-checks (independent head counts)
+        const [parentLevelCount, movementCount] = await Promise.all([
+          enableVariations
+            ? inventoryService.getParentLevelMovementCount(productId)
+            : Promise.resolve(0),
+          inventoryService.getMovementCountForProduct(productId),
+        ]);
+        if (enableVariations && parentLevelCount > 0) {
             setBlockVariationsModalOpen(true);
             setSaving(false);
             submitInProgressRef.current = false;
             return;
-          }
         }
 
         // Opening stock: movement-based only; never send current_stock (productService strips it).
         const hasVariations = enableVariations;
         const initialStock = Number(data.initialStock) || 0;
-        const movementCount = await inventoryService.getMovementCountForProduct(productId);
         delete (productData as any).current_stock;
         if (hasVariations) (productData as any).current_stock = 0; // RULE 1: parent never holds stock
 
@@ -1219,7 +1464,7 @@ export const EnhancedProductForm = ({
         if (enableVariations && generatedVariations.length > 0 && finalCompanyId) {
           const parentCost = Number(data.purchasePrice) || 0;
           const parentSell = Number(data.sellingPrice) || 0;
-          for (const row of generatedVariations) {
+          await mapPool(generatedVariations, 5, async (row) => {
             const purchN = Number(row.purchasePrice);
             const sellN = Number(row.price);
             const cost = Number.isFinite(purchN) ? purchN : parentCost;
@@ -1299,7 +1544,7 @@ export const EnhancedProductForm = ({
               console.error('[PRODUCT FORM] Variation save failed:', ve);
               toast.warning('Product saved but one or more variations failed to save. Check the Variations tab.');
             }
-          }
+          });
         }
 
         const canReconcileOpening = await inventoryService.allowsParentOpeningReconcileFromProductForm(
@@ -1345,6 +1590,7 @@ export const EnhancedProductForm = ({
           combos: combos,
         };
         toast.success('Product updated successfully!');
+        endProductSavePerf({ action: 'update' });
         if (action === "saveAndAdd" && onSaveAndAdd) {
           onSaveAndAdd(payload);
         } else {
@@ -1436,6 +1682,7 @@ export const EnhancedProductForm = ({
         } else {
           toast.success('Product created successfully!');
         }
+        endProductSavePerf({ action: 'create', variations: generatedVariations.length });
 
         if (action === "saveAndAdd" && onSaveAndAdd) {
           onSaveAndAdd(payload);
@@ -1444,7 +1691,7 @@ export const EnhancedProductForm = ({
         }
       }
     } catch (error: any) {
-      const wasEdit = !!(initialProduct?.uuid ?? initialProduct?.id);
+      const wasEdit = !!resolveEditProductId(initialProduct) || !!initialProduct;
       const msg = error?.message || 'Unknown error';
       console.error('[PRODUCT FORM] Error saving product:', error);
       if (msg.includes('SKU') && msg.includes('already') && !wasEdit) {
@@ -1455,46 +1702,55 @@ export const EnhancedProductForm = ({
         toast.error(wasEdit ? 'Failed to update product: ' + msg : 'Failed to create product: ' + msg);
       }
     } finally {
+      endProductSavePerf({ done: true });
       setSaving(false);
       submitInProgressRef.current = false;
     }
   };
 
   return (
-    <div className="flex flex-col h-full min-h-0 bg-gray-950 text-white relative">
-      {loadingFullProduct && initialProduct && (
-        <div className="absolute inset-0 bg-gray-950/80 z-20 flex items-center justify-center rounded-xl">
-          <div className="flex flex-col items-center gap-3">
+    <div className="flex flex-col h-full min-h-0 bg-input-background text-foreground relative">
+      {(loadingFullProduct && initialProduct) || (loadingDuplicateSource && isDuplicateMode) ? (
+        <div className="absolute inset-x-0 top-0 bottom-[4.5rem] bg-input-background/80 z-20 flex items-center justify-center rounded-xl pointer-events-none">
+          <div className="flex flex-col items-center gap-3 pointer-events-auto">
             <RefreshCcw size={32} className="text-blue-400 animate-spin" />
-            <p className="text-sm text-gray-400">Loading product...</p>
+            <p className="text-sm text-muted-foreground">
+              {isDuplicateMode ? 'Preparing duplicate...' : 'Loading product...'}
+            </p>
           </div>
         </div>
-      )}
-      <div className="p-6 border-b border-gray-800 flex justify-between items-center bg-gray-900 sticky top-0 z-10">
+      ) : null}
+      <div className="p-6 border-b border-border flex justify-between items-center bg-card sticky top-0 z-10">
         <div>
-          <h2 className="text-xl font-bold">{initialProduct ? 'Edit Product' : 'Add New Product'}</h2>
-          <p className="text-sm text-gray-400">
-            {initialProduct ? 'Update product details' : 'Complete product details for inventory'}
+          <h2 className="text-xl font-bold">
+            {initialProduct ? 'Edit Product' : isDuplicateMode ? 'Duplicate Product' : 'Add New Product'}
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            {initialProduct
+              ? 'Update product details'
+              : isDuplicateMode
+                ? 'Review and save as a new product'
+                : 'Complete product details for inventory'}
           </p>
         </div>
         <button
           onClick={onCancel}
-          className="p-2 hover:bg-gray-800 rounded-full"
+          className="p-2 hover:bg-muted rounded-full"
         >
           <X size={20} />
         </button>
       </div>
 
       {/* Tab Navigation */}
-      <div className="border-b border-gray-800 bg-gray-900 sticky top-[89px] z-10">
+      <div className="border-b border-border bg-card sticky top-[89px] z-10">
         <div className="flex px-6 overflow-x-auto">
           <button
             onClick={() => setActiveTab('basic')}
             className={clsx(
               "px-6 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
               activeTab === 'basic'
-                ? "border-blue-500 text-white"
-                : "border-transparent text-gray-400 hover:text-gray-300"
+                ? "border-blue-500 text-foreground"
+                : "border-transparent text-muted-foreground hover:text-muted-foreground"
             )}
           >
             Basic Info
@@ -1504,8 +1760,8 @@ export const EnhancedProductForm = ({
             className={clsx(
               "px-6 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
               activeTab === 'pricing'
-                ? "border-blue-500 text-white"
-                : "border-transparent text-gray-400 hover:text-gray-300"
+                ? "border-blue-500 text-foreground"
+                : "border-transparent text-muted-foreground hover:text-muted-foreground"
             )}
           >
             Pricing & Tax
@@ -1515,8 +1771,8 @@ export const EnhancedProductForm = ({
             className={clsx(
               "px-6 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
               activeTab === 'inventory'
-                ? "border-blue-500 text-white"
-                : "border-transparent text-gray-400 hover:text-gray-300"
+                ? "border-blue-500 text-foreground"
+                : "border-transparent text-muted-foreground hover:text-muted-foreground"
             )}
           >
             Inventory
@@ -1526,8 +1782,8 @@ export const EnhancedProductForm = ({
             className={clsx(
               "px-6 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
               activeTab === 'media'
-                ? "border-blue-500 text-white"
-                : "border-transparent text-gray-400 hover:text-gray-300"
+                ? "border-blue-500 text-foreground"
+                : "border-transparent text-muted-foreground hover:text-muted-foreground"
             )}
           >
             Media
@@ -1537,8 +1793,8 @@ export const EnhancedProductForm = ({
             className={clsx(
               "px-6 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
               activeTab === 'details'
-                ? "border-blue-500 text-white"
-                : "border-transparent text-gray-400 hover:text-gray-300"
+                ? "border-blue-500 text-foreground"
+                : "border-transparent text-muted-foreground hover:text-muted-foreground"
             )}
           >
             Details
@@ -1549,8 +1805,8 @@ export const EnhancedProductForm = ({
               className={clsx(
                 "px-6 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
                 activeTab === 'variations'
-                  ? "border-blue-500 text-white"
-                  : "border-transparent text-gray-400 hover:text-gray-300"
+                  ? "border-blue-500 text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-muted-foreground"
               )}
             >
               Variations {generatedVariations.length > 0 && `(${generatedVariations.length} / ${MAX_VARIATIONS})`}
@@ -1562,8 +1818,8 @@ export const EnhancedProductForm = ({
             className={clsx(
               "px-6 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
               activeTab === 'combos'
-                ? "border-blue-500 text-white"
-                : "border-transparent text-gray-400 hover:text-gray-300"
+                ? "border-blue-500 text-foreground"
+                : "border-transparent text-muted-foreground hover:text-muted-foreground"
             )}
           >
             Combos {combos.length > 0 && `(${combos.length})`}
@@ -1591,7 +1847,7 @@ export const EnhancedProductForm = ({
                     id="name"
                     {...register("name")}
                     placeholder="e.g. Cotton Premium Shirt"
-                    className="bg-gray-800 border-gray-700 text-white mt-1"
+                    className="bg-muted border-border text-foreground mt-1"
                   />
                   {errors.name && (
                     <p className="text-red-500 text-xs mt-1">
@@ -1609,12 +1865,12 @@ export const EnhancedProductForm = ({
                       id="sku"
                       {...register("sku")}
                       placeholder="AUTO-GENERATED"
-                      className="bg-gray-800 border-gray-700 text-white pr-10"
+                      className="bg-muted border-border text-foreground pr-10"
                     />
                     <button
                       type="button"
                       onClick={generateSKUForForm}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                     >
                       <RefreshCcw size={16} />
                     </button>
@@ -1639,7 +1895,7 @@ export const EnhancedProductForm = ({
                   <Label className="text-gray-200">Brand</Label>
                   <div className="mt-1">
                     {loadingBrands ? (
-                      <div className="flex h-9 items-center rounded-md border border-gray-700 bg-gray-800 px-3 text-sm text-gray-400">Loading brands...</div>
+                      <div className="flex h-9 items-center rounded-md border border-border bg-muted px-3 text-sm text-muted-foreground">Loading brands...</div>
                     ) : (
                       <SearchableSelect
                         value={watch('brand') ?? ''}
@@ -1648,7 +1904,7 @@ export const EnhancedProductForm = ({
                         placeholder="Select Brand"
                         searchPlaceholder="Search brand..."
                         emptyText="No brand found."
-                        className="bg-gray-800 border-gray-700 text-white h-9"
+                        className="bg-muted border-border text-foreground h-9"
                         enableAddNew
                         addNewLabel="Add Brand"
                         onAddNew={async (searchText) => {
@@ -1672,7 +1928,7 @@ export const EnhancedProductForm = ({
                   <Label className="text-gray-200">Category</Label>
                   <div className="mt-1">
                     {loadingCategories ? (
-                      <div className="flex h-9 items-center rounded-md border border-gray-700 bg-gray-800 px-3 text-sm text-gray-400">Loading categories...</div>
+                      <div className="flex h-9 items-center rounded-md border border-border bg-muted px-3 text-sm text-muted-foreground">Loading categories...</div>
                     ) : (
                       <SearchableSelect
                         value={watch('category') ?? ''}
@@ -1684,7 +1940,7 @@ export const EnhancedProductForm = ({
                         placeholder="Select Category"
                         searchPlaceholder="Search category..."
                         emptyText="No category found."
-                        className="bg-gray-800 border-gray-700 text-white h-9"
+                        className="bg-muted border-border text-foreground h-9"
                         enableAddNew
                         addNewLabel="Add Category"
                         onAddNew={async (searchText) => {
@@ -1709,7 +1965,7 @@ export const EnhancedProductForm = ({
                   <Label className="text-gray-200">Sub-Category</Label>
                   <div className="mt-1">
                     {!selectedCategoryId ? (
-                      <div className="flex h-9 items-center rounded-md border border-gray-700 bg-gray-800 px-3 text-sm text-gray-500">Select a category first</div>
+                      <div className="flex h-9 items-center rounded-md border border-border bg-muted px-3 text-sm text-muted-foreground">Select a category first</div>
                     ) : (
                       <SearchableSelect
                         value={watch('subCategory') ?? ''}
@@ -1718,7 +1974,7 @@ export const EnhancedProductForm = ({
                         placeholder="Select Sub-Category"
                         searchPlaceholder="Search sub-category..."
                         emptyText="No sub-category found."
-                        className="bg-gray-800 border-gray-700 text-white h-9"
+                        className="bg-muted border-border text-foreground h-9"
                         enableAddNew
                         addNewLabel="Add Sub-Category"
                         onAddNew={async (searchText) => {
@@ -1742,7 +1998,7 @@ export const EnhancedProductForm = ({
                   <Label className="text-gray-200">Unit</Label>
                   <div className="mt-1">
                     {loadingUnits ? (
-                      <div className="flex h-9 items-center rounded-md border border-gray-700 bg-gray-800 px-3 text-sm text-gray-400">Loading units...</div>
+                      <div className="flex h-9 items-center rounded-md border border-border bg-muted px-3 text-sm text-muted-foreground">Loading units...</div>
                     ) : (
                       <SearchableSelect
                         value={watch('unit') ?? ''}
@@ -1751,7 +2007,7 @@ export const EnhancedProductForm = ({
                         placeholder="Select Unit"
                         searchPlaceholder="Search unit..."
                         emptyText="No unit found. Add units in Settings → Inventory → Units."
-                        className="bg-gray-800 border-gray-700 text-white h-9"
+                        className="bg-muted border-border text-foreground h-9"
                       />
                     )}
                   </div>
@@ -1774,9 +2030,9 @@ export const EnhancedProductForm = ({
                     type="number"
                     {...register("purchasePrice", { setValueAs: setValueAsNumber })}
                     placeholder="0.00"
-                    className="bg-gray-800 border-gray-700 text-white mt-1"
+                    className="bg-muted border-border text-foreground mt-1"
                   />
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-xs text-muted-foreground mt-1">
                     Cost price from supplier
                   </p>
                 </div>
@@ -1790,7 +2046,7 @@ export const EnhancedProductForm = ({
                     {...register("sellingPrice", { setValueAs: setValueAsNumber })}
                     placeholder="0.00"
                     className={clsx(
-                      "bg-green-900/30 border-green-700 text-white mt-1 font-bold",
+                      "bg-green-900/30 border-green-700 text-foreground mt-1 font-bold",
                       errors.sellingPrice &&
                         "border-red-500 ring-1 ring-red-500",
                     )}
@@ -1800,7 +2056,7 @@ export const EnhancedProductForm = ({
                       {errors.sellingPrice.message}
                     </p>
                   )}
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-xs text-muted-foreground mt-1">
                     Final price for customers
                   </p>
                 </div>
@@ -1831,9 +2087,9 @@ export const EnhancedProductForm = ({
                     type="number"
                     {...register("purchasePrice", { setValueAs: setValueAsNumber })}
                     placeholder="0.00"
-                    className="bg-gray-800 border-gray-700 text-white mt-1"
+                    className="bg-muted border-border text-foreground mt-1"
                   />
-                  <p className="text-xs text-gray-500 mt-1">Cost from supplier</p>
+                  <p className="text-xs text-muted-foreground mt-1">Cost from supplier</p>
                 </div>
 
                 <div>
@@ -1842,11 +2098,16 @@ export const EnhancedProductForm = ({
                   </Label>
                   <Input
                     type="number"
-                    {...register("margin", { setValueAs: setValueAsNumber })}
+                    {...register('margin', { setValueAs: setValueAsNumber })}
+                    onChange={(e) => {
+                      const n = setValueAsNumber(e.target.value);
+                      setValue('margin', n, { shouldDirty: true, shouldValidate: true });
+                      applySellingFromMargin(n);
+                    }}
                     placeholder="0"
-                    className="bg-gray-800 border-gray-700 text-white mt-1"
+                    className="bg-muted border-border text-foreground mt-1"
                   />
-                  <p className="text-xs text-gray-500 mt-1">Auto-calculate selling price</p>
+                  <p className="text-xs text-muted-foreground mt-1">Auto-calculate selling price</p>
                 </div>
 
                 <div>
@@ -1858,7 +2119,7 @@ export const EnhancedProductForm = ({
                     {...register("sellingPrice", { setValueAs: setValueAsNumber })}
                     placeholder="0.00"
                     className={clsx(
-                      "bg-green-900/30 border-green-700 text-white mt-1 font-bold",
+                      "bg-green-900/30 border-green-700 text-foreground mt-1 font-bold",
                       errors.sellingPrice &&
                         "border-red-500 ring-1 ring-red-500",
                     )}
@@ -1868,7 +2129,7 @@ export const EnhancedProductForm = ({
                       {errors.sellingPrice.message}
                     </p>
                   )}
-                  <p className="text-xs text-gray-500 mt-1">Retail price</p>
+                  <p className="text-xs text-muted-foreground mt-1">Retail price</p>
                 </div>
               </div>
             </div>
@@ -1887,9 +2148,9 @@ export const EnhancedProductForm = ({
                     type="number"
                     {...register("wholesalePrice", { setValueAs: setValueAsNumber })}
                     placeholder="0.00"
-                    className="bg-gray-800 border-gray-700 text-white mt-1"
+                    className="bg-muted border-border text-foreground mt-1"
                   />
-                  <p className="text-xs text-gray-500 mt-1">Price for wholesale customers</p>
+                  <p className="text-xs text-muted-foreground mt-1">Price for wholesale customers</p>
                 </div>
 
                 <div>
@@ -1899,9 +2160,9 @@ export const EnhancedProductForm = ({
                   <Input
                     type="number"
                     placeholder="0.00"
-                    className="bg-gray-800 border-gray-700 text-white mt-1"
+                    className="bg-muted border-border text-foreground mt-1"
                   />
-                  <p className="text-xs text-gray-500 mt-1">Price for retail customers</p>
+                  <p className="text-xs text-muted-foreground mt-1">Price for retail customers</p>
                 </div>
 
                 <div>
@@ -1911,9 +2172,9 @@ export const EnhancedProductForm = ({
                   <Input
                     type="number"
                     placeholder="0.00"
-                    className="bg-gray-800 border-gray-700 text-white mt-1"
+                    className="bg-muted border-border text-foreground mt-1"
                   />
-                  <p className="text-xs text-gray-500 mt-1">Special price for bulk orders</p>
+                  <p className="text-xs text-muted-foreground mt-1">Special price for bulk orders</p>
                 </div>
 
                 <div>
@@ -1923,9 +2184,9 @@ export const EnhancedProductForm = ({
                   <Input
                     type="number"
                     placeholder="1"
-                    className="bg-gray-800 border-gray-700 text-white mt-1"
+                    className="bg-muted border-border text-foreground mt-1"
                   />
-                  <p className="text-xs text-gray-500 mt-1">Minimum quantity to order</p>
+                  <p className="text-xs text-muted-foreground mt-1">Minimum quantity to order</p>
                 </div>
               </div>
 
@@ -1933,19 +2194,19 @@ export const EnhancedProductForm = ({
                 <h4 className="text-sm font-semibold text-purple-300 mb-2">💰 Pricing Summary</h4>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                   <div>
-                    <p className="text-gray-500">Purchase:</p>
-                    <p className="text-white font-bold">₨{watch('purchasePrice') || 0}</p>
+                    <p className="text-muted-foreground">Purchase:</p>
+                    <p className="text-foreground font-bold">₨{watch('purchasePrice') || 0}</p>
                   </div>
                   <div>
-                    <p className="text-gray-500">Selling:</p>
-                    <p className="text-green-400 font-bold">₨{watch('sellingPrice') || 0}</p>
+                    <p className="text-muted-foreground">Selling:</p>
+                    <p className="text-[var(--erp-money-positive)] font-bold">₨{watch('sellingPrice') || 0}</p>
                   </div>
                   <div>
-                    <p className="text-gray-500">Margin:</p>
+                    <p className="text-muted-foreground">Margin:</p>
                     <p className="text-blue-400 font-bold">{watch('margin') || 0}%</p>
                   </div>
                   <div>
-                    <p className="text-gray-500">Profit:</p>
+                    <p className="text-muted-foreground">Profit:</p>
                     <p className="text-yellow-400 font-bold">₨{((watch('sellingPrice') || 0) - (watch('purchasePrice') || 0)).toFixed(2)}</p>
                   </div>
                 </div>
@@ -1968,10 +2229,10 @@ export const EnhancedProductForm = ({
                         onValueChange={field.onChange}
                         defaultValue={field.value}
                       >
-                        <SelectTrigger className="bg-gray-800 border-gray-700 text-white mt-1">
+                        <SelectTrigger className="bg-muted border-border text-foreground mt-1">
                           <SelectValue placeholder="Select Tax Type" />
                         </SelectTrigger>
-                        <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                        <SelectContent className="bg-popover border-border text-popover-foreground">
                           <SelectItem value="exclusive">
                             Exclusive (Tax Added)
                           </SelectItem>
@@ -2007,7 +2268,7 @@ export const EnhancedProductForm = ({
                     type="number"
                     {...register("rentalPrice", { setValueAs: setValueAsNumber })}
                     placeholder="0.00"
-                    className="bg-gray-800 border-gray-700 text-white mt-1"
+                    className="bg-muted border-border text-foreground mt-1"
                   />
                 </div>
 
@@ -2019,7 +2280,7 @@ export const EnhancedProductForm = ({
                     type="number"
                     {...register("securityDeposit", { setValueAs: setValueAsNumber })}
                     placeholder="0.00"
-                    className="bg-gray-800 border-gray-700 text-white mt-1"
+                    className="bg-muted border-border text-foreground mt-1"
                   />
                 </div>
               </div>
@@ -2032,9 +2293,9 @@ export const EnhancedProductForm = ({
           <>
             <div className="space-y-4">
               {companyBranches.length > 1 && (
-                <div className="p-3 bg-gray-800 border border-gray-700 rounded-lg space-y-2">
+                <div className="p-3 bg-muted border border-border rounded-lg space-y-2">
                   <Label className="text-gray-200 font-medium">Available in branches</Label>
-                  <p className="text-xs text-gray-500">Select which branches can sell this product.</p>
+                  <p className="text-xs text-muted-foreground">Select which branches can sell this product.</p>
                   <div className="space-y-2">
                     {companyBranches.map((b) => {
                       const checked = selectedBranchIds.includes(b.id);
@@ -2059,12 +2320,12 @@ export const EnhancedProductForm = ({
               )}
 
               {/* Enable Variations toggle (opt-in, default OFF for new product) */}
-              <div className="flex items-center justify-between p-3 bg-gray-800 border border-gray-700 rounded-lg">
+              <div className="flex items-center justify-between p-3 bg-muted border border-border rounded-lg">
                 <div>
                   <Label htmlFor="enable-variations" className="text-gray-200 font-medium">
                     Enable Variations
                   </Label>
-                  <p className="text-xs text-gray-500 mt-0.5">
+                  <p className="text-xs text-muted-foreground mt-0.5">
                     Enable size/color variations. Stock will be tracked per variation.
                   </p>
                 </div>
@@ -2076,20 +2337,20 @@ export const EnhancedProductForm = ({
               </div>
 
               {enableVariations && (
-                <div className="p-3 bg-gray-800 border border-gray-700 rounded-lg">
-                  <p className="text-sm text-gray-400">Parent product does not hold stock when variations are enabled.</p>
+                <div className="p-3 bg-muted border border-border rounded-lg">
+                  <p className="text-sm text-muted-foreground">Parent product does not hold stock when variations are enabled.</p>
                 </div>
               )}
 
               {/* Enable Combo Product toggle (only if module enabled) */}
               {modules.combosEnabled && (
                 <>
-                  <div className="flex items-center justify-between p-3 bg-gray-800 border border-gray-700 rounded-lg">
+                  <div className="flex items-center justify-between p-3 bg-muted border border-border rounded-lg">
                     <div>
                       <Label htmlFor="enable-combo" className="text-gray-200 font-medium">
                         Enable Combo Product
                       </Label>
-                      <p className="text-xs text-gray-500 mt-0.5">
+                      <p className="text-xs text-muted-foreground mt-0.5">
                         Make this product a combo/bundle. Stock will be managed through component products.
                       </p>
                     </div>
@@ -2101,8 +2362,8 @@ export const EnhancedProductForm = ({
                   </div>
 
                   {isComboProduct && (
-                    <div className="p-3 bg-gray-800 border border-gray-700 rounded-lg">
-                      <p className="text-sm text-gray-400">Combo products do not hold stock. Stock is managed through component products.</p>
+                    <div className="p-3 bg-muted border border-border rounded-lg">
+                      <p className="text-sm text-muted-foreground">Combo products do not hold stock. Stock is managed through component products.</p>
                     </div>
                   )}
                 </>
@@ -2133,6 +2394,28 @@ export const EnhancedProductForm = ({
                 </div>
               </div>
 
+              <div className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-2">
+                <div>
+                  <Label htmlFor="is-dyeable" className="text-gray-200">
+                    Dyeable fabric
+                  </Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Show this product in bespoke fabric picker (white / dyeable stock).
+                  </p>
+                </div>
+                <Controller
+                  control={control}
+                  name="isDyeable"
+                  render={({ field }) => (
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                      id="is-dyeable"
+                    />
+                  )}
+                />
+              </div>
+
               {stockManagement && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
@@ -2149,13 +2432,13 @@ export const EnhancedProductForm = ({
                       disabled={enableVariations || isComboProduct}
                       {...register("initialStock", { setValueAs: setValueAsNumber })}
                       placeholder="0"
-                      className={clsx("mt-1", (enableVariations || isComboProduct) ? "bg-gray-900 border-gray-700 text-gray-500 cursor-not-allowed" : "bg-gray-800 border-gray-700 text-white")}
+                      className={clsx("mt-1", (enableVariations || isComboProduct) ? "bg-card border-border text-muted-foreground cursor-not-allowed" : "bg-muted border-border text-foreground")}
                     />
                     {enableVariations && (
-                      <p className="text-xs text-gray-500 mt-1">Opening stock is defined per variation.</p>
+                      <p className="text-xs text-muted-foreground mt-1">Opening stock is defined per variation.</p>
                     )}
                     {isComboProduct && (
-                      <p className="text-xs text-gray-500 mt-1">Combo products do not hold stock. Stock is managed through component products.</p>
+                      <p className="text-xs text-muted-foreground mt-1">Combo products do not hold stock. Stock is managed through component products.</p>
                     )}
                   </div>
 
@@ -2171,9 +2454,9 @@ export const EnhancedProductForm = ({
                       type="number"
                       {...register("alertQty", { setValueAs: setValueAsNumber })}
                       placeholder="5"
-                      className="bg-gray-800 border-red-900/50 text-white mt-1"
+                      className="bg-muted border-red-900/50 text-foreground mt-1"
                     />
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-xs text-muted-foreground mt-1">
                       Get notified when stock falls below this level
                     </p>
                   </div>
@@ -2185,17 +2468,17 @@ export const EnhancedProductForm = ({
                       type="number"
                       {...register("maxStock", { setValueAs: setValueAsNumber })}
                       placeholder="1000"
-                      className="bg-gray-800 border-gray-700 text-white mt-1"
+                      className="bg-muted border-border text-foreground mt-1"
                     />
-                    <p className="text-xs text-gray-500 mt-1">Maximum stock capacity</p>
+                    <p className="text-xs text-muted-foreground mt-1">Maximum stock capacity</p>
                   </div>
                 </div>
               )}
 
               {!stockManagement && (
-                <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 text-center">
-                  <p className="text-gray-400">Stock tracking is disabled for this product</p>
-                  <p className="text-sm text-gray-500 mt-1">Enable tracking above to manage inventory levels</p>
+                <div className="bg-muted border border-border rounded-xl p-6 text-center">
+                  <p className="text-muted-foreground">Stock tracking is disabled for this product</p>
+                  <p className="text-sm text-muted-foreground mt-1">Enable tracking above to manage inventory levels</p>
                 </div>
               )}
             </div>
@@ -2216,15 +2499,15 @@ export const EnhancedProductForm = ({
                   "border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer transition-colors",
                   isDragActive
                     ? "border-blue-500 bg-blue-500/10"
-                    : "border-gray-700 hover:border-gray-500 bg-gray-800/50",
+                    : "border-border hover:border-gray-500 bg-muted/50",
                 )}
               >
                 <input {...getInputProps()} />
                 <Upload
                   size={32}
-                  className="text-gray-500 mb-3"
+                  className="text-muted-foreground mb-3"
                 />
-                <p className="text-gray-400 text-center">
+                <p className="text-muted-foreground text-center">
                   Drag & drop images here, or{" "}
                   <span className="text-blue-500">browse</span>
                 </p>
@@ -2232,11 +2515,11 @@ export const EnhancedProductForm = ({
 
               {existingImageUrls.length > 0 && (
                 <div className="grid grid-cols-4 gap-4 mt-4">
-                  <p className="col-span-full text-sm text-gray-500">Saved images</p>
+                  <p className="col-span-full text-sm text-muted-foreground">Saved images</p>
                   {existingImageUrls.map((url, idx) => (
                     <div
                       key={url + idx}
-                      className="relative group aspect-square bg-gray-800 rounded-lg overflow-hidden border border-gray-700"
+                      className="relative group aspect-square bg-muted rounded-lg overflow-hidden border border-border"
                     >
                       <ProductImage src={url} alt="product" className="w-full h-full object-cover" />
                       <button
@@ -2245,7 +2528,7 @@ export const EnhancedProductForm = ({
                           e.stopPropagation();
                           setExistingImageUrls(existingImageUrls.filter((_, i) => i !== idx));
                         }}
-                        className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="absolute top-1 right-1 bg-red-500 text-foreground p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                       >
                         <X size={12} />
                       </button>
@@ -2256,11 +2539,11 @@ export const EnhancedProductForm = ({
 
               {images.length > 0 && (
                 <div className="grid grid-cols-4 gap-4 mt-4">
-                  {existingImageUrls.length > 0 && <p className="col-span-full text-sm text-gray-500">New images (will save on Submit)</p>}
+                  {existingImageUrls.length > 0 && <p className="col-span-full text-sm text-muted-foreground">New images (will save on Submit)</p>}
                   {images.map((file, idx) => (
                     <div
                       key={idx}
-                      className="relative group aspect-square bg-gray-800 rounded-lg overflow-hidden border border-gray-700"
+                      className="relative group aspect-square bg-muted rounded-lg overflow-hidden border border-border"
                     >
                       <img
                         src={URL.createObjectURL(file)}
@@ -2275,7 +2558,7 @@ export const EnhancedProductForm = ({
                             images.filter((_, i) => i !== idx),
                           );
                         }}
-                        className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="absolute top-1 right-1 bg-red-500 text-foreground p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                       >
                         <X size={12} />
                       </button>
@@ -2285,9 +2568,9 @@ export const EnhancedProductForm = ({
               )}
 
               {images.length === 0 && existingImageUrls.length === 0 && (
-                <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 text-center">
-                  <p className="text-gray-400">No images uploaded yet</p>
-                  <p className="text-sm text-gray-500 mt-1">Upload images to showcase your product</p>
+                <div className="bg-muted border border-border rounded-xl p-6 text-center">
+                  <p className="text-muted-foreground">No images uploaded yet</p>
+                  <p className="text-sm text-muted-foreground mt-1">Upload images to showcase your product</p>
                 </div>
               )}
             </div>
@@ -2313,7 +2596,7 @@ export const EnhancedProductForm = ({
                   id="description"
                   {...register("description")}
                   placeholder="Detailed product description..."
-                  className="bg-gray-800 border-gray-700 text-white mt-1 min-h-[120px]"
+                  className="bg-muted border-border text-foreground mt-1 min-h-[120px]"
                 />
               </div>
 
@@ -2328,7 +2611,7 @@ export const EnhancedProductForm = ({
                   id="notes"
                   {...register("notes")}
                   placeholder="Private notes (not visible to customers)..."
-                  className="bg-gray-800 border-gray-700 text-white mt-1 min-h-[80px]"
+                  className="bg-muted border-border text-foreground mt-1 min-h-[80px]"
                 />
               </div>
             </div>
@@ -2351,12 +2634,12 @@ export const EnhancedProductForm = ({
                         onValueChange={field.onChange}
                         value={field.value ?? ''}
                       >
-                        <SelectTrigger className="bg-gray-800 border-gray-700 text-white mt-1">
+                        <SelectTrigger className="bg-muted border-border text-foreground mt-1">
                           <SelectValue placeholder="Select Supplier" />
                         </SelectTrigger>
-                        <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                        <SelectContent className="bg-popover border-border text-popover-foreground">
                           {loadingSuppliers ? (
-                            <div className="px-2 py-1.5 text-sm text-gray-400">Loading suppliers...</div>
+                            <div className="px-2 py-1.5 text-sm text-muted-foreground">Loading suppliers...</div>
                           ) : suppliers.length > 0 ? (
                             suppliers.map((s) => (
                               <SelectItem key={s.id} value={s.id}>
@@ -2364,7 +2647,7 @@ export const EnhancedProductForm = ({
                               </SelectItem>
                             ))
                           ) : (
-                            <div className="px-2 py-1.5 text-sm text-gray-500">No suppliers. Add in Contacts (type: Supplier).</div>
+                            <div className="px-2 py-1.5 text-sm text-muted-foreground">No suppliers. Add in Contacts (type: Supplier).</div>
                           )}
                         </SelectContent>
                       </Select>
@@ -2378,7 +2661,7 @@ export const EnhancedProductForm = ({
                   <Input
                     {...register("supplierCode")}
                     placeholder="Supplier's SKU"
-                    className="bg-gray-800 border-gray-700 text-white mt-1"
+                    className="bg-muted border-border text-foreground mt-1"
                   />
                 </div>
               </div>
@@ -2390,15 +2673,15 @@ export const EnhancedProductForm = ({
         {activeTab === 'variations' && (
           <>
             {/* Supplier display - shows selected supplier from Details tab */}
-            <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-              <Label className="text-gray-400 text-xs uppercase tracking-wide">Supplier for this product</Label>
-              <p className="text-white font-medium mt-1">
+            <div className="bg-muted border border-border rounded-xl p-4">
+              <Label className="text-muted-foreground text-xs uppercase tracking-wide">Supplier for this product</Label>
+              <p className="text-foreground font-medium mt-1">
                 {watch('supplier') && suppliers.length > 0
                   ? suppliers.find((s) => s.id === watch('supplier'))?.name ?? '—'
                   : 'Select supplier in Details tab'}
               </p>
               {watch('supplier') && (
-                <p className="text-xs text-gray-500 mt-0.5">Variations will be associated with this supplier</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Variations will be associated with this supplier</p>
               )}
             </div>
 
@@ -2412,9 +2695,9 @@ export const EnhancedProductForm = ({
 
             {/* Copy from existing variation – format: Supplier — AttributeName: Value (e.g. variant: Size: L, SUPLIER: Ibrahim) */}
             {variationsForCopy.length > 0 && (
-              <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+              <div className="bg-muted border border-border rounded-xl p-4">
                 <Label className="text-gray-200 mb-2 block">Copy from existing variation</Label>
-                <p className="text-xs text-gray-500 mb-2">Select an existing variation to copy its attributes. Shows: Supplier, Attribute: Value (e.g. Size: Large, Color: Red).</p>
+                <p className="text-xs text-muted-foreground mb-2">Select an existing variation to copy its attributes. Shows: Supplier, Attribute: Value (e.g. Size: Large, Color: Red).</p>
                 <Select
                   value={copyFromVariationId}
                   onValueChange={(id) => {
@@ -2429,12 +2712,12 @@ export const EnhancedProductForm = ({
                     }
                   }}
                 >
-                  <SelectTrigger className="bg-gray-900 border-gray-700 text-white">
+                  <SelectTrigger className="bg-card border-border text-foreground">
                     <SelectValue placeholder="Select variation to copy from..." />
                   </SelectTrigger>
-                  <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                  <SelectContent className="bg-popover border-border text-popover-foreground">
                     {loadingProductsWithVariations ? (
-                      <div className="px-2 py-1.5 text-sm text-gray-400">Loading...</div>
+                      <div className="px-2 py-1.5 text-sm text-muted-foreground">Loading...</div>
                     ) : (
                       variationsForCopy
                         .filter((e) => e.productId !== (initialProduct?.uuid || initialProduct?.id))
@@ -2454,7 +2737,7 @@ export const EnhancedProductForm = ({
               <h3 className="text-lg font-semibold border-l-4 border-blue-500 pl-3">
                 Step 1: Define Variation Attributes
               </h3>
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-muted-foreground">
                 Pick from Settings → Inventory → Variations master or type new names; values can be chosen from saved lists per attribute.
               </p>
               <datalist id="variation-master-attr-names">
@@ -2465,7 +2748,7 @@ export const EnhancedProductForm = ({
                   ))}
               </datalist>
 
-              <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+              <div className="bg-muted border border-border rounded-xl p-4">
                 <Label className="text-gray-200 mb-2 block">Add New Attribute (e.g., Size, Color, Material)</Label>
                 <div className="flex items-center gap-2">
                   <Input
@@ -2473,7 +2756,7 @@ export const EnhancedProductForm = ({
                     onChange={(e) => setNewAttributeName(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addVariantAttribute())}
                     placeholder="Enter attribute name (e.g., Color)"
-                    className="bg-gray-900 border-gray-700 text-white"
+                    className="bg-card border-border text-foreground"
                     list="variation-master-attr-names"
                   />
                   <button
@@ -2491,9 +2774,9 @@ export const EnhancedProductForm = ({
               {variantAttributes.length > 0 && (
                 <div className="space-y-4">
                   {variantAttributes.map((attr, attrIndex) => (
-                    <div key={attr.name} className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+                    <div key={attr.name} className="bg-muted border border-border rounded-xl p-4">
                       <div className="flex items-center justify-between mb-3">
-                        <h4 className="text-md font-semibold text-white flex items-center gap-2">
+                        <h4 className="text-md font-semibold text-foreground flex items-center gap-2">
                           {attr.name}
                         </h4>
                         <button
@@ -2525,7 +2808,7 @@ export const EnhancedProductForm = ({
                               }
                             }}
                             placeholder={`Add ${attr.name} value (e.g., Red, Blue)`}
-                            className="bg-gray-900 border-gray-700 text-white text-sm"
+                            className="bg-card border-border text-foreground text-sm"
                             list={`variation-master-values-${attr.name.replace(/\s+/g, '-')}`}
                           />
                           <button
@@ -2546,7 +2829,7 @@ export const EnhancedProductForm = ({
                         {attr.values.map((value, valueIndex) => (
                           <div
                             key={value}
-                            className="bg-gray-900 border border-gray-700 text-white px-3 py-1.5 rounded-lg flex items-center gap-2 text-sm"
+                            className="bg-card border border-border text-foreground px-3 py-1.5 rounded-lg flex items-center gap-2 text-sm"
                           >
                             <span>{value}</span>
                             <button
@@ -2559,7 +2842,7 @@ export const EnhancedProductForm = ({
                           </div>
                         ))}
                         {attr.values.length === 0 && (
-                          <span className="text-gray-500 text-sm italic">No values added yet</span>
+                          <span className="text-muted-foreground text-sm italic">No values added yet</span>
                         )}
                       </div>
                     </div>
@@ -2576,15 +2859,15 @@ export const EnhancedProductForm = ({
                 </h3>
 
                 <div className="flex items-center justify-between gap-4 flex-wrap">
-                  <p className="text-xs text-gray-400">
+                  <p className="text-xs text-muted-foreground">
                     Limit: {MAX_VARIATIONS} variations per product. Opening stock is set per row and saved as stock movements on save.
                   </p>
-                  <span className="text-xs text-gray-500 font-mono">
+                  <span className="text-xs text-muted-foreground font-mono">
                     {generatedVariations.length} / {MAX_VARIATIONS}
                   </span>
                 </div>
                 
-                <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+                <div className="bg-muted border border-border rounded-xl p-4">
                   {(() => {
                     const count = variantAttributes.reduce((acc, attr) => acc * attr.values.length, 1);
                     const atLimit = count > MAX_VARIATIONS;
@@ -2595,7 +2878,7 @@ export const EnhancedProductForm = ({
                           onClick={generateVariations}
                           disabled={atLimit}
                           className={clsx(
-                            "text-white px-6 py-3 rounded-xl font-bold transition-colors flex items-center gap-2",
+                            "text-foreground px-6 py-3 rounded-xl font-bold transition-colors flex items-center gap-2",
                             atLimit
                               ? "bg-gray-600 cursor-not-allowed opacity-60"
                               : "bg-blue-500 hover:bg-blue-600 shadow-lg shadow-blue-500/20"
@@ -2604,7 +2887,7 @@ export const EnhancedProductForm = ({
                           <RefreshCcw size={18} />
                           Generate {count} Variations
                         </button>
-                        <p className="text-xs text-gray-400 mt-2">
+                        <p className="text-xs text-muted-foreground mt-2">
                           {atLimit
                             ? `Reduce attributes or values to stay under ${MAX_VARIATIONS} variations.`
                             : "All possible combinations of your attribute values."}
@@ -2616,30 +2899,30 @@ export const EnhancedProductForm = ({
 
                 {/* Variations Table */}
                 {generatedVariations.length > 0 && (
-                  <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
+                  <div className="bg-muted border border-border rounded-xl overflow-hidden">
                     <div className="overflow-x-auto overflow-y-auto" style={{ maxHeight: 'min(60vh, 420px)' }}>
                       <table className="w-full border-collapse">
-                        <thead className="bg-gray-900 border-b border-gray-700 sticky top-0 z-[1]">
+                        <thead className="bg-card border-b border-border sticky top-0 z-[1]">
                           <tr>
-                            <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">#</th>
+                            <th className="px-4 py-3 text-left text-sm font-semibold text-muted-foreground">#</th>
                             {variantAttributes.map(attr => (
-                              <th key={attr.name} className="px-4 py-3 text-left text-sm font-semibold text-gray-300">
+                              <th key={attr.name} className="px-4 py-3 text-left text-sm font-semibold text-muted-foreground">
                                 {attr.name}
                               </th>
                             ))}
-                            <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">SKU</th>
-                            <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Purchase Price</th>
-                            <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Selling Price</th>
-                            <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Opening Stock</th>
-                            <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Barcode</th>
+                            <th className="px-4 py-3 text-left text-sm font-semibold text-muted-foreground">SKU</th>
+                            <th className="px-4 py-3 text-left text-sm font-semibold text-muted-foreground">Purchase Price</th>
+                            <th className="px-4 py-3 text-left text-sm font-semibold text-muted-foreground">Selling Price</th>
+                            <th className="px-4 py-3 text-left text-sm font-semibold text-muted-foreground">Opening Stock</th>
+                            <th className="px-4 py-3 text-left text-sm font-semibold text-muted-foreground">Barcode</th>
                           </tr>
                         </thead>
                         <tbody>
                           {generatedVariations.map((variation, index) => (
-                            <tr key={index} className="border-b border-gray-700 hover:bg-gray-900/50 transition-colors">
-                              <td className="px-4 py-3 text-sm text-gray-400">{index + 1}</td>
+                            <tr key={index} className="border-b border-border hover:bg-muted/40 transition-colors">
+                              <td className="px-4 py-3 text-sm text-muted-foreground">{index + 1}</td>
                               {variantAttributes.map(attr => (
-                                <td key={attr.name} className="px-4 py-3 text-sm text-white">
+                                <td key={attr.name} className="px-4 py-3 text-sm text-foreground">
                                   <span className="bg-blue-900/30 border border-blue-800 px-2 py-1 rounded text-xs">
                                     {variation.combination[attr.name]}
                                   </span>
@@ -2653,7 +2936,7 @@ export const EnhancedProductForm = ({
                                     updated[index].sku = e.target.value;
                                     setGeneratedVariations(updated);
                                   }}
-                                  className="bg-gray-900 border-gray-700 text-white text-sm w-32"
+                                  className="bg-card border-border text-foreground text-sm w-32"
                                   placeholder="SKU"
                                 />
                               </td>
@@ -2669,7 +2952,7 @@ export const EnhancedProductForm = ({
                                     updated[index].purchasePrice = Number.isNaN(v) ? 0 : v;
                                     setGeneratedVariations(updated);
                                   }}
-                                  className="bg-gray-900 border-gray-700 text-white text-sm w-24"
+                                  className="bg-card border-border text-foreground text-sm w-24"
                                   placeholder={String(watch('purchasePrice') ?? 0)}
                                   title="Purchase cost for this variation"
                                 />
@@ -2686,7 +2969,7 @@ export const EnhancedProductForm = ({
                                     updated[index].price = Number.isNaN(v) ? 0 : v;
                                     setGeneratedVariations(updated);
                                   }}
-                                  className="bg-gray-900 border-gray-700 text-white text-sm w-24"
+                                  className="bg-card border-border text-foreground text-sm w-24"
                                   placeholder={String(watch('sellingPrice') ?? 0)}
                                   title="Selling price for this variation"
                                 />
@@ -2702,7 +2985,7 @@ export const EnhancedProductForm = ({
                                     updated[index].stock = parseVariationQtyInput(e.target.value);
                                     setGeneratedVariations(updated);
                                   }}
-                                  className="bg-gray-900 border-gray-700 text-white text-sm w-24"
+                                  className="bg-card border-border text-foreground text-sm w-24"
                                   placeholder="0"
                                   title={
                                     selectedUnitAllowsDecimal
@@ -2719,7 +3002,7 @@ export const EnhancedProductForm = ({
                                     updated[index].barcode = e.target.value;
                                     setGeneratedVariations(updated);
                                   }}
-                                  className="bg-gray-900 border-gray-700 text-white text-sm w-32"
+                                  className="bg-card border-border text-foreground text-sm w-32"
                                   placeholder="Barcode"
                                 />
                               </td>
@@ -2729,9 +3012,9 @@ export const EnhancedProductForm = ({
                       </table>
                     </div>
                     
-                    <div className="bg-gray-900 px-4 py-3 border-t border-gray-700">
-                      <p className="text-sm text-gray-400">
-                        Total Variations: <span className="text-white font-semibold">{generatedVariations.length}</span>
+                    <div className="bg-card px-4 py-3 border-t border-border">
+                      <p className="text-sm text-muted-foreground">
+                        Total Variations: <span className="text-foreground font-semibold">{generatedVariations.length}</span>
                       </p>
                     </div>
                   </div>
@@ -2741,10 +3024,10 @@ export const EnhancedProductForm = ({
 
             {/* Empty State */}
             {variantAttributes.length === 0 && (
-              <div className="bg-gray-800 border border-gray-700 rounded-xl p-8 text-center">
-                <Package size={48} className="text-gray-600 mx-auto mb-3" />
-                <p className="text-gray-400 mb-2">No variation attributes added yet</p>
-                <p className="text-sm text-gray-500">
+              <div className="bg-muted border border-border rounded-xl p-8 text-center">
+                <Package size={48} className="text-muted-foreground mx-auto mb-3" />
+                <p className="text-muted-foreground mb-2">No variation attributes added yet</p>
+                <p className="text-sm text-muted-foreground">
                   Add attributes like Size, Color, or Material to create product variations
                 </p>
               </div>
@@ -2781,18 +3064,18 @@ export const EnhancedProductForm = ({
               </h3>
               
               {/* Combo Name */}
-              <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+              <div className="bg-muted border border-border rounded-xl p-4">
                 <Label className="text-gray-200 mb-2 block">Combo Name</Label>
                 <Input
                   value={comboName}
                   onChange={(e) => setComboName(e.target.value)}
                   placeholder="e.g., Wedding Package, Summer Bundle"
-                  className="bg-gray-900 border-gray-700 text-white"
+                  className="bg-card border-border text-foreground"
                 />
               </div>
 
               {/* Add Products to Combo */}
-              <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 space-y-3">
+              <div className="bg-muted border border-border rounded-xl p-4 space-y-3">
                 <Label className="text-gray-200 block">Add Products to Combo</Label>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
                   {/* Product Search with Dropdown */}
@@ -2805,25 +3088,25 @@ export const EnhancedProductForm = ({
                       }}
                       onFocus={() => setShowProductDropdown(true)}
                       placeholder="Search product by name or SKU..."
-                      className="bg-gray-900 border-gray-700 text-white text-sm"
+                      className="bg-card border-border text-foreground text-sm"
                     />
                     
                     {/* Product Dropdown */}
                     {showProductDropdown && productSearchQuery && filteredProducts.length > 0 && (
-                      <div className="absolute z-50 w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg shadow-xl max-h-60 overflow-y-auto">
+                      <div className="absolute z-50 w-full mt-1 bg-card border border-border rounded-lg shadow-xl max-h-60 overflow-y-auto">
                         {filteredProducts.map((product) => (
                           <button
                             key={product.id}
                             type="button"
                             onClick={() => selectProduct(product)}
-                            className="w-full px-4 py-3 text-left hover:bg-gray-800 transition-colors border-b border-gray-800 last:border-b-0"
+                            className="w-full px-4 py-3 text-left hover:bg-muted transition-colors border-b border-border last:border-b-0"
                           >
                             <div className="flex justify-between items-start">
                               <div>
-                                <p className="text-white text-sm font-medium">{product.name}</p>
-                                <p className="text-gray-500 text-xs mt-1">SKU: {product.sku}</p>
+                                <p className="text-foreground text-sm font-medium">{product.name}</p>
+                                <p className="text-muted-foreground text-xs mt-1">SKU: {product.sku}</p>
                               </div>
-                              <span className="text-green-400 text-sm font-semibold">₨{product.retail_price}</span>
+                              <span className="text-[var(--erp-money-positive)] text-sm font-semibold">₨{product.retail_price}</span>
                             </div>
                           </button>
                         ))}
@@ -2831,39 +3114,39 @@ export const EnhancedProductForm = ({
                     )}
                     
                     {showProductDropdown && productSearchQuery && filteredProducts.length === 0 && !loadingProducts && (
-                      <div className="absolute z-50 w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg shadow-xl p-4 text-center">
-                        <p className="text-gray-500 text-sm">No products available to add.</p>
+                      <div className="absolute z-50 w-full mt-1 bg-card border border-border rounded-lg shadow-xl p-4 text-center">
+                        <p className="text-muted-foreground text-sm">No products available to add.</p>
                       </div>
                     )}
                     {loadingProducts && (
-                      <div className="absolute z-50 w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg shadow-xl p-4 text-center">
-                        <p className="text-gray-500 text-sm">Loading products...</p>
+                      <div className="absolute z-50 w-full mt-1 bg-card border border-border rounded-lg shadow-xl p-4 text-center">
+                        <p className="text-muted-foreground text-sm">Loading products...</p>
                   </div>
                     )}
                 </div>
                 </div>
                 {availableProducts.length === 0 && !loadingProducts && (
-                  <div className="bg-gray-900 border border-gray-700 rounded-lg p-4 text-center">
-                    <p className="text-gray-500 text-sm">No products available to add.</p>
-                    <p className="text-gray-600 text-xs mt-1">Create products first, then add them to this combo.</p>
+                  <div className="bg-card border border-border rounded-lg p-4 text-center">
+                    <p className="text-muted-foreground text-sm">No products available to add.</p>
+                    <p className="text-muted-foreground text-xs mt-1">Create products first, then add them to this combo.</p>
                   </div>
                 )}
               </div>
 
               {/* Current Combo Items */}
               {currentComboItems.length > 0 && (
-                <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 space-y-3">
+                <div className="bg-muted border border-border rounded-xl p-4 space-y-3">
                   <Label className="text-gray-200 block">Products in This Combo</Label>
                   <div className="space-y-2">
                     {currentComboItems.map((item, index) => (
                       <div
                         key={index}
-                        className="bg-gray-900 border border-gray-700 px-4 py-3 rounded-lg flex items-center justify-between"
+                        className="bg-card border border-border px-4 py-3 rounded-lg flex items-center justify-between"
                       >
                         <div className="flex items-center gap-4 flex-1">
                           <div className="flex-1">
-                            <span className="text-white font-medium">{item.product_name}</span>
-                            <p className="text-gray-500 text-xs mt-0.5">SKU: {item.product_sku}</p>
+                            <span className="text-foreground font-medium">{item.product_name}</span>
+                            <p className="text-muted-foreground text-xs mt-0.5">SKU: {item.product_sku}</p>
                           </div>
                           <Input
                             type="number"
@@ -2871,7 +3154,7 @@ export const EnhancedProductForm = ({
                             step={0.01}
                             value={item.qty || ''}
                             onChange={(e) => updateComboItemQty(index, parseFloat(e.target.value) || 1)}
-                            className="bg-gray-800 border-gray-700 text-white text-sm w-20"
+                            className="bg-muted border-border text-foreground text-sm w-20"
                             placeholder="Qty"
                           />
                           <Input
@@ -2880,10 +3163,10 @@ export const EnhancedProductForm = ({
                             step={0.01}
                             value={item.unit_price || ''}
                             onChange={(e) => updateComboItemPrice(index, parseFloat(e.target.value) || 0)}
-                            className="bg-gray-800 border-gray-700 text-white text-sm w-24"
+                            className="bg-muted border-border text-foreground text-sm w-24"
                             placeholder="Price"
                           />
-                          <span className="text-gray-500 text-sm w-24 text-right">
+                          <span className="text-muted-foreground text-sm w-24 text-right">
                             Subtotal: ₨{((item.qty || 0) * (item.unit_price || 0)).toFixed(2)}
                           </span>
                         </div>
@@ -2899,10 +3182,10 @@ export const EnhancedProductForm = ({
                   </div>
 
                   {/* Combo Pricing */}
-                  <div className="border-t border-gray-700 pt-4 space-y-3">
+                  <div className="border-t border-border pt-4 space-y-3">
                     <div className="flex justify-between items-center">
-                      <span className="text-gray-400">Total Individual Price:</span>
-                      <span className="text-white font-semibold">
+                      <span className="text-muted-foreground">Total Individual Price:</span>
+                      <span className="text-foreground font-semibold">
                         ₨{currentComboItems.reduce((sum, item) => sum + (item.qty || 0) * (item.unit_price || 0), 0).toFixed(2)}
                       </span>
                     </div>
@@ -2915,13 +3198,13 @@ export const EnhancedProductForm = ({
                         value={comboFinalPrice || ''}
                         onChange={(e) => setComboFinalPrice(parseFloat(e.target.value) || 0)}
                         placeholder="Enter combo price"
-                        className="bg-gray-900 border-gray-700 text-white flex-1"
+                        className="bg-card border-border text-foreground flex-1"
                       />
                     </div>
                     {comboFinalPrice > 0 && (
                       <div className="flex justify-between items-center text-sm">
-                        <span className="text-green-400">Discount:</span>
-                        <span className="text-green-400 font-semibold">
+                        <span className="text-[var(--erp-money-positive)]">Discount:</span>
+                        <span className="text-[var(--erp-money-positive)] font-semibold">
                           ₨{(currentComboItems.reduce((sum, item) => sum + (item.qty || 0) * (item.unit_price || 0), 0) - comboFinalPrice).toFixed(2)}
                         </span>
                       </div>
@@ -2932,7 +3215,7 @@ export const EnhancedProductForm = ({
                     type="button"
                     onClick={saveCombo}
                     disabled={!comboName.trim() || comboFinalPrice <= 0 || currentComboItems.length === 0}
-                    className="bg-blue-500 hover:bg-blue-600 disabled:bg-gray-700 disabled:cursor-not-allowed text-white px-6 py-3 rounded-xl font-bold transition-colors shadow-lg shadow-blue-500/20 w-full"
+                    className="bg-blue-500 hover:bg-blue-600 disabled:bg-muted disabled:cursor-not-allowed text-foreground px-6 py-3 rounded-xl font-bold transition-colors shadow-lg shadow-blue-500/20 w-full"
                   >
                     Save Combo
                   </button>
@@ -2949,9 +3232,9 @@ export const EnhancedProductForm = ({
                 
                 <div className="space-y-3">
                   {combos.map((combo) => (
-                    <div key={combo.id} className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+                    <div key={combo.id} className="bg-muted border border-border rounded-xl p-4">
                       <div className="flex items-center justify-between mb-3">
-                        <h4 className="text-lg font-semibold text-white">{combo.combo_name}</h4>
+                        <h4 className="text-lg font-semibold text-foreground">{combo.combo_name}</h4>
                         <button
                           type="button"
                           onClick={() => deleteCombo(combo.id)}
@@ -2963,30 +3246,30 @@ export const EnhancedProductForm = ({
                       
                       <div className="space-y-2 mb-3">
                         {combo.items.map((item, idx) => (
-                          <div key={idx} className="bg-gray-900 border border-gray-700 px-3 py-2 rounded-lg flex items-center justify-between text-sm">
+                          <div key={idx} className="bg-card border border-border px-3 py-2 rounded-lg flex items-center justify-between text-sm">
                             <div>
-                              <span className="text-white">{item.product_name || 'Unknown Product'}</span>
+                              <span className="text-foreground">{item.product_name || 'Unknown Product'}</span>
                               {item.product_sku && (
-                                <p className="text-gray-500 text-xs mt-0.5">SKU: {item.product_sku}</p>
+                                <p className="text-muted-foreground text-xs mt-0.5">SKU: {item.product_sku}</p>
                               )}
                             </div>
-                            <div className="flex items-center gap-4 text-gray-400">
+                            <div className="flex items-center gap-4 text-muted-foreground">
                               <span>Qty: {item.qty}</span>
                               {item.unit_price && <span>₨{item.unit_price.toFixed(2)}</span>}
-                              <span className="text-white">₨{((item.qty || 0) * (item.unit_price || 0)).toFixed(2)}</span>
+                              <span className="text-foreground">₨{((item.qty || 0) * (item.unit_price || 0)).toFixed(2)}</span>
                             </div>
                           </div>
                         ))}
                       </div>
 
-                      <div className="border-t border-gray-700 pt-3 space-y-1">
+                      <div className="border-t border-border pt-3 space-y-1">
                         <div className="flex justify-between text-sm">
-                          <span className="text-gray-400">Total Individual Price:</span>
-                          <span className="text-white">₨{combo.items.reduce((sum, item) => sum + (item.qty || 0) * (item.unit_price || 0), 0).toFixed(2)}</span>
+                          <span className="text-muted-foreground">Total Individual Price:</span>
+                          <span className="text-foreground">₨{combo.items.reduce((sum, item) => sum + (item.qty || 0) * (item.unit_price || 0), 0).toFixed(2)}</span>
                         </div>
                         <div className="flex justify-between text-sm">
-                          <span className="text-green-400">Combo Price:</span>
-                          <span className="text-green-400 font-bold">₨{combo.combo_price.toFixed(2)}</span>
+                          <span className="text-[var(--erp-money-positive)]">Combo Price:</span>
+                          <span className="text-[var(--erp-money-positive)] font-bold">₨{combo.combo_price.toFixed(2)}</span>
                         </div>
                         <div className="flex justify-between text-sm">
                           <span className="text-blue-400">You Save:</span>
@@ -3001,10 +3284,10 @@ export const EnhancedProductForm = ({
 
             {/* Empty State */}
             {combos.length === 0 && currentComboItems.length === 0 && (
-              <div className="bg-gray-800 border border-gray-700 rounded-xl p-8 text-center">
-                <Package size={48} className="text-gray-600 mx-auto mb-3" />
-                <p className="text-gray-400 mb-2">No combos created yet</p>
-                <p className="text-sm text-gray-500">
+              <div className="bg-muted border border-border rounded-xl p-8 text-center">
+                <Package size={48} className="text-muted-foreground mx-auto mb-3" />
+                <p className="text-muted-foreground mb-2">No combos created yet</p>
+                <p className="text-sm text-muted-foreground">
                   Start adding products above to create your first combo package
                 </p>
               </div>
@@ -3015,28 +3298,30 @@ export const EnhancedProductForm = ({
         )}
       </div>
 
-      <div className="p-6 border-t border-gray-800 bg-gray-900 sticky bottom-0 z-10 flex gap-4">
+      <div className="p-6 border-t border-border bg-card sticky bottom-0 z-10 flex gap-4">
         <button
           onClick={onCancel}
           type="button"
-          className="px-6 bg-gray-800 hover:bg-gray-700 text-white py-3 rounded-xl font-bold transition-colors border border-gray-700"
+          className="px-6 bg-muted hover:bg-muted text-foreground py-3 rounded-xl font-bold transition-colors border border-border"
         >
           Cancel
         </button>
         <button
-          onClick={handleSubmit((data) =>
-            onSubmit(data, "save"),
+          onClick={handleSubmit(
+            (data) => onSubmit(data, "save"),
+            onInvalid,
           )}
           type="button"
           disabled={saving}
-          className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-3 rounded-xl font-bold transition-colors disabled:opacity-50 disabled:pointer-events-none"
+          className="flex-1 bg-muted hover:bg-gray-600 text-foreground py-3 rounded-xl font-bold transition-colors disabled:opacity-50 disabled:pointer-events-none"
         >
           {saving ? 'Saving...' : 'Save Product'}
         </button>
         {onSaveAndAdd && (
           <button
-            onClick={handleSubmit((data) =>
-              onSubmit(data, "saveAndAdd"),
+            onClick={handleSubmit(
+              (data) => onSubmit(data, "saveAndAdd"),
+              onInvalid,
             )}
             type="button"
             disabled={saving}
@@ -3049,21 +3334,21 @@ export const EnhancedProductForm = ({
 
       {/* PART 5: Modal when blocking enable variations (parent-level stock exists) */}
       <Dialog open={blockVariationsModalOpen} onOpenChange={setBlockVariationsModalOpen}>
-        <DialogContent className="bg-gray-900 border-gray-700 text-white max-w-md">
+        <DialogContent className="bg-card border-border text-foreground max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-white">Cannot enable variations</DialogTitle>
+            <DialogTitle className="text-foreground">Cannot enable variations</DialogTitle>
           </DialogHeader>
-          <p className="text-gray-300 text-sm">
+          <p className="text-muted-foreground text-sm">
             Parent-level stock exists. Clear or adjust stock first.
           </p>
-          <p className="text-gray-400 text-xs mt-2">
+          <p className="text-muted-foreground text-xs mt-2">
             Clear or adjust stock in Inventory first, then add variations. Opening stock for each size/color can be set in the Variations tab after saving.
           </p>
           <DialogFooter className="mt-4">
             <button
               type="button"
               onClick={() => setBlockVariationsModalOpen(false)}
-              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm font-medium"
+              className="px-4 py-2 bg-muted hover:bg-gray-600 text-foreground rounded-lg text-sm font-medium"
             >
               OK
             </button>
@@ -3072,18 +3357,18 @@ export const EnhancedProductForm = ({
       </Dialog>
 
       <Dialog open={blockDisableVariationsModalOpen} onOpenChange={setBlockDisableVariationsModalOpen}>
-        <DialogContent className="bg-gray-900 border-gray-700 text-white max-w-md">
+        <DialogContent className="bg-card border-border text-foreground max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-white">Cannot disable variations</DialogTitle>
+            <DialogTitle className="text-foreground">Cannot disable variations</DialogTitle>
           </DialogHeader>
-          <p className="text-gray-300 text-sm">
+          <p className="text-muted-foreground text-sm">
             Variation-level stock exists. Cannot disable variations until variation stock is cleared or adjusted.
           </p>
           <DialogFooter className="mt-4">
             <button
               type="button"
               onClick={() => setBlockDisableVariationsModalOpen(false)}
-              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm font-medium"
+              className="px-4 py-2 bg-muted hover:bg-gray-600 text-foreground rounded-lg text-sm font-medium"
             >
               OK
             </button>
@@ -3093,21 +3378,21 @@ export const EnhancedProductForm = ({
 
       {/* PART 6: Modal when blocking enable combo (parent-level stock exists) */}
       <Dialog open={blockEnableComboModalOpen} onOpenChange={setBlockEnableComboModalOpen}>
-        <DialogContent className="bg-gray-900 border-gray-700 text-white max-w-md">
+        <DialogContent className="bg-card border-border text-foreground max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-white">Cannot enable combo</DialogTitle>
+            <DialogTitle className="text-foreground">Cannot enable combo</DialogTitle>
           </DialogHeader>
-          <p className="text-gray-300 text-sm">
+          <p className="text-muted-foreground text-sm">
             This product already has stock. Clear stock before enabling Combo mode.
           </p>
-          <p className="text-gray-400 text-xs mt-2">
+          <p className="text-muted-foreground text-xs mt-2">
             Clear or adjust stock in Inventory first, then enable Combo mode. Combo products do not hold stock - stock is managed through component products.
           </p>
           <DialogFooter className="mt-4">
             <button
               type="button"
               onClick={() => setBlockEnableComboModalOpen(false)}
-              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm font-medium"
+              className="px-4 py-2 bg-muted hover:bg-gray-600 text-foreground rounded-lg text-sm font-medium"
             >
               OK
             </button>
@@ -3117,21 +3402,21 @@ export const EnhancedProductForm = ({
 
       {/* PART 7: Modal when blocking disable combo (combo items exist) */}
       <Dialog open={blockDisableComboModalOpen} onOpenChange={setBlockDisableComboModalOpen}>
-        <DialogContent className="bg-gray-900 border-gray-700 text-white max-w-md">
+        <DialogContent className="bg-card border-border text-foreground max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-white">Cannot disable combo</DialogTitle>
+            <DialogTitle className="text-foreground">Cannot disable combo</DialogTitle>
           </DialogHeader>
-          <p className="text-gray-300 text-sm">
+          <p className="text-muted-foreground text-sm">
             This product has combo components. Remove them before disabling Combo mode.
           </p>
-          <p className="text-gray-400 text-xs mt-2">
+          <p className="text-muted-foreground text-xs mt-2">
             Delete all combo items in the Combos tab first, then you can disable Combo mode.
           </p>
           <DialogFooter className="mt-4">
             <button
               type="button"
               onClick={() => setBlockDisableComboModalOpen(false)}
-              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm font-medium"
+              className="px-4 py-2 bg-muted hover:bg-gray-600 text-foreground rounded-lg text-sm font-medium"
             >
               OK
             </button>

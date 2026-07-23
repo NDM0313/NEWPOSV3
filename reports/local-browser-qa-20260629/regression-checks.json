@@ -1,0 +1,11 @@
+{
+  "generated": "2026-06-29",
+  "result": "PASS",
+  "ledgerV2Loads": true,
+  "unifiedPreviewRoleGated": true,
+  "filtersWork": true,
+  "statementReloadWorks": true,
+  "consoleErrors": false,
+  "cashFlowLoaderSwap": false,
+  "featureFlagChange": false
+}

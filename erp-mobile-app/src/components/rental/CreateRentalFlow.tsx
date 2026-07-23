@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { ArrowLeft, Loader2, Plus, Minus, Search, ChevronDown, FileText } from 'lucide-react';
+import { ArrowLeft, Loader2, Plus, Minus, Search, ChevronDown } from 'lucide-react';
 import { ProductImage } from '../products/ProductImage';
 import { DateInputField } from '../shared/DateTimePicker';
 import { CustomerPickerList } from '../shared/CustomerPickerList';
@@ -13,10 +13,13 @@ import * as productsApi from '../../api/products';
 import * as rentalsApi from '../../api/rentals';
 import * as branchesApi from '../../api/branches';
 import * as accountsApi from '../../api/accounts';
+import { getBranchPaymentDefaults } from '../../api/branches';
+import { getDefaultAccounts } from '../../api/settings';
+import { resolveDefaultPaymentAccountId } from '../../utils/resolveDefaultPaymentAccount';
 import * as usersApi from '../../api/users';
 import { TransactionSuccessModal, type TransactionSuccessData } from '../shared/TransactionSuccessModal';
 import { CustomSelect, CustomSearchableSheet, NumericInput } from '../common';
-import { localNowDateString, formatLocalDateTimeDisplay } from '../../utils/localDate';
+import { localNowDateString, formatLocalDateTimeDisplay, formatLocalDateYYYYMMDD } from '../../utils/localDate';
 import type { User } from '../../types';
 import { useEffectiveWorkerId, useEffectiveWorkerProfileId, useEffectiveWorkerRole } from '../../context/CounterWorkerContext';
 import { useWriteBranchSelection } from '../../hooks/useWriteBranchSelection';
@@ -25,6 +28,7 @@ import { isRealBranchUuid } from '../../utils/branchId';
 import { useSubmitLock } from '../../contexts/LoadingContext';
 import { useFormDraft } from '../../hooks/useFormDraft';
 import { FormDraftRestoredBanner } from '../shared/FormDraftRestoredBanner';
+import { canAssignSaleCommission } from '../../lib/saleCommission';
 
 interface CreateRentalFlowProps {
   companyId: string | null;
@@ -35,8 +39,8 @@ interface CreateRentalFlowProps {
   onSuccess: () => void;
 }
 
-/** Step order: customer → products (qty + variation) → duration → rent → salesman → advance → payment_confirm (if advance > 0) → documents (NSC) → confirm */
-type Step = 'customer' | 'products' | 'duration' | 'rent' | 'salesman' | 'advance' | 'payment_confirm' | 'documents' | 'confirm';
+/** Step order: customer → products → duration → rent → salesman → advance → payment_confirm (optional) → confirm */
+type Step = 'customer' | 'products' | 'duration' | 'rent' | 'salesman' | 'advance' | 'payment_confirm' | 'confirm';
 
 interface SelectedRentalItem {
   key: string; // product.id + optional variationId
@@ -46,7 +50,21 @@ interface SelectedRentalItem {
   quantity: number;
 }
 
-const SECURITY_DOC_TYPES = ['CNIC', 'Passport', 'Driver License', 'Other'] as const;
+
+function addDaysToYmd(ymd: string, days: number): string {
+  const d = new Date(`${ymd}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return ymd;
+  d.setDate(d.getDate() + days);
+  return formatLocalDateYYYYMMDD(d);
+}
+
+function daysBetweenYmd(start: string, end: string): number {
+  const a = new Date(`${start}T12:00:00`);
+  const b = new Date(`${end}T12:00:00`);
+  if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return 0;
+  const diff = Math.ceil((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24));
+  return diff > 0 ? diff : 0;
+}
 
 type RentalCreateDraft = {
   step: Step;
@@ -55,13 +73,12 @@ type RentalCreateDraft = {
   lineRateMap: Record<string, string>;
   pickupDate: string;
   returnDate: string;
+  durationDays: number;
+  bookingDate: string;
   advancePaid: string;
   advancePaymentAccountId: string | null;
   salesmanId: string | null;
   commissionPct: string;
-  securityDocType: string;
-  securityDocNumber: string;
-  securityDocImageUrl: string;
   notes: string;
   documentNumber: string;
   pickedBranchId: string;
@@ -69,6 +86,8 @@ type RentalCreateDraft = {
 
 export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack, onSuccess }: CreateRentalFlowProps) {
   const responsive = useResponsive();
+  /** Local calendar "today" for date pickers (not UTC). */
+  const today = localNowDateString();
   const effectiveUserId = useEffectiveWorkerId(userId ?? '');
   const effectiveProfileId = useEffectiveWorkerProfileId();
   const effectiveRole = useEffectiveWorkerRole(userRole ?? 'admin');
@@ -104,24 +123,21 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
   const [lineRateMap, setLineRateMap] = useState<Record<string, string>>({});
   const [pickupDate, setPickupDate] = useState('');
   const [returnDate, setReturnDate] = useState('');
+  const [durationDays, setDurationDays] = useState(3);
+  const [bookingDate, setBookingDate] = useState(today);
   const [advancePaid, setAdvancePaid] = useState('');
   const [advancePaymentAccountId, setAdvancePaymentAccountId] = useState<string | null>(null);
   const [paymentAccounts, setPaymentAccounts] = useState<accountsApi.AccountRow[]>([]);
   const [salesmen, setSalesmen] = useState<usersApi.SalesmanRow[]>([]);
   const [salesmanId, setSalesmanId] = useState<string | null>(null);
   const [commissionPct, setCommissionPct] = useState('');
-  const [securityDocType, setSecurityDocType] = useState<string>('');
-  const [securityDocNumber, setSecurityDocNumber] = useState('');
-  const [securityDocImageUrl, setSecurityDocImageUrl] = useState('');
   const [notes, setNotes] = useState('');
   const [documentNumber, setDocumentNumber] = useState('');
   const [loading, setLoading] = useState(false);
-  const canPickSalesman = effectiveRole === 'admin' || effectiveRole === 'owner';
+  const canPickSalesman = canAssignSaleCommission(effectiveRole);
   const { run: runSave, busy: saving } = useSubmitLock();
   const [error, setError] = useState('');
   const [confirmationData, setConfirmationData] = useState<TransactionSuccessData | null>(null);
-  /** Local calendar "today" for date pickers (not UTC). */
-  const today = localNowDateString();
 
   const {
     showRestoredBanner: showRentalDraftBanner,
@@ -139,31 +155,31 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
       lineRateMap,
       pickupDate,
       returnDate,
+      durationDays,
+      bookingDate,
       advancePaid,
       advancePaymentAccountId,
       salesmanId,
       commissionPct,
-      securityDocType,
-      securityDocNumber,
-      securityDocImageUrl,
       notes,
       documentNumber,
       pickedBranchId: pickedBranchId ?? '',
     }),
     applySnapshot: (d) => {
-      setStep(d.step);
+      const normalizedStep =
+        String(d.step) === 'documents' ? 'confirm' : (d.step as Step);
+      setStep(normalizedStep);
       setSelectedCustomerId(d.selectedCustomerId);
       setSelectedItems(d.selectedItems);
       setLineRateMap(d.lineRateMap);
       setPickupDate(d.pickupDate);
       setReturnDate(d.returnDate);
+      setDurationDays(typeof d.durationDays === 'number' && d.durationDays > 0 ? d.durationDays : 3);
+      setBookingDate(d.bookingDate || today);
       setAdvancePaid(d.advancePaid);
       setAdvancePaymentAccountId(d.advancePaymentAccountId);
       setSalesmanId(d.salesmanId);
       setCommissionPct(d.commissionPct);
-      setSecurityDocType(d.securityDocType);
-      setSecurityDocNumber(d.securityDocNumber);
-      setSecurityDocImageUrl(d.securityDocImageUrl);
       setNotes(d.notes);
       setDocumentNumber(d.documentNumber);
       if (d.pickedBranchId) setPickedBranchId(d.pickedBranchId);
@@ -173,7 +189,14 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
   const filteredProducts = useMemo(() => {
     if (!productSearch.trim()) return products;
     const q = productSearch.trim().toLowerCase();
-    return products.filter((p) => p.name.toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q));
+    return products.filter((p) => {
+      if (p.name.toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q)) return true;
+      return (p.variations || []).some(
+        (v) =>
+          (v.label || '').toLowerCase().includes(q) ||
+          (v.sku || '').toLowerCase().includes(q),
+      );
+    });
   }, [products, productSearch]);
 
   useEffect(() => {
@@ -272,13 +295,35 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
   useEffect(() => {
     if (!companyId || (step !== 'advance' && step !== 'payment_confirm' && step !== 'confirm')) return;
     let c = false;
-    accountsApi.getPaymentAccounts(companyId).then(({ data }) => {
+    void (async () => {
+      const [{ data }, defaultsRes, branchDefs] = await Promise.all([
+        accountsApi.getPaymentAccounts(companyId),
+        getDefaultAccounts(companyId),
+        writeBranchId ? getBranchPaymentDefaults(writeBranchId) : Promise.resolve(null),
+      ]);
       if (c) return;
-      setPaymentAccounts(data || []);
-      if (data?.length === 1 && !advancePaymentAccountId) setAdvancePaymentAccountId(data[0].id);
-    });
-    return () => { c = true; };
-  }, [companyId, step, advancePaymentAccountId]);
+      const list = data || [];
+      setPaymentAccounts(list);
+      if (!advancePaymentAccountId && list.length > 0) {
+        const picks = list.map((a) => ({
+          id: a.id,
+          name: a.name,
+          type: a.type,
+          balance: a.balance ?? 0,
+          code: a.code ?? '',
+          isDefaultCash: a.isDefaultCash,
+          isDefaultBank: a.isDefaultBank,
+        }));
+        const resolved =
+          resolveDefaultPaymentAccountId('cash', picks, defaultsRes.data, branchDefs) ??
+          resolveDefaultPaymentAccountId('bank', picks, defaultsRes.data, branchDefs);
+        if (resolved) setAdvancePaymentAccountId(resolved);
+      }
+    })();
+    return () => {
+      c = true;
+    };
+  }, [companyId, step, writeBranchId]);
 
   useEffect(() => {
     if (!companyId || salesmen.length > 0) return;
@@ -363,7 +408,10 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
 
   const pickup = pickupDate ? new Date(pickupDate) : null;
   const ret = returnDate ? new Date(returnDate) : null;
-  const durationDays = pickup && ret && ret >= pickup ? Math.ceil((ret.getTime() - pickup.getTime()) / (1000 * 60 * 60 * 24)) || 1 : 0;
+  const effectiveDurationDays =
+    pickupDate && returnDate && ret && pickup && ret >= pickup
+      ? durationDays || daysBetweenYmd(pickupDate, returnDate) || 1
+      : durationDays;
   const itemsRentAmount = selectedItems.reduce((sum, item) => {
     const lineRate = Number(lineRateMap[item.key] ?? item.product.rentPricePerDay ?? 0) || 0;
     return sum + lineRate * item.quantity;
@@ -396,6 +444,10 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
       setError('Select pickup and return dates.');
       return;
     }
+    if (!bookingDate) {
+      setError('Select booking date.');
+      return;
+    }
     if (ret && pickup && ret < pickup) {
       setError('Return date must be after pickup date.');
       return;
@@ -412,11 +464,40 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
       productName: item.product.name,
       quantity: item.quantity,
       ratePerDay: Number(lineRateMap[item.key] ?? item.product.rentPricePerDay ?? 0) || 0,
-      durationDays,
+      durationDays: effectiveDurationDays,
       total: (Number(lineRateMap[item.key] ?? item.product.rentPricePerDay ?? 0) || 0) * item.quantity,
       variationId: item.variationId,
       variationLabel: item.variationLabel,
     }));
+
+    const availability = await rentalsApi.checkRentalAvailabilityForItems({
+      companyId,
+      items: items.map((i) => ({
+        productId: i.productId,
+        quantity: i.quantity,
+        variationId: i.variationId,
+      })),
+      startDate: pickupDate,
+      endDate: returnDate,
+      branchId: writeBranchId,
+    });
+
+    let skipAvailabilityCheck = false;
+    if (!availability.available) {
+      if (availability.requiresConfirmation) {
+        const ok = window.confirm(
+          `${availability.message ?? 'This item overlaps an existing booking.'}\n\nBook this item again anyway?`,
+        );
+        if (!ok) {
+          setError(availability.message ?? 'Booking cancelled.');
+          return;
+        }
+        skipAvailabilityCheck = true;
+      } else {
+        setError(availability.message ?? 'Failed to check availability.');
+        return;
+      }
+    }
 
     const commissionPctNum = commissionPct.trim() ? parseFloat(commissionPct) : NaN;
 
@@ -426,7 +507,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
       userId: effectiveUserId || null,
       customerId: selectedCustomer.id,
       customerName: selectedCustomer.name,
-      bookingDate: localNowDateString(),
+      bookingDate: bookingDate || today,
       pickupDate,
       returnDate,
       rentalCharges: customerRentTotal,
@@ -438,10 +519,8 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
       documentNumber: documentNumber.trim() || null,
       salesmanId: salesmanId || null,
       commissionPercent: Number.isFinite(commissionPctNum) ? commissionPctNum : null,
-      securityDocumentType: securityDocType || null,
-      securityDocumentNumber: securityDocNumber.trim() || null,
-      securityDocumentImageUrl: securityDocImageUrl.trim() || null,
       items,
+      skipAvailabilityCheck,
     });
 
     if (err) {
@@ -473,7 +552,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
       setError('Select payment account (Receive Advance Into).');
       return;
     }
-    setStep('documents');
+    setStep('confirm');
   };
 
   const closeRentalSuccessModal = () => {
@@ -591,9 +670,9 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
   // ─── Step 1: Product Selection ──────────────────────────────────────────
   if (step === 'products') {
     return (
-      <div className={`flex flex-col min-h-0 w-full bg-[#111827] ${selectedItems.length > 0 ? 'pb-28' : 'pb-8'}`}>
+      <div className={`flex flex-col min-h-0 flex-1 w-full bg-[#111827] ${selectedItems.length > 0 ? 'pb-28' : 'pb-8'}`}>
         <FormDraftRestoredBanner show={showRentalDraftBanner} onDismiss={dismissRentalDraftBanner} />
-        <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10 flow-screen-header">
+        <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10 flow-screen-header shrink-0">
           <div className="flex items-center gap-3 min-w-0">
             <button onClick={() => setStep('customer')} className="p-2 hover:bg-white/10 rounded-lg text-white shrink-0">
               <ArrowLeft className="w-5 h-5" />
@@ -604,7 +683,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
             </div>
           </div>
         </div>
-        <div className="p-4 space-y-4">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
           {/* Product search bar at top */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#6B7280]" />
@@ -778,7 +857,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
 
   // ─── Step 2: Duration Selection ──────────────────────────────────────────
   if (step === 'duration') {
-    const datesValid = pickupDate && returnDate && (!pickup || !ret || ret >= pickup);
+    const datesValid = bookingDate && pickupDate && returnDate && (!pickup || !ret || ret >= pickup);
     return (
       <div className="flex flex-col min-h-0 w-full bg-[#111827] pb-24">
         <FormDraftRestoredBanner show={showRentalDraftBanner} onDismiss={dismissRentalDraftBanner} />
@@ -815,31 +894,44 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <DateInputField
+              label="Booking Date"
+              value={bookingDate}
+              accent="rental"
+              onChange={setBookingDate}
+              required
+            />
+            <DateInputField
               label="Pickup Date"
               value={pickupDate}
-              min={today}
               accent="rental"
               onChange={(value) => {
-                const v = value && value < today ? today : value;
-                setPickupDate(v);
-                if (returnDate && v && returnDate < v) setReturnDate(v);
+                setPickupDate(value);
+                if (value) {
+                  setReturnDate(addDaysToYmd(value, durationDays));
+                }
               }}
               required
             />
             <DateInputField
               label="Return Date"
               value={returnDate}
-              min={pickupDate || today}
+              min={pickupDate || undefined}
               accent="rental"
               onChange={(value) => {
-                const minReturn = pickupDate || today;
-                const v = value && value < minReturn ? minReturn : value;
+                const minReturn = pickupDate;
+                const v = minReturn && value && value < minReturn ? minReturn : value;
                 setReturnDate(v);
+                if (pickupDate && v) {
+                  const d = daysBetweenYmd(pickupDate, v);
+                  if (d > 0) setDurationDays(d);
+                }
               }}
               required
             />
           </div>
-          <p className="text-xs text-[#6B7280]">Dates are for booking period and availability. Rent amount is entered in the next step.</p>
+          <p className="text-xs text-[#6B7280]">
+            Booking date is when the reservation is recorded. Pickup/return dates control availability. Booking # (REN-*) is assigned automatically; optional bill ref is on the rent step.
+          </p>
         </div>
         {datesValid && (
           <div className="fixed left-0 right-0 bottom-0 bg-[#1F2937] border-t border-[#374151] p-4 z-40 pb-[calc(1rem+env(safe-area-inset-bottom,0))]">
@@ -886,7 +978,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
           <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
             <p className="text-sm text-[#9CA3AF]">Dates</p>
             <p className="font-medium text-white">{pickupDate} → {returnDate}</p>
-            <p className="text-xs text-[#6B7280]">{durationDays} days (for reservation only)</p>
+            <p className="text-xs text-[#6B7280]">{effectiveDurationDays} days (for reservation only)</p>
           </div>
           <div className="space-y-3">
             <label className="block text-sm font-medium text-[#9CA3AF]">Set rent per selected dress *</label>
@@ -938,9 +1030,10 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
               type="text"
               value={documentNumber}
               onChange={(e) => setDocumentNumber(e.target.value)}
-              placeholder="e.g. A 109"
+              placeholder="e.g. A 109 — not the auto REN booking #"
               className="w-full h-10 bg-[#111827] border border-[#374151] rounded-lg px-3 text-white text-sm"
             />
+            <p className="text-xs text-[#6B7280] mt-2">System booking number (REN-*) is assigned on save; this field is only for your paper bill book reference.</p>
           </div>
         </div>
         {canNext && (
@@ -1125,81 +1218,6 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
             onClick={goNextFromAdvance}
             className="w-full h-12 bg-[#8B5CF6] hover:bg-[#7C3AED] rounded-lg font-medium text-white"
           >
-            Next: Documents →
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // ─── Step: Documents (NSC security doc) ──────────────────────────────────
-  if (step === 'documents') {
-    return (
-      <div className="flex flex-col min-h-0 w-full bg-[#111827] pb-24">
-        <FormDraftRestoredBanner show={showRentalDraftBanner} onDismiss={dismissRentalDraftBanner} />
-        <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10 flow-screen-header">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <button onClick={() => setStep('advance')} className="p-2 hover:bg-white/10 rounded-lg text-white shrink-0">
-                <ArrowLeft className="w-5 h-5" />
-              </button>
-              <div className="min-w-0">
-                <h1 className="text-lg font-semibold text-white">Security Document</h1>
-                <p className="text-xs text-white/80 truncate">Optional — collected at booking</p>
-              </div>
-            </div>
-            <button
-              onClick={() => setStep('confirm')}
-              className="shrink-0 px-4 py-2.5 bg-white text-[#7C3AED] hover:bg-white/90 rounded-lg font-medium text-sm shadow"
-            >
-              Next
-            </button>
-          </div>
-        </div>
-        <div className="p-4 space-y-4">
-          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 flex items-start gap-2">
-            <FileText className="w-5 h-5 text-[#8B5CF6] shrink-0 mt-0.5" />
-            <p className="text-xs text-[#9CA3AF]">
-              Record the customer’s identity document held as security (CNIC, Passport, etc.). You can also skip and capture it at pickup.
-            </p>
-          </div>
-          <div>
-            <CustomSelect
-              label="Document Type"
-              value={securityDocType}
-              onChange={setSecurityDocType}
-              options={[{ value: '', label: '— None —' }, ...SECURITY_DOC_TYPES.map((t) => ({ value: t, label: t }))]}
-              zIndexClass="z-[100]"
-            />
-          </div>
-          <div>
-            <label className="block text-sm text-[#9CA3AF] mb-2">Document Number</label>
-            <input
-              type="text"
-              value={securityDocNumber}
-              onChange={(e) => setSecurityDocNumber(e.target.value)}
-              placeholder="e.g. 42101-1234567-8"
-              disabled={!securityDocType}
-              className="w-full h-12 bg-[#1F2937] border border-[#374151] rounded-xl px-4 text-white disabled:opacity-50"
-            />
-          </div>
-          <div>
-            <label className="block text-sm text-[#9CA3AF] mb-2">Document Image URL (optional)</label>
-            <input
-              type="url"
-              value={securityDocImageUrl}
-              onChange={(e) => setSecurityDocImageUrl(e.target.value)}
-              placeholder="https://…"
-              className="w-full h-12 bg-[#1F2937] border border-[#374151] rounded-xl px-4 text-white"
-            />
-            <p className="text-xs text-[#6B7280] mt-1">Paste a link to an uploaded scan (Supabase storage etc.).</p>
-          </div>
-        </div>
-        <div className="fixed left-0 right-0 bottom-0 bg-[#1F2937] border-t border-[#374151] p-4 z-40 pb-[calc(1rem+env(safe-area-inset-bottom,0))]">
-          <button
-            onClick={() => setStep('confirm')}
-            className="w-full h-12 bg-[#8B5CF6] hover:bg-[#7C3AED] rounded-lg font-medium text-white"
-          >
             Next: Confirm Booking →
           </button>
         </div>
@@ -1227,7 +1245,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
             </div>
             {canNext && (
               <button
-                onClick={() => setStep('documents')}
+                onClick={() => setStep('confirm')}
                 className="shrink-0 px-4 py-2.5 bg-white text-[#7C3AED] hover:bg-white/90 rounded-lg font-medium text-sm shadow"
               >
                 Next
@@ -1267,11 +1285,11 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
         </div>
         <div className="fixed left-0 right-0 bottom-0 bg-[#1F2937] border-t border-[#374151] p-4 z-40 pb-[calc(1rem+env(safe-area-inset-bottom,0))]">
           <button
-            onClick={() => setStep('documents')}
+            onClick={() => setStep('confirm')}
             disabled={needAccount && !advancePaymentAccountId}
             className="w-full h-12 bg-[#8B5CF6] hover:bg-[#7C3AED] disabled:opacity-50 rounded-lg font-medium text-white"
           >
-            Next: Documents →
+            Next: Confirm Booking →
           </button>
         </div>
       </div>
@@ -1284,7 +1302,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
       <FormDraftRestoredBanner show={showRentalDraftBanner} onDismiss={dismissRentalDraftBanner} />
       <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10 flow-screen-header">
         <div className="flex items-center gap-3">
-          <button onClick={() => setStep('documents')} className="p-2 hover:bg-white/10 rounded-lg text-white">
+          <button onClick={() => setStep('advance')} className="p-2 hover:bg-white/10 rounded-lg text-white">
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
@@ -1312,8 +1330,8 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
         </div>
         <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
           <p className="text-sm text-[#9CA3AF]">Dates</p>
-          <p className="font-medium text-white">{pickupDate} → {returnDate}</p>
-          <p className="text-xs text-[#6B7280]">{durationDays} days</p>
+          <p className="font-medium text-white">Booked {bookingDate} · {pickupDate} → {returnDate}</p>
+          <p className="text-xs text-[#6B7280]">{effectiveDurationDays} rental days · Booking # (REN-*) assigned on save</p>
         </div>
         {documentNumber.trim() && (
           <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
@@ -1350,16 +1368,6 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
                 {Math.round(commissionBasePreview * (parseFloat(commissionPct) / 100)).toLocaleString()}
               </p>
             )}
-          </div>
-        )}
-        {securityDocType && (
-          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 space-y-1">
-            <p className="text-sm text-[#9CA3AF]">Security Document</p>
-            <p className="text-white font-medium">
-              {securityDocType}
-              {securityDocNumber ? ` — ${securityDocNumber}` : ''}
-            </p>
-            {securityDocImageUrl && <p className="text-xs text-[#6B7280] truncate">{securityDocImageUrl}</p>}
           </div>
         )}
         <div>

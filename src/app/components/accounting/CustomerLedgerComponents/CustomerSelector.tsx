@@ -32,8 +32,10 @@ export const CustomerSelector: React.FC<CustomerSelectorProps> = ({
     if (!companyId) return;
     setLoading(true);
     try {
-      const data = await contactService.getAllContacts(companyId, 'customer');
-      setCustomers(data || []);
+      const data = await contactService.getAllContacts(companyId);
+      setCustomers(
+        (data || []).filter((c) => c.type === 'customer' || c.type === 'both'),
+      );
     } catch (error) {
       console.error('[CUSTOMER SELECTOR] Error loading customers:', error);
     } finally {
@@ -61,14 +63,14 @@ export const CustomerSelector: React.FC<CustomerSelectorProps> = ({
   return (
     <div className="relative">
       <div
-        className="flex items-center gap-2 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 cursor-pointer hover:border-gray-600"
+        className="flex items-center gap-2 bg-muted border border-border rounded-lg px-3 py-2 cursor-pointer hover:border-gray-600"
         onClick={() => setIsOpen(!isOpen)}
       >
-        <Search size={16} className="text-gray-400" />
-        <span className="flex-1 text-sm text-gray-300">
+        <Search size={16} className="text-muted-foreground" />
+        <span className="flex-1 text-sm text-muted-foreground">
           {selectedCustomer ? selectedCustomer.name : 'Search by Name / Phone / Code'}
         </span>
-        <ChevronDown size={16} className="text-gray-400" />
+        <ChevronDown size={16} className="text-muted-foreground" />
       </div>
 
       {isOpen && (
@@ -77,33 +79,33 @@ export const CustomerSelector: React.FC<CustomerSelectorProps> = ({
             className="fixed inset-0 z-10"
             onClick={() => setIsOpen(false)}
           />
-          <div className="absolute top-full left-0 right-0 mt-2 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-20 max-h-96 overflow-hidden flex flex-col">
-            <div className="p-2 border-b border-gray-800">
+          <div className="absolute top-full left-0 right-0 mt-2 bg-card border border-border rounded-lg shadow-xl z-20 max-h-96 overflow-hidden flex flex-col">
+            <div className="p-2 border-b border-border">
               <Input
                 placeholder="Search customers..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="bg-gray-800 border-gray-700 text-white"
+                className="bg-muted border-border text-foreground"
                 autoFocus
               />
             </div>
             <div className="overflow-y-auto">
               {loading ? (
-                <div className="p-4 text-center text-gray-400 text-sm">Loading...</div>
+                <div className="p-4 text-center text-muted-foreground text-sm">Loading...</div>
               ) : filteredCustomers.length === 0 ? (
-                <div className="p-4 text-center text-gray-400 text-sm">No customers found</div>
+                <div className="p-4 text-center text-muted-foreground text-sm">No customers found</div>
               ) : (
                 filteredCustomers.map((customer) => (
                   <div
                     key={customer.id}
                     onClick={() => handleSelect(customer)}
                     className={cn(
-                      "p-3 hover:bg-gray-800 cursor-pointer border-b border-gray-800",
-                      selectedCustomer?.id === customer.id && "bg-gray-800"
+                      "p-3 hover:bg-muted cursor-pointer border-b border-border",
+                      selectedCustomer?.id === customer.id && "bg-muted"
                     )}
                   >
-                    <div className="font-medium text-white">{customer.name}</div>
-                    <div className="text-xs text-gray-400 mt-1">
+                    <div className="font-medium text-foreground">{customer.name}</div>
+                    <div className="text-xs text-muted-foreground mt-1">
                       {customer.code && <span>Code: {customer.code}</span>}
                       {customer.phone && (
                         <span className={customer.code ? ' | ' : ''}>Phone: {customer.phone}</span>

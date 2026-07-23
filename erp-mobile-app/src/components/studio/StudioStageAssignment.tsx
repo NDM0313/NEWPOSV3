@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Calendar, DollarSign, User, Tag, Loader2, Plus } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ArrowLeft, DollarSign, User, Tag, Loader2, Plus } from 'lucide-react';
+import { DateInputField } from '../shared/DateTimePicker';
 import * as studioApi from '../../api/studio';
 import * as contactsApi from '../../api/contacts';
 import { useSubmitLock } from '../../contexts/LoadingContext';
@@ -58,7 +59,6 @@ export function StudioStageAssignment({ companyId, onBack, onComplete, existingS
   const [hasCustomerCharge, setHasCustomerCharge] = useState(existingStage ? existingStage.customerCharge > 0 : false);
   const [expectedDate, setExpectedDate] = useState(existingStage?.expectedDate || '');
   const [notes, setNotes] = useState('');
-  const dateInputRef = useRef<HTMLInputElement>(null);
 
   const loadWorkers = async () => {
     setWorkersLoading(true);
@@ -123,15 +123,6 @@ export function StudioStageAssignment({ companyId, onBack, onComplete, existingS
       </SwipeBackShell>
     );
   }
-
-  /** Format YYYY-MM-DD → DD MMM YYYY (app standard) */
-  const formatDisplayDate = (iso: string): string => {
-    if (!iso || !iso.trim()) return '';
-    const [y, m, d] = iso.split('-');
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const month = months[parseInt(m || '1', 10) - 1] || m;
-    return `${d} ${month} ${y}`;
-  };
 
   const handleNext = () => {
     if (formBusy || step >= 5) return;
@@ -522,32 +513,13 @@ export function StudioStageAssignment({ companyId, onBack, onComplete, existingS
                 </div>
               </div>
               <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 w-full max-w-full min-w-0 overflow-hidden">
-                <label className="block text-sm font-medium text-white mb-2">
-                  <Calendar className="w-4 h-4 inline mr-1" />
-                  Expected Return Date
-                </label>
-                <div className="relative min-h-[48px]">
-                  <div
-                    className="w-full text-left px-4 py-3 bg-[#111827] border border-[#374151] rounded-xl text-white min-h-[48px] flex items-center gap-2 pointer-events-none"
-                    aria-hidden="true"
-                  >
-                    <Calendar className="w-4 h-4 text-[#9CA3AF] shrink-0" />
-                    <span className={expectedDate ? 'text-white' : 'text-[#6B7280]'}>
-                      {expectedDate ? formatDisplayDate(expectedDate) : 'Select date (DD MMM YYYY)'}
-                    </span>
-                  </div>
-                  <input
-                    ref={dateInputRef}
-                    type="date"
-                    value={expectedDate}
-                    onChange={(e) => setExpectedDate(e.target.value)}
-                    min={localNowDateString()}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                    style={{ fontSize: '16px' }}
-                    aria-label="Expected return date"
-                    title="Tap to choose date"
-                  />
-                </div>
+                <DateInputField
+                  label="Expected Return Date"
+                  value={expectedDate}
+                  onChange={setExpectedDate}
+                  min={localNowDateString()}
+                  required
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-white mb-2">Notes (optional)</label>

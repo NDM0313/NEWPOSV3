@@ -18,15 +18,15 @@ import {
   Clock,
   Package
 } from 'lucide-react';
-import { format, addDays, differenceInDays } from "date-fns";
-import { formatLocalDateYYYYMMDD } from '@/app/utils/localDate';
+import { format, addDays } from "date-fns";
+import { formatLocalDateYYYYMMDD, parseLocalDateInput } from '@/app/utils/localDate';
+import { formatQty } from '@/app/utils/quantity';
 import { cn } from "../ui/utils";
 import { Button } from "../ui/button";
-import { Calendar } from "../ui/calendar";
 import { Input } from "../ui/input";
 import { Badge } from "../ui/badge";
 import { ScrollArea } from "../ui/scroll-area";
-import { CalendarDatePicker } from "../ui/CalendarDatePicker";
+import { DateTimePicker, dateToDateTimePickerValue, dateTimePickerValueToDate } from "../ui/DateTimePicker";
 import {
   Popover,
   PopoverContent,
@@ -51,7 +51,7 @@ import {
   } from "../ui/command";
 import { Check, ChevronsUpDown, User, PlusCircle } from "lucide-react";
 import { Label } from "../ui/label";
-import { RentalProductSearch, SearchProduct } from './RentalProductSearch';
+import { RentalProductSearch, SearchProduct, matchesRentalProductSearch } from './RentalProductSearch';
 import { ProductImage } from '../products/ProductImage';
 import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDialog';
 import {
@@ -157,6 +157,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
   const [bookingDate, setBookingDate] = useState<Date>(new Date());
   const [pickupDate, setPickupDate] = useState<Date | undefined>(new Date());
   const [returnDate, setReturnDate] = useState<Date | undefined>(addDays(new Date(), 3));
+  const [durationDays, setDurationDays] = useState(3);
   const [rentalStatus, setRentalStatus] = useState("booked");
 
   const [selectedCustomer, setSelectedCustomer] = useState<string>("");
@@ -165,6 +166,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
   const [customerList, setCustomerList] = useState<Array<{id: string; name: string}>>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
+  const [productSearchTerm, setProductSearchTerm] = useState('');
 
   // Cart State — multi-item support
   const [selectedProduct, setSelectedProduct] = useState<SearchProduct | null>(null);
@@ -182,6 +184,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
   const [salesmanDropdownOpen, setSalesmanDropdownOpen] = useState(false);
   const [commissionType, setCommissionType] = useState<'percentage' | 'fixed'>('percentage');
   const [commissionValue, setCommissionValue] = useState<number>(0);
+  const [documentNumber, setDocumentNumber] = useState('');
   
   // Return Modal State
   const [showReturnModal, setShowReturnModal] = useState(false);
@@ -213,39 +216,79 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
           return [{ id: editRental!.customerId!, name: editRental!.customerName }, ...prev];
         });
       }
-      setBookingDate(editRental.startDate ? new Date(editRental.startDate) : new Date());
-      setPickupDate(editRental.startDate ? new Date(editRental.startDate) : new Date());
-      setReturnDate(editRental.expectedReturnDate ? new Date(editRental.expectedReturnDate) : addDays(new Date(), 3));
+      setBookingDate(editRental.createdAt ? parseLocalDateInput(editRental.createdAt) : new Date());
+      const editPickup = editRental.startDate ? parseLocalDateInput(editRental.startDate) : new Date();
+      const editReturn = editRental.expectedReturnDate
+        ? parseLocalDateInput(editRental.expectedReturnDate)
+        : addDays(new Date(), 3);
+      setPickupDate(editPickup);
+      setReturnDate(editReturn);
+      const editDuration = calculateRentalDays(editPickup, editReturn);
+      setDurationDays(editDuration > 0 ? editDuration : 3);
       setAdvancePaid(editRental.paidAmount?.toString() || '');
-      const firstItem = editRental.items?.[0];
-      if (firstItem) {
-        const rentVal = firstItem.total || firstItem.rate || 0;
-        const product: SearchProduct = {
-          id: firstItem.productId,
-          name: firstItem.productName,
-          sku: firstItem.sku || '',
+      setSalesmanId(editRental.salesmanId || '');
+      setDocumentNumber(editRental.documentNumber || '');
+      const editItems = editRental.items ?? [];
+      if (editItems.length > 0) {
+        const toSearchProduct = (item: (typeof editItems)[0]): SearchProduct => ({
+          id: item.productId,
+          name: item.productName,
+          sku: item.sku || '',
           image: '',
           status: 'available',
-          rentPrice: firstItem.rate || firstItem.total || 0,
+          rentPrice: item.rate || item.total || 0,
           retailPrice: 0,
-        };
-        setSelectedProduct(product);
-        productService.getProduct(String(firstItem.productId)).then((row) => {
-          const img = getPrimaryProductImageUrl(row as Record<string, unknown>);
-          setSelectedProduct((prev) =>
-            prev && String(prev.id) === String(firstItem.productId) ? { ...prev, image: img } : prev
+        });
+        if (editItems.length === 1) {
+          const firstItem = editItems[0];
+          const rentVal = firstItem.total || firstItem.rate || 0;
+          setSelectedProduct(toSearchProduct(firstItem));
+          setCartItems([]);
+          productService.getProduct(String(firstItem.productId)).then((row) => {
+            const img = getPrimaryProductImageUrl(row as Record<string, unknown>);
+            setSelectedProduct((prev) =>
+              prev && String(prev.id) === String(firstItem.productId) ? { ...prev, image: img } : prev
+            );
+          }).catch(() => {});
+          setManualRentPrice(String(rentVal || editRental.totalAmount || ''));
+        } else {
+          setSelectedProduct(null);
+          setManualRentPrice('');
+          setCartItems(
+            editItems.map((item) => ({
+              product: toSearchProduct(item),
+              rentPrice: item.total || item.rate || 0,
+            }))
           );
-        }).catch(() => {});
-        setManualRentPrice(String(rentVal || editRental.totalAmount || ''));
+          editItems.forEach((item) => {
+            productService.getProduct(String(item.productId)).then((row) => {
+              const img = getPrimaryProductImageUrl(row as Record<string, unknown>);
+              setCartItems((prev) =>
+                prev.map((c) =>
+                  String(c.product.id) === String(item.productId) ? { ...c, product: { ...c.product, image: img } } : c
+                )
+              );
+            }).catch(() => {});
+          });
+        }
+      } else {
+        setSelectedProduct(null);
+        setCartItems([]);
+        setManualRentPrice('');
       }
     } else if (isOpen && !editRental) {
       setSelectedCustomer('');
       setSelectedProduct(null);
+      setCartItems([]);
       setManualRentPrice('');
       setAdvancePaid('');
+      setSalesmanId('');
+      setDocumentNumber('');
       setBookingDate(new Date());
       setPickupDate(new Date());
       setReturnDate(addDays(new Date(), 3));
+      setDurationDays(3);
+      setProductSearchTerm('');
     }
   }, [isOpen, editRental?.id]);
 
@@ -376,9 +419,24 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
 
   if (!isOpen) return null;
 
-  const totalDays = pickupDate && returnDate 
-    ? differenceInDays(returnDate, pickupDate) 
-    : 0;
+  const totalDays = durationDays;
+
+  const handlePickupDateChange = (value: string) => {
+    const nextPickup = dateTimePickerValueToDate(value) || undefined;
+    setPickupDate(nextPickup);
+    if (nextPickup) {
+      setReturnDate(addDays(nextPickup, durationDays));
+    }
+  };
+
+  const handleReturnDateChange = (value: string) => {
+    const nextReturn = dateTimePickerValueToDate(value) || undefined;
+    setReturnDate(nextReturn);
+    if (pickupDate && nextReturn) {
+      const days = calculateRentalDays(pickupDate, nextReturn);
+      if (days > 0) setDurationDays(days);
+    }
+  };
 
   const handleCustomerSelect = (id: string) => {
       setSelectedCustomer(id);
@@ -443,12 +501,14 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
         await rentalService.updateBooking(editRental.id, companyId, {
           customerId: selectedCustomer,
           customerName: getCustomerName(),
+          bookingDate: formatLocalDateYYYYMMDD(bookingDate),
           pickupDate: formatLocalDateYYYYMMDD(pickupDate),
           returnDate: formatLocalDateYYYYMMDD(returnDate),
           rentalCharges: totalRent,
           securityDeposit: 0,
-          paidAmount: parseFloat(advancePaid) || 0,
           notes: null,
+          documentNumber: documentNumber.trim() || null,
+          salesmanId: salesmanId || null,
           items,
         });
         toast.success('Booking updated successfully');
@@ -472,6 +532,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
           securityDeposit: 0,
           paidAmount: 0,
           notes: null,
+          documentNumber: documentNumber.trim() || null,
           salesmanId: salesmanId || null,
           commissionAmount: salesmanId ? calcCommission : 0,
           commissionPercent: salesmanId && commissionType === 'percentage' ? commissionValue : null,
@@ -591,22 +652,26 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
     return product;
   });
 
+  const filteredProductsForGrid = productsWithConflicts.filter((product) =>
+    matchesRentalProductSearch(product, productSearchTerm),
+  );
+
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex justify-end animate-in fade-in duration-200">
-      <div className="w-full max-w-6xl bg-gray-950 h-full shadow-2xl flex flex-col border-l border-gray-800 animate-in slide-in-from-right duration-300">
+    <div className="fixed inset-0 z-50 bg-[var(--erp-overlay)] backdrop-blur-sm flex justify-end animate-in fade-in duration-200">
+      <div className="w-full max-w-6xl bg-input-background h-full shadow-2xl flex flex-col border-l border-border animate-in slide-in-from-right duration-300">
         
         {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between bg-gray-900/50">
+        <div className="px-6 py-4 border-b border-border flex items-center justify-between bg-muted/40">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-pink-500/20 text-pink-500">
               <ShoppingBag size={20} />
             </div>
             <div>
-               <h2 className="text-xl font-bold text-white">{editRental ? 'Edit Booking' : 'New Rental Booking'}</h2>
-               <p className="text-xs text-gray-400">{editRental ? editRental.rentalNo : 'Manage bridal dresses, security & dates'}</p>
+               <h2 className="text-xl font-bold text-foreground">{editRental ? 'Edit Booking' : 'New Rental Booking'}</h2>
+               <p className="text-xs text-muted-foreground">{editRental ? editRental.rentalNo : 'Manage bridal dresses, security & dates'}</p>
             </div>
           </div>
-          <Button variant="ghost" size="icon" onClick={onClose} className="text-gray-400 hover:text-white">
+          <Button variant="ghost" size="icon" onClick={onClose} className="text-muted-foreground hover:text-foreground">
             <span className="sr-only">Close</span>
             <XIcon />
           </Button>
@@ -616,38 +681,38 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
         <div className="flex-1 flex overflow-hidden">
             
           {/* Left Side: Product Selection & Date Management */}
-          <div className="w-1/2 flex flex-col border-r border-gray-800">
+          <div className="w-1/2 flex flex-col border-r border-border">
              
              {/* RENTAL SCHEDULE CARD - FIXED HEADER */}
-             <div className="shrink-0 p-5 border-b border-gray-800 bg-gray-900/30 space-y-5">
+             <div className="shrink-0 p-5 border-b border-border bg-muted/30 space-y-5">
                 
                 {/* Row 1: Transaction Meta Data */}
                 <div className="flex items-center justify-between gap-4">
                    <div className="flex-1 space-y-1">
-                      <Label className="text-xs text-gray-500 uppercase">Customer</Label>
+                      <Label className="text-xs text-muted-foreground uppercase">Customer</Label>
                         <Popover open={customerSearchOpen} onOpenChange={setCustomerSearchOpen}>
                             <PopoverTrigger asChild>
                                 <Button
                                 variant="outline"
                                 role="combobox"
-                                className="w-full justify-between bg-gray-900 border-gray-700 text-white hover:bg-gray-800 hover:text-white h-9"
+                                className="w-full justify-between bg-card border-border text-foreground hover:bg-muted hover:text-foreground h-9"
                                 >
                                 {getCustomerName()}
                                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                 </Button>
                             </PopoverTrigger>
-                            <PopoverContent className="w-[300px] p-0 bg-gray-900 border-gray-800 text-white">
-                                <Command className="bg-gray-900 text-white">
+                            <PopoverContent className="w-[300px] p-0 bg-card border-border text-foreground">
+                                <Command className="bg-card text-foreground">
                                     <CommandInput 
                                         placeholder="Search customer..." 
-                                        className="h-9 border-none focus:ring-0 text-white"
+                                        className="h-9 border-none focus:ring-0 text-foreground"
                                         value={customerSearchTerm}
                                         onValueChange={setCustomerSearchTerm}
                                     />
                                     <CommandList>
                                         <CommandEmpty>
                                         <div className="p-2">
-                                            <p className="text-sm text-gray-400 mb-2 text-center">No results found.</p>
+                                            <p className="text-sm text-muted-foreground mb-2 text-center">No results found.</p>
                                             <Button 
                                             variant="ghost" 
                                             className="w-full justify-start text-blue-400 hover:text-blue-300"
@@ -664,7 +729,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                                             key={customer.id}
                                             value={customer.name}
                                             onSelect={() => handleCustomerSelect(customer.id.toString())}
-                                            className="text-white hover:bg-gray-800 cursor-pointer"
+                                            className="text-foreground hover:bg-muted cursor-pointer"
                                             >
                                             <Check
                                                 className={cn(
@@ -682,47 +747,61 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                         </Popover>
                    </div>
                    <div className="w-32 space-y-1">
-                      <Label className="text-xs text-gray-500 uppercase">Booking #</Label>
-                      <div className="h-9 flex items-center px-3 bg-gray-800/50 border border-gray-800 rounded text-sm text-gray-400 font-mono">
+                      <Label className="text-xs text-muted-foreground uppercase">Booking #</Label>
+                      <div className="h-9 flex items-center px-3 bg-muted/50 border border-border rounded text-sm text-muted-foreground font-mono">
                         {editRental?.bookingNo || 'Auto'}
                       </div>
                    </div>
                    <div className="w-36 space-y-1">
-                      <CalendarDatePicker
+                      <DateTimePicker
                         label="Booking Date"
-                        value={bookingDate}
-                        onChange={(date) => setBookingDate(date || new Date())}
-                        showTime={true}
+                        value={dateToDateTimePickerValue(bookingDate)}
+                        onChange={(v) => setBookingDate(dateTimePickerValueToDate(v) || new Date())}
+                        required
                       />
                    </div>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground uppercase">Bill / manual ref # (optional)</Label>
+                  <Input
+                    type="text"
+                    value={documentNumber}
+                    onChange={(e) => setDocumentNumber(e.target.value)}
+                    placeholder="e.g. A 109 — not the auto REN booking #"
+                    className="h-9 bg-card border-border text-foreground text-sm"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    System booking number (REN-*) is assigned on save; this field is only for your paper bill book reference.
+                  </p>
                 </div>
 
                 {/* Row 1b: Salesman & Commission */}
                 <div className="flex items-end gap-4">
                    <div className="flex-1 space-y-1">
-                      <Label className="text-xs text-gray-500 uppercase">Salesman</Label>
+                      <Label className="text-xs text-muted-foreground uppercase">Salesman</Label>
                       <Popover open={salesmanDropdownOpen} onOpenChange={setSalesmanDropdownOpen}>
                         <PopoverTrigger asChild>
-                          <Button variant="outline" role="combobox" className="w-full justify-between bg-gray-900 border-gray-700 text-white hover:bg-gray-800 hover:text-white h-9">
+                          <Button variant="outline" role="combobox" className="w-full justify-between bg-card border-border text-foreground hover:bg-muted hover:text-foreground h-9">
                             {salesmanId ? (salesmen.find((s: any) => s.id === salesmanId)?.full_name || salesmen.find((s: any) => s.id === salesmanId)?.name || 'Select') : 'No salesman'}
                             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                           </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-[260px] p-0 bg-gray-900 border-gray-800 text-white">
-                          <Command className="bg-gray-900 text-white">
-                            <CommandInput placeholder="Search salesman..." className="h-9 border-none focus:ring-0 text-white" />
+                        <PopoverContent className="w-[260px] p-0 bg-card border-border text-foreground">
+                          <Command className="bg-card text-foreground">
+                            <CommandInput placeholder="Search salesman..." className="h-9 border-none focus:ring-0 text-foreground" />
                             <CommandList>
                               <CommandEmpty>No salesman found</CommandEmpty>
                               <CommandGroup>
-                                <CommandItem value="__none__" onSelect={() => handleSalesmanSelect('')} className="text-gray-400 hover:bg-gray-800 cursor-pointer">
+                                <CommandItem value="__none__" onSelect={() => handleSalesmanSelect('')} className="text-muted-foreground hover:bg-muted cursor-pointer">
                                   <Check className={cn("mr-2 h-4 w-4", !salesmanId ? "opacity-100" : "opacity-0")} />
                                   None
                                 </CommandItem>
                                 {salesmen.map((s: any) => (
-                                  <CommandItem key={s.id} value={s.full_name || s.name || s.id} onSelect={() => handleSalesmanSelect(s.id)} className="text-white hover:bg-gray-800 cursor-pointer">
+                                  <CommandItem key={s.id} value={s.full_name || s.name || s.id} onSelect={() => handleSalesmanSelect(s.id)} className="text-foreground hover:bg-muted cursor-pointer">
                                     <Check className={cn("mr-2 h-4 w-4", salesmanId === s.id ? "opacity-100" : "opacity-0")} />
                                     {s.full_name || s.name}
-                                    {s.rental_commission_percent != null && <span className="ml-auto text-xs text-gray-500">{s.rental_commission_percent}%</span>}
+                                    {s.rental_commission_percent != null && <span className="ml-auto text-xs text-muted-foreground">{s.rental_commission_percent}%</span>}
                                   </CommandItem>
                                 ))}
                               </CommandGroup>
@@ -734,30 +813,30 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                    {salesmanId && (
                      <>
                        <div className="w-28 space-y-1">
-                         <Label className="text-xs text-gray-500 uppercase">Comm. Type</Label>
+                         <Label className="text-xs text-muted-foreground uppercase">Comm. Type</Label>
                          <Select value={commissionType} onValueChange={(v: any) => setCommissionType(v)}>
-                           <SelectTrigger className="h-9 bg-gray-900 border-gray-700 text-white text-sm">
+                           <SelectTrigger className="h-9 bg-card border-border text-foreground text-sm">
                              <SelectValue />
                            </SelectTrigger>
-                           <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                           <SelectContent className="bg-popover border-border text-popover-foreground">
                              <SelectItem value="percentage">%</SelectItem>
                              <SelectItem value="fixed">Fixed</SelectItem>
                            </SelectContent>
                          </Select>
                        </div>
                        <div className="w-24 space-y-1">
-                         <Label className="text-xs text-gray-500 uppercase">{commissionType === 'percentage' ? 'Rate %' : 'Amount'}</Label>
+                         <Label className="text-xs text-muted-foreground uppercase">{commissionType === 'percentage' ? 'Rate %' : 'Amount'}</Label>
                          <Input
                            type="number"
                            value={commissionValue || ''}
                            onChange={e => setCommissionValue(parseFloat(e.target.value) || 0)}
-                           className="h-9 bg-gray-900 border-gray-700 text-white text-right text-sm"
+                           className="h-9 bg-card border-border text-foreground text-right text-sm"
                            placeholder="0"
                          />
                        </div>
                        <div className="w-28 space-y-1">
-                         <Label className="text-xs text-gray-500 uppercase">Commission</Label>
-                         <div className="h-9 flex items-center px-3 bg-gray-800/50 border border-gray-800 rounded text-sm text-amber-400 font-mono">
+                         <Label className="text-xs text-muted-foreground uppercase">Commission</Label>
+                         <div className="h-9 flex items-center px-3 bg-muted/50 border border-border rounded text-sm text-amber-400 font-mono">
                            {formatCurrency(commissionType === 'percentage' ? ((currentRentPrice - totalExpenses) * commissionValue) / 100 : commissionValue)}
                          </div>
                        </div>
@@ -766,9 +845,9 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                 </div>
 
                 {/* Row 2: Rental Timeline (High Emphasis) */}
-                <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 relative overflow-hidden">
+                <div className="bg-card border border-border rounded-lg p-4 relative overflow-hidden">
                    {/* Visual Connector Line */}
-                   <div className="absolute top-1/2 left-4 right-10 border-t-2 border-dashed border-gray-800 -z-0"></div>
+                   <div className="absolute top-1/2 left-4 right-10 border-t-2 border-dashed border-border -z-0"></div>
                    <ArrowRight className="absolute top-1/2 right-4 -translate-y-1/2 text-gray-800 -z-0" size={16} />
                    
                    <div className="relative z-10 flex items-end justify-between gap-4">
@@ -778,73 +857,37 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                          <Label className="text-xs text-blue-400 uppercase font-bold flex items-center gap-2">
                             <Box size={14} /> Pickup Date
                          </Label>
-                         <Popover>
-                            <PopoverTrigger asChild>
-                                <Button
-                                variant={"outline"}
-                                className={cn(
-                                    "w-full justify-start text-left font-medium bg-gray-800 border-gray-700 text-white hover:bg-gray-700 h-11",
-                                    !pickupDate && "text-muted-foreground"
-                                )}
-                                >
-                                <CalendarIcon className="mr-2 h-4 w-4 text-gray-400" />
-                                {pickupDate ? format(pickupDate, "PPP") : <span>Pick date</span>}
-                                </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0 bg-gray-900 border-gray-800" align="start">
-                                <Calendar
-                                    mode="single"
-                                    selected={pickupDate}
-                                    onSelect={setPickupDate}
-                                    initialFocus
-                                    className="bg-gray-900 text-white"
-                                />
-                            </PopoverContent>
-                        </Popover>
+                         <DateTimePicker
+                            value={pickupDate ? dateToDateTimePickerValue(pickupDate) : ''}
+                            onChange={handlePickupDateChange}
+                            placeholder="Pick date & time"
+                          />
                       </div>
 
                       {/* Duration Indicator */}
-                      <div className="bg-gray-950 px-3 py-1 rounded-full border border-gray-800 text-xs font-mono text-gray-400 mb-3 shrink-0">
+                      <div className="bg-input-background px-3 py-1 rounded-full border border-border text-xs font-mono text-muted-foreground mb-3 shrink-0">
                          {totalDays > 0 ? `${totalDays} Days` : '--'}
                       </div>
 
                       {/* Return Date */}
                       <div className="space-y-2 flex-1">
-                         <Label className="text-xs text-green-400 uppercase font-bold flex items-center gap-2">
+                         <Label className="text-xs text-[var(--erp-money-positive)] uppercase font-bold flex items-center gap-2">
                              Return Date <Box size={14} className="rotate-180" />
                          </Label>
-                         <Popover>
-                            <PopoverTrigger asChild>
-                                <Button
-                                variant={"outline"}
-                                className={cn(
-                                    "w-full justify-start text-left font-medium bg-gray-800 border-gray-700 text-white hover:bg-gray-700 h-11",
-                                    !returnDate && "text-muted-foreground",
-                                    hasConflict && "border-red-500 text-red-500 bg-red-900/10"
-                                )}
-                                >
-                                <CalendarIcon className="mr-2 h-4 w-4 text-gray-400" />
-                                {returnDate ? format(returnDate, "PPP") : <span>Pick date</span>}
-                                </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0 bg-gray-900 border-gray-800" align="end">
-                                <Calendar
-                                    mode="single"
-                                    selected={returnDate}
-                                    onSelect={setReturnDate}
-                                    initialFocus
-                                    className="bg-gray-900 text-white"
-                                    fromDate={pickupDate}
-                                />
-                            </PopoverContent>
-                        </Popover>
+                         <div className={cn(hasConflict && 'rounded-lg ring-1 ring-red-500')}>
+                            <DateTimePicker
+                              value={returnDate ? dateToDateTimePickerValue(returnDate) : ''}
+                              onChange={handleReturnDateChange}
+                              placeholder="Pick date & time"
+                            />
+                          </div>
                       </div>
 
                    </div>
 
                    {/* Conflict Warning Toast */}
                    {hasConflict && conflictCheck.message && (
-                       <div className="absolute inset-x-0 -bottom-1 bg-red-900/90 backdrop-blur text-white text-xs p-2 flex items-center justify-center gap-2 animate-in slide-in-from-bottom-2">
+                       <div className="absolute inset-x-0 -bottom-1 bg-red-900/90 backdrop-blur text-foreground text-xs p-2 flex items-center justify-center gap-2 animate-in slide-in-from-bottom-2">
                           <AlertCircle size={14} className="text-red-300" />
                           <span className="font-semibold">Conflict:</span> {conflictCheck.message}
                        </div>
@@ -854,12 +897,12 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                 {/* Section 3: Status & Search */}
                 <div className="flex gap-4">
                      <div className="w-1/3 space-y-1">
-                        <Label className="text-xs text-gray-500 uppercase">Rental Status</Label>
+                        <Label className="text-xs text-muted-foreground uppercase">Rental Status</Label>
                         <Select value={rentalStatus} onValueChange={setRentalStatus}>
-                            <SelectTrigger className="bg-gray-900 border-gray-700 text-white h-9">
+                            <SelectTrigger className="bg-card border-border text-foreground h-9">
                                 <SelectValue />
                             </SelectTrigger>
-                            <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                            <SelectContent className="bg-popover border-border text-popover-foreground">
                                 <SelectItem value="booked">Booked (Reserved)</SelectItem>
                                 <SelectItem value="dispatched">Dispatched (Out)</SelectItem>
                                 <SelectItem value="returned">Returned</SelectItem>
@@ -868,9 +911,11 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                         </Select>
                      </div>
                      <div className="flex-1 space-y-1 relative">
-                        <Label className="text-xs text-gray-500 uppercase">Product Search</Label>
+                        <Label className="text-xs text-muted-foreground uppercase">Product Search</Label>
                         <RentalProductSearch
                           products={productsWithConflicts}
+                          searchTerm={productSearchTerm}
+                          onSearchTermChange={setProductSearchTerm}
                           onSelect={async (p) => {
                             // Check if product has variations
                             const fullProd = products.find(pp => String(pp.id) === String(p.id));
@@ -901,9 +946,9 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
 
              {/* Product Grid (Filtered / Display) */}
              <div className="flex-1 overflow-hidden">
-              <ScrollArea className="h-full p-4 bg-gray-950">
+              <ScrollArea className="h-full p-4 bg-input-background">
                    <div className="grid grid-cols-1 gap-3">
-                       {productsWithConflicts.map((product) => {
+                       {filteredProductsForGrid.map((product) => {
                            const isUnavailable = product.status === 'unavailable';
                            const isSelected = selectedProduct?.id === product.id;
                            const isConflict = hasConflict && product.id === selectedProduct?.id; // Only show conflict for selected
@@ -914,21 +959,21 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                                  onClick={() => !isUnavailable && setSelectedProduct(product)}
                                  className={cn(
                                      "flex gap-4 p-3 rounded-lg border transition-all cursor-pointer relative overflow-hidden",
-                                     isSelected ? "bg-pink-900/10 border-pink-500 ring-1 ring-pink-500/50" : "bg-gray-900 border-gray-800 hover:border-gray-700",
-                                     (isUnavailable) && "opacity-60 cursor-not-allowed bg-gray-900/50"
+                                     isSelected ? "bg-pink-900/10 border-pink-500 ring-1 ring-pink-500/50" : "bg-card border-border hover:border-border",
+                                     (isUnavailable) && "opacity-60 cursor-not-allowed bg-muted/40"
                                  )}
                                >
-                                   <div className="w-20 h-20 bg-gray-800 rounded-md overflow-hidden shrink-0 flex items-center justify-center">
+                                   <div className="w-20 h-20 bg-muted rounded-md overflow-hidden shrink-0 flex items-center justify-center">
                                        {product.image ? (
                                          <ProductImage src={product.image} alt={product.name} className={cn("w-full h-full object-cover", isUnavailable && "grayscale")} />
                                        ) : null}
                                        {!product.image && (
-                                         <Package className="w-8 h-8 text-gray-500" />
+                                         <Package className="w-8 h-8 text-muted-foreground" />
                                        )}
                                    </div>
                                    <div className="flex-1 flex flex-col justify-center">
                                        <div className="flex justify-between items-start">
-                                           <h4 className={cn("font-medium text-white", isUnavailable && "line-through text-gray-500")}>{product.name}</h4>
+                                           <h4 className={cn("font-medium text-foreground", isUnavailable && "line-through text-muted-foreground")}>{product.name}</h4>
                                            {isUnavailable ? (
                                                <Badge variant="outline" className="bg-red-900/20 text-red-500 border-red-900/50 text-[10px]">
                                                    {product.unavailableReason}
@@ -948,9 +993,9 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                                                </div>
                                            )}
                                        </div>
-                                       <p className="text-xs text-gray-500 mb-2">{product.sku}</p>
+                                       <p className="text-xs text-muted-foreground mb-2">{product.sku}</p>
                                        <div className="flex items-center gap-4 text-sm">
-                                           <span className="text-gray-500 line-through text-xs">Retail: {formatCurrency(Number(product.retailPrice) || 0)}</span>
+                                           <span className="text-muted-foreground line-through text-xs">Retail: {formatCurrency(Number(product.retailPrice) || 0)}</span>
                                            {product.status === 'retail_only' ? (
                                              <span className="font-bold text-blue-400 text-xs bg-blue-900/20 px-2 py-0.5 rounded">Set Rent Manually</span>
                                            ) : (
@@ -968,26 +1013,26 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
           </div>
 
           {/* Right Side: Security & Summary */}
-          <div className="w-1/2 flex flex-col bg-gray-950/50 border-l border-gray-800">
+          <div className="w-1/2 flex flex-col bg-muted/40 border-l border-border">
               <div className="flex-1 overflow-hidden">
                 <ScrollArea className="h-full p-6">
                   <div className="space-y-6">
                   
                   {/* Selected Item Summary */}
                   {selectedProduct ? (
-                      <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 flex gap-4 items-center animate-in fade-in slide-in-from-bottom-4">
-                          <div className="w-16 h-16 bg-gray-800 rounded overflow-hidden flex items-center justify-center">
+                      <div className="bg-card border border-border rounded-lg p-4 flex gap-4 items-center animate-in fade-in slide-in-from-bottom-4">
+                          <div className="w-16 h-16 bg-muted rounded overflow-hidden flex items-center justify-center">
                               {selectedProduct.image ? (
                                 <ProductImage src={selectedProduct.image} alt="" className="w-full h-full object-cover" />
                               ) : (
-                                <Package className="w-7 h-7 text-gray-500" />
+                                <Package className="w-7 h-7 text-muted-foreground" />
                               )}
                           </div>
                           <div className="flex-1">
                               <div className="flex items-start justify-between">
                                 <div>
-                                    <p className="text-xs text-gray-400">Selected Item</p>
-                                    <h3 className="font-bold text-white">{selectedProduct.name}</h3>
+                                    <p className="text-xs text-muted-foreground">Selected Item</p>
+                                    <h3 className="font-bold text-foreground">{selectedProduct.name}</h3>
                                 </div>
                                 {isManualRent && (
                                     <Badge className="bg-blue-600 hover:bg-blue-500 text-white border-none flex items-center gap-1">
@@ -999,7 +1044,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                               <div className="mt-2">
                                   <div className="flex items-end gap-2">
                                       <div className="flex-1">
-                                        <Label className="text-xs text-gray-400">
+                                        <Label className="text-xs text-muted-foreground">
                                           {isManualRent ? 'Set Rent Amount (Manual)' : 'Rent Amount (Editable)'}
                                         </Label>
                                         <Input
@@ -1007,16 +1052,16 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                                           onChange={(e) => setManualRentPrice(e.target.value)}
                                           placeholder="Enter Rent Amount"
                                           className={cn(
-                                              "h-9 font-bold text-white w-48 transition-colors",
+                                              "h-9 font-bold text-foreground w-48 transition-colors",
                                               isManualRent
                                                   ? "border-blue-500 focus:ring-blue-500 bg-blue-900/10"
-                                                  : "border-pink-500/50 focus:border-pink-500 focus:ring-pink-500 bg-gray-900 hover:bg-pink-900/10"
+                                                  : "border-pink-500/50 focus:border-pink-500 focus:ring-pink-500 bg-card hover:bg-pink-900/10"
                                           )}
                                           autoFocus={!!isManualRent}
                                         />
                                       </div>
                                       <Button size="sm" onClick={addToCart} disabled={currentItemPrice <= 0}
-                                        className="h-9 bg-pink-600 hover:bg-pink-500 text-white">
+                                        className="h-9 bg-pink-600 hover:bg-pink-500 text-foreground">
                                         <PlusCircle size={14} className="mr-1" /> Add
                                       </Button>
                                   </div>
@@ -1024,7 +1069,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                           </div>
                       </div>
                   ) : (
-                      <div className="border border-dashed border-gray-800 rounded-lg p-8 text-center text-gray-500">
+                      <div className="border border-dashed border-border rounded-lg p-8 text-center text-muted-foreground">
                           Select a dress from the list to proceed
                       </div>
                   )}
@@ -1032,35 +1077,35 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                   {/* Cart Items */}
                   {cartItems.length > 0 && (
                     <div className="space-y-2">
-                      <Label className="text-xs text-gray-500 uppercase">Cart ({cartItems.length} items)</Label>
+                      <Label className="text-xs text-muted-foreground uppercase">Cart ({cartItems.length} items)</Label>
                       {cartItems.map(c => (
-                        <div key={c.product.id} className="flex items-center gap-3 bg-gray-900 border border-gray-800 rounded-lg p-3">
-                          <div className="w-10 h-10 bg-gray-800 rounded overflow-hidden flex items-center justify-center shrink-0">
-                            {c.product.image ? <ProductImage src={c.product.image} alt="" className="w-full h-full object-cover" /> : <Package className="w-5 h-5 text-gray-500" />}
+                        <div key={c.product.id} className="flex items-center gap-3 bg-card border border-border rounded-lg p-3">
+                          <div className="w-10 h-10 bg-muted rounded overflow-hidden flex items-center justify-center shrink-0">
+                            {c.product.image ? <ProductImage src={c.product.image} alt="" className="w-full h-full object-cover" /> : <Package className="w-5 h-5 text-muted-foreground" />}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm text-white font-medium truncate">{c.product.name}</p>
+                            <p className="text-sm text-foreground font-medium truncate">{c.product.name}</p>
                             <p className="text-xs text-pink-400 font-mono">{formatCurrency(c.rentPrice)}</p>
                           </div>
-                          <button onClick={() => removeFromCart(c.product.id)} className="text-gray-500 hover:text-red-400 text-xs">✕</button>
+                          <button onClick={() => removeFromCart(c.product.id)} className="text-muted-foreground hover:text-red-400 text-xs">✕</button>
                         </div>
                       ))}
                     </div>
                   )}
 
                   <div className="space-y-2">
-                    <Label className="text-xs text-gray-500 uppercase">Dress devaluation (wear / upkeep)</Label>
-                    <div className="text-xs text-gray-400 bg-gray-900/60 border border-gray-800 rounded px-3 py-2">
+                    <Label className="text-xs text-muted-foreground uppercase">Dress devaluation (wear / upkeep)</Label>
+                    <div className="text-xs text-muted-foreground bg-muted/60 border border-border rounded px-3 py-2">
                       Applied automatically from Settings on booking save.
                     </div>
                   </div>
 
                   {/* Notes */}
                   <div className="space-y-2">
-                      <Label className="text-xs text-gray-500 uppercase">Booking Notes</Label>
+                      <Label className="text-xs text-muted-foreground uppercase">Booking Notes</Label>
                       <Input
                         placeholder="Measurements, alteration requests, etc."
-                        className="bg-gray-900 border-gray-800 text-white"
+                        className="bg-card border-border text-foreground"
                       />
                   </div>
 
@@ -1082,52 +1127,56 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
               </div>
 
               {/* Footer Calculations */}
-              <div className="p-6 border-t border-gray-800 bg-gray-950">
+              <div className="p-6 border-t border-border bg-input-background">
                   <div className="space-y-3 mb-4">
-                      <div className="flex justify-between text-sm text-gray-400">
+                      <div className="flex justify-between text-sm text-muted-foreground">
                           <span>Total Rent</span>
-                          <span className="text-white font-medium">{formatCurrency(currentRentPrice)}</span>
+                          <span className="text-foreground font-medium">{formatCurrency(currentRentPrice)}</span>
                       </div>
                       {salesmanId && commissionValue > 0 && (
-                        <div className="flex justify-between text-sm text-gray-400">
+                        <div className="flex justify-between text-sm text-muted-foreground">
                           <span>Commission ({commissionType === 'percentage' ? `${commissionValue}%` : 'Fixed'})</span>
                           <span className="text-amber-400 font-mono">{formatCurrency(commissionType === 'percentage' ? ((currentRentPrice - totalExpenses) * commissionValue) / 100 : commissionValue)}</span>
                         </div>
                       )}
                       {totalExpenses > 0 && (
-                        <div className="flex justify-between text-sm text-gray-400">
+                        <div className="flex justify-between text-sm text-muted-foreground">
                           <span>Expenses</span>
                           <span className="text-red-400 font-mono">-{formatCurrency(totalExpenses)}</span>
                         </div>
                       )}
                       {totalExpenses > 0 && (
-                        <div className="flex justify-between text-sm text-gray-400">
+                        <div className="flex justify-between text-sm text-muted-foreground">
                           <span>Net Profit</span>
                           <span className="text-emerald-400 font-bold">{formatCurrency(currentRentPrice - totalExpenses)}</span>
                         </div>
                       )}
-                      <div className="flex justify-between items-center text-sm text-gray-400">
-                          <span>Advance to collect (intent)</span>
+                      <div className="flex justify-between items-center text-sm text-muted-foreground">
+                          <span>{editRental ? 'Paid (locked)' : 'Advance to collect (intent)'}</span>
                           <div className="w-32">
                               <Input 
-                                className="h-8 text-right bg-gray-900 border-gray-700 text-white"
+                                className="h-8 text-right bg-card border-border text-foreground"
                                 placeholder="0"
                                 value={advancePaid}
                                 onChange={(e) => setAdvancePaid(e.target.value)}
+                                disabled={!!editRental}
+                                readOnly={!!editRental}
                               />
                           </div>
                       </div>
-                      <p className="text-[11px] text-gray-500 leading-snug">
-                        Not received until you confirm payment. If you skip the payment step, full rent stays due.
+                      <p className="text-[11px] text-muted-foreground leading-snug">
+                        {editRental
+                          ? 'Paid amount cannot be changed here. Use View Payments / Receive Payment to adjust cash.'
+                          : 'Not received until you confirm payment. If you skip the payment step, full rent stays due.'}
                       </p>
-                      <div className="flex justify-between text-sm font-bold text-white pt-2 border-t border-gray-800">
+                      <div className="flex justify-between text-sm font-bold text-foreground pt-2 border-t border-border">
                           <span>Balance due (confirmed)</span>
                           <span className="text-pink-500">
                               {formatCurrency(Math.max(0, currentRentPrice))}
                           </span>
                       </div>
                       {advanceIntentNum > 0.009 && (
-                        <div className="flex justify-between text-xs text-gray-500">
+                        <div className="flex justify-between text-xs text-muted-foreground">
                           <span>After advance is collected</span>
                           <span>{formatCurrency(Math.max(0, currentRentPrice - advanceIntentNum))}</span>
                         </div>
@@ -1135,21 +1184,21 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                   </div>
                   
                   <Button 
-                    className="w-full bg-pink-600 hover:bg-pink-500 text-white font-bold h-12 text-lg shadow-lg shadow-pink-600/20"
+                    className="w-full bg-pink-600 hover:bg-pink-500 text-foreground font-bold h-12 text-lg shadow-lg shadow-pink-600/20"
                     disabled={(cartItems.length === 0 && !selectedProduct) || saving}
                     onClick={handleBookOrder}
                   >
-                      {saving ? "Saving..." : "Book Order"} <ArrowRight className="ml-2" size={18} />
+                      {saving ? "Saving..." : editRental ? "Update Order" : "Book Order"} <ArrowRight className="ml-2" size={18} />
                   </Button>
               </div>
           </div>
         </div>
 
         <Dialog open={advancePromptOpen} onOpenChange={(o) => !o && setAdvancePromptOpen(false)}>
-          <DialogContent className="bg-gray-950 border-gray-800 text-white sm:max-w-md">
+          <DialogContent className="bg-input-background border-border text-foreground sm:max-w-md">
             <DialogHeader>
               <DialogTitle>Collect advance now?</DialogTitle>
-              <DialogDescription className="text-gray-400">
+              <DialogDescription className="text-muted-foreground">
                 Booking is saved. You can record the advance to a specific cash/bank account, continue without payment, or dismiss.
               </DialogDescription>
             </DialogHeader>
@@ -1202,10 +1251,10 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
 
       {/* Variation Picker Dialog */}
       <Dialog open={variationPickerOpen} onOpenChange={setVariationPickerOpen}>
-        <DialogContent className="bg-gray-900 border-gray-700 max-w-md">
+        <DialogContent className="bg-card border-border max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-white">Select Variation</DialogTitle>
-            <DialogDescription className="text-gray-400">
+            <DialogTitle className="text-foreground">Select Variation</DialogTitle>
+            <DialogDescription className="text-muted-foreground">
               {variationPickerProduct?.name} — choose a variation
             </DialogDescription>
           </DialogHeader>
@@ -1218,7 +1267,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                 <button
                   key={v.id}
                   type="button"
-                  className="w-full text-left px-4 py-3 rounded-lg bg-gray-800 hover:bg-gray-700 border border-gray-700 transition-colors"
+                  className="w-full text-left px-4 py-3 rounded-lg bg-muted hover:bg-muted border border-border transition-colors"
                   onClick={() => {
                     if (variationPickerProduct) {
                       setSelectedProduct({
@@ -1235,11 +1284,11 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                 >
                   <div className="flex justify-between items-center">
                     <div>
-                      <p className="text-sm font-medium text-white">{attrs || v.sku}</p>
-                      <p className="text-xs text-gray-500">SKU: {v.sku} · Stock: {v.stock}</p>
+                      <p className="text-sm font-medium text-foreground">{attrs || v.sku}</p>
+                      <p className="text-xs text-muted-foreground">SKU: {v.sku} · Stock: {formatQty(v.stock)}</p>
                     </div>
                     <div className="text-right">
-                      {v.price > 0 && <p className="text-sm text-green-400">Rs. {v.price.toLocaleString()}</p>}
+                      {v.price > 0 && <p className="text-sm text-[var(--erp-money-positive)]">Rs. {v.price.toLocaleString()}</p>}
                       <p className={`text-xs ${v.stock > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                         {v.stock > 0 ? 'Available' : 'Out of stock'}
                       </p>

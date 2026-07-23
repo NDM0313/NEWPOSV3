@@ -13,9 +13,16 @@ import { useNavigation } from '@/app/context/NavigationContext';
 import { format } from 'date-fns';
 import { cn } from '@/app/components/ui/utils';
 import { getAttachmentOpenUrl } from '@/app/utils/paymentAttachmentUrl';
+import { collectTransactionOwnedAttachments } from '@/app/utils/transactionAttachments';
 import type { AccountingEntry, PaymentMethod } from '@/app/context/AccountingContext';
 import { toast } from 'sonner';
+import { safeSessionStorageSetItem } from '@/app/lib/safeBrowserStorage';
 import { getManualReceiptAllocationSummary, type ManualReceiptAllocationSummary } from '@/app/services/paymentAllocationService';
+import {
+  getManualReceiptGlDriftSummary,
+  repairManualReceiptGlDrift,
+  type ManualReceiptGlDriftSummary,
+} from '@/app/services/manualReceiptGlDriftService';
 import { UnifiedPaymentDialog, type PaymentDialogProps } from '@/app/components/shared/UnifiedPaymentDialog';
 import { getSaleDisplayNumber, getPurchaseDisplayNumber } from '@/app/lib/documentDisplayNumbers';
 import { contactService } from '@/app/services/contactService';
@@ -28,9 +35,32 @@ import {
   dispatchAccountingEditCommitted,
   isPureManualJournalReferenceType,
 } from '@/app/lib/unifiedTransactionEdit';
-import { journalReversalBlockedReason } from '@/app/lib/journalEntryEditPolicy';
+import { dispatchOpenAddEntryV2, type AddEntryV2Origin } from '@/app/components/accounting/AddEntryV2Host';
+import { journalReversalBlockedReason, canOpenOrphanAdjustmentInJournalEditor } from '@/app/lib/journalEntryEditPolicy';
 import { resolvePaymentIdForMutation } from '@/app/lib/paymentRowEditRouting';
-import { getPaymentChainMutationBlockReason } from '@/app/services/paymentChainMutationGuard';
+import { getPaymentChainMutationBlockReason, fetchPaymentChainState } from '@/app/services/paymentChainMutationGuard';
+import {
+  getTransactionActions,
+  isTransactionActionPanelEnabled,
+  type TransactionActionId,
+} from '@/app/lib/transactionActionRules';
+import { canApplyDeveloperRepair } from '@/app/lib/developerAccountingAccess';
+import {
+  getStaleCorrectionReversalCandidates,
+  voidStaleCorrectionReversals,
+} from '@/app/services/accountingIntegrityService';
+import {
+  STALE_REVERSAL_VOID_LABEL,
+  staleCorrectionReversalVoidConfirmMessage,
+} from '@/app/lib/staleCorrectionReversalPolicy';
+import {
+  MANUAL_JE_CANCEL_LABEL,
+  manualJournalCancelConfirmMessage,
+} from '@/app/lib/manualJournalCancelPolicy';
+import { TransactionActionPanel } from '@/app/components/accounting/TransactionActionPanel';
+import { TransactionConfirmDialog } from '@/app/components/accounting/TransactionConfirmDialog';
+import { openJournalSourceDocumentFromEntry } from '@/app/lib/openJournalSourceDocument';
+import { getJournalEntrySourceDocumentOpenTarget } from '@/app/lib/journalEntryEditPolicy';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/app/components/ui/sheet';
 import {
   fetchPaymentDeepTrace,
@@ -40,6 +70,10 @@ import {
 import { activityLogService } from '@/app/services/activityLogService';
 import { stripJournalEditAuditSuffix, journalDescriptionForDisplay } from '@/app/utils/journalDescriptionDisplay';
 import { resolveRentalPaymentDisplay } from '@/app/lib/rentalPaymentRef';
+import {
+  isOrphanReceiptJournalEntry,
+  ORPHAN_RECEIPT_HIDE_HELP,
+} from '@/app/lib/orphanReceiptPolicy';
 
 function rowMethodToPaymentMethod(m: unknown): PaymentMethod {
   const x = String(m || '').toLowerCase();
@@ -52,11 +86,21 @@ interface TransactionDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   referenceNumber: string; // Can be journal_entry_id (UUID) or reference_no (string)
+  /** When opening from Account Ledger, prefer this exact journal row over entry_no heuristics. */
+  journalEntryIdHint?: string;
   /** PF-14.3B: When opening from grouped journal row, pass all entries in the document thread to show edit trail. */
   groupEntries?: AccountingEntry[];
   /** After load, open the same unified editor as the primary Edit action (journal / payment / source). */
   autoLaunchUnifiedEdit?: boolean;
   onAutoLaunchUnifiedEditConsumed?: () => void;
+  /** Open payment trace sheet once transaction is loaded. */
+  autoOpenPaymentTrace?: boolean;
+  onAutoOpenPaymentTraceConsumed?: () => void;
+  /** Scroll to activity / audit section once transaction is loaded. */
+  autoScrollToAudit?: boolean;
+  onAutoScrollToAuditConsumed?: () => void;
+  /** When opened from Account Ledger, suppress accounting tab switch on unified edit launch. */
+  editOrigin?: AddEntryV2Origin;
 }
 
 function mapRentalRowForPaymentDialog(row: Record<string, any>) {
@@ -199,31 +243,59 @@ async function enrichLedgerPaymentEditorFields(args: {
   };
 }
 
+function collectTransactionAttachmentUrls(
+  transaction: { attachments?: unknown; reference_type?: string; payment_id?: string } | null | undefined,
+  options: {
+    expenseReceiptUrl?: string | null;
+    sourceDocumentAttachments?: unknown;
+    paymentAttachments?: unknown;
+  } = {}
+): string[] {
+  const owned = collectTransactionOwnedAttachments({
+    referenceType: transaction?.reference_type,
+    paymentId: transaction?.payment_id,
+    jeAttachments: transaction?.attachments,
+    paymentAttachments: options.paymentAttachments,
+    expenseReceiptUrl: options.expenseReceiptUrl,
+    documentAttachments: options.sourceDocumentAttachments,
+  });
+  return owned.map((a) => a.url);
+}
+
 export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
   isOpen,
   onClose,
   referenceNumber,
+  journalEntryIdHint,
   groupEntries,
   autoLaunchUnifiedEdit = false,
   onAutoLaunchUnifiedEditConsumed,
+  autoOpenPaymentTrace = false,
+  onAutoOpenPaymentTraceConsumed,
+  autoScrollToAudit = false,
+  onAutoScrollToAuditConsumed,
+  editOrigin,
 }) => {
-  const { companyId, branchId } = useSupabase();
+  const { companyId, branchId, userRole } = useSupabase();
   const { openDrawer, setCurrentView } = useNavigation();
   const accounting = useAccounting();
   const { run, busy } = useSubmitLock();
+  const useTransactionActionPanel = isTransactionActionPanelEnabled();
+  const activitySectionRef = useRef<HTMLDivElement | null>(null);
   const [transaction, setTransaction] = useState<any>(null);
   /** Active PF-07 reversal child exists for loaded header — locks edit/reverse like Journal list. */
   const [txnHasActiveCorrectionReversal, setTxnHasActiveCorrectionReversal] = useState(false);
   const [loading, setLoading] = useState(false);
   const actionLocked = busy || loading;
   const [selectedAttachment, setSelectedAttachment] = useState<string | null>(null);
-  const [journalQuickEditOpen, setJournalQuickEditOpen] = useState(false);
-  const [editEntryDate, setEditEntryDate] = useState('');
-  const [editDescription, setEditDescription] = useState('');
-  const [savingJournalEdit, setSavingJournalEdit] = useState(false);
+  const [expenseReceiptUrl, setExpenseReceiptUrl] = useState<string | null>(null);
+  const [sourceDocumentAttachments, setSourceDocumentAttachments] = useState<unknown>(null);
+  const [paymentAttachments, setPaymentAttachments] = useState<unknown>(null);
   /** Effective journal lines for payment (original + account-adjustment JEs merged) so Bank shows after Cash→Bank edit */
   const [effectiveLines, setEffectiveLines] = useState<any[]>([]);
   const [manualReceiptSummary, setManualReceiptSummary] = useState<ManualReceiptAllocationSummary | null>(null);
+  const [glDriftSummary, setGlDriftSummary] = useState<ManualReceiptGlDriftSummary | null>(null);
+  const [glDriftRepairBusy, setGlDriftRepairBusy] = useState(false);
   const [manualReceiptEditorOpen, setManualReceiptEditorOpen] = useState(false);
   const [supplierManualEditorOpen, setSupplierManualEditorOpen] = useState(false);
   const [rentalPaymentEditorOpen, setRentalPaymentEditorOpen] = useState(false);
@@ -255,6 +327,14 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
   const [accountSearch, setAccountSearch] = useState<Record<string, string>>({});
   const [activityLogs, setActivityLogs] = useState<Awaited<ReturnType<typeof activityLogService.getEntityActivityLogs>>>([]);
   const [loadingActivityLogs, setLoadingActivityLogs] = useState(false);
+  const [staleReversalVoidEligible, setStaleReversalVoidEligible] = useState(false);
+  const [pendingConfirm, setPendingConfirm] = useState<{
+    title: string;
+    description: string;
+    confirmLabel: string;
+    action: 'reverse' | 'void_stale' | 'void_payment' | 'orphan' | 'undo_last';
+  } | null>(null);
+  const canVoidStaleReversal = canApplyDeveloperRepair(userRole);
 
   const loadPaymentTrace = useCallback(async () => {
     if (!companyId || !transaction?.id) return;
@@ -306,21 +386,30 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
   );
 
   const [paymentChainBlockReason, setPaymentChainBlockReason] = useState<string | null>(null);
+  const [paymentChainMemberCount, setPaymentChainMemberCount] = useState(0);
 
   useEffect(() => {
     if (!companyId || !transaction?.id) {
       setPaymentChainBlockReason(null);
+      setPaymentChainMemberCount(groupEntries?.length ?? 0);
       return;
     }
     let cancelled = false;
     void (async () => {
       const r = await getPaymentChainMutationBlockReason(companyId, String(transaction.id));
       if (!cancelled) setPaymentChainBlockReason(r);
+      const paymentId = transaction.payment_id ?? transaction.payment?.id;
+      if (paymentId) {
+        const chain = await fetchPaymentChainState(companyId, String(paymentId));
+        if (!cancelled) setPaymentChainMemberCount(chain.memberCount);
+      } else if (!cancelled) {
+        setPaymentChainMemberCount(groupEntries?.length ?? 0);
+      }
     })();
     return () => {
       cancelled = true;
     };
-  }, [companyId, transaction?.id]);
+  }, [companyId, transaction?.id, transaction?.payment_id, transaction?.payment, groupEntries?.length]);
 
   useEffect(() => {
     autoLaunchConsumedRef.current = false;
@@ -330,7 +419,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     if (isOpen && referenceNumber && companyId) {
       loadTransaction();
     }
-  }, [isOpen, referenceNumber, companyId]);
+  }, [isOpen, referenceNumber, journalEntryIdHint, companyId]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -341,8 +430,139 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
       setRentalForPaymentDialog(null);
       setTxnHasActiveCorrectionReversal(false);
       setJournalQuickEditOpen(false);
+      setExpenseReceiptUrl(null);
+      setSourceDocumentAttachments(null);
+      setPaymentAttachments(null);
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!transaction || !companyId) {
+      setExpenseReceiptUrl(null);
+      setSourceDocumentAttachments(null);
+      setPaymentAttachments(null);
+      return;
+    }
+    const paymentId =
+      transaction.payment_id ??
+      (Array.isArray(transaction.payment) ? transaction.payment[0]?.id : transaction.payment?.id);
+    if (paymentId) {
+      let cancelled = false;
+      void (async () => {
+        try {
+          const { supabase } = await import('@/lib/supabase');
+          const { data } = await supabase
+            .from('payments')
+            .select('attachments')
+            .eq('id', String(paymentId))
+            .eq('company_id', companyId)
+            .maybeSingle();
+          if (!cancelled) {
+            setPaymentAttachments((data as { attachments?: unknown } | null)?.attachments ?? null);
+            setExpenseReceiptUrl(null);
+            setSourceDocumentAttachments(null);
+          }
+        } catch {
+          if (!cancelled) {
+            setPaymentAttachments(null);
+            setExpenseReceiptUrl(null);
+            setSourceDocumentAttachments(null);
+          }
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }
+    const prt = String(transaction.reference_type || '').toLowerCase();
+    const refId = transaction.reference_id;
+    if ((prt === 'expense' || prt === 'extra_expense') && refId) {
+      let cancelled = false;
+      void (async () => {
+        try {
+          const { supabase } = await import('@/lib/supabase');
+          const { data } = await supabase
+            .from('expenses')
+            .select('receipt_url')
+            .eq('id', refId)
+            .eq('company_id', companyId)
+            .maybeSingle();
+          if (!cancelled) {
+            setExpenseReceiptUrl(data?.receipt_url ? String(data.receipt_url) : null);
+            setSourceDocumentAttachments(null);
+            setPaymentAttachments(null);
+          }
+        } catch {
+          if (!cancelled) {
+            setExpenseReceiptUrl(null);
+            setSourceDocumentAttachments(null);
+            setPaymentAttachments(null);
+          }
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }
+    if (
+      refId &&
+      (prt === 'sale' ||
+        prt === 'sale_adjustment' ||
+        prt === 'sale_reversal' ||
+        prt === 'purchase' ||
+        prt === 'purchase_adjustment' ||
+        prt === 'purchase_return')
+    ) {
+      let cancelled = false;
+      void (async () => {
+        try {
+          const { supabase } = await import('@/lib/supabase');
+          const table =
+            prt === 'sale' || prt === 'sale_adjustment' || prt === 'sale_reversal' ? 'sales' : 'purchases';
+          const { data } = await supabase
+            .from(table)
+            .select('attachments')
+            .eq('id', refId)
+            .eq('company_id', companyId)
+            .maybeSingle();
+          if (!cancelled) {
+            setExpenseReceiptUrl(null);
+            setSourceDocumentAttachments(data?.attachments ?? null);
+            setPaymentAttachments(null);
+          }
+        } catch {
+          if (!cancelled) {
+            setExpenseReceiptUrl(null);
+            setSourceDocumentAttachments(null);
+            setPaymentAttachments(null);
+          }
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }
+    setExpenseReceiptUrl(null);
+    setSourceDocumentAttachments(null);
+    setPaymentAttachments(null);
+  }, [transaction?.id, transaction?.reference_type, transaction?.reference_id, transaction?.payment_id, companyId]);
+
+  const transactionAttachmentUrls = useMemo(
+    () =>
+      collectTransactionAttachmentUrls(transaction, {
+        expenseReceiptUrl,
+        sourceDocumentAttachments,
+        paymentAttachments,
+      }),
+    [transaction, expenseReceiptUrl, sourceDocumentAttachments, paymentAttachments]
+  );
+
+  const openFirstTransactionAttachment = useCallback(async () => {
+    const url = transactionAttachmentUrls[0];
+    if (!url) return;
+    const openUrl = await getAttachmentOpenUrl(url);
+    setSelectedAttachment(openUrl);
+  }, [transactionAttachmentUrls]);
 
   useEffect(() => {
     if (!transaction || String(transaction.reference_type || '').toLowerCase() !== 'manual_receipt') {
@@ -393,41 +613,56 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
         payment_id: transaction.payment_id,
         is_void: transaction.is_void,
         payment_chain_is_historical: transaction.payment_chain_is_historical,
+        action_fingerprint: transaction.action_fingerprint,
+        description: transaction.description,
         hasActiveCorrectionReversal: txnHasActiveCorrectionReversal,
       },
       paymentForReversalPolicy
     );
   }, [transaction, paymentForReversalPolicy, txnHasActiveCorrectionReversal]);
 
-  const openJournalQuickEdit = () => {
-    if (!transaction) return;
-    setEditEntryDate(
-      transaction.entry_date ? format(new Date(transaction.entry_date), 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd')
-    );
-    setEditDescription(String(transaction.description || ''));
-    setJournalQuickEditOpen(true);
-  };
+  const paymentForActions = useMemo(() => {
+    if (!transaction) return null;
+    return Array.isArray(transaction.payment) ? transaction.payment[0] : transaction.payment;
+  }, [transaction]);
 
-  const saveJournalQuickEdit = async () => {
-    if (!companyId || !transaction?.id) return;
-    setSavingJournalEdit(true);
-    try {
-      const res = await accountingService.updateManualJournalEntry(companyId, transaction.id, {
-        entry_date: editEntryDate,
-        description: editDescription,
-      });
-      if (!res.ok) {
-        toast.error(res.error || 'Could not save journal');
-        return;
-      }
-      toast.success('Journal updated');
-      setJournalQuickEditOpen(false);
-      await loadTransaction();
-      dispatchAccountingEditCommitted();
-    } finally {
-      setSavingJournalEdit(false);
+  useEffect(() => {
+    if (!companyId || !transaction?.id) {
+      setStaleReversalVoidEligible(false);
+      return;
     }
-  };
+    const rt = String(transaction.reference_type || '').toLowerCase().trim();
+    if (rt !== 'correction_reversal' || transaction.is_void === true) {
+      setStaleReversalVoidEligible(false);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const candidates = await getStaleCorrectionReversalCandidates(companyId);
+        if (!cancelled) {
+          setStaleReversalVoidEligible(candidates.some((c) => c.id === String(transaction.id)));
+        }
+      } catch {
+        if (!cancelled) setStaleReversalVoidEligible(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, transaction?.id, transaction?.reference_type, transaction?.is_void]);
+
+  useEffect(() => {
+    if (!autoOpenPaymentTrace || !isOpen || loading || !transaction) return;
+    setPaymentTraceOpen(true);
+    onAutoOpenPaymentTraceConsumed?.();
+  }, [autoOpenPaymentTrace, isOpen, loading, transaction, onAutoOpenPaymentTraceConsumed]);
+
+  useEffect(() => {
+    if (!autoScrollToAudit || !isOpen || loading || !transaction) return;
+    activitySectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    onAutoScrollToAuditConsumed?.();
+  }, [autoScrollToAudit, isOpen, loading, transaction, onAutoScrollToAuditConsumed]);
 
   const runUnifiedEdit = useCallback(async () => {
     if (!transaction || !transactionForUnifiedPolicy || !companyId) return;
@@ -460,13 +695,22 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     try {
       switch (resolution.kind) {
         case 'manual_journal_editor':
-          openJournalQuickEdit();
+          if (typeof window !== 'undefined') {
+            dispatchOpenAddEntryV2({
+              entryType: 'pure_journal',
+              editJournalEntryId: String(transaction.id),
+              origin: editOrigin,
+            });
+          }
+          if (editOrigin !== 'account_ledger') setCurrentView('accounting');
+          onClose();
           return;
         case 'document_editor': {
           if (resolution.sourceType === 'sale') {
             const { saleService } = await import('@/app/services/saleService');
+            const { convertFromSupabaseSale } = await import('@/app/context/SalesContext');
             const full = await saleService.getSaleById(resolution.sourceId);
-            openDrawer('edit-sale', undefined, { sale: full });
+            openDrawer('edit-sale', undefined, { sale: full ? convertFromSupabaseSale(full) : full });
             onClose();
             return;
           }
@@ -477,15 +721,28 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
             onClose();
             return;
           }
-          if (typeof window !== 'undefined') {
-            sessionStorage.setItem('pendingRentalDetailsId', resolution.sourceId);
-          }
+          safeSessionStorageSetItem('pendingRentalDetailsId', resolution.sourceId);
           setCurrentView('rentals');
           onClose();
           toast.info('Opening Rentals — use the booking drawer to edit.');
           return;
         }
         case 'payment_editor': {
+          if (resolution.context === 'rental') {
+            const rentalId =
+              resolution.sourceId ||
+              String(transaction.reference_id || '').trim() ||
+              String(pr?.reference_id || '').trim();
+            if (!rentalId) {
+              toast.error('Missing rental reference on payment.');
+              return;
+            }
+            const { rentalService } = await import('@/app/services/rentalService');
+            const row = await rentalService.getRental(rentalId);
+            setRentalForPaymentDialog(mapRentalRowForPaymentDialog(row as any));
+            setRentalPaymentEditorOpen(true);
+            return;
+          }
           const pid =
             (transaction.payment_id as string | undefined) ||
             (pr?.id ? resolvePaymentIdForMutation({ id: pr.id, parentPaymentId: (pr as any).parentPaymentId }) : '') ||
@@ -512,7 +769,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                 : prt === 'rental'
                   ? 'rental'
                   : 'customer'; // includes sale, sale_extra_expense, payment, payment_adjustment, etc.
-          if (resolution.context === 'rental' || prt === 'rental') {
+          if (prt === 'rental') {
             const rentalId = resolution.sourceId || prid;
             if (!rentalId) {
               toast.error('Missing rental reference on payment.');
@@ -553,23 +810,40 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
               method: rowMethodToPaymentMethod(full.method),
               accountId: full.accountId,
               date: String(full.date || '').slice(0, 10),
+              createdAt: full.createdAt,
               referenceNumber: full.referenceNo,
               notes: full.notes,
+              attachments: (full as { attachments?: unknown }).attachments,
             },
           });
           return;
         }
         case 'transfer_editor':
           if (typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('openAddEntryV2', { detail: { entryType: 'internal_transfer' } }));
+            dispatchOpenAddEntryV2({
+              entryType: 'pure_journal',
+              editJournalEntryId: String(transaction.id),
+              origin: editOrigin,
+            });
           }
-          setCurrentView('accounting');
+          if (editOrigin !== 'account_ledger') setCurrentView('accounting');
           onClose();
           return;
         case 'adjustment_editor': {
           const rtAdj = String(transaction.reference_type || '').toLowerCase();
+          const openPureJournalEditor = () => {
+            if (typeof window !== 'undefined') {
+              dispatchOpenAddEntryV2({
+                entryType: 'pure_journal',
+                editJournalEntryId: String(transaction.id),
+                origin: editOrigin,
+              });
+            }
+            if (editOrigin !== 'account_ledger') setCurrentView('accounting');
+            onClose();
+          };
           if (isPureManualJournalReferenceType(rtAdj)) {
-            openJournalQuickEdit();
+            openPureJournalEditor();
             return;
           }
           if (resolution.sourceType === 'expense' && resolution.sourceId) {
@@ -586,8 +860,18 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
             toast.message('Purchase adjustments follow the PO. Open the purchase from Purchases to change amounts.');
             return;
           }
+          // Orphan free-form (e.g. legacy deposit) — open journal editor, not a dead toast
+          if (
+            canOpenOrphanAdjustmentInJournalEditor(rtAdj, {
+              sourceType: resolution.sourceType,
+              sourceId: resolution.sourceId,
+            })
+          ) {
+            openPureJournalEditor();
+            return;
+          }
           toast.message(
-            'This adjustment is source-controlled. Open the original document from its module, or use Reverse to correct amounts.'
+            'This adjustment is source-controlled. Open the original document from its module, or use Cancel Entry to reverse amounts.',
           );
           return;
         }
@@ -595,7 +879,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     } catch (e: any) {
       toast.error(e?.message || 'Could not open editor');
     }
-  }, [transaction, transactionForUnifiedPolicy, companyId, openDrawer, setCurrentView, onClose]);
+  }, [transaction, transactionForUnifiedPolicy, companyId, openDrawer, setCurrentView, onClose, editOrigin]);
 
   useEffect(() => {
     if (!autoLaunchUnifiedEdit || !isOpen || loading || !transaction) return;
@@ -624,11 +908,80 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     };
   }, [journalLines]);
 
+  const isOrphanReceipt = useMemo(() => {
+    if (!transaction) return false;
+    return isOrphanReceiptJournalEntry({
+      reference_type: transaction.reference_type,
+      payment_id: transaction.payment_id,
+      is_void: transaction.is_void,
+      journalLineCount: journalLines.length,
+    });
+  }, [transaction, journalLines.length]);
+
+  const orphanLinkedPaymentAmount = useMemo(() => {
+    if (!isOrphanReceipt) return 0;
+    const pay = Array.isArray(transaction?.payment) ? transaction?.payment[0] : transaction?.payment;
+    return Number(pay?.amount) || 0;
+  }, [isOrphanReceipt, transaction?.payment]);
+
+  const detailModalActions = useMemo(() => {
+    if (!transaction || !useTransactionActionPanel) return [];
+    const sourceOpen = getJournalEntrySourceDocumentOpenTarget({
+      id: String(transaction.id),
+      date: String(transaction.entry_date || ''),
+      description: String(transaction.description || ''),
+      amount: 0,
+      type: 'debit',
+      source: '',
+      metadata: {
+        referenceType: transaction.reference_type,
+        referenceId: transaction.reference_id,
+        paymentId: transaction.payment_id,
+      },
+    } as AccountingEntry);
+    return getTransactionActions(
+      {
+        reference_type: transaction.reference_type,
+        reference_id: transaction.reference_id,
+        payment_id: transaction.payment_id,
+        is_void: transaction.is_void,
+        payment_chain_is_historical: transaction.payment_chain_is_historical,
+        has_active_correction_reversal: txnHasActiveCorrectionReversal,
+        action_fingerprint: transaction.action_fingerprint,
+        description: transaction.description,
+        payment_chain_member_count: paymentChainMemberCount,
+        payment_obj: paymentForActions,
+        journal_line_count: journalLines.length,
+        is_orphan_receipt: isOrphanReceipt,
+      },
+      'detail_modal',
+      {
+        includeViewAction: false,
+        paymentChainBlockReason: paymentChainBlockReason,
+        sourceOpenTarget: sourceOpen,
+        allowStaleReversalVoid: canVoidStaleReversal,
+        staleReversalVoidEligible: staleReversalVoidEligible,
+      }
+    );
+  }, [
+    transaction,
+    useTransactionActionPanel,
+    txnHasActiveCorrectionReversal,
+    paymentChainMemberCount,
+    paymentChainBlockReason,
+    paymentForActions,
+    canVoidStaleReversal,
+    staleReversalVoidEligible,
+    journalLines.length,
+    isOrphanReceipt,
+  ]);
+
   const loadTransaction = async () => {
     if (!referenceNumber || !companyId) return;
 
     setLoading(true);
     setTxnHasActiveCorrectionReversal(false);
+    setExpenseReceiptUrl(null);
     try {
       // CRITICAL FIX: Prioritize entry_no lookup (JE-0058) over UUID lookup
       // UUID format: 8-4-4-4-12 hex characters
@@ -643,6 +996,14 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
       });
 
       let data = null;
+
+      const hintId = String(journalEntryIdHint || '').trim();
+      const hintIsUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(hintId);
+
+      // PRIORITY 0a: Ledger row hint — exact journal the user clicked
+      if (!data && hintIsUuid && companyId) {
+        data = await accountingService.getEntryById(hintId, companyId);
+      }
 
       // PRIORITY 0: Grouped journal row — load the clicked / primary entry by UUID
       if (groupEntries?.length && companyId) {
@@ -660,17 +1021,12 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
         data = await accountingService.getEntryById(referenceNumber, companyId);
       }
 
-      // PRIORITY 2: If it looks like entry_no (JE-0058), use reference lookup
-      if (!data && looksLikeEntryNo) {
-        console.log('[TRANSACTION DETAIL] Looks like entry_no, using reference lookup first...');
-        data = await accountingService.getEntryByReference(referenceNumber, companyId);
-        console.log('[TRANSACTION DETAIL] Reference lookup result:', data ? 'FOUND' : 'NOT FOUND');
-      }
-      
-      // PRIORITY 3: Fallback to reference lookup (for any other format)
-      if (!data && !looksLikeEntryNo) {
-        console.log('[TRANSACTION DETAIL] Trying reference lookup as fallback...');
-        data = await accountingService.getEntryByReference(referenceNumber, companyId);
+      // PRIORITY 2: Reference lookup (REN-*-PAY, PAY/RCV, booking_no, entry_no, etc.)
+      if (!data) {
+        console.log('[TRANSACTION DETAIL] Using reference lookup...');
+        data = await accountingService.getEntryByReference(referenceNumber, companyId, {
+          journalEntryIdHint: hintIsUuid ? hintId : undefined,
+        });
         console.log('[TRANSACTION DETAIL] Reference lookup result:', data ? 'FOUND' : 'NOT FOUND');
       }
 
@@ -733,6 +1089,69 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     }
   };
 
+  useEffect(() => {
+    if (!companyId || !transaction || String(transaction.reference_type || '').toLowerCase() !== 'manual_receipt') {
+      setGlDriftSummary(null);
+      return;
+    }
+    const pid =
+      transaction.payment_id ??
+      (Array.isArray(transaction.payment) ? transaction.payment[0]?.id : transaction.payment?.id);
+    const lines = Array.isArray(transaction.lines) ? transaction.lines : transaction.lines ? [transaction.lines] : [];
+    if (!pid || lines.length < 2) {
+      setGlDriftSummary(null);
+      return;
+    }
+    const pay = Array.isArray(transaction.payment) ? transaction.payment[0] : transaction.payment;
+    const paymentAccountId = (pay as { payment_account_id?: string | null })?.payment_account_id ?? null;
+    getManualReceiptGlDriftSummary(companyId, String(pid), lines, paymentAccountId)
+      .then((s) => setGlDriftSummary(s))
+      .catch(() => setGlDriftSummary(null));
+  }, [companyId, transaction, effectiveLines.length]);
+
+  const handleRepairManualReceiptGlDrift = useCallback(async () => {
+    if (!companyId || !glDriftSummary || glDriftSummary.netAligned || !transaction) return;
+    const pid =
+      transaction.payment_id ??
+      (Array.isArray(transaction.payment) ? transaction.payment[0]?.id : transaction.payment?.id);
+    const pay = Array.isArray(transaction.payment) ? transaction.payment[0] : transaction.payment;
+    const customerId = String(transaction.reference_id || (pay as { contact_id?: string })?.contact_id || '');
+    const paymentAccountId = String(
+      (pay as { payment_account_id?: string })?.payment_account_id || '',
+    ).trim();
+    if (!pid || !customerId || !paymentAccountId) {
+      toast.error('Missing customer or bank account on this receipt — cannot post GL repair.');
+      return;
+    }
+    setGlDriftRepairBusy(true);
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const { data: { user } } = await supabase.auth.getUser();
+      await repairManualReceiptGlDrift({
+        companyId,
+        branchId: transaction.branch_id ?? null,
+        paymentId: String(pid),
+        customerId,
+        primaryJeAmount: glDriftSummary.primaryJeAmount,
+        paymentAmount: glDriftSummary.paymentAmount,
+        paymentAccountId,
+        paymentDate: String((pay as { payment_date?: string })?.payment_date || transaction.entry_date || '').slice(0, 10),
+        referenceNumber: (pay as { reference_number?: string })?.reference_number ?? null,
+        createdBy: user?.id ?? null,
+      });
+      toast.success('Posted payment adjustment so GL matches receipt amount.');
+      await loadTransaction();
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+        window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'customer', entityId: customerId } }));
+      }
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'GL repair failed');
+    } finally {
+      setGlDriftRepairBusy(false);
+    }
+  }, [companyId, glDriftSummary, transaction]);
+
   const handleReverseJournal = async () => {
     if (!transaction?.id || !companyId) return;
     if (journalSourceReverseBlockReason) {
@@ -744,7 +1163,16 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
       toast.error(blockReason);
       return;
     }
-    if (!window.confirm('Create a reversal entry for this journal? This posts an offsetting entry.')) return;
+    setPendingConfirm({
+      title: 'Create reversal entry?',
+      description: 'Create a reversal entry for this journal? This posts an offsetting entry.',
+      confirmLabel: 'Yes, Reverse',
+      action: 'reverse',
+    });
+  };
+
+  const executeReverseJournal = async () => {
+    if (!transaction?.id) return;
     const ok = await accounting.createReversalEntry(transaction.id);
     if (ok) {
       toast.success('Reversal posted');
@@ -756,23 +1184,206 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     }
   };
 
-  // Void/Cancel: mark JE as void (excluded from GL, reports, balances)
-  const handleVoidJournal = async () => {
+  const handleVoidStaleReversal = async () => {
+    if (!transaction?.id || !companyId || !staleReversalVoidEligible) return;
+    const entryNo = transaction.entry_no ?? transaction.reference_number;
+    const amount = Math.max(
+      ...(effectiveLines.length ? effectiveLines : journalLines).map(
+        (l: { debit?: number; credit?: number }) => Math.max(Number(l.debit) || 0, Number(l.credit) || 0)
+      ),
+      0
+    );
+    setPendingConfirm({
+      title: 'Remove from live GL?',
+      description: staleCorrectionReversalVoidConfirmMessage(entryNo, amount || null),
+      confirmLabel: 'Yes, Remove',
+      action: 'void_stale',
+    });
+  };
+
+  const executeVoidStaleReversal = async () => {
     if (!transaction?.id || !companyId) return;
-    if (!window.confirm('Kya aap is entry ko VOID/CANCEL karna chahte hain? Ye GL, reports aur balances se hat jayegi. Is action ko undo nahi kiya ja sakta.')) return;
     try {
-      const { supabase } = await import('@/lib/supabase');
-      const { error } = await supabase
-        .from('journal_entries')
-        .update({ is_void: true, void_reason: 'manual_void', voided_at: new Date().toISOString() })
-        .eq('id', transaction.id);
-      if (error) throw error;
-      toast.success('Entry void/cancel ho gayi hai — GL se remove ho gayi');
+      const res = await voidStaleCorrectionReversals(companyId, [String(transaction.id)]);
+      if (!res.success) throw new Error(res.error || 'Void failed');
+      toast.success('Reversal removed from live GL');
       await loadTransaction();
       dispatchAccountingEditCommitted();
       accounting.refreshEntries?.();
-    } catch (e: any) {
-      toast.error('Void failed: ' + (e?.message || 'Unknown error'));
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Remove from live GL failed');
+    }
+  };
+
+  // Void/Cancel: same path as Journal Entries row — createReversalEntry (posts offset + voids payment when linked).
+  const handleVoidJournal = async () => {
+    if (!transaction?.id || !companyId) return;
+    if (journalSourceReverseBlockReason) {
+      toast.error(journalSourceReverseBlockReason);
+      return;
+    }
+    const blockReason = await getPaymentChainMutationBlockReason(companyId, String(transaction.id));
+    if (blockReason) {
+      toast.error(blockReason);
+      return;
+    }
+    const paymentId =
+      transaction.payment_id ??
+      (Array.isArray(transaction.payment) ? transaction.payment[0]?.id : transaction.payment?.id);
+    const isMultiMemberChain = paymentChainMemberCount > 1 && !!paymentId;
+    const description = paymentId
+      ? isMultiMemberChain
+        ? 'Cancel this payment entirely? This voids the original posting plus every edit in the chain. Cannot be undone.'
+        : 'Cancel this payment? This posts offsetting entries and removes it from live reports.'
+      : manualJournalCancelConfirmMessage(false);
+    setPendingConfirm({
+      title: paymentId ? 'Cancel this payment?' : 'Cancel this journal?',
+      description,
+      confirmLabel: paymentId ? 'Yes, Cancel Payment' : 'Yes, Cancel',
+      action: 'void_payment',
+    });
+  };
+
+  const executeVoidJournal = async () => {
+    if (!transaction?.id) return;
+    const ok = await accounting.createReversalEntry(transaction.id);
+    if (ok) {
+      await loadTransaction();
+      dispatchAccountingEditCommitted();
+      if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('rentalPaymentsChanged'));
+    }
+  };
+
+  const handleCancelOrphanReceipt = async () => {
+    if (!transaction || !companyId) return;
+    const paymentId =
+      transaction.payment_id ??
+      (Array.isArray(transaction.payment) ? transaction.payment[0]?.id : transaction.payment?.id);
+    if (!paymentId) {
+      toast.error('Orphan receipt has no linked payment id.');
+      return;
+    }
+    setPendingConfirm({
+      title: 'Hide orphan receipt?',
+      description:
+        'Hide this failed receipt attempt from normal reports? The payment record and audit history are kept; no GL lines were posted.',
+      confirmLabel: 'Yes, Hide',
+      action: 'orphan',
+    });
+  };
+
+  const executeCancelOrphanReceipt = async () => {
+    if (!transaction || !companyId) return;
+    const paymentId =
+      transaction.payment_id ??
+      (Array.isArray(transaction.payment) ? transaction.payment[0]?.id : transaction.payment?.id);
+    if (!paymentId) {
+      toast.error('Orphan receipt has no linked payment id.');
+      return;
+    }
+    try {
+      const { cancelOrphanManualReceipt } = await import('@/app/services/orphanReceiptService');
+      await cancelOrphanManualReceipt({ companyId, paymentId: String(paymentId) });
+      toast.success('Orphan receipt hidden from operational views');
+      onClose();
+      dispatchAccountingEditCommitted();
+      await accounting.refreshEntries?.();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Could not hide orphan receipt');
+    }
+  };
+
+  const handleUndoLastPaymentChange = async () => {
+    if (!transaction || !companyId) return;
+    const paymentId =
+      transaction.payment_id ??
+      (Array.isArray(transaction.payment) ? transaction.payment[0]?.id : transaction.payment?.id);
+    if (!paymentId) return;
+    setPendingConfirm({
+      title: 'Undo last payment change?',
+      description: 'Undo the last edit on this payment? This voids the latest adjustment and restores the previous state.',
+      confirmLabel: 'Yes, Undo',
+      action: 'undo_last',
+    });
+  };
+
+  const executeUndoLastPaymentChange = async () => {
+    if (!transaction || !companyId) return;
+    const paymentId =
+      transaction.payment_id ??
+      (Array.isArray(transaction.payment) ? transaction.payment[0]?.id : transaction.payment?.id);
+    if (!paymentId) return;
+    const ok = await accounting.undoLastPaymentMutation(String(paymentId));
+    if (ok) {
+      toast.success('Last change undone');
+      await loadTransaction();
+      dispatchAccountingEditCommitted();
+    } else {
+      toast.error('Could not undo last change');
+    }
+  };
+
+  const runPendingConfirmAction = async (
+    action: NonNullable<typeof pendingConfirm>['action'],
+  ) => {
+    if (action === 'reverse') await executeReverseJournal();
+    else if (action === 'void_stale') await executeVoidStaleReversal();
+    else if (action === 'void_payment') await executeVoidJournal();
+    else if (action === 'orphan') await executeCancelOrphanReceipt();
+    else if (action === 'undo_last') await executeUndoLastPaymentChange();
+  };
+
+  const handleOpenSourceDocumentFromModal = async () => {
+    if (!transaction) return;
+    const entry = {
+      id: String(transaction.id),
+      date: String(transaction.entry_date || ''),
+      description: String(transaction.description || ''),
+      amount: 0,
+      type: 'debit' as const,
+      source: '',
+      metadata: {
+        referenceType: transaction.reference_type,
+        referenceId: transaction.reference_id,
+        paymentId: transaction.payment_id,
+      },
+    };
+    onClose();
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => resolve());
+    });
+    await openJournalSourceDocumentFromEntry(entry as AccountingEntry, { openDrawer, setCurrentView });
+  };
+
+  const handleDetailModalAction = (actionId: TransactionActionId) => {
+    switch (actionId) {
+      case 'edit':
+        void run('Opening editor...', () => runUnifiedEdit());
+        break;
+      case 'cancel_payment':
+      case 'cancel_entry':
+        void run('Cancelling...', () => handleVoidJournal());
+        break;
+      case 'cancel_orphan':
+        void run('Hiding orphan...', () => handleCancelOrphanReceipt());
+        break;
+      case 'void_stale_reversal':
+        void run('Removing...', () => handleVoidStaleReversal());
+        break;
+      case 'undo_last_change':
+        void run('Undoing...', () => handleUndoLastPaymentChange());
+        break;
+      case 'open_source_document':
+        void run('Opening...', () => handleOpenSourceDocumentFromModal());
+        break;
+      case 'view_trace':
+        setPaymentTraceOpen(true);
+        break;
+      case 'view_audit':
+        activitySectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        break;
+      default:
+        break;
     }
   };
 
@@ -901,11 +1512,11 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
   if (!transaction && !loading) {
     return (
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="max-w-4xl bg-gray-900 border-gray-800">
+        <DialogContent className="max-w-4xl bg-card border-border">
           <DialogHeader>
-            <DialogTitle className="text-white">Transaction Not Found</DialogTitle>
+            <DialogTitle className="text-foreground">Transaction Not Found</DialogTitle>
           </DialogHeader>
-          <div className="text-center py-8 text-gray-400">
+          <div className="text-center py-8 text-muted-foreground">
             Transaction with reference {referenceNumber} not found.
           </div>
         </DialogContent>
@@ -938,25 +1549,65 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     ? transaction.sale[0] 
     : transaction?.sale;
 
+  const nestedPaymentEditorOpen =
+    manualReceiptEditorOpen ||
+    supplierManualEditorOpen ||
+    rentalPaymentEditorOpen ||
+    genericPaymentEditor != null;
+
+  const dismissNestedPaymentEditor = () => {
+    if (genericPaymentEditor) setGenericPaymentEditor(null);
+    else if (manualReceiptEditorOpen) setManualReceiptEditorOpen(false);
+    else if (supplierManualEditorOpen) setSupplierManualEditorOpen(false);
+    else if (rentalPaymentEditorOpen) setRentalPaymentEditorOpen(false);
+  };
+
   return (
     <>
     {/* Keep parent open while nested editors (e.g. journal quick edit) are open — closing parent here unmounted the child Dialog and caused flicker. */}
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="!w-[800px] !max-w-[800px] sm:!max-w-[800px] max-h-[95vh] overflow-auto bg-gray-900 border-gray-800">
+    <Dialog
+      open={isOpen}
+      modal={!nestedPaymentEditorOpen}
+      onOpenChange={(open) => {
+        if (!open && nestedPaymentEditorOpen) return;
+        onClose();
+      }}
+    >
+      <DialogContent
+        className="!w-[800px] !max-w-[800px] sm:!max-w-[800px] max-h-[95vh] overflow-auto bg-card border-border"
+        onEscapeKeyDown={(e) => {
+          if (nestedPaymentEditorOpen) {
+            e.preventDefault();
+            dismissNestedPaymentEditor();
+          }
+        }}
+      >
         <DialogHeader>
-          <DialogTitle className="text-white flex items-center justify-between">
+          <DialogTitle className="text-foreground flex items-center justify-between">
             <div>
               <h2 className="text-xl font-bold">Transaction Details</h2>
-              <p className="text-sm text-gray-400 mt-1">Reference: {voucherDisplayRef}</p>
+              <p className="text-sm text-muted-foreground mt-1 flex items-center gap-2 flex-wrap">
+                <span>Reference: {voucherDisplayRef}</span>
+                {transactionAttachmentUrls.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => void openFirstTransactionAttachment()}
+                    className="inline-flex items-center p-0.5 hover:bg-amber-500/10 rounded transition-colors"
+                    title="View attachment"
+                  >
+                    <Paperclip size={14} className="text-amber-400" />
+                  </button>
+                ) : null}
+              </p>
               {rentalPaymentVoucherRef && transaction?.entry_no && (
-                <p className="text-xs text-gray-500 mt-0.5">Journal: {transaction.entry_no}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Journal: {transaction.entry_no}</p>
               )}
             </div>
             <Button
               variant="ghost"
               size="sm"
               onClick={onClose}
-              className="text-gray-400 hover:text-white"
+              className="text-muted-foreground hover:text-foreground"
             >
               <X size={20} />
             </Button>
@@ -964,9 +1615,22 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
         </DialogHeader>
 
         {loading ? (
-          <div className="text-center py-12 text-gray-400">Loading transaction details...</div>
+          <div className="text-center py-12 text-muted-foreground">Loading transaction details...</div>
         ) : transaction ? (
           <div className="space-y-6">
+            {isOrphanReceipt ? (
+              <div className="rounded-lg border border-orange-600/45 bg-orange-950/35 px-3 py-2 text-sm text-orange-100/95 leading-relaxed space-y-1">
+                <p>
+                  <span className="font-semibold text-orange-200">Orphan / Posting failed — </span>
+                  Payment record exists
+                  {orphanLinkedPaymentAmount > 0
+                    ? ` (Rs ${orphanLinkedPaymentAmount.toLocaleString()})`
+                    : ''}{' '}
+                  but no posted double-entry lines were created.
+                </p>
+                <p className="text-xs text-orange-200/80">{ORPHAN_RECEIPT_HIDE_HELP}</p>
+              </div>
+            ) : null}
             {paymentChainBlockReason ? (
               <div className="rounded-lg border border-amber-600/45 bg-amber-950/35 px-3 py-2 text-sm text-amber-100/95 leading-relaxed">
                 <span className="font-semibold text-amber-200">Historical payment line — </span>
@@ -975,16 +1639,16 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
               </div>
             ) : null}
             {journalSourceReverseBlockReason && !paymentChainBlockReason ? (
-              <div className="rounded-lg border border-gray-600/50 bg-gray-900/60 px-3 py-2 text-sm text-gray-300 leading-relaxed">
+              <div className="rounded-lg border border-gray-600/50 bg-muted/60 px-3 py-2 text-sm text-muted-foreground leading-relaxed">
                 <span className="font-semibold text-gray-200">Source-controlled — </span>
                 {journalSourceReverseBlockReason}
               </div>
             ) : null}
             {/* PF-14.3B: Document trail (original + adjustments) when opened from grouped row */}
             {groupEntries && groupEntries.length > 1 && (
-              <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-                <h3 className="text-sm font-semibold text-gray-300 mb-3">Document trail (same sale / payment)</h3>
-                <p className="text-xs text-gray-500 mb-3">Original entry and any edit or payment adjustments – one logical document.</p>
+              <div className="bg-muted/50 rounded-lg p-4 border border-border">
+                <h3 className="text-sm font-semibold text-muted-foreground mb-3">Document trail (same sale / payment)</h3>
+                <p className="text-xs text-muted-foreground mb-3">Original entry and any edit or payment adjustments – one logical document.</p>
                 <ul className="space-y-2">
                   {[...groupEntries]
                     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
@@ -997,16 +1661,16 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                           key={e.id}
                           className={cn(
                             'flex items-center justify-between rounded px-3 py-2 text-sm',
-                            isPrimary ? 'bg-blue-500/10 border border-blue-500/30' : 'bg-gray-800/50'
+                            isPrimary ? 'bg-blue-500/10 border border-blue-500/30' : 'bg-muted/50'
                           )}
                         >
                           <div className="flex items-center gap-3">
-                            <span className="text-gray-400 font-medium w-24">{label}</span>
-                            <span className="text-white">{e.referenceNo}</span>
-                            <span className="text-gray-500">{format(new Date(e.date), 'dd MMM yyyy')}</span>
-                            <span className="text-gray-400 max-w-[200px] truncate">{e.description || '—'}</span>
+                            <span className="text-muted-foreground font-medium w-24">{label}</span>
+                            <span className="text-foreground">{e.referenceNo}</span>
+                            <span className="text-muted-foreground">{format(new Date(e.date), 'dd MMM yyyy')}</span>
+                            <span className="text-muted-foreground max-w-[200px] truncate">{e.description || '—'}</span>
                           </div>
-                          <span className={cn('font-medium tabular-nums', e.amount >= 0 ? 'text-green-400' : 'text-red-400')}>
+                          <span className={cn('font-medium tabular-nums', e.amount >= 0 ? 'text-[var(--erp-money-positive)]' : 'text-red-400')}>
                             Rs {Math.abs(e.amount).toLocaleString()}
                           </span>
                         </li>
@@ -1017,13 +1681,48 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
             )}
 
             {/* SECTION A: BASIC INFO */}
-            <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                <h3 className="text-sm font-semibold text-gray-300 flex items-center gap-2">
+            <div className="bg-muted/50 rounded-lg p-4 border border-border">
+              <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-2 mb-3">
+                <h3 className="text-sm font-semibold text-muted-foreground flex items-center gap-2 shrink-0">
                   <FileText size={16} />
                   Basic Information
                 </h3>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2 max-w-full min-w-0">
+                  {useTransactionActionPanel ? (
+                    <>
+                      <TransactionActionPanel
+                        actions={detailModalActions}
+                        onAction={handleDetailModalAction}
+                        disabled={actionLocked}
+                        variant="modal"
+                      />
+                      {transaction.id && !transaction.is_void && !editingAccounts && (() => {
+                        const rt = String(transaction.reference_type || '').toLowerCase();
+                        const allowEdit =
+                          !rt.startsWith('sale') &&
+                          !rt.startsWith('purchase') &&
+                          rt !== 'shipment' &&
+                          !rt.startsWith('opening_balance') &&
+                          rt !== 'commission_batch' &&
+                          rt !== 'stock_adjustment';
+                        if (!allowEdit) return null;
+                        return (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="gap-1 border-blue-500/40 text-blue-300"
+                            disabled={actionLocked}
+                            onClick={() => void handleLoadAccountsForEdit()}
+                          >
+                            <ArrowLeftRight size={14} />
+                            Edit Accounts
+                          </Button>
+                        );
+                      })()}
+                    </>
+                  ) : (
+                    <>
                   {(() => {
                     if (paymentChainBlockReason) return null;
                     if (!transactionForUnifiedPolicy) return null;
@@ -1053,7 +1752,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                       disabled={actionLocked}
                       onClick={() => setPaymentTraceOpen(true)}
                     >
-                      Full payment trace
+                      View Trace
                     </Button>
                   )}
                   {transaction.id &&
@@ -1073,21 +1772,40 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                         Reverse
                       </Button>
                     )}
-                  {/* Void/Cancel: completely remove from GL */}
                   {transaction.id && !transaction.is_void && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="gap-1 border-red-500/40 text-red-300"
-                      disabled={actionLocked}
-                      onClick={() => run('Voiding...', () => handleVoidJournal())}
-                    >
-                      <Trash2 size={14} />
-                      Void / Cancel
-                    </Button>
+                    <>
+                      {String(transaction.reference_type || '').toLowerCase() === 'correction_reversal' &&
+                      staleReversalVoidEligible &&
+                      canVoidStaleReversal ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="gap-1 border-rose-500/40 text-rose-300"
+                          disabled={actionLocked}
+                          onClick={() => run('Removing...', () => handleVoidStaleReversal())}
+                        >
+                          <Trash2 size={14} />
+                          {STALE_REVERSAL_VOID_LABEL}
+                        </Button>
+                      ) : String(transaction.reference_type || '').toLowerCase() !== 'correction_reversal' ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="gap-1 border-red-500/40 text-red-300"
+                          disabled={actionLocked}
+                          onClick={() => run('Voiding...', () => handleVoidJournal())}
+                        >
+                          <Trash2 size={14} />
+                          {transaction.payment_id ||
+                          (Array.isArray(transaction.payment) ? transaction.payment[0]?.id : transaction.payment?.id)
+                            ? 'Cancel Payment'
+                            : MANUAL_JE_CANCEL_LABEL}
+                        </Button>
+                      ) : null}
+                    </>
                   )}
-                  {/* Edit Accounts: only for payment/expense/manual — NOT for sale/purchase/return (those are auto-posted) */}
                   {transaction.id && !transaction.is_void && !editingAccounts && (() => {
                     const rt = String(transaction.reference_type || '').toLowerCase();
                     const allowEdit = !rt.startsWith('sale') && !rt.startsWith('purchase') && rt !== 'shipment' && !rt.startsWith('opening_balance') && rt !== 'commission_batch' && rt !== 'stock_adjustment';
@@ -1106,6 +1824,8 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                       </Button>
                     );
                   })()}
+                    </>
+                  )}
                   {editingAccounts && (
                     <>
                       <Button
@@ -1134,47 +1854,59 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
               </div>
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <span className="text-gray-400">Reference Number:</span>
-                  <p className="text-white font-medium">{voucherDisplayRef}</p>
+                  <span className="text-muted-foreground">Reference Number:</span>
+                  <p className="text-foreground font-medium flex items-center gap-2 flex-wrap">
+                    <span>{voucherDisplayRef}</span>
+                    {transactionAttachmentUrls.length > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => void openFirstTransactionAttachment()}
+                        className="inline-flex items-center p-0.5 hover:bg-amber-500/10 rounded transition-colors"
+                        title="View attachment"
+                      >
+                        <Paperclip size={14} className="text-amber-400" />
+                      </button>
+                    ) : null}
+                  </p>
                   {rentalPaymentVoucherRef && transaction?.entry_no && (
-                    <p className="text-xs text-gray-500 mt-0.5">Journal: {transaction.entry_no}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Journal: {transaction.entry_no}</p>
                   )}
                 </div>
                 <div>
-                  <span className="text-gray-400">Transaction date:</span>
-                  <p className="text-white">
+                  <span className="text-muted-foreground">Transaction date:</span>
+                  <p className="text-foreground">
                     {transaction.entry_date ? format(new Date(transaction.entry_date), 'dd MMM yyyy') : '—'}
                   </p>
                 </div>
                 <div>
-                  <span className="text-gray-400">Posted at:</span>
-                  <p className="text-white text-xs">
+                  <span className="text-muted-foreground">Posted at:</span>
+                  <p className="text-foreground text-xs">
                     {transaction.created_at ? format(new Date(transaction.created_at), 'dd MMM yyyy HH:mm') : '—'}
                   </p>
                 </div>
                 <div>
-                  <span className="text-gray-400">Last updated:</span>
-                  <p className="text-white text-xs">
+                  <span className="text-muted-foreground">Last updated:</span>
+                  <p className="text-foreground text-xs">
                     {(transaction as { updated_at?: string }).updated_at
                       ? format(new Date((transaction as { updated_at?: string }).updated_at!), 'dd MMM yyyy HH:mm')
                       : '—'}
                   </p>
                 </div>
                 <div>
-                  <span className="text-gray-400">Source link:</span>
-                  <p className="text-white font-mono text-xs break-all">
+                  <span className="text-muted-foreground">Source link:</span>
+                  <p className="text-foreground font-mono text-xs break-all">
                     {transaction.reference_type || '—'}
                     {transaction.reference_id ? ` · ${String(transaction.reference_id).slice(0, 8)}…` : ''}
                   </p>
                 </div>
                 <div>
-                  <span className="text-gray-400">Transaction kind:</span>
-                  <p className="text-white text-xs uppercase tracking-wide">
+                  <span className="text-muted-foreground">Transaction kind:</span>
+                  <p className="text-foreground text-xs uppercase tracking-wide">
                     {inferTransactionKind(transactionForUnifiedPolicy || transaction, payment).replace(/_/g, ' ')}
                   </p>
                 </div>
                 <div>
-                  <span className="text-gray-400">Module:</span>
+                  <span className="text-muted-foreground">Module:</span>
                   <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 ml-2">
                     {transaction.reference_type === 'sale' || transaction.reference_type === 'sale_adjustment'
                       ? 'Sales'
@@ -1196,13 +1928,13 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                   </Badge>
                 </div>
                 <div>
-                  <span className="text-gray-400">Created By:</span>
-                  <p className="text-white">{transaction.created_by ? 'User' : 'System'}</p>
+                  <span className="text-muted-foreground">Created By:</span>
+                  <p className="text-foreground">{transaction.created_by ? 'User' : 'System'}</p>
                 </div>
                 {(transaction as any).branch && (
                   <div>
-                    <span className="text-gray-400">Branch:</span>
-                    <p className="text-white">
+                    <span className="text-muted-foreground">Branch:</span>
+                    <p className="text-foreground">
                       {(transaction as any).branch.code 
                         ? `${(transaction as any).branch.code} | ${(transaction as any).branch.name}`
                         : (transaction as any).branch.name}
@@ -1210,8 +1942,8 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                   </div>
                 )}
                 <div className="col-span-2">
-                  <span className="text-gray-400">Description:</span>
-                  <p className="text-white">
+                  <span className="text-muted-foreground">Description:</span>
+                  <p className="text-foreground">
                     {journalDescriptionForDisplay(transaction.description, 'No description')}
                   </p>
                 </div>
@@ -1220,61 +1952,61 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
 
             {/* SECTION B: LINKED RECORDS */}
             {(sale || payment) && (
-              <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-                <h3 className="text-sm font-semibold text-gray-300 mb-3">Linked Records</h3>
+              <div className="bg-muted/50 rounded-lg p-4 border border-border">
+                <h3 className="text-sm font-semibold text-muted-foreground mb-3">Linked Records</h3>
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   {sale && (
                     <>
                       <div>
-                        <span className="text-gray-400">Invoice Number:</span>
-                        <p className="text-white font-medium">{sale.invoice_no}</p>
+                        <span className="text-muted-foreground">Invoice Number:</span>
+                        <p className="text-foreground font-medium">{sale.invoice_no}</p>
                       </div>
                       <div>
-                        <span className="text-gray-400">Customer:</span>
-                        <p className="text-white">{sale.customer_name}</p>
+                        <span className="text-muted-foreground">Customer:</span>
+                        <p className="text-foreground">{sale.customer_name}</p>
                       </div>
                       <div>
-                        <span className="text-gray-400">Total Amount:</span>
-                        <p className="text-white">Rs {parseFloat(sale.total || 0).toLocaleString()}</p>
+                        <span className="text-muted-foreground">Total Amount:</span>
+                        <p className="text-foreground">Rs {parseFloat(sale.total || 0).toLocaleString()}</p>
                       </div>
                       <div>
-                        <span className="text-gray-400">Paid Amount:</span>
-                        <p className="text-green-400">Rs {parseFloat(sale.paid_amount || 0).toLocaleString()}</p>
+                        <span className="text-muted-foreground">Paid Amount:</span>
+                        <p className="text-[var(--erp-money-positive)]">Rs {parseFloat(sale.paid_amount || 0).toLocaleString()}</p>
                       </div>
                     </>
                   )}
                   {payment && (
                     <>
                       <div>
-                        <span className="text-gray-400">Payment Reference:</span>
-                        <p className="text-white font-medium">{payment.reference_number}</p>
+                        <span className="text-muted-foreground">Payment Reference:</span>
+                        <p className="text-foreground font-medium">{payment.reference_number}</p>
                       </div>
                       <div>
-                        <span className="text-gray-400">Payment Method:</span>
-                        <Badge className="bg-green-500/20 text-green-400 border-green-500/30 ml-2 capitalize">
+                        <span className="text-muted-foreground">Payment Method:</span>
+                        <Badge className="bg-green-500/20 text-[var(--erp-money-positive)] border-green-500/30 ml-2 capitalize">
                           {payment.payment_method}
                         </Badge>
                       </div>
                       <div>
-                        <span className="text-gray-400">Payment Amount:</span>
-                        <p className="text-white">Rs {parseFloat(payment.amount || 0).toLocaleString()}</p>
+                        <span className="text-muted-foreground">Payment Amount:</span>
+                        <p className="text-foreground">Rs {parseFloat(payment.amount || 0).toLocaleString()}</p>
                       </div>
                       <div>
-                        <span className="text-gray-400">Payment Date:</span>
-                        <p className="text-white">
+                        <span className="text-muted-foreground">Payment Date:</span>
+                        <p className="text-foreground">
                           {format(new Date(payment.payment_date), 'dd MMM yyyy')}
                         </p>
                       </div>
                       {paymentNotesDisplay && (
                         <div className="col-span-2">
-                          <span className="text-gray-400">Payment Notes / Trace:</span>
-                          <p className="text-white break-words mt-1">{paymentNotesDisplay}</p>
+                          <span className="text-muted-foreground">Payment Notes / Trace:</span>
+                          <p className="text-foreground break-words mt-1">{paymentNotesDisplay}</p>
                         </div>
                       )}
                       {/* CRITICAL FIX: Show attachment icon if payment has attachments */}
                       {payment.attachments && (
                         <div className="col-span-2">
-                          <span className="text-gray-400">Attachments:</span>
+                          <span className="text-muted-foreground">Attachments:</span>
                           <div className="flex flex-wrap gap-2 mt-2">
                             {Array.isArray(payment.attachments) ? (
                               payment.attachments.map((att: any, idx: number) => {
@@ -1317,6 +2049,32 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
               </div>
             )}
 
+            {glDriftSummary && !glDriftSummary.netAligned && (
+              <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100">
+                <p className="font-medium text-amber-200">Payment amount differs from posted journal</p>
+                <p className="mt-1 text-xs text-amber-100/90">
+                  Roznamcha receipt is Rs {glDriftSummary.paymentAmount.toLocaleString()}, but the primary journal entry
+                  shows Rs {glDriftSummary.primaryJeAmount.toLocaleString()}
+                  {glDriftSummary.netEffectiveAmount != null && glDriftSummary.adjustmentJeCount > 0
+                    ? ` (net after ${glDriftSummary.adjustmentJeCount} adjustment(s): Rs ${glDriftSummary.netEffectiveAmount.toLocaleString()})`
+                    : ''}
+                  . This usually means a receipt edit updated the payment row without posting a GL adjustment.
+                </p>
+                {glDriftSummary.adjustmentJeCount === 0 && Math.abs(glDriftSummary.driftVsPrimary) > 0.01 && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="mt-3 border-amber-500/40 text-amber-100 hover:bg-amber-500/20"
+                    disabled={glDriftRepairBusy}
+                    onClick={() => void handleRepairManualReceiptGlDrift()}
+                  >
+                    {glDriftRepairBusy ? 'Posting adjustment…' : 'Repair GL to match receipt'}
+                  </Button>
+                )}
+              </div>
+            )}
+
             {manualReceiptSummary && (
               <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-600/40">
                 <h3 className="text-sm font-semibold text-slate-200 mb-2">Receipt allocation (FIFO)</h3>
@@ -1326,7 +2084,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                 <div className="grid grid-cols-2 gap-3 text-sm mb-3">
                   <div>
                     <span className="text-slate-400">Receipt total</span>
-                    <p className="text-white font-medium tabular-nums">Rs {manualReceiptSummary.receiptTotal.toLocaleString()}</p>
+                    <p className="text-foreground font-medium tabular-nums">Rs {manualReceiptSummary.receiptTotal.toLocaleString()}</p>
                   </div>
                   <div>
                     <span className="text-slate-400">Allocated to invoices</span>
@@ -1345,7 +2103,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                           #{l.allocationOrder} — {l.invoiceNo || l.saleId.slice(0, 8)}
                           <Badge className="ml-2 bg-blue-500/15 text-blue-300 border-blue-500/30 text-[10px]">manual receipt</Badge>
                         </span>
-                        <span className="tabular-nums text-white">Rs {l.amount.toLocaleString()}</span>
+                        <span className="tabular-nums text-foreground">Rs {l.amount.toLocaleString()}</span>
                       </li>
                     ))}
                   </ul>
@@ -1356,8 +2114,8 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
             )}
 
             {/* SECTION C: JOURNAL ENTRIES (MOST IMPORTANT) */}
-            <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-              <h3 className="text-sm font-semibold text-gray-300 mb-3">Journal Entries (Double Entry)</h3>
+            <div className="bg-muted/50 rounded-lg p-4 border border-border">
+              <h3 className="text-sm font-semibold text-muted-foreground mb-3">Journal Entries (Double Entry)</h3>
               {journalTotals.imbalanced && (
                 <div className="mb-3 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
                   <p className="font-medium text-red-300">Out of balance</p>
@@ -1366,9 +2124,13 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                     ≠ Credit Rs {journalTotals.credit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
                     (difference Rs {Math.abs(journalTotals.diff).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
                   </p>
-                  {String(transaction?.reference_type || '').toLowerCase() === 'sale' &&
-                    transaction?.reference_id &&
-                    !transaction?.payment_id && (
+                  {(() => {
+                    const rt = String(transaction?.reference_type || '').toLowerCase();
+                    const canRebuildSale = rt === 'sale' && transaction?.reference_id && !transaction?.payment_id;
+                    const canRebuildReversal =
+                      rt === 'sale_reversal' && transaction?.reference_id && !transaction?.payment_id;
+                    if (!canRebuildSale && !canRebuildReversal) return null;
+                    return (
                       <Button
                         type="button"
                         variant="outline"
@@ -1376,29 +2138,47 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                         className="mt-2 border-red-500/40 text-red-200 hover:bg-red-500/20"
                         onClick={async () => {
                           try {
-                            const { rebuildSaleDocumentAccounting } = await import('@/app/services/documentPostingEngine');
                             const saleId = String(transaction.reference_id);
-                            const newJeId = await rebuildSaleDocumentAccounting(saleId);
-                            if (newJeId) {
-                              toast.success('Sale document journal rebuilt from current invoice.');
-                              await loadTransaction();
-                              dispatchAccountingEditCommitted();
-                              accounting.refreshEntries?.();
+                            if (canRebuildReversal) {
+                              const { rebuildSaleReversalAccounting } = await import(
+                                '@/app/services/documentPostingEngine'
+                              );
+                              const newJeId = await rebuildSaleReversalAccounting(saleId);
+                              if (newJeId) {
+                                toast.success('Sale cancellation reversal rebuilt from cancelled sale.');
+                                await loadTransaction();
+                                dispatchAccountingEditCommitted();
+                                accounting.refreshEntries?.();
+                              } else {
+                                toast.error('Rebuild failed — check sale is cancelled.');
+                              }
                             } else {
-                              toast.error('Rebuild failed — check sale is final with a positive total.');
+                              const { rebuildSaleDocumentAccounting } = await import(
+                                '@/app/services/documentPostingEngine'
+                              );
+                              const newJeId = await rebuildSaleDocumentAccounting(saleId);
+                              if (newJeId) {
+                                toast.success('Sale document journal rebuilt from current invoice.');
+                                await loadTransaction();
+                                dispatchAccountingEditCommitted();
+                                accounting.refreshEntries?.();
+                              } else {
+                                toast.error('Rebuild failed — check sale is final with a positive total.');
+                              }
                             }
                           } catch (e: unknown) {
                             toast.error(e instanceof Error ? e.message : 'Rebuild failed');
                           }
                         }}
                       >
-                        Rebuild from sale
+                        {canRebuildReversal ? 'Rebuild sale reversal' : 'Rebuild from sale'}
                       </Button>
-                    )}
+                    );
+                  })()}
                 </div>
               )}
               {journalLines.length > 0 ? (
-                <p className="text-xs text-gray-400 mb-2">
+                <p className="text-xs text-muted-foreground mb-2">
                   Posted lines for this journal entry (journal_entry_lines). Same basis as GL.
                 </p>
               ) : (
@@ -1409,8 +2189,8 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
               )}
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  <thead className="bg-gray-900">
-                    <tr className="text-xs font-semibold text-gray-400 uppercase">
+                  <thead className="bg-card">
+                    <tr className="text-xs font-semibold text-muted-foreground uppercase">
                       <th className="px-4 py-2 text-left">Account Name</th>
                       <th className="px-4 py-2 text-right">Debit</th>
                       <th className="px-4 py-2 text-right">Credit</th>
@@ -1419,7 +2199,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                   <tbody>
                     {journalLines.length === 0 && (
                       <tr>
-                        <td colSpan={3} className="px-4 py-4 text-center text-gray-500 text-sm">
+                        <td colSpan={3} className="px-4 py-4 text-center text-muted-foreground text-sm">
                           No posted lines in this grid.
                         </td>
                       </tr>
@@ -1435,14 +2215,14 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                         nameLower.includes('accounts payable');
                       const partySuffix = isApPartyLine && paymentContactName ? ` — ${paymentContactName}` : '';
                       return (
-                        <tr key={line.id || line.account_id || idx} className="border-b border-gray-700">
-                          <td className="px-4 py-3 text-sm text-white">
+                        <tr key={`jel-${line.id ?? line.account_id ?? 'row'}-${idx}`} className="border-b border-border">
+                          <td className="px-4 py-3 text-sm text-foreground">
                             {editingAccounts && line.id ? (
                               <div className="relative">
                                 <input
                                   type="text"
                                   placeholder="Search account..."
-                                  className="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1 text-sm text-white mb-1"
+                                  className="w-full bg-muted border border-gray-600 rounded px-2 py-1 text-sm text-foreground mb-1"
                                   value={accountSearch[line.id] ?? (editLineChanges[line.id] ? accountsList.find(a => a.id === editLineChanges[line.id])?.name || '' : `${account.name || ''} (${account.code || ''})`)}
                                   onChange={(e) => {
                                     setAccountSearch(prev => ({ ...prev, [line.id]: e.target.value }));
@@ -1450,7 +2230,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                                   onFocus={() => setAccountSearch(prev => ({ ...prev, [line.id]: '' }))}
                                 />
                                 {accountSearch[line.id] !== undefined && (
-                                  <div className="absolute z-50 w-full max-h-48 overflow-y-auto bg-gray-800 border border-gray-600 rounded shadow-lg">
+                                  <div className="absolute z-50 w-full max-h-48 overflow-y-auto bg-muted border border-gray-600 rounded shadow-lg">
                                     {accountsList
                                       .filter(a => {
                                         const q = (accountSearch[line.id] || '').toLowerCase();
@@ -1463,15 +2243,15 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                                           key={a.id}
                                           type="button"
                                           className={cn(
-                                            'w-full text-left px-2 py-1.5 text-xs hover:bg-gray-700 transition-colors',
-                                            (editLineChanges[line.id] || line.account_id || account.id) === a.id ? 'bg-blue-900/40 text-blue-300' : 'text-gray-300'
+                                            'w-full text-left px-2 py-1.5 text-xs hover:bg-muted transition-colors',
+                                            (editLineChanges[line.id] || line.account_id || account.id) === a.id ? 'bg-blue-900/40 text-blue-300' : 'text-muted-foreground'
                                           )}
                                           onClick={() => {
                                             setEditLineChanges(prev => ({ ...prev, [line.id]: a.id }));
                                             setAccountSearch(prev => { const n = { ...prev }; delete n[line.id]; return n; });
                                           }}
                                         >
-                                          <span className="font-mono text-gray-500 mr-1">{a.code}</span>
+                                          <span className="font-mono text-muted-foreground mr-1">{a.code}</span>
                                           {a.name}
                                         </button>
                                       ))}
@@ -1491,11 +2271,11 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                               </div>
                             )}
                           </td>
-                          <td className={cn("px-4 py-3 text-sm text-right tabular-nums", line.debit > 0 ? "text-green-400 font-medium" : "text-gray-500")}>
+                          <td className={cn("px-4 py-3 text-sm text-right tabular-nums", line.debit > 0 ? "text-[var(--erp-money-positive)] font-medium" : "text-muted-foreground")}>
                             {editingAccounts && line.id ? (
                               <input
                                 type="number"
-                                className="w-24 bg-gray-800 border border-gray-600 rounded px-2 py-1 text-sm text-right text-green-400"
+                                className="w-24 bg-muted border border-gray-600 rounded px-2 py-1 text-sm text-right text-[var(--erp-money-positive)]"
                                 value={editAmountChanges[line.id]?.debit ?? line.debit ?? 0}
                                 onChange={(e) => {
                                   const val = Number(e.target.value) || 0;
@@ -1509,11 +2289,11 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                               line.debit > 0 ? line.debit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'
                             )}
                           </td>
-                          <td className={cn("px-4 py-3 text-sm text-right tabular-nums", line.credit > 0 ? "text-red-400 font-medium" : "text-gray-500")}>
+                          <td className={cn("px-4 py-3 text-sm text-right tabular-nums", line.credit > 0 ? "text-red-400 font-medium" : "text-muted-foreground")}>
                             {editingAccounts && line.id ? (
                               <input
                                 type="number"
-                                className="w-24 bg-gray-800 border border-gray-600 rounded px-2 py-1 text-sm text-right text-red-400"
+                                className="w-24 bg-muted border border-gray-600 rounded px-2 py-1 text-sm text-right text-red-400"
                                 value={editAmountChanges[line.id]?.credit ?? line.credit ?? 0}
                                 onChange={(e) => {
                                   const val = Number(e.target.value) || 0;
@@ -1531,10 +2311,10 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                       );
                     })}
                   </tbody>
-                  <tfoot className="bg-gray-900">
-                    <tr className="font-semibold text-white">
+                  <tfoot className="bg-card">
+                    <tr className="font-semibold text-foreground">
                       <td className="px-4 py-2 text-right">Total:</td>
-                      <td className="px-4 py-2 text-right text-green-400">
+                      <td className="px-4 py-2 text-right text-[var(--erp-money-positive)]">
                         {journalLines.reduce((sum: number, line: any) => sum + (line.debit || 0), 0).toLocaleString('en-US', {
                           minimumFractionDigits: 2,
                           maximumFractionDigits: 2,
@@ -1551,18 +2331,18 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                 </table>
               </div>
               {effectiveLines.length > 0 && (transaction.payment_id || payment?.id) && (
-                <div className="mt-4 rounded-lg border border-gray-700/80 bg-gray-900/40 p-3">
-                  <p className="text-xs font-medium text-gray-400 mb-2">
+                <div className="mt-4 rounded-lg border border-border/80 bg-card/40 p-3">
+                  <p className="text-xs font-medium text-muted-foreground mb-2">
                     Auxiliary: effective payment accounts (merged JEs — not primary posted truth)
                   </p>
-                  <p className="text-xs text-gray-500 mb-2">
+                  <p className="text-xs text-muted-foreground mb-2">
                     Use only to explain cash/bank account changes across payment_adjustment entries. The double-entry table
                     above is authoritative.
                   </p>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="text-gray-500 text-xs uppercase">
+                        <tr className="text-muted-foreground text-xs uppercase">
                           <th className="text-left py-1">Account</th>
                           <th className="text-right py-1">Debit</th>
                           <th className="text-right py-1">Credit</th>
@@ -1572,14 +2352,14 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                         {effectiveLines.map((line: any, idx: number) => {
                           const account = line.account || {};
                           return (
-                            <tr key={line.account_id || idx} className="border-b border-gray-800/80">
+                            <tr key={`eff-${line.account_id ?? line.id ?? 'row'}-${idx}`} className="border-b border-border/80">
                               <td className="py-1.5 text-gray-200">
                                 {(account.name || '—') + (account.code ? ` (${account.code})` : '')}
                               </td>
-                              <td className="py-1.5 text-right tabular-nums text-gray-300">
+                              <td className="py-1.5 text-right tabular-nums text-muted-foreground">
                                 {line.debit > 0 ? Number(line.debit).toLocaleString() : '—'}
                               </td>
-                              <td className="py-1.5 text-right tabular-nums text-gray-300">
+                              <td className="py-1.5 text-right tabular-nums text-muted-foreground">
                                 {line.credit > 0 ? Number(line.credit).toLocaleString() : '—'}
                               </td>
                             </tr>
@@ -1590,23 +2370,23 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                   </div>
                 </div>
               )}
-              <p className="text-xs text-gray-400 mt-3">Double-entry: total debit must equal total credit.</p>
+              <p className="text-xs text-muted-foreground mt-3">Double-entry: total debit must equal total credit.</p>
             </div>
 
-            <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-              <h3 className="text-sm font-semibold text-gray-300 mb-3">Activity</h3>
+            <div ref={activitySectionRef} className="bg-muted/50 rounded-lg p-4 border border-border">
+              <h3 className="text-sm font-semibold text-muted-foreground mb-3">Activity</h3>
               {loadingActivityLogs ? (
-                <p className="text-sm text-gray-500">Loading activity…</p>
+                <p className="text-sm text-muted-foreground">Loading activity…</p>
               ) : activityLogs.length > 0 ? (
                 <div className="space-y-3 max-h-48 overflow-y-auto">
                   {activityLogs.map((log, index) => (
                     <div key={log.id || index} className="flex gap-3 text-sm">
-                      <Clock className="w-4 h-4 text-gray-500 shrink-0 mt-0.5" />
+                      <Clock className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
                       <div>
-                        <p className="text-white">
+                        <p className="text-foreground">
                           {log.description || activityLogService.formatActivityLog(log)}
                         </p>
-                        <p className="text-xs text-gray-500 mt-0.5">
+                        <p className="text-xs text-muted-foreground mt-0.5">
                           {log.created_at ? format(new Date(log.created_at), 'dd MMM yyyy, h:mm a') : ''}
                           {log.performed_by_name ? ` · ${log.performed_by_name}` : ''}
                         </p>
@@ -1615,7 +2395,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-gray-500">No activity recorded for this entry yet.</p>
+                <p className="text-sm text-muted-foreground">No activity recorded for this entry yet.</p>
               )}
             </div>
 
@@ -1623,7 +2403,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
             {transaction.description?.toLowerCase().includes('discount') && (
               <div className="bg-yellow-500/10 rounded-lg p-4 border border-yellow-500/30">
                 <h3 className="text-sm font-semibold text-yellow-400 mb-2">Sales Discount Applied</h3>
-                <p className="text-sm text-gray-300">
+                <p className="text-sm text-muted-foreground">
                   This transaction includes a sales discount. The discount amount reduces Accounts Receivable.
                 </p>
               </div>
@@ -1640,7 +2420,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                 return (
                   <div className="bg-orange-500/10 rounded-lg p-4 border border-orange-500/30">
                     <h3 className="text-sm font-semibold text-orange-400 mb-2">Rental dress devaluation</h3>
-                    <p className="text-sm text-gray-300">
+                    <p className="text-sm text-muted-foreground">
                       This posting reflects wear / devaluation on rented inventory. For named customers it reduces rental
                       income and the customer&apos;s receivable (party AR), not operating cash.
                     </p>
@@ -1651,7 +2431,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                 return (
                   <div className="bg-orange-500/10 rounded-lg p-4 border border-orange-500/30">
                     <h3 className="text-sm font-semibold text-orange-400 mb-2">Extra Expense Recorded</h3>
-                    <p className="text-sm text-gray-300">
+                    <p className="text-sm text-muted-foreground">
                       This transaction records an extra expense (e.g., stitching, packing) linked to the sale.
                     </p>
                   </div>
@@ -1663,43 +2443,13 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
             {transaction.description?.toLowerCase().includes('commission') && (
               <div className="bg-purple-500/10 rounded-lg p-4 border border-purple-500/30">
                 <h3 className="text-sm font-semibold text-purple-400 mb-2">Commission Expense</h3>
-                <p className="text-sm text-gray-300">
+                <p className="text-sm text-muted-foreground">
                   This transaction records commission expense for the salesperson.
                 </p>
               </div>
             )}
           </div>
         ) : null}
-
-        <Dialog open={journalQuickEditOpen} onOpenChange={setJournalQuickEditOpen}>
-          <DialogContent className="max-w-md bg-gray-900 border-gray-800 text-white">
-            <DialogHeader>
-              <DialogTitle>Edit manual journal</DialogTitle>
-              <p className="text-xs text-gray-400 font-normal">
-                Updates transaction date and description only. To change debit/credit amounts or accounts, close this dialog and use{' '}
-                <strong className="text-gray-300">Edit Accounts</strong> on the transaction detail screen.
-              </p>
-            </DialogHeader>
-            <div className="space-y-3 pt-2">
-              <div>
-                <Label className="text-gray-400">Transaction date</Label>
-                <Input type="date" value={editEntryDate} onChange={(e) => setEditEntryDate(e.target.value)} className="bg-gray-950 border-gray-700 mt-1" />
-              </div>
-              <div>
-                <Label className="text-gray-400">Description / notes</Label>
-                <Input value={editDescription} onChange={(e) => setEditDescription(e.target.value)} className="bg-gray-950 border-gray-700 mt-1" />
-              </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <Button type="button" variant="ghost" onClick={() => setJournalQuickEditOpen(false)}>
-                  Cancel
-                </Button>
-                <Button type="button" onClick={() => void saveJournalQuickEdit()} disabled={savingJournalEdit}>
-                  {savingJournalEdit ? 'Saving…' : 'Save'}
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
 
         {/* Attachment Viewer Modal */}
         {selectedAttachment && (
@@ -1710,7 +2460,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
             <div className="relative max-w-6xl max-h-[90vh] w-full h-full flex items-center justify-center">
               <button
                 onClick={() => setSelectedAttachment(null)}
-                className="absolute top-4 right-4 text-white hover:text-gray-300 z-10 bg-gray-900/80 rounded-full p-2"
+                className="absolute top-4 right-4 text-foreground hover:text-muted-foreground z-10 bg-card rounded-full p-2"
               >
                 <X size={24} />
               </button>
@@ -1742,8 +2492,12 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
           isOpen={manualReceiptEditorOpen}
           onClose={() => setManualReceiptEditorOpen(false)}
           context="customer"
-          entityName="Customer"
-          entityId={String(transaction.reference_id)}
+          entityName={paymentContactName || 'Customer'}
+          entityId={String(
+            (payment as { contact_id?: string | null })?.contact_id ||
+              transaction.reference_id ||
+              '',
+          )}
           outstandingAmount={0}
           linkedJournalEntryNo={
             String(transaction?.entry_no || transaction?.reference_number || '').trim() || undefined
@@ -1755,6 +2509,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
             method: rowMethodToPaymentMethod((payment as any).payment_method),
             accountId: (payment as any).payment_account_id ?? undefined,
             date: String((payment as any).payment_date || '').slice(0, 10),
+            createdAt: (payment as any).created_at ?? (payment as any).createdAt,
             referenceNumber: (payment as any).reference_number,
             notes: (payment as any).notes ?? undefined,
             attachments: (payment as any).attachments,
@@ -1791,6 +2546,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
             method: rowMethodToPaymentMethod((payment as any).payment_method),
             accountId: (payment as any).payment_account_id ?? undefined,
             date: String((payment as any).payment_date || '').slice(0, 10),
+            createdAt: (payment as any).created_at ?? (payment as any).createdAt,
             referenceNumber: (payment as any).reference_number,
             notes: (payment as any).notes ?? undefined,
             attachments: (payment as any).attachments,
@@ -1832,6 +2588,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
           method: rowMethodToPaymentMethod((payment as any).payment_method),
           accountId: (payment as any).payment_account_id ?? undefined,
           date: String((payment as any).payment_date || '').slice(0, 10),
+          createdAt: (payment as any).created_at ?? (payment as any).createdAt,
           referenceNumber: (payment as any).reference_number,
           notes: (payment as any).notes ?? undefined,
           attachments: (payment as any).attachments,
@@ -1846,35 +2603,39 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
       />
     )}
 
-    <Sheet open={paymentTraceOpen} onOpenChange={setPaymentTraceOpen}>
-      <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto bg-gray-950 border-gray-800 text-gray-200">
+    <Sheet open={paymentTraceOpen} onOpenChange={setPaymentTraceOpen} modal>
+      <SheetContent
+        side="right"
+        overlayClassName="z-[115]"
+        className="z-[120] w-full sm:max-w-lg overflow-y-auto bg-input-background border-border text-gray-200"
+      >
         <SheetHeader>
-          <SheetTitle className="text-white">Payment / GL trace</SheetTitle>
-          <p className="text-xs text-gray-500 font-normal">
+          <SheetTitle className="text-foreground">Payment / GL trace</SheetTitle>
+          <p className="text-xs text-muted-foreground font-normal">
             Read-only chain from Truth Lab services — mutations, journal entries, allocations. Use AR/AP Truth Lab for deep
             analysis.
           </p>
         </SheetHeader>
         <div className="mt-4 space-y-3 text-sm">
           {paymentTraceLoading ? (
-            <p className="text-gray-400">Loading trace…</p>
+            <p className="text-muted-foreground">Loading trace…</p>
           ) : paymentTrace?.errors?.length ? (
             <p className="text-amber-300 text-xs">{paymentTrace.errors.join(' · ')}</p>
           ) : null}
           {paymentTrace?.payment && (
-            <div className="rounded-lg border border-gray-800 bg-gray-900/60 p-3 space-y-1 text-xs">
+            <div className="rounded-lg border border-border bg-muted/60 p-3 space-y-1 text-xs">
               <p>
-                <span className="text-gray-500">Payment id:</span>{' '}
+                <span className="text-muted-foreground">Payment id:</span>{' '}
                 <span className="font-mono text-gray-200">{String((paymentTrace.payment as { id?: string }).id || '')}</span>
               </p>
               <p>
-                <span className="text-gray-500">Reference:</span>{' '}
+                <span className="text-muted-foreground">Reference:</span>{' '}
                 <span className="text-gray-200">
                   {String((paymentTrace.payment as { reference_number?: string }).reference_number || '—')}
                 </span>
               </p>
               <p>
-                <span className="text-gray-500">payment_account_id:</span>{' '}
+                <span className="text-muted-foreground">payment_account_id:</span>{' '}
                 <span className="font-mono text-gray-200">
                   {String((paymentTrace.payment as { payment_account_id?: string }).payment_account_id || '—')}
                 </span>
@@ -1882,30 +2643,30 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
             </div>
           )}
           {postingVsActual && (
-            <div className="rounded-lg border border-gray-800 bg-gray-900/40 p-3">
-              <p className="text-[11px] font-semibold text-gray-400 uppercase mb-1">Expected vs actual (heuristic)</p>
-              <p className="text-xs text-gray-300 leading-relaxed">{postingVsActual.narrative}</p>
+            <div className="rounded-lg border border-border bg-card/40 p-3">
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase mb-1">Expected vs actual (heuristic)</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">{postingVsActual.narrative}</p>
             </div>
           )}
-          <div className="text-xs text-gray-500 space-y-1">
+          <div className="text-xs text-muted-foreground space-y-1">
             <p>
-              Linked journal entries: <span className="text-gray-300">{paymentTrace?.journalEntries?.length ?? 0}</span>
+              Linked journal entries: <span className="text-muted-foreground">{paymentTrace?.journalEntries?.length ?? 0}</span>
             </p>
             <p>
-              Journal lines: <span className="text-gray-300">{paymentTrace?.journalLines?.length ?? 0}</span>
+              Journal lines: <span className="text-muted-foreground">{paymentTrace?.journalLines?.length ?? 0}</span>
             </p>
             <p>
-              transaction_mutations: <span className="text-gray-300">{paymentTrace?.transactionMutations?.length ?? 0}</span>
+              transaction_mutations: <span className="text-muted-foreground">{paymentTrace?.transactionMutations?.length ?? 0}</span>
             </p>
             <p>
-              payment_allocations: <span className="text-gray-300">{paymentTrace?.allocations?.length ?? 0}</span>
+              payment_allocations: <span className="text-muted-foreground">{paymentTrace?.allocations?.length ?? 0}</span>
             </p>
           </div>
           <Button
             type="button"
             variant="outline"
             size="sm"
-            className="w-full border-gray-700"
+            className="w-full border-border"
             onClick={() => {
               setPaymentTraceOpen(false);
               if (typeof window !== 'undefined') {
@@ -1947,6 +2708,21 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
         }}
       />
     )}
+    {pendingConfirm ? (
+      <TransactionConfirmDialog
+        open
+        title={pendingConfirm.title}
+        description={pendingConfirm.description}
+        confirmLabel={pendingConfirm.confirmLabel}
+        cancelLabel="No"
+        onConfirm={() => {
+          const action = pendingConfirm.action;
+          setPendingConfirm(null);
+          void run('Confirming...', () => runPendingConfirmAction(action));
+        }}
+        onCancel={() => setPendingConfirm(null)}
+      />
+    ) : null}
     </>
   );
 };

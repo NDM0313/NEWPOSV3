@@ -119,15 +119,30 @@ export function ProductHistoryModal({
     let adjusted = 0;
     for (const e of entries) {
       const q = e.quantity;
-      if (e.movementType === 'purchase' || e.movementType === 'sale_return' || e.movementType === 'return' || e.movementType === 'transfer_in') {
+      if (
+        e.movementType === 'purchase' ||
+        e.movementType === 'sale_return' ||
+        e.movementType === 'return' ||
+        e.movementType === 'production_in'
+      ) {
         purchased += Math.abs(q);
-      } else if (e.movementType === 'sale' || e.movementType === 'purchase_return' || e.movementType === 'transfer_out') {
+      } else if (e.movementType === 'sale' || e.movementType === 'purchase_return') {
         sold += Math.abs(q);
       } else if (e.movementType === 'adjustment' || e.movementType === 'opening') {
         adjusted += q;
       }
+      // transfer_in / transfer_out excluded from purchased/sold (branch moves, not buy/sell)
     }
-    return { purchased, sold, adjusted, current: product.stock };
+    const ledgerCurrent =
+      entries.length > 0
+        ? entries[entries.length - 1].runningBalance
+        : entries.reduce((sum, e) => sum + e.quantity, 0);
+    return {
+      purchased,
+      sold,
+      adjusted,
+      current: entries.length > 0 ? ledgerCurrent : product.stock,
+    };
   }, [entries, product.stock]);
 
   const filtered = useMemo(() => {

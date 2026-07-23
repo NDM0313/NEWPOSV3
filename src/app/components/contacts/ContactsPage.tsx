@@ -30,8 +30,6 @@ import {
 } from '@/app/services/contactBalanceReconciliationService';
 import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDialog';
 import { AddEntryV2 } from '@/app/components/accounting/AddEntryV2';
-import CustomerLedgerPageOriginal from '@/app/components/customer-ledger-test/CustomerLedgerPageOriginal';
-import { GenericLedgerView } from '@/app/components/accounting/GenericLedgerView';
 import { ViewContactProfile } from './ViewContactProfile';
 import { ImportContactsModal } from './ImportContactsModal';
 import { toast } from 'sonner';
@@ -39,6 +37,11 @@ import { formatCurrency } from '@/app/utils/formatCurrency';
 import { supabase } from '@/lib/supabase';
 import { CONTACT_BALANCES_REFRESH_EVENT } from '@/app/lib/contactBalancesRefresh';
 import { CONTACTS_PARTY_DRILLDOWN_KEY } from '@/app/lib/contactsPartyDrilldown';
+import {
+  safeSessionStorageGetItem,
+  safeSessionStorageRemoveItem,
+  safeSessionStorageSetItem,
+} from '@/app/lib/safeBrowserStorage';
 import {
   DATA_INVALIDATED_EVENT,
   type DataInvalidationDetail,
@@ -182,7 +185,7 @@ function contactPartyGlPayableSigned(
 }
 
 export const ContactsPage = () => {
-  const { openDrawer, setCurrentView, createdContactId, setCreatedContactId, openPartyLedger } = useNavigation();
+  const { openDrawer, setCurrentView, createdContactId, setCreatedContactId, openPartyLedger, openLedgerStatementV2 } = useNavigation();
   const { companyId, branchId, userRole } = useSupabase();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [mergedWorkerRoles, setMergedWorkerRoles] = useState<WorkerRoleOption[]>([]);
@@ -220,7 +223,6 @@ export const ContactsPage = () => {
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   /** Customer receipt vs supplier payment when opening Add Entry V2 from this page (incl. `both` contacts). */
   const [paymentFlowMode, setPaymentFlowMode] = useState<'customer_receipt' | 'supplier_payment' | null>(null);
-  const [ledgerOpen, setLedgerOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   /** Row-level delete in progress (UUID) — avoids full-table skeleton on delete refresh. */
   const [deletingContactUuid, setDeletingContactUuid] = useState<string | null>(null);
@@ -630,7 +632,7 @@ export const ContactsPage = () => {
     if (listLoading || contacts.length === 0) return;
     let raw: string | null = null;
     try {
-      raw = sessionStorage.getItem(CONTACTS_PARTY_DRILLDOWN_KEY);
+      raw = safeSessionStorageGetItem(CONTACTS_PARTY_DRILLDOWN_KEY);
     } catch {
       return;
     }
@@ -639,21 +641,21 @@ export const ContactsPage = () => {
     try {
       payload = JSON.parse(raw);
     } catch {
-      sessionStorage.removeItem(CONTACTS_PARTY_DRILLDOWN_KEY);
+      safeSessionStorageRemoveItem(CONTACTS_PARTY_DRILLDOWN_KEY);
       return;
     }
     const id = payload.contactId;
     if (!id) {
-      sessionStorage.removeItem(CONTACTS_PARTY_DRILLDOWN_KEY);
+      safeSessionStorageRemoveItem(CONTACTS_PARTY_DRILLDOWN_KEY);
       return;
     }
     const row = contacts.find((c) => String(c.uuid) === String(id));
     if (!row) {
-      sessionStorage.removeItem(CONTACTS_PARTY_DRILLDOWN_KEY);
+      safeSessionStorageRemoveItem(CONTACTS_PARTY_DRILLDOWN_KEY);
       toast.error('Contact not found for drill-down');
       return;
     }
-    sessionStorage.removeItem(CONTACTS_PARTY_DRILLDOWN_KEY);
+    safeSessionStorageRemoveItem(CONTACTS_PARTY_DRILLDOWN_KEY);
     if (payload.tabHint === 'customers') setActiveTab('customers');
     else if (payload.tabHint === 'suppliers') setActiveTab('suppliers');
     else if (payload.tabHint === 'workers') setActiveTab('workers');
@@ -1043,7 +1045,7 @@ export const ContactsPage = () => {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'active': return <CheckCircle size={14} className="text-green-500" />;
-      case 'inactive': return <Clock size={14} className="text-gray-500" />;
+      case 'inactive': return <Clock size={14} className="text-muted-foreground" />;
       case 'onhold': return <AlertCircle size={14} className="text-yellow-500" />;
       default: return null;
     }
@@ -1051,10 +1053,10 @@ export const ContactsPage = () => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'active': return 'bg-green-500/20 text-green-400 border-green-500/30';
-      case 'inactive': return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
+      case 'active': return 'bg-green-500/20 text-[var(--erp-money-positive)] border-green-500/30';
+      case 'inactive': return 'bg-gray-500/20 text-muted-foreground border-gray-500/30';
       case 'onhold': return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
-      default: return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
+      default: return 'bg-gray-500/20 text-muted-foreground border-gray-500/30';
     }
   };
 
@@ -1140,20 +1142,20 @@ export const ContactsPage = () => {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-[#0B0F19]">
+    <div className="h-screen flex flex-col bg-secondary">
       {/* Sticky top section: header + summary + toolbar - prevents overlap with content */}
-      <div className="shrink-0 sticky top-0 z-20 bg-[#0B0F19] flex flex-col">
+      <div className="shrink-0 sticky top-0 z-20 bg-secondary flex flex-col">
       <BackgroundSyncBar active={contactsBackgroundRefreshing} label="Updating contacts and balances…" />
       {canApproveLeads && pendingLeadCount > 0 && (
         <div className="mx-6 mt-3 flex flex-col gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-amber-100">
+          <p className="text-sm text-amber-900 dark:text-amber-100">
             <span className="font-semibold">{pendingLeadCount}</span> registration
             {pendingLeadCount === 1 ? '' : 's'} waiting for approval (public link).
           </p>
           <Button
             type="button"
             size="sm"
-            className="bg-amber-600 hover:bg-amber-500 text-white shrink-0"
+            className="bg-amber-600 hover:bg-amber-500 text-foreground shrink-0"
             onClick={() => setLeadFilter('pending')}
           >
             Review pending leads
@@ -1161,21 +1163,21 @@ export const ContactsPage = () => {
         </div>
       )}
       {/* Page Header */}
-      <div className="px-6 py-3 border-b border-gray-800">
+      <div className="px-6 py-3 border-b border-border">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0 flex-1">
-            <h1 className="text-xl font-bold text-white sm:text-2xl">Contacts</h1>
-            <p className="text-xs text-gray-400 mt-0.5 sm:text-sm">Manage your suppliers, customers, and workers</p>
-            <details className="mt-2 text-xs text-gray-500 max-w-3xl group">
+            <h1 className="text-xl font-bold text-foreground sm:text-2xl">Contacts</h1>
+            <p className="text-xs text-muted-foreground mt-0.5 sm:text-sm">Manage your suppliers, customers, and workers</p>
+            <details className="mt-2 text-xs text-muted-foreground max-w-3xl group">
               <summary
-                className="cursor-pointer text-gray-400 hover:text-gray-300 list-none flex items-center gap-1 [&::-webkit-details-marker]:hidden"
+                className="cursor-pointer text-muted-foreground hover:text-muted-foreground list-none flex items-center gap-1 [&::-webkit-details-marker]:hidden"
                 title="GL-only balances: get_contact_party_gl_balances on AR/AP subtree."
               >
                 <span className="underline-offset-2 group-open:underline">Balance &amp; GL notes</span>
               </summary>
-              <p className="mt-2 leading-relaxed pl-0 border-l-2 border-gray-700 pl-3">
-                <strong className="text-gray-400">Primary amounts</strong> are GL-derived from{' '}
-                <code className="text-gray-500 text-[10px]">get_contact_party_gl_balances</code>
+              <p className="mt-2 leading-relaxed pl-0 border-l-2 border-border pl-3">
+                <strong className="text-muted-foreground">Primary amounts</strong> are GL-derived from{' '}
+                <code className="text-muted-foreground text-[10px]">get_contact_party_gl_balances</code>
                 {operationalEngine === 'gl' && ' (RPC). '}
                 {operationalEngine === null && !listLoading && contacts.length > 0 && <span> (resolving…). </span>}
                 {balancesStale && contacts.length > 0 && (
@@ -1195,7 +1197,7 @@ export const ContactsPage = () => {
           </Button>
         </div>
         {!listLoading && contacts.length > 0 && operationalReasonTag !== 'ok' && (
-          <div className="mt-3 rounded-md border border-amber-700/60 bg-amber-950/30 px-3 py-2 text-xs text-amber-200">
+          <div className="mt-3 rounded-md border border-amber-700/60 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
             Balance engine warning: {operationalReasonTag === 'rpc_missing' ? 'rpc_missing' : 'rpc_empty'}.
             {' '}GL balance unavailable/empty hai — branch scope, RPC grants, ya posting gap verify karein.
           </div>
@@ -1216,7 +1218,7 @@ export const ContactsPage = () => {
                 "px-3 py-1.5 rounded-lg text-xs font-medium transition-all sm:px-4 sm:py-2 sm:text-sm",
                 activeTab === tab.key
                   ? "bg-blue-600 text-white"
-                  : "bg-gray-800 text-gray-400 hover:bg-gray-750 hover:text-white"
+                  : "bg-muted text-muted-foreground hover:bg-gray-750 hover:text-foreground"
               )}
             >
               {tab.label} <span className="ml-1.5 opacity-75">({tab.count})</span>
@@ -1240,19 +1242,19 @@ export const ContactsPage = () => {
       </div>
 
       {/* Summary totals + search / tools — two columns on xl to free vertical space for the list */}
-      <div className="px-6 py-3 bg-[#0F1419] border-b border-gray-800">
+      <div className="px-6 py-3 bg-muted/40 border-b border-border">
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 xl:items-start">
           <div className="grid grid-cols-3 gap-2 min-w-0 sm:gap-3">
           {/* Total Receivables */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-2.5 sm:rounded-xl sm:p-3">
+          <div className="bg-card border border-border rounded-lg p-2.5 sm:rounded-xl sm:p-3">
             <div className="flex items-start justify-between gap-1">
               <div className="min-w-0 flex-1">
-                <p className="text-[10px] text-gray-500 uppercase tracking-wide font-semibold sm:text-xs">Recv.</p>
-                <p className={cn('text-base font-bold text-green-400 mt-0.5 tabular-nums sm:text-lg', balanceColumnsPending && 'animate-pulse')}>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-semibold sm:text-xs">Recv.</p>
+                <p className={cn('text-base font-bold text-[var(--erp-money-positive)] mt-0.5 tabular-nums sm:text-lg', balanceColumnsPending && 'animate-pulse')}>
                   {balanceColumnsPending ? '—' : formatCurrency(summaryOperational.totalReceivables)}
                 </p>
-                <p className="text-[9px] text-gray-600 mt-0.5 hidden sm:block">
-                  GL-derived · <code className="text-gray-500">get_contact_party_gl_balances</code>
+                <p className="text-[9px] text-muted-foreground mt-0.5 hidden sm:block">
+                  GL-derived · <code className="text-muted-foreground">get_contact_party_gl_balances</code>
                 </p>
                 <p className="text-[9px] text-slate-500 mt-0.5 hidden lg:block leading-snug">
                   Scoped to this tab’s contacts (and branch). Sales <span className="text-slate-400">Total Due</span> is all final invoices company-wide — not the same roll-up.
@@ -1279,15 +1281,15 @@ export const ContactsPage = () => {
           </div>
 
           {/* Total Payables */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-2.5 sm:rounded-xl sm:p-3">
+          <div className="bg-card border border-border rounded-lg p-2.5 sm:rounded-xl sm:p-3">
             <div className="flex items-start justify-between gap-1">
               <div className="min-w-0 flex-1">
-                <p className="text-[10px] text-gray-500 uppercase tracking-wide font-semibold sm:text-xs">Pay.</p>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-semibold sm:text-xs">Pay.</p>
                 <p className={cn('text-base font-bold text-red-400 mt-0.5 tabular-nums sm:text-lg', balanceColumnsPending && 'animate-pulse')}>
                   {balanceColumnsPending ? '—' : formatCurrency(summaryOperational.totalPayables)}
                 </p>
-                <p className="text-[9px] text-gray-600 mt-0.5 hidden sm:block">
-                  GL-derived · <code className="text-gray-500">get_contact_party_gl_balances</code>
+                <p className="text-[9px] text-muted-foreground mt-0.5 hidden sm:block">
+                  GL-derived · <code className="text-muted-foreground">get_contact_party_gl_balances</code>
                 </p>
                 {!balanceColumnsPending && summaryPartyGlSigned && (
                   <p className="text-[9px] text-violet-300/90 mt-0.5 leading-snug hidden sm:block">
@@ -1308,12 +1310,12 @@ export const ContactsPage = () => {
           </div>
 
           {/* Active Contacts */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-2.5 sm:rounded-xl sm:p-3">
+          <div className="bg-card border border-border rounded-lg p-2.5 sm:rounded-xl sm:p-3">
             <div className="flex items-start justify-between gap-1">
               <div className="min-w-0">
-                <p className="text-[10px] text-gray-500 uppercase tracking-wide font-semibold sm:text-xs leading-tight">Active</p>
-                <p className="text-base font-bold text-white mt-0.5 sm:text-lg">{summaryMeta.activeCount}</p>
-                <p className="text-[9px] text-gray-500 mt-0.5">/ {summaryMeta.totalCount}</p>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-semibold sm:text-xs leading-tight">Active</p>
+                <p className="text-base font-bold text-foreground mt-0.5 sm:text-lg">{summaryMeta.activeCount}</p>
+                <p className="text-[9px] text-muted-foreground mt-0.5">/ {summaryMeta.totalCount}</p>
               </div>
               <div className="w-8 h-8 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0 sm:w-9 sm:h-9">
                 <UserCheck size={16} className="text-blue-500" />
@@ -1326,18 +1328,18 @@ export const ContactsPage = () => {
         <div className="flex flex-col gap-2 min-w-0 xl:min-h-0">
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
             <div className="flex-1 min-w-[min(100%,200px)] relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" size={16} />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" size={16} />
               <Input
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Search name, code, phone…"
-                className="pl-9 bg-gray-900 border-gray-700 text-white h-9 sm:h-10 text-sm"
+                className="pl-9 bg-card border-border text-foreground h-9 sm:h-10 text-sm"
               />
               {searchTerm && (
                 <button
                   type="button"
                   onClick={() => setSearchTerm('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white transition-colors p-1"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors p-1"
                   aria-label="Clear search"
                 >
                   <X size={14} />
@@ -1363,7 +1365,7 @@ export const ContactsPage = () => {
                   variant="outline"
                   onClick={() => setFilterOpen(!filterOpen)}
                   className={cn(
-                    'h-9 gap-1.5 bg-gray-900 border-gray-700 sm:h-10 sm:gap-2',
+                    'h-9 gap-1.5 bg-card border-border sm:h-10 sm:gap-2',
                     activeFilterCount > 0 && 'border-blue-500 text-blue-400'
                   )}
                 >
@@ -1383,11 +1385,11 @@ export const ContactsPage = () => {
                       aria-hidden
                     />
                     <div
-                      className="fixed w-80 max-w-[calc(100vw-2rem)] bg-gray-900 border border-gray-700 rounded-lg shadow-2xl p-4 z-[9999]"
+                      className="fixed w-80 max-w-[calc(100vw-2rem)] bg-card border border-border rounded-lg shadow-2xl p-4 z-[9999]"
                       style={{ top: filterPosition.top, left: filterPosition.left }}
                     >
                       <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-sm font-semibold text-white">Advanced Filters</h3>
+                        <h3 className="text-sm font-semibold text-foreground">Advanced Filters</h3>
                         <button
                           type="button"
                           onClick={clearAllFilters}
@@ -1399,7 +1401,7 @@ export const ContactsPage = () => {
 
                       <div className="space-y-4 max-h-[min(500px,70vh)] overflow-y-auto">
                         <div>
-                          <label className="text-xs text-gray-400 mb-2 block font-medium">Contact Type</label>
+                          <label className="text-xs text-muted-foreground mb-2 block font-medium">Contact Type</label>
                           <div className="space-y-2">
                             {[
                               { value: 'customer', label: 'Customer' },
@@ -1411,9 +1413,9 @@ export const ContactsPage = () => {
                                   type="checkbox"
                                   checked={typeFilter.includes(opt.value)}
                                   onChange={() => toggleTypeFilter(opt.value)}
-                                  className="w-4 h-4 rounded bg-gray-950 border-gray-700"
+                                  className="w-4 h-4 rounded bg-input-background border-border"
                                 />
-                                <span className="text-sm text-gray-300">{opt.label}</span>
+                                <span className="text-sm text-muted-foreground">{opt.label}</span>
                               </label>
                             ))}
                           </div>
@@ -1421,7 +1423,7 @@ export const ContactsPage = () => {
 
                         {(typeFilter.includes('worker') || activeTab === 'workers') && (
                           <div>
-                            <label className="text-xs text-gray-400 mb-2 block font-medium">Worker Role</label>
+                            <label className="text-xs text-muted-foreground mb-2 block font-medium">Worker Role</label>
                             <div className="space-y-2">
                               {workerRoleFilterOptions.map((opt) => (
                                 <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
@@ -1429,9 +1431,9 @@ export const ContactsPage = () => {
                                     type="checkbox"
                                     checked={workerRoleFilter.includes(opt.value)}
                                     onChange={() => toggleWorkerRoleFilter(opt.value)}
-                                    className="w-4 h-4 rounded bg-gray-950 border-gray-700"
+                                    className="w-4 h-4 rounded bg-input-background border-border"
                                   />
-                                  <span className="text-sm text-gray-300">{opt.label}</span>
+                                  <span className="text-sm text-muted-foreground">{opt.label}</span>
                                 </label>
                               ))}
                             </div>
@@ -1439,7 +1441,7 @@ export const ContactsPage = () => {
                         )}
 
                         <div>
-                          <label className="text-xs text-gray-400 mb-2 block font-medium">Registration leads</label>
+                          <label className="text-xs text-muted-foreground mb-2 block font-medium">Registration leads</label>
                           <div className="space-y-2">
                             {[
                               { value: 'all', label: 'All contacts' },
@@ -1451,16 +1453,16 @@ export const ContactsPage = () => {
                                   name="leadFilter"
                                   checked={leadFilter === opt.value}
                                   onChange={() => setLeadFilter(opt.value as 'all' | 'pending')}
-                                  className="w-4 h-4 bg-gray-950 border-gray-700"
+                                  className="w-4 h-4 bg-input-background border-border"
                                 />
-                                <span className="text-sm text-gray-300">{opt.label}</span>
+                                <span className="text-sm text-muted-foreground">{opt.label}</span>
                               </label>
                             ))}
                           </div>
                         </div>
 
                         <div>
-                          <label className="text-xs text-gray-400 mb-2 block font-medium">Status</label>
+                          <label className="text-xs text-muted-foreground mb-2 block font-medium">Status</label>
                           <div className="space-y-2">
                             {[
                               { value: 'all', label: 'All Status' },
@@ -1474,16 +1476,16 @@ export const ContactsPage = () => {
                                   name="status"
                                   checked={statusFilter === opt.value}
                                   onChange={() => setStatusFilter(opt.value as StatusType)}
-                                  className="w-4 h-4 bg-gray-950 border-gray-700"
+                                  className="w-4 h-4 bg-input-background border-border"
                                 />
-                                <span className="text-sm text-gray-300">{opt.label}</span>
+                                <span className="text-sm text-muted-foreground">{opt.label}</span>
                               </label>
                             ))}
                           </div>
                         </div>
 
                         <div>
-                          <label className="text-xs text-gray-400 mb-2 block font-medium">Payment Status</label>
+                          <label className="text-xs text-muted-foreground mb-2 block font-medium">Payment Status</label>
                           <div className="space-y-2">
                             {[
                               { value: 'all', label: 'All Balances' },
@@ -1496,16 +1498,16 @@ export const ContactsPage = () => {
                                   name="balance"
                                   checked={balanceFilter === opt.value}
                                   onChange={() => setBalanceFilter(opt.value as BalanceType)}
-                                  className="w-4 h-4 bg-gray-950 border-gray-700"
+                                  className="w-4 h-4 bg-input-background border-border"
                                 />
-                                <span className="text-sm text-gray-300">{opt.label}</span>
+                                <span className="text-sm text-muted-foreground">{opt.label}</span>
                               </label>
                             ))}
                           </div>
                         </div>
 
                         <div>
-                          <label className="text-xs text-gray-400 mb-2 block font-medium">Branch</label>
+                          <label className="text-xs text-muted-foreground mb-2 block font-medium">Branch</label>
                           <div className="space-y-2">
                             {[
                               { value: 'all', label: 'All Branches' },
@@ -1520,16 +1522,16 @@ export const ContactsPage = () => {
                                   name="branch"
                                   checked={branchFilter === opt.value}
                                   onChange={() => setBranchFilter(opt.value)}
-                                  className="w-4 h-4 bg-gray-950 border-gray-700"
+                                  className="w-4 h-4 bg-input-background border-border"
                                 />
-                                <span className="text-sm text-gray-300">{opt.label}</span>
+                                <span className="text-sm text-muted-foreground">{opt.label}</span>
                               </label>
                             ))}
                           </div>
                         </div>
 
                         <div>
-                          <label className="text-xs text-gray-400 mb-2 block font-medium">Phone Number</label>
+                          <label className="text-xs text-muted-foreground mb-2 block font-medium">Phone Number</label>
                           <div className="space-y-2">
                             {[
                               { value: 'all', label: 'All Contacts' },
@@ -1542,9 +1544,9 @@ export const ContactsPage = () => {
                                   name="phone"
                                   checked={phoneFilter === opt.value}
                                   onChange={() => setPhoneFilter(opt.value as 'all' | 'has' | 'no')}
-                                  className="w-4 h-4 bg-gray-950 border-gray-700"
+                                  className="w-4 h-4 bg-input-background border-border"
                                 />
-                                <span className="text-sm text-gray-300">{opt.label}</span>
+                                <span className="text-sm text-muted-foreground">{opt.label}</span>
                               </label>
                             ))}
                           </div>
@@ -1558,7 +1560,7 @@ export const ContactsPage = () => {
               <Button
                 type="button"
                 variant="outline"
-                className="h-9 gap-1.5 bg-gray-900 border-gray-700 relative z-10 sm:h-10 sm:gap-2"
+                className="h-9 gap-1.5 bg-card border-border relative z-10 sm:h-10 sm:gap-2"
                 onClick={(e) => {
                   e.stopPropagation();
                   setImportModalOpen(true);
@@ -1569,22 +1571,22 @@ export const ContactsPage = () => {
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="h-9 gap-1.5 bg-gray-900 border-gray-700 sm:h-10 sm:gap-2">
+                  <Button variant="outline" className="h-9 gap-1.5 bg-card border-border sm:h-10 sm:gap-2">
                     <Download size={16} />
                     Export
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700 text-white">
-                  <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
-                    <FileText size={14} className="mr-2 text-green-400" />
+                <DropdownMenuContent align="end" className="bg-card border-border text-foreground">
+                  <DropdownMenuItem className="hover:bg-muted cursor-pointer">
+                    <FileText size={14} className="mr-2 text-[var(--erp-money-positive)]" />
                     Export as Excel
                   </DropdownMenuItem>
-                  <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
+                  <DropdownMenuItem className="hover:bg-muted cursor-pointer">
                     <FileText size={14} className="mr-2 text-blue-400" />
                     Export as CSV
                   </DropdownMenuItem>
-                  <DropdownMenuSeparator className="bg-gray-700" />
-                  <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
+                  <DropdownMenuSeparator className="bg-muted" />
+                  <DropdownMenuItem className="hover:bg-muted cursor-pointer">
                     <Download size={14} className="mr-2 text-purple-400" />
                     Download Sample Template
                   </DropdownMenuItem>
@@ -1596,21 +1598,21 @@ export const ContactsPage = () => {
         </div>
 
         {!listLoading && reconSnapshot && (
-          <details className="mt-3 rounded-xl border border-blue-500/25 bg-blue-950/20 group">
-            <summary className="cursor-pointer list-none px-3 py-2.5 flex flex-wrap items-center justify-between gap-2 text-sm font-medium text-white hover:bg-blue-950/30 rounded-xl [&::-webkit-details-marker]:hidden">
+          <details className="mt-3 rounded-xl border border-primary/25 bg-primary/5 group">
+            <summary className="cursor-pointer list-none px-3 py-2.5 flex flex-wrap items-center justify-between gap-2 text-sm font-medium text-foreground hover:bg-primary/10 rounded-xl [&::-webkit-details-marker]:hidden">
               <span className="flex items-center gap-2">
                 <Scale className="w-4 h-4 text-blue-400 shrink-0" />
                 Reconciliation · tab vs GL
               </span>
-              <span className="text-xs text-gray-400 font-normal">Expand</span>
+              <span className="text-xs text-muted-foreground font-normal">Expand</span>
             </summary>
           <div className="px-3 pb-3 pt-0 space-y-3 border-t border-blue-500/15">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="flex items-start gap-2">
                 <Scale className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-sm font-semibold text-white">Reconciliation · this tab vs GL control</p>
-                  <p className="text-xs text-gray-400 mt-0.5 max-w-3xl">{reconSnapshot.message}</p>
+                  <p className="text-sm font-semibold text-foreground">Reconciliation · this tab vs GL control</p>
+                  <p className="text-xs text-muted-foreground mt-0.5 max-w-3xl">{reconSnapshot.message}</p>
                   <p className="text-[11px] text-amber-400/90 mt-1 font-medium">
                     Per-contact GL-aligned balance: pending journal mapping (no party_contact_id on lines yet).
                   </p>
@@ -1631,7 +1633,7 @@ export const ContactsPage = () => {
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="border-blue-500/40 text-blue-200 hover:bg-blue-950/50 gap-1.5"
+                  className="border-primary/40 text-primary hover:bg-primary/10 gap-1.5"
                   onClick={() => setCurrentView('reports')}
                 >
                   <BarChart3 size={14} />
@@ -1641,13 +1643,13 @@ export const ContactsPage = () => {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               {/* 1 · Customer operational vs GL AR (1100) */}
-              <div className="rounded-lg bg-gray-950/60 border border-emerald-500/25 p-3 text-xs space-y-2">
+              <div className="rounded-lg bg-input-background/60 border border-emerald-500/25 p-3 text-xs space-y-2">
                 <div className="flex items-start justify-between gap-2">
                   <p className="text-[10px] uppercase font-bold text-emerald-400/95 tracking-wide leading-tight">
                     1 · Customer operational vs GL AR
                   </p>
                   <span
-                    className="text-gray-500 shrink-0"
+                    className="text-muted-foreground shrink-0"
                     title="GL: party AR on 1100 subtree (control + linked party sub-accounts), Dr−Cr net from get_contact_party_gl_balances."
                   >
                     <HelpCircle size={14} />
@@ -1655,28 +1657,28 @@ export const ContactsPage = () => {
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   <div>
-                    <p className="text-gray-500">GL (party)</p>
-                    <p className="text-green-400 font-semibold tabular-nums">
+                    <p className="text-muted-foreground">GL (party)</p>
+                    <p className="text-[var(--erp-money-positive)] font-semibold tabular-nums">
                       {reconSnapshot.customerReceivablesOperational != null
                         ? formatCurrency(reconSnapshot.customerReceivablesOperational)
                         : '—'}
                     </p>
                   </div>
                   <div>
-                    <p className="text-gray-500">GL AR (Dr−Cr)</p>
-                    <p className="text-white font-semibold tabular-nums">
+                    <p className="text-muted-foreground">GL AR (Dr−Cr)</p>
+                    <p className="text-foreground font-semibold tabular-nums">
                       {reconSnapshot.glArNetDrMinusCr != null ? formatCurrency(reconSnapshot.glArNetDrMinusCr) : '—'}
                     </p>
                   </div>
                   <div>
-                    <p className="text-gray-500">Variance / Recon</p>
+                    <p className="text-muted-foreground">Variance / Recon</p>
                     <p
                       className={cn(
                         'font-semibold tabular-nums',
                         reconSnapshot.varianceCustomerReceivablesVsAr != null &&
                           Math.abs(reconSnapshot.varianceCustomerReceivablesVsAr) >= 1
                           ? 'text-amber-400'
-                          : 'text-gray-400'
+                          : 'text-muted-foreground'
                       )}
                     >
                       {reconSnapshot.varianceCustomerReceivablesVsAr != null
@@ -1685,22 +1687,22 @@ export const ContactsPage = () => {
                     </p>
                   </div>
                 </div>
-                <p className="text-[10px] text-gray-600 border-t border-gray-800/80 pt-2">
+                <p className="text-[10px] text-muted-foreground border-t border-border/80 pt-2">
                   Unmapped AR journal entries (heuristic):{' '}
-                  <Badge className="bg-amber-500/20 text-amber-200 border-amber-500/40 tabular-nums">
+                  <Badge className="bg-amber-500/20 text-amber-800 dark:text-amber-200 border-amber-500/40 tabular-nums">
                     {reconSnapshot.unmappedArJournalCount}
                   </Badge>
                 </p>
               </div>
 
               {/* 2 · Supplier operational vs GL AP (2000) — not mixed with workers */}
-              <div className="rounded-lg bg-gray-950/60 border border-rose-500/25 p-3 text-xs space-y-2">
+              <div className="rounded-lg bg-input-background/60 border border-rose-500/25 p-3 text-xs space-y-2">
                 <div className="flex items-start justify-between gap-2">
                   <p className="text-[10px] uppercase font-bold text-rose-300/95 tracking-wide leading-tight">
                     2 · Supplier operational vs GL AP
                   </p>
                   <span
-                    className="text-gray-500 shrink-0"
+                    className="text-muted-foreground shrink-0"
                     title="GL: AP control 2000 net Cr−Dr. Worker payables are shown separately on WP 2010."
                   >
                     <HelpCircle size={14} />
@@ -1708,7 +1710,7 @@ export const ContactsPage = () => {
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   <div>
-                    <p className="text-gray-500">GL (party)</p>
+                    <p className="text-muted-foreground">GL (party)</p>
                     <p className="text-red-400 font-semibold tabular-nums">
                       {reconSnapshot.supplierPayablesOperational != null
                         ? formatCurrency(reconSnapshot.supplierPayablesOperational)
@@ -1716,20 +1718,20 @@ export const ContactsPage = () => {
                     </p>
                   </div>
                   <div>
-                    <p className="text-gray-500">GL AP (Cr−Dr)</p>
-                    <p className="text-white font-semibold tabular-nums">
+                    <p className="text-muted-foreground">GL AP (Cr−Dr)</p>
+                    <p className="text-foreground font-semibold tabular-nums">
                       {reconSnapshot.glApNetCredit != null ? formatCurrency(reconSnapshot.glApNetCredit) : '—'}
                     </p>
                   </div>
                   <div>
-                    <p className="text-gray-500">Variance / Recon</p>
+                    <p className="text-muted-foreground">Variance / Recon</p>
                     <p
                       className={cn(
                         'font-semibold tabular-nums',
                         reconSnapshot.varianceSupplierPayablesVsAp != null &&
                           Math.abs(reconSnapshot.varianceSupplierPayablesVsAp) >= 1
                           ? 'text-amber-400'
-                          : 'text-gray-400'
+                          : 'text-muted-foreground'
                       )}
                     >
                       {reconSnapshot.varianceSupplierPayablesVsAp != null
@@ -1738,22 +1740,22 @@ export const ContactsPage = () => {
                     </p>
                   </div>
                 </div>
-                <p className="text-[10px] text-gray-600 border-t border-gray-800/80 pt-2">
+                <p className="text-[10px] text-muted-foreground border-t border-border/80 pt-2">
                   Unmapped AP journal entries (heuristic):{' '}
-                  <Badge className="bg-amber-500/20 text-amber-200 border-amber-500/40 tabular-nums">
+                  <Badge className="bg-amber-500/20 text-amber-800 dark:text-amber-200 border-amber-500/40 tabular-nums">
                     {reconSnapshot.unmappedApJournalCount}
                   </Badge>
                 </p>
               </div>
 
               {/* 3 · Worker operational vs GL Worker Payable (2010) */}
-              <div className="rounded-lg bg-gray-950/60 border border-violet-500/25 p-3 text-xs space-y-2">
+              <div className="rounded-lg bg-input-background/60 border border-violet-500/25 p-3 text-xs space-y-2">
                 <div className="flex items-start justify-between gap-2">
                   <p className="text-[10px] uppercase font-bold text-violet-300/95 tracking-wide leading-tight">
                     3 · Worker operational vs GL WP
                   </p>
                   <span
-                    className="text-gray-500 shrink-0"
+                    className="text-muted-foreground shrink-0"
                     title="GL: Worker Payable 2010 net Cr−Dr. Not comparable to AP 2000."
                   >
                     <HelpCircle size={14} />
@@ -1761,7 +1763,7 @@ export const ContactsPage = () => {
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   <div>
-                    <p className="text-gray-500">GL (party)</p>
+                    <p className="text-muted-foreground">GL (party)</p>
                     <p className="text-orange-300 font-semibold tabular-nums">
                       {reconSnapshot.workerPayablesOperational != null
                         ? formatCurrency(reconSnapshot.workerPayablesOperational)
@@ -1769,22 +1771,22 @@ export const ContactsPage = () => {
                     </p>
                   </div>
                   <div>
-                    <p className="text-gray-500">GL WP (Cr−Dr)</p>
-                    <p className="text-white font-semibold tabular-nums">
+                    <p className="text-muted-foreground">GL WP (Cr−Dr)</p>
+                    <p className="text-foreground font-semibold tabular-nums">
                       {reconSnapshot.glWorkerPayableNetCredit != null
                         ? formatCurrency(reconSnapshot.glWorkerPayableNetCredit)
                         : '—'}
                     </p>
                   </div>
                   <div>
-                    <p className="text-gray-500">Variance / Recon</p>
+                    <p className="text-muted-foreground">Variance / Recon</p>
                     <p
                       className={cn(
                         'font-semibold tabular-nums',
                         reconSnapshot.varianceWorkerPayablesVsWp != null &&
                           Math.abs(reconSnapshot.varianceWorkerPayablesVsWp) >= 1
                           ? 'text-amber-400'
-                          : 'text-gray-400'
+                          : 'text-muted-foreground'
                       )}
                     >
                       {reconSnapshot.varianceWorkerPayablesVsWp != null
@@ -1801,38 +1803,38 @@ export const ContactsPage = () => {
               <div className="flex items-start justify-between gap-2">
                 <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wide">4 · Total variance summary</p>
                 <span
-                  className="text-gray-500 shrink-0"
+                  className="text-muted-foreground shrink-0"
                   title="Three independent reconciliations: customer vs AR, supplier vs AP, worker vs WP. Summing supplier + worker operational and comparing only to AP 2000 is invalid."
                 >
                   <HelpCircle size={14} />
                 </span>
               </div>
-              <ul className="text-[11px] text-gray-400 space-y-1 list-disc list-inside leading-relaxed">
+              <ul className="text-[11px] text-muted-foreground space-y-1 list-disc list-inside leading-relaxed">
                 <li>
-                  <span className="text-gray-500">AR strip:</span>{' '}
+                  <span className="text-muted-foreground">AR strip:</span>{' '}
                   {reconSnapshot.varianceCustomerReceivablesVsAr != null
                     ? formatCurrency(reconSnapshot.varianceCustomerReceivablesVsAr)
                     : '—'}{' '}
-                  <span className="text-gray-600">(customer+both vs 1100)</span>
+                  <span className="text-muted-foreground">(customer+both vs 1100)</span>
                 </li>
                 <li>
-                  <span className="text-gray-500">AP strip:</span>{' '}
+                  <span className="text-muted-foreground">AP strip:</span>{' '}
                   {reconSnapshot.varianceSupplierPayablesVsAp != null
                     ? formatCurrency(reconSnapshot.varianceSupplierPayablesVsAp)
                     : '—'}{' '}
-                  <span className="text-gray-600">(supplier+both vs 2000)</span>
+                  <span className="text-muted-foreground">(supplier+both vs 2000)</span>
                 </li>
                 <li>
-                  <span className="text-gray-500">Worker strip:</span>{' '}
+                  <span className="text-muted-foreground">Worker strip:</span>{' '}
                   {reconSnapshot.varianceWorkerPayablesVsWp != null
                     ? formatCurrency(reconSnapshot.varianceWorkerPayablesVsWp)
                     : '—'}{' '}
-                  <span className="text-gray-600">(worker op vs 2010)</span>
+                  <span className="text-muted-foreground">(worker op vs 2010)</span>
                 </li>
               </ul>
-              <p className="text-[10px] text-amber-200/80 border-t border-slate-700/60 pt-2">
+              <p className="text-[10px] text-amber-800/80 dark:text-amber-200/80 border-t border-border pt-2">
                 Mixed tab operational payables (supplier + worker + both){' '}
-                <span className="tabular-nums text-gray-300">
+                <span className="tabular-nums text-muted-foreground">
                   {formatCurrency(reconSnapshot.operationalPayablesTotal)}
                 </span>{' '}
                 must not be compared to AP 2000 alone — use tiles 2 and 3.
@@ -1843,20 +1845,20 @@ export const ContactsPage = () => {
         )}
 
         {!listLoading && subledgerVsGl && (subledgerVsGl.ar || subledgerVsGl.ap) && (
-          <details className="mt-3 rounded-xl border border-amber-500/25 bg-amber-500/[0.06] text-xs text-gray-300 group">
-            <summary className="cursor-pointer list-none px-3 py-2.5 flex items-center justify-between gap-2 text-sm font-medium text-amber-100 hover:bg-amber-500/10 rounded-xl [&::-webkit-details-marker]:hidden">
+          <details className="mt-3 rounded-xl border border-amber-500/25 bg-amber-500/[0.06] text-xs text-muted-foreground group">
+            <summary className="cursor-pointer list-none px-3 py-2.5 flex items-center justify-between gap-2 text-sm font-medium text-amber-900 dark:text-amber-100 hover:bg-amber-500/10 rounded-xl [&::-webkit-details-marker]:hidden">
               <span className="flex items-center gap-2">
                 <AlertCircle size={16} className="text-amber-400 shrink-0" />
                 Contacts vs GL (same branch)
               </span>
-              <span className="text-xs text-gray-500 font-normal">Expand</span>
+              <span className="text-xs text-muted-foreground font-normal">Expand</span>
             </summary>
           <div className="px-3 pb-3 pt-0 space-y-3 border-t border-amber-500/20">
-            <div className="flex items-start gap-2 text-amber-200/95 pt-2">
+            <div className="flex items-start gap-2 text-amber-800 dark:text-amber-200 pt-2">
               <AlertCircle size={16} className="shrink-0 mt-0.5" />
               <div>
                 <p className="font-semibold text-amber-100">Contacts vs general ledger (same branch)</p>
-                <p className="text-gray-400 mt-1 leading-relaxed">
+                <p className="text-muted-foreground mt-1 leading-relaxed">
                   <strong>Contacts (this tab)</strong> = GL roll-up (<code className="text-amber-400/80">get_contact_party_gl_balances</code>) — same basis as the green/red card totals.
                   <strong className="ml-1">Trial Balance</strong> = net on AR/AP control accounts from journal (life-to-date). A gap usually means
                   manual journals, on-account receipts, or legacy data. For party-attributed GL sums (signed), use the violet line on the cards or Control breakdown on Accounts.
@@ -1864,24 +1866,24 @@ export const ContactsPage = () => {
               </div>
             </div>
             {subledgerVsGl.ar && (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 rounded-lg bg-gray-950/50 border border-gray-800/80 p-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 rounded-lg bg-muted/40 border border-border/80 p-3">
                 <div>
-                  <p className="text-[10px] uppercase text-gray-500 font-semibold">Customer + both (operational)</p>
-                  <p className="text-sm font-bold text-green-400 tabular-nums">{formatCurrency(subledgerVsGl.ar.contactsTotal)}</p>
+                  <p className="text-[10px] uppercase text-muted-foreground font-semibold">Customer + both (operational)</p>
+                  <p className="text-sm font-bold text-[var(--erp-money-positive)] tabular-nums">{formatCurrency(subledgerVsGl.ar.contactsTotal)}</p>
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase text-gray-500 font-semibold">GL {subledgerVsGl.ar.label}</p>
-                  <p className="text-sm font-bold text-white tabular-nums">Dr−Cr = {formatCurrency(subledgerVsGl.ar.glNetDrMinusCr)}</p>
+                  <p className="text-[10px] uppercase text-muted-foreground font-semibold">GL {subledgerVsGl.ar.label}</p>
+                  <p className="text-sm font-bold text-foreground tabular-nums">Dr−Cr = {formatCurrency(subledgerVsGl.ar.glNetDrMinusCr)}</p>
                   {subledgerVsGl.ar.assetNegative && (
                     <p className="text-[10px] text-red-400 mt-1">Credit-heavy asset — review postings to this account.</p>
                   )}
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase text-gray-500 font-semibold">Variance (contacts − GL net)</p>
+                  <p className="text-[10px] uppercase text-muted-foreground font-semibold">Variance (contacts − GL net)</p>
                   <p
                     className={cn(
                       'text-sm font-bold tabular-nums',
-                      Math.abs(subledgerVsGl.ar.variance) < 1 ? 'text-gray-400' : 'text-amber-400'
+                      Math.abs(subledgerVsGl.ar.variance) < 1 ? 'text-muted-foreground' : 'text-amber-400'
                     )}
                   >
                     {formatCurrency(subledgerVsGl.ar.variance)}
@@ -1890,22 +1892,22 @@ export const ContactsPage = () => {
               </div>
             )}
             {subledgerVsGl.ap && (
-              <div className="space-y-2 rounded-lg bg-gray-950/50 border border-gray-800/80 p-3">
+              <div className="space-y-2 rounded-lg bg-muted/40 border border-border/80 p-3">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div>
-                  <p className="text-[10px] uppercase text-gray-500 font-semibold">Supplier + both (operational)</p>
+                  <p className="text-[10px] uppercase text-muted-foreground font-semibold">Supplier + both (operational)</p>
                   <p className="text-sm font-bold text-red-400 tabular-nums">{formatCurrency(subledgerVsGl.ap.contactsTotal)}</p>
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase text-gray-500 font-semibold">GL {subledgerVsGl.ap.label}</p>
-                  <p className="text-sm font-bold text-white tabular-nums">Cr−Dr = {formatCurrency(subledgerVsGl.ap.glNetCredit)}</p>
+                  <p className="text-[10px] uppercase text-muted-foreground font-semibold">GL {subledgerVsGl.ap.label}</p>
+                  <p className="text-sm font-bold text-foreground tabular-nums">Cr−Dr = {formatCurrency(subledgerVsGl.ap.glNetCredit)}</p>
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase text-gray-500 font-semibold">Variance (supplier op − GL)</p>
+                  <p className="text-[10px] uppercase text-muted-foreground font-semibold">Variance (supplier op − GL)</p>
                   <p
                     className={cn(
                       'text-sm font-bold tabular-nums',
-                      Math.abs(subledgerVsGl.ap.variance) < 1 ? 'text-gray-400' : 'text-amber-400'
+                      Math.abs(subledgerVsGl.ap.variance) < 1 ? 'text-muted-foreground' : 'text-amber-400'
                     )}
                   >
                     {formatCurrency(subledgerVsGl.ap.variance)}
@@ -1913,7 +1915,7 @@ export const ContactsPage = () => {
                 </div>
               </div>
               {subledgerVsGl.ap.workerPayablesOperational != null && subledgerVsGl.ap.workerPayablesOperational > 0.01 && (
-                <p className="text-[11px] text-slate-500 border-t border-gray-800/60 pt-2">
+                <p className="text-[11px] text-slate-500 border-t border-border/60 pt-2">
                   Worker GL payables {formatCurrency(subledgerVsGl.ap.workerPayablesOperational)} — compare to WP 2010 / party GL, not AP 2000.
                 </p>
               )}
@@ -1927,32 +1929,32 @@ export const ContactsPage = () => {
 
       {/* Contacts Table - Scrollable (min-h-0 lets flex-1 shrink so overflow works) */}
       <div className="flex-1 min-h-0 overflow-auto px-6 py-3">
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden min-h-[200px]">
+        <div className="bg-card border border-border rounded-xl overflow-hidden min-h-[200px]">
           {listLoading && contacts.length === 0 ? (
             <div className="p-4 md:p-5">
               <div className="grid grid-cols-2 gap-3 max-w-md mx-auto mb-4">
-                <div className="rounded-lg border border-gray-800 bg-gray-900/80 p-3 animate-pulse">
-                  <div className="h-2.5 w-20 bg-gray-700 rounded mb-2" />
+                <div className="rounded-lg border border-border bg-card p-3 animate-pulse">
+                  <div className="h-2.5 w-20 bg-muted rounded mb-2" />
                   <div className="h-7 w-24 bg-green-900/40 rounded mb-1" />
-                  <p className="text-[10px] text-gray-500">Receivables</p>
+                  <p className="text-[10px] text-muted-foreground">Receivables</p>
                 </div>
-                <div className="rounded-lg border border-gray-800 bg-gray-900/80 p-3 animate-pulse">
-                  <div className="h-2.5 w-20 bg-gray-700 rounded mb-2" />
+                <div className="rounded-lg border border-border bg-card p-3 animate-pulse">
+                  <div className="h-2.5 w-20 bg-muted rounded mb-2" />
                   <div className="h-7 w-24 bg-red-900/40 rounded mb-1" />
-                  <p className="text-[10px] text-gray-500">Payables</p>
+                  <p className="text-[10px] text-muted-foreground">Payables</p>
                 </div>
               </div>
               <div className="space-y-1.5 max-w-4xl mx-auto mb-4">
                 {Array.from({ length: 5 }).map((_, i) => (
                   <div
                     key={i}
-                    className="h-11 rounded-md bg-gray-800/35 border border-gray-800/60 animate-pulse"
+                    className="h-11 rounded-md bg-muted/35 border border-border/60 animate-pulse"
                     style={{ animationDelay: `${i * 35}ms` }}
                   />
                 ))}
               </div>
               <div className="text-center space-y-2">
-                <p className="text-xs text-gray-400 flex items-center justify-center gap-2">
+                <p className="text-xs text-muted-foreground flex items-center justify-center gap-2">
                   <Loader2 size={16} className="text-blue-500 animate-spin" />
                   Loading contacts &amp; due balances…
                 </p>
@@ -1960,7 +1962,7 @@ export const ContactsPage = () => {
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="border-gray-600 text-gray-300 hover:bg-gray-800"
+                  className="border-gray-600 text-muted-foreground hover:bg-muted"
                   onClick={() => openDrawer('addContact')}
                 >
                   <Users size={14} className="mr-2" />
@@ -1974,18 +1976,18 @@ export const ContactsPage = () => {
               <div className="overflow-x-auto">
                 <div className="min-w-[1000px]">
                   {/* Table Header - Fixed within scroll container */}
-                  <div className="sticky top-0 bg-gray-950/95 backdrop-blur-sm z-10 border-b border-gray-800">
-                    <div className="grid grid-cols-[40px_1fr_120px_160px_112px_112px_110px_60px] gap-3 px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  <div className="sticky top-0 bg-input-background/95 backdrop-blur-sm z-10 border-b border-border">
+                    <div className="grid grid-cols-[40px_1fr_120px_160px_112px_112px_110px_60px] gap-3 px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                       <div className="text-left">#</div>
                       <div className="text-left">Name</div>
                       <div className="text-left">Type</div>
                       <div className="text-left">Contact Info</div>
                       <div className="text-right leading-tight">
-                        <span className="block text-[9px] normal-case text-gray-500 font-medium tracking-normal">Operational</span>
+                        <span className="block text-[9px] normal-case text-muted-foreground font-medium tracking-normal">Operational</span>
                         <span className="block">Recv.</span>
                       </div>
                       <div className="text-right leading-tight">
-                        <span className="block text-[9px] normal-case text-gray-500 font-medium tracking-normal">Operational</span>
+                        <span className="block text-[9px] normal-case text-muted-foreground font-medium tracking-normal">Operational</span>
                         <span className="block">Pay.</span>
                       </div>
                       <div className="text-center">Status</div>
@@ -1997,12 +1999,12 @@ export const ContactsPage = () => {
                   <div>
                     {paginatedContacts.length === 0 ? (
                   <div className="py-12 text-center">
-                    <Users size={48} className="mx-auto text-gray-600 mb-3" />
-                    <p className="text-gray-400 text-sm">No contacts found</p>
-                    <p className="text-gray-600 text-xs mt-1">Try adjusting your search or filters</p>
+                    <Users size={48} className="mx-auto text-muted-foreground mb-3" />
+                    <p className="text-muted-foreground text-sm">No contacts found</p>
+                    <p className="text-muted-foreground text-xs mt-1">Try adjusting your search or filters</p>
                     <Button
                       variant="outline"
-                      className="mt-4 border-gray-600 text-gray-300 hover:bg-gray-800"
+                      className="mt-4 border-gray-600 text-muted-foreground hover:bg-muted"
                       onClick={() => openDrawer('addContact')}
                     >
                       <Users size={16} className="mr-2" />
@@ -2015,23 +2017,23 @@ export const ContactsPage = () => {
                       key={contact.id}
                       onMouseEnter={() => setHoveredRow(contact.id)}
                       onMouseLeave={() => setHoveredRow(null)}
-                      className="grid grid-cols-[40px_1fr_120px_160px_112px_112px_110px_60px] gap-3 px-4 min-h-14 py-1 hover:bg-gray-800/30 transition-colors items-center border-b border-gray-800/50 last:border-b-0"
+                      className="grid grid-cols-[40px_1fr_120px_160px_112px_112px_110px_60px] gap-3 px-4 min-h-14 py-1 hover:bg-accent/30 transition-colors items-center border-b border-border last:border-b-0"
                     >
                       {/* # */}
-                      <div className="text-sm text-gray-500 font-medium">{index + 1}</div>
+                      <div className="text-sm text-muted-foreground font-medium">{index + 1}</div>
 
                       {/* Name */}
                       <div className="flex items-center gap-2.5 min-w-0">
                         <Avatar className={cn("w-9 h-9 shrink-0", getAvatarColor(contact.type))}>
-                          <AvatarFallback className="text-white text-xs font-semibold">
+                          <AvatarFallback className="text-foreground text-xs font-semibold">
                             {getInitials(contact.name)}
                           </AvatarFallback>
                         </Avatar>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
-                            <div className="text-sm font-medium text-white truncate leading-[1.3]">{contact.name}</div>
+                            <div className="text-sm font-medium text-foreground truncate leading-[1.3]">{contact.name}</div>
                             {(contact.is_default === true || (contact.is_system_generated && contact.system_type === 'walking_customer')) && (
-                              <Badge className="bg-gray-700/50 text-gray-300 border-gray-600 text-[10px] px-1.5 py-0 h-4">
+                              <Badge className="bg-muted/50 text-muted-foreground border-gray-600 text-[10px] px-1.5 py-0 h-4">
                                 System
                               </Badge>
                             )}
@@ -2041,7 +2043,7 @@ export const ContactsPage = () => {
                               </Badge>
                             )}
                           </div>
-                          <div className="text-xs text-gray-500 font-mono leading-[1.3] mt-0.5">{getContactDisplayRef(contact)}</div>
+                          <div className="text-xs text-muted-foreground font-mono leading-[1.3] mt-0.5">{getContactDisplayRef(contact)}</div>
                         </div>
                       </div>
 
@@ -2057,20 +2059,20 @@ export const ContactsPage = () => {
                           {contact.type === 'both' ? 'Customer + Supplier' : contact.type}
                         </Badge>
                         {contact.type === 'worker' && contact.workerRole && (
-                          <span className="text-[10px] text-gray-500 leading-[1.2]">
+                          <span className="text-[10px] text-muted-foreground leading-[1.2]">
                             {resolveWorkerRoleText(contact.workerRole)}
                           </span>
                         )}
                       </div>
 
                       {/* Contact Info */}
-                      <div className="text-xs text-gray-400 space-y-0.5 min-w-0">
+                      <div className="text-xs text-muted-foreground space-y-0.5 min-w-0">
                         <div className="flex items-center gap-1.5 truncate leading-[1.4]">
-                          <Phone size={10} className="text-gray-600 shrink-0" />
+                          <Phone size={10} className="text-muted-foreground shrink-0" />
                           <span className="truncate">{contact.phone}</span>
                         </div>
                         <div className="flex items-center gap-1.5 truncate leading-[1.4]">
-                          <Mail size={10} className="text-gray-600 shrink-0" />
+                          <Mail size={10} className="text-muted-foreground shrink-0" />
                           <span className="truncate">{contact.email}</span>
                         </div>
                       </div>
@@ -2079,7 +2081,7 @@ export const ContactsPage = () => {
                       <div className="text-right">
                         {balanceColumnsPending ? (
                           <div
-                            className="h-5 w-[4.25rem] ml-auto rounded bg-gray-800/60 border border-gray-800/50 animate-pulse"
+                            className="h-5 w-[4.25rem] ml-auto rounded bg-muted/60 border border-border animate-pulse"
                             title={
                               balancesStale
                                 ? 'Operational balances did not finish loading — refresh'
@@ -2101,7 +2103,7 @@ export const ContactsPage = () => {
                               <div
                                 className={cn(
                                   'text-sm font-semibold tabular-nums leading-[1.4]',
-                                  contact.receivables > 0 ? 'text-green-400' : 'text-gray-600'
+                                  contact.receivables > 0 ? 'text-[var(--erp-money-positive)]' : 'text-muted-foreground'
                                 )}
                                 title="GL receivable — get_contact_party_gl_balances (1100 subtree)"
                               >
@@ -2115,7 +2117,7 @@ export const ContactsPage = () => {
                                 <div
                                   className={cn(
                                     'text-[10px] tabular-nums text-violet-300/90',
-                                    gl < -0.005 && 'text-amber-200/90'
+                                    gl < -0.005 && 'text-amber-800 dark:text-amber-200'
                                   )}
                                   title="Party AR (1100 subtree, get_contact_party_gl_balances) — not mixed into operational"
                                 >
@@ -2131,7 +2133,7 @@ export const ContactsPage = () => {
                       <div className="text-right">
                         {balanceColumnsPending ? (
                           <div
-                            className="h-5 w-[4.25rem] ml-auto rounded bg-gray-800/60 border border-gray-800/50 animate-pulse"
+                            className="h-5 w-[4.25rem] ml-auto rounded bg-muted/60 border border-border animate-pulse"
                             title={
                               balancesStale
                                 ? 'Operational balances did not finish loading — refresh'
@@ -2153,7 +2155,7 @@ export const ContactsPage = () => {
                               <div
                                 className={cn(
                                   'text-sm font-semibold tabular-nums leading-[1.4]',
-                                  contact.payables > 0 ? 'text-red-400' : 'text-gray-600'
+                                  contact.payables > 0 ? 'text-red-400' : 'text-muted-foreground'
                                 )}
                                 title="GL payable — get_contact_party_gl_balances (AP / worker subtree)"
                               >
@@ -2167,7 +2169,7 @@ export const ContactsPage = () => {
                                 <div
                                   className={cn(
                                     'text-[10px] tabular-nums text-violet-300/90',
-                                    gl < -0.005 && 'text-amber-200/90'
+                                    gl < -0.005 && 'text-amber-800 dark:text-amber-200'
                                   )}
                                   title="Signed party AP / worker payable (get_contact_party_gl_balances)"
                                 >
@@ -2201,14 +2203,14 @@ export const ContactsPage = () => {
                           <DropdownMenuTrigger asChild>
                             <button 
                               className={cn(
-                                "w-8 h-8 rounded-lg bg-gray-800/50 hover:bg-gray-700 transition-all flex items-center justify-center text-gray-400 hover:text-white",
+                                "w-8 h-8 rounded-lg bg-muted/50 hover:bg-muted transition-all flex items-center justify-center text-muted-foreground hover:text-foreground",
                                 hoveredRow === contact.id ? "opacity-100" : "opacity-0"
                               )}
                             >
                               <MoreVertical size={16} />
                             </button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700 text-white w-52">
+                          <DropdownMenuContent align="end" className="bg-card border-border text-foreground w-52">
                             {canApproveLeads && isPendingPublicLead(contact) && (
                               <>
                                 <DropdownMenuItem
@@ -2216,12 +2218,12 @@ export const ContactsPage = () => {
                                     setSelectedContact(contact);
                                     setApproveDialogOpen(true);
                                   }}
-                                  className="hover:bg-gray-800 cursor-pointer text-amber-300"
+                                  className="hover:bg-muted cursor-pointer text-amber-300"
                                 >
                                   <UserCheck size={14} className="mr-2" />
                                   Approve lead
                                 </DropdownMenuItem>
-                                <DropdownMenuSeparator className="bg-gray-700" />
+                                <DropdownMenuSeparator className="bg-muted" />
                               </>
                             )}
                             {getContactDisplayRef(contact) === '—' &&
@@ -2230,14 +2232,14 @@ export const ContactsPage = () => {
                                 <DropdownMenuItem
                                   disabled={assigningReferenceId === (contact.uuid || String(contact.id))}
                                   onClick={() => void handleAssignReference(contact)}
-                                  className="hover:bg-gray-800 cursor-pointer text-violet-300"
+                                  className="hover:bg-muted cursor-pointer text-violet-300"
                                 >
                                   <FileText size={14} className="mr-2" />
                                   {assigningReferenceId === (contact.uuid || String(contact.id))
                                     ? 'Assigning reference…'
                                     : 'Assign reference'}
                                 </DropdownMenuItem>
-                                <DropdownMenuSeparator className="bg-gray-700" />
+                                <DropdownMenuSeparator className="bg-muted" />
                               </>
                             )}
                             {/* Customer Actions (customer or both) */}
@@ -2248,9 +2250,9 @@ export const ContactsPage = () => {
                                     setSelectedContact(contact);
                                     setViewProfileOpen(true);
                                   }}
-                                  className="hover:bg-gray-800 cursor-pointer"
+                                  className="hover:bg-muted cursor-pointer"
                                 >
-                                  <Eye size={14} className="mr-2 text-gray-400" />
+                                  <Eye size={14} className="mr-2 text-muted-foreground" />
                                   View Profile
                                 </DropdownMenuItem>
                                 <DropdownMenuItem 
@@ -2258,11 +2260,11 @@ export const ContactsPage = () => {
                                     setCurrentView('sales');
                                     // CRITICAL FIX: Use contact.uuid (database UUID) not contact.id (number)
                                     // sale.customer_id matches contacts.id (UUID) in database
-                                    sessionStorage.setItem('salesFilter_customerId', contact.uuid || contact.id?.toString() || '');
-                                    sessionStorage.setItem('salesFilter_customerName', contact.name || '');
+                                    safeSessionStorageSetItem('salesFilter_customerId', contact.uuid || contact.id?.toString() || '');
+                                    safeSessionStorageSetItem('salesFilter_customerName', contact.name || '');
                                     toast.info(`Filtering sales for ${contact.name}`);
                                   }}
-                                  className="hover:bg-gray-800 cursor-pointer"
+                                  className="hover:bg-muted cursor-pointer"
                                 >
                                   <FileText size={14} className="mr-2 text-blue-400" />
                                   View Sales
@@ -2273,36 +2275,41 @@ export const ContactsPage = () => {
                                     setPaymentFlowMode('customer_receipt');
                                     setPaymentDialogOpen(true);
                                   }}
-                                  className="hover:bg-gray-800 cursor-pointer"
+                                  className="hover:bg-muted cursor-pointer"
                                 >
-                                  <DollarSign size={14} className="mr-2 text-green-400" />
+                                  <DollarSign size={14} className="mr-2 text-[var(--erp-money-positive)]" />
                                   Receive Payment
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onClick={() => {
                                     openPartyLedger?.({ contactId: contact.uuid || contact.id?.toString(), contactName: contact.name, contactType: 'customer' });
                                   }}
-                                  className="hover:bg-gray-800 cursor-pointer"
+                                  className="hover:bg-muted cursor-pointer"
                                 >
                                   <BarChart3 size={14} className="mr-2 text-indigo-400" />
                                   View Ledger
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onClick={() => {
-                                    setSelectedContact(contact);
-                                    setLedgerOpen(true);
+                                    const contactId = contact.uuid || contact.id?.toString();
+                                    if (!contactId) return;
+                                    openLedgerStatementV2?.({
+                                      entityId: contactId,
+                                      statementType: 'customer',
+                                      entityLabel: contact.name,
+                                    });
                                   }}
-                                  className="hover:bg-gray-800 cursor-pointer"
+                                  className="hover:bg-muted cursor-pointer"
                                 >
-                                  <FileText size={14} className="mr-2 text-purple-400" />
-                                  Party statement (Operational / GL / Reconciliation)
+                                  <FileText size={14} className="mr-2 text-blue-400" />
+                                  GL Statement
                                 </DropdownMenuItem>
-                                <DropdownMenuSeparator className="bg-gray-700" />
+                                <DropdownMenuSeparator className="bg-muted" />
                                 <DropdownMenuItem 
                                   onClick={() => openDrawer('addContact', undefined, { contact, prefillName: contact.name, prefillPhone: contact.phone })}
-                                  className="hover:bg-gray-800 cursor-pointer"
+                                  className="hover:bg-muted cursor-pointer"
                                 >
-                                  <Edit size={14} className="mr-2 text-gray-400" />
+                                  <Edit size={14} className="mr-2 text-muted-foreground" />
                                   Edit Contact
                                 </DropdownMenuItem>
                                 <DropdownMenuItem 
@@ -2312,7 +2319,7 @@ export const ContactsPage = () => {
                                   }}
                                   disabled={(contact.is_default === true || (contact.is_system_generated && contact.system_type === 'walking_customer'))}
                                   className={cn(
-                                    "hover:bg-gray-800 cursor-pointer text-red-400",
+                                    "hover:bg-muted cursor-pointer text-red-400",
                                     (contact.is_default === true || (contact.is_system_generated && contact.system_type === 'walking_customer')) && "opacity-50 cursor-not-allowed"
                                   )}
                                   title={(contact.is_default === true || (contact.is_system_generated && contact.system_type === 'walking_customer')) ? 'Default Walk-in Customer cannot be deleted' : ''}
@@ -2331,20 +2338,20 @@ export const ContactsPage = () => {
                                     setSelectedContact(contact);
                                     setViewProfileOpen(true);
                                   }}
-                                  className="hover:bg-gray-800 cursor-pointer"
+                                  className="hover:bg-muted cursor-pointer"
                                 >
-                                  <Eye size={14} className="mr-2 text-gray-400" />
+                                  <Eye size={14} className="mr-2 text-muted-foreground" />
                                   View Profile
                                 </DropdownMenuItem>
                                 <DropdownMenuItem 
                                   onClick={() => {
                                     setCurrentView('purchases');
                                     // Store supplier filter in sessionStorage for PurchasesPage to read
-                                    sessionStorage.setItem('purchasesFilter_supplierId', contact.uuid || '');
-                                    sessionStorage.setItem('purchasesFilter_supplierName', contact.name || '');
+                                    safeSessionStorageSetItem('purchasesFilter_supplierId', contact.uuid || '');
+                                    safeSessionStorageSetItem('purchasesFilter_supplierName', contact.name || '');
                                     toast.info(`Filtering purchases for ${contact.name}`);
                                   }}
-                                  className="hover:bg-gray-800 cursor-pointer"
+                                  className="hover:bg-muted cursor-pointer"
                                 >
                                   <FileText size={14} className="mr-2 text-purple-400" />
                                   View Purchases
@@ -2355,7 +2362,7 @@ export const ContactsPage = () => {
                                     setPaymentFlowMode('supplier_payment');
                                     setPaymentDialogOpen(true);
                                   }}
-                                  className="hover:bg-gray-800 cursor-pointer"
+                                  className="hover:bg-muted cursor-pointer"
                                 >
                                   <DollarSign size={14} className="mr-2 text-red-400" />
                                   Make Payment
@@ -2364,27 +2371,32 @@ export const ContactsPage = () => {
                                   onClick={() => {
                                     openPartyLedger?.({ contactId: contact.uuid || contact.id?.toString(), contactName: contact.name, contactType: 'supplier' });
                                   }}
-                                  className="hover:bg-gray-800 cursor-pointer"
+                                  className="hover:bg-muted cursor-pointer"
                                 >
                                   <BarChart3 size={14} className="mr-2 text-indigo-400" />
                                   View Ledger
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onClick={() => {
-                                    setSelectedContact(contact);
-                                    setLedgerOpen(true);
+                                    const contactId = contact.uuid || contact.id?.toString();
+                                    if (!contactId) return;
+                                    openLedgerStatementV2?.({
+                                      entityId: contactId,
+                                      statementType: 'supplier',
+                                      entityLabel: contact.name,
+                                    });
                                   }}
-                                  className="hover:bg-gray-800 cursor-pointer"
+                                  className="hover:bg-muted cursor-pointer"
                                 >
                                   <FileText size={14} className="mr-2 text-blue-400" />
-                                  Party statement (Operational / GL / Reconciliation)
+                                  GL Statement
                                 </DropdownMenuItem>
-                                <DropdownMenuSeparator className="bg-gray-700" />
+                                <DropdownMenuSeparator className="bg-muted" />
                                 <DropdownMenuItem 
                                   onClick={() => openDrawer('addContact', undefined, { contact, prefillName: contact.name, prefillPhone: contact.phone })}
-                                  className="hover:bg-gray-800 cursor-pointer"
+                                  className="hover:bg-muted cursor-pointer"
                                 >
-                                  <Edit size={14} className="mr-2 text-gray-400" />
+                                  <Edit size={14} className="mr-2 text-muted-foreground" />
                                   Edit Contact
                                 </DropdownMenuItem>
                                 <DropdownMenuItem 
@@ -2394,7 +2406,7 @@ export const ContactsPage = () => {
                                   }}
                                   disabled={(contact.is_default === true || (contact.is_system_generated && contact.system_type === 'walking_customer'))}
                                   className={cn(
-                                    "hover:bg-gray-800 cursor-pointer text-red-400",
+                                    "hover:bg-muted cursor-pointer text-red-400",
                                     (contact.is_default === true || (contact.is_system_generated && contact.system_type === 'walking_customer')) && "opacity-50 cursor-not-allowed"
                                   )}
                                   title={(contact.is_default === true || (contact.is_system_generated && contact.system_type === 'walking_customer')) ? 'Default Walk-in Customer cannot be deleted' : ''}
@@ -2413,9 +2425,9 @@ export const ContactsPage = () => {
                                     setSelectedContact(contact);
                                     setViewProfileOpen(true);
                                   }}
-                                  className="hover:bg-gray-800 cursor-pointer"
+                                  className="hover:bg-muted cursor-pointer"
                                 >
-                                  <Eye size={14} className="mr-2 text-gray-400" />
+                                  <Eye size={14} className="mr-2 text-muted-foreground" />
                                   View Profile
                                 </DropdownMenuItem>
                                 <DropdownMenuItem 
@@ -2424,7 +2436,7 @@ export const ContactsPage = () => {
                                     // TODO: Filter by worker
                                     toast.info('Work history for worker');
                                   }}
-                                  className="hover:bg-gray-800 cursor-pointer"
+                                  className="hover:bg-muted cursor-pointer"
                                 >
                                   <FileText size={14} className="mr-2 text-orange-400" />
                                   Work History
@@ -2434,7 +2446,7 @@ export const ContactsPage = () => {
                                     setCurrentView('studio-workflow');
                                     toast.info('Assign job to worker');
                                   }}
-                                  className="hover:bg-gray-800 cursor-pointer"
+                                  className="hover:bg-muted cursor-pointer"
                                 >
                                   <Users size={14} className="mr-2 text-blue-400" />
                                   Assign Job
@@ -2445,27 +2457,32 @@ export const ContactsPage = () => {
                                     setPaymentFlowMode(null);
                                     setPaymentDialogOpen(true);
                                   }}
-                                  className="hover:bg-gray-800 cursor-pointer"
+                                  className="hover:bg-muted cursor-pointer"
                                 >
-                                  <DollarSign size={14} className="mr-2 text-green-400" />
+                                  <DollarSign size={14} className="mr-2 text-[var(--erp-money-positive)]" />
                                   Payments
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onClick={() => {
-                                    setSelectedContact(contact);
-                                    setLedgerOpen(true);
+                                    const contactId = contact.uuid || contact.id?.toString();
+                                    if (!contactId) return;
+                                    openLedgerStatementV2?.({
+                                      entityId: contactId,
+                                      statementType: 'worker',
+                                      entityLabel: contact.name,
+                                    });
                                   }}
-                                  className="hover:bg-gray-800 cursor-pointer"
+                                  className="hover:bg-muted cursor-pointer"
                                 >
                                   <FileText size={14} className="mr-2 text-violet-400" />
-                                  Party statement (Operational / GL / Reconciliation)
+                                  GL Statement
                                 </DropdownMenuItem>
-                                <DropdownMenuSeparator className="bg-gray-700" />
+                                <DropdownMenuSeparator className="bg-muted" />
                                 <DropdownMenuItem 
                                   onClick={() => openDrawer('addContact', undefined, { contact, prefillName: contact.name, prefillPhone: contact.phone })}
-                                  className="hover:bg-gray-800 cursor-pointer"
+                                  className="hover:bg-muted cursor-pointer"
                                 >
-                                  <Edit size={14} className="mr-2 text-gray-400" />
+                                  <Edit size={14} className="mr-2 text-muted-foreground" />
                                   Edit Contact
                                 </DropdownMenuItem>
                                 <DropdownMenuItem 
@@ -2475,7 +2492,7 @@ export const ContactsPage = () => {
                                   }}
                                   disabled={(contact.is_default === true || (contact.is_system_generated && contact.system_type === 'walking_customer'))}
                                   className={cn(
-                                    "hover:bg-gray-800 cursor-pointer text-red-400",
+                                    "hover:bg-muted cursor-pointer text-red-400",
                                     (contact.is_default === true || (contact.is_system_generated && contact.system_type === 'walking_customer')) && "opacity-50 cursor-not-allowed"
                                   )}
                                   title={(contact.is_default === true || (contact.is_system_generated && contact.system_type === 'walking_customer')) ? 'Default Walk-in Customer cannot be deleted' : ''}
@@ -2564,54 +2581,6 @@ export const ContactsPage = () => {
         />
       )}
 
-      {/* Customer Ledger - Full Screen (for customers and both) */}
-      {selectedContact && (selectedContact.type === 'customer' || selectedContact.type === 'both') && ledgerOpen && (
-        <div className="fixed inset-0 z-50 bg-[#111827] overflow-y-auto">
-          <CustomerLedgerPageOriginal
-            initialCustomerId={selectedContact.uuid}
-            onClose={() => {
-              setLedgerOpen(false);
-              setSelectedContact(null);
-            }}
-          />
-        </div>
-      )}
-
-      {/* Supplier / Worker Ledger - Full screen (exclude customer-only so 'both' uses Customer Ledger above) */}
-      {selectedContact && (selectedContact.type === 'supplier' || selectedContact.type === 'worker') && ledgerOpen && (
-        <div className="fixed inset-0 z-50 bg-[#111827] overflow-y-auto">
-          <div className="sticky top-0 z-10 bg-[#111827] border-b border-gray-800 px-6 py-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="text-xl font-bold text-white">
-                {selectedContact.type === 'supplier' ? 'Supplier' : 'Worker'} statement — {selectedContact.name}
-              </h2>
-              <p className="text-[11px] text-gray-500 mt-1 max-w-xl">
-                <span className="text-amber-400/90 font-medium">LEGACY supplier/worker statement</span> — not canonical
-                truth; same three engines as customer (no mixed running balance). Prefer AR/AP Truth Lab for AR/AP deltas.
-              </p>
-            </div>
-            <Button
-              variant="outline"
-              className="border-gray-600 text-gray-300 hover:bg-gray-800 shrink-0"
-              onClick={() => {
-                setLedgerOpen(false);
-                setSelectedContact(null);
-              }}
-            >
-              <X size={18} className="mr-2" />
-              Close
-            </Button>
-          </div>
-          <div className="p-6">
-            <GenericLedgerView
-              ledgerType={selectedContact.type === 'supplier' ? 'supplier' : 'worker'}
-              entityId={selectedContact.uuid ?? ''}
-              entityName={selectedContact.name}
-            />
-          </div>
-        </div>
-      )}
-
       {/* View Contact Profile */}
       {selectedContact && (
         <ViewContactProfile
@@ -2628,13 +2597,13 @@ export const ContactsPage = () => {
 
       {selectedContact && (
         <AlertDialog open={approveDialogOpen} onOpenChange={setApproveDialogOpen}>
-          <AlertDialogContent className="bg-gray-900 border-gray-700 text-white">
+          <AlertDialogContent className="bg-card border-border text-foreground">
             <AlertDialogHeader>
               <AlertDialogTitle>Approve registration lead</AlertDialogTitle>
-              <AlertDialogDescription className="text-gray-400">
+              <AlertDialogDescription className="text-muted-foreground">
                 Assign an official contact reference (CUS/SUP/WRK) to {selectedContact.name}?
                 {selectedContact.referralCode ? (
-                  <span className="block mt-2 font-mono text-amber-200/90">
+                  <span className="block mt-2 font-mono text-amber-800 dark:text-amber-200">
                     Link referral: {selectedContact.referralCode}
                   </span>
                 ) : null}
@@ -2643,7 +2612,7 @@ export const ContactsPage = () => {
             <AlertDialogFooter>
               <AlertDialogCancel
                 disabled={approvingLead}
-                className="bg-gray-800 border-gray-700 text-white hover:bg-gray-700"
+                className="bg-muted border-border text-foreground hover:bg-muted"
               >
                 Cancel
               </AlertDialogCancel>
@@ -2665,10 +2634,10 @@ export const ContactsPage = () => {
       {/* Delete Confirmation Dialog */}
       {selectedContact && (
         <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-          <AlertDialogContent className="bg-gray-900 border-gray-700 text-white">
+          <AlertDialogContent className="bg-card border-border text-foreground">
             <AlertDialogHeader>
               <AlertDialogTitle>Delete Contact</AlertDialogTitle>
-              <AlertDialogDescription className="text-gray-400">
+              <AlertDialogDescription className="text-muted-foreground">
                 Are you sure you want to delete {selectedContact.name}? This action cannot be undone.
               </AlertDialogDescription>
             </AlertDialogHeader>
@@ -2679,7 +2648,7 @@ export const ContactsPage = () => {
                   setDeleteDialogOpen(false);
                   setSelectedContact(null);
                 }}
-                className="bg-gray-800 border-gray-700 text-white hover:bg-gray-700"
+                className="bg-muted border-border text-foreground hover:bg-muted"
               >
                 Cancel
               </Button>

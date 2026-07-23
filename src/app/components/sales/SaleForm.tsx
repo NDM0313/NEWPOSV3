@@ -43,6 +43,7 @@ import {
 import { format, parseISO } from "date-fns";
 import { buildNotesWithStudioDeadline, parseStudioDeadlineFromNotes, getStudioDeadlineFromNotes } from "@/app/utils/studioDeadlineNotes";
 import { readSaleBillRef } from "@/app/utils/saleBillRef";
+import { mergeCustomerBillRefIntoNotes } from "@/app/utils/saleNotesComposition";
 import { canAssignSaleCommission } from '@/app/lib/executiveDashboardAccess';
 import { cn, formatDateWithTimezone } from "../ui/utils";
 import { Button } from "../ui/button";
@@ -50,7 +51,9 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Separator } from "../ui/separator";
 import { Badge } from "../ui/badge";
-import { CalendarDatePicker } from "../ui/CalendarDatePicker";
+import { DateTimePicker, dateToDateTimePickerValue, dateTimePickerValueToDate } from "../ui/DateTimePicker";
+import { DatePicker } from "../ui/DatePicker";
+import { formatLocalDateYYYYMMDD, parseLocalDateInput } from '@/app/utils/localDate';
 import { SearchableSelect } from "../ui/searchable-select";
 import { InlineVariationSelector, Variation } from "../ui/inline-variation-selector";
 import {
@@ -107,8 +110,11 @@ import {
   hydrateFabricDraftsFromChildren,
   isInjectedBespokeLine,
   resolveFabricMaterialRetailPrice,
+  stripFabricUsagePrefix,
+  parseFabricUsage,
 } from '@/app/lib/bespokeCartInjection';
 import { toast } from "sonner";
+import { webSaveTimingMark, webSaveTimingStart } from '@/app/lib/webSaveTiming';
 import { BranchSelector } from '@/app/components/layout/BranchSelector';
 import { SaleItemsSection } from './SaleItemsSection';
 import { PaymentAttachments, PaymentAttachment } from '../payments/PaymentAttachments';
@@ -121,12 +127,15 @@ import { getTailorOptionsForExtraType, tailorNameByCategoryId } from '@/app/util
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 import { useSettings } from '@/app/context/SettingsContext';
 import { formatCurrency, getCurrencySymbol } from '@/app/utils/formatCurrency';
+import { rankProductSearchHit, preferExactSkuHits, PRODUCT_SEARCH_RESULT_CAP } from '@/app/utils/productSearchRank';
 import { contactService } from '@/app/services/contactService';
 import { saleService } from '@/app/services/saleService';
 import { productService } from '@/app/services/productService';
 import { inventoryService } from '@/app/services/inventoryService';
 import { branchService, Branch } from '@/app/services/branchService';
 import { useSales, convertFromSupabaseSale, Sale } from '@/app/context/SalesContext';
+import { coerceUuidOrNull } from '@/app/utils/uuidCoerce';
+import { shouldShowSaleLineVariations } from '@/app/utils/saleLineVariation';
 import { UnifiedSalesInvoiceView } from '@/app/documents';
 import { useNavigation } from '@/app/context/NavigationContext';
 import { Loader2 } from 'lucide-react';
@@ -175,6 +184,10 @@ interface SaleItem {
     bespokeParentCartId?: number;
     bespokeRole?: 'fabric';
     isBespokeInjected?: boolean;
+    /** Piece-type preset (Shirt/Dupatta/Trouser) — display on fabric cart lines. */
+    bespokeUsage?: 'shirt' | 'dupatta' | 'trouser';
+    /** Catalog retail unit price for UI only — billed price stays 0. */
+    bespokeRefUnitPrice?: number;
     /** DB parent line id when editing existing sale */
     dbLineId?: string;
     bespokeParentItemId?: string | null;
@@ -281,7 +294,8 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
     // Supabase & Context
     const { companyId, branchId: contextBranchId, user, userRole, accessibleBranchIds, requiresBranchSelection } = useSupabase();
     const { canManageSettings } = useCheckPermission();
-    const { inventorySettings, businessSettings, loading: settingsLoading, company } = useSettings();
+    const { inventorySettings, businessSettings, loading: settingsLoading, company, modules: settingsModules } = useSettings();
+    const studioModuleEnabled = settingsModules.studioModuleEnabled;
     const enablePacking = inventorySettings.enablePacking;
     const enableBespoke = businessSettings.enableBespokeOrders;
     const bespokeFormConfig = businessSettings.bespokeFormConfig;
@@ -562,6 +576,12 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
 
     // Studio Sale State
     const [isStudioSale, setIsStudioSale] = useState<boolean>(false);
+
+    useEffect(() => {
+        if (!studioModuleEnabled && !initialSale?.id) {
+            setIsStudioSale(false);
+        }
+    }, [studioModuleEnabled, initialSale?.id]);
     /** Persisted to studio_productions.design_name (required for studio sales). */
     const [studioProductName, setStudioProductName] = useState<string>("");
     const [studioNotes, setStudioNotes] = useState<string>("");
@@ -662,113 +682,24 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
 
     const getSalesmanName = () => salesmen.find(s => s.id.toString() === salesmanId)?.name || "No Salesman";
 
-    // Helper: Extract numeric part from SKU (keep leading zeros)
-    const extractNumericPart = (sku: string): string => {
-        return sku.replace(/\D/g, '');
-    };
-
-    // Helper: Normalize numeric part (remove leading zeros for comparison)
-    const normalizeNumeric = (numStr: string): string => {
-        return numStr.replace(/^0+/, '') || '0';
-    };
-
-    // Helper: Check if search term matches SKU (including numeric-only search)
-    const matchesSku = (sku: string, searchTerm: string): boolean => {
-        if (!sku || !searchTerm) return false;
-        
-        const lowerSku = sku.toLowerCase();
-        const lowerSearch = searchTerm.toLowerCase();
-        
-        // 1. Direct text match (full SKU or partial)
-        if (lowerSku.includes(lowerSearch)) {
-            return true;
-        }
-        
-        // 2. Numeric matching (handle leading zeros)
-        const skuNumeric = extractNumericPart(sku);
-        const searchNumeric = extractNumericPart(searchTerm);
-        
-        // If search term has numbers, check numeric matching
-        if (searchNumeric.length > 0) {
-            // If SKU has no numeric part, skip numeric matching
-            if (skuNumeric.length === 0) {
-                return false;
-            }
-            
-            // Match with leading zeros preserved (e.g., "0001" matches "REG-0001")
-            // Special handling for "0" - only match if SKU numeric part starts with "0"
-            if (searchNumeric === '0') {
-                // "0" should match SKUs that have "0" in their numeric part
-                // But be more precise: match if SKU starts with "0" (like "0001", "001", "002")
-                if (skuNumeric.startsWith('0')) {
-                    return true;
-                }
-            } else {
-                // For other numeric searches, use includes check
-                if (skuNumeric.includes(searchNumeric) || searchNumeric.includes(skuNumeric)) {
-                    return true;
-                }
-            }
-            
-            // Match normalized (without leading zeros) - e.g., "1" matches "0001"
-            const normalizedSku = normalizeNumeric(skuNumeric);
-            const normalizedSearch = normalizeNumeric(searchNumeric);
-            
-            // Special case: if search normalizes to "0", it means search was all zeros
-            // In this case, we already checked with includes() above, so skip normalized check
-            // Only do normalized matching if search is not all zeros
-            if (normalizedSearch !== '0') {
-                // Check if normalized values match (exact or partial)
-                if (normalizedSku === normalizedSearch) {
-                    return true;
-                }
-                
-                // Check if one contains the other (for partial matches)
-                // But avoid "0" matching everything
-                if (normalizedSku !== '0' && normalizedSearch !== '0') {
-                    if (normalizedSku.includes(normalizedSearch) || normalizedSearch.includes(normalizedSku)) {
-                        return true;
-                    }
-                }
-            }
-        }
-        
-        return false;
-    };
-
-    // Enhanced search with SKU numeric matching (parent products only, no variations in results)
+    // Enhanced search with shared SKU/name ranker (narrow numeric matches)
     const filteredProducts = useMemo(() => {
         if (!productSearchTerm.trim()) return products;
-        
+
         const searchTerm = productSearchTerm.trim();
-        const searchLower = searchTerm.toLowerCase();
-        const isNumericOnly = /^\d+$/.test(searchTerm);
-        
-        const results = products.filter(p => {
-            // Match product name
-            const nameMatch = (p.name ?? '').toLowerCase().includes(searchLower);
-            
-            // Match SKU (full or numeric part)
-            const skuMatch = matchesSku(p.sku, searchTerm);
-            
-            return nameMatch || skuMatch;
+        let results = products.filter((p) => rankProductSearchHit(p, searchTerm) < 99);
+
+        results.sort((a, b) => {
+            const ra = rankProductSearchHit(a, searchTerm);
+            const rb = rankProductSearchHit(b, searchTerm);
+            if (ra !== rb) return ra - rb;
+            return String(a.name).localeCompare(String(b.name));
         });
-        
-        // Debug: Log results for numeric search
-        if (isNumericOnly) {
-            console.log(`[SKU SEARCH] Search: "${searchTerm}", Results: ${results.length}/${products.length}`);
-            if (results.length > 0) {
-                console.log(`[SKU SEARCH] ✅ Matched:`, results.map(p => `${p.name} (${p.sku})`));
-            } else {
-                console.log(`[SKU SEARCH] ❌ No matches. Sample products:`, products.slice(0, 3).map(p => ({ 
-                    name: p.name, 
-                    sku: p.sku, 
-                    numeric: extractNumericPart(p.sku),
-                    normalized: normalizeNumeric(extractNumericPart(p.sku))
-                })));
-            }
+
+        results = preferExactSkuHits(results, searchTerm);
+        if (results.length > PRODUCT_SEARCH_RESULT_CAP) {
+            results = results.slice(0, PRODUCT_SEARCH_RESULT_CAP);
         }
-        
         return results;
     }, [products, productSearchTerm]);
     
@@ -823,6 +754,26 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
         });
         return map;
     }, [products]);
+
+    // Reconcile variation selector visibility once product catalog (with variations) is loaded
+    useEffect(() => {
+        if (!items.length || !Object.keys(productVariationsFromBackend).length) return;
+        setItems((prev) => {
+            let changed = false;
+            const next = prev.map((item) => {
+                const variations =
+                    productVariationsFromBackend[item.productId] ??
+                    productVariationsFromBackend[String(item.productId)] ??
+                    productVariationsFromBackend[Number(item.productId)] ??
+                    [];
+                const show = shouldShowSaleLineVariations(undefined, variations);
+                if (item.showVariations === show) return item;
+                changed = true;
+                return { ...item, showVariations: show };
+            });
+            return changed ? next : prev;
+        });
+    }, [productVariationsFromBackend, items.length]);
     
     // Load data from Supabase
     // CRITICAL: Only load on initial mount, not on every companyId change
@@ -1345,7 +1296,10 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
     // This ensures the customer dropdown shows the correct selected customer
     useEffect(() => {
         if (initialSale && initialSale.customer) {
-            const customerIdValue = initialSale.customer || '';
+            const customerIdValue =
+                coerceUuidOrNull(
+                    (initialSale as { customer_id?: string }).customer_id ?? initialSale.customer,
+                ) ?? '';
             
             // If customers are not loaded yet, set customerId anyway (will be validated when customers load)
             if (customers.length === 0) {
@@ -1472,7 +1426,10 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 // CRITICAL: Preselect variation when editing – use variation_id from DB so dropdown is not blank
                 const convertedItems: SaleItem[] = list.map((item: any, index: number) => {
                     const variationId = item.variation_id ?? item.variationId ?? undefined;
-                    const hasVariation = Boolean(variationId);
+                    const productForVar = item.product as
+                        | { has_variations?: boolean; variations?: Array<{ id?: string; size?: string; color?: string; attributes?: Record<string, unknown> }> }
+                        | undefined;
+                    const showLineVariations = shouldShowSaleLineVariations(productForVar);
                     
                     // CRITICAL: packing_details might be JSONB (object) or JSON string
                     // Load complete structure, not just totals
@@ -1522,33 +1479,38 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                     );
                     const storedUnitPrice = Number(item.price ?? item.unit_price ?? 0);
                     const productRetail = Number((item.product as { retail_price?: number } | undefined)?.retail_price ?? 0) || 0;
-                    const resolvedStoredPrice =
-                        storedUnitPrice > 0
-                            ? storedUnitPrice
-                            : isFabricChild && productRetail > 0
-                              ? productRetail
-                              : storedUnitPrice;
+                    // Fabric children are stock-only (billed Rs 0); catalog retail is display-only.
+                    const resolvedStoredPrice = isFabricChild ? 0 : storedUnitPrice;
                     const baseUnitPrice = isFabricChild
-                        ? resolvedStoredPrice
+                        ? 0
                         : deriveBaseUnitPriceFromStored(resolvedStoredPrice, details);
+                    const lineName = item.productName || item.product_name || '';
+                    const fromName = stripFabricUsagePrefix(lineName);
+                    const fabricUsage = isFabricChild
+                        ? parseFabricUsage(fromName.usage)
+                        : undefined;
+                    const fabricRef =
+                        isFabricChild && productRetail > 0
+                            ? productRetail
+                            : isFabricChild && storedUnitPrice > 0
+                              ? storedUnitPrice
+                              : undefined;
 
                     return {
                         id: baseTimestamp + index,
                         dbLineId,
                         bespokeParentItemId: parentDbId,
                         productId: item.productId || item.product_id || '',
-                        name: item.productName || item.product_name || '',
+                        name: lineName,
                         sku: item.sku || '',
-                        price: isFabricChild ? resolvedStoredPrice : baseUnitPrice,
+                        price: isFabricChild ? 0 : baseUnitPrice,
                         baseUnitPrice,
                         qty: item.quantity || 0,
                         size: item.size,
                         color: item.color,
                         variationId,
                         selectedVariationId: variationId,
-                        showVariations: isFabricChild
-                            ? false
-                            : hasVariation || Boolean(item.product?.has_variations),
+                        showVariations: isFabricChild ? false : showLineVariations,
                         stock: 0,
                         lastPurchasePrice: undefined,
                         lastSupplier: undefined,
@@ -1559,6 +1521,8 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                         customizationDetails: buildBespokeMetadataForPersist(details) ?? details,
                         isBespokeInjected: !!parentDbId,
                         bespokeRole: parentDbId ? ('fabric' as const) : undefined,
+                        ...(fabricUsage ? { bespokeUsage: fabricUsage } : {}),
+                        ...(fabricRef != null ? { bespokeRefUnitPrice: fabricRef } : {}),
                     };
                 });
                 const parentIdByDb = new Map<string, number>();
@@ -1854,22 +1818,22 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
     // Status helper functions
     const getStatusColor = () => {
         switch(saleStatus) {
-            case 'draft': return 'text-gray-500 bg-gray-900/50 border-gray-700';
+            case 'draft': return 'text-muted-foreground bg-muted/30 border-border';
             case 'quotation': return 'text-yellow-500 bg-yellow-900/20 border-yellow-600/50';
             case 'order': return 'text-blue-500 bg-blue-900/20 border-blue-600/50';
             case 'final': return 'text-green-500 bg-green-900/20 border-green-600/50';
-            default: return 'text-gray-500 bg-gray-900/50 border-gray-700';
+            default: return 'text-muted-foreground bg-muted/30 border-border';
         }
     };
 
     // Chip-style status color for top header
     const getStatusChipColor = () => {
         switch(saleStatus) {
-            case 'draft': return 'bg-gray-500/20 text-gray-400 border-gray-600/50';
+            case 'draft': return 'bg-gray-500/20 text-muted-foreground border-gray-600/50';
             case 'quotation': return 'bg-yellow-500/20 text-yellow-400 border-yellow-600/50';
             case 'order': return 'bg-blue-500/20 text-blue-400 border-blue-600/50';
-            case 'final': return 'bg-green-500/20 text-green-400 border-green-600/50';
-            default: return 'bg-gray-500/20 text-gray-400 border-gray-600/50';
+            case 'final': return 'bg-green-500/20 text-[var(--erp-money-positive)] border-green-600/50';
+            default: return 'bg-gray-500/20 text-muted-foreground border-gray-600/50';
         }
     };
 
@@ -1996,24 +1960,27 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
 
     // Helper to get due balance color: green = customer owes us, red = we owe customer
     const getDueBalanceColor = (due: number) => {
-        if (due > 0) return 'text-green-400'; // Customer owes us (we took)
+        if (due > 0) return 'text-[var(--erp-money-positive)]'; // Customer owes us (we took)
         if (due < 0) return 'text-red-400';   // We owe customer (we gave)
-        return 'text-gray-500'; // Zero
+        return 'text-muted-foreground'; // Zero
     };
 
-    // Display invoice number: when editing draft/qt/order and user selected Final → show next SL- (preview); else actual or new preview
+    // Display invoice number: final SL assigned on save via global RPC (no local counter preview)
     const displayInvoiceNumber = useMemo(() => {
         if (initialSale?.invoiceNo) {
             const inv = initialSale.invoiceNo;
             if (saleStatus === 'final' && isPreFinalSaleDocumentNo(inv)) {
-                if (typeof generateDocumentNumber === 'function') return generateDocumentNumber('invoice');
-                return 'SL-0001';
+                return 'Auto';
             }
             return inv;
         }
-        if (typeof generateDocumentNumber !== 'function') return 'SL-0001';
-        if (isStudioSale) return generateDocumentNumber('studio');
-        const docType = saleStatus === 'final' ? 'invoice' : saleStatus === 'quotation' ? 'quotation' : saleStatus === 'order' ? 'order' : 'draft';
+        if (isStudioSale) {
+            if (typeof generateDocumentNumber === 'function') return generateDocumentNumber('studio');
+            return 'STD-0001';
+        }
+        if (saleStatus === 'final') return 'Auto';
+        if (typeof generateDocumentNumber !== 'function') return 'SDR-0001';
+        const docType = saleStatus === 'quotation' ? 'quotation' : saleStatus === 'order' ? 'order' : 'draft';
         return generateDocumentNumber(docType);
     }, [initialSale?.invoiceNo, isStudioSale, saleStatus, generateDocumentNumber]);
 
@@ -2026,8 +1993,8 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
     const handleSelectProduct = (product: any) => {
         const newItemId = Date.now();
         
-        // Check if product has variations
-        if (product.hasVariations) {
+        // Check if product has real user-facing variations (not legacy sentinel rows)
+        if (shouldShowSaleLineVariations(product, product.variations)) {
             // Add product with variation selector flag
             const newItem: SaleItem = {
                 id: newItemId,
@@ -2444,6 +2411,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
         try {
             saveInProgressRef.current = true;
             setSaving(true);
+            let saveT = webSaveTimingStart('sale:proceedWithSave');
             
             const selectedCustomer = customers.find(c => c.id.toString() === customerId);
             const customerName = selectedCustomer?.name || 'Walk-in Customer';
@@ -2452,21 +2420,11 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 const walkIn = await contactService.getWalkingCustomer(companyId);
                 customerUuid = walkIn?.id ?? undefined;
             } else {
-                customerUuid = customerId.toString();
+                customerUuid = coerceUuidOrNull(customerId) ?? undefined;
             }
+            saveT = webSaveTimingMark('sale:resolveCustomer', saveT);
             
             // CRITICAL FIX: Convert items to SaleItem format with variationId
-            // Need to find variation_id from size/color if product has variations
-            console.log('[SALE FORM] 🔄 Converting items for save. Total items:', items.length);
-            console.log('[SALE FORM] Items state before conversion:', items.map((item, idx) => ({
-              index: idx,
-              id: item.id,
-              productId: item.productId,
-              name: item.name,
-              qty: item.qty,
-              price: item.price
-            })));
-            
             const orderedItems = orderSaleLinesForPersist(
               items.map((item) => ({
                 ...item,
@@ -2474,26 +2432,52 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
               })),
             );
 
-            const saleItems = await Promise.all(
-              orderedItems.map(async (item, index) => {
-                let variationId: string | undefined = undefined;
-                
-                // Use variationId from inline selector (backend) if set; else resolve from size/color
-                if (item.variationId) {
-                  variationId = item.variationId;
-                } else if (item.size || item.color) {
+            const productIdsNeedingVariation = [
+              ...new Set(
+                orderedItems
+                  .filter(
+                    (item) =>
+                      !item.variationId &&
+                      !(item as { selectedVariationId?: string }).selectedVariationId &&
+                      (item.size || item.color),
+                  )
+                  .map((item) => item.productId.toString()),
+              ),
+            ];
+            const productById = new Map<string, { variations?: any[] }>();
+            for (const pid of productIdsNeedingVariation) {
+              const cached = products.find((p) => String(p.id) === pid);
+              if (cached?.variations?.length) productById.set(pid, cached);
+            }
+            const missingProductIds = productIdsNeedingVariation.filter((pid) => !productById.has(pid));
+            if (missingProductIds.length > 0) {
+              await Promise.all(
+                missingProductIds.map(async (pid) => {
                   try {
-                    const product = await productService.getProduct(item.productId.toString());
-                    if (product && product.variations && product.variations.length > 0) {
-                      const matchingVariation = product.variations.find((v: any) => {
-                        const vSize = v.size || v.attributes?.size;
-                        const vColor = v.color || v.attributes?.color;
-                        return vSize === item.size && vColor === item.color;
-                      });
-                      if (matchingVariation) variationId = matchingVariation.id;
-                    }
-                  } catch (variationError) {
-                    console.warn(`[SALE FORM] Could not find variation for item ${item.id}:`, variationError);
+                    const product = await productService.getProduct(pid);
+                    if (product) productById.set(pid, product);
+                  } catch {
+                    /* variation lookup optional */
+                  }
+                }),
+              );
+            }
+            saveT = webSaveTimingMark('sale:variationPrefetch', saveT);
+
+            const saleItems = orderedItems.map((item, index) => {
+                const selectedVar = (item as { selectedVariationId?: string }).selectedVariationId;
+                let variationId: string | undefined =
+                  selectedVar || item.variationId || undefined;
+
+                if (!variationId && (item.size || item.color)) {
+                  const product = productById.get(item.productId.toString());
+                  if (product?.variations?.length) {
+                    const matchingVariation = product.variations.find((v: any) => {
+                      const vSize = v.size || v.attributes?.size;
+                      const vColor = v.color || v.attributes?.color;
+                      return vSize === item.size && vColor === item.color;
+                    });
+                    if (matchingVariation) variationId = matchingVariation.id;
                   }
                 }
                 
@@ -2538,28 +2522,16 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                     baseUnitPrice: saleItem.baseUnitPrice,
                     hasCustomization: persistedCustomization != null,
                   });
-                } else {
-                  console.log(`[SALE FORM] ✅ Converted item ${index}:`, {
-                    id: saleItem.id,
-                    productId: saleItem.productId,
-                    name: saleItem.productName,
-                    qty: saleItem.quantity,
-                    price: saleItem.price,
-                  });
                 }
                 
                 return saleItem;
-              })
-            );
+              });
             
-            console.log('[SALE FORM] ✅ Final saleItems array length:', saleItems.length);
-            console.log('[SALE FORM] Final saleItems payload:', saleItems.map((item, idx) => ({
-              index: idx,
-              id: item.id,
-              productId: item.productId,
-              qty: item.quantity,
-              price: item.price
-            })));
+            saveT = webSaveTimingMark('sale:mapItems', saveT);
+            
+            if (import.meta.env?.DEV) {
+              console.log('[SALE FORM] Final saleItems array length:', saleItems.length);
+            }
             
             // CRITICAL FIX: Map sale status correctly
             // Draft → status: 'draft', type: 'quotation'
@@ -2639,7 +2611,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                             break;
                         case 'final':
                             documentType = 'invoice';
-                            documentNumber = generateDocumentNumber('invoice');
+                            documentNumber = '';
                             break;
                         default:
                             documentType = 'draft';
@@ -2716,14 +2688,20 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 paymentStatus: finalPaymentStatus,
                 paymentMethod: (effectiveFinal && partialPayments.length > 0) ? partialPayments[0].method : 'cash',
                 shippingStatus: 'pending' as const,
-                notes: isStudioSale
-                    ? buildNotesWithStudioDeadline(studioDeadline, saleNotes || studioNotes || '')
-                    : (saleNotes || studioNotes || undefined),
+                notes: (() => {
+                    const merged = mergeCustomerBillRefIntoNotes(refNumber, saleNotes || studioNotes || '');
+                    return isStudioSale
+                        ? buildNotesWithStudioDeadline(studioDeadline, merged)
+                        : merged || undefined;
+                })(),
                 customerBillRef: refNumber.trim() || undefined,
                 deadline: (() => {
                     const d = studioDeadlineRef.current ?? studioDeadline;
-                    const value = isStudioSale && d ? d.toISOString().split('T')[0] : null;
-                    if (import.meta.env?.DEV && isStudioSale) {
+                    // Persist for studio + orders; also keep existing date when converting order→final
+                    const keepOnFinal = saleStatus === 'final' && !!d;
+                    const persistDeadline = isStudioSale || saleStatus === 'order' || keepOnFinal;
+                    const value = persistDeadline && d ? d.toISOString().split('T')[0] : null;
+                    if (import.meta.env?.DEV && persistDeadline) {
                         console.log('[SALE FORM] Saving deadline:', value, 'from ref:', !!studioDeadlineRef.current, 'state:', !!studioDeadline);
                     }
                     return value;
@@ -2766,9 +2744,6 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 if (isStudioSale && !initialSale.invoiceNo.startsWith('STD-') && !initialSale.invoiceNo.startsWith('ST-')) {
                     incrementNextNumber('studio');
                 }
-                if (documentType === 'invoice' && initialSale.invoiceNo && isPreFinalSaleDocumentNo(initialSale.invoiceNo)) {
-                    incrementNextNumber('invoice');
-                }
                 if (isOrderToFinal) {
                     saleFormBootstrapCache.clear();
                     await refreshSales();
@@ -2806,48 +2781,50 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 return { saleId: initialSale.id, invoiceNo: documentNumber };
             } else {
                 const created = await createSale(saleData);
-                // If user entered a shipping charge, create a sale_shipments row so ledger and shipment list stay correct
-                if (created?.id && (shippingChargeInput || 0) > 0 && companyId && finalBranchId) {
-                    try {
-                        await shipmentService.create(
-                            created.id,
-                            companyId,
-                            finalBranchId,
-                            {
-                                shipment_type: 'Courier',
-                                charged_to_customer: shippingChargeInput,
-                                actual_cost: 0,
-                                currency: 'PKR',
-                                shipment_status: 'Pending',
-                            },
-                            undefined,
-                            created.invoiceNo ?? documentNumber
-                        );
-                    } catch (shipErr: any) {
-                        console.warn('[SALE FORM] Shipment record for shipping charge could not be created:', shipErr?.message);
-                    }
+                webSaveTimingMark('sale:createSale', saveT);
+                // Increment local counter only for stage numbers (draft/qt/order/studio); final SL is global RPC
+                if (documentType !== 'invoice') {
+                    incrementNextNumber(documentType);
                 }
-                if (created?.id && saleAttachmentFiles.length > 0 && companyId) {
-                    try {
-                        const uploaded = await uploadSaleAttachments(companyId, created.id, saleAttachmentFiles);
-                        if (uploaded.length > 0) await updateSale(created.id, { attachments: uploaded } as any);
-                        setSaleAttachmentFiles([]);
-                        setSavedSaleAttachments(uploaded);
-                    } catch (e) {
-                        console.warn('[SALE FORM] Attachment upload failed:', e);
-                        toast.warning('Sale created but some attachments could not be uploaded.');
-                    }
-                }
-                // Increment document number after successful save (conversion toast comes from SalesContext)
-                incrementNextNumber(documentType);
                 if (!convertToFinal) {
                     toast.success(`${saleType === 'invoice' ? 'Invoice' : 'Quotation'} created successfully!`);
                 }
-                
-                // Store sale ID and invoice number for payment dialog
                 if (created?.id) {
                     setSavedSaleId(created.id);
                     setSavedSaleInvoiceNo(created.invoiceNo ?? documentNumber);
+                }
+                // Non-critical post-save work — do not block success toast / payment dialog
+                if (created?.id && (shippingChargeInput || 0) > 0 && companyId && finalBranchId) {
+                    void shipmentService.create(
+                        created.id,
+                        companyId,
+                        finalBranchId,
+                        {
+                            shipment_type: 'Courier',
+                            charged_to_customer: shippingChargeInput,
+                            actual_cost: 0,
+                            currency: 'PKR',
+                            shipment_status: 'Pending',
+                        },
+                        undefined,
+                        created.invoiceNo ?? documentNumber
+                    ).catch((shipErr: unknown) => {
+                        const msg = shipErr instanceof Error ? shipErr.message : String(shipErr);
+                        console.warn('[SALE FORM] Shipment record for shipping charge could not be created:', msg);
+                    });
+                }
+                if (created?.id && saleAttachmentFiles.length > 0 && companyId) {
+                    const filesToUpload = saleAttachmentFiles;
+                    void uploadSaleAttachments(companyId, created.id, filesToUpload)
+                        .then(async (uploaded) => {
+                            if (uploaded.length > 0) await updateSale(created.id, { attachments: uploaded } as any);
+                            setSaleAttachmentFiles([]);
+                            setSavedSaleAttachments(uploaded);
+                        })
+                        .catch((e) => {
+                            console.warn('[SALE FORM] Attachment upload failed:', e);
+                            toast.warning('Sale created but some attachments could not be uploaded.');
+                        });
                 }
                 
                 // Studio sale: after save, open Studio Sale Detail for this sale (single master page)
@@ -2928,28 +2905,28 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
     // Show loader while loading data
     if (loading) {
         return (
-            <div className="flex items-center justify-center h-screen bg-[#111827]">
+            <div className="flex items-center justify-center h-screen bg-background">
                 <Loader2 size={48} className="text-blue-500 animate-spin" />
             </div>
         );
     }
 
     return (
-        <div className="flex flex-col h-screen bg-[#111827] text-white overflow-hidden">
+        <div className="flex flex-col h-screen bg-background text-foreground overflow-hidden">
             {/* ============ LAYER 1: FIXED HEADER ============ */}
-            <div className="shrink-0 bg-[#0B1019] border-b border-gray-800 z-20">
+            <div className="shrink-0 bg-popover border-b border-border z-20">
                 {/* Top Bar - Single Row with Invoice, Status, Salesman, Branch */}
-                <div className="h-12 flex items-center justify-between px-6 border-b border-gray-800/50">
+                <div className="h-12 flex items-center justify-between px-6 border-b border-border/50">
                     <div className="flex items-center gap-3">
-                        <Button variant="ghost" size="icon" onClick={onClose} className="text-gray-400 hover:text-white h-8 w-8">
+                        <Button variant="ghost" size="icon" onClick={onClose} className="text-muted-foreground hover:text-foreground h-8 w-8">
                             <X size={18} />
                         </Button>
                         <div>
-                            <h2 className="text-sm font-bold text-white">New Sale Invoice</h2>
-                            <p className="text-[10px] text-gray-500">Standard Entry</p>
+                            <h2 className="text-sm font-bold text-foreground">New Sale Invoice</h2>
+                            <p className="text-[10px] text-muted-foreground">Standard Entry</p>
                         </div>
                         {/* Invoice Number - Moved to LEFT side after title (wait for settings so studio number comes from DB) */}
-                        <div className="flex items-center gap-2 ml-4 pl-4 border-l border-gray-800">
+                        <div className="flex items-center gap-2 ml-4 pl-4 border-l border-border">
                             <Hash size={14} className="text-cyan-500" />
                             <span className="text-sm font-mono text-cyan-400">
                                 {displayInvoiceNumber === '' && isStudioSale && !initialSale?.invoiceNo
@@ -2957,45 +2934,72 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                     : displayInvoiceNumber}
                             </span>
                         </div>
-                        {/* Type (Regular / Studio) - in header row */}
-                        <Popover open={typeDropdownOpen} onOpenChange={setTypeDropdownOpen}>
-                            <PopoverTrigger asChild>
-                                <button
-                                    type="button"
-                                    className="flex items-center gap-2 bg-gray-900/50 border border-gray-800 rounded-lg px-2.5 py-1 hover:bg-gray-800 transition-colors cursor-pointer h-8"
-                                >
-                                    <Tag size={14} className="text-gray-500 shrink-0" />
-                                    <span className="text-xs text-white capitalize">{isStudioSale ? 'Studio' : 'Regular'}</span>
-                                    <ChevronRight size={12} className="text-gray-500 rotate-90 shrink-0" />
-                                </button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-48 bg-gray-900 border-gray-800 text-white p-2" align="start">
-                                <div className="space-y-1">
-                                    {(['regular', 'studio'] as const).map((t) => (
-                                        <button
-                                            key={t}
-                                            type="button"
-                                            onClick={() => {
-                                                setIsStudioSale(t === 'studio');
-                                                if (t === 'studio') setShippingEnabled(false);
-                                                setTypeDropdownOpen(false);
-                                            }}
-                                            className={cn(
-                                                'w-full text-left px-3 py-2 rounded-md text-sm transition-all flex items-center gap-2',
-                                                (isStudioSale ? 'studio' : 'regular') === t
-                                                    ? 'bg-gray-800 text-white'
-                                                    : 'text-gray-400 hover:bg-gray-800 hover:text-white'
-                                            )}
-                                        >
-                                            <Tag size={16} className={cn(
-                                                (isStudioSale ? 'studio' : 'regular') === t ? 'text-blue-400' : 'text-gray-500'
-                                            )} />
-                                            <span className="capitalize">{t}</span>
-                                        </button>
-                                    ))}
+                        {/* Type (Regular / Studio) — Studio hidden when module disabled */}
+                        {studioModuleEnabled ? (
+                            <Popover open={typeDropdownOpen} onOpenChange={setTypeDropdownOpen}>
+                                <PopoverTrigger asChild>
+                                    <button
+                                        type="button"
+                                        className="flex items-center gap-2 bg-card border border-border rounded-lg px-2.5 py-1 hover:bg-accent transition-colors cursor-pointer h-8"
+                                    >
+                                        <Tag size={14} className="text-muted-foreground shrink-0" />
+                                        <span className="text-xs text-foreground capitalize">{isStudioSale ? 'Studio' : 'Regular'}</span>
+                                        <ChevronRight size={12} className="text-muted-foreground rotate-90 shrink-0" />
+                                    </button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-48 bg-popover border-border text-popover-foreground p-2" align="start">
+                                    <div className="space-y-1">
+                                        {(['regular', 'studio'] as const).map((t) => (
+                                            <button
+                                                key={t}
+                                                type="button"
+                                                onClick={() => {
+                                                    setIsStudioSale(t === 'studio');
+                                                    if (t === 'studio') setShippingEnabled(false);
+                                                    setTypeDropdownOpen(false);
+                                                }}
+                                                className={cn(
+                                                    'w-full text-left px-3 py-2 rounded-md text-sm transition-all flex items-center gap-2',
+                                                    (isStudioSale ? 'studio' : 'regular') === t
+                                                        ? 'bg-muted text-foreground'
+                                                        : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                                                )}
+                                            >
+                                                <Tag size={16} className={cn(
+                                                    (isStudioSale ? 'studio' : 'regular') === t ? 'text-blue-400' : 'text-muted-foreground'
+                                                )} />
+                                                <span className="capitalize">{t}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </PopoverContent>
+                            </Popover>
+                        ) : (
+                            <div className="flex items-center gap-2 bg-card border border-border rounded-lg px-2.5 py-1 h-8">
+                                <Tag size={14} className="text-muted-foreground shrink-0" />
+                                <span className="text-xs text-foreground capitalize">
+                                    {isStudioSale ? 'Studio' : 'Regular'}
+                                </span>
+                            </div>
+                        )}
+                        {/* Delivery — regular orders only (studio uses Deadline in studio panel) */}
+                        {saleStatus === 'order' && !isStudioSale && (
+                            <div className="flex items-center gap-1.5 ml-1">
+                                <CalendarIcon size={14} className="text-muted-foreground shrink-0" />
+                                <span className="text-[10px] uppercase tracking-wide text-muted-foreground shrink-0">Delivery</span>
+                                <div className="w-[140px] [&_button]:h-8 [&_button]:min-h-8 [&_button]:text-xs [&_button]:px-2 [&_button]:rounded-lg">
+                                    <DatePicker
+                                        value={studioDeadline ? formatLocalDateYYYYMMDD(studioDeadline) : ''}
+                                        onChange={(v) => {
+                                            const d = v ? parseLocalDateInput(v) : undefined;
+                                            studioDeadlineRef.current = d;
+                                            setStudioDeadline(d);
+                                        }}
+                                        placeholder="Delivery date"
+                                    />
                                 </div>
-                            </PopoverContent>
-                        </Popover>
+                            </div>
+                        )}
                     </div>
 
                     {/* Right side: Status, Salesman, Branch */}
@@ -3024,7 +3028,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                 </button>
                             </PopoverTrigger>
                             <PopoverContent 
-                                className="w-48 bg-gray-900 border-gray-800 text-white p-2"
+                                className="w-48 bg-popover border-border text-popover-foreground p-2"
                                 align="start"
                             >
                                 <div className="space-y-1">
@@ -3051,8 +3055,8 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                             className={cn(
                                                 "w-full text-left px-3 py-2 rounded-md text-sm transition-all flex items-center gap-2",
                                                 saleStatus === s
-                                                    ? "bg-gray-800 text-white"
-                                                    : "text-gray-400 hover:bg-gray-800 hover:text-white",
+                                                    ? "bg-muted text-foreground"
+                                                    : "text-muted-foreground hover:bg-accent hover:text-foreground",
                                                 isDisabled && "opacity-50 cursor-not-allowed"
                                             )}
                                         >
@@ -3076,17 +3080,17 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                 <PopoverTrigger asChild>
                                     <button
                                         type="button"
-                                        className="flex items-center gap-2 bg-gray-900/50 border border-gray-800 rounded-lg px-2.5 py-1 hover:bg-gray-800 transition-colors cursor-pointer"
+                                        className="flex items-center gap-2 bg-card border border-border rounded-lg px-2.5 py-1 hover:bg-accent transition-colors cursor-pointer"
                                     >
-                                        <div className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center text-white text-[10px] font-semibold">
+                                        <div className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center text-foreground text-[10px] font-semibold">
                                             {getSalesmanName().charAt(0).toUpperCase()}
                                         </div>
-                                        <span className="text-xs text-white">{getSalesmanName()}</span>
-                                        <ChevronRight size={12} className="text-gray-500 rotate-90" />
+                                        <span className="text-xs text-foreground">{getSalesmanName()}</span>
+                                        <ChevronRight size={12} className="text-muted-foreground rotate-90" />
                                     </button>
                                 </PopoverTrigger>
                                 <PopoverContent 
-                                    className="w-56 bg-gray-900 border-gray-800 text-white p-2"
+                                    className="w-56 bg-popover border-border text-popover-foreground p-2"
                                     align="start"
                                 >
                                     <div className="space-y-1">
@@ -3101,13 +3105,13 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                                 className={cn(
                                                     "w-full text-left px-3 py-2 rounded-md text-sm transition-all flex items-center gap-2",
                                                     salesmanId === s.id.toString()
-                                                        ? "bg-gray-800 text-white"
-                                                        : "text-gray-400 hover:bg-gray-800 hover:text-white"
+                                                        ? "bg-muted text-foreground"
+                                                        : "text-muted-foreground hover:bg-accent hover:text-foreground"
                                                 )}
                                             >
                                                 <div className={cn(
                                                     "w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-semibold",
-                                                    salesmanId === s.id.toString() ? "bg-blue-600 text-white" : "bg-gray-700 text-gray-300"
+                                                    salesmanId === s.id.toString() ? "bg-blue-600 text-white" : "bg-muted text-muted-foreground"
                                                 )}>
                                                     {s.name.charAt(0).toUpperCase()}
                                                 </div>
@@ -3118,8 +3122,8 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                 </PopoverContent>
                             </Popover>
                         ) : (
-                            <div className="flex items-center gap-2 bg-gray-900/50 border border-gray-800 rounded-lg px-2.5 py-1 text-gray-400">
-                                <div className="w-5 h-5 rounded-full bg-blue-600/70 flex items-center justify-center text-white text-[10px] font-semibold">
+                            <div className="flex items-center gap-2 bg-card border border-border rounded-lg px-2.5 py-1 text-muted-foreground">
+                                <div className="w-5 h-5 rounded-full bg-blue-600/70 flex items-center justify-center text-foreground text-[10px] font-semibold">
                                     {getSalesmanName().charAt(0).toUpperCase()}
                                 </div>
                                 <span className="text-xs">Salesperson: {getSalesmanName()}</span>
@@ -3132,14 +3136,14 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                             <PopoverTrigger asChild>
                                 <button
                                     type="button"
-                                    className="flex items-center gap-2 bg-gray-900/50 border border-gray-800 rounded-lg px-2.5 py-1 hover:bg-gray-800 transition-colors cursor-pointer"
+                                    className="flex items-center gap-2 bg-card border border-border rounded-lg px-2.5 py-1 hover:bg-accent transition-colors cursor-pointer"
                                 >
-                                    <Building2 size={14} className="text-gray-500 shrink-0" />
-                                    <span className="text-xs text-white">{getBranchName()}</span>
-                                    <ChevronRight size={12} className="text-gray-500 rotate-90" />
+                                    <Building2 size={14} className="text-muted-foreground shrink-0" />
+                                    <span className="text-xs text-foreground">{getBranchName()}</span>
+                                    <ChevronRight size={12} className="text-muted-foreground rotate-90" />
                                 </button>
                             </PopoverTrigger>
-                            <PopoverContent className="w-56 bg-gray-900 border-gray-800 text-white p-2" align="end">
+                            <PopoverContent className="w-56 bg-popover border-border text-popover-foreground p-2" align="end">
                                 <div className="space-y-1">
                                     {accessibleBranches.map((b) => (
                                         <button
@@ -3152,12 +3156,12 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                             className={cn(
                                                 "w-full text-left px-3 py-2 rounded-md text-sm transition-all flex items-center gap-2",
                                                 branchId === b.id || branchId === b.id.toString()
-                                                    ? "bg-gray-800 text-white"
-                                                    : "text-gray-400 hover:bg-gray-800 hover:text-white"
+                                                    ? "bg-muted text-foreground"
+                                                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
                                             )}
                                         >
                                             <Building2 size={16} className={cn(
-                                                branchId === b.id || branchId === b.id.toString() ? "text-blue-400" : "text-gray-500"
+                                                branchId === b.id || branchId === b.id.toString() ? "text-blue-400" : "text-muted-foreground"
                                             )} />
                                             <span>{b.name}</span>
                                         </button>
@@ -3166,18 +3170,18 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                             </PopoverContent>
                         </Popover>
                         ) : (
-                        <div className="flex items-center gap-2 bg-gray-900/50 border border-gray-800 rounded-lg px-2.5 py-1 opacity-90">
-                            <Building2 size={14} className="text-gray-500 shrink-0" />
-                            <span className="text-xs text-white">{getBranchName()}</span>
+                        <div className="flex items-center gap-2 bg-card border border-border rounded-lg px-2.5 py-1 opacity-90">
+                            <Building2 size={14} className="text-muted-foreground shrink-0" />
+                            <span className="text-xs text-foreground">{getBranchName()}</span>
                         </div>
                         )}
                                 </div>
                             </div>
 
                 {/* FORM HEADER: Customer, Date, Ref #, Type */}
-                <div className="px-6 py-4 bg-[#0F1419]">
+                <div className="px-6 py-4 bg-secondary">
                     <div className="invoice-container mx-auto w-full max-w-[1151px]">
-                        <div className="bg-gray-900/30 border border-gray-800/50 rounded-lg p-3 min-h-[85px] w-full">
+                        <div className="bg-muted/30 border border-border rounded-lg p-3 min-h-[85px] w-full">
                             <div className="flex items-end gap-3 w-full flex-wrap">
                                 {/* Customer – same layout as Purchase Supplier */}
                                 <div className="flex flex-col flex-1 min-w-0 min-w-[200px]">
@@ -3198,10 +3202,10 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                 }}
                             >
                                 <PopoverTrigger asChild>
-                                    <div className="flex items-center gap-2 bg-gray-900/50 border border-gray-800 rounded-lg px-2.5 py-1 hover:bg-gray-800 transition-colors cursor-pointer w-[748px] h-10 min-h-[40px]">
-                                        <User size={14} className="text-gray-500 shrink-0" />
+                                    <div className="flex items-center gap-2 bg-card border border-border rounded-lg px-2.5 py-1 hover:bg-accent transition-colors cursor-pointer w-[748px] h-10 min-h-[40px]">
+                                        <User size={14} className="text-muted-foreground shrink-0" />
                                         <span 
-                                            className="text-xs text-white flex-1 truncate text-left"
+                                            className="text-xs text-foreground flex-1 truncate text-left"
                                             key={`customer-name-display-${customerId || 'none'}-${selectedCustomer?.name || 'none'}`}
                                         >
                                             {selectedCustomer?.name || "Select Customer"}
@@ -3217,15 +3221,15 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                                 setCustomerSearchOpen(false);
                                                 setCustomerSearchTerm('');
                                             }}
-                                            className="p-0.5 hover:bg-gray-700 rounded transition-colors cursor-pointer"
+                                            className="p-0.5 hover:bg-accent rounded transition-colors cursor-pointer"
                                         >
-                                            <Plus size={12} className="text-gray-400 hover:text-blue-400" />
+                                            <Plus size={12} className="text-muted-foreground hover:text-blue-400" />
                                             </div>
-                                        <ChevronRight size={12} className="text-gray-500 rotate-90 shrink-0" />
+                                        <ChevronRight size={12} className="text-muted-foreground rotate-90 shrink-0" />
                                             </div>
                                 </PopoverTrigger>
                                 <PopoverContent 
-                                    className="w-80 bg-gray-900 border-gray-800 text-white p-2 flex flex-col overflow-hidden max-h-[320px]"
+                                    className="w-80 bg-popover border-border text-popover-foreground p-2 flex flex-col overflow-hidden max-h-[320px]"
                                     align="start"
                                 >
                                     <div className="space-y-2 flex flex-col min-h-0 flex-1 overflow-hidden">
@@ -3236,7 +3240,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                             value={customerSearchTerm}
                                             onChange={(e) => setCustomerSearchTerm(e.target.value)}
                                             onKeyDown={handleCustomerSearchKeyDown}
-                                            className="bg-gray-800 border-gray-700 text-white text-sm h-9 shrink-0"
+                                            className="bg-muted border-border text-foreground text-sm h-9 shrink-0"
                                             autoComplete="off"
                                         />
                                         {/* Customer List - scrollable; wheel + touch scroll (no tabIndex — keeps Tab order natural) */}
@@ -3248,7 +3252,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                             onWheel={(e) => e.stopPropagation()}
                                         >
                                             {filteredCustomers.length === 0 ? (
-                                                <div className="px-3 py-2 text-sm text-gray-400 text-center">
+                                                <div className="px-3 py-2 text-sm text-muted-foreground text-center">
                                                     No customers found
                                             </div>
                                             ) : (
@@ -3276,17 +3280,17 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                                                     cust.id &&
                                                                     cidStr.replace(/-/g, '').toLowerCase() ===
                                                                         cust.id.toString().replace(/-/g, '').toLowerCase()))
-                                                                    ? "bg-gray-800 text-white"
-                                                                    : "text-gray-400 hover:bg-gray-800 hover:text-white",
-                                                                isSelectedRow && "ring-1 ring-inset ring-blue-500 bg-gray-800/90"
+                                                                    ? "bg-muted text-foreground"
+                                                                    : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                                                                isSelectedRow && "ring-1 ring-inset ring-blue-500 bg-muted/90"
                                                             )}
                                                         >
                                                             <span className="font-medium">{cust.name}</span>
                                                             <span className={cn(
                                                                 "text-xs font-semibold tabular-nums ml-2",
-                                                                cust.dueBalance > 0 && "text-green-400",
+                                                                cust.dueBalance > 0 && "text-[var(--erp-money-positive)]",
                                                                 cust.dueBalance < 0 && "text-red-400",
-                                                                cust.dueBalance === 0 && "text-gray-500"
+                                                                cust.dueBalance === 0 && "text-muted-foreground"
                                                             )}>
                                                                 {formatDueBalanceCompact(cust.dueBalance)}
                                                             </span>
@@ -3300,27 +3304,26 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                 </PopoverContent>
                             </Popover>
                                 </div>
-                                {/* Date – same as Purchase */}
+                                {/* Date – bill / invoice date */}
                                 <div className="flex flex-col w-[184px] absolute left-[798px] top-[77px] z-0">
-                                    <Label className="text-gray-500 font-medium text-xs uppercase tracking-wide h-[14px] mb-1.5">Date</Label>
-                                    <div className="[&>div>button]:bg-gray-900/50 [&>div>button]:border-gray-800 [&>div>button]:text-white [&>div>button]:text-xs [&>div>button]:h-10 [&>div>button]:min-h-[40px] [&>div>button]:px-2.5 [&>div>button]:py-1 [&>div>button]:rounded-lg [&>div>button]:border [&>div>button]:hover:bg-gray-800 [&>div>button]:w-full [&>div>button]:justify-start" style={{ width: '209px' }}>
-                                        <CalendarDatePicker
-                                            value={saleDate}
-                                            onChange={(date) => setSaleDate(date || new Date())}
-                                            showTime={true}
+                                    <Label className="text-muted-foreground font-medium text-xs uppercase tracking-wide h-[14px] mb-1.5">Date</Label>
+                                    <div className="[&>div>button]:bg-muted/30 [&>div>button]:border-border [&>div>button]:text-foreground [&>div>button]:text-xs [&>div>button]:h-10 [&>div>button]:min-h-[40px] [&>div>button]:px-2.5 [&>div>button]:py-1 [&>div>button]:rounded-lg [&>div>button]:border [&>div>button]:hover:bg-accent [&>div>button]:w-full [&>div>button]:justify-start" style={{ width: '209px' }}>
+                                        <DateTimePicker
+                                            value={dateToDateTimePickerValue(saleDate)}
+                                            onChange={(v) => setSaleDate(dateTimePickerValueToDate(v) || new Date())}
                                             required
                                         />
                                     </div>
                                 </div>
                                 {/* REF # – same as PurchaseForm */}
                                 <div className="flex flex-col w-[132px] shrink-0">
-                                    <Label className="text-gray-500 font-medium text-xs uppercase tracking-wide h-[14px] mb-1.5">REF #</Label>
+                                    <Label className="text-muted-foreground font-medium text-xs uppercase tracking-wide h-[14px] mb-1.5">REF #</Label>
                                     <div className="relative">
-                                        <FileText className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={14} />
+                                        <FileText className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={14} />
                                         <Input
                                             value={refNumber}
                                             onChange={(e) => setRefNumber(e.target.value)}
-                                            className="pl-9 bg-gray-900/50 border-gray-800 h-10 text-sm text-white placeholder:text-gray-500"
+                                            className="pl-9 bg-muted/30 border-border h-10 text-sm text-foreground placeholder:text-muted-foreground"
                                             placeholder="Optional"
                                         />
                                     </div>
@@ -3346,19 +3349,19 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                         value={studioProductName}
                                         onChange={(e) => setStudioProductName(e.target.value)}
                                         placeholder="Required — e.g. replica / outfit name"
-                                        className="h-8 bg-gray-950 border-purple-500/30 text-white text-xs placeholder:text-purple-400/30"
+                                        className="h-8 bg-input-background border-purple-500/30 text-foreground text-xs placeholder:text-purple-400/30"
                                     />
                                 </div>
                                 <div className="w-40">
                                     <Label className="text-[10px] uppercase tracking-wide text-purple-400/90 mb-0.5 block">Deadline</Label>
-                                    <CalendarDatePicker
-                                        value={studioDeadline}
-                                        onChange={(date) => {
-                                            studioDeadlineRef.current = date ?? undefined;
-                                            setStudioDeadline(date ?? undefined);
+                                    <DatePicker
+                                        value={studioDeadline ? formatLocalDateYYYYMMDD(studioDeadline) : ''}
+                                        onChange={(v) => {
+                                            const d = v ? parseLocalDateInput(v) : undefined;
+                                            studioDeadlineRef.current = d;
+                                            setStudioDeadline(d);
                                         }}
                                         placeholder="Deadline"
-                                        showTime={false}
                                     />
                                 </div>
                             </div>
@@ -3366,7 +3369,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                 placeholder="Production notes (optional)..."
                                 value={studioNotes}
                                 onChange={(e) => setStudioNotes(e.target.value)}
-                                className="w-full h-7 bg-gray-950 border-purple-500/30 text-white text-xs placeholder:text-purple-400/30"
+                                className="w-full h-7 bg-input-background border-purple-500/30 text-foreground text-xs placeholder:text-purple-400/30"
                             />
                         </div>
                     )}
@@ -3437,9 +3440,9 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                         <div className="flex flex-col h-full overflow-y-auto space-y-3 pb-3">
                             {/* PART 8 order: Extra Expenses → Shipping Charge → Shipment → Attachments → Invoice Summary */}
                             {/* Extra Expenses — enabled when status is Order or Final */}
-                            <div className={cn("bg-gray-900/50 border border-gray-800 rounded-lg p-4 shrink-0", saleExtrasPanelLocked && "opacity-60 pointer-events-none")}>
+                            <div className={cn("bg-card border border-border rounded-lg p-4 shrink-0", saleExtrasPanelLocked && "opacity-60 pointer-events-none")}>
                                 <div className="flex items-center justify-between mb-3">
-                                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-2">
+                                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
                                     <DollarSign size={14} className="text-purple-500" />
                                     Extra Expenses
                                 </h3>
@@ -3450,7 +3453,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                 )}
                                 </div>
                                 {saleExtrasPanelLocked && (
-                                    <p className="text-xs text-gray-500 mb-2">Set sale status to <strong className="text-gray-400">Order</strong> or <strong className="text-gray-400">Final</strong> to use extra expenses, shipping, shipment, and attachments.</p>
+                                    <p className="text-xs text-muted-foreground mb-2">Set sale status to <strong className="text-muted-foreground">Order</strong> or <strong className="text-muted-foreground">Final</strong> to use extra expenses, shipping, shipment, and attachments.</p>
                                 )}
 
                                 <label className="flex items-start gap-2 mb-3 cursor-pointer">
@@ -3461,9 +3464,9 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                         disabled={saleExtrasPanelLocked}
                                         className="mt-0.5"
                                     />
-                                    <span className="text-xs text-gray-400">
+                                    <span className="text-xs text-muted-foreground">
                                         Add extra expenses to customer bill
-                                        <span className="block text-gray-500 mt-0.5">
+                                        <span className="block text-muted-foreground mt-0.5">
                                             Off = inclusive in package (4120 split on GL). Max 25% of invoice when off.
                                         </span>
                                     </span>
@@ -3473,10 +3476,10 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                 <div className="flex flex-col gap-2 mb-3">
                                     <div className="flex gap-2 flex-wrap">
                                     <Select value={newExpenseType} onValueChange={(v: any) => { setNewExpenseType(v); setNewTailorCategoryId(''); }}>
-                                        <SelectTrigger className="w-[110px] bg-gray-950 border-gray-700 text-white h-8 text-xs">
+                                        <SelectTrigger className="w-[110px] bg-input-background border-border text-foreground h-8 text-xs">
                                             <SelectValue />
                                         </SelectTrigger>
-                                        <SelectContent className="bg-gray-950 border-gray-800 text-white">
+                                        <SelectContent className="bg-input-background border-border text-foreground">
                                             <SelectItem value="stitching">Stitching</SelectItem>
                                             <SelectItem value="lining">Lining</SelectItem>
                                             <SelectItem value="dying">Dying</SelectItem>
@@ -3486,10 +3489,10 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                     </Select>
                                     {(newExpenseType === 'stitching' || newExpenseType === 'lining' || newExpenseType === 'dying') && (
                                       <Select value={newTailorCategoryId || '_none'} onValueChange={(v) => setNewTailorCategoryId(v === '_none' ? '' : v)}>
-                                        <SelectTrigger className="min-w-[140px] flex-1 bg-gray-950 border-gray-700 text-white h-8 text-xs">
+                                        <SelectTrigger className="min-w-[140px] flex-1 bg-input-background border-border text-foreground h-8 text-xs">
                                           <SelectValue placeholder="Tailor / dyer" />
                                         </SelectTrigger>
-                                        <SelectContent className="bg-gray-950 border-gray-800 text-white">
+                                        <SelectContent className="bg-input-background border-border text-foreground">
                                           <SelectItem value="_none">Tailor / dyer (optional)</SelectItem>
                                           {tailorOptionsForNewExpense.map((t) => (
                                             <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
@@ -3502,14 +3505,14 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                     <Input 
                                         type="number" 
                                         placeholder="Amount" 
-                                        className="bg-gray-950 border-gray-700 text-white h-8 w-[90px] text-xs"
+                                        className="bg-input-background border-border text-foreground h-8 w-[90px] text-xs"
                                         value={newExpenseAmount > 0 ? newExpenseAmount : ''}
                                         onChange={(e) => setNewExpenseAmount(parseFloat(e.target.value) || 0)}
                                     />
                                     <Input 
                                         type="text" 
                                         placeholder="Notes (optional)" 
-                                        className="bg-gray-950 border-gray-700 text-white h-8 flex-1 text-xs"
+                                        className="bg-input-background border-border text-foreground h-8 flex-1 text-xs"
                                         value={newExpenseNotes}
                                         onChange={(e) => setNewExpenseNotes(e.target.value)}
                                     />
@@ -3523,15 +3526,15 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                 {extraExpenses.length > 0 && (
                                     <div className="space-y-1.5">
                                         {extraExpenses.map((expense) => (
-                                            <div key={expense.id} className="flex justify-between items-center p-2 bg-gray-950 rounded border border-gray-800/50 hover:border-purple-500/30 transition-colors">
+                                            <div key={expense.id} className="flex justify-between items-center p-2 bg-input-background rounded border border-border/50 hover:border-purple-500/30 transition-colors">
                                                 <div className="flex items-center gap-2">
                                                     <div className="w-6 h-6 rounded bg-purple-600/20 flex items-center justify-center">
                                                         <DollarSign size={10} className="text-purple-400" />
                                                     </div>
                                                     <div>
-                                                        <div className="text-xs font-medium text-white capitalize">{expense.type}</div>
+                                                        <div className="text-xs font-medium text-foreground capitalize">{expense.type}</div>
                                                         {(expense.tailorExpenseCategoryId || expense.notes) && (
-                                                          <div className="text-[10px] text-gray-500">
+                                                          <div className="text-[10px] text-muted-foreground">
                                                             {[
                                                               expense.tailorExpenseCategoryId
                                                                 ? tailorNameByCategoryId(expenseCategoryTree, expense.tailorExpenseCategoryId)
@@ -3543,8 +3546,8 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center gap-2">
-                                                    <span className="text-sm font-medium text-white">{expense.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                                                    <button onClick={() => removeExtraExpense(expense.id)} className="text-gray-500 hover:text-red-400">
+                                                    <span className="text-sm font-medium text-foreground">{expense.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                                    <button onClick={() => removeExtraExpense(expense.id)} className="text-muted-foreground hover:text-red-400">
                                                         <X size={12} />
                                                     </button>
                                                 </div>
@@ -3555,19 +3558,19 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                             </div>
 
                             {/* Shipping Charge — enabled when status is Order or Final */}
-                            <div className={cn("bg-gray-900/50 border border-gray-800 rounded-lg p-3 shrink-0", saleExtrasPanelLocked && "opacity-60 pointer-events-none")}>
+                            <div className={cn("bg-card border border-border rounded-lg p-3 shrink-0", saleExtrasPanelLocked && "opacity-60 pointer-events-none")}>
                                 <h3 className="text-xs font-semibold text-blue-400 uppercase tracking-wide flex items-center gap-2 mb-2">
                                     <Truck size={14} />
                                     Shipping Charge
                                 </h3>
                                 {initialSale?.id && saleShipments.length > 0 ? (
-                                    <p className="text-sm text-white font-medium">{shipmentChargesFromApi.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                                    <p className="text-sm text-foreground font-medium">{shipmentChargesFromApi.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                                 ) : (
                                     <Input
                                         type="number"
                                         min={0}
                                         placeholder="Amount"
-                                        className="bg-gray-950 border-gray-700 text-white h-9 text-sm"
+                                        className="bg-input-background border-border text-foreground h-9 text-sm"
                                         value={shippingChargeInput > 0 ? shippingChargeInput : ''}
                                         onChange={(e) => setShippingChargeInput(parseFloat(e.target.value) || 0)}
                                     />
@@ -3575,8 +3578,8 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                             </div>
 
                             {/* Shipment — enabled when status is Order or Final (saved sale required) */}
-                            <div className={cn("bg-gray-900/50 border border-gray-800 rounded-lg p-3 shrink-0", saleExtrasPanelLocked && "opacity-60 pointer-events-none")}>
-                                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 flex items-center gap-2">
+                            <div className={cn("bg-card border border-border rounded-lg p-3 shrink-0", saleExtrasPanelLocked && "opacity-60 pointer-events-none")}>
+                                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-2">
                                     <Truck size={14} />
                                     Shipment
                                 </h3>
@@ -3596,15 +3599,15 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                                 return (
                                                     <>
                                                         <div className="flex items-center justify-between gap-2 text-sm">
-                                                            <span className="text-gray-400">Courier:</span>
-                                                            <span className="text-white">{s.courierName || '—'}</span>
+                                                            <span className="text-muted-foreground">Courier:</span>
+                                                            <span className="text-foreground">{s.courierName || '—'}</span>
                                                         </div>
                                                         <div className="flex items-center justify-between gap-2 text-sm">
-                                                            <span className="text-gray-400">Tracking:</span>
-                                                            <span className="text-white font-mono truncate">{s.trackingId || '—'}</span>
+                                                            <span className="text-muted-foreground">Tracking:</span>
+                                                            <span className="text-foreground font-mono truncate">{s.trackingId || '—'}</span>
                                                         </div>
                                                         <div className="flex items-center justify-between gap-2">
-                                                            <span className="text-gray-400 text-sm">Status:</span>
+                                                            <span className="text-muted-foreground text-sm">Status:</span>
                                                             <span className="text-xs font-medium px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30">
                                                                 {statusIcon(s.shipmentStatus)} {s.shipmentStatus}
                                                             </span>
@@ -3627,15 +3630,15 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                         </div>
                                     )
                                 ) : saleExtrasActive ? (
-                                    <p className="text-xs text-gray-500">Save the sale first to add shipment</p>
+                                    <p className="text-xs text-muted-foreground">Save the sale first to add shipment</p>
                                 ) : (
-                                    <p className="text-xs text-gray-500">Set status to Order or Final to use shipment</p>
+                                    <p className="text-xs text-muted-foreground">Set status to Order or Final to use shipment</p>
                                 )}
                             </div>
 
                             {/* Attachments — enabled when status is Order or Final */}
-                            <div className={cn("bg-gray-900/50 border border-gray-800 rounded-lg p-4 space-y-3 shrink-0", saleExtrasPanelLocked && "opacity-60 pointer-events-none")}>
-                                <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-2">
+                            <div className={cn("bg-card border border-border rounded-lg p-4 space-y-3 shrink-0", saleExtrasPanelLocked && "opacity-60 pointer-events-none")}>
+                                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
                                     <Paperclip size={14} />
                                     Attachments
                                 </h3>
@@ -3667,13 +3670,13 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                 />
                                 <label className="block cursor-pointer">
                                     <div
-                                        className="border-2 border-dashed border-gray-700 rounded-lg p-3 hover:border-blue-500/50 hover:bg-gray-800/30 transition-all text-center"
+                                        className="border-2 border-dashed border-border rounded-lg p-3 hover:border-blue-500/50 hover:bg-accent/30 transition-all text-center"
                                         onClick={() => saleAttachmentInputRef.current?.click()}
-                                        onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-blue-500/50', 'bg-gray-800/30'); }}
-                                        onDragLeave={(e) => { e.currentTarget.classList.remove('border-blue-500/50', 'bg-gray-800/30'); }}
+                                        onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-blue-500/50', 'bg-muted/30'); }}
+                                        onDragLeave={(e) => { e.currentTarget.classList.remove('border-blue-500/50', 'bg-muted/30'); }}
                                         onDrop={(e) => {
                                             e.preventDefault();
-                                            e.currentTarget.classList.remove('border-blue-500/50', 'bg-gray-800/30');
+                                            e.currentTarget.classList.remove('border-blue-500/50', 'bg-muted/30');
                                             void (async () => {
                                                 const files = e.dataTransfer.files;
                                                 if (!files?.length) return;
@@ -3691,17 +3694,17 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                             })();
                                         }}
                                     >
-                                        <Upload className="mx-auto mb-1 text-gray-500" size={20} />
-                                        <p className="text-xs text-gray-400">{isProcessingSaleAttachments ? 'Compressing…' : 'Click or drop files (images, PDF)'}</p>
-                                        <p className="text-[10px] text-gray-500 mt-0.5">Saved with sale when you save</p>
+                                        <Upload className="mx-auto mb-1 text-muted-foreground" size={20} />
+                                        <p className="text-xs text-muted-foreground">{isProcessingSaleAttachments ? 'Compressing…' : 'Click or drop files (images, PDF)'}</p>
+                                        <p className="text-[10px] text-muted-foreground mt-0.5">Saved with sale when you save</p>
                                     </div>
                                 </label>
                                 {saleAttachmentFiles.length > 0 && (
                                     <div className="space-y-1.5 max-h-28 overflow-y-auto">
                                         {saleAttachmentFiles.map((file, idx) => (
-                                            <div key={idx} className="flex items-center justify-between gap-2 bg-gray-950 rounded-md px-2.5 py-2 border border-gray-800/50">
-                                                <FileText size={14} className="text-gray-500 shrink-0" />
-                                                <span className="text-sm text-gray-300 truncate flex-1 min-w-0">{file.name}</span>
+                                            <div key={idx} className="flex items-center justify-between gap-2 bg-input-background rounded-md px-2.5 py-2 border border-border/50">
+                                                <FileText size={14} className="text-muted-foreground shrink-0" />
+                                                <span className="text-sm text-muted-foreground truncate flex-1 min-w-0">{file.name}</span>
                                                 <button
                                                     type="button"
                                                     onClick={() => setSaleAttachmentFiles((prev) => prev.filter((_, i) => i !== idx))}
@@ -3714,13 +3717,13 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                     </div>
                                 )}
                                 {savedSaleAttachments.length > 0 && (
-                                    <div className="space-y-1.5 pt-1 border-t border-gray-800">
-                                        <p className="text-[10px] text-gray-500 uppercase tracking-wide">Saved with sale</p>
+                                    <div className="space-y-1.5 pt-1 border-t border-border">
+                                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Saved with sale</p>
                                         <div className="space-y-1.5 max-h-24 overflow-y-auto">
                                             {savedSaleAttachments.map((att, idx) => (
-                                                <div key={idx} className="flex items-center justify-between gap-2 bg-gray-950 rounded-md px-2.5 py-1.5 border border-gray-800/50">
-                                                    <FileText size={12} className="text-gray-500 shrink-0" />
-                                                    <span className="text-xs text-gray-300 truncate flex-1 min-w-0">{att.name || 'Attachment'}</span>
+                                                <div key={idx} className="flex items-center justify-between gap-2 bg-input-background rounded-md px-2.5 py-1.5 border border-border/50">
+                                                    <FileText size={12} className="text-muted-foreground shrink-0" />
+                                                    <span className="text-xs text-muted-foreground truncate flex-1 min-w-0">{att.name || 'Attachment'}</span>
                                                     <Button
                                                         type="button"
                                                         variant="ghost"
@@ -3742,13 +3745,13 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                 {(() => {
                                     const fromPayments = partialPayments.flatMap((p) => (p.attachments || []).map((a) => ({ ...a, paymentMethod: p.method })));
                                     return fromPayments.length > 0 ? (
-                                        <div className="space-y-1.5 pt-1 border-t border-gray-800">
-                                            <p className="text-[10px] text-gray-500 uppercase tracking-wide">From payments</p>
+                                        <div className="space-y-1.5 pt-1 border-t border-border">
+                                            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">From payments</p>
                                             <div className="space-y-1.5 max-h-24 overflow-y-auto">
                                                 {fromPayments.map((att, idx) => (
-                                                    <div key={idx} className="flex items-center justify-between gap-2 bg-gray-950 rounded-md px-2.5 py-1.5 border border-gray-800/50">
-                                                        <FileText size={12} className="text-gray-500 shrink-0" />
-                                                        <span className="text-xs text-gray-300 truncate flex-1 min-w-0">{att.name || 'Attachment'}</span>
+                                                    <div key={idx} className="flex items-center justify-between gap-2 bg-input-background rounded-md px-2.5 py-1.5 border border-border/50">
+                                                        <FileText size={12} className="text-muted-foreground shrink-0" />
+                                                        <span className="text-xs text-muted-foreground truncate flex-1 min-w-0">{att.name || 'Attachment'}</span>
                                                         <Button
                                                             type="button"
                                                             variant="ghost"
@@ -3769,18 +3772,18 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                     ) : null;
                                 })()}
                                 {saleAttachmentFiles.length === 0 && partialPayments.flatMap((p) => p.attachments || []).length === 0 && savedSaleAttachments.length === 0 && (
-                                    <p className="text-xs text-gray-500">No files yet. Add above; they'll be saved with the sale when you save.</p>
+                                    <p className="text-xs text-muted-foreground">No files yet. Add above; they'll be saved with the sale when you save.</p>
                                 )}
                             </div>
 
                             {/* Invoice Summary – Grand Total, Due Balance */}
-                            <div className="bg-gradient-to-br from-gray-900/80 to-gray-900/50 border border-gray-800 rounded-lg p-4 shrink-0">
-                                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Invoice Summary</h3>
+                            <div className="bg-muted/40 border border-border rounded-lg p-4 shrink-0">
+                                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Invoice Summary</h3>
                                 <div className="space-y-2">
                                 {/* PART 1 & 2: Items Subtotal → Extra Expenses → Shipping Charges (visible line when charged_to_customer > 0) → Discount → Grand Total */}
                                 <div className="flex justify-between text-xs">
-                                    <span className="text-gray-400">Items Subtotal</span>
-                                    <span className="text-white font-medium text-sm">{subtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                    <span className="text-muted-foreground">Items Subtotal</span>
+                                    <span className="text-foreground font-medium text-sm">{subtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                 </div>
 
                                 {expensesOnBill > 0 && (
@@ -3790,7 +3793,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                     </div>
                                 )}
                                 {!chargeExtrasToCustomer && expensesTotal > 0 && (
-                                    <div className="flex justify-between text-[10px] text-gray-500">
+                                    <div className="flex justify-between text-[10px] text-muted-foreground">
                                         <span>Package extras (4120, not on bill)</span>
                                         <span>Rs. {expensesTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                     </div>
@@ -3802,7 +3805,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                         <div className="min-w-0">
                                             <span className="text-blue-400 block">Shipping Charges</span>
                                             {saleShipments.length > 0 && (saleShipments[0].courierName || saleShipments[0].trackingId) && (
-                                                <span className="text-[10px] text-gray-500 block mt-0.5">
+                                                <span className="text-[10px] text-muted-foreground block mt-0.5">
                                                     ({[saleShipments[0].courierName, saleShipments[0].trackingId ? `Tracking: ${saleShipments[0].trackingId}` : null].filter(Boolean).join(' – ')})
                                                 </span>
                                             )}
@@ -3815,14 +3818,14 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                 <div className="flex items-center justify-between gap-2 py-1">
                                     <div className="flex items-center gap-1.5">
                                         <Percent size={12} className="text-red-400" />
-                                        <span className="text-xs text-gray-400">Discount</span>
+                                        <span className="text-xs text-muted-foreground">Discount</span>
                                     </div>
                                     <div className="flex items-center gap-1.5">
                                         <Select value={discountType} onValueChange={(v: any) => setDiscountType(v)}>
-                                            <SelectTrigger className="w-14 h-8 bg-gray-950 border-gray-700 text-white text-xs px-2">
+                                            <SelectTrigger className="w-14 h-8 bg-input-background border-border text-foreground text-xs px-2">
                                                 <SelectValue />
                                             </SelectTrigger>
-                                            <SelectContent className="bg-gray-950 border-gray-800 text-white min-w-[60px]">
+                                            <SelectContent className="bg-input-background border-border text-foreground min-w-[60px]">
                                                 <SelectItem value="percentage">%</SelectItem>
                                                 <SelectItem value="fixed">{getCurrencySymbol(company?.currency)}</SelectItem>
                                             </SelectContent>
@@ -3830,7 +3833,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                         <Input 
                                             type="number" 
                                             placeholder="0"
-                                            className="w-20 h-8 bg-gray-950 border-gray-700 text-white text-xs text-right px-2"
+                                            className="w-20 h-8 bg-input-background border-border text-foreground text-xs text-right px-2"
                                             value={discountValue > 0 ? discountValue : ''}
                                             onChange={(e) => setDiscountValue(parseFloat(e.target.value) || 0)}
                                         />
@@ -3842,63 +3845,63 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                     </div>
                                 </div>
 
-                                <Separator className="bg-gray-800" />
+                                <Separator className="bg-muted" />
 
                                 {paymentsLoading && (
-                                    <p className="text-xs text-gray-500">Loading payment history…</p>
+                                    <p className="text-xs text-muted-foreground">Loading payment history…</p>
                                 )}
 
                                 {/* Payment history – same as Purchase */}
                                 {partialPayments.length > 0 && (
                                     <>
                                         <div className="pt-1">
-                                            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1.5 mb-1.5">
+                                            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5 mb-1.5">
                                                 <Wallet size={14} />
                                                 Payment history ({partialPayments.length})
                                             </h4>
                                             <div className="space-y-1.5 max-h-48 overflow-y-auto">
                                                 {partialPayments.map((p) => (
-                                                    <div key={p.id} className="flex items-center justify-between gap-2 bg-gray-950/80 rounded-md px-2.5 py-2 border border-gray-800/50">
+                                                    <div key={p.id} className="flex items-center justify-between gap-2 bg-input-background/80 rounded-md px-2.5 py-2 border border-border/50">
                                                         <div className="flex items-center gap-2 min-w-0 flex-1">
                                                             {p.method === 'cash' && <Banknote size={14} className="text-green-500 shrink-0" />}
                                                             {p.method === 'bank' && <CreditCard size={14} className="text-blue-500 shrink-0" />}
                                                             {p.method === 'Mobile Wallet' && <Wallet size={14} className="text-amber-500 shrink-0" />}
-                                                            <span className="text-sm text-white capitalize truncate">{p.method}</span>
+                                                            <span className="text-sm text-foreground capitalize truncate">{p.method}</span>
                                                             {(p.reference || p.notes || (p.attachments?.length ?? 0) > 0) && (
-                                                                <span className="text-xs text-gray-500 truncate">
+                                                                <span className="text-xs text-muted-foreground truncate">
                                                                     {p.reference && `Ref: ${p.reference}`}
                                                                     {p.reference && (p.notes || (p.attachments?.length ?? 0) > 0) && ' · '}
                                                                     {(p.attachments?.length ?? 0) > 0 && `${p.attachments!.length} file(s)`}
                                                                 </span>
                                                             )}
                                                         </div>
-                                                        <span className="text-base font-semibold text-green-400 shrink-0 tabular-nums">{Number(p.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                                        <span className="text-base font-semibold text-[var(--erp-money-positive)] shrink-0 tabular-nums">{Number(p.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                                     </div>
                                                 ))}
                                             </div>
                                         </div>
-                                        <Separator className="bg-gray-800" />
+                                        <Separator className="bg-muted" />
                                     </>
                                 )}
 
                                 <div className="flex justify-between items-center pt-1">
-                                    <span className="text-sm font-semibold text-white">Grand Total</span>
+                                    <span className="text-sm font-semibold text-foreground">Grand Total</span>
                                     <span className="text-xl font-bold text-blue-500">{totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                 </div>
                                 <div className="flex justify-between items-center pt-1">
-                                    <span className="text-sm font-semibold text-white">Due balance</span>
+                                    <span className="text-sm font-semibold text-foreground">Due balance</span>
                                     <span className="text-xl font-semibold text-orange-500">{Math.max(0, balanceDue).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                 </div>
 
                                 {/* Salesman Commission - Info Only (not added to total) */}
                                 {salesmanId !== "1" && (
                                     <>
-                                        <Separator className="bg-gray-800/50" />
+                                        <Separator className="bg-muted/50" />
                                         <div className="pt-2 space-y-1.5">
                                             <div className="flex items-center justify-between gap-2">
                                                 <div className="flex items-center gap-1.5">
-                                                    <UserCheck size={12} className="text-green-400" />
-                                                    <span className="text-xs text-gray-400">Commission</span>
+                                                    <UserCheck size={12} className="text-[var(--erp-money-positive)]" />
+                                                    <span className="text-xs text-muted-foreground">Commission</span>
                                                 </div>
                                                 <div className="flex items-center gap-1.5">
                                                     <Select
@@ -3909,10 +3912,10 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                                           !!(salesmanId && salesmanId !== '1' && salesmanId !== 'none')
                                                         }
                                                     >
-                                                        <SelectTrigger className="w-12 h-6 bg-gray-950 border-gray-700 text-white text-[10px] px-1">
+                                                        <SelectTrigger className="w-12 h-6 bg-input-background border-border text-foreground text-[10px] px-1">
                                                             <SelectValue />
                                                         </SelectTrigger>
-                                                        <SelectContent className="bg-gray-950 border-gray-800 text-white min-w-[60px]">
+                                                        <SelectContent className="bg-input-background border-border text-foreground min-w-[60px]">
                                                             <SelectItem value="percentage">%</SelectItem>
                                                             <SelectItem value="fixed">{getCurrencySymbol(company?.currency)}</SelectItem>
                                                         </SelectContent>
@@ -3921,7 +3924,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                                         type="number"
                                                         placeholder="0"
                                                         min={0}
-                                                        className="w-16 h-6 bg-gray-950 border-gray-700 text-white text-xs text-right px-2"
+                                                        className="w-16 h-6 bg-input-background border-border text-foreground text-xs text-right px-2"
                                                         value={commissionValue === 0 ? 0 : commissionValue}
                                                         onChange={(e) => setCommissionValue(parseFloat(e.target.value) || 0)}
                                                         disabled={
@@ -3932,7 +3935,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                                 </div>
                                             </div>
                                             {commissionAmount > 0 && (
-                                                <div className="text-xs text-green-400 font-medium text-right bg-green-500/10 px-2 py-1 rounded">
+                                                <div className="text-xs text-[var(--erp-money-positive)] font-medium text-right bg-green-500/10 px-2 py-1 rounded">
                                                     Commission: {commissionAmount.toLocaleString()}
                                                 </div>
                                             )}
@@ -3949,13 +3952,13 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
 
             {/* ============ PAYMENT CHOICE DIALOG ============ */}
             <AlertDialog open={paymentChoiceDialogOpen} onOpenChange={setPaymentChoiceDialogOpen}>
-                <AlertDialogContent className="bg-gray-900 border-gray-700 text-white max-w-md">
+                <AlertDialogContent className="bg-background border-border text-foreground max-w-md">
                     <AlertDialogHeader>
                         <AlertDialogTitle className="text-xl font-bold flex items-center gap-2">
                             <DollarSign size={20} className="text-blue-400" />
                             Payment Option
                         </AlertDialogTitle>
-                        <AlertDialogDescription className="text-gray-400 pt-2">
+                        <AlertDialogDescription className="text-muted-foreground pt-2">
                             How would you like to handle payment for this sale?
                         </AlertDialogDescription>
                     </AlertDialogHeader>
@@ -4009,7 +4012,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                 }
                                 setPendingSaveAction(null);
                             }}
-                            className="w-full h-14 bg-gray-700 hover:bg-gray-600 text-white text-base font-semibold flex items-center justify-center gap-2"
+                            className="w-full h-14 bg-muted hover:bg-gray-600 text-foreground text-base font-semibold flex items-center justify-center gap-2"
                         >
                             <CreditCard size={20} />
                             Credit Bill (Save without payment)
@@ -4020,7 +4023,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                             onClick={() => {
                                 setPendingSaveAction(null);
                             }}
-                            className="bg-gray-800 hover:bg-gray-700 text-white border-gray-700"
+                            className="bg-muted hover:bg-accent text-foreground border-border"
                         >
                             Cancel
                         </AlertDialogCancel>
@@ -4046,6 +4049,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 previousPayments={[]}
                 referenceNo={savedSaleInvoiceNo || undefined}
                 referenceId={savedSaleId || undefined}
+                customerBillRef={refNumber.trim() || undefined}
                 onSuccess={() => {
                     console.log('[SALE FORM] ✅ Payment saved successfully, refreshing sales list');
                     setUnifiedPaymentDialogOpen(false);
@@ -4091,7 +4095,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
             )}
 
             {/* ============ LAYER 3: FIXED FOOTER ============ */}
-            <div className="shrink-0 bg-[#0B1019] border-t border-gray-800">
+            <div className="shrink-0 bg-popover border-t border-border">
                 {/* No-branch-assignment warning: only when multi-branch and user has no mapping */}
                 {!isAdmin && requiresBranchSelection && (
                     <div className="px-6 py-2 bg-red-950/50 border-b border-red-900/50 flex items-center gap-2 text-red-200 text-sm">
@@ -4100,14 +4104,14 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                     </div>
                 )}
                 {/* Totals Summary Row */}
-                <div className="h-10 flex items-center justify-between px-6 border-b border-gray-800/50 bg-gray-950/30">
-                    <div className="flex items-center gap-2.5 text-[11px] text-gray-400">
+                <div className="h-10 flex items-center justify-between px-6 border-b border-border/50 bg-input-background/30">
+                    <div className="flex items-center gap-2.5 text-[11px] text-muted-foreground">
                         {/* Items Count */}
                         <span className="font-medium">{items.length} Items</span>
                         <span className="w-0.5 h-0.5 rounded-full bg-gray-600" />
                         
                         {/* Total Quantity */}
-                        <span>Qty: <span className="font-semibold text-white">{items.reduce((sum, item) => sum + item.qty, 0).toLocaleString()}</span></span>
+                        <span>Qty: <span className="font-semibold text-foreground">{items.reduce((sum, item) => sum + item.qty, 0).toLocaleString()}</span></span>
                         
                         {/* Packing Summary - Only show non-zero values */}
                         {enablePacking && items.some(item => item.packingDetails) && (() => {
@@ -4115,16 +4119,16 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                             const totalPieces = items.reduce((sum, item) => sum + (item.packingDetails?.total_pieces || 0), 0);
                             const totalMeters = items.reduce((sum, item) => sum + (item.packingDetails?.total_meters || 0), 0);
                             const parts = [];
-                            if (totalBoxes > 0) parts.push(<span key="box">Box: <span className="font-semibold text-white">{totalBoxes}</span></span>);
-                            if (totalPieces > 0) parts.push(<span key="pcs">Pcs: <span className="font-semibold text-white">{totalPieces}</span></span>);
-                            if (totalMeters > 0) parts.push(<span key="mtr">Mtr: <span className="font-semibold text-white">{totalMeters.toLocaleString()}</span></span>);
+                            if (totalBoxes > 0) parts.push(<span key="box">Box: <span className="font-semibold text-foreground">{totalBoxes}</span></span>);
+                            if (totalPieces > 0) parts.push(<span key="pcs">Pcs: <span className="font-semibold text-foreground">{totalPieces}</span></span>);
+                            if (totalMeters > 0) parts.push(<span key="mtr">Mtr: <span className="font-semibold text-foreground">{totalMeters.toLocaleString()}</span></span>);
                             return parts.length > 0 ? (
                                 <span className="flex items-center gap-2">
                                     <span className="w-0.5 h-0.5 rounded-full bg-gray-600" />
                                     {parts.map((part, i) => (
                                         <span key={i} className="contents">
                                             {part}
-                                            {i < parts.length - 1 && <span className="text-gray-600">|</span>}
+                                            {i < parts.length - 1 && <span className="text-muted-foreground">|</span>}
                                         </span>
                                     ))}
                                 </span>
@@ -4134,7 +4138,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                         <span className="w-0.5 h-0.5 rounded-full bg-gray-600" />
                         
                         {/* Grand Total */}
-                        <span className="text-xs font-bold text-green-400">Total: {totalAmount.toLocaleString()}</span>
+                        <span className="text-xs font-bold text-[var(--erp-money-positive)]">Total: {totalAmount.toLocaleString()}</span>
                     </div>
                 </div>
 
@@ -4145,7 +4149,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                             <Button 
                                 type="button"
                                 variant="outline"
-                                className="h-10 bg-transparent border border-gray-700 hover:border-gray-600 hover:bg-gray-800 text-white text-sm font-semibold"
+                                className="h-10 bg-transparent border border-border hover:border-gray-600 hover:bg-accent text-foreground text-sm font-semibold"
                                 onClick={() => handleSave(false)}
                                 disabled={saving || (needsConvertHydration && !convertHydrationReady)}
                             >
@@ -4175,8 +4179,8 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
             </div>
 
             {/* Hidden - Old Footer (Replaced by Sticky Action Bar) */}
-            <div className="hidden h-16 shrink-0 bg-[#0B1019] border-t border-gray-800 flex items-center justify-between px-6">
-                <div className="flex items-center gap-3 text-xs text-gray-400">
+            <div className="hidden h-16 shrink-0 bg-popover border-t border-border flex items-center justify-between px-6">
+                <div className="flex items-center gap-3 text-xs text-muted-foreground">
                     {/* Items Count */}
                     <span>{items.length} Items</span>
                     <span className="w-1 h-1 rounded-full bg-gray-600" />
@@ -4202,7 +4206,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                     <span>Total: {totalAmount.toLocaleString()}</span>
                 </div>
                 <div className="flex items-center gap-3">
-                    <Button variant="outline" onClick={onClose} className="border-gray-700 text-gray-300 h-10">
+                    <Button variant="outline" onClick={onClose} className="border-border text-muted-foreground h-10">
                         Cancel
                     </Button>
                     <Button 
@@ -4224,7 +4228,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
 
             {/* Print Layout Modal - after Save & Print */}
             {showPrintLayout && saleForPrint && companyId && (
-                <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4">
+                <div className="fixed inset-0 z-[100] bg-[var(--erp-overlay)] flex items-center justify-center p-4">
                     <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-auto">
                         <UnifiedSalesInvoiceView
                             saleId={saleForPrint.id}

@@ -110,6 +110,8 @@ export const mobileRealtimeHealth = {
           : 'ok',
 } as const;
 
+import { getBrowserStorage } from './safeBrowserStorage';
+
 // ============================================
 // SAFE STORAGE (avoids SecurityError when localStorage is denied)
 // ============================================
@@ -154,18 +156,16 @@ function memoryFallback(): Storage {
 
 function safeStorage(): Storage {
   if (typeof window === 'undefined') return memoryFallback();
-  try {
-    if (probeStorage(localStorage)) {
-      authStorageKind = 'localStorage';
-      return localStorage;
-    }
-  } catch { /* ignore */ }
-  try {
-    if (probeStorage(sessionStorage)) {
-      authStorageKind = 'sessionStorage';
-      return sessionStorage;
-    }
-  } catch { /* ignore */ }
+  const ls = getBrowserStorage('local');
+  if (ls && probeStorage(ls)) {
+    authStorageKind = 'localStorage';
+    return ls;
+  }
+  const ss = getBrowserStorage('session');
+  if (ss && probeStorage(ss)) {
+    authStorageKind = 'sessionStorage';
+    return ss;
+  }
   return memoryFallback();
 }
 

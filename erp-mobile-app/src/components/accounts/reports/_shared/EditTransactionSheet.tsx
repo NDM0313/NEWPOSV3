@@ -26,6 +26,9 @@ import {
   resolvePolicyReferenceType,
   usesSingleAccountingAttachmentPolicy,
 } from '../../../../lib/accountingAttachmentPolicy';
+import { POSTING_FIELD_TITLES } from '../../../../lib/accountPostingInOutLabel';
+import { DateTimeInputField } from '../../../shared/DateTimePicker';
+import { localNowDateTimeString } from '../../../../utils/localDate';
 
 interface EditTransactionSheetProps {
   open: boolean;
@@ -35,6 +38,19 @@ interface EditTransactionSheetProps {
   targetId: string;
   onClose: () => void;
   onSaved: () => void;
+}
+
+function toDateTimeLocalValue(datePart: string, eventTimestamp?: string | null): string {
+  const date = String(datePart || '').slice(0, 10);
+  if (!date) return localNowDateTimeString();
+  if (datePart.includes('T')) return datePart.slice(0, 16);
+  const ts = eventTimestamp ? new Date(eventTimestamp) : null;
+  if (ts && !Number.isNaN(ts.getTime())) {
+    const h = String(ts.getHours()).padStart(2, '0');
+    const m = String(ts.getMinutes()).padStart(2, '0');
+    return `${date}T${h}:${m}`;
+  }
+  return `${date}T${localNowDateTimeString().slice(11, 16)}`;
 }
 
 export function EditTransactionSheet({
@@ -99,7 +115,10 @@ export function EditTransactionSheet({
           setExistingAttachments(normalizeAttachments(res.data.attachments));
           setSingleAttachPolicy(usesSingleAccountingAttachmentPolicy(res.data.referenceType));
           setForm({
-            date: res.data.paymentDate ? String(res.data.paymentDate).slice(0, 10) : '',
+            date: toDateTimeLocalValue(
+              res.data.paymentDate ? String(res.data.paymentDate) : '',
+              res.data.createdAt,
+            ),
             amount: String(res.data.amount || ''),
             description: '',
             paymentMethod: res.data.method || 'cash',
@@ -147,7 +166,7 @@ export function EditTransactionSheet({
             }
           }
           setForm({
-            date: res.data.entryDate || '',
+            date: toDateTimeLocalValue(res.data.entryDate || '', null),
             amount: String(res.data.amount || ''),
             description: res.data.description || '',
             paymentMethod: 'cash',
@@ -183,7 +202,7 @@ export function EditTransactionSheet({
           companyId,
           paymentId: paymentDetail.paymentId,
           amount: Number(form.amount || 0),
-          paymentDate: form.date,
+          paymentDate: form.date.slice(0, 10),
           paymentAccountId: form.paymentAccountId,
           paymentMethod: form.paymentMethod,
           referenceNumber: form.referenceNumber || null,
@@ -198,7 +217,7 @@ export function EditTransactionSheet({
         const res = await updateJournalEntryInPlace({
           companyId,
           journalEntryId: journalDetail.id,
-          entryDate: form.date,
+          entryDate: form.date.slice(0, 10),
           description: form.description || journalDetail.description || 'Entry update',
           debitAccountId: form.debitAccountId,
           creditAccountId: form.creditAccountId,
@@ -290,12 +309,16 @@ export function EditTransactionSheet({
             )}
             {!loading && !error && (
               <>
-                <label className="block text-xs text-[#9CA3AF]">Date</label>
-                <input
-                  type="date"
-                  value={form.date}
-                  onChange={(e) => setForm((s) => ({ ...s, date: e.target.value }))}
-                  className="w-full h-10 rounded bg-[#111827] border border-[#374151] text-white px-3 text-sm"
+                <DateTimeInputField
+                  label="Date"
+                  value={
+                    form.date.includes('T')
+                      ? form.date
+                      : form.date
+                        ? `${form.date}T${localNowDateTimeString().slice(11, 16)}`
+                        : localNowDateTimeString()
+                  }
+                  onChange={(date) => setForm((s) => ({ ...s, date }))}
                 />
                 <label className="block text-xs text-[#9CA3AF]">Amount</label>
                 <input
@@ -353,7 +376,7 @@ export function EditTransactionSheet({
                 {mode === 'journal' && (
                   <>
                     <CustomSelect
-                      label="Debit Account"
+                      label={POSTING_FIELD_TITLES.journalDebit}
                       value={form.debitAccountId}
                       onChange={(v) => setForm((s) => ({ ...s, debitAccountId: v }))}
                       options={[
@@ -364,7 +387,7 @@ export function EditTransactionSheet({
                       zIndexClass="z-[100]"
                     />
                     <CustomSelect
-                      label="Credit Account"
+                      label={POSTING_FIELD_TITLES.journalCredit}
                       value={form.creditAccountId}
                       onChange={(v) => setForm((s) => ({ ...s, creditAccountId: v }))}
                       options={[

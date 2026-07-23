@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Building2, ChevronDown, ChevronUp, FileText, Smartphone, Wallet } from 'lucide-react';
+import { Building2, ChevronDown, ChevronUp, FileText, Smartphone, Wallet, ArrowDownLeft, ArrowLeftRight, ArrowUpRight } from 'lucide-react';
 import type { User } from '../../../types';
 import { getDayBook, type DayBookJournalEntry } from '../../../api/reports';
 import {
   getRoznamcha,
+  roznamchaJournalSubtitle,
+  roznamchaRefDisplay,
   type AccountFilter,
   type RoznamchaResult,
   type RoznamchaRowWithBalance,
@@ -13,13 +15,20 @@ import { ReportHeader } from './_shared/ReportHeader';
 import { DateRangeBar, makeInitialRange, type DateRangeValue } from './_shared/DateRangeBar';
 import { ReportShell, ReportCard } from './_shared/ReportShell';
 import { formatAmount, formatDate, dateRangeLabel, displayReferenceNumber } from './_shared/format';
+import { formatRoznamchaRowDateTimeDisplay } from '../../../utils/transactionEventDateTime';
 import { PdfPreviewModal } from '../../shared/PdfPreviewModal';
 import { TimelinePreviewPdf } from '../../shared/TimelinePreviewPdf';
 import { RoznamchaPreviewPdf } from '../../shared/RoznamchaPreviewPdf';
 import { usePdfPreview } from '../../shared/usePdfPreview';
 import { TransactionDetailSheet } from './_shared/TransactionDetailSheet';
-import { formatLocalDateYYYYMMDD, localNowDateString } from '../../../utils/localDate';
+import { localNowDateString } from '../../../utils/localDate';
 import { roznamchaMetaSubline } from '../../../lib/roznamchaRowDescription';
+import { roznamchaRowHasAttachments } from '../../../lib/roznamchaAttachments';
+import { journalDescriptionForDisplay } from '../../../utils/journalDescriptionDisplay';
+import { AttachmentIndicatorButton } from '../../shared/AttachmentIndicatorButton';
+import { useAttachmentPreview } from '../../../hooks/useAttachmentPreview';
+import { isEasyReportHubMode, useReportHubMode } from './_shared/ReportHubModeContext';
+import { resolveRoznamchaRowPresentation } from '../../../lib/roznamchaTimelinePresentation';
 
 interface DayBookReportProps {
   onBack: () => void;
@@ -39,38 +48,47 @@ function effectiveBranchId(scope: BranchScope, sessionBranchId?: string | null):
   return sessionBranchId;
 }
 
-function rowSortTimestamp(r: RoznamchaRowWithBalance): number {
-  const t = r.time?.length === 5 ? `${r.time}:00` : r.time || '00:00:00';
-  try {
-    return new Date(`${r.date}T${t}`).getTime();
-  } catch {
-    return 0;
-  }
+function liquidityChipLabel(type: RoznamchaRowWithBalance['accountType']): string | null {
+  if (type === 'cash') return 'Cash';
+  if (type === 'bank') return 'Bank';
+  if (type === 'wallet') return 'Wallet';
+  return null;
 }
 
-function applyQuickRange(days: number, single: boolean): DateRangeValue {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const to = formatLocalDateYYYYMMDD(today);
-  if (days === -1) {
-    const from = new Date(today.getFullYear(), today.getMonth(), 1);
-    return { from: formatLocalDateYYYYMMDD(from), to, preset: 'custom' };
-  }
-  if (single) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - days);
-    const iso = formatLocalDateYYYYMMDD(d);
-    return { from: iso, to: iso, preset: 'custom' };
-  }
-  const from = new Date(today);
-  from.setDate(from.getDate() - days);
-  return { from: formatLocalDateYYYYMMDD(from), to, preset: 'custom' };
+function rowSortTimeKey(r: { time?: string | null }): string {
+  const t = String(r.time || '').trim();
+  if (t.length === 5) return `${t}:00`;
+  if (t.length >= 8) return t.slice(0, 8);
+  return '00:00:00';
+}
+
+/** Cash-book order: business date → time → ref → id (stable). */
+function compareRoznamchaRowsChronological(a: RoznamchaRowWithBalance, b: RoznamchaRowWithBalance): number {
+  const dateA = String(a.date || '');
+  const dateB = String(b.date || '');
+  if (dateA < dateB) return -1;
+  if (dateA > dateB) return 1;
+  const timeA = rowSortTimeKey(a);
+  const timeB = rowSortTimeKey(b);
+  if (timeA < timeB) return -1;
+  if (timeA > timeB) return 1;
+  const refA = String(a.journalEntryNo || a.ref || '');
+  const refB = String(b.journalEntryNo || b.ref || '');
+  if (refA < refB) return -1;
+  if (refA > refB) return 1;
+  const idA = String(a.id || '');
+  const idB = String(b.id || '');
+  if (idA < idB) return -1;
+  if (idA > idB) return 1;
+  return 0;
 }
 
 export function DayBookReport({ onBack, companyId, branchId, user, reportRefreshEpoch = 0 }: DayBookReportProps) {
-  const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange('today'));
+  const hubMode = useReportHubMode();
+  const easyMode = isEasyReportHubMode(hubMode);
+  const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange());
   const [mode, setMode] = useState<ReportMode>('cash');
-  const [branchScope, setBranchScope] = useState<BranchScope>('all');
+  const [branchScope, setBranchScope] = useState<BranchScope>('session');
   const [liquidity, setLiquidity] = useState<AccountFilter>('all');
   const [paymentLedgerAccountId, setPaymentLedgerAccountId] = useState('');
   const [includeVoided, setIncludeVoided] = useState(false);
@@ -85,8 +103,10 @@ export function DayBookReport({ onBack, companyId, branchId, user, reportRefresh
 
   const [selectedEntry, setSelectedEntry] = useState<DayBookJournalEntry | null>(null);
   const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(null);
+  const [selectedJournalId, setSelectedJournalId] = useState<string | null>(null);
 
   const preview = usePdfPreview(companyId);
+  const { openAttachmentPreview, AttachmentPreviewPortal } = useAttachmentPreview();
 
   const dateFrom = range.from || '1970-01-01';
   const dateTo = range.to || localNowDateString();
@@ -173,11 +193,8 @@ export function DayBookReport({ onBack, companyId, branchId, user, reportRefresh
   const orderedRozRows = useMemo(() => {
     if (!roznamcha) return [];
     const rows = [...roznamcha.rows];
-    rows.sort((a, b) => {
-      const ta = rowSortTimestamp(a);
-      const tb = rowSortTimestamp(b);
-      return dateSort === 'asc' ? ta - tb : tb - ta;
-    });
+    rows.sort(compareRoznamchaRowsChronological);
+    if (dateSort === 'desc') rows.reverse();
     return rows;
   }, [roznamcha, dateSort]);
 
@@ -225,9 +242,17 @@ export function DayBookReport({ onBack, companyId, branchId, user, reportRefresh
     [journalGroups],
   );
 
-  const openPaymentDetail = useCallback((row: RoznamchaRowWithBalance) => {
+  const openRoznamchaRow = useCallback((row: RoznamchaRowWithBalance) => {
     if (row.id.startsWith('rp-')) return;
-    setSelectedPaymentId(row.id);
+    if (row.id.startsWith('jel-') && row.sourceJournalEntryId) {
+      setSelectedJournalId(row.sourceJournalEntryId);
+      return;
+    }
+    if (row.sourceJournalEntryId && !row.sourcePaymentId) {
+      setSelectedJournalId(row.sourceJournalEntryId);
+      return;
+    }
+    setSelectedPaymentId(row.sourcePaymentId || row.id);
   }, []);
 
   const stats =
@@ -273,58 +298,50 @@ export function DayBookReport({ onBack, companyId, branchId, user, reportRefresh
         onShare={preview.openPreview}
         sharing={preview.loading}
       >
-        <DateRangeBar value={range} onChange={setRange} hidePresets={['all', 'quarter', 'year']} />
-        {mode === 'cash' && (
-          <div className="flex flex-wrap gap-1.5 mt-2">
-            {[
-              { label: 'Yesterday', days: 1, single: true },
-              { label: 'Last 7 days', days: 6, single: false },
-              { label: 'Last 30 days', days: 29, single: false },
-              { label: 'This month', days: -1, single: false },
-            ].map(({ label, days, single }) => (
-              <button
-                key={label}
-                type="button"
-                onClick={() => setRange(applyQuickRange(days, single))}
-                className="px-2.5 py-1 rounded-full text-[10px] font-medium bg-white/10 text-white hover:bg-white/20"
-              >
-                {label}
-              </button>
-            ))}
+        <DateRangeBar
+          value={range}
+          onChange={setRange}
+          companyId={companyId}
+          branchId={branchId}
+          hidePresets={easyMode ? ['week', 'month', 'quarter', 'year', 'custom', 'all'] : ['all', 'quarter', 'year']}
+        />
+        {!easyMode ? (
+          <div className="flex gap-1.5 mt-2">
+            <button
+              type="button"
+              onClick={() => setMode('cash')}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                mode === 'cash' ? 'bg-white text-[#3B82F6]' : 'bg-white/10 text-white hover:bg-white/20'
+              }`}
+            >
+              Cash (Roznamcha)
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode('all')}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                mode === 'all' ? 'bg-white text-[#3B82F6]' : 'bg-white/10 text-white hover:bg-white/20'
+              }`}
+            >
+              All entries
+            </button>
           </div>
-        )}
-        <div className="flex gap-1.5 mt-2">
-          <button
-            type="button"
-            onClick={() => setMode('cash')}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-              mode === 'cash' ? 'bg-white text-[#3B82F6]' : 'bg-white/10 text-white hover:bg-white/20'
-            }`}
-          >
-            Cash (Roznamcha)
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode('all')}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-              mode === 'all' ? 'bg-white text-[#3B82F6]' : 'bg-white/10 text-white hover:bg-white/20'
-            }`}
-          >
-            All entries
-          </button>
-        </div>
+        ) : null}
       </ReportHeader>
 
       {mode === 'cash' && (
         <div className="px-4 -mt-2 mb-2">
           <p className="text-[10px] text-[#9CA3AF] border border-[#374151] rounded-lg px-3 py-2 bg-[#0F172A]/80">
-            One row per <span className="text-[#D1D5DB] font-medium">payment</span>. Reversal journal entries appear
-            under All entries, not here.
+            Cash / bank / wallet receive &amp; pay only — from{' '}
+            <span className="text-[#D1D5DB] font-medium">payments</span> and{' '}
+            <span className="text-[#D1D5DB] font-medium">rental_payments</span>. One row per actual movement.
+            Rental receipts show as <span className="text-[#D1D5DB] font-medium">REN-*-PAY</span> or RCV, not duplicate JE.
+            Voided reversed receipts are excluded by default.
           </p>
         </div>
       )}
 
-      {mode === 'cash' && (
+      {mode === 'cash' && !easyMode && (
         <div className="px-4 mb-3">
           <button
             type="button"
@@ -469,55 +486,79 @@ export function DayBookReport({ onBack, companyId, branchId, user, reportRefresh
                 </div>
                 <ul className="divide-y divide-[#374151]">
                   {orderedRozRows.map((r) => {
-                    const isIn = r.direction === 'IN';
-                    const t = r.time?.length === 5 ? `${r.time}:00` : r.time || '00:00:00';
-                    const timeLabel = (() => {
-                      try {
-                        return new Date(`${r.date}T${t}`).toLocaleTimeString('en-PK', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        });
-                      } catch {
-                        return r.time;
-                      }
-                    })();
+                    const pres = resolveRoznamchaRowPresentation(r);
+                    const timeLabel = formatRoznamchaRowDateTimeDisplay(r.date, r.time || '');
                     const meta = roznamchaMetaSubline(r);
                     const clickable = !r.id.startsWith('rp-');
+                    const RowIcon =
+                      pres.useLiquidityPresentation && pres.variant === 'transfer'
+                        ? ArrowLeftRight
+                        : pres.isReceived
+                          ? ArrowDownLeft
+                          : ArrowUpRight;
+                    const title = pres.useLiquidityPresentation ? pres.title : journalDescriptionForDisplay(r.details, r.type || 'Payment');
                     return (
                       <li key={r.id}>
                         <button
                           type="button"
                           disabled={!clickable}
-                          onClick={() => openPaymentDetail(r)}
+                          onClick={() => openRoznamchaRow(r)}
                           className={`w-full text-left px-4 py-3 transition-colors ${
                             clickable ? 'hover:bg-[#111827]/60' : 'opacity-90'
                           }`}
                         >
                           <div className="flex items-start gap-3">
-                            <div className="w-9 h-9 rounded-lg bg-[#111827] border border-[#374151] flex items-center justify-center shrink-0">
-                              <FileText className="w-4 h-4 text-[#9CA3AF]" />
+                            <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${pres.pillClass}`}>
+                              <RowIcon className="w-4 h-4" />
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-semibold text-white truncate">{r.details}</p>
-                              <p className="text-[11px] text-[#9CA3AF] truncate">
-                                {r.ref}
-                                {r.journalEntryNo ? ` · ${r.journalEntryNo}` : ''}
+                              <div className="flex items-start gap-1">
+                                <p className="text-sm font-semibold text-white truncate flex-1 min-w-0">
+                                  {title}
+                                </p>
+                                {roznamchaRowHasAttachments(r) ? (
+                                  <AttachmentIndicatorButton
+                                    size="sm"
+                                    onClick={() => openAttachmentPreview(r.attachments ?? [], 0)}
+                                  />
+                                ) : null}
+                              </div>
+                              {pres.useLiquidityPresentation ? (
+                                <p className="text-[11px] text-[#9CA3AF] truncate">
+                                  {pres.from} → {pres.to}
+                                </p>
+                              ) : null}
+                              <p className="text-[11px] text-[#9CA3AF] truncate font-mono">
+                                {roznamchaRefDisplay(r)}
                               </p>
+                              {roznamchaJournalSubtitle(r) ? (
+                                <p className="text-[10px] text-[#6B7280] truncate font-mono">
+                                  {roznamchaJournalSubtitle(r)}
+                                </p>
+                              ) : null}
                               {meta && <p className="text-[10px] text-[#6B7280] truncate mt-0.5">{meta}</p>}
-                              <p className="text-[11px] text-[#9CA3AF] mt-0.5">
-                                {r.accountName?.trim() || r.accountLabel || '—'}
+                              {r.partyLine ? (
+                                <p className="text-[10px] text-[#9CA3AF] truncate">{r.partyLine}</p>
+                              ) : null}
+                              <p className="text-[11px] text-[#9CA3AF] mt-0.5 flex items-center gap-1.5 flex-wrap">
+                                {liquidityChipLabel(r.accountType) ? (
+                                  <span className="inline-flex px-1.5 py-0.5 rounded bg-[#374151] text-[10px] uppercase tracking-wide">
+                                    {liquidityChipLabel(r.accountType)}
+                                  </span>
+                                ) : null}
+                                <span>{r.accountName?.trim() || r.accountLabel || '—'}</span>
                               </p>
                             </div>
                             <div className="text-right shrink-0">
                               <span
                                 className={`inline-block text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded mb-0.5 ${
-                                  isIn ? 'bg-[#10B981]/15 text-[#10B981]' : 'bg-[#EF4444]/15 text-[#EF4444]'
+                                  pres.isReceived ? 'bg-[#10B981]/15 text-[#10B981]' : 'bg-[#EF4444]/15 text-[#EF4444]'
                                 }`}
                               >
-                                {isIn ? 'IN' : 'OUT'}
+                                {pres.signPrefix === '↔' ? 'XFER' : pres.isReceived ? 'IN' : 'OUT'}
                               </span>
-                              <p className={`text-sm font-bold ${isIn ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
-                                {isIn ? '+' : '−'} Rs. {formatAmount(r.amount, 0)}
+                              <p className={`text-sm font-bold ${pres.amountClass}`}>
+                                {pres.signPrefix} Rs. {formatAmount(r.amount, 0)}
                               </p>
                               <p className="text-[10px] text-[#9CA3AF]">{timeLabel}</p>
                               <p className="text-[10px] text-[#9CA3AF]">
@@ -673,6 +714,16 @@ export function DayBookReport({ onBack, companyId, branchId, user, reportRefresh
         referenceType="payment"
         referenceId={selectedPaymentId}
       />
+
+      <TransactionDetailSheet
+        open={!!selectedJournalId}
+        onClose={() => setSelectedJournalId(null)}
+        companyId={companyId}
+        referenceType="journal"
+        referenceId={selectedJournalId}
+      />
+
+      {AttachmentPreviewPortal}
     </div>
   );
 }

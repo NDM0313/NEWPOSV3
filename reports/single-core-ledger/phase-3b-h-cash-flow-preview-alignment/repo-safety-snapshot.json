@@ -1,0 +1,8 @@
+{
+  "run": "PHASE_3B_H_REPO_SAFETY_SNAPSHOT",
+  "generated_at": "2026-06-29T16:00:00.000Z",
+  "branch": "main",
+  "head_commit": "83b503cc",
+  "scope": "preview_alignment_only",
+  "deploy": "NOT_RUN"
+}

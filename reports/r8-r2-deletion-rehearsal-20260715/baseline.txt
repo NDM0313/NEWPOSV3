@@ -1,0 +1,9 @@
+Main starting HEAD (pre-delete baseline): 9f0e237abea77bd12b61fc72e1a77ee8ac7b35fc
+Main final HEAD (docs only): 12fe4a1788e8e5227c836806732c927fc603b83f
+origin/main: 12fe4a1788e8e5227c836806732c927fc603b83f
+Includes 866cb0df: YES
+Rehearsal branch: rehearsal/r8-r2-legacy-deletion-20260715
+Rehearsal runtime commit: b89cdd767685ed412a02db5c80a4724710b4f386
+Pre-delete tag (local): r8-r2-rehearsal-pre-delete-20260715 -> 9f0e237abea77bd12b61fc72e1a77ee8ac7b35fc
+WIP stash preserved: stash@{0} WIP preserve before R8-R2 accelerated rehearsal 2026-07-17
+Date: 2026-07-17

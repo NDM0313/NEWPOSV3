@@ -1,0 +1,68 @@
+{
+  "phase": "3A",
+  "screen": "profit_loss",
+  "startDate": "2000-01-01",
+  "endDate": "2026-07-01",
+  "branchLabel": "All branches",
+  "previewBasis": "official_gl",
+  "engineState": {
+    "mode": "preview",
+    "killSwitchActive": false,
+    "companyEngineEnabled": true,
+    "screenFlagEnabled": true,
+    "pilotEnabled": true,
+    "localOverride": null,
+    "rpcAllowed": true
+  },
+  "diff": {
+    "legacyRevenue": 49040015,
+    "previewRevenue": 49040015,
+    "revenueDelta": 0,
+    "legacyCostOfSales": 39299479.13,
+    "previewCostOfSales": 39299479.13,
+    "costDelta": 0,
+    "legacyGrossProfit": 9740535.869999997,
+    "previewGrossProfit": 9740535.87,
+    "grossProfitDelta": 0,
+    "legacyExpenses": 1274805,
+    "previewExpenses": 1274805,
+    "expensesDelta": 0,
+    "legacyNetProfit": 8465730.869999997,
+    "previewNetProfit": 8465730.87,
+    "netProfitDelta": 0,
+    "pass": true,
+    "previewOnly": true,
+    "needsFinanceGoldenApproval": true
+  },
+  "preview": {
+    "previewOnly": true,
+    "needsFinanceGoldenApproval": true,
+    "startDate": "2000-01-01",
+    "endDate": "2026-07-01",
+    "totalRevenue": 49040015,
+    "totalCostOfSales": 39299479.13,
+    "grossProfit": 9740535.87,
+    "totalExpenses": 1274805,
+    "netProfit": 8465730.87,
+    "revenueLineCount": 1,
+    "costLineCount": 1,
+    "expenseLineCount": 3,
+    "accountingRuleNotes": [
+      "Unified main loader active."
+    ]
+  },
+  "tbMeta": {
+    "engine": "unified_shadow",
+    "basis": "official_gl",
+    "featureFlagEnabled": true,
+    "shadowForce": false,
+    "queryDurationMs": 0,
+    "rowCount": 0,
+    "periodOpeningBalance": 0
+  },
+  "accountingRuleNotes": [
+    "Unified main loader active."
+  ],
+  "exportedAt": "2026-07-01T08:46:47.809Z",
+  "note": "PREVIEW_ONLY — legacy P&L remains authoritative. COGS heuristic NEEDS_RULE_CONFIRMATION."
+}

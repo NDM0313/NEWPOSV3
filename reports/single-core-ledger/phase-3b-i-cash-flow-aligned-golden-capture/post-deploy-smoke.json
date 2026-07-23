@@ -1,0 +1,43 @@
+{
+  "run": "PHASE_3B_H_PROD_POST_DEPLOY_SMOKE",
+  "generated_at": "2026-06-29T16:10:39.696Z",
+  "production_url": "https://erp.dincouture.pk",
+  "overall": "PARTIAL",
+  "checks": [
+    {
+      "check": "app loads",
+      "result": "PASS",
+      "notes": "https://erp.dincouture.pk"
+    },
+    {
+      "check": "login",
+      "result": "PASS",
+      "notes": "din@yahoo.com"
+    },
+    {
+      "check": "cash flow page loads",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "legacy output visible",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "preview toggle visible",
+      "result": "FAIL",
+      "notes": ""
+    },
+    {
+      "check": "preview toggle default OFF",
+      "result": "SKIP",
+      "notes": ""
+    },
+    {
+      "check": "no material page errors",
+      "result": "PASS",
+      "notes": ""
+    }
+  ]
+}

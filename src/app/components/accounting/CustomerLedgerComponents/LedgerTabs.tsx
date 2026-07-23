@@ -24,15 +24,15 @@ export const LedgerTabs: React.FC<LedgerTabsProps> = ({
   const [activeTab, setActiveTab] = useState<'summary' | 'detail' | 'items'>('summary');
 
   return (
-    <div className="flex flex-col h-full bg-gray-950">
+    <div className="flex flex-col h-full bg-input-background">
       {/* Tab Headers */}
-      <div className="flex border-b border-gray-800 bg-gray-900">
+      <div className="flex border-b border-border bg-card">
         <button
           onClick={() => setActiveTab('summary')}
           className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
             activeTab === 'summary'
               ? 'border-blue-500 text-blue-400'
-              : 'border-transparent text-gray-400 hover:text-gray-300'
+              : 'border-transparent text-muted-foreground hover:text-muted-foreground'
           }`}
         >
           Summary Ledger
@@ -42,7 +42,7 @@ export const LedgerTabs: React.FC<LedgerTabsProps> = ({
           className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
             activeTab === 'detail'
               ? 'border-blue-500 text-blue-400'
-              : 'border-transparent text-gray-400 hover:text-gray-300'
+              : 'border-transparent text-muted-foreground hover:text-muted-foreground'
           }`}
         >
           Detail Ledger
@@ -52,7 +52,7 @@ export const LedgerTabs: React.FC<LedgerTabsProps> = ({
           className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
             activeTab === 'items'
               ? 'border-blue-500 text-blue-400'
-              : 'border-transparent text-gray-400 hover:text-gray-300'
+              : 'border-transparent text-muted-foreground hover:text-muted-foreground'
           }`}
         >
           Item Purchase Detail
@@ -62,7 +62,7 @@ export const LedgerTabs: React.FC<LedgerTabsProps> = ({
       {/* Tab Content */}
       <div className="flex-1 overflow-auto">
         {loading ? (
-          <div className="flex items-center justify-center h-full text-gray-400">
+          <div className="flex items-center justify-center h-full text-muted-foreground">
             Loading ledger...
           </div>
         ) : activeTab === 'summary' ? (

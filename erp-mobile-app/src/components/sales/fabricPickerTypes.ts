@@ -13,6 +13,7 @@ export type FabricPickerProduct = {
   hasVariations?: boolean;
   variations?: ProductVariationRow[];
   unitAllowDecimal?: boolean;
+  isDyeable?: boolean;
   imageUrl?: string;
   stock?: number;
 };
@@ -29,6 +30,7 @@ export function mapApiProductToFabricPicker(p: productsApi.Product): FabricPicke
     hasVariations: p.hasVariations ?? false,
     variations: p.variations,
     unitAllowDecimal: unitAllowsDecimal(p.unitAllowDecimal),
+    isDyeable: Boolean(p.isDyeable),
     imageUrl: p.imageUrls?.[0],
     stock: p.stock ?? 0,
   };

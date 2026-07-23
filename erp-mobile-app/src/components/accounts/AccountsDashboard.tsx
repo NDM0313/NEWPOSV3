@@ -5,6 +5,7 @@ import {
   ArrowLeftRight,
   Users,
   Wrench,
+  Truck,
   Receipt,
   BarChart3,
   Wallet,
@@ -14,6 +15,7 @@ import {
   BookMarked,
   ArrowUpRight,
   ArrowDownLeft,
+  ScanText,
   type LucideIcon,
 } from 'lucide-react';
 import type { User } from '../../types';
@@ -29,6 +31,7 @@ import {
   cashFlowDirectionLabel,
   sourceLabel,
 } from '../../lib/cashFlowDirection';
+import { duplicateViewForSourceKind } from '../../lib/duplicateEntryRouting';
 import { usePermissions } from '../../context/PermissionContext';
 import { useAccountingAttachmentActions } from '../../hooks/useAccountingAttachmentActions';
 import { AttachmentIndicatorButton } from '../shared/AttachmentIndicatorButton';
@@ -78,11 +81,15 @@ interface AccountsDashboardProps {
   onSupplierPayment: () => void;
   onClientPayment: () => void;
   onWorkerPayment: () => void;
+  onCourierPayment: () => void;
   onExpenseEntry: () => void;
+  onScanReceipt?: () => void;
   onViewReports: () => void;
   onChartOfAccounts: () => void;
   onEntryClick: (entry: AccountEntry) => void;
   onMyActivity?: () => void;
+  /** Long-press Duplicate — parent routes by sourceKind. */
+  onDuplicateEntry?: (entry: AccountEntry) => void;
 }
 
 function mapReferenceTypeToEntryType(ref: string): AccountEntry['type'] {
@@ -198,6 +205,7 @@ export function getAccountEntryDisplayConfig(entry: AccountEntry): EntryDisplayC
   }
   if (k === 'payment_customer') return { label: lbl, color: 'text-[#34D399]', bg: 'bg-[#059669]/20', icon: Wallet };
   if (k === 'payment_worker') return { label: lbl, color: 'text-[#10B981]', bg: 'bg-[#10B981]/10', icon: Wrench };
+  if (k === 'payment_courier') return { label: lbl, color: 'text-[#A5B4FC]', bg: 'bg-[#6366F1]/20', icon: Truck };
   if (k === 'payment_supplier') return { label: lbl, color: 'text-[#F59E0B]', bg: 'bg-[#F59E0B]/10', icon: Users };
   if (k === 'rental') return { label: lbl, color: 'text-[#A78BFA]', bg: 'bg-[#6D28D9]/20', icon: BookOpen };
   if (k === 'expense') return { label: lbl, color: 'text-[#EF4444]', bg: 'bg-[#EF4444]/10', icon: Receipt };
@@ -229,11 +237,14 @@ export function AccountsDashboard({
   onSupplierPayment,
   onClientPayment,
   onWorkerPayment,
+  onCourierPayment,
   onExpenseEntry,
+  onScanReceipt,
   onViewReports,
   onChartOfAccounts,
   onEntryClick,
   onMyActivity,
+  onDuplicateEntry,
 }: AccountsDashboardProps) {
   useResponsive();
   const { canViewBalances } = usePermissions();
@@ -243,6 +254,7 @@ export function AccountsDashboard({
   const [entries, setEntries] = useState<AccountEntry[]>([]);
   const [stats, setStats] = useState({ todayEntries: 0, totalAmount: 0, cashBalance: 0, bankBalance: 0 });
   const [loading, setLoading] = useState(true);
+  const [duplicateHint, setDuplicateHint] = useState<string | null>(null);
 
   const loadDashboardData = async () => {
     if (isPartyMode) {
@@ -264,6 +276,10 @@ export function AccountsDashboard({
           e.payment_reference_number && String(e.payment_reference_number).trim()
             ? String(e.payment_reference_number).trim()
             : null;
+        const expenseDocNo =
+          e.display_expense_no && String(e.display_expense_no).trim()
+            ? String(e.display_expense_no).trim()
+            : null;
         const sourceKind = classifySource(
           e.reference_type,
           e.payment_id,
@@ -277,7 +293,10 @@ export function AccountsDashboard({
         const postedAt = e.posted_at || e.created_at || null;
         return {
           id: e.id,
-          entryNumber: paymentRef || e.entry_no,
+          entryNumber:
+            String(e.reference_type || '').toLowerCase().replace(/\s+/g, '_') === 'expense' && expenseDocNo
+              ? expenseDocNo
+              : paymentRef || e.entry_no,
           type: mapReferenceTypeToEntryType(e.reference_type),
           date: e.entry_date,
           description: e.description,
@@ -452,11 +471,20 @@ export function AccountsDashboard({
       <div>
         <h2 className="text-sm font-semibold text-white mb-3 px-1">Quick Actions</h2>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          {onScanReceipt && (
+            <ActionButton
+              icon={ScanText}
+              label="Scan Receipt"
+              color="from-[#0EA5E9] to-[#0284C7]"
+              onClick={onScanReceipt}
+            />
+          )}
           <ActionButton icon={BookOpen} label="General Entry" color="from-[#8B5CF6] to-[#7C3AED]" onClick={onGeneralEntry} />
           <ActionButton icon={ArrowLeftRight} label="Account Transfer" color="from-[#3B82F6] to-[#2563EB]" onClick={onAccountTransfer} />
           <ActionButton icon={Users} label="Supplier Payment" color="from-[#F59E0B] to-[#D97706]" onClick={onSupplierPayment} />
           <ActionButton icon={ArrowDownLeft} label="Client Payment" color="from-[#3B82F6] to-[#2563EB]" onClick={onClientPayment} />
           <ActionButton icon={Wrench} label="Worker Payment" color="from-[#10B981] to-[#059669]" onClick={onWorkerPayment} />
+          <ActionButton icon={Truck} label="Courier Payment" color="from-[#6366F1] to-[#4F46E5]" onClick={onCourierPayment} />
           <ActionButton icon={Receipt} label="Expense Entry" color="from-[#EF4444] to-[#DC2626]" onClick={onExpenseEntry} />
           <ActionButton icon={BookMarked} label="Chart" color="from-[#F59E0B] to-[#D97706]" onClick={onChartOfAccounts} />
           <ActionButton icon={BarChart3} label="Reports" color="from-[#6366F1] to-[#4F46E5]" onClick={onViewReports} />
@@ -525,6 +553,16 @@ export function AccountsDashboard({
                   })}
                   canEdit={false}
                   canDelete={false}
+                  onDuplicate={
+                    onDuplicateEntry && duplicateViewForSourceKind(entry.sourceKind)
+                      ? () => onDuplicateEntry(entry)
+                      : onDuplicateEntry
+                        ? () => {
+                            setDuplicateHint('This entry type cannot be duplicated.');
+                            window.setTimeout(() => setDuplicateHint(null), 2800);
+                          }
+                        : undefined
+                  }
                 >
                   <div className="w-full text-left bg-[#1F2937] border border-[#374151] rounded-xl p-3 hover:border-[#8B5CF6] transition-all active:scale-[0.99] cursor-pointer">
                   <div className="flex items-start gap-3">
@@ -553,7 +591,7 @@ export function AccountsDashboard({
                     </div>
                     <div className="text-right shrink-0">
                       <div className="flex items-center gap-1 justify-end">
-                        {entry.hasAttachments && companyId ? (
+                        {attachmentActions.hasAnyAttachmentHint(rowAttachParams) && companyId ? (
                           <AttachmentIndicatorButton
                             onClick={() => void attachmentActions.previewAttachments(rowAttachParams)}
                             size="sm"
@@ -580,6 +618,11 @@ export function AccountsDashboard({
       {attachmentActions.AttachmentPreviewPortal}
       {attachmentActions.AddAttachmentSheetPortal}
       {attachmentActions.ToastBanner}
+      {duplicateHint ? (
+        <div className="fixed bottom-28 left-4 right-4 z-[120] mx-auto max-w-md p-3 rounded-lg bg-amber-500/90 text-[#111827] text-sm shadow-lg">
+          {duplicateHint}
+        </div>
+      ) : null}
     </div>
   );
 }

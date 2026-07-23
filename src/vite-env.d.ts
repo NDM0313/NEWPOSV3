@@ -1,3 +1,5 @@
+/// <reference types="vite/client" />
+
 declare module 'virtual:pwa-register' {
   export function registerSW(options?: unknown): void;
 }
@@ -22,6 +24,8 @@ interface ImportMetaEnv {
   readonly VITE_ACCOUNTING_STRICT_LEGACY?: string;
   readonly VITE_ACCOUNTING_LEGACY_HARD_FAIL?: string;
   readonly VITE_ACCOUNTING_DEBUG_SOURCES?: string;
+  readonly VITE_TRANSACTION_ACTION_PANEL?: string;
+  readonly VITE_DISABLE_REALTIME?: string;
 }
 
 interface ImportMeta {

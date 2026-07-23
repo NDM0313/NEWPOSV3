@@ -1,0 +1,39 @@
+{
+  "run_at": "2026-06-23T18:13:49.433Z",
+  "baseline_inventory": "reports/single-core-ledger/remediation-inventory-2026-06-23T15-27-52-003Z.json",
+  "fresh_inventory": "reports/single-core-ledger/remediation-inventory-2026-06-23T18-10-27-167Z.json",
+  "baseline_counts": {
+    "payment_ids": 74,
+    "branch_je_ids": 8,
+    "totals": {
+      "payment_gaps": 74,
+      "branch_risk": 8,
+      "manual_review": 6
+    }
+  },
+  "fresh_counts": {
+    "payment_ids": 74,
+    "branch_je_ids": 8,
+    "totals": {
+      "payment_gaps": 74,
+      "branch_risk": 8,
+      "manual_review": 6
+    }
+  },
+  "deltas": {
+    "payment_count": 0,
+    "branch_count": 0
+  },
+  "payment_id_diff": {
+    "only_in_baseline": [],
+    "only_in_fresh": [],
+    "overlap": 74
+  },
+  "branch_je_id_diff": {
+    "only_in_baseline": [],
+    "only_in_fresh": [],
+    "overlap": 8
+  },
+  "recommendation": "APPROVE_MANIFEST",
+  "blockers": []
+}

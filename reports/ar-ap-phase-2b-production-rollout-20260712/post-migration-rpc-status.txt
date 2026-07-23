@@ -1,0 +1,13 @@
+AR/AP Phase 2b — Post-migration RPC status
+Generated: 2026-07-12T06:46:41Z
+
+get_unified_contact_party_gl_balances: YES
+  args: p_company_id uuid, p_branch_id uuid, p_as_of_date date, p_basis text
+  security: SECURITY DEFINER
+  search_path: public
+  owner: supabase_admin
+
+get_contact_party_gl_balances (legacy): YES — retained
+
+schema_migrations:
+  20260712120000_get_unified_contact_party_gl_balances.sql | 2026-07-11 21:36:11.261634+00

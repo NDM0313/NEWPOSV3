@@ -1,0 +1,23 @@
+{
+  "run": "MOBILE_REPORTS_PARITY_IMPLEMENTATION",
+  "task": "mobile-code-audit",
+  "generated_at": "2026-07-01T10:00:00.000Z",
+  "target": "erp-mobile-app",
+  "gaps_before": ["balance_sheet", "profit_loss", "trial_balance", "cash_flow", "ledger_v2", "unified_flag_resolution"],
+  "implemented": [
+    "erp-mobile-app/src/api/featureFlags.ts",
+    "erp-mobile-app/src/lib/unifiedLedgerFlagKeys.ts",
+    "erp-mobile-app/src/lib/reportLoaderSource.ts",
+    "erp-mobile-app/src/api/unifiedLedgerRpc.ts",
+    "erp-mobile-app/src/api/unifiedReports.ts",
+    "erp-mobile-app/src/lib/unifiedReportMappers.ts",
+    "BalanceSheetReport.tsx",
+    "ProfitLossReport.tsx",
+    "TrialBalanceReport.tsx",
+    "CashFlowReport.tsx",
+    "LedgerV2Report.tsx",
+    "AccountLedgerReport unified upgrade"
+  ],
+  "flutter": "placeholder — not implemented",
+  "status": "COMPLETE"
+}

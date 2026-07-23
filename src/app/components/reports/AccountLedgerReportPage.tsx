@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Loader2, FileText, FileSpreadsheet, Filter, RotateCcw, Eye, Pencil } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { useFormatDate } from '@/app/hooks/useFormatDate';
 import { accountingService, AccountLedgerEntry } from '@/app/services/accountingService';
 import { accountService } from '@/app/services/accountService';
 import { exportToPDF, exportToExcel, ExportData } from '@/app/utils/exportUtils';
@@ -11,6 +12,7 @@ import { DateTimeDisplay } from '@/app/components/ui/DateTimeDisplay';
 import { contactService } from '@/app/services/contactService';
 import { studioService } from '@/app/services/studioService';
 import { StatementScopeBanner } from '@/app/components/reports/StatementScopeBanner';
+import { ReportBasisBanner } from '@/app/components/accounting/ReportBasisBanner';
 import {
   accountingStatementExportSlug,
   accountingStatementModeLabel,
@@ -18,6 +20,7 @@ import {
 } from '@/app/lib/accounting/statementEngineTypes';
 import { isPartySubledgerLeaf, nearestPartyControlAncestorId } from '@/app/lib/partyControlAccounts';
 import { CONTACT_BALANCES_REFRESH_EVENT } from '@/app/lib/contactBalancesRefresh';
+import { subscribeAccountingReportReload } from '@/app/hooks/useAccountingReportReload';
 import {
   journalEntryPresentationFromHeader,
   presentationLabel,
@@ -33,6 +36,47 @@ import {
   netEconomicMeaning,
   editTargetTypeLabel,
 } from '@/app/lib/accountFlowPresentation';
+import { ledgerTransactionOpenEventDetail } from '@/app/lib/ledgerTransactionOpenRef';
+import {
+  collectRepairedControl1100SourceLineIds,
+  isGlCorrectionReferenceType,
+  partyEffectiveRowAuditLabel,
+  partyStatementGlCorrectionAuditLabel,
+  shouldHideRepairedControl1100Row,
+  shouldIncludePartyEffectiveRow,
+} from '@/app/lib/reportVisibilityContract';
+import { resolveGlCorrectionDisplayRef } from '@/app/lib/glCorrectionDisplayRef';
+import { canAccessAccountStatementUnifiedPreview } from '@/app/lib/accountStatementUnifiedPreviewAccess';
+import { resolveAccountStatementPreviewTarget } from '@/app/lib/accountStatementUnifiedPreviewTarget';
+import {
+  compareAccountStatementUnifiedPreview,
+  defaultUnifiedBasisForAccountStatement,
+  type AccountStatementUnifiedPreviewDiff,
+} from '@/app/lib/accountStatementUnifiedPreviewDiff';
+import { loadAccountStatementUnifiedPreview } from '@/app/services/accountStatementUnifiedPreviewService';
+import { useUnifiedLedgerEngineState } from '@/app/hooks/useUnifiedLedgerEngineState';
+import { UNIFIED_LEDGER_SCREEN_IDS } from '@/app/lib/unifiedLedgerScreenFlags';
+import type { UnifiedLedgerBasis } from '@/app/lib/unifiedLedgerBasisFilter';
+import {
+  MR_JALIL_CONTACT_ID,
+  MR_JALIL_CONTACT_NAME,
+} from '@/app/lib/unifiedLedgerGoldenFixtures';
+import { AccountStatementUnifiedPreviewPanel } from '@/app/components/reports/AccountStatementUnifiedPreviewPanel';
+import {
+  resolveAccountStatementPreviewCompareSource,
+  buildAccountStatementPreviewCompareRows,
+} from '@/app/lib/resolveAccountStatementPreviewCompareSource';
+import { loadAccountStatementLegacyShadowPreview } from '@/app/services/accountStatementLegacyShadowPreviewService';
+import { loadAccountStatementUnifiedMain } from '@/app/services/accountStatementUnifiedMainService';
+import { assertUnifiedMainLoaderSource } from '@/app/lib/r8R2LegacyMainRetired';
+import {
+  alignLedgerRunningBalances,
+  buildReversalTwinMatcher,
+  filterAuditRowsForReversals,
+  isPaymentLikeLedgerRow,
+  isReversalLedgerRow,
+  shouldPreserveRpcRunningBalancesForAudit,
+} from '@/app/lib/accountLedgerPresentation';
 
 /** AR / AP running balance sign: highlight “inverted” party positions so refunds / prepaids are obvious. */
 const PARTY_BAL_EPS = 0.005;
@@ -247,10 +291,21 @@ function isAdjustmentRow(e: AccountLedgerEntry): boolean {
   return d.includes('adjust') || t.includes('adjust');
 }
 
+function isPartyRowHiddenInNormalEffective(e: AccountLedgerEntry): boolean {
+  return !shouldIncludePartyEffectiveRow({
+    jeReferenceType: e.je_reference_type,
+    jeActionFingerprint: e.je_action_fingerprint,
+    linkedSaleStatus: e.linked_sale_status,
+    paymentVoidedAt: e.payment_voided_at,
+  });
+}
+
 function isReversalRow(e: AccountLedgerEntry): boolean {
-  const d = normalizeLower(e.description);
-  const t = normalizeLower(e.document_type);
-  return e.ledger_kind === 'reversal' || d.includes('reversal') || t.includes('reversal');
+  return isReversalLedgerRow(e);
+}
+
+function isPaymentLikeRow(e: AccountLedgerEntry): boolean {
+  return isPaymentLikeLedgerRow(e);
 }
 
 function isManualRow(e: AccountLedgerEntry): boolean {
@@ -263,12 +318,6 @@ function isStatementOpeningRow(e: AccountLedgerEntry): boolean {
   const d = normalizeLower(e.description);
   const t = normalizeLower(e.document_type || '');
   return d.includes('opening balance') || t.includes('opening balance');
-}
-
-function isPaymentLikeRow(e: AccountLedgerEntry): boolean {
-  const d = normalizeLower(e.description);
-  const t = normalizeLower(e.document_type);
-  return d.includes('payment') || t.includes('payment') || Boolean(e.payment_id);
 }
 
 function extractDocumentRefToken(e: AccountLedgerEntry): string {
@@ -321,39 +370,6 @@ function sortTimeMs(e: AccountLedgerEntry): number {
   return sortDayMs(e);
 }
 
-function movementOf(e: AccountLedgerEntry): number {
-  return Number(e.debit || 0) - Number(e.credit || 0);
-}
-
-function normalizePaymentTargetText(description: string): string {
-  const d = normalizeLower(description);
-  return d
-    .replace(/^reversal of:\s*/i, '')
-    .replace(/^reversal\s*-\s*/i, '')
-    .replace(/^reversal\s*/i, '')
-    .trim();
-}
-
-/**
- * Recompute the balance column from row 0 so rollups and filters still chain correctly.
- * Supplier AP (getSupplierApGlJournalLedger): liability running_balance += credit − debit.
- * Customer AR / cash GL: asset-style += debit − credit.
- */
-function alignRunningBalances(rows: PresentedLedgerRow[], apLiabilityStyle: boolean): PresentedLedgerRow[] {
-  if (!rows.length) return rows;
-  const out: PresentedLedgerRow[] = [];
-  let prevBal = Number(rows[0].displayRunningBalance ?? rows[0].running_balance ?? 0);
-  out.push({ ...rows[0], displayRunningBalance: prevBal });
-  for (let idx = 1; idx < rows.length; idx++) {
-    const row = rows[idx];
-    const d = Number(row.displayDebit || 0);
-    const c = Number(row.displayCredit || 0);
-    prevBal = apLiabilityStyle ? prevBal + c - d : prevBal + d - c;
-    out.push({ ...row, displayRunningBalance: prevBal });
-  }
-  return out;
-}
-
 export const AccountLedgerReportPage: React.FC<{
   startDate: string;
   endDate: string;
@@ -363,8 +379,9 @@ export const AccountLedgerReportPage: React.FC<{
   /** Pre-select this account when opened from Chart of Accounts ⋮ → Statement. */
   initialAccountId?: string | null;
 }> = ({ startDate, endDate, branchId, branchScopeLabel, initialAccountId }) => {
-  const { companyId } = useSupabase();
+  const { companyId, userRole } = useSupabase();
   const { formatCurrency } = useFormatCurrency();
+  const { formatTime } = useFormatDate();
   const [accounts, setAccounts] = useState<
     { id: string; name: string; code?: string; type?: string; linked_contact_id?: string | null; parent_id?: string | null }[]
   >([]);
@@ -381,7 +398,7 @@ export const AccountLedgerReportPage: React.FC<{
   const [transactionTypeFilter, setTransactionTypeFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [polarity, setPolarity] = useState<'all' | 'debit' | 'credit'>('all');
-  const [includeReversals, setIncludeReversals] = useState(true);
+  const [includeReversals, setIncludeReversals] = useState(false);
   const [includeManualEntries, setIncludeManualEntries] = useState(true);
   const [includeAdjustments, setIncludeAdjustments] = useState(true);
   const [applied, setApplied] = useState<FiltersState>({
@@ -395,7 +412,7 @@ export const AccountLedgerReportPage: React.FC<{
     transactionTypeFilter: 'all',
     searchTerm: '',
     polarity: 'all',
-    includeReversals: true,
+    includeReversals: false,
     includeManualEntries: true,
     includeAdjustments: true,
   });
@@ -409,23 +426,50 @@ export const AccountLedgerReportPage: React.FC<{
   );
   /** payment_id → oldest non–payment_adjustment JE entry_no (e.g. JE-0032 / Cash G140 voucher). */
   const [primaryCashVoucherByPaymentId, setPrimaryCashVoucherByPaymentId] = useState<Record<string, string>>({});
+  const [glCorrectionDisplayByJeId, setGlCorrectionDisplayByJeId] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
+  const [statementLoadedOnce, setStatementLoadedOnce] = useState(false);
   const [journalRefreshTick, setJournalRefreshTick] = useState(0);
+  const showUnifiedPreviewTools = canAccessAccountStatementUnifiedPreview(userRole);
+  const [unifiedPreviewEnabled, setUnifiedPreviewEnabled] = useState(false);
+  const [previewBasis, setPreviewBasis] = useState<UnifiedLedgerBasis>('effective_party');
+  const [previewResult, setPreviewResult] = useState<Awaited<ReturnType<typeof loadAccountStatementUnifiedPreview>> | null>(null);
+  const [previewDiff, setPreviewDiff] = useState<AccountStatementUnifiedPreviewDiff | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [mainLoaderSource, setMainLoaderSource] = useState<'legacy' | 'unified'>('legacy');
+  /** Pure GL (non-party): summary cards use engine official totals so Closing matches Trial Balance as-of End. */
+  const [officialGlSummary, setOfficialGlSummary] = useState<{
+    openingBalance: number;
+    totalDebit: number;
+    totalCredit: number;
+    closingBalance: number;
+    txCount: number;
+  } | null>(null);
+
+  const previewCompareSource = useMemo(
+    () => resolveAccountStatementPreviewCompareSource(mainLoaderSource),
+    [mainLoaderSource],
+  );
+
+  const { state: engineState } = useUnifiedLedgerEngineState(companyId, {
+    screenId: UNIFIED_LEDGER_SCREEN_IDS.ACCOUNT_STATEMENT,
+    screenPreview: unifiedPreviewEnabled,
+  });
 
   useEffect(() => {
     const bump = () => setJournalRefreshTick((n) => n + 1);
-    window.addEventListener('accountingEntriesChanged', bump);
-    window.addEventListener('paymentAdded', bump);
-    window.addEventListener('ledgerUpdated', bump);
     window.addEventListener(CONTACT_BALANCES_REFRESH_EVENT, bump);
+    const unsub = subscribeAccountingReportReload(bump, {
+      companyId,
+      branchId: branchId ?? null,
+    });
     return () => {
-      window.removeEventListener('accountingEntriesChanged', bump);
-      window.removeEventListener('paymentAdded', bump);
-      window.removeEventListener('ledgerUpdated', bump);
       window.removeEventListener(CONTACT_BALANCES_REFRESH_EVENT, bump);
+      unsub();
     };
-  }, []);
+  }, [companyId, branchId]);
 
   const isPartyStatement = applied.statementType === 'supplier' || applied.statementType === 'customer';
   const viewMode: 'effective' | 'audit' = (!applied.includeAdjustments && !applied.includeReversals) ? 'effective' : 'audit';
@@ -449,20 +493,36 @@ export const AccountLedgerReportPage: React.FC<{
             parent_id: a.parent_id ?? null,
           }))
         );
-        if (active.length > 0) {
-          const pre = initialAccountId?.trim();
-          const preValid = pre && active.some((a) => a.id === pre) ? pre : null;
-          const nextId =
-            preValid ||
-            (selectedAccountId && active.some((a) => a.id === selectedAccountId)
-              ? selectedAccountId
-              : active[0].id);
+        if (active.length === 0) return;
+
+        const pre = initialAccountId?.trim();
+        const preValid = pre && active.some((a) => a.id === pre) ? pre : null;
+
+        setApplied((prev) => {
+          const isParty =
+            prev.statementType === 'customer' ||
+            prev.statementType === 'supplier' ||
+            prev.statementType === 'worker';
+
+          let nextId = prev.selectedAccountId;
+          if (preValid) {
+            nextId = preValid;
+          } else if (prev.selectedAccountId && active.some((a) => a.id === prev.selectedAccountId)) {
+            nextId = prev.selectedAccountId;
+          } else if (isParty) {
+            nextId = '';
+          } else {
+            nextId = active[0].id;
+          }
+
           setSelectedAccountId(nextId);
-          setApplied((prev) => ({ ...prev, selectedAccountId: nextId }));
-        }
+          if (nextId === prev.selectedAccountId) return prev;
+          return { ...prev, selectedAccountId: nextId };
+        });
       })
       .finally(() => setLoadingAccounts(false));
-  }, [companyId, branchId, journalRefreshTick, initialAccountId]);
+    // journalRefreshTick intentionally omitted — entries reload separately; keep party/account selection stable.
+  }, [companyId, branchId, initialAccountId]);
 
   useEffect(() => {
     const pre = initialAccountId?.trim();
@@ -564,112 +624,52 @@ export const AccountLedgerReportPage: React.FC<{
     setLoading(true);
     (async () => {
       try {
+        const { resolveAccountStatementMainLoaderSource, effectiveAccountStatementMainLoaderSource } =
+          await import('@/app/lib/resolveAccountStatementMainLoaderSource');
+        const resolved = await resolveAccountStatementMainLoaderSource(companyId);
+        const mainSource = effectiveAccountStatementMainLoaderSource(resolved);
+        setMainLoaderSource(mainSource);
+        assertUnifiedMainLoaderSource(mainSource);
+
         let loaded: AccountLedgerEntry[] = [];
-        if (applied.statementType === 'customer') {
-          if (!applied.selectedContactId) {
-            setEntries([]);
-            return;
-          }
-          loaded = await accountingService.getCustomerLedger(
-            applied.selectedContactId,
-            companyId,
-            STATEMENT_ALL_BRANCHES_SCOPE,
-            startDate,
-            endDate
-          );
-        } else if (applied.statementType === 'supplier') {
-          if (!applied.selectedContactId) {
-            setEntries([]);
-            return;
-          }
-          loaded = await accountingService.getSupplierApGlJournalLedger(
-            applied.selectedContactId,
-            companyId,
-            STATEMENT_ALL_BRANCHES_SCOPE,
-            startDate,
-            endDate
-          );
-        } else if (applied.statementType === 'worker') {
-          if (!applied.selectedWorkerId) {
-            setEntries([]);
-            return;
-          }
-          loaded = await accountingService.getWorkerPartyGlJournalLedger(
-            applied.selectedWorkerId,
-            companyId,
-            STATEMENT_ALL_BRANCHES_SCOPE,
-            startDate,
-            endDate
-          );
-        } else {
-          if (!applied.selectedAccountId) {
-            setEntries([]);
-            return;
-          }
-          const accRow = accounts.find((x) => x.id === applied.selectedAccountId);
-          let lc = accRow?.linked_contact_id ? String(accRow.linked_contact_id).trim() : '';
-          const accountsByIdMap = new Map(accounts.map((a) => [a.id, a]));
-          const ancestorId = accRow ? nearestPartyControlAncestorId(accRow, accountsByIdMap as any) : null;
-          const ctrl = ancestorId ? accountsByIdMap.get(ancestorId) : undefined;
-          const ctrlCode = String(ctrl?.code || '').trim();
-
-          if (!lc && accRow?.name && companyId) {
-            if (ctrlCode === '2000') {
-              const resolved = await contactService.resolveSupplierContactIdFromSubledgerAccountName(
-                companyId,
-                accRow.name
-              );
-              if (resolved) lc = resolved;
-            } else if (ctrlCode === '1100') {
-              const resolved = await contactService.resolveCustomerContactIdFromSubledgerAccountName(
-                companyId,
-                accRow.name
-              );
-              if (resolved) lc = resolved;
-            }
-          }
-
-          if (lc && ctrl && (ctrlCode === '1100' || ctrlCode === '2000' || ctrlCode === '2010' || ctrlCode === '1180')) {
-            if (ctrlCode === '2000') {
-              loaded = await accountingService.getSupplierApGlJournalLedger(
-                lc,
-                companyId,
-                STATEMENT_ALL_BRANCHES_SCOPE,
-                startDate,
-                endDate
-              );
-            } else if (ctrlCode === '1100') {
-              loaded = await accountingService.getCustomerLedger(
-                lc,
-                companyId,
-                STATEMENT_ALL_BRANCHES_SCOPE,
-                startDate,
-                endDate,
-                undefined,
-                'default'
-              );
-            } else {
-              loaded = await accountingService.getWorkerPartyGlJournalLedger(
-                lc,
-                companyId,
-                STATEMENT_ALL_BRANCHES_SCOPE,
-                startDate,
-                endDate
-              );
-            }
-          } else {
-            loaded = await accountingService.getAccountLedger(
-              applied.selectedAccountId,
-              companyId,
-              startDate,
-              endDate,
-              STATEMENT_ALL_BRANCHES_SCOPE
-            );
-          }
+        let nextOfficialGl: typeof officialGlSummary = null;
+        const target = resolveAccountStatementPreviewTarget({
+          statementType: applied.statementType,
+          selectedContactId: applied.selectedContactId,
+          selectedWorkerId: applied.selectedWorkerId,
+          selectedAccountId: applied.selectedAccountId,
+          accounts,
+        });
+        if (target.kind === 'none') {
+          setEntries([]);
+          setOfficialGlSummary(null);
+          return;
         }
+        const basis = defaultUnifiedBasisForAccountStatement(target, viewMode);
+        const unified = await loadAccountStatementUnifiedMain({
+          companyId,
+          target,
+          startDate,
+          endDate,
+          basis,
+        });
+        loaded = unified.rows;
+        if (target.kind === 'account') {
+          const body = (loaded || []).filter((e) => !isStatementOpeningRow(e));
+          nextOfficialGl = {
+            openingBalance: Number(unified.meta.periodOpeningBalance || 0),
+            totalDebit: body.reduce((s, e) => s + Number(e.debit || 0), 0),
+            totalCredit: body.reduce((s, e) => s + Number(e.credit || 0), 0),
+            closingBalance: Number(unified.closingBalance || 0),
+            txCount: body.length,
+          };
+        }
+
+        setOfficialGlSummary(nextOfficialGl);
         setEntries(loaded || []);
         if (isDebugErpEnabled()) {
           console.log('[STATEMENT_FILTER_TRACE] fetch', {
+            mainLoaderSource: mainSource,
             statementType: applied.statementType,
             contactType: applied.selectedContactType,
             selectedContactId: applied.selectedContactId,
@@ -685,10 +685,11 @@ export const AccountLedgerReportPage: React.FC<{
           });
         }
       } finally {
+        setStatementLoadedOnce(true);
         setLoading(false);
       }
     })();
-  }, [companyId, applied, startDate, endDate, accounts, journalRefreshTick]);
+  }, [companyId, applied, startDate, endDate, accounts, journalRefreshTick, viewMode]);
 
   useEffect(() => {
     const paymentIds = [...new Set(entries.map((e) => e.payment_id).filter(Boolean))] as string[];
@@ -828,10 +829,252 @@ export const AccountLedgerReportPage: React.FC<{
     })();
   }, [entries, companyId]);
 
+  useEffect(() => {
+    if (!companyId) {
+      setGlCorrectionDisplayByJeId({});
+      return;
+    }
+    const glRows = entries.filter((e) => isGlCorrectionReferenceType(e.je_reference_type) && e.journal_entry_id);
+    if (!glRows.length) {
+      setGlCorrectionDisplayByJeId({});
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const sourceJeIds = [
+        ...new Set(glRows.map((e) => String(e.je_reference_id || '').trim()).filter(Boolean)),
+      ];
+      const sourceJournals = new Map<string, { id: string; entry_no: string | null; reference_type: string | null; reference_id: string | null }>();
+      if (sourceJeIds.length) {
+        const { data: srcJes } = await supabase
+          .from('journal_entries')
+          .select('id, entry_no, reference_type, reference_id')
+          .eq('company_id', companyId)
+          .in('id', sourceJeIds);
+        for (const row of srcJes || []) {
+          sourceJournals.set(String((row as { id: string }).id), {
+            id: String((row as { id: string }).id),
+            entry_no: (row as { entry_no?: string }).entry_no ?? null,
+            reference_type: (row as { reference_type?: string }).reference_type ?? null,
+            reference_id: (row as { reference_id?: string }).reference_id ?? null,
+          });
+        }
+      }
+      const rentalIds = [
+        ...new Set(
+          [...sourceJournals.values()]
+            .filter((j) => String(j.reference_type || '').toLowerCase() === 'rental' && j.reference_id)
+            .map((j) => String(j.reference_id))
+        ),
+      ];
+      const rentals = new Map<string, { booking_no?: string | null }>();
+      if (rentalIds.length) {
+        const { data: rentalRows } = await supabase.from('rentals').select('id, booking_no').in('id', rentalIds);
+        for (const r of rentalRows || []) {
+          rentals.set(String((r as { id: string }).id), {
+            booking_no: (r as { booking_no?: string }).booking_no ?? null,
+          });
+        }
+      }
+      const out: Record<string, string> = {};
+      for (const e of glRows) {
+        const ui = resolveGlCorrectionDisplayRef(
+          {
+            id: e.journal_entry_id,
+            entry_no: e.entry_no ?? null,
+            reference_type: e.je_reference_type ?? null,
+            reference_id: e.je_reference_id ?? null,
+            action_fingerprint: e.je_action_fingerprint ?? null,
+            description: e.description ?? null,
+          },
+          { sales: new Map(), sourceJournals, rentals }
+        );
+        out[e.journal_entry_id] = ui.displayRef;
+      }
+      if (!cancelled) setGlCorrectionDisplayByJeId(out);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [entries, companyId]);
+
   const selectedPartyName =
     applied.statementType === 'worker'
       ? workers.find((w) => w.id === applied.selectedWorkerId)?.name || ''
       : contacts.find((c) => c.id === applied.selectedContactId)?.name || '';
+
+  const previewTarget = useMemo(
+    () =>
+      resolveAccountStatementPreviewTarget({
+        statementType: applied.statementType,
+        selectedContactId: applied.selectedContactId,
+        selectedWorkerId: applied.selectedWorkerId,
+        selectedAccountId: applied.selectedAccountId,
+        accounts,
+      }),
+    [applied, accounts]
+  );
+
+  useEffect(() => {
+    if (previewTarget.kind !== 'none') {
+      setPreviewBasis(defaultUnifiedBasisForAccountStatement(previewTarget, viewMode));
+    }
+  }, [previewTarget, viewMode]);
+
+  const loadUnifiedPreview = useCallback(async () => {
+    if (!companyId || !unifiedPreviewEnabled) {
+      setPreviewResult(null);
+      setPreviewDiff(null);
+      return;
+    }
+    if (previewTarget.kind === 'none') {
+      setPreviewResult(null);
+      setPreviewDiff(null);
+      setPreviewError(previewTarget.reason);
+      return;
+    }
+    if (engineState.killSwitchActive) {
+      setPreviewResult(null);
+      setPreviewDiff(null);
+      setPreviewError('Unified preview disabled — kill switch active.');
+      return;
+    }
+
+    setPreviewLoading(true);
+    setPreviewError(null);
+    try {
+      const compareSource = resolveAccountStatementPreviewCompareSource(mainLoaderSource);
+
+      if (compareSource === 'legacy_shadow') {
+        const shadow = await loadAccountStatementLegacyShadowPreview({
+          companyId,
+          statementType: applied.statementType,
+          selectedContactId: applied.selectedContactId,
+          selectedWorkerId: applied.selectedWorkerId,
+          selectedAccountId: applied.selectedAccountId,
+          accounts,
+          startDate,
+          endDate,
+        });
+        setPreviewResult({
+          rows: shadow.rows,
+          unifiedRows: [],
+          closingBalance: shadow.closingBalance,
+          meta: {
+            engine: 'legacy_gl',
+            basis: previewBasis,
+            featureFlagEnabled: true,
+            shadowForce: true,
+            queryDurationMs: 0,
+            rowCount: shadow.rows.length,
+            periodOpeningBalance: 0,
+            message: 'Legacy shadow compare — main table uses unified loader.',
+          },
+          basis: previewBasis,
+        });
+        const { legacyEntries, previewEntries } = buildAccountStatementPreviewCompareRows({
+          compareSource,
+          mainEntries: entries,
+          shadowEntries: shadow.rows,
+        });
+        const partyId =
+          previewTarget.kind === 'party'
+            ? previewTarget.partyId
+            : applied.statementType === 'customer'
+              ? applied.selectedContactId
+              : undefined;
+        setPreviewDiff(
+          compareAccountStatementUnifiedPreview({
+            legacyEntries,
+            previewEntries,
+            statementType: applied.statementType,
+            partyId,
+          }),
+        );
+      } else {
+        const preview = await loadAccountStatementUnifiedPreview({
+          companyId,
+          target: previewTarget,
+          startDate,
+          endDate,
+          basis: previewBasis,
+        });
+        setPreviewResult(preview);
+        const { legacyEntries, previewEntries } = buildAccountStatementPreviewCompareRows({
+          compareSource,
+          mainEntries: entries,
+          shadowEntries: preview.rows,
+        });
+        const partyId =
+          previewTarget.kind === 'party'
+            ? previewTarget.partyId
+            : applied.statementType === 'customer'
+              ? applied.selectedContactId
+              : undefined;
+        setPreviewDiff(
+          compareAccountStatementUnifiedPreview({
+            legacyEntries,
+            previewEntries,
+            previewUnifiedRows: preview.unifiedRows,
+            statementType: applied.statementType,
+            partyId,
+          }),
+        );
+      }
+    } catch (err) {
+      console.error(err);
+      setPreviewResult(null);
+      setPreviewDiff(null);
+      setPreviewError(
+        previewCompareSource === 'legacy_shadow'
+          ? 'Legacy shadow compare failed to load'
+          : 'Unified preview failed to load',
+      );
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [
+    companyId,
+    unifiedPreviewEnabled,
+    entries,
+    previewTarget,
+    engineState.killSwitchActive,
+    startDate,
+    endDate,
+    previewBasis,
+    applied.statementType,
+    applied.selectedContactId,
+    applied.selectedWorkerId,
+    applied.selectedAccountId,
+    accounts,
+    mainLoaderSource,
+    previewCompareSource,
+  ]);
+
+  useEffect(() => {
+    if (!unifiedPreviewEnabled) {
+      setPreviewResult(null);
+      setPreviewDiff(null);
+      setPreviewError(null);
+      return;
+    }
+    void loadUnifiedPreview();
+  }, [unifiedPreviewEnabled, loadUnifiedPreview, mainLoaderSource]);
+
+  const handleLoadMrJalilGolden = useCallback(() => {
+    setStatementType('customer');
+    setSelectedContactType('customer');
+    setSelectedContactId(MR_JALIL_CONTACT_ID);
+    setSelectedAccountId('');
+    setApplied((prev) => ({
+      ...prev,
+      statementType: 'customer',
+      selectedContactType: 'customer',
+      selectedContactId: MR_JALIL_CONTACT_ID,
+      selectedAccountId: '',
+      selectedWorkerId: '',
+    }));
+  }, []);
 
   /** Default statement order: calendar date, then time-of-day (created_at), then stable id. */
   const sortedEntries = useMemo(() => {
@@ -987,8 +1230,21 @@ export const AccountLedgerReportPage: React.FC<{
     if (statementType === 'cash_bank') {
       const firstCash = accounts.find((a) => classifyAccountCategory(a) === 'Cash / Bank / Wallet');
       if (firstCash?.id) setSelectedAccountId(firstCash.id);
+      setIncludeAdjustments(false);
+      setIncludeReversals(false);
+      setApplied((prev) => ({ ...prev, includeAdjustments: false, includeReversals: false }));
     }
   }, [statementType, accounts]);
+
+  // Control 1100 defaults to effective view (hide repaired mobile-rental leakage pairs).
+  useEffect(() => {
+    if (statementType !== 'gl') return;
+    const acct = accounts.find((a) => a.id === selectedAccountId);
+    if (String(acct?.code || '').trim() !== '1100') return;
+    setIncludeAdjustments(false);
+    setIncludeReversals(false);
+    setApplied((prev) => ({ ...prev, includeAdjustments: false, includeReversals: false }));
+  }, [selectedAccountId, statementType, accounts]);
 
   // Primary selector auto-fetch: statement/account/contact fields update applied state immediately.
   useEffect(() => {
@@ -1003,6 +1259,14 @@ export const AccountLedgerReportPage: React.FC<{
   }, [statementType, selectedAccountId, selectedContactType, selectedContactId, selectedWorkerId]);
 
   const selectedAccount = accountById.get(applied.selectedAccountId || selectedAccountId);
+  const isArControlSelected =
+    applied.statementType === 'gl' &&
+    String(selectedAccount?.code || '').trim() === '1100';
+
+  const repairedControl1100LineIds = useMemo(
+    () => collectRepairedControl1100SourceLineIds(entries),
+    [entries]
+  );
 
   const branchScopeResolved = STATEMENT_BRANCH_SCOPE_LABEL;
 
@@ -1051,58 +1315,82 @@ export const AccountLedgerReportPage: React.FC<{
     accountById,
   ]);
 
-  const openStatementTransaction = (referenceNumber: string, autoLaunchUnifiedEdit: boolean) => {
+  const openStatementTransaction = (
+    referenceNumber: string,
+    autoLaunchUnifiedEdit: boolean,
+    journalEntryId?: string
+  ) => {
     if (typeof window === 'undefined' || !referenceNumber) return;
     window.dispatchEvent(
       new CustomEvent('openTransactionDetail', {
-        detail: { referenceNumber, autoLaunchUnifiedEdit },
+        detail: { referenceNumber, journalEntryId, autoLaunchUnifiedEdit },
       })
     );
   };
 
   const presentedEntries = useMemo<PresentedLedgerRow[]>(() => {
     const base = sortedEntries.filter((e) => {
+      if (
+        isArControlSelected &&
+        viewMode === 'effective' &&
+        shouldHideRepairedControl1100Row(
+          {
+            journalLineId: e.journal_line_id,
+            jeReferenceType: e.je_reference_type,
+            jeActionFingerprint: e.je_action_fingerprint,
+            glAccountCode: e.gl_account_code ?? selectedAccount?.code,
+          },
+          repairedControl1100LineIds
+        )
+      ) {
+        return false;
+      }
       if (!applied.includeManualEntries && isManualRow(e)) return false;
+      if (viewMode === 'effective' && isPartyRowHiddenInNormalEffective(e)) return false;
       return true;
     });
     if (!base.length) return [];
 
-    const reversalRows = base.filter((e) => isReversalRow(e));
-    const reversalTextTargets = reversalRows
-      .map((e) => normalizePaymentTargetText(String(e.description || '')))
-      .filter(Boolean);
-    const reversalPaymentIds = new Set(reversalRows.map((e) => String(e.payment_id || '')).filter(Boolean));
-    const hasReversalTwin = (row: AccountLedgerEntry) => {
-      if (!isPaymentLikeRow(row) || isReversalRow(row)) return false;
-      if (row.payment_id && reversalPaymentIds.has(String(row.payment_id))) return true;
-      const rowText = normalizeLower(row.description || '');
-      if (reversalTextTargets.some((t) => t && rowText.includes(t))) return true;
-      const rowMove = movementOf(row);
-      return reversalRows.some((rev) => {
-        const revMove = movementOf(rev);
-        return Math.abs(rowMove + revMove) < 0.0001 && sortDayMs(row) <= sortDayMs(rev);
-      });
-    };
+  const { hasReversalTwin, hasOriginalTwin } = buildReversalTwinMatcher(base);
 
     if (viewMode === 'audit') {
-      const auditRows = base
-        .filter((e) => (applied.includeAdjustments ? true : !isAdjustmentRow(e)))
-        .filter((e) => (applied.includeReversals ? true : !isReversalRow(e)))
-        .map((e) => {
+      const auditBase = base.filter((e) => (applied.includeAdjustments ? true : !isAdjustmentRow(e)));
+      const auditFiltered = filterAuditRowsForReversals(auditBase, applied.includeReversals, {
+        hasReversalTwin,
+        hasOriginalTwin,
+      });
+      const auditRows = auditFiltered.map((e) => {
           const adjustmentLabel = isAdjustmentRow(e) ? adjustmentSubtypeLabel(e) : '';
+          const auditTrailLabel = partyEffectiveRowAuditLabel({
+            jeReferenceType: e.je_reference_type,
+            jeActionFingerprint: e.je_action_fingerprint,
+            linkedSaleStatus: e.linked_sale_status,
+            paymentVoidedAt: e.payment_voided_at,
+          });
+          const glCorrectionAudit = isGlCorrectionReferenceType(e.je_reference_type);
+          const auditPrefix = auditTrailLabel || (glCorrectionAudit ? partyStatementGlCorrectionAuditLabel() : adjustmentLabel);
           return {
             ...e,
-            description: adjustmentLabel ? `${adjustmentLabel}: ${e.description}` : e.description,
+            description: auditPrefix ? `${auditPrefix}: ${e.description}` : e.description,
             displayDebit: Number(e.debit || 0),
             displayCredit: Number(e.credit || 0),
             displayRunningBalance: Number(e.running_balance || 0),
             displayStatus: hasReversalTwin(e)
               ? 'Reversed'
-              : (e.document_type || e.ledger_kind || (isReversalRow(e) ? 'Reversal' : '—')),
+              : auditTrailLabel ||
+                (glCorrectionAudit
+                  ? partyStatementGlCorrectionAuditLabel()
+                  : (e.document_type || e.ledger_kind || (isReversalRow(e) ? 'Reversal' : '—'))),
             presentationKind: presentationForLedgerEntry(e),
           };
         });
-      return alignRunningBalances(auditRows, applied.statementType === 'supplier');
+      const preserveRpcRunningBalances = shouldPreserveRpcRunningBalancesForAudit(
+        applied.includeReversals,
+        applied.includeAdjustments,
+      );
+      return preserveRpcRunningBalances
+        ? auditRows
+        : alignLedgerRunningBalances(auditRows, applied.statementType === 'supplier');
     }
 
     // Effective GL-like mode: hide adjustment/reversal detail, keep line-level movements.
@@ -1128,7 +1416,7 @@ export const AccountLedgerReportPage: React.FC<{
             presentationKind: presentationForLedgerEntry(e),
           };
         });
-      return alignRunningBalances(effectiveGlRows, false);
+      return alignLedgerRunningBalances(effectiveGlRows, false);
     }
 
     // Effective party mode: supplier/customer statements collapse business documents.
@@ -1202,7 +1490,7 @@ export const AccountLedgerReportPage: React.FC<{
         presentationKind: presentationForLedgerEntry(row),
       });
     });
-    return alignRunningBalances(out, applied.statementType === 'supplier');
+    return alignLedgerRunningBalances(out, applied.statementType === 'supplier');
   }, [
     sortedEntries,
     applied.includeManualEntries,
@@ -1211,9 +1499,20 @@ export const AccountLedgerReportPage: React.FC<{
     applied.statementType,
     viewMode,
     isPartyStatement,
+    isArControlSelected,
+    repairedControl1100LineIds,
+    selectedAccount?.code,
   ]);
 
   const summary = useMemo(() => {
+    // Pure GL: Closing = official posted GL as-of End (same Σ Dr−Cr as Trial Balance). Do not re-chain from filtered rows.
+    if (applied.statementType === 'gl' && officialGlSummary) {
+      return {
+        ...officialGlSummary,
+        netMovement: officialGlSummary.closingBalance - officialGlSummary.openingBalance,
+      };
+    }
+
     const apLiabilityStyle = applied.statementType === 'supplier';
     if (!presentedEntries.length) {
       return { openingBalance: 0, totalDebit: 0, totalCredit: 0, closingBalance: 0, netMovement: 0, txCount: 0 };
@@ -1223,7 +1522,6 @@ export const AccountLedgerReportPage: React.FC<{
     const rowsNoOpening = presentedEntries.filter((e) => !isStatementOpeningRow(e));
 
     // Supplier/AP liability: running balance uses credit − debit on each row (see getSupplierApGlJournalLedger).
-    // Summary cards use the SAME presented row set as the table after alignRunningBalances — no second formula for closing.
     const openingBalance =
       openingIdx >= 0
         ? Number(presentedEntries[openingIdx].displayRunningBalance ?? presentedEntries[openingIdx].running_balance ?? 0)
@@ -1240,10 +1538,37 @@ export const AccountLedgerReportPage: React.FC<{
     const netMovement = closingBalance - openingBalance;
 
     return { openingBalance, totalDebit, totalCredit, closingBalance, netMovement, txCount: rowsNoOpening.length };
-  }, [presentedEntries, applied.statementType]);
+  }, [presentedEntries, applied.statementType, officialGlSummary]);
 
   const openingBalanceAttention = partyBalanceAttention(applied.statementType, summary.openingBalance);
   const closingBalanceAttention = partyBalanceAttention(applied.statementType, summary.closingBalance);
+
+  const displayFiltersActive = useMemo(
+    () =>
+      Boolean(applied.searchTerm.trim()) ||
+      applied.polarity !== 'all' ||
+      applied.sourceModuleFilter !== 'all' ||
+      applied.transactionTypeFilter !== 'all' ||
+      applied.includeReversals ||
+      applied.includeAdjustments ||
+      !applied.includeManualEntries ||
+      (applied.statementType === 'account_contact' && Boolean(applied.selectedContactId)) ||
+      sortedEntries.length !== entries.length ||
+      presentedEntries.length !== sortedEntries.length,
+    [applied, entries.length, sortedEntries.length, presentedEntries.length]
+  );
+
+  const previewEntityLabel = useMemo(() => {
+    if (applied.statementType === 'worker') return selectedPartyName || applied.selectedWorkerId;
+    if (applied.statementType === 'customer' || applied.statementType === 'supplier') {
+      return selectedPartyName || applied.selectedContactId;
+    }
+    const acc = accountById.get(applied.selectedAccountId);
+    return acc ? `${acc.code || ''} ${acc.name}`.trim() : applied.selectedAccountId;
+  }, [applied, selectedPartyName, accountById]);
+
+  const previewLegacyLabel =
+    previewTarget.kind === 'none' ? 'Legacy Account Statement' : previewTarget.legacyLabel;
 
   const sourceModules = useMemo(
     () => ['all', ...Array.from(new Set(entries.map((e) => normalizeLower(e.source_module)).filter(Boolean)))],
@@ -1323,14 +1648,17 @@ export const AccountLedgerReportPage: React.FC<{
   const handleExportExcel = () => exportToExcel(toExport(), accountingStatementExportSlug(applied.statementType));
 
   const resetFilters = () => {
+    const acct = accounts.find((a) => a.id === selectedAccountId);
+    const is1100Gl =
+      statementType === 'gl' && String(acct?.code || '').trim() === '1100';
     setSelectedCategory('all');
     setSourceModuleFilter('all');
     setTransactionTypeFilter('all');
     setSearchTerm('');
     setPolarity('all');
-    setIncludeReversals(true);
+    setIncludeReversals(is1100Gl ? false : true);
     setIncludeManualEntries(true);
-    setIncludeAdjustments(true);
+    setIncludeAdjustments(is1100Gl ? false : true);
     setSelectedContactId('');
     setSelectedWorkerId('');
     setApplied((prev) => ({
@@ -1340,9 +1668,9 @@ export const AccountLedgerReportPage: React.FC<{
       transactionTypeFilter: 'all',
       searchTerm: '',
       polarity: 'all',
-      includeReversals: true,
+      includeReversals: false,
       includeManualEntries: true,
-      includeAdjustments: true,
+      includeAdjustments: is1100Gl ? false : true,
       selectedContactId: '',
       selectedWorkerId: '',
     }));
@@ -1413,22 +1741,32 @@ export const AccountLedgerReportPage: React.FC<{
 
   if (loadingAccounts) {
     return (
-      <div className="flex items-center justify-center py-12">
+      <div className="flex flex-col items-center justify-center gap-3 py-12">
         <Loader2 className="h-8 w-8 animate-spin text-blue-400" />
+        <p className="text-sm text-muted-foreground">Loading accounts…</p>
+      </div>
+    );
+  }
+
+  if (loading && !statementLoadedOnce) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-16">
+        <Loader2 className="h-10 w-10 animate-spin text-blue-400" />
+        <p className="text-sm text-muted-foreground">Loading account statement…</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-xl border border-gray-800 bg-gray-900/60 p-4 space-y-3">
+    <div className="space-y-4" data-account-statement-main-loader={mainLoaderSource}>
+      <div className="rounded-xl border border-border bg-muted/60 p-4 space-y-3">
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
           <div>
-            <label className="text-xs text-gray-400">Statement Type</label>
+            <label className="text-xs text-muted-foreground">Statement Type</label>
             <select
               value={statementType}
               onChange={(e) => setStatementType(e.target.value as StatementType)}
-              className="mt-1 w-full bg-gray-800 border border-gray-700 rounded px-2 py-2 text-sm text-white"
+              className="mt-1 w-full bg-muted border border-border rounded px-2 py-2 text-sm text-foreground"
             >
               <option value="gl">General Ledger Statement</option>
               <option value="customer">Customer Statement</option>
@@ -1439,11 +1777,11 @@ export const AccountLedgerReportPage: React.FC<{
             </select>
           </div>
           <div>
-            <label className="text-xs text-gray-400">Category</label>
+            <label className="text-xs text-muted-foreground">Category</label>
             <select
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
-              className="mt-1 w-full bg-gray-800 border border-gray-700 rounded px-2 py-2 text-sm text-white"
+              className="mt-1 w-full bg-muted border border-border rounded px-2 py-2 text-sm text-foreground"
             >
               <option value="all">All categories</option>
               {ACCOUNT_CATEGORY_ORDER.map((c) => (
@@ -1453,7 +1791,7 @@ export const AccountLedgerReportPage: React.FC<{
           </div>
           {(statementType === 'gl' || statementType === 'cash_bank' || statementType === 'account_contact') && (
             <div className="lg:col-span-2">
-              <label className="text-xs text-gray-400">Account</label>
+              <label className="text-xs text-muted-foreground">Account</label>
               <SearchableSelect
                 value={selectedAccountId}
                 onValueChange={setSelectedAccountId}
@@ -1461,7 +1799,7 @@ export const AccountLedgerReportPage: React.FC<{
                 placeholder="Select account"
                 searchPlaceholder="Search accounts by name or code..."
                 emptyText={accountSelectOptions.length === 0 ? 'No accounts in this category.' : 'No account found.'}
-                className="mt-1 bg-gray-800 border-gray-700"
+                className="mt-1 bg-muted border-border"
                 filterFn={(option, search) => {
                   const q = search.trim().toLowerCase();
                   if (!q) return true;
@@ -1477,11 +1815,11 @@ export const AccountLedgerReportPage: React.FC<{
           {(statementType === 'customer' || statementType === 'supplier' || statementType === 'account_contact') && (
             <>
               <div>
-                <label className="text-xs text-gray-400">Contact Type</label>
+                <label className="text-xs text-muted-foreground">Contact Type</label>
                 <select
                   value={selectedContactType}
                   onChange={(e) => setSelectedContactType(e.target.value as ContactType | 'all')}
-                  className="mt-1 w-full bg-gray-800 border border-gray-700 rounded px-2 py-2 text-sm text-white"
+                  className="mt-1 w-full bg-muted border border-border rounded px-2 py-2 text-sm text-foreground"
                   disabled={statementType === 'customer' || statementType === 'supplier'}
                 >
                   <option value="all">All</option>
@@ -1490,7 +1828,7 @@ export const AccountLedgerReportPage: React.FC<{
                 </select>
               </div>
               <div className="lg:col-span-2">
-                <label className="text-xs text-gray-400">Contact</label>
+                <label className="text-xs text-muted-foreground">Contact</label>
                 <SearchableSelect
                   value={selectedContactId}
                   onValueChange={setSelectedContactId}
@@ -1498,7 +1836,7 @@ export const AccountLedgerReportPage: React.FC<{
                   placeholder="Select contact"
                   searchPlaceholder="Search by name or reference (e.g. Haseeb, CUS-)..."
                   emptyText={contactSelectOptions.length === 0 ? 'No contacts loaded.' : 'No contact found.'}
-                  className="mt-1 bg-gray-800 border-gray-700"
+                  className="mt-1 bg-muted border-border"
                   filterFn={(option, search) => {
                     const q = search.trim().toLowerCase();
                     if (!q) return true;
@@ -1513,11 +1851,11 @@ export const AccountLedgerReportPage: React.FC<{
           )}
           {statementType === 'worker' && (
             <div className="lg:col-span-2">
-              <label className="text-xs text-gray-400">Worker</label>
+              <label className="text-xs text-muted-foreground">Worker</label>
               <select
                 value={selectedWorkerId}
                 onChange={(e) => setSelectedWorkerId(e.target.value)}
-                className="mt-1 w-full bg-gray-800 border border-gray-700 rounded px-2 py-2 text-sm text-white"
+                className="mt-1 w-full bg-muted border border-border rounded px-2 py-2 text-sm text-foreground"
               >
                 <option value="">Select worker</option>
                 {workers
@@ -1534,42 +1872,42 @@ export const AccountLedgerReportPage: React.FC<{
 
         <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-8 gap-3 items-end">
           <div>
-            <label className="text-xs text-gray-400">Source module</label>
-            <select value={sourceModuleFilter} onChange={(e) => setSourceModuleFilter(e.target.value)} className="mt-1 w-full bg-gray-800 border border-gray-700 rounded px-2 py-2 text-sm text-white">
+            <label className="text-xs text-muted-foreground">Source module</label>
+            <select value={sourceModuleFilter} onChange={(e) => setSourceModuleFilter(e.target.value)} className="mt-1 w-full bg-muted border border-border rounded px-2 py-2 text-sm text-foreground">
               {sourceModules.map((m) => <option key={m} value={m}>{m === 'all' ? 'All' : m}</option>)}
             </select>
           </div>
           <div>
-            <label className="text-xs text-gray-400">Transaction type</label>
-            <select value={transactionTypeFilter} onChange={(e) => setTransactionTypeFilter(e.target.value)} className="mt-1 w-full bg-gray-800 border border-gray-700 rounded px-2 py-2 text-sm text-white">
+            <label className="text-xs text-muted-foreground">Transaction type</label>
+            <select value={transactionTypeFilter} onChange={(e) => setTransactionTypeFilter(e.target.value)} className="mt-1 w-full bg-muted border border-border rounded px-2 py-2 text-sm text-foreground">
               {transactionTypes.map((m) => <option key={m} value={m}>{m === 'all' ? 'All' : m}</option>)}
             </select>
           </div>
           <div>
-            <label className="text-xs text-gray-400">Polarity</label>
-            <select value={polarity} onChange={(e) => setPolarity(e.target.value as any)} className="mt-1 w-full bg-gray-800 border border-gray-700 rounded px-2 py-2 text-sm text-white">
+            <label className="text-xs text-muted-foreground">Polarity</label>
+            <select value={polarity} onChange={(e) => setPolarity(e.target.value as any)} className="mt-1 w-full bg-muted border border-border rounded px-2 py-2 text-sm text-foreground">
               <option value="all">All</option>
               <option value="debit">Only debit</option>
               <option value="credit">Only credit</option>
             </select>
           </div>
           <div className="md:col-span-2">
-            <label className="text-xs text-gray-400">Search</label>
-            <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Reference / description / party" className="mt-1 w-full bg-gray-800 border border-gray-700 rounded px-2 py-2 text-sm text-white" />
+            <label className="text-xs text-muted-foreground">Search</label>
+            <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Reference / description / party" className="mt-1 w-full bg-muted border border-border rounded px-2 py-2 text-sm text-foreground" />
           </div>
-          <label className="text-xs text-gray-300 flex items-center gap-2"><input type="checkbox" checked={includeReversals} onChange={(e) => setIncludeReversals(e.target.checked)} /> Include reversals</label>
-          <label className="text-xs text-gray-300 flex items-center gap-2"><input type="checkbox" checked={includeManualEntries} onChange={(e) => setIncludeManualEntries(e.target.checked)} /> Include manual</label>
-          <label className="text-xs text-gray-300 flex items-center gap-2"><input type="checkbox" checked={includeAdjustments} onChange={(e) => setIncludeAdjustments(e.target.checked)} /> Include adjustments</label>
+          <label className="text-xs text-muted-foreground flex items-center gap-2"><input type="checkbox" checked={includeReversals} onChange={(e) => setIncludeReversals(e.target.checked)} /> Include reversals</label>
+          <label className="text-xs text-muted-foreground flex items-center gap-2"><input type="checkbox" checked={includeManualEntries} onChange={(e) => setIncludeManualEntries(e.target.checked)} /> Include manual</label>
+          <label className="text-xs text-muted-foreground flex items-center gap-2"><input type="checkbox" checked={includeAdjustments} onChange={(e) => setIncludeAdjustments(e.target.checked)} /> Include adjustments</label>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 py-1 border-t border-gray-800/80 pt-3">
+        <div className="flex flex-wrap items-center gap-3 py-1 border-t border-border/80 pt-3">
           <div className="flex items-center gap-2">
             <Switch
               id="statement-pres-audit"
               checked={statementPresentationAudit}
               onCheckedChange={setStatementPresentationAudit}
             />
-            <Label htmlFor="statement-pres-audit" className="text-xs text-gray-300 cursor-pointer">
+            <Label htmlFor="statement-pres-audit" className="text-xs text-muted-foreground cursor-pointer">
               Row presentation: audit (full weight)
             </Label>
           </div>
@@ -1597,13 +1935,100 @@ export const AccountLedgerReportPage: React.FC<{
         basisLabel={
           applied.statementType === 'supplier'
             ? 'Supplier statement: GL on Accounts Payable (code 2000 and linked AP accounts) for this supplier — purchases, payments, openings, reversals per accountingService; summary uses the same rows as the table.'
-            : viewMode === 'effective'
-              ? 'Effective — rollup rules hide some reversals/adjustments; balance follows posted GL.'
-              : 'Audit — shows reversals/adjustments when the include checkboxes allow.'
+            : applied.statementType === 'gl'
+              ? 'Closing = official posted GL (Debit − Credit as of End date) — matches Trial Balance for this account. Table filters may hide rows without changing Closing.'
+              : viewMode === 'effective'
+                ? 'Effective — rollup rules hide some reversals/adjustments; balance follows posted GL.'
+                : 'Audit — shows reversals/adjustments when the include checkboxes allow.'
         }
       />
 
-      <p className="text-sm text-gray-400">
+      {applied.statementType === 'gl' && officialGlSummary ? (
+        <ReportBasisBanner
+          basis="official_gl"
+          detail={
+            displayFiltersActive && presentedEntries.length !== entries.length
+              ? `Summary Closing Rs stays official as-of ${endDate} (matches Trial Balance). Displayed rows are filtered.`
+              : `Summary Closing is Σ (Debit − Credit) through ${endDate} — same as Trial Balance net for this account.`
+          }
+        />
+      ) : null}
+      {(applied.statementType === 'customer' || applied.statementType === 'supplier') && (
+        <ReportBasisBanner
+          basis={viewMode === 'effective' ? 'effective_party' : 'audit_full'}
+          detail={
+            viewMode === 'effective'
+              ? 'Rollup rules hide cancelled/void/audit-only chains; balance follows posted GL on visible rows.'
+              : 'Shows reversals and adjustments when include checkboxes allow.'
+          }
+        />
+      )}
+
+      {showUnifiedPreviewTools ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer w-fit">
+            <input
+              type="checkbox"
+              checked={unifiedPreviewEnabled}
+              disabled={engineState.killSwitchActive}
+              onChange={(e) => setUnifiedPreviewEnabled(e.target.checked)}
+              className="rounded border-gray-600 disabled:opacity-50"
+            />
+            Unified engine preview (compare only)
+          </label>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="text-xs"
+            onClick={handleLoadMrJalilGolden}
+          >
+            Load MR JALIL
+          </Button>
+        </div>
+      ) : null}
+
+      {unifiedPreviewEnabled && showUnifiedPreviewTools ? (
+        <AccountStatementUnifiedPreviewPanel
+          statementType={applied.statementType}
+          entityLabel={previewEntityLabel}
+          previewTarget={previewTarget}
+          previewResult={previewResult}
+          diff={previewDiff}
+          loading={previewLoading}
+          error={previewError}
+          engineState={engineState}
+          previewBasis={previewBasis}
+          onPreviewBasisChange={setPreviewBasis}
+          displayFiltersActive={displayFiltersActive}
+          legacyEngineLabel={previewLegacyLabel}
+          viewMode={viewMode}
+          previewCompareSource={previewCompareSource}
+        />
+      ) : null}
+
+      {isArControlSelected && (
+        <div className="rounded-lg border border-amber-700/50 bg-amber-950/30 px-4 py-3 text-sm text-amber-100 space-y-1">
+          <p>
+            Customer receipts belong on each customer&apos;s <strong>AR sub-ledger</strong>, not the parent 1100 control
+            account. Use <strong>Customer Statement</strong> or select <strong>Receivable — customer name</strong> for
+            party activity (e.g. Hasseb, Inayat).
+          </p>
+          {viewMode === 'effective' ? (
+            <p className="text-xs text-amber-200/80">
+              Effective view hides repaired mobile-rental leakage pairs (original + gl_correction offset). Enable{' '}
+              <strong>Include adjustments</strong> for the full audit trail on 1100.
+            </p>
+          ) : (
+            <p className="text-xs text-amber-200/80">
+              Audit view shows all lines on control 1100 including gl_correction repairs. Party amounts are on AR-CUS*
+              sub-ledgers after repair.
+            </p>
+          )}
+        </div>
+      )}
+
+      <p className="text-sm text-muted-foreground">
         {selectedAccount && `${selectedAccount.code || ''} ${selectedAccount.name}`.trim()}
         {selectedPartyName
           ? applied.statementType === 'worker'
@@ -1612,76 +2037,90 @@ export const AccountLedgerReportPage: React.FC<{
           : ''}
       </p>
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-3">
-          <p className="text-xs text-gray-400">Opening Balance</p>
+      {loading ? (
+        <div className="flex items-center justify-center gap-2 py-2 text-xs text-blue-400">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          Refreshing statement…
+        </div>
+      ) : null}
+
+      <div className={cn('grid grid-cols-2 md:grid-cols-5 gap-3', loading && 'opacity-60 pointer-events-none')}>
+        <div className="rounded-lg border border-border bg-muted/40 p-3">
+          <p className="text-xs text-muted-foreground">Opening Balance</p>
           <p
             className={cn(
               'text-lg font-semibold',
-              openingBalanceAttention !== 'none' ? 'text-rose-300' : 'text-white'
+              openingBalanceAttention !== 'none' ? 'text-rose-300' : 'text-foreground'
             )}
             title={partyBalanceAttentionTitle(openingBalanceAttention)}
           >
             {formatCurrency(summary.openingBalance)}
           </p>
         </div>
-        <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-3"><p className="text-xs text-gray-400">Total Debit</p><p className="text-lg font-semibold text-emerald-400">{formatCurrency(summary.totalDebit)}</p></div>
-        <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-3"><p className="text-xs text-gray-400">Total Credit</p><p className="text-lg font-semibold text-rose-400">{formatCurrency(summary.totalCredit)}</p></div>
-        <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-3">
-          <p className="text-xs text-gray-400">Closing Balance</p>
+        <div className="rounded-lg border border-border bg-muted/40 p-3"><p className="text-xs text-muted-foreground">Total Debit</p><p className="text-lg font-semibold text-emerald-400">{formatCurrency(summary.totalDebit)}</p></div>
+        <div className="rounded-lg border border-border bg-muted/40 p-3"><p className="text-xs text-muted-foreground">Total Credit</p><p className="text-lg font-semibold text-rose-400">{formatCurrency(summary.totalCredit)}</p></div>
+        <div className="rounded-lg border border-border bg-muted/40 p-3">
+          <p className="text-xs text-muted-foreground">
+            {applied.statementType === 'gl' ? 'Closing Balance (official GL)' : 'Closing Balance'}
+          </p>
           <p
             className={cn(
               'text-lg font-semibold',
-              closingBalanceAttention !== 'none' ? 'text-rose-300' : 'text-white'
+              closingBalanceAttention !== 'none' ? 'text-rose-300' : 'text-foreground'
             )}
-            title={partyBalanceAttentionTitle(closingBalanceAttention)}
+            title={
+              applied.statementType === 'gl'
+                ? `Official posted GL as of ${endDate} (Debit − Credit). Matches Trial Balance for this account.`
+                : partyBalanceAttentionTitle(closingBalanceAttention)
+            }
           >
             {formatCurrency(summary.closingBalance)}
           </p>
         </div>
-        <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-3"><p className="text-xs text-gray-400">Transaction Count</p><p className="text-lg font-semibold text-white">{summary.txCount}</p></div>
+        <div className="rounded-lg border border-border bg-muted/40 p-3"><p className="text-xs text-muted-foreground">Transaction Count</p><p className="text-lg font-semibold text-foreground">{summary.txCount}</p></div>
       </div>
 
-      <div className="overflow-auto rounded-xl border border-gray-800 bg-gray-900/50">
+      <div className="overflow-auto rounded-xl border border-border bg-muted/40">
         {loading ? (
-          <div className="flex items-center justify-center py-12">
+          <div className="flex flex-col items-center justify-center gap-2 py-12">
             <Loader2 className="h-6 w-6 animate-spin text-blue-400" />
+            <p className="text-xs text-muted-foreground">Refreshing statement…</p>
           </div>
         ) : (
           <table className="w-full text-base leading-snug">
-            <thead className="border-b border-gray-800 bg-gray-800/50">
+            <thead className="border-b border-border bg-muted/50">
               <tr>
-                <th className="p-3 text-left font-medium text-gray-300">Date</th>
-                <th className="p-3 text-left font-medium text-gray-300">Reference</th>
-                <th className="p-3 text-left font-medium text-gray-300">Branch</th>
-                <th className="p-3 text-left font-medium text-gray-300 max-w-[7rem]" title="Which product area posted this line (sales, purchases, accounting, …).">
+                <th className="p-3 text-left font-medium text-muted-foreground">Date</th>
+                <th className="p-3 text-left font-medium text-muted-foreground">Reference</th>
+                <th className="p-3 text-left font-medium text-muted-foreground">Branch</th>
+                <th className="p-3 text-left font-medium text-muted-foreground max-w-[7rem]" title="Which product area posted this line (sales, purchases, accounting, …).">
                   Module
                 </th>
-                <th className="p-3 text-left font-medium text-gray-300 w-36">Presentation</th>
-                <th className="p-3 text-left font-medium text-gray-300">Contact / Party</th>
-                <th className="p-3 text-left font-medium text-gray-300 min-w-[20rem] w-[24rem] max-w-[32rem]">
+                <th className="p-3 text-left font-medium text-muted-foreground w-36">Presentation</th>
+                <th className="p-3 text-left font-medium text-muted-foreground">Contact / Party</th>
+                <th className="p-3 text-left font-medium text-muted-foreground min-w-[20rem] w-[24rem] max-w-[32rem]">
                   Description
                 </th>
-                <th className="p-3 text-left font-medium text-gray-300 max-w-[9rem]">Counter (GL)</th>
-                <th className="p-3 text-left font-medium text-gray-300 max-w-[10rem]">From → To</th>
-                <th className="p-3 text-left font-medium text-gray-300 max-w-[10rem]">Economic meaning</th>
-                <th className="p-3 text-left font-medium text-gray-300">Economic event</th>
+                <th className="p-3 text-left font-medium text-muted-foreground max-w-[9rem]">Counter (GL)</th>
+                <th className="p-3 text-left font-medium text-muted-foreground max-w-[10rem]">From → To</th>
+                <th className="p-3 text-left font-medium text-muted-foreground max-w-[10rem]">Economic meaning</th>
+                <th className="p-3 text-left font-medium text-muted-foreground">Economic event</th>
                 <th
-                  className="p-3 text-left font-medium text-gray-300 max-w-[9rem]"
+                  className="p-3 text-left font-medium text-muted-foreground max-w-[9rem]"
                   title="What business record this journal line is tied to (same information as the former “Source type” + “Edit target” columns, shown once)."
                 >
                   JE link type
                 </th>
                 <th
-                  className="p-3 text-left font-medium text-gray-300 max-w-[14rem]"
+                  className="p-3 text-left font-medium text-muted-foreground max-w-[14rem]"
                   title="Cash, bank, or wallet from the linked payment record; if none, the offsetting GL account."
                 >
                   Settlement / payment account
                 </th>
-                <th className="p-3 text-right font-medium text-gray-300">Debit</th>
-                <th className="p-3 text-right font-medium text-gray-300">Credit</th>
+                <th className="p-3 text-right font-medium text-muted-foreground">Debit</th>
+                <th className="p-3 text-right font-medium text-muted-foreground">Credit</th>
                 <th
-                  className="p-3 text-right font-medium text-gray-300"
+                  className="p-3 text-right font-medium text-muted-foreground"
                   title={
                     applied.statementType === 'customer'
                       ? 'Positive: customer owes you (normal AR). Red row: negative balance — credit in customer’s favour (you may owe them).'
@@ -1693,18 +2132,18 @@ export const AccountLedgerReportPage: React.FC<{
                   Balance
                 </th>
                 <th
-                  className="p-3 text-left font-medium text-gray-300 max-w-[10rem]"
+                  className="p-3 text-left font-medium text-muted-foreground max-w-[10rem]"
                   title="Journal document_type / row state (e.g. Reversed in audit mode). Not the same as Module or JE link type."
                 >
                   Document type
                 </th>
-                <th className="p-3 text-right font-medium text-gray-300">Actions</th>
+                <th className="p-3 text-right font-medium text-muted-foreground">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-800">
+            <tbody className="divide-y divide-border">
               {presentedEntries.length === 0 ? (
                 <tr>
-                  <td colSpan={18} className="p-6 text-center text-gray-500 max-w-3xl mx-auto text-sm leading-relaxed">
+                  <td colSpan={18} className="p-6 text-center text-muted-foreground max-w-3xl mx-auto text-sm leading-relaxed">
                     {emptyPeriodMessage}
                   </td>
                 </tr>
@@ -1715,22 +2154,32 @@ export const AccountLedgerReportPage: React.FC<{
                   <tr
                     key={`${e.journal_entry_id}-${i}`}
                     className={cn(
-                      'hover:bg-gray-800/30',
+                      'hover:bg-accent/30',
                       !statementPresentationAudit &&
                         (e.presentationKind === 'liquidity_transfer' || e.presentationKind === 'amount_delta') &&
                         'opacity-60'
                     )}
                   >
-                    <td className="p-3 text-gray-300">{e.created_at ? <DateTimeDisplay date={e.created_at} /> : e.date}</td>
-                    <td className="p-3 font-mono text-gray-300 align-top">
+                    <td className="p-3 text-muted-foreground">
+                      <div className="flex flex-col leading-tight">
+                        <DateTimeDisplay date={e.date} dateOnly />
+                        {e.created_at ? (
+                          <span className="text-[10px] text-muted-foreground font-normal italic mt-0.5">
+                            {formatTime(e.created_at)}
+                          </span>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td className="p-3 font-mono text-muted-foreground align-top">
                       <div className="flex flex-col gap-0.5 items-start max-w-[14rem]">
                         {e.journal_entry_id ? (
                           <button
                             type="button"
                             className="text-left text-sky-400 hover:text-sky-300 hover:underline"
-                            onClick={() =>
-                              openStatementTransaction(String(e.entry_no || '').trim() || e.journal_entry_id, false)
-                            }
+                            onClick={() => {
+                              const d = ledgerTransactionOpenEventDetail(e, false);
+                              openStatementTransaction(d.referenceNumber, false, d.journalEntryId);
+                            }}
                           >
                             {e.reference_number}
                           </button>
@@ -1752,26 +2201,26 @@ export const AccountLedgerReportPage: React.FC<{
                         })()}
                       </div>
                     </td>
-                    <td className="p-3 text-gray-400 text-xs">{e.branch_name || e.branch_id || '—'}</td>
-                    <td className="p-3 text-gray-300 max-w-[7rem] break-words" title={e.source_module || undefined}>
+                    <td className="p-3 text-muted-foreground text-xs">{e.branch_name || e.branch_id || '—'}</td>
+                    <td className="p-3 text-muted-foreground max-w-[7rem] break-words" title={e.source_module || undefined}>
                       {e.source_module || '—'}
                     </td>
                     <td className="p-3 text-[11px]">
                       <span
                         className={cn(
-                          'inline-block rounded px-2 py-0.5 border text-gray-300',
+                          'inline-block rounded px-2 py-0.5 border text-muted-foreground',
                           e.presentationKind === 'liquidity_transfer' && 'border-sky-600/50 text-sky-300/95',
                           e.presentationKind === 'amount_delta' && 'border-amber-600/50 text-amber-200/90',
                           e.presentationKind === 'business_primary' && 'border-emerald-700/50 text-emerald-200/90',
                           e.presentationKind === 'reversal' && 'border-rose-700/50 text-rose-200/90',
                           !['liquidity_transfer', 'amount_delta', 'business_primary', 'reversal'].includes(e.presentationKind) &&
-                            'border-gray-700 text-gray-400'
+                            'border-border text-muted-foreground'
                         )}
                       >
                         {presentationLabel(e.presentationKind)}
                       </span>
                     </td>
-                    <td className="p-3 text-white">
+                    <td className="p-3 text-foreground">
                       {e.payment_id
                         ? resolveStatementPartyDisplay({
                             entry: e,
@@ -1784,42 +2233,45 @@ export const AccountLedgerReportPage: React.FC<{
                           }) || '—'
                         : '—'}
                     </td>
-                    <td className="p-3 text-white min-w-[20rem] w-[24rem] max-w-[32rem] whitespace-normal break-words align-top leading-snug">
+                    <td className="p-3 text-foreground min-w-[20rem] w-[24rem] max-w-[32rem] whitespace-normal break-words align-top leading-snug">
                       {e.description}
                     </td>
-                    <td className="p-3 text-xs text-gray-400 max-w-[9rem] leading-snug">{e.counter_account || '—'}</td>
-                    <td className="p-3 text-xs text-gray-300 max-w-[10rem] leading-snug">
+                    <td className="p-3 text-xs text-muted-foreground max-w-[9rem] leading-snug">{e.counter_account || '—'}</td>
+                    <td className="p-3 text-xs text-muted-foreground max-w-[10rem] leading-snug">
                       {(() => {
                         const flow = deriveFromToForLedgerLine(e);
                         return (
                           <>
-                            <span className="text-gray-500">From </span>
+                            <span className="text-muted-foreground">From </span>
                             {flow.from}
-                            <span className="text-gray-600 mx-1">→</span>
+                            <span className="text-muted-foreground mx-1">→</span>
                             {flow.to}
                           </>
                         );
                       })()}
                     </td>
-                    <td className="p-3 text-[11px] text-gray-400 max-w-[10rem] leading-snug">
+                    <td className="p-3 text-[11px] text-muted-foreground max-w-[10rem] leading-snug">
                       {netEconomicMeaning(e, e.presentationKind)}
                     </td>
-                    <td className="p-3 text-[10px] font-mono text-gray-500" title={e.economic_event_id ? String(e.economic_event_id) : ''}>
+                    <td className="p-3 text-[10px] font-mono text-muted-foreground" title={e.economic_event_id ? String(e.economic_event_id) : ''}>
                       {e.economic_event_id ? `${String(e.economic_event_id).slice(0, 8)}…` : '—'}
                     </td>
                     <td
-                      className="p-3 text-[11px] text-gray-300 max-w-[9rem] align-top leading-snug"
+                      className="p-3 text-[11px] text-muted-foreground max-w-[9rem] align-top leading-snug"
                       title={
                         e.je_reference_type
                           ? `Raw journal reference type: ${e.je_reference_type}`
                           : 'No journal reference type on this line'
                       }
                     >
-                      <span className="text-gray-200">{editTargetTypeLabel(e.je_reference_type)}</span>
+                      <span className="text-gray-200">
+                        {glCorrectionDisplayByJeId[e.journal_entry_id] ||
+                          editTargetTypeLabel(e.je_reference_type)}
+                      </span>
                       {e.je_reference_type &&
                       editTargetTypeLabel(e.je_reference_type).replace(/\s/g, '_').toLowerCase() !==
                         e.je_reference_type.toLowerCase() ? (
-                        <div className="text-[10px] font-mono text-gray-500 mt-0.5 break-all">{e.je_reference_type}</div>
+                        <div className="text-[10px] font-mono text-muted-foreground mt-0.5 break-all">{e.je_reference_type}</div>
                       ) : null}
                     </td>
                     <td className="p-3 max-w-[14rem]">
@@ -1827,28 +2279,28 @@ export const AccountLedgerReportPage: React.FC<{
                         const sd = settlementAccountForRow(e, paymentSettlementById, settlementColumnOpts);
                         return (
                           <div title={sd.glLineNote ? `GL line: ${sd.glLineNote}` : undefined}>
-                            <div className="text-white font-medium leading-snug">{sd.primary}</div>
+                            <div className="text-foreground font-medium leading-snug">{sd.primary}</div>
                             {sd.glLineNote ? (
-                              <div className="text-[11px] text-gray-500 mt-0.5 leading-snug">GL line: {sd.glLineNote}</div>
+                              <div className="text-[11px] text-muted-foreground mt-0.5 leading-snug">GL line: {sd.glLineNote}</div>
                             ) : null}
                           </div>
                         );
                       })()}
                     </td>
-                    <td className="p-3 text-right text-gray-300">{e.displayDebit ? formatCurrency(e.displayDebit) : '—'}</td>
-                    <td className="p-3 text-right text-gray-300">{e.displayCredit ? formatCurrency(e.displayCredit) : '—'}</td>
+                    <td className="p-3 text-right text-muted-foreground">{e.displayDebit ? formatCurrency(e.displayDebit) : '—'}</td>
+                    <td className="p-3 text-right text-muted-foreground">{e.displayCredit ? formatCurrency(e.displayCredit) : '—'}</td>
                     <td
                       className={cn(
                         'p-3 text-right tabular-nums',
                         rowBalAtt === 'none'
-                          ? 'font-medium text-white'
+                          ? 'font-medium text-foreground'
                           : 'font-semibold text-rose-300 bg-rose-950/35'
                       )}
                       title={partyBalanceAttentionTitle(rowBalAtt)}
                     >
                       {formatCurrency(e.displayRunningBalance)}
                     </td>
-                    <td className="p-3 text-gray-400 text-xs">{e.displayStatus}</td>
+                    <td className="p-3 text-muted-foreground text-xs">{e.displayStatus}</td>
                     <td className="p-3 text-right">
                       {e.journal_entry_id ? (
                         <div className="flex flex-wrap justify-end gap-1">
@@ -1856,10 +2308,11 @@ export const AccountLedgerReportPage: React.FC<{
                             type="button"
                             variant="ghost"
                             size="sm"
-                            className="h-8 gap-1 text-gray-300 hover:text-white"
-                            onClick={() =>
-                              openStatementTransaction(String(e.entry_no || '').trim() || e.journal_entry_id, false)
-                            }
+                            className="h-8 gap-1 text-muted-foreground hover:text-foreground"
+                            onClick={() => {
+                              const d = ledgerTransactionOpenEventDetail(e, false);
+                              openStatementTransaction(d.referenceNumber, false, d.journalEntryId);
+                            }}
                           >
                             <Eye className="h-3.5 w-3.5" />
                             View
@@ -1876,7 +2329,7 @@ export const AccountLedgerReportPage: React.FC<{
                           </Button>
                         </div>
                       ) : (
-                        <span className="text-xs text-gray-500">—</span>
+                        <span className="text-xs text-muted-foreground">—</span>
                       )}
                     </td>
                   </tr>
@@ -1888,20 +2341,26 @@ export const AccountLedgerReportPage: React.FC<{
         )}
       </div>
 
-      <div className="rounded-xl border border-gray-800 bg-gray-900/60 p-4">
-        <h4 className="text-sm font-semibold text-white mb-2">Grand Totals</h4>
+      <div className="rounded-xl border border-border bg-muted/60 p-4">
+        <h4 className="text-sm font-semibold text-foreground mb-2">Grand Totals</h4>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-          <div><p className="text-gray-400">Period Debit Total</p><p className="text-emerald-400 font-semibold">{formatCurrency(summary.totalDebit)}</p></div>
-          <div><p className="text-gray-400">Period Credit Total</p><p className="text-rose-400 font-semibold">{formatCurrency(summary.totalCredit)}</p></div>
-          <div><p className="text-gray-400">Net Movement</p><p className="text-white font-semibold">{formatCurrency(summary.netMovement)}</p></div>
+          <div><p className="text-muted-foreground">Period Debit Total</p><p className="text-emerald-400 font-semibold">{formatCurrency(summary.totalDebit)}</p></div>
+          <div><p className="text-muted-foreground">Period Credit Total</p><p className="text-rose-400 font-semibold">{formatCurrency(summary.totalCredit)}</p></div>
+          <div><p className="text-muted-foreground">Net Movement</p><p className="text-foreground font-semibold">{formatCurrency(summary.netMovement)}</p></div>
           <div>
-            <p className="text-gray-400">Closing Balance</p>
+            <p className="text-muted-foreground">
+              {applied.statementType === 'gl' ? 'Closing (official GL)' : 'Closing Balance'}
+            </p>
             <p
               className={cn(
                 'font-semibold',
-                closingBalanceAttention !== 'none' ? 'text-rose-300' : 'text-white'
+                closingBalanceAttention !== 'none' ? 'text-rose-300' : 'text-foreground'
               )}
-              title={partyBalanceAttentionTitle(closingBalanceAttention)}
+              title={
+                applied.statementType === 'gl'
+                  ? `Official posted GL as of ${endDate} — matches Trial Balance`
+                  : partyBalanceAttentionTitle(closingBalanceAttention)
+              }
             >
               {formatCurrency(summary.closingBalance)}
             </p>

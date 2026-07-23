@@ -1,0 +1,5 @@
+﻿List of devices attached
+
+(empty)
+Pixel 6 Pro: not connected
+Salesman extended QA rows 4-20: BLOCKED

@@ -2,7 +2,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { invalidateSalesListCache, listCacheKeys } from '../lib/listCache';
 import { dispatchMobileInvalidated } from '../lib/dataInvalidationBus';
 import { readThroughCache } from '../lib/offlineData';
-import { getNextDocumentNumber } from './documentNumber';
+import { getNextDocumentNumber, getNextDocumentNumberGlobal } from './documentNumber';
 import { enrichRowsWithCreatorNames } from '../lib/resolveCreatorName';
 import { localNowDateString } from '../utils/localDate';
 import { resolveBranchUuidForWrite, isRealBranchUuid } from '../utils/branchId';
@@ -15,6 +15,14 @@ import {
   ATTACHMENT_UPLOAD_VERIFY_FAIL_MSG,
   uploadStorageAttachmentFile,
 } from '../utils/storageAttachmentPipeline';
+import {
+  buildCustomerSalePaymentAutoNotes,
+  composeCustomerPaymentNotesForRpc,
+  composeSalePaymentNotes,
+} from '../utils/saleNotesComposition';
+import { dispatchMobileAccountingInvalidated } from '../lib/dataInvalidationBus';
+import { readSaleBillRef } from '../utils/saleBillRef';
+import { buildBespokeMetadataForPersist } from '../types/bespoke';
 
 export interface CreateSaleInput {
   companyId: string;
@@ -70,11 +78,13 @@ export interface CreateSaleInput {
   studioDesignName?: string;
   /** Payment date when paid > 0 (YYYY-MM-DD). */
   paymentDate?: string;
+  /** Composed payment row notes when paid > 0 (includes Bill/REF auto description). */
+  paymentNotes?: string | null;
   /** Point of sale — PS- invoice sequence (web parity). */
   isPOS?: boolean;
   /** Regular sale lifecycle (default order). Studio always order. POS always final. */
   targetStatus?: 'draft' | 'quotation' | 'order' | 'final';
-  /** Document type for create_sale_document_header (default invoice). */
+  /** Document type: quotation for non-final; invoice when final (web parity). */
   documentType?: 'invoice' | 'quotation';
   /** Line-level extra expenses (stitching, etc.) — persisted to sale_charges + extra_expenses. */
   extraExpenses?: ExtraExpense[];
@@ -90,6 +100,92 @@ export type SaleDocumentStatus = 'draft' | 'quotation' | 'order' | 'final' | 'ca
 
 function isPostedSaleStatus(status: string | null | undefined): boolean {
   return String(status ?? '').toLowerCase() === 'final';
+}
+
+function isPreFinalSaleStatus(status: string | null | undefined): boolean {
+  const s = String(status ?? '').toLowerCase();
+  return s === 'draft' || s === 'quotation' || s === 'order';
+}
+
+/** True when document number is a pre-final lifecycle stage (not SL/INV/POS). */
+function isPreFinalSaleDocumentNo(no: string | null | undefined): boolean {
+  const n = String(no ?? '').trim().toUpperCase();
+  if (!n) return false;
+  return (
+    n.startsWith('DRAFT-') ||
+    n.startsWith('SDR-') ||
+    n.startsWith('QT-') ||
+    n.startsWith('SQT-') ||
+    n.startsWith('SO-') ||
+    n.startsWith('SOR-')
+  );
+}
+
+function saleRowNeedsFinalInvoiceAllocation(row: Record<string, unknown>): boolean {
+  const inv = String(row.invoice_no ?? '').trim();
+  if (!inv) return true;
+  return isPreFinalSaleDocumentNo(inv);
+}
+
+function finalSaleDocumentSequenceKey(row: Record<string, unknown>): 'SL' | 'STD' | 'PS' {
+  const isStudio =
+    row.is_studio === true ||
+    String(row.order_no ?? '')
+      .toUpperCase()
+      .startsWith('STD-') ||
+    String(row.order_no ?? '')
+      .toUpperCase()
+      .startsWith('ST-');
+  if (isStudio) return 'STD';
+  const inv = String(row.invoice_no ?? '').trim();
+  if (/^POS-/i.test(inv)) return 'PS';
+  return 'SL';
+}
+
+function isSalesInvoiceNoUniqueViolation(err: { code?: string; message?: string } | null | undefined): boolean {
+  if (!err || err.code !== '23505') return false;
+  const m = String(err.message || '');
+  return m.includes('idx_sales_company_invoice_no_when_set') || (m.includes('invoice_no') && m.includes('duplicate key'));
+}
+
+/** Allocate SL/STD/PS invoice_no when finalizing if missing or still SDR/SQT/SOR. */
+async function ensureFinalSaleInvoiceNoAllocated(
+  saleId: string,
+  row: Record<string, unknown>,
+): Promise<{ row: Record<string, unknown>; error: string | null }> {
+  if (!saleRowNeedsFinalInvoiceAllocation(row)) return { row, error: null };
+  const companyId = String(row.company_id ?? '');
+  if (!companyId) return { row, error: 'Cannot finalize: company_id missing.' };
+  const seq = finalSaleDocumentSequenceKey(row);
+  const maxAttempts = 12;
+  let lastDup: string | undefined;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    let nextNo: string;
+    try {
+      nextNo = await getNextDocumentNumberGlobal(companyId, seq);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { row, error: `Cannot finalize: could not allocate invoice number (${seq}). ${msg}` };
+    }
+    const { data: patched, error } = await supabase
+      .from('sales')
+      .update({ invoice_no: nextNo, type: 'invoice' })
+      .eq('id', saleId)
+      .select()
+      .single();
+    if (!error) {
+      return { row: (patched ?? { ...row, invoice_no: nextNo, type: 'invoice' }) as Record<string, unknown>, error: null };
+    }
+    if (isSalesInvoiceNoUniqueViolation(error)) {
+      lastDup = nextNo;
+      continue;
+    }
+    return { row, error: `Cannot finalize: failed to save invoice number: ${error.message}` };
+  }
+  return {
+    row,
+    error: `Cannot finalize: invoice number still conflicts after ${maxAttempts} attempts (last tried: ${lastDup ?? 'n/a'}).`,
+  };
 }
 
 export { readSaleBillRef } from '../utils/saleBillRef';
@@ -118,7 +214,77 @@ export async function patchSaleBillRef(
 }
 
 const SALE_ATTACHMENTS_BUCKET = 'sale-attachments';
-const MAX_SALE_ATTACHMENT_BYTES = 10 * 1024 * 1024; // 10MB each
+export const MAX_SALE_ATTACHMENT_BYTES = 10 * 1024 * 1024; // 10MB each
+export const MAX_SALE_ATTACHMENTS_COUNT = 5;
+
+export type SaleAttachmentMeta = { url: string; name: string };
+
+/** Merge attachment lists; dedupe by url; cap at MAX_SALE_ATTACHMENTS_COUNT. */
+export function mergeSaleAttachments(
+  existing: SaleAttachmentMeta[],
+  uploaded: SaleAttachmentMeta[],
+): SaleAttachmentMeta[] {
+  const seen = new Set<string>();
+  const out: SaleAttachmentMeta[] = [];
+  const push = (a: SaleAttachmentMeta) => {
+    const u = String(a.url || '').trim();
+    if (!u || seen.has(u)) return;
+    seen.add(u);
+    out.push({ url: u, name: a.name || 'Attachment' });
+  };
+  for (const a of existing) push(a);
+  for (const a of uploaded) push(a);
+  return out.slice(0, MAX_SALE_ATTACHMENTS_COUNT);
+}
+
+async function fetchSaleAttachments(saleId: string): Promise<SaleAttachmentMeta[]> {
+  if (!isSupabaseConfigured) return [];
+  const { data } = await supabase.from('sales').select('attachments').eq('id', saleId).maybeSingle();
+  const raw = (data as { attachments?: unknown } | null)?.attachments;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((a: unknown) => {
+      const o = a as Record<string, unknown>;
+      return { url: String(o?.url ?? ''), name: String(o?.name ?? 'Attachment') };
+    })
+    .filter((a) => a.url.length > 0);
+}
+
+/** Upload new files and merge onto existing sale.attachments (max 5 total). */
+export async function appendSaleAttachments(
+  companyId: string,
+  saleId: string,
+  files: File[],
+  existing?: SaleAttachmentMeta[],
+): Promise<{ data: SaleAttachmentMeta[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  if (!files.length) {
+    const current = existing ?? (await fetchSaleAttachments(saleId));
+    return { data: current, error: null };
+  }
+
+  const prior = existing ?? (await fetchSaleAttachments(saleId));
+  const slotsLeft = MAX_SALE_ATTACHMENTS_COUNT - prior.length;
+  if (slotsLeft <= 0) {
+    return {
+      data: prior,
+      error: `Maximum ${MAX_SALE_ATTACHMENTS_COUNT} attachments per sale.`,
+    };
+  }
+
+  const toUpload = files.slice(0, slotsLeft);
+  const upload = await uploadSaleAttachments(companyId, saleId, toUpload);
+  if (upload.error) {
+    return { data: prior, error: upload.error };
+  }
+
+  const merged = mergeSaleAttachments(prior, upload.data);
+  const upd = await updateSaleAttachments(saleId, merged);
+  if (upd.error) {
+    return { data: prior, error: upd.error };
+  }
+  return { data: merged, error: null };
+}
 
 /** Upload files to sale-attachments bucket (path: companyId/saleId/...). */
 export async function uploadSaleAttachments(
@@ -198,19 +364,39 @@ export async function updateSaleStatus(
   status: SaleDocumentStatus,
 ): Promise<{ data: { id: string; status: string; invoice_no?: string | null } | null; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
-  const { data: prior } = await supabase.from('sales').select('status').eq('id', saleId).maybeSingle();
+  const { data: prior } = await supabase
+    .from('sales')
+    .select('id, status, company_id, invoice_no, order_no, is_studio, type')
+    .eq('id', saleId)
+    .maybeSingle();
   if (!prior) return { data: null, error: 'Sale not found.' };
   const prev = String((prior as { status?: string }).status ?? '').toLowerCase();
+  const next = String(status ?? '').toLowerCase();
 
-  const { data, error } = await supabase
-    .from('sales')
-    .update({ status })
-    .eq('id', saleId)
-    .select('id, status, invoice_no, order_no, quotation_no, draft_no')
-    .single();
-  if (error) return { data: null, error: error.message };
+  // Web parity: posted (final) sales cannot demote to draft/quotation/order — cancel instead.
+  if (isPostedSaleStatus(prev) && isPreFinalSaleStatus(next)) {
+    return {
+      data: null,
+      error: 'Final sale cannot be moved back. Cancel it instead.',
+    };
+  }
 
+  // Finalize path: allocate SL/STD/PS before status flip so JE references the invoice number.
   if (isPostedSaleStatus(status) && !isPostedSaleStatus(prev)) {
+    const alloc = await ensureFinalSaleInvoiceNoAllocated(saleId, prior as Record<string, unknown>);
+    if (alloc.error) return { data: null, error: alloc.error };
+
+    const { data, error } = await supabase
+      .from('sales')
+      .update({ status: 'final', type: 'invoice' })
+      .eq('id', saleId)
+      .select('id, status, invoice_no, order_no, quotation_no, draft_no')
+      .single();
+    if (error) {
+      // Best-effort: leave allocated invoice_no; do not flip status.
+      return { data: null, error: error.message };
+    }
+
     const stockErr = await ensureSaleStockPosted(saleId);
     if (stockErr) {
       await supabase.from('sales').update({ status: prev }).eq('id', saleId);
@@ -253,7 +439,17 @@ export async function updateSaleStatus(
         console.warn('[sales] Commission patch on finalize:', commissionErr);
       }
     }
+
+    return { data: data as { id: string; status: string; invoice_no?: string | null }, error: null };
   }
+
+  const { data, error } = await supabase
+    .from('sales')
+    .update({ status })
+    .eq('id', saleId)
+    .select('id, status, invoice_no, order_no, quotation_no, draft_no')
+    .single();
+  if (error) return { data: null, error: error.message };
 
   return { data: data as { id: string; status: string; invoice_no?: string | null }, error: null };
 }
@@ -304,6 +500,7 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
     deadline,
     studioDesignName,
     paymentDate,
+    paymentNotes,
     isPOS,
     targetStatus: targetStatusInput,
     documentType,
@@ -534,7 +731,85 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
       if (!posInserted) {
         return { data: null, error: 'Failed to allocate POS invoice number after retries.' };
       }
+    } else if (!postStockAndAccounting) {
+      /**
+       * Web parity (SalesContext): non-final regular sales use global SDR/SQT/SOR into
+       * draft_no / quotation_no / order_no with invoice_no null — never create_sale_document_header (SL).
+       */
+      const stageSeq =
+        targetStatus === 'draft' ? 'SDR' : targetStatus === 'quotation' ? 'SQT' : 'SOR';
+      const stageCol =
+        targetStatus === 'draft' ? 'draft_no' : targetStatus === 'quotation' ? 'quotation_no' : 'order_no';
+      const deadlineVal =
+        deadline != null && String(deadline).trim() !== '' ? String(deadline).trim().slice(0, 10) : null;
+
+      const isUniqueDocNo = (err: { code?: string; message?: string } | null) =>
+        !!err &&
+        (err.code === '23505' ||
+          String(err.message || '').includes('duplicate key') ||
+          String(err.message || '').includes('sales_company_branch_'));
+
+      let stageInserted = false;
+      for (let tryN = 0; tryN < 12 && !stageInserted; tryN++) {
+        let stageNo: string;
+        try {
+          stageNo = await getNextDocumentNumberGlobal(companyId, stageSeq);
+        } catch (e) {
+          return {
+            data: null,
+            error: (e as Error).message ?? `Failed to allocate ${stageSeq} document number.`,
+          };
+        }
+
+        const row: Record<string, unknown> = {
+          company_id: companyId,
+          branch_id: effectiveBranchId,
+          invoice_no: null,
+          [stageCol]: stageNo,
+          invoice_date: invDate,
+          customer_id: customerId || null,
+          customer_name: customerName || 'Walk-in',
+          contact_number: contactNumber || null,
+          type: 'quotation',
+          status: targetStatus,
+          payment_status: 'unpaid',
+          payment_method: paymentMethod || 'Cash',
+          subtotal: Number(subtotal) || 0,
+          discount_amount: Number(discountAmount) || 0,
+          tax_amount: Number(taxAmount) || 0,
+          expenses: Number(expenses) || 0,
+          total: totalNum,
+          paid_amount: 0,
+          due_amount: totalNum,
+          notes: notes || null,
+          created_by: userId,
+          ...(deadlineVal ? { deadline: deadlineVal } : {}),
+        };
+
+        const { data: stageIns, error: stageErr } = await supabase
+          .from('sales')
+          .insert(row)
+          .select('id')
+          .single();
+
+        if (!stageErr && stageIns?.id) {
+          saleId = (stageIns as { id: string }).id;
+          docNo = stageNo;
+          stageInserted = true;
+          break;
+        }
+        if (!isUniqueDocNo(stageErr)) {
+          return { data: null, error: stageErr?.message ?? 'Failed to create sale.' };
+        }
+      }
+      if (!stageInserted) {
+        return { data: null, error: `Failed to allocate ${stageSeq} number after retries.` };
+      }
     } else {
+      // Final regular invoice: keep create_sale_document_header (SL + invoice_no + stock/GL path).
+      salePayload.type = 'invoice';
+      salePayload.status = 'final';
+
       const { data: hdrRaw, error: hdrErr } = await supabase.rpc('create_sale_document_header', {
         p_company_id: companyId,
         p_branch_id: effectiveBranchId,
@@ -568,7 +843,15 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
     }
   }
 
-  const itemsWithSaleId = items.map((item) => {
+  /**
+   * Web parity (`insertSaleItemsOrdered`): never send `parent_line_index` to Postgres —
+   * that column does not exist on `sales_items`. Resolve index → `bespoke_parent_item_id` after insert.
+   */
+  type PreparedItem = {
+    row: Record<string, unknown>;
+    parentIdx: number | null;
+  };
+  const prepared: PreparedItem[] = items.map((item) => {
     const row: Record<string, unknown> = {
       sale_id: saleId,
       product_id: item.productId,
@@ -585,26 +868,75 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
       row.packing_details = item.packingDetails;
     }
     if (item.customizationDetails != null) {
-      row.customization_details = item.customizationDetails;
+      row.customization_details =
+        buildBespokeMetadataForPersist(item.customizationDetails) ?? item.customizationDetails;
     }
-    if (item.bespokeParentItemId != null) {
+    const parentIdx =
+      item.parentLineIndex != null && Number.isFinite(Number(item.parentLineIndex))
+        ? Number(item.parentLineIndex)
+        : null;
+    if (parentIdx != null && parentIdx >= 0) {
+      // Parent id resolved after batch insert
+    } else if (item.bespokeParentItemId != null) {
       row.bespoke_parent_item_id = item.bespokeParentItemId;
     }
-    if (item.parentLineIndex != null) {
-      row.parent_line_index = item.parentLineIndex;
-    }
-    return row;
+    return { row, parentIdx };
   });
 
   let itemsError: { message: string } | null = null;
-  const { error: salesItemsErr } = await supabase.from('sales_items').insert(itemsWithSaleId);
-  if (salesItemsErr) {
-    if (salesItemsErr.code === '42P01' || String(salesItemsErr.message).includes('does not exist')) {
-      const { error: fallbackErr } = await supabase.from('sale_items').insert(itemsWithSaleId);
-      itemsError = fallbackErr;
-    } else {
-      itemsError = salesItemsErr;
+  let insertedIds: (string | null)[] = [];
+  {
+    const payload = prepared.map((p) => p.row);
+    let res = await supabase.from('sales_items').insert(payload).select('id');
+    if (res.error) {
+      if (res.error.code === '42P01' || String(res.error.message).includes('does not exist')) {
+        res = await supabase.from('sale_items').insert(payload).select('id');
+      }
     }
+    if (res.error) {
+      itemsError = res.error;
+    } else {
+      insertedIds = (res.data ?? []).map((r: { id?: string }) => r.id ?? null);
+    }
+  }
+
+  if (!itemsError && insertedIds.length === prepared.length) {
+    const parentPatches: { id: string; bespoke_parent_item_id: string }[] = [];
+    prepared.forEach((p, idx) => {
+      const parentIdx = p.parentIdx;
+      if (parentIdx == null || parentIdx < 0 || parentIdx >= insertedIds.length) return;
+      const childId = insertedIds[idx];
+      const parentId = insertedIds[parentIdx];
+      if (childId && parentId) {
+        parentPatches.push({ id: childId, bespoke_parent_item_id: parentId });
+      }
+    });
+    if (parentPatches.length > 0) {
+      const patchResults = await Promise.all(
+        parentPatches.map((patch) =>
+          supabase
+            .from('sales_items')
+            .update({ bespoke_parent_item_id: patch.bespoke_parent_item_id })
+            .eq('id', patch.id),
+        ),
+      );
+      const patchFail = patchResults.find((r) => r.error);
+      if (patchFail?.error) {
+        // Retry on legacy table name if needed
+        const retry = await Promise.all(
+          parentPatches.map((patch) =>
+            supabase
+              .from('sale_items')
+              .update({ bespoke_parent_item_id: patch.bespoke_parent_item_id })
+              .eq('id', patch.id),
+          ),
+        );
+        const retryFail = retry.find((r) => r.error);
+        if (retryFail?.error) itemsError = retryFail.error;
+      }
+    }
+  } else if (!itemsError && prepared.length > 0 && insertedIds.length !== prepared.length) {
+    itemsError = { message: 'Sale items insert returned incomplete ids; cannot resolve fabric parent links.' };
   }
 
   if (itemsError) {
@@ -612,14 +944,14 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
     return { data: null, error: `Failed to save items: ${itemsError.message}` };
   }
 
-  if (postStockAndAccounting) {
-    const commissionPatch = await resolveSaleCommissionFields({
-      profileUserId,
-      subtotal: Number(subtotal) || 0,
-      actorRole,
-      explicitSalesmanId,
-      explicitCommissionPercent,
-    });
+  const commissionPatch = await resolveSaleCommissionFields({
+    profileUserId,
+    subtotal: Number(subtotal) || 0,
+    actorRole,
+    explicitSalesmanId,
+    explicitCommissionPercent,
+  });
+  if (commissionPatch) {
     const commissionErr = await applySaleCommissionPatch(saleId, commissionPatch);
     if (commissionErr) {
       await supabase.from('sales').delete().eq('id', saleId);
@@ -694,6 +1026,21 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
       paymentDate != null && String(paymentDate).trim() !== ''
         ? String(paymentDate).trim().slice(0, 10)
         : localNowDateString();
+    const paymentAccountName = paymentAccountId
+      ? await resolvePaymentAccountDisplayName(paymentAccountId)
+      : '';
+    const composedPaymentNotes =
+      paymentNotes?.trim() ||
+      composeSalePaymentNotes({
+        autoNotes: buildCustomerSalePaymentAutoNotes({
+          partyName: customerName,
+          invoiceRef: docNo,
+          customerBillRef: billRef,
+          paymentAccountName,
+          paymentMethod: paymentMethod || 'Cash',
+        }),
+        userNotes: notes,
+      });
     const { data: payData, error: payErr } = await recordSalePayment({
       companyId,
       branchId: effectiveBranchId,
@@ -702,6 +1049,7 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
       paymentMethod: paymentMethod || 'Cash',
       paymentAccountId,
       paymentDate: payDate,
+      notes: composedPaymentNotes || undefined,
       userId,
     });
     if (payErr) {
@@ -1169,7 +1517,7 @@ export async function recordSalePayment(params: {
   const bankTraceId = referenceNumber?.trim() ?? '';
   const baseNotes = notes?.trim() ?? '';
   const composedNotes = bankTraceId
-    ? `${baseNotes ? `${baseNotes} | ` : ''}Bank Trace ID: ${bankTraceId}`
+    ? composeSalePaymentNotes({ autoNotes: baseNotes, bankTraceId })
     : baseNotes;
   const dateVal = paymentDate || localNowDateString();
   const { data: authData } = await supabase.auth.getUser();
@@ -1206,6 +1554,7 @@ export async function recordCustomerPayment(params: {
   accountId: string;
   paymentMethod: string;
   paymentDate: string; // YYYY-MM-DD
+  paymentAt?: string | null;
   notes?: string | null;
   referenceNumber?: string | null;
   createdBy?: string | null;
@@ -1214,6 +1563,7 @@ export async function recordCustomerPayment(params: {
   const {
     companyId,
     branchId,
+    customerId,
     referenceId,
     amount,
     accountId,
@@ -1226,14 +1576,29 @@ export async function recordCustomerPayment(params: {
   if (!companyId || !referenceId || amount <= 0 || !accountId) {
     return { data: null, error: 'Company, reference (sale), amount and account are required.' };
   }
+  if (customerId) {
+    const { data: contactRow } = await supabase
+      .from('contacts')
+      .select('name')
+      .eq('id', customerId)
+      .maybeSingle();
+    const contactName = (contactRow as { name?: string } | null)?.name?.trim();
+    if (contactName) {
+      await supabase
+        .from('sales')
+        .update({ customer_id: customerId, customer_name: contactName })
+        .eq('id', referenceId);
+    }
+  }
+  const { data: saleMetaRow } = await supabase
+    .from('sales')
+    .select('branch_id, customer_name, invoice_no, customer_bill_ref, notes, reference, ref_no, bill_ref')
+    .eq('id', referenceId)
+    .maybeSingle();
+  const saleMeta = (saleMetaRow ?? {}) as Record<string, unknown>;
   let branchForResolve = branchId;
   if (!isRealBranchUuid(branchForResolve)) {
-    const { data: saleRow } = await supabase
-      .from('sales')
-      .select('branch_id')
-      .eq('id', referenceId)
-      .maybeSingle();
-    const saleBranch = (saleRow as { branch_id?: string | null } | null)?.branch_id;
+    const saleBranch = saleMeta.branch_id as string | null | undefined;
     if (isRealBranchUuid(saleBranch)) {
       branchForResolve = saleBranch;
     }
@@ -1246,10 +1611,19 @@ export async function recordCustomerPayment(params: {
   }
   const dateVal = paymentDate || localNowDateString();
   const refTrim = referenceNumber != null ? String(referenceNumber).trim() : '';
-  const baseNotes = notes?.trim() ?? '';
-  const composedNotes = refTrim
-    ? `${baseNotes ? `${baseNotes} | ` : ''}Bank Trace ID: ${refTrim}`
-    : baseNotes;
+  const customerBillRef = readSaleBillRef(saleMeta);
+  const partyName = String(saleMeta.customer_name ?? '').trim() || 'Customer';
+  const invoiceRef = String(saleMeta.invoice_no ?? '').trim() || undefined;
+  const paymentAccountName = await resolvePaymentAccountDisplayName(accountId);
+  const composedNotes = composeCustomerPaymentNotesForRpc({
+    partyName,
+    invoiceRef,
+    customerBillRef,
+    paymentAccountName,
+    paymentMethod: paymentMethodLabelForNotes(paymentMethod),
+    combinedNotes: notes,
+    bankTraceId: refTrim || null,
+  });
   const normalized = String(paymentMethod || 'cash').toLowerCase();
   const methodMap: Record<string, 'cash' | 'bank' | 'card' | 'other'> = {
     cash: 'cash',
@@ -1279,6 +1653,24 @@ export async function recordCustomerPayment(params: {
   if (error) return { data: null, error: error.message };
   const res = data as { success?: boolean; payment_id?: string; reference_number?: string; error?: string } | null;
   if (res?.success && res.payment_id) {
+    if (customerId) {
+      const { data: contactRow } = await supabase
+        .from('contacts')
+        .select('name')
+        .eq('id', customerId)
+        .maybeSingle();
+      const contactName = (contactRow as { name?: string } | null)?.name?.trim();
+      if (contactName) {
+        await supabase
+          .from('payments')
+          .update({ contact_id: customerId, contact_name: contactName })
+          .eq('id', res.payment_id);
+      }
+    }
+    if (params.paymentAt) {
+      const { patchPaymentCreatedAt } = await import('./paymentTimestamp');
+      await patchPaymentCreatedAt(res.payment_id, params.paymentAt);
+    }
     return { data: { payment_id: res.payment_id, reference_number: res.reference_number }, error: null };
   }
   return { data: null, error: res?.error ?? 'Payment failed.' };
@@ -1298,15 +1690,21 @@ function mapPaymentMethodToRpc(paymentMethod: string): 'cash' | 'bank' | 'card' 
   return methodMap[normalized] || 'cash';
 }
 
-function composePaymentNotes(notes?: string | null, bankTraceId?: string | null): string {
-  const refTrim = bankTraceId != null ? String(bankTraceId).trim() : '';
-  const baseNotes = notes?.trim() ?? '';
-  return refTrim ? `${baseNotes ? `${baseNotes} | ` : ''}Bank Trace ID: ${refTrim}` : baseNotes;
+function paymentMethodLabelForNotes(method: string): string {
+  const m = String(method || 'cash').toLowerCase();
+  if (m === 'bank' || m === 'card') return 'Bank';
+  if (m === 'wallet' || m === 'mobile_wallet') return 'Mobile Wallet';
+  return 'Cash';
+}
+
+async function resolvePaymentAccountDisplayName(accountId: string): Promise<string> {
+  const { data } = await supabase.from('accounts').select('name').eq('id', accountId).maybeSingle();
+  return String((data as { name?: string } | null)?.name ?? '').trim();
 }
 
 /**
  * On-account customer receipt (no invoice): Dr Cash/Bank, Cr AR sub-ledger.
- * Same contract as web saleService.recordOnAccountPayment.
+ * Post-RPC patch mirrors web AddEntryV2 createCustomerReceiptEntry (manual_receipt + JE description).
  */
 export async function recordOnAccountCustomerPayment(params: {
   companyId: string;
@@ -1317,9 +1715,12 @@ export async function recordOnAccountCustomerPayment(params: {
   accountId: string;
   paymentMethod: string;
   paymentDate: string;
+  paymentAt?: string | null;
   notes?: string | null;
   bankTraceId?: string | null;
+  paymentAccountName?: string | null;
   createdBy?: string | null;
+  attachments?: PaymentAttachment[] | null;
 }): Promise<{ data: { payment_id: string; reference_number?: string } | null; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
   const {
@@ -1334,6 +1735,7 @@ export async function recordOnAccountCustomerPayment(params: {
     notes,
     bankTraceId,
     createdBy,
+    paymentAccountName: paymentAccountNameParam,
   } = params;
   if (!companyId || !contactId?.trim() || amount <= 0 || !accountId) {
     return { data: null, error: 'Company, customer, amount and account are required.' };
@@ -1345,7 +1747,15 @@ export async function recordOnAccountCustomerPayment(params: {
     return { data: null, error: e instanceof Error ? e.message : 'Branch required for payment.' };
   }
   const dateVal = paymentDate || localNowDateString();
-  const composedNotes = composePaymentNotes(notes, bankTraceId);
+  const paymentAccountName =
+    String(paymentAccountNameParam ?? '').trim() ||
+    (await resolvePaymentAccountDisplayName(accountId));
+  const composedNotes = composeCustomerPaymentNotesForRpc({
+    partyName: contactName,
+    paymentAccountName,
+    combinedNotes: notes,
+    bankTraceId,
+  });
   const enumMethod = mapPaymentMethodToRpc(paymentMethod);
   const { data, error } = await supabase.rpc('record_payment_with_accounting', {
     p_company_id: companyId,
@@ -1363,20 +1773,66 @@ export async function recordOnAccountCustomerPayment(params: {
     p_worker_stage_id: null,
   });
   if (error) return { data: null, error: error.message };
-  const res = data as { success?: boolean; payment_id?: string; reference_number?: string; error?: string } | null;
+  const res = data as {
+    success?: boolean;
+    payment_id?: string;
+    journal_entry_id?: string;
+    reference_number?: string;
+    error?: string;
+  } | null;
   if (!res?.success || !res.payment_id) {
     return { data: null, error: res?.error ?? 'Payment failed.' };
   }
   const paymentId = res.payment_id;
-  const patch: Record<string, unknown> = {
-    contact_id: contactId.trim(),
-    contact_name: contactName.trim(),
-    received_by: createdBy ?? null,
-  };
-  let upd = await supabase.from('payments').update(patch).eq('id', paymentId);
-  if (upd.error) {
-    console.warn('[recordOnAccountCustomerPayment] payments patch:', upd.error.message);
+  const { paymentPatch, jePatch } = onAccountCustomerReceiptPostRpcPatches({
+    contactId,
+    contactName,
+    composedNotes,
+    createdBy,
+    attachments: params.attachments,
+  });
+  let payUpd = await supabase.from('payments').update(paymentPatch).eq('id', paymentId);
+  if (payUpd.error?.code === 'PGRST204' && String(payUpd.error.message || '').includes('attachments')) {
+    const { attachments: _a, ...rest } = paymentPatch;
+    payUpd = await supabase.from('payments').update(rest).eq('id', paymentId);
   }
+  if (payUpd.error) {
+    return {
+      data: null,
+      error: `Payment recorded but contact link failed: ${payUpd.error.message}. Reconcile contact_id on payment ${paymentId}.`,
+    };
+  }
+
+  let journalEntryId = res.journal_entry_id ?? null;
+  if (!journalEntryId) {
+    const { data: jeRow } = await supabase
+      .from('journal_entries')
+      .select('id')
+      .eq('payment_id', paymentId)
+      .maybeSingle();
+    journalEntryId = (jeRow as { id?: string } | null)?.id ?? null;
+  }
+  if (journalEntryId) {
+    const jeUpd = await supabase
+      .from('journal_entries')
+      .update(jePatch)
+      .eq('id', journalEntryId);
+    if (jeUpd.error) {
+      console.warn('[recordOnAccountCustomerPayment] manual receipt JE patch:', jeUpd.error.message);
+    }
+  }
+
+  if (params.paymentAt) {
+    const { patchPaymentCreatedAt } = await import('./paymentTimestamp');
+    await patchPaymentCreatedAt(paymentId, params.paymentAt);
+  }
+
+  dispatchMobileAccountingInvalidated({
+    companyId,
+    branchId: branchResolved,
+    reason: 'mobile-on-account-receipt',
+  });
+
   return {
     data: { payment_id: paymentId, reference_number: res.reference_number },
     error: null,
@@ -1384,6 +1840,38 @@ export async function recordOnAccountCustomerPayment(params: {
 }
 
 export type PaymentAttachment = { url: string; name: string };
+
+/** Post-RPC client patches for on-account customer receipt (web AddEntryV2 parity). */
+export function onAccountCustomerReceiptPostRpcPatches(params: {
+  contactId: string;
+  contactName: string;
+  composedNotes: string;
+  createdBy?: string | null;
+  attachments?: PaymentAttachment[] | null;
+}): {
+  paymentPatch: Record<string, unknown>;
+  jePatch: { reference_type: string; reference_id: string; description: string };
+} {
+  const contactIdTrim = params.contactId.trim();
+  const paymentPatch: Record<string, unknown> = {
+    contact_id: contactIdTrim,
+    contact_name: params.contactName.trim(),
+    received_by: params.createdBy ?? null,
+    reference_type: 'manual_receipt',
+    reference_id: null,
+  };
+  if (params.attachments?.length) {
+    paymentPatch.attachments = params.attachments;
+  }
+  return {
+    paymentPatch,
+    jePatch: {
+      reference_type: 'manual_receipt',
+      reference_id: contactIdTrim,
+      description: params.composedNotes,
+    },
+  };
+}
 
 /** Get payment history for a sale (including attachments for preview) */
 export async function getSalePayments(saleId: string): Promise<{

@@ -10,6 +10,17 @@ import { enrichLedgerLinesWithHasAttachments } from '../lib/loadMergedAttachment
 
 type RpcPayload = { period_opening_balance?: number; rows?: Record<string, unknown>[] };
 
+const OPENING_EPS = 0.005;
+
+/** True when party RPC succeeded but returned no period activity and negligible opening. */
+export function isPartyGlLedgerEmptySuccess(res: {
+  error: string | null;
+  lines: LedgerLine[];
+  openingBalance: number;
+}): boolean {
+  return !res.error && res.lines.length === 0 && Math.abs(res.openingBalance) < OPENING_EPS;
+}
+
 function mapRpcRowToLedgerLine(r: Record<string, unknown>, index: number): LedgerLine {
   const jelId = r.journal_entry_line_id ?? r.jel_id;
   const jeId = r.journal_entry_id ?? r.je_id;
@@ -36,12 +47,32 @@ function mapRpcRowToLedgerLine(r: Record<string, unknown>, index: number): Ledge
     debit: Number(r.debit ?? 0),
     credit: Number(r.credit ?? 0),
     runningBalance: Number(r.running_balance ?? 0),
+    paymentId: r.payment_id != null && String(r.payment_id).trim() !== '' ? String(r.payment_id) : null,
   };
 }
 
 function parseRpcPayload(data: unknown): RpcPayload | null {
-  if (!data || typeof data !== 'object') return null;
-  return data as RpcPayload;
+  let raw: unknown = data;
+  if (typeof raw === 'string') {
+    try {
+      raw = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+  if (Array.isArray(raw)) {
+    raw = raw.length === 1 ? raw[0] : null;
+  }
+  if (!raw || typeof raw !== 'object') return null;
+  const obj = raw as Record<string, unknown>;
+  const hasOpening = Object.prototype.hasOwnProperty.call(obj, 'period_opening_balance');
+  const hasRows = Object.prototype.hasOwnProperty.call(obj, 'rows');
+  if (!hasOpening && !hasRows) return null;
+  return {
+    period_opening_balance:
+      obj.period_opening_balance != null ? Number(obj.period_opening_balance) : undefined,
+    rows: Array.isArray(obj.rows) ? (obj.rows as Record<string, unknown>[]) : undefined,
+  };
 }
 
 /** Supplier AP on control 2000 — matches web Account Statements → Supplier (GL). */

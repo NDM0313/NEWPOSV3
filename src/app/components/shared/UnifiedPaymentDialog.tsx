@@ -1,5 +1,11 @@
-import { getCurrentLocalTimestamp, localNowDateString } from '@/app/utils/localDate';
+import { getCurrentLocalTimestamp, localNowDateString, formatLocalDateTimeYYYYMMDDHHmm } from '@/app/utils/localDate';
+import {
+  buildCustomerSalePaymentAutoNotes,
+  composeCustomerPaymentNotesForRpc,
+} from '@/app/utils/saleNotesComposition';
+import { DateTimePicker } from '@/app/components/ui/DateTimePicker';
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Wallet, Building2, CreditCard, AlertCircle, Check, ChevronDown, Upload, FileText, Calendar, Clock, Trash2, History, Banknote } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
@@ -15,10 +21,58 @@ import { getAttachmentOpenUrl, getSupabaseStorageDashboardUrl } from '@/app/util
 import { showStorageRlsToast, MAX_FILE_SIZE_BYTES, showFileTooLargeToast } from '@/app/utils/uploadTransactionAttachments';
 import { prepareAttachmentFilesForUpload } from '@/app/utils/imageCompression';
 import { dispatchContactBalancesRefresh } from '@/app/lib/contactBalancesRefresh';
+import { notifyAccountingEntriesChanged } from '@/app/lib/accountingInvalidate';
 import { dispatchAccountingEditCommitted } from '@/app/lib/unifiedTransactionEdit';
 import { resolvePaymentIdForMutation } from '@/app/lib/paymentRowEditRouting';
 import { rebuildManualReceiptFifoAllocations, rebuildManualSupplierFifoAllocations } from '@/app/services/paymentAllocationService';
-import { syncJournalEntryDateByPaymentId } from '@/app/services/journalTransactionDateSyncService';
+import { CustomerSelector } from '@/app/components/accounting/CustomerLedgerComponents/CustomerSelector';
+import { contactService, type Contact } from '@/app/services/contactService';
+import {
+  syncExpenseDateByPaymentId,
+  syncJournalEntryDateByPaymentId,
+} from '@/app/services/journalTransactionDateSyncService';
+
+async function notifyAccountingAfterPaymentChange(companyId: string, paymentId: string): Promise<void> {
+  let journalEntryId: string | null = null;
+  try {
+    const { data: byPayment } = await supabase
+      .from('journal_entries')
+      .select('id')
+      .eq('company_id', companyId)
+      .eq('payment_id', paymentId)
+      .maybeSingle();
+    journalEntryId = (byPayment as { id?: string } | null)?.id ?? null;
+    if (!journalEntryId) {
+      const { data: byRef } = await supabase
+        .from('journal_entries')
+        .select('id')
+        .eq('company_id', companyId)
+        .eq('reference_id', paymentId)
+        .limit(1)
+        .maybeSingle();
+      journalEntryId = (byRef as { id?: string } | null)?.id ?? null;
+    }
+  } catch {
+    /* non-blocking */
+  }
+  notifyAccountingEntriesChanged({
+    companyId,
+    entityId: journalEntryId ?? paymentId,
+    reason: 'accounting-entries-changed',
+  });
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('paymentAdded'));
+  }
+}
+import {
+  formatAccountSelectOptionLabel,
+  getPaymentLiquidityPostingSide,
+} from '@/app/lib/accountPostingInOutLabel';
+import { AccountPickerFieldLabel } from '@/app/components/accounting/AccountPickerFieldLabel';
+import {
+  paymentEventTimestampFromPicker,
+  paymentPickerValueFromRow,
+} from '@/app/utils/transactionEventDateTime';
 
 // ============================================
 // 🎯 TYPES
@@ -50,6 +104,8 @@ export interface PaymentDialogProps {
   rentalPaymentKind?: 'advance' | 'remaining' | 'penalty';
   /** Pre-fill notes when dialog opens (e.g. rental advance explanation) */
   defaultPaymentNotes?: string;
+  /** Customer bill book / REF # — included in auto payment description. */
+  customerBillRef?: string;
   /** When context=worker and paying for specific stage (Pay Now), pass stageId so ledger uses markStageLedgerPaid */
   workerStageId?: string;
   onSuccess?: (paymentRef?: string, amountPaid?: number) => void;
@@ -68,6 +124,8 @@ export interface PaymentDialogProps {
     referenceNumber?: string;
     notes?: string;
     attachments?: any; // saved: { url, name }[] or url string
+    /** payments.created_at — used with payment_date for time in picker / roznamcha */
+    createdAt?: string | null;
     /** When id is `alloc:<uuid>`, parent payments.id (set by payment history normalizers) */
     parentPaymentId?: string;
   };
@@ -78,6 +136,7 @@ function buildAutoPaymentContextNotes(args: {
   context: PaymentContextType;
   entityName: string;
   referenceNo?: string;
+  customerBillRef?: string;
   workerStageId?: string;
   rentalPaymentKind?: 'advance' | 'remaining' | 'penalty';
   linkedJournalEntryNo?: string;
@@ -93,8 +152,12 @@ function buildAutoPaymentContextNotes(args: {
     return `Worker payment to ${party}.${refPart}${stagePart}${jePart}`.replace(/\s{2,}/g, ' ').trim();
   }
   if (args.context === 'customer') {
-    const refPart = ref ? ` Invoice/ref: ${ref}.` : '';
-    return `Customer receipt from ${party}.${refPart}${jePart}`.replace(/\s{2,}/g, ' ').trim();
+    const auto = buildCustomerSalePaymentAutoNotes({
+      partyName: party,
+      invoiceRef: ref,
+      customerBillRef: args.customerBillRef,
+    });
+    return jePart ? `${auto}${jePart}`.replace(/\s{2,}/g, ' ').trim() : auto;
   }
   if (args.context === 'supplier') {
     const refPart = ref ? ` Bill/ref: ${ref}.` : '';
@@ -115,12 +178,12 @@ function ExistingAttachmentImage({ att }: { att: { url: string; name: string } }
     });
     return () => { cancelled = true; };
   }, [att.url]);
-  if (!resolvedUrl) return <div className="h-24 bg-gray-800 rounded animate-pulse" />;
+  if (!resolvedUrl) return <div className="h-24 bg-muted rounded animate-pulse" />;
   return (
     <img
       src={resolvedUrl}
       alt={att.name}
-      className="max-w-md max-h-48 w-auto h-auto object-contain rounded border border-gray-700"
+      className="max-w-md max-h-48 w-auto h-auto object-contain rounded border border-border"
     />
   );
 }
@@ -143,6 +206,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
   referenceId, // CRITICAL FIX: UUID for journal entry reference_id
   rentalPaymentKind = 'remaining',
   defaultPaymentNotes = '',
+  customerBillRef = '',
   workerStageId,
   onSuccess,
   initialAttachmentFiles,
@@ -175,16 +239,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
   const [notes, setNotes] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   
-  // 🎯 NEW: Date & Time states (combined as datetime-local)
-  const [paymentDateTime, setPaymentDateTime] = useState<string>(() => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    return `${year}-${month}-${day}T${hours}:${minutes}`;
-  });
+  const [paymentDateTime, setPaymentDateTime] = useState<string>(() => formatLocalDateTimeYYYYMMDDHHmm(new Date()));
   
   // New files to upload
   const [attachments, setAttachments] = useState<File[]>([]);
@@ -194,6 +249,19 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
   const prevOpenRef = React.useRef(false);
   /** After user taps Cash/Bank/Wallet in edit mode, stop forcing the saved payment_account_id + inferred method. */
   const userPickedPaymentMethodRef = React.useRef(false);
+  /** Edit-only: allow changing customer on manual_receipt (not sale-linked). */
+  const [editReferenceType, setEditReferenceType] = useState<string | null>(null);
+  const [editPartyContact, setEditPartyContact] = useState<Contact | null>(null);
+  const [originalEditPartyId, setOriginalEditPartyId] = useState<string | null>(null);
+
+  const canChangeManualReceiptCustomer =
+    Boolean(editMode) &&
+    context === 'customer' &&
+    !referenceId &&
+    (editReferenceType === 'manual_receipt' || editReferenceType === 'on_account');
+
+  const effectiveEntityId = (editPartyContact?.id || entityId || '').trim() || undefined;
+  const effectiveEntityName = (editPartyContact?.name || entityName || '').trim() || entityName;
 
   // Reset form when dialog opens; set attachments from initialAttachmentFiles only when opening (so purchase-form files are not overwritten)
   React.useEffect(() => {
@@ -201,41 +269,39 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
       const justOpened = !prevOpenRef.current;
       prevOpenRef.current = true;
       if (editMode && paymentToEdit) {
-        setAmount(paymentToEdit.amount);
-        setPaymentMethod((paymentToEdit.method.charAt(0).toUpperCase() + paymentToEdit.method.slice(1)) as PaymentMethod || 'Cash');
-        setSelectedAccount(String(paymentToEdit.accountId || '').trim());
-        setNotes(paymentToEdit.notes || '');
-        let raw: any = paymentToEdit.attachments;
-        if (typeof raw === 'string' && raw.trim()) {
-          const trimmed = raw.trim();
-          if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
-            try {
-              raw = JSON.parse(raw);
-            } catch {
-              raw = null;
+        if (justOpened) {
+          setAmount(paymentToEdit.amount);
+          setPaymentMethod((paymentToEdit.method.charAt(0).toUpperCase() + paymentToEdit.method.slice(1)) as PaymentMethod || 'Cash');
+          setSelectedAccount(String(paymentToEdit.accountId || '').trim());
+          setNotes(paymentToEdit.notes || '');
+          let raw: any = paymentToEdit.attachments;
+          if (typeof raw === 'string' && raw.trim()) {
+            const trimmed = raw.trim();
+            if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+              try {
+                raw = JSON.parse(raw);
+              } catch {
+                raw = null;
+              }
             }
           }
+          const list: { url: string; name: string }[] = [];
+          if (Array.isArray(raw)) {
+            raw.forEach((a: any) => {
+              const url = typeof a === 'string' ? a : (a?.url || a?.fileUrl || a?.href);
+              const name = (typeof a === 'object' && a?.name) ? a.name : (typeof a === 'object' && (a?.fileName || a?.file_name)) ? (a.fileName || a.file_name) : 'Attachment';
+              if (url) list.push({ url, name });
+            });
+          } else if (typeof raw === 'object' && raw && !Array.isArray(raw) && (raw.url || raw.fileUrl)) {
+            list.push({ url: raw.url || raw.fileUrl || '', name: raw.name || raw.fileName || 'Attachment' });
+          } else if (typeof raw === 'string' && raw) {
+            list.push({ url: raw, name: 'Attachment' });
+          }
+          setExistingAttachments(list);
+          setPaymentDateTime(
+            paymentPickerValueFromRow(paymentToEdit.date, paymentToEdit.createdAt),
+          );
         }
-        const list: { url: string; name: string }[] = [];
-        if (Array.isArray(raw)) {
-          raw.forEach((a: any) => {
-            const url = typeof a === 'string' ? a : (a?.url || a?.fileUrl || a?.href);
-            const name = (typeof a === 'object' && a?.name) ? a.name : (typeof a === 'object' && (a?.fileName || a?.file_name)) ? (a.fileName || a.file_name) : 'Attachment';
-            if (url) list.push({ url, name });
-          });
-        } else if (typeof raw === 'object' && raw && !Array.isArray(raw) && (raw.url || raw.fileUrl)) {
-          list.push({ url: raw.url || raw.fileUrl || '', name: raw.name || raw.fileName || 'Attachment' });
-        } else if (typeof raw === 'string' && raw) {
-          list.push({ url: raw, name: 'Attachment' });
-        }
-        setExistingAttachments(list);
-        const paymentDate = new Date(paymentToEdit.date);
-        const year = paymentDate.getFullYear();
-        const month = String(paymentDate.getMonth() + 1).padStart(2, '0');
-        const day = String(paymentDate.getDate()).padStart(2, '0');
-        const hours = String(paymentDate.getHours() || 0).padStart(2, '0');
-        const minutes = String(paymentDate.getMinutes() || 0).padStart(2, '0');
-        setPaymentDateTime(`${year}-${month}-${day}T${hours}:${minutes}`);
       } else {
         // Pay Now (workerStageId): do not pre-fill job amount so we never record job amount as payment by mistake
         setAmount(workerStageId ? 0 : Math.max(0, effectiveOutstanding));
@@ -246,6 +312,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
             context,
             entityName,
             referenceNo,
+            customerBillRef,
             workerStageId,
             rentalPaymentKind,
             linkedJournalEntryNo,
@@ -264,9 +331,18 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
       }
       if (justOpened) {
         setAttachments(initialAttachmentFiles?.length ? [...initialAttachmentFiles] : []);
+        userPickedPaymentMethodRef.current = false;
+        if (!(editMode && paymentToEdit)) {
+          setEditReferenceType(null);
+          setEditPartyContact(null);
+          setOriginalEditPartyId(null);
+        }
       }
     } else {
       prevOpenRef.current = false;
+      setEditReferenceType(null);
+      setEditPartyContact(null);
+      setOriginalEditPartyId(null);
     }
   }, [
     isOpen,
@@ -276,6 +352,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
     effectiveOutstanding,
     workerStageId,
     defaultPaymentNotes,
+    customerBillRef,
     context,
     entityName,
     referenceNo,
@@ -286,6 +363,72 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
   React.useEffect(() => {
     if (!isOpen) userPickedPaymentMethodRef.current = false;
   }, [isOpen]);
+
+  // Load payment party + reference_type so manual_receipt edits can change customer safely.
+  React.useEffect(() => {
+    if (!isOpen || !editMode || !paymentToEdit?.id || !companyId) return;
+    let cancelled = false;
+    (async () => {
+      const paymentId = resolvePaymentIdForMutation({
+        id: paymentToEdit.id,
+        parentPaymentId: paymentToEdit.parentPaymentId,
+      });
+      const { data } = await supabase
+        .from('payments')
+        .select('contact_id, reference_type, reference_id')
+        .eq('id', paymentId)
+        .eq('company_id', companyId)
+        .maybeSingle();
+      if (cancelled || !data) return;
+      const rt = String((data as { reference_type?: string }).reference_type || '').toLowerCase();
+      setEditReferenceType(rt);
+      const cid = String(
+        (data as { contact_id?: string | null }).contact_id ||
+          (rt === 'manual_receipt' || rt === 'on_account'
+            ? (data as { reference_id?: string | null }).reference_id
+            : null) ||
+          entityId ||
+          '',
+      ).trim();
+      setOriginalEditPartyId(cid || null);
+      if (!cid) {
+        setEditPartyContact(null);
+        return;
+      }
+      try {
+        const contacts = await contactService.getAllContacts(companyId);
+        if (cancelled) return;
+        const found =
+          (contacts || []).find(
+            (c) => c.id === cid && (c.type === 'customer' || c.type === 'both'),
+          ) ||
+          (contacts || []).find((c) => c.id === cid) ||
+          null;
+        if (found) {
+          setEditPartyContact(found);
+        } else {
+          setEditPartyContact({
+            id: cid,
+            name: entityName || 'Customer',
+            company_id: companyId,
+            type: 'customer',
+          } as Contact);
+        }
+      } catch {
+        if (!cancelled) {
+          setEditPartyContact({
+            id: cid,
+            name: entityName || 'Customer',
+            company_id: companyId,
+            type: 'customer',
+          } as Contact);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, editMode, paymentToEdit?.id, paymentToEdit?.parentPaymentId, companyId, entityId, entityName]);
 
   // COA only when dialog opens — avoid full journal reload (refreshEntries) on every payment dialog.
   React.useEffect(() => {
@@ -397,6 +540,24 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
       return;
     }
 
+    const activeBranch = (settings.branches || []).find((b) => b.id === branchId);
+    const branchDefaults = activeBranch
+      ? { cashId: activeBranch.cashAccountId ?? null, bankId: activeBranch.bankAccountId ?? null }
+      : null;
+
+    if (paymentMethod === 'Cash' && branchDefaults?.cashId) {
+      if (filteredAccounts.some((a) => a.id === branchDefaults.cashId)) {
+        setSelectedAccount(branchDefaults.cashId);
+        return;
+      }
+    }
+    if (paymentMethod === 'Bank' && branchDefaults?.bankId) {
+      if (filteredAccounts.some((a) => a.id === branchDefaults.bankId)) {
+        setSelectedAccount(branchDefaults.bankId);
+        return;
+      }
+    }
+
     const defaultPayment = settings.defaultAccounts?.paymentMethods?.find((p) => p.method === paymentMethod);
 
     if (defaultPayment?.defaultAccount) {
@@ -436,6 +597,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
   }, [
     paymentMethod,
     settings.defaultAccounts,
+    settings.branches,
     accounting?.accounts,
     companyId,
     isOpen,
@@ -498,7 +660,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
           entityLabel: 'Customer',
           actionButton: 'Receive Payment',
           successMessage: 'Payment received successfully',
-          badge: 'bg-green-500/10 text-green-400 border-green-500/20',
+          badge: 'bg-green-500/10 text-[var(--erp-money-positive)] border-green-500/20',
           icon: '💵'
         };
       case 'worker':
@@ -564,6 +726,11 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
       toast.error('Payment amount must be greater than zero.');
       return;
     }
+
+    if (canChangeManualReceiptCustomer && !String(effectiveEntityId || '').trim()) {
+      toast.error('Select a customer for this receipt.');
+      return;
+    }
     
     if (referenceId && amount > effectiveOutstanding) {
       toast.error(`Payment amount cannot exceed outstanding amount of ${effectiveOutstanding.toLocaleString()}`);
@@ -586,6 +753,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
       // EDIT MODE: Update existing payment (keep existing attachments + upload new ones)
       if (editMode && paymentToEdit) {
         const paymentDate = paymentDateTime.split('T')[0];
+        const eventTimestamp = paymentEventTimestampFromPicker(paymentDateTime);
         let mergedAttachments: { url: string; name: string }[] = [...existingAttachments];
         if (attachments.length > 0 && companyId) {
           let anyUploadFailed = false;
@@ -633,6 +801,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
           paymentMethod,
           accountId: selectedAccount,
           paymentDate,
+          eventTimestamp,
           referenceNumber: (paymentToEdit as any).referenceNumber ?? undefined,
           notes: notes || undefined,
           attachments: mergedAttachments.length ? mergedAttachments : undefined,
@@ -675,6 +844,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
           await rentalService.updateRentalPayment(referenceId, paymentIdForUpdate, companyId, {
             amount,
             paymentDate,
+            eventTimestamp,
             method: paymentMethod,
             reference: (paymentToEdit as any).referenceNumber ?? notes,
             notes: notes || undefined,
@@ -686,10 +856,12 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
           let preManualAmount: number | null = null;
           let preManualBranch: string | null = null;
           let preManualAccountId: string | null = null;
+          let preManualReferenceType: string | null = null;
+          let preManualContactId: string | null = null;
           if (editMode && paymentToEdit) {
             const { data: preRow } = await supabase
               .from('payments')
-              .select('amount, branch_id, payment_account_id')
+              .select('amount, branch_id, payment_account_id, reference_type, contact_id, reference_id')
               .eq('id', paymentIdForUpdate)
               .single();
             if (preRow) {
@@ -697,8 +869,188 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
               preManualBranch = (preRow as { branch_id?: string | null }).branch_id ?? null;
               const pa = (preRow as { payment_account_id?: string | null }).payment_account_id;
               preManualAccountId = pa && String(pa).trim() ? String(pa) : null;
+              preManualReferenceType = String((preRow as { reference_type?: string }).reference_type || '').toLowerCase();
+              preManualContactId = String(
+                (preRow as { contact_id?: string | null }).contact_id ||
+                  (preManualReferenceType === 'manual_receipt' || preManualReferenceType === 'on_account'
+                    ? (preRow as { reference_id?: string | null }).reference_id
+                    : null) ||
+                  '',
+              ).trim() || null;
             }
           }
+
+          // Party change first (AR transfer on pre-edit amount), then amount delta on the new party.
+          const newPartyId = String(effectiveEntityId || '').trim();
+          if (
+            editMode &&
+            companyId &&
+            context === 'customer' &&
+            (preManualReferenceType === 'manual_receipt' || preManualReferenceType === 'on_account') &&
+            !referenceId &&
+            preManualContactId &&
+            newPartyId &&
+            preManualContactId !== newPartyId
+          ) {
+            const { tracePaymentEditFlow } = await import('@/app/lib/paymentEditFlowTrace');
+            const { reassignManualReceiptCustomer } = await import('@/app/services/paymentAdjustmentService');
+            const { data: { user: partyUser } } = await supabase.auth.getUser();
+            tracePaymentEditFlow('UnifiedPaymentDialog.edit.manual_party_transfer', {
+              paymentId: paymentIdForUpdate,
+              oldContactId: preManualContactId,
+              newContactId: newPartyId,
+              transferAmount: preManualAmount,
+            });
+            const partyRes = await reassignManualReceiptCustomer({
+              companyId,
+              paymentId: paymentIdForUpdate,
+              newCustomerId: newPartyId,
+              entryDate: paymentDate,
+              createdBy: (partyUser as any)?.id ?? null,
+              transferAmount: preManualAmount ?? undefined,
+            });
+            if (!partyRes.ok) {
+              tracePaymentEditFlow('UnifiedPaymentDialog.edit.manual_party_transfer_failed', {
+                paymentId: paymentIdForUpdate,
+                error: partyRes.error,
+              });
+              throw new Error(partyRes.error || 'Failed to change receipt customer.');
+            }
+            preManualContactId = newPartyId;
+            dispatchAccountingEditCommitted({
+              customerId: newPartyId,
+            });
+            if (partyRes.oldCustomerId) {
+              dispatchAccountingEditCommitted({ customerId: partyRes.oldCustomerId });
+            }
+          }
+
+          const deltaLiquidityId =
+            (selectedAccount && String(selectedAccount).trim() ? String(selectedAccount) : null) ||
+            preManualAccountId ||
+            (paymentToEdit?.accountId && String(paymentToEdit.accountId).trim() ? String(paymentToEdit.accountId) : null);
+
+          const postManualAmountAdjustmentBeforePatch = async () => {
+            if (!editMode || !companyId || preManualAmount == null || !deltaLiquidityId) return;
+            if (Math.abs(preManualAmount - amount) <= 0.009) return;
+
+            const { tracePaymentEditFlow } = await import('@/app/lib/paymentEditFlowTrace');
+            const { postPaymentAmountAdjustment } = await import('@/app/services/paymentAdjustmentService');
+            const { data: { user } } = await supabase.auth.getUser();
+            const branchForAdj =
+              preManualBranch && String(preManualBranch).trim() && preManualBranch !== 'all'
+                ? preManualBranch
+                : null;
+
+            if (context === 'supplier' && preManualReferenceType === 'manual_payment') {
+              tracePaymentEditFlow('UnifiedPaymentDialog.edit.manual_amount_adjust', {
+                paymentId: paymentIdForUpdate,
+                kind: 'manual_payment',
+                preManualAmount,
+                amount,
+                deltaLiquidityId,
+                phase: 'before_payment_patch',
+              });
+              const { resolvePayablePostingAccountId } = await import('@/app/services/partySubledgerAccountService');
+              const apId = entityId ? await resolvePayablePostingAccountId(companyId, entityId) : null;
+              try {
+                await postPaymentAmountAdjustment({
+                  context: 'purchase',
+                  companyId,
+                  branchId: branchForAdj,
+                  paymentId: paymentIdForUpdate,
+                  referenceId: paymentIdForUpdate,
+                  oldAmount: preManualAmount,
+                  newAmount: amount,
+                  paymentAccountId: deltaLiquidityId,
+                  invoiceNoOrRef: String((paymentToEdit as any).referenceNumber || 'Supplier payment'),
+                  entryDate: paymentDate,
+                  createdBy: (user as any)?.id ?? null,
+                  payableAccountId: apId || undefined,
+                });
+              } catch (adjErr) {
+                tracePaymentEditFlow('UnifiedPaymentDialog.edit.manual_amount_adjust_failed', {
+                  paymentId: paymentIdForUpdate,
+                  kind: 'manual_payment',
+                  preManualAmount,
+                  amount,
+                  error: adjErr instanceof Error ? adjErr.message : String(adjErr),
+                });
+                const { logAudit } = await import('@/app/services/auditLogService');
+                void logAudit({
+                  company_id: companyId,
+                  user_id: (user as any)?.id ?? null,
+                  entity: 'payments',
+                  entity_id: paymentIdForUpdate,
+                  action: 'updated',
+                  metadata: {
+                    kind: 'manual_payment_amount_adjust_failed',
+                    preManualAmount,
+                    newAmount: amount,
+                    error: adjErr instanceof Error ? adjErr.message : String(adjErr),
+                  },
+                });
+                throw adjErr;
+              }
+            }
+
+            if (context === 'customer' && preManualReferenceType === 'manual_receipt') {
+              tracePaymentEditFlow('UnifiedPaymentDialog.edit.manual_amount_adjust', {
+                paymentId: paymentIdForUpdate,
+                kind: 'manual_receipt',
+                preManualAmount,
+                amount,
+                deltaLiquidityId,
+                phase: 'before_payment_patch',
+                partyId: effectiveEntityId || entityId,
+              });
+              const { resolveReceivablePostingAccountId } = await import('@/app/services/partySubledgerAccountService');
+              const arPartyId = effectiveEntityId || entityId;
+              const arId = arPartyId ? await resolveReceivablePostingAccountId(companyId, arPartyId) : null;
+              try {
+                await postPaymentAmountAdjustment({
+                  context: 'sale',
+                  companyId,
+                  branchId: branchForAdj,
+                  paymentId: paymentIdForUpdate,
+                  referenceId: paymentIdForUpdate,
+                  oldAmount: preManualAmount,
+                  newAmount: amount,
+                  paymentAccountId: deltaLiquidityId,
+                  invoiceNoOrRef: String((paymentToEdit as any).referenceNumber || 'Customer receipt'),
+                  entryDate: paymentDate,
+                  createdBy: (user as any)?.id ?? null,
+                  receivableAccountId: arId || undefined,
+                });
+              } catch (adjErr) {
+                tracePaymentEditFlow('UnifiedPaymentDialog.edit.manual_amount_adjust_failed', {
+                  paymentId: paymentIdForUpdate,
+                  kind: 'manual_receipt',
+                  preManualAmount,
+                  amount,
+                  error: adjErr instanceof Error ? adjErr.message : String(adjErr),
+                });
+                const { logAudit } = await import('@/app/services/auditLogService');
+                void logAudit({
+                  company_id: companyId,
+                  user_id: (user as any)?.id ?? null,
+                  entity: 'payments',
+                  entity_id: paymentIdForUpdate,
+                  action: 'updated',
+                  metadata: {
+                    kind: 'manual_receipt_amount_adjust_failed',
+                    preManualAmount,
+                    newAmount: amount,
+                    error: adjErr instanceof Error ? adjErr.message : String(adjErr),
+                  },
+                });
+                throw adjErr;
+              }
+            }
+          };
+
+          await postManualAmountAdjustmentBeforePatch();
+
           const paymentMethodMap: Record<string, string> = {
             cash: 'cash',
             bank: 'bank',
@@ -714,6 +1066,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
             payment_method: normalizedPm,
             payment_account_id: selectedAccount || null,
             payment_date: paymentDate,
+            created_at: eventTimestamp,
             notes: notes || null,
             updated_at: getCurrentLocalTimestamp(),
           };
@@ -722,7 +1075,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
             .from('payments')
             .update(patch)
             .eq('id', paymentIdForUpdate)
-            .select('id, company_id, reference_type')
+            .select('id, company_id, reference_type, reference_id')
             .single();
           if (upErr) throw upErr;
           const rt = String((updatedPayment as any)?.reference_type || '').toLowerCase();
@@ -746,105 +1099,15 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
               paymentId: paymentIdForUpdate,
               entryDate: paymentDate,
             });
+            await syncExpenseDateByPaymentId({
+              paymentId: paymentIdForUpdate,
+              expenseDate: paymentDate,
+            });
           }
-          // Supplier Add Entry / on-account manual_payment: amount edit updated `payments` only — GL must get a delta JE (same as purchase-linked path).
-          const deltaLiquidityId =
-            preManualAccountId ||
-            (paymentToEdit?.accountId && String(paymentToEdit.accountId).trim() ? String(paymentToEdit.accountId) : null);
-          if (
-            editMode &&
-            context === 'supplier' &&
-            rt === 'manual_payment' &&
-            preManualAmount != null &&
-            companyId &&
-            deltaLiquidityId &&
-            Math.abs(preManualAmount - amount) > 0.009
-          ) {
-            try {
-              const { tracePaymentEditFlow } = await import('@/app/lib/paymentEditFlowTrace');
-              tracePaymentEditFlow('UnifiedPaymentDialog.edit.manual_amount_adjust', {
-                paymentId: paymentIdForUpdate,
-                kind: 'manual_payment',
-                preManualAmount,
-                amount,
-                deltaLiquidityId,
-              });
-              const { postPaymentAmountAdjustment } = await import('@/app/services/paymentAdjustmentService');
-              const { resolvePayablePostingAccountId } = await import('@/app/services/partySubledgerAccountService');
-              const apId = entityId ? await resolvePayablePostingAccountId(companyId, entityId) : null;
-              const { data: { user } } = await supabase.auth.getUser();
-              await postPaymentAmountAdjustment({
-                context: 'purchase',
-                companyId,
-                branchId:
-                  preManualBranch && String(preManualBranch).trim() && preManualBranch !== 'all'
-                    ? preManualBranch
-                    : null,
-                paymentId: paymentIdForUpdate,
-                referenceId: paymentIdForUpdate,
-                oldAmount: preManualAmount,
-                newAmount: amount,
-                paymentAccountId: deltaLiquidityId,
-                invoiceNoOrRef: String((paymentToEdit as any).referenceNumber || 'Supplier payment'),
-                entryDate: paymentDate,
-                createdBy: (user as any)?.id ?? null,
-                payableAccountId: apId || undefined,
-              });
-              if (typeof window !== 'undefined') {
-                window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
-              }
-            } catch (adjErr) {
-              console.warn('[UnifiedPaymentDialog] Supplier manual_payment amount adjustment JE failed:', adjErr);
-            }
+          if (companyId) {
+            await notifyAccountingAfterPaymentChange(companyId, paymentIdForUpdate);
           }
-          // Customer Add Entry / on-account manual_receipt: same class as supplier manual — update `payments` + FIFO only; original JE lines unchanged without a delta JE.
-          if (
-            editMode &&
-            context === 'customer' &&
-            rt === 'manual_receipt' &&
-            preManualAmount != null &&
-            companyId &&
-            deltaLiquidityId &&
-            Math.abs(preManualAmount - amount) > 0.009
-          ) {
-            try {
-              const { tracePaymentEditFlow } = await import('@/app/lib/paymentEditFlowTrace');
-              tracePaymentEditFlow('UnifiedPaymentDialog.edit.manual_amount_adjust', {
-                paymentId: paymentIdForUpdate,
-                kind: 'manual_receipt',
-                preManualAmount,
-                amount,
-                deltaLiquidityId,
-              });
-              const { postPaymentAmountAdjustment } = await import('@/app/services/paymentAdjustmentService');
-              const { resolveReceivablePostingAccountId } = await import('@/app/services/partySubledgerAccountService');
-              const arId = entityId ? await resolveReceivablePostingAccountId(companyId, entityId) : null;
-              const { data: { user } } = await supabase.auth.getUser();
-              await postPaymentAmountAdjustment({
-                context: 'sale',
-                companyId,
-                branchId:
-                  preManualBranch && String(preManualBranch).trim() && preManualBranch !== 'all'
-                    ? preManualBranch
-                    : null,
-                paymentId: paymentIdForUpdate,
-                referenceId: paymentIdForUpdate,
-                oldAmount: preManualAmount,
-                newAmount: amount,
-                paymentAccountId: deltaLiquidityId,
-                invoiceNoOrRef: String((paymentToEdit as any).referenceNumber || 'Customer receipt'),
-                entryDate: paymentDate,
-                createdBy: (user as any)?.id ?? null,
-                receivableAccountId: arId || undefined,
-              });
-              if (typeof window !== 'undefined') {
-                window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
-              }
-            } catch (adjErr) {
-              console.warn('[UnifiedPaymentDialog] Customer manual_receipt amount adjustment JE failed:', adjErr);
-            }
-          }
-          // PF-14: manual receipt/payment account change — post Dr new / Cr old for final amount (after any amount delta above).
+          // PF-14: manual receipt/payment account change — post Dr new / Cr old for final amount (after payment patch).
           if (
             editMode &&
             companyId &&
@@ -881,8 +1144,8 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                   entryDate: paymentDate,
                   createdBy: (user as any)?.id ?? null,
                 });
-                if (typeof window !== 'undefined') {
-                  window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+                if (companyId) {
+                  await notifyAccountingAfterPaymentChange(companyId, paymentIdForUpdate);
                 }
               } catch (accErr) {
                 console.warn('[UnifiedPaymentDialog] Customer manual_receipt account transfer JE failed:', accErr);
@@ -916,8 +1179,8 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                   entryDate: paymentDate,
                   createdBy: (user as any)?.id ?? null,
                 });
-                if (typeof window !== 'undefined') {
-                  window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+                if (companyId) {
+                  await notifyAccountingAfterPaymentChange(companyId, paymentIdForUpdate);
                 }
               } catch (accErr) {
                 console.warn('[UnifiedPaymentDialog] Supplier manual_payment account transfer JE failed:', accErr);
@@ -1073,6 +1336,14 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
             return;
           }
           try {
+            const selectedAccountDetails = accounting?.accounts.find((a) => a.id === selectedAccount);
+            const customerPaymentNotes = composeCustomerPaymentNotesForRpc({
+              partyName: entityName,
+              invoiceRef: referenceNo,
+              customerBillRef,
+              paymentAccountName: selectedAccountDetails?.name ?? '',
+              combinedNotes: notes,
+            });
             let attachmentPayload: { url: string; name: string }[] = [];
             const storagePrefixRef = referenceId || entityId || 'on-account';
             if (attachments.length > 0 && companyId) {
@@ -1143,7 +1414,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                 companyId,
                 branchForPayment,
                 paymentDateTime.split('T')[0],
-                { notes: notes.trim() || undefined, attachments: attachmentPayload.length ? attachmentPayload : undefined }
+                { notes: customerPaymentNotes || undefined, attachments: attachmentPayload.length ? attachmentPayload : undefined }
               );
               if (!onAccountData?.id) {
                 toast.error('Payment saved but missing id.');
@@ -1162,7 +1433,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                 effectiveBranchId || branchId || '',
                 paymentDateTime.split('T')[0],
                 undefined,
-                { notes: notes.trim() || undefined, attachments: attachmentPayload.length ? attachmentPayload : undefined }
+                { notes: customerPaymentNotes || undefined, attachments: attachmentPayload.length ? attachmentPayload : undefined }
               );
               success = await accounting.recordSalePayment({
                 saleId: referenceId,
@@ -1244,13 +1515,19 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                   paymentMethod,
                   paymentAccountId: selectedAccount,
                   paymentDate: payDay,
+                  rentalPaymentId: rp?.id,
+                  branchId,
                 })
                 .catch((err) => {
                   console.warn('[UnifiedPaymentDialog] Penalty JE failed (payment row recorded):', err);
                 });
-              const jeId = await rentalService.findLatestJournalEntryForRental(companyId, referenceId, journalSince);
-              if (rp?.id && jeId) {
-                await rentalService.syncRentalPaymentGlLink(rp.id, jeId);
+              if (rp?.id) {
+                const linkedJe =
+                  (rp as { journal_entry_id?: string | null }).journal_entry_id ||
+                  (await rentalService.findLatestJournalEntryForRental(companyId, referenceId, journalSince));
+                if (linkedJe) {
+                  await rentalService.syncRentalPaymentGlLink(rp.id, String(linkedJe));
+                }
               }
             } else {
               const rp = await rentalService.addPayment(
@@ -1351,46 +1628,45 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
 
   if (!isOpen) return null;
 
-  return (
-    <>
-      {/* Backdrop — match AddEntryV2 (click-outside + aria) */}
+  const overlay = (
+    <div
+      data-unified-payment-dialog
+      className="fixed inset-0 z-[130] overflow-y-auto animate-in fade-in duration-200"
+    >
       <div
-        className="fixed inset-0 bg-black/70 backdrop-blur-md z-[130] animate-in fade-in duration-200"
-        onClick={() => {
+        className="absolute inset-0 bg-black/70 backdrop-blur-md"
+        aria-hidden="true"
+        onMouseDown={() => {
           if (!isProcessing) onClose();
         }}
-        aria-hidden="true"
       />
-
-      {/* Dialog shell — z above ui/dialog (z-110) so this can open on top of ReturnModal etc. */}
-      <div className="fixed inset-0 z-[130] flex items-center justify-center p-4 pointer-events-none overflow-y-auto">
+      <div className="relative z-10 flex min-h-full items-center justify-center p-4 pointer-events-none">
         <div
-          className="bg-gray-900 border border-gray-700/80 rounded-2xl shadow-2xl shadow-black/40 w-full max-w-4xl pointer-events-auto animate-in zoom-in-95 duration-200 my-6 max-h-[92vh] overflow-y-auto ring-1 ring-white/5"
-          onClick={(e) => e.stopPropagation()}
+          className="bg-card border border-border/80 rounded-2xl shadow-2xl shadow-black/40 w-full max-w-4xl pointer-events-auto animate-in zoom-in-95 duration-200 my-6 max-h-[92vh] overflow-y-auto ring-1 ring-white/5"
           role="dialog"
           aria-modal="true"
           aria-busy={isProcessing}
         >
-          <fieldset
-            disabled={isProcessing}
-            className="min-w-0 border-0 p-0 m-0 block w-full rounded-2xl disabled:opacity-90 disabled:pointer-events-none"
-          >
+        <fieldset
+          disabled={isProcessing}
+          className="min-w-0 border-0 p-0 m-0 block w-full rounded-2xl disabled:opacity-90"
+        >
           {/* Header */}
-          <div className="flex items-center justify-between p-5 border-b border-gray-800 bg-gradient-to-r from-gray-900 via-gray-900 to-gray-800">
+          <div className="flex items-center justify-between p-5 border-b border-border bg-gradient-to-r from-gray-900 via-gray-900 to-gray-800">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-xl">
                 {labels.icon}
               </div>
               <div>
-                <h2 className="text-lg font-bold text-white">
+                <h2 className="text-lg font-bold text-foreground">
                   {editMode ? 'Edit Payment' : labels.title}
                 </h2>
-                <p className="text-xs text-gray-400 mt-0.5">Complete transaction details</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Complete transaction details</p>
               </div>
             </div>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-white transition-colors p-1.5 hover:bg-gray-800 rounded-lg"
+              className="text-muted-foreground hover:text-foreground transition-colors p-1.5 hover:bg-muted rounded-lg"
             >
               <X size={20} />
             </button>
@@ -1409,31 +1685,48 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
               <div className="space-y-4">
                 
                 {/* Entity Info Card */}
-                <div className="bg-gradient-to-br from-gray-950/80 to-gray-900/50 border border-gray-800 rounded-xl p-4">
+                <div className="bg-gradient-to-br from-gray-950/80 to-gray-900/50 border border-border rounded-xl p-4">
                   <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs font-medium text-gray-400">{labels.entityLabel} Details</span>
+                    <span className="text-xs font-medium text-muted-foreground">{labels.entityLabel} Details</span>
                     <Badge variant="outline" className={labels.badge}>
                       {context.toUpperCase()}
                     </Badge>
                   </div>
-                  <p className="text-lg font-bold text-white mb-1">{entityName}</p>
+                  <p className="text-lg font-bold text-foreground mb-1">{effectiveEntityName}</p>
+                  {editMode && canChangeManualReceiptCustomer && companyId ? (
+                    <div className="mb-3 space-y-1.5">
+                      <p className="text-[11px] text-muted-foreground">Change customer (moves AR to new party sub-ledger)</p>
+                      <CustomerSelector
+                        companyId={companyId}
+                        selectedCustomer={editPartyContact}
+                        onSelect={(c) => setEditPartyContact(c)}
+                      />
+                      {originalEditPartyId &&
+                      editPartyContact?.id &&
+                      originalEditPartyId !== editPartyContact.id ? (
+                        <p className="text-[10px] text-amber-300/90">
+                          Saving will transfer this receipt’s AR from the previous customer to the selected one.
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
                   {editMode ? (
                     <div className="space-y-1.5 mb-2 text-[11px] leading-snug">
                       {linkedJournalEntryNo ? (
-                        <p className="text-gray-300">
-                          <span className="text-gray-500">Ledger entry</span>{' '}
+                        <p className="text-muted-foreground">
+                          <span className="text-muted-foreground">Ledger entry</span>{' '}
                           <span className="font-mono text-amber-200/90">{linkedJournalEntryNo}</span>
                         </p>
                       ) : null}
                       {referenceNo ? (
-                        <p className="text-gray-300">
-                          <span className="text-gray-500">Document / context</span>{' '}
+                        <p className="text-muted-foreground">
+                          <span className="text-muted-foreground">Document / context</span>{' '}
                           <span className="text-gray-100">{referenceNo}</span>
                         </p>
                       ) : null}
                       {paymentToEdit?.referenceNumber ? (
-                        <p className="text-gray-300">
-                          <span className="text-gray-500">Payment voucher</span>{' '}
+                        <p className="text-muted-foreground">
+                          <span className="text-muted-foreground">Payment voucher</span>{' '}
                           <span className="font-mono text-sky-200/90">{paymentToEdit.referenceNumber}</span>
                         </p>
                       ) : (
@@ -1442,17 +1735,17 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                     </div>
                   ) : (
                     referenceNo && (
-                      <p className="text-xs text-gray-500 font-mono bg-gray-900/50 px-2 py-1 rounded inline-block">
+                      <p className="text-xs text-muted-foreground font-mono bg-muted/40 px-2 py-1 rounded inline-block">
                         Ref: {referenceNo}
                       </p>
                     )
                   )}
-                  <div className="mt-4 pt-4 border-t border-gray-800 space-y-2">
+                  <div className="mt-4 pt-4 border-t border-border space-y-2">
                     {/* Show total amount if provided */}
                     {totalAmount !== undefined && totalAmount > 0 && (
                       <div className="flex items-center justify-between">
-                        <span className="text-xs text-gray-400">Total Amount</span>
-                        <span className="text-sm font-semibold text-white">
+                        <span className="text-xs text-muted-foreground">Total Amount</span>
+                        <span className="text-sm font-semibold text-foreground">
                           {formatCurrency(totalAmount)}
                         </span>
                       </div>
@@ -1460,19 +1753,19 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                     {/* Show paid amount if any */}
                     {paidAmount > 0 && (
                       <div className="flex items-center justify-between">
-                        <span className="text-xs text-gray-400">Already Paid</span>
-                        <span className="text-sm font-semibold text-green-400">
+                        <span className="text-xs text-muted-foreground">Already Paid</span>
+                        <span className="text-sm font-semibold text-[var(--erp-money-positive)]">
                           {formatCurrency(paidAmount)}
                         </span>
                       </div>
                     )}
-                    <div className="flex items-center justify-between pt-2 border-t border-gray-800">
-                      <span className="text-xs text-gray-400">Due / outstanding</span>
+                    <div className="flex items-center justify-between pt-2 border-t border-border">
+                      <span className="text-xs text-muted-foreground">Due / outstanding</span>
                       <span className="text-xl font-bold text-yellow-400">
                         {formatCurrency(effectiveOutstanding)}
                       </span>
                     </div>
-                    <p className="text-[10px] text-gray-500 pt-1">Amount owed on this document or party for this payment context.</p>
+                    <p className="text-[10px] text-muted-foreground pt-1">Amount owed on this document or party for this payment context.</p>
                   </div>
                 </div>
                 
@@ -1480,20 +1773,20 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                 {previousPayments.length > 0 && (
                   <div className="bg-gradient-to-br from-green-950/20 to-gray-900/50 border border-green-900/30 rounded-xl p-4">
                     <div className="flex items-center gap-2 mb-3">
-                      <History size={14} className="text-green-400" />
-                      <span className="text-xs font-semibold text-green-400 uppercase tracking-wide">
+                      <History size={14} className="text-[var(--erp-money-positive)]" />
+                      <span className="text-xs font-semibold text-[var(--erp-money-positive)] uppercase tracking-wide">
                         Already Received Payments ({previousPayments.length})
                       </span>
                     </div>
                     <div className="space-y-2 max-h-32 overflow-y-auto">
                       {previousPayments.map((payment, index) => (
-                        <div key={payment.id || index} className="flex items-center justify-between bg-gray-900/50 rounded-lg px-3 py-2">
+                        <div key={payment.id || index} className="flex items-center justify-between bg-muted/40 rounded-lg px-3 py-2">
                           <div className="flex items-center gap-3">
                             <div className="w-7 h-7 rounded-full bg-green-500/20 flex items-center justify-center">
-                              <Banknote size={12} className="text-green-400" />
+                              <Banknote size={12} className="text-[var(--erp-money-positive)]" />
                             </div>
                             <div>
-                              <p className="text-xs text-gray-400">
+                              <p className="text-xs text-muted-foreground">
                                 {new Date(payment.date).toLocaleDateString('en-GB', { 
                                   day: '2-digit', 
                                   month: 'short', 
@@ -1501,11 +1794,11 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                                 })}
                               </p>
                               {payment.accountName && (
-                                <p className="text-[10px] text-gray-500">{payment.method} • {payment.accountName}</p>
+                                <p className="text-[10px] text-muted-foreground">{payment.method} • {payment.accountName}</p>
                               )}
                             </div>
                           </div>
-                          <span className="text-sm font-semibold text-green-400">
+                          <span className="text-sm font-semibold text-[var(--erp-money-positive)]">
                             {formatCurrency(payment.amount)}
                           </span>
                         </div>
@@ -1515,12 +1808,12 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                 )}
 
                 {/* Payment Amount */}
-                <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
-                  <label className="block text-sm font-semibold text-gray-300 mb-2">
+                <div className="bg-muted/40 border border-border rounded-xl p-4">
+                  <label className="block text-sm font-semibold text-muted-foreground mb-2">
                     Payment Amount <span className="text-red-400">*</span>
                   </label>
                   <div className="relative">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 text-lg font-semibold">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground text-lg font-semibold">
                       {settings.company?.currency === 'PKR' || !settings.company?.currency ? 'Rs.' : settings.company.currency}
                     </span>
                     <input
@@ -1529,7 +1822,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                       onChange={handleAmountChange}
                       onFocus={handleAmountFocus}
                       placeholder="0.00"
-                      className="w-full bg-gray-900 border-2 border-gray-700 rounded-lg pl-14 pr-4 py-3 text-white text-xl font-bold placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors"
+                      className="w-full bg-card border-2 border-border rounded-lg pl-14 pr-4 py-3 text-foreground text-xl font-bold placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors"
                       min="0"
                       max={effectiveOutstanding}
                       step="0.01"
@@ -1543,8 +1836,8 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                   )}
                   {amount > 0 && amount <= effectiveOutstanding && (
                     <div className="flex items-center justify-between mt-2 text-xs">
-                      <span className="text-gray-400">Remaining Balance</span>
-                      <span className="text-green-400 font-semibold">
+                      <span className="text-muted-foreground">Remaining Balance</span>
+                      <span className="text-[var(--erp-money-positive)] font-semibold">
                         {formatCurrency(effectiveOutstanding - amount)}
                       </span>
                     </div>
@@ -1552,8 +1845,8 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                 </div>
 
                 {/* Payment Method - COMPACT */}
-                <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
-                  <label className="block text-sm font-semibold text-gray-300 mb-2">
+                <div className="bg-muted/40 border border-border rounded-xl p-4">
+                  <label className="block text-sm font-semibold text-muted-foreground mb-2">
                     Payment Method <span className="text-red-400">*</span>
                   </label>
                   <div className="grid grid-cols-3 gap-2">
@@ -1566,11 +1859,11 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                       className={`flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-lg border-2 transition-all ${
                         paymentMethod === 'Cash'
                           ? 'border-blue-500 bg-blue-500/10'
-                          : 'border-gray-700 bg-gray-900/50 hover:border-gray-600'
+                          : 'border-border bg-muted/40 hover:border-gray-600'
                       }`}
                     >
-                      <Wallet size={18} className={paymentMethod === 'Cash' ? 'text-blue-400' : 'text-gray-400'} />
-                      <span className={`text-xs font-medium ${paymentMethod === 'Cash' ? 'text-blue-400' : 'text-gray-400'}`}>
+                      <Wallet size={18} className={paymentMethod === 'Cash' ? 'text-blue-400' : 'text-muted-foreground'} />
+                      <span className={`text-xs font-medium ${paymentMethod === 'Cash' ? 'text-blue-400' : 'text-muted-foreground'}`}>
                         Cash
                       </span>
                     </button>
@@ -1584,11 +1877,11 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                       className={`flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-lg border-2 transition-all ${
                         paymentMethod === 'Bank'
                           ? 'border-blue-500 bg-blue-500/10'
-                          : 'border-gray-700 bg-gray-900/50 hover:border-gray-600'
+                          : 'border-border bg-muted/40 hover:border-gray-600'
                       }`}
                     >
-                      <Building2 size={18} className={paymentMethod === 'Bank' ? 'text-blue-400' : 'text-gray-400'} />
-                      <span className={`text-xs font-medium ${paymentMethod === 'Bank' ? 'text-blue-400' : 'text-gray-400'}`}>
+                      <Building2 size={18} className={paymentMethod === 'Bank' ? 'text-blue-400' : 'text-muted-foreground'} />
+                      <span className={`text-xs font-medium ${paymentMethod === 'Bank' ? 'text-blue-400' : 'text-muted-foreground'}`}>
                         Bank
                       </span>
                     </button>
@@ -1602,11 +1895,11 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                       className={`flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-lg border-2 transition-all ${
                         paymentMethod === 'Mobile Wallet'
                           ? 'border-blue-500 bg-blue-500/10'
-                          : 'border-gray-700 bg-gray-900/50 hover:border-gray-600'
+                          : 'border-border bg-muted/40 hover:border-gray-600'
                       }`}
                     >
-                      <CreditCard size={18} className={paymentMethod === 'Mobile Wallet' ? 'text-blue-400' : 'text-gray-400'} />
-                      <span className={`text-xs font-medium ${paymentMethod === 'Mobile Wallet' ? 'text-blue-400' : 'text-gray-400'}`}>
+                      <CreditCard size={18} className={paymentMethod === 'Mobile Wallet' ? 'text-blue-400' : 'text-muted-foreground'} />
+                      <span className={`text-xs font-medium ${paymentMethod === 'Mobile Wallet' ? 'text-blue-400' : 'text-muted-foreground'}`}>
                         Wallet
                       </span>
                     </button>
@@ -1614,28 +1907,36 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                 </div>
 
                 {/* Account Selection */}
-                <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
-                  <label className="block text-sm font-semibold text-gray-300 mb-2">
-                    Select Account <span className="text-red-400">*</span>
-                  </label>
+                <div className="bg-muted/40 border border-border rounded-xl p-4">
+                  <AccountPickerFieldLabel
+                    className="block text-sm font-semibold text-muted-foreground mb-2"
+                    base="Select Account"
+                    inOut={context === 'customer' ? 'IN' : 'OUT'}
+                    required
+                  />
                   <div className="relative">
                     <select
                       value={selectedAccount}
                       onChange={(e) => setSelectedAccount(e.target.value)}
-                      className="w-full bg-gray-900 border-2 border-gray-700 rounded-lg px-4 py-2.5 pr-10 text-white focus:outline-none focus:border-blue-500 transition-colors appearance-none"
+                      className="w-full bg-card border-2 border-border rounded-lg px-4 py-2.5 pr-10 text-foreground focus:outline-none focus:border-blue-500 transition-colors appearance-none"
                     >
-                      <option value="" className="text-gray-500">
+                      <option value="" className="text-muted-foreground">
                         {paymentMethod === 'Cash' && 'Select Cash Account'}
                         {paymentMethod === 'Bank' && 'Select Bank Account'}
                         {paymentMethod === 'Mobile Wallet' && 'Select Wallet Account'}
                       </option>
                       {getAccountsForPaymentSelect().map((account) => (
-                        <option key={account.id} value={account.id} className="text-white bg-gray-900">
-                          {account.name} • GL: {formatCurrency(account.balance)}
+                        <option key={account.id} value={account.id} className="text-foreground bg-card">
+                          {formatAccountSelectOptionLabel(account, {
+                            postingSide: getPaymentLiquidityPostingSide(context === 'customer'),
+                            balance: account.balance,
+                            formatBalance: formatCurrency,
+                            includeGlBalance: true,
+                          })}
                         </option>
                       ))}
                     </select>
-                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" size={18} />
                   </div>
                   {getAccountsForPaymentSelect().length === 0 && (
                     <p className="text-xs text-amber-500/90 mt-1.5 flex items-center gap-1">
@@ -1644,7 +1945,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                     </p>
                   )}
                   {selectedAccount === '' && getAccountsForPaymentSelect().length > 0 && (
-                    <p className="text-xs text-gray-500 mt-1.5 flex items-center gap-1">
+                    <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
                       <AlertCircle size={11} />
                       Please select an account to proceed
                     </p>
@@ -1655,8 +1956,8 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                     if (account && amount > bal) {
                       return (
                         <div className="space-y-2 mt-3">
-                          <div className="flex items-center justify-between rounded-lg border border-gray-800 bg-gray-900/80 px-3 py-2">
-                            <span className="text-xs text-gray-400">Account balance (GL)</span>
+                          <div className="flex items-center justify-between rounded-lg border border-border bg-card px-3 py-2">
+                            <span className="text-xs text-muted-foreground">Account balance (GL)</span>
                             <span className="text-sm font-bold text-emerald-400 tabular-nums">{formatCurrency(bal)}</span>
                           </div>
                           <div className="flex items-center gap-2 text-orange-400 text-xs bg-orange-500/10 border border-orange-500/20 rounded-lg p-2">
@@ -1669,11 +1970,11 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                     if (account) {
                       return (
                         <div className="mt-3 space-y-2">
-                          <div className="text-xs text-gray-400">
-                            Selected: <span className="text-white font-medium">{account.name}</span>
+                          <div className="text-xs text-muted-foreground">
+                            Selected: <span className="text-foreground font-medium">{account.name}</span>
                           </div>
                           <div className="flex items-center justify-between rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2">
-                            <span className="text-xs text-gray-400">Account balance (GL)</span>
+                            <span className="text-xs text-muted-foreground">Account balance (GL)</span>
                             <span className="text-base font-bold text-emerald-400 tabular-nums">{formatCurrency(bal)}</span>
                           </div>
                         </div>
@@ -1688,36 +1989,30 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
               <div className="space-y-4">
                 
                 {/* Date & Time */}
-                <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
-                  <label className="block text-sm font-semibold text-gray-300 mb-2">
-                    Payment Date & Time <span className="text-red-400">*</span>
-                  </label>
-                  <div className="relative">
-                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
-                    <input
-                      type="datetime-local"
-                      value={paymentDateTime}
-                      onChange={(e) => setPaymentDateTime(e.target.value)}
-                      className="w-full bg-gray-900 border-2 border-gray-700 rounded-lg pl-10 pr-4 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500 transition-colors"
-                    />
-                  </div>
+                <div className="bg-muted/40 border border-border rounded-xl p-4">
+                  <DateTimePicker
+                    label="Payment Date & Time"
+                    value={paymentDateTime}
+                    onChange={setPaymentDateTime}
+                    required
+                  />
                 </div>
 
                 {/* Attachments */}
-                <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
-                  <label className="block text-sm font-semibold text-gray-300 mb-2">
+                <div className="bg-muted/40 border border-border rounded-xl p-4">
+                  <label className="block text-sm font-semibold text-muted-foreground mb-2">
                     Attachments (Optional)
                   </label>
 
                   {/* Existing attachments (edit mode) – saved in DB; show image preview for images */}
                   {existingAttachments.length > 0 && (
                     <div className="mb-3 space-y-2">
-                      <p className="text-xs text-gray-500 mb-2">Saved attachments (included on save):</p>
+                      <p className="text-xs text-muted-foreground mb-2">Saved attachments (included on save):</p>
                       <div className="flex flex-col gap-2">
                         {existingAttachments.map((att, idx) => {
                           const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(att.name || '');
                           return (
-                            <div key={idx} className="flex flex-col gap-1.5 p-2 rounded-lg bg-gray-800/50 border border-gray-700">
+                            <div key={idx} className="flex flex-col gap-1.5 p-2 rounded-lg bg-muted/50 border border-border">
                               {isImage ? (
                                 <ExistingAttachmentImage att={att} />
                               ) : null}
@@ -1728,7 +2023,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                                   type="button"
                                   size="sm"
                                   variant="outline"
-                                  className="shrink-0 border-gray-600 text-gray-300 hover:bg-gray-700 text-xs h-7"
+                                  className="shrink-0 border-gray-600 text-muted-foreground hover:bg-muted text-xs h-7"
                                   onClick={async () => {
                                     const url = await getAttachmentOpenUrl(att.url);
                                     window.open(url, '_blank');
@@ -1746,9 +2041,9 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                   
                   {/* Upload Area */}
                   <label className={`block ${isProcessingAttachments ? 'cursor-wait opacity-70' : 'cursor-pointer'}`}>
-                    <div className="border-2 border-dashed border-gray-700 rounded-lg p-4 hover:border-blue-500 hover:bg-gray-900/50 transition-all text-center">
-                      <Upload className="mx-auto mb-2 text-gray-500" size={24} />
-                      <p className="text-xs text-gray-400 mb-0.5">
+                    <div className="border-2 border-dashed border-border rounded-lg p-4 hover:border-blue-500 hover:bg-muted/40 transition-all text-center">
+                      <Upload className="mx-auto mb-2 text-muted-foreground" size={24} />
+                      <p className="text-xs text-muted-foreground mb-0.5">
                         {isProcessingAttachments ? (
                           <span className="text-blue-400 font-medium">Compressing…</span>
                         ) : (
@@ -1757,7 +2052,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                           </>
                         )}
                       </p>
-                      <p className="text-xs text-gray-600">PDF, PNG, JPG up to 10MB</p>
+                      <p className="text-xs text-muted-foreground">PDF, PNG, JPG up to 10MB</p>
                     </div>
                     <input
                       type="file"
@@ -1775,13 +2070,13 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                       {attachments.map((file, index) => (
                         <div
                           key={index}
-                          className="flex items-center justify-between bg-gray-900 border border-gray-700 rounded-lg p-2"
+                          className="flex items-center justify-between bg-card border border-border rounded-lg p-2"
                         >
                           <div className="flex items-center gap-2 flex-1 min-w-0">
                             <FileText className="text-blue-400 flex-shrink-0" size={16} />
                             <div className="min-w-0 flex-1">
-                              <p className="text-xs text-white font-medium truncate">{file.name}</p>
-                              <p className="text-xs text-gray-500">{(file.size / 1024).toFixed(1)} KB</p>
+                              <p className="text-xs text-foreground font-medium truncate">{file.name}</p>
+                              <p className="text-xs text-muted-foreground">{(file.size / 1024).toFixed(1)} KB</p>
                             </div>
                           </div>
                           <button
@@ -1798,8 +2093,8 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                 </div>
 
                 {/* Notes */}
-                <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
-                  <label className="block text-sm font-semibold text-gray-300 mb-2">
+                <div className="bg-muted/40 border border-border rounded-xl p-4">
+                  <label className="block text-sm font-semibold text-muted-foreground mb-2">
                     Notes (Optional)
                   </label>
                   <textarea
@@ -1807,7 +2102,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                     onChange={(e) => setNotes(e.target.value)}
                     placeholder="Add payment notes, remarks, or additional details..."
                     rows={5}
-                    className="w-full bg-gray-900 border-2 border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors resize-none"
+                    className="w-full bg-card border-2 border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors resize-none"
                   />
                 </div>
               </div>
@@ -1815,8 +2110,8 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
           </div>
 
           {/* Footer */}
-          <div className="flex items-center justify-between p-5 border-t border-gray-800 bg-gray-950/50">
-            <div className="text-xs text-gray-400">
+          <div className="flex items-center justify-between p-5 border-t border-border bg-muted/40">
+            <div className="text-xs text-muted-foreground">
               {(existingAttachments.length > 0 || attachments.length > 0) && (
                 <span className="flex items-center gap-1.5">
                   <FileText size={12} />
@@ -1830,7 +2125,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
               <Button
                 variant="outline"
                 onClick={onClose}
-                className="border-gray-700 text-gray-300 hover:bg-gray-800 px-5 text-sm"
+                className="border-border text-muted-foreground hover:bg-muted px-5 text-sm"
                 disabled={isProcessing}
               >
                 Cancel
@@ -1857,6 +2152,8 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
           </fieldset>
         </div>
       </div>
-    </>
+    </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(overlay, document.body) : null;
 };

@@ -1,0 +1,18 @@
+{
+  "release_gate": "BLOCKED_PARTIAL_DEVICE_QA_PENDING_ROLES",
+  "play_store": "NOT_RELEASED",
+  "admin_qa": { "status": "PASS", "score": "21/21" },
+  "manager_users_in_db": 0,
+  "manager_create_blocked": "BLOCKED_NEEDS_OPERATOR_EMAIL",
+  "salesman_recommended": {
+    "name": "Noman Ali",
+    "email_masked": "no***@yahoo.com",
+    "company": "DIN BRIDAL"
+  },
+  "adb_device": "NOT_CONNECTED",
+  "target_package": "com.dincouture.erp",
+  "target_version_name": "1.0.5",
+  "target_version_code": 39,
+  "din_bridal_company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+  "main_branch_hq_branch_id": "cc920703-97a0-43a4-95d4-9262996c2af7"
+}

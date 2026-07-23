@@ -1,0 +1,13 @@
+{
+  "run": "PHASE_3B_G_REPO_SAFETY_SNAPSHOT",
+  "generated_at": "2026-06-29T15:00:00.000Z",
+  "branch": "main",
+  "head_commit": "14e12671",
+  "origin_main_commit": "14e12671",
+  "staged_files_count": 0,
+  "scope": "docs_evidence_decision_record_only",
+  "deploy": "SKIPPED",
+  "migrations": false,
+  "flags": false,
+  "gl_mutations": false
+}

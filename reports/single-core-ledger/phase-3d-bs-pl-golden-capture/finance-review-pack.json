@@ -1,0 +1,61 @@
+{
+  "phase": "3D",
+  "capturedAt": "2026-06-29T10:50:03.438Z",
+  "defaultFinanceStatus": "PENDING",
+  "rows": [
+    {
+      "company": "DIN CHINA",
+      "report": "Balance Sheet",
+      "candidateValues": "Assets PKR 89,754,087.52; L+E PKR 89,754,087.52 (legacy=preview)",
+      "financeStatus": "PENDING",
+      "reviewer": "",
+      "reviewDate": "",
+      "notes": "CANDIDATE_ONLY — section totals match; rule confirmation still required"
+    },
+    {
+      "company": "DIN CHINA",
+      "report": "Profit & Loss",
+      "candidateValues": "Revenue PKR 49,040,015.00; Net PKR 8,465,730.87 (legacy=preview)",
+      "financeStatus": "PENDING",
+      "reviewer": "",
+      "reviewDate": "",
+      "notes": "CANDIDATE_ONLY — COGS heuristic NEEDS_RULE_CONFIRMATION"
+    },
+    {
+      "company": "DIN BRIDAL",
+      "report": "Balance Sheet",
+      "candidateValues": "Assets PKR 13,521,792.00; L+E PKR 13,521,792.00 (legacy=preview)",
+      "financeStatus": "PENDING",
+      "reviewer": "",
+      "reviewDate": "",
+      "notes": "CANDIDATE_ONLY — section totals match; rule confirmation still required"
+    },
+    {
+      "company": "DIN BRIDAL",
+      "report": "Profit & Loss",
+      "candidateValues": "Revenue PKR 354,500.00; Net PKR 119,992.00 (legacy=preview)",
+      "financeStatus": "PENDING",
+      "reviewer": "",
+      "reviewDate": "",
+      "notes": "CANDIDATE_ONLY — COGS heuristic NEEDS_RULE_CONFIRMATION"
+    },
+    {
+      "company": "DIN COUTURE",
+      "report": "Balance Sheet",
+      "candidateValues": "Assets PKR 22,667,273.00; L+E PKR 22,667,273.00 (legacy=preview)",
+      "financeStatus": "PENDING",
+      "reviewer": "",
+      "reviewDate": "",
+      "notes": "CANDIDATE_ONLY — section totals match; rule confirmation still required"
+    },
+    {
+      "company": "DIN COUTURE",
+      "report": "Profit & Loss",
+      "candidateValues": "Revenue PKR 26,250.00; Net PKR -16,750.00 (legacy=preview)",
+      "financeStatus": "PENDING",
+      "reviewer": "",
+      "reviewDate": "",
+      "notes": "CANDIDATE_ONLY — COGS heuristic NEEDS_RULE_CONFIRMATION"
+    }
+  ]
+}

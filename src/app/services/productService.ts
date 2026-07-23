@@ -12,6 +12,10 @@ import {
 } from '@/app/utils/variationFieldMap';
 import { isPostgrestMissingColumnError } from '@/app/utils/postgrestSchemaError';
 import { resolveStockWriteBranchId } from '@/app/utils/branchScope';
+import { parseLocalDateTimeInput, toLocalISOString } from '@/app/utils/localDate';
+import { resolveProductUnitCost, roundStockMoney } from '@/app/utils/stockMovementValuation';
+import { stockAdjustmentJournalService } from '@/app/services/stockAdjustmentJournalService';
+import { mapPool } from '@/app/utils/perfTiming';
 
 /** normal = catalog product; production = manufactured from studio (STD-PROD, inventory + cost). */
 export type ProductType = 'normal' | 'production';
@@ -40,6 +44,8 @@ export interface Product {
   is_rentable: boolean;
   is_sellable: boolean;
   track_stock: boolean;
+  /** White/dyeable fabric eligible for bespoke customize picker. */
+  is_dyeable?: boolean;
   is_active: boolean;
   image_urls?: string[];
   /** normal = catalog; production = studio manufactured (STD-PROD). */
@@ -60,7 +66,7 @@ function ensureProductIds(payload: Record<string, unknown>): Record<string, unkn
 
 // Explicit select lists: never request current_stock (column may not exist). Stock from stock_movements/inventory overview.
 const PRODUCT_SELECT_SAFE =
-  'id, company_id, category_id, brand_id, unit_id, name, sku, barcode, description, cost_price, retail_price, wholesale_price, min_stock, max_stock, has_variations, is_rentable, is_sellable, track_stock, is_active, image_urls, product_type, source_type, created_at, updated_at';
+  'id, company_id, category_id, brand_id, unit_id, name, sku, barcode, description, cost_price, retail_price, wholesale_price, min_stock, max_stock, has_variations, is_rentable, is_sellable, track_stock, is_dyeable, is_active, image_urls, product_type, source_type, created_at, updated_at';
 
 /** Variation select layers — actual minimal schema first, richer schemas as fallback for future column additions. */
 const VARIATION_SELECT_LAYERS = [
@@ -203,6 +209,28 @@ export const productService = {
     throw lastErr || simpleError;
   },
 
+  /** Slim catalog for "copy variations" UI — name/sku/supplier + variation attributes only. */
+  async getProductsWithVariationsForCopy(companyId: string) {
+    const { data, error } = await supabase
+      .from('products')
+      .select(
+        'id, name, sku, supplier_id, has_variations, variations:product_variations(id, name, sku, attributes)',
+      )
+      .eq('company_id', companyId)
+      .eq('is_active', true)
+      .eq('has_variations', true)
+      .order('name');
+    if (error) {
+      if (isPostgrestMissingColumnError(error) || error.code === '42703') {
+        return this.getAllProducts(companyId);
+      }
+      throw error;
+    }
+    return (data || []).filter(
+      (p: { variations?: unknown[] }) => Array.isArray(p.variations) && p.variations.length > 0,
+    );
+  },
+
   // Get single product (no current_stock; stock from stock_movements)
   async getProduct(id: string) {
     for (const vSel of VARIATION_SELECT_LAYERS) {
@@ -226,15 +254,15 @@ export const productService = {
     return { ...data, variations: [] as unknown[] };
   },
 
-  // Create product (uses ERP numbering engine for SKU; auto-retry once on duplicate SKU).
+  // Create product (uses ERP numbering engine for SKU; auto-retry on duplicate SKU).
   // Never send current_stock to DB (column may not exist; stock is movement-based).
   async createProduct(product: Partial<Product>) {
     const raw = ensureProductIds(product as Record<string, unknown>);
     const { current_stock: _cs, opening_stock: _os, ...payload } = raw as Record<string, unknown>;
     const companyId = (payload.company_id as string) || (product as any).company_id;
-    let lastError: unknown = null;
+    const maxSkuRetries = 5;
 
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (let attempt = 0; attempt < maxSkuRetries; attempt++) {
       const { data, error } = await supabase
         .from('products')
         .insert(payload)
@@ -246,19 +274,20 @@ export const productService = {
       const isDuplicate = error.code === '23505' || (error.message && /duplicate key value|unique constraint/i.test(error.message));
       const isSkuConflict = isDuplicate && (error.message && /sku|SKU/i.test(error.message) || (product.sku && error.message?.includes(product.sku as string)));
 
-      if (isSkuConflict && companyId && attempt === 0) {
+      if (isSkuConflict && companyId && attempt < maxSkuRetries - 1) {
         try {
           const nextSKU = await documentNumberService.getNextProductSKU(companyId, null);
           (payload as any).sku = nextSKU;
-          lastError = error;
           continue;
-        } catch (e) {
-          lastError = e;
+        } catch {
+          // fall through to duplicate error below
         }
       }
 
       if (isDuplicate) {
-        const hint = product.sku ? `SKU "${product.sku}" is already in use for this company.` : 'A product with this SKU already exists.';
+        const hint = (payload as any).sku
+          ? `SKU "${(payload as any).sku}" is already in use for this company.`
+          : 'A product with this SKU already exists.';
         throw new Error(`${hint} Please use a different SKU or generate a new one.`);
       }
       throw error;
@@ -581,7 +610,7 @@ export const productService = {
     let variationsUpdated = 0;
 
     try {
-      for (const row of variations) {
+      const variationResults = await mapPool(variations, 5, async (row) => {
         const varSku = row.sku.trim();
         if (!varSku) throw new Error(`Variation "${row.name}" is missing SKU`);
         const attrs = row.attributes ?? { variant: row.name };
@@ -598,43 +627,49 @@ export const productService = {
             wholesale_price: row.wholesale_price ?? null,
             price: row.retail_price ?? null,
           });
-          variationIds.push(String(existingVar.id));
-          variationsUpdated++;
-        } else {
-          const createdVar = await this.createVariation({
-            product_id: productId!,
-            name: row.name,
-            sku: varSku,
-            barcode: row.barcode ?? null,
-            attributes: attrs,
-            cost_price: row.cost_price,
-            retail_price: row.retail_price,
-            wholesale_price: row.wholesale_price,
-            current_stock: 0,
-          });
-          const vid = (createdVar as { id?: string })?.id;
-          if (!vid) throw new Error(`Variation "${row.name}" save returned no ID`);
-          variationIds.push(vid);
-          variationsCreated++;
+          return { id: String(existingVar.id), created: false as const, openingMovementId: null as string | null };
+        }
 
-          const openingStock = Number(row.opening_stock) || 0;
-          if (openingStock > 0) {
-            const { error: movErr, movementId } = await inventoryService.insertOpeningBalanceMovement(
-              companyId,
-              branchIdOrNull,
-              productId!,
-              openingStock,
-              row.cost_price ?? 0,
-              vid,
-              { deferGlSync: deferOpeningBalanceGlSync }
-            );
-            if (movErr) {
-              console.warn('[productService] Variation opening stock skipped:', movErr.message || movErr);
-            } else if (movementId) {
-              openingMovementIds.push(movementId);
-            }
+        const createdVar = await this.createVariation({
+          product_id: productId!,
+          name: row.name,
+          sku: varSku,
+          barcode: row.barcode ?? null,
+          attributes: attrs,
+          cost_price: row.cost_price,
+          retail_price: row.retail_price,
+          wholesale_price: row.wholesale_price,
+          current_stock: 0,
+        });
+        const vid = (createdVar as { id?: string })?.id;
+        if (!vid) throw new Error(`Variation "${row.name}" save returned no ID`);
+
+        let openingMovementId: string | null = null;
+        const openingStock = Number(row.opening_stock) || 0;
+        if (openingStock > 0) {
+          const { error: movErr, movementId } = await inventoryService.insertOpeningBalanceMovement(
+            companyId,
+            branchIdOrNull,
+            productId!,
+            openingStock,
+            row.cost_price ?? 0,
+            vid,
+            { deferGlSync: deferOpeningBalanceGlSync }
+          );
+          if (movErr) {
+            console.warn('[productService] Variation opening stock skipped:', movErr.message || movErr);
+          } else if (movementId) {
+            openingMovementId = movementId;
           }
         }
+        return { id: vid, created: true as const, openingMovementId };
+      });
+
+      for (const r of variationResults) {
+        variationIds.push(r.id);
+        if (r.created) variationsCreated++;
+        else variationsUpdated++;
+        if (r.openingMovementId) openingMovementIds.push(r.openingMovementId);
       }
 
       if (!hasVariations && parentCreated) {
@@ -747,20 +782,54 @@ export const productService = {
     throw error;
   },
 
-  // Get low stock products. Movement-based only (stock_movements). Never queries current_stock.
+  /**
+   * Low-stock badge list. Prefer cheap RPC (inventory_balance); fall back to slim products query.
+   * Avoids full getInventoryOverview (variations/combos/maps) used by Inventory screens.
+   */
   async getLowStockProducts(companyId: string, branchId?: string | null) {
+    const mark = import.meta.env?.DEV ? `getLowStockProducts:${companyId}` : '';
+    if (mark) console.time(mark);
     try {
-      const rows = await inventoryService.getInventoryOverview(companyId, branchId ?? undefined);
-      const low = (rows || []).filter((r) => r.minStock > 0 && r.stock < r.minStock);
-      return low.map((r) => ({
-        id: r.id,
-        name: r.name,
-        sku: r.sku,
-        current_stock: r.stock,
-        min_stock: r.minStock,
-      }));
+      const { data, error } = await supabase.rpc('get_low_stock_products', {
+        p_company_id: companyId,
+        p_branch_id: branchId ?? null,
+        p_limit: 50,
+      });
+      if (!error && data != null) {
+        const rows = Array.isArray(data)
+          ? data
+          : typeof data === 'string'
+            ? (JSON.parse(data) as unknown[])
+            : [];
+        if (Array.isArray(rows)) {
+          return rows.map((r: Record<string, unknown>) => ({
+            id: String(r.id),
+            name: (r.name as string) || undefined,
+            sku: (r.sku as string) || undefined,
+            current_stock: Number(r.current_stock) || 0,
+            min_stock: Number(r.min_stock) || 0,
+          }));
+        }
+      }
+      // Fallback: products with min_stock only (no overview rebuild)
+      let q = supabase
+        .from('products')
+        .select('id, name, sku, min_stock')
+        .eq('company_id', companyId)
+        .eq('is_active', true)
+        .gt('min_stock', 0)
+        .limit(200);
+      const { data: products, error: pErr } = await q;
+      if (pErr || !products?.length) return [];
+      // Without inventory_balance RPC, avoid overview — return empty rather than 4s fan-out
+      if (import.meta.env?.DEV) {
+        console.warn('[getLowStockProducts] RPC unavailable; skipping full inventoryOverview fallback');
+      }
+      return [];
     } catch {
       return [];
+    } finally {
+      if (mark) console.timeEnd(mark);
     }
   },
 
@@ -903,10 +972,26 @@ export const productService = {
     reference_id?: string;
     notes?: string;
     created_by?: string;
+    /** When set (e.g. manual stock adjustment), writes stock_movements.created_at */
+    created_at?: string;
     box_change?: number; // Packing: net boxes (positive IN, negative OUT)
     piece_change?: number; // Packing: net pieces (positive IN, negative OUT)
   }) {
     const resolvedBranchId = resolveStockWriteBranchId(data.branch_id, undefined);
+
+    const movementType = String(data.movement_type || '').toLowerCase().trim();
+    const referenceType = String(data.reference_type || '').toLowerCase().trim();
+    const isGenericAdjustment =
+      movementType === 'adjustment' && referenceType !== 'opening_balance';
+
+    let unitCost = Number(data.unit_cost) || 0;
+    let totalCost = Number(data.total_cost) || 0;
+    if (isGenericAdjustment && !(totalCost > 0) && !(unitCost > 0)) {
+      unitCost = await resolveProductUnitCost(data.product_id, data.variation_id ?? null);
+      totalCost = roundStockMoney(Math.abs(Number(data.quantity) || 0) * unitCost);
+    } else if (!totalCost && unitCost > 0) {
+      totalCost = roundStockMoney(unitCost * Math.abs(Number(data.quantity) || 0));
+    }
 
     console.log('[CREATE STOCK MOVEMENT] Creating movement:', {
       product_id: data.product_id,
@@ -924,13 +1009,17 @@ export const productService = {
       product_id: data.product_id,
       variation_id: data.variation_id || null,
       quantity: data.quantity,
-      unit_cost: data.unit_cost || 0,
-      total_cost: data.total_cost || (data.unit_cost || 0) * Math.abs(data.quantity),
+      unit_cost: unitCost,
+      total_cost: totalCost,
       reference_type: data.reference_type || null,
       reference_id: data.reference_id || null,
       notes: data.notes || null,
       created_by: data.created_by || null,
     };
+
+    if (data.created_at && String(data.created_at).trim()) {
+      insertData.created_at = toLocalISOString(parseLocalDateTimeInput(data.created_at));
+    }
 
     insertData.movement_type = data.movement_type;
     // Box and pieces are always integers in inventory (no decimals)
@@ -1003,6 +1092,13 @@ export const productService = {
           if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('inventory-updated'));
           clearInventoryOverviewCache(data.company_id);
           await inventoryService.syncOpeningJournalIfApplicable(retryMovement2);
+          if (isGenericAdjustment) {
+            try {
+              await stockAdjustmentJournalService.syncStockAdjustmentFromMovementId(retryMovement2.id);
+            } catch (jeErr) {
+              console.warn('[CREATE STOCK MOVEMENT] Stock adjustment GL sync failed:', jeErr);
+            }
+          }
           return retryMovement2;
         }
         
@@ -1014,6 +1110,13 @@ export const productService = {
         if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('inventory-updated'));
         clearInventoryOverviewCache(data.company_id);
         await inventoryService.syncOpeningJournalIfApplicable(retryMovement);
+        if (isGenericAdjustment) {
+          try {
+            await stockAdjustmentJournalService.syncStockAdjustmentFromMovementId(retryMovement.id);
+          } catch (jeErr) {
+            console.warn('[CREATE STOCK MOVEMENT] Stock adjustment GL sync failed:', jeErr);
+          }
+        }
         return retryMovement;
       }
       
@@ -1041,6 +1144,13 @@ export const productService = {
     if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('inventory-updated'));
     clearInventoryOverviewCache(data.company_id);
     await inventoryService.syncOpeningJournalIfApplicable(movement);
+    if (isGenericAdjustment) {
+      try {
+        await stockAdjustmentJournalService.syncStockAdjustmentFromMovementId(movement.id);
+      } catch (jeErr) {
+        console.warn('[CREATE STOCK MOVEMENT] Stock adjustment GL sync failed:', jeErr);
+      }
+    }
     return movement;
   },
 

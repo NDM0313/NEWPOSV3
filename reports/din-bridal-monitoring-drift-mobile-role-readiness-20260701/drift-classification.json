@@ -1,0 +1,41 @@
+{
+  "run": "DIN_BRIDAL_MONITORING_DRIFT_MOBILE_ROLE_READINESS",
+  "task": "drift-classification",
+  "generated_at": "2026-07-01T12:45:00.000Z",
+  "classifications": {
+    "trial_balance": {
+      "classification": "NEW_UNAPPROVED_DATA_DRIFT",
+      "confidence": "high",
+      "evidence": [
+        "Golden 22056075 refreshed 2026-06-30 post-1100 apply; monitoring PASS until 2026-07-01T11:32Z",
+        "Actual rose to 22136075 at 11:58Z (+80k) then 22215400 at 12:31Z (+79.3k more)",
+        "Debit=credit maintained; unified loader PASS",
+        "BS/P&L mobile goldens still PASS on device — not a mobile APK regression"
+      ],
+      "recommended_next_action": "Operator confirms July 1 DIN BRIDAL GL activity; if legitimate, run separate operator-approved golden refresh (TB + roznamcha). If unexplained, run read-only JE audit for +159,325 cumulative delta.",
+      "release_approval_pack_blocked": true,
+      "mobile_admin_qa_valid": true,
+      "manager_salesman_qa_can_continue": true
+    },
+    "roznamcha": {
+      "classification": "NEW_UNAPPROVED_DATA_DRIFT",
+      "confidence": "high",
+      "evidence": [
+        "Cash in and closing +80k; cash out unchanged",
+        "First failure at 2026-07-01T11:58Z after prior PASS at 11:32Z",
+        "Loaders unified; no console/RPC errors",
+        "Aligns with TB +80k wave — not isolated UI bug"
+      ],
+      "recommended_next_action": "Same as TB — confirm business activity or audit liquidity postings; golden refresh only with separate operator approval.",
+      "release_approval_pack_blocked": true,
+      "mobile_admin_qa_valid": true,
+      "manager_salesman_qa_can_continue": true
+    }
+  },
+  "not_classified_as": [
+    "MONITORING_SCRIPT_BUG",
+    "REPORT_SEMANTICS_MISMATCH",
+    "TRANSIENT_MONITORING_FAILURE_RESOLVED"
+  ],
+  "mobile_apk_failure": false
+}

@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { readSaleBillRef } from '@/app/utils/saleBillRef';
+import { parseLocalDateInput } from '@/app/utils/localDate';
 import { 
   Plus, ShoppingCart, DollarSign, TrendingUp, 
   MoreVertical, Eye, Edit, Trash2, FileText, Phone, MapPin,
@@ -58,11 +59,27 @@ import { useGlobalFilter } from '@/app/context/GlobalFilterContext';
 import { getContactWhatsAppPhone, openWhatsAppShare } from '@/app/lib/phoneWhatsApp';
 import { saleService } from '@/app/services/saleService';
 import { supabase } from '@/lib/supabase';
+import {
+  safeSessionStorageGetItem,
+  safeSessionStorageRemoveItem,
+} from '@/app/lib/safeBrowserStorage';
 import { branchService, Branch } from '@/app/services/branchService';
 import { saleReturnService } from '@/app/services/saleReturnService';
 import { shipmentService } from '@/app/services/shipmentService';
 import { Pagination } from '@/app/components/ui/pagination';
 import { ListToolbar } from '@/app/components/ui/list-toolbar';
+import {
+  ErpPage,
+  ErpPageDescription,
+  ErpPageHeader,
+  ErpPageTitle,
+  ErpDataGridBody,
+  ErpDataGridCell,
+  ErpDataGridHeader,
+  ErpDataGridHeaderRow,
+  ErpDataGridRow,
+  ErpDataGridShell,
+} from '@/app/components/ui/erp-surfaces';
 import { formatLongDate, formatDateAndTime } from '@/app/components/ui/utils';
 import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDialog';
 import { UnifiedLedgerView } from '@/app/components/shared/UnifiedLedgerView';
@@ -81,6 +98,7 @@ import { exportToCSV, exportToExcel, exportToPDF, type ExportData } from '@/app/
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 import { getEffectiveSaleStatus, getSaleStatusBadgeConfig, DEFAULT_SALE_BADGE, isPaymentClosedForSale, canAddPaymentToSale, saleLifecycleHidesPaymentColumns } from '@/app/utils/statusHelpers';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { AdaptiveCurrencyValue } from '@/app/components/shared/AdaptiveCurrencyValue';
 import { getSaleDisplayNumber } from '@/app/lib/documentDisplayNumbers';
 import { transitionSaleLifecycle, restoreSaleFromCancelled } from '@/app/lib/documentLifecycleActions';
 import { SaleLifecycleMenuBlock, type SaleLifecycleAction } from '@/app/components/sales/SaleLifecycleMenuBlock';
@@ -191,7 +209,46 @@ export const SalesPage = () => {
       }
     };
     loadSalesWithReturns();
-  }, [companyId, branchId, sales.length]);
+  }, [companyId, branchId]);
+
+  // Refresh returns map on explicit sale lifecycle / returns events (not every sales.length change)
+  useEffect(() => {
+    if (!companyId) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const schedule = () => {
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        void (async () => {
+          try {
+            const returns = await saleReturnService.getSaleReturns(
+              companyId,
+              branchId === 'all' ? undefined : branchId || undefined,
+            );
+            const saleIdsWithReturns = new Set<string>();
+            returns.forEach((ret: any) => {
+              if (ret.original_sale_id && String(ret.status).toLowerCase() === 'final') {
+                saleIdsWithReturns.add(ret.original_sale_id);
+              }
+            });
+            setSalesWithReturns(saleIdsWithReturns);
+          } catch (error) {
+            console.error('[SALES PAGE] Error loading sales with returns:', error);
+          }
+        })();
+      }, 300);
+    };
+    const onSale = () => schedule();
+    window.addEventListener('saleSaved', onSale);
+    window.addEventListener('saleUpdated', onSale);
+    window.addEventListener('saleReturnSaved', onSale);
+    return () => {
+      if (timer) clearTimeout(timer);
+      window.removeEventListener('saleSaved', onSale);
+      window.removeEventListener('saleUpdated', onSale);
+      window.removeEventListener('saleReturnSaved', onSale);
+    };
+  }, [companyId, branchId]);
 
   
   // 🎯 Payment Dialog & Ledger states
@@ -234,7 +291,7 @@ export const SalesPage = () => {
   const [attachmentsDialogList, setAttachmentsDialogList] = useState<{ url: string; name: string }[] | null>(null);
   
   // Invoice source sub-filter (only when main list = Sales). Returns list uses activeMainTab === 'returns'.
-  const [activeTab, setActiveTab] = useState<'all' | 'pos' | 'regular' | 'quotation' | 'final'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'pos' | 'regular' | 'order' | 'quotation' | 'final'>('all');
   /** Main list: invoices vs sale returns (same pattern as PurchasesPage). */
   const [activeMainTab, setActiveMainTab] = useState<'sales' | 'returns'>('sales');
   
@@ -255,14 +312,14 @@ export const SalesPage = () => {
       const st = String(ret?.status || '').toLowerCase();
       if (st === 'void') {
         return (
-          <div className="text-xs text-gray-500 leading-snug">
+          <div className="text-xs text-muted-foreground leading-snug">
             Voided — stock and ledger reversals apply where posted.
           </div>
         );
       }
       if (st !== 'final') {
         return (
-          <div className="text-xs text-gray-500 leading-snug">
+          <div className="text-xs text-muted-foreground leading-snug">
             Draft — finalize the return before settlement.
           </div>
         );
@@ -284,12 +341,12 @@ export const SalesPage = () => {
 
       return (
         <div className="space-y-1.5 text-left leading-snug" onClick={(e) => e.stopPropagation()}>
-          <div className="text-[11px] text-gray-400">
+          <div className="text-[11px] text-muted-foreground">
             Invoice: <span className="text-gray-200 font-medium">{psLabel}</span>
             {paid > 0 && (
-              <span className="text-gray-500">
+              <span className="text-muted-foreground">
                 {' '}
-                · Collected <span className="text-green-400/90 tabular-nums">{formatCurrency(paid)}</span>
+                · Collected <span className="text-[var(--erp-money-positive)]/90 tabular-nums">{formatCurrency(paid)}</span>
               </span>
             )}
             {due > 0 && (
@@ -298,7 +355,7 @@ export const SalesPage = () => {
                 · Outstanding <span className="tabular-nums">{formatCurrency(due)}</span>
               </span>
             )}
-            {due <= 0 && ps === 'paid' && <span className="text-green-400/70"> · Invoice balance clear</span>}
+            {due <= 0 && ps === 'paid' && <span className="text-[var(--erp-money-positive)]/70"> · Invoice balance clear</span>}
           </div>
 
           <div className="flex flex-wrap items-center gap-1.5">
@@ -321,7 +378,7 @@ export const SalesPage = () => {
               variant={creditSettled ? 'outline' : 'default'}
               className={cn(
                 'h-7 text-[11px] px-2',
-                !creditSettled && 'bg-amber-600 hover:bg-amber-500 text-white border-amber-500'
+                !creditSettled && 'bg-amber-600 hover:bg-amber-500 text-foreground border-amber-500'
               )}
               onClick={(e) => {
                 e.stopPropagation();
@@ -348,7 +405,7 @@ export const SalesPage = () => {
             </Button>
           </div>
 
-          <p className="text-[10px] text-gray-600">
+          <p className="text-[10px] text-muted-foreground">
             Final return: inventory &amp; GL posting completed (COGS / revenue path).
           </p>
         </div>
@@ -374,12 +431,12 @@ export const SalesPage = () => {
 
   // Check for customer filter from ContactsPage
   useEffect(() => {
-    const customerId = sessionStorage.getItem('salesFilter_customerId');
-    const customerName = sessionStorage.getItem('salesFilter_customerName');
+    const customerId = safeSessionStorageGetItem('salesFilter_customerId');
+    const customerName = safeSessionStorageGetItem('salesFilter_customerName');
     if (customerId) {
       setCustomerFilter(customerId);
-      sessionStorage.removeItem('salesFilter_customerId');
-      sessionStorage.removeItem('salesFilter_customerName');
+      safeSessionStorageRemoveItem('salesFilter_customerId');
+      safeSessionStorageRemoveItem('salesFilter_customerName');
       if (customerName) {
         toast.info(`Filtering sales for ${customerName}`);
       }
@@ -430,9 +487,9 @@ export const SalesPage = () => {
   /** Open a specific sale return from Accounting → “Open source” on a sale_return journal row. */
   useEffect(() => {
     if (typeof window === 'undefined' || !companyId) return;
-    const pendingId = sessionStorage.getItem('pendingAccountingOpen_saleReturnId');
+    const pendingId = safeSessionStorageGetItem('pendingAccountingOpen_saleReturnId');
     if (!pendingId) return;
-    sessionStorage.removeItem('pendingAccountingOpen_saleReturnId');
+    safeSessionStorageRemoveItem('pendingAccountingOpen_saleReturnId');
     let cancelled = false;
     void (async () => {
       try {
@@ -741,6 +798,7 @@ export const SalesPage = () => {
   const [visibleColumns, setVisibleColumns] = useState({
     actions: true,
     date: true,
+    deadline: true,
     invoiceNo: true,
     notes: true, // Reference / Notes
     type: true, // POS vs Regular (same as SalesListDesignTestPage)
@@ -767,6 +825,7 @@ export const SalesPage = () => {
   const [columnOrder, setColumnOrder] = useState([
     'actions', // Action column first for easier access
     'date',
+    'deadline',
     'invoiceNo',
     'notes',
     'type', // POS vs Regular (same as SalesListDesignTestPage)
@@ -789,6 +848,7 @@ export const SalesPage = () => {
     const labels: Record<string, string> = {
       actions: 'Actions',
       date: 'Date',
+      deadline: 'Delivery',
       invoiceNo: 'Invoice No.',
       notes: 'Ref / Notes',
       type: 'Type',
@@ -839,6 +899,7 @@ export const SalesPage = () => {
     const widths: Record<string, string> = {
       actions: '60px',
       date: '100px',
+      deadline: '100px',
       invoiceNo: '110px',
       notes: '120px',
       type: '100px',
@@ -864,6 +925,7 @@ export const SalesPage = () => {
   const alignments: Record<string, string> = {
     actions: 'text-center',
     date: 'text-left',
+    deadline: 'text-left',
     invoiceNo: 'text-left',
     type: 'text-left',
     customer: 'text-left',
@@ -880,6 +942,13 @@ export const SalesPage = () => {
     shipping: 'text-center',
     items: 'text-center',
     createdBy: 'text-center',
+  };
+
+  const gridCellAlign = (key: string): 'left' | 'center' | 'right' => {
+    const a = alignments[key] || 'text-left';
+    if (a === 'text-right') return 'right';
+    if (a === 'text-center') return 'center';
+    return 'left';
   };
 
   // Build grid template columns string based on column order
@@ -957,11 +1026,13 @@ export const SalesPage = () => {
     if (activeMainTab === 'returns') return [];
     
     return sales.filter((sale: Sale) => {
-      // Tab filter - POS vs Regular vs Quotation vs Final
+      // Tab filter - POS vs Regular vs Order vs Quotation vs Final
       if (activeTab === 'pos') {
         if (!isLikelyPOS(sale)) return false;
       } else if (activeTab === 'regular') {
         if (isLikelyPOS(sale)) return false;
+      } else if (activeTab === 'order') {
+        if (getEffectiveSaleStatus(sale) !== 'order') return false;
       } else if (activeTab === 'quotation') {
         if (getEffectiveSaleStatus(sale) !== 'quotation') return false;
       } else if (activeTab === 'final') {
@@ -969,11 +1040,13 @@ export const SalesPage = () => {
       }
       // activeTab === 'all' shows all
 
-      // Global filter date range
+      // Global filter date range (local calendar — inclusive end of day)
       if (startDate && endDate) {
-        const saleDate = new Date(sale.date);
-        const start = new Date(startDate);
-        const end = new Date(endDate);
+        const saleDate = parseLocalDateInput(String(sale.date).slice(0, 10));
+        const start = parseLocalDateInput(startDate);
+        start.setHours(0, 0, 0, 0);
+        const end = parseLocalDateInput(endDate);
+        end.setHours(23, 59, 59, 999);
         if (saleDate < start || saleDate > end) return false;
       }
       // If no date range, show all (no filter applied)
@@ -992,8 +1065,8 @@ export const SalesPage = () => {
       // Payment status filter
       if (paymentStatusFilter !== 'all' && sale.paymentStatus !== paymentStatusFilter) return false;
 
-      // Sale lifecycle status filter (draft / quotation / order / final)
-      if (saleStatusFilter !== 'all' && (sale as any).status !== saleStatusFilter) return false;
+      // Sale lifecycle status filter (draft / quotation / order / final / cancelled)
+      if (saleStatusFilter !== 'all' && getEffectiveSaleStatus(sale) !== saleStatusFilter) return false;
 
       // Shipping status filter
       if (shippingStatusFilter !== 'all' && sale.shippingStatus !== shippingStatusFilter) return false;
@@ -1036,12 +1109,16 @@ export const SalesPage = () => {
   ]);
 
   // Sort state: default createdAt descending so newest-created sales appear first
-  type SaleSortKey = 'date' | 'createdAt' | 'invoiceNo' | 'customer' | 'location' | 'saleStatus' | 'paymentStatus' | 'total' | 'paid' | 'due' | 'returnDue' | 'return' | 'shipping' | 'items' | 'createdBy';
+  type SaleSortKey = 'date' | 'deadline' | 'createdAt' | 'invoiceNo' | 'customer' | 'location' | 'saleStatus' | 'paymentStatus' | 'total' | 'paid' | 'due' | 'returnDue' | 'return' | 'shipping' | 'items' | 'createdBy';
   const [sortKey, setSortKey] = useState<SaleSortKey>('createdAt');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   const getSaleSortValue = (s: Sale, key: SaleSortKey): string | number => {
     if (key === 'date') return new Date(s.date).getTime();
+    if (key === 'deadline') {
+      const d = (s as any).deadline;
+      return d ? new Date(d).getTime() : 0;
+    }
     if (key === 'createdAt') return new Date((s as any).createdAt || s.date || 0).getTime();
     if (key === 'customer') return s.customerName || s.customer || '';
     if (key === 'shipping') return s.shippingStatus || '';
@@ -1090,16 +1167,12 @@ export const SalesPage = () => {
     invoiceCount: finalSalesForSummary.length,
   }), [finalSalesForSummary, getEffectiveDue]);
 
-  // Client-side pagination: context loads all sales (capped); we filter, sort, then slice for current page
+  // Server-paginated: context holds one page; client filters/sorts within that page
   const pageSize = contextPageSize ?? 50;
-  const totalFilteredCount = sortedSales.length;
-  const totalPages = Math.max(1, Math.ceil(totalFilteredCount / pageSize));
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const currentPage = Math.min(page + 1, totalPages);
 
-  const paginatedSales = useMemo(
-    () => sortedSales.slice(page * pageSize, (page + 1) * pageSize),
-    [sortedSales, page, pageSize]
-  );
+  const paginatedSales = useMemo(() => sortedSales, [sortedSales]);
 
   // Paid amount from payment records (fixes wrong sales.paid_amount in table - same as ViewSaleDetailsDrawer)
   const [paidBySaleId, setPaidBySaleId] = useState<Map<string, number>>(new Map());
@@ -1143,6 +1216,10 @@ export const SalesPage = () => {
     setPage(0);
   }, [searchTerm, dateFilter, customerFilter, paymentStatusFilter, saleStatusFilter, shippingStatusFilter, branchFilter, paymentMethodFilter, setPage]);
 
+  React.useEffect(() => {
+    setPage(0);
+  }, [startDate, endDate, branchId, setPage]);
+
   // Clamp page when total pages shrinks (e.g. filter leaves fewer pages)
   React.useEffect(() => {
     if (totalPages >= 1 && page >= totalPages) setPage(totalPages - 1);
@@ -1178,11 +1255,11 @@ export const SalesPage = () => {
 
   const getPaymentStatusBadge = (status: PaymentStatus) => {
     const config: Record<string, { bg: string; text: string; border: string; icon: typeof CheckCircle }> = {
-      paid: { bg: 'bg-green-500/20', text: 'text-green-400', border: 'border-green-500/30', icon: CheckCircle },
+      paid: { bg: 'bg-green-500/20', text: 'text-[var(--erp-money-positive)]', border: 'border-green-500/30', icon: CheckCircle },
       partial: { bg: 'bg-yellow-500/20', text: 'text-yellow-400', border: 'border-yellow-500/30', icon: Clock },
       unpaid: { bg: 'bg-red-500/20', text: 'text-red-400', border: 'border-red-500/30', icon: XCircle },
     };
-    const c = config[status] ?? config.paid ?? { bg: 'bg-gray-500/20', text: 'text-gray-400', border: 'border-gray-500/30', icon: CheckCircle };
+    const c = config[status] ?? config.paid ?? { bg: 'bg-gray-500/20', text: 'text-muted-foreground', border: 'border-gray-500/30', icon: CheckCircle };
     const { bg, text, border, icon: Icon } = c;
     return (
       <Badge className={cn('text-xs font-medium capitalize gap-1 h-6 px-2', bg, text, border)}>
@@ -1199,8 +1276,8 @@ export const SalesPage = () => {
       Picked: { bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500/30', icon: '📦' },
       'In Transit': { bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500/30', icon: '🚚' },
       'Out for Delivery': { bg: 'bg-indigo-500/20', text: 'text-indigo-400', border: 'border-indigo-500/30', icon: '🚚' },
-      Delivered: { bg: 'bg-green-500/20', text: 'text-green-400', border: 'border-green-500/30', icon: '✅' },
-      delivered: { bg: 'bg-green-500/20', text: 'text-green-400', border: 'border-green-500/30', icon: '✅' },
+      Delivered: { bg: 'bg-green-500/20', text: 'text-[var(--erp-money-positive)]', border: 'border-green-500/30', icon: '✅' },
+      delivered: { bg: 'bg-green-500/20', text: 'text-[var(--erp-money-positive)]', border: 'border-green-500/30', icon: '✅' },
       Returned: { bg: 'bg-orange-500/20', text: 'text-orange-400', border: 'border-orange-500/30', icon: '↩️' },
       Cancelled: { bg: 'bg-red-500/20', text: 'text-red-400', border: 'border-red-500/30', icon: '❌' },
       cancelled: { bg: 'bg-red-500/20', text: 'text-red-400', border: 'border-red-500/30', icon: '❌' },
@@ -1209,7 +1286,7 @@ export const SalesPage = () => {
       pending: { bg: 'bg-yellow-500/20', text: 'text-yellow-400', border: 'border-yellow-500/30', icon: '📦' },
       Pending: { bg: 'bg-yellow-500/20', text: 'text-yellow-400', border: 'border-yellow-500/30', icon: '📦' },
     };
-    const c = config[s] ?? { bg: 'bg-gray-500/20', text: 'text-gray-400', border: 'border-gray-500/30', icon: '📦' };
+    const c = config[s] ?? { bg: 'bg-gray-500/20', text: 'text-muted-foreground', border: 'border-gray-500/30', icon: '📦' };
     const { bg, text, border, icon } = c;
     const label = s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
     return (
@@ -1240,11 +1317,27 @@ export const SalesPage = () => {
         // Use sale.date (the actual sale date) instead of sale.createdAt (database timestamp)
         const dateTime = formatDateAndTime(sale.date || sale.createdAt);
         return (
-          <div className="flex flex-col text-sm text-gray-400">
+          <div className="flex flex-col text-sm text-muted-foreground">
             <span>{dateTime.date}</span>
-            <span className="text-xs text-gray-500">{dateTime.time}</span>
+            <span className="text-xs text-muted-foreground/80">{dateTime.time}</span>
           </div>
         );
+
+      case 'deadline': {
+        const delivery = (sale as any).deadline as string | undefined;
+        if (!delivery) {
+          return <span className="text-sm text-muted-foreground/50">—</span>;
+        }
+        try {
+          return (
+            <span className="text-sm text-cyan-300/90">
+              {new Date(delivery).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+            </span>
+          );
+        } catch {
+          return <span className="text-sm text-muted-foreground">{delivery}</span>;
+        }
+      }
       
       case 'invoiceNo': {
         const displayNo =
@@ -1276,7 +1369,7 @@ export const SalesPage = () => {
         const display = billRef || (sale as any).notes || '-';
         const title = [billRef && `Bill: ${billRef}`, (sale as any).notes].filter(Boolean).join(' · ');
         return (
-          <div className="text-sm text-gray-400 truncate max-w-[120px]" title={title || ''}>
+          <div className="text-sm text-muted-foreground truncate max-w-[120px]" title={title || ''}>
             {display}
           </div>
         );
@@ -1290,13 +1383,13 @@ export const SalesPage = () => {
         // Same UX pattern as Supplier list
         return (
           <div className="min-w-0">
-            <div className="text-sm font-medium text-white truncate leading-[1.3]">
+            <div className="text-sm font-medium text-foreground truncate leading-[1.3]">
               {sale.customerName || 'Walk-in Customer'}
             </div>
             {/* Show phone number if exists - no placeholder/icon/dash if empty */}
             {sale.contactNumber && sale.contactNumber.trim() && (
-              <div className="flex items-center gap-1 text-xs text-gray-500 mt-0.5">
-                <Phone size={10} className="text-gray-600" />
+              <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
+                <Phone size={10} className="text-muted-foreground/70" />
                 <span className="truncate">{sale.contactNumber}</span>
               </div>
             )}
@@ -1306,8 +1399,8 @@ export const SalesPage = () => {
       case 'contact':
         // Legacy column - kept for backwards compatibility but hidden by default
         return (
-          <div className="flex items-center gap-1.5 text-xs text-gray-400">
-            <Phone size={12} className="text-gray-600" />
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Phone size={12} className="text-muted-foreground/70" />
             <span className="truncate">{sale.contactNumber || '—'}</span>
           </div>
         );
@@ -1342,8 +1435,8 @@ export const SalesPage = () => {
         }
         
         return (
-          <div className="flex items-center gap-1.5 text-xs text-gray-400">
-            <MapPin size={12} className="text-gray-600" />
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <MapPin size={12} className="text-muted-foreground/70" />
             <span className="truncate">{locationText || '—'}</span>
           </div>
         );
@@ -1366,12 +1459,12 @@ export const SalesPage = () => {
                   className="p-0 h-auto bg-transparent border-0 cursor-pointer hover:opacity-90"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  {statusBadge || <span className="text-xs text-gray-600">—</span>}
+                  {statusBadge || <span className="text-xs text-muted-foreground">—</span>}
                 </button>
               </PopoverTrigger>
               <PopoverContent
                 align="start"
-                className="w-auto p-0 border-gray-700 bg-gray-900 text-white"
+                className="w-auto p-0 border-border bg-popover text-popover-foreground"
                 onClick={(e) => e.stopPropagation()}
               >
                 <SaleLifecycleMenuBlock
@@ -1439,7 +1532,7 @@ export const SalesPage = () => {
       case 'paymentStatus': {
         const effectiveStatus = getEffectiveSaleStatus(sale);
         if (saleLifecycleHidesPaymentColumns(sale)) {
-          return <span className="text-xs text-gray-500">—</span>;
+          return <span className="text-xs text-muted-foreground">—</span>;
         }
         const paymentClosed = isPaymentClosedForSale(sale);
         const isCancelled = effectiveStatus === 'cancelled';
@@ -1471,16 +1564,16 @@ export const SalesPage = () => {
       case 'paymentMethod': {
         const st = getEffectiveSaleStatus(sale);
         if (saleLifecycleHidesPaymentColumns(sale)) {
-          return <span className="text-xs text-gray-500">—</span>;
+          return <span className="text-xs text-muted-foreground">—</span>;
         }
         return (
-          <span className="text-xs text-gray-400">{sale.paymentMethod}</span>
+          <span className="text-xs text-muted-foreground">{sale.paymentMethod}</span>
         );
       }
       
       case 'total':
         return (
-          <div className="text-sm font-semibold text-white tabular-nums">
+          <div className="text-sm font-semibold text-foreground tabular-nums">
             {formatCurrency(getSaleBillableAmount(sale))}
           </div>
         );
@@ -1488,10 +1581,10 @@ export const SalesPage = () => {
       case 'paid': {
         const effectiveStatusPaid = getEffectiveSaleStatus(sale);
         if (saleLifecycleHidesPaymentColumns(sale)) {
-          return <span className="text-sm text-gray-500">—</span>;
+          return <span className="text-sm text-muted-foreground">—</span>;
         }
         return (
-          <div className="text-sm font-semibold text-green-400 tabular-nums">
+          <div className="text-sm font-semibold text-[var(--erp-money-positive)] tabular-nums">
             {formatCurrency(getDisplayPaid(sale))}
           </div>
         );
@@ -1500,7 +1593,7 @@ export const SalesPage = () => {
       case 'due': {
         const effectiveStatusDue = getEffectiveSaleStatus(sale);
         if (saleLifecycleHidesPaymentColumns(sale)) {
-          return <span className="text-sm text-gray-500">—</span>;
+          return <span className="text-sm text-muted-foreground">—</span>;
         }
         const effectiveDue = getEffectiveDueForDisplay(sale);
         const paymentClosed = isPaymentClosedForSale(sale);
@@ -1508,7 +1601,7 @@ export const SalesPage = () => {
         if (paymentClosed) {
           return (
             <span
-              className="text-sm text-gray-500 tabular-nums cursor-default"
+              className="text-sm text-muted-foreground tabular-nums cursor-default"
               title={effectiveStatusDue === 'cancelled' ? 'Invoice is cancelled' : 'Closed'}
             >
               Closed
@@ -1533,7 +1626,7 @@ export const SalesPage = () => {
           effectiveDue > 0 ? (
             <div className="text-sm font-semibold text-red-400 tabular-nums">{formatCurrency(effectiveDue)}</div>
           ) : (
-            <div className="text-sm text-gray-600">-</div>
+            <div className="text-sm text-muted-foreground">-</div>
           )
         );
       }
@@ -1545,7 +1638,7 @@ export const SalesPage = () => {
               {formatCurrency(sale.returnDue)}
             </div>
           ) : (
-            <div className="text-sm text-gray-600">-</div>
+            <div className="text-sm text-muted-foreground">-</div>
           )
         );
       
@@ -1560,14 +1653,14 @@ export const SalesPage = () => {
               title="This sale has returns"
             />
           ) : (
-            <span className="text-xs text-gray-600">—</span>
+            <span className="text-xs text-muted-foreground">—</span>
           )
         );
       
       case 'shipping':
         // If no shipment, show "—". If shipment exists, show status badge; click opens Shipment History drawer.
         if (!sale.hasShipment || !sale.firstShipmentId) {
-          return <span className="text-xs text-gray-600">—</span>;
+          return <span className="text-xs text-muted-foreground">—</span>;
         }
         return (
           <button
@@ -1589,15 +1682,15 @@ export const SalesPage = () => {
         // Handle both array and number types for items
         const itemsCount = Array.isArray(sale.items) ? sale.items.length : (sale.itemsCount || sale.items || 0);
         return (
-          <div className="flex items-center gap-1 text-gray-300">
-            <Package size={12} className="text-gray-500" />
+          <div className="flex items-center gap-1 text-foreground">
+            <Package size={12} className="text-muted-foreground" />
             <span className="text-sm font-medium">{itemsCount}</span>
           </div>
         );
       
       case 'createdBy':
         return (
-          <span className="text-xs text-gray-400 truncate" title={sale.createdBy || '—'}>
+          <span className="text-xs text-muted-foreground truncate" title={sale.createdBy || '—'}>
             {sale.createdBy || '—'}
           </span>
         );
@@ -1606,38 +1699,37 @@ export const SalesPage = () => {
         return null;
     }
     } catch (_) {
-      return <span className="text-gray-500 text-xs">—</span>;
+      return <span className="text-muted-foreground text-xs">—</span>;
     }
   };
 
   return (
-    <div className="h-screen flex flex-col bg-[#0B0F19]">
-      {/* Page Header - Fixed */}
-      <div className="shrink-0 px-6 py-4 border-b border-gray-800">
-        <div className="flex items-center justify-between">
+    <ErpPage className="h-screen">
+      <ErpPageHeader className="flex-col items-stretch gap-0">
+        <div className="flex items-center justify-between w-full">
           <div>
-            <h1 className="text-2xl font-bold text-white">Sales</h1>
-            <p className="text-sm text-gray-400 mt-0.5">Manage your sales and customer invoices</p>
+            <ErpPageTitle>Sales</ErpPageTitle>
+            <ErpPageDescription>Manage your sales and customer invoices</ErpPageDescription>
           </div>
           <div className="flex items-center gap-2">
-          {canCreateSale && activeMainTab === 'sales' && (
-          <Button 
-            onClick={() => openDrawer('addSale')}
-            className="bg-blue-600 hover:bg-blue-500 text-white h-10 gap-2"
-          >
-            <Plus size={16} />
-            Add Sale
-          </Button>
-          )}
+            {canCreateSale && activeMainTab === 'sales' && (
+              <Button
+                onClick={() => openDrawer('addSale')}
+                className="bg-blue-600 hover:bg-blue-500 text-white h-10 gap-2"
+              >
+                <Plus size={16} />
+                Add Sale
+              </Button>
+            )}
           </div>
         </div>
-        <div className="flex items-center gap-1 mt-4 p-1 bg-gray-950 border border-gray-800 rounded-lg inline-flex">
+        <div className="flex items-center gap-1 mt-4 p-1 bg-muted border border-border rounded-lg inline-flex w-full sm:w-auto">
           <button
             type="button"
             onClick={() => setActiveMainTab('sales')}
             className={cn(
               'px-4 py-2 rounded-md text-sm font-medium transition-all',
-              activeMainTab === 'sales' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'
+              activeMainTab === 'sales' ? 'bg-blue-600 text-white' : 'text-muted-foreground hover:text-foreground hover:bg-accent'
             )}
           >
             Sales
@@ -1647,75 +1739,75 @@ export const SalesPage = () => {
             onClick={() => setActiveMainTab('returns')}
             className={cn(
               'px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2',
-              activeMainTab === 'returns' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'
+              activeMainTab === 'returns' ? 'bg-blue-600 text-white' : 'text-muted-foreground hover:text-foreground hover:bg-accent'
             )}
           >
             <RotateCcw size={14} />
             Returns
           </button>
         </div>
-      </div>
+      </ErpPageHeader>
 
       {activeMainTab === 'sales' && (
       <>
-      {/* Summary Cards - Fixed */}
-      <div className="shrink-0 px-6 py-4 bg-[#0F1419] border-b border-gray-800">
-        <div className="grid grid-cols-4 gap-4">
+      {/* Summary Cards - Fixed (compact so more grid rows fit) */}
+      <div className="shrink-0 px-6 py-2 border-b border-border">
+        <div className="grid grid-cols-4 gap-3">
           {/* Total Sales */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-            <div className="flex items-start justify-between mb-3">
-              <div>
-                <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Sales</p>
-                <p className="text-2xl font-bold text-white mt-1">{formatCurrency(summary.totalSales)}</p>
-                <p className="text-xs text-gray-500 mt-1">All invoices</p>
+          <div className="bg-card border border-border rounded-xl p-3 min-w-0">
+            <div className="flex items-start justify-between mb-1">
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Total Sales</p>
+                <AdaptiveCurrencyValue value={summary.totalSales} className="text-lg font-bold text-foreground mt-0.5" as="p" />
+                <p className="text-xs text-muted-foreground mt-0.5">All invoices</p>
               </div>
-              <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center">
-                <ShoppingCart size={24} className="text-blue-500" />
+              <div className="w-9 h-9 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0">
+                <ShoppingCart size={18} className="text-blue-500" />
               </div>
             </div>
           </div>
 
           {/* Total Paid */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-            <div className="flex items-start justify-between mb-3">
-              <div>
-                <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Paid</p>
-                <p className="text-2xl font-bold text-green-400 mt-1">{formatCurrency(summary.totalPaid)}</p>
-                <p className="text-xs text-gray-500 mt-1">Received amount</p>
+          <div className="bg-card border border-border rounded-xl p-3 min-w-0">
+            <div className="flex items-start justify-between mb-1">
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Total Paid</p>
+                <AdaptiveCurrencyValue value={summary.totalPaid} className="text-lg font-bold text-[var(--erp-money-positive)] mt-0.5" as="p" />
+                <p className="text-xs text-muted-foreground mt-0.5">Received amount</p>
               </div>
-              <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
-                <DollarSign size={24} className="text-green-500" />
+              <div className="w-9 h-9 rounded-full bg-green-500/10 flex items-center justify-center shrink-0">
+                <DollarSign size={18} className="text-green-500" />
               </div>
             </div>
           </div>
 
           {/* Total Due */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-            <div className="flex items-start justify-between mb-3">
-              <div>
-                <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Due</p>
-                <p className="text-2xl font-bold text-red-400 mt-1">{formatCurrency(summary.totalDue)}</p>
-                <p className="text-xs text-gray-500 mt-1">Pending payments</p>
-                <p className="text-[10px] text-gray-500 mt-2 leading-snug">
+          <div className="bg-card border border-border rounded-xl p-3 min-w-0">
+            <div className="flex items-start justify-between mb-1">
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Total Due</p>
+                <AdaptiveCurrencyValue value={summary.totalDue} className="text-lg font-bold text-red-400 mt-0.5" as="p" />
+                <p className="text-xs text-muted-foreground mt-0.5">Pending payments</p>
+                <p className="text-[10px] text-muted-foreground mt-1 leading-snug">
                   Listed final sales: effective due (product + shipment to customer + studio − paid). Not Contacts operational receivables or GL AR 1100 — use Contacts reconciliation or Financial reports to tie out.
                 </p>
               </div>
-              <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center">
-                <AlertCircle size={24} className="text-red-500" />
+              <div className="w-9 h-9 rounded-full bg-red-500/10 flex items-center justify-center shrink-0">
+                <AlertCircle size={18} className="text-red-500" />
               </div>
             </div>
           </div>
 
           {/* Invoices */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-            <div className="flex items-start justify-between mb-3">
+          <div className="bg-card border border-border rounded-xl p-3">
+            <div className="flex items-start justify-between mb-1">
               <div>
-                <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Invoices</p>
-                <p className="text-2xl font-bold text-white mt-1">{summary.invoiceCount}</p>
-                <p className="text-xs text-gray-500 mt-1">Active orders</p>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Total Invoices</p>
+                <p className="text-lg font-bold text-foreground mt-0.5">{summary.invoiceCount}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Active orders</p>
               </div>
-              <div className="w-12 h-12 rounded-full bg-purple-500/10 flex items-center justify-center">
-                <FileText size={24} className="text-purple-500" />
+              <div className="w-9 h-9 rounded-full bg-purple-500/10 flex items-center justify-center shrink-0">
+                <FileText size={18} className="text-purple-500" />
               </div>
             </div>
           </div>
@@ -1753,9 +1845,9 @@ export const SalesPage = () => {
           onToggle: () => setFilterOpen(!filterOpen),
           activeCount: activeFilterCount,
           renderPanel: () => (
-            <div className="absolute right-0 top-12 w-80 bg-gray-900 border border-gray-700 rounded-lg shadow-2xl p-4 z-50">
+            <div className="absolute right-0 top-12 bg-popover border border-border rounded-lg shadow-2xl p-4 z-50">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-semibold text-white">Advanced Filters</h3>
+                <h3 className="text-sm font-semibold text-foreground">Advanced Filters</h3>
                 <button
                   onClick={clearAllFilters}
                   className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
@@ -1767,7 +1859,7 @@ export const SalesPage = () => {
               <div className="space-y-4 max-h-[500px] overflow-y-auto">
                 {/* Date Filter */}
                 <div>
-                  <label className="text-xs text-gray-400 mb-2 block font-medium">Date Range</label>
+                  <label className="text-xs text-muted-foreground mb-2 block font-medium">Date Range</label>
                   <div className="space-y-2">
                     {[
                       { value: 'all', label: 'All Dates' },
@@ -1783,9 +1875,9 @@ export const SalesPage = () => {
                           name="date"
                           checked={dateFilter === opt.value}
                           onChange={() => setDateFilter(opt.value)}
-                          className="w-4 h-4 bg-gray-950 border-gray-700"
+                          className="w-4 h-4 bg-muted border-border"
                         />
-                        <span className="text-sm text-gray-300">{opt.label}</span>
+                        <span className="text-sm text-muted-foreground">{opt.label}</span>
                       </label>
                     ))}
                   </div>
@@ -1793,7 +1885,7 @@ export const SalesPage = () => {
 
                 {/* Payment Status Filter */}
                 <div>
-                  <label className="text-xs text-gray-400 mb-2 block font-medium">Payment Status</label>
+                  <label className="text-xs text-muted-foreground mb-2 block font-medium">Payment Status</label>
                   <div className="space-y-2">
                     {[
                       { value: 'all', label: 'All Status' },
@@ -1807,9 +1899,9 @@ export const SalesPage = () => {
                           name="paymentStatus"
                           checked={paymentStatusFilter === opt.value}
                           onChange={() => setPaymentStatusFilter(opt.value as any)}
-                          className="w-4 h-4 bg-gray-950 border-gray-700"
+                          className="w-4 h-4 bg-muted border-border"
                         />
-                        <span className="text-sm text-gray-300">{opt.label}</span>
+                        <span className="text-sm text-muted-foreground">{opt.label}</span>
                       </label>
                     ))}
                   </div>
@@ -1817,7 +1909,7 @@ export const SalesPage = () => {
 
                 {/* Sale Status (Lifecycle) Filter */}
                 <div>
-                  <label className="text-xs text-gray-400 mb-2 block font-medium">Sale Status</label>
+                  <label className="text-xs text-muted-foreground mb-2 block font-medium">Sale Status</label>
                   <div className="space-y-2">
                     {[
                       { value: 'all', label: 'All' },
@@ -1833,9 +1925,9 @@ export const SalesPage = () => {
                           name="saleStatus"
                           checked={saleStatusFilter === opt.value}
                           onChange={() => setSaleStatusFilter(opt.value as any)}
-                          className="w-4 h-4 bg-gray-950 border-gray-700"
+                          className="w-4 h-4 bg-muted border-border"
                         />
-                        <span className="text-sm text-gray-300">{opt.label}</span>
+                        <span className="text-sm text-muted-foreground">{opt.label}</span>
                       </label>
                     ))}
                   </div>
@@ -1843,7 +1935,7 @@ export const SalesPage = () => {
 
                 {/* Shipping Status Filter */}
                 <div>
-                  <label className="text-xs text-gray-400 mb-2 block font-medium">Shipping Status</label>
+                  <label className="text-xs text-muted-foreground mb-2 block font-medium">Shipping Status</label>
                   <div className="space-y-2">
                     {[
                       { value: 'all', label: 'All Status' },
@@ -1858,9 +1950,9 @@ export const SalesPage = () => {
                           name="shippingStatus"
                           checked={shippingStatusFilter === opt.value}
                           onChange={() => setShippingStatusFilter(opt.value as any)}
-                          className="w-4 h-4 bg-gray-950 border-gray-700"
+                          className="w-4 h-4 bg-muted border-border"
                         />
-                        <span className="text-sm text-gray-300">{opt.label}</span>
+                        <span className="text-sm text-muted-foreground">{opt.label}</span>
                       </label>
                     ))}
                   </div>
@@ -1868,7 +1960,7 @@ export const SalesPage = () => {
 
                 {/* Branch Filter */}
                 <div>
-                  <label className="text-xs text-gray-400 mb-2 block font-medium">Branch</label>
+                  <label className="text-xs text-muted-foreground mb-2 block font-medium">Branch</label>
                   <div className="space-y-2">
                     {[{ value: 'all' as const, label: 'All Branches' }, ...branches.map((b) => ({ value: b.id, label: b.name }))].map((opt) => (
                       <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
@@ -1877,9 +1969,9 @@ export const SalesPage = () => {
                           name="branch"
                           checked={branchFilter === opt.value}
                           onChange={() => setBranchFilter(opt.value)}
-                          className="w-4 h-4 bg-gray-950 border-gray-700"
+                          className="w-4 h-4 bg-muted border-border"
                         />
-                        <span className="text-sm text-gray-300">{opt.label}</span>
+                        <span className="text-sm text-muted-foreground">{opt.label}</span>
                       </label>
                     ))}
                   </div>
@@ -1887,7 +1979,7 @@ export const SalesPage = () => {
 
                 {/* Payment Method Filter */}
                 <div>
-                  <label className="text-xs text-gray-400 mb-2 block font-medium">Payment Method</label>
+                  <label className="text-xs text-muted-foreground mb-2 block font-medium">Payment Method</label>
                   <div className="space-y-2">
                     {[
                       { value: 'all', label: 'All Methods' },
@@ -1902,9 +1994,9 @@ export const SalesPage = () => {
                           name="paymentMethod"
                           checked={paymentMethodFilter === opt.value}
                           onChange={() => setPaymentMethodFilter(opt.value)}
-                          className="w-4 h-4 bg-gray-950 border-gray-700"
+                          className="w-4 h-4 bg-muted border-border"
                         />
-                        <span className="text-sm text-gray-300">{opt.label}</span>
+                        <span className="text-sm text-muted-foreground">{opt.label}</span>
                       </label>
                     ))}
                   </div>
@@ -1945,13 +2037,14 @@ export const SalesPage = () => {
       />
 
       {/* Source: invoice channel / lifecycle (not sale returns — use Sales | Returns above). */}
-      <div className="shrink-0 px-6 py-3 border-b border-gray-800 bg-[#0F1419]">
-        <p className="text-xs text-gray-500 uppercase tracking-wider mb-2 font-medium">Source</p>
+      <div className="shrink-0 px-6 py-3 border-b border-border bg-muted/40">
+        <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2 font-medium">Source</p>
         <div className="flex gap-2 flex-wrap items-center">
           {[
             { id: 'all' as const, label: 'All', icon: ShoppingCart },
             { id: 'pos' as const, label: 'POS', icon: Zap },
             { id: 'regular' as const, label: 'Regular', icon: Store },
+            { id: 'order' as const, label: 'Order', icon: Package },
             { id: 'quotation' as const, label: 'Quotation', icon: FileText },
             { id: 'final' as const, label: 'Final', icon: CheckCircle2 },
           ].map(({ id, label, icon: Icon }) => (
@@ -1961,8 +2054,8 @@ export const SalesPage = () => {
               className={cn(
                 'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all border',
                 activeTab === id
-                  ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-900/30'
-                  : 'bg-gray-800/50 text-gray-400 border-gray-700 hover:bg-gray-800 hover:text-white'
+                  ? 'bg-primary text-primary-foreground border-primary shadow-lg shadow-primary/20'
+                  : 'bg-card text-muted-foreground border-border hover:bg-accent hover:text-foreground'
               )}
             >
               <Icon size={16} />
@@ -1978,7 +2071,7 @@ export const SalesPage = () => {
       <div className="flex-1 overflow-auto px-6 py-4">
         {activeMainTab === 'returns' && (
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-white">Sale Returns</h2>
+            <h2 className="text-lg font-semibold text-foreground">Sale Returns</h2>
             <Button
               size="sm"
               variant="outline"
@@ -1990,16 +2083,10 @@ export const SalesPage = () => {
             </Button>
           </div>
         )}
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-          <div className="overflow-x-auto">
-            <div className={activeMainTab === 'returns' ? 'min-w-[1580px]' : 'min-w-[1400px]'}>
-              {/* Table Header - full-width background (w-max so it spans full table when scrolling) */}
-              <div className={cn('sticky top-0 z-10 w-max bg-gray-900 border-b border-gray-800', activeMainTab === 'returns' ? 'min-w-[1580px]' : 'min-w-[1400px]')}>
-                {activeMainTab === 'returns' ? (
-                  // Returns Tab Header - Actions first
-                  <div className="grid gap-3 px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider"
-                    style={{ gridTemplateColumns: '60px 120px 130px 180px 150px 150px 130px 240px 120px 100px 150px' }}
-                  >
+        <ErpDataGridShell minWidth={activeMainTab === 'returns' ? '1580px' : '1400px'}>
+          <ErpDataGridHeader minWidth={activeMainTab === 'returns' ? '1580px' : '1400px'}>
+            {activeMainTab === 'returns' ? (
+              <ErpDataGridHeaderRow style={{ gridTemplateColumns: '60px 120px 130px 180px 150px 150px 130px 240px 120px 100px 150px' }}>
                     <div className="text-center">Actions</div>
                     <div className="text-left">Date & Time</div>
                     <div className="text-left">Return No</div>
@@ -2007,20 +2094,15 @@ export const SalesPage = () => {
                     <div className="text-left">Original Invoice</div>
                     <div className="text-left">Location</div>
                     <div className="text-center">Status</div>
-                    <div className="text-left normal-case tracking-normal text-[11px] text-gray-400 font-medium">
+                    <div className="text-left normal-case tracking-normal text-[11px] text-muted-foreground font-medium">
                       Payment / credit / ledger
                     </div>
                     <div className="text-right">Total</div>
                     <div className="text-right">Items</div>
                     <div className="text-left">Reason</div>
-                  </div>
-                ) : (
-                  // Sales Tab Header
-                  <div className="grid gap-3 px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider"
-                    style={{
-                      gridTemplateColumns: gridTemplateColumns
-                    }}
-                  >
+              </ErpDataGridHeaderRow>
+            ) : (
+              <ErpDataGridHeaderRow style={{ gridTemplateColumns: gridTemplateColumns }}>
                     {columnOrder.map(key => {
                       if (!visibleColumns[key as keyof typeof visibleColumns]) return null;
                       if (key === 'actions') {
@@ -2028,6 +2110,7 @@ export const SalesPage = () => {
                       }
                       const labels: Record<string, string> = {
                         date: 'Date',
+                        deadline: 'Delivery',
                         invoiceNo: 'Invoice No.',
                         type: 'Type',
                         customer: 'Customer',
@@ -2045,7 +2128,7 @@ export const SalesPage = () => {
                         items: 'Items',
                         createdBy: 'Created By',
                       };
-                      const isSortable = (['date', 'invoiceNo', 'customer', 'location', 'saleStatus', 'paymentStatus', 'total', 'paid', 'due', 'returnDue', 'return', 'shipping', 'items', 'createdBy'] as SaleSortKey[]).includes(key as SaleSortKey);
+                      const isSortable = (['date', 'deadline', 'invoiceNo', 'customer', 'location', 'saleStatus', 'paymentStatus', 'total', 'paid', 'due', 'returnDue', 'return', 'shipping', 'items', 'createdBy'] as SaleSortKey[]).includes(key as SaleSortKey);
                       const isActive = sortKey === key;
                       
                       return (
@@ -2053,7 +2136,7 @@ export const SalesPage = () => {
                           key={key}
                           className={cn(
                             alignments[key],
-                            isSortable && 'cursor-pointer select-none hover:text-gray-300',
+                            isSortable && 'cursor-pointer select-none hover:text-foreground',
                             // Use flex for all sortable headers to align icon consistently
                             isSortable && 'flex items-center gap-0.5',
                             // For right-aligned, use justify-end to keep text right
@@ -2070,51 +2153,49 @@ export const SalesPage = () => {
                         </div>
                       );
                     })}
-                  </div>
-                )}
-              </div>
+              </ErpDataGridHeaderRow>
+            )}
+          </ErpDataGridHeader>
 
-              {/* Table Body - w-max so row lines span full table width (no short lines on right) */}
-              <div className={cn('w-max', activeMainTab === 'returns' ? 'min-w-[1580px]' : 'min-w-[1400px]')}>
+          <ErpDataGridBody className={activeMainTab === 'returns' ? 'min-w-[1580px]' : 'min-w-[1400px]'}>
                 {activeMainTab === 'returns' ? (
                   // Returns Tab - Show Sale Returns List
                   loadingReturnsList ? (
                     <div className="py-12 text-center">
                       <Loader2 size={48} className="mx-auto text-blue-500 mb-3 animate-spin" />
-                      <p className="text-gray-400 text-sm">Loading returns...</p>
+                      <p className="text-muted-foreground text-sm">Loading returns...</p>
                     </div>
                   ) : saleReturnsList.length === 0 ? (
                     <div className="py-12 text-center">
-                      <RotateCcw size={48} className="mx-auto text-gray-600 mb-3" />
-                      <p className="text-gray-400 text-sm">No returns found</p>
-                      <p className="text-gray-600 text-xs mt-1">Create a return from a sale invoice or use &quot;Return without invoice&quot;</p>
+                      <RotateCcw size={48} className="mx-auto text-muted-foreground mb-3" />
+                      <p className="text-muted-foreground text-sm">No returns found</p>
+                      <p className="text-muted-foreground text-xs mt-1">Create a return from a sale invoice or use &quot;Return without invoice&quot;</p>
                     </div>
                   ) : (
-                    <div className="divide-y divide-gray-800/50">
-                      {saleReturnsList.map((ret: any) => {
+                      saleReturnsList.map((ret: any) => {
                         const originalSale = ret.original_sale_id ? sales.find(s => s.id === ret.original_sale_id) : null;
                         const dateTime = formatDateAndTime(ret.return_date || ret.created_at);
                         return (
-                          <div
+                          <ErpDataGridRow
                             key={ret.id}
                             onClick={() => {
                               setSelectedReturn(ret);
                               setViewReturnDetailsOpen(true);
                             }}
-                            className="grid gap-3 px-4 h-auto min-h-[60px] py-3 w-max hover:bg-gray-800/30 transition-colors items-center border-b border-gray-800 last:border-b-0 cursor-pointer min-w-[1580px]"
+                            className="cursor-pointer min-w-[1580px] h-auto min-h-[60px] py-3"
                             style={{ gridTemplateColumns: '60px 120px 130px 180px 150px 150px 130px 240px 120px 100px 150px' }}
                           >
-                            <div className="flex justify-center" onClick={(e) => e.stopPropagation()}>
+                            <ErpDataGridCell align="center" onClick={(e) => e.stopPropagation()}>
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
-                                  <button className="w-8 h-8 rounded-lg bg-gray-800/50 hover:bg-gray-700 transition-all flex items-center justify-center text-gray-400 hover:text-white">
+                                  <button className="w-8 h-8 rounded-lg bg-muted/50 hover:bg-accent transition-all flex items-center justify-center text-muted-foreground hover:text-foreground">
                                     <MoreVertical size={16} />
                                   </button>
                                 </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700 text-white w-56">
+                                <DropdownMenuContent align="end" className="bg-popover border-border text-popover-foreground w-56">
                                   <DropdownMenuItem 
                                     onClick={() => { setSelectedReturn(ret); setViewReturnDetailsOpen(true); }}
-                                    className="hover:bg-gray-800 cursor-pointer"
+                                    className="hover:bg-accent cursor-pointer"
                                   >
                                     <Eye size={14} className="mr-2 text-blue-400" />
                                     View Return Details
@@ -2122,9 +2203,9 @@ export const SalesPage = () => {
                                   {ret.original_sale_id && originalSale && (
                                     <DropdownMenuItem 
                                       onClick={() => { setSelectedSale(originalSale); setViewDetailsOpen(true); }}
-                                      className="hover:bg-gray-800 cursor-pointer"
+                                      className="hover:bg-accent cursor-pointer"
                                     >
-                                      <FileText size={14} className="mr-2 text-green-400" />
+                                      <FileText size={14} className="mr-2 text-[var(--erp-money-positive)]" />
                                       View Original Sale
                                     </DropdownMenuItem>
                                   )}
@@ -2142,14 +2223,14 @@ export const SalesPage = () => {
                                           setSaleReturnEditId(ret.id);
                                           setSaleReturnFormOpen(true);
                                         }}
-                                        className="hover:bg-gray-800 cursor-pointer"
+                                        className="hover:bg-accent cursor-pointer"
                                       >
-                                        <Edit size={14} className="mr-2 text-green-400" />
+                                        <Edit size={14} className="mr-2 text-[var(--erp-money-positive)]" />
                                         Edit Sale Return
                                       </DropdownMenuItem>
                                       <DropdownMenuItem 
                                         onClick={() => { setReturnToDelete(ret); setDeleteReturnDialogOpen(true); }}
-                                        className="hover:bg-gray-800 cursor-pointer text-red-400"
+                                        className="hover:bg-accent cursor-pointer text-red-400"
                                       >
                                         <Trash2 size={14} className="mr-2" />
                                         Delete Return
@@ -2161,7 +2242,7 @@ export const SalesPage = () => {
                                       <DropdownMenuSeparator />
                                       <DropdownMenuItem 
                                         onClick={() => { setReturnToVoid(ret); setVoidReturnDialogOpen(true); }}
-                                        className="hover:bg-gray-800 cursor-pointer text-amber-400"
+                                        className="hover:bg-accent cursor-pointer text-amber-400"
                                       >
                                         <RotateCcw size={14} className="mr-2" />
                                         Void / Cancel Return
@@ -2171,7 +2252,7 @@ export const SalesPage = () => {
                                   {String(ret?.status).toLowerCase() === 'void' && (
                                     <>
                                       <DropdownMenuSeparator />
-                                      <DropdownMenuItem disabled className="opacity-60 cursor-not-allowed text-gray-400">
+                                      <DropdownMenuItem disabled className="opacity-60 cursor-not-allowed text-muted-foreground">
                                         Voided — locked (audit only). Create a new return to process stock again.
                                       </DropdownMenuItem>
                                     </>
@@ -2189,28 +2270,28 @@ export const SalesPage = () => {
                                         toast.error('Could not load return details for printing');
                                       }
                                     }}
-                                    className="hover:bg-gray-800 cursor-pointer"
+                                    className="hover:bg-accent cursor-pointer"
                                   >
                                     <Printer size={14} className="mr-2 text-purple-400" />
                                     Print Return
                                   </DropdownMenuItem>
                                   <DropdownMenuItem 
                                     onClick={() => { toast.info('Export return functionality coming soon'); }}
-                                    className="hover:bg-gray-800 cursor-pointer"
+                                    className="hover:bg-accent cursor-pointer"
                                   >
                                     <Download size={14} className="mr-2 text-blue-400" />
                                     Export Return
                                   </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
-                            </div>
-                            <div className="flex flex-col">
-                              <div className="text-sm text-gray-300 font-medium">{dateTime.date}</div>
-                              <div className="text-xs text-gray-500">{dateTime.time}</div>
-                            </div>
-                            <div className="text-sm text-purple-400 font-mono font-semibold">{ret.return_no || `RET-${ret.id?.slice(0, 8).toUpperCase()}`}</div>
-                            <div className="text-sm text-white font-medium">{ret.customer_name}</div>
-                            <div className="text-sm text-blue-400 font-mono">
+                            </ErpDataGridCell>
+                            <ErpDataGridCell align="left">
+                              <div className="text-sm text-foreground font-medium">{dateTime.date}</div>
+                              <div className="text-xs text-muted-foreground">{dateTime.time}</div>
+                            </ErpDataGridCell>
+                            <ErpDataGridCell align="left" className="font-mono text-purple-400 font-semibold">{ret.return_no || `RET-${ret.id?.slice(0, 8).toUpperCase()}`}</ErpDataGridCell>
+                            <ErpDataGridCell align="left" className="font-medium">{ret.customer_name}</ErpDataGridCell>
+                            <ErpDataGridCell align="left" className="font-mono text-primary">
                               {originalSale ? (
                                 <span className="hover:text-blue-300 hover:underline" onClick={(e) => {
                                   e.stopPropagation();
@@ -2220,18 +2301,18 @@ export const SalesPage = () => {
                                   {originalSale.invoiceNo}
                                 </span>
                               ) : ret.original_sale_id ? (
-                                <span className="text-gray-500">Sale ID: {ret.original_sale_id.slice(0, 8)}</span>
+                                <span className="text-muted-foreground">Sale ID: {ret.original_sale_id.slice(0, 8)}</span>
                               ) : (
                                 <span className="text-amber-400/90 text-xs">No invoice</span>
                               )}
-                            </div>
-                            <div className="text-sm text-gray-400">{branchMap.get(ret.branch_id) || '—'}</div>
-                            <div className="flex justify-center">
+                            </ErpDataGridCell>
+                            <ErpDataGridCell align="left" className="text-muted-foreground">{branchMap.get(ret.branch_id) || '—'}</ErpDataGridCell>
+                            <ErpDataGridCell align="center">
                               <Badge className={
                                 String(ret?.status).toLowerCase() === 'void'
-                                  ? 'bg-gray-500/20 text-gray-400 border-gray-500/30'
+                                  ? 'bg-gray-500/20 text-muted-foreground border-gray-500/30'
                                   : ret.status === 'final'
-                                    ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                                    ? 'bg-green-500/20 text-[var(--erp-money-positive)] border-green-500/30'
                                     : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
                               }>
                                 {String(ret?.status).toLowerCase() === 'void'
@@ -2240,59 +2321,61 @@ export const SalesPage = () => {
                                     ? 'FINAL / LOCKED'
                                     : 'Draft'}
                               </Badge>
-                            </div>
-                            <div className="min-w-0 self-center py-0.5">
+                            </ErpDataGridCell>
+                            <ErpDataGridCell align="left" className="min-w-0 self-center py-0.5">
                               {renderReturnSettlementCell(ret, originalSale ?? undefined)}
-                            </div>
-                            <div className="text-right">
-                              <div className="text-sm font-semibold text-red-400 tabular-nums">-Rs. {ret.total?.toLocaleString() || '0'}</div>
-                            </div>
-                            <div className="text-right text-sm text-gray-400">{ret.items_count || ret.items?.length || 0} items</div>
-                            <div className="text-sm text-gray-400 truncate" title={ret.reason || ''}>{ret.reason || '—'}</div>
-                          </div>
+                            </ErpDataGridCell>
+                            <ErpDataGridCell align="right">
+                              <div className="text-sm font-semibold text-destructive tabular-nums">-Rs. {ret.total?.toLocaleString() || '0'}</div>
+                            </ErpDataGridCell>
+                            <ErpDataGridCell align="right" className="text-muted-foreground">{ret.items_count || ret.items?.length || 0} items</ErpDataGridCell>
+                            <ErpDataGridCell align="left" className="truncate" title={ret.reason || ''}>{ret.reason || '—'}</ErpDataGridCell>
+                          </ErpDataGridRow>
                         );
-                      })}
-                    </div>
+                      })
                   )
                 ) : loading ? (
                   <div className="py-12 text-center">
                     <Loader2 size={48} className="mx-auto text-blue-500 mb-3 animate-spin" />
-                    <p className="text-gray-400 text-sm">Loading sales...</p>
+                    <p className="text-muted-foreground text-sm">Loading sales...</p>
                   </div>
                 ) : paginatedSales.length === 0 ? (
                   <div className="py-12 text-center px-4">
-                    <ShoppingCart size={48} className="mx-auto text-gray-600 mb-3" />
-                    <p className="text-gray-400 text-sm">No sales found</p>
-                    {sales.length > 0 ? (
-                      <p className="text-gray-500 text-xs mt-2 max-w-lg mx-auto">
-                        {totalFilteredCount === 0
+                    <ShoppingCart size={48} className="mx-auto text-muted-foreground mb-3" />
+                    <p className="text-muted-foreground text-sm">No sales found</p>
+                    {branchId && branchId !== 'all' && sales.length === 0 ? (
+                      <p className="text-amber-400/90 text-xs mt-2 max-w-lg mx-auto">
+                        Filtered by the header branch. Switch the header branch to All (or the sale&apos;s branch)
+                        to see sales from other locations.
+                      </p>
+                    ) : sales.length > 0 ? (
+                      <p className="text-muted-foreground text-xs mt-2 max-w-lg mx-auto">
+                        {sortedSales.length === 0
                           ? 'This company has sales, but none match the current filters. Widen the header date range, set branch to All where applicable, or clear search and column filters.'
                           : 'Try another page or adjust filters.'}
                       </p>
                     ) : (
-                      <p className="text-gray-600 text-xs mt-1 max-w-lg mx-auto">
+                      <p className="text-muted-foreground text-xs mt-1 max-w-lg mx-auto">
                         Try adjusting search or filters. If you use another browser or an embedded preview, check the{' '}
-                        <span className="text-gray-400">header date range</span> — it is saved per browser profile.
+                        <span className="text-muted-foreground">header date range</span> — it is saved per browser profile.
                       </p>
                     )}
                   </div>
                 ) : (
                   paginatedSales.map((sale) => (
-                    <div
+                    <ErpDataGridRow
                       key={sale.id}
+                      className="relative h-11 min-w-[1400px]"
+                      style={{ minHeight: '2.75rem', gridTemplateColumns: gridTemplateColumns }}
                       onMouseEnter={() => setHoveredRow(sale.id || sale.invoiceNo)}
                       onMouseLeave={() => setHoveredRow(null)}
-                      className="relative grid gap-3 px-4 h-16 min-w-[1400px] w-max hover:bg-gray-800/30 transition-colors items-center border-b border-gray-800 last:border-b-0"
-                      style={{
-                        gridTemplateColumns: gridTemplateColumns
-                      }}
                     >
-                      {/* Render columns in order (Actions first when visible) */}
                       {columnOrder.map(key => {
                         if (!visibleColumns[key as keyof typeof visibleColumns]) return null;
                         if (key === 'actions') {
                           return (
-                            <div key="actions" className="flex justify-center">
+                            <ErpDataGridCell key="actions" align="center">
+                              <div className="flex justify-center">
                               <DropdownMenu
                                 open={actionsMenuSaleId === sale.id}
                                 onOpenChange={(open) => setActionsMenuSaleId(open ? sale.id : null)}
@@ -2300,22 +2383,22 @@ export const SalesPage = () => {
                           <DropdownMenuTrigger asChild>
                             <button 
                               className={cn(
-                                "w-8 h-8 rounded-lg bg-gray-800/50 hover:bg-gray-700 transition-all flex items-center justify-center text-gray-400 hover:text-white",
+                                "w-8 h-8 rounded-lg bg-muted/50 hover:bg-accent transition-all flex items-center justify-center text-muted-foreground hover:text-foreground",
                                 hoveredRow === (sale.id || sale.invoiceNo) ? "opacity-100" : "opacity-0"
                               )}
                             >
                               <MoreVertical size={16} />
                             </button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700 text-white w-52">
+                          <DropdownMenuContent align="end" className="bg-popover border-border text-popover-foreground w-52">
                             <DropdownMenuItem 
-                              className="hover:bg-gray-800 cursor-pointer"
+                              className="hover:bg-accent cursor-pointer"
                               onClick={() => handleSaleAction('view_details', sale)}
                             >
                               <Eye size={14} className="mr-2 text-blue-400" />
                               View Details
                             </DropdownMenuItem>
-                            <DropdownMenuSeparator className="bg-gray-700" />
+                            <DropdownMenuSeparator className="bg-muted" />
                             <div className="px-0 py-1">
                               <SaleLifecycleMenuBlock
                                 variant="menu"
@@ -2324,11 +2407,11 @@ export const SalesPage = () => {
                                 onAfterPick={() => setActionsMenuSaleId(null)}
                               />
                             </div>
-                            <DropdownMenuSeparator className="bg-gray-700" />
+                            <DropdownMenuSeparator className="bg-muted" />
                             {/* Edit: requires canEditSale (role_permissions sales.edit) and no return lock. RLS allows UPDATE only when created_by = auth.uid() for salesman. */}
                             {canEditSale && !(sale.hasReturn || salesWithReturns.has(sale.id)) && (
                               <DropdownMenuItem 
-                                className="hover:bg-gray-800 cursor-pointer"
+                                className="hover:bg-accent cursor-pointer"
                                 onClick={() => {
                                   if (import.meta.env?.DEV) {
                                     console.log('[SalesPage] Edit clicked:', { canEditSale, saleId: sale.id, createdBy: (sale as any).created_by, note: 'RLS allows update only when sales.created_by = auth.uid() for salesman' });
@@ -2336,77 +2419,77 @@ export const SalesPage = () => {
                                   handleSaleAction('edit', sale);
                                 }}
                               >
-                                <Edit size={14} className="mr-2 text-green-400" />
+                                <Edit size={14} className="mr-2 text-[var(--erp-money-positive)]" />
                                 Edit Sale
                               </DropdownMenuItem>
                             )}
                             <DropdownMenuItem 
-                              className="hover:bg-gray-800 cursor-pointer"
+                              className="hover:bg-accent cursor-pointer"
                               onClick={() => handleSaleAction('view_payments', sale)}
                             >
                               <Receipt size={14} className="mr-2 text-blue-400" />
                               View Payments
                             </DropdownMenuItem>
                             <DropdownMenuItem 
-                              className="hover:bg-gray-800 cursor-pointer"
+                              className="hover:bg-accent cursor-pointer"
                               onClick={() => handleSaleAction('view_ledger', sale)}
                             >
                               <Receipt size={14} className="mr-2 text-blue-400" />
                               View Ledger
                             </DropdownMenuItem>
-                            <DropdownMenuSeparator className="bg-gray-700" />
+                            <DropdownMenuSeparator className="bg-muted" />
                             {/* Share */}
                             <DropdownMenuSub>
-                              <DropdownMenuSubTrigger className="hover:bg-gray-800 cursor-pointer text-white">
-                                <Share2 size={14} className="mr-2 text-green-400" />
+                              <DropdownMenuSubTrigger className="hover:bg-accent cursor-pointer text-popover-foreground">
+                                <Share2 size={14} className="mr-2 text-[var(--erp-money-positive)]" />
                                 Share
                               </DropdownMenuSubTrigger>
-                              <DropdownMenuSubContent className="bg-gray-900 border-gray-700 text-white">
-                                <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer" onClick={() => handleSaleAction('share_whatsapp', sale)}>
+                              <DropdownMenuSubContent className="bg-popover border-border text-popover-foreground">
+                                <DropdownMenuItem className="hover:bg-accent cursor-pointer" onClick={() => handleSaleAction('share_whatsapp', sale)}>
                                   Share via WhatsApp
                                 </DropdownMenuItem>
-                                <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer" onClick={() => handleSaleAction('share_pdf', sale)}>
+                                <DropdownMenuItem className="hover:bg-accent cursor-pointer" onClick={() => handleSaleAction('share_pdf', sale)}>
                                   Share PDF
                                 </DropdownMenuItem>
                               </DropdownMenuSubContent>
                             </DropdownMenuSub>
                             {/* Print */}
                             <DropdownMenuSub>
-                              <DropdownMenuSubTrigger className="hover:bg-gray-800 cursor-pointer text-white">
+                              <DropdownMenuSubTrigger className="hover:bg-accent cursor-pointer text-popover-foreground">
                                 <Printer size={14} className="mr-2 text-purple-400" />
                                 Print
                               </DropdownMenuSubTrigger>
-                              <DropdownMenuSubContent className="bg-gray-900 border-gray-700 text-white">
-                                <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer" onClick={() => handleSaleAction('print_a4', sale)}>
+                              <DropdownMenuSubContent className="bg-popover border-border text-popover-foreground">
+                                <DropdownMenuItem className="hover:bg-accent cursor-pointer" onClick={() => handleSaleAction('print_a4', sale)}>
                                   Print A4 (Regular)
                                 </DropdownMenuItem>
-                                <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer" onClick={() => handleSaleAction('print_thermal', sale)}>
+                                <DropdownMenuItem className="hover:bg-accent cursor-pointer" onClick={() => handleSaleAction('print_thermal', sale)}>
                                   Print Thermal (80mm / 58mm)
                                 </DropdownMenuItem>
                               </DropdownMenuSubContent>
                             </DropdownMenuSub>
-                            <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer" onClick={() => handleSaleAction('download_pdf', sale)}>
+                            <DropdownMenuItem className="hover:bg-accent cursor-pointer" onClick={() => handleSaleAction('download_pdf', sale)}>
                               <Download size={14} className="mr-2 text-blue-400" />
                               Download PDF
                             </DropdownMenuItem>
-                            <DropdownMenuSeparator className="bg-gray-700" />
+                            <DropdownMenuSeparator className="bg-muted" />
                             {/* 🎯 RECEIVE PAYMENT - Show when payment allowed */}
                             {canAddPaymentToSale(sale, getEffectiveDue(sale)) && (
                               <DropdownMenuItem 
-                                className="hover:bg-gray-800 cursor-pointer"
+                                className="hover:bg-accent cursor-pointer"
                                 onClick={() => handleSaleAction('receive_payment', sale)}
                               >
-                                <DollarSign size={14} className="mr-2 text-green-400" />
+                                <DollarSign size={14} className="mr-2 text-[var(--erp-money-positive)]" />
                                 Add Payment
                               </DropdownMenuItem>
                             )}
-                            <DropdownMenuSeparator className="bg-gray-700" />
+                            <DropdownMenuSeparator className="bg-muted" />
                             {/* 🎯 SALE RETURN: Only when final and not cancelled */}
                             {sale.status === 'final' && getEffectiveSaleStatus(sale) !== 'cancelled' && (
                               <>
                                 {salesWithReturns.has(sale.id) || sale.hasReturn ? (
                                   <DropdownMenuItem 
-                                    className="hover:bg-gray-800 cursor-pointer"
+                                    className="hover:bg-accent cursor-pointer"
                                     onClick={(e) => {
                                       e.preventDefault();
                                       setSelectedSaleForReturns(sale);
@@ -2426,7 +2509,7 @@ export const SalesPage = () => {
                                   </DropdownMenuItem>
                                 ) : (
                                   <DropdownMenuItem 
-                                    className="hover:bg-gray-800 cursor-pointer"
+                                    className="hover:bg-accent cursor-pointer"
                                     onClick={() => handleSaleAction('create_return', sale)}
                                   >
                                     <RotateCcw size={14} className="mr-2 text-purple-400" />
@@ -2436,10 +2519,10 @@ export const SalesPage = () => {
                                 {/* 🎯 RETURN PAYMENT / ADJUSTMENT - Only if sale has returns */}
                                 {(salesWithReturns.has(sale.id) || sale.hasReturn) && (
                                   <DropdownMenuItem 
-                                    className="hover:bg-gray-800 cursor-pointer"
+                                    className="hover:bg-accent cursor-pointer"
                                     onClick={() => handleSaleAction('return_payment', sale)}
                                   >
-                                    <DollarSign size={14} className="mr-2 text-green-400" />
+                                    <DollarSign size={14} className="mr-2 text-[var(--erp-money-positive)]" />
                                     Return Payment / Adjustment
                                   </DropdownMenuItem>
                                 )}
@@ -2447,7 +2530,7 @@ export const SalesPage = () => {
                             )}
                             {sale.hasShipment ? (
                               <DropdownMenuItem 
-                                className="hover:bg-gray-800 cursor-pointer"
+                                className="hover:bg-accent cursor-pointer"
                                 onClick={() => handleSaleAction('update_shipping', sale)}
                               >
                                 <Truck size={14} className="mr-2 text-orange-400" />
@@ -2455,17 +2538,17 @@ export const SalesPage = () => {
                               </DropdownMenuItem>
                             ) : (
                               <DropdownMenuItem 
-                                className="hover:bg-gray-800 cursor-pointer"
+                                className="hover:bg-accent cursor-pointer"
                                 onClick={() => handleSaleAction('add_shipment', sale)}
                               >
                                 <Truck size={14} className="mr-2 text-blue-400" />
                                 Add Shipment
                               </DropdownMenuItem>
                             )}
-                            <DropdownMenuSeparator className="bg-gray-700" />
+                            <DropdownMenuSeparator className="bg-muted" />
                             {canCancelSale && sale.status === 'final' && getEffectiveSaleStatus(sale) !== 'cancelled' && (
                               <DropdownMenuItem 
-                                className="hover:bg-gray-800 cursor-pointer text-amber-400"
+                                className="hover:bg-accent cursor-pointer text-amber-400"
                                 onClick={() => handleSaleAction('cancel_invoice', sale)}
                               >
                                 <XCircle size={14} className="mr-2" />
@@ -2474,7 +2557,7 @@ export const SalesPage = () => {
                             )}
                             {canDeleteSale && getEffectiveSaleStatus(sale) !== 'cancelled' && (
                               <DropdownMenuItem 
-                                className="hover:bg-gray-800 cursor-pointer text-red-400"
+                                className="hover:bg-accent cursor-pointer text-red-400"
                                 onClick={() => handleSaleAction('delete', sale)}
                               >
                                 <Trash2 size={14} className="mr-2" />
@@ -2483,32 +2566,21 @@ export const SalesPage = () => {
                             )}
                           </DropdownMenuContent>
                         </DropdownMenu>
-                            </div>
+                              </div>
+                            </ErpDataGridCell>
                           );
                         }
-                        const alignment = alignments[key] || 'text-left';
                         return (
-                          <div
-                            key={key}
-                            className={cn(
-                              alignment,
-                              'flex items-center',
-                              alignment === 'text-right' && 'justify-end',
-                              alignment === 'text-center' && 'justify-center',
-                              alignment === 'text-left' && 'justify-start'
-                            )}
-                          >
+                          <ErpDataGridCell key={key} align={gridCellAlign(key)}>
                             {renderColumnCell(key, sale)}
-                          </div>
+                          </ErpDataGridCell>
                         );
                       })}
-                    </div>
+                    </ErpDataGridRow>
                   ))
                 )}
-              </div>
-            </div>
-          </div>
-        </div>
+          </ErpDataGridBody>
+        </ErpDataGridShell>
       </div>
 
       {/* Pagination Footer - Fixed (sales list only) */}
@@ -2517,7 +2589,7 @@ export const SalesPage = () => {
         currentPage={currentPage}
         totalPages={totalPages}
         pageSize={pageSize}
-        totalItems={totalFilteredCount}
+        totalItems={totalCount}
         onPageChange={handlePageChange}
         onPageSizeChange={handlePageSizeChange}
       />
@@ -2608,6 +2680,7 @@ export const SalesPage = () => {
           previousPayments={(selectedSale as any).payments || []}
           referenceNo={selectedSale.invoiceNo}
           referenceId={selectedSale.id}
+          customerBillRef={readSaleBillRef(selectedSale as Record<string, unknown>)}
           editMode={!!paymentToEdit}
           paymentToEdit={paymentToEdit ? {
             id: paymentToEdit.id,
@@ -2615,6 +2688,7 @@ export const SalesPage = () => {
             method: paymentToEdit.method,
             accountId: paymentToEdit.accountId,
             date: paymentToEdit.date,
+            createdAt: paymentToEdit.createdAt,
             referenceNumber: paymentToEdit.referenceNo,
             notes: paymentToEdit.notes,
             attachments: paymentToEdit.attachments,
@@ -2674,13 +2748,13 @@ export const SalesPage = () => {
       
       {/* 🎯 DELETE CONFIRMATION DIALOG */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent className="bg-gray-900 border-gray-700">
+        <AlertDialogContent className="bg-background border-border">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-white">Delete Sale</AlertDialogTitle>
-            <AlertDialogDescription className="text-gray-400">
+            <AlertDialogTitle className="text-foreground">Delete Sale</AlertDialogTitle>
+            <AlertDialogDescription className="text-muted-foreground">
               {selectedSale && (
                 <>
-                  Are you sure you want to delete sale <span className="font-semibold text-white">{selectedSale.invoiceNo}</span>?
+                  Are you sure you want to delete sale <span className="font-semibold text-foreground">{selectedSale.invoiceNo}</span>?
                   <br />
                   This action cannot be undone.
                 </>
@@ -2688,12 +2762,12 @@ export const SalesPage = () => {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="bg-gray-800 hover:bg-gray-700 text-white border-gray-700">
+            <AlertDialogCancel className="bg-muted hover:bg-accent text-foreground border-border">
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
-              className="bg-red-600 hover:bg-red-500 text-white"
+              className="bg-red-600 hover:bg-red-500 text-foreground"
             >
               Delete
             </AlertDialogAction>
@@ -2703,16 +2777,19 @@ export const SalesPage = () => {
 
       {/* 🎯 CANCEL INVOICE CONFIRMATION DIALOG */}
       <AlertDialog open={cancelInvoiceDialogOpen} onOpenChange={(open) => { setCancelInvoiceDialogOpen(open); if (!open) setCancelDeductShipping(true); }}>
-        <AlertDialogContent className="bg-gray-900 border-gray-700">
+        <AlertDialogContent className="bg-background border-border">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-white">Cancel Invoice</AlertDialogTitle>
+            <AlertDialogTitle className="text-foreground">Cancel Invoice</AlertDialogTitle>
             <AlertDialogDescription asChild>
-              <div className="text-gray-400 space-y-3">
+              <div className="text-muted-foreground space-y-3">
                 {selectedSale && (
                   <>
                     <p>
-                      Are you sure you want to cancel invoice <span className="font-semibold text-white">{selectedSale.invoiceNo}</span>?
+                      Are you sure you want to cancel invoice <span className="font-semibold text-foreground">{selectedSale.invoiceNo}</span>?
                       A reversal entry will be created.
+                    </p>
+                    <p className="text-amber-400/90 text-sm">
+                      Any linked work orders will also be cancelled (fabric/dress stock reversed, tailor production JE voided).
                     </p>
                     {(() => {
                       const saleTotal = Number(selectedSale.total) || 0;
@@ -2724,28 +2801,28 @@ export const SalesPage = () => {
                       const netCancelAmount = Math.max(0, saleTotal - returnTotal);
                       const customerRefund = Math.max(0, alreadyPaid - returnTotal - shipping);
                       return (
-                        <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-3 space-y-1.5 text-sm">
-                          <div className="flex justify-between"><span>Sale Total:</span><span className="text-white">Rs. {saleTotal.toLocaleString()}</span></div>
+                        <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-1.5 text-sm">
+                          <div className="flex justify-between"><span>Sale Total:</span><span className="text-foreground">Rs. {saleTotal.toLocaleString()}</span></div>
                           {discount > 0 && (
                             <div className="flex justify-between"><span>Discount Given:</span><span className="text-purple-400">Rs. {discount.toLocaleString()}</span></div>
                           )}
-                          <div className="flex justify-between"><span>Already Paid:</span><span className="text-white">Rs. {alreadyPaid.toLocaleString()}</span></div>
+                          <div className="flex justify-between"><span>Already Paid:</span><span className="text-foreground">Rs. {alreadyPaid.toLocaleString()}</span></div>
                           {shipping > 0 && (
-                            <div className="flex justify-between"><span>Shipping Charged:</span><span className="text-amber-400">Rs. {shipping.toLocaleString()} <span className="text-xs text-gray-500">(non-refundable)</span></span></div>
+                            <div className="flex justify-between"><span>Shipping Charged:</span><span className="text-amber-400">Rs. {shipping.toLocaleString()} <span className="text-xs text-muted-foreground">(non-refundable)</span></span></div>
                           )}
                           {returnTotal > 0 && (
                             <>
-                              <div className="border-t border-gray-700 my-2" />
+                              <div className="border-t border-border my-2" />
                               <div className="flex justify-between"><span>Already Returned:</span><span className="text-orange-400">Rs. {returnTotal.toLocaleString()}</span></div>
                               {returnDiscount > 0 && (
-                                <div className="flex justify-between text-xs"><span className="text-gray-500">Return Discount Reversed:</span><span className="text-gray-400">Rs. {returnDiscount.toLocaleString()}</span></div>
+                                <div className="flex justify-between text-xs"><span className="text-muted-foreground">Return Discount Reversed:</span><span className="text-muted-foreground">Rs. {returnDiscount.toLocaleString()}</span></div>
                               )}
                             </>
                           )}
-                          <div className="border-t border-gray-700 my-2" />
-                          <div className="flex justify-between"><span>Net Cancel Amount:</span><span className="text-white">Rs. {netCancelAmount.toLocaleString()}</span></div>
+                          <div className="border-t border-border my-2" />
+                          <div className="flex justify-between"><span>Net Cancel Amount:</span><span className="text-foreground">Rs. {netCancelAmount.toLocaleString()}</span></div>
                           {shipping > 0 && (
-                            <div className="flex justify-between text-xs"><span className="text-gray-500">Less Shipping (non-refundable):</span><span className="text-gray-400">- Rs. {shipping.toLocaleString()}</span></div>
+                            <div className="flex justify-between text-xs"><span className="text-muted-foreground">Less Shipping (non-refundable):</span><span className="text-muted-foreground">- Rs. {shipping.toLocaleString()}</span></div>
                           )}
                           <div className="flex justify-between font-semibold text-base pt-1">
                             <span>Customer Refund Due:</span>
@@ -2760,13 +2837,13 @@ export const SalesPage = () => {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="bg-gray-800 hover:bg-gray-700 text-white border-gray-700" disabled={cancellingInvoice}>
+            <AlertDialogCancel className="bg-muted hover:bg-accent text-foreground border-border" disabled={cancellingInvoice}>
               Keep Invoice
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleCancelInvoice}
               disabled={cancellingInvoice}
-              className="bg-amber-600 hover:bg-amber-500 text-white"
+              className="bg-amber-600 hover:bg-amber-500 text-foreground"
             >
               {cancellingInvoice ? 'Cancelling...' : 'Cancel Invoice & Process Refund'}
             </AlertDialogAction>
@@ -2895,19 +2972,19 @@ export const SalesPage = () => {
 
       {/* 🎯 UPDATE SHIPPING DIALOG — Courier, Tracking, Status; saves to sale_shipments + shipment_history */}
       <Dialog open={shippingDialogOpen} onOpenChange={(open) => { setShippingDialogOpen(open); if (!open) setUpdateShippingLoadedShipmentId(null); }}>
-        <DialogContent className="bg-gray-900 border-gray-700 text-white">
+        <DialogContent className="bg-popover border-border text-popover-foreground">
           <DialogHeader>
             <DialogTitle>Update Shipping</DialogTitle>
           </DialogHeader>
           {selectedSale && (
             <div className="space-y-4">
-              <div className="text-sm text-gray-400">
+              <div className="text-sm text-muted-foreground">
                 Invoice: <span className="font-semibold text-blue-400">{selectedSale.invoiceNo}</span>
               </div>
               <div className="space-y-2">
                 <Label className="text-sm font-medium">Courier</Label>
                 <Input
-                  className="bg-gray-800 border-gray-700 text-white"
+                  className="bg-muted border-border text-foreground"
                   value={updateShippingForm.courierName}
                   onChange={(e) => setUpdateShippingForm((f) => ({ ...f, courierName: e.target.value }))}
                   placeholder="Courier name"
@@ -2916,7 +2993,7 @@ export const SalesPage = () => {
               <div className="space-y-2">
                 <Label className="text-sm font-medium">Tracking Number</Label>
                 <Input
-                  className="bg-gray-800 border-gray-700 text-white"
+                  className="bg-muted border-border text-foreground"
                   value={updateShippingForm.trackingId}
                   onChange={(e) => setUpdateShippingForm((f) => ({ ...f, trackingId: e.target.value }))}
                   placeholder="Tracking ID"
@@ -2928,12 +3005,12 @@ export const SalesPage = () => {
                   value={updateShippingForm.shipmentStatus}
                   onValueChange={(v) => setUpdateShippingForm((f) => ({ ...f, shipmentStatus: v }))}
                 >
-                  <SelectTrigger className="bg-gray-800 border-gray-700 text-white">
+                  <SelectTrigger className="bg-muted border-border text-foreground">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-gray-900 border-gray-700">
+                  <SelectContent className="bg-background border-border">
                     {SHIPMENT_STATUS_OPTIONS.map((opt) => (
-                      <SelectItem key={opt} value={opt} className="text-white focus:bg-gray-800">
+                      <SelectItem key={opt} value={opt} className="text-foreground focus:bg-accent">
                         {opt}
                       </SelectItem>
                     ))}
@@ -2946,14 +3023,14 @@ export const SalesPage = () => {
             <Button
               variant="outline"
               onClick={() => setShippingDialogOpen(false)}
-              className="bg-gray-800 hover:bg-gray-700 text-white border-gray-700"
+              className="bg-muted hover:bg-accent text-foreground border-border"
             >
               Cancel
             </Button>
             <Button
               onClick={handleUpdateShippingSubmit}
               disabled={updateShippingSaving || !selectedSale?.firstShipmentId}
-              className="bg-indigo-600 hover:bg-indigo-500 text-white"
+              className="bg-indigo-600 hover:bg-indigo-500 text-foreground"
             >
               {updateShippingSaving ? 'Saving…' : 'Save'}
             </Button>
@@ -2963,9 +3040,9 @@ export const SalesPage = () => {
 
       {/* 🎯 VIEW SALE RETURNS DIALOG */}
       <Dialog open={viewReturnsDialogOpen} onOpenChange={setViewReturnsDialogOpen}>
-        <DialogContent className="bg-gray-900 border-gray-700 text-white max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="bg-popover border-border text-popover-foreground max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-white">
+            <DialogTitle className="flex items-center gap-2 text-foreground">
               <RotateCcw size={20} className="text-purple-400" />
               Sale Returns for {selectedSaleForReturns?.invoiceNo}
             </DialogTitle>
@@ -2975,23 +3052,23 @@ export const SalesPage = () => {
               <Loader2 className="animate-spin text-blue-400" size={24} />
             </div>
           ) : saleReturns.length === 0 ? (
-            <div className="text-center py-8 text-gray-400">
+            <div className="text-center py-8 text-muted-foreground">
               No returns found for this sale.
             </div>
           ) : (
             <div className="space-y-4">
               {saleReturns.map((ret: any) => (
-                <div key={ret.id} className="bg-gray-800/50 border border-gray-700 rounded-lg p-4">
+                <div key={ret.id} className="bg-muted/30 border border-border rounded-lg p-4">
                   <div className="flex items-center justify-between mb-3">
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="font-semibold text-white">Return #{ret.return_no || ret.id?.slice(0, 8)}</span>
+                        <span className="font-semibold text-foreground">Return #{ret.return_no || ret.id?.slice(0, 8)}</span>
                         <Badge
                           className={
                             String(ret?.status).toLowerCase() === 'void'
-                              ? 'bg-gray-500/20 text-gray-400 border-gray-500/30'
+                              ? 'bg-gray-500/20 text-muted-foreground border-gray-500/30'
                               : ret.status === 'final'
-                                ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                                ? 'bg-green-500/20 text-[var(--erp-money-positive)] border-green-500/30'
                                 : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
                           }
                         >
@@ -3002,7 +3079,7 @@ export const SalesPage = () => {
                               : ret.status || 'Draft'}
                         </Badge>
                       </div>
-                      <p className="text-xs text-gray-400 mt-1">
+                      <p className="text-xs text-muted-foreground mt-1">
                         Date: {(() => {
                           const dt = formatDateAndTime(ret.return_date || ret.created_at);
                           return `${dt.date} ${dt.time}`;
@@ -3014,22 +3091,22 @@ export const SalesPage = () => {
                     </div>
                   </div>
                   {ret.items && ret.items.length > 0 && (
-                    <div className="mt-3 pt-3 border-t border-gray-700">
-                      <p className="text-xs text-gray-500 mb-2">Returned Items:</p>
+                    <div className="mt-3 pt-3 border-t border-border">
+                      <p className="text-xs text-muted-foreground mb-2">Returned Items:</p>
                       <div className="space-y-1">
                         {ret.items.map((item: any, idx: number) => (
                           <div key={idx} className="flex items-center justify-between text-sm">
-                            <span className="text-gray-300">{item.product_name} {item.sku ? `(${item.sku})` : ''}</span>
-                            <span className="text-gray-400">Qty: {item.quantity} × Rs. {item.unit_price?.toLocaleString() || '0'}</span>
+                            <span className="text-muted-foreground">{item.product_name} {item.sku ? `(${item.sku})` : ''}</span>
+                            <span className="text-muted-foreground">Qty: {item.quantity} × Rs. {item.unit_price?.toLocaleString() || '0'}</span>
                           </div>
                         ))}
                       </div>
                     </div>
                   )}
                   {ret.reason && (
-                    <div className="mt-2 pt-2 border-t border-gray-700">
-                      <p className="text-xs text-gray-500">Reason:</p>
-                      <p className="text-sm text-gray-300">{ret.reason}</p>
+                    <div className="mt-2 pt-2 border-t border-border">
+                      <p className="text-xs text-muted-foreground">Reason:</p>
+                      <p className="text-sm text-muted-foreground">{ret.reason}</p>
                     </div>
                   )}
                 </div>
@@ -3040,7 +3117,7 @@ export const SalesPage = () => {
             <Button
               variant="outline"
               onClick={() => setViewReturnsDialogOpen(false)}
-              className="bg-gray-800 hover:bg-gray-700 text-white border-gray-700"
+              className="bg-muted hover:bg-accent text-foreground border-border"
             >
               Close
             </Button>
@@ -3060,9 +3137,9 @@ export const SalesPage = () => {
       {/* View Return Details Dialog */}
       {selectedReturn && (
         <Dialog open={viewReturnDetailsOpen} onOpenChange={setViewReturnDetailsOpen}>
-          <DialogContent className="bg-[#0B0F19] border-gray-800 text-white !w-[800px] !max-w-[800px] sm:!max-w-[800px] max-h-[90vh] overflow-y-auto">
-            <DialogHeader className="border-b border-gray-800 pb-4">
-              <DialogTitle className="text-2xl font-bold text-white flex items-center gap-2">
+          <DialogContent className="bg-background border-border text-foreground !w-[800px] !max-w-[800px] sm:!max-w-[800px] max-h-[90vh] overflow-y-auto">
+            <DialogHeader className="border-b border-border pb-4">
+              <DialogTitle className="text-2xl font-bold text-foreground flex items-center gap-2">
                 <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
                   <RotateCcw size={20} className="text-purple-400" />
                 </div>
@@ -3074,28 +3151,28 @@ export const SalesPage = () => {
             </DialogHeader>
             <div className="space-y-6 mt-4">
               {/* Return Header Info */}
-              <div className="grid grid-cols-2 gap-4 p-4 bg-[#0F1419] rounded-lg border border-gray-800">
+              <div className="grid grid-cols-2 gap-4 p-4 bg-muted/40 rounded-lg border border-border">
                 <div>
-                  <p className="text-xs text-gray-400 uppercase mb-1">Return Date</p>
-                  <p className="text-sm text-white font-medium">{formatDateAndTime(selectedReturn.return_date || selectedReturn.created_at).date} {formatDateAndTime(selectedReturn.return_date || selectedReturn.created_at).time}</p>
+                  <p className="text-xs text-muted-foreground uppercase mb-1">Return Date</p>
+                  <p className="text-sm text-foreground font-medium">{formatDateAndTime(selectedReturn.return_date || selectedReturn.created_at).date} {formatDateAndTime(selectedReturn.return_date || selectedReturn.created_at).time}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-gray-400 uppercase mb-1">Status</p>
-                  <Badge className={selectedReturn.status === 'final' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'}>
+                  <p className="text-xs text-muted-foreground uppercase mb-1">Status</p>
+                  <Badge className={selectedReturn.status === 'final' ? 'bg-green-500/20 text-[var(--erp-money-positive)] border-green-500/30' : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'}>
                     {selectedReturn.status === 'final' ? 'FINAL / LOCKED' : 'Draft'}
                   </Badge>
                 </div>
                 <div>
-                  <p className="text-xs text-gray-400 uppercase mb-1">Customer</p>
-                  <p className="text-sm text-white font-medium">{selectedReturn.customer_name}</p>
+                  <p className="text-xs text-muted-foreground uppercase mb-1">Customer</p>
+                  <p className="text-sm text-foreground font-medium">{selectedReturn.customer_name}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-gray-400 uppercase mb-1">Location</p>
-                  <p className="text-sm text-white">{branchMap.get(selectedReturn.branch_id) || '—'}</p>
+                  <p className="text-xs text-muted-foreground uppercase mb-1">Location</p>
+                  <p className="text-sm text-foreground">{branchMap.get(selectedReturn.branch_id) || '—'}</p>
                 </div>
                 {selectedReturn.original_sale_id && (
                   <div>
-                    <p className="text-xs text-gray-400 uppercase mb-1">Original Sale</p>
+                    <p className="text-xs text-muted-foreground uppercase mb-1">Original Sale</p>
                     <button
                       onClick={() => {
                         const sale = sales.find(s => s.id === selectedReturn.original_sale_id);
@@ -3113,65 +3190,65 @@ export const SalesPage = () => {
                 )}
                 {selectedReturn.reason && (
                   <div className="col-span-2">
-                    <p className="text-xs text-gray-400 uppercase mb-1">Reason</p>
-                    <p className="text-sm text-white">{selectedReturn.reason}</p>
+                    <p className="text-xs text-muted-foreground uppercase mb-1">Reason</p>
+                    <p className="text-sm text-foreground">{selectedReturn.reason}</p>
                   </div>
                 )}
                 {selectedReturn.notes && (
                   <div className="col-span-2">
-                    <p className="text-xs text-gray-400 uppercase mb-1">Notes</p>
-                    <p className="text-sm text-gray-300">{selectedReturn.notes}</p>
+                    <p className="text-xs text-muted-foreground uppercase mb-1">Notes</p>
+                    <p className="text-sm text-muted-foreground">{selectedReturn.notes}</p>
                   </div>
                 )}
               </div>
 
               {/* Return Items */}
               <div>
-                <h3 className="text-lg font-semibold text-white mb-3">Return Items</h3>
+                <h3 className="text-lg font-semibold text-foreground mb-3">Return Items</h3>
                 {selectedReturn.items && selectedReturn.items.length > 0 ? (
-                  <div className="bg-[#0F1419] border border-gray-800 rounded-lg overflow-hidden">
+                  <div className="bg-muted/40 border border-border rounded-lg overflow-hidden">
                     <table className="w-full">
-                      <thead className="bg-[#0B0F19] border-b border-gray-800">
+                      <thead className="bg-secondary border-b border-border">
                         <tr>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Product</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">SKU</th>
-                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase">Qty</th>
-                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase">Unit Price</th>
-                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase">Total</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Product</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">SKU</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-muted-foreground uppercase">Qty</th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase">Unit Price</th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase">Total</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-800">
+                      <tbody className="divide-y divide-border">
                         {selectedReturn.items.map((item: any, idx: number) => (
-                          <tr key={idx} className="hover:bg-[#0B0F19] transition-colors">
-                            <td className="px-4 py-3 text-sm text-white">{item.product_name}</td>
-                            <td className="px-4 py-3 text-sm text-gray-400 font-mono">{item.sku}</td>
-                            <td className="px-4 py-3 text-sm text-gray-300 text-center">{item.quantity}</td>
-                            <td className="px-4 py-3 text-sm text-gray-300 text-right tabular-nums">Rs. {item.unit_price?.toLocaleString() || '0'}</td>
+                          <tr key={idx} className="hover:bg-secondary transition-colors">
+                            <td className="px-4 py-3 text-sm text-foreground">{item.product_name}</td>
+                            <td className="px-4 py-3 text-sm text-muted-foreground font-mono">{item.sku}</td>
+                            <td className="px-4 py-3 text-sm text-muted-foreground text-center">{item.quantity}</td>
+                            <td className="px-4 py-3 text-sm text-muted-foreground text-right tabular-nums">Rs. {item.unit_price?.toLocaleString() || '0'}</td>
                             <td className="px-4 py-3 text-sm font-semibold text-red-400 text-right tabular-nums">-Rs. {item.total?.toLocaleString() || '0'}</td>
                           </tr>
                         ))}
                       </tbody>
-                      <tfoot className="bg-[#0B0F19] border-t border-gray-800">
+                      <tfoot className="bg-secondary border-t border-border">
                         <tr>
-                          <td colSpan={4} className="px-4 py-3 text-sm font-semibold text-gray-300 text-right">Total Return Amount:</td>
+                          <td colSpan={4} className="px-4 py-3 text-sm font-semibold text-muted-foreground text-right">Total Return Amount:</td>
                           <td className="px-4 py-3 text-lg font-bold text-red-400 text-right tabular-nums">-Rs. {selectedReturn.total?.toLocaleString() || '0'}</td>
                         </tr>
                       </tfoot>
                     </table>
                   </div>
                 ) : (
-                  <div className="text-center py-8 text-gray-400">
-                    <Package size={48} className="mx-auto mb-3 text-gray-600" />
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Package size={48} className="mx-auto mb-3 text-muted-foreground" />
                     <p>No items found in this return</p>
                   </div>
                 )}
               </div>
             </div>
-            <DialogFooter className="mt-6 border-t border-gray-800 pt-4">
+            <DialogFooter className="mt-6 border-t border-border pt-4">
               <Button
                 variant="outline"
                 onClick={() => setViewReturnDetailsOpen(false)}
-                className="border-gray-800 text-gray-300 hover:text-white hover:bg-gray-800"
+                className="border-border text-muted-foreground hover:text-foreground hover:bg-accent"
               >
                 Close
               </Button>
@@ -3205,16 +3282,16 @@ export const SalesPage = () => {
 
       {/* Delete Return Confirmation Dialog */}
       <AlertDialog open={deleteReturnDialogOpen} onOpenChange={setDeleteReturnDialogOpen}>
-        <AlertDialogContent className="bg-gray-900 border-gray-700 text-white">
+        <AlertDialogContent className="bg-popover border-border text-popover-foreground">
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Return?</AlertDialogTitle>
-            <AlertDialogDescription className="text-gray-300">
-              Are you sure you want to delete return <span className="font-semibold text-white">{returnToDelete?.return_no || `RET-${returnToDelete?.id?.slice(0, 8).toUpperCase()}`}</span>?
+            <AlertDialogDescription className="text-muted-foreground">
+              Are you sure you want to delete return <span className="font-semibold text-foreground">{returnToDelete?.return_no || `RET-${returnToDelete?.id?.slice(0, 8).toUpperCase()}`}</span>?
               This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800">
+            <AlertDialogCancel className="border-border text-muted-foreground hover:text-foreground hover:bg-accent">
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
@@ -3236,7 +3313,7 @@ export const SalesPage = () => {
                   toast.error(error.message || 'Failed to delete return');
                 }
               }}
-              className="bg-red-600 hover:bg-red-700 text-white"
+              className="bg-red-600 hover:bg-red-700 text-foreground"
             >
               Delete
             </AlertDialogAction>
@@ -3246,18 +3323,18 @@ export const SalesPage = () => {
 
       {/* Void Return Confirmation Dialog — standard method when return was saved by mistake */}
       <AlertDialog open={voidReturnDialogOpen} onOpenChange={(open) => { setVoidReturnDialogOpen(open); if (!open) setReturnToVoid(null); }}>
-        <AlertDialogContent className="bg-gray-900 border-gray-700 text-white">
+        <AlertDialogContent className="bg-popover border-border text-popover-foreground">
           <AlertDialogHeader>
             <AlertDialogTitle>Void / Cancel Return?</AlertDialogTitle>
-            <AlertDialogDescription className="text-gray-300">
+            <AlertDialogDescription className="text-muted-foreground">
               This will <span className="font-semibold text-amber-400">void / cancel</span> return{' '}
-              <span className="font-semibold text-white">{returnToVoid?.return_no || `RET-${returnToVoid?.id?.slice(0, 8).toUpperCase()}`}</span>
+              <span className="font-semibold text-foreground">{returnToVoid?.return_no || `RET-${returnToVoid?.id?.slice(0, 8).toUpperCase()}`}</span>
               — same idea as purchase returns: stock is reversed (goods go back out as if the return did not land), settlement is reversed in the ledger where posted, and the document is marked{' '}
               <span className="font-semibold text-gray-200">void</span> and <span className="font-semibold text-gray-200">locked</span> (no edit / no delete; audit trail kept). Continue?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800" disabled={voidingReturn}>
+            <AlertDialogCancel className="border-border text-muted-foreground hover:text-foreground hover:bg-accent" disabled={voidingReturn}>
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
@@ -3291,7 +3368,7 @@ export const SalesPage = () => {
                   setVoidingReturn(false);
                 }
               }}
-              className="bg-amber-600 hover:bg-amber-700 text-white"
+              className="bg-amber-600 hover:bg-amber-700 text-foreground"
             >
               {voidingReturn ? 'Voiding…' : 'Void Return'}
             </AlertDialogAction>
@@ -3309,6 +3386,6 @@ export const SalesPage = () => {
           }}
         />
       )}
-    </div>
+    </ErpPage>
   );
 };

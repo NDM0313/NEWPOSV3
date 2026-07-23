@@ -1,0 +1,23 @@
+{
+  "generated_at": "2026-06-30T07:09:35.087Z",
+  "command": "npm run monitor:three-company-unified-ledger",
+  "overall": "PASS",
+  "exit_code": 0,
+  "credential_source": "erp-mobile-app/.env loaded into PowerShell session (not auto-read by npm)",
+  "credential_check": {
+    "QA_BROWSER_PASSWORD_CHINA": "SET",
+    "QA_BROWSER_PASSWORD_BRIDAL": "SET",
+    "QA_BROWSER_PASSWORD_COUTURE": "SET",
+    "generic_fallback_allowed": false
+  },
+  "profiles": {
+    "din-china": { "result": "PASS", "checks": "19/19" },
+    "din-bridal": { "result": "PASS", "checks": "18/19 (1 waived)" },
+    "din-couture": { "result": "PASS", "checks": "18/19 (1 waived)" }
+  },
+  "flag_guard": "PASS",
+  "other_company_loaders_on": 0,
+  "migrations_run": false,
+  "gl_mutations": false,
+  "evidence": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-30T06-58-58-962Z.json"
+}

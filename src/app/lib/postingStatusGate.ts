@@ -1,6 +1,7 @@
 /**
- * Central posting rules: only posted documents may touch GL, stock, payment JEs, AR/AP as operational truth.
- * Draft / quotation / order (sales) and draft / ordered (purchases) = business data only.
+ * Central posting rules: only posted documents may touch revenue/AR/AP, COGS, and stock.
+ * Customer receipts on sales use {@link canRecordSaleCustomerPayment} (order + final).
+ * Draft / quotation (sales) and draft / ordered (purchases) = business data only.
  */
 
 import {
@@ -17,6 +18,15 @@ export function normalizeDocStatus(status: unknown): string {
 /** Sale: only `final` is posted for revenue/AR/COGS/stock. */
 export function canPostAccountingForSaleStatus(status: unknown): boolean {
   return normalizeDocStatus(status) === SALE_POSTED_ACCOUNTING_STATUS;
+}
+
+/**
+ * Customer receive payment / payment JE linked to a sale.
+ * Order advances + final invoices (matches View Payments UI). Draft/quotation stay blocked.
+ */
+export function canRecordSaleCustomerPayment(status: unknown): boolean {
+  const s = normalizeDocStatus(status);
+  return s === 'order' || s === SALE_POSTED_ACCOUNTING_STATUS;
 }
 
 export function canPostStockForSaleStatus(status: unknown): boolean {

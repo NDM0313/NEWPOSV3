@@ -1,0 +1,17 @@
+{
+  "run": "MOBILE_APK_DEVICE_QA",
+  "task": "app-basic-smoke",
+  "generated_at": "2026-07-01T12:00:00.000Z",
+  "status": "BLOCKED_NOT_RUN",
+  "reason": "DEVICE_QA_BLOCKED_NO_ADB_DEVICE",
+  "checks": [
+    { "id": 1, "item": "App opens", "status": "not_run" },
+    { "id": 2, "item": "No immediate crash", "status": "not_run" },
+    { "id": 3, "item": "Login screen appears", "status": "not_run" },
+    { "id": 4, "item": "No blank screen", "status": "not_run" },
+    { "id": 5, "item": "No webview/chunk/import error", "status": "not_run" },
+    { "id": 6, "item": "Network connects to ERP backend", "status": "not_run" },
+    { "id": 7, "item": "Close and reopen", "status": "not_run" },
+    { "id": 8, "item": "Logout/login flow available", "status": "not_run" }
+  ]
+}

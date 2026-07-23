@@ -1,0 +1,5 @@
+{
+  "run": "OPTIONAL_MONITORING_SANITY",
+  "executed": false,
+  "reason": "SKIPPED_SAME_DAY_CALENDAR_STABILITY_ALREADY_RECORDED"
+}

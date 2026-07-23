@@ -1,0 +1,17 @@
+{
+  "generated_at": "2026-06-30T12:24:30.000Z",
+  "backup_paths": {
+    "env": "/root/supabase/docker/.env.bak.sender-name-ndm-20260630T120945Z",
+    "compose": "/root/supabase/docker/docker-compose.yml.bak.sender-name-ndm-20260630T120945Z"
+  },
+  "restore_commands": [
+    "cp /root/supabase/docker/.env.bak.sender-name-ndm-20260630T120945Z /root/supabase/docker/.env",
+    "cd /root/supabase/docker && docker compose up -d auth"
+  ],
+  "rollback_sender_name": "DIN Collection ERP",
+  "validation": [
+    "GOTRUE_SMTP_SENDER_NAME=DIN Collection ERP",
+    "supabase-auth healthy",
+    "monitoring PASS"
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "run": "R5-DIN-BRIDAL-unblock-controlled-rollout",
+  "generated_at": "2026-06-27T11:00:00Z",
+  "main_commit": "e12a4811",
+  "target_company": "DIN BRIDAL",
+  "target_company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+  "gates": {
+    "finance_signoff_present": false,
+    "finance_signoff_path_provided": "<PASTE_DIN_BRIDAL_FINANCE_SIGNOFF_ARTIFACT_PATH_HERE>",
+    "finance_signoff_valid": false,
+    "operator_approval_in_prompt": true,
+    "operator_approval_sufficient_alone": false,
+    "qa_browser_email_present": false,
+    "qa_browser_password_present": false
+  },
+  "production_readonly_audit": {
+    "din_bridal_unified_flags_on": 0,
+    "din_china_unified_flags_on": 12,
+    "din_china_loaders_on": 5,
+    "other_company_loaders_on": 0,
+    "audit_pass": true
+  },
+  "stopped_at_step": 2,
+  "status": "R5_BLOCKED_FINANCE_SIGN_OFF_REQUIRED",
+  "secondary_blockers": [
+    "QA_BROWSER_EMAIL_missing",
+    "QA_BROWSER_PASSWORD_missing"
+  ],
+  "sql_executed": false,
+  "flags_changed": false,
+  "migrations_run": false,
+  "gl_mutations": false,
+  "fx_app_touched": false
+}

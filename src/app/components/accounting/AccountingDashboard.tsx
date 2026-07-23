@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback, Suspense, lazy } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef, Suspense, lazy } from 'react';
 import { 
   Receipt, 
   Wallet,
@@ -19,7 +19,6 @@ import {
   Wrench,
   FileText,
   BarChart3,
-  TestTube,
   Edit,
   XCircle,
   Star,
@@ -31,14 +30,18 @@ import {
   X,
   BookMarked,
   Truck,
+  ArrowLeftRight,
   RotateCcw,
   Scale,
   ShieldAlert,
   ExternalLink,
   Undo2,
   Search,
+  Loader2,
+  Paperclip,
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
+import { DatePicker } from '@/app/components/ui/DatePicker';
 import { Badge } from '@/app/components/ui/badge';
 import { ListToolbar } from '@/app/components/ui/list-toolbar';
 import { cn } from '@/app/components/ui/utils';
@@ -48,18 +51,35 @@ import { useSales } from '@/app/context/SalesContext';
 import { usePurchases } from '@/app/context/PurchaseContext';
 import { useExpenses } from '@/app/context/ExpenseContext';
 import type { AccountingEntry } from '@/app/context/AccountingContext';
+import { journalRowPresentation } from '@/app/lib/accountingJournalRowPresentation';
 import { ManualEntryDialog } from './ManualEntryDialog';
 import { AccountLedgerView } from './AccountLedgerView';
 import { AccountLedgerPage } from './AccountLedgerPage';
 import { TransactionDetailModal } from './TransactionDetailModal';
+import { TransactionConfirmDialog } from './TransactionConfirmDialog';
+import { AttachmentViewer } from '@/app/components/shared/AttachmentViewer';
+import {
+  collectEntryAttachments,
+  collectGroupAttachments,
+  entryHasAttachments,
+  groupEntryHasAttachments,
+  type TransactionAttachment,
+} from '@/app/utils/transactionAttachments';
 import { AddAccountDrawer } from './AddAccountDrawer';
-import { LedgerHub } from './LedgerHub';
+import { LedgerStatementCenterV2Page } from '@/app/features/ledger-statement-center-v2/LedgerStatementCenterV2Page';
+import type { LedgerStatementV2Initial } from '@/app/features/ledger-statement-center-v2/types';
 import { PayCourierModal } from './PayCourierModal';
 import { useSettings } from '@/app/context/SettingsContext';
 import { AccountingTestPage } from '@/app/components/test/AccountingTestPage';
-import { AddEntryV2 } from './AddEntryV2';
+import { AddEntryV2Host, dispatchOpenAddEntryV2 } from './AddEntryV2Host';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { INTEGRITY_LAB_SESSION_KEY } from '@/app/lib/integrityLabConstants';
+import { syncArApDiagnosticsHubTabToUrl } from '@/app/lib/arApDiagnosticsHubTabs';
+import {
+  safeSessionStorageGetItem,
+  safeSessionStorageRemoveItem,
+  safeSessionStorageSetItem,
+} from '@/app/lib/safeBrowserStorage';
 import { ControlAccountBreakdownDrawer } from './ControlAccountBreakdownDrawer';
 import type { ControlAccountBreakdownResult, PartyGlRow } from '@/app/services/controlAccountBreakdownService';
 import { fetchControlAccountBreakdown } from '@/app/services/controlAccountBreakdownService';
@@ -67,37 +87,51 @@ import { fetchControlAccountBreakdown } from '@/app/services/controlAccountBreak
 /** Add Entry: V2 = new default (typed, theme-matched). Set false to use legacy AccountingTestPage. */
 const USE_ADD_ENTRY_V2 = true;
 import { useGlobalFilter } from '@/app/context/GlobalFilterContext';
+import { formatLocalDateYYYYMMDD, localNowDateString } from '@/app/utils/localDate';
 import { accountService } from '@/app/services/accountService';
 import { contactService } from '@/app/services/contactService';
 import { CONTACT_BALANCES_REFRESH_EVENT } from '@/app/lib/contactBalancesRefresh';
 import {
   DATA_INVALIDATED_EVENT,
+  dispatchAccountingInvalidated,
   type DataInvalidationDetail,
   shouldAcceptInvalidation,
 } from '@/app/lib/dataInvalidationBus';
 import { toast } from 'sonner';
+import { supabase } from '@/lib/supabase';
+import type { AccountCategory } from '@/app/services/chartAccountService';
+import { OPENING_BALANCE_REFERENCE } from '@/app/services/openingBalanceJournalService';
+import {
+  accountingTypeFilterEmptyMessage,
+  matchesAccountingTypeFilter,
+} from '@/app/lib/accountingJournalTypeFilter';
 import { getControlAccountKind } from '@/app/lib/accountControlKind';
 import { AccountsHierarchyList } from '@/app/components/accounting/AccountsHierarchyList';
 import { ControlLinkedPartiesSheet } from '@/app/components/accounting/ControlLinkedPartiesSheet';
 import { useAccountsHierarchyModel } from '@/app/components/accounting/useAccountsHierarchyModel';
 import { AccountingDashboardAccountRowMenu } from '@/app/components/accounting/AccountingDashboardAccountRowMenu';
 import { ChartOfAccountsPartyDropdown } from '@/app/components/accounting/ChartOfAccountsPartyDropdown';
+import { ReportBasisBanner } from '@/app/components/accounting/ReportBasisBanner';
+import { accountingReportsService } from '@/app/services/accountingReportsService';
 import {
   allowsGenericAccountingUnifiedEdit,
   getJournalEntrySourceDocumentOpenTarget,
   journalReversalBlockedReason,
 } from '@/app/lib/journalEntryEditPolicy';
+import { isTransactionActionPanelEnabled } from '@/app/lib/transactionActionRules';
+import { JournalRowTransactionActions } from '@/app/components/accounting/JournalRowTransactionActions';
+import { useJournalTransactionActionHandlers } from '@/app/hooks/useJournalTransactionActionHandlers';
 
 const StudioCostsTab = lazy(() => import('./StudioCostsTab').then((m) => ({ default: m.StudioCostsTab })));
 const DepositsTab = lazy(() => import('./DepositsTab').then((m) => ({ default: m.DepositsTab })));
 const CourierReportsTab = lazy(() => import('./CourierReportsTab').then((m) => ({ default: m.CourierReportsTab })));
 const DayBookReport = lazy(() => import('@/app/components/reports/DayBookReport').then((m) => ({ default: m.DayBookReport })));
 const RoznamchaReport = lazy(() => import('@/app/components/reports/RoznamchaReport').then((m) => ({ default: m.RoznamchaReport })));
+const CashFlowReportPage = lazy(() => import('@/app/components/reports/CashFlowReportPage').then((m) => ({ default: m.CashFlowReportPage })));
 const AccountLedgerReportPage = lazy(() => import('@/app/components/reports/AccountLedgerReportPage').then((m) => ({ default: m.AccountLedgerReportPage })));
-const AccountingIntegrityTestLab = lazy(() => import('./AccountingIntegrityTestLab'));
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { AdaptiveCurrencyValue } from '@/app/components/shared/AdaptiveCurrencyValue';
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
-import { useSubmitLock } from '@/app/context/LoadingContext';
 import { DateTimeDisplay } from '@/app/components/ui/DateTimeDisplay';
 import {
   DropdownMenu,
@@ -147,7 +181,7 @@ const REF_TYPE_COLORS: Record<string, string> = {
   purchase_return: 'bg-pink-900/50 text-pink-300',
   purchase_reversal: 'bg-red-900/30 text-red-400',
   payment: 'bg-green-900/50 text-green-300',
-  payment_adjustment: 'bg-green-900/30 text-green-400',
+  payment_adjustment: 'bg-green-900/30 text-[var(--erp-money-positive)]',
   shipment: 'bg-amber-900/50 text-amber-300',
   stock_adjustment: 'bg-yellow-900/40 text-yellow-300',
   opening_balance_contact_ar: 'bg-cyan-900/40 text-cyan-300',
@@ -156,7 +190,7 @@ const REF_TYPE_COLORS: Record<string, string> = {
   opening_balance_inventory: 'bg-cyan-900/40 text-cyan-300',
   opening_balance_contact_worker: 'bg-cyan-900/40 text-cyan-300',
   commission_batch: 'bg-teal-900/50 text-teal-300',
-  manual: 'bg-gray-800 text-gray-400',
+  manual: 'bg-muted text-muted-foreground',
 };
 
 function refTypeBadgeLabel(rt: string): string {
@@ -205,139 +239,30 @@ function buildJournalSearchHaystack(entry: AccountingEntry): string {
     .join(' ');
 }
 
-/** Journal list: line amount is stored positive; classify by module/source (sign-based Income/Expense was wrong for all rows). */
-function journalRowPresentation(entry: AccountingEntry): {
-  typeLabel: string;
-  amountClass: string;
-  badgeClass: string;
-} {
-  if (entry.source === 'Reversal') {
-    return {
-      typeLabel: 'Reversal',
-      amountClass: 'text-amber-400',
-      badgeClass: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
-    };
-  }
+/** Sale cancel audit badges for General Entries (original sale JE + sale_reversal pair). */
+function saleCancellationJournalBadge(entry: AccountingEntry): React.ReactNode {
   const meta = entry.metadata as {
     referenceType?: string;
-    paymentId?: string;
-    rootReferenceType?: string;
-    linkedPaymentReferenceType?: string;
+    linkedSaleStatus?: string;
+    documentNo?: string;
   } | undefined;
-  const rtRaw = String(meta?.referenceType || '').toLowerCase();
-  const payId = meta?.paymentId;
-  const rootRt = String(meta?.rootReferenceType || '').toLowerCase();
-  const linkedPayRt = String(meta?.linkedPaymentReferenceType || '').toLowerCase();
-  if (rtRaw === 'worker_payment') {
-    return {
-      typeLabel: 'Worker payment',
-      amountClass: 'text-violet-400',
-      badgeClass: 'bg-violet-500/20 text-violet-300 border-violet-500/35',
-    };
+  const rt = String(meta?.referenceType || '').toLowerCase();
+  const inv = meta?.documentNo;
+  if (rt === 'sale_reversal') {
+    return (
+      <Badge className="ml-2 bg-amber-500/15 text-amber-300 border-amber-500/35 text-[10px] whitespace-nowrap">
+        Cancellation reversal{inv ? ` · ${inv}` : ''}
+      </Badge>
+    );
   }
-  if (payId && rtRaw === 'purchase') {
-    return {
-      typeLabel: 'Supplier payment',
-      amountClass: 'text-sky-400',
-      badgeClass: 'bg-sky-500/20 text-sky-300 border-sky-500/35',
-    };
+  if (rt === 'sale' && String(meta?.linkedSaleStatus || '').toLowerCase() === 'cancelled') {
+    return (
+      <Badge className="ml-2 bg-amber-500/15 text-amber-300 border-amber-500/35 text-[10px] whitespace-nowrap">
+        Sale cancelled
+      </Badge>
+    );
   }
-  if (payId && rtRaw === 'sale') {
-    return {
-      typeLabel: 'Customer receipt',
-      amountClass: 'text-emerald-400',
-      badgeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/35',
-    };
-  }
-  if (rtRaw === 'payment_adjustment' && payId) {
-    if (rootRt === 'purchase' || rootRt === 'manual_payment' || rootRt === 'on_account') {
-      return {
-        typeLabel: 'Supplier payment',
-        amountClass: 'text-sky-400',
-        badgeClass: 'bg-sky-500/20 text-sky-300 border-sky-500/35',
-      };
-    }
-    if (rootRt === 'sale' || rootRt === 'manual_receipt') {
-      return {
-        typeLabel: 'Customer receipt',
-        amountClass: 'text-emerald-400',
-        badgeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/35',
-      };
-    }
-    return {
-      typeLabel: 'Payment edit',
-      amountClass: 'text-cyan-400',
-      badgeClass: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/35',
-    };
-  }
-  if (rtRaw === 'manual_receipt') {
-    return {
-      typeLabel: 'Customer receipt',
-      amountClass: 'text-emerald-400',
-      badgeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/35',
-    };
-  }
-  if (linkedPayRt === 'sale' || (payId && linkedPayRt === 'sale')) {
-    return {
-      typeLabel: 'Customer receipt',
-      amountClass: 'text-emerald-400',
-      badgeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/35',
-    };
-  }
-  if (linkedPayRt === 'purchase' || (payId && linkedPayRt === 'purchase')) {
-    return {
-      typeLabel: 'Supplier payment',
-      amountClass: 'text-sky-400',
-      badgeClass: 'bg-sky-500/20 text-sky-300 border-sky-500/35',
-    };
-  }
-  if (entry.module === 'Payments' || rtRaw === 'manual_payment') {
-    if (rtRaw === 'manual_payment') {
-      return {
-        typeLabel: 'Supplier payment',
-        amountClass: 'text-sky-400',
-        badgeClass: 'bg-sky-500/20 text-sky-300 border-sky-500/35',
-      };
-    }
-    return {
-      typeLabel: 'Payment',
-      amountClass: 'text-cyan-400',
-      badgeClass: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/35',
-    };
-  }
-  if (entry.module === 'Expenses' || entry.source === 'Expense') {
-    return {
-      typeLabel: 'Expense',
-      amountClass: 'text-red-400',
-      badgeClass: 'bg-red-500/20 text-red-400 border-red-500/30',
-    };
-  }
-  if (entry.module === 'Purchases' || entry.source === 'Purchase') {
-    return {
-      typeLabel: 'Purchase',
-      amountClass: 'text-orange-400',
-      badgeClass: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
-    };
-  }
-  if (entry.source === 'Sale' || entry.module === 'Sales') {
-    return {
-      typeLabel: 'Income',
-      amountClass: 'text-green-400',
-      badgeClass: 'bg-green-500/20 text-green-400 border-green-500/30',
-    };
-  }
-  if (entry.source === 'Payment') {
-    return {
-      typeLabel: 'Payment',
-      amountClass: 'text-cyan-400',
-      badgeClass: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/35',
-    };
-  }
-  return {
-    typeLabel: 'Journal',
-    amountClass: 'text-gray-300',
-    badgeClass: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
-  };
+  return null;
 }
 
 /** Journal list Account column: leaf names + party from convertFromJournalEntry; grouped = compact union. */
@@ -449,6 +374,13 @@ const EXPENSE_ACCOUNTS = new Set([
 const AR_ACCOUNTS = new Set(['Accounts Receivable']);
 const AP_ACCOUNTS = new Set(['Accounts Payable', 'Worker Payable']);
 
+const ReportTabSuspenseFallback = ({ label }: { label: string }) => (
+  <div className="flex flex-col items-center justify-center gap-2 py-12 text-muted-foreground">
+    <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+    <span className="text-sm">{label}</span>
+  </div>
+);
+
 export const AccountingDashboard = () => {
   const { canAccessAccounting, canPostAccounting } = useCheckPermission();
   const { modules: settingsModules } = useSettings();
@@ -456,95 +388,56 @@ export const AccountingDashboard = () => {
   const sales = useSales();
   const purchases = usePurchases();
   const expenses = useExpenses();
-  const { openDrawer, setCurrentView } = useNavigation();
+  const { openDrawer, setCurrentView, accountStatementV2Initial, setAccountStatementV2Initial, accountingTabInitial, setAccountingTabInitial } = useNavigation();
   const { companyId, branchId } = useSupabase();
   const { setCurrentModule, startDate: globalStartDate, endDate: globalEndDate } = useGlobalFilter();
+  const {
+    busy,
+    transactionReference,
+    transactionJournalEntryIdHint,
+    selectedGroupEntries,
+    transactionDetailAutoEdit,
+    transactionDetailAutoOpenTrace,
+    transactionDetailScrollToAudit,
+    clearTransactionDetail,
+    setTransactionDetailAutoEdit,
+    setTransactionDetailAutoOpenTrace,
+    setTransactionDetailScrollToAudit,
+    runJournalMutation,
+    handleOpenJournalSourceDocument,
+    openJournalEntryDetail,
+    openJournalEntryDetailFromEntry,
+    handleJournalUndoLastChange,
+    handleJournalCancelPayment,
+    handleJournalCancelEntry,
+    handleJournalCancelOrphan,
+    pendingConfirm,
+    dismissPendingConfirm,
+    confirmPendingJournalAction,
+  } = useJournalTransactionActionHandlers();
   const { formatCurrency } = useFormatCurrency();
-  const { run, busy } = useSubmitLock();
 
-  const runJournalMutation = useCallback(
-    (label: string, task: () => Promise<void>) => {
-      void run(label, task);
-    },
-    [run],
-  );
-
-  const handleOpenJournalSourceDocument = useCallback(
-    async (entry: AccountingEntry) => {
-      const target = getJournalEntrySourceDocumentOpenTarget(entry);
-      if (!target) {
-        toast.message('Open this record from its source module (Sales, Purchases, Rentals, or Inventory).');
-        return;
-      }
-      try {
-        if (target.kind === 'sale') {
-          const { saleService } = await import('@/app/services/saleService');
-          const full = await saleService.getSaleById(target.id);
-          if (!full) {
-            toast.error('Sale not found.');
-            return;
-          }
-          openDrawer('edit-sale', undefined, { sale: full });
-          return;
-        }
-        if (target.kind === 'purchase') {
-          const { purchaseService } = await import('@/app/services/purchaseService');
-          const full = await purchaseService.getPurchase(target.id);
-          if (!full) {
-            toast.error('Purchase not found.');
-            return;
-          }
-          openDrawer('edit-purchase', undefined, { purchase: full });
-          return;
-        }
-        if (target.kind === 'sale_return') {
-          if (typeof window !== 'undefined') {
-            sessionStorage.setItem('pendingAccountingOpen_saleReturnId', target.id);
-          }
-          setCurrentView('sales');
-          toast.info('Opening Sales — return details will open on the Returns tab.');
-          return;
-        }
-        if (target.kind === 'purchase_return') {
-          if (typeof window !== 'undefined') {
-            sessionStorage.setItem('pendingAccountingOpen_purchaseReturnId', target.id);
-          }
-          setCurrentView('purchases');
-          toast.info('Opening Purchases — return details will open when ready.');
-          return;
-        }
-        if (target.kind === 'rental') {
-          if (typeof window !== 'undefined') {
-            sessionStorage.setItem('pendingRentalDetailsId', target.id);
-          }
-          setCurrentView('rentals');
-          toast.info('Opening Rentals — use the booking drawer to edit.');
-        }
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : 'Could not open source document.';
-        toast.error(msg);
-      }
-    },
-    [openDrawer, setCurrentView]
-  );
+  useEffect(() => {
+    void accounting.ensureEntriesLoaded();
+  }, [accounting.ensureEntriesLoaded]);
 
   useEffect(() => {
     setCurrentModule('accounting');
   }, [setCurrentModule]);
 
-  const [activeTab, setActiveTab] = useState<'journal_entries' | 'daybook' | 'roznamcha' | 'accounts' | 'ledger' | 'receivables' | 'payables' | 'courier' | 'deposits' | 'studio' | 'account_statements' | 'integrity_lab'>('journal_entries');
+  const [activeTab, setActiveTab] = useState<'journal_entries' | 'daybook' | 'roznamcha' | 'cash_flow' | 'accounts' | 'receivables' | 'payables' | 'courier' | 'deposits' | 'studio' | 'account_statements'>('journal_entries');
   /** Align Account Statements period with global header filter when set (same idea as Day Book / Roznamcha). */
   const reportStartDate = useMemo(() => {
     const g = globalStartDate && String(globalStartDate).trim();
     if (g) return g.slice(0, 10);
     const d = new Date();
     d.setDate(1);
-    return d.toISOString().slice(0, 10);
+    return formatLocalDateYYYYMMDD(d);
   }, [globalStartDate]);
   const reportEndDate = useMemo(() => {
     const g = globalEndDate && String(globalEndDate).trim();
     if (g) return g.slice(0, 10);
-    return new Date().toISOString().slice(0, 10);
+    return localNowDateString();
   }, [globalEndDate]);
 
   /** Account Statements tab: editable period (initialized from global filter; re-syncs when global dates change). */
@@ -552,6 +445,26 @@ export const AccountingDashboard = () => {
   const [accountStatementEnd, setAccountStatementEnd] = useState(() => reportEndDate);
   /** Set from Accounts row ⋮ → Statement; pre-selects that GL account on Account Statements tab. */
   const [accountStatementPreselectId, setAccountStatementPreselectId] = useState<string | null>(null);
+
+  const accountStatementV2Entity = useMemo((): LedgerStatementV2Initial | null => {
+    if (accountStatementV2Initial?.entityId) return accountStatementV2Initial;
+    if (accountStatementPreselectId) {
+      return { entityId: accountStatementPreselectId, statementType: 'account' };
+    }
+    return null;
+  }, [accountStatementV2Initial, accountStatementPreselectId]);
+
+  const handleAccountStatementInitialConsumed = useCallback(() => {
+    setAccountStatementV2Initial(null);
+    setAccountStatementPreselectId(null);
+  }, [setAccountStatementV2Initial]);
+
+  useEffect(() => {
+    if (accountingTabInitial === 'account_statements') {
+      setActiveTab('account_statements');
+      setAccountingTabInitial(null);
+    }
+  }, [accountingTabInitial, setAccountingTabInitial]);
   useEffect(() => {
     setAccountStatementStart(reportStartDate);
     setAccountStatementEnd(reportEndDate);
@@ -568,15 +481,14 @@ export const AccountingDashboard = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [filterOpen, setFilterOpen] = useState(false);
   
-  // 🎯 Add Entry flow (type selector + modals, same as Accounting Test page)
-  const [addEntryFlowOpen, setAddEntryFlowOpen] = useState(false);
-  const [addEntryInitialType, setAddEntryInitialType] = useState<import('./AddEntryV2').AddEntryV2Type | undefined>(undefined);
-  const [transferFromAccountId, setTransferFromAccountId] = useState<string | null>(null);
+  // Add Entry flow — opened via openAddEntryV2 event (AddEntryV2Host)
   // Legacy manual-entry-only dialog (kept for any direct use)
   const [manualEntryOpen, setManualEntryOpen] = useState(false);
   
   // 🎯 Account Management State
   const [isAddAccountOpen, setIsAddAccountOpen] = useState(false);
+  /** When set, AddAccountDrawer opens Professional with this parent prefilled (Add Child Account). */
+  const [addAccountPrefill, setAddAccountPrefill] = useState<{ parentId: string } | null>(null);
   const [isEditAccountOpen, setIsEditAccountOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<any>(null);
   const [payCourierOpen, setPayCourierOpen] = useState(false);
@@ -605,21 +517,20 @@ export const AccountingDashboard = () => {
     controlCodeLabel?: string;
     unmappedTop?: { referenceType: string; amount: number }[];
   }>({ loading: false, error: null, rows: [] });
-  const [transactionReference, setTransactionReference] = useState<string | null>(null);
-  /** PF-14.3B: When opening a grouped journal row, pass all entries in the group for the detail trail. */
-  const [selectedGroupEntries, setSelectedGroupEntries] = useState<AccountingEntry[] | null>(null);
-  /** Open TransactionDetailModal and immediately run unified source-aware edit when true. */
-  const [transactionDetailAutoEdit, setTransactionDetailAutoEdit] = useState(false);
+  const useTransactionActionPanel = isTransactionActionPanelEnabled();
   /** PF-14.3B: Default = grouped (one logical row per sale); audit = all raw JEs. */
   const [journalViewMode, setJournalViewMode] = useState<'grouped' | 'audit'>('grouped');
+  const [attachmentsDialogList, setAttachmentsDialogList] = useState<TransactionAttachment[] | null>(null);
   
-  // Ledger: type chosen from dropdown (no inner Ledger dropdown on page)
-  const [ledgerType, setLedgerType] = useState<'customer' | 'supplier' | 'user' | 'worker'>('customer');
+  /** Account Statements: standard = embedded V2 UI; advanced = effective/audit filters (legacy engine). */
+  const [accountStatementsViewMode, setAccountStatementsViewMode] = useState<'standard' | 'advanced'>('standard');
   
   // Filters
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [departmentFilter, setDepartmentFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [openingSupplementalLoading, setOpeningSupplementalLoading] = useState(false);
+  const openingSupplementalFetchedRef = useRef<string>('');
 
   // Journal table sort: default by date+time descending (newest first)
   type JournalSortKey = 'date' | 'reference' | 'module' | 'description' | 'type' | 'paymentMethod' | 'amount' | 'source';
@@ -631,18 +542,74 @@ export const AccountingDashboard = () => {
     return accounting.entries;
   }, [accounting.entries]);
 
+  const inMemoryOpeningCount = useMemo(
+    () => transactions.filter((t) => matchesAccountingTypeFilter(t, 'opening')).length,
+    [transactions],
+  );
+
+  // Opening chip: if date-windowed journal cache has no OB rows, fetch openings company-wide and merge.
   useEffect(() => {
-    const handleOpenAddEntryV2 = (event: Event) => {
-      const d = (event as CustomEvent).detail || {};
-      const requested = d.entryType as import('./AddEntryV2').AddEntryV2Type | undefined;
-      setAddEntryInitialType(requested);
-      setActiveTab('journal_entries');
-      setAddEntryFlowOpen(true);
+    if (typeFilter !== 'opening' || !companyId) return;
+    if (inMemoryOpeningCount > 0) return;
+
+    const fetchKey = `${companyId}:${branchId || 'all'}:opening`;
+    if (openingSupplementalFetchedRef.current === fetchKey) return;
+    openingSupplementalFetchedRef.current = fetchKey;
+
+    let cancelled = false;
+    setOpeningSupplementalLoading(true);
+
+    void (async () => {
+      try {
+        let query = supabase
+          .from('journal_entries')
+          .select(
+            `
+            *,
+            lines:journal_entry_lines(
+              id,
+              journal_entry_id,
+              account_id,
+              debit,
+              credit,
+              description,
+              account:accounts(name, code, type)
+            )
+          `,
+          )
+          .eq('company_id', companyId)
+          .or(
+            'reference_type.like.opening_balance%,reference_type.eq.coa_opening,reference_type.eq.system_seed',
+          )
+          .order('entry_date', { ascending: false })
+          .limit(200);
+
+        if (branchId && branchId !== 'all') {
+          query = query.or(`branch_id.eq.${branchId},branch_id.is.null`);
+        }
+
+        const { data, error } = await query;
+        if (cancelled) return;
+        if (error) {
+          console.warn('[AccountingDashboard] Opening supplemental fetch failed:', error.message);
+          return;
+        }
+        const rows = ((data || []) as any[]).filter((e) => e.is_void !== true);
+        if (rows.length > 0) {
+          accounting.appendOrMergeEntries(rows);
+        }
+      } catch (e) {
+        console.warn('[AccountingDashboard] Opening supplemental fetch error:', e);
+      } finally {
+        if (!cancelled) setOpeningSupplementalLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
     };
-    window.addEventListener('openAddEntryV2', handleOpenAddEntryV2 as EventListener);
-    return () => window.removeEventListener('openAddEntryV2', handleOpenAddEntryV2 as EventListener);
-  }, []);
-  
+  }, [typeFilter, companyId, branchId, inMemoryOpeningCount, accounting.appendOrMergeEntries]);
+
   // Calculate summary stats from journal entries (uses module-level account sets above)
   const summary = useMemo(() => {
     let totalIncome = 0;
@@ -682,6 +649,53 @@ export const AccountingDashboard = () => {
     };
   }, [transactions]);
 
+  /** Official Posted GL — same source as Trial Balance / P&L (void excluded, corrections included). */
+  const [canonicalGlSummary, setCanonicalGlSummary] = useState<{
+    totalIncome: number;
+    totalExpense: number;
+    totalReceivable: number;
+    totalPayable: number;
+    netProfit: number;
+  } | null>(null);
+  /** Explicit refresh for P&L snapshot (not keyed off entries.length). */
+  const [glSummaryEpoch, setGlSummaryEpoch] = useState(0);
+
+  useEffect(() => {
+    if (!companyId) {
+      setCanonicalGlSummary(null);
+      return;
+    }
+    let cancelled = false;
+    const end = new Date().toISOString().slice(0, 10);
+    const start = `${end.slice(0, 4)}-01-01`;
+    const branch = branchId && branchId !== 'all' ? branchId : undefined;
+    (async () => {
+      try {
+        const [pl, snap] = await Promise.all([
+          accountingReportsService.getProfitLoss(companyId, start, end, branch),
+          accountingReportsService.getArApGlSnapshot(companyId, end, branch),
+        ]);
+        if (cancelled) return;
+        const arNet = snap.ar ? snap.ar.debit - snap.ar.credit : 0;
+        const apNet = snap.apNetCredit ?? 0;
+        setCanonicalGlSummary({
+          totalIncome: pl.revenue.total,
+          totalExpense: pl.costOfSales.total + pl.expenses.total,
+          totalReceivable: Math.max(0, arNet),
+          totalPayable: Math.max(0, apNet),
+          netProfit: pl.netProfit,
+        });
+      } catch {
+        if (!cancelled) setCanonicalGlSummary(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, branchId, glSummaryEpoch]);
+
+  const displaySummary = canonicalGlSummary ?? summary;
+
   const [partyGlByContactId, setPartyGlByContactId] = useState<
     Awaited<ReturnType<typeof contactService.getContactPartyGlBalancesMap>>
   >(null);
@@ -696,6 +710,7 @@ export const AccountingDashboard = () => {
       timer = setTimeout(() => {
         timer = null;
         setPartyGlEpoch((n) => n + 1);
+        setGlSummaryEpoch((n) => n + 1);
       }, 180);
     };
     const onInvalidated = (ev: Event) => {
@@ -856,15 +871,14 @@ export const AccountingDashboard = () => {
     { key: 'journal_entries', label: 'Journal Entries', icon: Receipt },
     { key: 'daybook', label: 'Day Book', icon: List },
     { key: 'roznamcha', label: 'Roznamcha', icon: BookMarked },
+    { key: 'cash_flow', label: 'Cash Flow', icon: ArrowLeftRight },
     { key: 'accounts', label: 'Accounts', icon: Wallet },
-    { key: 'ledger', label: 'Party statements', icon: FileText },
     { key: 'receivables', label: 'Receivables', icon: TrendingUp },
     { key: 'payables', label: 'Payables', icon: TrendingDown },
     { key: 'courier', label: 'Courier Reports', icon: Truck },
     { key: 'deposits', label: 'Deposits', icon: Shield, isHidden: !settingsModules.rentalModuleEnabled },
     { key: 'studio', label: 'Studio Costs', icon: Wrench, isHidden: !settingsModules.studioModuleEnabled },
     { key: 'account_statements', label: 'Account Statements', icon: BarChart3 },
-    { key: 'integrity_lab', label: 'Integrity Test Lab', icon: TestTube },
   ];
   const tabs = allTabs.filter((t) => !('isHidden' in t) || !(t as any).isHidden);
 
@@ -877,45 +891,42 @@ export const AccountingDashboard = () => {
   /** Accounting Integrity Lab: deep-link to tab + optional search focus */
   useEffect(() => {
     try {
-      const raw = sessionStorage.getItem(INTEGRITY_LAB_SESSION_KEY);
+      const raw = safeSessionStorageGetItem(INTEGRITY_LAB_SESSION_KEY);
       if (!raw) return;
       const o = JSON.parse(raw) as {
-        tab?: typeof activeTab;
-        ledgerType?: typeof ledgerType;
+        tab?: typeof activeTab | 'ledger';
+        focusAccountId?: string;
         searchTerm?: string;
       };
-      if (o.tab) setActiveTab(o.tab);
-      if (o.ledgerType) setLedgerType(o.ledgerType);
+      if (o.tab === 'integrity_lab') {
+        safeSessionStorageRemoveItem(INTEGRITY_LAB_SESSION_KEY);
+        syncArApDiagnosticsHubTabToUrl('journal-hygiene');
+        setCurrentView('ar-ap-reconciliation-center');
+        return;
+      }
+      const tab = o.tab === 'ledger' ? 'account_statements' : o.tab;
+      if (tab) setActiveTab(tab);
+      if (o.focusAccountId) {
+        setAccountStatementPreselectId(o.focusAccountId);
+        setAccountStatementsViewMode('standard');
+      }
       if (o.searchTerm) setSearchTerm(o.searchTerm);
-      sessionStorage.removeItem(INTEGRITY_LAB_SESSION_KEY);
+      safeSessionStorageRemoveItem(INTEGRITY_LAB_SESSION_KEY);
       if (o.searchTerm) {
         toast.info(`Filtered journal search: ${o.searchTerm.slice(0, 8)}…`);
       }
     } catch {
-      sessionStorage.removeItem(INTEGRITY_LAB_SESSION_KEY);
+      safeSessionStorageRemoveItem(INTEGRITY_LAB_SESSION_KEY);
     }
-  }, []);
+  }, [setCurrentView]);
 
   // Filter transactions based on search and filters
   const filteredTransactions = useMemo(() => {
     let filtered = transactions;
 
-    // Type filter — supports both source-based and reference_type-based filtering.
+    // Type filter — exclusive reference_type allowlists (see accountingJournalTypeFilter).
     if (typeFilter !== 'all') {
-      filtered = filtered.filter(txn => {
-        const ref = ((txn.metadata as any)?.referenceType || '').toLowerCase();
-        if (typeFilter === 'sale') return ref === 'sale' || ref === 'sale_adjustment' || txn.source === 'Sale';
-        if (typeFilter === 'sale_return') return ref === 'sale_return' || ref === 'sale_reversal';
-        if (typeFilter === 'purchase') return ref === 'purchase' || ref === 'purchase_adjustment' || txn.source === 'Purchase';
-        if (typeFilter === 'purchase_return') return ref === 'purchase_return';
-        if (typeFilter === 'payment') return ref === 'payment' || ref === 'payment_adjustment' || (txn.metadata as any)?.paymentId || txn.source === 'Payment';
-        if (typeFilter === 'opening') return ref.startsWith('opening_balance');
-        if (typeFilter === 'shipment') return ref === 'shipment';
-        if (typeFilter === 'expense') return txn.source === 'Expense' || ref === 'expense';
-        if (typeFilter === 'cancel') return ref === 'sale_reversal' || ref === 'purchase_reversal' || ref.includes('cancel');
-        if (typeFilter === 'adjustment') return ref.includes('adjustment');
-        return true;
-      });
+      filtered = filtered.filter((txn) => matchesAccountingTypeFilter(txn, typeFilter));
     }
 
     // Multi-field search filter.
@@ -1030,56 +1041,34 @@ export const AccountingDashboard = () => {
   // Permission gate – Accounting restricted to authorized roles
   if (!canAccessAccounting) {
     return (
-      <div className="h-screen flex items-center justify-center bg-[#0B0F19]">
+      <div className="h-screen flex items-center justify-center bg-secondary">
         <div className="text-center max-w-md">
           <Shield className="w-16 h-16 mx-auto text-amber-500/60 mb-4" />
-          <h2 className="text-xl font-semibold text-white mb-2">Access Restricted</h2>
-          <p className="text-gray-400 text-sm">You do not have permission to view Accounting. Contact your administrator.</p>
+          <h2 className="text-xl font-semibold text-foreground mb-2">Access Restricted</h2>
+          <p className="text-muted-foreground text-sm">You do not have permission to view Accounting. Contact your administrator.</p>
         </div>
       </div>
     );
   }
 
-  // Ledger full screen – same page, dropdown se select karne par full screen overlay
-  if (activeTab === 'ledger') {
-    return (
-      <div className="fixed inset-0 z-50 bg-[#111827] overflow-y-auto">
-        <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 border-b border-gray-800 bg-[#0F1419]">
-          <h2 className="text-lg font-semibold text-white">
-            {ledgerType === 'customer' ? 'Customer Ledger' : ledgerType === 'supplier' ? 'Supplier Ledger' : ledgerType === 'user' ? 'User Ledger' : 'Worker Ledger'}
-          </h2>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="text-gray-400 hover:text-white hover:bg-gray-800"
-            onClick={() => setActiveTab('journal_entries')}
-          >
-            <X className="h-5 w-5" />
-          </Button>
-        </div>
-        <div className="p-6">
-          <LedgerHub ledgerType={ledgerType} />
-        </div>
-      </div>
-    );
-  }
+  // Ledger full screen removed — use Party Ledger (sidebar) or Account Statements tab.
 
   return (
-    <div className="flex flex-col bg-[#0B0F19] min-h-0 min-w-0 w-full max-w-full">
+    <div className="flex flex-col bg-secondary min-h-0 min-w-0 w-full max-w-full">
       {/* Page Header — no h-screen/overflow-hidden so outer main can scroll the full page */}
-      <div className="shrink-0 px-6 py-4 border-b border-gray-800 bg-[#0F1419]">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-white">Accounting</h1>
-            <p className="text-sm text-gray-400 mt-0.5">Financial transactions and reporting</p>
+      <div className="shrink-0 px-6 py-4 border-b border-border bg-muted/40">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-foreground">Accounting</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">Financial transactions and reporting</p>
           </div>
-          {canAccessAccounting && canPostAccounting && activeTab === 'journal_entries' && (
-            <Button 
+          {canAccessAccounting && canPostAccounting && (
+            <Button
               onClick={() => {
-                setAddEntryInitialType(undefined);
-                setAddEntryFlowOpen(true);
+                setActiveTab('journal_entries');
+                dispatchOpenAddEntryV2();
               }}
-              className="bg-blue-600 hover:bg-blue-500 text-white h-10 gap-2 shadow-lg shadow-blue-900/30"
+              className="shrink-0 bg-blue-600 hover:bg-blue-500 text-white h-10 gap-2 shadow-lg shadow-blue-900/30"
             >
               <Plus size={16} />
               Add Entry
@@ -1089,15 +1078,19 @@ export const AccountingDashboard = () => {
       </div>
 
       {/* Summary Cards */}
-      <div className="shrink-0 px-6 py-4 bg-[#0F1419] border-b border-gray-800 min-w-0">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+      <div className="shrink-0 px-6 py-4 bg-muted/40 border-b border-border min-w-0">
+        <ReportBasisBanner
+          basis="official_gl"
+          detail="Top cards use Official Posted GL (same as Trial Balance / P&L): void excluded, correction journals included. Operational document due is on Receivables / Payables tabs."
+        />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mt-3">
           {/* Total Income */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+          <div className="bg-card border border-border rounded-xl p-4 min-w-0">
             <div className="flex items-start justify-between mb-3">
-              <div>
-                <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Income</p>
-                <p className="text-2xl font-bold text-green-400 mt-1">{formatCurrency(summary.totalIncome)}</p>
-                <p className="text-xs text-gray-500 mt-1">GL derived (journal lines)</p>
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Total Income</p>
+                <AdaptiveCurrencyValue value={displaySummary.totalIncome} className="text-2xl font-bold text-[var(--erp-money-positive)] mt-1" as="p" />
+                <p className="text-xs text-muted-foreground mt-1">Official Posted GL basis</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
                 <TrendingUp size={24} className="text-green-500" />
@@ -1106,12 +1099,12 @@ export const AccountingDashboard = () => {
           </div>
 
           {/* Total Expense */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+          <div className="bg-card border border-border rounded-xl p-4 min-w-0">
             <div className="flex items-start justify-between mb-3">
-              <div>
-                <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Expense</p>
-                <p className="text-2xl font-bold text-red-400 mt-1">{formatCurrency(summary.totalExpense)}</p>
-                <p className="text-xs text-gray-500 mt-1">GL derived (journal lines)</p>
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Total Expense</p>
+                <AdaptiveCurrencyValue value={displaySummary.totalExpense} className="text-2xl font-bold text-red-400 mt-1" as="p" />
+                <p className="text-xs text-muted-foreground mt-1">Official Posted GL basis</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center">
                 <TrendingDown size={24} className="text-red-500" />
@@ -1120,32 +1113,36 @@ export const AccountingDashboard = () => {
           </div>
 
           {/* Net Profit */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+          <div className="bg-card border border-border rounded-xl p-4 min-w-0">
             <div className="flex items-start justify-between mb-3">
-              <div>
-                <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Net Profit</p>
-                <p className={cn(
-                  "text-2xl font-bold mt-1",
-                  summary.netProfit >= 0 ? "text-green-400" : "text-red-400"
-                )}>{formatCurrency(summary.netProfit)}</p>
-                <p className="text-xs text-gray-500 mt-1">GL derived (Income - Expense)</p>
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Net Profit</p>
+                <AdaptiveCurrencyValue
+                  value={displaySummary.netProfit}
+                  className={cn(
+                    'text-2xl font-bold mt-1',
+                    displaySummary.netProfit >= 0 ? 'text-[var(--erp-money-positive)]' : 'text-red-400'
+                  )}
+                  as="p"
+                />
+                <p className="text-xs text-muted-foreground mt-1">Official Posted GL basis</p>
               </div>
               <div className={cn(
                 "w-12 h-12 rounded-full flex items-center justify-center",
-                summary.netProfit >= 0 ? "bg-green-500/10" : "bg-red-500/10"
+                displaySummary.netProfit >= 0 ? "bg-green-500/10" : "bg-red-500/10"
               )}>
-                <DollarSign size={24} className={summary.netProfit >= 0 ? "text-green-500" : "text-red-500"} />
+                <DollarSign size={24} className={displaySummary.netProfit >= 0 ? "text-green-500" : "text-red-500"} />
               </div>
             </div>
           </div>
 
           {/* Receivables */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+          <div className="bg-card border border-border rounded-xl p-4 min-w-0">
             <div className="flex items-start justify-between mb-3">
-              <div>
-                <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Receivables</p>
-                <p className="text-2xl font-bold text-blue-400 mt-1">{formatCurrency(summary.totalReceivable)}</p>
-                <p className="text-xs text-gray-500 mt-1">GL derived (AR journal legs)</p>
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Receivables</p>
+                <AdaptiveCurrencyValue value={displaySummary.totalReceivable} className="text-2xl font-bold text-blue-400 mt-1" as="p" />
+                <p className="text-xs text-muted-foreground mt-1">AR control 1100 — Official GL</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center">
                 <Users size={24} className="text-blue-500" />
@@ -1154,12 +1151,12 @@ export const AccountingDashboard = () => {
           </div>
 
           {/* Payables */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+          <div className="bg-card border border-border rounded-xl p-4 min-w-0">
             <div className="flex items-start justify-between mb-3">
-              <div>
-                <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Payables</p>
-                <p className="text-2xl font-bold text-orange-400 mt-1">{formatCurrency(summary.totalPayable)}</p>
-                <p className="text-xs text-gray-500 mt-1">GL derived (AP/worker payable legs)</p>
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Payables</p>
+                <AdaptiveCurrencyValue value={displaySummary.totalPayable} className="text-2xl font-bold text-orange-400 mt-1" as="p" />
+                <p className="text-xs text-muted-foreground mt-1">AP control 2000 — Official GL</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-orange-500/10 flex items-center justify-center">
                 <Building2 size={24} className="text-orange-500" />
@@ -1167,53 +1164,19 @@ export const AccountingDashboard = () => {
             </div>
           </div>
         </div>
-        <p className="text-[11px] text-gray-600 mt-3 max-w-6xl leading-relaxed">
-          <span className="font-medium text-gray-500">Semantics map — </span>
-          These cards are <span className="text-gray-400">GL journal–derived</span> (revenue/expense accounts and AR/AP control legs). Operational follow-up uses the{' '}
-          <span className="text-gray-400">Receivables / Payables</span> tabs (document due: <code className="text-gray-500">sales.due</code> / <code className="text-gray-500">purchases.due</code>). Contacts and AR/AP roll-up are GL-based from{' '}
-          <code className="text-gray-500">get_contact_party_gl_balances</code> (same chart/journal source).
+        <p className="text-[11px] text-muted-foreground mt-3 max-w-6xl leading-relaxed">
+          <span className="font-medium text-muted-foreground">Semantics map — </span>
+          Top cards load from <code className="text-muted-foreground">accountingReportsService</code> (Trial Balance / P&amp;L source). Operational follow-up uses{' '}
+          <span className="text-muted-foreground">Receivables / Payables</span> tabs and AR/AP Reconciliation (effective vs raw GL). See{' '}
+          <span className="text-muted-foreground">Financial Truth Center → Tie-out</span> for company-wide differences.
         </p>
       </div>
 
-      {/* Tabs – Ledger is dropdown only (no page change on click; select option → same page, same UI) */}
-      <div className="shrink-0 px-6 border-b border-gray-800 min-w-0 overflow-x-auto overflow-y-hidden overscroll-x-contain">
+      {/* Tabs */}
+      <div className="shrink-0 px-6 border-b border-border min-w-0 overflow-x-auto overflow-y-hidden overscroll-x-contain">
         <div className="flex gap-1 -mb-px flex-nowrap w-max min-w-full">
           {tabs.map(tab => {
             const Icon = tab.icon;
-            if (tab.key === 'ledger') {
-              return (
-                <DropdownMenu key="ledger">
-                  <DropdownMenuTrigger asChild>
-                    <button
-                      className={cn(
-                        "flex items-center gap-2 px-4 py-3 text-sm font-medium transition-all border-b-2",
-                        activeTab === 'ledger'
-                          ? "text-blue-400 border-blue-400"
-                          : "text-gray-500 border-transparent hover:text-gray-300 hover:border-gray-700"
-                      )}
-                    >
-                      <FileText size={16} />
-                      Ledger
-                      <ChevronDown size={14} className="opacity-70" />
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="bg-gray-900 border-gray-800">
-                    <DropdownMenuItem onClick={() => { setLedgerType('customer'); setActiveTab('ledger'); }}>
-                      Customer Ledger
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => { setLedgerType('supplier'); setActiveTab('ledger'); }}>
-                      Supplier Ledger
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => { setLedgerType('user'); setActiveTab('ledger'); }}>
-                      User Ledger
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => { setLedgerType('worker'); setActiveTab('ledger'); }}>
-                      Worker Ledger
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              );
-            }
             return (
               <button
                 key={tab.key}
@@ -1222,7 +1185,7 @@ export const AccountingDashboard = () => {
                   "flex items-center gap-2 px-4 py-3 text-sm font-medium transition-all border-b-2",
                   activeTab === tab.key
                     ? "text-blue-400 border-blue-400"
-                    : "text-gray-500 border-transparent hover:text-gray-300 hover:border-gray-700"
+                    : "text-muted-foreground border-transparent hover:text-muted-foreground hover:border-border"
                 )}
               >
                 <Icon size={16} />
@@ -1233,23 +1196,25 @@ export const AccountingDashboard = () => {
         </div>
       </div>
 
-      {/* Tab Content — flows with page scroll; inner tables keep their own overflow-x where needed */}
-      <div className="px-6 py-4 bg-[#0B0F19] min-w-0">
+      {/* Tab Content — journal table uses its own 2-axis scroll viewport */}
+      <div className="px-6 py-4 bg-secondary min-w-0">
         {activeTab === 'journal_entries' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div>
-                <h3 className="text-lg font-bold text-white">Journal Entries</h3>
-                <p className="text-sm text-gray-400">
+                <h3 className="text-lg font-bold text-foreground">Journal Entries</h3>
+                <p className="text-sm text-muted-foreground">
                   {journalViewMode === 'grouped'
                     ? 'One row per document (e.g. sale); open a row to see original + edit adjustments.'
                     : 'All raw journal entries – audit view.'}
                   {' '}(50 per page).
-                  {canPostAccounting ? ' Manual correction: use Reverse to create a reversal entry, or Manual Entry for adjustments.' : ' Posting and corrections require Manager or Admin role.'}
+                  {canPostAccounting
+                    ? ' Use Cancel Payment or Cancel Entry on eligible rows, or Manual Entry for adjustments.'
+                    : ' Posting and corrections require Manager or Admin role.'}
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500">View:</span>
+                <span className="text-xs text-muted-foreground">View:</span>
                 <Button
                   variant={journalViewMode === 'grouped' ? 'default' : 'outline'}
                   size="sm"
@@ -1271,18 +1236,18 @@ export const AccountingDashboard = () => {
 
             <div className="flex flex-wrap items-center gap-2">
               <div className="relative flex-1 min-w-[260px] max-w-[680px]">
-                <Search className="w-4 h-4 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <Search className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <Input
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   placeholder="Search by reference, description, account, model/type, module..."
-                  className="pl-9 pr-10 h-9 bg-gray-900/70 border-gray-700 text-sm text-gray-100 placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-blue-500/50"
+                  className="pl-9 pr-10 h-9 bg-card/70 border-border text-sm text-gray-100 placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-blue-500/50"
                 />
                 {searchTerm.trim() ? (
                   <button
                     type="button"
                     onClick={() => setSearchTerm('')}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-gray-400 hover:text-gray-200 hover:bg-gray-800/80"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-gray-200 hover:bg-muted/80"
                     aria-label="Clear journal search"
                     title="Clear search"
                   >
@@ -1290,7 +1255,7 @@ export const AccountingDashboard = () => {
                   </button>
                 ) : null}
               </div>
-              <Badge variant="outline" className="text-xs text-gray-300 border-gray-700">
+              <Badge variant="outline" className="text-xs text-muted-foreground border-border">
                 {listForPagination.length} result{listForPagination.length === 1 ? '' : 's'}
               </Badge>
             </div>
@@ -1298,7 +1263,7 @@ export const AccountingDashboard = () => {
             {/* Filter pills by transaction type */}
             <div className="flex flex-wrap gap-1.5">
               {[
-                { key: 'all', label: 'All', color: 'bg-gray-700' },
+                { key: 'all', label: 'All', color: 'bg-muted' },
                 { key: 'sale', label: 'Sales', color: 'bg-blue-900/60' },
                 { key: 'sale_return', label: 'Sale Returns', color: 'bg-orange-900/60' },
                 { key: 'purchase', label: 'Purchases', color: 'bg-purple-900/60' },
@@ -1316,8 +1281,8 @@ export const AccountingDashboard = () => {
                   className={cn(
                     'px-3 py-1 rounded-full text-xs font-medium transition-all',
                     typeFilter === f.key
-                      ? `${f.color} text-white ring-1 ring-white/20`
-                      : 'bg-gray-800/50 text-gray-500 hover:text-gray-300 hover:bg-gray-800'
+                      ? `${f.color} text-foreground ring-1 ring-white/20`
+                      : 'bg-muted/50 text-muted-foreground hover:text-muted-foreground hover:bg-muted'
                   )}
                 >
                   {f.label}
@@ -1327,35 +1292,55 @@ export const AccountingDashboard = () => {
             </div>
 
             {/* Journal Entries Table with pagination */}
-            <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-              {filteredTransactions.length === 0 ? (
+            <div className="bg-card border border-border rounded-xl overflow-hidden">
+              {accounting.loading && filteredTransactions.length === 0 ? (
+                <div className="flex flex-col items-center justify-center gap-3 py-16">
+                  <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
+                  <p className="text-sm text-muted-foreground">Loading journal entries…</p>
+                </div>
+              ) : openingSupplementalLoading && typeFilter === 'opening' && filteredTransactions.length === 0 ? (
+                <div className="flex flex-col items-center justify-center gap-3 py-16">
+                  <Loader2 className="w-10 h-10 text-cyan-500 animate-spin" />
+                  <p className="text-sm text-muted-foreground">Loading opening balance journals…</p>
+                </div>
+              ) : filteredTransactions.length === 0 ? (
                 <div className="text-center py-12">
-                  <FileText size={48} className="mx-auto text-gray-600 mb-3" />
+                  <FileText size={48} className="mx-auto text-muted-foreground mb-3" />
                   {searchTerm.trim() || typeFilter !== 'all' ? (
                     <>
-                      <p className="text-gray-400 text-sm font-medium">No journal entries match your filters</p>
-                      <p className="text-gray-500 text-xs mt-1">
-                        Try a different keyword, clear search, or switch transaction type.
+                      <p className="text-muted-foreground text-sm font-medium">
+                        {accountingTypeFilterEmptyMessage(typeFilter).title}
+                      </p>
+                      <p className="text-muted-foreground text-xs mt-1">
+                        {searchTerm.trim()
+                          ? 'Try a different keyword, clear search, or switch transaction type.'
+                          : accountingTypeFilterEmptyMessage(typeFilter).hint}
                       </p>
                     </>
                   ) : (
                     <>
-                      <p className="text-gray-400 text-sm font-medium">No journal entries in this period</p>
-                      <p className="text-gray-500 text-xs mt-1 max-w-md mx-auto">
-                        The list follows the <span className="text-gray-400">date range in the top header</span>. Widen it (e.g. From
+                      <p className="text-muted-foreground text-sm font-medium">No journal entries in this period</p>
+                      <p className="text-muted-foreground text-xs mt-1 max-w-md mx-auto">
+                        The list follows the <span className="text-muted-foreground">date range in the top header</span>. Widen it (e.g. From
                         start or Last 90 days) if you expect older data. Embedded previews can use different saved filters than your
                         main browser.
                       </p>
-                      <p className="text-gray-500 text-xs mt-2">If the range is already wide, create a sale, record a payment, or add a manual entry.</p>
+                      <p className="text-muted-foreground text-xs mt-2">If the range is already wide, create a sale, record a payment, or add a manual entry.</p>
                     </>
                   )}
                 </div>
               ) : (
                 <>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-gray-900 border-b border-gray-800">
-                      <tr className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                {accounting.backgroundSync ? (
+                  <div className="flex items-center justify-center gap-2 py-2 text-xs text-blue-400 border-b border-border">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Refreshing journal entries…
+                  </div>
+                ) : null}
+                <div className="overflow-auto max-h-[calc(100dvh-18rem)] overscroll-contain touch-pan-x touch-pan-y [-webkit-overflow-scrolling:touch]">
+                  <table className="w-full min-w-[1280px] border-collapse">
+                    <thead className="bg-card border-b border-border sticky top-0 z-10 shadow-[0_1px_0_0_rgba(31,41,55,1)]">
+                      <tr className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                         {(['date', 'reference', 'module', 'description', 'type', 'paymentMethod', 'amount', 'source'] as const).map((key) => {
                           const label = key === 'paymentMethod' ? 'Payment Method' : key.charAt(0).toUpperCase() + key.slice(1);
                           const isActive = journalSortKey === key;
@@ -1372,7 +1357,7 @@ export const AccountingDashboard = () => {
                                     setJournalSortDir('desc');
                                   }
                                 }}
-                                className="flex items-center gap-1 w-full group hover:text-gray-300 transition-colors focus:outline-none focus:ring-0"
+                                className="flex items-center gap-1 w-full group hover:text-muted-foreground transition-colors focus:outline-none focus:ring-0"
                                 style={alignRight ? { justifyContent: 'flex-end' } : undefined}
                               >
                                 {label}
@@ -1423,20 +1408,18 @@ export const AccountingDashboard = () => {
                             return (
                               <tr
                                 key={group.rootKey}
-                                className="border-b border-gray-800 hover:bg-gray-800/30 transition-colors cursor-pointer"
+                                className="border-b border-border hover:bg-accent/30 transition-colors cursor-pointer"
                                 onClick={() => {
                                   if (busy) return;
-                                  setTransactionDetailAutoEdit(false);
-                                  setTransactionReference(entry.id);
-                                  setSelectedGroupEntries(group.entries);
+                                  openJournalEntryDetailFromEntry(entry, group.entries);
                                 }}
                               >
-                                <td className="px-4 py-3 text-sm text-gray-300 whitespace-nowrap">
+                                <td className="px-4 py-3 text-sm text-muted-foreground whitespace-nowrap">
                                   {entry.date ? (
                                     <div className="flex flex-col gap-0.5">
-                                      <DateTimeDisplay date={entry.date} dateOnly className="text-gray-300" />
+                                      <DateTimeDisplay date={entry.date} dateOnly className="text-muted-foreground" />
                                       {(entry.metadata as { createdAt?: string } | undefined)?.createdAt ? (
-                                        <span className="text-[10px] text-gray-600">
+                                        <span className="text-[10px] text-muted-foreground">
                                           Posted{' '}
                                           {new Date(
                                             (entry.metadata as { createdAt?: string }).createdAt!
@@ -1449,33 +1432,50 @@ export const AccountingDashboard = () => {
                                   )}
                                 </td>
                                 <td className="px-4 py-3">
-                                  <button
-                                    type="button"
-                                    disabled={busy}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      if (busy) return;
-                                      setTransactionDetailAutoEdit(false);
-                                      setTransactionReference(entry.id);
-                                      setSelectedGroupEntries(group.entries);
-                                    }}
-                                    className="text-blue-400 hover:text-blue-300 hover:underline text-sm font-medium disabled:opacity-40"
-                                  >
-                                    {voucherLabel}
-                                    {adjustmentCount > 0 && (
-                                      <span className="ml-1.5 text-gray-500 font-normal">(+{adjustmentCount})</span>
-                                    )}
-                                  </button>
+                                  <span className="inline-flex items-center gap-1">
+                                    <button
+                                      type="button"
+                                      disabled={busy}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (busy) return;
+                                        openJournalEntryDetailFromEntry(entry, group.entries);
+                                      }}
+                                      className="text-blue-400 hover:text-blue-300 hover:underline text-sm font-medium disabled:opacity-40"
+                                    >
+                                      {voucherLabel}
+                                      {adjustmentCount > 0 && (
+                                        <span className="ml-1.5 text-muted-foreground font-normal">(+{adjustmentCount})</span>
+                                      )}
+                                    </button>
+                                    {groupEntryHasAttachments(group.entries) ? (
+                                      <button
+                                        type="button"
+                                        disabled={busy}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setAttachmentsDialogList(collectGroupAttachments(group.entries));
+                                        }}
+                                        className="text-amber-400 hover:text-amber-300 disabled:opacity-40 shrink-0"
+                                        title="View attachment"
+                                      >
+                                        <Paperclip size={14} />
+                                      </button>
+                                    ) : null}
+                                  </span>
                                 </td>
                                 <td className="px-4 py-3">
                                   <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">
                                     {module}
                                   </Badge>
                                 </td>
-                                <td className="px-4 py-3 text-sm text-gray-300 max-w-xs truncate">
-                                  {entry.description || 'No description'}
+                                <td className="px-4 py-3 text-sm text-muted-foreground max-w-xs">
+                                  <span className="truncate inline-flex items-center max-w-full">
+                                    {entry.description || 'No description'}
+                                    {saleCancellationJournalBadge(entry)}
+                                  </span>
                                   {adjustmentCount > 0 && (
-                                    <span className="text-gray-500 ml-1">(edit trail)</span>
+                                    <span className="text-muted-foreground ml-1">(edit trail)</span>
                                   )}
                                 </td>
                                 <td className="px-4 py-3">
@@ -1483,27 +1483,33 @@ export const AccountingDashboard = () => {
                                     {pres.typeLabel}
                                   </Badge>
                                 </td>
-                                <td className="px-4 py-3 text-sm text-gray-400 capitalize">{paymentMethod}</td>
+                                <td className="px-4 py-3 text-sm text-muted-foreground capitalize">{paymentMethod}</td>
                                 <td className={cn('px-4 py-3 text-sm font-semibold text-right tabular-nums', pres.amountClass)}>
                                   {formatCurrency(Math.abs(amount))}
                                 </td>
                                 <td className="px-4 py-3">
-                                  {(() => { const rt = ((entry.metadata as any)?.referenceType || entry.source || 'manual').toLowerCase(); return <span className={`text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap ${REF_TYPE_COLORS[rt] || 'bg-gray-800 text-gray-400'}`}>{refTypeBadgeLabel(rt)}</span>; })()}
+                                  {(() => { const rt = ((entry.metadata as any)?.referenceType || entry.source || 'manual').toLowerCase(); return <span className={`text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap ${REF_TYPE_COLORS[rt] || 'bg-muted text-muted-foreground'}`}>{refTypeBadgeLabel(rt)}</span>; })()}
                                 </td>
-                                <td className="px-4 py-3 text-sm text-gray-300 tabular-nums">{group.entries.length}</td>
+                                <td className="px-4 py-3 text-sm text-muted-foreground tabular-nums">{group.entries.length}</td>
                                 <td className="px-4 py-3">
                                   <div className="flex flex-wrap items-center gap-1">
                                     <Badge
                                       className={
                                         isReversal
                                           ? 'bg-amber-500/15 text-amber-200 border-amber-500/30 text-xs'
-                                          : 'bg-emerald-500/10 text-emerald-200 border-emerald-500/25 text-xs'
+                                          : entry.metadata?.isOrphanReceipt
+                                            ? 'bg-orange-500/15 text-orange-200 border-orange-500/30 text-xs'
+                                            : 'bg-emerald-500/10 text-emerald-200 border-emerald-500/25 text-xs'
                                       }
                                     >
-                                      {isReversal ? 'Reversal' : 'Posted'}
+                                      {isReversal
+                                        ? 'Reversal'
+                                        : entry.metadata?.isOrphanReceipt
+                                          ? 'Orphan / Posting failed'
+                                          : 'Posted'}
                                     </Badge>
                                     {entry.metadata?.paymentChainIsHistorical ? (
-                                      <Badge className="bg-gray-700/80 text-gray-300 border-gray-600 text-[10px]">
+                                      <Badge className="bg-muted/80 text-muted-foreground border-gray-600 text-[10px]">
                                         Historical
                                       </Badge>
                                     ) : null}
@@ -1515,29 +1521,55 @@ export const AccountingDashboard = () => {
                                   </div>
                                 </td>
                                 <td
-                                  className="px-4 py-3 text-xs text-gray-400 max-w-[min(280px,40vw)]"
+                                  className="px-4 py-3 text-xs text-muted-foreground max-w-[min(280px,40vw)]"
                                   title={`Debit: ${acPair.debit} → Credit: ${acPair.credit}`}
                                 >
-                                  <span className="text-gray-500">Debit:</span>{' '}
+                                  <span className="text-muted-foreground">Debit:</span>{' '}
                                   <span className="text-gray-200">{acPair.debit}</span>
-                                  <span className="text-gray-600 mx-1">→</span>
+                                  <span className="text-muted-foreground mx-1">→</span>
                                   <span className="text-blue-400 font-medium">Credit: {acPair.credit}</span>
                                 </td>
                                 {canPostAccounting && (
                                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                                    {useTransactionActionPanel && !isReversal ? (
+                                      <JournalRowTransactionActions
+                                        entry={entry}
+                                        busy={busy}
+                                        isReversal={isReversal}
+                                        lockPaymentChainReverse={lockPaymentChainReverse}
+                                        allowUnifiedEdit={allowUnifiedEdit}
+                                        onView={() => openJournalEntryDetailFromEntry(entry, group.entries)}
+                                        onEdit={() => openJournalEntryDetailFromEntry(entry, group.entries, { autoEdit: true })}
+                                        onOpenSourceDocument={handleOpenJournalSourceDocument}
+                                        onUndoLastChange={handleJournalUndoLastChange}
+                                        onCancelPayment={(id) => {
+                                          const chainMembers = entry.metadata?.paymentChainMemberCount ?? 0;
+                                          handleJournalCancelPayment(
+                                            id,
+                                            chainMembers > 1 && !!entry.metadata?.paymentId,
+                                          );
+                                        }}
+                                        onCancelOrphan={handleJournalCancelOrphan}
+                                        onCancelEntry={handleJournalCancelEntry}
+                                        onViewTrace={() =>
+                                          openJournalEntryDetailFromEntry(entry, group.entries, { autoTrace: true })
+                                        }
+                                        onViewAudit={() =>
+                                          openJournalEntryDetailFromEntry(entry, group.entries, { scrollAudit: true })
+                                        }
+                                      />
+                                    ) : (
                                     <div className="flex flex-wrap items-center gap-1">
                                       {!isReversal && (
                                         <>
                                           <Button
                                             variant="ghost"
                                             size="sm"
-                                            className="h-8 text-gray-300 hover:text-white hover:bg-gray-800/80"
+                                            className="h-8 text-muted-foreground hover:text-foreground hover:bg-muted/80"
                                             disabled={busy}
                                             onClick={() => {
                                               if (busy) return;
-                                              setSelectedGroupEntries(group.entries);
-                                              setTransactionDetailAutoEdit(false);
-                                              setTransactionReference(entry.id);
+                                              openJournalEntryDetailFromEntry(entry, group.entries);
                                             }}
                                             title="Open journal detail (read-only)"
                                           >
@@ -1552,9 +1584,7 @@ export const AccountingDashboard = () => {
                                               disabled={busy}
                                               onClick={() => {
                                                 if (busy) return;
-                                                setSelectedGroupEntries(group.entries);
-                                                setTransactionDetailAutoEdit(true);
-                                                setTransactionReference(entry.id);
+                                                openJournalEntryDetailFromEntry(entry, group.entries, { autoEdit: true });
                                               }}
                                               title="Open unified editor (same as transaction detail)"
                                             >
@@ -1674,6 +1704,7 @@ export const AccountingDashboard = () => {
                                         </>
                                       )}
                                     </div>
+                                    )}
                                   </td>
                                 )}
                               </tr>
@@ -1705,20 +1736,18 @@ export const AccountingDashboard = () => {
                             return (
                               <tr
                                 key={entry.id}
-                                className="border-b border-gray-800 hover:bg-gray-800/30 transition-colors cursor-pointer"
+                                className="border-b border-border hover:bg-accent/30 transition-colors cursor-pointer"
                                 onClick={() => {
                                   if (busy) return;
-                                  setTransactionDetailAutoEdit(false);
-                                  setTransactionReference(entry.id);
-                                  setSelectedGroupEntries(null);
+                                  openJournalEntryDetailFromEntry(entry, null);
                                 }}
                               >
-                                <td className="px-4 py-3 text-sm text-gray-300 whitespace-nowrap">
+                                <td className="px-4 py-3 text-sm text-muted-foreground whitespace-nowrap">
                                   {entry.date ? (
                                     <div className="flex flex-col gap-0.5">
-                                      <DateTimeDisplay date={entry.date} dateOnly className="text-gray-300" />
+                                      <DateTimeDisplay date={entry.date} dateOnly className="text-muted-foreground" />
                                       {(entry.metadata as { createdAt?: string } | undefined)?.createdAt ? (
-                                        <span className="text-[10px] text-gray-600">
+                                        <span className="text-[10px] text-muted-foreground">
                                           Posted{' '}
                                           {new Date(
                                             (entry.metadata as { createdAt?: string }).createdAt!
@@ -1731,55 +1760,78 @@ export const AccountingDashboard = () => {
                                   )}
                                 </td>
                                 <td className="px-4 py-3">
-                                  <button
-                                    type="button"
-                                    disabled={busy}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      if (busy) return;
-                                      setTransactionDetailAutoEdit(false);
-                                      setTransactionReference(entry.id);
-                                      setSelectedGroupEntries(null);
-                                    }}
-                                    className="text-blue-400 hover:text-blue-300 hover:underline text-sm font-medium"
-                                  >
-                                    {voucherLabel}
-                                  </button>
+                                  <span className="inline-flex items-center gap-1">
+                                    <button
+                                      type="button"
+                                      disabled={busy}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (busy) return;
+                                        openJournalEntryDetailFromEntry(entry, null);
+                                      }}
+                                      className="text-blue-400 hover:text-blue-300 hover:underline text-sm font-medium"
+                                    >
+                                      {voucherLabel}
+                                    </button>
+                                    {entryHasAttachments(entry) ? (
+                                      <button
+                                        type="button"
+                                        disabled={busy}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setAttachmentsDialogList(collectEntryAttachments(entry));
+                                        }}
+                                        className="text-amber-400 hover:text-amber-300 disabled:opacity-40 shrink-0"
+                                        title="View attachment"
+                                      >
+                                        <Paperclip size={14} />
+                                      </button>
+                                    ) : null}
+                                  </span>
                                 </td>
                                 <td className="px-4 py-3">
                                   <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">
                                     {module}
                                   </Badge>
                                 </td>
-                                <td className="px-4 py-3 text-sm text-gray-300 max-w-xs truncate">
-                                  {entry.description || 'No description'}
+                                <td className="px-4 py-3 text-sm text-muted-foreground max-w-xs">
+                                  <span className="truncate inline-flex items-center max-w-full">
+                                    {entry.description || 'No description'}
+                                    {saleCancellationJournalBadge(entry)}
+                                  </span>
                                 </td>
                                 <td className="px-4 py-3">
                                   <Badge className={pres.badgeClass}>
                                     {pres.typeLabel}
                                   </Badge>
                                 </td>
-                                <td className="px-4 py-3 text-sm text-gray-400 capitalize">{paymentMethod}</td>
+                                <td className="px-4 py-3 text-sm text-muted-foreground capitalize">{paymentMethod}</td>
                                 <td className={cn('px-4 py-3 text-sm font-semibold text-right tabular-nums', pres.amountClass)}>
                                   {formatCurrency(Math.abs(amount))}
                                 </td>
                                 <td className="px-4 py-3">
-                                  {(() => { const rt = ((entry.metadata as any)?.referenceType || entry.source || 'manual').toLowerCase(); return <span className={`text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap ${REF_TYPE_COLORS[rt] || 'bg-gray-800 text-gray-400'}`}>{refTypeBadgeLabel(rt)}</span>; })()}
+                                  {(() => { const rt = ((entry.metadata as any)?.referenceType || entry.source || 'manual').toLowerCase(); return <span className={`text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap ${REF_TYPE_COLORS[rt] || 'bg-muted text-muted-foreground'}`}>{refTypeBadgeLabel(rt)}</span>; })()}
                                 </td>
-                                <td className="px-4 py-3 text-sm text-gray-300 tabular-nums">1</td>
+                                <td className="px-4 py-3 text-sm text-muted-foreground tabular-nums">1</td>
                                 <td className="px-4 py-3">
                                   <div className="flex flex-wrap items-center gap-1">
                                     <Badge
                                       className={
                                         isReversal
                                           ? 'bg-amber-500/15 text-amber-200 border-amber-500/30 text-xs'
-                                          : 'bg-emerald-500/10 text-emerald-200 border-emerald-500/25 text-xs'
+                                          : entry.metadata?.isOrphanReceipt
+                                            ? 'bg-orange-500/15 text-orange-200 border-orange-500/30 text-xs'
+                                            : 'bg-emerald-500/10 text-emerald-200 border-emerald-500/25 text-xs'
                                       }
                                     >
-                                      {isReversal ? 'Reversal' : 'Posted'}
+                                      {isReversal
+                                        ? 'Reversal'
+                                        : entry.metadata?.isOrphanReceipt
+                                          ? 'Orphan / Posting failed'
+                                          : 'Posted'}
                                     </Badge>
                                     {entry.metadata?.paymentChainIsHistorical ? (
-                                      <Badge className="bg-gray-700/80 text-gray-300 border-gray-600 text-[10px]">
+                                      <Badge className="bg-muted/80 text-muted-foreground border-gray-600 text-[10px]">
                                         Historical
                                       </Badge>
                                     ) : null}
@@ -1792,29 +1844,51 @@ export const AccountingDashboard = () => {
                                   </div>
                                 </td>
                                 <td
-                                  className="px-4 py-3 text-xs text-gray-400 max-w-[min(280px,40vw)]"
+                                  className="px-4 py-3 text-xs text-muted-foreground max-w-[min(280px,40vw)]"
                                   title={`Debit: ${acFlat.debit} → Credit: ${acFlat.credit}`}
                                 >
-                                  <span className="text-gray-500">Debit:</span>{' '}
+                                  <span className="text-muted-foreground">Debit:</span>{' '}
                                   <span className="text-gray-200">{acFlat.debit}</span>
-                                  <span className="text-gray-600 mx-1">→</span>
+                                  <span className="text-muted-foreground mx-1">→</span>
                                   <span className="text-blue-400 font-medium">Credit: {acFlat.credit}</span>
                                 </td>
                                 {canPostAccounting && (
                                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                                    {useTransactionActionPanel && !isReversal ? (
+                                      <JournalRowTransactionActions
+                                        entry={entry}
+                                        busy={busy}
+                                        isReversal={isReversal}
+                                        lockPaymentChainReverse={lockFlatPaymentChainReverse}
+                                        allowUnifiedEdit={allowUnifiedEditFlat}
+                                        onView={() => openJournalEntryDetailFromEntry(entry, null)}
+                                        onEdit={() => openJournalEntryDetailFromEntry(entry, null, { autoEdit: true })}
+                                        onOpenSourceDocument={handleOpenJournalSourceDocument}
+                                        onUndoLastChange={handleJournalUndoLastChange}
+                                        onCancelPayment={(id) => {
+                                          const chainMembers = entry.metadata?.paymentChainMemberCount ?? 0;
+                                          handleJournalCancelPayment(
+                                            id,
+                                            chainMembers > 1 && !!entry.metadata?.paymentId,
+                                          );
+                                        }}
+                                        onCancelOrphan={handleJournalCancelOrphan}
+                                        onCancelEntry={handleJournalCancelEntry}
+                                        onViewTrace={() => openJournalEntryDetailFromEntry(entry, null, { autoTrace: true })}
+                                        onViewAudit={() => openJournalEntryDetailFromEntry(entry, null, { scrollAudit: true })}
+                                      />
+                                    ) : (
                                     <div className="flex flex-wrap items-center gap-1">
                                       {!isReversal && (
                                         <>
                                           <Button
                                             variant="ghost"
                                             size="sm"
-                                            className="h-8 text-gray-300 hover:text-white hover:bg-gray-800/80"
+                                            className="h-8 text-muted-foreground hover:text-foreground hover:bg-muted/80"
                                             disabled={busy}
                                             onClick={() => {
                                               if (busy) return;
-                                              setSelectedGroupEntries(null);
-                                              setTransactionDetailAutoEdit(false);
-                                              setTransactionReference(entry.id);
+                                              openJournalEntryDetailFromEntry(entry, null);
                                             }}
                                             title="Open journal detail (read-only)"
                                           >
@@ -1829,9 +1903,7 @@ export const AccountingDashboard = () => {
                                               disabled={busy}
                                               onClick={() => {
                                                 if (busy) return;
-                                                setSelectedGroupEntries(null);
-                                                setTransactionDetailAutoEdit(true);
-                                                setTransactionReference(entry.id);
+                                                openJournalEntryDetailFromEntry(entry, null, { autoEdit: true });
                                               }}
                                               title="Open unified editor (same as transaction detail)"
                                             >
@@ -1947,6 +2019,7 @@ export const AccountingDashboard = () => {
                                         </>
                                       )}
                                     </div>
+                                    )}
                                   </td>
                                 )}
                               </tr>
@@ -1956,15 +2029,15 @@ export const AccountingDashboard = () => {
                   </table>
                 </div>
                 {totalJournalPages > 1 && (
-                  <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-t border-gray-800 bg-gray-900/80">
-                    <p className="text-xs text-gray-400">
+                  <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-t border-border bg-card">
+                    <p className="text-xs text-muted-foreground">
                       Showing {(currentPage - 1) * JOURNAL_PAGE_SIZE + 1}–{Math.min(currentPage * JOURNAL_PAGE_SIZE, listForPagination.length)} of {listForPagination.length}
                     </p>
                     <div className="flex items-center gap-1">
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-8 border-gray-700 text-gray-300"
+                        className="h-8 border-border text-muted-foreground"
                         disabled={currentPage <= 1}
                         onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                       >
@@ -1974,12 +2047,12 @@ export const AccountingDashboard = () => {
                         .filter((p) => p === 1 || p === totalJournalPages || Math.abs(p - currentPage) <= 2)
                         .map((p, idx, arr) => (
                           <React.Fragment key={p}>
-                            {idx > 0 && arr[idx - 1] !== p - 1 && <span className="px-1 text-gray-500">…</span>}
+                            {idx > 0 && arr[idx - 1] !== p - 1 && <span className="px-1 text-muted-foreground">…</span>}
                             <button
                               type="button"
                               className={cn(
                                 'h-8 min-w-[2rem] rounded px-2 text-sm font-medium',
-                                p === currentPage ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                                p === currentPage ? 'bg-blue-600 text-white' : 'bg-muted text-muted-foreground hover:bg-muted'
                               )}
                               onClick={() => setCurrentPage(p)}
                             >
@@ -1990,7 +2063,7 @@ export const AccountingDashboard = () => {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-8 border-gray-700 text-gray-300"
+                        className="h-8 border-border text-muted-foreground"
                         disabled={currentPage >= totalJournalPages}
                         onClick={() => setCurrentPage((p) => Math.min(totalJournalPages, p + 1))}
                       >
@@ -2007,18 +2080,15 @@ export const AccountingDashboard = () => {
 
         {activeTab === 'daybook' && (
           <div className="space-y-4">
-            <h3 className="text-lg font-bold text-white">Day Book (Journal)</h3>
-            <p className="text-sm text-gray-400 mb-4">Click voucher number to open transaction detail</p>
-            <Suspense fallback={<div className="flex items-center justify-center py-12 text-gray-400">Loading…</div>}>
+            <h3 className="text-lg font-bold text-foreground">Day Book (Journal)</h3>
+            <p className="text-sm text-muted-foreground mb-4">Click voucher number to open transaction detail</p>
+            <Suspense fallback={<ReportTabSuspenseFallback label="Loading day book…" />}>
               <DayBookReport
                 onVoucherClick={(voucher) => {
-                  setTransactionDetailAutoEdit(false);
-                  setTransactionReference(voucher);
+                  openJournalEntryDetail(voucher, null);
                 }}
                 onEditJournalEntry={(journalEntryId) => {
-                  setSelectedGroupEntries(null);
-                  setTransactionDetailAutoEdit(true);
-                  setTransactionReference(journalEntryId);
+                  openJournalEntryDetail(journalEntryId, journalEntryId, null, { autoEdit: true });
                 }}
                 globalStartDate={globalStartDate}
                 globalEndDate={globalEndDate}
@@ -2030,14 +2100,32 @@ export const AccountingDashboard = () => {
         {activeTab === 'roznamcha' && (
           <div className="space-y-4">
             <div>
-              <h3 className="text-lg font-bold text-white">Roznamcha (Daily Cash Book)</h3>
-              <p className="text-sm text-gray-400 mt-1">
+              <h3 className="text-lg font-bold text-foreground">Roznamcha (Daily Cash Book)</h3>
+              <p className="text-sm text-muted-foreground mt-1">
                 Filter by date, branch, liquidity (cash/bank/wallet), a specific ledger account, row order, and page size.
                 Party lines show customer, supplier, or expense context next to each reference.
               </p>
             </div>
-            <Suspense fallback={<div className="flex items-center justify-center py-12 text-gray-400">Loading…</div>}>
+            <Suspense fallback={<ReportTabSuspenseFallback label="Loading roznamcha…" />}>
               <RoznamchaReport
+                globalStartDate={globalStartDate}
+                globalEndDate={globalEndDate}
+              />
+            </Suspense>
+          </div>
+        )}
+
+        {activeTab === 'cash_flow' && (
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-lg font-bold text-foreground">Cash Flow</h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                Operational cash and bank movements by source module. Read-only — use Normal mode for live balances;
+                Audit mode for voided and reversal trails.
+              </p>
+            </div>
+            <Suspense fallback={<ReportTabSuspenseFallback label="Loading cash flow…" />}>
+              <CashFlowReportPage
                 globalStartDate={globalStartDate}
                 globalEndDate={globalEndDate}
               />
@@ -2047,25 +2135,26 @@ export const AccountingDashboard = () => {
 
         {activeTab === 'accounts' && (
           <div className="space-y-4">
+            <ReportBasisBanner basis="official_gl" detail="Chart of Accounts balances use Official Posted GL (void excluded, corrections included)." />
             {/* Header with Mode Toggle & Create Button */}
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-bold text-white">Accounts</h3>
-                <p className="text-sm text-gray-400">
+                <h3 className="text-lg font-bold text-foreground">Accounts</h3>
+                <p className="text-sm text-muted-foreground">
                   {accountsViewMode === 'operational'
                     ? 'Operational View: Cash, Bank, Wallet, expense/income, AR/AP, worker payables & advances, Committees & Dasti (1170), partner equity (3003/3005) — expand rows with the chevron'
                     : 'Professional View: Full Chart of Accounts'}
                 </p>
               </div>
               <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2 bg-gray-900/50 border border-gray-800 rounded-lg px-3 py-1.5">
+                <div className="flex items-center gap-2 bg-card border border-border rounded-lg px-3 py-1.5">
                   <button
                     onClick={() => setAccountsViewMode('operational')}
                     className={cn(
                       "text-xs font-medium px-2 py-1 rounded transition-colors",
                       accountsViewMode === 'operational'
                         ? "bg-blue-600 text-white"
-                        : "text-gray-400 hover:text-gray-300"
+                        : "text-muted-foreground hover:text-muted-foreground"
                     )}
                   >
                     Operational
@@ -2076,18 +2165,18 @@ export const AccountingDashboard = () => {
                       "text-xs font-medium px-2 py-1 rounded transition-colors",
                       accountsViewMode === 'professional'
                         ? "bg-blue-600 text-white"
-                        : "text-gray-400 hover:text-gray-300"
+                        : "text-muted-foreground hover:text-muted-foreground"
                     )}
                   >
                     Professional
                   </button>
                   {accountsViewMode === 'professional' && (
-                    <label className="flex items-center gap-1.5 text-xs text-gray-400 cursor-pointer">
+                    <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
                       <input
                         type="checkbox"
                         checked={showSubAccounts}
                         onChange={(e) => setShowSubAccounts(e.target.checked)}
-                        className="rounded border-gray-600 bg-gray-800 text-blue-500"
+                        className="rounded border-gray-600 bg-muted text-blue-500"
                       />
                       Show sub-accounts
                     </label>
@@ -2095,7 +2184,10 @@ export const AccountingDashboard = () => {
                 </div>
                 {canPostAccounting && (
                   <Button
-                    onClick={() => setIsAddAccountOpen(true)}
+                    onClick={() => {
+                      setAddAccountPrefill(null);
+                      setIsAddAccountOpen(true);
+                    }}
                     className="bg-blue-600 hover:bg-blue-500 text-white gap-2"
                   >
                     <Plus size={16} /> Create New Account
@@ -2105,12 +2197,15 @@ export const AccountingDashboard = () => {
             </div>
 
             {accounting.accounts.length === 0 ? (
-              <div className="rounded-xl border border-gray-800 bg-gray-900/50 text-center py-12">
-                <Wallet size={48} className="mx-auto text-gray-600 mb-3" />
-                <p className="text-gray-400 text-sm">No accounts found</p>
-                <p className="text-gray-600 text-xs mt-1">Create your first account to get started</p>
+              <div className="rounded-xl border border-border bg-muted/40 text-center py-12">
+                <Wallet size={48} className="mx-auto text-muted-foreground mb-3" />
+                <p className="text-muted-foreground text-sm">No accounts found</p>
+                <p className="text-muted-foreground text-xs mt-1">Create your first account to get started</p>
                 <Button
-                  onClick={() => setIsAddAccountOpen(true)}
+                  onClick={() => {
+                    setAddAccountPrefill(null);
+                    setIsAddAccountOpen(true);
+                  }}
                   className="mt-4 bg-blue-600 hover:bg-blue-500 text-white"
                 >
                   <Plus size={16} className="mr-2" /> Create Account
@@ -2169,7 +2264,7 @@ export const AccountingDashboard = () => {
                           'p-1 rounded-md border shrink-0 transition-colors',
                           coaPartyPanelAccountId === account.id
                             ? 'text-violet-200 bg-violet-500/20 border-violet-500/40'
-                            : 'text-gray-400 hover:bg-gray-800 hover:text-violet-200 border-gray-700/80'
+                            : 'text-muted-foreground hover:bg-muted hover:text-violet-200 border-border/80'
                         )}
                       >
                         <Users className="w-4 h-4" />
@@ -2266,13 +2361,19 @@ export const AccountingDashboard = () => {
                     setCurrentView={setCurrentView}
                     canPostAccounting={canPostAccounting}
                     onTransferBalance={(accountId) => {
-                      setTransferFromAccountId(accountId);
-                      setAddEntryInitialType('internal_transfer');
-                      setAddEntryFlowOpen(true);
+                      setActiveTab('journal_entries');
+                      dispatchOpenAddEntryV2({
+                        entryType: 'pure_journal',
+                        fromAccountId: accountId,
+                      });
                     }}
                     onOpenAccountStatements={(accountId) => {
                       setAccountStatementPreselectId(accountId);
                       setActiveTab('account_statements');
+                    }}
+                    onAddChildAccount={(accountId) => {
+                      setAddAccountPrefill({ parentId: accountId });
+                      setIsAddAccountOpen(true);
                     }}
                   />
                 )}
@@ -2292,24 +2393,24 @@ export const AccountingDashboard = () => {
         )}
 
         {activeTab === 'receivables' && (
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-            <div className="px-4 py-2 border-b border-gray-800 text-[11px] text-gray-500 space-y-0.5">
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="px-4 py-2 border-b border-border text-[11px] text-muted-foreground space-y-0.5">
               <p>
-                <span className="text-gray-400">Operational receivables</span> — unpaid sales invoices / customer due for collection follow-up (not GL 1100).
+                <span className="text-muted-foreground">Operational receivables</span> — unpaid sales invoices / customer due for collection follow-up (not GL 1100).
               </p>
               <p>Opening balances &amp; GL truth: Accounts, Account Statements, Contacts GL, TB / BS.</p>
             </div>
             {sales.sales.filter(s => s.due > 0).length === 0 ? (
               <div className="text-center py-12">
-                <TrendingUp size={48} className="mx-auto text-gray-600 mb-3" />
-                <p className="text-gray-400 text-sm">No receivables</p>
-                <p className="text-gray-600 text-xs mt-1">All customers are paid up</p>
+                <TrendingUp size={48} className="mx-auto text-muted-foreground mb-3" />
+                <p className="text-muted-foreground text-sm">No receivables</p>
+                <p className="text-muted-foreground text-xs mt-1">All customers are paid up</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  <thead className="bg-gray-900 border-b border-gray-800">
-                    <tr className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  <thead className="bg-card border-b border-border">
+                    <tr className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                       <th className="px-4 py-3 text-left">Customer</th>
                       <th className="px-4 py-3 text-left">Invoice No</th>
                       <th className="px-4 py-3 text-left">Date</th>
@@ -2325,21 +2426,21 @@ export const AccountingDashboard = () => {
                       .map((sale) => (
                         <tr 
                           key={sale.id} 
-                          className="border-b border-gray-800 hover:bg-gray-800/30 transition-colors"
+                          className="border-b border-border hover:bg-accent/30 transition-colors"
                         >
-                          <td className="px-4 py-3 text-sm text-gray-300 font-medium">
+                          <td className="px-4 py-3 text-sm text-muted-foreground font-medium">
                             {sale.customerName}
                           </td>
                           <td className="px-4 py-3 text-sm text-blue-400 font-mono">
                             {sale.invoiceNo}
                           </td>
-                          <td className="px-4 py-3 text-sm text-gray-400">
+                          <td className="px-4 py-3 text-sm text-muted-foreground">
                             {new Date(sale.date).toLocaleDateString()}
                           </td>
-                          <td className="px-4 py-3 text-sm text-gray-300 text-right">
+                          <td className="px-4 py-3 text-sm text-muted-foreground text-right">
                             {formatCurrency(sale.total)}
                           </td>
-                          <td className="px-4 py-3 text-sm text-green-400 text-right">
+                          <td className="px-4 py-3 text-sm text-[var(--erp-money-positive)] text-right">
                             {formatCurrency(sale.paid)}
                           </td>
                           <td className="px-4 py-3 text-sm text-red-400 font-semibold text-right">
@@ -2348,7 +2449,7 @@ export const AccountingDashboard = () => {
                           <td className="px-4 py-3 text-xs">
                             <Badge className={
                               sale.paymentStatus === 'paid' 
-                                ? 'bg-green-500/10 text-green-400 border-green-500/30'
+                                ? 'bg-green-500/10 text-[var(--erp-money-positive)] border-green-500/30'
                                 : sale.paymentStatus === 'partial'
                                 ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30'
                                 : 'bg-red-500/10 text-red-400 border-red-500/30'
@@ -2366,14 +2467,14 @@ export const AccountingDashboard = () => {
         )}
 
         {activeTab === 'payables' && (
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
-              <span className="text-sm text-gray-400">Supplier & Courier payables</span>
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+              <span className="text-sm text-muted-foreground">Supplier & Courier payables</span>
               {canPostAccounting && (
                 <Button
                   variant="outline"
                   size="sm"
-                  className="border-gray-600 text-gray-300 hover:bg-gray-800 hover:text-white gap-1.5"
+                  className="border-gray-600 text-muted-foreground hover:bg-muted hover:text-foreground gap-1.5"
                   onClick={() => setPayCourierOpen(true)}
                 >
                   <Truck size={14} />
@@ -2381,23 +2482,23 @@ export const AccountingDashboard = () => {
                 </Button>
               )}
             </div>
-            <div className="px-4 py-2 border-b border-gray-800 text-[11px] text-gray-500 space-y-0.5">
+            <div className="px-4 py-2 border-b border-border text-[11px] text-muted-foreground space-y-0.5">
               <p>
-                <span className="text-gray-400">Operational payables</span> — unpaid purchase bills / supplier due for payment scheduling (not GL 2000).
+                <span className="text-muted-foreground">Operational payables</span> — unpaid purchase bills / supplier due for payment scheduling (not GL 2000).
               </p>
               <p>Opening balances &amp; GL truth: Accounts, Account Statements, Contacts GL, TB / BS.</p>
             </div>
             {purchases.purchases.filter(p => p.due > 0).length === 0 ? (
               <div className="text-center py-12">
-                <TrendingDown size={48} className="mx-auto text-gray-600 mb-3" />
-                <p className="text-gray-400 text-sm">No payables</p>
-                <p className="text-gray-600 text-xs mt-1">All suppliers are paid up</p>
+                <TrendingDown size={48} className="mx-auto text-muted-foreground mb-3" />
+                <p className="text-muted-foreground text-sm">No payables</p>
+                <p className="text-muted-foreground text-xs mt-1">All suppliers are paid up</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  <thead className="bg-gray-900 border-b border-gray-800">
-                    <tr className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  <thead className="bg-card border-b border-border">
+                    <tr className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                       <th className="px-4 py-3 text-left">Supplier</th>
                       <th className="px-4 py-3 text-left">PO No</th>
                       <th className="px-4 py-3 text-left">Date</th>
@@ -2413,21 +2514,21 @@ export const AccountingDashboard = () => {
                       .map((purchase) => (
                         <tr 
                           key={purchase.id} 
-                          className="border-b border-gray-800 hover:bg-gray-800/30 transition-colors"
+                          className="border-b border-border hover:bg-accent/30 transition-colors"
                         >
-                          <td className="px-4 py-3 text-sm text-gray-300 font-medium">
+                          <td className="px-4 py-3 text-sm text-muted-foreground font-medium">
                             {purchase.supplierName}
                           </td>
                           <td className="px-4 py-3 text-sm text-blue-400 font-mono">
                             {purchase.purchaseNo}
                           </td>
-                          <td className="px-4 py-3 text-sm text-gray-400">
+                          <td className="px-4 py-3 text-sm text-muted-foreground">
                             {new Date(purchase.date).toLocaleDateString()}
                           </td>
-                          <td className="px-4 py-3 text-sm text-gray-300 text-right">
+                          <td className="px-4 py-3 text-sm text-muted-foreground text-right">
                             {formatCurrency(purchase.total)}
                           </td>
-                          <td className="px-4 py-3 text-sm text-green-400 text-right">
+                          <td className="px-4 py-3 text-sm text-[var(--erp-money-positive)] text-right">
                             {formatCurrency(purchase.paid)}
                           </td>
                           <td className="px-4 py-3 text-sm text-red-400 font-semibold text-right">
@@ -2436,7 +2537,7 @@ export const AccountingDashboard = () => {
                           <td className="px-4 py-3 text-xs">
                             <Badge className={
                               purchase.paymentStatus === 'paid' 
-                                ? 'bg-green-500/10 text-green-400 border-green-500/30'
+                                ? 'bg-green-500/10 text-[var(--erp-money-positive)] border-green-500/30'
                                 : purchase.paymentStatus === 'partial'
                                 ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30'
                                 : 'bg-red-500/10 text-red-400 border-red-500/30'
@@ -2454,106 +2555,114 @@ export const AccountingDashboard = () => {
         )}
 
         {activeTab === 'courier' && (
-          <Suspense fallback={<div className="flex items-center justify-center py-12 text-gray-400">Loading…</div>}>
+          <Suspense fallback={<div className="flex items-center justify-center py-12 text-muted-foreground">Loading…</div>}>
             <CourierReportsTab />
           </Suspense>
         )}
 
         {activeTab === 'deposits' && settingsModules.rentalModuleEnabled && (
-          <Suspense fallback={<div className="flex items-center justify-center py-12 text-gray-400">Loading…</div>}>
+          <Suspense fallback={<div className="flex items-center justify-center py-12 text-muted-foreground">Loading…</div>}>
             <DepositsTab />
           </Suspense>
         )}
 
         {activeTab === 'studio' && (
-          <Suspense fallback={<div className="flex items-center justify-center py-12 text-gray-400">Loading…</div>}>
+          <Suspense fallback={<div className="flex items-center justify-center py-12 text-muted-foreground">Loading…</div>}>
             <StudioCostsTab />
           </Suspense>
         )}
 
         {activeTab === 'account_statements' && (
           <div className="space-y-4">
-            <h3 className="text-lg font-bold text-white">Account Statements</h3>
-            <p className="text-sm text-gray-400">Account-wise ledger / statement by date range</p>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-bold text-foreground">Account Statements</h3>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  GL statements — print, PDF, share. Use <strong className="text-muted-foreground font-medium">Advanced</strong> for effective/audit filters and control-account rollup rules.
+                </p>
+              </div>
+              <div className="flex rounded-lg border border-border overflow-hidden shrink-0">
+                <button
+                  type="button"
+                  className={cn(
+                    'px-3 py-1.5 text-xs font-medium transition-colors',
+                    accountStatementsViewMode === 'standard'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-card text-muted-foreground hover:text-gray-200'
+                  )}
+                  onClick={() => setAccountStatementsViewMode('standard')}
+                >
+                  Standard (PDF / share)
+                </button>
+                <button
+                  type="button"
+                  className={cn(
+                    'px-3 py-1.5 text-xs font-medium transition-colors border-l border-border',
+                    accountStatementsViewMode === 'advanced'
+                      ? 'bg-amber-700/80 text-foreground'
+                      : 'bg-card text-muted-foreground hover:text-gray-200'
+                  )}
+                  onClick={() => setAccountStatementsViewMode('advanced')}
+                >
+                  Advanced (effective / audit)
+                </button>
+              </div>
+            </div>
             <div className="flex flex-wrap items-end gap-4 pt-1">
               <div className="space-y-1">
-                <Label htmlFor="account-statement-from" className="text-xs text-gray-400">
+                <Label htmlFor="account-statement-from" className="text-xs text-muted-foreground">
                   From
                 </Label>
-                <Input
-                  id="account-statement-from"
-                  type="date"
+                <DatePicker
                   value={accountStatementStart}
-                  max={accountStatementEnd}
-                  onChange={(e) => setAccountStatementStart(e.target.value)}
-                  className="w-[11.5rem] bg-gray-800/90 border-gray-700 text-white"
+                  onChange={(v) => setAccountStatementStart(v)}
+                  maxDate={accountStatementEnd ? new Date(accountStatementEnd + 'T12:00:00') : undefined}
+                  className="w-[11.5rem]"
                 />
               </div>
               <div className="space-y-1">
-                <Label htmlFor="account-statement-to" className="text-xs text-gray-400">
+                <Label htmlFor="account-statement-to" className="text-xs text-muted-foreground">
                   To
                 </Label>
-                <Input
-                  id="account-statement-to"
-                  type="date"
+                <DatePicker
                   value={accountStatementEnd}
-                  min={accountStatementStart}
-                  onChange={(e) => setAccountStatementEnd(e.target.value)}
-                  className="w-[11.5rem] bg-gray-800/90 border-gray-700 text-white"
+                  onChange={(v) => setAccountStatementEnd(v)}
+                  minDate={accountStatementStart ? new Date(accountStatementStart + 'T12:00:00') : undefined}
+                  className="w-[11.5rem]"
                 />
               </div>
-              <p className="text-xs text-gray-500 pb-2">
-                Global filter updates the default dates above. Statements include <strong className="text-gray-400 font-medium">all branches</strong> — use the Branch column on each row to see HQ, BR-0002, etc. The header branch selector does not limit this report.
+              <p className="text-xs text-muted-foreground pb-2">
+                Standard and Advanced use these dates. Global filter updates the defaults. Statements include{' '}
+                <strong className="text-muted-foreground font-medium">all branches</strong> — use the Branch column on each row.
               </p>
             </div>
-            <Suspense fallback={<div className="flex items-center justify-center py-12 text-gray-400">Loading…</div>}>
-              <AccountLedgerReportPage
-                startDate={accountStatementStart}
-                endDate={accountStatementEnd}
-                branchId={branchId}
-                branchScopeLabel={accountStatementBranchLabel}
-                initialAccountId={accountStatementPreselectId}
+            {accountStatementsViewMode === 'standard' ? (
+              <LedgerStatementCenterV2Page
+                embedded
+                moduleContext="accounting"
+                periodStart={accountStatementStart}
+                periodEnd={accountStatementEnd}
+                periodLabel={`${accountStatementStart} → ${accountStatementEnd}`}
+                initialLedgerEntity={accountStatementV2Entity}
+                onInitialLedgerConsumed={handleAccountStatementInitialConsumed}
               />
-            </Suspense>
+            ) : (
+              <Suspense fallback={<ReportTabSuspenseFallback label="Loading account statement…" />}>
+                <AccountLedgerReportPage
+                  startDate={accountStatementStart}
+                  endDate={accountStatementEnd}
+                  branchId={branchId}
+                  branchScopeLabel={accountStatementBranchLabel}
+                  initialAccountId={accountStatementPreselectId}
+                />
+              </Suspense>
+            )}
           </div>
         )}
 
-        {activeTab === 'integrity_lab' && (
-          <Suspense fallback={<div className="flex items-center justify-center py-12 text-gray-400">Loading…</div>}>
-            <AccountingIntegrityTestLab
-              onOpenJournalTrace={(fragment) => {
-                setActiveTab('journal_entries');
-                setJournalViewMode('audit');
-                setSearchTerm(fragment.trim());
-                toast.message('Journal Entries (audit view) filtered for trace.');
-              }}
-            />
-          </Suspense>
-        )}
       </div>
       
-      {/* Add Entry flow: V2 (default) or legacy */}
-      {addEntryFlowOpen && USE_ADD_ENTRY_V2 && (
-        <AddEntryV2
-          initialEntryType={addEntryInitialType}
-          initialFromAccountId={transferFromAccountId ?? undefined}
-          onClose={() => {
-            setAddEntryFlowOpen(false);
-            setAddEntryInitialType(undefined);
-            setTransferFromAccountId(null);
-            accounting.refreshEntries();
-          }}
-        />
-      )}
-      {addEntryFlowOpen && !USE_ADD_ENTRY_V2 && (
-        <AccountingTestPage
-          embedded
-          onClose={() => {
-            setAddEntryFlowOpen(false);
-            accounting.refreshEntries();
-          }}
-        />
-      )}
+      <AddEntryV2Host />
 
       {/* Manual Entry Dialog (legacy) */}
       <ManualEntryDialog 
@@ -2571,34 +2680,79 @@ export const AccountingDashboard = () => {
       />
 
       {/* Add Account Drawer */}
-      <AddAccountDrawer 
-        isOpen={isAddAccountOpen} 
-        onClose={() => setIsAddAccountOpen(false)}
+      <AddAccountDrawer
+        isOpen={isAddAccountOpen}
+        initialTab={addAccountPrefill ? 'professional' : undefined}
+        initialParentId={addAccountPrefill?.parentId ?? null}
+        onClose={() => {
+          setIsAddAccountOpen(false);
+          setAddAccountPrefill(null);
+        }}
         onSuccess={async () => {
           await accounting.refreshEntries();
           setIsAddAccountOpen(false);
+          setAddAccountPrefill(null);
         }}
       />
 
       {/* Edit Account Dialog */}
       <Dialog open={isEditAccountOpen} onOpenChange={setIsEditAccountOpen}>
-        <DialogContent className="bg-gray-950 border-gray-800 text-white max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="bg-input-background border-border text-foreground max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Account</DialogTitle>
-            <DialogDescription className="text-gray-400">
+            <DialogDescription className="text-muted-foreground">
               Update account information
             </DialogDescription>
           </DialogHeader>
           {editingAccount && (
             <AccountEditForm
               account={editingAccount}
-              onSave={async (updates) => {
+              companyId={companyId ?? ''}
+              branchId={branchId === 'all' ? null : branchId ?? null}
+              onSave={async (updates, opening) => {
+                const accountId = editingAccount.id!;
+                const accountCode = updates.code ?? editingAccount.code;
+                const accountName = updates.name ?? editingAccount.name;
                 try {
-                  await accountService.updateAccount(editingAccount.id!, updates);
-                  await accounting.refreshEntries();
+                  await accountService.updateAccount(accountId, updates);
                   toast.success('Account updated successfully');
                   setIsEditAccountOpen(false);
                   setEditingAccount(null);
+
+                  if (opening && companyId && opening.changed) {
+                    const ob = Math.round((Number(opening.amount) || 0) * 100) / 100;
+                    try {
+                      const { openingBalanceJournalService } = await import(
+                        '@/app/services/openingBalanceJournalService'
+                      );
+                      await openingBalanceJournalService.syncChartAccountOpening({
+                        companyId,
+                        branchId: branchId === 'all' ? undefined : branchId || undefined,
+                        accountId,
+                        accountCode,
+                        accountName,
+                        category: opening.category,
+                        openingAmount: ob,
+                        entryDate: opening.entryDate,
+                        primarySide: opening.primarySide,
+                      });
+                    } catch (e: any) {
+                      console.error('[EDIT ACCOUNT] Opening balance JE failed:', e);
+                      toast.error('Account saved but opening balance did not post to GL', {
+                        description: e?.message,
+                      });
+                    }
+                  }
+
+                  if (companyId) {
+                    dispatchAccountingInvalidated({
+                      companyId,
+                      branchId: branchId === 'all' ? null : branchId ?? null,
+                      entityId: accountId,
+                      reason: 'accounts-changed',
+                    });
+                  }
+                  void accounting.refreshEntries();
                 } catch (error: any) {
                   toast.error(`Failed to update account: ${error.message}`);
                 }
@@ -2637,29 +2791,50 @@ export const AccountingDashboard = () => {
         />
       )}
 
+      {attachmentsDialogList ? (
+        <AttachmentViewer
+          attachments={attachmentsDialogList}
+          isOpen={!!attachmentsDialogList}
+          onClose={() => setAttachmentsDialogList(null)}
+        />
+      ) : null}
+
       {/* Transaction Detail Modal (PF-14.3B: pass group entries to show edit trail when opening from grouped row) */}
       {transactionReference && (
         <TransactionDetailModal
           isOpen={!!transactionReference}
-          onClose={() => {
-            setTransactionReference(null);
-            setSelectedGroupEntries(null);
-            setTransactionDetailAutoEdit(false);
-          }}
+          onClose={clearTransactionDetail}
           referenceNumber={transactionReference}
+          journalEntryIdHint={transactionJournalEntryIdHint ?? undefined}
           groupEntries={selectedGroupEntries ?? undefined}
           autoLaunchUnifiedEdit={transactionDetailAutoEdit}
           onAutoLaunchUnifiedEditConsumed={() => setTransactionDetailAutoEdit(false)}
+          autoOpenPaymentTrace={transactionDetailAutoOpenTrace}
+          onAutoOpenPaymentTraceConsumed={() => setTransactionDetailAutoOpenTrace(false)}
+          autoScrollToAudit={transactionDetailScrollToAudit}
+          onAutoScrollToAuditConsumed={() => setTransactionDetailScrollToAudit(false)}
         />
       )}
+
+      {pendingConfirm ? (
+        <TransactionConfirmDialog
+          open
+          title={pendingConfirm.title}
+          description={pendingConfirm.message}
+          confirmLabel="Yes"
+          cancelLabel="No"
+          onConfirm={confirmPendingJournalAction}
+          onCancel={dismissPendingConfirm}
+        />
+      ) : null}
 
       {/* Listen for transaction detail events */}
       {typeof window !== 'undefined' && (
         <TransactionDetailListener
           onOpen={(referenceNumber, opts) => {
-            setTransactionReference(referenceNumber);
-            setSelectedGroupEntries(null);
-            setTransactionDetailAutoEdit(!!opts?.autoLaunchUnifiedEdit);
+            openJournalEntryDetail(referenceNumber, opts?.journalEntryId ?? null, null, {
+              autoEdit: !!opts?.autoLaunchUnifiedEdit,
+            });
           }}
         />
       )}
@@ -2669,13 +2844,16 @@ export const AccountingDashboard = () => {
 
 // Component to listen for transaction detail events
 const TransactionDetailListener: React.FC<{
-  onOpen: (ref: string, opts?: { autoLaunchUnifiedEdit?: boolean }) => void;
+  onOpen: (ref: string, opts?: { autoLaunchUnifiedEdit?: boolean; journalEntryId?: string }) => void;
 }> = ({ onOpen }) => {
   React.useEffect(() => {
     const handleOpen = (event: CustomEvent) => {
       const d = event.detail || {};
       if (d.referenceNumber == null || d.referenceNumber === '') return;
-      onOpen(String(d.referenceNumber), { autoLaunchUnifiedEdit: !!d.autoLaunchUnifiedEdit });
+      onOpen(String(d.referenceNumber), {
+        autoLaunchUnifiedEdit: !!d.autoLaunchUnifiedEdit,
+        journalEntryId: d.journalEntryId ? String(d.journalEntryId) : undefined,
+      });
     };
 
     window.addEventListener('openTransactionDetail' as any, handleOpen);
@@ -2687,63 +2865,214 @@ const TransactionDetailListener: React.FC<{
   return null;
 };
 
+function mapDbAccountTypeToOpeningCategory(type: string): AccountCategory {
+  const t = String(type || '').toLowerCase();
+  if (['asset', 'cash', 'bank', 'mobile wallet', 'mobile_wallet', 'receivable'].includes(t)) return 'Assets';
+  if (['liability', 'payable'].includes(t)) return 'Liabilities';
+  if (t === 'equity') return 'Equity';
+  if (t === 'revenue' || t === 'income') return 'Income';
+  return 'Expenses';
+}
+
+function naturalOpeningSide(category: AccountCategory): 'debit' | 'credit' {
+  return category === 'Assets' || category === 'Cost of Sales' || category === 'Expenses' ? 'debit' : 'credit';
+}
+
+type AccountEditOpeningPayload = {
+  amount: number;
+  entryDate: string;
+  changed: boolean;
+  category: AccountCategory;
+  primarySide: 'debit' | 'credit';
+};
+
 // Account Edit Form Component
-const AccountEditForm = ({ account, onSave, onCancel }: { account: any; onSave: (updates: any) => Promise<void>; onCancel: () => void }) => {
+const AccountEditForm = ({
+  account,
+  companyId,
+  branchId: _branchId,
+  onSave,
+  onCancel,
+}: {
+  account: any;
+  companyId: string;
+  branchId?: string | null;
+  onSave: (updates: any, opening?: AccountEditOpeningPayload) => Promise<void>;
+  onCancel: () => void;
+}) => {
+  const initialType = account.type || account.accountType || 'Cash';
+  const initialAccountType = account.account_type || 'Asset';
   const [formData, setFormData] = useState({
     name: account.name || '',
-    type: account.type || account.accountType || 'Cash',
-    account_type: account.account_type || 'Asset',
+    type: initialType,
+    account_type: initialAccountType,
     code: account.code || '',
-    is_active: account.isActive ?? true,
+    is_active: account.isActive ?? account.is_active ?? true,
     is_default_cash: account.is_default_cash ?? false,
     is_default_bank: account.is_default_bank ?? false,
     branch_id: account.branch_id || null,
   });
+  const [openingBalance, setOpeningBalance] = useState(0);
+  const [openingBalanceDate, setOpeningBalanceDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [openingSide, setOpeningSide] = useState<'debit' | 'credit'>(() =>
+    naturalOpeningSide(mapDbAccountTypeToOpeningCategory(String(initialType || initialAccountType))),
+  );
+  const [openingSideTouched, setOpeningSideTouched] = useState(false);
+  const [initialOpeningBalance, setInitialOpeningBalance] = useState(0);
+  const [initialOpeningDate, setInitialOpeningDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [initialOpeningSide, setInitialOpeningSide] = useState<'debit' | 'credit'>(() =>
+    naturalOpeningSide(mapDbAccountTypeToOpeningCategory(String(initialType || initialAccountType))),
+  );
+  const [loadingOpening, setLoadingOpening] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (openingSideTouched) return;
+    setOpeningSide(
+      naturalOpeningSide(mapDbAccountTypeToOpeningCategory(String(formData.type || formData.account_type))),
+    );
+  }, [formData.type, formData.account_type, openingSideTouched]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const accountId = String(account?.id || '');
+    if (!companyId || !accountId) {
+      setLoadingOpening(false);
+      return;
+    }
+    setLoadingOpening(true);
+    (async () => {
+      try {
+        const { data: je, error } = await supabase
+          .from('journal_entries')
+          .select('id, entry_date')
+          .eq('company_id', companyId)
+          .eq('reference_type', OPENING_BALANCE_REFERENCE.GL_ACCOUNT)
+          .eq('reference_id', accountId)
+          .or('is_void.is.null,is_void.eq.false')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (cancelled) return;
+        if (error || !je?.id) {
+          setOpeningBalance(0);
+          setInitialOpeningBalance(0);
+          const natural = naturalOpeningSide(
+            mapDbAccountTypeToOpeningCategory(String(formData.type || formData.account_type)),
+          );
+          setOpeningSide(natural);
+          setInitialOpeningSide(natural);
+          setOpeningSideTouched(false);
+          return;
+        }
+        const { data: lines } = await supabase
+          .from('journal_entry_lines')
+          .select('debit, credit')
+          .eq('journal_entry_id', je.id)
+          .eq('account_id', accountId);
+        if (cancelled) return;
+        const debit = (lines || []).reduce((s, l) => s + Number(l.debit || 0), 0);
+        const credit = (lines || []).reduce((s, l) => s + Number(l.credit || 0), 0);
+        const amount = Math.round(Math.abs(debit - credit) * 100) / 100;
+        const entryDate = String(je.entry_date || '').slice(0, 10) || new Date().toISOString().slice(0, 10);
+        const side: 'debit' | 'credit' = debit >= credit ? 'debit' : 'credit';
+        setOpeningBalance(amount);
+        setInitialOpeningBalance(amount);
+        setOpeningBalanceDate(entryDate);
+        setInitialOpeningDate(entryDate);
+        setOpeningSide(side);
+        setInitialOpeningSide(side);
+        setOpeningSideTouched(true);
+      } catch {
+        if (!cancelled) {
+          setOpeningBalance(0);
+          setInitialOpeningBalance(0);
+        }
+      } finally {
+        if (!cancelled) setLoadingOpening(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Load once per account; type defaults applied separately.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [account?.id, companyId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await onSave({
-      name: formData.name,
-      type: formData.type,
-      account_type: formData.account_type,
-      code: formData.code,
-      is_active: formData.is_active,
-      is_default_cash: formData.is_default_cash,
-      is_default_bank: formData.is_default_bank,
-      branch_id: formData.branch_id || null,
-    });
+    if (saving) return;
+    setSaving(true);
+    try {
+      const ob = Math.round(Math.abs(Number(openingBalance) || 0) * 100) / 100;
+      const dateChanged = openingBalanceDate !== initialOpeningDate;
+      const amountChanged = Math.abs(ob - initialOpeningBalance) >= 0.01;
+      const sideChanged = openingSide !== initialOpeningSide;
+      const changed =
+        amountChanged ||
+        sideChanged ||
+        (Math.abs(ob) >= 0.01 && dateChanged) ||
+        (initialOpeningBalance >= 0.01 && ob < 0.01);
+      await onSave(
+        {
+          name: formData.name,
+          type: formData.type,
+          account_type: formData.account_type,
+          code: formData.code,
+          is_active: formData.is_active,
+          is_default_cash: formData.is_default_cash,
+          is_default_bank: formData.is_default_bank,
+          branch_id: formData.branch_id || null,
+        },
+        {
+          amount: ob,
+          entryDate: openingBalanceDate,
+          changed,
+          category: mapDbAccountTypeToOpeningCategory(String(formData.type || formData.account_type)),
+          primarySide: openingSide,
+        },
+      );
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <Label className="text-gray-300 mb-2 block">Account Name *</Label>
+          <Label className="text-muted-foreground mb-2 block">Account Name *</Label>
           <Input
             value={formData.name}
             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            className="bg-gray-900 border-gray-700 text-white"
+            className="bg-card border-border text-foreground"
             required
+            disabled={saving}
           />
         </div>
         <div>
-          <Label className="text-gray-300 mb-2 block">Account Code</Label>
+          <Label className="text-muted-foreground mb-2 block">Account Code</Label>
           <Input
             value={formData.code}
             onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-            className="bg-gray-900 border-gray-700 text-white"
+            className="bg-card border-border text-foreground"
+            disabled={saving}
           />
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <Label className="text-gray-300 mb-2 block">Account Type *</Label>
-          <Select value={formData.type} onValueChange={(value) => setFormData({ ...formData, type: value })}>
-            <SelectTrigger className="bg-gray-900 border-gray-700 text-white">
+          <Label className="text-muted-foreground mb-2 block">Account Type *</Label>
+          <Select
+            value={formData.type}
+            onValueChange={(value) => setFormData({ ...formData, type: value })}
+            disabled={saving}
+          >
+            <SelectTrigger className="bg-card border-border text-foreground">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="bg-gray-900 border-gray-700 text-white">
+            <SelectContent className="bg-popover border-border text-popover-foreground">
               <SelectItem value="Cash">Cash</SelectItem>
               <SelectItem value="Bank">Bank</SelectItem>
               <SelectItem value="Mobile Wallet">Mobile Wallet</SelectItem>
@@ -2751,12 +3080,16 @@ const AccountEditForm = ({ account, onSave, onCancel }: { account: any; onSave: 
           </Select>
         </div>
         <div>
-          <Label className="text-gray-300 mb-2 block">Category *</Label>
-          <Select value={formData.account_type} onValueChange={(value) => setFormData({ ...formData, account_type: value })}>
-            <SelectTrigger className="bg-gray-900 border-gray-700 text-white">
+          <Label className="text-muted-foreground mb-2 block">Category *</Label>
+          <Select
+            value={formData.account_type}
+            onValueChange={(value) => setFormData({ ...formData, account_type: value })}
+            disabled={saving}
+          >
+            <SelectTrigger className="bg-card border-border text-foreground">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="bg-gray-900 border-gray-700 text-white">
+            <SelectContent className="bg-popover border-border text-popover-foreground">
               <SelectItem value="Asset">Asset</SelectItem>
               <SelectItem value="Liability">Liability</SelectItem>
               <SelectItem value="Expense">Expense</SelectItem>
@@ -2766,21 +3099,94 @@ const AccountEditForm = ({ account, onSave, onCancel }: { account: any; onSave: 
         </div>
       </div>
 
+      <div className="space-y-2">
+        <Label className="text-muted-foreground mb-2 block">Opening Balance</Label>
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-bold">$</span>
+            <Input
+              type="number"
+              min={0}
+              value={openingBalance}
+              onChange={(e) => setOpeningBalance(Math.abs(parseFloat(e.target.value) || 0))}
+              placeholder="0.00"
+              step="0.01"
+              className="bg-card border-border text-foreground pl-8"
+              disabled={saving || loadingOpening}
+            />
+          </div>
+          <div className="inline-flex rounded-md border border-border overflow-hidden shrink-0">
+            <button
+              type="button"
+              disabled={saving || loadingOpening}
+              onClick={() => {
+                setOpeningSide('debit');
+                setOpeningSideTouched(true);
+              }}
+              className={cn(
+                'px-3 py-2 text-sm font-semibold transition-colors',
+                openingSide === 'debit'
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-card text-muted-foreground hover:bg-muted',
+              )}
+            >
+              DR
+            </button>
+            <button
+              type="button"
+              disabled={saving || loadingOpening}
+              onClick={() => {
+                setOpeningSide('credit');
+                setOpeningSideTouched(true);
+              }}
+              className={cn(
+                'px-3 py-2 text-sm font-semibold transition-colors border-l border-border',
+                openingSide === 'credit'
+                  ? 'bg-rose-600 text-white'
+                  : 'bg-card text-muted-foreground hover:bg-muted',
+              )}
+            >
+              CR
+            </button>
+          </div>
+        </div>
+        {loadingOpening ? (
+          <p className="text-xs text-muted-foreground">Loading existing opening balance…</p>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            Amount is always positive. DR/CR follows COA (Assets/Expenses natural DR; Liabilities/Income natural CR).
+            Choose the opposite side for contra / negative balances.
+          </p>
+        )}
+        {Math.abs(openingBalance) >= 0.01 ? (
+          <div className="space-y-2 pt-1">
+            <Label className="text-muted-foreground mb-2 block">Opening balance effective date</Label>
+            <DatePicker
+              value={openingBalanceDate}
+              onChange={(v) => setOpeningBalanceDate(v)}
+              disabled={saving}
+            />
+          </div>
+        ) : null}
+      </div>
+
       <div className="flex items-center gap-6">
         <div className="flex items-center gap-2">
           <Switch
             checked={formData.is_active}
             onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
+            disabled={saving}
           />
-          <Label className="text-gray-300">Active</Label>
+          <Label className="text-muted-foreground">Active</Label>
         </div>
         {formData.type === 'Cash' && (
           <div className="flex items-center gap-2">
             <Switch
               checked={formData.is_default_cash}
               onCheckedChange={(checked) => setFormData({ ...formData, is_default_cash: checked })}
+              disabled={saving}
             />
-            <Label className="text-gray-300">Default Cash</Label>
+            <Label className="text-muted-foreground">Default Cash</Label>
           </div>
         )}
         {formData.type === 'Bank' && (
@@ -2788,18 +3194,26 @@ const AccountEditForm = ({ account, onSave, onCancel }: { account: any; onSave: 
             <Switch
               checked={formData.is_default_bank}
               onCheckedChange={(checked) => setFormData({ ...formData, is_default_bank: checked })}
+              disabled={saving}
             />
-            <Label className="text-gray-300">Default Bank</Label>
+            <Label className="text-muted-foreground">Default Bank</Label>
           </div>
         )}
       </div>
 
       <DialogFooter>
-        <Button type="button" variant="ghost" onClick={onCancel} className="text-gray-400 hover:text-white">
+        <Button type="button" variant="ghost" onClick={onCancel} className="text-muted-foreground hover:text-foreground" disabled={saving}>
           Cancel
         </Button>
-        <Button type="submit" className="bg-blue-600 hover:bg-blue-500 text-white">
-          Save Changes
+        <Button type="submit" className="bg-blue-600 hover:bg-blue-500 text-white" disabled={saving || loadingOpening}>
+          {saving ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              Saving…
+            </>
+          ) : (
+            'Save Changes'
+          )}
         </Button>
       </DialogFooter>
     </form>

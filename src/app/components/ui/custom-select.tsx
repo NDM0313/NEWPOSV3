@@ -37,28 +37,32 @@ export const CustomSelect = ({ value, onChange, options }: CustomSelectProps) =>
     }
   }, [isOpen]);
 
+  useEffect(() => {
+    return () => setIsOpen(false);
+  }, []);
+
   return (
     <div className="relative">
       {/* Trigger Button */}
       <button
         ref={triggerRef}
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 bg-gray-900 border border-gray-700 rounded-lg px-3 h-10 text-white text-sm font-semibold hover:bg-gray-850 transition-colors"
+        className="flex items-center gap-2 bg-popover border border-border rounded-lg px-3 h-10 text-foreground text-sm font-semibold hover:bg-gray-850 transition-colors"
       >
         {selectedOption?.label}
-        <ChevronDown size={14} className={cn("text-gray-400 transition-transform", isOpen && "rotate-180")} />
+        <ChevronDown size={14} className={cn("text-muted-foreground transition-transform", isOpen && "rotate-180")} />
       </button>
 
       {/* Dropdown Panel - Portal to body to avoid overflow clipping */}
       {isOpen && typeof document !== 'undefined' && createPortal(
         <>
           <div
-            className="fixed inset-0 z-[9998]"
+            className="fixed inset-0 z-[9998] bg-transparent"
             onClick={() => setIsOpen(false)}
             aria-hidden
           />
           <div
-            className="fixed min-w-[100px] bg-[#1e293b] border border-gray-700 rounded-lg shadow-2xl py-1 z-[9999]"
+            className="fixed min-w-[100px] bg-[#1e293b] border border-border rounded-lg shadow-2xl py-1 z-[9999]"
             style={{ top: position.top, left: position.left, width: position.width }}
           >
             {options.map((option) => (
@@ -68,8 +72,8 @@ export const CustomSelect = ({ value, onChange, options }: CustomSelectProps) =>
                 className={cn(
                   "w-full flex items-center justify-between px-4 py-2 text-sm text-left transition-colors",
                   value === option.value
-                    ? "bg-gray-700/50 text-white font-semibold"
-                    : "text-gray-300 hover:bg-gray-700/30"
+                    ? "bg-gray-700/50 text-foreground font-semibold"
+                    : "text-muted-foreground hover:bg-accent/30"
                 )}
               >
                 <span>{option.label}</span>

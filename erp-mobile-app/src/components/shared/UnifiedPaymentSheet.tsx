@@ -1,8 +1,7 @@
 import { useRecordCustomerPayment } from '../../hooks/useRecordCustomerPayment';
-import { uploadPaymentAttachments, updatePaymentAttachments } from '../../api/paymentAttachments';
-import { attachmentUploadWarningMessage } from '../../utils/storageUploadErrors';
+import { finalizePaymentAttachments } from '../../lib/finalizePaymentAttachments';
 import { addRentalPayment } from '../../api/rentals';
-import { recordSupplierPayment } from '../../api/accounts';
+import { recordSupplierPayment, recordManualSupplierPayment } from '../../api/accounts';
 import {
   MobilePaymentSheet,
   type MobilePaymentSheetSubmitPayload,
@@ -19,11 +18,12 @@ import {
  * Per-kind extras (attachments for sales, damageDeduction for rentals, etc.)
  * stay available via optional props without duplicating the sheet UI.
  */
-export type UnifiedPaymentKind = 'sale' | 'purchase' | 'rental' | 'expense' | 'worker';
+export type UnifiedPaymentKind = 'sale' | 'purchase' | 'supplier-on-account' | 'rental' | 'expense' | 'worker';
 
 const KIND_TO_MODE: Record<UnifiedPaymentKind, PaymentSheetMode> = {
   sale: 'receive',
   purchase: 'pay-supplier',
+  'supplier-on-account': 'pay-supplier',
   rental: 'rental',
   expense: 'expense',
   worker: 'pay-worker',
@@ -38,6 +38,9 @@ export interface UnifiedPaymentSheetProps {
   companyId: string;
   branchId: string | null;
   userId?: string | null;
+  userRole?: string;
+  profileId?: string | null;
+  documentBranchId?: string | null;
 
   /** Counter-party name. For 'expense' this may be the category. */
   partyName: string | null;
@@ -53,6 +56,14 @@ export interface UnifiedPaymentSheetProps {
 
   /** Rental returns — penalty deduction pre-filled (display only). */
   damageDeduction?: number | null;
+  /** Customer bill book / REF # for sale receive-payment auto description. */
+  customerBillRef?: string | null;
+  defaultPaymentNotes?: string | null;
+  initialAmount?: number;
+  initialReference?: string | null;
+  initialPaymentDate?: string | null;
+  initialPaymentTime?: string | null;
+  initialAttachmentFiles?: File[] | null;
 
   onClose: () => void;
   onSuccess: () => void;
@@ -66,6 +77,9 @@ export function UnifiedPaymentSheet({
   companyId,
   branchId,
   userId,
+  userRole,
+  profileId,
+  documentBranchId,
   partyName,
   partyId,
   partyPhone,
@@ -73,6 +87,13 @@ export function UnifiedPaymentSheet({
   alreadyPaid,
   outstandingAmount,
   damageDeduction,
+  customerBillRef,
+  defaultPaymentNotes,
+  initialAmount,
+  initialReference,
+  initialPaymentDate,
+  initialPaymentTime,
+  initialAttachmentFiles,
   onClose,
   onSuccess,
   onViewLedger,
@@ -85,38 +106,27 @@ export function UnifiedPaymentSheet({
     if (kind === 'sale') {
       const { success, error, paymentId, referenceNumber } = await submitCustomer({
         companyId,
-        branchId,
+        branchId: payload.branchId ?? branchId,
         customerId: partyId ?? null,
         referenceId,
         amount: payload.amount,
         accountId: payload.accountId,
         paymentMethod: payload.method === 'wallet' ? 'wallet' : payload.method,
         paymentDate: payload.paymentDate,
+        paymentAt: payload.paymentAt,
         notes: payload.notes || undefined,
         referenceNumber: payload.reference?.trim() ? payload.reference.trim() : null,
         createdBy: userId ?? null,
       });
       let attachmentWarning: string | null = null;
       if (success && paymentId && payload.attachments.length > 0) {
-        try {
-          const { results, failures } = await uploadPaymentAttachments(
-            companyId,
-            referenceId,
-            paymentId,
-            payload.attachments,
-          );
-          if (results.length > 0) {
-            const upd = await updatePaymentAttachments(paymentId, results);
-            if (upd.error) {
-              attachmentWarning = `Payment saved. Attachments uploaded but could not be linked: ${upd.error}`;
-            }
-          }
-          attachmentWarning =
-            attachmentUploadWarningMessage(results.length, payload.attachments.length, failures)
-            ?? attachmentWarning;
-        } catch (err) {
-          attachmentWarning = `Payment saved. Attachment upload failed: ${(err as Error)?.message ?? 'unknown error'}.`;
-        }
+        const fin = await finalizePaymentAttachments({
+          companyId,
+          storageSegment: referenceId,
+          paymentId,
+          files: payload.attachments,
+        });
+        attachmentWarning = fin.attachmentWarning;
       }
       return {
         success,
@@ -132,45 +142,110 @@ export function UnifiedPaymentSheet({
       const { error, paymentId, referenceNumber } = await addRentalPayment({
         rentalId: referenceId,
         companyId,
-        branchId,
+        branchId: payload.branchId ?? branchId,
         amount: payload.amount,
         method: payload.method,
         paymentAccountId: payload.accountId,
         paymentDate: payload.paymentDate,
+        paymentAt: payload.paymentAt,
         reference: payload.reference || undefined,
         notes: payload.notes || undefined,
         userId: userId ?? null,
       });
+      let attachmentWarning: string | null = null;
+      if (!error && paymentId && payload.attachments.length > 0) {
+        const fin = await finalizePaymentAttachments({
+          companyId,
+          storageSegment: referenceId,
+          paymentId,
+          files: payload.attachments,
+        });
+        attachmentWarning = fin.attachmentWarning;
+      }
       return {
         success: !error,
         error: error ?? null,
         paymentId: paymentId ?? null,
         referenceNumber: referenceNumber ?? null,
         partyAccountName: partyName ? `Receivable — ${partyName}` : null,
+        attachmentWarning,
       };
     }
 
     if (kind === 'purchase') {
-      if (!branchId) return { success: false, error: 'Branch required for supplier payment.' };
+      const payBranchId = payload.branchId ?? branchId;
+      if (!payBranchId) return { success: false, error: 'Branch required for supplier payment.' };
       const methodForRpc: 'cash' | 'bank' | 'card' | 'other' = payload.method === 'wallet' ? 'other' : payload.method;
       const { data, error } = await recordSupplierPayment({
         companyId,
-        branchId,
+        branchId: payBranchId,
         purchaseId: referenceId,
         amount: payload.amount,
         paymentDate: payload.paymentDate,
+        paymentAt: payload.paymentAt,
         paymentAccountId: payload.accountId,
         paymentMethod: methodForRpc,
         reference: payload.reference || undefined,
         notes: payload.notes || undefined,
         userId: userId ?? undefined,
       });
+      let attachmentWarning: string | null = null;
+      if (data?.payment_id && payload.attachments.length > 0) {
+        const fin = await finalizePaymentAttachments({
+          companyId,
+          storageSegment: referenceId,
+          paymentId: data.payment_id,
+          files: payload.attachments,
+        });
+        attachmentWarning = fin.attachmentWarning;
+      }
       return {
         success: !error,
         error: error ?? null,
         paymentId: data?.payment_id ?? null,
         referenceNumber: data?.reference_number ?? null,
         partyAccountName: partyName ? `Payable — ${partyName}` : null,
+        attachmentWarning,
+      };
+    }
+
+    if (kind === 'supplier-on-account') {
+      const payBranchId = payload.branchId ?? branchId;
+      if (!payBranchId) return { success: false, error: 'Branch required for supplier payment.' };
+      if (!partyId) return { success: false, error: 'Supplier contact required.' };
+      const methodForRpc: 'cash' | 'bank' | 'card' | 'other' | 'wallet' =
+        payload.method === 'wallet' ? 'wallet' : payload.method;
+      const { data, error } = await recordManualSupplierPayment({
+        companyId,
+        branchId: payBranchId,
+        supplierContactId: partyId,
+        supplierName: partyName ?? 'Supplier',
+        amount: payload.amount,
+        paymentDate: payload.paymentDate,
+        paymentAt: payload.paymentAt,
+        paymentAccountId: payload.accountId,
+        paymentMethod: methodForRpc,
+        reference: payload.reference || undefined,
+        notes: payload.notes || undefined,
+        userId: userId ?? undefined,
+      });
+      let attachmentWarning: string | null = null;
+      if (data?.payment_id && payload.attachments.length > 0) {
+        const fin = await finalizePaymentAttachments({
+          companyId,
+          storageSegment: partyId,
+          paymentId: data.payment_id,
+          files: payload.attachments,
+        });
+        attachmentWarning = fin.attachmentWarning;
+      }
+      return {
+        success: !error || !!data?.payment_id,
+        error: error ?? null,
+        paymentId: data?.payment_id ?? null,
+        referenceNumber: data?.reference_number ?? null,
+        partyAccountName: partyName ? `Payable — ${partyName}` : null,
+        attachmentWarning,
       };
     }
 
@@ -190,6 +265,9 @@ export function UnifiedPaymentSheet({
       companyId={companyId}
       branchId={branchId}
       userId={userId}
+      userRole={userRole}
+      profileId={profileId}
+      documentBranchId={documentBranchId}
       partyName={partyName}
       partyPhone={partyPhone}
       referenceNo={referenceNo ?? null}
@@ -197,6 +275,13 @@ export function UnifiedPaymentSheet({
       alreadyPaid={alreadyPaid ?? null}
       outstandingAmount={outstandingAmount}
       subtitle={subtitleBits.length > 0 ? subtitleBits.join(' · ') : undefined}
+      customerBillRef={kind === 'sale' ? customerBillRef : undefined}
+      defaultPaymentNotes={defaultPaymentNotes}
+      initialAmount={initialAmount}
+      initialReference={initialReference}
+      initialPaymentDate={initialPaymentDate}
+      initialPaymentTime={initialPaymentTime}
+      initialAttachmentFiles={initialAttachmentFiles}
       onClose={onClose}
       onSuccess={onSuccess}
       onSubmit={handleSubmit}

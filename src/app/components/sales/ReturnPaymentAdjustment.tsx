@@ -129,10 +129,10 @@ export const ReturnPaymentAdjustment: React.FC<ReturnPaymentAdjustmentProps> = (
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="bg-[#0B0F19] border-gray-800 text-white max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="bg-background border-border text-foreground max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-2xl font-bold text-white flex items-center gap-2">
-              <DollarSign size={24} className="text-green-400" />
+            <DialogTitle className="text-2xl font-bold text-foreground flex items-center gap-2">
+              <DollarSign size={24} className="text-[var(--erp-money-positive)]" />
               Return Payment / Adjustment
             </DialogTitle>
           </DialogHeader>
@@ -145,28 +145,28 @@ export const ReturnPaymentAdjustment: React.FC<ReturnPaymentAdjustmentProps> = (
             <div className="space-y-6 mt-4">
               {/* Original Sale Info */}
               {originalSale && (
-                <div className="bg-[#0F1419] border border-gray-800 rounded-lg p-4">
+                <div className="bg-muted/40 border border-border rounded-lg p-4">
                   <h3 className="text-sm font-semibold text-blue-400 uppercase tracking-wide mb-3">
                     Original Sale Information
                   </h3>
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
-                      <span className="text-gray-400 text-xs uppercase">Invoice #:</span>
-                      <div className="text-white font-semibold mt-0.5">{originalSale.invoice_no || 'N/A'}</div>
+                      <span className="text-muted-foreground text-xs uppercase">Invoice #:</span>
+                      <div className="text-foreground font-semibold mt-0.5">{originalSale.invoice_no || 'N/A'}</div>
                     </div>
                     <div>
-                      <span className="text-gray-400 text-xs uppercase">Customer:</span>
-                      <div className="text-white font-semibold mt-0.5">{originalSale.customer_name || 'Walk-in Customer'}</div>
+                      <span className="text-muted-foreground text-xs uppercase">Customer:</span>
+                      <div className="text-foreground font-semibold mt-0.5">{originalSale.customer_name || 'Walk-in Customer'}</div>
                     </div>
                     <div>
-                      <span className="text-gray-400 text-xs uppercase">Sale Date:</span>
-                      <div className="text-white font-semibold mt-0.5">
+                      <span className="text-muted-foreground text-xs uppercase">Sale Date:</span>
+                      <div className="text-foreground font-semibold mt-0.5">
                         {originalSale.invoice_date ? formatDateAndTime(originalSale.invoice_date).date : '-'}
                       </div>
                     </div>
                     <div>
-                      <span className="text-gray-400 text-xs uppercase">Payment Method:</span>
-                      <div className="text-white font-semibold mt-0.5 capitalize">
+                      <span className="text-muted-foreground text-xs uppercase">Payment Method:</span>
+                      <div className="text-foreground font-semibold mt-0.5 capitalize">
                         {originalSale.payment_method || originalSale.paymentMethod || 'N/A'}
                       </div>
                     </div>
@@ -176,12 +176,12 @@ export const ReturnPaymentAdjustment: React.FC<ReturnPaymentAdjustmentProps> = (
 
               {/* Returns List */}
               <div>
-                <h3 className="text-lg font-semibold text-white mb-3">
+                <h3 className="text-lg font-semibold text-foreground mb-3">
                   Sale Returns ({returns.length})
                 </h3>
                 {returns.length === 0 ? (
-                  <div className="text-center py-8 text-gray-400 bg-[#0F1419] border border-gray-800 rounded-lg">
-                    <Package size={48} className="mx-auto mb-3 text-gray-600" />
+                  <div className="text-center py-8 text-muted-foreground bg-muted/40 border border-border rounded-lg">
+                    <Package size={48} className="mx-auto mb-3 text-muted-foreground" />
                     <p>No returns found for this sale</p>
                   </div>
                 ) : (
@@ -191,18 +191,18 @@ export const ReturnPaymentAdjustment: React.FC<ReturnPaymentAdjustmentProps> = (
                       return (
                         <div
                           key={returnItem.id}
-                          className="bg-[#0F1419] border border-gray-800 rounded-lg p-4 hover:border-gray-700 transition-colors"
+                          className="bg-muted/40 border border-border rounded-lg p-4 hover:border-border transition-colors"
                         >
                           <div className="flex items-start justify-between mb-3">
                             <div className="flex-1">
                               <div className="flex items-center gap-3 mb-2">
-                                <h4 className="text-white font-semibold">
+                                <h4 className="text-foreground font-semibold">
                                   {returnItem.return_no || `RET-${returnItem.id?.slice(0, 8).toUpperCase()}`}
                                 </h4>
                                 <Badge
                                   className={
                                     returnItem.status === 'final'
-                                      ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                                      ? 'bg-green-500/20 text-[var(--erp-money-positive)] border-green-500/30'
                                       : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
                                   }
                                 >
@@ -211,13 +211,13 @@ export const ReturnPaymentAdjustment: React.FC<ReturnPaymentAdjustmentProps> = (
                               </div>
                               <div className="grid grid-cols-2 gap-4 text-sm">
                                 <div>
-                                  <span className="text-gray-400 text-xs">Return Date:</span>
-                                  <div className="text-white mt-0.5">
+                                  <span className="text-muted-foreground text-xs">Return Date:</span>
+                                  <div className="text-foreground mt-0.5">
                                     {formatDateAndTime(returnItem.return_date || returnItem.created_at || '').date}
                                   </div>
                                 </div>
                                 <div>
-                                  <span className="text-gray-400 text-xs">Return Amount:</span>
+                                  <span className="text-muted-foreground text-xs">Return Amount:</span>
                                   <div className="text-red-400 font-semibold mt-0.5">
                                     -Rs {returnItem.total?.toLocaleString() || '0'}
                                   </div>
@@ -227,27 +227,27 @@ export const ReturnPaymentAdjustment: React.FC<ReturnPaymentAdjustmentProps> = (
                           </div>
 
                           {/* Settlement Info */}
-                          <div className="mt-3 pt-3 border-t border-gray-800">
+                          <div className="mt-3 pt-3 border-t border-border">
                             <div className="flex items-center justify-between">
                               <div>
-                                <span className="text-gray-400 text-xs uppercase">Settlement Method:</span>
+                                <span className="text-muted-foreground text-xs uppercase">Settlement Method:</span>
                                 <div className="flex items-center gap-2 mt-1">
                                   {settlement.method === 'cash' && (
                                     <>
-                                      <DollarSign size={14} className="text-green-400" />
-                                      <span className="text-white text-sm">Cash Refund</span>
+                                      <DollarSign size={14} className="text-[var(--erp-money-positive)]" />
+                                      <span className="text-foreground text-sm">Cash Refund</span>
                                     </>
                                   )}
                                   {settlement.method === 'bank' && (
                                     <>
                                       <Building2 size={14} className="text-blue-400" />
-                                      <span className="text-white text-sm">Bank Refund</span>
+                                      <span className="text-foreground text-sm">Bank Refund</span>
                                     </>
                                   )}
                                   {settlement.method === 'adjust' && (
                                     <>
                                       <Package size={14} className="text-purple-400" />
-                                      <span className="text-white text-sm">Adjust in Customer Account</span>
+                                      <span className="text-foreground text-sm">Adjust in Customer Account</span>
                                     </>
                                   )}
                                 </div>
@@ -257,14 +257,14 @@ export const ReturnPaymentAdjustment: React.FC<ReturnPaymentAdjustmentProps> = (
                                   size="sm"
                                   variant="outline"
                                   onClick={() => handleEditSettlement(returnItem)}
-                                  className="border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800"
+                                  className="border-border text-muted-foreground hover:text-foreground hover:bg-muted"
                                 >
                                   Edit Settlement
                                 </Button>
                               )}
                             </div>
                             {settlement.paymentDate && (
-                              <div className="mt-2 text-xs text-gray-400">
+                              <div className="mt-2 text-xs text-muted-foreground">
                                 <Calendar size={12} className="inline mr-1" />
                                 Settled: {formatDateAndTime(settlement.paymentDate).date}
                               </div>
@@ -273,9 +273,9 @@ export const ReturnPaymentAdjustment: React.FC<ReturnPaymentAdjustmentProps> = (
 
                           {/* Return Items Summary */}
                           {returnItem.items && returnItem.items.length > 0 && (
-                            <div className="mt-3 pt-3 border-t border-gray-800">
-                              <span className="text-gray-400 text-xs uppercase">Items Returned:</span>
-                              <div className="text-white text-sm mt-1">
+                            <div className="mt-3 pt-3 border-t border-border">
+                              <span className="text-muted-foreground text-xs uppercase">Items Returned:</span>
+                              <div className="text-foreground text-sm mt-1">
                                 {returnItem.items.length} item(s)
                               </div>
                             </div>
@@ -289,11 +289,11 @@ export const ReturnPaymentAdjustment: React.FC<ReturnPaymentAdjustmentProps> = (
             </div>
           )}
 
-          <DialogFooter className="mt-6 border-t border-gray-800 pt-4">
+          <DialogFooter className="mt-6 border-t border-border pt-4">
             <Button
               variant="outline"
               onClick={onClose}
-              className="border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800"
+              className="border-border text-muted-foreground hover:text-foreground hover:bg-muted"
             >
               Close
             </Button>
@@ -303,28 +303,28 @@ export const ReturnPaymentAdjustment: React.FC<ReturnPaymentAdjustmentProps> = (
 
       {/* Settlement Edit Dialog */}
       <Dialog open={showSettlementDialog} onOpenChange={setShowSettlementDialog}>
-        <DialogContent className="bg-[#0B0F19] border-gray-800 text-white max-w-md">
+        <DialogContent className="bg-background border-border text-foreground max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-xl font-bold text-white flex items-center gap-2">
+            <DialogTitle className="text-xl font-bold text-foreground flex items-center gap-2">
               <DollarSign size={20} className="text-purple-400" />
               Edit Settlement Method
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 mt-4">
             {selectedReturn && (
-              <div className="bg-[#0F1419] border border-gray-800 rounded-lg p-4">
-                <p className="text-sm text-gray-400 mb-2">Return Amount:</p>
+              <div className="bg-muted/40 border border-border rounded-lg p-4">
+                <p className="text-sm text-muted-foreground mb-2">Return Amount:</p>
                 <p className="text-2xl font-bold text-red-400">
                   -Rs {selectedReturn.total?.toLocaleString() || '0'}
                 </p>
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   Return: {selectedReturn.return_no || selectedReturn.id}
                 </p>
               </div>
             )}
 
             <div>
-              <Label className="text-gray-300 mb-3 block text-sm font-semibold">
+              <Label className="text-muted-foreground mb-3 block text-sm font-semibold">
                 How would you like to settle this return amount?
               </Label>
               <div className="space-y-2">
@@ -335,7 +335,7 @@ export const ReturnPaymentAdjustment: React.FC<ReturnPaymentAdjustmentProps> = (
                     "w-full px-4 py-3 rounded-lg text-sm font-medium transition-all border flex items-center gap-3",
                     settlementMethod === 'cash'
                       ? "bg-blue-600 text-white border-blue-500"
-                      : "bg-gray-900/50 text-gray-400 border-gray-700 hover:bg-gray-800"
+                      : "bg-muted/40 text-muted-foreground border-border hover:bg-muted"
                   )}
                 >
                   <DollarSign size={18} />
@@ -353,7 +353,7 @@ export const ReturnPaymentAdjustment: React.FC<ReturnPaymentAdjustmentProps> = (
                     "w-full px-4 py-3 rounded-lg text-sm font-medium transition-all border flex items-center gap-3",
                     settlementMethod === 'bank'
                       ? "bg-blue-600 text-white border-blue-500"
-                      : "bg-gray-900/50 text-gray-400 border-gray-700 hover:bg-gray-800"
+                      : "bg-muted/40 text-muted-foreground border-border hover:bg-muted"
                   )}
                 >
                   <Building2 size={18} />
@@ -371,7 +371,7 @@ export const ReturnPaymentAdjustment: React.FC<ReturnPaymentAdjustmentProps> = (
                     "w-full px-4 py-3 rounded-lg text-sm font-medium transition-all border flex items-center gap-3",
                     settlementMethod === 'adjust'
                       ? "bg-blue-600 text-white border-blue-500"
-                      : "bg-gray-900/50 text-gray-400 border-gray-700 hover:bg-gray-800"
+                      : "bg-muted/40 text-muted-foreground border-border hover:bg-muted"
                   )}
                 >
                   <Package size={18} />
@@ -393,14 +393,14 @@ export const ReturnPaymentAdjustment: React.FC<ReturnPaymentAdjustmentProps> = (
               </div>
             )}
           </div>
-          <DialogFooter className="mt-6 border-t border-gray-800 pt-4">
+          <DialogFooter className="mt-6 border-t border-border pt-4">
             <Button
               variant="outline"
               onClick={() => {
                 setShowSettlementDialog(false);
                 setSelectedReturn(null);
               }}
-              className="border-gray-700 text-gray-300"
+              className="border-border text-muted-foreground"
             >
               Cancel
             </Button>

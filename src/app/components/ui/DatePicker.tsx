@@ -1,15 +1,26 @@
 /**
- * Shared DatePicker – global standard DD MMM YYYY display, YYYY-MM-DD (ISO) value.
- * Use everywhere for date inputs (Studio, Sales, Purchases, Accounting, Expense, Rentals, Dashboard).
- * Mobile-friendly, touch-optimized; uses CalendarDatePicker (no native type="date").
+ * Shared DatePicker — company dateFormat display, value YYYY-MM-DD (ISO date).
+ *
+ * Canonical imports for web ERP date inputs:
+ * - DatePicker — date only (filters, pickup/return, accounting entry date)
+ * - DateTimePicker — date + time (sales, purchases, payment receive)
+ * - DateRangePicker — preset report ranges
+ * - CalendarDateRangePicker — dual-calendar ledger/rental ranges
+ *
+ * Shared calendar chrome (CalendarDatePicker) includes month + year dropdowns
+ * so multi-year jumps do not require repeated month chevrons. Prefer these
+ * wrappers; avoid native type="date" / datetime-local and direct ../ui/calendar
+ * in new forms.
  */
 
 import React from 'react';
 import { format, parseISO, isValid } from 'date-fns';
 import { CalendarDatePicker } from './CalendarDatePicker';
+import { useFormatDate } from '@/app/hooks/useFormatDate';
+import { formatDate as formatDateUtil } from '@/app/utils/formatDate';
 import { cn } from './utils';
 
-/** Display format used across the app (DD MMM YYYY) */
+/** Display format fallback when company settings unavailable */
 export const DISPLAY_DATE_FORMAT = 'dd MMM yyyy';
 
 /** Value format for DB/API (ISO date only) */
@@ -31,7 +42,7 @@ export interface DatePickerProps {
 }
 
 /**
- * Single date picker. Value/onChange use YYYY-MM-DD; display is DD MMM YYYY.
+ * Single date picker. Value/onChange use YYYY-MM-DD; display uses company dateFormat.
  */
 export const DatePicker: React.FC<DatePickerProps> = ({
   value,
@@ -44,6 +55,8 @@ export const DatePicker: React.FC<DatePickerProps> = ({
   disabled = false,
   className,
 }) => {
+  const { dateFormat, timezone } = useFormatDate();
+
   const dateValue = value?.trim()
     ? (() => {
         const d = parseISO(value);
@@ -61,7 +74,7 @@ export const DatePicker: React.FC<DatePickerProps> = ({
   };
 
   return (
-    <div className={cn('w-full', className)}>
+    <div className={cn('w-full', className, disabled && 'pointer-events-none opacity-60')}>
       <CalendarDatePicker
         value={dateValue}
         onChange={handleChange}
@@ -71,7 +84,7 @@ export const DatePicker: React.FC<DatePickerProps> = ({
         minDate={minDate}
         maxDate={maxDate}
         showTime={false}
-        displayFormat={(d) => format(d, DISPLAY_DATE_FORMAT)}
+        displayFormat={(d) => formatDateUtil(d, dateFormat, timezone)}
       />
     </div>
   );

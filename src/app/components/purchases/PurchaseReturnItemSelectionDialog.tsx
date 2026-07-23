@@ -203,34 +203,34 @@ export function PurchaseReturnItemSelectionDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="bg-gray-900 border-gray-700 text-white max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogHeader className="border-b border-gray-700 pb-4">
-            <DialogTitle className="flex items-center gap-2 text-xl text-white">
+        <DialogContent className="bg-card border-border text-foreground max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader className="border-b border-border pb-4">
+            <DialogTitle className="flex items-center gap-2 text-xl text-foreground">
               <RotateCcw size={22} className="text-purple-400" />
               Purchase Return — Select Items
             </DialogTitle>
-            <p className="text-sm text-gray-400 mt-1">
+            <p className="text-sm text-muted-foreground mt-1">
               Select items and quantities to return. Layout matches Purchase View.
             </p>
           </DialogHeader>
 
           <div className="flex-1 overflow-auto min-h-0 py-4">
-            <div className="rounded-xl border border-gray-700 overflow-hidden">
+            <div className="rounded-xl border border-border overflow-hidden">
               <Table>
                 <TableHeader>
-                  <TableRow className="border-gray-800 hover:bg-transparent bg-gray-800/50">
-                    <TableHead className="text-gray-400">Product</TableHead>
-                    <TableHead className="text-gray-400">SKU</TableHead>
-                    <TableHead className="text-gray-400">Variation</TableHead>
-                    {enablePacking && <TableHead className="text-gray-400">Packing</TableHead>}
-                    <TableHead className="text-gray-400 text-right">Unit Price</TableHead>
-                    <TableHead className="text-gray-400 text-center">Original Qty</TableHead>
+                  <TableRow className="border-border hover:bg-transparent bg-muted/50">
+                    <TableHead className="text-muted-foreground">Product</TableHead>
+                    <TableHead className="text-muted-foreground">SKU</TableHead>
+                    <TableHead className="text-muted-foreground">Variation</TableHead>
+                    {enablePacking && <TableHead className="text-muted-foreground">Packing</TableHead>}
+                    <TableHead className="text-muted-foreground text-right">Unit Price</TableHead>
+                    <TableHead className="text-muted-foreground text-center">Original Qty</TableHead>
                     {Object.keys(alreadyReturnedMap).length > 0 && (
-                      <TableHead className="text-gray-400 text-center">Already Returned</TableHead>
+                      <TableHead className="text-muted-foreground text-center">Already Returned</TableHead>
                     )}
-                    <TableHead className="text-gray-400 text-center">Return Qty</TableHead>
-                    <TableHead className="text-gray-400">Unit</TableHead>
-                    <TableHead className="text-gray-400 text-right">Total</TableHead>
+                    <TableHead className="text-muted-foreground text-center">Return Qty</TableHead>
+                    <TableHead className="text-muted-foreground">Unit</TableHead>
+                    <TableHead className="text-muted-foreground text-right">Total</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -307,26 +307,26 @@ export function PurchaseReturnItemSelectionDialog({
                     return (
                       <TableRow
                         key={item.id}
-                        className={cn('border-gray-800', !canReturn && 'opacity-50')}
+                        className={cn('border-border', !canReturn && 'opacity-50')}
                       >
                         <TableCell>
                           <div>
-                            <p className="font-medium text-white">{productName}</p>
+                            <p className="font-medium text-foreground">{productName}</p>
                             {finalSku && finalSku !== 'N/A' && (
-                              <p className="text-xs text-gray-500">SKU: {finalSku}</p>
+                              <p className="text-xs text-muted-foreground">SKU: {finalSku}</p>
                             )}
                           </div>
                         </TableCell>
-                        <TableCell className="text-gray-400">{finalSku}</TableCell>
+                        <TableCell className="text-muted-foreground">{finalSku}</TableCell>
                         <TableCell>
                           {variationText ? (
-                            <span className="text-gray-300 text-sm">{variationText}</span>
+                            <span className="text-muted-foreground text-sm">{variationText}</span>
                           ) : (
-                            <span className="text-gray-600">—</span>
+                            <span className="text-muted-foreground">—</span>
                           )}
                         </TableCell>
                         {enablePacking && (
-                          <TableCell className="text-gray-400">
+                          <TableCell className="text-muted-foreground">
                             {hasPackingStructure ? (
                               <button
                                 type="button"
@@ -344,10 +344,10 @@ export function PurchaseReturnItemSelectionDialog({
                             )}
                           </TableCell>
                         )}
-                        <TableCell className="text-right text-white">
+                        <TableCell className="text-right text-foreground">
                           {formatCurrency(item.price)}
                         </TableCell>
-                        <TableCell className="text-center text-white font-medium">{qty}</TableCell>
+                        <TableCell className="text-center text-foreground font-medium">{qty}</TableCell>
                         {Object.keys(alreadyReturnedMap).length > 0 && (
                           <TableCell className="text-center">
                             {alreadyReturned > 0 ? (
@@ -355,15 +355,15 @@ export function PurchaseReturnItemSelectionDialog({
                                 {alreadyReturned}
                               </Badge>
                             ) : (
-                              <span className="text-gray-500">0</span>
+                              <span className="text-muted-foreground">0</span>
                             )}
                           </TableCell>
                         )}
                         <TableCell className="text-center">
                           {hasPackingStructure ? (
                             <div className="flex flex-col items-center gap-0.5">
-                              <div className="flex items-center justify-center gap-1 rounded bg-gray-800/80 border border-amber-500/40 px-2 py-1.5 min-w-[4rem]">
-                                <span className="text-sm font-medium text-white tabular-nums">
+                              <div className="flex items-center justify-center gap-1 rounded bg-muted/80 border border-amber-500/40 px-2 py-1.5 min-w-[4rem]">
+                                <span className="text-sm font-medium text-foreground tabular-nums">
                                   {returnQtyFromPacking}
                                 </span>
                               </div>
@@ -385,7 +385,7 @@ export function PurchaseReturnItemSelectionDialog({
                                   handleReturnQuantityChange(itemKey, val);
                                 }}
                                 disabled={!canReturn}
-                                className="w-20 text-center bg-gray-900 border border-gray-700 text-white h-8 mx-auto font-medium rounded-md px-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                                className="w-20 text-center bg-card border border-border text-foreground h-8 mx-auto font-medium rounded-md px-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
                                 placeholder="0"
                               />
                               {!canReturn && (
@@ -394,7 +394,7 @@ export function PurchaseReturnItemSelectionDialog({
                             </>
                           )}
                         </TableCell>
-                        <TableCell className="text-gray-400">{unitDisplay}</TableCell>
+                        <TableCell className="text-muted-foreground">{unitDisplay}</TableCell>
                         <TableCell className="text-right text-red-400 font-medium">
                           {returnQtyFromPacking > 0
                             ? `-${formatCurrency(returnQtyFromPacking * item.price)}`
@@ -408,12 +408,12 @@ export function PurchaseReturnItemSelectionDialog({
             </div>
           </div>
 
-          <DialogFooter className="border-t border-gray-700 pt-4 flex-shrink-0">
+          <DialogFooter className="border-t border-border pt-4 flex-shrink-0">
             <Button
               type="button"
               variant="outline"
               onClick={() => onOpenChange(false)}
-              className="border-gray-600 text-gray-300"
+              className="border-gray-600 text-muted-foreground"
             >
               <X size={16} className="mr-2" />
               Cancel
@@ -422,7 +422,7 @@ export function PurchaseReturnItemSelectionDialog({
               type="button"
               onClick={handleSave}
               disabled={!hasSelection}
-              className="bg-purple-600 hover:bg-purple-700 text-white"
+              className="bg-purple-600 hover:bg-purple-700 text-foreground"
             >
               <Save size={16} className="mr-2" />
               Save selection

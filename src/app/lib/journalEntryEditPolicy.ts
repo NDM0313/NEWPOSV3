@@ -79,6 +79,34 @@ export function allowsDayBookUnifiedEdit(
   return true;
 }
 
+/**
+ * Orphan free-form adjustments (e.g. legacy reference_type=deposit with no linked document)
+ * may open Add Entry V2 like a pure manual journal. True source-controlled types stay blocked.
+ */
+export function canOpenOrphanAdjustmentInJournalEditor(
+  referenceType: string | null | undefined,
+  opts: { sourceType?: string | null; sourceId?: string | null } = {},
+): boolean {
+  if (opts.sourceType || (opts.sourceId && String(opts.sourceId).trim())) return false;
+  const rt = String(referenceType || '').toLowerCase().trim();
+  if (SOURCE_CONTROLLED_REFERENCE_TYPES.has(rt)) return false;
+  return true;
+}
+
+/**
+ * Guard for updateManualJournalEntry / Add Entry V2 pure-journal save.
+ * Aligns with open path: pure manual, transfer, or orphan free-form (e.g. deposit).
+ */
+export function canUpdateViaManualJournalEditor(
+  referenceType: string | null | undefined,
+  opts: { referenceId?: string | null; paymentId?: string | null } = {},
+): boolean {
+  const rt = String(referenceType || '').toLowerCase().trim();
+  if (rt === 'journal' || rt === 'manual' || rt === 'general' || rt === 'transfer') return true;
+  const link = String(opts.referenceId || opts.paymentId || '').trim();
+  return canOpenOrphanAdjustmentInJournalEditor(rt, { sourceId: link || null });
+}
+
 function rowToJournalTransactionLike(row: {
   reference_type?: string | null;
   reference_id?: string | null;
@@ -86,6 +114,8 @@ function rowToJournalTransactionLike(row: {
   is_void?: boolean | null;
   payment_chain_is_historical?: boolean | null;
   has_active_correction_reversal?: boolean | null;
+  action_fingerprint?: string | null;
+  description?: string | null;
 }): JournalTransactionLike {
   return {
     reference_type: row.reference_type,
@@ -94,6 +124,8 @@ function rowToJournalTransactionLike(row: {
     is_void: row.is_void,
     payment_chain_is_historical: row.payment_chain_is_historical,
     has_active_correction_reversal: row.has_active_correction_reversal,
+    action_fingerprint: row.action_fingerprint,
+    description: row.description,
   };
 }
 
@@ -108,6 +140,8 @@ export function journalReversalBlockedReason(
     payment_id?: string | null;
     is_void?: boolean | null;
     payment_chain_is_historical?: boolean | null;
+    action_fingerprint?: string | null;
+    description?: string | null;
     /** True when an active `correction_reversal` JE references this header (terminal for edit/reverse from Journal). */
     hasActiveCorrectionReversal?: boolean | null;
   },

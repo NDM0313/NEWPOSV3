@@ -218,10 +218,10 @@ export const PickupModal = ({ open, onOpenChange, rental, onConfirm, onAddPaymen
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="bg-gray-900 border-gray-700 max-w-[900px] max-h-[90vh] p-0 overflow-hidden flex flex-col">
-        <DialogHeader className="px-6 pt-6 pb-4 border-b border-gray-800 shrink-0">
-          <DialogTitle className="text-white text-xl">Confirm Pickup</DialogTitle>
-          <DialogDescription className="text-gray-400">
+      <DialogContent className="bg-card border-border max-w-[900px] max-h-[90vh] p-0 overflow-hidden flex flex-col">
+        <DialogHeader className="px-6 pt-6 pb-4 border-b border-border shrink-0">
+          <DialogTitle className="text-foreground text-xl">Confirm Pickup</DialogTitle>
+          <DialogDescription className="text-muted-foreground">
             Process delivery for rental {rental?.rentalNo}
           </DialogDescription>
         </DialogHeader>
@@ -230,28 +230,28 @@ export const PickupModal = ({ open, onOpenChange, rental, onConfirm, onAddPaymen
           {/* LEFT SIDE */}
           <div className="flex-[6] overflow-y-auto p-6 space-y-6 min-h-0">
             {/* Card 1 – Rental Info */}
-            <div className="rounded-lg border border-gray-700 p-4 bg-gray-800/30">
-              <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Rental Info</h4>
+            <div className="rounded-lg border border-border p-4 bg-accent/30">
+              <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Rental Info</h4>
               <div className="grid grid-cols-2 gap-3 text-sm">
-                <div><span className="text-gray-500">Rental #</span><p className="font-mono text-pink-400">{rental?.rentalNo}</p></div>
-                <div><span className="text-gray-500">Customer</span><p className="text-white">{rental?.customerName}</p></div>
+                <div><span className="text-muted-foreground">Rental #</span><p className="font-mono text-pink-400">{rental?.rentalNo}</p></div>
+                <div><span className="text-muted-foreground">Customer</span><p className="text-foreground">{rental?.customerName}</p></div>
                 <div className="col-span-2">
-                  <span className="text-gray-500">Product(s)</span>
-                  <p className="text-white font-medium">{rental?.items?.map((i) => `${i.productName}${i.quantity > 1 ? ` × ${i.quantity}` : ''}`).join(', ') || '—'}</p>
+                  <span className="text-muted-foreground">Product(s)</span>
+                  <p className="text-foreground font-medium">{rental?.items?.map((i) => `${i.productName}${i.quantity > 1 ? ` × ${i.quantity}` : ''}`).join(', ') || '—'}</p>
                 </div>
-                <div><span className="text-gray-500">Duration</span><p className="text-white">{rental?.items?.[0] ? `${rental.items.length} item(s)` : '—'}</p></div>
-                <div><span className="text-gray-500">Return Date</span><p className="text-white">{rental?.expectedReturnDate}</p></div>
+                <div><span className="text-muted-foreground">Duration</span><p className="text-foreground">{rental?.items?.[0] ? `${rental.items.length} item(s)` : '—'}</p></div>
+                <div><span className="text-muted-foreground">Return Date</span><p className="text-foreground">{rental?.expectedReturnDate}</p></div>
               </div>
             </div>
 
             {/* Card 2 – Payment Settlement */}
-            <div className="rounded-lg border border-gray-700 p-4 bg-gray-800/30">
-              <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Payment Settlement</h4>
+            <div className="rounded-lg border border-border p-4 bg-accent/30">
+              <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Payment Settlement</h4>
               <div className="space-y-2 text-sm">
-                <div className="flex justify-between"><span className="text-gray-500">Total Amount</span><span className="text-white">{formatCurrency(rental?.totalAmount ?? 0)}</span></div>
-                <div className="flex justify-between"><span className="text-gray-500">Advance Paid</span><span className="text-white">{formatCurrency(rental?.paidAmount ?? 0)}</span></div>
-                <div className="flex justify-between"><span className="text-gray-500">Remaining Amount</span>
-                  <span className={cn('font-semibold', remainingAmount > 0 ? 'text-red-400' : 'text-gray-400')}>
+                <div className="flex justify-between"><span className="text-muted-foreground">Total Amount</span><span className="text-foreground">{formatCurrency(rental?.totalAmount ?? 0)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Advance Paid</span><span className="text-foreground">{formatCurrency(rental?.paidAmount ?? 0)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Remaining Amount</span>
+                  <span className={cn('font-semibold', remainingAmount > 0 ? 'text-red-400' : 'text-muted-foreground')}>
                     {formatCurrency(remainingAmount)}
                   </span>
                 </div>
@@ -283,13 +283,13 @@ export const PickupModal = ({ open, onOpenChange, rental, onConfirm, onAddPaymen
             </div>
 
             {/* Card 3 – Guarantee Document */}
-            <div className="rounded-lg border border-gray-700 p-4 bg-gray-800/30">
-              <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Guarantee Document</h4>
+            <div className="rounded-lg border border-border p-4 bg-accent/30">
+              <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Guarantee Document</h4>
               <div className="space-y-3">
                 <div>
-                  <Label className="text-gray-400 text-sm">Document Type</Label>
+                  <Label className="text-muted-foreground text-sm">Document Type</Label>
                   <Select value={documentType} onValueChange={setDocumentType}>
-                    <SelectTrigger className="mt-1 bg-gray-800 border-gray-700 text-white">
+                    <SelectTrigger className="mt-1 bg-muted border-border text-foreground">
                       <SelectValue placeholder="Select type" />
                     </SelectTrigger>
                     <SelectContent>
@@ -300,16 +300,16 @@ export const PickupModal = ({ open, onOpenChange, rental, onConfirm, onAddPaymen
                   </Select>
                 </div>
                 <div>
-                  <Label className="text-gray-400 text-sm">Document Number *</Label>
+                  <Label className="text-muted-foreground text-sm">Security document number *</Label>
                   <Input
                     value={documentNumber}
                     onChange={(e) => setDocumentNumber(e.target.value)}
-                    placeholder="ID / Passport number"
-                    className="mt-1 bg-gray-800 border-gray-700 text-white"
+                    placeholder="CNIC / Passport number"
+                    className="mt-1 bg-muted border-border text-foreground"
                   />
                 </div>
                 <div>
-                  <Label className="text-gray-400 text-sm">Document Expiry (Optional)</Label>
+                  <Label className="text-muted-foreground text-sm">Document Expiry (Optional)</Label>
                   <DatePicker
                     value={documentExpiry}
                     onChange={(v) => setDocumentExpiry(v)}
@@ -319,79 +319,79 @@ export const PickupModal = ({ open, onOpenChange, rental, onConfirm, onAddPaymen
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
-                    <Label className="text-gray-400 text-sm">Document Front Image</Label>
+                    <Label className="text-muted-foreground text-sm">Document Front Image</Label>
                     <input ref={frontRef} type="file" accept="image/*" className="hidden" onChange={(e) => setDocumentFrontFile(e.target.files?.[0] || null)} />
                     <div
                       onClick={() => frontRef.current?.click()}
                       className={cn(
                         "mt-1 border-2 border-dashed rounded-lg p-3 flex flex-col items-center justify-center gap-1 cursor-pointer transition-colors",
-                        documentFrontFile ? "border-green-500/50 bg-green-500/5" : "border-gray-600 hover:border-gray-500 hover:bg-gray-800/50"
+                        documentFrontFile ? "border-green-500/50 bg-green-500/5" : "border-gray-600 hover:border-gray-500 hover:bg-muted/50"
                       )}
                     >
                       {documentFrontFile ? (
                         <>
                           <Camera size={20} className="text-green-500" />
-                          <span className="text-xs text-green-400 truncate max-w-full">{documentFrontFile.name}</span>
+                          <span className="text-xs text-[var(--erp-money-positive)] truncate max-w-full">{documentFrontFile.name}</span>
                           <button type="button" onClick={(e) => { e.stopPropagation(); setDocumentFrontFile(null); }} className="text-red-400 hover:text-red-300 text-xs flex items-center gap-1">
                             <X size={12} /> Remove
                           </button>
                         </>
                       ) : (
                         <>
-                          <Upload size={20} className="text-gray-500" />
-                          <span className="text-xs text-gray-400">Optional</span>
+                          <Upload size={20} className="text-muted-foreground" />
+                          <span className="text-xs text-muted-foreground">Optional</span>
                         </>
                       )}
                     </div>
                   </div>
                   <div>
-                    <Label className="text-gray-400 text-sm">Document Back Image</Label>
+                    <Label className="text-muted-foreground text-sm">Document Back Image</Label>
                     <input ref={backRef} type="file" accept="image/*" className="hidden" onChange={(e) => setDocumentBackFile(e.target.files?.[0] || null)} />
                     <div
                       onClick={() => backRef.current?.click()}
                       className={cn(
                         "mt-1 border-2 border-dashed rounded-lg p-3 flex flex-col items-center justify-center gap-1 cursor-pointer transition-colors",
-                        documentBackFile ? "border-green-500/50 bg-green-500/5" : "border-gray-600 hover:border-gray-500 hover:bg-gray-800/50"
+                        documentBackFile ? "border-green-500/50 bg-green-500/5" : "border-gray-600 hover:border-gray-500 hover:bg-muted/50"
                       )}
                     >
                       {documentBackFile ? (
                         <>
                           <Camera size={20} className="text-green-500" />
-                          <span className="text-xs text-green-400 truncate max-w-full">{documentBackFile.name}</span>
+                          <span className="text-xs text-[var(--erp-money-positive)] truncate max-w-full">{documentBackFile.name}</span>
                           <button type="button" onClick={(e) => { e.stopPropagation(); setDocumentBackFile(null); }} className="text-red-400 hover:text-red-300 text-xs flex items-center gap-1">
                             <X size={12} /> Remove
                           </button>
                         </>
                       ) : (
                         <>
-                          <Upload size={20} className="text-gray-500" />
-                          <span className="text-xs text-gray-400">Optional</span>
+                          <Upload size={20} className="text-muted-foreground" />
+                          <span className="text-xs text-muted-foreground">Optional</span>
                         </>
                       )}
                     </div>
                   </div>
                   <div>
-                    <Label className="text-gray-400 text-sm">Customer Live Photo</Label>
+                    <Label className="text-muted-foreground text-sm">Customer Live Photo</Label>
                     <input ref={customerRef} type="file" accept="image/*" className="hidden" onChange={(e) => setCustomerPhotoFile(e.target.files?.[0] || null)} />
                     <div
                       onClick={() => customerRef.current?.click()}
                       className={cn(
                         "mt-1 border-2 border-dashed rounded-lg p-3 flex flex-col items-center justify-center gap-1 cursor-pointer transition-colors",
-                        customerPhotoFile ? "border-green-500/50 bg-green-500/5" : "border-gray-600 hover:border-gray-500 hover:bg-gray-800/50"
+                        customerPhotoFile ? "border-green-500/50 bg-green-500/5" : "border-gray-600 hover:border-gray-500 hover:bg-muted/50"
                       )}
                     >
                       {customerPhotoFile ? (
                         <>
                           <Camera size={20} className="text-green-500" />
-                          <span className="text-xs text-green-400 truncate max-w-full">{customerPhotoFile.name}</span>
+                          <span className="text-xs text-[var(--erp-money-positive)] truncate max-w-full">{customerPhotoFile.name}</span>
                           <button type="button" onClick={(e) => { e.stopPropagation(); setCustomerPhotoFile(null); }} className="text-red-400 hover:text-red-300 text-xs flex items-center gap-1">
                             <X size={12} /> Remove
                           </button>
                         </>
                       ) : (
                         <>
-                          <Upload size={20} className="text-gray-500" />
-                          <span className="text-xs text-gray-400">Optional</span>
+                          <Upload size={20} className="text-muted-foreground" />
+                          <span className="text-xs text-muted-foreground">Optional</span>
                         </>
                       )}
                     </div>
@@ -403,18 +403,18 @@ export const PickupModal = ({ open, onOpenChange, rental, onConfirm, onAddPaymen
                     onCheckedChange={(v) => setDocumentReceived(!!v)}
                     className="border-gray-600 data-[state=checked]:bg-amber-500 data-[state=checked]:border-amber-500"
                   />
-                  <span className="text-sm text-gray-300">Document physically received</span>
+                  <span className="text-sm text-muted-foreground">Document physically received</span>
                 </label>
               </div>
             </div>
           </div>
 
           {/* RIGHT SIDE – Pickup Details Summary */}
-          <div className="flex-[4] border-l border-gray-800 p-6 bg-gray-900/50 flex flex-col min-h-0 overflow-y-auto">
+          <div className="flex-[4] border-l border-border p-6 bg-muted/40 flex flex-col min-h-0 overflow-y-auto">
             <div className="sticky top-0 space-y-4">
-              <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Pickup Details</h4>
+              <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Pickup Details</h4>
               <div>
-                <Label className="text-gray-400 text-sm">Pickup Date</Label>
+                <Label className="text-muted-foreground text-sm">Pickup Date</Label>
                 <DatePicker
                   value={pickupDate}
                   onChange={(v) => setPickupDate(v)}
@@ -424,17 +424,17 @@ export const PickupModal = ({ open, onOpenChange, rental, onConfirm, onAddPaymen
                 />
               </div>
               <div>
-                <Label className="text-gray-400 text-sm">Pickup By</Label>
-                <p className="mt-1 text-sm text-gray-300">{pickupBy}</p>
+                <Label className="text-muted-foreground text-sm">Pickup By</Label>
+                <p className="mt-1 text-sm text-muted-foreground">{pickupBy}</p>
               </div>
               <div>
-                <Label className="text-gray-400 text-sm">Notes</Label>
+                <Label className="text-muted-foreground text-sm">Notes</Label>
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   placeholder="Add any notes..."
                   rows={3}
-                  className="mt-1 w-full bg-gray-800 border border-gray-700 rounded-md px-3 py-2 text-white text-sm resize-none"
+                  className="mt-1 w-full bg-muted border border-border rounded-md px-3 py-2 text-foreground text-sm resize-none"
                 />
               </div>
             </div>
@@ -443,8 +443,8 @@ export const PickupModal = ({ open, onOpenChange, rental, onConfirm, onAddPaymen
 
         {error && <p className="px-6 py-2 text-sm text-red-400 shrink-0">{error}</p>}
 
-        <DialogFooter className="px-6 py-4 border-t border-gray-800 shrink-0">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving} className="bg-gray-800 text-white border-gray-700">
+        <DialogFooter className="px-6 py-4 border-t border-border shrink-0">
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving} className="bg-muted text-foreground border-border">
             Cancel
           </Button>
           <Button
@@ -459,15 +459,15 @@ export const PickupModal = ({ open, onOpenChange, rental, onConfirm, onAddPaymen
 
       {/* Credit choice: when remaining > 0 and user clicks Confirm — buttons disabled while saving to prevent duplicate submit */}
       <AlertDialog open={creditChoiceOpen} onOpenChange={(open) => !saving && setCreditChoiceOpen(open)}>
-        <AlertDialogContent className="bg-gray-900 border-gray-700">
+        <AlertDialogContent className="bg-card border-border">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-white">Remaining amount {formatCurrency(remainingAmount)}</AlertDialogTitle>
-            <AlertDialogDescription className="text-gray-400">
+            <AlertDialogTitle className="text-foreground">Remaining amount {formatCurrency(remainingAmount)}</AlertDialogTitle>
+            <AlertDialogDescription className="text-muted-foreground">
               Do you want to collect full payment first, or deliver on credit?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="bg-gray-800 text-white border-gray-700" disabled={saving}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel className="bg-muted text-foreground border-border" disabled={saving}>Cancel</AlertDialogCancel>
             <Button
               variant="outline"
               className="bg-amber-500/20 text-amber-400 border-amber-500/50 hover:bg-amber-500/30"

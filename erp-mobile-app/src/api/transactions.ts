@@ -4,6 +4,10 @@ import { getCurrentLocalTimestamp } from '../utils/localDate';
 import { fetchReferenceAttachments } from './transactionDetail';
 import { enrichRowsWithCreatorNames } from '../lib/resolveCreatorName';
 import { normalizeAttachments } from '../lib/normalizeAttachments';
+import { isInternalLiquidityTransferRow } from '../lib/transactionTimelinePresentation';
+import { isRoznamchaLiquidityAccount } from '../lib/liquidityPaymentAccount';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /**
  * A single payment transaction flattened for UI display.
@@ -37,6 +41,13 @@ export interface TransactionRow {
   attachments: Array<{ url: string; name?: string | null }> | null;
   /** Parent › sub expense category when reference is expense. */
   expenseCategoryLabel?: string | null;
+  paymentAccountCode?: string | null;
+  partyAccountCode?: string | null;
+  paymentAccountType?: string | null;
+  partyAccountType?: string | null;
+  liquidityAccountId?: string | null;
+  counterpartyAccountId?: string | null;
+  isInternalLiquidityTransfer?: boolean;
 }
 
 async function enrichTransactionCreatorNames(rows: TransactionRow[]): Promise<TransactionRow[]> {
@@ -254,7 +265,35 @@ export async function getPaymentTransactions(
     const pid = e.payment_id != null ? String(e.payment_id) : '';
     if (pid) linkEntry(pid, e);
   });
-  const entryIds = Object.values(entryByPayment).map((e) => e.id);
+
+  const manualJeRefIds = [
+    ...new Set(
+      rows
+        .filter((r) => {
+          const rt = String(r.reference_type || '').toLowerCase();
+          const refId = String(r.reference_id || '').trim();
+          return (rt === 'manual_receipt' || rt === 'manual_payment') && UUID_RE.test(refId);
+        })
+        .map((r) => String(r.reference_id)),
+    ),
+  ];
+  if (manualJeRefIds.length > 0) {
+    const { data: manualJeRows } = await supabase
+      .from('journal_entries')
+      .select('id, entry_no, reference_id, payment_id, attachments')
+      .in('id', manualJeRefIds);
+    const jeById = new Map<string, JournalEntryLite>();
+    ((manualJeRows || []) as JournalEntryLite[]).forEach((je) => {
+      if (je?.id) jeById.set(String(je.id), je);
+    });
+    rows.forEach((p) => {
+      const refId = String(p.reference_id || '').trim();
+      const je = refId ? jeById.get(refId) : undefined;
+      if (je) linkEntry(String(p.id), je);
+    });
+  }
+
+  const entryIds = [...new Set(Object.values(entryByPayment).map((e) => e.id))];
 
   let linesByEntry: Record<string, JournalLineLite[]> = {};
   if (entryIds.length) {
@@ -315,6 +354,23 @@ export async function getPaymentTransactions(
     if (r.reference_type === 'worker_payment' && r.reference_id) contactIdSet.add(r.reference_id);
   });
 
+  const partyAccountByContactId: Record<string, string> = {};
+  if (contactIdSet.size) {
+    const { data: partyAccounts } = await supabase
+      .from('accounts')
+      .select('id, code, name, type, parent_id, linked_contact_id')
+      .eq('company_id', filters.companyId)
+      .in('linked_contact_id', Array.from(contactIdSet));
+    ((partyAccounts || []) as AccountLite[]).forEach((a) => {
+      const contactId = a.linked_contact_id ? String(a.linked_contact_id) : '';
+      if (!contactId || !a.id) return;
+      accountsById[String(a.id)] = a;
+      if (!partyAccountByContactId[contactId]) {
+        partyAccountByContactId[contactId] = String(a.id);
+      }
+    });
+  }
+
   let contactsById: Record<string, ContactLite> = {};
   if (contactIdSet.size) {
     const { data: contacts } = await supabase
@@ -372,11 +428,33 @@ export async function getPaymentTransactions(
       else if (row.reference_type === 'worker_payment') partyId = row.reference_id;
     }
 
+    if (!partyAcc && partyId && partyAccountByContactId[partyId]) {
+      partyAcc = accountsById[partyAccountByContactId[partyId]] ?? null;
+    }
+
+    if (!partyAcc && lines.length > 0) {
+      const payAccId = payAcc?.id ?? '';
+      let bestLine: JournalLineLite | null = null;
+      let bestAmount = 0;
+      for (const line of lines) {
+        if (String(line.account_id) === payAccId) continue;
+        const amount =
+          direction === 'received' ? Number(line.credit || 0) : Number(line.debit || 0);
+        if (amount > bestAmount) {
+          bestAmount = amount;
+          bestLine = line;
+        }
+      }
+      if (bestLine?.account_id) {
+        partyAcc = accountsById[String(bestLine.account_id)] ?? null;
+      }
+    }
+
     const partyContact = partyId ? contactsById[partyId] ?? null : null;
 
     const attachments = mergeRowAttachments(row.attachments, entry?.attachments);
 
-    return {
+    const rowOut: TransactionRow = {
       id: row.id,
       paymentId: row.id,
       createdAt: row.created_at,
@@ -389,22 +467,30 @@ export async function getPaymentTransactions(
       method: row.payment_method,
       paymentAccountId: payAcc?.id ?? null,
       paymentAccountName: payAcc?.name ?? null,
+      paymentAccountCode: payAcc?.code ?? null,
+      paymentAccountType: payAcc?.type ?? null,
       partyAccountId: partyAcc?.id ?? null,
       partyAccountName: partyAcc?.name ?? null,
+      partyAccountCode: partyAcc?.code ?? null,
+      partyAccountType: partyAcc?.type ?? null,
       partyId,
       partyName: partyContact?.name ?? null,
       branchId: row.branch_id,
       branchName: row.branch_id ? branchesById[row.branch_id]?.name ?? null : null,
       notes: row.notes,
       journalEntryId: entry?.id ?? null,
-      entryNo: entry?.entry_no ?? null,
+      entryNo: entry?.entry_no ?? row.reference_number,
       createdBy: row.created_by,
       attachments,
       expenseCategoryLabel:
         row.reference_type === 'expense' && row.reference_id
           ? expenseCategoryById.get(row.reference_id) ?? null
           : null,
+      liquidityAccountId: payAcc?.id ?? null,
+      counterpartyAccountId: partyAcc?.id ?? null,
     };
+    rowOut.isInternalLiquidityTransfer = isInternalLiquidityTransferRow(rowOut);
+    return rowOut;
   });
 
   let result = out;
@@ -494,7 +580,7 @@ export async function getJournalTimelineEntries(
   if (accountIds.size) {
     const { data: accs } = await supabase
       .from('accounts')
-      .select('id, code, name')
+      .select('id, code, name, type')
       .in('id', Array.from(accountIds));
     ((accs || []) as AccountLite[]).forEach((a) => {
       accountsById[String(a.id)] = a;
@@ -526,8 +612,33 @@ export async function getJournalTimelineEntries(
       (best, l) => (Number(l.debit) > Number(best?.debit ?? 0) ? l : best),
       entryLines[0] as JournalLineLite | undefined,
     );
+    const debitLiqLine = entryLines.find(
+      (l) => Number(l.debit) > 0 && isRoznamchaLiquidityAccount(accountsById[String(l.account_id)]),
+    );
+    const creditLiqLine = entryLines.find(
+      (l) => Number(l.credit) > 0 && isRoznamchaLiquidityAccount(accountsById[String(l.account_id)]),
+    );
     const fromAcc = creditLine ? accountsById[String(creditLine.account_id)] ?? null : null;
     const toAcc = debitLine ? accountsById[String(debitLine.account_id)] ?? null : null;
+
+    let direction: 'received' | 'paid' = 'paid';
+    let payAcc: AccountLite | null = fromAcc;
+    let partyAcc: AccountLite | null = toAcc;
+    if (debitLiqLine) {
+      direction = 'received';
+      payAcc = accountsById[String(debitLiqLine.account_id)] ?? null;
+      partyAcc =
+        (creditLine ? accountsById[String(creditLine.account_id)] : null) ??
+        (creditLiqLine ? accountsById[String(creditLiqLine.account_id)] : null) ??
+        fromAcc;
+    } else if (creditLiqLine) {
+      direction = 'paid';
+      payAcc = accountsById[String(creditLiqLine.account_id)] ?? null;
+      partyAcc =
+        (debitLine ? accountsById[String(debitLine.account_id)] : null) ??
+        toAcc;
+    }
+
     const lineSum = entryLines.reduce((s, l) => s + (Number(l.debit) || Number(l.credit) || 0), 0);
     const amount =
       Number(row.total_debit) ||
@@ -538,21 +649,25 @@ export async function getJournalTimelineEntries(
       ? (row.attachments as Array<{ url: string; name?: string | null }>)
       : null;
 
-    return {
+    const rowOut: TransactionRow = {
       id: `journal-${row.id}`,
       paymentId: row.id,
       createdAt: row.created_at || `${row.entry_date}T12:00:00.000Z`,
       paymentDate: row.entry_date,
-      direction: 'paid' as const,
+      direction,
       referenceType: row.reference_type,
       referenceId: row.reference_id ?? row.id,
       referenceNumber: row.entry_no,
       amount,
       method: 'other',
-      paymentAccountId: fromAcc?.id ?? null,
-      paymentAccountName: fromAcc?.name ?? null,
-      partyAccountId: toAcc?.id ?? null,
-      partyAccountName: toAcc?.name ?? null,
+      paymentAccountId: payAcc?.id ?? null,
+      paymentAccountName: payAcc?.name ?? null,
+      paymentAccountCode: payAcc?.code ?? null,
+      paymentAccountType: payAcc?.type ?? null,
+      partyAccountId: partyAcc?.id ?? null,
+      partyAccountName: partyAcc?.name ?? null,
+      partyAccountCode: partyAcc?.code ?? null,
+      partyAccountType: partyAcc?.type ?? null,
       partyId: null,
       partyName: row.description?.trim() || row.reference_type.replace('_', ' '),
       branchId: row.branch_id,
@@ -562,7 +677,16 @@ export async function getJournalTimelineEntries(
       entryNo: row.entry_no,
       createdBy: row.created_by,
       attachments,
+      liquidityAccountId: payAcc?.id ?? null,
+      counterpartyAccountId: partyAcc?.id ?? null,
     };
+    const rt = String(row.reference_type || '').toLowerCase();
+    if (rt === 'transfer' || rt === 'general' || rt === 'journal') {
+      const payLiq = payAcc ? isRoznamchaLiquidityAccount(payAcc) : false;
+      const partyLiq = partyAcc ? isRoznamchaLiquidityAccount(partyAcc) : false;
+      rowOut.isInternalLiquidityTransfer = Boolean(payLiq && partyLiq);
+    }
+    return rowOut;
   });
 
   let result = out;

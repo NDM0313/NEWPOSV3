@@ -18,13 +18,13 @@ interface DocumentStatusBadgeProps {
 }
 
 const STATUS_CONFIG: Record<string, { bg: string; text: string; border: string; icon?: React.ComponentType<{ size?: number }> }> = {
-  draft: { bg: 'bg-gray-500/20', text: 'text-gray-400', border: 'border-gray-500/30' },
+  draft: { bg: 'bg-gray-500/20', text: 'text-muted-foreground', border: 'border-gray-500/30' },
   quotation: { bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500/30' },
   order: { bg: 'bg-purple-500/20', text: 'text-purple-400', border: 'border-purple-500/30' },
   ordered: { bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500/30' },
-  final: { bg: 'bg-green-500/20', text: 'text-green-400', border: 'border-green-500/30' },
-  completed: { bg: 'bg-green-500/20', text: 'text-green-400', border: 'border-green-500/30' },
-  received: { bg: 'bg-green-500/20', text: 'text-green-400', border: 'border-green-500/30' },
+  final: { bg: 'bg-green-500/20', text: 'text-[var(--erp-money-positive)]', border: 'border-green-500/30' },
+  completed: { bg: 'bg-green-500/20', text: 'text-[var(--erp-money-positive)]', border: 'border-green-500/30' },
+  received: { bg: 'bg-green-500/20', text: 'text-[var(--erp-money-positive)]', border: 'border-green-500/30' },
   pending: { bg: 'bg-yellow-500/20', text: 'text-yellow-400', border: 'border-yellow-500/30' },
   cancelled: { bg: 'bg-amber-500/20', text: 'text-amber-400', border: 'border-amber-500/30', icon: AlertCircle },
 };

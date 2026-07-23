@@ -20,7 +20,7 @@ interface ExpenseReportProps {
 }
 
 export function ExpenseReport({ onBack, companyId, branchId, user, reportRefreshEpoch = 0 }: ExpenseReportProps) {
-  const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange('month'));
+  const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange());
   const [rows, setRows] = useState<ExpenseReportRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [category, setCategory] = useState<string>('all');
@@ -81,7 +81,7 @@ export function ExpenseReport({ onBack, companyId, branchId, user, reportRefresh
         sharing={preview.loading}
         gradient="rose"
       >
-        <DateRangeBar value={range} onChange={setRange} />
+        <DateRangeBar value={range} onChange={setRange} companyId={companyId} branchId={branchId} />
         {categories.length > 0 && (
           <div className="flex gap-1.5 overflow-x-auto -mx-1 px-1 mt-2">
             <button

@@ -1,0 +1,42 @@
+{
+  "phase": "3B-L",
+  "run": "monitoring-and-qa-matrix",
+  "generated_at": "2026-06-29T17:00:00.000Z",
+  "preSwapMonitoring": {
+    "command": "npm run monitor:three-company-unified-ledger",
+    "expected": { "overall": "PASS", "din-china": "PASS", "din-bridal": "PASS", "din-couture": "PASS", "other_company_loaders_on": 0, "gl_mutations": false }
+  },
+  "postSwapMonitoring": {
+    "command": "npm run monitor:three-company-unified-ledger",
+    "expected": { "overall": "PASS", "five_loaders_stable": true, "cash_flow_loader_if_enabled": "documented separately in Phase 3B-M" }
+  },
+  "companies": ["DIN CHINA", "DIN BRIDAL", "DIN COUTURE"],
+  "reportCoverage": {
+    "fiveLiveLoaders": ["ledger_v2", "account_statement", "trial_balance", "party_ledger", "roznamcha"],
+    "cashFlow": "legacy official today; unified main after future swap"
+  },
+  "browserSmokeChecks": [
+    "App loads at https://erp.dincouture.pk",
+    "Login per company",
+    "Cash Flow page loads",
+    "Main table totals visible",
+    "No material console/RPC errors",
+    "Export row-keyed JSON if compare panel retained"
+  ],
+  "rowExportChecks": [
+    "Phase 3B-I aligned export paths as baseline reference",
+    "Post-swap compare legacy vs unified if dual panel retained"
+  ],
+  "financeAcceptanceChecks": [
+    "DIN CHINA closing matches aligned basis candidate expectation",
+    "DIN BRIDAL closing matches aligned basis candidate expectation",
+    "DIN COUTURE zero-diff maintained"
+  ],
+  "failureTriage": [
+    "1. Disable loader flag — do not mutate GL",
+    "2. Run monitoring — capture JSON",
+    "3. Compare main totals vs Phase 3B-I exports",
+    "4. Frontend revert if code defect",
+    "5. Document in phase-3b-m incident notes"
+  ]
+}

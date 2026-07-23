@@ -1,0 +1,20 @@
+Salesman extended QA — retry #4 (2026-07-11)
+
+Device: PASS (24281FDEE0023P)
+Valid SALESMAN window: Yes (Nabeel / SALESMAN at baseline; lost mid-run → ADMIN)
+
+Observations under SALESMAN (code-aligned):
+- Home modules: Sales, Purchase, Expense, Products, Inventory, POS, Contacts, Shipment, Settings (no Reports/Ledger on default home grid)
+- Bottom nav → More → "All Modules" sheet opens
+- Reports hub ("Unified financial activity & statements") NOT reached under SALESMAN
+- Financial statement tiles (Balance Sheet, P&L, TB, etc.) NOT visible — expected (canUseFullAccounting=false)
+- Dashboard shows own metrics only (My sales today Rs. 0, My pending Rs. 0) — privacy OK
+- No DIN CHINA/BRIDAL/COUTURE branch totals on salesman home
+
+Session drift: After navigation attempts, counter-worker context cleared → ADMIN (Nadeem Khan) with Reports/Ledger on home and Rs. 201,000 pending — INVALID for salesman sign-off.
+
+Row 20 logout: Not completed under SALESMAN (deferred).
+
+Automation lesson: Avoid KEYCODE_BACK / top-edge swipes; use content-desc taps only; operator should keep hands off device during adb pass.
+
+Evidence: retry4b-results.txt, retry4b-*.png

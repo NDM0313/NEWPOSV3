@@ -1,0 +1,231 @@
+'use client';
+
+import React, { useMemo } from 'react';
+import type { UnifiedLedgerEngineState } from '@/app/lib/unifiedLedgerEngineState';
+import type { UnifiedLedgerBasis } from '@/app/lib/unifiedLedgerBasisFilter';
+import { UNIFIED_LEDGER_BASIS_LABELS } from '@/app/lib/unifiedLedgerBasisFilter';
+import { unifiedBasisBannerLabel } from '@/app/lib/unifiedLedgerBasisUi';
+import { UnifiedLedgerEngineBanner } from '@/app/components/accounting/UnifiedLedgerEngineBanner';
+import { UnifiedLedgerPreviewBadge } from '@/app/components/accounting/UnifiedLedgerPreviewBadge';
+import { ReportBasisBanner } from '@/app/components/accounting/ReportBasisBanner';
+import { downloadCompareJson } from '@/app/components/admin/unified-ledger-compare/CompareSummaryCards';
+import { Button } from '@/app/components/ui/button';
+import type { CashFlowUnifiedPreviewDiff } from '@/app/lib/accounting/cashFlowUnifiedPreviewDiff';
+import type { CashFlowReportResult } from '@/app/services/cashFlowReportService';
+import type { CashFlowUnifiedPreviewLoadResult } from '@/app/services/cashFlowUnifiedPreviewService';
+import { buildCashFlowRowKeyedExport } from '@/app/lib/accounting/cashFlowRowKeyedExport';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+
+const PREVIEW_BASIS_OPTIONS: UnifiedLedgerBasis[] = [
+  'effective_party',
+  'official_gl',
+  'audit_full_history',
+];
+
+export function CashFlowUnifiedPreviewPanel({
+  companyId,
+  dateFrom,
+  dateTo,
+  branchLabel,
+  auditMode,
+  legacyReport,
+  loadResult,
+  diff,
+  loading,
+  error,
+  engineState,
+  previewBasis,
+  onPreviewBasisChange,
+}: {
+  companyId: string | null;
+  dateFrom: string;
+  dateTo: string;
+  branchLabel: string;
+  auditMode: boolean;
+  legacyReport: CashFlowReportResult | null;
+  loadResult: CashFlowUnifiedPreviewLoadResult | null;
+  diff: CashFlowUnifiedPreviewDiff | null;
+  loading: boolean;
+  error: string | null;
+  engineState: UnifiedLedgerEngineState;
+  previewBasis: UnifiedLedgerBasis;
+  onPreviewBasisChange: (basis: UnifiedLedgerBasis) => void;
+}) {
+  const { formatCurrency } = useFormatCurrency();
+
+  const exportPayload = useMemo(() => {
+    if (!legacyReport || !diff) return null;
+    return buildCashFlowRowKeyedExport({
+      companyId,
+      dateFrom,
+      dateTo,
+      branchLabel,
+      auditMode,
+      previewBasis,
+      legacy: legacyReport,
+      loadResult,
+      diff,
+    });
+  }, [
+    companyId,
+    dateFrom,
+    dateTo,
+    branchLabel,
+    auditMode,
+    previewBasis,
+    legacyReport,
+    loadResult,
+    diff,
+  ]);
+
+  return (
+    <div
+      className="rounded-xl border border-amber-500/30 bg-amber-500/[0.04] p-4 space-y-4 no-print"
+      data-cash-flow-preview-compare="unified_roznamcha_derived"
+    >
+      <div className="flex flex-wrap items-center gap-2 justify-between">
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="text-sm font-semibold text-amber-100">Unified Roznamcha preview compare (Cash Flow)</h3>
+          <UnifiedLedgerPreviewBadge mode={engineState.mode} />
+          <span className="text-xs text-amber-200/80 border border-amber-700/50 rounded px-1.5 py-0.5">
+            PREVIEW_ONLY
+          </span>
+          <span className="text-xs text-emerald-200/90 border border-emerald-700/50 rounded px-1.5 py-0.5">
+            Q4=A · Q5=C · Q7=B
+          </span>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() =>
+            exportPayload &&
+            downloadCompareJson(`phase3bf-cash-flow-row-export-${Date.now()}.json`, exportPayload)
+          }
+          disabled={!exportPayload}
+        >
+          Export row-keyed JSON
+        </Button>
+      </div>
+
+      <UnifiedLedgerEngineBanner mode={engineState.mode} />
+
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs text-muted-foreground">Preview basis:</span>
+        {PREVIEW_BASIS_OPTIONS.map((b) => (
+          <button
+            key={b}
+            type="button"
+            className={`text-xs px-2 py-1 rounded border ${
+              previewBasis === b
+                ? 'border-amber-500 text-amber-100 bg-amber-500/10'
+                : 'border-border text-muted-foreground'
+            }`}
+            onClick={() => onPreviewBasisChange(b)}
+          >
+            {UNIFIED_LEDGER_BASIS_LABELS[b]}
+          </button>
+        ))}
+      </div>
+
+      <ReportBasisBanner
+        basis={previewBasis}
+        detail={`${unifiedBasisBannerLabel(previewBasis)} — preview aligned to finance rules Q4=A (opening summary-only), Q5=C (transfers excluded from normal totals). Legacy getCashFlowReport remains official.`}
+      />
+
+      {loadResult?.preview?.financeAlignmentApplied ? (
+        <p className="text-xs text-emerald-300/90">
+          Finance alignment active: {loadResult.preview.excludedFromNormalTotals.internalTransferRows}{' '}
+          transfer row(s) and {loadResult.preview.excludedFromNormalTotals.openingBalanceRows} opening row(s)
+          excluded from normal preview period totals. Loader swap NOT APPROVED.
+        </p>
+      ) : null}
+
+      {auditMode ? (
+        <p className="text-xs text-blue-300/80">
+          Audit mode: preview includes voided/reversal visibility per unified basis. Normal mode excludes them on both sides.
+        </p>
+      ) : null}
+
+      {loading ? <p className="text-sm text-muted-foreground">Loading unified preview…</p> : null}
+      {error ? <p className="text-sm text-red-400">{error}</p> : null}
+
+      {diff && loadResult?.preview ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+          <div className="rounded-lg border border-border bg-card/40 p-3 space-y-2">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide">Legacy (main)</p>
+            <p className="flex justify-between">
+              <span>Cash In</span>
+              <span className="tabular-nums">{formatCurrency(diff.legacyCashIn)}</span>
+            </p>
+            <p className="flex justify-between">
+              <span>Cash Out</span>
+              <span className="tabular-nums">{formatCurrency(diff.legacyCashOut)}</span>
+            </p>
+            <p className="flex justify-between">
+              <span>Net movement</span>
+              <span className="tabular-nums">{formatCurrency(diff.legacyNetMovement)}</span>
+            </p>
+            <p className="flex justify-between">
+              <span>Closing</span>
+              <span className="tabular-nums">{formatCurrency(diff.legacyClosing)}</span>
+            </p>
+          </div>
+          <div className="rounded-lg border border-border bg-card/40 p-3 space-y-2">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide">Unified preview</p>
+            <p className="flex justify-between">
+              <span>Cash In</span>
+              <span className="tabular-nums">{formatCurrency(diff.previewCashIn)}</span>
+            </p>
+            <p className="flex justify-between">
+              <span>Cash Out</span>
+              <span className="tabular-nums">{formatCurrency(diff.previewCashOut)}</span>
+            </p>
+            <p className="flex justify-between">
+              <span>Net movement</span>
+              <span className="tabular-nums">{formatCurrency(diff.previewNetMovement)}</span>
+            </p>
+            <p className="flex justify-between">
+              <span>Closing</span>
+              <span className="tabular-nums">{formatCurrency(diff.previewClosing)}</span>
+            </p>
+          </div>
+        </div>
+      ) : null}
+
+      {diff ? (
+        <div
+          className={`rounded-lg border p-3 text-sm ${
+            diff.pass
+              ? 'border-emerald-800/60 bg-emerald-950/20 text-emerald-200'
+              : 'border-amber-800/60 bg-amber-950/20 text-amber-100'
+          }`}
+        >
+          <p className="font-medium">
+            {diff.pass ? 'Summary totals match (within tolerance)' : 'Summary total differences detected'}
+          </p>
+          <ul className="mt-2 space-y-1 text-xs tabular-nums">
+            <li>Opening Δ {formatCurrency(diff.openingDelta)}</li>
+            <li>Cash In Δ {formatCurrency(diff.cashInDelta)}</li>
+            <li>Cash Out Δ {formatCurrency(diff.cashOutDelta)}</li>
+            <li>Net movement Δ {formatCurrency(diff.netMovementDelta)}</li>
+            <li>Closing Δ {formatCurrency(diff.closingDelta)}</li>
+            <li>Row count Δ {diff.rowCountDelta} (legacy {diff.legacyRowCount} · preview {diff.previewRowCount})</li>
+            {exportPayload?.rowKeyedDiff ? (
+              <li>
+                Row matches: exact {exportPayload.rowKeyedDiff.exactMatches.length} · strong{' '}
+                {exportPayload.rowKeyedDiff.strongMatches.length} · weak{' '}
+                {exportPayload.rowKeyedDiff.weakMatches.length} · legacy-only{' '}
+                {exportPayload.rowKeyedDiff.legacyOnly.length} · preview-only{' '}
+                {exportPayload.rowKeyedDiff.previewOnly.length}
+              </li>
+            ) : null}
+          </ul>
+          <p className="mt-2 text-xs text-muted-foreground">
+            NEEDS_FINANCE_GOLDEN_RE_CAPTURE after deploy. Loader swap NOT APPROVED.
+          </p>
+        </div>
+      ) : null}
+    </div>
+  );
+}

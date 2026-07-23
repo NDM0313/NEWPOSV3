@@ -106,7 +106,7 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
           role="combobox"
           aria-expanded={open}
           className={cn(
-            'w-full justify-between bg-gray-950 border-gray-700 text-white hover:bg-gray-900 h-10',
+            'w-full justify-between bg-input-background border-border text-foreground hover:bg-popover h-10',
             className
           )}
         >
@@ -132,7 +132,7 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        className="!w-auto p-0 bg-gray-950 border-gray-800 text-white overflow-hidden z-[200]"
+        className="!w-auto p-0 bg-input-background border-border text-foreground overflow-hidden z-[200]"
         align="start"
         side="bottom"
         sideOffset={4}
@@ -147,7 +147,7 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
         }}
       >
         <Command
-          className="bg-gray-950 text-white"
+          className="bg-input-background text-foreground"
           shouldFilter={false}
           filter={() => 1}
         >
@@ -191,7 +191,7 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
                       setOpen(false);
                       setSearchTerm('');
                     }}
-                    className="text-white hover:bg-gray-800 cursor-pointer"
+                    className="text-foreground hover:bg-muted cursor-pointer"
                   >
                     <Check
                       className={cn(

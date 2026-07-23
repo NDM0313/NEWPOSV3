@@ -2,6 +2,7 @@
 
 export type SettingsContentKey =
   | 'company'
+  | 'appearance'
   | 'branches'
   | 'pos'
   | 'sales'
@@ -57,6 +58,7 @@ export const SETTINGS_NAV: SettingsCategory[] = [
     description: 'Company profile aur branches',
     items: [
       { id: 'company', label: 'Company', contentKey: 'company' },
+      { id: 'appearance', label: 'Appearance', contentKey: 'appearance' },
       { id: 'branches', label: 'Branches', contentKey: 'branches' },
     ],
   },
@@ -101,25 +103,20 @@ export const SETTINGS_NAV: SettingsCategory[] = [
     label: 'Documents & Printing',
     description: 'Print layouts, templates aur legacy printer config',
     items: [
-      { id: 'printingGeneral', label: 'Printing — General', contentKey: 'printing', subTabId: 'general' },
-      { id: 'printingDocumentTemplates', label: 'Document Templates', contentKey: 'printing', subTabId: 'documentTemplates' },
-      { id: 'printingPageSetup', label: 'Page Setup', contentKey: 'printing', subTabId: 'pageSetup' },
-      { id: 'printingFields', label: 'Fields', contentKey: 'printing', subTabId: 'fields' },
-      { id: 'printingLayoutEditor', label: 'Layout Editor', contentKey: 'printing', subTabId: 'layoutEditor' },
-      { id: 'printingThermal', label: 'Thermal Print', contentKey: 'printing', subTabId: 'thermalPrint' },
-      { id: 'printingPdfExport', label: 'PDF Export', contentKey: 'printing', subTabId: 'pdfExport' },
-      { id: 'invoiceTemplates', label: 'Invoice Templates', contentKey: 'invoiceTemplates' },
-      { id: 'legacyPrinter', label: 'Legacy Printer / Documents', contentKey: 'printer' },
+      { id: 'printingA4', label: 'A4 Documents', contentKey: 'printing', subTabId: 'a4Documents' },
+      { id: 'printingThermal', label: 'Thermal Receipts', contentKey: 'printing', subTabId: 'thermalReceipts' },
+      { id: 'printingReports', label: 'Reports & Export', contentKey: 'printing', subTabId: 'reportsExport' },
+      { id: 'printingAdvanced', label: 'Advanced', contentKey: 'printing', subTabId: 'advanced' },
     ],
   },
   {
     id: 'usersAccess',
     label: 'Users & Access',
-    description: 'Users, roles aur employee payroll',
+    description: 'Users, roles aur staff payroll settings',
     items: [
       { id: 'users', label: 'Users', contentKey: 'users' },
       { id: 'rolesPermissions', label: 'Roles & Permissions', contentKey: 'rolesPermissions' },
-      { id: 'employees', label: 'Employees', contentKey: 'employees' },
+      { id: 'employees', label: 'Staff & Payroll', contentKey: 'employees' },
     ],
   },
   {
