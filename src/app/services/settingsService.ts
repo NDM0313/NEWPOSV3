@@ -29,6 +29,9 @@ export function isNumberingIncludeBranchCodeSupported(): boolean {
   return numberingIncludeBranchCodeSupported !== false;
 }
 
+/** Session-scoped: avoid re-running sequence/category bootstrap on every companyId effect. */
+const companyBootstrapDone = new Set<string>();
+
 // ============================================
 // 🎯 SETTINGS SERVICE
 // ============================================
@@ -633,6 +636,9 @@ export const settingsService = {
       costingMethod?: 'FIFO' | 'Weighted Average';
     }
   ): Promise<void> {
+    if (!companyId || companyBootstrapDone.has(companyId)) return;
+    companyBootstrapDone.add(companyId);
+
     const moduleList = options?.modules && options.modules.length
       ? options.modules
       : ['sales', 'purchases', 'accounting', 'reports'];
@@ -704,11 +710,17 @@ export const settingsService = {
       { type: 'job', prefix: 'JOB-' },
       { type: 'journal', prefix: 'JV-' },
     ];
+
+    // One read for company-wide sequences instead of N select + N upsert on every login.
+    const { data: existingSeqs } = await supabase
+      .from('document_sequences')
+      .select('document_type')
+      .eq('company_id', companyId)
+      .is('branch_id', null);
+    const haveTypes = new Set((existingSeqs || []).map((r: { document_type: string }) => r.document_type));
     for (const row of numberingDefaults) {
-      const existing = await this.getDocumentSequence(companyId, undefined, row.type).catch(() => null);
-      if (!existing) {
-        await this.setDocumentSequence(companyId, undefined, row.type, row.prefix, 0, 4).catch(() => undefined);
-      }
+      if (haveTypes.has(row.type)) continue;
+      await this.setDocumentSequence(companyId, undefined, row.type, row.prefix, 0, 4).catch(() => undefined);
     }
 
     const { data: categories } = await supabase
