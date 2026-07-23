@@ -16,20 +16,28 @@ export async function filterLivePaymentsExcludingVoidedJournals<T extends Paymen
 
   const { supabase } = await import('@/lib/supabase');
   const voidedIds = new Set<string>();
-  const chunk = 30;
+  const chunk = 50;
+  const slices: string[][] = [];
   for (let i = 0; i < ids.length; i += chunk) {
-    const slice = ids.slice(i, i + chunk);
-    const { data, error } = await supabase
-      .from('journal_entries')
-      .select('payment_id')
-      .eq('company_id', companyId)
-      .in('payment_id', slice)
-      .eq('is_void', true);
-    if (error) {
-      console.warn('[paymentVoidVisibility] voided JE lookup failed:', error.message);
-      continue;
-    }
-    for (const row of data || []) {
+    slices.push(ids.slice(i, i + chunk));
+  }
+  const results = await Promise.all(
+    slices.map(async (slice) => {
+      const { data, error } = await supabase
+        .from('journal_entries')
+        .select('payment_id')
+        .eq('company_id', companyId)
+        .in('payment_id', slice)
+        .eq('is_void', true);
+      if (error) {
+        console.warn('[paymentVoidVisibility] voided JE lookup failed:', error.message);
+        return [] as { payment_id?: string }[];
+      }
+      return data || [];
+    }),
+  );
+  for (const rows of results) {
+    for (const row of rows) {
       const pid = String((row as { payment_id?: string }).payment_id ?? '').trim();
       if (pid) voidedIds.add(pid);
     }

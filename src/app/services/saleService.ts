@@ -5,6 +5,7 @@ import { SALE_BUSINESS_ONLY_STATUSES } from '@/app/lib/documentStatusConstants';
 import {
   canPostAccountingForSaleStatus,
   canPostStockForSaleStatus,
+  canRecordSaleCustomerPayment,
   wasSalePostedForReversal,
 } from '@/app/lib/postingStatusGate';
 import { documentNumberService } from '@/app/services/documentNumberService';
@@ -1441,17 +1442,24 @@ export const saleService = {
     options?: { notes?: string; attachments?: any }
   ) {
     // 🔒 CANCELLED: No payment allowed on cancelled sales
-    const { data: saleRow } = await supabase
+    // Only select columns that exist on public.sales (reference/ref_no/bill_ref do not — PostgREST 400).
+    const { data: saleRow, error: saleFetchErr } = await supabase
       .from('sales')
-      .select('status, customer_id, customer_name, invoice_no, customer_bill_ref, notes, reference, ref_no, bill_ref')
+      .select('status, customer_id, customer_name, invoice_no, customer_bill_ref, notes')
       .eq('id', saleId)
       .single();
-    if (saleRow && (saleRow as any).status === 'cancelled') {
+    if (saleFetchErr) {
+      throw new Error(`Could not load sale for payment: ${saleFetchErr.message}`);
+    }
+    if (!saleRow) {
+      throw new Error('Sale not found.');
+    }
+    if ((saleRow as any).status === 'cancelled') {
       throw new Error('Cannot record payment on a cancelled invoice.');
     }
-    if (saleRow && !canPostAccountingForSaleStatus((saleRow as any).status)) {
+    if (!canRecordSaleCustomerPayment((saleRow as any).status)) {
       throw new Error(
-        `Payment and payment journal entries are only allowed after the sale is Final. Current status: ${(saleRow as any).status || 'unknown'}`
+        `Customer payments are only allowed for Order or Final sales (not draft/quotation). Current status: ${(saleRow as any).status || 'unknown'}`
       );
     }
     if (!accountId) {

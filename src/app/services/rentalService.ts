@@ -570,6 +570,7 @@ export const rentalService = {
     updates: {
       customerId?: string;
       customerName?: string;
+      bookingDate?: string;
       pickupDate?: string;
       returnDate?: string;
       rentalCharges?: number;
@@ -635,6 +636,7 @@ export const rentalService = {
     const payload: Record<string, unknown> = {};
     if (updates.customerId !== undefined) payload.customer_id = updates.customerId;
     if (updates.customerName !== undefined) payload.customer_name = updates.customerName;
+    if (updates.bookingDate !== undefined) payload.booking_date = updates.bookingDate;
     if (updates.pickupDate !== undefined) payload.pickup_date = updates.pickupDate;
     if (updates.returnDate !== undefined) payload.return_date = updates.returnDate;
     if (updates.rentalCharges !== undefined) payload.rental_charges = updates.rentalCharges;

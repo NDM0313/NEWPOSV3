@@ -17,6 +17,19 @@ test('AR line is not liquidity', () => {
   assert.equal(isLiquidityPaymentAccount({ code: 'AR-CUS0001', type: 'asset', name: 'Receivable' }), false);
 });
 
+test('Payable — CASH PURCHASE liability is not liquidity (name must not match cash)', () => {
+  const ap = { code: 'AP-SUP0005', type: 'liability', name: 'Payable — CASH PURCHASE' };
+  assert.equal(isLiquidityPaymentAccount(ap), false);
+  assert.equal(isRoznamchaLiquidityAccount(ap), false);
+});
+
+test('asset parent Cash & Cash Equivalents still matches name heuristic', () => {
+  assert.equal(
+    isLiquidityPaymentAccount({ code: '1050', type: 'asset', name: 'Cash & Cash Equivalents' }),
+    true,
+  );
+});
+
 test('bank type is liquidity without canonical code', () => {
   assert.equal(isLiquidityPaymentAccount({ code: '1012', type: 'bank', name: 'FHD MZ' }), true);
 });

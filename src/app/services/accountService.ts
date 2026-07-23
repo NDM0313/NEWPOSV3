@@ -118,20 +118,37 @@ export const accountService = {
    * Excludes: AP, AR, expense, revenue, payable, receivable, production, shipping, control accounts.
    */
   async getPaymentAccountsOnly(companyId: string, _branchId?: string) {
-    const all = await this.getAllAccounts(companyId);
+    // Slim query — do not pull full COA via getAllAccounts just for a dropdown.
+    const { data, error } = await supabase
+      .from('accounts')
+      .select('id, name, code, type, is_active, is_group')
+      .eq('company_id', companyId)
+      .eq('is_active', true)
+      .or(
+        'type.ilike.%cash%,type.ilike.%bank%,type.ilike.%wallet%,code.eq.1000,code.eq.1010,code.eq.1020,name.ilike.%cash%,name.ilike.%bank%,name.ilike.%wallet%',
+      )
+      .limit(200);
+    if (error) {
+      if (import.meta.env?.DEV) console.warn('[getPaymentAccountsOnly] slim query failed, fallback:', error.message);
+      const all = await this.getAllAccounts(companyId);
+      return this.filterPaymentAccounts(all || []);
+    }
+    return this.filterPaymentAccounts(data || []);
+  },
+
+  filterPaymentAccounts(all: any[]) {
     const active = (all || []).filter((a: any) => a.is_active !== false);
     const roleOrType = (a: any) =>
       String(a.account_role ?? a.type ?? '').toLowerCase().trim();
     const name = (a: any) => String(a.name ?? '').toLowerCase();
     const code = (a: any) => String(a.code ?? '').toLowerCase();
-    const operational = active.filter((a: any) => {
+    return active.filter((a: any) => {
       if (a.is_group === true) return false;
       const r = roleOrType(a);
       const n = name(a);
       const rawCode = String(a.code ?? '').trim();
       if (COA_HEADER_CODES.has(rawCode)) return false;
       const c = rawCode.toLowerCase();
-      // Exclude non-payment: payable, receivable, expense, revenue, production, shipping
       if (n.includes('payable') || n.includes('receivable') || n.includes('ar ') || n.includes(' ap ') || c.startsWith('2') || c === '1100' || c === '2000' || c === '2010') return false;
       if (n.includes('expense') && !n.includes('payment')) return false;
       if (n.includes('revenue') || n.includes('income') || n.includes('production') || n.includes('shipping') || n.includes('courier')) return false;
@@ -152,7 +169,6 @@ export const accountService = {
         n.includes('wallet')
       );
     });
-    return operational;
   },
 
   // Create account

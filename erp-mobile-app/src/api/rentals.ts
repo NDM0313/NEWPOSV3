@@ -1,6 +1,6 @@
 import { getContactWhatsAppPhone } from './contacts';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { formatLocalDateYYYYMMDD, localNowDateString } from '../utils/localDate';
+import { formatLocalDateYYYYMMDD, localNowDateString, parseLocalDateInput, toLocalDateString } from '../utils/localDate';
 import {
   linkRentalPaymentJournalEntry,
   postRentalAdvanceJournalMobile,
@@ -346,11 +346,8 @@ export interface RentalCalendarRental {
 
 function rentalDateToYmd(val: unknown): string {
   if (val == null || val === '') return '';
-  const s = String(val).trim();
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-  const d = new Date(s);
-  if (Number.isNaN(d.getTime())) return '';
-  return formatLocalDateYYYYMMDD(d);
+  if (val instanceof Date) return formatLocalDateYYYYMMDD(val);
+  return toLocalDateString(String(val));
 }
 
 function applyRentalOwnScope(
@@ -451,11 +448,14 @@ export async function createBooking(input: CreateBookingInput): Promise<{ data: 
     return { data: null, error: subEnsure.error ?? 'Could not set up customer AR sub-account.' };
   }
 
-  const pickup = new Date(pickupDate);
-  const ret = new Date(returnDate);
+  const pickup = parseLocalDateInput(pickupDate);
+  const ret = parseLocalDateInput(returnDate);
   if (ret < pickup) return { data: null, error: 'Return date must be on or after pickup date.' };
 
-  const durationDays = Math.ceil((ret.getTime() - pickup.getTime()) / (1000 * 60 * 60 * 24)) || 1;
+  const durationDays = Math.max(
+    1,
+    Math.round((ret.getTime() - pickup.getTime()) / (1000 * 60 * 60 * 24)) || 1,
+  );
   const totalAmount = rentalCharges + securityDeposit;
   const dueAmount = Math.max(0, totalAmount - paidAmount);
 
@@ -748,11 +748,7 @@ export async function getRentals(
       const customerPhone = customer ? getContactWhatsAppPhone(customer) : '';
       const bookingNo = String(r.booking_no || `RNT-${String(r.id ?? '').slice(0, 8)}`);
       const documentNumber = r.document_number != null ? String(r.document_number).trim() : '';
-      const bookingDate = r.booking_date
-        ? new Date(r.booking_date as string).toISOString().slice(0, 10)
-        : r.pickup_date
-          ? new Date(r.pickup_date as string).toISOString().slice(0, 10)
-          : '';
+      const bookingDate = rentalDateToYmd(r.booking_date) || rentalDateToYmd(r.pickup_date);
       return {
         id: String(r.id ?? ''),
         bookingNo,
@@ -760,8 +756,8 @@ export async function getRentals(
         no: bookingNo,
         customer: String(r.customer_name ?? '—'),
         customerPhone: customerPhone || undefined,
-        pickup: r.pickup_date ? new Date(r.pickup_date as string).toISOString().slice(0, 10) : '—',
-        return: r.return_date ? new Date(r.return_date as string).toISOString().slice(0, 10) : '—',
+        pickup: rentalDateToYmd(r.pickup_date) || '—',
+        return: rentalDateToYmd(r.return_date) || '—',
         status: mapRentalStatus(String(r.status ?? '')),
         total: Number(r.total_amount) || 0,
         paid: Number(r.paid_amount) || 0,
@@ -943,9 +939,9 @@ export async function getRentalById(rentalId: string): Promise<{ data: RentalDet
       branchId: String(r.branch_id ?? ''),
       branchName: branch ? [branch.code, branch.name].filter(Boolean).join(' | ') : undefined,
       status: mapRentalStatus(String(r.status ?? '')),
-      pickupDate: r.pickup_date ? new Date(r.pickup_date as string).toISOString().slice(0, 10) : '',
-      returnDate: r.return_date ? new Date(r.return_date as string).toISOString().slice(0, 10) : '',
-      actualReturnDate: r.actual_return_date ? new Date(r.actual_return_date as string).toISOString().slice(0, 10) : null,
+      pickupDate: rentalDateToYmd(r.pickup_date),
+      returnDate: rentalDateToYmd(r.return_date),
+      actualReturnDate: r.actual_return_date ? rentalDateToYmd(r.actual_return_date) : null,
       totalAmount: Number(r.total_amount) ?? 0,
       paidAmount: Number(r.paid_amount) ?? 0,
       dueAmount: Number(r.due_amount) ?? 0,
@@ -973,12 +969,7 @@ export async function getRentalById(rentalId: string): Promise<{ data: RentalDet
       })),
       payments: paymentList.map((p) => {
         const rawDate = p.payment_date ?? p.created_at;
-        const paymentDate =
-          typeof rawDate === 'string'
-            ? rawDate.slice(0, 10)
-            : rawDate instanceof Date
-              ? rawDate.toISOString().slice(0, 10)
-              : '';
+        const paymentDate = rentalDateToYmd(rawDate);
         const rpId = String(p.id);
         const linked = paymentRefByRentalPaymentId.get(rpId);
         const fallbackRef = (p.reference as string) ?? null;

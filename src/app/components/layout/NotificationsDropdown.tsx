@@ -9,15 +9,13 @@ import {
 } from '../ui/dropdown-menu';
 import { DateTimeDisplay } from '../ui/DateTimeDisplay';
 import { useNavigation } from '../../context/NavigationContext';
-import { useSales } from '../../context/SalesContext';
-import { usePurchases } from '../../context/PurchaseContext';
-import { useExpenses } from '../../context/ExpenseContext';
 import { useSupabase } from '../../context/SupabaseContext';
 import { useGlobalFilter } from '../../context/GlobalFilterContext';
 import { safeRpcBranchId } from '@/app/lib/safeRpcBranchId';
 import { useFormatCurrency } from '../../hooks/useFormatCurrency';
 import { productService } from '../../services/productService';
 import { shipmentAccountingService } from '../../services/shipmentAccountingService';
+import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import {
   NOTIFICATION_ACCOUNTING_NAV_KEY,
@@ -26,6 +24,7 @@ import {
 import { safeSessionStorageSetItem } from '@/app/lib/safeBrowserStorage';
 
 const MAX_NOTIFICATIONS = 10;
+const DUE_FETCH_LIMIT = 8;
 
 export type NotificationItem = {
   id: string;
@@ -35,28 +34,71 @@ export type NotificationItem = {
   entityId?: string;
 };
 
+type DueSale = { id: string; invoice_no?: string | null; due_amount?: number | null; invoice_date?: string | null };
+type DuePurchase = { id: string; po_no?: string | null; due_amount?: number | null; po_date?: string | null };
+type PendingExpense = { id: string; expense_no?: string | null; amount?: number | null; expense_date?: string | null };
+
+/**
+ * Header bell — lightweight badge queries only.
+ * Must NOT call useSales/usePurchases/useExpenses (those activate full list loads on every page).
+ */
 export const NotificationsDropdown: React.FC = () => {
   const { setCurrentView, openDrawer } = useNavigation();
   const { companyId } = useSupabase();
   const { branchId } = useGlobalFilter();
   const { formatCurrency } = useFormatCurrency();
-  const sales = useSales();
-  const purchases = usePurchases();
-  const expenses = useExpenses();
   const [open, setOpen] = useState(false);
   const [lowStockProducts, setLowStockProducts] = useState<
     { id: string; name?: string; sku?: string; current_stock?: number }[]
   >([]);
   const [courierBalances, setCourierBalances] = useState<{ courier_name: string; balance: number }[]>([]);
+  const [dueSales, setDueSales] = useState<DueSale[]>([]);
+  const [duePurchases, setDuePurchases] = useState<DuePurchase[]>([]);
+  const [pendingExpenses, setPendingExpenses] = useState<PendingExpense[]>([]);
 
   useEffect(() => {
     if (!companyId) return;
     let cancelled = false;
+    const rpcBranch = safeRpcBranchId(branchId ?? null);
+    const mark = import.meta.env?.DEV ? `notif-badge:${companyId}` : '';
+    if (mark) console.time(mark);
+
     (async () => {
       try {
-        const [lowStock, couriers] = await Promise.all([
-          productService.getLowStockProducts(companyId, safeRpcBranchId(branchId ?? null)).catch(() => []),
+        let salesQ = supabase
+          .from('sales')
+          .select('id, invoice_no, due_amount, invoice_date')
+          .eq('company_id', companyId)
+          .gt('due_amount', 0)
+          .order('invoice_date', { ascending: false })
+          .limit(DUE_FETCH_LIMIT);
+        let purchQ = supabase
+          .from('purchases')
+          .select('id, po_no, due_amount, po_date')
+          .eq('company_id', companyId)
+          .gt('due_amount', 0)
+          .order('po_date', { ascending: false })
+          .limit(DUE_FETCH_LIMIT);
+        let expQ = supabase
+          .from('expenses')
+          .select('id, expense_no, amount, expense_date, status')
+          .eq('company_id', companyId)
+          .eq('status', 'pending')
+          .order('created_at', { ascending: false })
+          .limit(DUE_FETCH_LIMIT);
+
+        if (rpcBranch) {
+          salesQ = salesQ.eq('branch_id', rpcBranch);
+          purchQ = purchQ.eq('branch_id', rpcBranch);
+          expQ = expQ.eq('branch_id', rpcBranch);
+        }
+
+        const [lowStock, couriers, salesRes, purchRes, expRes] = await Promise.all([
+          productService.getLowStockProducts(companyId, rpcBranch).catch(() => []),
           shipmentAccountingService.getCourierBalances(companyId).catch(() => []),
+          salesQ.then((r) => r.data ?? []).catch(() => [] as DueSale[]),
+          purchQ.then((r) => r.data ?? []).catch(() => [] as DuePurchase[]),
+          expQ.then((r) => r.data ?? []).catch(() => [] as PendingExpense[]),
         ]);
         if (cancelled) return;
         setLowStockProducts(Array.isArray(lowStock) ? lowStock : []);
@@ -66,13 +108,21 @@ export const NotificationsDropdown: React.FC = () => {
             .map((c: { courier_name: string; balance: number }) => ({
               courier_name: c.courier_name,
               balance: c.balance,
-            }))
+            })),
         );
+        setDueSales((salesRes as DueSale[]) || []);
+        setDuePurchases((purchRes as DuePurchase[]) || []);
+        setPendingExpenses((expRes as PendingExpense[]) || []);
       } catch {
         if (!cancelled) {
           setLowStockProducts([]);
           setCourierBalances([]);
+          setDueSales([]);
+          setDuePurchases([]);
+          setPendingExpenses([]);
         }
+      } finally {
+        if (mark) console.timeEnd(mark);
       }
     })();
     return () => {
@@ -98,48 +148,35 @@ export const NotificationsDropdown: React.FC = () => {
         entityId: c.courier_name,
       });
     });
-    sales.sales
-      .filter((s) => s.type === 'invoice' && s.due > 0)
-      .forEach((sale) => {
-        notifs.push({
-          id: `sale-${sale.id}`,
-          type: 'receivable',
-          message: `Payment due: ${sale.invoiceNo} — ${formatCurrency(sale.due)}`,
-          date: sale.date,
-          entityId: String(sale.id),
-        });
+    dueSales.forEach((sale) => {
+      notifs.push({
+        id: `sale-${sale.id}`,
+        type: 'receivable',
+        message: `Payment due: ${sale.invoice_no || sale.id} — ${formatCurrency(Number(sale.due_amount) || 0)}`,
+        date: sale.invoice_date || undefined,
+        entityId: String(sale.id),
       });
-    purchases.purchases
-      .filter((p) => p.due > 0)
-      .forEach((purchase) => {
-        notifs.push({
-          id: `purchase-${purchase.id}`,
-          type: 'payable',
-          message: `Unpaid purchase: ${purchase.purchaseNo} — ${formatCurrency(purchase.due)}`,
-          date: purchase.date,
-          entityId: String(purchase.id),
-        });
+    });
+    duePurchases.forEach((purchase) => {
+      notifs.push({
+        id: `purchase-${purchase.id}`,
+        type: 'payable',
+        message: `Unpaid purchase: ${purchase.po_no || purchase.id} — ${formatCurrency(Number(purchase.due_amount) || 0)}`,
+        date: purchase.po_date || undefined,
+        entityId: String(purchase.id),
       });
-    expenses.expenses
-      .filter((e) => e.status === 'pending')
-      .forEach((expense) => {
-        notifs.push({
-          id: `expense-${expense.id}`,
-          type: 'expense',
-          message: `Pending expense: ${expense.expenseNo} — ${formatCurrency(expense.amount)}`,
-          date: expense.date,
-          entityId: expense.id,
-        });
+    });
+    pendingExpenses.forEach((expense) => {
+      notifs.push({
+        id: `expense-${expense.id}`,
+        type: 'expense',
+        message: `Pending expense: ${expense.expense_no || expense.id} — ${formatCurrency(Number(expense.amount) || 0)}`,
+        date: expense.expense_date || undefined,
+        entityId: expense.id,
       });
+    });
     return notifs.slice(0, MAX_NOTIFICATIONS);
-  }, [
-    sales.sales,
-    purchases.purchases,
-    expenses.expenses,
-    lowStockProducts,
-    courierBalances,
-    formatCurrency,
-  ]);
+  }, [dueSales, duePurchases, pendingExpenses, lowStockProducts, courierBalances, formatCurrency]);
 
   const notificationCount = notifications.length;
 
@@ -189,7 +226,7 @@ export const NotificationsDropdown: React.FC = () => {
         if (notif.type === 'courier_balance') {
           safeSessionStorageSetItem(
             NOTIFICATION_ACCOUNTING_NAV_KEY,
-            JSON.stringify({ tab: 'courier' })
+            JSON.stringify({ tab: 'courier' }),
           );
           setCurrentView('accounting');
           return;
@@ -199,7 +236,7 @@ export const NotificationsDropdown: React.FC = () => {
         toast.error(msg);
       }
     },
-    [openDrawer, setCurrentView]
+    [openDrawer, setCurrentView],
   );
 
   return (

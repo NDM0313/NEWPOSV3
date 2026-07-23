@@ -19,7 +19,7 @@ import {
   Package
 } from 'lucide-react';
 import { format, addDays } from "date-fns";
-import { formatLocalDateYYYYMMDD } from '@/app/utils/localDate';
+import { formatLocalDateYYYYMMDD, parseLocalDateInput } from '@/app/utils/localDate';
 import { formatQty } from '@/app/utils/quantity';
 import { cn } from "../ui/utils";
 import { Button } from "../ui/button";
@@ -216,9 +216,11 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
           return [{ id: editRental!.customerId!, name: editRental!.customerName }, ...prev];
         });
       }
-      setBookingDate(editRental.startDate ? new Date(editRental.startDate) : new Date());
-      const editPickup = editRental.startDate ? new Date(editRental.startDate) : new Date();
-      const editReturn = editRental.expectedReturnDate ? new Date(editRental.expectedReturnDate) : addDays(new Date(), 3);
+      setBookingDate(editRental.createdAt ? parseLocalDateInput(editRental.createdAt) : new Date());
+      const editPickup = editRental.startDate ? parseLocalDateInput(editRental.startDate) : new Date();
+      const editReturn = editRental.expectedReturnDate
+        ? parseLocalDateInput(editRental.expectedReturnDate)
+        : addDays(new Date(), 3);
       setPickupDate(editPickup);
       setReturnDate(editReturn);
       const editDuration = calculateRentalDays(editPickup, editReturn);
@@ -499,11 +501,11 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
         await rentalService.updateBooking(editRental.id, companyId, {
           customerId: selectedCustomer,
           customerName: getCustomerName(),
+          bookingDate: formatLocalDateYYYYMMDD(bookingDate),
           pickupDate: formatLocalDateYYYYMMDD(pickupDate),
           returnDate: formatLocalDateYYYYMMDD(returnDate),
           rentalCharges: totalRent,
           securityDeposit: 0,
-          paidAmount: parseFloat(advancePaid) || 0,
           notes: null,
           documentNumber: documentNumber.trim() || null,
           salesmanId: salesmanId || null,
@@ -1150,18 +1152,22 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                         </div>
                       )}
                       <div className="flex justify-between items-center text-sm text-muted-foreground">
-                          <span>Advance to collect (intent)</span>
+                          <span>{editRental ? 'Paid (locked)' : 'Advance to collect (intent)'}</span>
                           <div className="w-32">
                               <Input 
                                 className="h-8 text-right bg-card border-border text-foreground"
                                 placeholder="0"
                                 value={advancePaid}
                                 onChange={(e) => setAdvancePaid(e.target.value)}
+                                disabled={!!editRental}
+                                readOnly={!!editRental}
                               />
                           </div>
                       </div>
                       <p className="text-[11px] text-muted-foreground leading-snug">
-                        Not received until you confirm payment. If you skip the payment step, full rent stays due.
+                        {editRental
+                          ? 'Paid amount cannot be changed here. Use View Payments / Receive Payment to adjust cash.'
+                          : 'Not received until you confirm payment. If you skip the payment step, full rent stays due.'}
                       </p>
                       <div className="flex justify-between text-sm font-bold text-foreground pt-2 border-t border-border">
                           <span>Balance due (confirmed)</span>
@@ -1182,7 +1188,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                     disabled={(cartItems.length === 0 && !selectedProduct) || saving}
                     onClick={handleBookOrder}
                   >
-                      {saving ? "Saving..." : "Book Order"} <ArrowRight className="ml-2" size={18} />
+                      {saving ? "Saving..." : editRental ? "Update Order" : "Book Order"} <ArrowRight className="ml-2" size={18} />
                   </Button>
               </div>
           </div>

@@ -297,6 +297,29 @@ export const accountingReportsService = {
     branchId?: string
   ): Promise<Record<string, number>> {
     const end = (asOfDate ?? new Date().toISOString().slice(0, 10)).slice(0, 10);
+    const mark = import.meta.env?.DEV ? `getAccountBalancesFromJournal:${companyId}` : '';
+    if (mark) console.time(mark);
+    try {
+      const { data, error } = await supabase.rpc('get_account_balances_as_of', {
+        p_company_id: companyId,
+        p_as_of_date: end,
+        p_branch_id: branchId ?? null,
+      });
+      if (!error && data && typeof data === 'object' && !Array.isArray(data)) {
+        const out: Record<string, number> = {};
+        for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
+          out[k] = Number(v) || 0;
+        }
+        return out;
+      }
+      if (import.meta.env?.DEV && error) {
+        console.warn('[getAccountBalancesFromJournal] RPC fallback to client TB:', error.message);
+      }
+    } catch (e) {
+      if (import.meta.env?.DEV) console.warn('[getAccountBalancesFromJournal] RPC error:', e);
+    } finally {
+      if (mark) console.timeEnd(mark);
+    }
     const tb = await this.getTrialBalance(companyId, '1900-01-01', end, branchId);
     const out: Record<string, number> = {};
     tb.rows.forEach((r) => {

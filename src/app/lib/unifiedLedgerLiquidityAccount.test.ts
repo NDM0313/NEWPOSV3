@@ -21,6 +21,13 @@ test('rejects AR control account', () => {
   assert.equal(isUnifiedLiquidityAccount({ code: '1100', name: 'AR', type: 'asset' }), false);
 });
 
+test('rejects Payable — CASH PURCHASE liability despite cash in name', () => {
+  assert.equal(
+    isUnifiedLiquidityAccount({ code: 'AP-SUP0005', name: 'Payable — CASH PURCHASE', type: 'liability' }),
+    false,
+  );
+});
+
 test('liquidityKind cash vs bank', () => {
   const bank = { code: '1010', name: 'Bank', type: 'bank' };
   const cash = { code: '1000', name: 'Cash', type: 'cash' };

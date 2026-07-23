@@ -11,7 +11,7 @@ import { assembleRoznamchaUnifiedParityMain } from '@/app/services/roznamchaUnif
 
 export type RoznamchaUnifiedMainResult = RoznamchaResult & {
   unifiedRows: UnifiedLedgerRow[];
-  parityEngine?: 'roznamcha_payment_journal_composite';
+  parityEngine?: 'unified_cash_bank_rpc' | 'roznamcha_payment_journal_composite';
 };
 
 export async function loadRoznamchaUnifiedMain(params: {
@@ -24,6 +24,7 @@ export async function loadRoznamchaUnifiedMain(params: {
   paymentLedgerAccountId: string | null;
   paymentAccountOptions: Array<{ id: string; label: string }>;
   basis?: UnifiedLedgerBasis;
+  parityCompare?: boolean;
 }): Promise<RoznamchaUnifiedMainResult> {
   return assembleRoznamchaUnifiedParityMain(params);
 }

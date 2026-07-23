@@ -75,6 +75,41 @@ export function isPartyTtRoutingAccount(acc: LiquidityAccountRef | null | undefi
   return false;
 }
 
+function isBlockedFromLiquidityNameHeuristic(type: string): boolean {
+  if (
+    type === 'liability' ||
+    type === 'equity' ||
+    type === 'revenue' ||
+    type === 'income' ||
+    type === 'expense' ||
+    type === 'cogs' ||
+    type === 'cost_of_goods_sold' ||
+    type === 'inventory' ||
+    type === 'receivable' ||
+    type === 'payable'
+  ) {
+    return true;
+  }
+  return type.includes('liability') || type.includes('payable');
+}
+
+function allowsLiquidityNameHeuristic(type: string): boolean {
+  if (isBlockedFromLiquidityNameHeuristic(type)) return false;
+  return (
+    type === '' ||
+    type === 'asset' ||
+    type === 'other_asset' ||
+    type === 'current_asset' ||
+    type === 'other_current_asset' ||
+    type === 'cash' ||
+    type === 'bank' ||
+    type === 'mobile_wallet' ||
+    type === 'wallet' ||
+    type === 'card' ||
+    type === 'pos'
+  );
+}
+
 export function isLiquidityPaymentAccount(acc: LiquidityAccountRef | null | undefined): boolean {
   if (!acc) return false;
   if (acc.is_active === false) return false;
@@ -90,7 +125,7 @@ export function isLiquidityPaymentAccount(acc: LiquidityAccountRef | null | unde
   if (isTtClearingAccountCode(digits, name)) return true;
   if (['cash', 'bank', 'mobile_wallet', 'wallet', 'card', 'pos'].includes(type)) return true;
   if (/cash|bank|mobile wallet|wallet|jazz|easypaisa|ndm|easy\s*paisa|mobicash|finja|upaisa|sadapay|nayapay/.test(name)) {
-    return true;
+    return allowsLiquidityNameHeuristic(type);
   }
   if (nameLooksLikeTtClearingAccount(name)) return true;
   if (isPartyTtAgentWalletAccount(acc)) return true;

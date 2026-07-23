@@ -69,7 +69,7 @@ export function mapRentalRowToUI(row: Record<string, unknown>): RentalUI {
     dueAmount: Number(row.due_amount ?? 0),
     itemsCount: mappedItems.length,
     items: mappedItems,
-    createdAt: String(row.created_at || row.booking_date || ''),
+    createdAt: String(row.booking_date || row.created_at || ''),
     salesmanId: row.salesman_id != null ? String(row.salesman_id) : null,
     createdBy: row.created_by != null ? String(row.created_by) : undefined,
     createdByName: createdByUser?.full_name || createdByUser?.email || 'System',

@@ -516,7 +516,7 @@ const AccountingContext = createContext<AccountingContextType | undefined>(undef
 
 const BALANCE_SYNC_THROTTLE_MS = 60_000;
 const COALESCED_REFRESH_MS = 400;
-const ENTRIES_FETCH_LIMIT = 500;
+const ENTRIES_FETCH_LIMIT = 100;
 
 /** Reload COA on invalidation only when the chart changed — not payments/sales/realtime noise. */
 function invalidationShouldReloadAccounts(reason?: string): boolean {
@@ -543,7 +543,16 @@ function invalidationShouldReloadEntries(reason: string | undefined, entriesBoot
   if (isGlobalRefreshReason(reason)) return true;
   if (!entriesBootstrapped) return false;
   if (!reason) return true;
-  return true;
+  const r = reason.toLowerCase();
+  // Date/branch filter changes are handled by dedicated effects — skip unrelated domain noise.
+  if (
+    /inventory|stock|product|rental(?!-payment)|studio|module-toggle|settings|permission/.test(r)
+  ) {
+    return false;
+  }
+  return /accounting|journal|payment|sale|purchase|expense|entry|void|reversal|date_filter|branch_filter|fallback-poll|realtime/.test(
+    r,
+  );
 }
 
 type LoadEntriesOptions = {
@@ -887,6 +896,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
         skippedAmbiguous: syncResult.skippedAmbiguous,
         skippedPf14Chain: syncResult.skippedPf14Chain,
       });
+      // Only refresh if something actually wrote — avoid cascade on skippedAmbiguous-only runs.
       if (syncResult.synced > 0) {
         scheduleCoalescedRefreshRef.current({ entries: true, accounts: true });
       }
@@ -894,6 +904,19 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       if (import.meta.env?.DEV) console.warn('[ACCOUNTING CONTEXT] Payment account sync:', syncErr);
     }
   }, [companyId]);
+
+  const schedulePaymentAccountSyncIdle = useCallback(() => {
+    if (!companyId || paymentSyncDoneForCompanyRef.current === companyId) return;
+    const run = () => {
+      void runPaymentAccountSyncOnce();
+    };
+    const ric = typeof window !== 'undefined' ? window.requestIdleCallback : undefined;
+    if (typeof ric === 'function') {
+      ric(run, { timeout: 4000 });
+    } else {
+      setTimeout(run, 1500);
+    }
+  }, [companyId, runPaymentAccountSyncOnce]);
 
   // Load accounts from database. Phase 7: Prefer balance from journal (single source of truth).
   const loadAccounts = useCallback(async () => {
@@ -941,28 +964,47 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
         const data = await accountService.getAllAccounts(companyId, branchId === 'all' ? undefined : branchId || undefined);
         const convertedAccounts = data.map(convertFromSupabaseAccount);
         const withParty = await linkContactsToAccounts(convertedAccounts);
-        try {
-          const asOf = new Date().toISOString().slice(0, 10);
-          const journalBalances = await accountingReportsService.getAccountBalancesFromJournal(
-            companyId,
-            asOf,
-            branchId === 'all' ? undefined : branchId
-          );
-          const merged = withParty.map((acc) => ({
-            ...acc,
-            balance: journalBalances[acc.id!] !== undefined ? journalBalances[acc.id!]! : 0,
-          }));
-          setAccounts(merged);
-        } catch (jbErr) {
-          warnIfUsingStoredBalanceAsTruth(
-            'AccountingContext.loadAccounts',
-            'balance',
-            'Journal balance merge failed — COA balances shown as 0 (not stored accounts.balance)'
-          );
-          if (import.meta.env?.DEV) console.warn('[ACCOUNTING CONTEXT] Journal balances unavailable:', jbErr);
-          setAccounts(withParty);
-        }
+        // Paint COA immediately — defer journal balance merge (was blocking login ~seconds).
+        setAccounts(withParty.map((acc) => ({ ...acc, balance: Number(acc.balance) || 0 })));
         if (import.meta.env?.DEV) console.log('✅ Accounts loaded:', convertedAccounts.length);
+
+        const mergeBalances = async () => {
+          try {
+            const mark = import.meta.env?.DEV ? `loadAccounts:tb:${companyId}` : '';
+            if (mark) console.time(mark);
+            const asOf = new Date().toISOString().slice(0, 10);
+            const journalBalances = await accountingReportsService.getAccountBalancesFromJournal(
+              companyId,
+              asOf,
+              branchId === 'all' ? undefined : branchId,
+            );
+            if (mark) console.timeEnd(mark);
+            setAccounts((prev) =>
+              prev.map((acc) => ({
+                ...acc,
+                balance: journalBalances[acc.id!] !== undefined ? journalBalances[acc.id!]! : 0,
+              })),
+            );
+          } catch (jbErr) {
+            warnIfUsingStoredBalanceAsTruth(
+              'AccountingContext.loadAccounts',
+              'balance',
+              'Journal balance merge failed — COA balances shown as stored/0 (not blocking load)',
+            );
+            if (import.meta.env?.DEV) console.warn('[ACCOUNTING CONTEXT] Journal balances unavailable:', jbErr);
+          }
+        };
+
+        const ric = typeof window !== 'undefined' ? window.requestIdleCallback : undefined;
+        if (typeof ric === 'function') {
+          ric(() => {
+            void mergeBalances();
+          }, { timeout: 2500 });
+        } else {
+          setTimeout(() => {
+            void mergeBalances();
+          }, 0);
+        }
       } catch (error) {
         console.error('[ACCOUNTING CONTEXT] Error loading accounts:', error);
         setAccounts([]);
@@ -1014,7 +1056,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
             branchId === 'all' ? undefined : branchId || undefined,
             startDateISO || undefined,
             endDateISO || undefined,
-            { limit: ENTRIES_FETCH_LIMIT, offset: page * ENTRIES_FETCH_LIMIT }
+            { limit: ENTRIES_FETCH_LIMIT, offset: page * ENTRIES_FETCH_LIMIT, mode: 'list' }
           );
           const isPaginated =
             result && typeof result === 'object' && 'data' in result && 'total' in result;
@@ -1081,10 +1123,21 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
 
   const ensureEntriesLoaded = useCallback(async () => {
     if (!companyId || entriesBootstrappedRef.current) return;
-    await loadEntries({ showBlockingLoading: true });
+    await loadEntries({ showBlockingLoading: true, skipBalanceSync: true });
     entriesBootstrappedRef.current = true;
-    await runPaymentAccountSyncOnce();
-  }, [companyId, loadEntries, runPaymentAccountSyncOnce]);
+    // Payment account repair + balance sync off critical path
+    schedulePaymentAccountSyncIdle();
+    const ric = typeof window !== 'undefined' ? window.requestIdleCallback : undefined;
+    if (typeof ric === 'function') {
+      ric(() => {
+        void maybeSyncBalancesFromJournal();
+      }, { timeout: 5000 });
+    } else {
+      setTimeout(() => {
+        void maybeSyncBalancesFromJournal();
+      }, 2000);
+    }
+  }, [companyId, loadEntries, schedulePaymentAccountSyncIdle, maybeSyncBalancesFromJournal]);
 
   const scheduleCoalescedRefresh = useCallback(
     (opts?: { entries?: boolean; accounts?: boolean; blocking?: boolean }) => {

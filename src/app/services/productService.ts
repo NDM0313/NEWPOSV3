@@ -782,20 +782,54 @@ export const productService = {
     throw error;
   },
 
-  // Get low stock products. Movement-based only (stock_movements). Never queries current_stock.
+  /**
+   * Low-stock badge list. Prefer cheap RPC (inventory_balance); fall back to slim products query.
+   * Avoids full getInventoryOverview (variations/combos/maps) used by Inventory screens.
+   */
   async getLowStockProducts(companyId: string, branchId?: string | null) {
+    const mark = import.meta.env?.DEV ? `getLowStockProducts:${companyId}` : '';
+    if (mark) console.time(mark);
     try {
-      const rows = await inventoryService.getInventoryOverview(companyId, branchId ?? undefined);
-      const low = (rows || []).filter((r) => r.minStock > 0 && r.stock < r.minStock);
-      return low.map((r) => ({
-        id: r.id,
-        name: r.name,
-        sku: r.sku,
-        current_stock: r.stock,
-        min_stock: r.minStock,
-      }));
+      const { data, error } = await supabase.rpc('get_low_stock_products', {
+        p_company_id: companyId,
+        p_branch_id: branchId ?? null,
+        p_limit: 50,
+      });
+      if (!error && data != null) {
+        const rows = Array.isArray(data)
+          ? data
+          : typeof data === 'string'
+            ? (JSON.parse(data) as unknown[])
+            : [];
+        if (Array.isArray(rows)) {
+          return rows.map((r: Record<string, unknown>) => ({
+            id: String(r.id),
+            name: (r.name as string) || undefined,
+            sku: (r.sku as string) || undefined,
+            current_stock: Number(r.current_stock) || 0,
+            min_stock: Number(r.min_stock) || 0,
+          }));
+        }
+      }
+      // Fallback: products with min_stock only (no overview rebuild)
+      let q = supabase
+        .from('products')
+        .select('id, name, sku, min_stock')
+        .eq('company_id', companyId)
+        .eq('is_active', true)
+        .gt('min_stock', 0)
+        .limit(200);
+      const { data: products, error: pErr } = await q;
+      if (pErr || !products?.length) return [];
+      // Without inventory_balance RPC, avoid overview — return empty rather than 4s fan-out
+      if (import.meta.env?.DEV) {
+        console.warn('[getLowStockProducts] RPC unavailable; skipping full inventoryOverview fallback');
+      }
+      return [];
     } catch {
       return [];
+    } finally {
+      if (mark) console.timeEnd(mark);
     }
   },
 

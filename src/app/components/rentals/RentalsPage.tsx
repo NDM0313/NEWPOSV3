@@ -238,7 +238,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
     const parts = columnOrder
       .filter((k) => visibleColumns[k as keyof typeof visibleColumns])
       .map(getColumnWidth);
-    return `${parts.join(' ')} 60px`.trim();
+    return `60px ${parts.join(' ')}`.trim();
   }, [columnOrder, visibleColumns]);
 
   const today = new Date().toISOString().slice(0, 10);
@@ -538,17 +538,17 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                   className="grid gap-3 px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider"
                   style={{ gridTemplateColumns: gridTemplateColumns }}
                 >
-                      {columnOrder.map((key) => {
-                        if (!visibleColumns[key as keyof typeof visibleColumns]) return null;
-                        const align =
-                          key === 'total' || key === 'paid' || key === 'due' ? 'text-right' : key === 'status' || key === 'action' ? 'text-center' : 'text-left';
+                  <div className="text-center">Actions</div>
+                  {columnOrder.map((key) => {
+                    if (!visibleColumns[key as keyof typeof visibleColumns]) return null;
+                    const align =
+                      key === 'total' || key === 'paid' || key === 'due' ? 'text-right' : key === 'status' || key === 'action' ? 'text-center' : 'text-left';
                     return (
                       <div key={key} className={align}>
                         {columnLabels[key]}
                       </div>
                     );
                   })}
-                  <div className="text-center">Actions</div>
                 </div>
               </div>
 
@@ -578,11 +578,109 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                   paginatedRentals.map((r) => (
                     <div
                       key={r.id}
+                      role="button"
+                      tabIndex={0}
                       onMouseEnter={() => setHoveredRow(r.id)}
                       onMouseLeave={() => setHoveredRow(null)}
-                      className="grid gap-3 px-4 h-14 min-w-[1560px] w-max hover:bg-accent/30 items-center border-b border-border last:border-b-0"
+                      onClick={() => {
+                        setSelectedRental(r);
+                        setViewDetailsOpen(true);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setSelectedRental(r);
+                          setViewDetailsOpen(true);
+                        }
+                      }}
+                      className="grid gap-3 px-4 h-14 min-w-[1560px] w-max hover:bg-accent/30 items-center border-b border-border last:border-b-0 cursor-pointer"
                       style={{ gridTemplateColumns: gridTemplateColumns }}
                     >
+                      <div
+                        className="flex items-center justify-center gap-1"
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => e.stopPropagation()}
+                      >
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              className="w-8 h-8 rounded-lg bg-muted/50 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground"
+                            >
+                              <MoreVertical size={16} />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start" className="bg-card border-border text-foreground w-52">
+                            <DropdownMenuItem
+                              className="hover:bg-muted cursor-pointer"
+                              onClick={() => {
+                                setSelectedRental(r);
+                                setViewDetailsOpen(true);
+                              }}
+                            >
+                              <Eye size={14} className="mr-2 text-blue-400" />
+                              View
+                            </DropdownMenuItem>
+                            {(r.status === 'draft' || r.status === 'booked') && (
+                              <DropdownMenuItem
+                                className="hover:bg-muted cursor-pointer"
+                                onClick={() => onEditRental?.(r)}
+                              >
+                                <Edit size={14} className="mr-2 text-[var(--erp-money-positive)]" />
+                                Edit
+                              </DropdownMenuItem>
+                            )}
+                            {(r.status === 'rented' || r.status === 'overdue') && (
+                              <DropdownMenuItem
+                                className="hover:bg-muted cursor-pointer"
+                                onClick={() => {
+                                  setSelectedRental(r);
+                                  setPaymentDialogOpen(true);
+                                }}
+                              >
+                                <DollarSign size={14} className="mr-2 text-[var(--erp-money-positive)]" />
+                                Add Payment
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem
+                              className="hover:bg-muted cursor-pointer"
+                              onClick={() => {
+                                setSelectedRental(r);
+                                setViewPaymentsOpen(true);
+                              }}
+                            >
+                              <Receipt size={14} className="mr-2 text-blue-400" />
+                              View Payments
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="hover:bg-muted cursor-pointer"
+                              onClick={() => {
+                                setSelectedRental(r);
+                                setViewDetailsPrintMode(true);
+                                setViewDetailsOpen(true);
+                              }}
+                            >
+                              <FileText size={14} className="mr-2 text-purple-400" />
+                              Print
+                            </DropdownMenuItem>
+                            {(r.status === 'draft' || r.status === 'booked') && (
+                              <>
+                                <DropdownMenuSeparator className="bg-muted" />
+                                <DropdownMenuItem
+                                  className="hover:bg-muted cursor-pointer text-red-400"
+                                  onClick={() => {
+                                    setSelectedRental(r);
+                                    setDeleteDialogOpen(true);
+                                  }}
+                                >
+                                  <Trash2 size={14} className="mr-2" />
+                                  Delete
+                                </DropdownMenuItem>
+                              </>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                       {columnOrder.map((key) => {
                         if (!visibleColumns[key as keyof typeof visibleColumns]) return null;
                         let cell: React.ReactNode = null;
@@ -674,13 +772,17 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                             break;
                           case 'action':
                             cell = (
-                              <div className="flex items-center gap-1">
+                              <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                                 {r.status === 'booked' && (
                                   <Button
                                     size="sm"
                                     variant="outline"
                                     className="h-8 text-amber-400 border-amber-500/50 hover:bg-amber-500/20 hover:border-amber-500"
-                                    onClick={() => { setSelectedRental(r); setPickupModalOpen(true); }}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedRental(r);
+                                      setPickupModalOpen(true);
+                                    }}
                                   >
                                     <Truck size={14} className="mr-1" />
                                     Pick Up
@@ -695,7 +797,10 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                                         "h-8 border-green-500/50 hover:bg-green-500/20 hover:border-green-500",
                                         r.status === 'overdue' ? "text-red-400" : "text-[var(--erp-money-positive)]"
                                       )}
-                                      onClick={() => handleReturn(r)}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleReturn(r);
+                                      }}
                                     >
                                       <CornerDownLeft size={14} className="mr-1" />
                                       Return
@@ -726,7 +831,13 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                           }
                           case 'paid': {
                             const canAddPayment = r.status === 'rented' || r.status === 'overdue';
-                            const openPayment = () => { if (canAddPayment) { setSelectedRental(r); setPaymentDialogOpen(true); } };
+                            const openPayment = (e?: React.SyntheticEvent) => {
+                              e?.stopPropagation();
+                              if (canAddPayment) {
+                                setSelectedRental(r);
+                                setPaymentDialogOpen(true);
+                              }
+                            };
                             const dmg = Number(r.damageCharges ?? 0) || 0;
                             const penaltyReceived = r.penaltyPaid === true && dmg > 0;
                             const displayPaid = r.paidAmount + (penaltyReceived ? dmg : 0);
@@ -735,7 +846,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                                 role={canAddPayment ? 'button' : undefined}
                                 tabIndex={canAddPayment ? 0 : undefined}
                                 onClick={openPayment}
-                                onKeyDown={(e) => canAddPayment && (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), openPayment())}
+                                onKeyDown={(e) => canAddPayment && (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), openPayment(e))}
                                 className={cn(
                                   'text-sm text-muted-foreground tabular-nums w-full text-right',
                                   canAddPayment && 'cursor-pointer hover:text-foreground hover:underline'
@@ -749,8 +860,18 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                           }
                           case 'due': {
                             const canAddPayment = r.status === 'rented' || r.status === 'overdue';
-                            const openPayment = () => { if (canAddPayment) { setSelectedRental(r); setPaymentDialogOpen(true); } };
-                            const openPaymentHistory = () => { setSelectedRental(r); setViewPaymentsOpen(true); };
+                            const openPayment = (e?: React.SyntheticEvent) => {
+                              e?.stopPropagation();
+                              if (canAddPayment) {
+                                setSelectedRental(r);
+                                setPaymentDialogOpen(true);
+                              }
+                            };
+                            const openPaymentHistory = (e?: React.SyntheticEvent) => {
+                              e?.stopPropagation();
+                              setSelectedRental(r);
+                              setViewPaymentsOpen(true);
+                            };
                             const dmgDue = Number(r.damageCharges ?? 0) || 0;
                             const penaltyStillOwed =
                               dmgDue > 0 && r.penaltyPaid !== true && (r.status === 'returned' || r.status === 'overdue' || r.status === 'rented');
@@ -762,7 +883,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                                 role="button"
                                 tabIndex={0}
                                 onClick={openPaymentHistory}
-                                onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), openPaymentHistory())}
+                                onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), openPaymentHistory(e))}
                                 className="w-full text-right cursor-pointer hover:opacity-90"
                                 title={penaltyStillOwed ? `Booking due ${formatCurrency(r.dueAmount)} + penalty on account ${formatCurrency(dmgDue)}` : undefined}
                               >
@@ -792,87 +913,6 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                         }
                         return <div key={key}>{cell}</div>;
                       })}
-
-                      <div className="flex items-center justify-center gap-1">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button
-                              className="w-8 h-8 rounded-lg bg-muted/50 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground"
-                            >
-                              <MoreVertical size={16} />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="bg-card border-border text-foreground w-52">
-                            <DropdownMenuItem
-                              className="hover:bg-muted cursor-pointer"
-                              onClick={() => {
-                                setSelectedRental(r);
-                                setViewDetailsOpen(true);
-                              }}
-                            >
-                              <Eye size={14} className="mr-2 text-blue-400" />
-                              View
-                            </DropdownMenuItem>
-                            {(r.status === 'draft' || r.status === 'booked') && (
-                              <DropdownMenuItem
-                                className="hover:bg-muted cursor-pointer"
-                                onClick={() => onEditRental?.(r)}
-                              >
-                                <Edit size={14} className="mr-2 text-[var(--erp-money-positive)]" />
-                                Edit
-                              </DropdownMenuItem>
-                            )}
-                            {(r.status === 'rented' || r.status === 'overdue') && (
-                              <DropdownMenuItem
-                                className="hover:bg-muted cursor-pointer"
-                                onClick={() => {
-                                  setSelectedRental(r);
-                                  setPaymentDialogOpen(true);
-                                }}
-                              >
-                                <DollarSign size={14} className="mr-2 text-[var(--erp-money-positive)]" />
-                                Add Payment
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuItem
-                              className="hover:bg-muted cursor-pointer"
-                              onClick={() => {
-                                setSelectedRental(r);
-                                setViewPaymentsOpen(true);
-                              }}
-                            >
-                              <Receipt size={14} className="mr-2 text-blue-400" />
-                              View Payments
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="hover:bg-muted cursor-pointer"
-                              onClick={() => {
-                                setSelectedRental(r);
-                                setViewDetailsPrintMode(true);
-                                setViewDetailsOpen(true);
-                              }}
-                            >
-                              <FileText size={14} className="mr-2 text-purple-400" />
-                              Print
-                            </DropdownMenuItem>
-                            {(r.status === 'draft' || r.status === 'booked') && (
-                              <>
-                                <DropdownMenuSeparator className="bg-muted" />
-                                <DropdownMenuItem
-                                  className="hover:bg-muted cursor-pointer text-red-400"
-                                  onClick={() => {
-                                    setSelectedRental(r);
-                                    setDeleteDialogOpen(true);
-                                  }}
-                                >
-                                  <Trash2 size={14} className="mr-2" />
-                                  Delete
-                                </DropdownMenuItem>
-                              </>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
                     </div>
                   ))
                 )}

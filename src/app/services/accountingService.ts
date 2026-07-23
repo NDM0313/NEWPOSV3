@@ -657,14 +657,15 @@ export const accountingService = {
     branchId?: string,
     startDate?: string | Date,
     endDate?: string | Date,
-    opts?: { limit?: number; offset?: number }
+    opts?: { limit?: number; offset?: number; mode?: 'list' | 'full' }
   ): Promise<any[] | { data: any[]; total: number }> {
     try {
       // Normalize dates to ISO YYYY-MM-DD so PostgREST accepts them (Date objects get serialized incorrectly otherwise).
       const startStr = startDate == null ? undefined : typeof startDate === 'string' ? startDate.slice(0, 10) : startDate.toISOString().slice(0, 10);
       const endStr = endDate == null ? undefined : typeof endDate === 'string' ? endDate.slice(0, 10) : endDate.toISOString().slice(0, 10);
-      const limit = opts?.limit ?? 500;
+      const limit = opts?.limit ?? 100;
       const offset = opts?.offset ?? 0;
+      const listMode = opts?.mode === 'list';
 
       // SOURCE LOCK (Phase 1): journal_entries + journal_entry_lines only for GL.
       // Embed account name per line for display; avoid payment embed so query works when payment_id column is missing.
@@ -683,7 +684,7 @@ export const accountingService = {
             account:accounts(name, code, type)
           )
         `,
-          opts ? { count: 'exact' } : undefined
+          opts ? { count: listMode ? 'estimated' : 'exact' } : undefined
         )
         .eq('company_id', companyId)
         .order('entry_date', { ascending: false })
@@ -844,6 +845,11 @@ export const accountingService = {
 
       if (import.meta.env?.DEV && validEntries.length !== dataFiltered.length) {
         console.log(`[ACCOUNTING SERVICE] Filtered ${dataFiltered.length} entries to ${validEntries.length} valid entries`);
+      }
+
+      // List mode: skip party/attachment/stock enrichment (detail modal loads as needed).
+      if (listMode) {
+        return opts ? { data: validEntries, total: count ?? validEntries.length } : validEntries;
       }
 
       // Party name on payment row → journal list / workbench can show "AP — Supplier" without extra round-trips in UI.

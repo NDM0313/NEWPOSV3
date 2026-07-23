@@ -14,6 +14,41 @@ function accountCodeDigits(code: string | null | undefined): string {
     .replace(/\D/g, '');
 }
 
+function isBlockedFromLiquidityNameHeuristic(type: string): boolean {
+  if (
+    type === 'liability' ||
+    type === 'equity' ||
+    type === 'revenue' ||
+    type === 'income' ||
+    type === 'expense' ||
+    type === 'cogs' ||
+    type === 'cost_of_goods_sold' ||
+    type === 'inventory' ||
+    type === 'receivable' ||
+    type === 'payable'
+  ) {
+    return true;
+  }
+  return type.includes('liability') || type.includes('payable');
+}
+
+function allowsLiquidityNameHeuristic(type: string): boolean {
+  if (isBlockedFromLiquidityNameHeuristic(type)) return false;
+  return (
+    type === '' ||
+    type === 'asset' ||
+    type === 'other_asset' ||
+    type === 'current_asset' ||
+    type === 'other_current_asset' ||
+    type === 'cash' ||
+    type === 'bank' ||
+    type === 'mobile_wallet' ||
+    type === 'wallet' ||
+    type === 'card' ||
+    type === 'pos'
+  );
+}
+
 export function isUnifiedLiquidityAccount(acc: LiquidityAccountRef | null | undefined): boolean {
   if (!acc) return false;
   const code = String(acc.code ?? '').trim();
@@ -21,10 +56,12 @@ export function isUnifiedLiquidityAccount(acc: LiquidityAccountRef | null | unde
   const type = String(acc.type ?? '').toLowerCase();
   const name = String(acc.name ?? '').toLowerCase();
   if (['1000', '1010', '1020'].includes(code)) return true;
+  if (digits.length >= 4 && digits.startsWith('100')) return true;
+  if (digits.length >= 3 && digits.startsWith('101')) return true;
   if (digits.length >= 3 && digits.startsWith('102')) return true;
   if (['cash', 'bank', 'mobile_wallet', 'wallet', 'card', 'pos'].includes(type)) return true;
   if (/cash|bank|mobile wallet|wallet|jazz|easypaisa|ndm|easy\s*paisa|mobicash|finja|upaisa|sadapay|nayapay/.test(name)) {
-    return true;
+    return allowsLiquidityNameHeuristic(type);
   }
   return false;
 }

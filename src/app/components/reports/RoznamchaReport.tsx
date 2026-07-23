@@ -4,7 +4,7 @@
  * Structure: Filters → Summary Cards → Cash Split → Roznamcha Table.
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAccountingReportReload } from '@/app/hooks/useAccountingReportReload';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { ReportActions } from './ReportActions';
@@ -202,6 +202,10 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
   /** Ledger row filter: single payment (cash/bank/wallet) account — all types when empty */
   const [paymentLedgerAccountId, setPaymentLedgerAccountId] = useState<string>('');
   const [paymentAccountOptions, setPaymentAccountOptions] = useState<Array<{ id: string; label: string }>>([]);
+  const paymentAccountOptionsRef = useRef(paymentAccountOptions);
+  paymentAccountOptionsRef.current = paymentAccountOptions;
+  const loadGenRef = useRef(0);
+  const loadDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Default off: voided payments (e.g. reversed receipts) are excluded from cash book totals. */
   const [includeVoidedReversed, setIncludeVoidedReversed] = useState(false);
   const [dateSort, setDateSort] = useState<'asc' | 'desc'>('asc');
@@ -631,10 +635,12 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
       setLoading(false);
       return;
     }
+    const gen = ++loadGenRef.current;
     const ledgerId = paymentLedgerAccountId.trim() ? paymentLedgerAccountId.trim() : null;
     setLoading(true);
     try {
       const resolved = await resolveRoznamchaMainLoaderSource(companyId);
+      if (gen !== loadGenRef.current) return;
       const mainSource = effectiveRoznamchaMainLoaderSource(resolved);
       setMainLoaderSource(mainSource);
 
@@ -648,18 +654,21 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
         accountFilter,
         includeVoidedReversed,
         paymentLedgerAccountId: ledgerId,
-        paymentAccountOptions,
+        paymentAccountOptions: paymentAccountOptionsRef.current,
         basis: previewBasis,
+        parityCompare: unifiedPreviewEnabled,
       });
+      if (gen !== loadGenRef.current) return;
       setMainUnifiedRows(unified.unifiedRows);
       setData(unified);
     } catch (err) {
+      if (gen !== loadGenRef.current) return;
       console.error('[RoznamchaReport] load failed:', err);
       toast.error('Could not load Roznamcha. Try refreshing or widening the date range.');
       setData(null);
       setMainUnifiedRows([]);
     } finally {
-      setLoading(false);
+      if (gen === loadGenRef.current) setLoading(false);
     }
   }, [
     companyId,
@@ -669,13 +678,19 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
     accountFilter,
     includeVoidedReversed,
     paymentLedgerAccountId,
-    paymentAccountOptions,
     previewBasis,
     reloadEpoch,
+    unifiedPreviewEnabled,
   ]);
 
   useEffect(() => {
-    load();
+    if (loadDebounceRef.current) clearTimeout(loadDebounceRef.current);
+    loadDebounceRef.current = setTimeout(() => {
+      void load();
+    }, 180);
+    return () => {
+      if (loadDebounceRef.current) clearTimeout(loadDebounceRef.current);
+    };
   }, [load]);
   useEffect(() => {
     if (currentPage > totalPages && totalPages >= 1) setCurrentPage(1);
