@@ -451,7 +451,14 @@ export function LedgerStatementCenterV2Page({
       }
     } catch (err: unknown) {
       console.error(err);
-      toast.error('Failed to load statement');
+      const msg = err instanceof Error ? err.message : '';
+      if (msg.includes('Legacy main loader retired') || msg.includes('R8-R2')) {
+        toast.error(
+          'Ledger V2 needs unified ledger flags ON (engine + loader + screen). Enable them in Feature Flags / Developer Tools.',
+        );
+      } else {
+        toast.error('Failed to load statement');
+      }
       setResult(null);
     } finally {
       setLoading(false);

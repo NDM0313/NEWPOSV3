@@ -27,6 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../ui/select';
+import { SearchableSelect } from '../ui/searchable-select';
 import { DatePicker } from '../ui/DatePicker';
 import { format, parseISO, isValid } from 'date-fns';
 import { Loader2 } from 'lucide-react';
@@ -341,18 +342,18 @@ export function BespokeWorkOrderForm(props: BespokeWorkOrderFormProps) {
                   No workers or suppliers found. Add them in Contacts first.
                 </p>
               ) : (
-                <Select value={partyContactId} onValueChange={setPartyContactId}>
-                  <SelectTrigger className="bg-input-background border-border mt-1">
-                    <SelectValue placeholder="Select worker or supplier" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-input-background border-border">
-                    {parties.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {formatPartyOption(p)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  value={partyContactId}
+                  onValueChange={setPartyContactId}
+                  options={parties.map((p) => ({
+                    id: p.id,
+                    name: formatPartyOption(p),
+                  }))}
+                  placeholder="Select worker or supplier"
+                  searchPlaceholder="Search worker or supplier…"
+                  emptyText="No matching worker or supplier."
+                  className="mt-1"
+                />
               )}
             </div>
             <div>

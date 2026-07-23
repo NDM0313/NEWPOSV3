@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Loader2, Package, Plus, Scissors } from 'lucide-react';
 import {
   cancelBespokeWorkOrder,
@@ -10,10 +10,19 @@ import {
   repostBespokeWorkOrderStock,
   updateBespokeWorkOrder,
   type BespokeWorkOrderRow,
+  type BespokeWorkOrderStatus,
   type WorkOrderStockPostStatus,
 } from '../../api/bespokeWorkOrders';
 import { getContacts } from '../../api/contacts';
+import { CustomSearchableSheet } from '../common';
 import { WorkOrderDetailSheet } from './WorkOrderDetailSheet';
+
+function formatWoDate(iso?: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
 
 interface SaleBespokeWorkOrdersProps {
   companyId: string;
@@ -47,16 +56,19 @@ export function SaleBespokeWorkOrders({
     setLoading(true);
     setError(null);
     try {
-      const [wo, pi, contacts] = await Promise.all([
+      const [wo, pi, suppliersRes, workersRes] = await Promise.all([
         listBespokeWorkOrdersBySale(saleId),
         listBespokeParentSaleItems(saleId),
         getContacts(companyId, 'supplier'),
+        getContacts(companyId, 'worker'),
       ]);
       setOrders(wo);
       setParents(pi);
-      const workerList = (contacts.data ?? [])
-        .filter((c) => c.id && c.name)
-        .map((c) => ({ id: c.id!, name: c.name! }));
+      const byId = new Map<string, { id: string; name: string }>();
+      for (const c of [...(suppliersRes.data ?? []), ...(workersRes.data ?? [])]) {
+        if (c.id && c.name) byId.set(c.id, { id: c.id, name: c.name });
+      }
+      const workerList = Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name));
       setTailors(workerList);
       if (!parentItemId && pi[0]?.id) setParentItemId(pi[0].id);
       if (!tailorId && workerList[0]?.id) setTailorId(workerList[0].id);
@@ -135,6 +147,30 @@ export function SaleBespokeWorkOrders({
     }
   };
 
+  const handleStart = async (woId: string) => {
+    const wo = orders.find((row) => row.id === woId);
+    if (!wo) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await updateBespokeWorkOrder({
+        workOrderId: wo.id,
+        tailorContactId: wo.tailor_contact_id || wo.tailor?.id || '',
+        productionCost: Number(wo.production_cost) || 0,
+        notes: wo.notes ?? null,
+        status: 'in_progress',
+        createdAt: wo.created_at ?? null,
+        completedAt: null,
+        userId,
+      });
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Start failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handlePostStock = async (woId: string) => {
     setBusy(true);
     setError(null);
@@ -153,6 +189,9 @@ export function SaleBespokeWorkOrders({
     tailorContactId: string;
     productionCost: number;
     notes: string;
+    status: BespokeWorkOrderStatus;
+    createdAt: string | null;
+    completedAt: string | null;
   }) => {
     setBusy(true);
     setError(null);
@@ -162,6 +201,9 @@ export function SaleBespokeWorkOrders({
         tailorContactId: params.tailorContactId,
         productionCost: params.productionCost,
         notes: params.notes,
+        status: params.status,
+        createdAt: params.createdAt,
+        completedAt: params.status === 'completed' ? params.completedAt : null,
         userId,
       });
       await refresh();
@@ -188,6 +230,14 @@ export function SaleBespokeWorkOrders({
 
   const posted = String(saleStatus).toLowerCase() === 'final';
   const showCreateForm = !posted && parents.length > 0 && (orders.length === 0 || showCreate);
+  const tailorOptions = useMemo(
+    () =>
+      tailors.map((t) => ({
+        value: t.id,
+        label: t.name,
+      })),
+    [tailors],
+  );
 
   if (loading) {
     return (
@@ -204,13 +254,21 @@ export function SaleBespokeWorkOrders({
       </div>
       {error && <p className="text-xs text-red-400">{error}</p>}
       {orders.length === 0 ? (
-        <p className="text-xs text-gray-500">No work orders yet. Create one per custom dress line.</p>
+        <p className="text-xs text-gray-500">
+          {!posted && parents.length === 0
+            ? 'No sale lines to attach a work order.'
+            : 'No work orders yet. Create one per dress line.'}
+        </p>
       ) : (
         <ul className="space-y-2 text-sm">
           {orders.map((wo) => {
             const stock = stockById[wo.id];
             const needsStock = wo.status === 'completed' && stock?.needsStockPost === true;
             const stockOk = wo.status === 'completed' && stock && !stock.needsStockPost;
+            const canStart = wo.status === 'draft';
+            const canComplete = wo.status === 'in_progress';
+            const receivedLabel = formatWoDate(wo.created_at);
+            const completedLabel = formatWoDate(wo.completed_at);
             return (
               <li
                 key={wo.id}
@@ -230,7 +288,20 @@ export function SaleBespokeWorkOrders({
                     {wo.work_order_no} · {wo.status}
                     {wo.tailor?.name ? ` · ${wo.tailor.name}` : ''}
                   </span>
-                  {wo.status !== 'completed' && wo.status !== 'cancelled' && (
+                  {canStart && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void handleStart(wo.id);
+                      }}
+                      className="text-xs text-blue-400 font-medium"
+                    >
+                      Start
+                    </button>
+                  )}
+                  {canComplete && (
                     <button
                       type="button"
                       disabled={busy}
@@ -244,6 +315,10 @@ export function SaleBespokeWorkOrders({
                     </button>
                   )}
                 </div>
+                <p className="text-[11px] text-gray-500">
+                  {receivedLabel ? `Received ${receivedLabel}` : 'Received —'}
+                  {completedLabel ? ` · Completed ${completedLabel}` : ''}
+                </p>
                 {needsStock && (
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
@@ -296,17 +371,21 @@ export function SaleBespokeWorkOrders({
               </option>
             ))}
           </select>
-          <select
+          <CustomSearchableSheet
+            label=""
+            sheetTitle="Worker / supplier"
             value={tailorId}
-            onChange={(e) => setTailorId(e.target.value)}
-            className="w-full h-9 bg-gray-900 border border-gray-700 rounded text-sm text-white"
-          >
-            {tailors.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
+            onChange={setTailorId}
+            options={tailorOptions}
+            placeholder={tailors.length === 0 ? 'No workers or suppliers' : 'Search worker or supplier…'}
+            searchPlaceholder="Search name…"
+            hint={
+              tailors.length === 0
+                ? 'Add workers or suppliers in Contacts first.'
+                : undefined
+            }
+            zIndexClass="z-[85]"
+          />
           <input
             type="number"
             placeholder="Production cost"
@@ -347,6 +426,7 @@ export function SaleBespokeWorkOrders({
         busy={busy}
         workers={tailors}
         onClose={() => setDetailWo(null)}
+        onStart={(id) => void handleStart(id)}
         onComplete={(id) => void handleComplete(id)}
         onPostStock={(id) => void handlePostStock(id)}
         onSaveEdit={handleSaveEdit}

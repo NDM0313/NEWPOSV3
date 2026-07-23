@@ -1,7 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Loader2, Package, Pencil, X } from 'lucide-react';
-import type { BespokeWorkOrderRow, WorkOrderStockPostStatus } from '../../api/bespokeWorkOrders';
+import type {
+  BespokeWorkOrderRow,
+  BespokeWorkOrderStatus,
+  WorkOrderStockPostStatus,
+} from '../../api/bespokeWorkOrders';
 import { ConfirmActionSheet } from '../common/ConfirmActionSheet';
+import { CustomSearchableSheet } from '../common';
 
 function saleRef(wo: BespokeWorkOrderRow): string {
   return (
@@ -12,6 +17,29 @@ function saleRef(wo: BespokeWorkOrderRow): string {
   );
 }
 
+function toDateInputValue(iso?: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function formatDisplayDate(iso?: string | null): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+const EDIT_STATUS_OPTIONS: Array<{ value: Exclude<BespokeWorkOrderStatus, 'cancelled'>; label: string }> = [
+  { value: 'draft', label: 'Draft' },
+  { value: 'in_progress', label: 'In progress' },
+  { value: 'completed', label: 'Completed' },
+];
+
 export interface WorkOrderDetailSheetProps {
   open: boolean;
   workOrder: BespokeWorkOrderRow | null;
@@ -19,6 +47,7 @@ export interface WorkOrderDetailSheetProps {
   busy?: boolean;
   workers?: Array<{ id: string; name: string }>;
   onClose: () => void;
+  onStart?: (woId: string) => void;
   onComplete?: (woId: string) => void;
   onPostStock?: (woId: string) => void;
   onSaveEdit?: (params: {
@@ -26,6 +55,9 @@ export interface WorkOrderDetailSheetProps {
     tailorContactId: string;
     productionCost: number;
     notes: string;
+    status: BespokeWorkOrderStatus;
+    createdAt: string | null;
+    completedAt: string | null;
   }) => void | Promise<void>;
   onCancelWorkOrder?: (woId: string) => void | Promise<void>;
 }
@@ -37,6 +69,7 @@ export function WorkOrderDetailSheet({
   busy = false,
   workers = [],
   onClose,
+  onStart,
   onComplete,
   onPostStock,
   onSaveEdit,
@@ -46,6 +79,9 @@ export function WorkOrderDetailSheet({
   const [tailorId, setTailorId] = useState('');
   const [cost, setCost] = useState('');
   const [notes, setNotes] = useState('');
+  const [status, setStatus] = useState<Exclude<BespokeWorkOrderStatus, 'cancelled'>>('draft');
+  const [receivedDate, setReceivedDate] = useState('');
+  const [completedDate, setCompletedDate] = useState('');
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
@@ -59,19 +95,41 @@ export function WorkOrderDetailSheet({
     setTailorId(workOrder.tailor_contact_id || workOrder.tailor?.id || '');
     setCost(String(Number(workOrder.production_cost) || ''));
     setNotes(workOrder.notes ?? '');
+    setStatus(workOrder.status === 'cancelled' ? 'draft' : workOrder.status);
+    setReceivedDate(toDateInputValue(workOrder.created_at));
+    setCompletedDate(toDateInputValue(workOrder.completed_at));
     setEditing(false);
     setConfirmCancel(false);
     setEditError(null);
   }, [open, workOrder]);
 
+  const workerOptions = useMemo(() => {
+    const opts = workers.map((w) => ({ value: w.id, label: w.name }));
+    const currentName = workOrder?.tailor?.name;
+    if (tailorId && !opts.some((o) => o.value === tailorId) && currentName) {
+      opts.unshift({ value: tailorId, label: currentName });
+    }
+    return opts;
+  }, [workers, tailorId, workOrder?.tailor?.name]);
+
   if (!open || !workOrder) return null;
 
   const cancelled = workOrder.status === 'cancelled';
-  const canComplete = workOrder.status !== 'completed' && !cancelled;
+  const canStart = workOrder.status === 'draft' && !!onStart;
+  const canComplete = workOrder.status === 'in_progress' && !!onComplete;
   const needsStock = workOrder.status === 'completed' && stock?.needsStockPost === true;
   const stockOk = workOrder.status === 'completed' && stock && !stock.needsStockPost;
   const canEdit = !cancelled && !!onSaveEdit;
   const canCancel = !cancelled && !!onCancelWorkOrder;
+
+  const handleStatusChange = (next: Exclude<BespokeWorkOrderStatus, 'cancelled'>) => {
+    setStatus(next);
+    if (next !== 'completed') {
+      setCompletedDate('');
+    } else if (!completedDate) {
+      setCompletedDate(toDateInputValue(new Date().toISOString()));
+    }
+  };
 
   const handleSave = async () => {
     if (!onSaveEdit) return;
@@ -84,12 +142,23 @@ export function WorkOrderDetailSheet({
       setEditError('Production cost must be greater than 0.');
       return;
     }
+    if (!receivedDate) {
+      setEditError('Select received date.');
+      return;
+    }
+    if (status === 'completed' && !completedDate) {
+      setEditError('Select completed date when status is Completed.');
+      return;
+    }
     setEditError(null);
     await onSaveEdit({
       workOrderId: workOrder.id,
       tailorContactId: tailorId,
       productionCost,
       notes,
+      status,
+      createdAt: receivedDate || null,
+      completedAt: status === 'completed' ? completedDate || null : null,
     });
     setEditing(false);
   };
@@ -134,22 +203,55 @@ export function WorkOrderDetailSheet({
             <div className="space-y-3">
               {editError ? <p className="text-xs text-red-400">{editError}</p> : null}
               <div>
-                <label className="block text-xs text-[#9CA3AF] mb-1">Worker</label>
+                <label className="block text-xs text-[#9CA3AF] mb-1">Status</label>
                 <select
-                  value={tailorId}
-                  onChange={(e) => setTailorId(e.target.value)}
+                  value={status}
+                  onChange={(e) =>
+                    handleStatusChange(e.target.value as Exclude<BespokeWorkOrderStatus, 'cancelled'>)
+                  }
                   className="w-full h-10 bg-gray-900 border border-gray-700 rounded-lg text-sm text-white px-2"
                 >
-                  {workers.length === 0 ? (
-                    <option value={tailorId}>{workOrder.tailor?.name || 'Current worker'}</option>
-                  ) : (
-                    workers.map((w) => (
-                      <option key={w.id} value={w.id}>
-                        {w.name}
-                      </option>
-                    ))
-                  )}
+                  {EDIT_STATUS_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
                 </select>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs text-[#9CA3AF] mb-1">Received</label>
+                  <input
+                    type="date"
+                    value={receivedDate}
+                    onChange={(e) => setReceivedDate(e.target.value)}
+                    className="w-full h-10 bg-gray-900 border border-gray-700 rounded-lg text-sm text-white px-2"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-[#9CA3AF] mb-1">Completed</label>
+                  <input
+                    type="date"
+                    value={completedDate}
+                    onChange={(e) => setCompletedDate(e.target.value)}
+                    disabled={status !== 'completed'}
+                    className="w-full h-10 bg-gray-900 border border-gray-700 rounded-lg text-sm text-white px-2 disabled:opacity-50"
+                  />
+                </div>
+              </div>
+              <div>
+                <CustomSearchableSheet
+                  label="Worker"
+                  sheetTitle="Worker / supplier"
+                  value={tailorId}
+                  onChange={setTailorId}
+                  options={workerOptions}
+                  placeholder={
+                    workerOptions.length === 0 ? 'No workers or suppliers' : 'Search worker or supplier…'
+                  }
+                  searchPlaceholder="Search name…"
+                  zIndexClass="z-[90]"
+                />
               </div>
               <div>
                 <label className="block text-xs text-[#9CA3AF] mb-1">Production cost</label>
@@ -209,6 +311,14 @@ export function WorkOrderDetailSheet({
                   </div>
                 ) : null}
                 <div className="flex justify-between gap-3">
+                  <dt className="text-[#9CA3AF]">Received</dt>
+                  <dd className="text-white text-right">{formatDisplayDate(workOrder.created_at)}</dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-[#9CA3AF]">Completed</dt>
+                  <dd className="text-white text-right">{formatDisplayDate(workOrder.completed_at)}</dd>
+                </div>
+                <div className="flex justify-between gap-3">
                   <dt className="text-[#9CA3AF]">Production cost</dt>
                   <dd className="text-white text-right">
                     Rs. {Number(workOrder.production_cost || 0).toLocaleString()}
@@ -250,7 +360,18 @@ export function WorkOrderDetailSheet({
                       <Pencil size={14} /> Edit
                     </button>
                   ) : null}
-                  {canComplete && onComplete ? (
+                  {canStart ? (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => onStart(workOrder.id)}
+                      className="h-10 px-4 rounded-lg bg-blue-600/90 text-white text-sm font-semibold disabled:opacity-50 inline-flex items-center gap-2"
+                    >
+                      {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                      Start
+                    </button>
+                  ) : null}
+                  {canComplete ? (
                     <button
                       type="button"
                       disabled={busy}

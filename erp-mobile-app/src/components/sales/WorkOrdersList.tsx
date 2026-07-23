@@ -31,6 +31,13 @@ function saleRef(wo: BespokeWorkOrderRow): string {
   );
 }
 
+function formatWoDate(iso?: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
 interface WorkOrdersListProps {
   companyId: string;
   branchId?: string | null;
@@ -137,6 +144,30 @@ export function WorkOrdersList({
     }
   };
 
+  const handleStart = async (woId: string) => {
+    const wo = orders.find((row) => row.id === woId);
+    if (!wo) return;
+    setBusyId(woId);
+    setError(null);
+    try {
+      await updateBespokeWorkOrder({
+        workOrderId: wo.id,
+        tailorContactId: wo.tailor_contact_id || wo.tailor?.id || '',
+        productionCost: Number(wo.production_cost) || 0,
+        notes: wo.notes ?? null,
+        status: 'in_progress',
+        createdAt: wo.created_at ?? null,
+        completedAt: null,
+        userId,
+      });
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Start failed');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const handlePostStock = async (woId: string) => {
     setBusyId(woId);
     setError(null);
@@ -155,6 +186,9 @@ export function WorkOrdersList({
     tailorContactId: string;
     productionCost: number;
     notes: string;
+    status: BespokeWorkOrderStatus;
+    createdAt: string | null;
+    completedAt: string | null;
   }) => {
     setBusyId(params.workOrderId);
     setError(null);
@@ -164,6 +198,9 @@ export function WorkOrdersList({
         tailorContactId: params.tailorContactId,
         productionCost: params.productionCost,
         notes: params.notes,
+        status: params.status,
+        createdAt: params.createdAt,
+        completedAt: params.status === 'completed' ? params.completedAt : null,
         userId,
       });
       await refresh();
@@ -230,7 +267,10 @@ export function WorkOrdersList({
             const stock = stockById[wo.id];
             const needsStock = wo.status === 'completed' && stock?.needsStockPost === true;
             const stockOk = wo.status === 'completed' && stock && !stock.needsStockPost;
-            const canComplete = wo.status !== 'completed' && wo.status !== 'cancelled';
+            const canStart = wo.status === 'draft';
+            const canComplete = wo.status === 'in_progress';
+            const receivedLabel = formatWoDate(wo.created_at);
+            const completedLabel = formatWoDate(wo.completed_at);
             const busy = busyId === wo.id;
             return (
               <li
@@ -256,6 +296,10 @@ export function WorkOrdersList({
                     {wo.parent_item?.product_name && (
                       <p className="text-[11px] text-white/50 mt-0.5">{wo.parent_item.product_name}</p>
                     )}
+                    <p className="text-[11px] text-white/45 mt-1">
+                      {receivedLabel ? `Received ${receivedLabel}` : 'Received —'}
+                      {completedLabel ? ` · Completed ${completedLabel}` : ''}
+                    </p>
                   </div>
                   <span
                     className={`text-[10px] px-1.5 py-0.5 rounded border capitalize ${
@@ -289,6 +333,19 @@ export function WorkOrdersList({
                 </div>
 
                 <div className="flex flex-wrap gap-2">
+                  {canStart && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void handleStart(wo.id);
+                      }}
+                      className="h-8 px-3 rounded-lg bg-blue-600/90 text-white text-xs font-semibold disabled:opacity-50"
+                    >
+                      {busy ? '…' : 'Start'}
+                    </button>
+                  )}
                   {canComplete && (
                     <button
                       type="button"
@@ -329,6 +386,7 @@ export function WorkOrdersList({
         busy={!!busyId}
         workers={workers}
         onClose={() => setDetailWo(null)}
+        onStart={(id) => void handleStart(id)}
         onComplete={(id) => void handleComplete(id)}
         onPostStock={(id) => void handlePostStock(id)}
         onSaveEdit={handleSaveEdit}

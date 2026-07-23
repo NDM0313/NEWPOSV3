@@ -36,7 +36,7 @@ import {
   isPureManualJournalReferenceType,
 } from '@/app/lib/unifiedTransactionEdit';
 import { dispatchOpenAddEntryV2, type AddEntryV2Origin } from '@/app/components/accounting/AddEntryV2Host';
-import { journalReversalBlockedReason } from '@/app/lib/journalEntryEditPolicy';
+import { journalReversalBlockedReason, canOpenOrphanAdjustmentInJournalEditor } from '@/app/lib/journalEntryEditPolicy';
 import { resolvePaymentIdForMutation } from '@/app/lib/paymentRowEditRouting';
 import { getPaymentChainMutationBlockReason, fetchPaymentChainState } from '@/app/services/paymentChainMutationGuard';
 import {
@@ -831,7 +831,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
           return;
         case 'adjustment_editor': {
           const rtAdj = String(transaction.reference_type || '').toLowerCase();
-          if (isPureManualJournalReferenceType(rtAdj)) {
+          const openPureJournalEditor = () => {
             if (typeof window !== 'undefined') {
               dispatchOpenAddEntryV2({
                 entryType: 'pure_journal',
@@ -841,6 +841,9 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
             }
             if (editOrigin !== 'account_ledger') setCurrentView('accounting');
             onClose();
+          };
+          if (isPureManualJournalReferenceType(rtAdj)) {
+            openPureJournalEditor();
             return;
           }
           if (resolution.sourceType === 'expense' && resolution.sourceId) {
@@ -857,8 +860,18 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
             toast.message('Purchase adjustments follow the PO. Open the purchase from Purchases to change amounts.');
             return;
           }
+          // Orphan free-form (e.g. legacy deposit) — open journal editor, not a dead toast
+          if (
+            canOpenOrphanAdjustmentInJournalEditor(rtAdj, {
+              sourceType: resolution.sourceType,
+              sourceId: resolution.sourceId,
+            })
+          ) {
+            openPureJournalEditor();
+            return;
+          }
           toast.message(
-            'This adjustment is source-controlled. Open the original document from its module, or use Reverse to correct amounts.'
+            'This adjustment is source-controlled. Open the original document from its module, or use Cancel Entry to reverse amounts.',
           );
           return;
         }

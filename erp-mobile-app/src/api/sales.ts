@@ -843,7 +843,15 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
     }
   }
 
-  const itemsWithSaleId = items.map((item) => {
+  /**
+   * Web parity (`insertSaleItemsOrdered`): never send `parent_line_index` to Postgres —
+   * that column does not exist on `sales_items`. Resolve index → `bespoke_parent_item_id` after insert.
+   */
+  type PreparedItem = {
+    row: Record<string, unknown>;
+    parentIdx: number | null;
+  };
+  const prepared: PreparedItem[] = items.map((item) => {
     const row: Record<string, unknown> = {
       sale_id: saleId,
       product_id: item.productId,
@@ -863,24 +871,72 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
       row.customization_details =
         buildBespokeMetadataForPersist(item.customizationDetails) ?? item.customizationDetails;
     }
-    if (item.bespokeParentItemId != null) {
+    const parentIdx =
+      item.parentLineIndex != null && Number.isFinite(Number(item.parentLineIndex))
+        ? Number(item.parentLineIndex)
+        : null;
+    if (parentIdx != null && parentIdx >= 0) {
+      // Parent id resolved after batch insert
+    } else if (item.bespokeParentItemId != null) {
       row.bespoke_parent_item_id = item.bespokeParentItemId;
     }
-    if (item.parentLineIndex != null) {
-      row.parent_line_index = item.parentLineIndex;
-    }
-    return row;
+    return { row, parentIdx };
   });
 
   let itemsError: { message: string } | null = null;
-  const { error: salesItemsErr } = await supabase.from('sales_items').insert(itemsWithSaleId);
-  if (salesItemsErr) {
-    if (salesItemsErr.code === '42P01' || String(salesItemsErr.message).includes('does not exist')) {
-      const { error: fallbackErr } = await supabase.from('sale_items').insert(itemsWithSaleId);
-      itemsError = fallbackErr;
-    } else {
-      itemsError = salesItemsErr;
+  let insertedIds: (string | null)[] = [];
+  {
+    const payload = prepared.map((p) => p.row);
+    let res = await supabase.from('sales_items').insert(payload).select('id');
+    if (res.error) {
+      if (res.error.code === '42P01' || String(res.error.message).includes('does not exist')) {
+        res = await supabase.from('sale_items').insert(payload).select('id');
+      }
     }
+    if (res.error) {
+      itemsError = res.error;
+    } else {
+      insertedIds = (res.data ?? []).map((r: { id?: string }) => r.id ?? null);
+    }
+  }
+
+  if (!itemsError && insertedIds.length === prepared.length) {
+    const parentPatches: { id: string; bespoke_parent_item_id: string }[] = [];
+    prepared.forEach((p, idx) => {
+      const parentIdx = p.parentIdx;
+      if (parentIdx == null || parentIdx < 0 || parentIdx >= insertedIds.length) return;
+      const childId = insertedIds[idx];
+      const parentId = insertedIds[parentIdx];
+      if (childId && parentId) {
+        parentPatches.push({ id: childId, bespoke_parent_item_id: parentId });
+      }
+    });
+    if (parentPatches.length > 0) {
+      const patchResults = await Promise.all(
+        parentPatches.map((patch) =>
+          supabase
+            .from('sales_items')
+            .update({ bespoke_parent_item_id: patch.bespoke_parent_item_id })
+            .eq('id', patch.id),
+        ),
+      );
+      const patchFail = patchResults.find((r) => r.error);
+      if (patchFail?.error) {
+        // Retry on legacy table name if needed
+        const retry = await Promise.all(
+          parentPatches.map((patch) =>
+            supabase
+              .from('sale_items')
+              .update({ bespoke_parent_item_id: patch.bespoke_parent_item_id })
+              .eq('id', patch.id),
+          ),
+        );
+        const retryFail = retry.find((r) => r.error);
+        if (retryFail?.error) itemsError = retryFail.error;
+      }
+    }
+  } else if (!itemsError && prepared.length > 0 && insertedIds.length !== prepared.length) {
+    itemsError = { message: 'Sale items insert returned incomplete ids; cannot resolve fabric parent links.' };
   }
 
   if (itemsError) {

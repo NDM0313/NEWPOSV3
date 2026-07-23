@@ -55,13 +55,32 @@ function liquidityChipLabel(type: RoznamchaRowWithBalance['accountType']): strin
   return null;
 }
 
-function rowSortTimestamp(r: RoznamchaRowWithBalance): number {
-  const t = r.time?.length === 5 ? `${r.time}:00` : r.time || '12:00:00';
-  try {
-    return new Date(`${r.date}T${t}`).getTime();
-  } catch {
-    return 0;
-  }
+function rowSortTimeKey(r: { time?: string | null }): string {
+  const t = String(r.time || '').trim();
+  if (t.length === 5) return `${t}:00`;
+  if (t.length >= 8) return t.slice(0, 8);
+  return '00:00:00';
+}
+
+/** Cash-book order: business date → time → ref → id (stable). */
+function compareRoznamchaRowsChronological(a: RoznamchaRowWithBalance, b: RoznamchaRowWithBalance): number {
+  const dateA = String(a.date || '');
+  const dateB = String(b.date || '');
+  if (dateA < dateB) return -1;
+  if (dateA > dateB) return 1;
+  const timeA = rowSortTimeKey(a);
+  const timeB = rowSortTimeKey(b);
+  if (timeA < timeB) return -1;
+  if (timeA > timeB) return 1;
+  const refA = String(a.journalEntryNo || a.ref || '');
+  const refB = String(b.journalEntryNo || b.ref || '');
+  if (refA < refB) return -1;
+  if (refA > refB) return 1;
+  const idA = String(a.id || '');
+  const idB = String(b.id || '');
+  if (idA < idB) return -1;
+  if (idA > idB) return 1;
+  return 0;
 }
 
 export function DayBookReport({ onBack, companyId, branchId, user, reportRefreshEpoch = 0 }: DayBookReportProps) {
@@ -73,7 +92,7 @@ export function DayBookReport({ onBack, companyId, branchId, user, reportRefresh
   const [liquidity, setLiquidity] = useState<AccountFilter>('all');
   const [paymentLedgerAccountId, setPaymentLedgerAccountId] = useState('');
   const [includeVoided, setIncludeVoided] = useState(false);
-  const [dateSort, setDateSort] = useState<DateSort>('desc');
+  const [dateSort, setDateSort] = useState<DateSort>('asc');
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [paymentAccountOptions, setPaymentAccountOptions] = useState<Array<{ id: string; label: string }>>([]);
 
@@ -174,11 +193,8 @@ export function DayBookReport({ onBack, companyId, branchId, user, reportRefresh
   const orderedRozRows = useMemo(() => {
     if (!roznamcha) return [];
     const rows = [...roznamcha.rows];
-    rows.sort((a, b) => {
-      const ta = rowSortTimestamp(a);
-      const tb = rowSortTimestamp(b);
-      return dateSort === 'asc' ? ta - tb : tb - ta;
-    });
+    rows.sort(compareRoznamchaRowsChronological);
+    if (dateSort === 'desc') rows.reverse();
     return rows;
   }, [roznamcha, dateSort]);
 

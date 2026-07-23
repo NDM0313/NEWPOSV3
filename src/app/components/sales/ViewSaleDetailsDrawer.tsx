@@ -14,7 +14,6 @@ import { getContactWhatsAppPhone, openWhatsAppShare } from '@/app/lib/phoneWhats
 import { UnifiedSalesInvoiceView } from '@/app/documents';
 import { BespokeInstructionBullets } from '@/app/components/bespoke/BespokeInstructionBullets';
 import { BespokeWorkOrdersPanel } from '@/app/components/bespoke/BespokeWorkOrdersPanel';
-import { hasBespokeMetadataContent, buildBespokeMetadataForPersist, parseCustomizationDetails } from '@/app/types/bespoke';
 import { PackingListWorkflow } from '@/app/wholesale/PackingListWorkflow';
 import { WorkflowNextStepBanner } from '@/app/workflows';
 import type { InvoiceTemplateType } from '@/app/types/invoiceDocument';
@@ -1162,19 +1161,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                   branchId={sale.branchId}
                   formatCurrency={formatCurrency}
                   parentItems={(sale.items ?? [])
-                    .filter((item: { bespokeParentItemId?: string | null; id?: string }) => !item.bespokeParentItemId)
-                    .filter((item: { customizationDetails?: unknown; customization_details?: unknown }) =>
-                      hasBespokeMetadataContent(
-                        buildBespokeMetadataForPersist(
-                          (item as { customizationDetails?: unknown }).customizationDetails ??
-                            (item as { customization_details?: unknown }).customization_details,
-                        ) ??
-                          parseCustomizationDetails(
-                            (item as { customizationDetails?: unknown }).customizationDetails ??
-                              (item as { customization_details?: unknown }).customization_details,
-                          ),
-                      ),
-                    )
+                    .filter((item: { bespokeParentItemId?: string | null }) => !item.bespokeParentItemId)
                     .map((item: { id?: string; productName?: string; name?: string; customizationDetails?: unknown; customization_details?: unknown }) => ({
                       id: String(item.id),
                       productName: item.productName ?? item.name ?? 'Item',

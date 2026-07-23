@@ -1737,8 +1737,20 @@ function sortRoznamchaRows(rows: RoznamchaRow[]): void {
   rows.sort((a, b) => {
     if (a.date < b.date) return -1;
     if (a.date > b.date) return 1;
-    if (a.time < b.time) return -1;
-    if (a.time > b.time) return 1;
+    const timeA = String(a.time || '').trim() || '00:00:00';
+    const timeB = String(b.time || '').trim() || '00:00:00';
+    const normA = timeA.length === 5 ? `${timeA}:00` : timeA.slice(0, 8);
+    const normB = timeB.length === 5 ? `${timeB}:00` : timeB.slice(0, 8);
+    if (normA < normB) return -1;
+    if (normA > normB) return 1;
+    const refA = String(a.journalEntryNo || a.ref || '');
+    const refB = String(b.journalEntryNo || b.ref || '');
+    if (refA < refB) return -1;
+    if (refA > refB) return 1;
+    const idA = String(a.id || '');
+    const idB = String(b.id || '');
+    if (idA < idB) return -1;
+    if (idA > idB) return 1;
     return 0;
   });
 }

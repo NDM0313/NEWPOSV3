@@ -21,6 +21,7 @@ import {
   type TransactionAttachment,
 } from '@/app/utils/transactionAttachments';
 import { resolveStockMovementDisplayAmount } from '@/app/utils/stockMovementValuation';
+import { canUpdateViaManualJournalEditor } from '@/app/lib/journalEntryEditPolicy';
 
 export interface JournalEntry {
   id?: string;
@@ -4564,6 +4565,7 @@ export const accountingService = {
 
   /**
    * Pure manual journal (reference_type = journal or legacy manual): update header and/or replace lines.
+   * Also allows transfer and orphan free-form types (e.g. legacy deposit) — same gate as Add Entry V2 open path.
    */
   async updateManualJournalEntry(
     companyId: string,
@@ -4578,7 +4580,7 @@ export const accountingService = {
   ): Promise<{ ok: boolean; error?: string }> {
     const { data: row, error: selErr } = await supabase
       .from('journal_entries')
-      .select('id, reference_type, is_void')
+      .select('id, reference_type, is_void, reference_id, payment_id')
       .eq('company_id', companyId)
       .eq('id', journalEntryId)
       .maybeSingle();
@@ -4587,7 +4589,9 @@ export const accountingService = {
     if (!row) return { ok: false, error: 'Journal not found' };
     if ((row as { is_void?: boolean }).is_void) return { ok: false, error: 'Void journal cannot be edited' };
     const rt = String((row as { reference_type?: string }).reference_type || '').toLowerCase();
-    if (rt !== 'journal' && rt !== 'manual' && rt !== 'transfer') {
+    const referenceId = (row as { reference_id?: string | null }).reference_id;
+    const paymentId = (row as { payment_id?: string | null }).payment_id;
+    if (!canUpdateViaManualJournalEditor(rt, { referenceId, paymentId })) {
       return { ok: false, error: 'Only manual (journal/transfer) entries can be edited here; use Edit source for posted documents.' };
     }
 

@@ -22,6 +22,7 @@ export interface BespokeWorkOrderRow {
   status: BespokeWorkOrderStatus;
   instructions_snapshot?: Record<string, unknown>;
   notes?: string | null;
+  created_at?: string;
   completed_at?: string | null;
   journal_entry_id?: string | null;
   tailor?: { id: string; name?: string; phone?: string | null };
@@ -255,12 +256,21 @@ export async function repostBespokeWorkOrderStock(
   return runCompleteBespokeWorkOrderRpc(workOrderId, userId);
 }
 
+function toWorkOrderTimestamp(d?: Date | string | null): string | null {
+  if (!d) return null;
+  const date = d instanceof Date ? d : new Date(d);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString();
+}
+
 export async function updateBespokeWorkOrder(params: {
   workOrderId: string;
   tailorContactId: string;
   productionCost: number;
   notes?: string | null;
   status?: BespokeWorkOrderStatus | null;
+  createdAt?: Date | string | null;
+  completedAt?: Date | string | null;
   userId?: string;
 }): Promise<BespokeWorkOrderRow> {
   if (!isSupabaseConfigured) throw new Error('App not configured.');
@@ -272,6 +282,8 @@ export async function updateBespokeWorkOrder(params: {
     p_notes: params.notes?.trim() || null,
     p_user_id: erpUserId,
     p_status: params.status ?? null,
+    p_created_at: toWorkOrderTimestamp(params.createdAt),
+    p_completed_at: toWorkOrderTimestamp(params.completedAt),
   });
   if (error) throw new Error(error.message);
   const result = data as { success?: boolean; error?: string };
@@ -318,7 +330,7 @@ export async function listBespokeParentSaleItems(saleId: string): Promise<
 > {
   const { data, error } = await supabase
     .from('sales_items')
-    .select('id, product_name, sku, quantity, bespoke_parent_item_id, customization_details, product:products(sku)')
+    .select('id, product_name, sku, quantity, bespoke_parent_item_id, product:products(sku)')
     .eq('sale_id', saleId);
   if (error) throw new Error(error.message);
   const rows = (data ?? []) as Array<{
@@ -327,15 +339,12 @@ export async function listBespokeParentSaleItems(saleId: string): Promise<
     sku: string | null;
     quantity: number;
     bespoke_parent_item_id?: string | null;
-    customization_details?: unknown;
     product?: { sku?: string | null };
   }>;
+
+  // All top-level sale lines can attach a work order (web parity).
   return rows
     .filter((r) => !r.bespoke_parent_item_id)
-    .filter((r) => {
-      const sku = (r.product?.sku ?? r.sku ?? '').trim();
-      return sku.toUpperCase().startsWith('CUSTOM-') || r.customization_details != null;
-    })
     .map((r) => ({
       id: r.id,
       product_name: r.product_name,

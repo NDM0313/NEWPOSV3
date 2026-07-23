@@ -157,7 +157,11 @@ export function BespokeWorkOrdersPanel({
       )}
 
       {orders.length === 0 ? (
-        <p className="text-xs text-muted-foreground">No work orders yet.</p>
+        <p className="text-xs text-muted-foreground">
+          {parentItems.length === 0
+            ? 'No sale lines to attach a work order.'
+            : 'No work orders yet.'}
+        </p>
       ) : (
         <ul className="space-y-2">
           {orders.map((wo) => (

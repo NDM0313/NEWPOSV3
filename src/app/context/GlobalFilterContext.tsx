@@ -280,14 +280,17 @@ export const GlobalFilterProvider: React.FC<{ children: ReactNode }> = ({ childr
     }
   }, [persisted.branchId, setSupabaseBranchId]);
 
-  // Keep SupabaseContext in sync when user changes branch in header (header calls setBranchId here and setBranchId in Supabase)
+  // Keep SupabaseContext in sync when user changes branch in header.
+  // Always call setSupabaseBranchId even when persisted already matches — otherwise
+  // loadUserBranch can leave Supabase on a concrete UUID while GlobalFilter is 'all',
+  // and clicking All Branches no-ops without updating the header label.
   const setBranchId = useCallback(
     (id: string | null) => {
+      setSupabaseBranchId?.(id);
       if (persistedRef.current.branchId === id) return;
       const next = { ...persistedRef.current, branchId: id };
       saveToStorage(next);
       setPersisted(next);
-      setSupabaseBranchId?.(id);
       if (companyId) {
         dispatchFilterInvalidation(companyId, id, 'branch_filter_changed');
       }
