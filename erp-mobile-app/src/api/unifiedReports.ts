@@ -187,19 +187,25 @@ export async function loadMobileCashFlow(params: {
   basis?: UnifiedLedgerBasis;
   /** When set, only cash/bank/wallet movements for this payment account */
   account?: CashFlowAccountFilter;
+  /** Multiple leaf account ids (parent expansion resolved by caller). Takes precedence over account. */
+  accountIds?: string[] | null;
 }): Promise<LoadResult<CashFlowResult>> {
   const resolved = await resolveReportMainLoaderSource(params.companyId, 'cash_flow', {
     legacyAvailable: true,
   });
   const source = effectiveReportLoaderSource(resolved);
   const basis = params.basis ?? ('official_gl' as UnifiedLedgerBasis);
-  const accountFilter = params.account?.id ? params.account : null;
-  const paymentLedgerAccountId = accountFilter?.id ?? null;
+  const multiIds = (params.accountIds || []).map((x) => String(x || '').trim()).filter(Boolean);
+  const paymentLedgerAccountId =
+    multiIds.length > 0 ? multiIds : params.account?.id ? params.account.id : null;
+  const hasAccountFilter = Array.isArray(paymentLedgerAccountId)
+    ? paymentLedgerAccountId.length > 0
+    : Boolean(paymentLedgerAccountId);
 
   // Unfiltered "All": prefer unified cash/bank ledger when enabled.
   // Account-id filter: legacy getRoznamcha (payment_account_id) — unified
   // cash-bank RPC has no account_id column.
-  if (source === 'unified' && !paymentLedgerAccountId) {
+  if (source === 'unified' && !hasAccountFilter) {
     try {
       const unified = await rpcGetUnifiedCashBankLedger({
         companyId: params.companyId,
@@ -290,8 +296,8 @@ export async function loadMobileCashFlow(params: {
     return {
       data: {
         rows,
-        openingBalance: accountFilter ? 0 : roz.summary?.openingBalance ?? 0,
-        closingBalance: accountFilter
+        openingBalance: hasAccountFilter ? 0 : roz.summary?.openingBalance ?? 0,
+        closingBalance: hasAccountFilter
           ? rows.length
             ? rows[rows.length - 1].runningBalance
             : 0

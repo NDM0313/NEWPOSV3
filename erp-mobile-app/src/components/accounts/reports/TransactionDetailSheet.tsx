@@ -64,6 +64,9 @@ export function TransactionDetailSheet({
   const [error, setError] = useState<string | null>(null);
   const preview = usePdfPreview(companyId);
   const [showEdit, setShowEdit] = useState(false);
+  const [editSheetTarget, setEditSheetTarget] = useState<{ mode: 'payment' | 'journal'; id: string } | null>(
+    null,
+  );
   const [attachmentPreviewList, setAttachmentPreviewList] = useState<Array<{ url: string; name: string }> | null>(null);
   const [attachmentPreviewStart, setAttachmentPreviewStart] = useState(0);
   const [cancelBusy, setCancelBusy] = useState(false);
@@ -121,6 +124,28 @@ export function TransactionDetailSheet({
   };
 
   const attachmentItems = detail ? normalizeAttachments(detail.attachments) : [];
+
+  const openEditSheet = async () => {
+    if (!detail || !editability.editable) return;
+    if (editability.kind === 'journal') {
+      let jeId = detail.journalEntryId || null;
+      if (!jeId && detail.paymentId) {
+        jeId = await resolveJournalEntryIdFromPayment(companyId, detail.paymentId);
+      }
+      if (!jeId && detail.id.startsWith('journal-')) {
+        jeId = detail.id.replace(/^journal-/, '');
+      }
+      if (!jeId) {
+        setCancelError('No journal entry linked — cannot edit both From and To accounts.');
+        return;
+      }
+      setEditSheetTarget({ mode: 'journal', id: jeId });
+      setShowEdit(true);
+      return;
+    }
+    setEditSheetTarget({ mode: 'payment', id: detail.paymentId });
+    setShowEdit(true);
+  };
 
   const beginCancel = async () => {
     if (!detail) return;
@@ -350,7 +375,7 @@ export function TransactionDetailSheet({
               {editability.editable && (
                 <button
                   type="button"
-                  onClick={() => setShowEdit(true)}
+                  onClick={() => void openEditSheet()}
                   className="col-span-2 flex items-center justify-center gap-2 py-3 bg-[#4B5563] hover:bg-[#374151] rounded-lg text-white font-semibold text-sm mt-1"
                 >
                   <SquarePen className="w-4 h-4" /> Edit Transaction
@@ -426,15 +451,19 @@ export function TransactionDetailSheet({
           />
         </PdfPreviewModal>
       )}
-      {detail && showEdit && (
+      {detail && showEdit && editSheetTarget && (
         <EditTransactionSheet
           open={true}
           companyId={companyId}
-          mode={editability.kind === 'journal' ? 'journal' : 'payment'}
-          targetId={editability.kind === 'journal' ? (detail.journalEntryId || '') : detail.paymentId}
-          onClose={() => setShowEdit(false)}
+          mode={editSheetTarget.mode}
+          targetId={editSheetTarget.id}
+          onClose={() => {
+            setShowEdit(false);
+            setEditSheetTarget(null);
+          }}
           onSaved={() => {
             setShowEdit(false);
+            setEditSheetTarget(null);
             dispatchMobileAccountingInvalidated({
               companyId,
               reason: 'transaction-edited',

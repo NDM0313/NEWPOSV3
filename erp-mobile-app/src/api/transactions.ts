@@ -908,11 +908,15 @@ const JOURNAL_EDITABLE_REFERENCE_TYPES = new Set(['general', 'transfer', 'expens
 
 export function canEditTransaction(referenceType: string, source: TransactionEditSource = 'unknown'): TransactionEditability {
   const type = String(referenceType || '').toLowerCase();
-  // Transactions tab rows are always payment records; allow payment edit even when
-  // reference type points to source documents like sale/purchase.
+  // Transactions tab rows are often payment records; sale/purchase stay payment-edit.
+  // Fund transfers (and general 2-leg JEs surfaced as payment rows) must edit the journal
+  // so both From and To accounts are available — not a single Payment Account.
   if (source === 'payment_row') {
     if (type === 'stock_movement' || type === 'inventory') {
       return { editable: false, kind: 'locked', reason: 'Inventory source transaction is locked.' };
+    }
+    if (type === 'transfer' || type === 'general') {
+      return { editable: true, kind: 'journal' };
     }
     return { editable: true, kind: 'payment' };
   }

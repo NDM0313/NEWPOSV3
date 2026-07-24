@@ -222,12 +222,16 @@ function mapPaymentAccountRow(r: Record<string, unknown>): AccountRow {
     name: String(r.name ?? '—'),
     type: String(r.type ?? '—'),
     balance: Number(r.balance) || 0,
+    parentId: r['parent_id'] != null && String(r['parent_id']).trim() !== '' ? String(r['parent_id']) : null,
+    isGroup: r['is_group'] === true,
     isDefaultCash: r.is_default_cash === true,
     isDefaultBank: r.is_default_bank === true,
   };
 }
 
 function isLiquidityPaymentAccountRow(acc: AccountRow): boolean {
+  const code = String(acc.code || '').trim();
+  if (code === '1050' || code === '1060' || code === '1070') return true;
   return isLiquidityPaymentAccount({
     code: acc.code,
     name: acc.name,
@@ -257,9 +261,13 @@ export async function overlayAccountBalancesFromJournal(
 }
 
 /** Payment accounts: cash, bank, mobile wallet only (no generic asset / AR / etc.). */
-export async function getPaymentAccounts(companyId: string): Promise<{ data: AccountRow[]; error: string | null }> {
+export async function getPaymentAccounts(
+  companyId: string,
+  options?: { includeLiquidityParents?: boolean }
+): Promise<{ data: AccountRow[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
-  const cacheKey = listCacheKeys.paymentAccounts(companyId);
+  const includeParents = options?.includeLiquidityParents === true;
+  const cacheKey = listCacheKeys.paymentAccounts(companyId) + (includeParents ? ':parents' : '');
   if (isBrowserOffline()) {
     const cached = await listCacheGet<AccountRow[]>(cacheKey);
     const filtered = (cached ?? []).filter((a) => isLiquidityPaymentAccountRow(a));
@@ -268,28 +276,40 @@ export async function getPaymentAccounts(companyId: string): Promise<{ data: Acc
       error: filtered.length ? null : 'Offline: payment accounts not cached. Connect once while logged in.',
     };
   }
+  const selectCols = includeParents
+    ? 'id, code, name, type, balance, is_default_cash, is_default_bank, parent_id, is_group'
+    : 'id, code, name, type, balance, is_default_cash, is_default_bank';
   const withDefaults = await supabase
     .from('accounts')
-    .select('id, code, name, type, balance, is_default_cash, is_default_bank')
+    .select(selectCols)
     .eq('company_id', companyId)
     .eq('is_active', true)
-    .or('is_group.eq.false,is_group.is.null')
+    .or(includeParents ? 'is_group.eq.true,is_group.eq.false,is_group.is.null' : 'is_group.eq.false,is_group.is.null')
     .order('code');
-  let rawRows: Record<string, unknown>[] = (withDefaults.data || []) as Record<string, unknown>[];
+  let rawRows: Record<string, unknown>[] = (withDefaults.data || []) as unknown as Record<string, unknown>[];
   let error = withDefaults.error;
-  if (error && /is_default_cash|is_default_bank|column/i.test(String(error.message || ''))) {
+  if (error && /is_default_cash|is_default_bank|column|parent_id|is_group/i.test(String(error.message || ''))) {
     const fallback = await supabase
       .from('accounts')
-      .select('id, code, name, type, balance')
+      .select(includeParents ? 'id, code, name, type, balance, parent_id, is_group' : 'id, code, name, type, balance')
       .eq('company_id', companyId)
       .eq('is_active', true)
-      .or('is_group.eq.false,is_group.is.null')
       .order('code');
-    rawRows = (fallback.data || []) as Record<string, unknown>[];
+    rawRows = (fallback.data || []) as unknown as Record<string, unknown>[];
     error = fallback.error;
   }
   if (error) return { data: [], error: error.message };
-  const liquidityRows = rawRows.map(mapPaymentAccountRow).filter(isLiquidityPaymentAccountRow);
+  let liquidityRows = rawRows.map(mapPaymentAccountRow).filter(isLiquidityPaymentAccountRow);
+  if (!includeParents) {
+    liquidityRows = liquidityRows.filter((a) => a.isGroup !== true && !['1050', '1060', '1070'].includes(String(a.code || '').trim()));
+  } else {
+    // Keep parents 1050/1060/1070 + leaf liquidity books only
+    liquidityRows = liquidityRows.filter((a) => {
+      const code = String(a.code || '').trim();
+      if (code === '1050' || code === '1060' || code === '1070') return true;
+      return a.isGroup !== true;
+    });
+  }
   const rows = await mergeJournalBalances(companyId, liquidityRows);
   void listCacheSet(cacheKey, rows);
   return { data: rows, error: null };

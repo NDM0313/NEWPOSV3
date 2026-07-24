@@ -521,11 +521,21 @@ export function TransactionsTimeline({
                     onEdit={
                       !rowReadOnly && editability.editable
                         ? () => {
-                            if (editability.kind === 'journal' && !t.journalEntryId) return;
-                            setEditTarget({
-                              mode: editability.kind === 'journal' ? 'journal' : 'payment',
-                              id: editability.kind === 'journal' ? t.journalEntryId! : t.id,
-                            });
+                            void (async () => {
+                              if (editability.kind === 'journal') {
+                                let jeId = t.journalEntryId || null;
+                                if (!jeId && companyId) {
+                                  const payId = t.paymentId || (t.id.startsWith('journal-') ? null : t.id);
+                                  if (payId) {
+                                    jeId = await resolveJournalEntryIdFromPayment(companyId, payId);
+                                  }
+                                }
+                                if (!jeId) return;
+                                setEditTarget({ mode: 'journal', id: jeId });
+                                return;
+                              }
+                              setEditTarget({ mode: 'payment', id: t.id });
+                            })();
                           }
                         : undefined
                     }

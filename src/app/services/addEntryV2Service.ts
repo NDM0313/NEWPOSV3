@@ -494,6 +494,12 @@ export async function createExpensePaymentEntry(params: CreateExpensePaymentPara
 }
 
 // ─── 6. Internal Transfer ──────────────────────────────────────────────────
+/** Optional import / source metadata (Single Core Ledger: classify via reference_type, not FT- sequence). */
+export interface CreateInternalTransferImportMeta {
+  source?: 'csv_import' | 'ui' | string;
+  externalRef?: string | null;
+}
+
 export interface CreateInternalTransferParams {
   companyId: string;
   branchId: string | null;
@@ -504,19 +510,49 @@ export interface CreateInternalTransferParams {
   description?: string | null;
   createdBy?: string | null;
   attachments?: { url: string; name: string }[] | null;
+  /** When set, prefixes description for audit (e.g. CSV Import | [IMP:ref]). */
+  importMeta?: CreateInternalTransferImportMeta | null;
 }
 
-export async function createInternalTransferEntry(params: CreateInternalTransferParams): Promise<{ journalEntryId: string }> {
-  const { companyId, branchId, fromAccountId, toAccountId, amount, entryDate, description, createdBy, attachments } = params;
+function buildInternalTransferDescription(
+  description?: string | null,
+  importMeta?: CreateInternalTransferImportMeta | null
+): string {
+  const parts: string[] = [];
+  if (importMeta?.source === 'csv_import') parts.push('CSV Import');
+  else if (importMeta?.source) parts.push(String(importMeta.source));
+  const ext = importMeta?.externalRef != null ? String(importMeta.externalRef).trim() : '';
+  if (ext) parts.push(`[IMP:${ext}]`);
+  const userDesc = (description ?? '').trim();
+  if (userDesc) parts.push(userDesc);
+  return parts.length > 0 ? parts.join(' | ') : 'Internal transfer';
+}
+
+/**
+ * Fund transfer: balanced JE on Single Core Ledger.
+ * Numbering = same journal sequence as General Entry (JE-).
+ * Classification = reference_type 'transfer' (Cash Flow / edit routing).
+ */
+export async function createInternalTransferEntry(
+  params: CreateInternalTransferParams
+): Promise<{ journalEntryId: string; entryNo: string }> {
+  const {
+    companyId,
+    branchId,
+    fromAccountId,
+    toAccountId,
+    amount,
+    entryDate,
+    description,
+    createdBy,
+    attachments,
+    importMeta,
+  } = params;
   if (!companyId || !fromAccountId || !toAccountId || amount <= 0) throw new Error('Invalid transfer params');
+  if (fromAccountId === toAccountId) throw new Error('From and to accounts must be different');
   const branch = await resolveBranchUuidForWrite(companyId, branchId);
-  const desc = description || 'Internal transfer';
-  let entryNo: string;
-  try {
-    entryNo = await documentNumberService.getNextDocumentNumber(companyId, branch, 'fund_transfer');
-  } catch {
-    entryNo = `FT-${Date.now()}`;
-  }
+  const desc = buildInternalTransferDescription(description, importMeta);
+  const entryNo = await documentNumberService.getNextJournalEntryNumber(companyId, branch);
   const journalEntry: JournalEntry = {
     company_id: companyId,
     branch_id: branch,
@@ -549,7 +585,7 @@ export async function createInternalTransferEntry(params: CreateInternalTransfer
     createdBy: createdBy ?? null,
   });
   notifyAddEntryAccountingSaved({ companyId, branchId: branch, journalEntryId });
-  return { journalEntryId };
+  return { journalEntryId, entryNo };
 }
 
 // ─── 7. Courier Payment ────────────────────────────────────────────────────

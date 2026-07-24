@@ -39,6 +39,7 @@ import {
   Search,
   Loader2,
   Paperclip,
+  Upload,
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { DatePicker } from '@/app/components/ui/DatePicker';
@@ -66,6 +67,7 @@ import {
   type TransactionAttachment,
 } from '@/app/utils/transactionAttachments';
 import { AddAccountDrawer } from './AddAccountDrawer';
+import { AccountingImportCenter } from '@/app/modules/accounting-import';
 import { LedgerStatementCenterV2Page } from '@/app/features/ledger-statement-center-v2/LedgerStatementCenterV2Page';
 import type { LedgerStatementV2Initial } from '@/app/features/ledger-statement-center-v2/types';
 import { PayCourierModal } from './PayCourierModal';
@@ -487,6 +489,8 @@ export const AccountingDashboard = () => {
   
   // 🎯 Account Management State
   const [isAddAccountOpen, setIsAddAccountOpen] = useState(false);
+  /** Universal Accounting Import Center (Phase 1: fund transfers CSV). */
+  const [isAccountingImportOpen, setIsAccountingImportOpen] = useState(false);
   /** When set, AddAccountDrawer opens Professional with this parent prefilled (Add Child Account). */
   const [addAccountPrefill, setAddAccountPrefill] = useState<{ parentId: string } | null>(null);
   const [isEditAccountOpen, setIsEditAccountOpen] = useState(false);
@@ -2183,15 +2187,25 @@ export const AccountingDashboard = () => {
                   )}
                 </div>
                 {canPostAccounting && (
-                  <Button
-                    onClick={() => {
-                      setAddAccountPrefill(null);
-                      setIsAddAccountOpen(true);
-                    }}
-                    className="bg-blue-600 hover:bg-blue-500 text-white gap-2"
-                  >
-                    <Plus size={16} /> Create New Account
-                  </Button>
+                  <>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setIsAccountingImportOpen(true)}
+                      className="bg-muted border-border text-foreground gap-2"
+                    >
+                      <Upload size={16} /> Import
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        setAddAccountPrefill(null);
+                        setIsAddAccountOpen(true);
+                      }}
+                      className="bg-blue-600 hover:bg-blue-500 text-white gap-2"
+                    >
+                      <Plus size={16} /> Create New Account
+                    </Button>
+                  </>
                 )}
               </div>
             </div>
@@ -2689,9 +2703,27 @@ export const AccountingDashboard = () => {
           setAddAccountPrefill(null);
         }}
         onSuccess={async () => {
+          if (companyId) {
+            dispatchAccountingInvalidated({
+              companyId,
+              branchId: branchId === 'all' ? null : branchId ?? null,
+              reason: 'account-created',
+            });
+          }
+          await accounting.refreshAccounts();
           await accounting.refreshEntries();
           setIsAddAccountOpen(false);
           setAddAccountPrefill(null);
+        }}
+      />
+
+      <AccountingImportCenter
+        isOpen={isAccountingImportOpen}
+        onClose={() => setIsAccountingImportOpen(false)}
+        initialProfile="fund_transfers"
+        onSuccess={async () => {
+          await accounting.refreshEntries();
+          await accounting.refreshAccounts();
         }}
       />
 
