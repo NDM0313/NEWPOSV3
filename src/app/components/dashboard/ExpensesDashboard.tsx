@@ -72,6 +72,11 @@ import {
   setExpenseListDiagnosticsEnabled,
 } from '@/app/lib/expenseListDiagnostics';
 import { formatLocalDateYYYYMMDD, formatRelativeListDateTime, parseLocalDateInput } from '@/app/utils/localDate';
+import { useGlobalFilter } from '@/app/context/GlobalFilterContext';
+import {
+  DEFAULT_ROZNAMCHA_WEEK_STARTS_ON,
+  getWeekRangeContaining,
+} from '@/app/utils/roznamchaWeekRange';
 
 function expenseLocalDateParts(dateStr: string): { y: number; m: number; d: number } | null {
   const raw = String(dateStr ?? '').trim();
@@ -152,6 +157,12 @@ export const ExpensesDashboard = () => {
   const { companyId } = useSupabase();
   const { expenses, loading, deleteExpense, cancelExpense, refreshExpenses } = useExpenses();
   const { accounts } = useAccounting();
+  const {
+    startDate: globalStartDate,
+    endDate: globalEndDate,
+    setCurrentModule,
+    getDateRangeLabel,
+  } = useGlobalFilter();
   const [activeTab, setActiveTab] = useState<'overview' | 'list' | 'categories'>('overview');
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
@@ -169,8 +180,17 @@ export const ExpensesDashboard = () => {
   const [branchFilter, setBranchFilter] = useState<string>('all');
   const [branches, setBranches] = useState<Array<{ id: string; name: string; code?: string }>>([]);
   const [accountFilter, setAccountFilter] = useState<string>('all');
+  /** Local From/To override header global range when either is set. */
   const [fromDate, setFromDate] = useState<string>('');
   const [toDate, setToDate] = useState<string>('');
+
+  useEffect(() => {
+    setCurrentModule('expenses');
+  }, [setCurrentModule]);
+
+  const localDateOverride = Boolean(fromDate.trim() || toDate.trim());
+  const effectiveFromDate = localDateOverride ? fromDate.trim() : (globalStartDate || '');
+  const effectiveToDate = localDateOverride ? toDate.trim() : (globalEndDate || '');
 
   const loadCategoriesFromDb = React.useCallback(() => {
     if (!companyId) return;
@@ -257,33 +277,38 @@ export const ExpensesDashboard = () => {
     return expenses.filter((e) => !reversedExpenseIds.has(e.id));
   }, [expenses, reversedExpenseIds, showReversedExpenses]);
 
-  const overviewUsesListDateRange = Boolean(fromDate.trim() || toDate.trim());
-
   const monthExpenses = useMemo(() => {
-    if (overviewUsesListDateRange) {
-      const from = fromDate.trim();
-      const to = toDate.trim();
-      return operationalExpenses.filter((e) => isInDateRangeInclusive(e.date, from, to));
+    if (effectiveFromDate || effectiveToDate) {
+      return operationalExpenses.filter((e) =>
+        isInDateRangeInclusive(e.date, effectiveFromDate, effectiveToDate),
+      );
     }
     return operationalExpenses.filter((e) => isInCurrentCalendarMonth(e.date));
-  }, [operationalExpenses, overviewUsesListDateRange, fromDate, toDate]);
+  }, [operationalExpenses, effectiveFromDate, effectiveToDate]);
 
   const overviewPeriodLabel = useMemo(() => {
-    if (overviewUsesListDateRange) {
+    if (localDateOverride) {
       const from = fromDate.trim() || '…';
       const to = toDate.trim() || '…';
       return `${from} → ${to}`;
     }
+    if (effectiveFromDate || effectiveToDate) {
+      return getDateRangeLabel();
+    }
     return new Date().toLocaleString('en-PK', { month: 'long', year: 'numeric' });
-  }, [overviewUsesListDateRange, fromDate, toDate]);
+  }, [
+    localDateOverride,
+    fromDate,
+    toDate,
+    effectiveFromDate,
+    effectiveToDate,
+    getDateRangeLabel,
+  ]);
 
   const overviewEmptyHint = useMemo(() => {
     if (monthExpenses.length > 0 || operationalExpenses.length === 0) return null;
-    if (overviewUsesListDateRange) {
-      return `No expenses in ${overviewPeriodLabel} — ${operationalExpenses.length} expense${operationalExpenses.length === 1 ? '' : 's'} loaded outside this range.`;
-    }
-    return `No expenses in ${overviewPeriodLabel} — ${operationalExpenses.length} older expense${operationalExpenses.length === 1 ? '' : 's'} loaded.`;
-  }, [monthExpenses.length, operationalExpenses.length, overviewUsesListDateRange, overviewPeriodLabel]);
+    return `No expenses in ${overviewPeriodLabel} — ${operationalExpenses.length} expense${operationalExpenses.length === 1 ? '' : 's'} loaded outside this range.`;
+  }, [monthExpenses.length, operationalExpenses.length, overviewPeriodLabel]);
 
   const accountFilterOptions = useMemo(() => {
     const byId = new Map<string, string>();
@@ -524,10 +549,18 @@ export const ExpensesDashboard = () => {
         if (payId !== accountFilter) filterReason = 'account_filter_mismatch';
       }
 
-      // Date filter (From Date – To Date)
-      const expenseDate = expense.date ? new Date(expense.date).toISOString().slice(0, 10) : '';
-      if (!filterReason && fromDate && expenseDate < fromDate) filterReason = 'before_from_date';
-      if (!filterReason && toDate && expenseDate > toDate) filterReason = 'after_to_date';
+      // Date filter: local From/To override header global range
+      const expenseParts = expenseLocalDateParts(expense.date);
+      const expenseDate = expenseParts
+        ? formatLocalDateYYYYMMDD(new Date(expenseParts.y, expenseParts.m, expenseParts.d))
+        : '';
+      if (
+        !filterReason &&
+        (effectiveFromDate || effectiveToDate) &&
+        !isInDateRangeInclusive(expense.date, effectiveFromDate, effectiveToDate)
+      ) {
+        filterReason = 'date_range_mismatch';
+      }
 
       const watch = diagnosticWatchId.trim().toLowerCase();
       const isWatched =
@@ -562,8 +595,8 @@ export const ExpensesDashboard = () => {
     branchFilter,
     categoriesFromDb,
     accountFilter,
-    fromDate,
-    toDate,
+    effectiveFromDate,
+    effectiveToDate,
     showFetchDiagnostics,
     diagnosticWatchId,
     reversedExpenseIds,
@@ -581,7 +614,44 @@ export const ExpensesDashboard = () => {
   // Reset to page 1 when filters change
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, categoryFilter, subCategoryFilter, branchFilter, accountFilter, fromDate, toDate, showReversedExpenses]);
+  }, [
+    searchTerm,
+    categoryFilter,
+    subCategoryFilter,
+    branchFilter,
+    accountFilter,
+    fromDate,
+    toDate,
+    effectiveFromDate,
+    effectiveToDate,
+    showReversedExpenses,
+  ]);
+
+  const applyDatePreset = (preset: 'today' | 'week' | 'month' | 'clear') => {
+    if (preset === 'clear') {
+      setFromDate('');
+      setToDate('');
+      return;
+    }
+    const now = new Date();
+    now.setHours(12, 0, 0, 0);
+    if (preset === 'today') {
+      const ymd = formatLocalDateYYYYMMDD(now);
+      setFromDate(ymd);
+      setToDate(ymd);
+      return;
+    }
+    if (preset === 'week') {
+      const { startDate, endDate } = getWeekRangeContaining(now, DEFAULT_ROZNAMCHA_WEEK_STARTS_ON);
+      setFromDate(formatLocalDateYYYYMMDD(startDate));
+      setToDate(formatLocalDateYYYYMMDD(endDate));
+      return;
+    }
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    setFromDate(formatLocalDateYYYYMMDD(start));
+    setToDate(formatLocalDateYYYYMMDD(end));
+  };
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
@@ -959,7 +1029,32 @@ export const ExpensesDashboard = () => {
                   </div>
 
                   <div className="space-y-4">
-                    {/* Date Filter: From – To */}
+                    {!localDateOverride && (effectiveFromDate || effectiveToDate) ? (
+                      <p className="text-xs text-muted-foreground">
+                        Header: <span className="text-foreground font-medium">{getDateRangeLabel()}</span>
+                        {' '}(set From/To below to override)
+                      </p>
+                    ) : null}
+                    <div className="flex flex-wrap gap-1.5">
+                      {(
+                        [
+                          ['today', 'Today'],
+                          ['week', 'This Week'],
+                          ['month', 'This Month'],
+                          ['clear', 'Clear'],
+                        ] as const
+                      ).map(([key, label]) => (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => applyDatePreset(key)}
+                          className="px-2.5 py-1 rounded-md text-xs border border-border bg-muted/40 hover:bg-muted text-foreground"
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    {/* Date Filter: From – To (local override of header range) */}
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="text-xs text-muted-foreground uppercase font-medium mb-2 block">

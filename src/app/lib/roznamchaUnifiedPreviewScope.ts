@@ -4,6 +4,8 @@
 
 import type { UnifiedLedgerBasis } from '@/app/lib/unifiedLedgerBasisFilter';
 import type { AccountFilter } from '@/app/services/roznamchaService';
+import type { PaymentAccountFilter } from '@/app/lib/paymentAccountFilter';
+import { paymentAccountFilterIds } from '@/app/lib/paymentAccountFilter';
 import type { UnifiedLedgerRow } from '@/app/services/unifiedLedgerService';
 
 export function normalizeRoznamchaPreviewBranch(branchId: string | null | undefined): string | null {
@@ -39,26 +41,30 @@ export function buildRoznamchaPreviewRpcScope(params: {
 
 export function filterUnifiedRowsByPaymentAccount(
   rows: UnifiedLedgerRow[],
-  paymentLedgerAccountId: string | null,
+  paymentLedgerAccountId: PaymentAccountFilter,
   paymentAccountOptions: Array<{ id: string; label: string }>
 ): UnifiedLedgerRow[] {
-  const id = paymentLedgerAccountId?.trim();
-  if (!id) return rows;
-  const opt = paymentAccountOptions.find((o) => o.id === id);
-  // Fail closed: selected id with no option must not leak the full (unfiltered) stream.
-  if (!opt) return [];
-  const labelLower = opt.label.toLowerCase();
-  const codePart = opt.label.split(' — ')[0]?.trim().toLowerCase() || '';
-  const namePart = opt.label.includes(' — ')
-    ? opt.label.split(' — ').slice(1).join(' — ').trim().toLowerCase()
-    : '';
+  const ids = paymentAccountFilterIds(paymentLedgerAccountId);
+  if (ids.length === 0) return rows;
+  const opts = ids
+    .map((id) => paymentAccountOptions.find((o) => o.id === id))
+    .filter((o): o is { id: string; label: string } => Boolean(o));
+  // Fail closed: selected ids with no options must not leak the full (unfiltered) stream.
+  if (opts.length === 0) return [];
   return rows.filter((r) => {
     const code = (r.accountCode || '').trim().toLowerCase();
     const name = (r.accountName || '').trim().toLowerCase();
-    if (code && codePart && code === codePart) return true;
-    if (name && namePart && name === namePart) return true;
-    if (name && labelLower.includes(name)) return true;
-    if (code && labelLower.includes(code)) return true;
-    return false;
+    return opts.some((opt) => {
+      const labelLower = opt.label.toLowerCase();
+      const codePart = opt.label.split(' — ')[0]?.trim().toLowerCase() || '';
+      const namePart = opt.label.includes(' — ')
+        ? opt.label.split(' — ').slice(1).join(' — ').trim().toLowerCase()
+        : '';
+      if (code && codePart && code === codePart) return true;
+      if (name && namePart && name === namePart) return true;
+      if (name && labelLower.includes(name)) return true;
+      if (code && labelLower.includes(code)) return true;
+      return false;
+    });
   });
 }

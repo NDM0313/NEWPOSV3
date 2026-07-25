@@ -8,6 +8,7 @@
 import {
   getRoznamcha,
   type AccountFilter,
+  type PaymentAccountFilter,
   type RoznamchaResult,
 } from '@/app/services/roznamchaService';
 
@@ -18,7 +19,7 @@ export type RoznamchaLegacyMainParams = {
   dateTo: string;
   accountFilter: AccountFilter;
   includeVoidedReversed: boolean;
-  paymentLedgerAccountId: string | null;
+  paymentLedgerAccountId: PaymentAccountFilter;
 };
 
 export type RoznamchaLegacyShadowPreviewResult = {

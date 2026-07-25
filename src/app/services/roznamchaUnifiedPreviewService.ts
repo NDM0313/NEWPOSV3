@@ -12,7 +12,8 @@ import {
 } from '@/app/lib/roznamchaUnifiedPreviewScope';
 import { previewBasisFromVoidedToggle } from '@/app/lib/roznamchaUnifiedPreviewDiff';
 import type { RoznamchaPreviewRow } from '@/app/lib/roznamchaUnifiedMapper';
-import type { AccountFilter } from '@/app/services/roznamchaService';
+import type { AccountFilter, PaymentAccountFilter } from '@/app/services/roznamchaService';
+import { paymentAccountFilterIds } from '@/app/lib/paymentAccountFilter';
 import {
   getUnifiedCashBankLedger,
   type UnifiedLedgerMeta,
@@ -67,7 +68,7 @@ export async function loadRoznamchaUnifiedPreview(params: {
   dateTo: string;
   accountFilter: AccountFilter;
   includeVoidedReversed: boolean;
-  paymentLedgerAccountId: string | null;
+  paymentLedgerAccountId: PaymentAccountFilter;
   paymentAccountOptions: Array<{ id: string; label: string }>;
   basis?: UnifiedLedgerBasis;
 }): Promise<RoznamchaUnifiedPreviewResult> {
@@ -104,7 +105,7 @@ export async function loadRoznamchaUnifiedPreview(params: {
     params.paymentLedgerAccountId,
     params.paymentAccountOptions
   );
-  const paymentAccountFilterApplied = Boolean(params.paymentLedgerAccountId?.trim());
+  const paymentAccountFilterApplied = paymentAccountFilterIds(params.paymentLedgerAccountId).length > 0;
 
   return {
     rows: mapUnifiedRowsToRoznamchaPreview(filteredRows),

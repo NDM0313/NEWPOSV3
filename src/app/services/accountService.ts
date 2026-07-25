@@ -121,7 +121,7 @@ export const accountService = {
     // Slim query — do not pull full COA via getAllAccounts just for a dropdown.
     const { data, error } = await supabase
       .from('accounts')
-      .select('id, name, code, type, is_active, is_group')
+      .select('id, name, code, type, is_active, is_group, parent_id')
       .eq('company_id', companyId)
       .eq('is_active', true)
       .or(

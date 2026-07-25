@@ -4,7 +4,7 @@
  */
 
 import type { UnifiedLedgerBasis } from '@/app/lib/unifiedLedgerBasisFilter';
-import type { AccountFilter } from '@/app/services/roznamchaService';
+import type { AccountFilter, PaymentAccountFilter } from '@/app/services/roznamchaService';
 import type { UnifiedLedgerRow } from '@/app/services/unifiedLedgerService';
 import type { RoznamchaResult } from '@/app/services/roznamchaService';
 import { assembleRoznamchaUnifiedParityMain } from '@/app/services/roznamchaUnifiedParityAssembler';
@@ -21,7 +21,7 @@ export async function loadRoznamchaUnifiedMain(params: {
   dateTo: string;
   accountFilter: AccountFilter;
   includeVoidedReversed: boolean;
-  paymentLedgerAccountId: string | null;
+  paymentLedgerAccountId: PaymentAccountFilter;
   paymentAccountOptions: Array<{ id: string; label: string }>;
   basis?: UnifiedLedgerBasis;
   parityCompare?: boolean;

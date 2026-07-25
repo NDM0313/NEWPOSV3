@@ -26,9 +26,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
+import { Checkbox } from '../ui/checkbox';
 import { BranchSelector } from '@/app/components/layout/BranchSelector';
 import { Switch } from '../ui/switch';
 import { Label } from '../ui/label';
+import { supabase } from '@/lib/supabase';
+import {
+  safeLocalStorageGetItem,
+  safeLocalStorageSetItem,
+  safeLocalStorageRemoveItem,
+} from '@/app/lib/safeBrowserStorage';
 import { formatRoznamchaRowDateTimeDisplay } from '@/app/utils/transactionEventDateTime';
 import { useGlobalFilter } from '@/app/context/GlobalFilterContext';
 import {
@@ -46,6 +54,34 @@ import {
   type RoznamchaResult,
   type RoznamchaRowWithBalance,
 } from '@/app/services/roznamchaService';
+import { paymentAccountFilterIds } from '@/app/lib/paymentAccountFilter';
+
+type PaymentLeafOption = { id: string; label: string; parentId: string | null };
+type PaymentParentGroup = { id: string; label: string; childIds: string[] };
+
+function defaultPaymentAccountsStorageKey(companyId: string) {
+  return `roznamcha-default-payment-accounts:${companyId}`;
+}
+
+function loadDefaultPaymentAccountIds(companyId: string): string[] {
+  const raw = safeLocalStorageGetItem(defaultPaymentAccountsStorageKey(companyId));
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((x) => String(x || '').trim()).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function saveDefaultPaymentAccountIds(companyId: string, ids: string[]) {
+  if (ids.length === 0) {
+    safeLocalStorageRemoveItem(defaultPaymentAccountsStorageKey(companyId));
+    return;
+  }
+  safeLocalStorageSetItem(defaultPaymentAccountsStorageKey(companyId), JSON.stringify(ids));
+}
 import { assertUnifiedMainLoaderSource } from '@/app/lib/r8R2LegacyMainRetired';
 import { loadRoznamchaUnifiedMain } from '@/app/services/roznamchaUnifiedMainService';
 import { loadRoznamchaLegacyShadowPreview } from '@/app/services/roznamchaLegacyShadowPreviewService';
@@ -199,11 +235,17 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
   const today = new Date();
   const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({ from: today, to: today });
   const [accountFilter, setAccountFilter] = useState<AccountFilter>('all');
-  /** Ledger row filter: single payment (cash/bank/wallet) account — all types when empty */
-  const [paymentLedgerAccountId, setPaymentLedgerAccountId] = useState<string>('');
-  const [paymentAccountOptions, setPaymentAccountOptions] = useState<Array<{ id: string; label: string }>>([]);
+  /** Selected leaf payment account ids (empty = all). Parent toggle expands to child leaves. */
+  const [paymentLedgerAccountIds, setPaymentLedgerAccountIds] = useState<string[]>([]);
+  const [paymentAccountOptions, setPaymentAccountOptions] = useState<PaymentLeafOption[]>([]);
+  const [paymentParentGroups, setPaymentParentGroups] = useState<PaymentParentGroup[]>([]);
+  const [ledgerPickerOpen, setLedgerPickerOpen] = useState(false);
   const paymentAccountOptionsRef = useRef(paymentAccountOptions);
   paymentAccountOptionsRef.current = paymentAccountOptions;
+  const paymentLedgerFilter = useMemo(
+    () => (paymentLedgerAccountIds.length > 0 ? paymentLedgerAccountIds : null),
+    [paymentLedgerAccountIds],
+  );
   const loadGenRef = useRef(0);
   const loadDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Default off: voided payments (e.g. reversed receipts) are excluded from cash book totals. */
@@ -246,23 +288,61 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
   useEffect(() => {
     if (!companyId) {
       setPaymentAccountOptions([]);
+      setPaymentParentGroups([]);
+      setPaymentLedgerAccountIds([]);
       return;
     }
     let cancelled = false;
-    accountService
-      .getPaymentAccountsOnly(companyId)
-      .then((list) => {
+    void (async () => {
+      try {
+        const list = await accountService.getPaymentAccountsOnly(companyId);
         if (cancelled) return;
-        setPaymentAccountOptions(
-          (list || []).map((a: { id: string; name?: string; code?: string }) => ({
+        const leaves: PaymentLeafOption[] = (list || []).map(
+          (a: { id: string; name?: string; code?: string; parent_id?: string | null }) => ({
             id: String(a.id),
             label: [a.code, a.name].filter(Boolean).join(' — ') || a.name || String(a.id),
-          }))
+            parentId: a.parent_id != null ? String(a.parent_id) : null,
+          }),
         );
-      })
-      .catch(() => {
-        if (!cancelled) setPaymentAccountOptions([]);
-      });
+        setPaymentAccountOptions(leaves);
+
+        const parentIds = [
+          ...new Set(leaves.map((l) => l.parentId).filter((id): id is string => Boolean(id))),
+        ];
+        const groups: PaymentParentGroup[] = [];
+        if (parentIds.length > 0) {
+          const { data: parents } = await supabase
+            .from('accounts')
+            .select('id, name, code')
+            .in('id', parentIds);
+          if (cancelled) return;
+          for (const p of parents || []) {
+            const pid = String((p as { id?: string }).id || '');
+            if (!pid) continue;
+            const childIds = leaves.filter((l) => l.parentId === pid).map((l) => l.id);
+            if (childIds.length === 0) continue;
+            const code = (p as { code?: string }).code;
+            const name = (p as { name?: string }).name;
+            groups.push({
+              id: pid,
+              label: [code, name].filter(Boolean).join(' — ') || name || pid,
+              childIds,
+            });
+          }
+        }
+        setPaymentParentGroups(groups);
+
+        const saved = loadDefaultPaymentAccountIds(companyId).filter((id) =>
+          leaves.some((l) => l.id === id),
+        );
+        setPaymentLedgerAccountIds(saved);
+      } catch {
+        if (!cancelled) {
+          setPaymentAccountOptions([]);
+          setPaymentParentGroups([]);
+        }
+      }
+    })();
     return () => {
       cancelled = true;
     };
@@ -484,7 +564,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
       return;
     }
 
-    const ledgerId = paymentLedgerAccountId.trim() ? paymentLedgerAccountId.trim() : null;
+    const ledgerId = paymentLedgerFilter;
     setPreviewLoading(true);
     setPreviewError(null);
     try {
@@ -523,7 +603,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
             accountFilter,
             includeVoidedReversed,
           }),
-          paymentAccountFilterApplied: Boolean(ledgerId),
+          paymentAccountFilterApplied: paymentAccountFilterIds(ledgerId).length > 0,
         });
         const compareArgs = buildRoznamchaPreviewCompareArgs({
           compareSource,
@@ -599,7 +679,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
     effectiveBranchId,
     accountFilter,
     includeVoidedReversed,
-    paymentLedgerAccountId,
+    paymentLedgerFilter,
     paymentAccountOptions,
     previewBasis,
     engineState.killSwitchActive,
@@ -627,7 +707,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
   }, [companyId]);
 
   const displayFiltersActive = searchTerm.trim().length > 0 || dateSort !== 'asc' || pageSize !== 50;
-  const paymentAccountFilterActive = Boolean(paymentLedgerAccountId.trim());
+  const paymentAccountFilterActive = paymentAccountFilterIds(paymentLedgerFilter).length > 0;
 
   const load = useCallback(async () => {
     if (!companyId || !dateFrom || !dateTo) {
@@ -636,7 +716,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
       return;
     }
     const gen = ++loadGenRef.current;
-    const ledgerId = paymentLedgerAccountId.trim() ? paymentLedgerAccountId.trim() : null;
+    const ledgerId = paymentLedgerFilter;
     setLoading(true);
     try {
       const resolved = await resolveRoznamchaMainLoaderSource(companyId);
@@ -677,7 +757,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
     dateTo,
     accountFilter,
     includeVoidedReversed,
-    paymentLedgerAccountId,
+    paymentLedgerFilter,
     previewBasis,
     reloadEpoch,
     unifiedPreviewEnabled,
@@ -697,7 +777,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
   }, [currentPage, totalPages]);
   useEffect(() => {
     setCurrentPage(1);
-  }, [dateFrom, dateTo, accountFilter, includeVoidedReversed, paymentLedgerAccountId, dateSort, pageSize, overrideGlobalDates, searchTerm]);
+  }, [dateFrom, dateTo, accountFilter, includeVoidedReversed, paymentLedgerFilter, dateSort, pageSize, overrideGlobalDates, searchTerm]);
 
   const selectedBranchLabel = contextBranchId === 'all' || !contextBranchId ? 'All Branches' : 'Selected branch';
 
@@ -969,23 +1049,150 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
 
           <div className="flex flex-col gap-2 min-w-0">
             <Label className="text-xs text-muted-foreground uppercase tracking-wide">Ledger account</Label>
-            <Select
-              value={paymentLedgerAccountId || '__all__'}
-              onValueChange={(v) => setPaymentLedgerAccountId(v === '__all__' ? '' : v)}
-            >
-              <SelectTrigger className="w-full min-w-0 max-w-[320px] bg-input-background border-border text-foreground">
-                <SelectValue placeholder="All payment accounts" />
-              </SelectTrigger>
-              <SelectContent className="max-h-72">
-                <SelectItem value="__all__">All payment accounts</SelectItem>
-                {paymentAccountOptions.map((opt) => (
-                  <SelectItem key={opt.id} value={opt.id}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <span className="text-xs text-muted-foreground">One Cash/Bank/Wallet GL book (optional).</span>
+            <Popover open={ledgerPickerOpen} onOpenChange={setLedgerPickerOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full min-w-0 max-w-[320px] justify-between bg-input-background border-border text-foreground font-normal"
+                >
+                  <span className="truncate">
+                    {paymentLedgerAccountIds.length === 0
+                      ? 'All payment accounts'
+                      : paymentLedgerAccountIds.length === 1
+                        ? paymentAccountOptions.find((o) => o.id === paymentLedgerAccountIds[0])?.label ||
+                          '1 account'
+                        : `${paymentLedgerAccountIds.length} accounts`}
+                  </span>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-80 p-3 space-y-3" align="start">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-medium text-foreground">Payment accounts</p>
+                  <button
+                    type="button"
+                    className="text-xs text-blue-400 hover:text-blue-300"
+                    onClick={() => setPaymentLedgerAccountIds([])}
+                  >
+                    Clear
+                  </button>
+                </div>
+                <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
+                  {paymentParentGroups.map((group) => {
+                    const selectedCount = group.childIds.filter((id) =>
+                      paymentLedgerAccountIds.includes(id),
+                    ).length;
+                    const allSelected = selectedCount === group.childIds.length && group.childIds.length > 0;
+                    const someSelected = selectedCount > 0 && !allSelected;
+                    return (
+                      <div key={group.id} className="space-y-1">
+                        <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
+                          <Checkbox
+                            checked={allSelected ? true : someSelected ? 'indeterminate' : false}
+                            onCheckedChange={(checked) => {
+                              setPaymentLedgerAccountIds((prev) => {
+                                const without = prev.filter((id) => !group.childIds.includes(id));
+                                if (checked === true) return [...without, ...group.childIds];
+                                return without;
+                              });
+                            }}
+                          />
+                          <span className="font-medium truncate">{group.label}</span>
+                          <span className="text-[10px] text-muted-foreground">(parent)</span>
+                        </label>
+                        <div className="pl-6 space-y-1">
+                          {group.childIds.map((childId) => {
+                            const leaf = paymentAccountOptions.find((o) => o.id === childId);
+                            if (!leaf) return null;
+                            return (
+                              <label
+                                key={childId}
+                                className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer"
+                              >
+                                <Checkbox
+                                  checked={paymentLedgerAccountIds.includes(childId)}
+                                  onCheckedChange={(checked) => {
+                                    setPaymentLedgerAccountIds((prev) => {
+                                      if (checked === true) {
+                                        return prev.includes(childId) ? prev : [...prev, childId];
+                                      }
+                                      return prev.filter((id) => id !== childId);
+                                    });
+                                  }}
+                                />
+                                <span className="truncate">{leaf.label}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {paymentAccountOptions
+                    .filter((l) => !l.parentId || !paymentParentGroups.some((g) => g.id === l.parentId))
+                    .map((leaf) => (
+                      <label
+                        key={leaf.id}
+                        className="flex items-center gap-2 text-sm text-foreground cursor-pointer"
+                      >
+                        <Checkbox
+                          checked={paymentLedgerAccountIds.includes(leaf.id)}
+                          onCheckedChange={(checked) => {
+                            setPaymentLedgerAccountIds((prev) => {
+                              if (checked === true) {
+                                return prev.includes(leaf.id) ? prev : [...prev, leaf.id];
+                              }
+                              return prev.filter((id) => id !== leaf.id);
+                            });
+                          }}
+                        />
+                        <span className="truncate">{leaf.label}</span>
+                      </label>
+                    ))}
+                  {paymentAccountOptions.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">No payment accounts found.</p>
+                  ) : null}
+                </div>
+                <div className="flex gap-2 pt-1 border-t border-border">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    className="flex-1"
+                    disabled={!companyId}
+                    onClick={() => {
+                      if (!companyId) return;
+                      saveDefaultPaymentAccountIds(companyId, paymentLedgerAccountIds);
+                      toast.success(
+                        paymentLedgerAccountIds.length === 0
+                          ? 'Default cleared (all accounts)'
+                          : 'Default payment accounts saved',
+                      );
+                    }}
+                  >
+                    Save as default
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="flex-1"
+                    disabled={!companyId}
+                    onClick={() => {
+                      if (!companyId) return;
+                      saveDefaultPaymentAccountIds(companyId, []);
+                      setPaymentLedgerAccountIds([]);
+                      toast.message('Defaults reset');
+                    }}
+                  >
+                    Reset
+                  </Button>
+                </div>
+              </PopoverContent>
+            </Popover>
+            <span className="text-xs text-muted-foreground">
+              Multi-select Cash/Bank/Wallet; parent selects all children.
+            </span>
           </div>
 
           <div className="flex flex-col gap-2 min-w-0">
@@ -1051,8 +1258,13 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
           {' · '}
           Branch: {selectedBranchLabel} · Liquidity:{' '}
           {accountFilter === 'all' ? 'All' : accountFilter === 'wallet' ? 'Wallet' : accountFilter}
-          {paymentLedgerAccountId
-            ? ` · Ledger: ${paymentAccountOptions.find((o) => o.id === paymentLedgerAccountId)?.label || paymentLedgerAccountId}`
+          {paymentLedgerAccountIds.length > 0
+            ? ` · Ledger: ${
+                paymentLedgerAccountIds.length === 1
+                  ? paymentAccountOptions.find((o) => o.id === paymentLedgerAccountIds[0])?.label ||
+                    paymentLedgerAccountIds[0]
+                  : `${paymentLedgerAccountIds.length} accounts`
+              }`
             : ''}
           {' · '}
           Order: {dateSort === 'asc' ? 'oldest first' : 'newest first'} · {pageSize}/page

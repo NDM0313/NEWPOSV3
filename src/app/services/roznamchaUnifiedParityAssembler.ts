@@ -12,7 +12,7 @@ import { previewBasisFromVoidedToggle } from '@/app/lib/roznamchaUnifiedPreviewD
 import { mapUnifiedLedgerToRoznamchaResult } from '@/app/lib/roznamchaUnifiedMapper';
 import { isUnifiedLedgerKillSwitchActive } from '@/app/lib/unifiedLedgerEngineState';
 import type { UnifiedLedgerBasis } from '@/app/lib/unifiedLedgerBasisFilter';
-import type { AccountFilter } from '@/app/services/roznamchaService';
+import type { AccountFilter, PaymentAccountFilter } from '@/app/services/roznamchaService';
 import { getRoznamcha, type RoznamchaResult } from '@/app/services/roznamchaService';
 import {
   getUnifiedCashBankLedger,
@@ -31,7 +31,7 @@ export async function assembleRoznamchaUnifiedParityMain(params: {
   dateTo: string;
   accountFilter: AccountFilter;
   includeVoidedReversed: boolean;
-  paymentLedgerAccountId: string | null;
+  paymentLedgerAccountId: PaymentAccountFilter;
   paymentAccountOptions: Array<{ id: string; label: string }>;
   basis?: UnifiedLedgerBasis;
   /** When true, also fetch legacy composite (compare/preview only). */

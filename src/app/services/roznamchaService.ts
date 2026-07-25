@@ -59,6 +59,14 @@ import {
   isCorrectionReversalReferenceType,
   roznamchaRowAuditSuffix,
 } from '@/app/lib/reportVisibilityContract';
+import {
+  type PaymentAccountFilter,
+  paymentAccountFilterIds,
+  matchesPaymentAccountFilter,
+} from '@/app/lib/paymentAccountFilter';
+
+export type { PaymentAccountFilter } from '@/app/lib/paymentAccountFilter';
+export { paymentAccountFilterIds, matchesPaymentAccountFilter } from '@/app/lib/paymentAccountFilter';
 
 export { dedupeRoznamchaRows, roznamchaEntityKeys, roznamchaLooseMovementKey, roznamchaMovementKey };
 
@@ -833,7 +841,7 @@ async function fetchPaymentRows(
   /** Default false: exclude voided/reversed payment rows (Option 1 — Roznamcha economic view). */
   includeVoidedReversed = false,
   /** When set, only payments posted to this ledger (cash/bank/wallet) account */
-  paymentLedgerAccountId: string | null = null
+  paymentLedgerAccountId: PaymentAccountFilter = null
 ): Promise<{ rows: RoznamchaRow[]; branchFilteredPayments: Array<{ reference_id?: string | null }> }> {
   let q = supabase
     .from('payments')
@@ -865,7 +873,11 @@ async function fetchPaymentRows(
     // company-wide — no branch predicate on query
   }
   if (!includeVoidedReversed) q = q.is('voided_at', null);
-  if (paymentLedgerAccountId) q = q.eq('payment_account_id', paymentLedgerAccountId);
+  {
+    const ledgerIds = paymentAccountFilterIds(paymentLedgerAccountId);
+    if (ledgerIds.length === 1) q = q.eq('payment_account_id', ledgerIds[0]);
+    else if (ledgerIds.length > 1) q = q.in('payment_account_id', ledgerIds);
+  }
 
   const { data, error } = await q;
   if (error) {
@@ -1482,7 +1494,7 @@ async function fetchRentalPaymentRows(
   dateTo: string,
   accountFilter: AccountFilter,
   includeVoidedReversed: boolean,
-  paymentLedgerAccountId: string | null,
+  paymentLedgerAccountId: PaymentAccountFilter,
   accountById: Map<string, { name: string; type: string; code: string | null }>,
   rentalPaymentsInPaymentsTable: Set<string>,
   rentalPaymentsCoveredByPaymentRows: Set<string> = new Set()
@@ -1627,7 +1639,7 @@ async function fetchRentalPaymentRows(
       if (accountFilter === 'bank' && liquidity !== 'bank') continue;
       if (accountFilter === 'wallet' && liquidity !== 'wallet') continue;
     }
-    if (paymentLedgerAccountId && aid !== paymentLedgerAccountId) continue;
+    if (!matchesPaymentAccountFilter(paymentLedgerAccountId, aid)) continue;
 
     const amount = Number(rp.amount) || 0;
     const rentalId = String(rental.id || '');
@@ -1811,7 +1823,7 @@ function mapJournalLiquidityLinesToRows(
   entries: JournalLiquidityLineRow[],
   skipJeIds: Set<string>,
   accountFilter: AccountFilter,
-  paymentLedgerAccountId: string | null,
+  paymentLedgerAccountId: PaymentAccountFilter,
   nameByUserId: Map<string, string>,
   expenseNoByExpenseId: Map<string, string> = new Map(),
   auditMode = false,
@@ -1851,7 +1863,7 @@ function mapJournalLiquidityLinesToRows(
         if (accountFilter === 'bank' && liquidity !== 'bank') continue;
         if (accountFilter === 'wallet' && liquidity !== 'wallet') continue;
       }
-      if (paymentLedgerAccountId && line.account_id !== paymentLedgerAccountId) continue;
+      if (!matchesPaymentAccountFilter(paymentLedgerAccountId, line.account_id)) continue;
 
       const descriptionFallback = desc;
       const expenseLabel = isGenericRoznamchaPartyLabel(descriptionFallback)
@@ -1939,7 +1951,7 @@ async function fetchJournalLiquidityRows(
   dateTo: string,
   accountFilter: AccountFilter,
   includeVoidedReversed = false,
-  paymentLedgerAccountId: string | null = null,
+  paymentLedgerAccountId: PaymentAccountFilter = null,
   visiblePaymentsForSkip?: Array<{ reference_id?: string | null }>,
 ): Promise<RoznamchaRow[]> {
   let q = supabase
@@ -2022,7 +2034,7 @@ async function getJournalLiquidityOpeningDelta(
   beforeDate: string,
   accountFilter: AccountFilter,
   includeVoidedReversed = false,
-  paymentLedgerAccountId: string | null = null,
+  paymentLedgerAccountId: PaymentAccountFilter = null,
 ): Promise<number> {
   let q = supabase
     .from('journal_entries')
@@ -2103,7 +2115,7 @@ export async function getOpeningBalance(
   beforeDate: string,
   accountFilter: AccountFilter,
   includeVoidedReversed = false,
-  paymentLedgerAccountId: string | null = null
+  paymentLedgerAccountId: PaymentAccountFilter = null
 ): Promise<number> {
   let q = supabase
     .from('payments')
@@ -2113,7 +2125,11 @@ export async function getOpeningBalance(
 
   if (branchId) q = q.eq('branch_id', branchId);
   if (!includeVoidedReversed) q = q.is('voided_at', null);
-  if (paymentLedgerAccountId) q = q.eq('payment_account_id', paymentLedgerAccountId);
+  {
+    const ledgerIds = paymentAccountFilterIds(paymentLedgerAccountId);
+    if (ledgerIds.length === 1) q = q.eq('payment_account_id', ledgerIds[0]);
+    else if (ledgerIds.length > 1) q = q.in('payment_account_id', ledgerIds);
+  }
   const { data, error } = await q;
   if (error) return 0;
 
@@ -2208,7 +2224,7 @@ export async function getOpeningBalance(
         if (accountFilter === 'wallet' && liquidity !== 'wallet') continue;
       }
       if (!liquidity) continue;
-      if (paymentLedgerAccountId && aid !== paymentLedgerAccountId) continue;
+      if (!matchesPaymentAccountFilter(paymentLedgerAccountId, aid)) continue;
       const rentalId = String(rp.rental_id || rental?.id || '');
       const rpAmount = Number(rp.amount) || 0;
       const rpDate = String(rp.payment_date || '');
@@ -2284,7 +2300,7 @@ async function recoverOrphanRentalPaymentJeRows(
   dateTo: string,
   accountFilter: AccountFilter,
   includeVoidedReversed: boolean,
-  paymentLedgerAccountId: string | null,
+  paymentLedgerAccountId: PaymentAccountFilter,
   existingRows: RoznamchaRow[]
 ): Promise<RoznamchaRow[]> {
   const representedEntityKeys = new Set<string>();
@@ -2417,7 +2433,7 @@ async function recoverOrphanRentalPaymentJeRows(
         if (accountFilter === 'bank' && liquidity !== 'bank') continue;
         if (accountFilter === 'wallet' && liquidity !== 'wallet') continue;
       }
-      if (paymentLedgerAccountId && line.account_id !== paymentLedgerAccountId) continue;
+      if (!matchesPaymentAccountFilter(paymentLedgerAccountId, line.account_id)) continue;
 
       const candidate: RoznamchaRow = {
         id: `orphan-rp-${je.id}-${line.id}`,
@@ -2516,7 +2532,7 @@ async function fetchRoznamchaPreDedupeRows(
   dateTo: string,
   accountFilterParam: AccountFilter = 'all',
   includeVoidedReversed = false,
-  paymentLedgerAccountId: string | null = null
+  paymentLedgerAccountId: PaymentAccountFilter = null
 ): Promise<RoznamchaRow[]> {
   const { rows: paymentRows, branchFilteredPayments } = await fetchPaymentRows(
     companyId,
@@ -2578,7 +2594,7 @@ export async function getRoznamcha(
   dateTo: string,
   accountFilterParam: AccountFilter = 'all',
   includeVoidedReversed = false,
-  paymentLedgerAccountId: string | null = null
+  paymentLedgerAccountId: PaymentAccountFilter = null
 ): Promise<RoznamchaResult> {
   const [openingBalance, preDedupe] = await Promise.all([
     getOpeningBalance(
