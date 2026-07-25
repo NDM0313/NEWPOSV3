@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Pencil, Trash, Paperclip } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -7,6 +7,8 @@ import { cn } from '../ui/utils';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { AttachmentPreviewRow } from '@/app/components/shared/AttachmentPreviewRow';
 import type { Expense } from '@/app/context/ExpenseContext';
+import { formatRelativeListDateTime } from '@/app/utils/localDate';
+import { supabase } from '@/lib/supabase';
 
 interface ExpenseDetailSheetProps {
   open: boolean;
@@ -42,6 +44,44 @@ export function ExpenseDetailSheet({
 }: ExpenseDetailSheetProps) {
   const { formatCurrency } = useFormatCurrency();
   const receiptSectionRef = useRef<HTMLDivElement>(null);
+  const [linkedPaymentRef, setLinkedPaymentRef] = useState<string | null>(
+    expense?.paymentReference ?? null,
+  );
+
+  useEffect(() => {
+    if (!open || !expense?.id) {
+      setLinkedPaymentRef(null);
+      return;
+    }
+    if (expense.paymentReference) {
+      setLinkedPaymentRef(expense.paymentReference);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const { data } = await supabase
+        .from('payments')
+        .select('reference_number')
+        .eq('reference_type', 'expense')
+        .eq('reference_id', expense.id)
+        .is('voided_at', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (cancelled) return;
+      const ref = data?.reference_number != null ? String(data.reference_number).trim() : '';
+      setLinkedPaymentRef(ref || null);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, expense?.id, expense?.paymentReference]);
+
+  const expenseNoDisplay = expense?.expenseNo || expense?.id.slice(0, 8) || '—';
+  const showPaymentRef =
+    linkedPaymentRef &&
+    linkedPaymentRef.trim() !== '' &&
+    linkedPaymentRef.trim().toLowerCase() !== String(expenseNoDisplay).trim().toLowerCase();
 
   return (
     <Sheet open={open} onOpenChange={(isOpen) => { if (!isOpen) onClose(); }}>
@@ -54,8 +94,13 @@ export function ExpenseDetailSheet({
                   <div className="min-w-0">
                     <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Expense</p>
                     <h2 className="text-xl font-bold text-foreground mt-1 truncate">
-                      {expense.expenseNo || expense.id.slice(0, 8)}
+                      {expenseNoDisplay}
                     </h2>
+                    {showPaymentRef ? (
+                      <p className="text-xs text-muted-foreground mt-1 truncate" title={linkedPaymentRef ?? undefined}>
+                        Payment / COA: {linkedPaymentRef}
+                      </p>
+                    ) : null}
                   </div>
                   {expense.receiptUrl ? (
                     <button
@@ -79,7 +124,7 @@ export function ExpenseDetailSheet({
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-muted/60 border border-border rounded-lg p-3">
                   <p className="text-[10px] text-muted-foreground uppercase font-medium">Date</p>
-                  <p className="text-sm text-foreground mt-1">{new Date(expense.date).toLocaleDateString()}</p>
+                  <p className="text-sm text-foreground mt-1">{formatRelativeListDateTime(expense.date)}</p>
                 </div>
                 <div className="bg-muted/60 border border-border rounded-lg p-3">
                   <p className="text-[10px] text-muted-foreground uppercase font-medium">Category</p>

@@ -1941,9 +1941,23 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
 
       // Expense: Dr Expense Cr Cash/Bank → must create payments row (reference_type = expense) so Roznamcha shows it
       if (entry.source === 'Expense' && creditAccountObj && debitAccountObj && creditIsPayment) {
-        const refNo = await documentNumberService.getNextDocumentNumber(companyId, validBranchId, 'expense').catch(() => generatePaymentReference(null));
-        const { data: { user } } = await supabase.auth.getUser();
         const expenseId = (entry.metadata as any)?.expenseId ?? null;
+        let refNo: string | null = null;
+        if (expenseId) {
+          const { data: expRow } = await supabase
+            .from('expenses')
+            .select('expense_no')
+            .eq('id', expenseId)
+            .maybeSingle();
+          const existingNo = expRow?.expense_no != null ? String(expRow.expense_no).trim() : '';
+          if (existingNo) refNo = existingNo;
+        }
+        if (!refNo) {
+          refNo = await documentNumberService
+            .getNextDocumentNumber(companyId, validBranchId, 'expense')
+            .catch(() => generatePaymentReference(null));
+        }
+        const { data: { user } } = await supabase.auth.getUser();
         const { data: row, error } = await supabase.from('payments').insert({
           company_id: companyId,
           branch_id: validBranchId,

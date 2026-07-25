@@ -80,6 +80,8 @@ export interface Expense {
   approvedDate?: string;
   receiptAttached: boolean;
   receiptUrl?: string;
+  /** Linked payments.reference_number when reference_type=expense (may equal expenseNo after unify). */
+  paymentReference?: string | null;
   notes?: string;
   createdAt: string;
   updatedAt: string;
@@ -243,6 +245,11 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
       approvedDate: supabaseExpense.approved_at,
       receiptAttached: Boolean(receiptUrl),
       receiptUrl,
+      paymentReference:
+        supabaseExpense.payment_reference_number != null &&
+        String(supabaseExpense.payment_reference_number).trim() !== ''
+          ? String(supabaseExpense.payment_reference_number).trim()
+          : undefined,
       notes: supabaseExpense.notes,
       createdAt: supabaseExpense.created_at || getCurrentLocalTimestamp(),
       updatedAt: supabaseExpense.updated_at || getCurrentLocalTimestamp(),
@@ -256,7 +263,30 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
     try {
       setLoading(true);
       const data = await expenseService.getAllExpenses(companyId, branchId === 'all' ? undefined : branchId || undefined);
-      setExpenses(data.map(convertFromSupabaseExpense));
+      const mapped = data.map(convertFromSupabaseExpense);
+      const ids = mapped.map((e) => e.id).filter(Boolean);
+      if (ids.length > 0) {
+        const { data: payRows } = await supabase
+          .from('payments')
+          .select('reference_id, reference_number, created_at')
+          .eq('company_id', companyId)
+          .eq('reference_type', 'expense')
+          .in('reference_id', ids)
+          .is('voided_at', null)
+          .order('created_at', { ascending: false });
+        const refByExpenseId = new Map<string, string>();
+        for (const row of payRows || []) {
+          const rid = row.reference_id != null ? String(row.reference_id) : '';
+          const ref = row.reference_number != null ? String(row.reference_number).trim() : '';
+          if (!rid || !ref || refByExpenseId.has(rid)) continue;
+          refByExpenseId.set(rid, ref);
+        }
+        for (const e of mapped) {
+          const ref = refByExpenseId.get(e.id);
+          if (ref) e.paymentReference = ref;
+        }
+      }
+      setExpenses(mapped);
     } catch (error) {
       console.error('[EXPENSE CONTEXT] Error loading expenses:', error);
       toast.error('Failed to load expenses');

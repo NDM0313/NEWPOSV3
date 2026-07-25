@@ -289,6 +289,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
   const actionLocked = busy || loading;
   const [selectedAttachment, setSelectedAttachment] = useState<string | null>(null);
   const [expenseReceiptUrl, setExpenseReceiptUrl] = useState<string | null>(null);
+  const [expenseDocumentNo, setExpenseDocumentNo] = useState<string | null>(null);
   const [sourceDocumentAttachments, setSourceDocumentAttachments] = useState<unknown>(null);
   const [paymentAttachments, setPaymentAttachments] = useState<unknown>(null);
   /** Effective journal lines for payment (original + account-adjustment JEs merged) so Bank shows after Cash→Bank edit */
@@ -431,6 +432,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
       setTxnHasActiveCorrectionReversal(false);
       setJournalQuickEditOpen(false);
       setExpenseReceiptUrl(null);
+      setExpenseDocumentNo(null);
       setSourceDocumentAttachments(null);
       setPaymentAttachments(null);
     }
@@ -439,6 +441,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
   useEffect(() => {
     if (!transaction || !companyId) {
       setExpenseReceiptUrl(null);
+      setExpenseDocumentNo(null);
       setSourceDocumentAttachments(null);
       setPaymentAttachments(null);
       return;
@@ -453,19 +456,35 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
           const { supabase } = await import('@/lib/supabase');
           const { data } = await supabase
             .from('payments')
-            .select('attachments')
+            .select('attachments, reference_type, reference_id, reference_number')
             .eq('id', String(paymentId))
             .eq('company_id', companyId)
             .maybeSingle();
-          if (!cancelled) {
-            setPaymentAttachments((data as { attachments?: unknown } | null)?.attachments ?? null);
-            setExpenseReceiptUrl(null);
-            setSourceDocumentAttachments(null);
+          if (cancelled) return;
+          setPaymentAttachments((data as { attachments?: unknown } | null)?.attachments ?? null);
+          setExpenseReceiptUrl(null);
+          setSourceDocumentAttachments(null);
+          const prt = String((data as { reference_type?: string } | null)?.reference_type || '').toLowerCase();
+          const refId = (data as { reference_id?: string } | null)?.reference_id;
+          if ((prt === 'expense' || prt === 'extra_expense') && refId) {
+            const { data: exp } = await supabase
+              .from('expenses')
+              .select('expense_no, receipt_url')
+              .eq('id', String(refId))
+              .eq('company_id', companyId)
+              .maybeSingle();
+            if (cancelled) return;
+            const no = exp?.expense_no != null ? String(exp.expense_no).trim() : '';
+            setExpenseDocumentNo(no || null);
+            if (exp?.receipt_url) setExpenseReceiptUrl(String(exp.receipt_url));
+          } else {
+            setExpenseDocumentNo(null);
           }
         } catch {
           if (!cancelled) {
             setPaymentAttachments(null);
             setExpenseReceiptUrl(null);
+            setExpenseDocumentNo(null);
             setSourceDocumentAttachments(null);
           }
         }
@@ -483,18 +502,21 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
           const { supabase } = await import('@/lib/supabase');
           const { data } = await supabase
             .from('expenses')
-            .select('receipt_url')
+            .select('receipt_url, expense_no')
             .eq('id', refId)
             .eq('company_id', companyId)
             .maybeSingle();
           if (!cancelled) {
             setExpenseReceiptUrl(data?.receipt_url ? String(data.receipt_url) : null);
+            const no = data?.expense_no != null ? String(data.expense_no).trim() : '';
+            setExpenseDocumentNo(no || null);
             setSourceDocumentAttachments(null);
             setPaymentAttachments(null);
           }
         } catch {
           if (!cancelled) {
             setExpenseReceiptUrl(null);
+            setExpenseDocumentNo(null);
             setSourceDocumentAttachments(null);
             setPaymentAttachments(null);
           }
@@ -527,12 +549,14 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
             .maybeSingle();
           if (!cancelled) {
             setExpenseReceiptUrl(null);
+            setExpenseDocumentNo(null);
             setSourceDocumentAttachments(data?.attachments ?? null);
             setPaymentAttachments(null);
           }
         } catch {
           if (!cancelled) {
             setExpenseReceiptUrl(null);
+            setExpenseDocumentNo(null);
             setSourceDocumentAttachments(null);
             setPaymentAttachments(null);
           }
@@ -543,6 +567,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
       };
     }
     setExpenseReceiptUrl(null);
+    setExpenseDocumentNo(null);
     setSourceDocumentAttachments(null);
     setPaymentAttachments(null);
   }, [transaction?.id, transaction?.reference_type, transaction?.reference_id, transaction?.payment_id, companyId]);
@@ -982,6 +1007,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     setLoading(true);
     setTxnHasActiveCorrectionReversal(false);
     setExpenseReceiptUrl(null);
+    setExpenseDocumentNo(null);
     try {
       // CRITICAL FIX: Prioritize entry_no lookup (JE-0058) over UUID lookup
       // UUID format: 8-4-4-4-12 hex characters
@@ -1530,10 +1556,14 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
   const rentalPaymentVoucherRef = String(
     (transaction as { rental_payment_ref?: string })?.rental_payment_ref || ''
   ).trim();
+  const paymentRefRaw = String(payment?.reference_number || '').trim();
+  const expenseDocNo = String(expenseDocumentNo || '').trim();
   const voucherDisplayRef =
     rentalPaymentVoucherRef ||
     (/^REN-.+-PAY$/i.test(referenceNumber.trim()) ? referenceNumber.trim() : '') ||
-    String(transaction?.entry_no || referenceNumber || '').trim();
+    expenseDocNo ||
+    (paymentRefRaw && /^EXP-/i.test(paymentRefRaw) ? paymentRefRaw : '') ||
+    String(transaction?.entry_no || referenceNumber || paymentRefRaw || '').trim();
   const paymentNotesDisplay = (() => {
     const rawNotes = String(payment?.notes || '').trim();
     if (!rawNotes) return '';

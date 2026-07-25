@@ -71,7 +71,7 @@ import {
   logExpenseListTrace,
   setExpenseListDiagnosticsEnabled,
 } from '@/app/lib/expenseListDiagnostics';
-import { formatLocalDateYYYYMMDD, parseLocalDateInput } from '@/app/utils/localDate';
+import { formatLocalDateYYYYMMDD, formatRelativeListDateTime, parseLocalDateInput } from '@/app/utils/localDate';
 
 function expenseLocalDateParts(dateStr: string): { y: number; m: number; d: number } | null {
   const raw = String(dateStr ?? '').trim();
@@ -624,7 +624,7 @@ export const ExpensesDashboard = () => {
   const getExportData = (): ExportData => ({
     headers: ['Date', 'Reference #', 'Category', 'Branch', 'Expense For', 'Paid Via', 'Amount', 'Status'],
     rows: filteredExpenses.map((e) => [
-      new Date(e.date).toLocaleDateString(),
+      formatRelativeListDateTime(e.date),
       e.expenseNo || '—',
       e.category,
       resolveExpenseBranchLabel(e.location),
@@ -1111,11 +1111,15 @@ export const ExpensesDashboard = () => {
                       </tr>
                     ) : (
                       paginatedExpenses.map((expense) => (
-                       <tr key={expense.id} className="group hover:bg-accent/30 transition-colors">
+                       <tr
+                         key={expense.id}
+                         className="group hover:bg-accent/30 transition-colors cursor-pointer"
+                         onClick={() => handleExpenseAction(expense, 'view')}
+                       >
                           <td className="px-3 py-3 font-medium text-muted-foreground whitespace-nowrap">
                              <div className="flex items-center gap-1.5">
                                 <Calendar size={14} className="text-muted-foreground shrink-0" />
-                                <span className="tabular-nums">{new Date(expense.date).toLocaleDateString()}</span>
+                                <span className="tabular-nums">{formatRelativeListDateTime(expense.date)}</span>
                              </div>
                           </td>
                           <td className="px-3 py-3 text-muted-foreground whitespace-nowrap tabular-nums">
@@ -1157,21 +1161,44 @@ export const ExpensesDashboard = () => {
                           <td className="px-3 py-3 text-center">
                              <DropdownMenu>
                                <DropdownMenuTrigger asChild>
-                                 <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground data-[state=open]:bg-muted">
+                                 <Button
+                                   variant="ghost"
+                                   size="icon"
+                                   className="h-8 w-8 text-muted-foreground hover:text-foreground data-[state=open]:bg-muted"
+                                   onClick={(e) => e.stopPropagation()}
+                                 >
                                    <MoreVertical size={16} />
                                  </Button>
                                </DropdownMenuTrigger>
                                <DropdownMenuContent align="end" className="w-[160px] bg-popover border-border text-foreground">
-                                 <DropdownMenuItem className="cursor-pointer hover:bg-muted focus:bg-muted" onClick={() => handleExpenseAction(expense, 'view')}>
+                                 <DropdownMenuItem
+                                   className="cursor-pointer hover:bg-muted focus:bg-muted"
+                                   onClick={(e) => {
+                                     e.stopPropagation();
+                                     handleExpenseAction(expense, 'view');
+                                   }}
+                                 >
                                    <Eye className="mr-2 h-4 w-4 text-blue-400" />
                                    <span>View Details</span>
                                  </DropdownMenuItem>
-                                 <DropdownMenuItem className="cursor-pointer hover:bg-muted focus:bg-muted" onClick={() => handleExpenseAction(expense, 'edit')}>
+                                 <DropdownMenuItem
+                                   className="cursor-pointer hover:bg-muted focus:bg-muted"
+                                   onClick={(e) => {
+                                     e.stopPropagation();
+                                     handleExpenseAction(expense, 'edit');
+                                   }}
+                                 >
                                    <Pencil className="mr-2 h-4 w-4 text-muted-foreground" />
                                    <span>Edit</span>
                                  </DropdownMenuItem>
                                  <DropdownMenuSeparator className="bg-muted" />
-                                 <DropdownMenuItem className="cursor-pointer hover:bg-red-900/20 focus:bg-red-900/20 text-red-400 hover:text-red-300" onClick={() => handleExpenseAction(expense, 'delete')}>
+                                 <DropdownMenuItem
+                                   className="cursor-pointer hover:bg-red-900/20 focus:bg-red-900/20 text-red-400 hover:text-red-300"
+                                   onClick={(e) => {
+                                     e.stopPropagation();
+                                     handleExpenseAction(expense, 'delete');
+                                   }}
+                                 >
                                    <Trash className="mr-2 h-4 w-4" />
                                    <span>Delete</span>
                                  </DropdownMenuItem>
