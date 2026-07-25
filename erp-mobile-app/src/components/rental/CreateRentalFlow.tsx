@@ -37,6 +37,8 @@ interface CreateRentalFlowProps {
   userRole?: User['role'];
   onBack: () => void;
   onSuccess: () => void;
+  /** When set, open in full edit mode (web parity) for draft/booked rentals. */
+  editRentalId?: string | null;
 }
 
 /** Step order: customer → products → duration → rent → salesman → advance → payment_confirm (optional) → confirm */
@@ -84,10 +86,19 @@ type RentalCreateDraft = {
   pickedBranchId: string;
 };
 
-export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack, onSuccess }: CreateRentalFlowProps) {
+export function CreateRentalFlow({
+  companyId,
+  branchId,
+  userId,
+  userRole,
+  onBack,
+  onSuccess,
+  editRentalId = null,
+}: CreateRentalFlowProps) {
   const responsive = useResponsive();
   /** Local calendar "today" for date pickers (not UTC). */
   const today = localNowDateString();
+  const isEditMode = Boolean(editRentalId);
   const effectiveUserId = useEffectiveWorkerId(userId ?? '');
   const effectiveProfileId = useEffectiveWorkerProfileId();
   const effectiveRole = useEffectiveWorkerRole(userRole ?? 'admin');
@@ -110,6 +121,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
   const [defaultCustomer, setDefaultCustomer] = useState<RentalCustomer | null>(null);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const walkingInitRef = useRef(false);
+  const editHydratedRef = useRef(false);
   const [customersLoading, setCustomersLoading] = useState(false);
   const [customerSearch, setCustomerSearch] = useState('');
   const [customerPickView, setCustomerPickView] = useState<'pick' | 'addContact'>('pick');
@@ -134,6 +146,8 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
   const [notes, setNotes] = useState('');
   const [documentNumber, setDocumentNumber] = useState('');
   const [loading, setLoading] = useState(false);
+  const [editBookingNo, setEditBookingNo] = useState<string | null>(null);
+  const [editPaidLocked, setEditPaidLocked] = useState(0);
   const canPickSalesman = canAssignSaleCommission(effectiveRole);
   const { run: runSave, busy: saving } = useSubmitLock();
   const [error, setError] = useState('');
@@ -147,7 +161,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
     companyId,
     ownerUserId: effectiveUserId,
     draftId: 'rental-create',
-    enabled: !confirmationData,
+    enabled: !confirmationData && !isEditMode,
     getSnapshot: () => ({
       step,
       selectedCustomerId,
@@ -231,7 +245,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
         setCustomers(list);
       }
       setDefaultCustomer(walking);
-      if (walking && !walkingInitRef.current) {
+      if (walking && !walkingInitRef.current && !isEditMode) {
         walkingInitRef.current = true;
         setSelectedCustomerId(walking.id);
       }
@@ -239,7 +253,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
     return () => {
       cancelled = true;
     };
-  }, [companyId, branchId]);
+  }, [companyId, branchId, isEditMode]);
 
   const handleAddRentalCustomer = async (data: AddContactFormData) => {
     if (!companyId) return;
@@ -291,6 +305,95 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
     })();
     return () => { c = true; };
   }, [companyId, step]);
+
+  // Prefetch products for edit hydrate (without waiting for products step).
+  useEffect(() => {
+    if (!companyId || !isEditMode || products.length > 0) return;
+    let c = false;
+    void (async () => {
+      const { data } = await productsApi.getRentalProducts(companyId);
+      if (c) return;
+      setProducts(data || []);
+    })();
+    return () => { c = true; };
+  }, [companyId, isEditMode, products.length]);
+
+  // Hydrate edit form once products + customers are available.
+  useEffect(() => {
+    if (!isEditMode || !editRentalId || !companyId || editHydratedRef.current) return;
+    if (products.length === 0) return;
+    let cancelled = false;
+    void (async () => {
+      const { data, error: err } = await rentalsApi.getRentalById(editRentalId);
+      if (cancelled) return;
+      if (err || !data) {
+        setError(err ?? 'Rental not found.');
+        return;
+      }
+      const st = String(data.status || '').toLowerCase();
+      if (!['draft', 'booked'].includes(st)) {
+        setError('Only draft or booked rentals can be edited.');
+        return;
+      }
+      editHydratedRef.current = true;
+      setEditBookingNo(data.bookingNo);
+      setEditPaidLocked(Number(data.paidAmount) || 0);
+      setAdvancePaid(String(Number(data.paidAmount) || 0));
+      setBookingDate(data.bookingDate || today);
+      setPickupDate(data.pickupDate || '');
+      setReturnDate(data.returnDate || '');
+      const days = data.pickupDate && data.returnDate
+        ? daysBetweenYmd(data.pickupDate, data.returnDate) || 1
+        : 3;
+      setDurationDays(days);
+      setDocumentNumber(data.documentNumber || '');
+      setNotes(data.notes || '');
+      setSalesmanId(data.salesmanId || null);
+      if (data.customerId) {
+        setSelectedCustomerId(data.customerId);
+        const fromList = customers.find((c) => c.id === data.customerId);
+        setSelectedCustomer(
+          fromList || {
+            id: data.customerId,
+            name: data.customerName || 'Customer',
+            phone: data.customerPhone || '—',
+            balance: 0,
+          },
+        );
+      }
+      const rates: Record<string, string> = {};
+      const mapped: SelectedRentalItem[] = data.items.map((item) => {
+        const catalog = products.find((p) => p.id === item.productId);
+        const variation = item.variationId
+          ? catalog?.variations?.find((v) => v.id === item.variationId)
+          : null;
+        const product: productsApi.RentalProduct = catalog || {
+          id: item.productId,
+          name: item.productName,
+          sku: item.sku || '',
+          rentPricePerDay: item.rate,
+          isRentable: true,
+          hasVariations: Boolean(item.variationId),
+          variations: [],
+        };
+        const key = item.variationId ? `${item.productId}:${item.variationId}` : item.productId;
+        rates[key] = String(item.rate || 0);
+        return {
+          key,
+          product,
+          variationId: item.variationId ?? null,
+          variationLabel: variation?.label ?? null,
+          quantity: item.quantity || 1,
+        };
+      });
+      setLineRateMap(rates);
+      setSelectedItems(mapped);
+      setStep('customer');
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isEditMode, editRentalId, companyId, products, customers, today]);
 
   useEffect(() => {
     if (!companyId || (step !== 'advance' && step !== 'payment_confirm' && step !== 'confirm')) return;
@@ -349,8 +452,19 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
 
   const goFromRent = () => {
     if (canPickSalesman) setStep('salesman');
+    else if (isEditMode) setStep('confirm');
     else setStep('advance');
   };
+
+  const goFromSalesman = () => {
+    if (isEditMode) setStep('confirm');
+    else setStep('advance');
+  };
+
+  useEffect(() => {
+    if (!isEditMode) return;
+    if (step === 'advance' || step === 'payment_confirm') setStep('confirm');
+  }, [isEditMode, step]);
 
   const itemKey = (productId: string, variationId?: string | null) =>
     variationId ? `${productId}:${variationId}` : productId;
@@ -452,12 +566,12 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
       setError('Return date must be after pickup date.');
       return;
     }
-    if (paidAmount > 0 && !advancePaymentAccountId) {
+    if (paidAmount > 0 && !advancePaymentAccountId && !isEditMode) {
       setError('Select payment account (Receive Advance Into).');
       return;
     }
 
-    await runSave('Creating booking...', async () => {
+    await runSave(isEditMode ? 'Updating booking...' : 'Creating booking...', async () => {
     setError('');
     const items = selectedItems.map((item) => ({
       productId: item.product.id,
@@ -480,6 +594,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
       startDate: pickupDate,
       endDate: returnDate,
       branchId: writeBranchId,
+      excludeRentalId: isEditMode && editRentalId ? editRentalId : undefined,
     });
 
     let skipAvailabilityCheck = false;
@@ -497,6 +612,40 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
         setError(availability.message ?? 'Failed to check availability.');
         return;
       }
+    }
+
+    if (isEditMode && editRentalId) {
+      const { error: err } = await rentalsApi.updateBooking(editRentalId, companyId, {
+        customerId: selectedCustomer.id,
+        customerName: selectedCustomer.name,
+        bookingDate: bookingDate || today,
+        pickupDate,
+        returnDate,
+        rentalCharges: customerRentTotal,
+        securityDeposit: 0,
+        notes: notes.trim() || null,
+        documentNumber: documentNumber.trim() || null,
+        salesmanId: salesmanId || null,
+        items,
+        skipAvailabilityCheck,
+      });
+      if (err) {
+        setError(err);
+        return;
+      }
+      clearRentalDraft();
+      setConfirmationData({
+        type: 'rental',
+        title: 'Booking Updated Successfully',
+        transactionNo: editBookingNo,
+        amount: customerRentTotal,
+        partyName: selectedCustomer.name,
+        date: undefined,
+        dateDisplay: formatLocalDateTimeDisplay(new Date()),
+        branch: pickerBranches.find((b) => b.id === writeBranchId)?.name ?? undefined,
+        entityId: editRentalId,
+      });
+      return;
     }
 
     const commissionPctNum = commissionPct.trim() ? parseFloat(commissionPct) : NaN;
@@ -1070,7 +1219,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
             </div>
             <button
               disabled={!commissionValid}
-              onClick={() => setStep('advance')}
+              onClick={goFromSalesman}
               className="shrink-0 px-4 py-2.5 bg-white text-[#7C3AED] hover:bg-white/90 disabled:opacity-60 rounded-lg font-medium text-sm shadow"
             >
               Next
@@ -1302,12 +1451,12 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
       <FormDraftRestoredBanner show={showRentalDraftBanner} onDismiss={dismissRentalDraftBanner} />
       <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10 flow-screen-header">
         <div className="flex items-center gap-3">
-          <button onClick={() => setStep('advance')} className="p-2 hover:bg-white/10 rounded-lg text-white">
+          <button onClick={() => setStep(isEditMode ? (canPickSalesman ? 'salesman' : 'rent') : 'advance')} className="p-2 hover:bg-white/10 rounded-lg text-white">
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
-            <h1 className="text-lg font-semibold text-white">Confirm Booking</h1>
-            <p className="text-xs text-white/80">{selectedCustomer?.name}</p>
+            <h1 className="text-lg font-semibold text-white">{isEditMode ? 'Confirm Update' : 'Confirm Booking'}</h1>
+            <p className="text-xs text-white/80">{selectedCustomer?.name}{editBookingNo ? ` · ${editBookingNo}` : ''}</p>
           </div>
         </div>
       </div>
@@ -1354,9 +1503,19 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
         </div>
         <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 space-y-2">
           <div className="flex justify-between"><span className="text-[#9CA3AF]">Rent</span><span className="font-bold text-white">Rs. {customerRentTotal.toLocaleString()}</span></div>
-          <div className="flex justify-between"><span className="text-[#9CA3AF]">Advance</span><span className="text-white">Rs. {paidAmount.toLocaleString()}</span></div>
-          {paidAmount > 0 && advancePaymentAccountId && <div className="flex justify-between text-xs text-[#6B7280]"><span>Receive into</span><span>{paymentAccounts.find((a) => a.id === advancePaymentAccountId)?.name ?? '—'}</span></div>}
-          <div className="flex justify-between pt-2 border-t border-[#374151]"><span className="text-[#9CA3AF]">Balance due</span><span className="font-bold text-[#F59E0B]">Rs. {balanceDue.toLocaleString()}</span></div>
+          {isEditMode ? (
+            <>
+              <div className="flex justify-between"><span className="text-[#9CA3AF]">Paid (locked)</span><span className="text-white">Rs. {editPaidLocked.toLocaleString()}</span></div>
+              <p className="text-[11px] text-[#6B7280]">Change paid amount via Add Payment / View Payments.</p>
+              <div className="flex justify-between pt-2 border-t border-[#374151]"><span className="text-[#9CA3AF]">Balance due</span><span className="font-bold text-[#F59E0B]">Rs. {Math.max(0, customerRentTotal - editPaidLocked).toLocaleString()}</span></div>
+            </>
+          ) : (
+            <>
+              <div className="flex justify-between"><span className="text-[#9CA3AF]">Advance</span><span className="text-white">Rs. {paidAmount.toLocaleString()}</span></div>
+              {paidAmount > 0 && advancePaymentAccountId && <div className="flex justify-between text-xs text-[#6B7280]"><span>Receive into</span><span>{paymentAccounts.find((a) => a.id === advancePaymentAccountId)?.name ?? '—'}</span></div>}
+              <div className="flex justify-between pt-2 border-t border-[#374151]"><span className="text-[#9CA3AF]">Balance due</span><span className="font-bold text-[#F59E0B]">Rs. {balanceDue.toLocaleString()}</span></div>
+            </>
+          )}
         </div>
         {salesmanId && (
           <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 space-y-1">
@@ -1384,11 +1543,11 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
       <div className="fixed left-0 right-0 bg-[#1F2937] border-t border-[#374151] p-4 safe-area-bottom fixed-bottom-above-nav z-40">
         <button
           onClick={handleSave}
-          disabled={saving || !writeBranchId || (paidAmount > 0 && !advancePaymentAccountId)}
+          disabled={saving || !writeBranchId || (!isEditMode && paidAmount > 0 && !advancePaymentAccountId)}
           className="w-full h-12 bg-[#8B5CF6] hover:bg-[#7C3AED] disabled:opacity-50 rounded-lg font-medium text-white flex items-center justify-center gap-2"
         >
           {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
-          {saving ? 'Saving...' : 'Create Booking'}
+          {saving ? 'Saving...' : isEditMode ? 'Update Booking' : 'Create Booking'}
         </button>
       </div>
     </div>

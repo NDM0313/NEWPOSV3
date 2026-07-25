@@ -39,6 +39,8 @@ interface ViewRentalDetailsProps {
   onConsumedInitialAction?: () => void;
   onBack: () => void;
   onRefresh: () => void;
+  /** Open full booking editor (draft/booked). */
+  onEditBooking?: (rentalId: string) => void;
 }
 
 
@@ -71,6 +73,7 @@ export function ViewRentalDetails({
   onConsumedInitialAction,
   onBack,
   onRefresh,
+  onEditBooking,
 }: ViewRentalDetailsProps) {
   const effectiveUserId = useEffectiveWorkerId(userId ?? '');
   const [rental, setRental] = useState<RentalDetail | null>(null);
@@ -214,6 +217,7 @@ export function ViewRentalDetails({
   const canDelete = ['draft', 'booked'].includes(rental.status);
   const canCancel = ['draft', 'booked'].includes(rental.status);
   const canEditBillRef = ['draft', 'booked'].includes(rental.status);
+  const canEditBooking = ['draft', 'booked'].includes(rental.status) && Boolean(onEditBooking);
   const hasSecurityDoc =
     !!(rental.securityDocumentType || rental.securityDocumentNumber || rental.securityDocumentImageUrl);
 
@@ -234,6 +238,15 @@ export function ViewRentalDetails({
       </div>
 
       <div className="p-4 space-y-4">
+        {canEditBooking && (
+          <button
+            type="button"
+            onClick={() => onEditBooking?.(rental.id)}
+            className="w-full py-3 bg-[#8B5CF6] hover:bg-[#7C3AED] rounded-xl text-white font-medium"
+          >
+            Edit Booking
+          </button>
+        )}
         {canEditBillRef && (
           <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
             <div className="flex items-center justify-between mb-2">

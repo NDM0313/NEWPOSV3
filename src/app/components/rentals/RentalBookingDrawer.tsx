@@ -122,9 +122,9 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
           productName: r.items?.[0]?.product_name || '',
           productSku: '',
           productImage: '',
-          bookingDate: new Date(r.booking_date),
-          pickupDate: new Date(r.pickup_date),
-          returnDate: new Date(r.return_date),
+          bookingDate: parseLocalDateInput(r.booking_date),
+          pickupDate: parseLocalDateInput(r.pickup_date),
+          returnDate: parseLocalDateInput(r.return_date),
           totalDays: r.duration_days,
           rentAmount: r.rental_charges,
           advancePaid: r.paid_amount,
@@ -571,7 +571,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
 
   // REAL-TIME CONFLICT DETECTION (exclude current rental when editing)
   const bookingsForConflict = editRental?.id
-    ? existingBookings.filter((b) => b.id !== editRental.id)
+    ? existingBookings.filter((b) => String(b.id) !== String(editRental.id))
     : existingBookings;
   const conflictCheck = selectedProduct && pickupDate && returnDate
     ? checkDateConflict(
@@ -749,7 +749,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                    <div className="w-32 space-y-1">
                       <Label className="text-xs text-muted-foreground uppercase">Booking #</Label>
                       <div className="h-9 flex items-center px-3 bg-muted/50 border border-border rounded text-sm text-muted-foreground font-mono">
-                        {editRental?.bookingNo || 'Auto'}
+                        {editRental?.rentalNo || 'Auto'}
                       </div>
                    </div>
                    <div className="w-36 space-y-1">

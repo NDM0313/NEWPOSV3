@@ -103,7 +103,8 @@ export async function checkRentalAvailability(params: {
     .eq('company_id', companyId)
     .in('status', [...BLOCKING_STATUSES])
     .lt('pickup_date', endDate)
-    .gte('return_date', startDate);
+    // Half-open [pickup, return): same-day handoff allowed (return on D, next pickup on D).
+    .gt('return_date', startDate);
 
   if (branchId && branchId !== 'all') {
     query = query.eq('branch_id', branchId);

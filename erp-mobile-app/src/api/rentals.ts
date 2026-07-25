@@ -85,7 +85,8 @@ export async function checkRentalAvailability(params: {
     .eq('company_id', companyId)
     .in('status', [...BLOCKING_RENTAL_STATUSES])
     .lt('pickup_date', endDate)
-    .gte('return_date', startDate);
+    // Half-open [pickup, return): same-day handoff allowed (return on D, next pickup on D).
+    .gt('return_date', startDate);
 
   if (branchId && branchId !== 'all') query = query.eq('branch_id', branchId);
   if (excludeRentalId) query = query.neq('id', excludeRentalId);
@@ -224,6 +225,8 @@ export interface RentalItemRow {
   rate: number;
   total: number;
   unit?: string;
+  variationId?: string | null;
+  durationDays?: number;
 }
 
 export interface RentalPaymentRow {
@@ -248,6 +251,8 @@ export interface RentalDetail {
   branchId: string;
   branchName?: string;
   status: string;
+  /** Booking date YYYY-MM-DD */
+  bookingDate: string;
   pickupDate: string;
   returnDate: string;
   actualReturnDate: string | null;
@@ -853,6 +858,152 @@ export async function updateRentalMeta(
   return { error: error?.message ?? null };
 }
 
+export interface UpdateBookingInput {
+  customerId?: string;
+  customerName?: string;
+  bookingDate?: string;
+  pickupDate?: string;
+  returnDate?: string;
+  rentalCharges?: number;
+  securityDeposit?: number;
+  notes?: string | null;
+  documentNumber?: string | null;
+  salesmanId?: string | null;
+  /** Skip overlap check after user confirmed "Book anyway?" */
+  skipAvailabilityCheck?: boolean;
+  items?: Array<{
+    productId: string;
+    productName: string;
+    quantity: number;
+    ratePerDay: number;
+    durationDays: number;
+    total: number;
+    variationId?: string | null;
+  }>;
+}
+
+/**
+ * Full booking update (web parity) — draft/booked only.
+ * Does not write paid_amount; due is recalculated from existing paid.
+ */
+export async function updateBooking(
+  rentalId: string,
+  companyId: string,
+  updates: UpdateBookingInput
+): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured) return { error: 'App not configured.' };
+  if (!companyId) return { error: 'Company required.' };
+
+  const { data: existing, error: fetchErr } = await supabase
+    .from('rentals')
+    .select('id, status, booking_no, pickup_date, return_date, branch_id, paid_amount, security_deposit, rental_charges')
+    .eq('id', rentalId)
+    .single();
+
+  if (fetchErr || !existing) return { error: fetchErr?.message ?? 'Rental not found.' };
+  const r = existing as Record<string, unknown>;
+  const st = String(r.status ?? '').toLowerCase();
+  if (st !== 'draft' && st !== 'booked') {
+    return { error: 'Only draft or booked rentals can be edited.' };
+  }
+
+  const pickupDate = updates.pickupDate ?? String(r.pickup_date ?? '');
+  const returnDate = updates.returnDate ?? String(r.return_date ?? '');
+  const branchId = r.branch_id != null ? String(r.branch_id) : null;
+  const existingPaid = Number(r.paid_amount) || 0;
+
+  let items = updates.items;
+  if (!items || items.length === 0) {
+    const { data: ri } = await supabase
+      .from('rental_items')
+      .select('product_id, product_name, quantity, rate_per_day, duration_days, total, variation_id')
+      .eq('rental_id', rentalId);
+    items = (ri || []).map((i: Record<string, unknown>) => ({
+      productId: String(i.product_id),
+      productName: String(i.product_name ?? ''),
+      quantity: Number(i.quantity) || 1,
+      ratePerDay: Number(i.rate_per_day) || 0,
+      durationDays: Number(i.duration_days) || 1,
+      total: Number(i.total) || 0,
+      variationId: i.variation_id != null ? String(i.variation_id) : null,
+    }));
+  }
+
+  if (!updates.skipAvailabilityCheck) {
+    const availability = await checkRentalAvailabilityForItems({
+      companyId,
+      items: items.map((i) => ({
+        productId: i.productId,
+        quantity: i.quantity,
+        variationId: i.variationId,
+      })),
+      startDate: pickupDate,
+      endDate: returnDate,
+      excludeRentalId: rentalId,
+      branchId,
+    });
+    if (!availability.available) {
+      return { error: availability.message || 'Selected dates conflict with an existing booking.' };
+    }
+  }
+
+  const payload: Record<string, unknown> = {};
+  if (updates.customerId !== undefined) payload.customer_id = updates.customerId;
+  if (updates.customerName !== undefined) payload.customer_name = updates.customerName;
+  if (updates.bookingDate !== undefined) payload.booking_date = updates.bookingDate;
+  if (updates.pickupDate !== undefined) payload.pickup_date = updates.pickupDate;
+  if (updates.returnDate !== undefined) payload.return_date = updates.returnDate;
+  if (updates.rentalCharges !== undefined) payload.rental_charges = updates.rentalCharges;
+  if (updates.securityDeposit !== undefined) payload.security_deposit = updates.securityDeposit;
+  if (updates.notes !== undefined) payload.notes = updates.notes;
+  if (updates.documentNumber !== undefined) {
+    const v = updates.documentNumber != null ? String(updates.documentNumber).trim() : '';
+    payload.document_number = v || null;
+  }
+  if (updates.salesmanId !== undefined) payload.salesman_id = updates.salesmanId || null;
+
+  if (updates.items && updates.items.length > 0) {
+    const rentalCharges = updates.items.reduce((s, i) => s + i.total, 0);
+    const durationDays = updates.items[0]?.durationDays ?? 1;
+    const securityDeposit = updates.securityDeposit ?? (Number(r.security_deposit) || 0);
+    payload.rental_charges = rentalCharges;
+    payload.duration_days = durationDays;
+    payload.total_amount = rentalCharges + securityDeposit;
+    payload.due_amount = Math.max(0, rentalCharges + securityDeposit - existingPaid);
+
+    const { error: delErr } = await supabase.from('rental_items').delete().eq('rental_id', rentalId);
+    if (delErr) return { error: delErr.message };
+    const { error: insErr } = await supabase.from('rental_items').insert(
+      updates.items.map((i) => {
+        const row: Record<string, unknown> = {
+          rental_id: rentalId,
+          product_id: i.productId,
+          product_name: i.productName,
+          quantity: i.quantity,
+          rate_per_day: i.ratePerDay,
+          duration_days: i.durationDays,
+          total: i.total,
+        };
+        if (i.variationId) row.variation_id = i.variationId;
+        return row;
+      }),
+    );
+    if (insErr) return { error: insErr.message };
+  } else if (updates.rentalCharges !== undefined || updates.securityDeposit !== undefined) {
+    const rentalCharges = updates.rentalCharges ?? (Number(r.rental_charges) || 0);
+    const securityDeposit = updates.securityDeposit ?? (Number(r.security_deposit) || 0);
+    const total = rentalCharges + securityDeposit;
+    payload.total_amount = total;
+    payload.due_amount = Math.max(0, total - existingPaid);
+  }
+
+  if (Object.keys(payload).length > 0) {
+    const { error: updateErr } = await supabase.from('rentals').update(payload).eq('id', rentalId);
+    if (updateErr) return { error: updateErr.message };
+  }
+  return { error: null };
+}
+
 export async function getRentalById(rentalId: string): Promise<{ data: RentalDetail | null; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
   const { data: rental, error: rErr } = await supabase
@@ -864,7 +1015,7 @@ export async function getRentalById(rentalId: string): Promise<{ data: RentalDet
 
   const { data: items, error: iErr } = await supabase
     .from('rental_items')
-    .select('id, product_id, product_name, quantity, rate_per_day, duration_days, total')
+    .select('id, product_id, product_name, quantity, rate_per_day, duration_days, total, variation_id')
     .eq('rental_id', rentalId)
     .order('id');
   if (iErr) return { data: null, error: iErr.message };
@@ -939,6 +1090,7 @@ export async function getRentalById(rentalId: string): Promise<{ data: RentalDet
       branchId: String(r.branch_id ?? ''),
       branchName: branch ? [branch.code, branch.name].filter(Boolean).join(' | ') : undefined,
       status: mapRentalStatus(String(r.status ?? '')),
+      bookingDate: rentalDateToYmd(r.booking_date) || rentalDateToYmd(r.pickup_date),
       pickupDate: rentalDateToYmd(r.pickup_date),
       returnDate: rentalDateToYmd(r.return_date),
       actualReturnDate: r.actual_return_date ? rentalDateToYmd(r.actual_return_date) : null,
@@ -966,6 +1118,8 @@ export async function getRentalById(rentalId: string): Promise<{ data: RentalDet
         rate: Number(i.rate_per_day ?? i.rate ?? 0),
         total: Number(i.total) ?? 0,
         unit: i.unit as string | undefined,
+        variationId: i.variation_id != null ? String(i.variation_id) : null,
+        durationDays: Number(i.duration_days) || undefined,
       })),
       payments: paymentList.map((p) => {
         const rawDate = p.payment_date ?? p.created_at;

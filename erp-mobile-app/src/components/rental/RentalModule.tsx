@@ -126,6 +126,7 @@ export function RentalModule({ onBack, user, companyId, branch }: RentalModulePr
   );
 
   const [showCreate, setShowCreate] = useState(false);
+  const [editRentalId, setEditRentalId] = useState<string | null>(null);
   const [list, setList] = useState<RentalListItem[]>([]);
   const [loading, setLoading] = useState(!!companyId);
   const [search, setSearch] = useState('');
@@ -281,16 +282,22 @@ export function RentalModule({ onBack, user, companyId, branch }: RentalModulePr
     [listBranchScope, rentalFetchOpts.scopeToOwn],
   );
 
-  if (showCreate) {
+  if (showCreate || editRentalId) {
     return (
       <CreateRentalFlow
         companyId={companyId}
         branchId={branch?.id ?? null}
         userId={effectiveUserId || null}
         userRole={user?.role}
-        onBack={() => setShowCreate(false)}
+        editRentalId={editRentalId}
+        onBack={() => {
+          setShowCreate(false);
+          setEditRentalId(null);
+        }}
         onSuccess={() => {
           setShowCreate(false);
+          setEditRentalId(null);
+          setSelectedId(null);
           refreshList();
         }}
       />
@@ -310,6 +317,11 @@ export function RentalModule({ onBack, user, companyId, branch }: RentalModulePr
           setDetailAction(null);
         }}
         onRefresh={refreshList}
+        onEditBooking={(id) => {
+          setSelectedId(null);
+          setDetailAction(null);
+          setEditRentalId(id);
+        }}
       />
     );
   }
@@ -318,6 +330,11 @@ export function RentalModule({ onBack, user, companyId, branch }: RentalModulePr
     setMenuRental(null);
     setMetaEditRental(r);
     setMetaBillRef(r.documentNumber || '');
+  };
+
+  const openFullEdit = (r: RentalListItem) => {
+    setMenuRental(null);
+    setEditRentalId(r.id);
   };
 
   const saveMetaEdit = async () => {
@@ -451,6 +468,11 @@ export function RentalModule({ onBack, user, companyId, branch }: RentalModulePr
                 {r.due > 0 && (
                   <button onClick={() => openDetailWithAction(r, 'payment')} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
                     <DollarSign className="w-5 h-5 text-[#10B981]" /> Add Payment
+                  </button>
+                )}
+                {(r.status === 'booked' || r.status === 'draft') && (
+                  <button onClick={() => openFullEdit(r)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
+                    <Edit3 className="w-5 h-5 text-[#8B5CF6]" /> Edit Booking
                   </button>
                 )}
                 {(r.status === 'booked' || r.status === 'draft') && (
