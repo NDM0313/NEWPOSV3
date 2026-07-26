@@ -276,9 +276,10 @@ export async function getPaymentAccounts(
       error: filtered.length ? null : 'Offline: payment accounts not cached. Connect once while logged in.',
     };
   }
+  // Always include parent_id so Day Book / Roznamcha can group leaf payment accounts.
   const selectCols = includeParents
     ? 'id, code, name, type, balance, is_default_cash, is_default_bank, parent_id, is_group'
-    : 'id, code, name, type, balance, is_default_cash, is_default_bank';
+    : 'id, code, name, type, balance, is_default_cash, is_default_bank, parent_id, is_group';
   const withDefaults = await supabase
     .from('accounts')
     .select(selectCols)
@@ -291,7 +292,7 @@ export async function getPaymentAccounts(
   if (error && /is_default_cash|is_default_bank|column|parent_id|is_group/i.test(String(error.message || ''))) {
     const fallback = await supabase
       .from('accounts')
-      .select(includeParents ? 'id, code, name, type, balance, parent_id, is_group' : 'id, code, name, type, balance')
+      .select(includeParents ? 'id, code, name, type, balance, parent_id, is_group' : 'id, code, name, type, balance, parent_id')
       .eq('company_id', companyId)
       .eq('is_active', true)
       .order('code');

@@ -243,9 +243,13 @@ export function EditTransactionSheet({
     };
   }, [companyId, mode, open, targetId]);
 
-  const isTransferEdit =
+  const refTypeLower = String(journalDetail?.referenceType || '').toLowerCase();
+  const showFromTo =
     effectiveMode === 'journal' &&
-    String(journalDetail?.referenceType || '').toLowerCase() === 'transfer';
+    ['transfer', 'expense', 'expense_payment', 'general', 'journal', 'manual'].includes(
+      refTypeLower,
+    );
+  const isTransferEdit = showFromTo && refTypeLower === 'transfer';
 
   const journalAccountOptions = useMemo(() => {
     if (isTransferEdit && paymentAccounts.length > 0) {
@@ -458,10 +462,12 @@ export function EditTransactionSheet({
 
                 {effectiveMode === 'journal' && (
                   <>
-                    {isTransferEdit ? (
+                    {showFromTo ? (
                       <>
                         <CustomSelect
-                          label={POSTING_FIELD_TITLES.transferFrom}
+                          label={
+                            isTransferEdit ? POSTING_FIELD_TITLES.transferFrom : 'From account'
+                          }
                           value={form.creditAccountId}
                           onChange={(v) => setForm((s) => ({ ...s, creditAccountId: v }))}
                           options={[
@@ -472,7 +478,7 @@ export function EditTransactionSheet({
                           zIndexClass="z-[100]"
                         />
                         <CustomSelect
-                          label={POSTING_FIELD_TITLES.transferTo}
+                          label={isTransferEdit ? POSTING_FIELD_TITLES.transferTo : 'To account'}
                           value={form.debitAccountId}
                           onChange={(v) => setForm((s) => ({ ...s, debitAccountId: v }))}
                           options={[

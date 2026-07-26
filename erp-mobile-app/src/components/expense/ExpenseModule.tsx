@@ -24,7 +24,9 @@ import { getDefaultAccounts } from '../../api/settings';
 import { resolveDefaultPaymentAccountId } from '../../utils/resolveDefaultPaymentAccount';
 import { getUsersForSalary, type SalaryUserRow } from '../../api/users';
 import { addPending } from '../../lib/offlineStore';
-import { getCurrentLocalTimestamp, localNowDateTimeString } from '../../utils/localDate';
+import { getCurrentLocalTimestamp, localNowDateTimeString, formatLocalDateYYYYMMDD } from '../../utils/localDate';
+import { buildDateRange, type DateRangePreset } from '../../lib/dateRangePresets';
+import { getThisBusinessWeekRange } from '../../utils/businessWeek';
 import { DateTimeInputField } from '../shared/DateTimePicker';
 import { sortByDocumentDateTimeDesc } from '../../utils/chronologicalSort';
 import { usePermissions } from '../../context/PermissionContext';
@@ -67,6 +69,25 @@ function expenseReceiptName(url: string): string {
   } catch {
     return base;
   }
+}
+
+/** Local YMD from expense date (avoid UTC toISOString). */
+function expenseLocalYmd(dateStr: string): string {
+  const raw = String(dateStr ?? '').trim();
+  const ymd = /^(\d{4}-\d{2}-\d{2})/.exec(raw);
+  if (ymd) return ymd[1];
+  if (!raw) return '';
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return '';
+  return formatLocalDateYYYYMMDD(d);
+}
+
+function expenseInDateRangeInclusive(dateStr: string, fromYmd: string, toYmd: string): boolean {
+  const key = expenseLocalYmd(dateStr);
+  if (!key) return false;
+  if (fromYmd && key < fromYmd) return false;
+  if (toYmd && key > toYmd) return false;
+  return true;
 }
 
 interface ExpenseModuleProps {
@@ -205,6 +226,9 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
   }, []);
   const [filterCategory, setFilterCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [datePreset, setDatePreset] = useState<DateRangePreset | 'clear' | null>(null);
   // Add form: account (Cash/Bank), category tree, attachment
   const [paymentAccounts, setPaymentAccounts] = useState<accountsApi.AccountRow[]>([]);
   const [categoryTree, setCategoryTree] = useState<expensesApi.ExpenseCategoryTreeItem[]>([]);
@@ -1011,7 +1035,31 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
     setDetailExpenseId(null);
   }, [deleteTarget, companyId, showExpenseError]);
 
+  const applyExpenseDatePreset = useCallback((preset: 'today' | 'week' | 'month' | 'clear') => {
+    if (preset === 'clear') {
+      setFromDate('');
+      setToDate('');
+      setDatePreset('clear');
+      return;
+    }
+    if (preset === 'week') {
+      // Full Sat→Fri business week (web ExpensesDashboard parity)
+      const { startDate } = getThisBusinessWeekRange(new Date());
+      const endDate = new Date(startDate);
+      endDate.setDate(startDate.getDate() + 6);
+      setFromDate(formatLocalDateYYYYMMDD(startDate));
+      setToDate(formatLocalDateYYYYMMDD(endDate));
+      setDatePreset('week');
+      return;
+    }
+    const range = buildDateRange(preset);
+    setFromDate(range.from);
+    setToDate(range.to);
+    setDatePreset(preset);
+  }, []);
+
   const filtered = useMemo(() => {
+    const q = searchQuery.toLowerCase();
     const rows = scopedList.filter((e) => {
       const matchCat = expenseMatchesCategoryFilter(
         filterCategory,
@@ -1021,17 +1069,23 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
       );
       const label = categoryLabelForRow(e);
       const matchSearch =
-        e.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        label.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        e.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        e.expense_no.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchCat && matchSearch;
+        !q ||
+        (e.description || '').toLowerCase().includes(q) ||
+        label.toLowerCase().includes(q) ||
+        (e.category || '').toLowerCase().includes(q) ||
+        (e.expense_no || '').toLowerCase().includes(q) ||
+        (e.vendor_name || '').toLowerCase().includes(q);
+      if (!matchCat || !matchSearch) return false;
+      if (fromDate || toDate) {
+        return expenseInDateRangeInclusive(e.date, fromDate, toDate);
+      }
+      return true;
     });
     return sortByDocumentDateTimeDesc(rows, (e) => ({
       documentDate: e.date,
       eventTimestamp: e.created_at ?? null,
     }));
-  }, [scopedList, filterCategory, categoryTree, categoryLabelForRow, searchQuery]);
+  }, [scopedList, filterCategory, categoryTree, categoryLabelForRow, searchQuery, fromDate, toDate]);
 
   const grouped = useMemo(() => {
     const acc = {} as Record<DateGroup, typeof list>;
@@ -1493,9 +1547,58 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
               <TextInput
                 value={searchQuery}
                 onChange={setSearchQuery}
-                placeholder="Search expenses..."
+                placeholder="Search payee, ref, description..."
                 prefix={<Search className="w-5 h-5 text-white/50" />}
               />
+            </div>
+            <div className="flex flex-wrap gap-2 mb-3">
+              {(
+                [
+                  ['today', 'Today'],
+                  ['week', 'This Week'],
+                  ['month', 'This Month'],
+                  ['clear', 'Clear'],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => applyExpenseDatePreset(id)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                    datePreset === id
+                      ? 'bg-white text-[#EF4444]'
+                      : 'bg-white/10 text-white hover:bg-white/20'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <div>
+                <label className="text-[10px] uppercase tracking-wide text-white/60 mb-1 block">From</label>
+                <input
+                  type="date"
+                  value={fromDate}
+                  onChange={(e) => {
+                    setFromDate(e.target.value);
+                    setDatePreset(null);
+                  }}
+                  className="w-full h-10 px-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] uppercase tracking-wide text-white/60 mb-1 block">To</label>
+                <input
+                  type="date"
+                  value={toDate}
+                  onChange={(e) => {
+                    setToDate(e.target.value);
+                    setDatePreset(null);
+                  }}
+                  className="w-full h-10 px-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm"
+                />
+              </div>
             </div>
             <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
               {filterChips.map((cat) => (
@@ -1619,7 +1722,9 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
                               ) : null}
                               {categoryLabelForRow(e)}
                             </p>
-                            <p className="text-xs text-[#9CA3AF] line-clamp-2">{e.description}</p>
+                            <p className="text-xs text-[#9CA3AF] line-clamp-2">
+                              {(e.vendor_name || '').trim() || e.description || '—'}
+                            </p>
                           </div>
                         </div>
                         <div className="text-right ml-2 flex items-start gap-0.5 shrink-0">

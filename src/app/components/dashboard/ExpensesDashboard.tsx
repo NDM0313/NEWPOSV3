@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { 
   Receipt, 
   Calendar, 
@@ -191,6 +191,8 @@ export const ExpensesDashboard = () => {
   const localDateOverride = Boolean(fromDate.trim() || toDate.trim());
   const effectiveFromDate = localDateOverride ? fromDate.trim() : (globalStartDate || '');
   const effectiveToDate = localDateOverride ? toDate.trim() : (globalEndDate || '');
+  /** Overview cards/labels: any effective date filter (header global or local From/To). */
+  const overviewUsesDateRange = Boolean(effectiveFromDate || effectiveToDate);
 
   const loadCategoriesFromDb = React.useCallback(() => {
     if (!companyId) return;
@@ -205,10 +207,6 @@ export const ExpensesDashboard = () => {
     if (!companyId) return;
     branchService.getBranchesCached(companyId).then(setBranches).catch(() => setBranches([]));
   }, [companyId]);
-
-  useEffect(() => {
-    setSubCategoryFilter('all');
-  }, [categoryFilter]);
 
   const branchNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -325,7 +323,10 @@ export const ExpensesDashboard = () => {
   }, [operationalExpenses, accounts]);
 
   const monthCategoryBreakdown = useMemo(() => {
-    const map = new Map<string, { label: string; count: number; amount: number; categoryFilter: string }>();
+    const map = new Map<
+      string,
+      { label: string; count: number; amount: number; categoryFilter: string; subCategoryFilter: string }
+    >();
     monthExpenses.forEach((e) => {
       const catId = (e as { expense_category_id?: string }).expense_category_id;
       const pathNodes = catId ? findPathToCategory(categoriesFromDb, catId) : null;
@@ -333,11 +334,14 @@ export const ExpensesDashboard = () => {
         ? formatCategoryPathFromNodes(pathNodes)
         : (e.category || 'Other');
       const key = catId || label;
+      const leafId =
+        pathNodes && pathNodes.length >= 2 ? pathNodes[pathNodes.length - 1].id : 'all';
       const existing = map.get(key) || {
         label,
         count: 0,
         amount: 0,
         categoryFilter: pathNodes?.[0]?.name || e.category || 'Other',
+        subCategoryFilter: leafId,
       };
       existing.count += 1;
       existing.amount += e.amount || 0;
@@ -347,14 +351,14 @@ export const ExpensesDashboard = () => {
   }, [monthExpenses, categoriesFromDb]);
 
   const priorMonthTotal = useMemo(() => {
-    if (overviewUsesListDateRange) return 0;
+    if (overviewUsesDateRange) return 0;
     const now = new Date();
     const priorMonth = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
     const priorYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
     return operationalExpenses
       .filter((e) => isInCalendarMonth(e.date, priorYear, priorMonth))
       .reduce((s, e) => s + (e.amount || 0), 0);
-  }, [operationalExpenses, overviewUsesListDateRange]);
+  }, [operationalExpenses, overviewUsesDateRange]);
 
   const monthTotal = useMemo(
     () => monthExpenses.reduce((sum, e) => sum + (e.amount || 0), 0),
@@ -801,7 +805,7 @@ export const ExpensesDashboard = () => {
               <div className="flex justify-between items-start">
                 <div>
                   <p className="text-muted-foreground text-sm font-medium">
-                    {overviewUsesListDateRange ? 'Total Expense (filtered)' : 'Total Monthly Expense'}
+                    {overviewUsesDateRange ? 'Total Expense (filtered)' : 'Total Monthly Expense'}
                   </p>
                   <h3 className="text-2xl font-bold text-foreground mt-2">
                     {formatCurrency(monthTotal)}
@@ -814,7 +818,7 @@ export const ExpensesDashboard = () => {
               <div className="mt-4 flex items-center gap-2 text-xs">
                 <span className="text-muted-foreground">
                   {monthExpenses.length} expense{monthExpenses.length === 1 ? '' : 's'}
-                  {overviewUsesListDateRange ? ' in range' : ' this month'}
+                  {overviewUsesDateRange ? ' in range' : ' this month'}
                 </span>
               </div>
             </div>
@@ -879,7 +883,7 @@ export const ExpensesDashboard = () => {
             <div className="bg-card border border-border rounded-xl overflow-hidden">
               <div className="px-6 py-4 border-b border-border flex items-center justify-between">
                 <h3 className="text-lg font-bold text-foreground">
-                  {overviewUsesListDateRange ? 'Filtered range by category' : 'This month by category'}
+                  {overviewUsesDateRange ? 'Filtered range by category' : 'This month by category'}
                 </h3>
                 <span className="text-xs text-muted-foreground">{overviewPeriodLabel}</span>
               </div>
@@ -898,6 +902,7 @@ export const ExpensesDashboard = () => {
                       className="hover:bg-accent/30 cursor-pointer"
                       onClick={() => {
                         setCategoryFilter(row.categoryFilter);
+                        setSubCategoryFilter(row.subCategoryFilter);
                         setActiveTab('list');
                       }}
                     >
@@ -921,7 +926,7 @@ export const ExpensesDashboard = () => {
           {/* Donut Chart Section */}
           <div className="bg-card border border-border rounded-xl p-8 flex flex-col items-center justify-center min-h-[400px]">
             <h3 className="text-lg font-bold text-foreground mb-2 self-start">
-              Expense Breakdown ({overviewUsesListDateRange ? 'filtered' : 'this month'})
+              Expense Breakdown ({overviewUsesDateRange ? 'filtered' : 'this month'})
             </h3>
             <div className="h-[300px] w-full max-w-lg relative min-h-[300px] shrink-0">
               <ResponsiveContainer width="100%" height={300} minWidth={0} minHeight={300}>
@@ -944,21 +949,28 @@ export const ExpensesDashboard = () => {
                     itemStyle={{ color: '#F3F4F6' }}
                     formatter={(value: number) => formatCurrency(value)}
                   />
-                  <Legend 
-                     verticalAlign="bottom" 
-                     height={36} 
-                     iconType="circle"
-                     formatter={(value) => <span className="text-muted-foreground ml-1">{value}</span>}
-                  />
                 </PieChart>
               </ResponsiveContainer>
               
               {/* Center Text - Real total from database */}
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[60%] text-center pointer-events-none">
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none">
                  <p className="text-muted-foreground text-sm">Total</p>
                  <p className="text-3xl font-bold text-foreground">{formatCurrency(totalExpenseAmount)}</p>
               </div>
             </div>
+            {chartData.length > 0 && (
+              <div className="mt-4 w-full flex flex-wrap justify-center gap-x-4 gap-y-2">
+                {chartData.map((entry) => (
+                  <div key={entry.name} className="flex items-center gap-1.5 text-sm">
+                    <span
+                      className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: entry.color }}
+                    />
+                    <span className="text-muted-foreground">{entry.name}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       ) : activeTab === 'list' ? (
@@ -1087,7 +1099,10 @@ export const ExpensesDashboard = () => {
                       </label>
                       <select
                         value={categoryFilter}
-                        onChange={(e) => setCategoryFilter(e.target.value)}
+                        onChange={(e) => {
+                          setCategoryFilter(e.target.value);
+                          setSubCategoryFilter('all');
+                        }}
                         className="w-full bg-input-background border border-border rounded-lg px-3 py-2 text-foreground text-sm focus:outline-none focus:border-blue-500"
                       >
                         <option value="all">All Categories</option>
@@ -1230,7 +1245,9 @@ export const ExpensesDashboard = () => {
                           </td>
                           <td className="px-3 py-3 text-foreground max-w-[12rem]">
                              <div className="flex items-center gap-1.5 min-w-0">
-                               <span className="truncate">{expense.description}</span>
+                               <span className="truncate">
+                                 {expense.payeeName?.trim() || expense.description || '—'}
+                               </span>
                                {(expense.receiptUrl || expense.receiptAttached) && expenseReceiptAttachments(expense) ? (
                                  <button
                                    type="button"

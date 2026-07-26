@@ -6,6 +6,7 @@ import { enrichRowsWithCreatorNames } from '../lib/resolveCreatorName';
 import { normalizeAttachments } from '../lib/normalizeAttachments';
 import { isInternalLiquidityTransferRow } from '../lib/transactionTimelinePresentation';
 import { isRoznamchaLiquidityAccount } from '../lib/liquidityPaymentAccount';
+import { fetchInBatches } from '../lib/chunkInQuery';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -241,16 +242,22 @@ export async function getPaymentTransactions(
 
   const paymentIds = rows.map((r) => r.id);
 
-  const [{ data: journalByRef }, { data: journalByPaymentId }] = await Promise.all([
-    supabase
-      .from('journal_entries')
-      .select('id, entry_no, reference_id, payment_id, attachments')
-      .eq('reference_type', 'payment')
-      .in('reference_id', paymentIds),
-    supabase
-      .from('journal_entries')
-      .select('id, entry_no, reference_id, payment_id, attachments')
-      .in('payment_id', paymentIds),
+  const [journalByRef, journalByPaymentId] = await Promise.all([
+    fetchInBatches<JournalEntryLite>(paymentIds, async (chunk) => {
+      const { data } = await supabase
+        .from('journal_entries')
+        .select('id, entry_no, reference_id, payment_id, attachments')
+        .eq('reference_type', 'payment')
+        .in('reference_id', chunk);
+      return (data || []) as JournalEntryLite[];
+    }),
+    fetchInBatches<JournalEntryLite>(paymentIds, async (chunk) => {
+      const { data } = await supabase
+        .from('journal_entries')
+        .select('id, entry_no, reference_id, payment_id, attachments')
+        .in('payment_id', chunk);
+      return (data || []) as JournalEntryLite[];
+    }),
   ]);
 
   const entryByPayment: Record<string, JournalEntryLite> = {};
@@ -258,10 +265,10 @@ export async function getPaymentTransactions(
     if (!paymentKey) return;
     entryByPayment[paymentKey] = e;
   };
-  ((journalByRef || []) as JournalEntryLite[]).forEach((e) => {
+  journalByRef.forEach((e) => {
     linkEntry(String(e.reference_id ?? ''), e);
   });
-  ((journalByPaymentId || []) as JournalEntryLite[]).forEach((e) => {
+  journalByPaymentId.forEach((e) => {
     const pid = e.payment_id != null ? String(e.payment_id) : '';
     if (pid) linkEntry(pid, e);
   });
@@ -904,7 +911,14 @@ export interface TransactionEditability {
 export type TransactionEditSource = 'payment_row' | 'journal_entry' | 'unknown';
 
 const LOCKED_REFERENCE_TYPES = new Set(['sale', 'purchase', 'stock_movement', 'inventory']);
-const JOURNAL_EDITABLE_REFERENCE_TYPES = new Set(['general', 'transfer', 'expense', 'expense_payment']);
+const JOURNAL_EDITABLE_REFERENCE_TYPES = new Set([
+  'general',
+  'transfer',
+  'expense',
+  'expense_payment',
+  'journal',
+  'manual',
+]);
 
 export function canEditTransaction(referenceType: string, source: TransactionEditSource = 'unknown'): TransactionEditability {
   const type = String(referenceType || '').toLowerCase();
@@ -915,7 +929,14 @@ export function canEditTransaction(referenceType: string, source: TransactionEdi
     if (type === 'stock_movement' || type === 'inventory') {
       return { editable: false, kind: 'locked', reason: 'Inventory source transaction is locked.' };
     }
-    if (type === 'transfer' || type === 'general') {
+    // Transfers, general, and expense payment rows edit the linked JE so both
+    // From (credit) and To (debit) accounts are available — not a single Payment Account.
+    if (
+      type === 'transfer' ||
+      type === 'general' ||
+      type === 'expense' ||
+      type === 'expense_payment'
+    ) {
       return { editable: true, kind: 'journal' };
     }
     return { editable: true, kind: 'payment' };

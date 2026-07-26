@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { ArrowLeft, Loader2, Plus, Minus, Search, ChevronDown } from 'lucide-react';
+import { ArrowLeft, Loader2, Plus, Minus, Search, ChevronDown, ChevronRight } from 'lucide-react';
 import { ProductImage } from '../products/ProductImage';
 import { DateInputField } from '../shared/DateTimePicker';
 import { CustomerPickerList } from '../shared/CustomerPickerList';
@@ -116,12 +116,13 @@ export function CreateRentalFlow({
     profileId: effectiveProfileId,
   });
   const { canViewBalances } = usePermissions();
-  const [step, setStep] = useState<Step>('customer');
+  const [step, setStep] = useState<Step>(() => (editRentalId ? 'confirm' : 'customer'));
   const [customers, setCustomers] = useState<RentalCustomer[]>([]);
   const [defaultCustomer, setDefaultCustomer] = useState<RentalCustomer | null>(null);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const walkingInitRef = useRef(false);
   const editHydratedRef = useRef(false);
+  const [editHydrated, setEditHydrated] = useState(!editRentalId);
   const [customersLoading, setCustomersLoading] = useState(false);
   const [customerSearch, setCustomerSearch] = useState('');
   const [customerPickView, setCustomerPickView] = useState<'pick' | 'addContact'>('pick');
@@ -328,17 +329,18 @@ export function CreateRentalFlow({
       if (cancelled) return;
       if (err || !data) {
         setError(err ?? 'Rental not found.');
+        setEditHydrated(true);
         return;
       }
       const st = String(data.status || '').toLowerCase();
       if (!['draft', 'booked'].includes(st)) {
         setError('Only draft or booked rentals can be edited.');
+        setEditHydrated(true);
         return;
       }
       editHydratedRef.current = true;
       setEditBookingNo(data.bookingNo);
       setEditPaidLocked(Number(data.paidAmount) || 0);
-      setAdvancePaid(String(Number(data.paidAmount) || 0));
       setBookingDate(data.bookingDate || today);
       setPickupDate(data.pickupDate || '');
       setReturnDate(data.returnDate || '');
@@ -388,7 +390,8 @@ export function CreateRentalFlow({
       });
       setLineRateMap(rates);
       setSelectedItems(mapped);
-      setStep('customer');
+      setStep('confirm');
+      setEditHydrated(true);
     })();
     return () => {
       cancelled = true;
@@ -451,8 +454,8 @@ export function CreateRentalFlow({
   }, [canPickSalesman, salesmanId, effectiveUserId, salesmen]);
 
   const goFromRent = () => {
-    if (canPickSalesman) setStep('salesman');
-    else if (isEditMode) setStep('confirm');
+    if (isEditMode) setStep('confirm');
+    else if (canPickSalesman) setStep('salesman');
     else setStep('advance');
   };
 
@@ -461,10 +464,15 @@ export function CreateRentalFlow({
     else setStep('advance');
   };
 
+  /** In edit mode every forward step returns to the confirm hub. */
+  const nextAfter = (createNext: Step): Step => (isEditMode ? 'confirm' : createNext);
+
   useEffect(() => {
     if (!isEditMode) return;
     if (step === 'advance' || step === 'payment_confirm') setStep('confirm');
   }, [isEditMode, step]);
+
+  const effectivePaidAmount = isEditMode ? editPaidLocked : parseFloat(advancePaid) || 0;
 
   const itemKey = (productId: string, variationId?: string | null) =>
     variationId ? `${productId}:${variationId}` : productId;
@@ -533,7 +541,7 @@ export function CreateRentalFlow({
   const extraExpense = 0;
   /** Line rent only (posted as rental_charges); devaluation posts Dr Rental Expense / Cr Rental Income, not added into rental_charges. */
   const customerRentTotal = Math.max(0, itemsRentAmount);
-  const paidAmount = parseFloat(advancePaid) || 0;
+  const paidAmount = effectivePaidAmount;
   const balanceDue = Math.max(0, customerRentTotal - paidAmount);
   const commissionBasePreview = Math.max(0, customerRentTotal - extraExpense);
 
@@ -725,16 +733,37 @@ export function CreateRentalFlow({
     );
   }
 
+  if (isEditMode && !editHydrated) {
+    return (
+      <div className="flex flex-col min-h-[50vh] items-center justify-center gap-3 bg-[#111827] p-6">
+        <Loader2 className="w-8 h-8 text-[#8B5CF6] animate-spin" />
+        <p className="text-sm text-[#9CA3AF]">Loading booking…</p>
+        {error ? <p className="text-sm text-[#FCA5A5] text-center">{error}</p> : null}
+        {error ? (
+          <button
+            type="button"
+            onClick={onBack}
+            className="mt-2 px-4 py-2 rounded-lg bg-[#374151] text-white text-sm"
+          >
+            Back
+          </button>
+        ) : null}
+      </div>
+    );
+  }
+
   // ─── Step: Customer ─────────────────────────────────────────────────────
   if (step === 'customer') {
     if (responsive.isTablet && companyId) {
       return (
         <SelectRentalCustomerTablet
           companyId={companyId}
-          onBack={onBack}
+          initialSelectedCustomerId={selectedCustomerId}
+          onBack={isEditMode ? () => setStep('confirm') : onBack}
           onSelect={(c: RentalCustomer) => {
             setSelectedCustomer(c);
-            setStep('products');
+            setSelectedCustomerId(c.id);
+            setStep(nextAfter('products'));
           }}
         />
       );
@@ -765,12 +794,23 @@ export function CreateRentalFlow({
         <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-10 flow-screen-header">
           <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] px-4 pt-4 pb-3">
             <div className="flex items-center gap-3">
-              <button onClick={onBack} className="p-2 hover:bg-white/10 rounded-lg text-white">
+              <button
+                onClick={isEditMode ? () => setStep('confirm') : onBack}
+                className="p-2 hover:bg-white/10 rounded-lg text-white"
+              >
                 <ArrowLeft className="w-5 h-5" />
               </button>
               <div>
-                <h1 className="text-lg font-semibold text-white">New Booking</h1>
-                <p className="text-xs text-white/80">Select customer</p>
+                <h1 className="text-lg font-semibold text-white">
+                  {isEditMode ? 'Edit Booking' : 'New Booking'}
+                </h1>
+                <p className="text-xs text-white/80">
+                  {isEditMode
+                    ? editBookingNo
+                      ? `${editBookingNo} · Change customer`
+                      : 'Change customer'
+                    : 'Select customer'}
+                </p>
               </div>
             </div>
           </div>
@@ -794,7 +834,8 @@ export function CreateRentalFlow({
             searchQuery={customerSearch}
             onSelect={(c) => {
               setSelectedCustomer(c);
-              setStep('products');
+              setSelectedCustomerId(c.id);
+              setStep(nextAfter('products'));
             }}
             canViewBalances={canViewBalances}
             accent="purple"
@@ -823,7 +864,7 @@ export function CreateRentalFlow({
         <FormDraftRestoredBanner show={showRentalDraftBanner} onDismiss={dismissRentalDraftBanner} />
         <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10 flow-screen-header shrink-0">
           <div className="flex items-center gap-3 min-w-0">
-            <button onClick={() => setStep('customer')} className="p-2 hover:bg-white/10 rounded-lg text-white shrink-0">
+            <button onClick={() => setStep(isEditMode ? 'confirm' : 'customer')} className="p-2 hover:bg-white/10 rounded-lg text-white shrink-0">
               <ArrowLeft className="w-5 h-5" />
             </button>
             <div className="min-w-0">
@@ -993,10 +1034,12 @@ export function CreateRentalFlow({
         {selectedItems.length > 0 && (
           <div className="fixed left-0 right-0 bottom-0 bg-[#1F2937] border-t border-[#374151] p-4 z-40 pb-[calc(1rem+env(safe-area-inset-bottom,0))]">
             <button
-              onClick={() => setStep('duration')}
+              onClick={() => setStep(nextAfter('duration'))}
               className="w-full h-12 bg-[#8B5CF6] hover:bg-[#7C3AED] rounded-lg font-medium text-white"
             >
-              Next ({selectedItems.length} item{selectedItems.length === 1 ? '' : 's'}) →
+              {isEditMode
+                ? 'Done'
+                : `Next (${selectedItems.length} item${selectedItems.length === 1 ? '' : 's'}) →`}
             </button>
           </div>
         )}
@@ -1013,7 +1056,7 @@ export function CreateRentalFlow({
         <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10 flow-screen-header">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
-              <button onClick={() => setStep('products')} className="p-2 hover:bg-white/10 rounded-lg text-white shrink-0">
+              <button onClick={() => setStep(isEditMode ? 'confirm' : 'products')} className="p-2 hover:bg-white/10 rounded-lg text-white shrink-0">
                 <ArrowLeft className="w-5 h-5" />
               </button>
               <div className="min-w-0">
@@ -1023,10 +1066,10 @@ export function CreateRentalFlow({
             </div>
             {datesValid && (
               <button
-                onClick={() => setStep('rent')}
+                onClick={() => setStep(nextAfter('rent'))}
                 className="shrink-0 px-4 py-2.5 bg-white text-[#7C3AED] hover:bg-white/90 rounded-lg font-medium text-sm shadow"
               >
-                Next
+                {isEditMode ? 'Done' : 'Next'}
               </button>
             )}
           </div>
@@ -1085,10 +1128,10 @@ export function CreateRentalFlow({
         {datesValid && (
           <div className="fixed left-0 right-0 bottom-0 bg-[#1F2937] border-t border-[#374151] p-4 z-40 pb-[calc(1rem+env(safe-area-inset-bottom,0))]">
             <button
-              onClick={() => setStep('rent')}
+              onClick={() => setStep(nextAfter('rent'))}
               className="w-full h-12 bg-[#8B5CF6] hover:bg-[#7C3AED] rounded-lg font-medium text-white"
             >
-              Next: Rent Amount →
+              {isEditMode ? 'Done' : 'Next: Rent Amount →'}
             </button>
           </div>
         )}
@@ -1105,7 +1148,7 @@ export function CreateRentalFlow({
         <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10 flow-screen-header">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
-              <button onClick={() => setStep('duration')} className="p-2 hover:bg-white/10 rounded-lg text-white shrink-0">
+              <button onClick={() => setStep(isEditMode ? 'confirm' : 'duration')} className="p-2 hover:bg-white/10 rounded-lg text-white shrink-0">
                 <ArrowLeft className="w-5 h-5" />
               </button>
               <div className="min-w-0">
@@ -1118,7 +1161,7 @@ export function CreateRentalFlow({
                 onClick={goFromRent}
                 className="shrink-0 px-4 py-2.5 bg-white text-[#7C3AED] hover:bg-white/90 rounded-lg font-medium text-sm shadow"
               >
-                Next
+                {isEditMode ? 'Done' : 'Next'}
               </button>
             )}
           </div>
@@ -1191,7 +1234,11 @@ export function CreateRentalFlow({
               onClick={goFromRent}
               className="w-full h-12 bg-[#8B5CF6] hover:bg-[#7C3AED] rounded-lg font-medium text-white"
             >
-              {canPickSalesman ? 'Next: Salesman →' : 'Next: Advance →'}
+              {isEditMode
+                ? 'Done'
+                : canPickSalesman
+                  ? 'Next: Salesman →'
+                  : 'Next: Advance →'}
             </button>
           </div>
         )}
@@ -1209,7 +1256,7 @@ export function CreateRentalFlow({
         <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10 flow-screen-header">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
-              <button onClick={() => setStep('rent')} className="p-2 hover:bg-white/10 rounded-lg text-white shrink-0">
+              <button onClick={() => setStep(isEditMode ? 'confirm' : 'rent')} className="p-2 hover:bg-white/10 rounded-lg text-white shrink-0">
                 <ArrowLeft className="w-5 h-5" />
               </button>
               <div className="min-w-0">
@@ -1282,10 +1329,10 @@ export function CreateRentalFlow({
         <div className="fixed left-0 right-0 bottom-0 bg-[#1F2937] border-t border-[#374151] p-4 z-40 pb-[calc(1rem+env(safe-area-inset-bottom,0))]">
           <button
             disabled={!commissionValid}
-            onClick={() => setStep('advance')}
+            onClick={goFromSalesman}
             className="w-full h-12 bg-[#8B5CF6] hover:bg-[#7C3AED] disabled:opacity-50 rounded-lg font-medium text-white"
           >
-            Next: Advance →
+            {isEditMode ? 'Done' : 'Next: Advance →'}
           </button>
         </div>
       </div>
@@ -1294,6 +1341,9 @@ export function CreateRentalFlow({
 
   // ─── Step 4: Advance Entry ───────────────────────────────────────────────
   if (step === 'advance') {
+    if (isEditMode) {
+      return null;
+    }
     return (
       <div className="flex flex-col min-h-0 w-full bg-[#111827] pb-24">
         <FormDraftRestoredBanner show={showRentalDraftBanner} onDismiss={dismissRentalDraftBanner} />
@@ -1376,6 +1426,9 @@ export function CreateRentalFlow({
 
   // ─── Step 5: Payment Confirmation (Receive Advance Into) ─────────────────
   if (step === 'payment_confirm') {
+    if (isEditMode) {
+      return null;
+    }
     const needAccount = paidAmount > 0;
     const canNext = !needAccount || advancePaymentAccountId;
     return (
@@ -1451,7 +1504,10 @@ export function CreateRentalFlow({
       <FormDraftRestoredBanner show={showRentalDraftBanner} onDismiss={dismissRentalDraftBanner} />
       <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10 flow-screen-header">
         <div className="flex items-center gap-3">
-          <button onClick={() => setStep(isEditMode ? (canPickSalesman ? 'salesman' : 'rent') : 'advance')} className="p-2 hover:bg-white/10 rounded-lg text-white">
+          <button
+            onClick={isEditMode ? onBack : () => setStep(canPickSalesman ? 'salesman' : 'advance')}
+            className="p-2 hover:bg-white/10 rounded-lg text-white"
+          >
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
@@ -1473,50 +1529,110 @@ export function CreateRentalFlow({
             />
           </div>
         )}
-        <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
-          <p className="text-sm text-[#9CA3AF]">Customer</p>
-          <p className="font-medium text-white">{selectedCustomer?.name}</p>
-        </div>
-        <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
-          <p className="text-sm text-[#9CA3AF]">Dates</p>
-          <p className="font-medium text-white">Booked {bookingDate} · {pickupDate} → {returnDate}</p>
-          <p className="text-xs text-[#6B7280]">{effectiveDurationDays} rental days · Booking # (REN-*) assigned on save</p>
-        </div>
+        {isEditMode ? (
+          <button
+            type="button"
+            onClick={() => setStep('customer')}
+            className="w-full text-left bg-[#1F2937] border border-[#374151] rounded-xl p-4 hover:border-[#8B5CF6]/50 transition-colors flex items-center justify-between gap-3"
+          >
+            <div className="min-w-0">
+              <p className="text-sm text-[#9CA3AF]">Customer</p>
+              <p className="font-medium text-white truncate">{selectedCustomer?.name}</p>
+              <p className="text-xs text-[#6B7280] mt-0.5">Tap to change</p>
+            </div>
+            <ChevronRight className="w-5 h-5 text-[#6B7280] shrink-0" />
+          </button>
+        ) : (
+          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+            <p className="text-sm text-[#9CA3AF]">Customer</p>
+            <p className="font-medium text-white">{selectedCustomer?.name}</p>
+          </div>
+        )}
+        {isEditMode ? (
+          <button
+            type="button"
+            onClick={() => setStep('duration')}
+            className="w-full text-left bg-[#1F2937] border border-[#374151] rounded-xl p-4 hover:border-[#8B5CF6]/50 transition-colors flex items-center justify-between gap-3"
+          >
+            <div className="min-w-0">
+              <p className="text-sm text-[#9CA3AF]">Dates</p>
+              <p className="font-medium text-white">Booked {bookingDate} · {pickupDate} → {returnDate}</p>
+              <p className="text-xs text-[#6B7280] mt-0.5">{effectiveDurationDays} rental days · Tap to change</p>
+            </div>
+            <ChevronRight className="w-5 h-5 text-[#6B7280] shrink-0" />
+          </button>
+        ) : (
+          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+            <p className="text-sm text-[#9CA3AF]">Dates</p>
+            <p className="font-medium text-white">Booked {bookingDate} · {pickupDate} → {returnDate}</p>
+            <p className="text-xs text-[#6B7280]">{effectiveDurationDays} rental days · Booking # (REN-*) assigned on save</p>
+          </div>
+        )}
         {documentNumber.trim() && (
           <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
             <p className="text-sm text-[#9CA3AF]">Bill / manual ref #</p>
             <p className="font-medium text-white">{documentNumber.trim()}</p>
           </div>
         )}
-        <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
-          <p className="text-sm text-[#9CA3AF] mb-2">Selected items</p>
-          {selectedItems.map((i) => (
-            <div key={i.key} className="flex justify-between text-sm">
-              <span className="text-white">
-                {i.product.name}
-                {i.variationLabel ? <span className="text-[#8B5CF6]"> ({i.variationLabel})</span> : null}
-                {' × '}{i.quantity}
-              </span>
-              <span className="text-[#6B7280]">{i.product.sku}</span>
+        {isEditMode ? (
+          <button
+            type="button"
+            onClick={() => setStep('products')}
+            className="w-full text-left bg-[#1F2937] border border-[#374151] rounded-xl p-4 hover:border-[#8B5CF6]/50 transition-colors"
+          >
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <p className="text-sm text-[#9CA3AF]">Selected items</p>
+              <ChevronRight className="w-5 h-5 text-[#6B7280] shrink-0" />
             </div>
-          ))}
-        </div>
-        <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 space-y-2">
-          <div className="flex justify-between"><span className="text-[#9CA3AF]">Rent</span><span className="font-bold text-white">Rs. {customerRentTotal.toLocaleString()}</span></div>
-          {isEditMode ? (
-            <>
-              <div className="flex justify-between"><span className="text-[#9CA3AF]">Paid (locked)</span><span className="text-white">Rs. {editPaidLocked.toLocaleString()}</span></div>
-              <p className="text-[11px] text-[#6B7280]">Change paid amount via Add Payment / View Payments.</p>
-              <div className="flex justify-between pt-2 border-t border-[#374151]"><span className="text-[#9CA3AF]">Balance due</span><span className="font-bold text-[#F59E0B]">Rs. {Math.max(0, customerRentTotal - editPaidLocked).toLocaleString()}</span></div>
-            </>
-          ) : (
-            <>
-              <div className="flex justify-between"><span className="text-[#9CA3AF]">Advance</span><span className="text-white">Rs. {paidAmount.toLocaleString()}</span></div>
-              {paidAmount > 0 && advancePaymentAccountId && <div className="flex justify-between text-xs text-[#6B7280]"><span>Receive into</span><span>{paymentAccounts.find((a) => a.id === advancePaymentAccountId)?.name ?? '—'}</span></div>}
-              <div className="flex justify-between pt-2 border-t border-[#374151]"><span className="text-[#9CA3AF]">Balance due</span><span className="font-bold text-[#F59E0B]">Rs. {balanceDue.toLocaleString()}</span></div>
-            </>
-          )}
-        </div>
+            {selectedItems.map((i) => (
+              <div key={i.key} className="flex justify-between text-sm">
+                <span className="text-white">
+                  {i.product.name}
+                  {i.variationLabel ? <span className="text-[#8B5CF6]"> ({i.variationLabel})</span> : null}
+                  {' × '}{i.quantity}
+                </span>
+                <span className="text-[#6B7280]">{i.product.sku}</span>
+              </div>
+            ))}
+            <p className="text-xs text-[#6B7280] mt-2">Tap to change items</p>
+          </button>
+        ) : (
+          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+            <p className="text-sm text-[#9CA3AF] mb-2">Selected items</p>
+            {selectedItems.map((i) => (
+              <div key={i.key} className="flex justify-between text-sm">
+                <span className="text-white">
+                  {i.product.name}
+                  {i.variationLabel ? <span className="text-[#8B5CF6]"> ({i.variationLabel})</span> : null}
+                  {' × '}{i.quantity}
+                </span>
+                <span className="text-[#6B7280]">{i.product.sku}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {isEditMode ? (
+          <button
+            type="button"
+            onClick={() => setStep('rent')}
+            className="w-full text-left bg-[#1F2937] border border-[#374151] rounded-xl p-4 hover:border-[#8B5CF6]/50 transition-colors space-y-2"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex justify-between flex-1"><span className="text-[#9CA3AF]">Rent</span><span className="font-bold text-white">Rs. {customerRentTotal.toLocaleString()}</span></div>
+              <ChevronRight className="w-5 h-5 text-[#6B7280] shrink-0" />
+            </div>
+            <div className="flex justify-between"><span className="text-[#9CA3AF]">Paid (locked)</span><span className="text-white">Rs. {editPaidLocked.toLocaleString()}</span></div>
+            <p className="text-[11px] text-[#6B7280]">Change paid amount via Add Payment / View Payments. Tap rent to edit charges.</p>
+            <div className="flex justify-between pt-2 border-t border-[#374151]"><span className="text-[#9CA3AF]">Balance due</span><span className="font-bold text-[#F59E0B]">Rs. {Math.max(0, customerRentTotal - editPaidLocked).toLocaleString()}</span></div>
+          </button>
+        ) : (
+          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 space-y-2">
+            <div className="flex justify-between"><span className="text-[#9CA3AF]">Rent</span><span className="font-bold text-white">Rs. {customerRentTotal.toLocaleString()}</span></div>
+            <div className="flex justify-between"><span className="text-[#9CA3AF]">Advance</span><span className="text-white">Rs. {paidAmount.toLocaleString()}</span></div>
+            {paidAmount > 0 && advancePaymentAccountId && <div className="flex justify-between text-xs text-[#6B7280]"><span>Receive into</span><span>{paymentAccounts.find((a) => a.id === advancePaymentAccountId)?.name ?? '—'}</span></div>}
+            <div className="flex justify-between pt-2 border-t border-[#374151]"><span className="text-[#9CA3AF]">Balance due</span><span className="font-bold text-[#F59E0B]">Rs. {balanceDue.toLocaleString()}</span></div>
+          </div>
+        )}
         {salesmanId && (
           <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 space-y-1">
             <p className="text-sm text-[#9CA3AF]">Salesman</p>

@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { isRealBranchUuid } from '../utils/branchId';
 import { normalizeFiscalYearConfig, type FiscalYearConfig } from '../utils/financialYear';
 
 export async function resolveFiscalYearConfig(
@@ -10,11 +11,12 @@ export async function resolveFiscalYearConfig(
   let fyStart: string | null = null;
   let fyEnd: string | null = null;
 
-  if (branchId) {
+  // Skip sentinel values like "all" / "default" — they are not branch UUIDs.
+  if (isRealBranchUuid(branchId)) {
     const { data: branch } = await supabase
       .from('branches')
       .select('fiscal_year_start, fiscal_year_end')
-      .eq('id', branchId)
+      .eq('id', branchId.trim())
       .maybeSingle();
     if (branch?.fiscal_year_start) {
       fyStart = String(branch.fiscal_year_start).split('T')[0];

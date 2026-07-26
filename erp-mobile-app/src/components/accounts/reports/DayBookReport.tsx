@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Building2, ChevronDown, ChevronUp, FileText, Smartphone, Wallet, ArrowDownLeft, ArrowLeftRight, ArrowUpRight } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Building2, ChevronDown, ChevronUp, FileText, Search, Smartphone, Wallet, ArrowDownLeft, ArrowLeftRight, ArrowUpRight, X } from 'lucide-react';
 import type { User } from '../../../types';
 import { getDayBook, type DayBookJournalEntry } from '../../../api/reports';
 import {
@@ -11,6 +11,12 @@ import {
   type RoznamchaRowWithBalance,
 } from '../../../api/roznamcha';
 import { getPaymentAccounts } from '../../../api/accounts';
+import { supabase } from '../../../lib/supabase';
+import {
+  safeLocalStorageGetItem,
+  safeLocalStorageRemoveItem,
+  safeLocalStorageSetItem,
+} from '../../../lib/safeBrowserStorage';
 import { ReportHeader } from './_shared/ReportHeader';
 import { DateRangeBar, makeInitialRange, type DateRangeValue } from './_shared/DateRangeBar';
 import { ReportShell, ReportCard } from './_shared/ReportShell';
@@ -41,6 +47,33 @@ interface DayBookReportProps {
 type ReportMode = 'cash' | 'all';
 type BranchScope = 'all' | 'session';
 type DateSort = 'asc' | 'desc';
+
+type PaymentLeafOption = { id: string; label: string; parentId: string | null };
+type PaymentParentGroup = { id: string; label: string; childIds: string[] };
+
+function defaultPaymentAccountsStorageKey(companyId: string) {
+  return `roznamcha-default-payment-accounts:${companyId}`;
+}
+
+function loadDefaultPaymentAccountIds(companyId: string): string[] {
+  const raw = safeLocalStorageGetItem(defaultPaymentAccountsStorageKey(companyId));
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((x) => String(x || '').trim()).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function saveDefaultPaymentAccountIds(companyId: string, ids: string[]) {
+  if (ids.length === 0) {
+    safeLocalStorageRemoveItem(defaultPaymentAccountsStorageKey(companyId));
+    return;
+  }
+  safeLocalStorageSetItem(defaultPaymentAccountsStorageKey(companyId), JSON.stringify(ids));
+}
 
 function effectiveBranchId(scope: BranchScope, sessionBranchId?: string | null): string | null {
   if (scope === 'all') return null;
@@ -90,11 +123,27 @@ export function DayBookReport({ onBack, companyId, branchId, user, reportRefresh
   const [mode, setMode] = useState<ReportMode>('cash');
   const [branchScope, setBranchScope] = useState<BranchScope>('session');
   const [liquidity, setLiquidity] = useState<AccountFilter>('all');
-  const [paymentLedgerAccountId, setPaymentLedgerAccountId] = useState('');
+  const [paymentLedgerAccountIds, setPaymentLedgerAccountIds] = useState<string[]>([]);
   const [includeVoided, setIncludeVoided] = useState(false);
   const [dateSort, setDateSort] = useState<DateSort>('asc');
+  const [searchQuery, setSearchQuery] = useState('');
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [paymentAccountOptions, setPaymentAccountOptions] = useState<Array<{ id: string; label: string }>>([]);
+  const [ledgerPickerOpen, setLedgerPickerOpen] = useState(false);
+  const [paymentAccountOptions, setPaymentAccountOptions] = useState<PaymentLeafOption[]>([]);
+  const [paymentParentGroups, setPaymentParentGroups] = useState<PaymentParentGroup[]>([]);
+  const [ledgerDefaultHint, setLedgerDefaultHint] = useState<string | null>(null);
+  const paymentLedgerFilter = useMemo(
+    () => (paymentLedgerAccountIds.length > 0 ? paymentLedgerAccountIds : null),
+    [paymentLedgerAccountIds],
+  );
+  const paymentLedgerFilterKey = paymentLedgerAccountIds.join(',');
+  const ledgerDefaultHintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showLedgerDefaultHint = useCallback((msg: string) => {
+    setLedgerDefaultHint(msg);
+    if (ledgerDefaultHintTimer.current) clearTimeout(ledgerDefaultHintTimer.current);
+    ledgerDefaultHintTimer.current = setTimeout(() => setLedgerDefaultHint(null), 2500);
+  }, []);
 
   const [journalEntries, setJournalEntries] = useState<DayBookJournalEntry[]>([]);
   const [roznamcha, setRoznamcha] = useState<RoznamchaResult | null>(null);
@@ -115,18 +164,59 @@ export function DayBookReport({ onBack, companyId, branchId, user, reportRefresh
   useEffect(() => {
     if (!companyId) {
       setPaymentAccountOptions([]);
+      setPaymentParentGroups([]);
+      setPaymentLedgerAccountIds([]);
       return;
     }
     let cancelled = false;
-    getPaymentAccounts(companyId).then(({ data }) => {
-      if (cancelled) return;
-      setPaymentAccountOptions(
-        (data || []).map((a) => ({
+    void (async () => {
+      try {
+        const { data } = await getPaymentAccounts(companyId);
+        if (cancelled) return;
+        const leaves: PaymentLeafOption[] = (data || []).map((a) => ({
           id: a.id,
           label: [a.code, a.name].filter(Boolean).join(' — ') || a.name || a.id,
-        })),
-      );
-    });
+          parentId: a.parentId != null ? String(a.parentId) : null,
+        }));
+        setPaymentAccountOptions(leaves);
+
+        const parentIds = [
+          ...new Set(leaves.map((l) => l.parentId).filter((id): id is string => Boolean(id))),
+        ];
+        const groups: PaymentParentGroup[] = [];
+        if (parentIds.length > 0) {
+          const { data: parents } = await supabase
+            .from('accounts')
+            .select('id, name, code')
+            .in('id', parentIds);
+          if (cancelled) return;
+          for (const p of parents || []) {
+            const pid = String((p as { id?: string }).id || '');
+            if (!pid) continue;
+            const childIds = leaves.filter((l) => l.parentId === pid).map((l) => l.id);
+            if (childIds.length === 0) continue;
+            const code = (p as { code?: string }).code;
+            const name = (p as { name?: string }).name;
+            groups.push({
+              id: pid,
+              label: [code, name].filter(Boolean).join(' — ') || name || pid,
+              childIds,
+            });
+          }
+        }
+        setPaymentParentGroups(groups);
+
+        const saved = loadDefaultPaymentAccountIds(companyId).filter((id) =>
+          leaves.some((l) => l.id === id),
+        );
+        setPaymentLedgerAccountIds(saved);
+      } catch {
+        if (!cancelled) {
+          setPaymentAccountOptions([]);
+          setPaymentParentGroups([]);
+        }
+      }
+    })();
     return () => {
       cancelled = true;
     };
@@ -149,7 +239,7 @@ export function DayBookReport({ onBack, companyId, branchId, user, reportRefresh
         dateTo,
         liquidity,
         includeVoided,
-        paymentLedgerAccountId.trim() || null,
+        paymentLedgerFilter,
       )
         .then((result) => {
           if (cancelled) return;
@@ -184,7 +274,8 @@ export function DayBookReport({ onBack, companyId, branchId, user, reportRefresh
     range.to,
     liquidity,
     includeVoided,
-    paymentLedgerAccountId,
+    paymentLedgerFilter,
+    paymentLedgerFilterKey,
     dateFrom,
     dateTo,
     reportRefreshEpoch,
@@ -197,6 +288,37 @@ export function DayBookReport({ onBack, companyId, branchId, user, reportRefresh
     if (dateSort === 'desc') rows.reverse();
     return rows;
   }, [roznamcha, dateSort]);
+
+  /** Search matches reference number first, then description / title / account name. */
+  const filteredRozRows = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return orderedRozRows;
+    return orderedRozRows.filter((r) => {
+      const refHay = [r.ref, r.journalEntryNo, roznamchaRefDisplay(r), roznamchaJournalSubtitle(r)]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      if (refHay.includes(q)) return true;
+
+      const pres = resolveRoznamchaRowPresentation(r);
+      const title = pres.useLiquidityPresentation
+        ? pres.title
+        : journalDescriptionForDisplay(r.details, r.type || 'Payment');
+      const descHay = [
+        title,
+        r.details,
+        r.referenceDisplay,
+        r.partyLine,
+        r.accountLabel,
+        r.accountName,
+        r.type,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return descHay.includes(q);
+    });
+  }, [orderedRozRows, searchQuery]);
 
   const journalGroups = useMemo(() => {
     const map = new Map<string, DayBookJournalEntry[]>();
@@ -273,9 +395,10 @@ export function DayBookReport({ onBack, companyId, branchId, user, reportRefresh
           { label: 'Total Cr', value: `Rs. ${formatAmount(journalTotals.credit, 0)}`, color: 'text-[#BBF7D0]' },
         ];
 
+  const searchActive = searchQuery.trim().length > 0;
   const empty =
     !loading &&
-    (mode === 'cash' ? orderedRozRows.length === 0 : journalEntries.length === 0);
+    (mode === 'cash' ? filteredRozRows.length === 0 : journalEntries.length === 0);
 
   const liquidityChips: { id: AccountFilter; label: string }[] = [
     { id: 'all', label: 'All' },
@@ -341,6 +464,36 @@ export function DayBookReport({ onBack, companyId, branchId, user, reportRefresh
         </div>
       )}
 
+      {mode === 'cash' && (
+        <div className="px-4 mb-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#6B7280] pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search ref # or description..."
+              className="w-full h-11 pl-10 pr-10 bg-[#1F2937] border border-[#374151] rounded-lg text-sm text-white placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6]"
+            />
+            {searchActive ? (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-[#9CA3AF] hover:bg-[#374151]"
+                aria-label="Clear search"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            ) : null}
+          </div>
+          {searchActive ? (
+            <p className="mt-1.5 text-[10px] text-[#9CA3AF]">
+              {filteredRozRows.length} of {orderedRozRows.length} entries · totals above stay on the date range
+            </p>
+          ) : null}
+        </div>
+      )}
+
       {mode === 'cash' && !easyMode && (
         <div className="px-4 mb-3">
           <button
@@ -395,18 +548,165 @@ export function DayBookReport({ onBack, companyId, branchId, user, reportRefresh
               </div>
               <div>
                 <p className="text-[10px] uppercase tracking-wide text-[#9CA3AF] mb-1">Ledger account</p>
-                <select
-                  value={paymentLedgerAccountId}
-                  onChange={(e) => setPaymentLedgerAccountId(e.target.value)}
-                  className="w-full px-3 py-2 bg-[#111827] border border-[#374151] rounded-lg text-white text-sm"
+                <button
+                  type="button"
+                  onClick={() => setLedgerPickerOpen((o) => !o)}
+                  className="w-full px-3 py-2 bg-[#111827] border border-[#374151] rounded-lg text-white text-sm text-left flex items-center justify-between gap-2"
                 >
-                  <option value="">All payment accounts</option>
-                  {paymentAccountOptions.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
+                  <span className="truncate">
+                    {paymentLedgerAccountIds.length === 0
+                      ? 'All payment accounts'
+                      : paymentLedgerAccountIds.length === 1
+                        ? paymentAccountOptions.find((o) => o.id === paymentLedgerAccountIds[0])?.label ||
+                          '1 account'
+                        : `${paymentLedgerAccountIds.length} accounts`}
+                  </span>
+                  {ledgerPickerOpen ? (
+                    <ChevronUp className="w-4 h-4 shrink-0 text-[#9CA3AF]" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 shrink-0 text-[#9CA3AF]" />
+                  )}
+                </button>
+                {ledgerPickerOpen ? (
+                  <div className="mt-2 rounded-lg border border-[#374151] bg-[#111827] p-3 space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-medium text-white">Payment accounts</p>
+                      <button
+                        type="button"
+                        className="text-xs text-[#60A5FA]"
+                        onClick={() => setPaymentLedgerAccountIds([])}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                    <div className="max-h-56 overflow-y-auto space-y-2 pr-1">
+                      {paymentParentGroups.map((group) => {
+                        const selectedCount = group.childIds.filter((id) =>
+                          paymentLedgerAccountIds.includes(id),
+                        ).length;
+                        const allSelected =
+                          selectedCount === group.childIds.length && group.childIds.length > 0;
+                        const someSelected = selectedCount > 0 && !allSelected;
+                        return (
+                          <div key={group.id} className="space-y-1">
+                            <label className="flex items-center gap-2 text-sm text-white cursor-pointer min-w-0">
+                              <input
+                                type="checkbox"
+                                checked={allSelected}
+                                ref={(el) => {
+                                  if (el) el.indeterminate = someSelected;
+                                }}
+                                onChange={(e) => {
+                                  const checked = e.target.checked;
+                                  setPaymentLedgerAccountIds((prev) => {
+                                    const without = prev.filter((id) => !group.childIds.includes(id));
+                                    if (checked) return [...without, ...group.childIds];
+                                    return without;
+                                  });
+                                }}
+                                className="!w-4 !h-4 shrink-0 rounded border-[#374151] accent-[#3B82F6]"
+                              />
+                              <span className="font-medium truncate min-w-0 flex-1">{group.label}</span>
+                              <span className="text-[10px] text-[#9CA3AF] shrink-0">(parent)</span>
+                            </label>
+                            <div className="pl-6 space-y-1">
+                              {group.childIds.map((childId) => {
+                                const leaf = paymentAccountOptions.find((o) => o.id === childId);
+                                if (!leaf) return null;
+                                return (
+                                  <label
+                                    key={childId}
+                                    className="flex items-center gap-2 text-sm text-[#D1D5DB] cursor-pointer min-w-0"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={paymentLedgerAccountIds.includes(childId)}
+                                      onChange={(e) => {
+                                        const checked = e.target.checked;
+                                        setPaymentLedgerAccountIds((prev) => {
+                                          if (checked) {
+                                            return prev.includes(childId) ? prev : [...prev, childId];
+                                          }
+                                          return prev.filter((id) => id !== childId);
+                                        });
+                                      }}
+                                      className="!w-4 !h-4 shrink-0 rounded border-[#374151] accent-[#3B82F6]"
+                                    />
+                                    <span className="truncate min-w-0 flex-1">{leaf.label}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {paymentAccountOptions
+                        .filter(
+                          (l) =>
+                            !l.parentId || !paymentParentGroups.some((g) => g.id === l.parentId),
+                        )
+                        .map((leaf) => (
+                          <label
+                            key={leaf.id}
+                            className="flex items-center gap-2 text-sm text-white cursor-pointer min-w-0"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={paymentLedgerAccountIds.includes(leaf.id)}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                setPaymentLedgerAccountIds((prev) => {
+                                  if (checked) {
+                                    return prev.includes(leaf.id) ? prev : [...prev, leaf.id];
+                                  }
+                                  return prev.filter((id) => id !== leaf.id);
+                                });
+                              }}
+                              className="!w-4 !h-4 shrink-0 rounded border-[#374151] accent-[#3B82F6]"
+                            />
+                            <span className="truncate min-w-0 flex-1">{leaf.label}</span>
+                          </label>
+                        ))}
+                      {paymentAccountOptions.length === 0 ? (
+                        <p className="text-xs text-[#9CA3AF]">No payment accounts found.</p>
+                      ) : null}
+                    </div>
+                    <div className="flex gap-2 pt-1 border-t border-[#374151]">
+                      <button
+                        type="button"
+                        className="flex-1 px-2 py-1.5 rounded-lg bg-[#374151] text-white text-xs font-medium"
+                        disabled={!companyId}
+                        onClick={() => {
+                          if (!companyId) return;
+                          saveDefaultPaymentAccountIds(companyId, paymentLedgerAccountIds);
+                          showLedgerDefaultHint(
+                            paymentLedgerAccountIds.length === 0
+                              ? 'Default cleared (all accounts)'
+                              : 'Default payment accounts saved',
+                          );
+                        }}
+                      >
+                        Save as default
+                      </button>
+                      <button
+                        type="button"
+                        className="flex-1 px-2 py-1.5 rounded-lg border border-[#374151] text-[#D1D5DB] text-xs font-medium"
+                        disabled={!companyId}
+                        onClick={() => {
+                          if (!companyId) return;
+                          saveDefaultPaymentAccountIds(companyId, []);
+                          setPaymentLedgerAccountIds([]);
+                          showLedgerDefaultHint('Defaults reset');
+                        }}
+                      >
+                        Reset
+                      </button>
+                    </div>
+                    {ledgerDefaultHint ? (
+                      <p className="text-[11px] text-[#86EFAC]">{ledgerDefaultHint}</p>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
               <div className="flex flex-wrap gap-3">
                 <label className="flex items-center gap-2 text-xs text-[#D1D5DB]">
@@ -414,7 +714,7 @@ export function DayBookReport({ onBack, companyId, branchId, user, reportRefresh
                     type="checkbox"
                     checked={includeVoided}
                     onChange={(e) => setIncludeVoided(e.target.checked)}
-                    className="rounded border-[#374151]"
+                    className="!w-4 !h-4 shrink-0 rounded border-[#374151] accent-[#3B82F6]"
                   />
                   Include voided (audit)
                 </label>
@@ -472,7 +772,13 @@ export function DayBookReport({ onBack, companyId, branchId, user, reportRefresh
         loading={loading}
         error={error}
         empty={empty}
-        emptyLabel={mode === 'cash' ? 'No payments in this range.' : 'No journal entries in this range.'}
+        emptyLabel={
+          mode === 'cash'
+            ? searchActive
+              ? 'No matching entries.'
+              : 'No payments in this range.'
+            : 'No journal entries in this range.'
+        }
       >
         {mode === 'cash' ? (
           <div className="space-y-4">
@@ -485,7 +791,7 @@ export function DayBookReport({ onBack, companyId, branchId, user, reportRefresh
                   </span>
                 </div>
                 <ul className="divide-y divide-[#374151]">
-                  {orderedRozRows.map((r) => {
+                  {filteredRozRows.map((r) => {
                     const pres = resolveRoznamchaRowPresentation(r);
                     const timeLabel = formatRoznamchaRowDateTimeDisplay(r.date, r.time || '');
                     const meta = roznamchaMetaSubline(r);
@@ -662,7 +968,7 @@ export function DayBookReport({ onBack, companyId, branchId, user, reportRefresh
             title="Roznamcha"
             subtitle={dateRangeLabel(range.from, range.to)}
             summary={roznamcha.summary}
-            rows={orderedRozRows}
+            rows={filteredRozRows}
             generatedBy={user.name || user.email || 'User'}
             generatedAt={new Date().toLocaleString('en-PK')}
           />

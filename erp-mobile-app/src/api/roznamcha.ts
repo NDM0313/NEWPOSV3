@@ -6,6 +6,7 @@
  */
 
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { fetchInBatches } from '../lib/chunkInQuery';
 import { enrichRowsWithTransactionAttachments } from '../lib/roznamchaAttachments';
 import { isRoznamchaLiquidityAccount, paymentMethodForLiquidityAccount } from '../lib/liquidityPaymentAccount';
 import {
@@ -959,7 +960,7 @@ async function fetchPaymentRows(
   ];
   const contactIdsToFetch = [...new Set([...partyContactIds, ...courierRefIds])];
 
-  const [accRes, expRes, jeRes, jeByPaymentRes, contactRes, expenseCatRes] = await Promise.all([
+  const [accRes, expRes, jeExpenseRows, jeByPaymentRows, contactRes, expenseCatRes] = await Promise.all([
     accountIds.length > 0
       ? supabase.from('accounts').select('id, name, type, code, linked_contact_id').in('id', accountIds)
       : Promise.resolve({ data: [] as { id: string; name: string; type: string; code?: string | null }[] }),
@@ -971,26 +972,31 @@ async function fetchPaymentRows(
       : Promise.resolve(
           { data: [] as { id: string; expense_no: string; description?: string; vendor_name?: string; category?: string; expense_category_id?: string }[] }
         ),
-    expensePaymentIds.length > 0
-      ? supabase
-          .from('journal_entries')
-          .select('payment_id, entry_no')
-          .in('payment_id', expensePaymentIds)
-          .eq('reference_type', 'expense')
-          .eq('company_id', companyId)
-      : Promise.resolve({ data: [] as { payment_id: string; entry_no: string }[] }),
-    allPaymentIds.length > 0
-      ? supabase
-          .from('journal_entries')
-          .select('id, payment_id, entry_no')
-          .eq('company_id', companyId)
-          .in('payment_id', allPaymentIds)
-      : Promise.resolve({ data: [] as { id: string; payment_id: string; entry_no: string }[] }),
+    fetchInBatches<{ payment_id: string; entry_no: string }>(expensePaymentIds, async (chunk) => {
+      const { data } = await supabase
+        .from('journal_entries')
+        .select('payment_id, entry_no')
+        .in('payment_id', chunk)
+        .eq('reference_type', 'expense')
+        .eq('company_id', companyId);
+      return (data || []) as { payment_id: string; entry_no: string }[];
+    }),
+    fetchInBatches<{ id: string; payment_id: string; entry_no: string }>(allPaymentIds, async (chunk) => {
+      const { data } = await supabase
+        .from('journal_entries')
+        .select('id, payment_id, entry_no')
+        .eq('company_id', companyId)
+        .in('payment_id', chunk);
+      return (data || []) as { id: string; payment_id: string; entry_no: string }[];
+    }),
     contactIdsToFetch.length > 0
       ? supabase.from('contacts').select('id, name').in('id', contactIdsToFetch)
       : Promise.resolve({ data: [] as { id: string; name: string }[] }),
     supabase.from('expense_categories').select('id, name, parent_id').eq('company_id', companyId),
   ]);
+
+  const jeRes = { data: jeExpenseRows };
+  const jeByPaymentRes = { data: jeByPaymentRows };
 
   const accountById = new Map<string, { name: string; type: string; code: string | null; linked_contact_id?: string | null }>();
   (accRes.data || []).forEach((a: any) => {
