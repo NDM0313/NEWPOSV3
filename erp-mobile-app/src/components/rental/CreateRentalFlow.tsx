@@ -445,13 +445,14 @@ export function CreateRentalFlow({
 
   useEffect(() => {
     if (canPickSalesman || salesmanId) return;
-    if (!effectiveUserId) return;
-    const me = salesmen.find((s) => s.id === effectiveUserId);
+    const selfId = effectiveProfileId ?? effectiveUserId;
+    if (!selfId) return;
+    const me = salesmen.find((s) => s.id === selfId);
     if (!me) return;
     setSalesmanId(me.id);
     const defPct = me.rentalCommissionPercent ?? me.defaultCommissionPercent ?? null;
     if (defPct != null) setCommissionPct(String(defPct));
-  }, [canPickSalesman, salesmanId, effectiveUserId, salesmen]);
+  }, [canPickSalesman, salesmanId, effectiveProfileId, effectiveUserId, salesmen]);
 
   const goFromRent = () => {
     if (isEditMode) setStep('confirm');
@@ -1633,10 +1634,39 @@ export function CreateRentalFlow({
             <div className="flex justify-between pt-2 border-t border-[#374151]"><span className="text-[#9CA3AF]">Balance due</span><span className="font-bold text-[#F59E0B]">Rs. {balanceDue.toLocaleString()}</span></div>
           </div>
         )}
-        {salesmanId && (
+        {canPickSalesman ? (
+          <button
+            type="button"
+            onClick={() => setStep('salesman')}
+            className="w-full text-left bg-[#1F2937] border border-[#374151] rounded-xl p-4 hover:border-[#8B5CF6]/50 transition-colors flex items-center justify-between gap-3"
+          >
+            <div className="min-w-0 space-y-1">
+              <p className="text-sm text-[#9CA3AF]">Salesman</p>
+              <p className="text-white font-medium truncate">
+                {salesmanId
+                  ? (salesmen.find((s) => s.id === salesmanId)?.name ?? '—')
+                  : '— None —'}
+              </p>
+              {salesmanId &&
+                commissionPct.trim() !== '' &&
+                Number.isFinite(parseFloat(commissionPct)) && (
+                  <p className="text-xs text-[#10B981]">
+                    Commission: {commissionPct}% → Rs.{' '}
+                    {Math.round(
+                      commissionBasePreview * (parseFloat(commissionPct) / 100),
+                    ).toLocaleString()}
+                  </p>
+                )}
+              <p className="text-xs text-[#6B7280] mt-0.5">Tap to change</p>
+            </div>
+            <ChevronRight className="w-5 h-5 text-[#6B7280] shrink-0" />
+          </button>
+        ) : salesmanId ? (
           <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 space-y-1">
             <p className="text-sm text-[#9CA3AF]">Salesman</p>
-            <p className="text-white font-medium">{salesmen.find((s) => s.id === salesmanId)?.name ?? '—'}</p>
+            <p className="text-white font-medium">
+              {salesmen.find((s) => s.id === salesmanId)?.name ?? '—'}
+            </p>
             {commissionPct.trim() !== '' && Number.isFinite(parseFloat(commissionPct)) && (
               <p className="text-xs text-[#10B981]">
                 Commission: {commissionPct}% → Rs.{' '}
@@ -1644,7 +1674,7 @@ export function CreateRentalFlow({
               </p>
             )}
           </div>
-        )}
+        ) : null}
         <div>
           <label className="block text-sm text-[#9CA3AF] mb-2">Notes (optional)</label>
           <textarea
