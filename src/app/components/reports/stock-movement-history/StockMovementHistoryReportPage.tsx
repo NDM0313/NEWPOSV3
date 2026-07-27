@@ -148,7 +148,13 @@ export function StockMovementHistoryReportPage({
   const [productVariations, setProductVariations] = useState<ProductVariationOption[]>([]);
   const [showVariationPicker, setShowVariationPicker] = useState(false);
 
-
+  const clearReportResults = useCallback(() => {
+    setHasRun(false);
+    setSingleSection(null);
+    setExportSections([]);
+    setPreviewSections([]);
+    previewSectionsRef.current = [];
+  }, []);
 
   useEffect(() => {
     setCurrentModule('reports');
@@ -160,7 +166,13 @@ export function StockMovementHistoryReportPage({
       dateFrom: effectiveStartDate,
       dateTo: effectiveEndDate,
     }));
-  }, [effectiveStartDate, effectiveEndDate]);
+    clearReportResults();
+    setAllSummariesCached([]);
+    setAllSummaries([]);
+    setAllTotalCount(0);
+    setAllPage(1);
+    setLargeWarning(false);
+  }, [effectiveStartDate, effectiveEndDate, clearReportResults]);
 
   useEffect(() => {
     if (companyId) void reportExport.ensureBrand();
@@ -181,16 +193,6 @@ export function StockMovementHistoryReportPage({
     stockMovementHistoryReportService.fetchSuppliers(companyId).then(setSuppliers);
 
   }, [companyId]);
-
-
-
-  const clearReportResults = useCallback(() => {
-    setHasRun(false);
-    setSingleSection(null);
-    setExportSections([]);
-    setPreviewSections([]);
-    previewSectionsRef.current = [];
-  }, []);
 
   const handleProductSearch = useCallback(
     async (term: string) => {

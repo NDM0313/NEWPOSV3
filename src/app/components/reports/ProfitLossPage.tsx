@@ -32,6 +32,7 @@ import {
   loadProfitLossUnifiedMain,
   profitLossResultToPreviewShape,
 } from '@/app/services/bsPlUnifiedMainService';
+import { priorComparablePeriod } from '@/app/lib/dashboardV2Period';
 
 const toExport = (
   r: ProfitLossResult,
@@ -63,22 +64,44 @@ const toExport = (
   return { title: `Profit & Loss (GL) — ${periodLabel}`, headers, rows };
 };
 
-function getCompareDates(startDate: string, endDate: string, period: 'prior-month' | 'prior-quarter'): { compareStart: string; compareEnd: string } {
-  const end = new Date(endDate);
-  const start = new Date(startDate);
-  const days = Math.round((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000));
-  if (period === 'prior-month') {
-    const compareEnd = new Date(start);
-    compareEnd.setDate(compareEnd.getDate() - 1);
-    const compareStart = new Date(compareEnd);
-    compareStart.setDate(compareStart.getDate() - days);
-    return { compareStart: compareStart.toISOString().slice(0, 10), compareEnd: compareEnd.toISOString().slice(0, 10) };
+function ymdLocalNoon(ymd: string): Date {
+  return new Date(`${ymd.slice(0, 10)}T12:00:00`);
+}
+
+function formatYmdLocal(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/** Shift a local calendar date by N months (noon-anchored; avoids UTC day slip). */
+function shiftMonthsLocal(ymd: string, months: number): string {
+  const d = ymdLocalNoon(ymd);
+  const day = d.getDate();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + months);
+  const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  d.setDate(Math.min(day, lastDay));
+  return formatYmdLocal(d);
+}
+
+function getCompareDates(
+  startDate: string,
+  endDate: string,
+  period: 'prior-month' | 'prior-quarter' | 'prior-period',
+): { compareStart: string; compareEnd: string } {
+  const start = startDate.slice(0, 10);
+  const end = endDate.slice(0, 10);
+  if (period === 'prior-period') {
+    const p = priorComparablePeriod(start, end);
+    return { compareStart: p.from, compareEnd: p.to };
   }
-  const compareEnd = new Date(start);
-  compareEnd.setDate(compareEnd.getDate() - 1);
-  const compareStart = new Date(compareEnd);
-  compareStart.setDate(compareStart.getDate() - days);
-  return { compareStart: compareStart.toISOString().slice(0, 10), compareEnd: compareEnd.toISOString().slice(0, 10) };
+  const months = period === 'prior-quarter' ? -3 : -1;
+  return {
+    compareStart: shiftMonthsLocal(start, months),
+    compareEnd: shiftMonthsLocal(end, months),
+  };
 }
 
 export const ProfitLossPage: React.FC<{
@@ -94,7 +117,7 @@ export const ProfitLossPage: React.FC<{
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [fetchRetryKey, setFetchRetryKey] = useState(0);
   const [mainLoaderSource, setMainLoaderSource] = useState<'legacy' | 'unified'>('legacy');
-  const [comparePeriod, setComparePeriod] = useState<'none' | 'prior-month' | 'prior-quarter'>('none');
+  const [comparePeriod, setComparePeriod] = useState<'none' | 'prior-month' | 'prior-quarter' | 'prior-period'>('none');
 
   const showUnifiedPreviewTools = canAccessBsPlUnifiedPreview(userRole);
   const [unifiedPreviewEnabled, setUnifiedPreviewEnabled] = useState(false);
@@ -198,7 +221,7 @@ export const ProfitLossPage: React.FC<{
 
   const compareOptions = useMemo(() => {
     if (comparePeriod === 'none') return undefined;
-    return getCompareDates(startDate, endDate, comparePeriod === 'prior-quarter' ? 'prior-quarter' : 'prior-month');
+    return getCompareDates(startDate, endDate, comparePeriod);
   }, [startDate, endDate, comparePeriod]);
 
   useEffect(() => {
@@ -370,14 +393,18 @@ export const ProfitLossPage: React.FC<{
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1.5">
             <GitCompare size={14} className="text-muted-foreground" />
-            <Select value={comparePeriod} onValueChange={(v: 'none' | 'prior-month' | 'prior-quarter') => setComparePeriod(v)}>
-              <SelectTrigger className="w-[140px] h-8 text-xs border-border bg-muted">
+            <Select
+              value={comparePeriod}
+              onValueChange={(v: 'none' | 'prior-month' | 'prior-quarter' | 'prior-period') => setComparePeriod(v)}
+            >
+              <SelectTrigger className="w-[150px] h-8 text-xs border-border bg-muted">
                 <SelectValue placeholder="Compare" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">No comparison</SelectItem>
                 <SelectItem value="prior-month">Prior month</SelectItem>
-                <SelectItem value="prior-quarter">Prior period</SelectItem>
+                <SelectItem value="prior-quarter">Prior quarter</SelectItem>
+                <SelectItem value="prior-period">Prior period</SelectItem>
               </SelectContent>
             </Select>
           </div>

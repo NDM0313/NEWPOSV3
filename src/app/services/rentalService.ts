@@ -880,11 +880,6 @@ export const rentalService = {
       throw new Error('Full payment required before delivery');
     }
 
-    const pickupDate = r.pickup_date || '';
-    if (actualPickupDate < pickupDate) {
-      throw new Error('Pickup date cannot be before the booking start date');
-    }
-
     // Document expiry validation
     if (documentExpiry) {
       const expDate = new Date(documentExpiry);

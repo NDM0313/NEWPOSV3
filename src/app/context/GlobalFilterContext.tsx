@@ -14,7 +14,6 @@ import { getLastBusinessWeekRange, getThisBusinessWeekRange } from '@/app/utils/
 import {
   getFinancialYearRange,
   getLastFinancialYearRange,
-  formatFinancialYearRangeLabel,
   formatLastFinancialYearRangeLabel,
   FISCAL_YEAR_CONFIG_UPDATED_EVENT,
   type FiscalYearConfig,
@@ -395,13 +394,17 @@ export const GlobalFilterProvider: React.FC<{ children: ReactNode }> = ({ childr
 
   const getDateRangeLabel = useCallback((): string => {
     const type = effectiveDateType;
+    const formatEffectiveBounds = () => {
+      const s = startDateObj ?? new Date();
+      const e = endDateObj ?? new Date();
+      return `${s.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} – ${e.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+    };
     if (type === 'customRange' && persisted.customStartDate && persisted.customEndDate) {
-      const s = new Date(persisted.customStartDate);
-      const e = new Date(persisted.customEndDate);
-      return `${s.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${e.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+      return formatEffectiveBounds();
     }
+    // Current FY end is capped to today in getDateRangeForType — label must match query bounds.
     if (type === 'currentFinancialYear') {
-      return formatFinancialYearRangeLabel(fiscalYearConfig);
+      return formatEffectiveBounds();
     }
     if (type === 'lastFinancialYear') {
       return formatLastFinancialYearRangeLabel(fiscalYearConfig);
@@ -422,7 +425,14 @@ export const GlobalFilterProvider: React.FC<{ children: ReactNode }> = ({ childr
       customRange: 'Custom Range',
     };
     return labels[type] ?? 'Last 30 Days';
-  }, [effectiveDateType, persisted.customStartDate, persisted.customEndDate, fiscalYearConfig]);
+  }, [
+    effectiveDateType,
+    persisted.customStartDate,
+    persisted.customEndDate,
+    fiscalYearConfig,
+    startDateObj,
+    endDateObj,
+  ]);
 
   const value = useMemo<GlobalFilterContextType>(
     () => ({

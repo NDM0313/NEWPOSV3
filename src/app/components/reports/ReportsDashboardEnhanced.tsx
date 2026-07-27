@@ -26,7 +26,7 @@ import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
 import type { Sale } from '@/app/context/SalesContext';
 import { convertFromSupabaseSale } from '@/app/context/SalesContext';
-import { useExpenses } from '@/app/context/ExpenseContext';
+import type { Expense } from '@/app/context/ExpenseContext';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Cell } from 'recharts';
 import { ChartContainer } from '@/app/components/ui/chart';
 import { exportToCSV, exportToExcel, exportToPDF } from '@/app/utils/exportUtils';
@@ -90,23 +90,47 @@ import {
 const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-function getDateRangeBounds(dateRange: string): { start: Date | null; end: Date } {
-  const end = new Date();
-  end.setHours(23, 59, 59, 999);
-  if (dateRange === 'all') return { start: null, end };
-  const days = parseInt(dateRange, 10) || 30;
-  const start = new Date();
-  start.setDate(start.getDate() - days);
-  start.setHours(0, 0, 0, 0);
-  return { start, end };
+function formatReportPeriodLabel(startYmd: string, endYmd: string): string {
+  const fmt = (ymd: string) => {
+    const [y, m, d] = ymd.slice(0, 10).split('-').map(Number);
+    if (!y || !m || !d) return ymd;
+    return new Date(y, m - 1, d).toLocaleDateString('en-GB', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
+  };
+  return `${fmt(startYmd)} – ${fmt(endYmd)}`;
 }
 
-function isInRange(dateStr: string | undefined, start: Date | null, end: Date): boolean {
-  if (!dateStr) return false;
-  const d = new Date(dateStr);
-  if (start && d < start) return false;
-  if (d > end) return false;
-  return true;
+/** Lightweight map for Reports (period fetch); display fields only. */
+function mapExpenseForReports(row: any): Expense {
+  const categoryRaw =
+    row.category || row.expense_category?.name || row.expense_category?.slug || 'Other';
+  return {
+    id: row.id || '',
+    expenseNo: row.expense_no || '',
+    category: categoryRaw,
+    expense_category_id: row.expense_category_id || undefined,
+    description: row.description || '',
+    amount: Number(row.amount) || 0,
+    date: (row.expense_date || '').slice(0, 10),
+    paymentMethod: row.payment_method || 'Cash',
+    paymentAccountDisplay: undefined,
+    paymentAccountId: row.payment_account_id || undefined,
+    payeeName: row.vendor_name || row.supplier_name || row.payee_name || '',
+    paidToUserId: row.paid_to_user_id || undefined,
+    location: row.branch_id || '',
+    status: row.status || 'draft',
+    submittedBy: row.created_by_user?.full_name || row.created_by || '',
+    approvedBy: row.approved_by_user?.full_name || row.approved_by,
+    approvedDate: row.approved_at,
+    receiptAttached: Boolean(row.receipt_url),
+    receiptUrl: row.receipt_url || undefined,
+    notes: row.notes,
+    createdAt: row.created_at || '',
+    updatedAt: row.updated_at || '',
+  };
 }
 
 export type ReportsDashboardReportType =
@@ -125,7 +149,6 @@ export const ReportsDashboardEnhanced = ({
   initialReportType?: ReportsDashboardReportType;
   initialFinancialReportType?: FinancialReportType;
 }) => {
-  const expenses = useExpenses();
   const { openDrawer, setCurrentView, setOpenSaleIdForView } = useNavigation();
   const { formatCurrency } = useFormatCurrency();
   const { formatDate } = useFormatDate();
@@ -194,33 +217,21 @@ export const ReportsDashboardEnhanced = ({
   const [reportPurchasesLoading, setReportPurchasesLoading] = useState(false);
   const [reportPurchasesTruncated, setReportPurchasesTruncated] = useState(false);
 
+  /** Period expenses from dedicated report fetch (not ExpenseContext list). */
+  const [reportExpenses, setReportExpenses] = useState<Expense[]>([]);
+  const [reportExpensesLoading, setReportExpensesLoading] = useState(false);
+  const [reportExpensesTruncated, setReportExpensesTruncated] = useState(false);
+
   const operationalPrintRef = useRef<HTMLDivElement>(null);
 
   const reportBranchId = branchId && branchId !== 'all' ? branchId : undefined;
   const reportStartDate = globalStart ? globalStart.slice(0, 10) : '1900-01-01';
   const reportEndDate = globalEnd ? globalEnd.slice(0, 10) : new Date().toISOString().slice(0, 10);
-  const rangeStart = globalStart ? new Date(globalStart) : null;
-  const rangeEnd = globalEnd ? new Date(globalEnd) : new Date();
-  const filterByRange = useCallback(
-    (dateStr: string | undefined) => isInRange(dateStr, rangeStart, rangeEnd),
-    [rangeStart, rangeEnd]
-  );
+  const periodLabel = formatReportPeriodLabel(reportStartDate, reportEndDate);
 
   React.useEffect(() => {
     if (reportType !== 'overview') setOverviewBasis('operational');
   }, [reportType]);
-
-  React.useEffect(() => {
-    if (!companyId || expenses.expenses.length === 0) {
-      setReversedExpenseIds(new Set());
-      return;
-    }
-    const ids = expenses.expenses.map((e) => e.id);
-    expenseService
-      .getReversedExpenseIds(companyId, ids)
-      .then(setReversedExpenseIds)
-      .catch(() => setReversedExpenseIds(new Set()));
-  }, [companyId, expenses.expenses]);
 
   React.useEffect(() => {
     if (!companyId) {
@@ -280,6 +291,50 @@ export const ReportsDashboardEnhanced = ({
       })
       .finally(() => {
         if (!cancelled) setReportPurchasesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, reportStartDate, reportEndDate, branchId]);
+
+  React.useEffect(() => {
+    if (!companyId) {
+      setReportExpenses([]);
+      setReportExpensesTruncated(false);
+      setReversedExpenseIds(new Set());
+      return;
+    }
+    let cancelled = false;
+    setReportExpensesLoading(true);
+    const b = branchId === 'all' || !branchId ? undefined : branchId;
+    expenseService
+      .getExpensesForReports(companyId, reportStartDate, reportEndDate, b)
+      .then(({ data, truncated }) => {
+        if (cancelled) return;
+        const mapped = (data || []).map(mapExpenseForReports);
+        setReportExpenses(mapped);
+        setReportExpensesTruncated(truncated);
+        const ids = mapped.map((e) => e.id).filter(Boolean);
+        if (ids.length === 0) {
+          setReversedExpenseIds(new Set());
+          return;
+        }
+        return expenseService
+          .getReversedExpenseIds(companyId, ids)
+          .then(setReversedExpenseIds)
+          .catch(() => setReversedExpenseIds(new Set()));
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.error('[Reports] getExpensesForReports failed', err);
+          toast.error('Could not load expenses for report period');
+          setReportExpenses([]);
+          setReportExpensesTruncated(false);
+          setReversedExpenseIds(new Set());
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setReportExpensesLoading(false);
       });
     return () => {
       cancelled = true;
@@ -423,15 +478,10 @@ export const ReportsDashboardEnhanced = ({
       return st !== 'cancelled' && st !== 'draft';
     });
   }, [reportPurchases, purchaseLifecycleFilter]);
-  const filteredExpenses = useMemo(
-    () => expenses.expenses.filter((e) => filterByRange(e.date)),
-    [expenses.expenses, filterByRange]
-  );
-
   const reportableExpenses = useMemo(() => {
-    if (showReversedExpenses) return filteredExpenses;
-    return filteredExpenses.filter((e) => !reversedExpenseIds.has(e.id));
-  }, [filteredExpenses, reversedExpenseIds, showReversedExpenses]);
+    if (showReversedExpenses) return reportExpenses;
+    return reportExpenses.filter((e) => !reversedExpenseIds.has(e.id));
+  }, [reportExpenses, reversedExpenseIds, showReversedExpenses]);
 
   const expenseCategoryOptions = useMemo(() => {
     const cats = new Set<string>();
@@ -852,7 +902,7 @@ export const ReportsDashboardEnhanced = ({
 
       {/* Content – tab-specific (Overview, Sales, Purchases, Expenses only) */}
       <div className="p-6 space-y-6">
-        <div className="text-xs text-muted-foreground mb-2">Period: {dateRangeLabel}</div>
+        <div className="text-xs text-muted-foreground mb-2">Period: {periodLabel}</div>
 
         {/* Overview Tab — split: Operational flow vs Financial GL */}
         {reportType === 'overview' && (
@@ -1452,6 +1502,17 @@ export const ReportsDashboardEnhanced = ({
               previewDocumentType="ledger"
               previewReference={`expenses-${reportStartDate}-${reportEndDate}`}
             />
+            {reportExpensesLoading && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground px-1">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Loading expenses for {periodLabel}…
+              </div>
+            )}
+            {reportExpensesTruncated && (
+              <p className="text-xs text-amber-400/90 px-1">
+                Showing first 5,000 expenses in this period — narrow the date range for a complete list.
+              </p>
+            )}
             <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer mb-2">
               <input
                 type="checkbox"
@@ -1604,7 +1665,7 @@ export const ReportsDashboardEnhanced = ({
             </div>
             {financialReportType !== 'remaining-balance' &&
               financialReportType !== 'balance-basis-guide' && (
-              <div className="text-xs text-muted-foreground mb-2">Period: {dateRangeLabel}</div>
+              <div className="text-xs text-muted-foreground mb-2">Period: {periodLabel}</div>
             )}
             {financialReportType === 'balance-basis-guide' && (
               <div className="text-xs text-muted-foreground mb-2">As of: {reportEndDate}</div>

@@ -102,8 +102,7 @@ export function RentalPickupModal({
     Boolean(documentType) &&
     documentNumber.trim().length > 0 &&
     documentReceived &&
-    Boolean(actualPickupDate) &&
-    actualPickupDate >= rental.pickupDate.slice(0, 10);
+    Boolean(actualPickupDate);
   const canSubmit =
     canSubmitBase && (remainingDue <= 0 || remainingPaymentConfirmed) && !loading && !uploading;
 
@@ -114,10 +113,6 @@ export function RentalPickupModal({
     }
     if (remainingDue > 0 && !remainingPaymentConfirmed) {
       setError('Confirm remaining payment or collect payment first.');
-      return;
-    }
-    if (actualPickupDate < rental.pickupDate.slice(0, 10)) {
-      setError('Pickup date cannot be before the booking pickup date.');
       return;
     }
     if (documentExpiry && documentExpiry < actualPickupDate) {
@@ -275,7 +270,6 @@ export function RentalPickupModal({
               label="Actual pickup date"
               value={actualPickupDate}
               onChange={setActualPickupDate}
-              min={rental.pickupDate.slice(0, 10)}
               accent="rental"
               required
             />

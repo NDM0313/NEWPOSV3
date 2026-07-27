@@ -238,6 +238,10 @@ export interface RentalPaymentRow {
   referenceNo?: string | null;
   notes?: string | null;
   paymentDate: string;
+  /** Linked payments.id via journal_entries.payment_id (for TransactionDetailSheet). */
+  sourcePaymentId?: string | null;
+  /** rental_payments.journal_entry_id — fallback edit target when no payment row. */
+  journalEntryId?: string | null;
 }
 
 export interface RentalDetail {
@@ -1028,7 +1032,10 @@ export async function getRentalById(rentalId: string): Promise<{ data: RentalDet
     .order('created_at', { ascending: false });
   if (pErr) return { data: null, error: pErr.message };
 
-  const paymentRefByRentalPaymentId = new Map<string, { referenceNo: string | null; notes: string | null }>();
+  const paymentRefByRentalPaymentId = new Map<
+    string,
+    { referenceNo: string | null; notes: string | null; sourcePaymentId: string | null }
+  >();
   const paymentListRaw = (payments || []) as Array<Record<string, unknown>>;
   const jeIds = paymentListRaw
     .map((p) => p.journal_entry_id)
@@ -1058,12 +1065,23 @@ export async function getRentalById(rentalId: string): Promise<{ data: RentalDet
         const jeId = rp.journal_entry_id != null ? String(rp.journal_entry_id) : '';
         const payId = jeId ? jeToPayment.get(jeId) : undefined;
         const linked = payId ? payById.get(payId) : undefined;
-        if (linked) {
-          paymentRefByRentalPaymentId.set(rpId, {
-            referenceNo: linked.reference_number != null ? String(linked.reference_number) : null,
-            notes: linked.notes != null ? String(linked.notes) : null,
-          });
-        }
+        paymentRefByRentalPaymentId.set(rpId, {
+          referenceNo: linked?.reference_number != null ? String(linked.reference_number) : null,
+          notes: linked?.notes != null ? String(linked.notes) : null,
+          sourcePaymentId: payId ?? null,
+        });
+      }
+    } else {
+      // JE linked but no payments.id yet — still record empty source for journal fallback
+      for (const rp of paymentListRaw) {
+        const rpId = String(rp.id);
+        const jeId = rp.journal_entry_id != null ? String(rp.journal_entry_id) : '';
+        if (!jeId) continue;
+        paymentRefByRentalPaymentId.set(rpId, {
+          referenceNo: null,
+          notes: null,
+          sourcePaymentId: null,
+        });
       }
     }
   }
@@ -1127,6 +1145,10 @@ export async function getRentalById(rentalId: string): Promise<{ data: RentalDet
         const rpId = String(p.id);
         const linked = paymentRefByRentalPaymentId.get(rpId);
         const fallbackRef = (p.reference as string) ?? null;
+        const journalEntryId =
+          p.journal_entry_id != null && String(p.journal_entry_id).length > 0
+            ? String(p.journal_entry_id)
+            : null;
         return {
           id: rpId,
           amount: Number(p.amount) ?? 0,
@@ -1135,6 +1157,8 @@ export async function getRentalById(rentalId: string): Promise<{ data: RentalDet
           referenceNo: linked?.referenceNo ?? fallbackRef,
           notes: linked?.notes ?? null,
           paymentDate,
+          sourcePaymentId: linked?.sourcePaymentId ?? null,
+          journalEntryId,
         };
       }),
   };
@@ -1501,11 +1525,6 @@ export async function markRentalPickedUp(
   const remaining = totalAmount - paidAmount;
   if (!payload.deliverOnCredit && (!payload.remainingPaymentConfirmed || remaining > 0.009)) {
     return { error: 'Full payment required before delivery, or confirm remaining payment collected.' };
-  }
-
-  const bookingPickup = String(r.pickup_date || '').slice(0, 10);
-  if (payload.actualPickupDate < bookingPickup) {
-    return { error: 'Pickup date cannot be before the booking start date.' };
   }
 
   if (payload.documentExpiry) {

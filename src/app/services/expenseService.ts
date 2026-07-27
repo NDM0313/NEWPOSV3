@@ -260,7 +260,7 @@ export const expenseService = {
     const richSelect = `
         *,
         expense_category:expense_categories(name, slug),
-        payment_account:accounts(id, code, name, type)
+        payment_account:accounts!payment_account_id(id, code, name, type)
       `;
     let query = supabase
       .from('expenses')
@@ -334,6 +334,55 @@ export const expenseService = {
     return rows;
   },
 
+  /**
+   * Period-scoped expenses for Reports (mirrors getSalesForReports / getPurchasesForReports).
+   * Filters by expense_date inclusive; optional branch.
+   */
+  async getExpensesForReports(
+    companyId: string,
+    startDate: string,
+    endDate: string,
+    branchId?: string | null,
+  ): Promise<{ data: any[]; total: number; truncated: boolean }> {
+    const max = 5000;
+    const from = startDate.slice(0, 10);
+    const to = endDate.slice(0, 10);
+    const richSelect = `
+      *,
+      expense_category:expense_categories(name, slug),
+      payment_account:accounts!payment_account_id(id, code, name, type)
+    `;
+
+    const run = async (selectFields: string) => {
+      let q = supabase
+        .from('expenses')
+        .select(selectFields, { count: 'exact' })
+        .eq('company_id', companyId)
+        .gte('expense_date', from)
+        .lte('expense_date', to)
+        .order('expense_date', { ascending: false })
+        .limit(max);
+      if (branchId && branchId !== 'all') q = q.eq('branch_id', branchId);
+      return q;
+    };
+
+    let res = await run(richSelect);
+    if (res.error && (res.error.code === 'PGRST200' || String(res.error.message || '').includes('accounts'))) {
+      res = await run(`*, expense_category:expense_categories(name, slug)`);
+    }
+    if (res.error && (res.error.code === 'PGRST200' || String(res.error.message || '').includes('expense_categories'))) {
+      res = await run('*');
+    }
+    if (res.error) throw res.error;
+
+    const rows = res.data || [];
+    await enrichExpenseRowsWithCreatorNames(rows);
+    await enrichExpenseRowsWithPaymentAccounts(rows);
+    await enrichExpenseRowsWithPostedPaymentAccount(rows, companyId);
+    const total = res.count ?? rows.length;
+    return { data: rows, total, truncated: total > max };
+  },
+
   // Get single expense
   async getExpense(id: string) {
     let { data, error } = await supabase
@@ -341,7 +390,7 @@ export const expenseService = {
       .select(`
         *,
         expense_category:expense_categories(name, slug),
-        payment_account:accounts(id, code, name, type)
+        payment_account:accounts!payment_account_id(id, code, name, type)
       `)
       .eq('id', id)
       .single();

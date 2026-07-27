@@ -204,7 +204,7 @@ export const PickupModal = ({ open, onOpenChange, rental, onConfirm, onAddPaymen
   };
 
   const pickupBy = user?.email || (user?.user_metadata as any)?.full_name || 'Current user';
-  const canConfirmBase = documentType && documentNumber.trim() && documentReceived && pickupDate >= (rental?.startDate || '');
+  const canConfirmBase = Boolean(documentType && documentNumber.trim() && documentReceived && pickupDate);
   const canConfirm = canConfirmBase && hasFullPayment;
   const canConfirmOrCredit = canConfirmBase; // Can proceed to confirm or show credit choice
 
@@ -418,7 +418,6 @@ export const PickupModal = ({ open, onOpenChange, rental, onConfirm, onAddPaymen
                 <DatePicker
                   value={pickupDate}
                   onChange={(v) => setPickupDate(v)}
-                  minDate={rental?.startDate ? new Date(rental.startDate) : undefined}
                   placeholder="Pickup date"
                   className="mt-1 w-full"
                 />

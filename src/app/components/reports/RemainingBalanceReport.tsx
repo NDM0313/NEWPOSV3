@@ -145,6 +145,9 @@ export function RemainingBalanceReport({ branchId }: Props) {
         basis="effective_party"
         detail="Open document due from get_contact_balances_summary — sales/purchases/rentals/openings. Excludes void/cancelled GL audit trails. Use for customer/supplier follow-up, not Trial Balance."
       />
+      <p className="text-xs text-muted-foreground">
+        As-of open dues snapshot — not filtered by the header report period.
+      </p>
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-[200px] max-w-sm">
