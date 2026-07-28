@@ -179,7 +179,7 @@ const EXPENSE_LIST_SELECT = `
   id, expense_no, expense_date, category, description, amount, payment_method,
   payment_account_id, receipt_url, status, created_by, paid_to_user_id, branch_id,
   created_at, expense_category_id, vendor_name,
-  payment_account:accounts(code, name, type)
+  payment_account:accounts!payment_account_id(code, name, type)
 `;
 
 const EXPENSE_LIST_SELECT_PLAIN =
@@ -881,6 +881,23 @@ export async function updateExpense(input: {
 
   if (upd.error) {
     const msg = String(upd.error.message || '').toLowerCase();
+    const embedAmbiguous =
+      msg.includes('more than one relationship') ||
+      msg.includes('could not embed') ||
+      (msg.includes('accounts') && msg.includes('relationship'));
+    if (embedAmbiguous) {
+      // Row already updated; only the embed select failed.
+      upd = await supabase
+        .from('expenses')
+        .select(EXPENSE_LIST_SELECT_PLAIN)
+        .eq('id', input.expenseId)
+        .eq('company_id', input.companyId)
+        .single();
+    }
+  }
+
+  if (upd.error) {
+    const msg = String(upd.error.message || '').toLowerCase();
     const dropKeys = [
       'vendor_name',
       'paid_to_user_id',
@@ -902,7 +919,7 @@ export async function updateExpense(input: {
         .update(slim)
         .eq('id', input.expenseId)
         .eq('company_id', input.companyId)
-        .select(EXPENSE_LIST_SELECT)
+        .select(EXPENSE_LIST_SELECT_PLAIN)
         .single();
     }
     if (upd.error) return { data: null, error: upd.error.message };

@@ -306,6 +306,7 @@ export const GlobalDrawer = () => {
             </SheetHeader>
             <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
               <EnhancedProductForm
+                sourceContext={parentIsPurchase ? 'purchase' : parentIsSale ? 'sale' : 'default'}
                 onCancel={() => closeDrawer()}
                 onSave={(product?: any) => {
                   if (product && setCreatedProduct) {

@@ -489,19 +489,73 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
     useEffect(() => {
         if (!createdProduct || !setCreatedProduct) return;
         const p = createdProduct;
+        const costPrice = Number(
+            p.cost_price ?? p.purchasePrice ?? p.costPrice ?? p.price ?? 0,
+        );
+        const variationsRaw = Array.isArray(p.variations) ? p.variations : [];
+        const variations = variationsRaw.map((v: any) => ({
+            id: String(v.id ?? ''),
+            sku: v.sku != null ? String(v.sku) : undefined,
+            attributes: v.attributes ?? v.combination ?? undefined,
+            size: v.size ?? v.attributes?.size ?? v.combination?.size,
+            color: v.color ?? v.attributes?.color ?? v.combination?.color,
+            price: v.price != null ? Number(v.price) : v.cost_price != null ? Number(v.cost_price) : costPrice,
+            stock: Number(v.stock ?? 0),
+        })).filter((v: { id: string }) => v.id);
+
         const mapped = {
             id: p.id ?? p.uuid,
             name: p.name ?? '',
             sku: p.sku ?? '',
-            price: Number(p.cost_price ?? p.retail_price ?? p.price ?? 0),
-            hasVariations: Array.isArray(p.variations) && p.variations.length > 0,
+            price: costPrice,
+            hasVariations: variations.length > 0 || Boolean(p.has_variations),
             stock: 0,
-            lastPurchasePrice: p.cost_price != null ? Number(p.cost_price) : undefined,
+            lastPurchasePrice: costPrice || undefined,
             needsPacking: false,
+            variations,
+            unitAllowDecimal: p.unitAllowDecimal ?? false,
         };
+
+        const catalogEntry = {
+            id: mapped.id,
+            name: mapped.name,
+            sku: mapped.sku,
+            price: mapped.price,
+            stock: 0,
+            lastPurchasePrice: mapped.lastPurchasePrice,
+            lastSupplier: undefined as string | undefined,
+            hasVariations: mapped.hasVariations,
+            needsPacking: false,
+            variations,
+            unitId: p.unit_id ?? p.unitId ?? null,
+            unitAllowDecimal: mapped.unitAllowDecimal,
+        };
+
+        setProducts((prev) => {
+            const idStr = String(catalogEntry.id);
+            const without = prev.filter((x) => String(x.id) !== idStr);
+            const next = [catalogEntry, ...without];
+            const branchForBalances =
+                branchId && branchId !== 'all' && String(branchId).trim() !== ''
+                    ? branchId
+                    : contextBranchId && contextBranchId !== 'all'
+                      ? contextBranchId
+                      : null;
+            if (companyId) {
+                const cacheKey = `${companyId}:${branchForBalances ?? 'all'}`;
+                const cached = purchaseFormBootstrapCache.get(cacheKey);
+                purchaseFormBootstrapCache.set(cacheKey, {
+                    ts: Date.now(),
+                    suppliers: cached?.suppliers ?? [],
+                    products: next,
+                });
+            }
+            return next;
+        });
+
         setCreatedProduct(null);
         handleSelectProduct(mapped);
-    }, [createdProduct, setCreatedProduct]);
+    }, [createdProduct, setCreatedProduct, companyId, branchId, contextBranchId]);
 
     // Handle variation selection from inline strip
     const handleInlineVariationSelect = (itemId: number, variation: { id?: string; size?: string; color?: string; sku?: string; price?: number; stock?: number; attributes?: Record<string, unknown> }) => {
@@ -720,12 +774,18 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
             
             try {
                 setLoading(true);
-                
-                const contactsData = await contactService.getAllContacts(companyId);
-                const { map: payableMap, error: balanceErr } = await contactService.getContactBalancesSummary(
-                    companyId,
-                    branchForBalances
-                );
+
+                const branchForBalancesLocal = branchForBalances;
+                const [contactsData, balanceResult, productsData, unitsData] = await Promise.all([
+                    contactService.getAllContacts(companyId),
+                    contactService.getContactBalancesSummary(companyId, branchForBalancesLocal),
+                    productService.getProductsForPurchaseCatalog(companyId),
+                    import('@/app/services/unitService').then(({ unitService }) =>
+                        unitService.getAll(companyId),
+                    ),
+                ]);
+
+                const { map: payableMap, error: balanceErr } = balanceResult;
                 if (balanceErr && import.meta.env?.DEV) {
                     console.warn('[PURCHASE FORM] getContactBalancesSummary:', balanceErr);
                 }
@@ -742,14 +802,9 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                         };
                     });
                 setSuppliers(supplierContacts);
-                
-                // Load products
-                const productsData = await productService.getAllProducts(companyId);
-                // Load units for decimal validation
-                const { unitService } = await import('@/app/services/unitService');
-                const unitsData = await unitService.getAll(companyId);
+
                 const unitsMap = new Map(unitsData.map(u => [u.id, u]));
-                
+
                 const productsList = productsData.map(p => {
                     const unit = p.unit_id ? unitsMap.get(p.unit_id) : null;
                     return {
@@ -759,12 +814,12 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                         price: (p.cost_price ?? p.costPrice ?? p.price) || 0,
                         stock: Number(p.stock) ?? 0,
                         lastPurchasePrice: (p.cost_price ?? p.costPrice) ?? undefined,
-                        lastSupplier: undefined, // Can be enhanced later
-                        hasVariations: (p.variations && p.variations.length > 0) || false,
-                        needsPacking: false, // Can be enhanced based on product type
+                        lastSupplier: undefined,
+                        hasVariations: (p.variations && p.variations.length > 0) || Boolean(p.has_variations),
+                        needsPacking: false,
                         variations: p.variations || [],
                         unitId: p.unit_id || null,
-                        unitAllowDecimal: unit?.allow_decimal ?? false // Default to false if no unit
+                        unitAllowDecimal: unit?.allow_decimal ?? false,
                     };
                 });
                 setProducts(productsList);
@@ -843,45 +898,50 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
         loadBranches();
     }, [companyId, branchId, contextBranchId]);
 
-    // Merge live stock from inventory overview (same source as Inventory page) into products for search dropdown
+    // Merge live stock from inventory overview after form is interactive (not on critical path)
     useEffect(() => {
         if (!companyId || !products.length) return;
         const branchToUse = branchId && branchId !== 'all' ? branchId : null;
         let cancelled = false;
-        (async () => {
-            try {
-                const overview = await inventoryService.getInventoryOverview(companyId, branchToUse);
-                if (cancelled || !overview?.length) return;
-                const overviewByProductId: Record<string, { stock: number; hasVariations?: boolean; variations?: Array<{ id: string; stock: number }> }> = {};
-                overview.forEach((row: any) => {
-                    const key = String(row.id ?? row.productId);
-                    overviewByProductId[key] = {
-                        stock: row.stock ?? 0,
-                        hasVariations: row.hasVariations,
-                        variations: row.variations?.map((v: any) => ({ id: v.id, stock: v.stock ?? 0 })),
-                    };
-                });
-                setProducts(prev => prev.map(p => {
-                    const key = String(p.id);
-                    const row = overviewByProductId[key];
-                    if (!row) return p;
-                    if (row.hasVariations && row.variations?.length) {
-                        return {
-                            ...p,
-                            stock: row.stock,
-                            variations: (p.variations || []).map(v => {
-                                const vStock = row.variations?.find((vv: any) => String(vv.id) === String(v.id));
-                                return { ...v, stock: vStock?.stock ?? (v as any).stock };
-                            }),
+        const runId = window.setTimeout(() => {
+            (async () => {
+                try {
+                    const overview = await inventoryService.getInventoryOverview(companyId, branchToUse);
+                    if (cancelled || !overview?.length) return;
+                    const overviewByProductId: Record<string, { stock: number; hasVariations?: boolean; variations?: Array<{ id: string; stock: number }> }> = {};
+                    overview.forEach((row: any) => {
+                        const key = String(row.id ?? row.productId);
+                        overviewByProductId[key] = {
+                            stock: row.stock ?? 0,
+                            hasVariations: row.hasVariations,
+                            variations: row.variations?.map((v: any) => ({ id: v.id, stock: v.stock ?? 0 })),
                         };
-                    }
-                    return { ...p, stock: row.stock };
-                }));
-            } catch {
-                if (!cancelled) { /* keep existing product stock on error */ }
-            }
-        })();
-        return () => { cancelled = true; };
+                    });
+                    setProducts(prev => prev.map(p => {
+                        const key = String(p.id);
+                        const row = overviewByProductId[key];
+                        if (!row) return p;
+                        if (row.hasVariations && row.variations?.length) {
+                            return {
+                                ...p,
+                                stock: row.stock,
+                                variations: (p.variations || []).map(v => {
+                                    const vStock = row.variations?.find((vv: any) => String(vv.id) === String(v.id));
+                                    return { ...v, stock: vStock?.stock ?? (v as any).stock };
+                                }),
+                            };
+                        }
+                        return { ...p, stock: row.stock };
+                    }));
+                } catch {
+                    if (!cancelled) { /* keep existing product stock on error */ }
+                }
+            })();
+        }, 0);
+        return () => {
+            cancelled = true;
+            window.clearTimeout(runId);
+        };
     }, [companyId, branchId, products.length]);
 
     // Reload suppliers when contact drawer closes (in case a new contact was added)

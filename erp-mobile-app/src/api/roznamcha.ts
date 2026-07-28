@@ -432,11 +432,14 @@ async function loadLiquidityDebitAccountByJeId(
   const liquidityAccountByJeId = new Map<string, string>();
   if (jeIds.length === 0) return liquidityAccountByJeId;
 
-  const { data: jeLines } = await supabase
-    .from('journal_entry_lines')
-    .select('journal_entry_id, account_id, debit, credit, account:accounts(id, name, type, code)')
-    .in('journal_entry_id', jeIds);
-  (jeLines || []).forEach((line: any) => {
+  const jeLines = await fetchInBatches(jeIds, async (chunk) => {
+    const { data } = await supabase
+      .from('journal_entry_lines')
+      .select('journal_entry_id, account_id, debit, credit, account:accounts(id, name, type, code)')
+      .in('journal_entry_id', chunk);
+    return data || [];
+  });
+  jeLines.forEach((line: any) => {
     const rawAcc = line.account;
     const acc = Array.isArray(rawAcc) ? rawAcc[0] : rawAcc;
     if (!acc || !isRoznamchaLiquidityAccount(acc)) return;
@@ -469,12 +472,15 @@ async function loadCounterpartyMapsByJeId(jeIds: string[]): Promise<{
     return { expenseCounterpartyByJeId, fullCounterpartyByJeId, linesByJeId };
   }
 
-  const { data: jeLines } = await supabase
-    .from('journal_entry_lines')
-    .select('journal_entry_id, account_id, debit, credit, account:accounts(name, type, code)')
-    .in('journal_entry_id', jeIds);
+  const jeLines = await fetchInBatches(jeIds, async (chunk) => {
+    const { data } = await supabase
+      .from('journal_entry_lines')
+      .select('journal_entry_id, account_id, debit, credit, account:accounts(name, type, code)')
+      .in('journal_entry_id', chunk);
+    return data || [];
+  });
 
-  (jeLines || []).forEach((line: any) => {
+  jeLines.forEach((line: any) => {
     const jeId = String(line.journal_entry_id || '');
     if (!jeId) return;
     const rawAcc = line.account;

@@ -18,6 +18,11 @@ export function detectDocumentKind(rawText: string): ReceiptOcrDocumentKind {
   }
   if (/\btransaction\s*successful\b/.test(flat)) bankScore += 3;
   if (/\bmeezan\b/.test(flat)) bankScore += 2;
+  if (/\bubl\b|\bubl\s*digital\b/.test(flat)) bankScore += 3;
+  if (/\beasypaisa\b|\bsent\s+to\b|\bsent\s+by\b/.test(flat)) bankScore += 3;
+  if (/\bamount\s*debited\b/.test(flat)) bankScore += 3;
+  if (/\btransaction\s*id\b|\bid\s*#\s*\d{6,}/.test(flat)) bankScore += 2;
+  if (/\bfaysal\b/.test(flat)) bankScore += 2;
   if (/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s+\d{1,2}.+\d{4}.+(am|pm)\b/i.test(flat)) {
     bankScore += 1;
   }

@@ -16,7 +16,10 @@ import {
   AlertCircle,
   Tag,
   Clock,
-  Package
+  Package,
+  Paperclip,
+  X as XIcon,
+  Loader2,
 } from 'lucide-react';
 import { format, addDays } from "date-fns";
 import { formatLocalDateYYYYMMDD, parseLocalDateInput } from '@/app/utils/localDate';
@@ -64,6 +67,12 @@ import {
 } from '@/app/components/ui/dialog';
 import { getPrimaryProductImageUrl } from '@/app/utils/productImageResolve';
 import { toast } from 'sonner';
+import {
+  uploadRentalAttachments,
+  MAX_FILE_SIZE_BYTES as ATTACHMENT_MAX_BYTES,
+} from '@/app/utils/uploadTransactionAttachments';
+import { prepareAttachmentFilesForUpload } from '@/app/utils/imageCompression';
+import { getAttachmentOpenUrl } from '@/app/utils/paymentAttachmentUrl';
 
 // NEW: Import rental types and utilities
 import { 
@@ -185,6 +194,9 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
   const [commissionType, setCommissionType] = useState<'percentage' | 'fixed'>('percentage');
   const [commissionValue, setCommissionValue] = useState<number>(0);
   const [documentNumber, setDocumentNumber] = useState('');
+  const [rentalAttachmentFiles, setRentalAttachmentFiles] = useState<File[]>([]);
+  const [savedRentalAttachments, setSavedRentalAttachments] = useState<{ url: string; name: string }[]>([]);
+  const [isProcessingAttachments, setIsProcessingAttachments] = useState(false);
   
   // Return Modal State
   const [showReturnModal, setShowReturnModal] = useState(false);
@@ -228,6 +240,10 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
       setAdvancePaid(editRental.paidAmount?.toString() || '');
       setSalesmanId(editRental.salesmanId || '');
       setDocumentNumber(editRental.documentNumber || '');
+      setSavedRentalAttachments(
+        Array.isArray(editRental.attachments) ? editRental.attachments.filter((a) => a?.url) : [],
+      );
+      setRentalAttachmentFiles([]);
       const editItems = editRental.items ?? [];
       if (editItems.length > 0) {
         const toSearchProduct = (item: (typeof editItems)[0]): SearchProduct => ({
@@ -284,6 +300,8 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
       setAdvancePaid('');
       setSalesmanId('');
       setDocumentNumber('');
+      setRentalAttachmentFiles([]);
+      setSavedRentalAttachments([]);
       setBookingDate(new Date());
       setPickupDate(new Date());
       setReturnDate(addDays(new Date(), 3));
@@ -511,6 +529,19 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
           salesmanId: salesmanId || null,
           items,
         });
+        if (rentalAttachmentFiles.length > 0 && companyId) {
+          try {
+            const uploaded = await uploadRentalAttachments(companyId, editRental.id, rentalAttachmentFiles);
+            if (uploaded.length > 0) {
+              const merged = [...savedRentalAttachments, ...uploaded];
+              await rentalService.updateRentalAttachments(editRental.id, merged);
+              setSavedRentalAttachments(merged);
+            }
+          } catch (attErr) {
+            console.warn('[RentalBookingDrawer] attachment upload failed', attErr);
+            toast.warning('Booking updated but some attachments failed to upload.');
+          }
+        }
         toast.success('Booking updated successfully');
       } else {
         const advanceIntent = parseFloat(advancePaid) || 0;
@@ -539,6 +570,17 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
           commissionEligibleAmount: commissionBase,
           items,
         });
+        if (result?.id && rentalAttachmentFiles.length > 0 && companyId) {
+          try {
+            const uploaded = await uploadRentalAttachments(companyId, result.id, rentalAttachmentFiles);
+            if (uploaded.length > 0) {
+              await rentalService.updateRentalAttachments(result.id, uploaded);
+            }
+          } catch (attErr) {
+            console.warn('[RentalBookingDrawer] attachment upload failed', attErr);
+            toast.warning('Booking saved but some attachments failed to upload.');
+          }
+        }
         toast.success(`Booking ${result.booking_no} saved.`);
         if (advanceIntent > 0.009) {
           setPendingBooking({
@@ -560,6 +602,8 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
       setSelectedProduct(null);
       setManualRentPrice('');
       setAdvancePaid('');
+      setRentalAttachmentFiles([]);
+      setSavedRentalAttachments([]);
       onClose();
     } catch (error: any) {
       console.error('[RENTAL BOOKING DRAWER] Error saving booking:', error);
@@ -1107,6 +1151,91 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                         placeholder="Measurements, alteration requests, etc."
                         className="bg-card border-border text-foreground"
                       />
+                  </div>
+
+                  {/* Attachments */}
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground uppercase flex items-center gap-1.5">
+                      <Paperclip size={12} /> Attachments
+                    </Label>
+                    <label
+                      className={cn(
+                        'flex flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border bg-muted/30 px-3 py-4 cursor-pointer hover:border-violet-500/50 transition-colors',
+                        isProcessingAttachments && 'opacity-60 pointer-events-none',
+                      )}
+                    >
+                      <input
+                        type="file"
+                        multiple
+                        accept="image/*,application/pdf"
+                        className="hidden"
+                        disabled={isProcessingAttachments || saving}
+                        onChange={async (e) => {
+                          const list = Array.from(e.target.files || []);
+                          e.target.value = '';
+                          if (!list.length) return;
+                          setIsProcessingAttachments(true);
+                          try {
+                            const { files: processed } = await prepareAttachmentFilesForUpload(
+                              list,
+                              ATTACHMENT_MAX_BYTES,
+                            );
+                            setRentalAttachmentFiles((prev) => [...prev, ...processed].slice(0, 5));
+                          } finally {
+                            setIsProcessingAttachments(false);
+                          }
+                        }}
+                      />
+                      {isProcessingAttachments ? (
+                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Compressing…
+                        </span>
+                      ) : (
+                        <p className="text-xs text-muted-foreground text-center">
+                          Click to add images or PDF (max 5)
+                        </p>
+                      )}
+                    </label>
+                    {rentalAttachmentFiles.length > 0 && (
+                      <ul className="space-y-1">
+                        {rentalAttachmentFiles.map((file, idx) => (
+                          <li
+                            key={`${file.name}-${idx}`}
+                            className="flex items-center justify-between gap-2 text-xs text-foreground bg-card border border-border rounded px-2 py-1.5"
+                          >
+                            <span className="truncate">{file.name}</span>
+                            <button
+                              type="button"
+                              className="text-muted-foreground hover:text-red-400 shrink-0"
+                              onClick={() =>
+                                setRentalAttachmentFiles((prev) => prev.filter((_, i) => i !== idx))
+                              }
+                            >
+                              <XIcon size={14} />
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {savedRentalAttachments.length > 0 && (
+                      <div className="space-y-1">
+                        <p className="text-[10px] uppercase text-muted-foreground">Saved with booking</p>
+                        {savedRentalAttachments.map((att, idx) => (
+                          <button
+                            key={`${att.url}-${idx}`}
+                            type="button"
+                            className="flex items-center gap-1.5 text-xs text-violet-300 hover:underline w-full text-left truncate"
+                            onClick={async () => {
+                              const openUrl = await getAttachmentOpenUrl(att.url);
+                              if (openUrl) window.open(openUrl, '_blank', 'noopener,noreferrer');
+                            }}
+                          >
+                            <Paperclip size={12} />
+                            <span className="truncate">{att.name || 'Attachment'}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   {/* Demo: Return Flow Trigger */}

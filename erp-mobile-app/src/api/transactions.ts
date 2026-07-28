@@ -304,11 +304,14 @@ export async function getPaymentTransactions(
 
   let linesByEntry: Record<string, JournalLineLite[]> = {};
   if (entryIds.length) {
-    const { data: lines } = await supabase
-      .from('journal_entry_lines')
-      .select('id, journal_entry_id, account_id, debit, credit, description')
-      .in('journal_entry_id', entryIds);
-    ((lines || []) as JournalLineLite[]).forEach((l) => {
+    const lines = await fetchInBatches(entryIds, async (chunk) => {
+      const { data } = await supabase
+        .from('journal_entry_lines')
+        .select('id, journal_entry_id, account_id, debit, credit, description')
+        .in('journal_entry_id', chunk);
+      return (data || []) as JournalLineLite[];
+    });
+    lines.forEach((l) => {
       const key = String(l.journal_entry_id);
       if (!linesByEntry[key]) linesByEntry[key] = [];
       linesByEntry[key].push(l);
@@ -566,13 +569,16 @@ export async function getJournalTimelineEntries(
   if (!rows.length) return { data: [], error: null };
 
   const entryIds = rows.map((r) => r.id);
-  const { data: lines } = await supabase
-    .from('journal_entry_lines')
-    .select('id, journal_entry_id, account_id, debit, credit, description')
-    .in('journal_entry_id', entryIds);
+  const lines = await fetchInBatches(entryIds, async (chunk) => {
+    const { data } = await supabase
+      .from('journal_entry_lines')
+      .select('id, journal_entry_id, account_id, debit, credit, description')
+      .in('journal_entry_id', chunk);
+    return (data || []) as JournalLineLite[];
+  });
 
   const linesByEntry: Record<string, JournalLineLite[]> = {};
-  ((lines || []) as JournalLineLite[]).forEach((l) => {
+  lines.forEach((l) => {
     const key = String(l.journal_entry_id);
     if (!linesByEntry[key]) linesByEntry[key] = [];
     linesByEntry[key].push(l);

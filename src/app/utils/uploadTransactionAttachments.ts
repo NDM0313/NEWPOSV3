@@ -260,6 +260,81 @@ export async function uploadSaleAttachments(
 }
 
 /**
+ * Upload rental booking attachments to rental-attachments bucket.
+ * Path: {companyId}/{rentalId}/{timestamp}_{index}_{filename}
+ */
+export async function uploadRentalAttachments(
+  companyId: string,
+  rentalId: string,
+  files: File[]
+): Promise<AttachmentResult[]> {
+  if (!files.length) return [];
+  const bucket = 'rental-attachments';
+  const prefix = `${companyId}/${rentalId}/${Date.now()}`;
+  const results: AttachmentResult[] = [];
+  let anyUploadFailed = false;
+
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      anyUploadFailed = true;
+      showFileTooLargeToast(file.name);
+      continue;
+    }
+    const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const path = `${prefix}_${i}_${safeName}`;
+
+    try {
+      const { error } = await withUploadTimeout(
+        supabase.storage.from(bucket).upload(path, file, {
+          upsert: true,
+          contentType: file.type || 'application/octet-stream',
+        }),
+        UPLOAD_TIMEOUT_MS,
+        `Upload ${file.name}`,
+      );
+
+      if (error) {
+        anyUploadFailed = true;
+        console.error(`[UPLOAD RENTAL ATTACHMENTS] Failed to upload ${file.name}:`, error);
+        if (isStorageRlsError(error)) {
+          showStorageRlsToast();
+          break;
+        }
+        if (isFileTooLargeError(error)) {
+          showFileTooLargeToast(file.name);
+          continue;
+        }
+        if (isBucketNotFoundError(error)) {
+          showBucketNotFoundToast('rental-attachments');
+          break;
+        }
+      } else {
+        results.push({ url: storageRefForPersistence(bucket, path), name: file.name });
+        console.log(`[UPLOAD RENTAL ATTACHMENTS] ✅ Uploaded: ${file.name}`);
+      }
+    } catch (err: any) {
+      anyUploadFailed = true;
+      console.error(`[UPLOAD RENTAL ATTACHMENTS] Exception uploading ${file.name}:`, err);
+      if (String(err?.message ?? '').includes('timed out after')) {
+        console.warn(`[UPLOAD RENTAL ATTACHMENTS] Timed out: ${file.name}`);
+        continue;
+      }
+      if (isFileTooLargeException(err)) showFileTooLargeToast(file.name);
+      else if (isStorageRlsError(err)) showStorageRlsToast();
+    }
+  }
+
+  if (anyUploadFailed && results.length === 0) {
+    console.warn('[UPLOAD RENTAL ATTACHMENTS] All uploads failed');
+  } else if (anyUploadFailed) {
+    console.warn(`[UPLOAD RENTAL ATTACHMENTS] Some uploads failed (${results.length}/${files.length} succeeded)`);
+  }
+
+  return results;
+}
+
+/**
  * Upload journal entry attachments (pictures/documents) to payment-attachments bucket.
  * Path: journal-entries/{companyId}/{timestamp}_{index}_{filename}
  * Use for Manual Journal Entry and any journal entry attachment.

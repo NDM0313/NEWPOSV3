@@ -18,7 +18,8 @@ import {
   ChevronRight,
   Loader2,
   Scissors,
-  RefreshCw
+  RefreshCw,
+  Building2,
 } from 'lucide-react';
 import { useNavigation } from '../../context/NavigationContext';
 import { useSettings } from '../../context/SettingsContext';
@@ -43,12 +44,22 @@ import { ChangePasswordDialog } from '../auth/ChangePasswordDialog';
 import { useCheckPermission } from '../../hooks/useCheckPermission';
 import { NotificationsDropdown } from './NotificationsDropdown';
 import { dispatchGlobalRefresh } from '@/app/lib/dataInvalidationBus';
-import { hasCompanyWideBranchAccess } from '@/app/config/functionalRoles';
+import { hasCompanyWideBranchAccess, isPlatformOperatorAppRole } from '@/app/config/functionalRoles';
 
 export const TopHeader = () => {
   const { toggleSidebar, openDrawer, setCurrentView, setMobileNavOpen } = useNavigation();
   const { businessSettings } = useSettings();
-  const { signOut, user, companyId, branchId, erpFullName, userRole, accessibleBranchIds } = useSupabase();
+  const {
+    signOut,
+    user,
+    companyId,
+    branchId,
+    erpFullName,
+    userRole,
+    accessibleBranchIds,
+    activeCompanyName,
+    switchPlatformCompany,
+  } = useSupabase();
   const { hasPermission } = useCheckPermission();
   const globalFilter = useGlobalFilter();
   const { dateRangeType, setDateRangeType, setCustomDateRange, getDateRangeLabel, setBranchId: setGlobalBranchId, branchId: globalBranchId, customStartDate, customEndDate, startDateObj, endDateObj } = globalFilter;
@@ -58,6 +69,7 @@ export const TopHeader = () => {
   const [showCustomDatePicker, setShowCustomDatePicker] = useState(false);
 
   const companyWideBranchAccess = hasCompanyWideBranchAccess(userRole);
+  const showPlatformCompanySwitch = isPlatformOperatorAppRole(userRole);
 
   // Load branches (cached) for header dropdown; global rule: hide when single branch
   const loadBranches = useCallback(async () => {
@@ -249,6 +261,29 @@ export const TopHeader = () => {
         {loadingBranches && (
           <div className="hidden lg:flex items-center gap-2 px-4 py-2 h-10">
             <Loader2 size={16} className="animate-spin text-muted-foreground" />
+          </div>
+        )}
+
+        {showPlatformCompanySwitch && (
+          <div className="hidden sm:flex items-center gap-2">
+            {activeCompanyName ? (
+              <span
+                className="hidden md:inline-flex items-center gap-1.5 max-w-[10rem] truncate text-xs text-muted-foreground"
+                title={activeCompanyName}
+              >
+                <Building2 size={14} className="shrink-0 text-violet-400" />
+                {activeCompanyName}
+              </span>
+            ) : null}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-9 px-3 text-xs border border-border hover:bg-accent"
+              onClick={() => switchPlatformCompany()}
+            >
+              Switch company
+            </Button>
           </div>
         )}
       </div>
@@ -530,6 +565,16 @@ export const TopHeader = () => {
               <Lock size={16} className="text-orange-500" />
               <span>Change Password</span>
             </DropdownMenuItem>
+
+            {showPlatformCompanySwitch && (
+              <DropdownMenuItem
+                onClick={() => switchPlatformCompany()}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-foreground hover:bg-accent cursor-pointer transition-all"
+              >
+                <Building2 size={16} className="text-violet-400" />
+                <span>Switch company</span>
+              </DropdownMenuItem>
+            )}
             
             <DropdownMenuSeparator className="bg-border my-2" />
             

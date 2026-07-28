@@ -6,6 +6,7 @@ import {
   parseTimeFromReceiptText,
   enrichDraftFromRaw,
   buildReceiptNotes,
+  normalizeOcrText,
 } from './parsePakBankReceipt';
 import { emptyReceiptOcrDraft } from './receiptOcrTypes';
 
@@ -237,4 +238,113 @@ test('Faysal Transaction ID + full From/To + comment', () => {
   assert.ok(!d.notes?.includes('Current Account'), 'skip Faysal chrome');
   assert.ok(!d.notes?.includes('Bank Alfalah'), 'skip bank chrome');
   assert.ok(!d.notes?.includes('PK**FAYS'), 'skip masked IBAN');
+});
+
+// --- Shared screenshot fixtures (canonical OCR dumps) ---
+
+const MEEZAN_SCREENSHOT = `
+Transaction Successful
+Meezan Bank
+PKR 100,000
+Jul 28, 2026 | 2:39 PM
+Reference Number (STAN): \u0645\u06CC\u0645 186293 \u0644\u0627\u0645
+From Account:
+ZARPOSH COLLECTION
+To Account:
+MUHAMMAD DANISH ATTARI
+`;
+
+test('screenshot Meezan: amount date time STAN from/to; strips Urdu watermark', () => {
+  const d = parsePakBankReceipt(MEEZAN_SCREENSHOT);
+  assert.equal(d.amount, 100000);
+  assert.equal(d.date, '2026-07-28');
+  assert.equal(d.time, '14:39');
+  assert.equal(d.reference, '186293');
+  assert.ok(d.notes?.includes('ZARPOSH COLLECTION'));
+  assert.ok(d.notes?.includes('MUHAMMAD DANISH ATTARI'));
+  assert.ok(!/[\u0600-\u06FF]/.test(normalizeOcrText(d.rawText)));
+});
+
+const UBL_SCREENSHOT = `
+UBL Digital
+Transaction Successful
+Status Paid
+27 July, 2026 | 12:35 PM
+Amount Debited
+Rs. 150,000
+From
+Saleem Khan
+To
+Zarposh Collection
+Bank: MEEZAN
+`;
+
+test('screenshot UBL: Amount Debited, parties; soft/null reference', () => {
+  const d = parsePakBankReceipt(UBL_SCREENSHOT);
+  assert.equal(d.amount, 150000);
+  assert.equal(d.date, '2026-07-27');
+  assert.equal(d.time, '12:35');
+  assert.equal(d.reference, null);
+  assert.ok(d.notes?.includes('Saleem Khan'));
+  assert.ok(d.notes?.includes('Zarposh Collection'));
+});
+
+const FAYSAL_SCREENSHOT = `
+Faysal Bank
+Transaction Successful
+PKR 40,000
+26/07/2026 | 17:49:17
+Transaction ID: 845652
+From
+Current Account
+NADEEM DIN MOHAMMAD
+To
+MUHAMMAD SIKANDER
+Comment: transfer
+Transaction Type: MBL-to-MBL
+`;
+
+test('screenshot Faysal: DD/MM/YYYY HH:mm:ss + Transaction ID', () => {
+  const d = parsePakBankReceipt(FAYSAL_SCREENSHOT);
+  assert.equal(d.amount, 40000);
+  assert.equal(d.date, '2026-07-26');
+  assert.equal(d.time, '17:49');
+  assert.equal(d.reference, '845652');
+  assert.ok(d.notes?.includes('NADEEM DIN MOHAMMAD'));
+  assert.ok(d.notes?.includes('MUHAMMAD SIKANDER'));
+});
+
+const EASYPAISA_SCREENSHOT = `
+easypaisa
+Money has been sent.
+ID#53290658417
+27 July, 2026 | 12:55 PM
+Total Amount
+Rs. 3,800
+Sent to
+HAMZA HAMZA
+03122339083
+Sent by
+Nadeem Deen Muhammad
+Funding Source
+Fee / Charge
+Free
+`;
+
+test('screenshot Easypaisa: ID# Total Amount Sent to/by', () => {
+  const d = parsePakBankReceipt(EASYPAISA_SCREENSHOT);
+  assert.equal(d.amount, 3800);
+  assert.equal(d.date, '2026-07-27');
+  assert.equal(d.time, '12:55');
+  assert.equal(d.reference, '53290658417');
+  assert.ok(d.notes?.includes('Nadeem Deen Muhammad'));
+  assert.ok(d.notes?.includes('HAMZA HAMZA'));
+  assert.ok(d.notes?.includes('03122339083'));
+});
+
+test('normalizeOcrText strips Arabic/Urdu script blocks', () => {
+  const cleaned = normalizeOcrText('PKR 100 \u0645\u06CC\u0645 STAN 186293 \u0644\u0627\u0645');
+  assert.ok(!/[\u0600-\u06FF]/.test(cleaned));
+  assert.ok(cleaned.includes('STAN'));
+  assert.ok(cleaned.includes('186293'));
 });

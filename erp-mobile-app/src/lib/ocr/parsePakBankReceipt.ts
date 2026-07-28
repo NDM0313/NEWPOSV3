@@ -80,6 +80,8 @@ export function normalizeOcrText(text: string): string {
     /* ignore */
   }
   s = s.replace(/[\u0300-\u036f]/g, '');
+  // Strip Arabic / Urdu script (watermark noise from bilingual OCR on English bank UIs)
+  s = s.replace(/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]+/g, ' ');
   s = mapLookalikes(s);
   return s
     .replace(/\u00a0/g, ' ')
@@ -110,9 +112,10 @@ export function parseTimeFromReceiptText(text: string): string | null {
     if (ap === 'AM' && h === 12) h = 0;
     return `${pad2(h)}:${pad2(m)}`;
   }
-  const h24 = t.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
-  if (h24) {
-    return `${pad2(Number(h24[1]))}:${h24[2]}`;
+  // 17:49:17 or 17:49
+  const h24s = t.match(/\b([01]?\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?\b/);
+  if (h24s) {
+    return `${pad2(Number(h24s[1]))}:${h24s[2]}`;
   }
   return null;
 }
@@ -120,6 +123,17 @@ export function parseTimeFromReceiptText(text: string): string | null {
 /** Parse PKR / Rs amounts from bank-style receipt text. */
 export function parseAmountFromReceiptText(text: string): { amount: number | null; confidence: number } {
   const t = normalizeOcrText(text);
+  const labeled: RegExp[] = [
+    /Amount\s*Debited\s*[:.]?\s*(?:Rs\.?\s*)?([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{1,2})?)/i,
+    /Total\s*Amount\s*[:.]?\s*(?:Rs\.?\s*)?([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{1,2})?)/i,
+  ];
+  for (const re of labeled) {
+    const m = t.match(re);
+    if (m?.[1]) {
+      const n = Number(String(m[1]).replace(/,/g, ''));
+      if (Number.isFinite(n) && n > 0) return { amount: n, confidence: 0.9 };
+    }
+  }
   const patterns: RegExp[] = [
     /PKR\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{1,2})?)/i,
     /Rs\.?\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{1,2})?)/i,
@@ -190,9 +204,11 @@ export function parseDateFromReceiptText(text: string): string | null {
 export function parseReferenceFromReceiptText(text: string): string | null {
   const t = normalizeOcrText(text);
   const patterns: RegExp[] = [
-    // Meezan: Reference Number (STAN): 648910
-    /Reference\s*Number\s*\(\s*STAN\s*\)\s*[:#]?\s*([0-9]{4,})/i,
-    /\bSTAN\s*[:#]?\s*([0-9]{4,})\b/i,
+    // Meezan: Reference Number (STAN): 648910 — allow watermark junk between label and digits
+    /Reference\s*Number\s*\(\s*STAN\s*\)\s*[:#]?\s*[^\d]{0,24}([0-9]{4,})/i,
+    /\bSTAN\s*[:#]?\s*[^\d]{0,24}([0-9]{4,})\b/i,
+    // Easypaisa: ID#53290658417
+    /\bID\s*#\s*([0-9]{6,})\b/i,
     // Faysal / generic: Transaction ID: 868613
     /Transaction\s*ID\s*[:#]?\s*([A-Za-z0-9\-]{4,})/i,
     /Txn\s*ID\s*[:#]?\s*([A-Za-z0-9\-]{4,})/i,
@@ -212,7 +228,7 @@ export function parseReferenceFromReceiptText(text: string): string | null {
 }
 
 const SKIP_NOTE_LINE =
-  /^(transaction\s+successful|meezan\s+bank|successful|status|from\s*account\s*:?|to\s*account\s*:?)$/i;
+  /^(transaction\s+successful|meezan\s+bank|successful|status|paid|from\s*account\s*:?|to\s*account\s*:?|ubl\s*digital|easypaisa|money\s+has\s+been\s+sent\.?|funding\s+source|fee\s*\/?\s*charge|free)$/i;
 
 function lineAfterLabel(text: string, label: RegExp): string | null {
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
@@ -284,12 +300,14 @@ function isBankChromeLine(line: string): boolean {
   }
   if (/^\d{1,2}[\/\-.]\d{1,2}[\/\-.](\d{2}|\d{4})\b/.test(s)) return true;
   if (/^(date|time)\s*:/i.test(s)) return true;
-  if (/meezan|faysal\s*bank/i.test(s) && s.length < 40) return true;
-  if (/^(current\s+account|savings?\s+account|bank\s+alfalah|purpose\s+of\s+payment)/i.test(s)) {
+  if (/meezan|faysal\s*bank|ubl\s*digital|easypaisa/i.test(s) && s.length < 40) return true;
+  if (/^(current\s+account|savings?\s+account|bank\s+alfalah|purpose\s+of\s+payment|funding\s+source)/i.test(s)) {
     return true;
   }
   if (/^transaction\s*type\s*:/i.test(s)) return true;
   if (/^mbl\s*-?\s*to\s*-?\s*mbl$/i.test(s)) return true;
+  if (/^account\s+details$/i.test(s)) return true;
+  if (/^0?3\d{9}$/.test(s.replace(/\s/g, ''))) return true; // PK mobile as chrome after Sent to
   return false;
 }
 
@@ -426,13 +444,24 @@ function cleanPartyValue(raw: string | null): string | null {
 }
 
 export function parsePartyNotesFromReceiptText(text: string): string | null {
-  const fromRaw = lineAfterLabel(text, /^From\s*Account\s*:?/i) ?? lineAfterLabel(text, /^From\s*:?/i);
-  const toRaw = lineAfterLabel(text, /^To\s*Account\s*:?/i) ?? lineAfterLabel(text, /^To\s*:?/i);
+  const fromRaw =
+    lineAfterLabel(text, /^From\s*Account\s*:?/i) ??
+    lineAfterLabel(text, /^Sent\s+by\s*:?/i) ??
+    lineAfterLabel(text, /^From\s*:?/i);
+  const toRaw =
+    lineAfterLabel(text, /^To\s*Account\s*:?/i) ??
+    lineAfterLabel(text, /^Sent\s+to\s*:?/i) ??
+    lineAfterLabel(text, /^To\s*:?/i);
   const from = cleanPartyValue(fromRaw);
   const to = cleanPartyValue(toRaw);
   const parts: string[] = [];
   if (from) parts.push(`From: ${from}`);
   if (to) parts.push(`To: ${to}`);
+  // Easypaisa: keep recipient phone under Sent to
+  const phone = String(text || '').match(/\b(0?3\d{2}[\s-]?\d{7})\b/);
+  if (phone?.[1] && to && !parts.some((p) => p.includes(phone[1].replace(/\s/g, '')))) {
+    parts.push(`Phone: ${phone[1].replace(/\s/g, '')}`);
+  }
   return parts.length ? parts.join('\n') : null;
 }
 

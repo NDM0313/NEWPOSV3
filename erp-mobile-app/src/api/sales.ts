@@ -1877,6 +1877,8 @@ export function onAccountCustomerReceiptPostRpcPatches(params: {
 export async function getSalePayments(saleId: string): Promise<{
   data: Array<{
     id: string;
+    /** payments.id to open TransactionDetailSheet (parent payment for alloc rows). */
+    editTargetId: string;
     date: string;
     amount: number;
     method: string;
@@ -1906,8 +1908,10 @@ export async function getSalePayments(saleId: string): Promise<{
         return { url: String(o?.url ?? ''), name: String(o?.name ?? 'Attachment') };
       }).filter((a) => a.url);
     }
+    const payId = String(p.id ?? '');
     return {
-      id: String(p.id ?? ''),
+      id: payId,
+      editTargetId: payId,
       date: p.payment_date ? new Date(String(p.payment_date)).toLocaleDateString('en-PK') : '—',
       amount: Number(p.amount ?? 0),
       method: String(p.payment_method ?? '—'),
@@ -1919,6 +1923,7 @@ export async function getSalePayments(saleId: string): Promise<{
 
   const allocRows: Array<{
     id: string;
+    editTargetId: string;
     date: string;
     amount: number;
     method: string;
@@ -1940,8 +1945,9 @@ export async function getSalePayments(saleId: string): Promise<{
       const parentById = new Map((parents || []).map((pr: Record<string, unknown>) => [String(pr.id), pr]));
       for (const a of allocs || []) {
         const row = a as { id?: string; payment_id?: string; allocated_amount?: number; allocation_date?: string; allocation_order?: number };
-        const pr = parentById.get(String(row.payment_id));
-        if (!pr || pr.voided_at) continue;
+        const parentId = String(row.payment_id ?? '');
+        const pr = parentById.get(parentId);
+        if (!pr || pr.voided_at || !parentId) continue;
         let attachments: PaymentAttachment[] | undefined;
         const raw = pr.attachments;
         if (Array.isArray(raw) && raw.length > 0) {
@@ -1953,6 +1959,7 @@ export async function getSalePayments(saleId: string): Promise<{
         const ord = Number(row.allocation_order) || 0;
         allocRows.push({
           id: `alloc:${row.id}`,
+          editTargetId: parentId,
           date: pr.payment_date ? new Date(String(pr.payment_date)).toLocaleDateString('en-PK') : '—',
           amount: Number(row.allocated_amount ?? 0),
           method: String(pr.payment_method ?? '—'),

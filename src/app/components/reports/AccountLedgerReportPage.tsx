@@ -439,6 +439,8 @@ export const AccountLedgerReportPage: React.FC<{
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [mainLoaderSource, setMainLoaderSource] = useState<'legacy' | 'unified'>('legacy');
+  /** Fail-loud load failures (R8-R2 flags, missing selection, RPC) — not the period-empty copy. */
+  const [loadError, setLoadError] = useState<string | null>(null);
   /** Pure GL (non-party): summary cards use engine official totals so Closing matches Trial Balance as-of End. */
   const [officialGlSummary, setOfficialGlSummary] = useState<{
     openingBalance: number;
@@ -619,9 +621,11 @@ export const AccountLedgerReportPage: React.FC<{
   useEffect(() => {
     if (!companyId) {
       setEntries([]);
+      setLoadError(null);
       return;
     }
     setLoading(true);
+    setLoadError(null);
     (async () => {
       try {
         const { resolveAccountStatementMainLoaderSource, effectiveAccountStatementMainLoaderSource } =
@@ -643,6 +647,7 @@ export const AccountLedgerReportPage: React.FC<{
         if (target.kind === 'none') {
           setEntries([]);
           setOfficialGlSummary(null);
+          setLoadError(target.reason || 'Select an account or contact to load this statement.');
           return;
         }
         const basis = defaultUnifiedBasisForAccountStatement(target, viewMode);
@@ -667,6 +672,7 @@ export const AccountLedgerReportPage: React.FC<{
 
         setOfficialGlSummary(nextOfficialGl);
         setEntries(loaded || []);
+        setLoadError(null);
         if (isDebugErpEnabled()) {
           console.log('[STATEMENT_FILTER_TRACE] fetch', {
             mainLoaderSource: mainSource,
@@ -682,7 +688,22 @@ export const AccountLedgerReportPage: React.FC<{
             includeManualEntries: applied.includeManualEntries,
             includeAdjustments: applied.includeAdjustments,
             rowsReturned: (loaded || []).length,
+            loaderFlagEnabled: resolved.loaderFlagEnabled,
+            companyEngineEnabled: resolved.companyEngineEnabled,
+            screenFlagEnabled: resolved.screenFlagEnabled,
           });
+        }
+      } catch (err: unknown) {
+        console.error('[AccountLedgerReportPage] load failed', err);
+        setEntries([]);
+        setOfficialGlSummary(null);
+        const msg = err instanceof Error ? err.message : String(err || '');
+        if (msg.includes('Legacy main loader retired') || msg.includes('R8-R2')) {
+          setLoadError(
+            'Account Statement needs unified ledger flags ON (engine + unified_ledger_loader_account_statement + unified_ledger_screen_account_statement). Enable them in Feature Flags / Developer Tools — Standard Ledger V2 uses a different loader flag.',
+          );
+        } else {
+          setLoadError(msg || 'Failed to load account statement.');
         }
       } finally {
         setStatementLoadedOnce(true);
@@ -1759,6 +1780,15 @@ export const AccountLedgerReportPage: React.FC<{
 
   return (
     <div className="space-y-4" data-account-statement-main-loader={mainLoaderSource}>
+      {loadError ? (
+        <div
+          role="alert"
+          data-account-statement-load-error="1"
+          className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100"
+        >
+          {loadError}
+        </div>
+      ) : null}
       <div className="rounded-xl border border-border bg-muted/60 p-4 space-y-3">
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
           <div>
@@ -2144,7 +2174,7 @@ export const AccountLedgerReportPage: React.FC<{
               {presentedEntries.length === 0 ? (
                 <tr>
                   <td colSpan={18} className="p-6 text-center text-muted-foreground max-w-3xl mx-auto text-sm leading-relaxed">
-                    {emptyPeriodMessage}
+                    {loadError || emptyPeriodMessage}
                   </td>
                 </tr>
               ) : (

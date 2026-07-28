@@ -183,6 +183,8 @@ interface EnhancedProductFormProps {
   onCancel: () => void;
   onSave: (product?: any) => void;
   onSaveAndAdd?: (product: any) => void;
+  /** Nested create from purchase: skip blocking GL/images; normalize handoff payload. */
+  sourceContext?: 'purchase' | 'sale' | 'default';
 }
 
 export const EnhancedProductForm = ({
@@ -191,6 +193,7 @@ export const EnhancedProductForm = ({
   onCancel,
   onSave,
   onSaveAndAdd,
+  sourceContext = 'default',
 }: EnhancedProductFormProps) => {
   const { companyId, branchId } = useSupabase();
   const settings = useSettings();
@@ -1611,6 +1614,7 @@ export const EnhancedProductForm = ({
 
         const parentCost = Number(data.purchasePrice) || 0;
         const parentSell = Number(data.sellingPrice) || 0;
+        const fromPurchase = sourceContext === 'purchase';
         const variationPayload =
           hasVariations && generatedVariations.length > 0
             ? generatedVariations.map((variation) => {
@@ -1625,20 +1629,41 @@ export const EnhancedProductForm = ({
                   attributes: variation.combination,
                   cost_price: cost,
                   retail_price: retail,
-                  opening_stock: parseVariationQtyInput(String(variation.stock ?? '')),
+                  // Purchase finalize owns inbound stock — skip opening movements here.
+                  opening_stock: fromPurchase
+                    ? 0
+                    : parseVariationQtyInput(String(variation.stock ?? '')),
                 };
               })
             : [];
 
-        const saveResult = await productService.saveProductWithVariations({
-          companyId: finalCompanyId,
-          branchIdOrNull,
-          parent: {
-            ...productData,
-            opening_stock: hasVariations ? 0 : initialStock,
-          },
-          variations: variationPayload,
-        });
+        const saveTimeoutMs = 25_000;
+        let saveTimedOut = false;
+        const saveTimeoutId = window.setTimeout(() => {
+          saveTimedOut = true;
+          toast.message('Still saving product…', {
+            description: 'This is taking longer than usual. Please wait.',
+          });
+        }, saveTimeoutMs);
+
+        let saveResult: Awaited<ReturnType<typeof productService.saveProductWithVariations>>;
+        try {
+          saveResult = await productService.saveProductWithVariations({
+            companyId: finalCompanyId,
+            branchIdOrNull,
+            parent: {
+              ...productData,
+              opening_stock: fromPurchase || hasVariations ? 0 : initialStock,
+            },
+            variations: variationPayload,
+            deferOpeningBalanceGlSync: fromPurchase,
+          });
+        } finally {
+          window.clearTimeout(saveTimeoutId);
+        }
+        if (saveTimedOut && import.meta.env?.DEV) {
+          console.warn('[PRODUCT FORM] Save completed after soft timeout warning');
+        }
         incrementNextNumber('production');
         const result = { id: saveResult.productId };
 
@@ -1654,26 +1679,42 @@ export const EnhancedProductForm = ({
           }
         }
 
-        // Upload product images and save URLs
-        if (images.length > 0 && result?.id) {
-          try {
-            const imageUrls = await uploadProductImages(finalCompanyId, result.id, images);
-            await productService.updateProduct(result.id, { image_urls: imageUrls });
-          } catch (uploadErr: any) {
-            console.error('[PRODUCT FORM] Image upload failed:', uploadErr);
-            const msg = uploadErr?.message || 'Product saved but images failed to upload.';
-            const isBucketMissing = String(msg).toLowerCase().includes('bucket not found');
-            toast.error(msg, isBucketMissing ? { action: { label: 'Open Storage', onClick: () => window.open(getSupabaseStorageDashboardUrl(), '_blank') } } : undefined);
-          }
-        }
+        const handoffVariations =
+          hasVariations && generatedVariations.length > 0
+            ? generatedVariations.map((variation, idx) => {
+                const dbId = saveResult.variationIds[idx];
+                const purchN = Number(variation.purchasePrice);
+                const sellN = Number(variation.price);
+                const cost = Number.isFinite(purchN) ? purchN : parentCost;
+                const retail = Number.isFinite(sellN) ? sellN : parentSell;
+                return {
+                  id: dbId,
+                  sku: variation.sku,
+                  attributes: variation.combination,
+                  combination: variation.combination,
+                  size: variation.combination?.size,
+                  color: variation.combination?.color,
+                  price: cost,
+                  cost_price: cost,
+                  retail_price: retail,
+                  stock: 0,
+                };
+              }).filter((v) => v.id)
+            : [];
 
         const payload = {
           ...data,
           sku: finalSKU,
           id: result.id,
+          uuid: result.id,
+          cost_price: parentCost,
+          purchasePrice: parentCost,
+          retail_price: parentSell,
+          sellingPrice: parentSell,
+          has_variations: handoffVariations.length > 0,
           isSellable: true,
           isRentable: (data.rentalPrice || 0) > 0,
-          variations: generatedVariations,
+          variations: handoffVariations.length > 0 ? handoffVariations : generatedVariations,
           combos: combos,
         };
 
@@ -1682,7 +1723,37 @@ export const EnhancedProductForm = ({
         } else {
           toast.success('Product created successfully!');
         }
-        endProductSavePerf({ action: 'create', variations: generatedVariations.length });
+        endProductSavePerf({ action: 'create', variations: generatedVariations.length, fromPurchase });
+
+        // Images after handoff so purchase line is not blocked by storage.
+        const uploadAfterSave = async () => {
+          if (!(images.length > 0 && result?.id)) return;
+          try {
+            const imageUrls = await uploadProductImages(finalCompanyId, result.id, images);
+            await productService.updateProduct(result.id, { image_urls: imageUrls });
+          } catch (uploadErr: any) {
+            console.error('[PRODUCT FORM] Image upload failed:', uploadErr);
+            const msg = uploadErr?.message || 'Product saved but images failed to upload.';
+            const isBucketMissing = String(msg).toLowerCase().includes('bucket not found');
+            toast.error(
+              msg,
+              isBucketMissing
+                ? {
+                    action: {
+                      label: 'Open Storage',
+                      onClick: () => window.open(getSupabaseStorageDashboardUrl(), '_blank'),
+                    },
+                  }
+                : undefined,
+            );
+          }
+        };
+
+        if (fromPurchase) {
+          void uploadAfterSave();
+        } else if (images.length > 0 && result?.id) {
+          await uploadAfterSave();
+        }
 
         if (action === "saveAndAdd" && onSaveAndAdd) {
           onSaveAndAdd(payload);

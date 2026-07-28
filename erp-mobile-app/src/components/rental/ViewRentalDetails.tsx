@@ -18,16 +18,23 @@ import {
   Ban,
   FileText,
   Pencil,
+  ChevronRight,
+  Paperclip,
 } from 'lucide-react';
 import type { RentalDetail } from '../../api/rentals';
 import * as rentalsApi from '../../api/rentals';
 import { RentalReturnModal } from './RentalReturnModal';
 import { RentalAddPaymentModal } from './RentalAddPaymentModal';
 import { RentalPickupModal } from './RentalPickupModal';
+import { RentalAddAttachmentsSheet } from './RentalAddAttachmentsSheet';
 import { RentalWorkflowBadges } from './RentalWorkflowBadges';
 import { rentalPrimaryStaffName, rentalShowCreatedBySecondary } from '../../lib/rentalWorkflowDisplay';
 import { formatDate } from '../accounts/reports/_shared/format';
+import { TransactionDetailSheet } from '../accounts/reports/TransactionDetailSheet';
 import { useEffectiveWorkerId } from '../../context/CounterWorkerContext';
+import { AttachmentsSection } from '../shared/AttachmentsSection';
+import { normalizeAttachments } from '../../lib/normalizeAttachments';
+import { useAttachmentPreview } from '../../hooks/useAttachmentPreview';
 
 export type RentalDetailInitialAction = 'pickup' | 'return' | 'payment';
 
@@ -86,6 +93,9 @@ export function ViewRentalDetails({
   const [billRefEdit, setBillRefEdit] = useState(false);
   const [billRefDraft, setBillRefDraft] = useState('');
   const [metaSaving, setMetaSaving] = useState(false);
+  const [viewPaymentId, setViewPaymentId] = useState<string | null>(null);
+  const [attachmentsSheetOpen, setAttachmentsSheetOpen] = useState(false);
+  const { openAttachmentPreview, AttachmentPreviewPortal } = useAttachmentPreview();
 
   const load = () => {
     if (!rentalId) return;
@@ -220,6 +230,8 @@ export function ViewRentalDetails({
   const canEditBooking = ['draft', 'booked'].includes(rental.status) && Boolean(onEditBooking);
   const hasSecurityDoc =
     !!(rental.securityDocumentType || rental.securityDocumentNumber || rental.securityDocumentImageUrl);
+  const bookingAttachments = normalizeAttachments(rental.attachments);
+  const canAddAttachments = ['draft', 'booked', 'rented', 'overdue', 'returned'].includes(rental.status);
 
   return (
     <div className="min-h-screen bg-[#111827] pb-32">
@@ -352,6 +364,18 @@ export function ViewRentalDetails({
           </div>
         </div>
 
+        <AttachmentsSection items={bookingAttachments} onOpenPreview={openAttachmentPreview} />
+        {canAddAttachments && companyId && (
+          <button
+            type="button"
+            onClick={() => setAttachmentsSheetOpen(true)}
+            className="w-full py-3 bg-[#1F2937] border border-[#374151] hover:border-[#8B5CF6]/50 rounded-xl text-[#C4B5FD] font-medium flex items-center justify-center gap-2"
+          >
+            <Paperclip className="w-4 h-4" />
+            {bookingAttachments.length > 0 ? 'Add / update attachments' : 'Add attachments'}
+          </button>
+        )}
+
         {hasSecurityDoc && (
           <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
             <h3 className="text-sm font-medium text-[#9CA3AF] mb-2 flex items-center gap-2">
@@ -389,23 +413,47 @@ export function ViewRentalDetails({
               <CreditCard className="w-4 h-4" /> Payments
             </h3>
             <ul className="space-y-2">
-              {rental.payments.map((p) => (
-                <li key={p.id} className="flex justify-between items-start text-sm py-2 border-b border-[#374151] last:border-0 gap-2">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-white font-medium">Rs. {p.amount.toLocaleString()}</p>
-                    <p className="text-xs text-[#9CA3AF]">{p.method} • {p.paymentDate}</p>
-                    {p.referenceNo && p.referenceNo !== '—' && (
-                      <p className="text-xs text-[#6B7280]">Ref: {p.referenceNo}</p>
+              {rental.payments.map((p) => {
+                const editTargetId = p.sourcePaymentId || p.journalEntryId || null;
+                const rowBody = (
+                  <>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-white font-medium">Rs. {p.amount.toLocaleString()}</p>
+                      <p className="text-xs text-[#9CA3AF]">{p.method} • {p.paymentDate}</p>
+                      {p.referenceNo && p.referenceNo !== '—' && (
+                        <p className="text-xs text-[#6B7280]">Ref: {p.referenceNo}</p>
+                      )}
+                      {p.notes && (
+                        <p className="text-xs text-[#9CA3AF] mt-1 break-words">{p.notes}</p>
+                      )}
+                      {!p.referenceNo && p.reference && (
+                        <p className="text-xs text-[#6B7280]">{p.reference}</p>
+                      )}
+                      {editTargetId ? (
+                        <p className="text-[10px] text-[#6B7280] mt-0.5">Tap to view / edit</p>
+                      ) : null}
+                    </div>
+                    {editTargetId ? (
+                      <ChevronRight className="w-5 h-5 text-[#6B7280] shrink-0 mt-0.5" />
+                    ) : null}
+                  </>
+                );
+                return (
+                  <li key={p.id} className="border-b border-[#374151] last:border-0">
+                    {editTargetId ? (
+                      <button
+                        type="button"
+                        onClick={() => setViewPaymentId(editTargetId)}
+                        className="w-full flex justify-between items-start text-sm py-2 gap-2 text-left hover:bg-[#374151]/40 rounded-lg -mx-1 px-1 transition-colors"
+                      >
+                        {rowBody}
+                      </button>
+                    ) : (
+                      <div className="flex justify-between items-start text-sm py-2 gap-2">{rowBody}</div>
                     )}
-                    {p.notes && (
-                      <p className="text-xs text-[#9CA3AF] mt-1 break-words">{p.notes}</p>
-                    )}
-                    {!p.referenceNo && p.reference && (
-                      <p className="text-xs text-[#6B7280]">{p.reference}</p>
-                    )}
-                  </div>
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ul>
           </div>
         )}
@@ -494,6 +542,38 @@ export function ViewRentalDetails({
           onConfirm={handlePickup}
           onAddPayment={() => setPaymentOpen(true)}
           loading={actionLoading}
+        />
+      )}
+      {attachmentsSheetOpen && companyId && (
+        <RentalAddAttachmentsSheet
+          open={attachmentsSheetOpen}
+          companyId={companyId}
+          rentalId={rental.id}
+          existingRaw={rental.attachments}
+          bookingLabel={rental.bookingNo}
+          onClose={() => setAttachmentsSheetOpen(false)}
+          onSaved={(merged) => {
+            setRental((prev) => (prev ? { ...prev, attachments: merged } : prev));
+            onRefresh();
+          }}
+        />
+      )}
+      {AttachmentPreviewPortal}
+      {viewPaymentId && companyId && (
+        <TransactionDetailSheet
+          paymentId={viewPaymentId}
+          companyId={companyId}
+          branchId={rental.branchId ?? null}
+          onClose={() => {
+            setViewPaymentId(null);
+            load();
+            onRefresh();
+          }}
+          onCancelled={() => {
+            setViewPaymentId(null);
+            load();
+            onRefresh();
+          }}
         />
       )}
     </div>

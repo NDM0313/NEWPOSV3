@@ -47,4 +47,6 @@ export interface RentalUI {
   damageNotes?: string | null;
   penaltyPaid?: boolean;
   refundAmount?: number;
+  /** Booking document attachments [{url, name}] */
+  attachments?: { url: string; name: string }[] | null;
 }

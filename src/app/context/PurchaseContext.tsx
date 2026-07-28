@@ -23,7 +23,7 @@ import { getCurrentLocalTimestamp, localNowDateString } from '@/app/utils/localD
 import { perfStart } from '@/app/utils/perfTiming';
 import { assertDomainEditSafetyTestMode, classifyPurchaseEdit } from '@/app/lib/accountingEditClassification';
 import { createAccountingEditTraceId, pushAccountingEditTrace } from '@/app/lib/accountingEditTrace';
-import { dispatchDataInvalidated } from '@/app/lib/dataInvalidationBus';
+import { dispatchDataInvalidated, DATA_INVALIDATED_EVENT, shouldAcceptInvalidation, type DataInvalidationDetail } from '@/app/lib/dataInvalidationBus';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function isValidBranchId(id: string | null): id is string {
@@ -120,6 +120,8 @@ export interface Purchase {
 interface PurchaseContextType {
   purchases: Purchase[];
   loading: boolean;
+  /** Increments on every successful list fetch — forces UI re-sync even when row fields look identical. */
+  listEpoch: number;
   totalCount: number;
   page: number;
   pageSize: number;
@@ -151,6 +153,7 @@ export const usePurchases = () => {
       return {
         purchases: [],
         loading: false,
+        listEpoch: 0,
         getPurchaseById: () => undefined,
         createPurchase: defaultError,
         updatePurchase: defaultError,
@@ -254,6 +257,7 @@ export const convertFromSupabasePurchase = (supabasePurchase: any): Purchase => 
 export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [loading, setLoading] = useState(true);
+  const [listEpoch, setListEpoch] = useState(0);
   const accounting = useAccountingOptional();
   const { formatCurrency } = useFormatCurrency();
   const { companyId, branchId, user } = useSupabase();
@@ -283,6 +287,27 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
   const PAGE_SIZE = 50;
   const [totalCount, setTotalCount] = useState(0);
   const [page, setPageState] = useState(0);
+  /** Prevent loadPurchases ↔ advance-repair reload loops. */
+  const skipAdvanceRepairRef = React.useRef(false);
+  const loadPurchasesRef = React.useRef<() => Promise<void>>(async () => {});
+
+  const applySupplierAdvancesIfPosted = useCallback(
+    async (status: string | undefined, supplierId: string | null | undefined) => {
+      if (!companyId || !supplierId) return false;
+      if (!canPostAccountingForPurchaseStatus(status)) return false;
+      try {
+        const { applyUnappliedManualSupplierPaymentsToOpenBills } = await import(
+          '@/app/services/paymentAllocationService'
+        );
+        const result = await applyUnappliedManualSupplierPaymentsToOpenBills(companyId, String(supplierId));
+        return result.applied;
+      } catch (err) {
+        console.warn('[PURCHASE CONTEXT] apply supplier advances failed:', err);
+        return false;
+      }
+    },
+    [companyId],
+  );
 
   // Load purchases from database (paginated)
   const loadPurchases = useCallback(async () => {
@@ -297,8 +322,38 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       const isPaginated = result && typeof result === 'object' && 'data' in result && 'total' in result;
       const data = isPaginated ? (result as { data: any[]; total: number }).data : (result as any[]);
       const total = isPaginated ? (result as { data: any[]; total: number }).total : data.length;
-      setPurchases(data.map(convertFromSupabasePurchase));
+      const converted = data.map(convertFromSupabasePurchase);
+      setPurchases(converted);
       setTotalCount(total);
+      setListEpoch((n) => n + 1);
+
+      // Background: settle open dues with unapplied manual_payment advances (existing Unpaid rows).
+      if (!skipAdvanceRepairRef.current) {
+        const supplierIds = [
+          ...new Set(
+            converted
+              .filter((p) => canPostAccountingForPurchaseStatus(p.status) && Number(p.due) > 0.009 && p.supplier)
+              .map((p) => String(p.supplier)),
+          ),
+        ];
+        if (supplierIds.length > 0) {
+          void (async () => {
+            let anyApplied = false;
+            for (const sid of supplierIds) {
+              const did = await applySupplierAdvancesIfPosted('final', sid);
+              if (did) anyApplied = true;
+            }
+            if (anyApplied) {
+              skipAdvanceRepairRef.current = true;
+              try {
+                await loadPurchasesRef.current();
+              } finally {
+                skipAdvanceRepairRef.current = false;
+              }
+            }
+          })();
+        }
+      }
     } catch (error) {
       console.error('[PURCHASE CONTEXT] Error loading purchases:', error);
       toast.error('Failed to load purchases');
@@ -307,8 +362,9 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       setLoading(false);
     }
-  }, [companyId, branchId, page]);
+  }, [companyId, branchId, page, applySupplierAdvancesIfPosted]);
 
+  loadPurchasesRef.current = loadPurchases;
   const setPage = useCallback((p: number) => {
     setPageState(Math.max(0, p));
   }, []);
@@ -323,6 +379,39 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
     if (companyId && activated) loadPurchases();
     else if (!companyId) setLoading(false);
   }, [companyId, activated, loadPurchases]);
+
+  // Single-flight list reload: header refresh, realtime, create/update invalidations
+  useEffect(() => {
+    if (!companyId || !activated) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const queue = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        void loadPurchases();
+      }, 220);
+    };
+    const onDataInvalidated = (ev: Event) => {
+      const detail = (ev as CustomEvent<DataInvalidationDetail>).detail;
+      const reason = String(detail?.reason ?? '');
+      if (reason.includes('fallback-poll')) return;
+      if (
+        !shouldAcceptInvalidation(detail, {
+          domain: ['purchases', 'accounting', 'contacts'],
+          companyId,
+          branchId: branchId === 'all' ? null : branchId ?? null,
+        })
+      ) {
+        return;
+      }
+      queue();
+    };
+    window.addEventListener(DATA_INVALIDATED_EVENT, onDataInvalidated as EventListener);
+    return () => {
+      if (timer) clearTimeout(timer);
+      window.removeEventListener(DATA_INVALIDATED_EVENT, onDataInvalidated as EventListener);
+    };
+  }, [branchId, companyId, activated, loadPurchases]);
 
   // Get purchase by ID
   const getPurchaseById = (id: string): Purchase | undefined => {
@@ -614,6 +703,9 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       if (import.meta.env?.DEV) {
         console.info('[PURCHASE CONTEXT] createPurchase complete:', purchaseNo);
       }
+
+      // Settle unapplied supplier advances onto this posted bill (FIFO → recalc Paid/Partial).
+      await applySupplierAdvancesIfPosted(newPurchase.status, newPurchase.supplier);
       
       // 🔒 CRITICAL FIX: Dispatch event to refresh inventory (like Sale module)
       window.dispatchEvent(new CustomEvent('purchaseSaved', { detail: { purchaseId: newPurchase.id } }));
@@ -1426,8 +1518,20 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
         }).catch((err) => console.warn('[PURCHASE CONTEXT] Activity log failed:', err));
       }
       
-      // List refresh: emitPurchaseInvalidation → PurchasesPage DATA_INVALIDATED (single flight).
+      // List refresh: emitPurchaseInvalidation → PurchaseContext DATA_INVALIDATED (single flight).
       // Do not also call loadPurchases here — that double-fetched after every update.
+
+      // Posted bill: consume unapplied manual_payment advances before list reload.
+      const statusAfter =
+        updates.status !== undefined
+          ? (updates.status === 'completed' || updates.status === 'final'
+              ? 'final'
+              : updates.status === 'cancelled'
+                ? 'draft'
+                : String(updates.status))
+          : purchase?.status;
+      const supplierAfter = updates.supplier ?? purchase?.supplier;
+      await applySupplierAdvancesIfPosted(statusAfter, supplierAfter);
       
       // Dispatch event to refresh inventory if stock movements were created
       if (stockMovementDeltas.length > 0) {
@@ -1664,6 +1768,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
   const value = useMemo<PurchaseContextType>(() => ({
     purchases,
     loading,
+    listEpoch,
     getPurchaseById,
     createPurchase,
     updatePurchase,
@@ -1677,8 +1782,8 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
     setPage,
     refreshPurchases: loadPurchases,
     __activate: activate,
-  }), [
-    purchases, loading, totalCount, page, setPage, getPurchaseById, createPurchase, updatePurchase,
+  } as PurchaseContextType & { __activate: () => void }), [
+    purchases, loading, listEpoch, totalCount, page, setPage, getPurchaseById, createPurchase, updatePurchase,
     deletePurchase, recordPayment, updateStatus, receiveStock, loadPurchases, activate,
   ]);
 

@@ -209,6 +209,37 @@ export const productService = {
     throw lastErr || simpleError;
   },
 
+  /**
+   * Slim catalog for PurchaseForm search: parent fields + lightweight variation ids/attrs.
+   * Avoids the full getAllProducts variation-select retry ladder on the critical path.
+   */
+  async getProductsForPurchaseCatalog(companyId: string) {
+    const slimVarSelect = 'id, sku, attributes, name, cost_price, retail_price, price';
+    const { data, error } = await supabase
+      .from('products')
+      .select(
+        `${PRODUCT_SELECT_SAFE}, variations:product_variations(${slimVarSelect})`,
+      )
+      .eq('company_id', companyId)
+      .eq('is_active', true)
+      .order('name');
+    if (!error) return data || [];
+
+    if (isPostgrestMissingColumnError(error) || error.code === '42703') {
+      const { data: attrsOnly, error: attrsErr } = await supabase
+        .from('products')
+        .select(
+          `${PRODUCT_SELECT_SAFE}, variations:product_variations(id, sku, attributes)`,
+        )
+        .eq('company_id', companyId)
+        .eq('is_active', true)
+        .order('name');
+      if (!attrsErr) return attrsOnly || [];
+      return this.getAllProducts(companyId);
+    }
+    throw error;
+  },
+
   /** Slim catalog for "copy variations" UI — name/sku/supplier + variation attributes only. */
   async getProductsWithVariationsForCopy(companyId: string) {
     const { data, error } = await supabase
@@ -609,12 +640,21 @@ export const productService = {
     let variationsCreated = 0;
     let variationsUpdated = 0;
 
+    // Fresh parent create with unique in-payload SKUs: skip per-row findVariationBySku round-trips.
+    const payloadSkus = variations.map((v) => v.sku.trim()).filter(Boolean);
+    const skipVariationSkuLookup =
+      parentCreated &&
+      payloadSkus.length === variations.length &&
+      new Set(payloadSkus).size === payloadSkus.length;
+
     try {
       const variationResults = await mapPool(variations, 5, async (row) => {
         const varSku = row.sku.trim();
         if (!varSku) throw new Error(`Variation "${row.name}" is missing SKU`);
         const attrs = row.attributes ?? { variant: row.name };
-        const existingVar = await this.findVariationBySku(productId!, varSku);
+        const existingVar = skipVariationSkuLookup
+          ? null
+          : await this.findVariationBySku(productId!, varSku);
 
         if (existingVar?.id) {
           await this.updateVariation(String(existingVar.id), {

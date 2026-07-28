@@ -29,6 +29,8 @@ import { useSubmitLock } from '../../contexts/LoadingContext';
 import { useFormDraft } from '../../hooks/useFormDraft';
 import { FormDraftRestoredBanner } from '../shared/FormDraftRestoredBanner';
 import { canAssignSaleCommission } from '../../lib/saleCommission';
+import { SaleAttachmentEditor } from '../sales/SaleAttachmentEditor';
+import { normalizeAttachments } from '../../lib/normalizeAttachments';
 
 interface CreateRentalFlowProps {
   companyId: string | null;
@@ -146,6 +148,8 @@ export function CreateRentalFlow({
   const [commissionPct, setCommissionPct] = useState('');
   const [notes, setNotes] = useState('');
   const [documentNumber, setDocumentNumber] = useState('');
+  const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
+  const [savedAttachments, setSavedAttachments] = useState<{ url: string; name: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [editBookingNo, setEditBookingNo] = useState<string | null>(null);
   const [editPaidLocked, setEditPaidLocked] = useState(0);
@@ -350,6 +354,12 @@ export function CreateRentalFlow({
       setDurationDays(days);
       setDocumentNumber(data.documentNumber || '');
       setNotes(data.notes || '');
+      setSavedAttachments(
+        Array.isArray(data.attachments)
+          ? data.attachments.filter((a) => a?.url).map((a) => ({ url: a.url, name: a.name || 'Attachment' }))
+          : [],
+      );
+      setAttachmentFiles([]);
       setSalesmanId(data.salesmanId || null);
       if (data.customerId) {
         setSelectedCustomerId(data.customerId);
@@ -642,6 +652,20 @@ export function CreateRentalFlow({
         setError(err);
         return;
       }
+      if (attachmentFiles.length > 0 && companyId && editRentalId) {
+        const att = await rentalsApi.appendRentalAttachments(
+          companyId,
+          editRentalId,
+          attachmentFiles,
+          savedAttachments,
+        );
+        if (att.error) {
+          setError(`Booking updated but attachments failed: ${att.error}`);
+          return;
+        }
+        setSavedAttachments(att.data);
+        setAttachmentFiles([]);
+      }
       clearRentalDraft();
       setConfirmationData({
         type: 'rental',
@@ -684,6 +708,16 @@ export function CreateRentalFlow({
     if (err) {
       setError(err);
       return;
+    }
+    if (createResult?.id && attachmentFiles.length > 0 && companyId) {
+      const att = await rentalsApi.appendRentalAttachments(companyId, createResult.id, attachmentFiles, []);
+      if (att.error) {
+        setError(`Booking saved but attachments failed: ${att.error}`);
+        // still show success for booking itself
+      } else {
+        setAttachmentFiles([]);
+        setSavedAttachments(att.data);
+      }
     }
     let branchName: string | null = pickerBranches.find((b) => b.id === writeBranchId)?.name ?? null;
     if (!branchName && companyId) {
@@ -1227,6 +1261,14 @@ export function CreateRentalFlow({
               className="w-full h-10 bg-[#111827] border border-[#374151] rounded-lg px-3 text-white text-sm"
             />
             <p className="text-xs text-[#6B7280] mt-2">System booking number (REN-*) is assigned on save; this field is only for your paper bill book reference.</p>
+          </div>
+          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+            <SaleAttachmentEditor
+              existing={normalizeAttachments(savedAttachments)}
+              pendingFiles={attachmentFiles}
+              onPendingChange={setAttachmentFiles}
+              maxTotal={rentalsApi.MAX_RENTAL_ATTACHMENTS_COUNT}
+            />
           </div>
         </div>
         {canNext && (

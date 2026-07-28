@@ -21,6 +21,7 @@ import {
   ChevronRight,
   AlertTriangle,
   CheckCircle2,
+  Paperclip,
 } from 'lucide-react';
 import { DateTimeDisplay } from '@/app/components/ui/DateTimeDisplay';
 import { formatQty } from '@/app/utils/quantity';
@@ -53,6 +54,7 @@ import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { resolveRentalPaymentDisplay } from '@/app/lib/rentalPaymentRef';
 import { Input } from '@/app/components/ui/input';
 import { toast } from 'sonner';
+import { getAttachmentOpenUrl } from '@/app/utils/paymentAttachmentUrl';
 
 interface ViewRentalDetailsDrawerProps {
   isOpen: boolean;
@@ -217,6 +219,12 @@ export const ViewRentalDetailsDrawer: React.FC<ViewRentalDetailsDrawerProps> = (
               commissionAmount: Number(data.commission_amount ?? 0) || 0,
               commissionPercent: data.commission_percent != null ? Number(data.commission_percent) : null,
               commissionStatus: data.commission_status ?? null,
+              attachments: Array.isArray(data.attachments)
+                ? (data.attachments as Array<{ url?: string; name?: string }>)
+                    .map((a) => ({ url: String(a?.url ?? ''), name: String(a?.name ?? 'Attachment') }))
+                    .filter((a) => a.url.length > 0)
+                : rental.attachments ?? null,
+              documentNumber: data.document_number != null ? String(data.document_number) : rental.documentNumber,
             } as RentalUI);
           }
           loadPayments(rental.id, rental.rentalNo);
@@ -730,6 +738,30 @@ export const ViewRentalDetailsDrawer: React.FC<ViewRentalDetailsDrawerProps> = (
                     <div className="bg-card border border-border rounded-xl p-5">
                       <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Notes</h3>
                       <p className="text-foreground text-sm">{r.notes}</p>
+                    </div>
+                  )}
+
+                  {Array.isArray(r.attachments) && r.attachments.length > 0 && (
+                    <div className="bg-card border border-border rounded-xl p-5">
+                      <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-1.5">
+                        <Paperclip size={14} /> Attachments ({r.attachments.length})
+                      </h3>
+                      <div className="flex flex-wrap gap-2">
+                        {r.attachments.map((att, idx) => (
+                          <button
+                            key={`${att.url}-${idx}`}
+                            type="button"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border bg-muted/40 text-sm text-violet-300 hover:bg-muted"
+                            onClick={async () => {
+                              const openUrl = await getAttachmentOpenUrl(att.url);
+                              if (openUrl) window.open(openUrl, '_blank', 'noopener,noreferrer');
+                            }}
+                          >
+                            <Paperclip size={12} />
+                            <span className="truncate max-w-[180px]">{att.name || 'Attachment'}</span>
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </>

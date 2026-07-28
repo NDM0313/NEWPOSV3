@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { ArrowLeft, Plus, Loader2, MoreVertical, Printer, RotateCcw, Ban, History, Search, ShoppingCart, Calendar, Paperclip, Briefcase, Share2, Download, FileText, AlertTriangle, SquarePen, X, Trash2, Zap, Store, Package } from 'lucide-react';
+import { ArrowLeft, Plus, Loader2, MoreVertical, Printer, RotateCcw, Ban, History, Search, ShoppingCart, Calendar, Paperclip, Briefcase, Share2, Download, FileText, AlertTriangle, SquarePen, X, Trash2, Zap, Store, Package, ChevronRight } from 'lucide-react';
 import * as salesApi from '../../api/sales';
 import * as saleChargesApi from '../../api/saleCharges';
 import { useBespokeEnabled } from '../../hooks/useBespokeEnabled';
@@ -23,6 +23,7 @@ import {
   type SaleLedgerSyncSkipReason,
 } from '../../api/saleEditAccounting';
 import { CustomSearchableSheet, PullToRefresh, OfflineBanner, SwipeBackShell } from '../common';
+import { TransactionDetailSheet } from '../accounts/reports/TransactionDetailSheet';
 import { useOfflineListMeta } from '../../hooks/useOfflineListMeta';
 import { useMainScrollRef } from '../../contexts/MainScrollContext';
 import {
@@ -248,6 +249,7 @@ export function SalesHome({
   const [paymentHistory, setPaymentHistory] = useState<
     Array<{
       id: string;
+      editTargetId: string;
       date: string;
       amount: number;
       method: string;
@@ -256,6 +258,7 @@ export function SalesHome({
       attachments?: { url: string; name: string }[];
     }>
   >([]);
+  const [viewPaymentId, setViewPaymentId] = useState<string | null>(null);
   const [saleChargeLines, setSaleChargeLines] = useState<saleChargesApi.SaleChargeDisplayRow[]>([]);
   const [attachmentPreviewList, setAttachmentPreviewList] = useState<Array<{ url: string; name: string }> | null>(null);
   const [attachmentPreviewStart, setAttachmentPreviewStart] = useState(0);
@@ -679,6 +682,15 @@ export function SalesHome({
       setSelectedSale(null);
     }
   }, [refetchSales, addPaymentSale, loadPaymentHistory]);
+
+  const refreshSelectedSaleAfterPaymentChange = useCallback(async () => {
+    const saleId = selectedSale?.raw.id as string | undefined;
+    if (!saleId) return;
+    const list = await refetchSales({ silent: true });
+    const updated = list?.find((s) => (s.raw.id as string) === saleId);
+    if (updated) setSelectedSale(updated);
+    await loadPaymentHistory(saleId);
+  }, [selectedSale, refetchSales, loadPaymentHistory]);
 
   useEffect(() => {
     if (!companyId) return;
@@ -1663,23 +1675,44 @@ export function SalesHome({
               <h3 className="text-sm font-medium text-[#9CA3AF] mb-3">Payment History</h3>
               <div className="space-y-2">
                 {paymentHistory.map((p) => (
-                  <div key={p.id} className="flex justify-between items-center text-sm py-2 border-b border-[#374151] last:border-0 gap-2">
-                    <div className="min-w-0 flex-1">
+                  <div
+                    key={p.id}
+                    className="flex justify-between items-center text-sm py-2 border-b border-[#374151] last:border-0 gap-2"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => p.editTargetId && setViewPaymentId(p.editTargetId)}
+                      className="min-w-0 flex-1 text-left hover:bg-[#374151]/40 rounded-lg -mx-1 px-1 py-0.5 transition-colors"
+                    >
                       <p className="text-white font-medium">Rs. {p.amount.toLocaleString()}</p>
                       <p className="text-xs text-[#9CA3AF]">{p.method} • {p.date}</p>
                       {p.referenceNo !== '—' && <p className="text-xs text-[#6B7280]">Ref: {p.referenceNo}</p>}
                       {p.notes && <p className="text-xs text-[#9CA3AF] mt-1 break-words">{p.notes}</p>}
-                    </div>
-                    {p.attachments && p.attachments.length > 0 && (
+                      <p className="text-[10px] text-[#6B7280] mt-0.5">Tap to view / edit</p>
+                    </button>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {p.attachments && p.attachments.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openAttachmentPreview(p.attachments!, 0);
+                          }}
+                          className="p-2 rounded-lg text-[#3B82F6] hover:bg-[#374151]"
+                          aria-label="View attachments"
+                        >
+                          <Paperclip className="w-5 h-5" />
+                        </button>
+                      )}
                       <button
                         type="button"
-                        onClick={() => openAttachmentPreview(p.attachments!, 0)}
-                        className="p-2 rounded-lg text-[#3B82F6] hover:bg-[#374151] shrink-0"
-                        aria-label="View attachments"
+                        onClick={() => p.editTargetId && setViewPaymentId(p.editTargetId)}
+                        className="p-2 rounded-lg text-[#9CA3AF] hover:bg-[#374151]"
+                        aria-label="View payment"
                       >
-                        <Paperclip className="w-5 h-5" />
+                        <ChevronRight className="w-5 h-5" />
                       </button>
-                    )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1694,6 +1727,22 @@ export function SalesHome({
               onClose={() => {
                 setAttachmentPreviewList(null);
                 setAttachmentPreviewStart(0);
+              }}
+            />
+          )}
+
+          {viewPaymentId && companyId && (
+            <TransactionDetailSheet
+              paymentId={viewPaymentId}
+              companyId={companyId}
+              branchId={branchId}
+              onClose={() => {
+                setViewPaymentId(null);
+                void refreshSelectedSaleAfterPaymentChange();
+              }}
+              onCancelled={() => {
+                setViewPaymentId(null);
+                void refreshSelectedSaleAfterPaymentChange();
               }}
             />
           )}

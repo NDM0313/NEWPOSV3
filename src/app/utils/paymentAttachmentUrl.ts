@@ -13,7 +13,7 @@ export function getSupabaseStorageDashboardUrl(): string {
     : 'https://supabase.com/dashboard';
 }
 
-const KNOWN_BUCKETS = ['payment-attachments', 'purchase-attachments', 'sale-attachments', 'expense-receipts'];
+const KNOWN_BUCKETS = ['payment-attachments', 'purchase-attachments', 'sale-attachments', 'expense-receipts', 'rental-attachments'];
 
 /** Production storage API origin (avoid broken localhost-relative signed URLs in Vite DEV). */
 function storageApiOrigin(): string {

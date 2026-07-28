@@ -93,6 +93,14 @@ export function mapRentalRowToUI(row: Record<string, unknown>): RentalUI {
     damageNotes: row.damage_notes != null ? String(row.damage_notes) : null,
     penaltyPaid: row.penalty_paid === true,
     refundAmount: Number(row.refund_amount ?? 0) || 0,
+    attachments: Array.isArray(row.attachments)
+      ? (row.attachments as Array<Record<string, unknown>>)
+          .map((a) => ({
+            url: String(a?.url ?? ''),
+            name: String(a?.name ?? 'Attachment'),
+          }))
+          .filter((a) => a.url.length > 0)
+      : null,
   };
 }
 

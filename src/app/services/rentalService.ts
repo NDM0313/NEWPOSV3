@@ -724,6 +724,18 @@ export const rentalService = {
     if (error) throw error;
   },
 
+  /** Persist booking attachment metadata after storage upload. */
+  async updateRentalAttachments(
+    rentalId: string,
+    attachments: { url: string; name: string }[],
+  ): Promise<void> {
+    const { error } = await supabase
+      .from('rentals')
+      .update({ attachments: attachments.length > 0 ? attachments : null })
+      .eq('id', rentalId);
+    if (error) throw error;
+  },
+
   async updateRental(
     id: string,
     companyId: string,

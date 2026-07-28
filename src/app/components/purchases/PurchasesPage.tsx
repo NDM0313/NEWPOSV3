@@ -94,11 +94,6 @@ import {
   type PurchaseLifecycleAction,
 } from '@/app/components/purchases/PurchaseLifecycleMenuBlock';
 import { isPurchaseNonPostedCommercial } from '@/app/lib/postingStatusGate';
-import {
-  DATA_INVALIDATED_EVENT,
-  shouldAcceptInvalidation,
-  type DataInvalidationDetail,
-} from '@/app/lib/dataInvalidationBus';
 import { BarcodeLabelPrintDialog } from '@/app/components/products/BarcodeLabelPrintDialog';
 import {
   aggregatePurchaseItemsForLabels,
@@ -167,13 +162,27 @@ export const PurchasesPage = () => {
     setCurrentModule('purchases');
   }, [setCurrentModule]);
 
-  const { purchases: contextPurchases, loading: contextLoading, refreshPurchases, deletePurchase } = usePurchases();
-  /** Stable key so sync effect does not re-run when PurchaseContext recreates the same purchases array reference. */
+  const { purchases: contextPurchases, loading: contextLoading, listEpoch, refreshPurchases, deletePurchase } = usePurchases();
+  /** Stable key so sync effect re-runs when list content or a fresh fetch epoch changes. */
   const contextPurchasesSyncKey = useMemo(() => {
-    return `${contextLoading ? '1' : '0'}:${contextPurchases.length}:${contextPurchases
-      .map((p: any) => `${p.id}:${p.status ?? ''}:${p.total ?? ''}:${p.updatedAt ?? ''}`)
+    return `${listEpoch}:${contextLoading ? '1' : '0'}:${contextPurchases.length}:${contextPurchases
+      .map((p: any) =>
+        [
+          p.id,
+          p.status ?? '',
+          p.total ?? '',
+          p.paid ?? '',
+          p.due ?? '',
+          p.paymentStatus ?? '',
+          p.purchaseNo ?? '',
+          p.draftNo ?? '',
+          p.orderNo ?? '',
+          p.itemsCount ?? '',
+          p.updatedAt ?? '',
+        ].join(':'),
+      )
       .join('|')}`;
-  }, [contextPurchases, contextLoading]);
+  }, [contextPurchases, contextLoading, listEpoch]);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -371,6 +380,12 @@ export const PurchasesPage = () => {
       else toast.error('Cannot add payment.');
       return;
     }
+    setSelectedPurchase(purchase);
+    setViewPaymentsOpen(true);
+  };
+
+  /** View payment history (Paid/Partial/Unpaid) — does not require open due. */
+  const handleViewPayments = (purchase: Purchase) => {
     setSelectedPurchase(purchase);
     setViewPaymentsOpen(true);
   };
@@ -656,11 +671,11 @@ export const PurchasesPage = () => {
     }
   }, [contextPurchasesSyncKey, contextLoading, companyId, loadPurchases, branchMap]);
 
-  // paymentAdded only — create/update refresh via DATA_INVALIDATED (emitPurchaseInvalidation). Avoid double load.
+  // Legacy paymentAdded — purchases/accounting invalidation usually covers this; keep as safety net.
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
     const scheduleRefresh = () => {
-      if (timer) return;
+      if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
         timer = null;
         void refreshPurchases();
@@ -674,33 +689,7 @@ export const PurchasesPage = () => {
     };
   }, [refreshPurchases]);
 
-  useEffect(() => {
-    if (!companyId) return;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const onInvalidated = (event: Event) => {
-      const detail = (event as CustomEvent<DataInvalidationDetail>).detail;
-      if (
-        !shouldAcceptInvalidation(detail, {
-          domain: ['purchases', 'accounting', 'contacts'],
-          companyId,
-          branchId: branchId === 'all' ? null : branchId ?? null,
-        })
-      ) {
-        return;
-      }
-      if (timer) return;
-      timer = setTimeout(() => {
-        timer = null;
-        void refreshPurchases();
-      }, 220);
-    };
-    window.addEventListener(DATA_INVALIDATED_EVENT, onInvalidated as EventListener);
-    return () => {
-      if (timer) clearTimeout(timer);
-      window.removeEventListener(DATA_INVALIDATED_EVENT, onInvalidated as EventListener);
-    };
-  }, [branchId, companyId, refreshPurchases]);
-  
+  // DATA_INVALIDATED reload owned by PurchaseContext (single flight). Do not duplicate here.  
   // Load purchase returns list when Returns tab is active
   useEffect(() => {
     if (activeMainTab === 'returns' && companyId) {
@@ -1297,15 +1286,17 @@ export const PurchasesPage = () => {
           );
         }
         return (
-          <>
-            {purchase.paymentDue > 0 ? (
-              <button onClick={() => handleMakePayment(purchase)} className="hover:opacity-80 transition-opacity" title="Click to make payment">
-                {getPaymentStatusBadge(purchase.paymentStatus)}
-              </button>
-            ) : (
-              getPaymentStatusBadge(purchase.paymentStatus)
-            )}
-          </>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleViewPayments(purchase);
+            }}
+            className="cursor-pointer hover:scale-105 transition-transform"
+            title="Click to view payments"
+          >
+            {getPaymentStatusBadge(purchase.paymentStatus)}
+          </button>
         );
       }
       case 'addedBy':
@@ -2007,7 +1998,7 @@ export const PurchasesPage = () => {
             invoiceNo: selectedPurchase.poNo,
             date: selectedPurchase.date,
             customerName: selectedPurchase.supplier,
-            customerId: selectedPurchase.uuid,
+            customerId: selectedPurchase.supplierId || undefined,
             total: selectedPurchase.grandTotal,
             paid: selectedPurchase.grandTotal - selectedPurchase.paymentDue,
             due: selectedPurchase.paymentDue,

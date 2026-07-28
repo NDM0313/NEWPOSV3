@@ -12,6 +12,12 @@ import { isRealBranchUuid, resolveBranchUuidForWrite } from '../utils/branchId';
 import { fetchProductStockByKey } from '../utils/productStockFetch';
 import { formatRentalPaymentRef } from '../utils/rentalPaymentRef';
 import { enrichRowsWithCreatorNames } from '../lib/resolveCreatorName';
+import { UPLOAD_TIMEOUT_MS, withUploadTimeout } from '../utils/uploadWithTimeout';
+import { classifyStorageUploadError } from '../utils/storageUploadErrors';
+import {
+  ATTACHMENT_UPLOAD_VERIFY_FAIL_MSG,
+  uploadStorageAttachmentFile,
+} from '../utils/storageAttachmentPipeline';
 
 const BLOCKING_RENTAL_STATUSES = ['booked', 'picked_up', 'active', 'overdue'] as const;
 
@@ -264,6 +270,8 @@ export interface RentalDetail {
   paidAmount: number;
   dueAmount: number;
   notes: string | null;
+  /** Booking document attachments [{url, name}] — not pickup ID photos. */
+  attachments?: { url: string; name: string }[] | null;
   securityDocumentType: string | null;
   securityDocumentNumber: string | null;
   securityDocumentImageUrl: string | null;
@@ -1116,6 +1124,14 @@ export async function getRentalById(rentalId: string): Promise<{ data: RentalDet
       paidAmount: Number(r.paid_amount) ?? 0,
       dueAmount: Number(r.due_amount) ?? 0,
       notes: (r.notes as string) ?? null,
+      attachments: Array.isArray(r.attachments)
+        ? (r.attachments as Array<Record<string, unknown>>)
+            .map((a) => ({
+              url: String(a?.url ?? ''),
+              name: String(a?.name ?? 'Attachment'),
+            }))
+            .filter((a) => a.url.length > 0)
+        : null,
       securityDocumentType: (r.security_document_type as string) ?? null,
       securityDocumentNumber: (r.security_document_number as string) ?? null,
       securityDocumentImageUrl: (r.security_document_image_url as string) ?? null,
@@ -1603,4 +1619,148 @@ export async function cancelRental(rentalId: string, _companyId: string): Promis
   if (!['draft', 'booked'].includes(String(r.status))) return { error: 'Only draft or booked can be cancelled.' };
   const { error: updateErr } = await supabase.from('rentals').update({ status: 'cancelled' }).eq('id', rentalId);
   return { error: updateErr?.message ?? null };
+}
+
+const RENTAL_ATTACHMENTS_BUCKET = 'rental-attachments';
+export const MAX_RENTAL_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+export const MAX_RENTAL_ATTACHMENTS_COUNT = 5;
+
+export type RentalAttachmentMeta = { url: string; name: string };
+
+export function mergeRentalAttachments(
+  existing: RentalAttachmentMeta[],
+  uploaded: RentalAttachmentMeta[],
+): RentalAttachmentMeta[] {
+  const seen = new Set<string>();
+  const out: RentalAttachmentMeta[] = [];
+  const push = (a: RentalAttachmentMeta) => {
+    const u = String(a.url || '').trim();
+    if (!u || seen.has(u)) return;
+    seen.add(u);
+    out.push({ url: u, name: a.name || 'Attachment' });
+  };
+  for (const a of existing) push(a);
+  for (const a of uploaded) push(a);
+  return out.slice(0, MAX_RENTAL_ATTACHMENTS_COUNT);
+}
+
+async function fetchRentalAttachments(rentalId: string): Promise<RentalAttachmentMeta[]> {
+  if (!isSupabaseConfigured) return [];
+  const { data } = await supabase.from('rentals').select('attachments').eq('id', rentalId).maybeSingle();
+  const raw = (data as { attachments?: unknown } | null)?.attachments;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((a: unknown) => {
+      const o = a as Record<string, unknown>;
+      return { url: String(o?.url ?? ''), name: String(o?.name ?? 'Attachment') };
+    })
+    .filter((a) => a.url.length > 0);
+}
+
+/** Persist attachment metadata on the rental row (after upload). */
+export async function updateRentalAttachments(
+  rentalId: string,
+  attachments: RentalAttachmentMeta[],
+): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured) return { error: 'App not configured.' };
+  const { error } = await supabase
+    .from('rentals')
+    .update({ attachments: attachments.length > 0 ? attachments : null })
+    .eq('id', rentalId);
+  if (error) {
+    if (error.code === 'PGRST204' && String(error.message || '').includes('attachments')) {
+      return { error: null };
+    }
+    return { error: error.message };
+  }
+  return { error: null };
+}
+
+/** Upload files to rental-attachments bucket (path: companyId/rentalId/...). */
+export async function uploadRentalAttachments(
+  companyId: string,
+  rentalId: string,
+  files: File[],
+): Promise<{ data: RentalAttachmentMeta[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  if (!files.length) return { data: [], error: null };
+
+  const uploaded: RentalAttachmentMeta[] = [];
+  const prefix = `${companyId}/${rentalId}/${Date.now()}`;
+
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    if (!file) continue;
+    if (file.size > MAX_RENTAL_ATTACHMENT_BYTES) {
+      return { data: uploaded, error: `File "${file.name}" is too large. Max 10MB per file.` };
+    }
+    const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const path = `${prefix}_${i}_${safeName}`;
+
+    try {
+      const { ref } = await withUploadTimeout(
+        uploadStorageAttachmentFile({
+          bucket: RENTAL_ATTACHMENTS_BUCKET,
+          path,
+          file,
+          upsert: true,
+          logTag: 'rental-attachments',
+        }),
+        UPLOAD_TIMEOUT_MS,
+        `Upload ${file.name}`,
+      );
+      uploaded.push({ url: ref, name: file.name });
+    } catch (err) {
+      console.warn('[uploadRentalAttachments]', (err as Error)?.message ?? err);
+      const classified = classifyStorageUploadError(err, file.name);
+      if ((err as Error)?.message === ATTACHMENT_UPLOAD_VERIFY_FAIL_MSG) {
+        return { data: uploaded, error: ATTACHMENT_UPLOAD_VERIFY_FAIL_MSG };
+      }
+      const bucketMissing = classified.kind === 'bucket';
+      return {
+        data: uploaded,
+        error: bucketMissing
+          ? 'Storage bucket "rental-attachments" not found. Create it in Supabase Storage first.'
+          : classified.userMessage,
+      };
+    }
+  }
+
+  return { data: uploaded, error: null };
+}
+
+/** Upload new files and merge onto existing rentals.attachments (max 5 total). */
+export async function appendRentalAttachments(
+  companyId: string,
+  rentalId: string,
+  files: File[],
+  existing?: RentalAttachmentMeta[],
+): Promise<{ data: RentalAttachmentMeta[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  if (!files.length) {
+    const current = existing ?? (await fetchRentalAttachments(rentalId));
+    return { data: current, error: null };
+  }
+
+  const prior = existing ?? (await fetchRentalAttachments(rentalId));
+  const slotsLeft = MAX_RENTAL_ATTACHMENTS_COUNT - prior.length;
+  if (slotsLeft <= 0) {
+    return {
+      data: prior,
+      error: `Maximum ${MAX_RENTAL_ATTACHMENTS_COUNT} attachments per rental.`,
+    };
+  }
+
+  const toUpload = files.slice(0, slotsLeft);
+  const upload = await uploadRentalAttachments(companyId, rentalId, toUpload);
+  if (upload.error) {
+    return { data: prior, error: upload.error };
+  }
+
+  const merged = mergeRentalAttachments(prior, upload.data);
+  const upd = await updateRentalAttachments(rentalId, merged);
+  if (upd.error) {
+    return { data: prior, error: upd.error };
+  }
+  return { data: merged, error: null };
 }
