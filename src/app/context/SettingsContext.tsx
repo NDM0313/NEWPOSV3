@@ -17,6 +17,7 @@ import { buildModuleTogglesFromConfigRows, moduleTogglePatchesToDb } from '@/app
 import {
   mapAppRoleToEngineRole,
   mapAppRoleToUiRole,
+  isPlatformOperatorAppRole,
 } from '@/app/config/functionalRoles';
 import { FISCAL_YEAR_CONFIG_UPDATED_EVENT } from '@/app/utils/financialYear';
 
@@ -344,7 +345,7 @@ interface SettingsProviderProps {
 }
 
 export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) => {
-  const { companyId, branchId, user } = useSupabase();
+  const { companyId, branchId, user, userRole, homeCompanyId } = useSupabase();
   const [loading, setLoading] = useState<boolean>(true);
 
   // Company Settings
@@ -543,6 +544,12 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
       const branchFilterId = branchId === 'all' ? null : branchId || null;
 
       // Tier A — shell critical (company, modules, flags, role/perms gate)
+      // Platform ops: users.company_id stays HOME while React companyId is the switched tenant.
+      // Never filter the profile role lookup by effective companyId or permissions stay Staff/empty.
+      const profileCompanyIdForRole =
+        isPlatformOperatorAppRole(userRole) && homeCompanyId
+          ? homeCompanyId
+          : companyId;
       const [
         { data: companyData },
         branchesData,
@@ -555,13 +562,18 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         settingsService.getAllModuleConfigs(companyId),
         featureFlagsService.getAll(companyId).catch(() => ({} as Record<string, boolean>)),
         user?.id && companyId
-          ? supabase
-              .from('users')
-              .select('role')
-              .or(`id.eq.${user.id},auth_user_id.eq.${user.id}`)
-              .eq('company_id', companyId)
-              .maybeSingle()
-              .then((r) => r.data)
+          ? (() => {
+              let q = supabase
+                .from('users')
+                .select('role')
+                .or(`id.eq.${user.id},auth_user_id.eq.${user.id}`)
+                .limit(1);
+              // Prefer home company row for platform ops; otherwise match active company if present.
+              if (profileCompanyIdForRole) {
+                q = q.eq('company_id', profileCompanyIdForRole);
+              }
+              return q.maybeSingle().then((r) => r.data);
+            })()
           : Promise.resolve(null),
       ]);
 
@@ -618,9 +630,10 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
       setFeatureFlags(flags || {});
 
       // Permissions ASAP so shell unlocks before Tier B (sequences/settings blobs)
-      if (userData) {
-        const role = mapAppRoleToUiRole((userData as { role?: string }).role);
-        const engineRole: EngineRole = mapAppRoleToEngineRole((userData as { role?: string }).role);
+      const roleFromProfile = (userData as { role?: string } | null)?.role ?? userRole;
+      if (roleFromProfile) {
+        const role = mapAppRoleToUiRole(roleFromProfile);
+        const engineRole: EngineRole = mapAppRoleToEngineRole(roleFromProfile);
         let canManagePurchases = role === 'Admin' || role === 'Manager';
         let canUsePos: boolean | undefined;
         let canAccessStudio: boolean | undefined;
@@ -653,6 +666,8 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
             console.log('[PERM_DEBUG] permissionEngine.loadPermissions threw:', err);
           }
         }
+        // Platform developer/super_admin map to Admin — Admin bypass in checkPermission = full module access.
+        // If role_permissions RPC fails, keep Admin defaults so company switch still unlocks the shell.
         if (derivedPerms) {
           canManagePurchases = derivedPerms.canManagePurchases;
           canUsePos = derivedPerms.canUsePos ?? (role === 'Admin' || role === 'Manager');
@@ -675,6 +690,10 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
           canCreateSale = derivedPerms.canCreateSale;
           canEditSale = derivedPerms.canEditSale;
           canDeleteSale = derivedPerms.canDeleteSale;
+        } else if (role === 'Admin') {
+          canViewSale = true;
+          canUsePos = true;
+          canAccessStudio = true;
         }
         setCurrentUser({
           role,
@@ -682,7 +701,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
           canEditSale,
           canDeleteSale,
           canCancelSale: role === 'Admin' || role === 'Manager',
-          canViewSale,
+          canViewSale: canViewSale || role === 'Admin',
           canViewReports,
           canViewContacts,
           canCreateContact,
@@ -913,7 +932,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         console.log('[PERM_DEBUG] loadAllSettings finished; loading=false → isPermissionLoaded=true');
       }
     }
-  }, [companyId, branchId, user?.id]);
+  }, [companyId, branchId, user?.id, userRole, homeCompanyId]);
 
   // Load settings on mount
   useEffect(() => {
