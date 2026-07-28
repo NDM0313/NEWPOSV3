@@ -4,6 +4,24 @@ Copy a new block for every build. Keep the newest entry at the top.
 
 ---
 
+## Latest build — 1.0.5 (versionCode 40 Android) — 2026-07-27
+
+| Field | Value |
+|--------|--------|
+| **Date** | 2026-07-27 |
+| **versionName** | 1.0.5 |
+| **Android versionCode** | 40 |
+| **APK path (local)** | `releases/erp-mobile-1.0.5-build40.apk` |
+| **Built on** | Windows — `npm run android:apk:release:win` + clean `assembleRelease` |
+
+### Changelog (user-facing) — build 40
+
+- **Sale / rental commission:** Admin, owner, manager, and platform roles can pick salesman for commission (gate fixed via engine role map).
+- **Rental edit:** Salesman changeable from confirm hub.
+- Includes prior mobile parity (Day Book search, expenses filters, rental edit landing, etc.).
+
+---
+
 ## Sales list: APK vs localhost dev (troubleshooting)
 
 | Symptom | Likely cause | What to do |
@@ -24,7 +42,7 @@ API base for production APK: `https://erp.dincouture.pk` from `.env.production` 
 
 ---
 
-## Latest build — 1.0.5 (build 14 iOS / versionCode 39 Android) — 2026-06-08
+## Previous build — 1.0.5 (build 14 iOS / versionCode 39 Android) — 2026-06-08
 
 | Field | Value |
 |--------|--------|
