@@ -636,10 +636,10 @@ export function enrichDraftFromRaw(draft: ReceiptOcrDraft): ReceiptOcrDraft {
   }
 
   const rebuilt = buildReceiptNotes(raw);
-  if (rebuilt && notesLookWeak(next.notes, raw)) {
+  // Bank receipts: always rebuild structured From/To notes from raw (never keep From Account dumps).
+  if (rebuilt) {
     next.notes = rebuilt;
   } else {
-    // Even when notes look fine, always merge screenshot text-box overlays
     const annotations = extractScreenshotAnnotations(raw);
     next.notes = mergeAnnotationsIntoNotes(next.notes, annotations);
   }
@@ -657,12 +657,16 @@ export function enrichDraftFromRaw(draft: ReceiptOcrDraft): ReceiptOcrDraft {
 export function notesLookWeak(notes: string | null | undefined, rawText?: string | null): boolean {
   const n = String(notes ?? '').trim();
   if (!n) return true;
+  // Raw label dump still in description (should be "From:" / "To:")
+  if (/(?:^|\n)\s*From\s*Account\s*:?/im.test(n)) return true;
+  if (/(?:^|\n)\s*To\s*Account\s*:?/im.test(n)) return true;
   // "From: dh) …" without To — classic bad OCR stop
   if (/^From:\s*[a-z]{0,3}[)\].]/i.test(n) && !/\bTo:/i.test(n)) return true;
   // From only, very short after label
   if (/^From:\s*.{0,8}$/i.test(n) && !/\bTo:/i.test(n)) return true;
   // Junk crumbs still present in notes
-  if (/\b(Lan|CaN)\s+\d/i.test(n)) return true;
+  if (/\b(Lan|CaN|PANY)\s+\d/i.test(n)) return true;
+  if (/^[A-Za-z]{1,5}\s+\d{2,}[\dx*]/im.test(n)) return true;
   if (/\(da\)|\(dh\)/i.test(n)) return true;
   if (/^To:\s*\(/im.test(n)) return true;
   if (/^From:\s*(GY'|rR\b)/im.test(n)) return true;

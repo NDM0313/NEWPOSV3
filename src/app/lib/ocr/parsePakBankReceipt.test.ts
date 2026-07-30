@@ -406,3 +406,22 @@ test('noisy Meezan OCR: strip label/party junk and Lan/CaN account crumbs', () =
   assert.ok(!d.notes?.includes('0819xxx'));
   assert.ok(!d.notes?.includes('0814xxx'));
 });
+
+const MEEZAN_LAN_PANY_DUMP = `
+From Account:
+NADEEM DIN MOHAMMAD/SALEEM KHAN
+Lan 0819xxx2478
+To Account:
+ NOOR KHAN EMBROIDERY
+PANY 0801xxx6237
+`;
+
+test('Lan/PANY account dump rebuilds clean From/To only', () => {
+  const d = parsePakBankReceipt(MEEZAN_LAN_PANY_DUMP);
+  assert.equal(d.notes, 'From: NADEEM DIN MOHAMMAD/SALEEM KHAN\nTo: NOOR KHAN EMBROIDERY');
+  assert.ok(!/\bLan\b/i.test(d.notes || ''));
+  assert.ok(!/\bPANY\b/i.test(d.notes || ''));
+  assert.ok(!d.notes?.includes('0819'));
+  assert.ok(!d.notes?.includes('0801'));
+  assert.ok(!/From\s*Account/i.test(d.notes || ''));
+});

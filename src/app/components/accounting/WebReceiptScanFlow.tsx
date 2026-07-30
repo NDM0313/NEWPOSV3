@@ -2,7 +2,7 @@
  * Web Scan Receipt — capture → OCR review → destination type → seed for AddEntryV2.
  */
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
-import { ArrowLeft, Camera, Loader2, ScanText, Upload } from 'lucide-react';
+import { ArrowLeft, Camera, ClipboardPaste, Loader2, ScanText, Upload } from 'lucide-react';
 import { useReceiptOcrAfterAttach } from '../../hooks/useReceiptOcrAfterAttach';
 import type { ReceiptOcrDraft } from '../../lib/ocr/receiptOcrTypes';
 import { isImageFile } from '../../lib/ocr/receiptOcrTypes';
@@ -44,6 +44,24 @@ interface WebReceiptScanFlowProps {
   onComplete: (result: WebReceiptScanResult) => void;
 }
 
+async function readImagesFromClipboardApi(): Promise<File[]> {
+  if (!navigator.clipboard?.read) return [];
+  try {
+    const items = await navigator.clipboard.read();
+    const out: File[] = [];
+    for (const item of items) {
+      const type = item.types.find((t) => t.startsWith('image/'));
+      if (!type) continue;
+      const blob = await item.getType(type);
+      const ext = type.split('/')[1] || 'png';
+      out.push(new File([blob], `clipboard-paste.${ext}`, { type, lastModified: Date.now() }));
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
 export function WebReceiptScanFlow({ onBack, onComplete }: WebReceiptScanFlowProps) {
   const inputId = useId();
   const [step, setStep] = useState<'capture' | 'type'>('capture');
@@ -54,7 +72,7 @@ export function WebReceiptScanFlow({ onBack, onComplete }: WebReceiptScanFlowPro
   const [isProcessing, setIsProcessing] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const dropRef = useRef<HTMLLabelElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
   const processingLock = useRef(false);
 
   const ocr = useReceiptOcrAfterAttach({
@@ -102,7 +120,16 @@ export function WebReceiptScanFlow({ onBack, onComplete }: WebReceiptScanFlowPro
     }
   }, []);
 
-  // Paste must work even when drop zone is not focused (Ctrl+V anywhere while scanning).
+  const pasteFromClipboardApi = useCallback(async () => {
+    const pasted = await readImagesFromClipboardApi();
+    if (!pasted.length) {
+      setError('No image in clipboard. Copy a screenshot first, then Paste image / Ctrl+V.');
+      return;
+    }
+    await processFiles(pasted);
+  }, [processFiles]);
+
+  // Paste: event files first, else Clipboard API (Ctrl+V with screenshot).
   useEffect(() => {
     if (step !== 'capture') return;
 
@@ -114,21 +141,24 @@ export function WebReceiptScanFlow({ onBack, onComplete }: WebReceiptScanFlowPro
         maxBytes: MAX_FILE_SIZE_BYTES,
         accept: /^image\//i,
       });
-      if (!pasted.length) return;
+      if (pasted.length) {
+        e.preventDefault();
+        e.stopPropagation();
+        void processFiles(pasted);
+        return;
+      }
+      // Clipboard may only expose image via async Clipboard API
       e.preventDefault();
       e.stopPropagation();
-      void processFiles(pasted);
+      void pasteFromClipboardApi();
     };
 
     window.addEventListener('paste', onPaste, true);
     return () => window.removeEventListener('paste', onPaste, true);
-  }, [step, processFiles]);
+  }, [step, processFiles, pasteFromClipboardApi]);
 
   useEffect(() => {
-    if (step === 'capture') {
-      // Focus label so keyboard paste also hits the zone as a fallback.
-      dropRef.current?.focus();
-    }
+    if (step === 'capture') dropRef.current?.focus();
   }, [step]);
 
   const openFilePicker = (e?: React.MouseEvent) => {
@@ -169,7 +199,7 @@ export function WebReceiptScanFlow({ onBack, onComplete }: WebReceiptScanFlowPro
           </h2>
           <p className="text-sm text-muted-foreground">
             {step === 'capture'
-              ? 'Upload or paste a bank receipt screenshot'
+              ? 'Choose a screenshot (best), or paste an image'
               : 'Choose where this receipt should go'}
           </p>
         </div>
@@ -193,7 +223,6 @@ export function WebReceiptScanFlow({ onBack, onComplete }: WebReceiptScanFlowPro
             onChange={(e) => {
               const list = e.target.files;
               const picked = list?.length ? Array.from(list) : [];
-              // Defer clear so some browsers finish delivering FileList.
               window.setTimeout(() => {
                 e.target.value = '';
               }, 0);
@@ -201,16 +230,11 @@ export function WebReceiptScanFlow({ onBack, onComplete }: WebReceiptScanFlowPro
             }}
           />
 
-          <label
+          <div
             ref={dropRef}
-            htmlFor={inputId}
             tabIndex={0}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                openFilePicker();
-              }
-            }}
+            role="group"
+            aria-label="Receipt image capture"
             onDragOver={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -221,22 +245,42 @@ export function WebReceiptScanFlow({ onBack, onComplete }: WebReceiptScanFlowPro
               setDragOver(false);
             }}
             onDrop={onDropZone}
-            className={`block border-2 border-dashed rounded-xl p-8 text-center transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer ${
+            onContextMenu={(e) => {
+              e.preventDefault();
+              void pasteFromClipboardApi();
+            }}
+            className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring ${
               dragOver ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'
-            } ${isProcessing ? 'opacity-70 pointer-events-none' : ''}`}
+            } ${isProcessing ? 'opacity-70' : ''}`}
           >
             {isProcessing ? (
               <Loader2 className="w-10 h-10 mx-auto text-primary animate-spin mb-3" />
             ) : (
               <Camera className="w-10 h-10 mx-auto text-muted-foreground mb-3" />
             )}
-            <p className="text-sm text-foreground mb-1">Drop, paste (Ctrl+V), or choose image</p>
+            <p className="text-sm text-foreground mb-1">Choose screenshot (best) · or Paste image / Ctrl+V</p>
             <p className="text-xs text-muted-foreground mb-4">PNG / JPG — OCR fills amount, date, reference</p>
-            <span className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium pointer-events-none">
-              <Upload className="w-4 h-4" />
-              Choose screenshot
-            </span>
-          </label>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <button
+                type="button"
+                disabled={isProcessing}
+                onClick={openFilePicker}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-60"
+              >
+                <Upload className="w-4 h-4" />
+                Choose screenshot
+              </button>
+              <button
+                type="button"
+                disabled={isProcessing}
+                onClick={() => void pasteFromClipboardApi()}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border bg-card text-foreground text-sm font-medium hover:bg-muted disabled:opacity-60"
+              >
+                <ClipboardPaste className="w-4 h-4" />
+                Paste image
+              </button>
+            </div>
+          </div>
 
           {files.length > 0 && !ocr.sheetOpen && (
             <div className="flex flex-wrap items-center gap-2">

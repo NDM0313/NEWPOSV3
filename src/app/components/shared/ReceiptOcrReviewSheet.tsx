@@ -4,7 +4,7 @@ import { Loader2, ScanText, X } from 'lucide-react';
 import type { ReceiptOcrDraft } from '@/app/lib/ocr/receiptOcrTypes';
 import { ocrDateTimeLocal } from '@/app/lib/ocr/receiptOcrTypes';
 import { revokeReceiptOcrPreview } from '@/app/lib/ocr/receiptOcrEngine';
-import { enrichDraftFromRaw, notesLookWeak } from '@/app/lib/ocr/parsePakBankReceipt';
+import { enrichDraftFromRaw } from '@/app/lib/ocr/parsePakBankReceipt';
 import { enrichSupplierBillFromRaw } from '@/app/lib/ocr/parsePakSupplierBill';
 import { DateTimePicker } from '@/app/components/ui/DateTimePicker';
 import { formatLocalDateTimeYYYYMMDDHHmm } from '@/app/utils/localDate';
@@ -47,10 +47,7 @@ export function ReceiptOcrReviewSheet({
     if (!open || !draft?.rawText?.trim()) return;
     const raw = draft.rawText.trim();
     if (lastEnrichedRawRef.current === raw) return;
-    if (draft.date && !notesLookWeak(draft.notes, draft.rawText) && draft.documentKind !== 'supplier_bill') {
-      lastEnrichedRawRef.current = raw;
-      return;
-    }
+    // Supplier bill: skip auto-enrich once core fields present
     if (
       draft.documentKind === 'supplier_bill' &&
       draft.date &&
@@ -60,6 +57,7 @@ export function ReceiptOcrReviewSheet({
       lastEnrichedRawRef.current = raw;
       return;
     }
+    // Bank (and unknown): always enrich once per rawText so Description rebuilds From/To
     const enriched = enrichByKind(draft);
     lastEnrichedRawRef.current = raw;
     if (
