@@ -50,7 +50,8 @@ import { toast } from "sonner";
 import type { ExpenseCategory } from "@/app/context/ExpenseContext";
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
-import { uploadExpenseReceipt } from '@/app/utils/uploadTransactionAttachments';
+import { uploadExpenseReceipt, MAX_FILE_SIZE_BYTES } from '@/app/utils/uploadTransactionAttachments';
+import { handleAttachmentPaste } from '@/app/utils/pasteAttachmentFiles';
 
 interface AddExpenseDrawerProps {
   isOpen: boolean;
@@ -724,7 +725,23 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
                 tabIndex={0}
                 onClick={() => receiptInputRef.current?.click()}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') receiptInputRef.current?.click(); }}
-                className="border-2 border-dashed border-border rounded-lg p-6 flex flex-col items-center justify-center text-center hover:bg-muted/50 transition-colors cursor-pointer group bg-muted/40"
+                onPaste={(e) => {
+                  handleAttachmentPaste(e, (files) => {
+                    const file = files[0];
+                    if (!file) return;
+                    setReceiptFile(file);
+                    setExistingReceiptUrl(null);
+                  }, { maxBytes: MAX_FILE_SIZE_BYTES });
+                }}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const file = e.dataTransfer.files?.[0];
+                  if (!file) return;
+                  setReceiptFile(file);
+                  setExistingReceiptUrl(null);
+                }}
+                className="border-2 border-dashed border-border rounded-lg p-6 flex flex-col items-center justify-center text-center hover:bg-muted/50 transition-colors cursor-pointer group bg-muted/40 outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               >
                 <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center mb-2 group-hover:scale-110 transition-transform border border-border">
                   <Upload className="h-5 w-5 text-muted-foreground" />
@@ -761,7 +778,7 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
                   </>
                 ) : (
                   <>
-                    <p className="text-sm text-muted-foreground">Click to upload bill</p>
+                    <p className="text-sm text-muted-foreground">Click, drop, or paste (Ctrl+V)</p>
                     <p className="text-xs text-muted-foreground mt-1">PNG, JPG, PDF up to 5MB</p>
                   </>
                 )}

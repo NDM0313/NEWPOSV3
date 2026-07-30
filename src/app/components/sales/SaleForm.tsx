@@ -121,6 +121,7 @@ import { PaymentAttachments, PaymentAttachment } from '../payments/PaymentAttach
 import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDialog';
 import { uploadSaleAttachments, MAX_FILE_SIZE_BYTES as ATTACHMENT_MAX_BYTES } from '@/app/utils/uploadTransactionAttachments';
 import { prepareAttachmentFilesForUpload } from '@/app/utils/imageCompression';
+import { handleAttachmentPaste } from '@/app/utils/pasteAttachmentFiles';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { expenseCategoryService, type ExpenseCategoryTreeItem } from '@/app/services/expenseCategoryService';
 import { getTailorOptionsForExtraType, tailorNameByCategoryId } from '@/app/utils/expenseCategoryTailors';
@@ -3670,8 +3671,26 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                 />
                                 <label className="block cursor-pointer">
                                     <div
-                                        className="border-2 border-dashed border-border rounded-lg p-3 hover:border-blue-500/50 hover:bg-accent/30 transition-all text-center"
+                                        tabIndex={0}
+                                        className="border-2 border-dashed border-border rounded-lg p-3 hover:border-blue-500/50 hover:bg-accent/30 transition-all text-center outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                                         onClick={() => saleAttachmentInputRef.current?.click()}
+                                        onPaste={(e) => {
+                                            handleAttachmentPaste(e, (pasted) => {
+                                                void (async () => {
+                                                    setIsProcessingSaleAttachments(true);
+                                                    try {
+                                                        const valid = pasted.filter((f) => f.type.startsWith('image/') || f.type === 'application/pdf' || !f.type);
+                                                        const { files: processed, compressionMessages, skippedMessages } =
+                                                            await prepareAttachmentFilesForUpload(valid, ATTACHMENT_MAX_BYTES);
+                                                        skippedMessages.forEach((msg) => toast.error(msg));
+                                                        compressionMessages.forEach((msg) => toast.success(msg));
+                                                        if (processed.length) setSaleAttachmentFiles((prev) => [...prev, ...processed]);
+                                                    } finally {
+                                                        setIsProcessingSaleAttachments(false);
+                                                    }
+                                                })();
+                                            }, { maxBytes: ATTACHMENT_MAX_BYTES });
+                                        }}
                                         onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-blue-500/50', 'bg-muted/30'); }}
                                         onDragLeave={(e) => { e.currentTarget.classList.remove('border-blue-500/50', 'bg-muted/30'); }}
                                         onDrop={(e) => {
@@ -3695,7 +3714,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                         }}
                                     >
                                         <Upload className="mx-auto mb-1 text-muted-foreground" size={20} />
-                                        <p className="text-xs text-muted-foreground">{isProcessingSaleAttachments ? 'Compressing…' : 'Click or drop files (images, PDF)'}</p>
+                                        <p className="text-xs text-muted-foreground">{isProcessingSaleAttachments ? 'Compressing…' : 'Click, drop, or paste (Ctrl+V) — images, PDF'}</p>
                                         <p className="text-[10px] text-muted-foreground mt-0.5">Saved with sale when you save</p>
                                     </div>
                                 </label>

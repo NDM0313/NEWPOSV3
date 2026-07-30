@@ -20,6 +20,7 @@ import { toast } from 'sonner';
 import { getAttachmentOpenUrl, getSupabaseStorageDashboardUrl } from '@/app/utils/paymentAttachmentUrl';
 import { showStorageRlsToast, MAX_FILE_SIZE_BYTES, showFileTooLargeToast } from '@/app/utils/uploadTransactionAttachments';
 import { prepareAttachmentFilesForUpload } from '@/app/utils/imageCompression';
+import { handleAttachmentPaste } from '@/app/utils/pasteAttachmentFiles';
 import { dispatchContactBalancesRefresh } from '@/app/lib/contactBalancesRefresh';
 import { notifyAccountingEntriesChanged } from '@/app/lib/accountingInvalidate';
 import { dispatchAccountingEditCommitted } from '@/app/lib/unifiedTransactionEdit';
@@ -609,7 +610,13 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
 
   // Handle file upload
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const incoming = Array.from(e.target.files || []);
+    const list = e.target.files;
+    e.target.value = '';
+    if (!list?.length) return;
+    await mergeIncomingAttachmentFiles(Array.from(list));
+  };
+
+  const mergeIncomingAttachmentFiles = async (incoming: File[]) => {
     if (!incoming.length) return;
     setIsProcessingAttachments(true);
     try {
@@ -620,7 +627,6 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
       if (files.length > 0) setAttachments((prev) => [...prev, ...files]);
     } finally {
       setIsProcessingAttachments(false);
-      e.target.value = '';
     }
   };
 
@@ -2040,7 +2046,30 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                   )}
                   
                   {/* Upload Area */}
-                  <label className={`block ${isProcessingAttachments ? 'cursor-wait opacity-70' : 'cursor-pointer'}`}>
+                  <div
+                    tabIndex={0}
+                    role="button"
+                    className={`outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded-lg ${isProcessingAttachments ? 'opacity-70' : ''}`}
+                    onPaste={(e) => {
+                      handleAttachmentPaste(e, (files) => void mergeIncomingAttachmentFiles(files), {
+                        maxBytes: MAX_FILE_SIZE_BYTES,
+                      });
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.currentTarget.classList.add('ring-2', 'ring-blue-500/50');
+                    }}
+                    onDragLeave={(e) => {
+                      e.currentTarget.classList.remove('ring-2', 'ring-blue-500/50');
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.currentTarget.classList.remove('ring-2', 'ring-blue-500/50');
+                      const list = e.dataTransfer?.files;
+                      if (list?.length) void mergeIncomingAttachmentFiles(Array.from(list));
+                    }}
+                  >
+                  <label className={`block ${isProcessingAttachments ? 'cursor-wait' : 'cursor-pointer'}`}>
                     <div className="border-2 border-dashed border-border rounded-lg p-4 hover:border-blue-500 hover:bg-muted/40 transition-all text-center">
                       <Upload className="mx-auto mb-2 text-muted-foreground" size={24} />
                       <p className="text-xs text-muted-foreground mb-0.5">
@@ -2048,11 +2077,11 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                           <span className="text-blue-400 font-medium">Compressing…</span>
                         ) : (
                           <>
-                            <span className="text-blue-400 font-medium">Click to upload</span> or drag and drop
+                            <span className="text-blue-400 font-medium">Click to upload</span>, drag and drop, or paste image
                           </>
                         )}
                       </p>
-                      <p className="text-xs text-muted-foreground">PDF, PNG, JPG up to 10MB</p>
+                      <p className="text-xs text-muted-foreground">PDF, PNG, JPG up to 10MB · Paste (Ctrl+V)</p>
                     </div>
                     <input
                       type="file"
@@ -2063,6 +2092,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                       accept=".pdf,.png,.jpg,.jpeg"
                     />
                   </label>
+                  </div>
 
                   {/* New files to upload */}
                   {attachments.length > 0 && (

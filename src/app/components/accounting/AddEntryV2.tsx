@@ -24,6 +24,7 @@ import {
   Upload,
   Trash2,
   ChevronsUpDown,
+  ScanText,
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
@@ -91,6 +92,13 @@ import {
   journalEntryDateTimeFromRow,
 } from '@/app/lib/pureJournalFormFromEntry';
 import { paymentEventTimestampFromPicker } from '@/app/utils/transactionEventDateTime';
+import { handleAttachmentPaste } from '@/app/utils/pasteAttachmentFiles';
+import { ocrDateTimeLocal } from '@/app/lib/ocr/receiptOcrTypes';
+import {
+  WebReceiptScanFlow,
+  buildDescriptionFromOcrDraft,
+  type WebReceiptScanResult,
+} from '@/app/components/accounting/WebReceiptScanFlow';
 
 export type AddEntryV2Type =
   | 'pure_journal'
@@ -136,7 +144,7 @@ export interface AddEntryV2Props {
   editJournalEntryId?: string;
 }
 
-type AddEntryStep = 'select-type' | 'entry-form';
+type AddEntryStep = 'select-type' | 'scan-receipt' | 'entry-form';
 
 export function AddEntryV2({
   onClose,
@@ -227,6 +235,33 @@ export function AddEntryV2({
       !loading,
     [step, entryType, loading]
   );
+
+  const mergeEntryAttachmentFiles = useCallback(async (incoming: File[]) => {
+    if (!incoming.length) return;
+    setIsProcessingEntryAttachments(true);
+    try {
+      const { files, compressionMessages, skippedMessages } =
+        await prepareAttachmentFilesForUpload(incoming, ATTACHMENT_MAX_BYTES);
+      skippedMessages.forEach((msg) => toast.error(msg));
+      compressionMessages.forEach((msg) => toast.success(msg));
+      if (files.length) setEntryAttachmentFiles((prev) => [...prev, ...files]);
+    } finally {
+      setIsProcessingEntryAttachments(false);
+    }
+  }, []);
+
+  const applyScanReceiptResult = useCallback((result: WebReceiptScanResult) => {
+    setEntryType(result.entryType as AddEntryV2Type);
+    if (result.draft?.amount != null && result.draft.amount > 0) {
+      setAmount(result.draft.amount);
+    }
+    const dt = ocrDateTimeLocal(result.draft?.date, result.draft?.time);
+    if (dt) setEntryDateTime(dt);
+    const desc = buildDescriptionFromOcrDraft(result.draft);
+    if (desc) setDescription(desc);
+    if (result.files.length) setEntryAttachmentFiles(result.files);
+    setStep('entry-form');
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -971,6 +1006,21 @@ export function AddEntryV2({
                 </button>
               </div>
               <div className="p-5">
+                <button
+                  type="button"
+                  onClick={() => setStep('scan-receipt')}
+                  className="w-full mb-4 p-4 rounded-xl border-2 border-dashed border-blue-500/40 bg-blue-500/5 hover:bg-blue-500/10 hover:border-blue-500/60 transition-all text-left flex items-center gap-3"
+                >
+                  <div className="w-10 h-10 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center flex-shrink-0">
+                    <ScanText size={20} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-semibold text-foreground">Scan Receipt</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      OCR bank screenshot → review → pick entry type (prefill + attach)
+                    </div>
+                  </div>
+                </button>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3" role="group" aria-label="Entry type">
                   {ENTRY_TYPES.map((t) => {
                     const selected = entryType === t.key;
@@ -1013,6 +1063,15 @@ export function AddEntryV2({
                 </div>
               </div>
             </>
+          )}
+
+          {step === 'scan-receipt' && (
+            <div className="p-5">
+              <WebReceiptScanFlow
+                onBack={() => setStep('select-type')}
+                onComplete={applyScanReceiptResult}
+              />
+            </div>
           )}
 
           {/* Step 2: Entry form */}
@@ -1734,38 +1793,53 @@ export function AddEntryV2({
                         {showEntryAttachments && (
                           <div className={cardInnerClass}>
                             <Label className={labelClass}>Attachments (Optional)</Label>
-                            <label className="block cursor-pointer">
-                              <div className="border-2 border-dashed border-border rounded-lg p-4 hover:border-blue-500 hover:bg-muted/40 transition-all text-center">
-                                <Upload className="mx-auto mb-2 text-muted-foreground" size={24} />
-                                <p className="text-xs text-muted-foreground mb-0.5">
-                                  <span className="text-blue-400 font-medium">Click to upload</span> or drag and drop
-                                </p>
-                                <p className="text-xs text-muted-foreground">{isProcessingEntryAttachments ? 'Compressing…' : 'PDF, PNG, JPG up to 10MB'}</p>
-                              </div>
-                              <input
-                                type="file"
-                                multiple
-                                className="hidden"
-                                accept=".pdf,.png,.jpg,.jpeg"
-                                onChange={(e) => {
-                                  void (async () => {
-                                    const list = e.target.files;
-                                    if (!list?.length) return;
-                                    setIsProcessingEntryAttachments(true);
-                                    try {
-                                      const { files, compressionMessages, skippedMessages } =
-                                        await prepareAttachmentFilesForUpload(Array.from(list), ATTACHMENT_MAX_BYTES);
-                                      skippedMessages.forEach((msg) => toast.error(msg));
-                                      compressionMessages.forEach((msg) => toast.success(msg));
-                                      if (files.length) setEntryAttachmentFiles((prev) => [...prev, ...files]);
-                                    } finally {
-                                      setIsProcessingEntryAttachments(false);
+                            <div
+                              tabIndex={0}
+                              role="button"
+                              className="outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded-lg"
+                              onPaste={(e) => {
+                                handleAttachmentPaste(e, (files) => void mergeEntryAttachmentFiles(files), {
+                                  maxBytes: ATTACHMENT_MAX_BYTES,
+                                });
+                              }}
+                              onDragOver={(e) => {
+                                e.preventDefault();
+                                e.currentTarget.classList.add('ring-2', 'ring-blue-500/50');
+                              }}
+                              onDragLeave={(e) => {
+                                e.currentTarget.classList.remove('ring-2', 'ring-blue-500/50');
+                              }}
+                              onDrop={(e) => {
+                                e.preventDefault();
+                                e.currentTarget.classList.remove('ring-2', 'ring-blue-500/50');
+                                const list = e.dataTransfer?.files;
+                                if (list?.length) void mergeEntryAttachmentFiles(Array.from(list));
+                              }}
+                            >
+                              <label className="block cursor-pointer">
+                                <div className="border-2 border-dashed border-border rounded-lg p-4 hover:border-blue-500 hover:bg-muted/40 transition-all text-center">
+                                  <Upload className="mx-auto mb-2 text-muted-foreground" size={24} />
+                                  <p className="text-xs text-muted-foreground mb-0.5">
+                                    <span className="text-blue-400 font-medium">Click to upload</span>, drag and drop, or paste image
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">{isProcessingEntryAttachments ? 'Compressing…' : 'PDF, PNG, JPG up to 10MB · Paste (Ctrl+V)'}</p>
+                                </div>
+                                <input
+                                  type="file"
+                                  multiple
+                                  className="hidden"
+                                  accept=".pdf,.png,.jpg,.jpeg"
+                                  onChange={(e) => {
+                                    void (async () => {
+                                      const list = e.target.files;
+                                      if (!list?.length) return;
+                                      await mergeEntryAttachmentFiles(Array.from(list));
                                       e.target.value = '';
-                                    }
-                                  })();
-                                }}
-                              />
-                            </label>
+                                    })();
+                                  }}
+                                />
+                              </label>
+                            </div>
                             {entryAttachmentFiles.length > 0 && (
                               <div className="mt-3 space-y-2">
                                 {entryAttachmentFiles.map((file, index) => (

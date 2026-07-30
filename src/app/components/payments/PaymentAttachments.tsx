@@ -3,6 +3,8 @@ import { Upload, File, Image as ImageIcon, FileText, X, Eye, Paperclip, Receipt,
 import { Button } from '../ui/button';
 import { toast } from 'sonner';
 import { Badge } from '../ui/badge';
+import { handleAttachmentPaste } from '@/app/utils/pasteAttachmentFiles';
+import { MAX_FILE_SIZE_BYTES } from '@/app/utils/uploadTransactionAttachments';
 
 export type DocumentType = 'invoice' | 'bank-slip';
 
@@ -159,12 +161,25 @@ export const PaymentAttachments: React.FC<PaymentAttachmentsProps> = ({
 
             {/* Upload Area */}
             <div
+                tabIndex={disabled ? undefined : 0}
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
+                onPaste={(e) => {
+                    if (disabled) return;
+                    handleAttachmentPaste(
+                        e,
+                        (files) => {
+                            const dt = new DataTransfer();
+                            files.forEach((f) => dt.items.add(f));
+                            handleFileSelect(dt.files);
+                        },
+                        { maxBytes: MAX_FILE_SIZE_BYTES },
+                    );
+                }}
                 onClick={() => !disabled && fileInputRef.current?.click()}
                 className={`
-                    relative border-2 border-dashed rounded-lg p-4 transition-all cursor-pointer
+                    relative border-2 border-dashed rounded-lg p-4 transition-all cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-blue-500
                     ${isDragging 
                         ? 'border-blue-500 bg-blue-500/10' 
                         : 'border-border bg-muted/40 hover:border-gray-600 hover:bg-input-background'
@@ -187,10 +202,10 @@ export const PaymentAttachments: React.FC<PaymentAttachmentsProps> = ({
                     </div>
                     <div>
                         <p className="text-xs text-muted-foreground">
-                            <span className="text-blue-400 font-medium">Click to upload</span> or drag and drop
+                            <span className="text-blue-400 font-medium">Click to upload</span>, drag and drop, or paste image
                         </p>
                         <p className="text-[10px] text-muted-foreground mt-0.5">
-                            Images or PDFs (max 10MB each)
+                            Images or PDFs (max 10MB each) · Paste (Ctrl+V)
                         </p>
                     </div>
                 </div>

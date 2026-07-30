@@ -22,6 +22,8 @@ import {
 import { DateTimePicker } from '@/app/components/ui/DateTimePicker';
 import { formatAccountSelectOptionLabel } from '@/app/lib/accountPostingInOutLabel';
 import { AccountPickerFieldLabel } from '@/app/components/accounting/AccountPickerFieldLabel';
+import { handleAttachmentPaste } from '@/app/utils/pasteAttachmentFiles';
+import { MAX_FILE_SIZE_BYTES } from '@/app/utils/uploadTransactionAttachments';
 
 interface PayCourierModalProps {
   open: boolean;
@@ -405,16 +407,33 @@ export function PayCourierModal({ open, onClose, companyId, branchId, onSuccess 
                 {/* Attachments (optional) */}
                 <div className="bg-muted/40 border border-border rounded-xl p-4">
                   <label className="block text-sm font-semibold text-muted-foreground mb-2">Attachments (Optional)</label>
+                  <div
+                    tabIndex={0}
+                    role="button"
+                    className="outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded-lg"
+                    onPaste={(e) => {
+                      handleAttachmentPaste(e, (files) => {
+                        setAttachments((prev) => [...prev, ...files]);
+                      }, { maxBytes: MAX_FILE_SIZE_BYTES });
+                    }}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const list = e.dataTransfer?.files;
+                      if (list?.length) setAttachments((prev) => [...prev, ...Array.from(list)]);
+                    }}
+                  >
                   <label className="block cursor-pointer">
                     <div className="border-2 border-dashed border-border rounded-lg p-4 hover:border-indigo-500 hover:bg-muted/40 transition-all text-center">
                       <Upload className="mx-auto mb-2 text-muted-foreground" size={24} />
                       <p className="text-xs text-muted-foreground mb-0.5">
-                        <span className="text-indigo-400 font-medium">Click to upload</span> or drag and drop
+                        <span className="text-indigo-400 font-medium">Click to upload</span>, drag and drop, or paste image
                       </p>
-                      <p className="text-xs text-muted-foreground">PDF, PNG, JPG up to 10MB</p>
+                      <p className="text-xs text-muted-foreground">PDF, PNG, JPG up to 10MB · Paste (Ctrl+V)</p>
                     </div>
                     <input type="file" multiple onChange={handleFileUpload} className="hidden" accept=".pdf,.png,.jpg,.jpeg" />
                   </label>
+                  </div>
                   {attachments.length > 0 && (
                     <div className="mt-3 space-y-2">
                       {attachments.map((file, index) => (

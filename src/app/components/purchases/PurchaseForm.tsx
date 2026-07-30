@@ -99,8 +99,9 @@ import {
     AlertDialogCancel,
 } from "@/app/components/ui/alert-dialog";
 import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDialog';
-import { uploadPurchaseAttachments, MAX_FILE_SIZE_BYTES as ATTACHMENT_MAX_BYTES } from '@/app/utils/uploadTransactionAttachments';
 import { prepareAttachmentFilesForUpload } from '@/app/utils/imageCompression';
+import { handleAttachmentPaste } from '@/app/utils/pasteAttachmentFiles';
+import { uploadPurchaseAttachments, MAX_FILE_SIZE_BYTES as ATTACHMENT_MAX_BYTES } from '@/app/utils/uploadTransactionAttachments';
 
 interface PurchaseItem {
     id: number;
@@ -2272,8 +2273,26 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                 />
                                 <label className="block cursor-pointer">
                                     <div
-                                        className="border-2 border-dashed border-border rounded-lg p-3 hover:border-blue-500/50 hover:bg-accent/30 transition-all text-center"
+                                        tabIndex={0}
+                                        className="border-2 border-dashed border-border rounded-lg p-3 hover:border-blue-500/50 hover:bg-accent/30 transition-all text-center outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                                         onClick={() => purchaseAttachmentInputRef.current?.click()}
+                                        onPaste={(e) => {
+                                            handleAttachmentPaste(e, (pasted) => {
+                                                void (async () => {
+                                                    setIsProcessingPurchaseAttachments(true);
+                                                    try {
+                                                        const valid = pasted.filter((f) => f.type.startsWith('image/') || f.type === 'application/pdf' || !f.type);
+                                                        const { files: processed, compressionMessages, skippedMessages } =
+                                                            await prepareAttachmentFilesForUpload(valid, ATTACHMENT_MAX_BYTES);
+                                                        skippedMessages.forEach((msg) => toast.error(msg));
+                                                        compressionMessages.forEach((msg) => toast.success(msg));
+                                                        if (processed.length) setPurchaseAttachmentFiles((prev) => [...prev, ...processed]);
+                                                    } finally {
+                                                        setIsProcessingPurchaseAttachments(false);
+                                                    }
+                                                })();
+                                            }, { maxBytes: ATTACHMENT_MAX_BYTES });
+                                        }}
                                         onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-blue-500/50', 'bg-accent/30'); }}
                                         onDragLeave={(e) => { e.currentTarget.classList.remove('border-blue-500/50', 'bg-accent/30'); }}
                                         onDrop={(e) => {
@@ -2297,7 +2316,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                         }}
                                     >
                                         <Upload className="mx-auto mb-1 text-muted-foreground" size={20} />
-                                        <p className="text-xs text-muted-foreground">{isProcessingPurchaseAttachments ? 'Compressing…' : 'Click or drop files (images, PDF)'}</p>
+                                        <p className="text-xs text-muted-foreground">{isProcessingPurchaseAttachments ? 'Compressing…' : 'Click, drop, or paste (Ctrl+V) — images, PDF'}</p>
                                         <p className="text-[10px] text-muted-foreground mt-0.5">Saved with purchase when you save</p>
                                     </div>
                                 </label>
