@@ -95,8 +95,9 @@ FAHAD LACE
   assert.ok(notes, 'notes should be built');
   assert.ok(!notes!.includes('dh)'), 'should strip leading OCR junk from From');
   assert.ok(notes!.includes('NADEEM DIN MOHAMMAD'), 'clean From name');
-  assert.ok(notes!.includes('SKAD') || notes!.includes('To:'), 'To party');
+  assert.ok(notes!.includes('SKAD'), 'To party');
   assert.ok(notes!.includes('FAHAD LACE'), 'trailing line kept');
+  assert.ok(!/Jul 13/i.test(notes!), 'date must not enter notes');
 
   const d = parsePakBankReceipt(raw);
   assert.equal(d.date, '2026-07-13');
@@ -125,8 +126,9 @@ FAHAD LACE
   assert.equal(enriched.date, '2026-07-13');
   assert.equal(enriched.time, '18:21');
   assert.ok(enriched.notes?.includes('FAHAD LACE'));
-  assert.ok(enriched.notes?.includes('SKAD') || enriched.notes?.includes('To:'));
-  assert.ok(!enriched.notes?.match(/^From:\s*dh\)/i));
+  assert.ok(enriched.notes?.includes('SKAD'));
+  assert.ok(!enriched.notes?.match(/dh\)/i));
+  assert.ok(!/Jul 13/i.test(enriched.notes || ''));
 });
 
 test('Meezan overlay FAHAD LACE stays in notes; To is SAAD not swallowed', () => {
@@ -145,13 +147,16 @@ FAHAD LACE
 `;
   const notes = buildReceiptNotes(raw);
   assert.ok(notes?.includes('FAHAD LACE'));
-  assert.ok(notes?.includes('To: SAAD'));
-  assert.ok(!notes?.includes('0180xxx9151'), 'account mask should not crowd notes');
+  assert.ok(notes?.includes('SAAD'));
+  assert.ok(notes?.includes('To Account:'));
+  assert.ok(notes?.includes('0819xxx2478'), 'from account mask in block');
+  assert.ok(notes?.includes('0180xxx9151'), 'to account mask in block');
   assert.ok(!/^To:.*FAHAD/im.test(notes || ''), 'FAHAD must not be inside To line');
+  assert.ok(!/Jul 13/i.test(notes || ''), 'date must not enter notes');
 
   const d = parsePakBankReceipt(raw);
   assert.ok(d.notes?.includes('FAHAD LACE'));
-  assert.match(d.notes || '', /To:\s*SAAD/);
+  assert.ok(d.notes?.includes('SAAD'));
 });
 
 test('enrich merges FAHAD LACE even when From/To notes already look good', () => {
@@ -176,7 +181,8 @@ FAHAD LACE
 
   const enriched = enrichDraftFromRaw(draft);
   assert.ok(enriched.notes?.includes('FAHAD LACE'), 'overlay must be appended');
-  assert.ok(enriched.notes?.includes('To: SAAD'));
+  assert.ok(enriched.notes?.includes('SAAD'));
+  assert.ok(enriched.notes?.includes('To Account:'));
 });
 
 const MEEZAN_STAN_RMB = `
@@ -204,6 +210,8 @@ test('Meezan STAN ref + RMB calc overlay; full To name', () => {
   assert.ok(!/^To:\s*ASAL$/im.test(d.notes || ''), 'To must not be clipped to ASAL');
   assert.ok(d.notes?.includes('RMB 7000x42.8'), 'calc overlay in notes');
   assert.ok(d.notes?.includes('NADEEM DIN MOHAMMAD'));
+  assert.ok(d.notes?.includes('To Account:'));
+  assert.ok(d.notes?.includes('0819xxx2478'));
 });
 
 const FAYSAL_TXN = `
@@ -237,7 +245,6 @@ test('Faysal Transaction ID + full From/To + comment', () => {
   assert.ok(d.notes?.includes('SATTAR KG'), 'comment in notes');
   assert.ok(!d.notes?.includes('Current Account'), 'skip Faysal chrome');
   assert.ok(!d.notes?.includes('Bank Alfalah'), 'skip bank chrome');
-  assert.ok(!d.notes?.includes('PK**FAYS'), 'skip masked IBAN');
 });
 
 // --- Shared screenshot fixtures (canonical OCR dumps) ---
@@ -363,7 +370,7 @@ NOOR KHAN EMBROIDERY
 COMMETTE 07
 `;
 
-test('clean Meezan: amount date ref From/To + COMMETTE; skip spaced account mask', () => {
+test('clean Meezan: amount date ref party block + COMMETTE; no date in notes', () => {
   const d = parsePakBankReceipt(MEEZAN_CLEAN_COMMETTE);
   assert.equal(d.amount, 200000);
   assert.equal(d.date, '2026-05-31');
@@ -371,9 +378,11 @@ test('clean Meezan: amount date ref From/To + COMMETTE; skip spaced account mask
   assert.equal(d.reference, '219651');
   assert.ok(d.notes?.includes('NADEEM DIN MOHAMMAD/SALEEM KHAN'));
   assert.ok(d.notes?.includes('NOOR KHAN EMBROIDERY'));
+  assert.ok(d.notes?.includes('To Account:'));
+  assert.ok(d.notes?.includes('0819xxx2478'));
+  assert.ok(d.notes?.includes('0801xxx6237'));
   assert.ok(d.notes?.includes('COMMETTE 07'));
-  assert.ok(!d.notes?.includes('0819xxx'), 'account mask must not enter notes');
-  assert.ok(!d.notes?.includes('0801'), 'spaced account mask must not enter notes');
+  assert.ok(!/May 31/i.test(d.notes || ''), 'date must not enter notes');
 });
 
 const MEEZAN_NOISY_OCR = `
@@ -390,21 +399,22 @@ CaN 0814xxx1423
 COMMETTE 02
 `;
 
-test('noisy Meezan OCR: strip label/party junk and Lan/CaN account crumbs', () => {
+test('noisy Meezan OCR: party block strips junk; keeps masks', () => {
   const d = parsePakBankReceipt(MEEZAN_NOISY_OCR);
   assert.equal(d.amount, 500000);
   assert.equal(d.date, '2026-06-01');
   assert.equal(d.time, '15:50');
   assert.equal(d.reference, '092144');
-  assert.ok(d.notes?.includes('From: NADEEM DIN MOHAMMAD/SALEEM KHAN'));
-  assert.ok(d.notes?.includes('To: MUHAMMAD ULLAH'));
+  assert.ok(d.notes?.includes('NADEEM DIN MOHAMMAD/SALEEM KHAN'));
+  assert.ok(d.notes?.includes('MUHAMMAD ULLAH'));
+  assert.ok(d.notes?.includes('To Account:'));
+  assert.ok(d.notes?.includes('0819xxx2478'));
+  assert.ok(d.notes?.includes('CAN 0814xxx1423') || d.notes?.includes('0814xxx1423'));
   assert.ok(d.notes?.includes('COMMETTE 02'));
   assert.ok(!/\(da\)/i.test(d.notes || ''));
   assert.ok(!/GY'/i.test(d.notes || ''));
   assert.ok(!/\bLan\b/i.test(d.notes || ''));
-  assert.ok(!/\bCaN\b/i.test(d.notes || ''));
-  assert.ok(!d.notes?.includes('0819xxx'));
-  assert.ok(!d.notes?.includes('0814xxx'));
+  assert.ok(!/Jun 01/i.test(d.notes || ''));
 });
 
 const MEEZAN_LAN_PANY_DUMP = `
@@ -416,12 +426,34 @@ To Account:
 PANY 0801xxx6237
 `;
 
-test('Lan/PANY account dump rebuilds clean From/To only', () => {
+test('Lan/PANY dump builds party+account Description block', () => {
   const d = parsePakBankReceipt(MEEZAN_LAN_PANY_DUMP);
-  assert.equal(d.notes, 'From: NADEEM DIN MOHAMMAD/SALEEM KHAN\nTo: NOOR KHAN EMBROIDERY');
-  assert.ok(!/\bLan\b/i.test(d.notes || ''));
-  assert.ok(!/\bPANY\b/i.test(d.notes || ''));
-  assert.ok(!d.notes?.includes('0819'));
-  assert.ok(!d.notes?.includes('0801'));
-  assert.ok(!/From\s*Account/i.test(d.notes || ''));
+  assert.equal(
+    d.notes,
+    'NADEEM DIN MOHAMMAD/SALEEM KHAN\n0819xxx2478\nTo Account:\nNOOR KHAN EMBROIDERY\nPANY 0801xxx6237'
+  );
+});
+
+const MEEZAN_DA_DATE_LEAK = `
+Transaction Successful
+PKR 200,000
+May 31, 2026 | 8:52 PM
+Reference Number: 219651
+From Account:
+(da) NADEEM DIN MOHAMMAD/SALEEM KHAN
+Lan 0819xxx2478
+To Account:
+NOOR KHAN EMBROIDERY
+PANY 0801xxx6237
+`;
+
+test('no (da) duplicate or date/time in Description party block', () => {
+  const notes = buildReceiptNotes(MEEZAN_DA_DATE_LEAK);
+  assert.equal(
+    notes,
+    'NADEEM DIN MOHAMMAD/SALEEM KHAN\n0819xxx2478\nTo Account:\nNOOR KHAN EMBROIDERY\nPANY 0801xxx6237'
+  );
+  assert.ok(!/\(da\)/i.test(notes || ''));
+  assert.ok(!/May 31/i.test(notes || ''));
+  assert.ok(!/8:52/i.test(notes || ''));
 });

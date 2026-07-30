@@ -232,11 +232,13 @@ const SKIP_NOTE_LINE =
 
 /** Short OCR crumbs before real text: "rR From Account:", "GY' NAME", "(da) NAME". */
 const PROTECTED_LINE_TOKENS =
-  /^(from|to|sent|by|account|reference|number|stan|pkr|rs|comment|purpose|transaction|meezan|faysal|easypaisa|ubl|status|paid|total|amount|current|savings?)$/i;
+  /^(from|to|sent|by|account|reference|number|stan|pkr|rs|comment|purpose|transaction|meezan|faysal|easypaisa|ubl|status|paid|total|amount|current|savings?|jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|sept|september|oct|october|nov|november|dec|december)$/i;
 
 /** Strip leading Tesseract junk from a receipt line (labels + party names). */
 export function stripOcrLineJunkPrefix(line: string): string {
   let s = String(line || '').trim();
+  // Copyright / symbol crumbs: "©) NAME"
+  s = s.replace(/^[©®™]+\s*[)\].:\-]?\s*/u, '').trim();
   for (let i = 0; i < 3; i++) {
     let next = s.replace(/^\(+[a-z0-9]{1,4}\)+\s*/i, '').trim();
     if (next !== s) {
@@ -255,13 +257,14 @@ export function stripOcrLineJunkPrefix(line: string): string {
       s = next;
       continue;
     }
-    // "rR From Account:" / "Lan 0819xxx2478" — never peel real keywords
+    // "rR From Account:" / "Lan 0819xxx2478" — never peel real keywords or months
     const m = s.match(/^([A-Za-z0-9]{1,4})\s+(.+)$/);
     if (
       m &&
       !PROTECTED_LINE_TOKENS.test(m[1]) &&
       (/^(from|to|sent|account|reference)\b/i.test(m[2]) || /^\d/.test(m[2]))
     ) {
+      // Don't peel "May 31, 2026" date lines (digit rest but month token protected above)
       s = m[2].trim();
       continue;
     }
@@ -358,7 +361,17 @@ export function isAccountMaskLine(line: string): boolean {
 }
 
 function isBankChromeLine(line: string): boolean {
-  const s = stripOcrLineJunkPrefix(String(line || '').trim());
+  const raw = String(line || '').trim();
+  const s = stripOcrLineJunkPrefix(raw);
+  if (!s && !raw) return true;
+  // Date/time chrome — check raw too (month must not be stripped)
+  if (
+    /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\b/i.test(raw) &&
+    /\d{4}/.test(raw)
+  ) {
+    return true;
+  }
+  if (/\b\d{1,2}:\d{2}(\s*[AaPp][Mm])?\b/.test(raw) && /\d{4}/.test(raw)) return true;
   if (!s) return true;
   if (SKIP_NOTE_LINE.test(s)) return true;
   if (/^PKR\s*[\d,]+/i.test(s)) return true;
@@ -370,7 +383,8 @@ function isBankChromeLine(line: string): boolean {
   if (/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/i.test(s) && /\d{4}/.test(s)) {
     return true;
   }
-  if (/^\d{1,2}[\/\-.]\d{1,2}[\/\-.](\d{2}|\d{4})\b/.test(s)) return true;
+  if (/^\d{1,2}[\/\-.,]\d{1,2}[\/\-.,](\d{2}|\d{4})\b/.test(s)) return true;
+  if (/^\d{1,2},\s*\d{4}\b/.test(s)) return true; // "31, 2026 | 8:52 PM" if month peeled
   if (/^(date|time)\s*:/i.test(s)) return true;
   if (/meezan|faysal\s*bank|ubl\s*digital|easypaisa/i.test(s) && s.length < 40) return true;
   if (/^(current\s+account|savings?\s+account|bank\s+alfalah|purpose\s+of\s+payment|funding\s+source)/i.test(s)) {
@@ -555,50 +569,131 @@ export function mergeAnnotationsIntoNotes(
   return capped || null;
 }
 
+function bareAccountMask(line: string): string | null {
+  if (!isAccountMaskLine(line)) return null;
+  const spaced = stripOcrLineJunkPrefix(line)
+    .replace(/^[A-Za-z]{1,5}\s+(?=\d)/, '')
+    .replace(/\s+/g, '');
+  if (/^\d+[x*]+\d+$/i.test(spaced)) return spaced;
+  if (/^PK[\d*A-Z]+$/i.test(spaced) || /\*/.test(spaced)) return spaced;
+  const core = coreAccountMaskToken(line);
+  return core || null;
+}
+
+/** Keep OCR crumb on To mask when present (e.g. PANY 0801xxx6237). */
+function displayToAccountMask(line: string): string | null {
+  if (!isAccountMaskLine(line)) return null;
+  const raw = String(line || '').trim();
+  const m = raw.match(/^([A-Za-z]{1,5})\s+(\d[\d\sx*]+)$/);
+  if (m) {
+    const bare = m[2].replace(/\s+/g, '');
+    if (/^\d+[x*]+\d+$/i.test(bare)) return `${m[1].toUpperCase()} ${bare}`;
+  }
+  return bareAccountMask(line);
+}
+
+function findFromToLabelIndex(lines: string[], which: 'from' | 'to'): number {
+  for (let i = 0; i < lines.length; i++) {
+    const s = stripOcrLineJunkPrefix(lines[i]);
+    if (which === 'from') {
+      if (/^From\s*Account\s*:?/i.test(s) || /^Sent\s+by\s*:?/i.test(s)) return i;
+      if (/^From\s*:?/i.test(s) && !/^From\s*Account/i.test(s)) return i;
+    } else {
+      if (/^To\s*Account\s*:?/i.test(s) || /^Sent\s+to\s*:?/i.test(s)) return i;
+      if (/^To\s*:?/i.test(s) && !/^To\s*Account/i.test(s)) return i;
+    }
+  }
+  return -1;
+}
+
+function findMaskAfter(lines: string[], startIdx: number, stopAtLabel: boolean): string | null {
+  if (startIdx < 0) return null;
+  for (let j = startIdx + 1; j < Math.min(startIdx + 8, lines.length); j++) {
+    if (stopAtLabel && isFromToLabelLine(lines[j])) break;
+    if (isAccountMaskLine(lines[j])) return lines[j];
+  }
+  return null;
+}
+
 /**
- * Build editable description add-on: clean From/To + screenshot overlays
- * (e.g. FAHAD LACE), never stop at garbage From alone.
+ * Build editable description add-on.
+ * With bank account masks: party + account block (no date/time).
+ * Without masks (e.g. Easypaisa): From:/To: + phone + overlays.
  */
 export function buildReceiptNotes(rawText: string): string | null {
-  const structured = parsePartyNotesFromReceiptText(rawText);
-  const annotations = extractScreenshotAnnotations(rawText);
-  const structuredLower = (structured || '').toLowerCase();
   const lines = String(rawText || '')
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter(Boolean);
 
-  const keep: string[] = [];
-  if (structured) keep.push(structured);
+  const fromName =
+    cleanPartyValue(lineAfterLabel(rawText, /^From\s*Account\s*:?/i)) ??
+    cleanPartyValue(lineAfterLabel(rawText, /^Sent\s+by\s*:?/i)) ??
+    cleanPartyValue(lineAfterLabel(rawText, /^From\s*:?/i));
+  const toName =
+    cleanPartyValue(lineAfterLabel(rawText, /^To\s*Account\s*:?/i)) ??
+    cleanPartyValue(lineAfterLabel(rawText, /^Sent\s+to\s*:?/i)) ??
+    cleanPartyValue(lineAfterLabel(rawText, /^To\s*:?/i));
 
-  // Annotations first (user text boxes must not be crowded out by account masks)
+  const fromIdx = findFromToLabelIndex(lines, 'from');
+  const toIdx = findFromToLabelIndex(lines, 'to');
+  const fromMaskRaw = findMaskAfter(lines, fromIdx, true);
+  const toMaskRaw = findMaskAfter(lines, toIdx >= 0 ? toIdx : fromIdx, true);
+  const hasMasks = Boolean(fromMaskRaw || toMaskRaw || lines.some(isAccountMaskLine));
+
+  const annotations = extractScreenshotAnnotations(rawText);
+  const keep: string[] = [];
+
+  if (hasMasks && (fromName || toName)) {
+    if (fromName) keep.push(fromName);
+    const fromBare = fromMaskRaw ? bareAccountMask(fromMaskRaw) : null;
+    if (fromBare) keep.push(fromBare);
+    if (toName) {
+      keep.push('To Account:');
+      keep.push(toName);
+      const toDisp = toMaskRaw ? displayToAccountMask(toMaskRaw) : null;
+      if (toDisp) keep.push(toDisp);
+    }
+  } else {
+    const structured = parsePartyNotesFromReceiptText(rawText);
+    if (structured) keep.push(structured);
+  }
+
+  const keepLower = keep.join('\n').toLowerCase();
   for (const ann of annotations) {
-    if (structuredLower.includes(ann.toLowerCase())) continue;
+    if (isBankChromeLine(ann) || isAccountMaskLine(ann)) continue;
+    if (keepLower.includes(ann.toLowerCase())) continue;
+    if (fromName && ann.toLowerCase().includes(fromName.toLowerCase())) continue;
+    if (toName && ann.toLowerCase() === toName.toLowerCase()) continue;
+    if (toName && stripOcrLineJunkPrefix(ann).toLowerCase() === toName.toLowerCase()) continue;
     keep.push(ann);
   }
 
-  for (const line of lines) {
-    if (SKIP_NOTE_LINE.test(stripOcrLineJunkPrefix(line))) continue;
-    if (line.length < 3) continue;
-    if (isAccountMaskLine(line)) continue;
-    if (isBankChromeLine(line)) continue;
-    if (isFromToLabelLine(line)) continue;
-    if (looksLikeScreenshotAnnotation(line)) continue; // already added
-    // Faysal Comment / Purpose free text
-    const commentVal = line.match(/^(?:Comment|Purpose)\s*:?\s*(.+)$/i)?.[1]?.trim();
-    if (commentVal && commentVal.length >= 2) {
-      if (!keep.some((k) => k.toLowerCase().includes(commentVal.toLowerCase()))) {
+  // Fallback memo lines only when nothing structured
+  if (!keep.length) {
+    for (const line of lines) {
+      if (SKIP_NOTE_LINE.test(stripOcrLineJunkPrefix(line))) continue;
+      if (line.length < 3) continue;
+      if (isAccountMaskLine(line) || isBankChromeLine(line) || isFromToLabelLine(line)) continue;
+      if (looksLikeScreenshotAnnotation(line)) continue;
+      const commentVal = line.match(/^(?:Comment|Purpose)\s*:?\s*(.+)$/i)?.[1]?.trim();
+      if (commentVal && commentVal.length >= 2) {
         keep.push(commentVal);
+        continue;
       }
-      continue;
+      keep.push(line);
+      if (keep.join('\n').length > 500) break;
     }
-    // Skip if already covered by structured From/To
-    const low = line.toLowerCase();
-    if (structuredLower && structuredLower.includes(low)) continue;
-    if (fromToLineRedundant(line, structured)) continue;
-    if (annotations.some((a) => a.toLowerCase() === low)) continue;
-    keep.push(line);
-    if (keep.join('\n').length > 500) break;
+  } else {
+    // Faysal Comment when not already present
+    for (const line of lines) {
+      const commentVal = line.match(/^(?:Comment|Purpose)\s*:?\s*(.+)$/i)?.[1]?.trim();
+      if (commentVal && commentVal.length >= 2 && !keepLower.includes(commentVal.toLowerCase())) {
+        if (!keep.some((k) => k.toLowerCase().includes(commentVal.toLowerCase()))) {
+          keep.push(commentVal);
+        }
+      }
+    }
   }
 
   const out = keep.join('\n').slice(0, 500).trim();
