@@ -230,15 +230,65 @@ export function parseReferenceFromReceiptText(text: string): string | null {
 const SKIP_NOTE_LINE =
   /^(transaction\s+successful|meezan\s+bank|successful|status|paid|from\s*account\s*:?|to\s*account\s*:?|ubl\s*digital|easypaisa|money\s+has\s+been\s+sent\.?|funding\s+source|fee\s*\/?\s*charge|free)$/i;
 
+/** Short OCR crumbs before real text: "rR From Account:", "GY' NAME", "(da) NAME". */
+const PROTECTED_LINE_TOKENS =
+  /^(from|to|sent|by|account|reference|number|stan|pkr|rs|comment|purpose|transaction|meezan|faysal|easypaisa|ubl|status|paid|total|amount|current|savings?)$/i;
+
+/** Strip leading Tesseract junk from a receipt line (labels + party names). */
+export function stripOcrLineJunkPrefix(line: string): string {
+  let s = String(line || '').trim();
+  for (let i = 0; i < 3; i++) {
+    let next = s.replace(/^\(+[a-z0-9]{1,4}\)+\s*/i, '').trim();
+    if (next !== s) {
+      s = next;
+      continue;
+    }
+    // "dh) NAME" / "da)"
+    next = s.replace(/^[a-z]{1,3}[)\].:\-]+\s*/i, '').trim();
+    if (next !== s) {
+      s = next;
+      continue;
+    }
+    // "GY' NAME"
+    next = s.replace(/^[A-Za-z]{1,3}['"`]+\s*/, '').trim();
+    if (next !== s) {
+      s = next;
+      continue;
+    }
+    // "rR From Account:" / "Lan 0819xxx2478" — never peel real keywords
+    const m = s.match(/^([A-Za-z0-9]{1,4})\s+(.+)$/);
+    if (
+      m &&
+      !PROTECTED_LINE_TOKENS.test(m[1]) &&
+      (/^(from|to|sent|account|reference)\b/i.test(m[2]) || /^\d/.test(m[2]))
+    ) {
+      s = m[2].trim();
+      continue;
+    }
+    break;
+  }
+  return s;
+}
+
+function isFromToLabelLine(line: string): boolean {
+  const s = stripOcrLineJunkPrefix(line);
+  return /^(from|to)\s*(account)?\s*:?/i.test(s);
+}
+
 function lineAfterLabel(text: string, label: RegExp): string | null {
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   for (let i = 0; i < lines.length; i++) {
-    if (label.test(lines[i])) {
+    const normalizedLine = stripOcrLineJunkPrefix(lines[i]);
+    if (label.test(normalizedLine)) {
       // Don't treat "From Account:" as bare "From:"
-      if (/^From\s*:?/i.test(lines[i]) && /^From\s*Account/i.test(lines[i]) && !/Account/i.test(label.source)) {
+      if (
+        /^From\s*:?/i.test(normalizedLine) &&
+        /^From\s*Account/i.test(normalizedLine) &&
+        !/Account/i.test(label.source)
+      ) {
         continue;
       }
-      const same = lines[i].replace(label, '').replace(/^[:\s]+/, '').trim();
+      const same = normalizedLine.replace(label, '').replace(/^[:\s]+/, '').trim();
       if (same.length > 2 && !/^Account\s*:?/i.test(same)) {
         const clipped = clipPartyCapture(same);
         const cleaned = cleanPartyValue(clipped);
@@ -249,8 +299,8 @@ function lineAfterLabel(text: string, label: RegExp): string | null {
       for (let j = i + 1; j < Math.min(i + 5, lines.length); j++) {
         const cand = lines[j];
         if (isAccountMaskLine(cand) || isBankChromeLine(cand)) continue;
-        if (/^(from|to)\s*(account)?\s*:?/i.test(cand)) break;
-        const stripped = cand.replace(/^[a-z]{1,3}[)\].:\-]+\s*/i, '').trim();
+        if (isFromToLabelLine(cand)) break;
+        const stripped = stripOcrLineJunkPrefix(cand);
         // Calc overlays are never party names — skip and keep looking
         if (looksLikeCalcOverlay(stripped)) continue;
         const cleaned = cleanPartyValue(cand) ?? cleanPartyValue(stripped);
@@ -263,30 +313,52 @@ function lineAfterLabel(text: string, label: RegExp): string | null {
   }
   const flat = normalizeOcrText(text);
   const m = flat.match(
-    new RegExp(label.source + '\\s*[:]?\\s*(.+?)(?=\\s+To\\s+Account|\\s+To\\s*:|$)', 'i')
+    new RegExp(
+      '(?:[a-z0-9\'"`\\[\\]()]{1,4}\\s+)?' + label.source + '\\s*[:]?\\s*(.+?)(?=\\s+To\\s+Account|\\s+To\\s*:|$)',
+      'i'
+    )
   );
   if (m?.[1] && m[1].trim().length > 2) {
-    const clipped = clipPartyCapture(m[1].trim());
+    const clipped = clipPartyCapture(stripOcrLineJunkPrefix(m[1].trim()));
     return (cleanPartyValue(clipped) ?? clipped).slice(0, 120);
   }
   return null;
 }
 
-/** Masked / numeric account lines e.g. 0819xxx2478, PK**FAYS***3721 */
+function coreAccountMaskToken(line: string): string {
+  let s = stripOcrLineJunkPrefix(String(line || '').trim());
+  // "Lan 0819xxx2478" / "CaN 0814xxx1423" after junk strip may still need letter crumb peel
+  s = s.replace(/^[A-Za-z]{1,3}\s+(?=\d)/, '').trim();
+  return s.replace(/\s+/g, '');
+}
+
+/** Masked / numeric account lines e.g. 0819xxx2478, PK**FAYS***3721, "Lan 0819xxx2478", "0801 xxx6237" */
 export function isAccountMaskLine(line: string): boolean {
-  const s = String(line || '').trim();
-  if (/^\d{3,}x+\d+$/i.test(s)) return true;
-  if (/^\d{6,}$/.test(s.replace(/[\s\-]/g, ''))) return true;
-  if (/^\d{2,4}[\dx*]{2,}\d{2,4}$/i.test(s)) return true;
-  // IBAN / bank masked: PK**FAYS***3721, 08***********00
-  if (/^PK[\d*A-Z]{6,}$/i.test(s.replace(/\s/g, ''))) return true;
-  if (/^\d{2}\*{4,}\d{0,4}$/.test(s)) return true;
-  if (/\*{4,}/.test(s) && /[\dA-Z]/i.test(s) && s.length >= 8) return true;
+  const raw = String(line || '').trim();
+  if (!raw) return false;
+  const compacted = coreAccountMaskToken(raw);
+  const spacedNorm = stripOcrLineJunkPrefix(raw)
+    .replace(/^[A-Za-z]{1,3}\s+(?=\d)/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const candidates = [raw, spacedNorm, compacted];
+  for (const s of candidates) {
+    if (!s) continue;
+    if (/^\d{3,}x+\d+$/i.test(s)) return true;
+    if (/^\d{6,}$/.test(s.replace(/[\s\-]/g, ''))) return true;
+    if (/^\d{2,4}[\dx*\s]{2,}\d{2,4}$/i.test(s.replace(/\s+/g, ''))) return true;
+    if (/^\d{2,4}\s*[\dx*]{2,}\s*\d{2,4}$/i.test(s)) return true;
+    // IBAN / bank masked: PK**FAYS***3721, 08***********00
+    if (/^PK[\d*A-Z]{6,}$/i.test(s.replace(/\s/g, ''))) return true;
+    if (/^\d{2}\*{4,}\d{0,4}$/.test(s)) return true;
+    if (/\*{4,}/.test(s) && /[\dA-Z]/i.test(s) && s.length >= 8) return true;
+  }
   return false;
 }
 
 function isBankChromeLine(line: string): boolean {
-  const s = String(line || '').trim();
+  const s = stripOcrLineJunkPrefix(String(line || '').trim());
   if (!s) return true;
   if (SKIP_NOTE_LINE.test(s)) return true;
   if (/^PKR\s*[\d,]+/i.test(s)) return true;
@@ -394,7 +466,7 @@ export function extractScreenshotAnnotations(rawText: string): string[] {
 
   let lastPartyIdx = -1;
   for (let i = 0; i < lines.length; i++) {
-    if (/^(from|to)\s*(account)?\s*:?/i.test(lines[i])) lastPartyIdx = i;
+    if (isFromToLabelLine(lines[i])) lastPartyIdx = i;
     if (isAccountMaskLine(lines[i])) lastPartyIdx = Math.max(lastPartyIdx, i);
   }
 
@@ -425,9 +497,10 @@ export function extractScreenshotAnnotations(rawText: string): string[] {
 
 /** Reject OCR garbage like "dh)" or very short tokens as party names. */
 export function isCleanPartyName(name: string | null | undefined): boolean {
-  const n = String(name ?? '').trim();
+  const n = stripOcrLineJunkPrefix(String(name ?? '').trim());
   if (n.length < 3) return false;
   if (/^[a-z]{1,3}[)\].]/i.test(n)) return false;
+  if (/^\(+[a-z]{1,3}\)/i.test(n)) return false;
   if (/^[)\].\d\s]+/.test(n) && n.length < 8) return false;
   // Must contain at least one letter run of length >= 2
   if (!/[A-Za-z]{2,}/.test(n)) return false;
@@ -436,11 +509,11 @@ export function isCleanPartyName(name: string | null | undefined): boolean {
 
 function cleanPartyValue(raw: string | null): string | null {
   if (!raw) return null;
-  let s = clipPartyCapture(raw.trim());
-  // Strip leading OCR junk: "dh) NAME" → "NAME"
-  s = s.replace(/^[a-z]{1,3}[)\].:\-]+\s*/i, '').trim();
+  let s = clipPartyCapture(stripOcrLineJunkPrefix(raw.trim()));
+  // Strip leading OCR junk: "dh) NAME" / "(da) NAME" / "GY' NAME"
+  s = stripOcrLineJunkPrefix(s);
   s = s.replace(/^[:\-]+\s*/, '').trim();
-  return isCleanPartyName(s) ? s : isCleanPartyName(raw) ? clipPartyCapture(raw.trim()) : null;
+  return isCleanPartyName(s) ? s : null;
 }
 
 export function parsePartyNotesFromReceiptText(text: string): string | null {
@@ -505,10 +578,11 @@ export function buildReceiptNotes(rawText: string): string | null {
   }
 
   for (const line of lines) {
-    if (SKIP_NOTE_LINE.test(line)) continue;
+    if (SKIP_NOTE_LINE.test(stripOcrLineJunkPrefix(line))) continue;
     if (line.length < 3) continue;
     if (isAccountMaskLine(line)) continue;
     if (isBankChromeLine(line)) continue;
+    if (isFromToLabelLine(line)) continue;
     if (looksLikeScreenshotAnnotation(line)) continue; // already added
     // Faysal Comment / Purpose free text
     const commentVal = line.match(/^(?:Comment|Purpose)\s*:?\s*(.+)$/i)?.[1]?.trim();
@@ -562,7 +636,7 @@ export function enrichDraftFromRaw(draft: ReceiptOcrDraft): ReceiptOcrDraft {
   }
 
   const rebuilt = buildReceiptNotes(raw);
-  if (rebuilt && notesLookWeak(next.notes)) {
+  if (rebuilt && notesLookWeak(next.notes, raw)) {
     next.notes = rebuilt;
   } else {
     // Even when notes look fine, always merge screenshot text-box overlays
@@ -579,14 +653,28 @@ export function enrichDraftFromRaw(draft: ReceiptOcrDraft): ReceiptOcrDraft {
   return next;
 }
 
-/** Empty or OCR-garbage From-only notes that should be replaced from raw. */
-export function notesLookWeak(notes: string | null | undefined): boolean {
+/** Empty or OCR-garbage notes that should be replaced from raw. */
+export function notesLookWeak(notes: string | null | undefined, rawText?: string | null): boolean {
   const n = String(notes ?? '').trim();
   if (!n) return true;
   // "From: dh) …" without To — classic bad OCR stop
   if (/^From:\s*[a-z]{0,3}[)\].]/i.test(n) && !/\bTo:/i.test(n)) return true;
   // From only, very short after label
   if (/^From:\s*.{0,8}$/i.test(n) && !/\bTo:/i.test(n)) return true;
+  // Junk crumbs still present in notes
+  if (/\b(Lan|CaN)\s+\d/i.test(n)) return true;
+  if (/\(da\)|\(dh\)/i.test(n)) return true;
+  if (/^To:\s*\(/im.test(n)) return true;
+  if (/^From:\s*(GY'|rR\b)/im.test(n)) return true;
+  // Any note line that is really a masked account
+  for (const line of n.split(/\r?\n/)) {
+    if (isAccountMaskLine(line)) return true;
+  }
+  // Missing From while raw clearly has a From Account block
+  const raw = String(rawText ?? '');
+  if (raw && !/\bFrom:\s*\S/i.test(n)) {
+    if (/(?:^|\n)\s*(?:[a-z0-9'"`]{1,4}\s+)?From\s*Account\s*:?/im.test(raw)) return true;
+  }
   return false;
 }
 

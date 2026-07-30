@@ -348,3 +348,61 @@ test('normalizeOcrText strips Arabic/Urdu script blocks', () => {
   assert.ok(cleaned.includes('STAN'));
   assert.ok(cleaned.includes('186293'));
 });
+
+const MEEZAN_CLEAN_COMMETTE = `
+Transaction Successful
+PKR 200,000
+May 31, 2026 | 8:52 PM
+Reference Number: 219651
+From Account:
+NADEEM DIN MOHAMMAD/SALEEM KHAN
+0819xxx2478
+To Account:
+NOOR KHAN EMBROIDERY
+0801 xxx6237
+COMMETTE 07
+`;
+
+test('clean Meezan: amount date ref From/To + COMMETTE; skip spaced account mask', () => {
+  const d = parsePakBankReceipt(MEEZAN_CLEAN_COMMETTE);
+  assert.equal(d.amount, 200000);
+  assert.equal(d.date, '2026-05-31');
+  assert.equal(d.time, '20:52');
+  assert.equal(d.reference, '219651');
+  assert.ok(d.notes?.includes('NADEEM DIN MOHAMMAD/SALEEM KHAN'));
+  assert.ok(d.notes?.includes('NOOR KHAN EMBROIDERY'));
+  assert.ok(d.notes?.includes('COMMETTE 07'));
+  assert.ok(!d.notes?.includes('0819xxx'), 'account mask must not enter notes');
+  assert.ok(!d.notes?.includes('0801'), 'spaced account mask must not enter notes');
+});
+
+const MEEZAN_NOISY_OCR = `
+Transaction Successful
+PKR 500,000
+Jun 01, 2026 | 3:50 PM
+Reference Number: 092144
+rR From Account:
+GY' NADEEM DIN MOHAMMAD/SALEEM KHAN
+Lan 0819xxx2478
+To Account:
+(da) MUHAMMAD ULLAH
+CaN 0814xxx1423
+COMMETTE 02
+`;
+
+test('noisy Meezan OCR: strip label/party junk and Lan/CaN account crumbs', () => {
+  const d = parsePakBankReceipt(MEEZAN_NOISY_OCR);
+  assert.equal(d.amount, 500000);
+  assert.equal(d.date, '2026-06-01');
+  assert.equal(d.time, '15:50');
+  assert.equal(d.reference, '092144');
+  assert.ok(d.notes?.includes('From: NADEEM DIN MOHAMMAD/SALEEM KHAN'));
+  assert.ok(d.notes?.includes('To: MUHAMMAD ULLAH'));
+  assert.ok(d.notes?.includes('COMMETTE 02'));
+  assert.ok(!/\(da\)/i.test(d.notes || ''));
+  assert.ok(!/GY'/i.test(d.notes || ''));
+  assert.ok(!/\bLan\b/i.test(d.notes || ''));
+  assert.ok(!/\bCaN\b/i.test(d.notes || ''));
+  assert.ok(!d.notes?.includes('0819xxx'));
+  assert.ok(!d.notes?.includes('0814xxx'));
+});

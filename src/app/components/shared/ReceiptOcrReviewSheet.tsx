@@ -47,7 +47,7 @@ export function ReceiptOcrReviewSheet({
     if (!open || !draft?.rawText?.trim()) return;
     const raw = draft.rawText.trim();
     if (lastEnrichedRawRef.current === raw) return;
-    if (draft.date && !notesLookWeak(draft.notes) && draft.documentKind !== 'supplier_bill') {
+    if (draft.date && !notesLookWeak(draft.notes, draft.rawText) && draft.documentKind !== 'supplier_bill') {
       lastEnrichedRawRef.current = raw;
       return;
     }
