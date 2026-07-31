@@ -1,0 +1,35 @@
+---
+description: Multi-currency in this ERP means China import purchasing FX (RMB/USD + agents) — not a separate FX exchange app. Toggle is currently cosmetic; do not invent dual-currency GL without approval.
+alwaysApply: true
+---
+
+# Multi-currency — import purchasing FX (NEW POSV3)
+
+**Roadmap (how it will work, phases 0–3):** [`docs/accounting/MULTI_CURRENCY_IMPORT_FX_ROADMAP.md`](docs/accounting/MULTI_CURRENCY_IMPORT_FX_ROADMAP.md)
+
+## Roman Urdu intent (product)
+
+Yeh ERP ka multi-currency **China import / wholesaler purchasing** ke liye hai: purchases aksar **RMB (CNY)** ya **USD** mein; books base **PKR**. Payment paths: (1) PKR → money-exchange **agent** → USD/RMB → supplier; (2) USD buy → third-party account → USD→RMB convert → supplier. Retail POS multi-currency nahi. Settings flag OFF = aaj jaisa single-currency PKR.
+
+## Current state (truth — do not mis-sell)
+
+- Settings toggle **Multi Currency Enabled** persists as `settings` JSON key `accounting_settings.multiCurrencyEnabled` via [`SettingsContext`](src/app/context/SettingsContext.tsx) / [`settingsService`](src/app/services/settingsService.ts).
+- **No** purchase, wholesale, sales, or journal path reads this flag today. It is **cosmetic**.
+- Display uses [`companies.currency`](src/app/hooks/useFormatCurrency.ts) formatting only — **no FX conversion**.
+- `purchases` / `purchase_items` have **no** document currency, rate, or foreign-amount columns.
+
+Related but **not** an FX engine: named TT-agent wallets (e.g. `HAMID IK RMB`) + liquidity excludes; OCR note overlays like `RMB 7000x42.8`; `sale_shipments` USD rate (studio shipping only).
+
+## Not this product
+
+Single Core Ledger / audit docs that mark **“FX / multi-currency app” OUT_OF_SCOPE** mean a **separate exchange product**. Do **not** build a parallel FX trading app inside this ERP. Import purchasing FX (above) is the in-scope meaning when the user asks for multi-currency here.
+
+## When implementing later (requires explicit user approval)
+
+Follow [`.cursor/rules/system-lockdown-safety.mdc`](system-lockdown-safety.mdc): additive schema only; no destructive money-table ALTER / dual-entry rewrite without confirmation.
+
+1. Gate UI/behavior on `multiCurrencyEnabled === true`; OFF = current PKR-only behavior.
+2. Apply to **wholesale and other Settings-gated purchase/payment** flows — not retail POS multi-price currency.
+3. Keep **PKR** as company base for reporting, inventory value, and COGS; store document currency + rate + foreign + base amounts when added.
+4. Model payment paths: agent wallet (PKR out → FC wallet → supplier AP) and third-party USD→RMB convert; reuse existing TT-agent account naming patterns where possible.
+5. Do not claim the Settings toggle “enables FX” until consumers actually read the flag.
