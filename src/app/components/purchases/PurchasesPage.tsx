@@ -81,6 +81,8 @@ import { toast } from 'sonner';
 import { exportToCSV, exportToExcel, exportToPDF, type ExportData } from '@/app/utils/exportUtils';
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { useSettings } from '@/app/context/SettingsContext';
+import { ImportFxAgentWizard } from '@/app/components/purchases/ImportFxAgentWizard';
 import { AdaptiveCurrencyValue } from '@/app/components/shared/AdaptiveCurrencyValue';
 import { getEffectivePurchaseStatus, getPurchaseStatusBadgeConfig, DEFAULT_PURCHASE_BADGE, isPaymentClosedForPurchase, canAddPaymentToPurchase } from '@/app/utils/statusHelpers';
 import { getPurchaseDisplayNumber } from '@/app/lib/documentDisplayNumbers';
@@ -155,6 +157,9 @@ export const PurchasesPage = () => {
   const accounting = useAccounting();
   const { canDeletePurchase } = useCheckPermission();
   const { formatCurrency } = useFormatCurrency();
+  const { accountingSettings } = useSettings();
+  const multiCurrencyEnabled = accountingSettings?.multiCurrencyEnabled === true;
+  const [importFxWizardOpen, setImportFxWizardOpen] = useState(false);
   const globalFilter = useGlobalFilter();
   const { startDate, endDate, setCurrentModule } = globalFilter;
 
@@ -1318,6 +1323,15 @@ export const PurchasesPage = () => {
             <ErpPageDescription>Manage purchase orders and supplier transactions</ErpPageDescription>
           </div>
           <div className="flex gap-2">
+            {activeMainTab === 'purchases' && multiCurrencyEnabled && (
+              <Button
+                variant="outline"
+                onClick={() => setImportFxWizardOpen(true)}
+                className="h-10 gap-2 border-amber-600/50 text-amber-700 dark:text-amber-300"
+              >
+                Agent FX
+              </Button>
+            )}
             {activeMainTab === 'purchases' && (
               <Button
                 onClick={() => openDrawer('addPurchase')}
@@ -2766,6 +2780,10 @@ export const PurchasesPage = () => {
         companyName={labelCompanyName}
         branchName={labelBranchName}
       />
+
+      {multiCurrencyEnabled && (
+        <ImportFxAgentWizard open={importFxWizardOpen} onOpenChange={setImportFxWizardOpen} />
+      )}
     </ErpPage>
   );
 };

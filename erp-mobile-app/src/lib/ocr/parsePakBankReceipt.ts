@@ -700,13 +700,6 @@ export function buildReceiptNotes(rawText: string): string | null {
   return out || null;
 }
 
-function fromToLineRedundant(line: string, structured: string | null): boolean {
-  if (!structured) return false;
-  const cleaned = cleanPartyValue(line.replace(/^(From|To)\s*(Account)?\s*:?/i, '').trim());
-  if (!cleaned) return false;
-  return structured.toLowerCase().includes(cleaned.toLowerCase());
-}
-
 /** Fill missing draft fields from rawText (Confirm safety + lookalike recovery). */
 export function enrichDraftFromRaw(draft: ReceiptOcrDraft): ReceiptOcrDraft {
   const raw = String(draft.rawText || '').trim();

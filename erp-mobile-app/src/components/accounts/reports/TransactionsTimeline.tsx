@@ -259,7 +259,7 @@ export function TransactionsTimeline({
         endDate: endDate || undefined,
         method: method === 'all' ? undefined : method,
         search: debouncedSearch || undefined,
-        limit: 300,
+        // Dated queries use full-window limit inside getPaymentTransactions
       });
       if (payRes.error) setError(payRes.error);
       let merged = payRes.data || [];
@@ -272,7 +272,6 @@ export function TransactionsTimeline({
             startDate: startDate || undefined,
             endDate: endDate || undefined,
             search: debouncedSearch || undefined,
-            limit: 300,
           });
           if (jeRes.error && !payRes.error) setError(jeRes.error);
           const payJeIds = new Set(

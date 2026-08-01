@@ -411,14 +411,18 @@ export const GlobalDrawer = () => {
 const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
   const { drawerContactType, setCreatedContactId, parentDrawer, drawerPrefillName, drawerPrefillPhone, drawerData } = useNavigation();
   const { companyId, branchId, user } = useSupabase();
+  const { accountingSettings } = useSettings();
+  const multiCurrencyEnabled = accountingSettings?.multiCurrencyEnabled === true;
   const [contactRoles, setContactRoles] = useState<{
     customer: boolean;
     supplier: boolean;
     worker: boolean;
+    money_exchange: boolean;
   }>({
     customer: drawerContactType === 'customer' ? true : false,
     supplier: drawerContactType === 'supplier' ? true : false,
     worker: drawerContactType === 'worker' ? true : false,
+    money_exchange: false,
   });
   const [workerType, setWorkerType] = useState<string>(DEFAULT_WORKER_ROLES[0].value);
   const [saving, setSaving] = useState(false);
@@ -457,14 +461,16 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
           setEditContact(data);
           const t = data?.type;
           if (t === 'worker') {
-            setContactRoles({ customer: false, supplier: false, worker: true });
+            setContactRoles({ customer: false, supplier: false, worker: true, money_exchange: false });
             setWorkerType((data?.worker_role || 'dyer') as string);
+          } else if (t === 'money_exchange') {
+            setContactRoles({ customer: false, supplier: false, worker: false, money_exchange: true });
           } else if (t === 'supplier') {
-            setContactRoles({ customer: false, supplier: true, worker: false });
+            setContactRoles({ customer: false, supplier: true, worker: false, money_exchange: false });
           } else if (t === 'both') {
-            setContactRoles({ customer: true, supplier: true, worker: false });
+            setContactRoles({ customer: true, supplier: true, worker: false, money_exchange: false });
           } else {
-            setContactRoles({ customer: true, supplier: false, worker: false });
+            setContactRoles({ customer: true, supplier: false, worker: false, money_exchange: false });
           }
           const c = (data?.country || '').toString().toLowerCase();
           setCountry(c.includes('india') ? 'in' : c.includes('bangladesh') ? 'bd' : 'pk');
@@ -489,6 +495,7 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
         customer: drawerContactType === 'customer' ? true : false,
         supplier: drawerContactType === 'supplier' ? true : false,
         worker: drawerContactType === 'worker' ? true : false,
+        money_exchange: false,
       });
       if (drawerContactType === 'worker') setWorkerType('dyer');
     } else if (!drawerData?.contact) {
@@ -496,6 +503,7 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
         customer: false,
         supplier: false,
         worker: false,
+        money_exchange: false,
       });
     }
   }, [drawerContactType, drawerData?.contact]);
@@ -539,28 +547,36 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
     loadGroups();
   }, [companyId, contactRoles.customer, contactRoles.supplier]);
   
-  // Role toggle logic: Customer/Supplier disable Worker, Worker only when both Customer/Supplier unselected
-  const handleRoleToggle = (role: 'customer' | 'supplier' | 'worker') => {
+  // Role toggle: Customer/Supplier vs Worker vs money_exchange (exclusive FX agent)
+  const handleRoleToggle = (role: 'customer' | 'supplier' | 'worker' | 'money_exchange') => {
+    if (role === 'money_exchange') {
+      const on = !contactRoles.money_exchange;
+      setContactRoles({
+        customer: false,
+        supplier: false,
+        worker: false,
+        money_exchange: on,
+      });
+      return;
+    }
     if (role === 'customer' || role === 'supplier') {
-      // If Customer or Supplier is being toggled ON, turn Worker OFF
       const newValue = !contactRoles[role];
       setContactRoles({
         ...contactRoles,
         [role]: newValue,
-        worker: false, // Auto-disable Worker when Customer/Supplier selected
+        worker: false,
+        money_exchange: false,
       });
     } else if (role === 'worker') {
-      // Worker can only be ON when Customer AND Supplier both are OFF
       const newWorkerValue = !contactRoles.worker;
       if (newWorkerValue) {
-        // Turning Worker ON - ensure Customer and Supplier are OFF
         setContactRoles({
           customer: false,
           supplier: false,
           worker: true,
+          money_exchange: false,
         });
       } else {
-        // Turning Worker OFF - just update worker
         setContactRoles({
           ...contactRoles,
           worker: false,
@@ -570,7 +586,8 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
   };
 
   // Determine primary type for database (backward compatibility)
-  const getPrimaryType = (): 'customer' | 'supplier' | 'worker' | 'both' => {
+  const getPrimaryType = (): 'customer' | 'supplier' | 'worker' | 'both' | 'money_exchange' => {
+    if (contactRoles.money_exchange) return 'money_exchange';
     if (contactRoles.worker) return 'worker';
     if (contactRoles.customer && contactRoles.supplier) return 'both';
     if (contactRoles.supplier) return 'supplier';
@@ -674,7 +691,7 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
       }
 
       // Validate at least one role is selected
-      if (!contactRoles.customer && !contactRoles.supplier && !contactRoles.worker) {
+      if (!contactRoles.customer && !contactRoles.supplier && !contactRoles.worker && !contactRoles.money_exchange) {
         toast.error('Please select at least one contact role');
         setSaving(false);
         return;
@@ -778,18 +795,20 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
             <button
               type="button"
               onClick={() => handleRoleToggle('customer')}
-              disabled={drawerContactType && drawerContactType !== 'customer'}
+              disabled={(drawerContactType && drawerContactType !== 'customer') || contactRoles.money_exchange}
               className={`px-4 py-2 rounded-lg font-medium text-sm transition-all flex items-center gap-2 ${
                 contactRoles.customer
                   ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30 border-2 border-blue-500'
                   : 'bg-muted text-muted-foreground hover:bg-accent border-2 border-border'
               } ${
-                (drawerContactType && drawerContactType !== 'customer')
+                ((drawerContactType && drawerContactType !== 'customer') || contactRoles.money_exchange)
                   ? 'opacity-50 cursor-not-allowed' 
                   : ''
               }`}
               title={
-                (drawerContactType && drawerContactType !== 'customer')
+                contactRoles.money_exchange
+                  ? 'Clear Money Exchange first'
+                  : (drawerContactType && drawerContactType !== 'customer')
                   ? `Only ${drawerContactType} role allowed from this context`
                   : 'Select Customer role'
               }
@@ -801,18 +820,20 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
             <button
               type="button"
               onClick={() => handleRoleToggle('supplier')}
-              disabled={drawerContactType && drawerContactType !== 'supplier'}
+              disabled={(drawerContactType && drawerContactType !== 'supplier') || contactRoles.money_exchange}
               className={`px-4 py-2 rounded-lg font-medium text-sm transition-all flex items-center gap-2 ${
                 contactRoles.supplier
                   ? 'bg-purple-600 text-foreground shadow-lg shadow-purple-500/30 border-2 border-purple-500'
                   : 'bg-muted text-muted-foreground hover:bg-accent border-2 border-border'
               } ${
-                (drawerContactType && drawerContactType !== 'supplier')
+                ((drawerContactType && drawerContactType !== 'supplier') || contactRoles.money_exchange)
                   ? 'opacity-50 cursor-not-allowed' 
                   : ''
               }`}
               title={
-                (drawerContactType && drawerContactType !== 'supplier')
+                contactRoles.money_exchange
+                  ? 'Clear Money Exchange first'
+                  : (drawerContactType && drawerContactType !== 'supplier')
                   ? `Only ${drawerContactType} role allowed from this context`
                   : 'Select Supplier role'
               }
@@ -824,30 +845,47 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
             <button
               type="button"
               onClick={() => handleRoleToggle('worker')}
-              disabled={contactRoles.customer || contactRoles.supplier || (drawerContactType && drawerContactType !== 'worker')}
+              disabled={contactRoles.customer || contactRoles.supplier || contactRoles.money_exchange || (drawerContactType && drawerContactType !== 'worker')}
               className={`px-4 py-2 rounded-lg font-medium text-sm transition-all flex items-center gap-2 ${
                 contactRoles.worker
                   ? 'bg-green-600 text-foreground shadow-lg shadow-green-500/30 border-2 border-green-500'
                   : 'bg-muted text-muted-foreground hover:bg-accent border-2 border-border'
               } ${
-                (contactRoles.customer || contactRoles.supplier || (drawerContactType && drawerContactType !== 'worker'))
+                (contactRoles.customer || contactRoles.supplier || contactRoles.money_exchange || (drawerContactType && drawerContactType !== 'worker'))
                   ? 'opacity-50 cursor-not-allowed' 
                   : ''
               }`}
               title={
                 (drawerContactType && drawerContactType !== 'worker')
                   ? `Only ${drawerContactType} role allowed from this context`
-                  : (contactRoles.customer || contactRoles.supplier)
-                  ? 'Worker cannot be selected with Customer or Supplier'
+                  : (contactRoles.customer || contactRoles.supplier || contactRoles.money_exchange)
+                  ? 'Worker cannot be selected with Customer, Supplier, or Money Exchange'
                   : 'Select Worker role'
               }
             >
               <span className={`w-2 h-2 rounded-full ${contactRoles.worker ? 'bg-white' : 'bg-green-500'}`}></span>
               Worker
             </button>
+
+            {multiCurrencyEnabled && (
+              <button
+                type="button"
+                onClick={() => handleRoleToggle('money_exchange')}
+                disabled={!!drawerContactType}
+                className={`px-4 py-2 rounded-lg font-medium text-sm transition-all flex items-center gap-2 ${
+                  contactRoles.money_exchange
+                    ? 'bg-amber-600 text-white shadow-lg shadow-amber-500/30 border-2 border-amber-500'
+                    : 'bg-muted text-muted-foreground hover:bg-accent border-2 border-border'
+                } ${drawerContactType ? 'opacity-50 cursor-not-allowed' : ''}`}
+                title="Money exchange agent (AP under 2000 for dual-credit FX)"
+              >
+                <span className={`w-2 h-2 rounded-full ${contactRoles.money_exchange ? 'bg-white' : 'bg-amber-500'}`}></span>
+                Money Exchange
+              </button>
+            )}
           </div>
           
-          {!contactRoles.customer && !contactRoles.supplier && !contactRoles.worker && (
+          {!contactRoles.customer && !contactRoles.supplier && !contactRoles.worker && !contactRoles.money_exchange && (
             <p className="text-xs text-red-400 mt-2">Please select at least one role</p>
           )}
           

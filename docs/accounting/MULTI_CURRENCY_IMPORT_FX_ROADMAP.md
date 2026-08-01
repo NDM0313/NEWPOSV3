@@ -2,7 +2,7 @@
 
 **Product:** DIN Collection / NEW POSV3 ERP (import purchasing FX)  
 **Rule:** [`.cursor/rules/multi-currency-import-fx.mdc`](../../.cursor/rules/multi-currency-import-fx.mdc)  
-**Status:** Design roadmap only — no schema/UI/GL shipped from this doc until a phase is explicitly approved  
+**Status:** Phases 0–2 dual-credit agent path shipped (flag-gated). Phase 3 still requires explicit approval.  
 **Base books currency:** PKR (company `companies.currency`)  
 **Document currencies (target):** RMB (CNY), USD (and PKR when single-currency)
 
@@ -33,10 +33,13 @@ Import FX stores foreign document amounts and rates for China/wholesale purchase
 
 | Item | Today |
 |------|--------|
-| `accounting_settings.multiCurrencyEnabled` | Saved from Settings UI; **no** purchase/payment/wholesale consumer |
-| Purchase money columns | PKR only (`subtotal`, `total`, `unit_price`, …) — no `document_currency` / `fx_rate` |
-| Display | [`useFormatCurrency`](../../src/app/hooks/useFormatCurrency.ts) formats `companies.currency` — no conversion |
-| TT-agent wallets | Named `12xx` accounts + liquidity exclude; amounts still PKR books units |
+| `accounting_settings.multiCurrencyEnabled` | Saved from Settings; consumers gate Phase 0–2 UI + RPCs |
+| `accounting_settings.activeCurrencies` | Admin list of foreign codes/labels; PurchaseForm / Agent wizard / Wholesale dropdowns |
+| Purchase grid (flag ON, FC doc) | **Currency-first:** Price/Total = FC; PKR computed as FC × rate for GL columns |
+| Purchase money columns | PKR totals + nullable FX metadata (`document_currency`, `fx_rate_to_base`, `foreign_*`) when flag ON |
+| Display | [`useFormatCurrency`](../../src/app/hooks/useFormatCurrency.ts) formats `companies.currency`; FC helpers when flag ON |
+| Dual-credit agent | [`fx_currency_purchases`](../../migrations/20260801190000_fx_currency_purchase_schema.sql) + [`record_fx_currency_purchase_on_credit`](../../migrations/20260801190100_fx_currency_purchase_rpcs.sql); wizard [`ImportFxAgentWizard`](../../src/app/components/purchases/ImportFxAgentWizard.tsx) |
+| TT-agent wallets | Named `12xx` accounts; when flag ON they appear under Bank in payment dialog |
 | OCR `RMB 7000x42.8` | Notes overlay only ([`parsePakBankReceipt.ts`](../../src/app/lib/ocr/parsePakBankReceipt.ts)) |
 | `sale_shipments` USD rate | Studio shipping only — not purchase FX |
 
@@ -91,13 +94,13 @@ Hard stops: follow [`.cursor/rules/system-lockdown-safety.mdc`](../../.cursor/ru
 
 Checklist:
 
-- [ ] Read `accountingSettings.multiCurrencyEnabled` from [`SettingsContext.tsx`](../../src/app/context/SettingsContext.tsx) in purchase/payment/wholesale UIs
-- [ ] [`PurchaseForm.tsx`](../../src/app/components/purchases/PurchaseForm.tsx): when ON — currency (RMB/USD/PKR) + rate + FC amount; computed PKR writes existing `unit_price` / totals
-- [ ] [`UnifiedPaymentDialog.tsx`](../../src/app/components/payments/UnifiedPaymentDialog.tsx): include TT-agent wallets via [`isPartyTtAgentWalletAccount`](../../src/app/lib/liquidityPaymentAccount.ts) (today 100/101/102 filters may hide them)
-- [ ] [`WholesaleImportClearanceWorkflow.tsx`](../../src/app/wholesale/WholesaleImportClearanceWorkflow.tsx): FC/rate helpers next to supplier vs courier due
-- [ ] Settings help text: do not claim “FX enabled” until consumers read the flag; update copy when Phase 0 ships
+- [x] Read `accountingSettings.multiCurrencyEnabled` from [`SettingsContext.tsx`](../../src/app/context/SettingsContext.tsx) in purchase/payment/wholesale UIs
+- [x] [`PurchaseForm.tsx`](../../src/app/components/purchases/PurchaseForm.tsx): when ON — currency (RMB/USD/PKR) + rate + FC amount; computed PKR writes existing `unit_price` / totals
+- [x] [`UnifiedPaymentDialog.tsx`](../../src/app/components/shared/UnifiedPaymentDialog.tsx): include TT-agent wallets via [`isPartyTtAgentWalletAccount`](../../src/app/lib/liquidityPaymentAccount.ts) (today 100/101/102 filters may hide them)
+- [x] [`WholesaleImportClearanceWorkflow.tsx`](../../src/app/wholesale/WholesaleImportClearanceWorkflow.tsx): FC/rate helpers next to supplier vs courier due
+- [x] Settings help text: do not claim “FX enabled” until consumers read the flag; update copy when Phase 0 ships
 
-**Key files:** `SettingsPageNew.tsx`, `PurchaseForm.tsx`, `PurchaseItemsSection.tsx`, `UnifiedPaymentDialog.tsx`, `WholesaleImportClearanceWorkflow.tsx`, `liquidityPaymentAccount.ts`
+**Key files:** `SettingsPageNew.tsx`, `PurchaseForm.tsx`, `PurchaseItemsSection.tsx`, `UnifiedPaymentDialog.tsx`, `WholesaleImportClearanceWorkflow.tsx`, `liquidityPaymentAccount.ts`, `importFxHelpers.ts`
 
 ### Phase 1 — Additive persistence (still PKR GL)
 
@@ -113,9 +116,9 @@ Forward migration under [`migrations/`](../../migrations/) only (nullable, no DR
 
 Checklist:
 
-- [ ] Migration + `purchaseService` / insert keys / update RPCs aware of new nullable columns
-- [ ] JE builders unchanged in debit/credit meaning — PKR drives [`purchaseAccountingService`](../../src/app/services/purchaseAccountingService.ts) / [`documentPostingEngine`](../../src/app/services/documentPostingEngine.ts)
-- [ ] Pattern precedent: wholesale clearance additive columns ([`20260708120000_wholesale_import_freight_settlement.sql`](../../migrations/20260708120000_wholesale_import_freight_settlement.sql))
+- [x] Migration + `purchaseService` / insert keys / update RPCs aware of new nullable columns
+- [x] JE builders unchanged in debit/credit meaning — PKR drives [`purchaseAccountingService`](../../src/app/services/purchaseAccountingService.ts) / [`documentPostingEngine`](../../src/app/services/documentPostingEngine.ts)
+- [x] Pattern precedent: wholesale clearance additive columns ([`20260708120000_wholesale_import_freight_settlement.sql`](../../migrations/20260708120000_wholesale_import_freight_settlement.sql))
 
 ### Phase 2 — Codify payment wizards
 
@@ -123,11 +126,11 @@ Checklist:
 
 Checklist:
 
-- [ ] **Agent wizard:** fund TT wallet (PKR out) → pay supplier from wallet (`createSupplierPayment` / `record_payment_with_accounting`, Dr AP / Cr wallet PKR)
+- [x] **Agent wizard (dual-credit):** `record_fx_currency_purchase_on_credit` (Dr wallet / Cr Agent AP) → agent settle via `createSupplierPayment` on_account + `apply_fx_currency_purchase_settlement` → China settle from wallet via `createSupplierPayment` (purchase-linked). UI: [`ImportFxAgentWizard`](../../src/app/components/purchases/ImportFxAgentWizard.tsx) + [`importFxAgentService.ts`](../../src/app/services/importFxAgentService.ts). **Do not** overload `record_payment_with_accounting` for the credit step.
 - [ ] **Third-party convert wizard:** USD buy → third-party account → RMB settle; reuse CoA naming; no dual-currency subledger
 - [ ] Mobile: same flag gate in [`erp-mobile-app`](../../erp-mobile-app/) purchase/pay when web Phase 1–2 ships (parallel client contract)
 
-**Key files:** `supplierPaymentService.ts`, `recordPaymentWithAccountingRpc.ts`, `purchaseService.recordPayment`, mobile `MobilePaySupplier` / purchase create flows
+**Key files:** `importFxAgentService.ts`, `ImportFxAgentWizard.tsx`, `supplierPaymentService.ts`, `recordPaymentWithAccountingRpc.ts`, `purchaseService.recordPayment`, mobile `MobilePaySupplier` / purchase create flows
 
 ### Phase 3 — Explicit later approval only
 
@@ -144,9 +147,11 @@ Out of this roadmap unless lockdown is lifted for GL meaning changes:
 | Area | Paths |
 |------|--------|
 | Flag persist/load | `src/app/context/SettingsContext.tsx`, `src/app/services/settingsService.ts`, `src/app/components/settings/SettingsPageNew.tsx` |
+| FX helpers (Phase 0) | `src/app/lib/importFxHelpers.ts` |
+| Agent FX (Phase 1–2) | `src/app/services/importFxAgentService.ts`, `src/app/components/purchases/ImportFxAgentWizard.tsx`, `migrations/20260801190000_fx_currency_purchase_schema.sql`, `migrations/20260801190100_fx_currency_purchase_rpcs.sql` |
 | Purchase UI | `src/app/components/purchases/PurchaseForm.tsx`, `PurchaseItemsSection.tsx`, `PurchasesPage.tsx` |
 | Purchase write/post | `src/app/services/purchaseService.ts`, `purchaseAccountingService.ts`, `documentPostingEngine.ts` |
-| Payments | `UnifiedPaymentDialog.tsx`, `supplierPaymentService.ts`, `recordPaymentWithAccountingRpc.ts` |
+| Payments | `src/app/components/shared/UnifiedPaymentDialog.tsx`, `supplierPaymentService.ts`, `recordPaymentWithAccountingRpc.ts` |
 | Wholesale clearance | `src/app/wholesale/WholesaleImportClearanceWorkflow.tsx`, `wholesaleImportPurchaseCalc.ts` |
 | TT-agent detection | `src/app/lib/liquidityPaymentAccount.ts`, `migrations/20260707140000_unified_ledger_party_tt_agent_wallet.sql` |
 | Mobile (Phase 2) | `erp-mobile-app/src/components/purchase/`, pay-supplier flows |

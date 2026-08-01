@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   Building2,
   Store,
@@ -9,11 +9,17 @@ import {
   ChevronRight,
   ChevronDown,
   Save,
+  Search,
   type LucideIcon,
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { cn } from '../ui/utils';
-import type { SettingsCategory, SettingsCategoryId } from './settingsNavigation';
+import {
+  searchSettingsNav,
+  type SettingsCategory,
+  type SettingsCategoryId,
+  type SettingsSearchHit,
+} from './settingsNavigation';
 
 const CATEGORY_ICONS: Record<SettingsCategoryId, LucideIcon> = {
   general: Building2,
@@ -48,21 +54,84 @@ export function SettingsLayout({
   const activeCategory = categories.find((c) => c.id === activeCategoryId);
   const activeItem = activeCategory?.items.find((i) => i.id === activeItemId);
   const [expandedCategoryId, setExpandedCategoryId] = useState<SettingsCategoryId | null>(activeCategoryId);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [highlightIndex, setHighlightIndex] = useState(0);
+  const searchWrapRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const listboxId = useId();
+
+  const searchHits = useMemo(
+    () => searchSettingsNav(categories, searchQuery),
+    [categories, searchQuery],
+  );
 
   useEffect(() => {
     setExpandedCategoryId(activeCategoryId);
   }, [activeCategoryId]);
 
+  useEffect(() => {
+    setHighlightIndex(0);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    const onPointerDown = (event: MouseEvent) => {
+      if (!searchWrapRef.current?.contains(event.target as Node)) {
+        setSearchOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    return () => document.removeEventListener('mousedown', onPointerDown);
+  }, []);
+
   const toggleCategory = (categoryId: SettingsCategoryId) => {
     setExpandedCategoryId((prev) => (prev === categoryId ? null : categoryId));
   };
+
+  const selectSearchHit = (hit: SettingsSearchHit) => {
+    onSelect(hit.categoryId, hit.itemId);
+    setExpandedCategoryId(hit.categoryId);
+    setSearchQuery('');
+    setSearchOpen(false);
+    setHighlightIndex(0);
+  };
+
+  const onSearchKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setSearchQuery('');
+      setSearchOpen(false);
+      setHighlightIndex(0);
+      return;
+    }
+    if (!searchHits.length) return;
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setSearchOpen(true);
+      setHighlightIndex((prev) => (prev + 1) % searchHits.length);
+      return;
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setSearchOpen(true);
+      setHighlightIndex((prev) => (prev - 1 + searchHits.length) % searchHits.length);
+      return;
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      const hit = searchHits[highlightIndex] ?? searchHits[0];
+      if (hit) selectSearchHit(hit);
+    }
+  };
+
+  const showResults = searchOpen && searchQuery.trim().length >= 1 && searchHits.length > 0;
 
   return (
     <div className="min-h-screen bg-background text-foreground animate-in fade-in duration-500">
       <div className="sticky top-0 z-30 border-b border-border bg-background">
         <div className="max-w-7xl mx-auto px-4 md:px-6 py-4">
-          <div className="flex justify-between items-start gap-4">
-            <div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-start">
+            <div className="min-w-0">
               <h1 className="text-xl font-semibold text-foreground">Settings</h1>
               <p className="text-sm text-muted-foreground mt-0.5">
                 {activeItem?.label ?? 'Configure your ERP defaults and preferences'}
@@ -71,14 +140,71 @@ export function SettingsLayout({
                 <p className="text-xs text-muted-foreground mt-1">{categoryDescription}</p>
               ) : null}
             </div>
-            {hasUnsavedChanges && onSave ? (
-              <Button
-                onClick={onSave}
-                className="bg-green-600 hover:bg-green-500 text-foreground gap-2 shadow-lg shrink-0"
-              >
-                <Save size={16} /> Save Changes
-              </Button>
-            ) : null}
+            <div className="flex items-start gap-2 shrink-0 w-full sm:w-auto">
+              <div ref={searchWrapRef} className="relative flex-1 sm:w-72 min-w-0">
+                <Search
+                  size={14}
+                  className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+                  aria-hidden
+                />
+                <input
+                  ref={searchInputRef}
+                  type="search"
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setSearchOpen(true);
+                  }}
+                  onFocus={() => setSearchOpen(true)}
+                  onKeyDown={onSearchKeyDown}
+                  placeholder="Search settings (e.g. packing)…"
+                  aria-label="Search settings"
+                  aria-autocomplete="list"
+                  aria-controls={listboxId}
+                  aria-expanded={showResults}
+                  className="w-full rounded-lg border border-border bg-background pl-8 pr-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                />
+                {showResults ? (
+                  <ul
+                    id={listboxId}
+                    role="listbox"
+                    className="absolute z-40 mt-1 max-h-72 w-full overflow-auto rounded-lg border border-border bg-card shadow-lg"
+                  >
+                    {searchHits.map((hit, index) => {
+                      const active = index === highlightIndex;
+                      return (
+                        <li key={`${hit.categoryId}-${hit.itemId}`} role="option" aria-selected={active}>
+                          <button
+                            type="button"
+                            onMouseEnter={() => setHighlightIndex(index)}
+                            onClick={() => selectSearchHit(hit)}
+                            className={cn(
+                              'w-full px-3 py-2 text-left transition-colors',
+                              active ? 'bg-primary/15 text-foreground' : 'hover:bg-muted/80',
+                            )}
+                          >
+                            <span className="block text-sm font-medium truncate">{hit.label}</span>
+                            <span className="block text-xs text-muted-foreground truncate">
+                              {hit.matchHint
+                                ? `${hit.categoryLabel} · ${hit.matchHint}`
+                                : hit.categoryLabel}
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : null}
+              </div>
+              {hasUnsavedChanges && onSave ? (
+                <Button
+                  onClick={onSave}
+                  className="bg-green-600 hover:bg-green-500 text-foreground gap-2 shadow-lg shrink-0"
+                >
+                  <Save size={16} /> Save Changes
+                </Button>
+              ) : null}
+            </div>
           </div>
         </div>
       </div>

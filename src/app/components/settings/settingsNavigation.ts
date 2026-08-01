@@ -190,3 +190,124 @@ export function writeSettingsHash(categoryId: SettingsCategoryId, itemId: string
     window.history.replaceState(null, '', next);
   }
 }
+
+export type SettingsSearchHit = {
+  categoryId: SettingsCategoryId;
+  itemId: string;
+  label: string;
+  categoryLabel: string;
+  /** Why it matched (optional subtitle) */
+  matchHint?: string;
+};
+
+type RankedSettingsSearchHit = SettingsSearchHit & { score: number };
+
+/** Deep keywords for in-page settings that are not separate nav rows. */
+export const SETTINGS_SEARCH_KEYWORDS: {
+  keywords: string[];
+  categoryId: SettingsCategoryId;
+  itemId: string;
+  label: string;
+}[] = [
+  {
+    keywords: ['packing', 'add packing', 'addpacking', 'enable packing', 'boxes', 'pieces', 'thaans'],
+    categoryId: 'operations',
+    itemId: 'inventoryGeneral',
+    label: 'Enable Packing (Boxes / Pieces)',
+  },
+  {
+    keywords: ['multi currency', 'multicurrency', 'fx', 'rmb', 'cny', 'active currencies'],
+    categoryId: 'accountingFinance',
+    itemId: 'fiscalTax',
+    label: 'Multi Currency Enabled',
+  },
+];
+
+function normalizeSearchQuery(raw: string): string {
+  return String(raw || '')
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+/** Compact form for matching "addpacking" against "add packing". */
+function compactQuery(q: string): string {
+  return q.replace(/\s+/g, '');
+}
+
+/**
+ * Search visible settings nav + keyword index.
+ * Keyword hits rank above plain nav label matches. Cap 12.
+ */
+export function searchSettingsNav(
+  categories: SettingsCategory[],
+  query: string,
+): SettingsSearchHit[] {
+  const q = normalizeSearchQuery(query);
+  if (!q) return [];
+  const qCompact = compactQuery(q);
+
+  const byItemId = new Map<string, RankedSettingsSearchHit>();
+  const categoryById = new Map(categories.map((c) => [c.id, c]));
+
+  const upsert = (hit: RankedSettingsSearchHit) => {
+    const existing = byItemId.get(hit.itemId);
+    if (!existing || hit.score > existing.score) {
+      byItemId.set(hit.itemId, hit);
+    } else if (existing && hit.matchHint && !existing.matchHint) {
+      byItemId.set(hit.itemId, { ...existing, matchHint: hit.matchHint, label: hit.label });
+    }
+  };
+
+  for (const entry of SETTINGS_SEARCH_KEYWORDS) {
+    const category = categoryById.get(entry.categoryId);
+    if (!category?.items.some((i) => i.id === entry.itemId)) continue;
+
+    let score = 0;
+    for (const kw of entry.keywords) {
+      const kwN = normalizeSearchQuery(kw);
+      const kwC = compactQuery(kwN);
+      if (q === kwN || qCompact === kwC) score = Math.max(score, 100);
+      else if (kwN.includes(q) || q.includes(kwN) || kwC.includes(qCompact) || qCompact.includes(kwC)) {
+        score = Math.max(score, 80);
+      }
+    }
+    if (score > 0) {
+      upsert({
+        categoryId: entry.categoryId,
+        itemId: entry.itemId,
+        label: entry.label,
+        categoryLabel: category.label,
+        matchHint: `In ${category.items.find((i) => i.id === entry.itemId)?.label ?? entry.itemId}`,
+        score,
+      });
+    }
+  }
+
+  for (const category of categories) {
+    const catLabel = category.label.toLowerCase();
+    const catDesc = category.description.toLowerCase();
+    for (const item of category.items) {
+      const itemLabel = item.label.toLowerCase();
+      let score = 0;
+      if (itemLabel === q) score = 70;
+      else if (itemLabel.includes(q) || compactQuery(itemLabel).includes(qCompact)) score = 60;
+      else if (catLabel.includes(q) || catDesc.includes(q)) score = 40;
+      if (score > 0) {
+        upsert({
+          categoryId: category.id,
+          itemId: item.id,
+          label: item.label,
+          categoryLabel: category.label,
+          score,
+        });
+      }
+    }
+  }
+
+  return Array.from(byItemId.values())
+    .sort((a, b) => b.score - a.score || a.label.localeCompare(b.label))
+    .slice(0, 12)
+    .map(({ score: _score, ...rest }) => rest);
+}
+

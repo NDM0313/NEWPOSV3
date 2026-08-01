@@ -41,6 +41,8 @@ interface PurchaseItem {
     name: string;
     sku: string;
     price: number;
+    /** Foreign unit price when document currency is not PKR (currency-first entry). */
+    foreignUnitPrice?: number;
     qty: number;
     size?: string;
     color?: string;
@@ -95,12 +97,16 @@ interface PurchaseItemsSectionProps {
     /** Edit mode: variation is read-only (locked); no BLUE/WHITE choice – delete row + re-add to change. */
     isEditMode?: boolean;
     // Update item function
-    updateItem: (id: number, field: 'qty' | 'price', value: number) => void;
+    updateItem: (id: number, field: 'qty' | 'price' | 'foreignUnitPrice', value: number) => void;
     // Keyboard navigation
     itemQtyRefs: React.MutableRefObject<Record<number, HTMLInputElement | null>>;
     itemPriceRefs: React.MutableRefObject<Record<number, HTMLInputElement | null>>;
     handleQtyKeyDown: (e: React.KeyboardEvent, itemId: number) => void;
     handlePriceKeyDown: (e: React.KeyboardEvent, itemId: number) => void;
+    /** When true, Price/Total bind to foreignUnitPrice (document currency FC). */
+    fxMode?: boolean;
+    currencyLabel?: string;
+    fxRateToBase?: number;
 }
 
 export const PurchaseItemsSection: React.FC<PurchaseItemsSectionProps> = ({
@@ -146,8 +152,13 @@ export const PurchaseItemsSection: React.FC<PurchaseItemsSectionProps> = ({
     itemPriceRefs,
     handleQtyKeyDown,
     handlePriceKeyDown,
+    fxMode = false,
+    currencyLabel = 'PKR',
+    fxRateToBase = 0,
 }) => {
     const { openDrawer, activeDrawer } = useNavigation();
+    const priceHeader = fxMode ? `Price (${currencyLabel})` : 'Price';
+    const totalHeader = fxMode ? `Total (${currencyLabel})` : 'Total';
 
     return (
         <div className="bg-card border border-border rounded-xl overflow-hidden flex flex-col h-full">
@@ -316,8 +327,8 @@ export const PurchaseItemsSection: React.FC<PurchaseItemsSectionProps> = ({
                     <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider w-[100px]">Variation</div>
                     {enablePacking && <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider w-[120px]">Packing</div>}
                     <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider text-center">Qty</div>
-                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider text-right">Price</div>
-                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider text-right">Total</div>
+                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider text-right">{priceHeader}</div>
+                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider text-right">{totalHeader}</div>
                     <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider text-center">Action</div>
                 </div>
 
@@ -487,10 +498,19 @@ export const PurchaseItemsSection: React.FC<PurchaseItemsSectionProps> = ({
                                             ref={(el) => (itemPriceRefs.current[item.id] = el)}
                                             type="number"
                                             className="h-7 w-full text-right bg-transparent border-transparent hover:border-border focus:bg-popover focus:border-blue-500 px-2 py-0.5 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                                            value={item.price === 0 ? '' : item.price}
+                                            value={
+                                              fxMode
+                                                ? ((item.foreignUnitPrice ?? 0) === 0 ? '' : item.foreignUnitPrice)
+                                                : (item.price === 0 ? '' : item.price)
+                                            }
                                             onChange={(e) => {
                                                 const raw = e.target.value;
-                                                updateItem(item.id, 'price', raw === '' ? 0 : parseFloat(raw) || 0);
+                                                const parsed = raw === '' ? 0 : parseFloat(raw) || 0;
+                                                if (fxMode) {
+                                                    updateItem(item.id, 'foreignUnitPrice', parsed);
+                                                } else {
+                                                    updateItem(item.id, 'price', parsed);
+                                                }
                                             }}
                                             onKeyDown={(e) => handlePriceKeyDown(e, item.id)}
                                             disabled={item.showVariations && !item.selectedVariationId}
@@ -500,9 +520,22 @@ export const PurchaseItemsSection: React.FC<PurchaseItemsSectionProps> = ({
 
                                     {/* Total (Fixed 80px - RIGHT ALIGNED) */}
                                     <div className="w-[80px]">
-                                        <div className="text-right text-sm font-bold text-popover-foreground">
-                                            ${(item.price * item.qty).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                                        </div>
+                                        {fxMode ? (
+                                            <div className="text-right">
+                                                <div className="text-sm font-bold text-popover-foreground">
+                                                    {((Number(item.foreignUnitPrice) || 0) * item.qty).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                                </div>
+                                                {fxRateToBase > 0 && (Number(item.foreignUnitPrice) || 0) > 0 && (
+                                                    <div className="text-[10px] text-muted-foreground tabular-nums">
+                                                        ≈ PKR {(item.price * item.qty).toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <div className="text-right text-sm font-bold text-popover-foreground">
+                                                ${(item.price * item.qty).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* Action (Fixed 50px) */}

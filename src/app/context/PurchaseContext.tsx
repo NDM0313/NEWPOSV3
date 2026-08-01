@@ -78,6 +78,8 @@ export interface PurchaseItem {
   unit?: string; // Short code (pcs, m, yd) for view
   packingDetails?: { total_boxes?: number; total_pieces?: number; total_meters?: number; [k: string]: unknown };
   variation?: { id: string; sku?: string; attributes?: Record<string, string> };
+  foreignUnitPrice?: number | null;
+  foreignLineTotal?: number | null;
 }
 
 export interface Purchase {
@@ -115,6 +117,11 @@ export interface Purchase {
   createdBy?: string; // CRITICAL FIX: User who created the purchase (for "Added By" display)
   createdAt: string;
   updatedAt: string;
+  /** Import FX — only set when multiCurrencyEnabled; otherwise omit / null. */
+  documentCurrency?: string | null;
+  fxRateToBase?: number | null;
+  foreignSubtotal?: number | null;
+  foreignTotal?: number | null;
 }
 
 interface PurchaseContextType {
@@ -490,6 +497,10 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
         due_amount: purchaseData.due || 0,
         notes: purchaseData.notes,
         created_by: user.id,
+        document_currency: purchaseData.documentCurrency ?? null,
+        fx_rate_to_base: purchaseData.fxRateToBase ?? null,
+        foreign_subtotal: purchaseData.foreignSubtotal ?? null,
+        foreign_total: purchaseData.foreignTotal ?? null,
       };
 
       // Validate items before mapping
@@ -519,6 +530,8 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
           discount_amount: item.discount || 0,
           tax_amount: item.tax || 0,
           total: item.total || 0,
+          foreign_unit_price: (item as any).foreignUnitPrice ?? (item as any).foreign_unit_price ?? null,
+          foreign_line_total: (item as any).foreignLineTotal ?? (item as any).foreign_line_total ?? null,
           // Include packing data
           packing_type: (item as any).packingDetails?.packing_type || null,
           packing_quantity: (item as any).packingDetails?.total_meters || (item as any).meters || null,
@@ -768,6 +781,18 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       }
       if ((updates as any).attachments !== undefined) supabaseUpdates.attachments = (updates as any).attachments;
       if (updates.purchaseNo !== undefined) supabaseUpdates.po_no = updates.purchaseNo;
+      if (updates.documentCurrency !== undefined) {
+        supabaseUpdates.document_currency = updates.documentCurrency;
+      }
+      if (updates.fxRateToBase !== undefined) {
+        supabaseUpdates.fx_rate_to_base = updates.fxRateToBase;
+      }
+      if (updates.foreignSubtotal !== undefined) {
+        supabaseUpdates.foreign_subtotal = updates.foreignSubtotal;
+      }
+      if (updates.foreignTotal !== undefined) {
+        supabaseUpdates.foreign_total = updates.foreignTotal;
+      }
 
       // 🔒 CRITICAL FIX: Calculate stock movement DELTA BEFORE updating purchase_items
       // This must happen BEFORE purchase_items are deleted/updated so we can fetch old items
@@ -1043,6 +1068,8 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
             discount_amount: item.discount || 0,
             tax_amount: item.tax || 0,
             total: lineTotal,
+            foreign_unit_price: item.foreignUnitPrice ?? item.foreign_unit_price ?? null,
+            foreign_line_total: item.foreignLineTotal ?? item.foreign_line_total ?? null,
             packing_type: item.packingDetails?.packing_type || null,
             packing_quantity: item.packingDetails?.total_meters || item.meters || null,
             packing_unit: item.packingDetails?.unit || 'meters',

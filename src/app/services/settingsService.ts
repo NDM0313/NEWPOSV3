@@ -659,6 +659,10 @@ export const settingsService = {
           manualJournalEnabled: true,
           defaultCurrency: 'PKR',
           multiCurrencyEnabled: false,
+          activeCurrencies: [
+            { code: 'CNY', label: 'RMB (CNY)' },
+            { code: 'USD', label: 'US Dollar' },
+          ],
         },
         'accounting',
         'Auto-seeded by ensureCompanyBootstrapDefaults'

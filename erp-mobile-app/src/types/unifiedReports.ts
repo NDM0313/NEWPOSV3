@@ -1,4 +1,9 @@
-export type UnifiedLedgerBasis = 'official_gl' | 'management' | 'cash_basis';
+export type UnifiedLedgerBasis =
+  | 'official_gl'
+  | 'effective_party'
+  | 'audit_full_history'
+  | 'management'
+  | 'cash_basis';
 
 export const DEFAULT_UNIFIED_BASIS: UnifiedLedgerBasis = 'official_gl';
 

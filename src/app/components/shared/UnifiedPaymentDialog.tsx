@@ -65,6 +65,7 @@ async function notifyAccountingAfterPaymentChange(companyId: string, paymentId: 
     window.dispatchEvent(new CustomEvent('paymentAdded'));
   }
 }
+import { isPartyTtAgentWalletAccount } from '@/app/lib/liquidityPaymentAccount';
 import {
   formatAccountSelectOptionLabel,
   getPaymentLiquidityPostingSide,
@@ -231,6 +232,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
 
   const accounting = useAccountingOptional();
   const settings = useSettings();
+  const multiCurrencyEnabled = settings.accountingSettings?.multiCurrencyEnabled === true;
   const { formatCurrency } = useFormatCurrency();
   const { branchId, companyId, user } = useSupabase();
   const { getNumberingConfig } = useDocumentNumbering();
@@ -443,6 +445,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
 
   // 🎯 Filter accounts based on payment method AND branch
   // Match UI (Cash/Bank/Mobile Wallet) and DB (cash/bank/mobile_wallet); include 10xx/102x sub-accounts (e.g. 1011-NDM for Bank)
+  // When multi-currency ON: also include party TT-agent wallets (12xx e.g. HAMID IK RMB) under Bank
   const getFilteredAccounts = (): Account[] => {
     const methodNorm = normalizePaymentType(paymentMethod);
     const isCash = methodNorm === 'cash';
@@ -455,11 +458,23 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
       const accType = normalizePaymentType(String((account as any).type ?? account.accountType ?? ''));
       const accCode = String((account as any).code ?? '');
       const accName = (account.name || '').toLowerCase();
+      const ttWallet =
+        multiCurrencyEnabled &&
+        isPartyTtAgentWalletAccount({
+          code: accCode,
+          name: account.name,
+          type: (account as any).type ?? account.accountType,
+        });
 
       const typeMatches =
         accType === methodNorm ||
         (isCash && (accType === 'cash' || accCode === '1000' || accName.includes('cash'))) ||
-        (isBank && (accType === 'bank' || accCode === '1010' || accName.includes('bank') || accCode.startsWith('101'))) ||
+        (isBank &&
+          (accType === 'bank' ||
+            accCode === '1010' ||
+            accName.includes('bank') ||
+            accCode.startsWith('101') ||
+            ttWallet)) ||
         (isWallet && (accType === 'mobile_wallet' || accType === 'wallet' || accCode === '1020' || accName.includes('wallet') || accCode.startsWith('102')));
 
       if (!typeMatches) return false;
@@ -479,6 +494,15 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
     const accType = normalizePaymentType(String((account as any).type ?? account.accountType ?? ''));
     const accCode = String((account as any).code ?? '');
     const accName = (account.name || '').toLowerCase();
+    if (
+      isPartyTtAgentWalletAccount({
+        code: accCode,
+        name: account.name,
+        type: (account as any).type ?? account.accountType,
+      })
+    ) {
+      return 'Bank';
+    }
     if (
       accType === 'mobile_wallet' ||
       accType === 'wallet' ||

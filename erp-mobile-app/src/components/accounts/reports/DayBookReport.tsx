@@ -3,13 +3,13 @@ import { Building2, ChevronDown, ChevronUp, FileText, Search, Smartphone, Wallet
 import type { User } from '../../../types';
 import { getDayBook, type DayBookJournalEntry } from '../../../api/reports';
 import {
-  getRoznamcha,
   roznamchaJournalSubtitle,
   roznamchaRefDisplay,
   type AccountFilter,
   type RoznamchaResult,
   type RoznamchaRowWithBalance,
 } from '../../../api/roznamcha';
+import { loadMobileRoznamcha } from '../../../api/unifiedReports';
 import { getPaymentAccounts } from '../../../api/accounts';
 import { supabase } from '../../../lib/supabase';
 import {
@@ -232,18 +232,24 @@ export function DayBookReport({ onBack, companyId, branchId, user, reportRefresh
     setError(null);
 
     if (mode === 'cash') {
-      getRoznamcha(
+      loadMobileRoznamcha({
         companyId,
-        rozBranchId,
+        branchId: rozBranchId,
         dateFrom,
         dateTo,
         liquidity,
         includeVoided,
-        paymentLedgerFilter,
-      )
+        paymentLedgerAccountId: paymentLedgerFilter,
+      })
         .then((result) => {
           if (cancelled) return;
-          setRoznamcha(result);
+          if (result.error && !result.data) {
+            setRoznamcha(null);
+            setError(result.error || 'Failed to load Roznamcha.');
+            setLoading(false);
+            return;
+          }
+          setRoznamcha(result.data);
           setJournalEntries([]);
           setLoading(false);
         })

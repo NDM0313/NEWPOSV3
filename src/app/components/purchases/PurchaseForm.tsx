@@ -77,6 +77,15 @@ import { useSupabase } from '@/app/context/SupabaseContext';
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 import { useSettings } from '@/app/context/SettingsContext';
 import { formatCurrency } from '@/app/utils/formatCurrency';
+import {
+    basePkrToForeign,
+    foreignToBasePkr,
+    isForeignImportCurrency,
+    labelForImportCurrency,
+    normalizeImportDocCurrency,
+    resolveActiveImportCurrencies,
+    type ImportDocCurrency,
+} from '@/app/lib/importFxHelpers';
 import { rankProductSearchHit, preferExactSkuHits, PRODUCT_SEARCH_RESULT_CAP } from '@/app/utils/productSearchRank';
 import { contactService } from '@/app/services/contactService';
 import { productService } from '@/app/services/productService';
@@ -109,6 +118,8 @@ interface PurchaseItem {
     name: string;
     sku: string;
     price: number;
+    /** Foreign unit price when document currency is FC (currency-first entry). */
+    foreignUnitPrice?: number;
     qty: number;
     receivedQty?: number;
     // Standard Variation Fields
@@ -162,7 +173,12 @@ const purchaseFormBootstrapCache = new Map<
 export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFormProps) => {
     // Supabase & Context
     const { companyId, branchId: contextBranchId, supabaseClient, requiresBranchSelection } = useSupabase();
-    const { inventorySettings, company } = useSettings();
+    const { inventorySettings, company, accountingSettings } = useSettings();
+    const multiCurrencyEnabled = accountingSettings?.multiCurrencyEnabled === true;
+    const activeCurrencies = useMemo(
+      () => resolveActiveImportCurrencies(accountingSettings),
+      [accountingSettings]
+    );
     const { canManageSettings } = useCheckPermission();
     const enablePacking = inventorySettings.enablePacking;
     // Permission-based: settings access allows branch selection (was role === 'admin')
@@ -216,6 +232,9 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
     const [purchaseDate, setPurchaseDate] = useState<Date>(new Date());
     const [refNumber, setRefNumber] = useState(""); // Reference number (optional, user-entered)
     const [poNumber, setPoNumber] = useState<string>(""); // Auto-generated PO number (read-only)
+    /** Phase 0 import FX: document currency + rate → PKR line prices (no new DB columns). */
+    const [documentCurrency, setDocumentCurrency] = useState<ImportDocCurrency>('PKR');
+    const [fxRateToBase, setFxRateToBase] = useState<number>(1);
     
     // Add Supplier Modal State - REMOVED (using GlobalDrawer contact form instead)
     
@@ -302,10 +321,25 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
     // Calculate total after discount and expenses
     const afterDiscountTotal = subtotal - discountAmount + expensesTotal;
     const totalAmount = afterDiscountTotal;
-    
+
+    const fxMode = multiCurrencyEnabled && isForeignImportCurrency(documentCurrency);
+    const currencyLabel = labelForImportCurrency(documentCurrency, activeCurrencies);
+    const foreignSubtotal = fxMode
+        ? items.reduce((sum, item) => sum + (Number(item.foreignUnitPrice) || 0) * item.qty, 0)
+        : null;
+    const foreignTotalEstimate = foreignSubtotal; // goods FC only; expenses stay PKR
+    const foreignGrandDisplay = foreignTotalEstimate;
+
     // Automatic Payment Status Detection
     const totalPaid = partialPayments.reduce((sum, p) => sum + p.amount, 0);
     const balanceDue = totalAmount - totalPaid;
+    const foreignDueDisplay =
+        fxMode && fxRateToBase > 0
+            ? Math.max(
+                  0,
+                  (foreignTotalEstimate ?? 0) - (basePkrToForeign(totalPaid, fxRateToBase) ?? 0)
+              )
+            : null;
     
     // Auto-detect payment status
     // CRITICAL FIX: Use 'unpaid' instead of 'credit' to match database enum (paid, partial, unpaid)
@@ -436,6 +470,13 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
     // 1. Select Product -> Add to items, show variation strip if needed
     const handleSelectProduct = (product: any) => {
         const newItemId = Date.now();
+        const catalogPkr = Number(product.price) || 0;
+        const inFx = multiCurrencyEnabled && isForeignImportCurrency(documentCurrency);
+        const seededFc =
+            inFx && fxRateToBase > 0 ? (basePkrToForeign(catalogPkr, fxRateToBase) ?? 0) : inFx ? 0 : undefined;
+        const pkrPrice = inFx
+            ? foreignToBasePkr(Number(seededFc) || 0, fxRateToBase)
+            : catalogPkr;
         
         // Check if product has variations
         if (product.hasVariations && product.variations && product.variations.length > 0) {
@@ -445,7 +486,8 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                 productId: product.id,
                 name: product.name,
                 sku: product.sku,
-                price: product.price,
+                price: pkrPrice,
+                foreignUnitPrice: seededFc,
                 qty: 1,
                 size: undefined,
                 color: undefined,
@@ -466,7 +508,8 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                 productId: product.id,
                 name: product.name,
                 sku: product.sku,
-                price: product.price,
+                price: pkrPrice,
+                foreignUnitPrice: seededFc,
                 qty: 1,
                 size: undefined,
                 color: undefined,
@@ -565,13 +608,22 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                 const size = variation.size || variation.attributes?.size as string;
                 const color = variation.color || variation.attributes?.color as string;
                 const variationSku = variation.sku || `${item.sku}-${size}-${color}`.replace(/\s+/g, '-').toUpperCase();
+                const catalogPkr = Number(variation.price ?? item.price) || 0;
+                const inFx = multiCurrencyEnabled && isForeignImportCurrency(documentCurrency);
+                const seededFc =
+                    inFx && fxRateToBase > 0
+                        ? (basePkrToForeign(catalogPkr, fxRateToBase) ?? 0)
+                        : inFx
+                          ? Number(item.foreignUnitPrice) || 0
+                          : undefined;
                 
                 return {
                     ...item,
                     size: size,
                     color: color,
                     sku: variationSku, // Update SKU to variation-specific SKU
-                    price: variation.price || item.price,
+                    price: inFx ? foreignToBasePkr(Number(seededFc) || 0, fxRateToBase) : catalogPkr,
+                    foreignUnitPrice: seededFc,
                     variationId: variation.id,
                     stock: variation.stock ?? item.stock,
                     showVariations: false, // Hide variation selector
@@ -611,10 +663,36 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
         // Kept for compatibility but does nothing
     };
 
-    // Items List Handlers
-    const updateItem = (id: number, field: keyof PurchaseItem, value: number) => {
-        setItems(prev => prev.map(item => item.id === id ? { ...item, [field]: value } : item));
+    // Items List Handlers — in FC mode, price edits bind to foreignUnitPrice and recompute PKR
+    const updateItem = (id: number, field: keyof PurchaseItem | 'foreignUnitPrice', value: number) => {
+        setItems((prev) =>
+            prev.map((item) => {
+                if (item.id !== id) return item;
+                const inFx = multiCurrencyEnabled && isForeignImportCurrency(documentCurrency);
+                if (field === 'foreignUnitPrice' || (field === 'price' && inFx)) {
+                    const foreignUnitPrice = value;
+                    return {
+                        ...item,
+                        foreignUnitPrice,
+                        price: foreignToBasePkr(foreignUnitPrice, fxRateToBase),
+                    };
+                }
+                return { ...item, [field]: value } as PurchaseItem;
+            })
+        );
     };
+
+    // When FX rate changes, recompute PKR line prices from FC inputs (do not wipe FC)
+    useEffect(() => {
+        if (!(multiCurrencyEnabled && isForeignImportCurrency(documentCurrency))) return;
+        setItems((prev) =>
+            prev.map((item) => ({
+                ...item,
+                price: foreignToBasePkr(Number(item.foreignUnitPrice) || 0, fxRateToBase),
+            }))
+        );
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- only recompute when rate/currency mode changes
+    }, [fxRateToBase, documentCurrency, multiCurrencyEnabled]);
 
     const removeItem = (id: number) => {
         setItems(prev => prev.filter(item => item.id !== id));
@@ -1268,6 +1346,14 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
             
             // STEP 1 FIX: Load reference number from reference field or notes field
             setRefNumber(purchaseData.reference || purchaseData.reference_no || purchaseData.notes || '');
+
+            // Import FX metadata (Phase 1) — only meaningful when multiCurrencyEnabled
+            const loadedCurrency = normalizeImportDocCurrency(
+              purchaseData.document_currency || purchaseData.documentCurrency
+            );
+            setDocumentCurrency(loadedCurrency);
+            const loadedRate = Number(purchaseData.fx_rate_to_base ?? purchaseData.fxRateToBase ?? 0);
+            setFxRateToBase(loadedRate > 0 ? loadedRate : loadedCurrency === 'PKR' ? 1 : 0);
             
             // STEP 4: Pre-fill branch if available (RULE 2 - Branch locked in edit mode)
             if (purchaseData.branch_id) {
@@ -1342,6 +1428,21 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                         name: product.name || item.product_name || item.productName || '',
                         sku: product.sku || item.sku || '',
                         price: item.unit_price || item.price || 0,
+                        foreignUnitPrice: (() => {
+                            const stored = Number(item.foreign_unit_price ?? item.foreignUnitPrice);
+                            if (Number.isFinite(stored) && stored > 0) return stored;
+                            const pkr = Number(item.unit_price || item.price) || 0;
+                            const rate = Number(
+                                purchaseData.fx_rate_to_base ?? purchaseData.fxRateToBase ?? 0
+                            );
+                            const docCur = normalizeImportDocCurrency(
+                                purchaseData.document_currency || purchaseData.documentCurrency
+                            );
+                            if (isForeignImportCurrency(docCur) && rate > 0 && pkr > 0) {
+                                return basePkrToForeign(pkr, rate) ?? 0;
+                            }
+                            return undefined;
+                        })(),
                         qty: item.quantity || item.qty || 0,
                         receivedQty: item.received_quantity || item.receivedQty || item.quantity || item.qty || 0,
                         size: item.size || variationAttrs.size || variation?.size,
@@ -1556,12 +1657,20 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
         try {
             submitInProgressRef.current = true;
             setSaving(true);
+
+            if (multiCurrencyEnabled && isForeignImportCurrency(documentCurrency) && !(fxRateToBase > 0)) {
+                toast.error('Enter FX rate (→ PKR) before saving a foreign-currency purchase.');
+                setSaving(false);
+                submitInProgressRef.current = false;
+                return null;
+            }
             
             const selectedSupplier = suppliers.find(s => s.id.toString() === supplierId);
             const supplierName = selectedSupplier?.name || '';
             const supplierUuid = supplierId.toString();
             
             // Convert items to PurchaseItem format (packing only when Enable Packing is ON)
+            const inFxSave = multiCurrencyEnabled && isForeignImportCurrency(documentCurrency);
             const purchaseItems = items.map(item => ({
                 id: item.id.toString(),
                 productId: item.productId.toString(),
@@ -1574,6 +1683,10 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                 discount: 0, // Can be enhanced later
                 tax: 0, // Can be enhanced later
                 total: item.price * item.qty,
+                foreignUnitPrice: inFxSave ? (Number(item.foreignUnitPrice) || 0) : null,
+                foreignLineTotal: inFxSave
+                    ? Math.round(((Number(item.foreignUnitPrice) || 0) * item.qty) * 100) / 100
+                    : null,
                 size: item.size,
                 color: item.color,
                 ...(enablePacking ? {
@@ -1586,6 +1699,14 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                 } : { packing_details: undefined, packing_type: undefined, packing_quantity: undefined, packing_unit: undefined, thaans: undefined, meters: undefined })
             }));
             
+            const foreignSubtotalSave = inFxSave
+                ? Math.round(
+                    items.reduce(
+                      (sum, item) => sum + (Number(item.foreignUnitPrice) || 0) * item.qty,
+                      0
+                    ) * 100
+                  ) / 100
+                : null;
             // CRITICAL FIX: Branch validation (MANDATORY)
             // Admin must select branch, normal user uses auto-selected branch
             const finalBranchId = isAdmin 
@@ -1624,7 +1745,27 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                 due: dueToUse,
                 paymentStatus: paymentStatusToUse as 'paid' | 'partial' | 'unpaid',
                 paymentMethod: partialPayments.length > 0 ? partialPayments[0].method : 'cash',
-                notes: refNumber || undefined
+                notes: refNumber || undefined,
+                ...(multiCurrencyEnabled && isForeignImportCurrency(documentCurrency)
+                  ? {
+                      documentCurrency,
+                      fxRateToBase: fxRateToBase > 0 ? fxRateToBase : null,
+                      foreignSubtotal: foreignSubtotalSave,
+                      foreignTotal: foreignSubtotalSave,
+                    }
+                  : multiCurrencyEnabled
+                    ? {
+                        documentCurrency: 'PKR',
+                        fxRateToBase: null,
+                        foreignSubtotal: null,
+                        foreignTotal: null,
+                      }
+                    : {
+                        documentCurrency: null,
+                        fxRateToBase: null,
+                        foreignSubtotal: null,
+                        foreignTotal: null,
+                      }),
             };
             
             // STEP 5: Handle edit vs create mode
@@ -1651,6 +1792,19 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                         items: purchaseItems,
                         expenses: extraExpenses,
                         discount: discountAmount,
+                        ...(multiCurrencyEnabled && isForeignImportCurrency(documentCurrency)
+                          ? {
+                              documentCurrency,
+                              fxRateToBase: fxRateToBase > 0 ? fxRateToBase : null,
+                              foreignSubtotal: foreignSubtotalSave,
+                              foreignTotal: foreignSubtotalSave,
+                            }
+                          : {
+                              documentCurrency: multiCurrencyEnabled ? 'PKR' : null,
+                              fxRateToBase: null,
+                              foreignSubtotal: null,
+                              foreignTotal: null,
+                            }),
                     });
                     if (purchaseAttachmentFiles.length > 0 && companyId) {
                         try {
@@ -1708,6 +1862,19 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                     // Line-level extra expenses: so purchase_charges are replaced on edit
                     expenses: extraExpenses,
                     discount: discountAmount,
+                    ...(multiCurrencyEnabled && isForeignImportCurrency(documentCurrency)
+                      ? {
+                          documentCurrency,
+                          fxRateToBase: fxRateToBase > 0 ? fxRateToBase : null,
+                          foreignSubtotal: foreignSubtotalSave,
+                          foreignTotal: foreignSubtotalSave,
+                        }
+                      : {
+                          documentCurrency: multiCurrencyEnabled ? 'PKR' : null,
+                          fxRateToBase: null,
+                          foreignSubtotal: null,
+                          foreignTotal: null,
+                        }),
                 });
                 if (purchaseAttachmentFiles.length > 0 && companyId) {
                     try {
@@ -2015,6 +2182,86 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                     </div>
                                 </div>
                             </div>
+                            {multiCurrencyEnabled && (
+                                <div className="mt-3 pt-3 border-t border-border/50 flex flex-wrap items-end gap-3">
+                                    <div className="flex flex-col min-w-[120px]">
+                                        <Label className="text-muted-foreground font-medium text-[10px] uppercase tracking-wide mb-1">
+                                            Doc currency
+                                        </Label>
+                                        <Select
+                                            value={documentCurrency}
+                                            onValueChange={(v) => {
+                                                const next = normalizeImportDocCurrency(v);
+                                                const prev = documentCurrency;
+                                                setDocumentCurrency(next);
+                                                if (next === 'PKR') {
+                                                    setFxRateToBase(1);
+                                                    setItems((rows) =>
+                                                        rows.map((row) => ({
+                                                            ...row,
+                                                            foreignUnitPrice: undefined,
+                                                        }))
+                                                    );
+                                                } else {
+                                                    if (!(fxRateToBase > 1) && prev === 'PKR') {
+                                                        setFxRateToBase(0);
+                                                    }
+                                                    setItems((rows) =>
+                                                        rows.map((row) => {
+                                                            const rate = fxRateToBase > 0 ? fxRateToBase : 0;
+                                                            const fc =
+                                                                rate > 0
+                                                                    ? (basePkrToForeign(row.price, rate) ?? 0)
+                                                                    : Number(row.foreignUnitPrice) || 0;
+                                                            return {
+                                                                ...row,
+                                                                foreignUnitPrice: fc,
+                                                                price:
+                                                                    rate > 0
+                                                                        ? foreignToBasePkr(fc, rate)
+                                                                        : row.price,
+                                                            };
+                                                        })
+                                                    );
+                                                }
+                                            }}
+                                        >
+                                            <SelectTrigger className="h-9 bg-input-background border-border text-foreground text-sm">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent className="bg-popover border-border text-foreground">
+                                                <SelectItem value="PKR">PKR</SelectItem>
+                                                {activeCurrencies.map((c) => (
+                                                    <SelectItem key={c.code} value={c.code}>
+                                                        {c.label}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    {isForeignImportCurrency(documentCurrency) && (
+                                        <>
+                                            <div className="flex flex-col w-[110px]">
+                                                <Label className="text-muted-foreground font-medium text-[10px] uppercase tracking-wide mb-1">
+                                                    Rate → PKR
+                                                </Label>
+                                                <Input
+                                                    type="number"
+                                                    min={0}
+                                                    step="0.01"
+                                                    className="h-9 bg-input-background border-border text-sm text-right"
+                                                    value={fxRateToBase > 0 ? fxRateToBase : ''}
+                                                    placeholder="e.g. 42.8"
+                                                    onChange={(e) => setFxRateToBase(parseFloat(e.target.value) || 0)}
+                                                />
+                                            </div>
+                                            <p className="text-[11px] text-muted-foreground max-w-[320px] pb-1">
+                                                Grid prices are in {currencyLabel}. Books / GL use PKR (price × rate).
+                                            </p>
+                                        </>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -2084,6 +2331,9 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                 itemPriceRefs={itemPriceRefs}
                                 handleQtyKeyDown={handleQtyKeyDown}
                                 handlePriceKeyDown={handlePriceKeyDown}
+                                fxMode={fxMode}
+                                currencyLabel={currencyLabel}
+                                fxRateToBase={fxRateToBase}
                             />
                             </div>
                         </div>
@@ -2150,9 +2400,21 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Purchase Summary</h3>
                                 <div className="space-y-2">
                                     <div className="flex justify-between text-sm">
-                                        <span className="text-muted-foreground">Items Subtotal</span>
-                                        <span className="text-foreground font-medium">{subtotal.toLocaleString()}</span>
+                                        <span className="text-muted-foreground">
+                                          Items Subtotal{fxMode ? ` (${currencyLabel})` : ''}
+                                        </span>
+                                        <span className="text-foreground font-medium">
+                                          {fxMode && foreignSubtotal != null
+                                            ? foreignSubtotal.toLocaleString()
+                                            : subtotal.toLocaleString()}
+                                        </span>
                                     </div>
+                                    {fxMode && (
+                                        <div className="flex justify-between text-xs text-muted-foreground">
+                                            <span>≈ PKR @ {fxRateToBase || '—'}</span>
+                                            <span className="tabular-nums">{subtotal.toLocaleString()}</span>
+                                        </div>
+                                    )}
                                     
                                     {/* Discount - Inline Input */}
                                     <div className="flex items-center justify-between gap-2 py-1">
@@ -2228,14 +2490,49 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                     
                                     <Separator className="bg-muted" />
                                     
-                                    <div className="flex justify-between items-center pt-1">
-                                        <span className="text-muted-foreground">Grand Total</span>
-                                        <span className="text-xl font-semibold text-foreground">${totalAmount.toLocaleString()}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center pt-1">
-                                        <span className="text-sm font-semibold text-foreground">Due balance</span>
-                                        <span className="text-xl font-semibold text-orange-500">${Math.max(0, balanceDue).toLocaleString()}</span>
-                                    </div>
+                                    {fxMode && foreignGrandDisplay != null ? (
+                                        <>
+                                            <div className="flex justify-between items-center pt-1">
+                                                <span className="text-muted-foreground">
+                                                    Grand Total ({currencyLabel})
+                                                </span>
+                                                <span className="text-xl font-semibold text-foreground tabular-nums">
+                                                    {foreignGrandDisplay.toLocaleString()}
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between text-xs text-muted-foreground -mt-1">
+                                                <span>≈ PKR</span>
+                                                <span className="tabular-nums">{totalAmount.toLocaleString()}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center pt-1">
+                                                <span className="text-sm font-semibold text-foreground">
+                                                    Due balance ({currencyLabel})
+                                                </span>
+                                                <span className="text-xl font-semibold text-orange-500 tabular-nums">
+                                                    {(foreignDueDisplay ?? 0).toLocaleString()}
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between text-xs text-muted-foreground -mt-1">
+                                                <span>≈ PKR</span>
+                                                <span className="tabular-nums">{Math.max(0, balanceDue).toLocaleString()}</span>
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <div className="flex justify-between items-center pt-1">
+                                                <span className="text-muted-foreground">Grand Total</span>
+                                                <span className="text-xl font-semibold text-foreground">
+                                                    ${totalAmount.toLocaleString()}
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between items-center pt-1">
+                                                <span className="text-sm font-semibold text-foreground">Due balance</span>
+                                                <span className="text-xl font-semibold text-orange-500">
+                                                    ${Math.max(0, balanceDue).toLocaleString()}
+                                                </span>
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
                             </div>
 

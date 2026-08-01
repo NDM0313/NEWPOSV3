@@ -235,6 +235,11 @@ export interface Purchase {
   notes?: string;
   attachments?: { url: string; name: string }[] | null;
   created_by: string;
+  /** Import FX metadata — null when multiCurrencyEnabled OFF. GL still uses PKR totals. */
+  document_currency?: string | null;
+  fx_rate_to_base?: number | null;
+  foreign_subtotal?: number | null;
+  foreign_total?: number | null;
 }
 
 export interface PurchaseItem {
@@ -255,6 +260,8 @@ export interface PurchaseItem {
   packing_unit?: string;
   packing_details?: any; // JSONB
   notes?: string;
+  foreign_unit_price?: number | null;
+  foreign_line_total?: number | null;
 }
 
 /** One row per charge (freight, loading, discount, etc.) for audit-ready ledger. */
@@ -270,6 +277,7 @@ const PURCHASE_INSERT_KEYS = [
   'status', 'payment_status', 'subtotal', 'discount_amount', 'tax_amount', 'shipping_cost',
   'freight_settlement', 'clearance_courier_id',
   'total', 'paid_amount', 'due_amount', 'notes', 'attachments', 'created_by',
+  'document_currency', 'fx_rate_to_base', 'foreign_subtotal', 'foreign_total',
 ] as const;
 
 function pickPurchaseRow(row: Record<string, unknown>): Record<string, unknown> {
@@ -305,6 +313,10 @@ function buildPurchaseInsertRow(purchase: Purchase): Record<string, unknown> {
     notes: purchase.notes ?? null,
     attachments: purchase.attachments ?? null,
     created_by: purchase.created_by,
+    document_currency: purchase.document_currency ?? null,
+    fx_rate_to_base: purchase.fx_rate_to_base ?? null,
+    foreign_subtotal: purchase.foreign_subtotal ?? null,
+    foreign_total: purchase.foreign_total ?? null,
   });
 }
 
@@ -313,6 +325,7 @@ const PURCHASE_ITEM_INSERT_KEYS = [
   'purchase_id', 'product_id', 'variation_id', 'product_name', 'sku', 'quantity', 'unit',
   'unit_price', 'discount_amount', 'tax_amount', 'total',
   'packing_type', 'packing_quantity', 'packing_unit', 'packing_details', 'notes',
+  'foreign_unit_price', 'foreign_line_total',
 ] as const;
 
 function pickPurchaseItemRow(row: Record<string, unknown>): Record<string, unknown> {
@@ -347,6 +360,8 @@ function buildPurchaseItemInsertRow(item: PurchaseItem, purchaseId: string): Rec
     packing_unit: item.packing_unit ?? null,
     packing_details: item.packing_details != null ? item.packing_details : null,
     notes: item.notes ?? null,
+    foreign_unit_price: item.foreign_unit_price ?? null,
+    foreign_line_total: item.foreign_line_total ?? null,
   });
 }
 

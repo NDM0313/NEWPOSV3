@@ -28,7 +28,7 @@ export interface Contact {
   id?: string;
   company_id: string;
   branch_id?: string;
-  type: 'customer' | 'supplier' | 'both' | 'worker';
+  type: 'customer' | 'supplier' | 'both' | 'worker' | 'money_exchange';
   name: string;
   code?: string;
   email?: string;

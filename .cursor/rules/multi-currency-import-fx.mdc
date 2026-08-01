@@ -1,5 +1,5 @@
 ---
-description: Multi-currency in this ERP means China import purchasing FX (RMB/USD + agents) — not a separate FX exchange app. Toggle is currently cosmetic; do not invent dual-currency GL without approval.
+description: Multi-currency in this ERP means China import purchasing FX (RMB/USD + agents) — not a separate FX exchange app. Gate all FX UI/RPCs on multiCurrencyEnabled.
 alwaysApply: true
 ---
 
@@ -13,10 +13,10 @@ Yeh ERP ka multi-currency **China import / wholesaler purchasing** ke liye hai: 
 
 ## Current state (truth — do not mis-sell)
 
-- Settings toggle **Multi Currency Enabled** persists as `settings` JSON key `accounting_settings.multiCurrencyEnabled` via [`SettingsContext`](src/app/context/SettingsContext.tsx) / [`settingsService`](src/app/services/settingsService.ts).
-- **No** purchase, wholesale, sales, or journal path reads this flag today. It is **cosmetic**.
-- Display uses [`companies.currency`](src/app/hooks/useFormatCurrency.ts) formatting only — **no FX conversion**.
-- `purchases` / `purchase_items` have **no** document currency, rate, or foreign-amount columns.
+- Settings toggle **Multi Currency Enabled** + **`activeCurrencies`** persist in `accounting_settings` JSON via [`SettingsContext`](src/app/context/SettingsContext.tsx) / [`settingsService`](src/app/services/settingsService.ts).
+- **Flag ON:** PurchaseForm is **currency-first** — grid Price/Total bind to FC when doc currency ≠ PKR; PKR `unit_price`/`total` computed as FC × rate for GL. Nullable FX columns persist. Agent dual-credit wizard + RPCs. TT-agent wallets in payments.
+- **Flag OFF:** PKR-only UI; FX columns left null; wizard/RPCs must not be used.
+- Display uses [`companies.currency`](src/app/hooks/useFormatCurrency.ts) for base; FC labels from `activeCurrencies`.
 
 Related but **not** an FX engine: named TT-agent wallets (e.g. `HAMID IK RMB`) + liquidity excludes; OCR note overlays like `RMB 7000x42.8`; `sale_shipments` USD rate (studio shipping only).
 
@@ -24,12 +24,13 @@ Related but **not** an FX engine: named TT-agent wallets (e.g. `HAMID IK RMB`) +
 
 Single Core Ledger / audit docs that mark **“FX / multi-currency app” OUT_OF_SCOPE** mean a **separate exchange product**. Do **not** build a parallel FX trading app inside this ERP. Import purchasing FX (above) is the in-scope meaning when the user asks for multi-currency here.
 
-## When implementing later (requires explicit user approval)
+## Implementation constraints
 
 Follow [`.cursor/rules/system-lockdown-safety.mdc`](system-lockdown-safety.mdc): additive schema only; no destructive money-table ALTER / dual-entry rewrite without confirmation.
 
 1. Gate UI/behavior on `multiCurrencyEnabled === true`; OFF = current PKR-only behavior.
-2. Apply to **wholesale and other Settings-gated purchase/payment** flows — not retail POS multi-price currency.
-3. Keep **PKR** as company base for reporting, inventory value, and COGS; store document currency + rate + foreign + base amounts when added.
-4. Model payment paths: agent wallet (PKR out → FC wallet → supplier AP) and third-party USD→RMB convert; reuse existing TT-agent account naming patterns where possible.
-5. Do not claim the Settings toggle “enables FX” until consumers actually read the flag.
+2. Document currency options = PKR + `activeCurrencies` (admin-editable); do not hardcode only CNY/USD in the form.
+3. Keep **PKR** as company base for reporting, inventory value, and COGS; store document currency + rate + foreign + base amounts when flag ON.
+4. Dual-credit agent path: **do not** overload `record_payment_with_accounting` for FC credit (that RPC always Dr AP / Cr liquidity). Use `record_fx_currency_purchase_on_credit` (Dr wallet / Cr Agent AP). Agent settle + China settle reuse `createSupplierPayment`.
+5. Contact type `money_exchange` gets AP under 2000 via `_ensure_ap_subaccount_for_contact`.
+6. Do not claim FX gain/loss / dual-currency TB until Phase 3 is explicitly approved.

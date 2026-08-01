@@ -199,6 +199,8 @@ export interface AccountingSettings {
   manualJournalEnabled: boolean;
   defaultCurrency: string;
   multiCurrencyEnabled: boolean;
+  /** Foreign currencies for import FX document dropdown (PKR always available separately). */
+  activeCurrencies: { code: string; label: string }[];
   taxCalculationMethod: 'Inclusive' | 'Exclusive';
   defaultTaxRate: number;
 }
@@ -311,7 +313,7 @@ function getDefaultSettingsStub(): SettingsContextType {
     updateBusinessSettings: noop,
     rentalSettings: { defaultLateFeePerDay: 0, gracePeriodDays: 0, advanceRequired: false, advancePercentage: 0, securityDepositRequired: false, securityDepositAmount: 0, damageChargeEnabled: false, autoExtendAllowed: false },
     updateRentalSettings: noop,
-    accountingSettings: { fiscalYearStart: '', fiscalYearEnd: '', manualJournalEnabled: true, defaultCurrency: 'PKR', multiCurrencyEnabled: false, taxCalculationMethod: 'Inclusive', defaultTaxRate: 0 },
+    accountingSettings: { fiscalYearStart: '', fiscalYearEnd: '', manualJournalEnabled: true, defaultCurrency: 'PKR', multiCurrencyEnabled: false, activeCurrencies: [{ code: 'CNY', label: 'RMB (CNY)' }, { code: 'USD', label: 'US Dollar' }], taxCalculationMethod: 'Inclusive', defaultTaxRate: 0 },
     updateAccountingSettings: noop,
     defaultAccounts: { paymentMethods: [] },
     updateDefaultAccounts: noop,
@@ -438,6 +440,10 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     manualJournalEnabled: false,
     defaultCurrency: 'PKR',
     multiCurrencyEnabled: false,
+    activeCurrencies: [
+      { code: 'CNY', label: 'RMB (CNY)' },
+      { code: 'USD', label: 'US Dollar' },
+    ],
     taxCalculationMethod: 'Inclusive',
     defaultTaxRate: 0,
   });
@@ -860,6 +866,12 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         manualJournalEnabled: accountingData.manualJournalEnabled || false,
         defaultCurrency: accountingData.defaultCurrency || 'PKR',
         multiCurrencyEnabled: accountingData.multiCurrencyEnabled || false,
+        activeCurrencies: Array.isArray(accountingData.activeCurrencies) && accountingData.activeCurrencies.length > 0
+          ? accountingData.activeCurrencies
+          : [
+              { code: 'CNY', label: 'RMB (CNY)' },
+              { code: 'USD', label: 'US Dollar' },
+            ],
         taxCalculationMethod: accountingData.taxCalculationMethod || 'Inclusive',
         defaultTaxRate: accountingData.defaultTaxRate || 0,
       });

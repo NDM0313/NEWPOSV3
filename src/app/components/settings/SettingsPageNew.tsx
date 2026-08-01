@@ -859,6 +859,9 @@ export const SettingsPageNew = () => {
   useEffect(() => {
     if (contentKey === 'company') setCompanyForm(settings.company);
   }, [contentKey, settings.company]);
+  useEffect(() => {
+    if (contentKey === 'accounting') setAccountingForm(settings.accountingSettings);
+  }, [contentKey, settings.accountingSettings]);
 
   // Load users when users tab is active
   useEffect(() => {
@@ -1024,9 +1027,35 @@ export const SettingsPageNew = () => {
             await settingsService.setDefaultDressDevaluation(companyId, defaultDressDevaluation);
           }
           break;
-        case 'accounting':
-          await settings.updateAccountingSettings(accountingForm);
+        case 'accounting': {
+          const seen = new Set<string>();
+          const activeCurrencies = (accountingForm.activeCurrencies || [])
+            .map((row) => ({
+              code: String(row.code || '').toUpperCase().trim().replace(/^RMB$/, 'CNY'),
+              label: String(row.label || '').trim(),
+            }))
+            .filter((row) => {
+              if (!row.code || row.code === 'PKR') return false;
+              if (seen.has(row.code)) return false;
+              seen.add(row.code);
+              return true;
+            })
+            .map((row) => ({
+              code: row.code,
+              label: row.label || row.code,
+            }));
+          await settings.updateAccountingSettings({
+            ...accountingForm,
+            activeCurrencies:
+              activeCurrencies.length > 0
+                ? activeCurrencies
+                : [
+                    { code: 'CNY', label: 'RMB (CNY)' },
+                    { code: 'USD', label: 'US Dollar' },
+                  ],
+          });
           break;
+        }
         case 'accounts':
           await settings.updateDefaultAccounts(accountsForm);
           break;
@@ -2194,7 +2223,9 @@ export const SettingsPageNew = () => {
                   <div className="flex items-center justify-between bg-input-background p-4 rounded-lg border border-border">
                     <div>
                       <p className="text-foreground font-medium">Multi Currency Enabled</p>
-                      <p className="text-sm text-muted-foreground">Enable multiple currencies</p>
+                      <p className="text-sm text-muted-foreground">
+                        China import / wholesale: enter foreign prices × rate → books stay PKR. Turns on currency-first purchase grid, Agent FX wizard, and TT-agent wallets in payments.
+                      </p>
                     </div>
                     <Switch
                       checked={accountingForm.multiCurrencyEnabled}
@@ -2204,6 +2235,79 @@ export const SettingsPageNew = () => {
                       }}
                     />
                   </div>
+
+                  {accountingForm.multiCurrencyEnabled && (
+                    <div className="bg-input-background p-4 rounded-lg border border-border space-y-3">
+                      <div>
+                        <p className="text-foreground font-medium">Active foreign currencies</p>
+                        <p className="text-sm text-muted-foreground">
+                          Shown on Purchase document currency (PKR is always available). Codes are stored uppercase (use CNY for RMB).
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        {(accountingForm.activeCurrencies || []).map((row, idx) => (
+                          <div key={`${row.code}-${idx}`} className="flex flex-wrap items-center gap-2">
+                            <Input
+                              className="w-24 uppercase"
+                              value={row.code}
+                              placeholder="CNY"
+                              onChange={(e) => {
+                                const code = e.target.value.toUpperCase().trim();
+                                const next = [...(accountingForm.activeCurrencies || [])];
+                                next[idx] = { ...next[idx], code };
+                                setAccountingForm({ ...accountingForm, activeCurrencies: next });
+                                setHasUnsavedChanges(true);
+                              }}
+                            />
+                            <Input
+                              className="flex-1 min-w-[140px]"
+                              value={row.label}
+                              placeholder="RMB (CNY)"
+                              onChange={(e) => {
+                                const next = [...(accountingForm.activeCurrencies || [])];
+                                next[idx] = { ...next[idx], label: e.target.value };
+                                setAccountingForm({ ...accountingForm, activeCurrencies: next });
+                                setHasUnsavedChanges(true);
+                              }}
+                            />
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-400"
+                              onClick={() => {
+                                const next = (accountingForm.activeCurrencies || []).filter((_, i) => i !== idx);
+                                setAccountingForm({ ...accountingForm, activeCurrencies: next });
+                                setHasUnsavedChanges(true);
+                              }}
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const existing = accountingForm.activeCurrencies || [];
+                          const used = new Set(existing.map((c) => String(c.code || '').toUpperCase()));
+                          if (used.has('PKR')) {
+                            toast.error('PKR is the base currency and cannot be listed here');
+                            return;
+                          }
+                          setAccountingForm({
+                            ...accountingForm,
+                            activeCurrencies: [...existing, { code: '', label: '' }],
+                          });
+                          setHasUnsavedChanges(true);
+                        }}
+                      >
+                        Add currency
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

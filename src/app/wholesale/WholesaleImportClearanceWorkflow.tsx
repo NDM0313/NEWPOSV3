@@ -1,10 +1,12 @@
 /**
  * Wholesale import: clearance paid to courier vs supplier goods payable.
  */
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Truck, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Label } from '@/app/components/ui/label';
+import { Input } from '@/app/components/ui/input';
+import { useSettings } from '@/app/context/SettingsContext';
 import { shipmentAccountingService } from '@/app/services/shipmentAccountingService';
 import { courierService } from '@/app/services/courierService';
 import { purchaseService } from '@/app/services/purchaseService';
@@ -15,6 +17,13 @@ import {
   purchaseSupplierPayableBase,
 } from '@/app/wholesale/wholesaleImportPurchase';
 import type { Purchase } from '@/app/context/PurchaseContext';
+import {
+  resolveActiveImportCurrencies,
+  labelForImportCurrency,
+  basePkrToForeign,
+  isForeignImportCurrency,
+  type ImportDocCurrency,
+} from '@/app/lib/importFxHelpers';
 import { toast } from 'sonner';
 
 export interface WholesaleImportClearanceWorkflowProps {
@@ -30,6 +39,16 @@ export const WholesaleImportClearanceWorkflow: React.FC<WholesaleImportClearance
   formatCurrency,
   onUpdated,
 }) => {
+  const { accountingSettings } = useSettings();
+  const multiCurrencyEnabled = accountingSettings?.multiCurrencyEnabled === true;
+  const activeCurrencies = useMemo(
+    () => resolveActiveImportCurrencies(accountingSettings),
+    [accountingSettings],
+  );
+  const [fxHelperCurrency, setFxHelperCurrency] = useState<ImportDocCurrency>(
+    () => activeCurrencies[0]?.code || 'CNY',
+  );
+  const [fxHelperRate, setFxHelperRate] = useState<number>(0);
   const [couriers, setCouriers] = useState<Array<{ id: string; contactId: string; name: string }>>([]);
   const [courierId, setCourierId] = useState<string>(purchase.clearanceCourierId ?? '');
   const [courierPaid, setCourierPaid] = useState<number | null>(null);
@@ -42,6 +61,21 @@ export const WholesaleImportClearanceWorkflow: React.FC<WholesaleImportClearance
   const supplierPayable = purchaseSupplierPayableBase(purchase);
   const supplierDue = purchaseSupplierDue(purchase);
   const clearanceMode = isWholesaleImportClearance(purchase) || purchase.freightSettlement === 'courier';
+
+  const fxHelperActive =
+    multiCurrencyEnabled && isForeignImportCurrency(fxHelperCurrency) && fxHelperRate > 0;
+  const supplierPayableFc = useMemo(
+    () => (fxHelperActive ? basePkrToForeign(supplierPayable, fxHelperRate) : null),
+    [fxHelperActive, supplierPayable, fxHelperRate],
+  );
+  const supplierDueFc = useMemo(
+    () => (fxHelperActive ? basePkrToForeign(supplierDue, fxHelperRate) : null),
+    [fxHelperActive, supplierDue, fxHelperRate],
+  );
+  const clearanceFc = useMemo(
+    () => (fxHelperActive ? basePkrToForeign(clearanceAmount, fxHelperRate) : null),
+    [fxHelperActive, clearanceAmount, fxHelperRate],
+  );
 
   const loadCourierStatus = useCallback(async () => {
     const cid = purchase.clearanceCourierId || courierId;
@@ -129,6 +163,11 @@ export const WholesaleImportClearanceWorkflow: React.FC<WholesaleImportClearance
         <div className="rounded-lg bg-gray-900/60 border border-gray-800 p-3">
           <p className="text-gray-400 mb-1">Supplier goods payable</p>
           <p className="text-white font-semibold">{formatCurrency(supplierPayable)}</p>
+          {supplierPayableFc != null && (
+            <p className="text-amber-200/80 text-xs mt-1 tabular-nums">
+              ≈ {supplierPayableFc.toLocaleString()} {labelForImportCurrency(fxHelperCurrency, activeCurrencies)}
+            </p>
+          )}
           <p className="text-gray-500 text-xs mt-1">Excludes clearance / freight</p>
         </div>
         <div className="rounded-lg bg-gray-900/60 border border-gray-800 p-3">
@@ -136,10 +175,20 @@ export const WholesaleImportClearanceWorkflow: React.FC<WholesaleImportClearance
           <p className={`font-bold text-lg ${supplierDue > 0 ? 'text-red-400' : 'text-green-400'}`}>
             {formatCurrency(supplierDue)}
           </p>
+          {supplierDueFc != null && (
+            <p className="text-amber-200/80 text-xs mt-1 tabular-nums">
+              ≈ {supplierDueFc.toLocaleString()} {labelForImportCurrency(fxHelperCurrency, activeCurrencies)}
+            </p>
+          )}
         </div>
         <div className="rounded-lg bg-gray-900/60 border border-gray-800 p-3">
           <p className="text-gray-400 mb-1">Clearance (courier)</p>
           <p className="text-amber-300 font-semibold">{formatCurrency(clearanceAmount)}</p>
+          {clearanceFc != null && (
+            <p className="text-amber-200/80 text-xs mt-1 tabular-nums">
+              ≈ {clearanceFc.toLocaleString()} {labelForImportCurrency(fxHelperCurrency, activeCurrencies)}
+            </p>
+          )}
           {courierName && <p className="text-gray-500 text-xs mt-1">{courierName}</p>}
         </div>
         <div className="rounded-lg bg-gray-900/60 border border-gray-800 p-3">
@@ -162,6 +211,44 @@ export const WholesaleImportClearanceWorkflow: React.FC<WholesaleImportClearance
           )}
         </div>
       </div>
+
+      {multiCurrencyEnabled && (
+        <div className="rounded-lg border border-amber-500/20 bg-gray-950/40 p-3 space-y-2">
+          <p className="text-xs font-medium text-amber-200/90">Import FX helper (display only)</p>
+          <div className="flex flex-wrap gap-2 items-end">
+            <div className="flex flex-col gap-1">
+              <Label className="text-gray-500 text-[10px] uppercase">Currency</Label>
+              <select
+                className="bg-gray-900 border border-gray-700 rounded-md px-2 py-1.5 text-sm text-white"
+                value={fxHelperCurrency}
+                onChange={(e) => setFxHelperCurrency(e.target.value as ImportDocCurrency)}
+              >
+                <option value="PKR">PKR</option>
+                {activeCurrencies.map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label className="text-gray-500 text-[10px] uppercase">Rate → PKR</Label>
+              <Input
+                type="number"
+                min={0}
+                step="0.01"
+                className="w-28 h-8 bg-gray-900 border-gray-700 text-sm text-right"
+                value={fxHelperRate > 0 ? fxHelperRate : ''}
+                placeholder="e.g. 42.8"
+                onChange={(e) => setFxHelperRate(parseFloat(e.target.value) || 0)}
+              />
+            </div>
+          </div>
+          <p className="text-[11px] text-gray-500">
+            PKR amounts above stay the books truth. FC ≈ PKR ÷ rate for supplier vs clearance reference only.
+          </p>
+        </div>
+      )}
 
       {!purchase.clearanceCourierId && (
         <div className="space-y-2">

@@ -2,8 +2,15 @@
  * Unified financial report loaders for mobile — read-only, mirrors web main loaders.
  */
 
-import { getRoznamcha } from './roznamcha';
+import {
+  getRoznamcha,
+  type AccountFilter,
+  type PaymentAccountFilter,
+  type RoznamchaResult,
+  paymentAccountFilterIds,
+} from './roznamcha';
 import { enrichRowsWithTransactionAttachments } from '../lib/roznamchaAttachments';
+import { mapUnifiedLedgerToRoznamchaResult } from '../lib/roznamchaUnifiedMapper';
 import {
   effectiveReportLoaderSource,
   resolveReportMainLoaderSource,
@@ -310,6 +317,65 @@ export async function loadMobileCashFlow(params: {
       loaderSource: 'legacy',
       error: null,
     };
+  } catch (e) {
+    return { data: null, loaderSource: 'legacy', error: (e as Error).message };
+  }
+}
+
+/**
+ * Mobile Day Book / Roznamcha cash mode — prefer unified cash-bank RPC (web parity).
+ * Multi-account ledger filter falls back to legacy getRoznamcha (RPC has no account_id).
+ */
+export async function loadMobileRoznamcha(params: {
+  companyId: string;
+  branchId?: string | null;
+  dateFrom: string;
+  dateTo: string;
+  liquidity?: AccountFilter;
+  includeVoided?: boolean;
+  paymentLedgerAccountId?: PaymentAccountFilter;
+}): Promise<LoadResult<RoznamchaResult>> {
+  const liquidity = params.liquidity ?? 'all';
+  const includeVoided = params.includeVoided ?? false;
+  const paymentLedgerAccountId = params.paymentLedgerAccountId ?? null;
+  const hasAccountFilter = paymentAccountFilterIds(paymentLedgerAccountId).length > 0;
+  const basis: UnifiedLedgerBasis = includeVoided ? 'audit_full_history' : 'effective_party';
+
+  const resolved = await resolveReportMainLoaderSource(params.companyId, 'roznamcha', {
+    legacyAvailable: true,
+  });
+  const source = effectiveReportLoaderSource(resolved);
+
+  if (source === 'unified' && !hasAccountFilter) {
+    try {
+      const unified = await rpcGetUnifiedCashBankLedger({
+        companyId: params.companyId,
+        branchId: normalizeBranch(params.branchId),
+        dateFrom: params.dateFrom,
+        dateTo: params.dateTo,
+        basis,
+        liquidity,
+      });
+      if (unified.error) throw new Error(unified.error);
+      const data = mapUnifiedLedgerToRoznamchaResult(unified.rows, unified.openingBalance);
+      await enrichRowsWithTransactionAttachments(params.companyId, data.rows);
+      return { data, loaderSource: 'unified', error: null };
+    } catch {
+      /* fall through to legacy */
+    }
+  }
+
+  try {
+    const data = await getRoznamcha(
+      params.companyId,
+      params.branchId ?? null,
+      params.dateFrom,
+      params.dateTo,
+      liquidity,
+      includeVoided,
+      paymentLedgerAccountId,
+    );
+    return { data, loaderSource: 'legacy', error: null };
   } catch (e) {
     return { data: null, loaderSource: 'legacy', error: (e as Error).message };
   }

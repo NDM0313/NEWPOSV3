@@ -74,7 +74,7 @@ interface Contact {
   uuid: string; // Supabase UUID
   name: string;
   code: string;
-  type: 'customer' | 'supplier' | 'worker' | 'both';
+  type: 'customer' | 'supplier' | 'worker' | 'both' | 'money_exchange';
   workerRole?: string;
   email: string;
   phone: string;
@@ -147,7 +147,7 @@ function partyGlMismatchFlags(
     receivables =
       Math.abs(Number(contact.receivables) - Math.max(0, Number(gl.glArReceivable) || 0)) >= OP_VS_PARTY_GL_TOL;
   }
-  if (contact.type === 'supplier' || contact.type === 'both') {
+  if (contact.type === 'supplier' || contact.type === 'both' || contact.type === 'money_exchange') {
     payables =
       Math.abs(Number(contact.payables) - Math.max(0, Number(gl.glApPayable) || 0)) >= OP_VS_PARTY_GL_TOL;
   }
@@ -180,7 +180,9 @@ function contactPartyGlPayableSigned(
   const gl = partyGlByContactId.get(String(contact.uuid));
   if (!gl) return null;
   if (contact.type === 'worker') return Number(gl.glWorkerPayable) || 0;
-  if (contact.type === 'supplier' || contact.type === 'both') return Number(gl.glApPayable) || 0;
+  if (contact.type === 'supplier' || contact.type === 'both' || contact.type === 'money_exchange') {
+    return Number(gl.glApPayable) || 0;
+  }
   return null;
 }
 
@@ -299,9 +301,17 @@ export const ContactsPage = () => {
     ): Contact => {
     // Determine contact type (worker | supplier | customer | both)
     const isWorker = supabaseContact.type === 'worker';
-    const isSupplier = supabaseContact.type === 'supplier' || supabaseContact.type === 'both';
-    const contactType: 'customer' | 'supplier' | 'worker' | 'both' =
-      supabaseContact.type === 'both' ? 'both' : isWorker ? 'worker' : isSupplier ? 'supplier' : 'customer';
+      const isSupplier = supabaseContact.type === 'supplier' || supabaseContact.type === 'both' || supabaseContact.type === 'money_exchange';
+      const contactType: 'customer' | 'supplier' | 'worker' | 'both' | 'money_exchange' =
+        supabaseContact.type === 'money_exchange'
+          ? 'money_exchange'
+          : supabaseContact.type === 'both'
+            ? 'both'
+            : isWorker
+              ? 'worker'
+              : isSupplier
+                ? 'supplier'
+                : 'customer';
 
     const receivables = 0;
 
@@ -848,7 +858,7 @@ export const ContactsPage = () => {
       if (activeTab !== 'all') {
         const tabType = activeTab.slice(0, -1);
         if (tabType === 'customer' && contact.type !== 'customer' && contact.type !== 'both') return false;
-        if (tabType === 'supplier' && contact.type !== 'supplier' && contact.type !== 'both') return false;
+        if (tabType === 'supplier' && contact.type !== 'supplier' && contact.type !== 'both' && contact.type !== 'money_exchange') return false;
         if (tabType === 'worker' && contact.type !== 'worker') return false;
       }
 

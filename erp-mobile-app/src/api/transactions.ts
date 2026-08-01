@@ -90,6 +90,25 @@ export interface GetTransactionsFilters {
   limit?: number;
 }
 
+/** When a date range is set, fetch the full window (Cash Flow-style). Otherwise keep a soft cap. */
+function timelineFetchLimit(filters: GetTransactionsFilters): number {
+  if (filters.limit != null && filters.limit > 0) return filters.limit;
+  if (filters.startDate || filters.endDate) return 5000;
+  return 300;
+}
+
+/**
+ * Roznamcha-style branch scope: include null-branch rows when a session branch is selected.
+ * Strict eq drops legacy null-branch payments/JEs that still belong on the cash book.
+ */
+function applyLenientBranchFilter<T extends { or: (filter: string) => T }>(
+  q: T,
+  branchId: string | null | undefined,
+): T {
+  if (!branchId || branchId === 'all' || branchId === 'default') return q;
+  return q.or(`branch_id.eq.${branchId},branch_id.is.null`);
+}
+
 type PaymentSupabaseRow = {
   id: string;
   created_at: string;
@@ -223,11 +242,9 @@ export async function getPaymentTransactions(
     .eq('company_id', filters.companyId)
     .order('payment_date', { ascending: false })
     .order('created_at', { ascending: false })
-    .limit(filters.limit ?? 150);
+    .limit(timelineFetchLimit(filters));
 
-  if (filters.branchId && filters.branchId !== 'all' && filters.branchId !== 'default') {
-    q = q.eq('branch_id', filters.branchId);
-  }
+  q = applyLenientBranchFilter(q, filters.branchId);
   if (filters.startDate) q = q.gte('payment_date', filters.startDate);
   if (filters.endDate) q = q.lte('payment_date', filters.endDate);
   if (filters.direction && filters.direction !== 'all') q = q.eq('payment_type', filters.direction);
@@ -548,24 +565,23 @@ export async function getJournalTimelineEntries(
   let q = supabase
     .from('journal_entries')
     .select(
-      'id, entry_no, entry_date, created_at, description, reference_type, reference_id, branch_id, created_by, total_debit, total_credit, attachments',
+      'id, entry_no, entry_date, created_at, description, reference_type, reference_id, branch_id, created_by, total_debit, total_credit, attachments, is_void',
     )
     .eq('company_id', filters.companyId)
-    .in('reference_type', ['transfer', 'general'])
-    .or('is_void.is.null,is_void.eq.false')
+    .in('reference_type', ['transfer', 'general', 'journal'])
     .order('entry_date', { ascending: false })
     .order('created_at', { ascending: false })
-    .limit(filters.limit ?? 150);
+    .limit(timelineFetchLimit(filters));
 
-  if (filters.branchId && filters.branchId !== 'all' && filters.branchId !== 'default') {
-    q = q.eq('branch_id', filters.branchId);
-  }
+  q = applyLenientBranchFilter(q, filters.branchId);
   if (filters.startDate) q = q.gte('entry_date', filters.startDate);
   if (filters.endDate) q = q.lte('entry_date', filters.endDate);
 
   const { data: entries, error } = await q;
   if (error) return { data: [], error: error.message };
-  const rows = (entries || []) as JournalEntryTimelineRow[];
+  const rows = ((entries || []) as Array<JournalEntryTimelineRow & { is_void?: boolean | null }>).filter(
+    (r) => r.is_void == null || r.is_void === false,
+  );
   if (!rows.length) return { data: [], error: null };
 
   const entryIds = rows.map((r) => r.id);
